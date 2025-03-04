@@ -1,0 +1,56 @@
+{
+
+  "env": {
+    "browser": true,
+    "es2015": true
+  },
+  "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended", "prettier", "plugin:perfectionist/recommended-line-length-legacy"],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module"
+  },
+  "plugins": ["@typescript-eslint", "perfectionist"],
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "off",
+    "no-return-assign": "off",
+    "no-unused-vars": "off",
+    "perfectionist/sort-imports": [
+      "error",
+      {
+        "order": "asc",
+        "ignoreCase": false,
+        "newlinesBetween": "always",
+        "type": "line-length",
+        "groups": [["builtin", "external"], ["index", "parent", "sibiling"], "internal"]
+      }
+    ],
+    "perfectionist/sort-named-imports": [
+      "error",
+      {
+        "order": "asc",
+        "ignoreCase": true,
+        "type": "natural"
+      }
+    ],
+    "perfectionist/sort-objects": "off",
+    "perfectionist/sort-arrays": "off",
+    "perfectionist/sort-keys": "off",
+    "perfectionist/sort-classes": "off",
+    "perfectionist/sort-object-types": "off",
+    "perfectionist/sort-intersection-type": "off",
+    "perfectionist/sort-union-types": "off",
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "vars": "all",
+        "args": "after-used",
+        "ignoreRestSiblings": true,
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "quotes": ["error", "single", { "avoidEscape": true }],
+    "semi": [2, "always"]
+  }
+}

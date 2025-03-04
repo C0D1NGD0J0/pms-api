@@ -14,7 +14,6 @@ import routes from '@routes/index';
 import { createLogger } from '@utils/helperFN';
 import { dbErrorHandler } from '@utils/middlewares';
 import { serverAdapter } from '@root/app/queues/base.queue';
-import { spawn } from 'child_process';
 
 export class App {
   private log;
@@ -44,11 +43,7 @@ export class App {
     app.use(helmet());
     app.use(
       cors({
-        origin: [
-          'localhost',
-          'http://localhost:3000',
-          'https://my-property-fe.vercel.app',
-        ],
+        origin: ['localhost', 'http://localhost:3000'],
         optionsSuccessStatus: 200,
         credentials: true,
       })
@@ -71,35 +66,23 @@ export class App {
     app.use('/queues', serverAdapter.getRouter());
     app.use(`${BASE_PATH}/auth`, routes.authRoutes);
     app.use(`${BASE_PATH}/users`, routes.userRoutes);
-    app.use(`${BASE_PATH}/invites`, routes.inviteRoutes);
     app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
+    app.use(`${BASE_PATH}/vendors`, routes.vendorRoutes);
+    app.use(`${BASE_PATH}/invites`, routes.inviteRoutes);
+    app.use(`${BASE_PATH}/tenants`, routes.tenantsRoutes);
+    app.use(`${BASE_PATH}/employees`, routes.employeeRoutes);
     app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
-    app.use(`${BASE_PATH}/reports`, routes.reportRoutes);
-    app.use(`${BASE_PATH}/subscriptions`, routes.subscriptionsRoutes);
     app.use(`${BASE_PATH}/notifications`, routes.notificationRoutes);
+    app.use(`${BASE_PATH}/subscriptions`, routes.subscriptionsRoutes);
+    app.use(`${BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
   }
 
   private appErroHandler(app: Application): void {
     app.use(dbErrorHandler);
 
     process.on('uncaughtException', (err: any) => {
-      console.log(err);
       this.log.error('There was an uncaught error exception: ', err.message);
       this.serverShutdown(1);
-      // const PORT = process.env.PORT || 5000;
-      // if (err.code === 'EADDRINUSE') {
-      //   console.error(`Port ${PORT} is in use, attempting to free it...`);
-
-      //   // For macOS or Linux, adjust for Windows if necessary
-      //   const child = spawn('lsof', ['-ti', `:${PORT}`]);
-      //   child.stdout.on('data', (data) => {
-      //     const pid = data.toString().trim();
-      //     console.log('------WWW', pid);
-      //     if (pid) {
-      //       spawn('kill', ['-9', pid]);
-      //     }
-      //   });
-      // }
     });
 
     process.on('unhandledRejection', (err: Error) => {

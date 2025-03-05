@@ -42,7 +42,7 @@
       "@utils/*": ["./app/utils/*"],
       "@root/*": ["*"]
     },
-    "typeRoots": ["./types/", "node_modules/@types"]
+    "typeRoots": ["./types", "node_modules/@types"]
   },
   "ts-node": {
     "require": ["tsconfig-paths/register"],
@@ -56,7 +56,7 @@
     "./server.ts",
     "./app/**/*.ejs",
     "./tests/configs/teardown.test.ts",
-    "types/custom.d.ts"
+    "types/**/*.d.ts"
   ],
   "exclude": [
     "node_modules",

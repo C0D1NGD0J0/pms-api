@@ -1,20 +1,19 @@
 import dotenv from 'dotenv';
 dotenv.config();
-// import '@di/index';
+import '@di/index';
 import hpp from 'hpp';
 import cors from 'cors';
 import logger from 'morgan';
 import helmet from 'helmet';
 import compression from 'compression';
+import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
+import { envVariables } from '@shared/config';
 import sanitizer from 'perfect-express-sanitizer';
 import mongoSanitize from 'express-mongo-sanitize';
-import express, { Application, urlencoded, Request, Response } from 'express';
-
-// import { routes } from '@routes/index';
-import { createLogger, httpStatusCodes } from '@utils/index';
-import { errorHandlerMiddleware } from '@shared/middlewares';
-import { envVariables } from '@shared/config';
+import { httpStatusCodes, createLogger } from '@utils/index';
+import express, { urlencoded, Response, Request, Application } from 'express';
+import { scopedMiddleware, errorHandlerMiddleware } from '@shared/middlewares';
 
 export interface IAppSetup {
   initConfig(): void;
@@ -65,6 +64,7 @@ export class App implements IAppSetup {
     app.use(urlencoded({ extended: true, limit: '50mb' }));
     app.use(cookieParser());
     app.use(compression());
+    app.use(scopedMiddleware);
   }
 
   private routes(app: Application) {
@@ -73,7 +73,7 @@ export class App implements IAppSetup {
       res.status(200).json({ success: true });
     });
     // app.use('/queues', serverAdapter.getRouter());
-    // app.use(`${BASE_PATH}/auth`, routes.authRoutes);
+    app.use(`${BASE_PATH}/auth`, routes.authRoutes);
     // app.use(`${BASE_PATH}/users`, routes.userRoutes);
     // app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
     // app.use(`${BASE_PATH}/vendors`, routes.vendorRoutes);

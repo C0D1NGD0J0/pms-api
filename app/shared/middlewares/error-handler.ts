@@ -1,15 +1,10 @@
 import { MongooseError } from 'mongoose';
 import { envVariables } from '@shared/config';
+import { createLogger } from '@utils/helpers';
 import { AwilixResolutionError } from 'awilix';
 // import { DiskStorage } from '@services/FileUploadService';
 import { Response, Request, NextFunction } from 'express';
-import { extractMulterFiles, createLogger } from '@utils/helpers';
-import {
-  MongoDatabaseError,
-  InternalServerError,
-  handleMongooseError,
-  CustomError,
-} from '@shared/customErrors';
+import { InternalServerError, handleMongooseError, CustomError } from '@shared/customErrors';
 
 const logger = createLogger('ErrorHandler_Middleware');
 

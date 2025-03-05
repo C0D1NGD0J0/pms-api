@@ -1,5 +1,5 @@
-// import { asClass, asValue } from 'awilix';
-// import { DatabaseService } from '@db/index';
+import { asClass } from 'awilix';
+import { DatabaseService } from '@database/index';
 // import { RedisConfig } from '@db/redisConfig';
 // import { AuthMiddleware } from '@shared/middleware';
 // import { AuthCache, UtilityCache } from '@caching/index';
@@ -18,11 +18,7 @@
 //   ProfileDAO,
 //   UserDAO,
 // } from '@dao/index';
-// import {
-//   AuthController,
-//   NotificationController,
-//   UserController,
-// } from '@controllers/index';
+import { AuthController } from '@controllers/index';
 // import {
 //   AuthService,
 //   AuthTokenService,
@@ -32,7 +28,7 @@
 // } from '@services/index';
 
 const ControllerResources = {
-  // authController: asClass(AuthController).scoped(),
+  authController: asClass(AuthController).scoped(),
   // userController: asClass(UserController).scoped(),
   // notificationController: asClass(NotificationController).scoped(),
 };
@@ -80,7 +76,7 @@ const QueuesResources = {
 
 const UtilsResources = {
   // redisConfig: asClass(RedisConfig).singleton(),
-  // dbService: asClass(DatabaseService).singleton(),
+  dbService: asClass(DatabaseService).singleton(),
   // authMiddleware: asClass(AuthMiddleware).scoped(),
   // diskStorage: asClass(DiskStorage).singleton(),
 };

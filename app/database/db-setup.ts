@@ -1,8 +1,8 @@
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
+import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
-import { envVariables } from '@shared/configs';
 
 export type Environments = 'development' | 'production' | 'test';
 

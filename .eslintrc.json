@@ -1,5 +1,4 @@
 {
-
   "env": {
     "browser": true,
     "es2015": true
@@ -28,7 +27,7 @@
     "perfectionist/sort-named-imports": [
       "error",
       {
-        "order": "asc",
+        "order": "desc",
         "ignoreCase": true,
         "type": "natural"
       }

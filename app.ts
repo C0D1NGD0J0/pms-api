@@ -1,53 +1,61 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import dotenv from 'dotenv';
 dotenv.config();
-import express, { Application, Express, urlencoded } from 'express';
+
+import hpp from 'hpp';
 import cors from 'cors';
 import logger from 'morgan';
-import cookieParser from 'cookie-parser';
-import db from '@database/index';
 import helmet from 'helmet';
-import hpp from 'hpp';
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
+import sanitizer from 'perfect-express-sanitizer';
+import mongoSanitize from 'express-mongo-sanitize';
+import express, { Application, Express, urlencoded, Request, Response } from 'express';
 
-import routes from '@routes/index';
-import { createLogger } from '@utils/helperFN';
-import { dbErrorHandler } from '@utils/middlewares';
-import { serverAdapter } from '@root/app/queues/base.queue';
+// import { routes } from '@routes/index';
+import { createLogger, httpStatusCodes } from '@utils/index';
+import { errorHandlerMiddleware } from '@shared/middlewares';
+import { envVariables } from '@shared/config';
 
-export class App {
-  private log;
-  protected app: Application;
+export interface IAppSetup {
+  initConfig(): void;
+}
 
-  constructor(app: Application) {
-    this.app = app;
-    this.log = createLogger('MainApp', true);
+export class App implements IAppSetup {
+  private readonly log = createLogger('App');
+  protected expApp: Application;
+
+  constructor(expressApp: Application) {
+    this.expApp = expressApp;
   }
 
-  setupConfig = (): void => {
-    this.databaseConnection();
-    this.securityMiddleware(this.app);
-    this.standardMiddleware(this.app);
-    this.routes(this.app);
-    this.appErroHandler(this.app);
+  initConfig = (): void => {
+    this.securityMiddleware(this.expApp);
+    this.standardMiddleware(this.expApp);
+    this.routes(this.expApp);
+    this.appErrorHandler();
   };
-
-  private databaseConnection(): void {
-    if (process.env.NODE_ENV !== 'test') {
-      db.connect();
-    }
-  }
 
   private securityMiddleware(app: Application): void {
     app.use(hpp());
     app.use(helmet());
     app.use(
-      cors({
-        origin: ['localhost', 'http://localhost:3000'],
-        optionsSuccessStatus: 200,
-        credentials: true,
+      sanitizer.clean({
+        xss: true,
+        noSql: true,
+        sql: true,
+        level: 5,
       })
     );
+    app.use(
+      cors({
+        credentials: true,
+        optionsSuccessStatus: 200,
+        origin: envVariables.SERVER.ENV === 'production' ? envVariables.FRONTEND.URL : '*',
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      })
+    );
+    app.use(mongoSanitize());
   }
 
   private standardMiddleware(app: Application): void {
@@ -62,36 +70,51 @@ export class App {
 
   private routes(app: Application) {
     const BASE_PATH = '/api/v1';
-
-    app.use('/queues', serverAdapter.getRouter());
-    app.use(`${BASE_PATH}/auth`, routes.authRoutes);
-    app.use(`${BASE_PATH}/users`, routes.userRoutes);
-    app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
-    app.use(`${BASE_PATH}/vendors`, routes.vendorRoutes);
-    app.use(`${BASE_PATH}/invites`, routes.inviteRoutes);
-    app.use(`${BASE_PATH}/tenants`, routes.tenantsRoutes);
-    app.use(`${BASE_PATH}/employees`, routes.employeeRoutes);
-    app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
-    app.use(`${BASE_PATH}/notifications`, routes.notificationRoutes);
-    app.use(`${BASE_PATH}/subscriptions`, routes.subscriptionsRoutes);
-    app.use(`${BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
+    app.use(`${BASE_PATH}/healthcheck`, (req, res) => {
+      res.status(200).json({ success: true });
+    });
+    // app.use('/queues', serverAdapter.getRouter());
+    // app.use(`${BASE_PATH}/auth`, routes.authRoutes);
+    // app.use(`${BASE_PATH}/users`, routes.userRoutes);
+    // app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
+    // app.use(`${BASE_PATH}/vendors`, routes.vendorRoutes);
+    // app.use(`${BASE_PATH}/invites`, routes.inviteRoutes);
+    // app.use(`${BASE_PATH}/tenants`, routes.tenantsRoutes);
+    // app.use(`${BASE_PATH}/employees`, routes.employeeRoutes);
+    // app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
+    // app.use(`${BASE_PATH}/notifications`, routes.notificationRoutes);
+    // app.use(`${BASE_PATH}/subscriptions`, routes.subscriptionsRoutes);
+    // app.use(`${BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
+    app.all('*', (req: Request, res: Response) => {
+      // catch-all for non-existing routes
+      res.status(httpStatusCodes.NOT_FOUND).json({ message: 'Invalid endpoint.' });
+    });
   }
 
-  private appErroHandler(app: Application): void {
-    app.use(dbErrorHandler);
+  private appErrorHandler(): void {
+    this.expApp.use(errorHandlerMiddleware);
 
-    process.on('uncaughtException', (err: any) => {
-      this.log.error('There was an uncaught error exception: ', err.message);
+    process.on('uncaughtException', (err: Error) => {
+      this.log.error(`Uncaught Exception: ${err.message}`);
       this.serverShutdown(1);
     });
 
-    process.on('unhandledRejection', (err: Error) => {
-      this.log.error('There was an unhandled rejection error: ', err);
+    process.on('unhandledRejection', (reason: unknown) => {
+      this.log.error(
+        'Unhandled Rejection:',
+        reason instanceof Error ? reason.message : String(reason)
+      );
       this.serverShutdown(2);
     });
 
-    process.on('SIGTERM', (err: Error) => {
-      this.log.error('There was a SIGTERM error: ', err.message);
+    process.on('SIGTERM', () => {
+      this.log.info('SIGTERM signal received. Shutting down gracefully...');
+      this.serverShutdown(0);
+    });
+
+    process.on('SIGINT', () => {
+      this.log.info('SIGINT signal received. Shutting down gracefully...');
+      this.serverShutdown(0);
     });
   }
 

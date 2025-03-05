@@ -30,9 +30,9 @@ export class CustomError extends Error {
 }
 
 /**
- * Error representing a 400 Bad Request
+ * Error for corrupted file uploads
  */
-export class BadRequestError extends CustomError {
+export class CorruptedFileRequestError extends CustomError {
   constructor(options?: {
     message?: string;
     statusCode?: number;
@@ -40,8 +40,8 @@ export class BadRequestError extends CustomError {
     originalError?: Error;
   }) {
     super({
-      message: options?.message || 'Bad Request.',
-      statusCode: options?.statusCode || httpStatusCodes.BAD_REQUEST,
+      message: options?.message || 'File scanner detected invalid file.',
+      statusCode: options?.statusCode || httpStatusCodes.UNPROCESSABLE,
       errorInfo: options?.errorInfo,
       originalError: options?.originalError,
     });
@@ -60,25 +60,6 @@ export class InvalidRequestError extends CustomError {
   }) {
     super({
       message: options?.message || 'Unable to process request.',
-      statusCode: options?.statusCode || httpStatusCodes.UNPROCESSABLE,
-      errorInfo: options?.errorInfo,
-      originalError: options?.originalError,
-    });
-  }
-}
-
-/**
- * Error for corrupted file uploads
- */
-export class CorruptedFileRequestError extends CustomError {
-  constructor(options?: {
-    message?: string;
-    statusCode?: number;
-    errorInfo?: Record<string, string>[];
-    originalError?: Error;
-  }) {
-    super({
-      message: options?.message || 'File scanner detected invalid file.',
       statusCode: options?.statusCode || httpStatusCodes.UNPROCESSABLE,
       errorInfo: options?.errorInfo,
       originalError: options?.originalError,
@@ -106,53 +87,19 @@ export class ValidationRequestError extends CustomError {
 }
 
 /**
- * Error representing a 401 Unauthorized
+ * Error representing a 400 Bad Request
  */
-export class UnauthorizedError extends CustomError {
-  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
+export class BadRequestError extends CustomError {
+  constructor(options?: {
+    message?: string;
+    statusCode?: number;
+    errorInfo?: Record<string, string>[];
+    originalError?: Error;
+  }) {
     super({
-      message: options?.message || 'Unauthorized access.',
-      statusCode: options?.statusCode || httpStatusCodes.UNAUTHORIZED,
-      originalError: options?.originalError,
-    });
-  }
-}
-
-/**
- * Error representing a 403 Forbidden
- */
-export class ForbiddenError extends CustomError {
-  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
-    super({
-      message: options?.message || 'Forbidden.',
-      statusCode: options?.statusCode || httpStatusCodes.FORBIDDEN,
-      originalError: options?.originalError,
-    });
-  }
-}
-
-/**
- * Error representing a 404 Not Found
- */
-export class NotFoundError extends CustomError {
-  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
-    super({
-      message: options?.message || 'Resource not found.',
-      statusCode: options?.statusCode || httpStatusCodes.NOT_FOUND,
-      originalError: options?.originalError,
-    });
-  }
-}
-
-/**
- * Error representing a 500 Internal Server Error
- */
-export class InternalServerError extends CustomError {
-  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
-    super({
-      message: options?.message || 'Internal Server Error.',
-      statusCode: options?.statusCode || httpStatusCodes.INTERNAL_SERVER,
-      isOperational: false,
+      message: options?.message || 'Bad Request.',
+      statusCode: options?.statusCode || httpStatusCodes.BAD_REQUEST,
+      errorInfo: options?.errorInfo,
       originalError: options?.originalError,
     });
   }
@@ -173,14 +120,28 @@ export class ServiceUnavailableError extends CustomError {
 }
 
 /**
- * Error related to MongoDB/Mongoose operations
+ * Error representing a 500 Internal Server Error
  */
-export class MongoDatabaseError extends CustomError {
-  constructor(options: { message: string; statusCode?: number; originalError?: Error }) {
+export class InternalServerError extends CustomError {
+  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
     super({
-      message: options.message,
-      statusCode: options.statusCode || httpStatusCodes.INTERNAL_SERVER,
-      originalError: options.originalError,
+      message: options?.message || 'Internal Server Error.',
+      statusCode: options?.statusCode || httpStatusCodes.INTERNAL_SERVER,
+      isOperational: false,
+      originalError: options?.originalError,
+    });
+  }
+}
+
+/**
+ * Error representing a 401 Unauthorized
+ */
+export class UnauthorizedError extends CustomError {
+  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
+    super({
+      message: options?.message || 'Unauthorized access.',
+      statusCode: options?.statusCode || httpStatusCodes.UNAUTHORIZED,
+      originalError: options?.originalError,
     });
   }
 }
@@ -194,6 +155,45 @@ export class RedisError extends CustomError {
       message: options.message,
       statusCode: options.statusCode || httpStatusCodes.INTERNAL_SERVER,
       isOperational: false,
+      originalError: options.originalError,
+    });
+  }
+}
+
+/**
+ * Error representing a 404 Not Found
+ */
+export class NotFoundError extends CustomError {
+  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
+    super({
+      message: options?.message || 'Resource not found.',
+      statusCode: options?.statusCode || httpStatusCodes.NOT_FOUND,
+      originalError: options?.originalError,
+    });
+  }
+}
+
+/**
+ * Error representing a 403 Forbidden
+ */
+export class ForbiddenError extends CustomError {
+  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
+    super({
+      message: options?.message || 'Forbidden.',
+      statusCode: options?.statusCode || httpStatusCodes.FORBIDDEN,
+      originalError: options?.originalError,
+    });
+  }
+}
+
+/**
+ * Error related to MongoDB/Mongoose operations
+ */
+export class MongoDatabaseError extends CustomError {
+  constructor(options: { message: string; statusCode?: number; originalError?: Error }) {
+    super({
+      message: options.message,
+      statusCode: options.statusCode || httpStatusCodes.INTERNAL_SERVER,
       originalError: options.originalError,
     });
   }

@@ -1,7 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import dotenv from 'dotenv';
 dotenv.config();
-
+// import '@di/index';
 import hpp from 'hpp';
 import cors from 'cors';
 import logger from 'morgan';
@@ -10,7 +9,7 @@ import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import sanitizer from 'perfect-express-sanitizer';
 import mongoSanitize from 'express-mongo-sanitize';
-import express, { Application, Express, urlencoded, Request, Response } from 'express';
+import express, { Application, urlencoded, Request, Response } from 'express';
 
 // import { routes } from '@routes/index';
 import { createLogger, httpStatusCodes } from '@utils/index';

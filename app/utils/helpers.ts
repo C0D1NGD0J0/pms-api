@@ -1,33 +1,97 @@
 import color from 'colors';
 import crypto from 'crypto';
 import bunyan from 'bunyan';
-import { NextFunction, Request, Response } from 'express';
-
 import { envVariables } from '@shared/config';
+import { Response, Request, NextFunction } from 'express';
 import {
-  AsyncRequestHandler,
-  ExtractedMediaFile,
-  MulterFile,
   PaginateResult,
+  MulterFile,
+  ExtractedMediaFile,
+  AsyncRequestHandler,
 } from '@interfaces/utils.interface';
 
 /**
- * Generates a random hash string using SHA-256
- * @param byteLength - Number of random bytes to generate (default: 10)
- * @param algorithm - Hashing algorithm to use (default: 'sha256')
- * @returns A hexadecimal string representation of the hash
- * @throws Error if crypto operations fail
+ * Creates a customized Bunyan logger instance with color-coded console output
+ * @param name - The name of the logger to create
+ * @param options - Optional configuration for the logger
+ * @returns A configured Bunyan logger instance
  */
-export function hashGenerator(
-  byteLength: number = 10,
-  algorithm: 'sha256' | 'sha512' | 'md5' = 'sha256'
-): string {
-  try {
-    const token = crypto.randomBytes(byteLength).toString('hex');
-    return crypto.createHash(algorithm).update(token).digest('hex');
-  } catch (error) {
-    throw new Error(`Failed to generate hash: ${error.message}`);
+export function createLogger(name: string) {
+  const LOG_LEVELS: Record<string, number> = {
+    INFO: 30,
+    ERROR: 50,
+    DEBUG: 20,
+    WARN: 40,
+    TRACE: 10,
+    FATAL: 60,
+  };
+
+  const customStream = {
+    write: (record: unknown) => {
+      try {
+        let output: string;
+
+        switch (record.level) {
+          case LOG_LEVELS.ERROR:
+          case LOG_LEVELS.FATAL:
+            output = color.red.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
+            break;
+          case LOG_LEVELS.DEBUG:
+            output = color.cyan.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
+            break;
+          case LOG_LEVELS.WARN:
+            output = color.magenta.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
+            break;
+          case LOG_LEVELS.INFO:
+            output = color.yellow.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
+            break;
+          default:
+            output = color.grey.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
+        }
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log(output);
+        }
+      } catch (err) {
+        console.error('Logging Error:', err);
+      }
+    },
+  };
+
+  return bunyan.createLogger({
+    name,
+    level: 'debug',
+    streams: [
+      {
+        level: 'debug',
+        type: 'raw',
+        stream: customStream,
+      },
+    ],
+  });
+}
+
+/**
+ * Validates if a string is a valid phone number across multiple formats
+ * @param phoneNumber - The phone number string to validate
+ * @returns Boolean indicating if the phone number is valid
+ */
+export function isValidPhoneNumber(phoneNumber: string): boolean {
+  if (!phoneNumber) {
+    return false;
   }
+  const PHONE_PATTERNS = {
+    US_CANADA: /^(\+\d{1,2}\s?)?1?\.?\s?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$/,
+    EUROPE: /^(\+3[0-9]|4[0-46-9]|5[1-8]|7[1-79])?\d{6,14}$/,
+    AFRICA: /^(\+2[0-46-8])?\d{6,14}$/,
+  };
+  const normalizedNumber = phoneNumber.trim();
+
+  return (
+    PHONE_PATTERNS.US_CANADA.test(normalizedNumber) ||
+    PHONE_PATTERNS.EUROPE.test(normalizedNumber) ||
+    PHONE_PATTERNS.AFRICA.test(normalizedNumber)
+  );
 }
 
 /**
@@ -57,87 +121,22 @@ export function setAuthCookie(cookieName: string, token: string, res: Response) 
 }
 
 /**
- * Validates if a string is a valid phone number across multiple formats
- * @param phoneNumber - The phone number string to validate
- * @returns Boolean indicating if the phone number is valid
+ * Generates a random hash string using SHA-256
+ * @param byteLength - Number of random bytes to generate (default: 10)
+ * @param algorithm - Hashing algorithm to use (default: 'sha256')
+ * @returns A hexadecimal string representation of the hash
+ * @throws Error if crypto operations fail
  */
-export function isValidPhoneNumber(phoneNumber: string): boolean {
-  if (!phoneNumber) {
-    return false;
+export function hashGenerator(
+  byteLength: number = 10,
+  algorithm: 'sha256' | 'sha512' | 'md5' = 'sha256'
+): string {
+  try {
+    const token = crypto.randomBytes(byteLength).toString('hex');
+    return crypto.createHash(algorithm).update(token).digest('hex');
+  } catch (error) {
+    throw new Error(`Failed to generate hash: ${error.message}`);
   }
-  const PHONE_PATTERNS = {
-    US_CANADA: /^(\+\d{1,2}\s?)?1?\.?\s?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$/,
-    EUROPE: /^(\+3[0-9]|4[0-46-9]|5[1-8]|7[1-79])?\d{6,14}$/,
-    AFRICA: /^(\+2[0-46-8])?\d{6,14}$/,
-  };
-  const normalizedNumber = phoneNumber.trim();
-
-  return (
-    PHONE_PATTERNS.US_CANADA.test(normalizedNumber) ||
-    PHONE_PATTERNS.EUROPE.test(normalizedNumber) ||
-    PHONE_PATTERNS.AFRICA.test(normalizedNumber)
-  );
-}
-
-/**
- * Creates a customized Bunyan logger instance with color-coded console output
- * @param name - The name of the logger to create
- * @param options - Optional configuration for the logger
- * @returns A configured Bunyan logger instance
- */
-export function createLogger(name: string) {
-  const LOG_LEVELS: Record<string, number> = {
-    INFO: 30,
-    ERROR: 50,
-    DEBUG: 20,
-    WARN: 40,
-    TRACE: 10,
-    FATAL: 60,
-  };
-
-  const customStream = {
-    write: (record: unknown) => {
-      try {
-        let output: string;
-
-        switch (record.level) {
-          case LOG_LEVELS.ERROR:
-          case LOG_LEVELS.FATAL:
-            output = color.red.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
-            break;
-          case LOG_LEVELS.WARN:
-            output = color.magenta.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
-            break;
-          case LOG_LEVELS.INFO:
-            output = color.yellow.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
-            break;
-          case LOG_LEVELS.DEBUG:
-            output = color.cyan.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
-            break;
-          default:
-            output = color.grey.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
-        }
-
-        if (process.env.NODE_ENV === 'development') {
-          console.log(output);
-        }
-      } catch (err) {
-        console.error('Logging Error:', err);
-      }
-    },
-  };
-
-  return bunyan.createLogger({
-    name,
-    level: 'debug',
-    streams: [
-      {
-        level: 'debug',
-        type: 'raw',
-        stream: customStream,
-      },
-    ],
-  });
 }
 
 /**

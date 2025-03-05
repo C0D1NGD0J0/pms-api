@@ -21,7 +21,7 @@
         "ignoreCase": false,
         "newlinesBetween": "always",
         "type": "line-length",
-        "groups": [["builtin", "external"], ["index", "parent", "sibiling"], "internal"]
+        "groups": [["builtin", "external"], ["index", "parent", "sibling"], "internal"]
       }
     ],
     "perfectionist/sort-named-imports": [

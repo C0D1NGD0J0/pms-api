@@ -1,5 +1,3 @@
-import { asClass } from 'awilix';
-import { DatabaseService } from '@database/index';
 // import { RedisConfig } from '@db/redisConfig';
 // import { AuthMiddleware } from '@shared/middleware';
 // import { AuthCache, UtilityCache } from '@caching/index';
@@ -7,12 +5,9 @@ import { DatabaseService } from '@database/index';
 // import { EmailQueue, NotificationQueue, UploadQueue } from '@queues/index';
 // import { CloudinaryService, DiskStorage, S3FileUpload } from '@services/FileUploadService';
 // import { EmailWorker, FileUploadWorker, NotificationWorker } from '@workers/index';
-// import {
-//   Category
-//   Notification,
-//   Profile,
-//   User,
-// } from '@models/index';
+import { User } from '@models/index';
+import { asValue, asClass } from 'awilix';
+import { DatabaseService } from '@database/index';
 // import {
 //   NotificationDAO,
 //   ProfileDAO,
@@ -34,7 +29,7 @@ const ControllerResources = {
 };
 
 const ModelResources = {
-  // userModel: asValue(User),
+  userModel: asValue(User),
   // profileModel: asValue(Profile),
   // categoryModel: asValue(Category),
   // notificationModel: asValue(Notification),

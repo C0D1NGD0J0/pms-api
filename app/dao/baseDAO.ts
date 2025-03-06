@@ -1,0 +1,344 @@
+import Logger from 'bunyan';
+import { createLogger } from '@utils/index';
+import { envVariables } from '@shared/config';
+import { MongoDatabaseError, handleMongoError } from '@shared/customErrors';
+import {
+  UpdateWriteOpResult,
+  UpdateQuery,
+  Types,
+  PipelineStage,
+  MongooseError,
+  ModifyResult,
+  Model,
+  FilterQuery,
+  Document,
+  ClientSession,
+  AggregateOptions,
+} from 'mongoose';
+
+import { IFindOptions, IBaseDAO } from './interfaces/baseDAO.interface';
+
+export class BaseDAO<T extends Document> implements IBaseDAO<T> {
+  protected logger: Logger;
+
+  constructor(private model: Model<T>) {
+    this.logger = createLogger('BaseDAO');
+  }
+
+  /**
+   * Handle and log errors, then throw a formatted error.
+   *
+   * @param error - The error to handle.
+   * @returns A formatted error object.
+   */
+  throwErrorHandler(error: Error | MongooseError | unknown) {
+    const err = error as Error;
+    const errorMessage = err.message || 'An unknown error occurred';
+    const errorStack = err.stack || 'No stack trace available';
+    let result: MongoDatabaseError;
+
+    if (error instanceof MongooseError) {
+      result = handleMongoError(error);
+    } else {
+      result = new MongoDatabaseError({ message: errorMessage, statusCode: 500 });
+    }
+
+    return {
+      success: false,
+      message: result.message,
+      ...(envVariables.SERVER.ENV === 'production'
+        ? {}
+        : {
+            stack: result.stack || errorStack,
+          }),
+    };
+  }
+
+  /**
+   * Find the first document that matches the filter.
+   *
+   * @param filter - Query used to find the document.
+   * @param options - Optional settings for the query.
+   * @returns A promise that resolves to the found document or null if no document is found.
+   */
+  async findFirst(filter: FilterQuery<T>, options?: IFindOptions): Promise<T | null> {
+    try {
+      let query: any = this.model.findOne(filter);
+
+      // Handle projection/select (use one or the other, not both)
+      if (options?.select) {
+        query = query.select(options.select);
+      }
+      if (options?.projection) {
+        query = query.select(options.projection);
+      }
+
+      if (options?.sort) query = query.sort(options.sort);
+
+      // Properly type the populate option
+      if (options?.populate) {
+        if (Array.isArray(options.populate)) {
+          options.populate.forEach((option) => {
+            query = query.populate(option);
+          });
+        } else {
+          query = query.populate(options.populate);
+        }
+      }
+
+      return (await query.lean().exec()) as T | null;
+    } catch (error: any) {
+      this.logger.error(error.message);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * List documents in the collection that match the filter.
+   *
+   * @param filter - Query used to filter the documents.
+   * @param options - Optional settings for the query.
+   * @returns A promise that resolves to an array of found documents.
+   */
+  async list(filter: FilterQuery<T>, options?: IFindOptions): Promise<T[]> {
+    try {
+      let query: any = this.model.find(filter);
+      if (options?.skip) query = query.skip(options.skip);
+      if (options?.limit) query = query.limit(options.limit);
+      if (options?.sort) query = query.sort(options.sort);
+      if (options?.projection) query = query.select(options.projection);
+      if (options?.populate) query = query.populate(options.populate as any);
+      return await query.exec();
+    } catch (error) {
+      this.logger.error(error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Upsert (update or insert) a document in the collection based on the provided filter.
+   *
+   * @param filter - Query used to find the document.
+   * @param data - The data to update or insert.
+   * @param options - Optional settings for the upsert operation.
+   * @returns A promise that resolves to the updated or inserted document.
+   */
+  async upsert(
+    filter: FilterQuery<T>,
+    data: UpdateQuery<T>,
+    options?: any,
+    session?: ClientSession
+  ): Promise<ModifyResult<T> | null> {
+    try {
+      const result = await this.model
+        .findOneAndUpdate(filter, data, {
+          new: true,
+          upsert: false,
+          ...options,
+        })
+        .session(session ?? null)
+        .exec();
+      return result;
+    } catch (error) {
+      this.logger.error(error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Delete multiple documents from the collection by their unique identifiers.
+   *
+   * @param ids - An array of unique identifiers (strings or ObjectId instances) of the documents to delete.
+   * @returns A promise that resolves to true if all documents were successfully deleted, or false if not.
+   */
+  async deleteAll(ids: (string | Types.ObjectId)[]): Promise<boolean> {
+    try {
+      const objectIds = ids.map((id) => (typeof id === 'string' ? new Types.ObjectId(id) : id));
+
+      const result = await this.model.deleteMany({ _id: { $in: objectIds } }).exec();
+      return result.deletedCount === ids.length;
+    } catch (error) {
+      this.logger.error(error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update a document in the collection based on its unique identifier.
+   *
+   * @param id - The unique identifier of the document to update.
+   * @param data - The data to update in the document.
+   * @param opts - Optional settings for the update operation.
+   * @returns A promise that resolves to the updated document or null if no document is found.
+   */
+  async update(
+    id: string,
+    updateOperation: UpdateQuery<T>,
+    opts?: Record<string, any>
+  ): Promise<T | null> {
+    try {
+      const options = { new: true, ...opts };
+      return await this.model
+        .findOneAndUpdate({ _id: new Types.ObjectId(id) }, updateOperation, options)
+        .exec();
+    } catch (error) {
+      this.logger.error(error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Delete a document from the collection by its unique identifier.
+   *
+   * @param id - The unique identifier of the document to delete.
+   * @returns A promise that resolves to true if the document was successfully deleted, or false if not.
+   */
+  async deleteById(id: string): Promise<boolean> {
+    try {
+      const result = await this.model.deleteOne({ _id: new Types.ObjectId(id) }).exec();
+      return result.deletedCount === 1;
+    } catch (error) {
+      this.logger.error(error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Perform an aggregation operation on the collection.
+   *
+   * @param pipeline - An array of aggregation stages to be executed.
+   * @param opts - Optional settings for the aggregation operation.
+   * @returns A promise that resolves to an array of documents produced by the aggregation.
+   */
+  async aggregate(pipeline: PipelineStage[], opts?: AggregateOptions): Promise<T[]> {
+    try {
+      return await this.model.aggregate(pipeline, opts).exec();
+    } catch (error: any) {
+      this.logger.error(error.message);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Insert a new document into the collection.
+   *
+   * @param data - The data for the new document.
+   * @returns A promise that resolves to the inserted document.
+   */
+  async insert(data: Partial<T>, session?: ClientSession): Promise<T> {
+    try {
+      const result = await this.model.create([{ ...data }], { session: session ?? null });
+      return result[0];
+    } catch (error) {
+      this.logger.error(error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Create a new instance of the model without saving it to the database.
+   *
+   * @param data - The data to initialize the document with.
+   * @returns A new document instance.
+   */
+  createInstance(data: Partial<T>): T {
+    try {
+      const newInstance = new this.model(data);
+      return newInstance;
+    } catch (error) {
+      this.logger.error(error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Find a document by its unique identifier.
+   *
+   * @param id - The unique identifier of the document.
+   * @returns A promise that resolves to the found document or null if no document is found.
+   */
+  async findById(id: string): Promise<T | null> {
+    try {
+      const res = await this.model.findById(id);
+      return res;
+    } catch (error: unknown) {
+      this.logger.error(error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Count the number of documents in the collection that match the filter.
+   *
+   * @param filter - Query used to filter the documents.
+   * @returns A promise that resolves to the count of documents that match the filter.
+   */
+  async countDocuments(filter: FilterQuery<T>): Promise<number> {
+    try {
+      return await this.model.countDocuments(filter).exec();
+    } catch (error: unknown) {
+      this.logger.error(error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update multiple documents that match the filter.
+   *
+   * @param filter - Query to match documents to update.
+   * @param updateOperation - The update operation to perform.
+   * @returns A promise that resolves to the result of the update operation.
+   */
+  async updateMany(
+    filter: FilterQuery<T>,
+    updateOperation: UpdateQuery<T>,
+    session?: ClientSession
+  ): Promise<UpdateWriteOpResult> {
+    try {
+      const result: UpdateWriteOpResult = await this.model
+        .updateMany(filter, updateOperation)
+        .session(session ?? null)
+        .exec();
+
+      return result;
+    } catch (error) {
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Inserts multiple documents in bulk.
+   *
+   * @param documents - Array of documents to be inserted.
+   * @param session - Optional MongoDB session for transaction support.
+   * @returns A promise that resolves to the inserted documents.
+   */
+  async insertMany(documents: Partial<T>[], session?: ClientSession) {
+    try {
+      return await this.model.insertMany(documents, {
+        session: session ?? null,
+        ordered: false,
+      });
+    } catch (error) {
+      this.logger.error('Error in insertMany:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Archive a document by setting its deletedAt field to the current date.
+   *
+   * @param id - The unique identifier of the document to archive.
+   * @returns A promise that resolves to true if the document was successfully archived, or false if not.
+   */
+  async archiveDocument(id: string): Promise<boolean> {
+    try {
+      const result = await this.model
+        .updateOne({ _id: new Types.ObjectId(id) }, { $set: { deletedAt: new Date() } })
+        .exec();
+      return result.acknowledged && result.modifiedCount === 1;
+    } catch (error) {
+      throw this.throwErrorHandler(error);
+    }
+  }
+}

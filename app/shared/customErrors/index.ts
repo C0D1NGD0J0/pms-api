@@ -202,7 +202,7 @@ export class MongoDatabaseError extends CustomError {
 /**
  * Utility function to handle and convert Mongoose errors
  */
-export function handleMongooseError(err: MongooseError | Error): CustomError {
+export function handleMongoError(err: MongooseError | Error): CustomError {
   // CastError - invalid ObjectId
   if (err.name === 'CastError') {
     const castErr = err as unknown as { value: string };

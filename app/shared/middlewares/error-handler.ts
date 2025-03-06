@@ -4,7 +4,7 @@ import { createLogger } from '@utils/helpers';
 import { AwilixResolutionError } from 'awilix';
 // import { DiskStorage } from '@services/FileUploadService';
 import { Response, Request, NextFunction } from 'express';
-import { InternalServerError, handleMongooseError, CustomError } from '@shared/customErrors';
+import { InternalServerError, handleMongoError, CustomError } from '@shared/customErrors';
 
 const logger = createLogger('ErrorHandler_Middleware');
 
@@ -19,7 +19,7 @@ export const errorHandlerMiddleware = async (
   if (err instanceof CustomError) {
     error = err;
   } else if (err instanceof MongooseError) {
-    error = handleMongooseError(err);
+    error = handleMongoError(err);
   } else if (err instanceof AwilixResolutionError) {
     error = new InternalServerError({
       message: `${err.name}: ${err.message}` || 'An unexpected error occurred',

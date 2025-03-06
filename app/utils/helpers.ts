@@ -6,6 +6,7 @@ import { Response, Request, NextFunction } from 'express';
 import {
   PaginateResult,
   MulterFile,
+  FileType,
   ExtractedMediaFile,
   AsyncRequestHandler,
 } from '@interfaces/utils.interface';

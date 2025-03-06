@@ -144,7 +144,7 @@ export type IPopulatedClientDocument = {
   admin: IUserDocument | Types.ObjectId;
 } & Omit<IClientDocument, 'admin'>;
 
-export type IUserRoleType = 'admin' | 'tenant' | 'manager' | 'employee';
+export type IUserRoleType = 'admin' | 'tenant' | 'manager' | 'employee' | 'landlord';
 export type IRefreshToken = IRefreshTokenDocument;
 
 type IdentificationType = {
@@ -164,18 +164,18 @@ interface IEnterpriseInfo {
   companyName: string;
 }
 
-interface IClientUserConnections {
-  role: 'admin' | 'tenant' | 'landlord';
-  isConnected: boolean;
-  cid: string;
-}
-
 type ContactInfoType = {
   email: string;
   address: string;
   phoneNumber: string;
   contactPerson: string;
 };
+
+interface IClientUserConnections {
+  roles: IUserRoleType[];
+  isConnected: boolean;
+  cid: string;
+}
 
 // REFRESH-TOKEN
 interface IRefreshTokenDocument extends Document {

@@ -42,7 +42,7 @@ const UserSchema = new Schema<IUserDocument>(
     },
     cids: [
       {
-        role: { type: String, required: true },
+        roles: [{ type: String, required: true }],
         cid: { type: String, required: true, index: true },
         isConnected: { type: Boolean, required: true, default: false },
         _id: false,

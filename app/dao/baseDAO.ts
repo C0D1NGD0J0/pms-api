@@ -68,8 +68,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       // Handle projection/select (use one or the other, not both)
       if (options?.select) {
         query = query.select(options.select);
-      }
-      if (options?.projection) {
+      } else if (options?.projection) {
         query = query.select(options.projection);
       }
 
@@ -86,7 +85,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
         }
       }
 
-      return (await query.lean().exec()) as T | null;
+      return await query.lean().exec();
     } catch (error: any) {
       this.logger.error(error.message);
       throw this.throwErrorHandler(error);
@@ -121,24 +120,30 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @param filter - Query used to find the document.
    * @param data - The data to update or insert.
    * @param options - Optional settings for the upsert operation.
+   * @param session - Optional MongoDB session for transactions.
    * @returns A promise that resolves to the updated or inserted document.
    */
   async upsert(
-    filter: FilterQuery<T>,
     data: UpdateQuery<T>,
+    filter: FilterQuery<T>,
     options?: any,
     session?: ClientSession
   ): Promise<ModifyResult<T> | null> {
     try {
-      const result = await this.model
-        .findOneAndUpdate(filter, data, {
-          new: true,
-          upsert: false,
-          ...options,
-        })
-        .session(session ?? null)
-        .exec();
-      return result;
+      const queryOptions = {
+        new: true,
+        upsert: true,
+        ...options,
+      };
+
+      if (session) {
+        const result = await this.model
+          .findOneAndUpdate(filter, data, queryOptions)
+          .session(session);
+        return result;
+      }
+
+      return await this.model.findOneAndUpdate(filter, data, queryOptions);
     } catch (error) {
       this.logger.error(error);
       throw this.throwErrorHandler(error);
@@ -171,7 +176,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @param opts - Optional settings for the update operation.
    * @returns A promise that resolves to the updated document or null if no document is found.
    */
-  async update(
+  async updateById(
     id: string,
     updateOperation: UpdateQuery<T>,
     opts?: Record<string, any>
@@ -181,6 +186,28 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       return await this.model
         .findOneAndUpdate({ _id: new Types.ObjectId(id) }, updateOperation, options)
         .exec();
+    } catch (error) {
+      this.logger.error(error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update a document in the collection based on its unique identifier.
+   *
+   * @param filter - Query used to filter the documents.
+   * @param data - The data to update in the document.
+   * @param opts - Optional settings for the update operation.
+   * @returns A promise that resolves to the updated document or null if no document is found.
+   */
+  async update(
+    filter: FilterQuery<T>,
+    updateOperation: UpdateQuery<T>,
+    opts?: Record<string, any>
+  ): Promise<T | null> {
+    try {
+      const options = { new: true, ...opts, upsert: false };
+      return await this.model.findOneAndUpdate(filter, updateOperation, options).exec();
     } catch (error) {
       this.logger.error(error);
       throw this.throwErrorHandler(error);

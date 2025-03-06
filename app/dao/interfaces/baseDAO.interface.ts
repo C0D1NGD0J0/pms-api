@@ -39,21 +39,21 @@ export interface IBaseDAO<T extends Document> {
   /**
    * Upsert (update or insert) a document in the collection based on the provided filter.
    *
-   * @param filter - Query used to find the document.
    * @param data - The data to update or insert.
+   * @param filter - Query used to find the document.
    * @param opts - Optional settings for the upsert operation.
    * @returns A promise that resolves to the updated or inserted document.
    */
-  upsert(filter: FilterQuery<T>, data: UpdateQuery<T>, opts?: any): Promise<ModifyResult<T> | null>;
+  upsert(data: UpdateQuery<T>, filter: FilterQuery<T>, opts?: any): Promise<ModifyResult<T> | null>;
 
   /**
    * Update a document in the collection based on its unique identifier.
    *
-   * @param id - The unique identifier of the document to update.
+   * @param filter - Query used to find the document.
    * @param data - The data to update in the document.
    * @returns A promise that resolves to the updated document or null if no document is found.
    */
-  update(id: string | Types.ObjectId, data: UpdateQuery<T>): Promise<T | null>;
+  update(filter: FilterQuery<T> | Types.ObjectId, data: UpdateQuery<T>): Promise<T | null>;
 
   /**
    * Perform an aggregation operation on the collection.
@@ -63,6 +63,15 @@ export interface IBaseDAO<T extends Document> {
    * @returns A promise that resolves to an array of documents produced by the aggregation.
    */
   aggregate(pipeline: PipelineStage[], opts?: AggregateOptions): Promise<T[]>;
+
+  /**
+   * Update a document in the collection based on its unique identifier.
+   *
+   * @param id - Query used to find the document.
+   * @param data - The data to update in the document.
+   * @returns A promise that resolves to the updated document or null if no document is found.
+   */
+  updateById(id: string, data: UpdateQuery<T>): Promise<T | null>;
 
   /**
    * List documents in the collection that match the filter.

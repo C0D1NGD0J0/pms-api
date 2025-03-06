@@ -6,13 +6,9 @@
 // import { CloudinaryService, DiskStorage, S3FileUpload } from '@services/FileUploadService';
 // import { EmailWorker, FileUploadWorker, NotificationWorker } from '@workers/index';
 import { User } from '@models/index';
+import { UserDAO } from '@dao/index';
 import { asValue, asClass } from 'awilix';
 import { DatabaseService } from '@database/index';
-// import {
-//   NotificationDAO,
-//   ProfileDAO,
-//   UserDAO,
-// } from '@dao/index';
 import { AuthController } from '@controllers/index';
 // import {
 //   AuthService,
@@ -48,7 +44,7 @@ const ServiceResources = {
 };
 
 const DAOResources = {
-  // userDAO: asClass(UserDAO).singleton(),
+  userDAO: asClass(UserDAO).singleton(),
   // profileDAO: asClass(ProfileDAO).singleton(),
   // notificationDAO: asClass(NotificationDAO).singleton(),
 };

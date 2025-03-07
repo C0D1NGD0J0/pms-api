@@ -1,7 +1,7 @@
+import { Schema, model } from 'mongoose';
 import { IClientDocument } from '@interfaces/index';
 import uniqueValidator from 'mongoose-unique-validator';
 import { CURRENCIES } from '@interfaces/utils.interface';
-import { model, Query, Schema, Types, UpdateQuery } from 'mongoose';
 
 const ClientSchema = new Schema<IClientDocument>(
   {
@@ -11,60 +11,59 @@ const ClientSchema = new Schema<IClientDocument>(
       unique: true,
       index: true,
     },
-    admin: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
     accountType: {
+      planId: { type: String, required: true },
+      planName: { type: String, required: true },
       isEnterpriseAccount: { type: Boolean, default: false },
-      identification: {
-        idType: {
-          type: String,
-          enum: ['passport', 'drivers-license', 'national-id', 'corporation-license'],
-          required: function (this: IClientDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.identification');
-          },
+    },
+    identification: {
+      idType: {
+        type: String,
+        enum: ['passport', 'drivers-license', 'national-id', 'corporation-license'],
+        required: function (this: IClientDocument) {
+          if (this.isNew) return false;
+          return this.isModified('accountType.identification');
         },
-        issueDate: {
-          type: Date,
-          required: function (this: IClientDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.issueDate');
-          },
-        },
-        expiryDate: {
-          type: Date,
-          required: function (this: IClientDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.expiryDate');
-          },
-        },
-        idNumber: {
-          type: String,
-          trim: true,
-          required: function (this: IClientDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.idNumber');
-          },
-        },
-        authority: { type: String, trim: true },
-        issuingState: {
-          type: String,
-          trim: true,
-          required: function (this: IClientDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.issuingState');
-          },
-        },
-        name: { type: String, default: 'individual', enum: ['individual', 'corporate'] },
       },
+      issueDate: {
+        type: Date,
+        required: function (this: IClientDocument) {
+          if (this.isNew) return false;
+          return this.isModified('accountType.issueDate');
+        },
+      },
+      expiryDate: {
+        type: Date,
+        required: function (this: IClientDocument) {
+          if (this.isNew) return false;
+          return this.isModified('accountType.expiryDate');
+        },
+      },
+      idNumber: {
+        type: String,
+        trim: true,
+        required: function (this: IClientDocument) {
+          if (this.isNew) return false;
+          return this.isModified('accountType.idNumber');
+        },
+      },
+      authority: { type: String, trim: true },
+      issuingState: {
+        type: String,
+        trim: true,
+        required: function (this: IClientDocument) {
+          if (this.isNew) return false;
+          return this.isModified('accountType.issuingState');
+        },
+      },
+      name: { type: String, default: 'individual', enum: ['individual', 'corporate'] },
     },
     subscription: {
       type: Schema.Types.ObjectId,
       ref: 'Subscription',
     },
+    isVerified: { type: Boolean, default: false },
+    accountAdmin: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     companyInfo: {
       legalEntityName: { type: String, trim: true },
       tradingName: { type: String, trim: true },
@@ -101,6 +100,11 @@ const ClientSchema = new Schema<IClientDocument>(
     toObject: { virtuals: true, getters: true },
   }
 );
+
+// Indexes for performance
+ClientSchema.index({ admin: 1 });
+ClientSchema.index({ active: 1 });
+ClientSchema.index({ 'contactInfo.primaryEmail': 1 });
 
 ClientSchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',

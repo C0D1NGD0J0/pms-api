@@ -21,7 +21,7 @@ interface IConstructor {
   userDAO: UserDAO;
 }
 
-class AuthService {
+export class AuthService {
   private log: Logger;
   private userDAO: UserDAO;
 
@@ -30,5 +30,3 @@ class AuthService {
     this.log = createLogger('AuthService');
   }
 }
-
-export default AuthService;

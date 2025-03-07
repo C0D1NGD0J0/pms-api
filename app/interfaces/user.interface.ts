@@ -124,7 +124,7 @@ export interface ITenantDocument extends Document, ITenant {
   updatedAt: Date;
 }
 
-export type ContactInfoType = {
+export type IContactInfoType = {
   email: string;
   address: string;
   phoneNumber: string;

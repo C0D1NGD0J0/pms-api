@@ -5,19 +5,22 @@ import {
   IUserRoleType,
   IUserDocument,
   IdentificationType,
-  ContactInfoType,
+  IContactInfoType,
 } from './user.interface';
 
 // CLIENT
 export interface IClientDocument extends Document {
   accountType: {
-    identification?: IdentificationType;
+    planId: string;
+    planName: string;
     isEnterpriseAccount: boolean;
   };
+  identification?: IdentificationType;
   subscription: Types.ObjectId | null;
+  accountAdmin: Types.ObjectId;
   companyInfo?: ICompanyInfo;
   settings: ClientSettings;
-  admin: Types.ObjectId;
+  isVerified: boolean;
   _id: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -28,7 +31,7 @@ export interface IClientDocument extends Document {
 export interface IClientUpdateData {
   identification?: IdentificationType;
   businessRegistrationNumber: string;
-  contactInfo?: ContactInfoType;
+  contactInfo?: IContactInfoType;
   legalEntityName: string;
   subscription?: string;
   companyName: string;
@@ -37,7 +40,7 @@ export interface IClientUpdateData {
 }
 
 export interface ICompanyInfo {
-  contactInfo?: ContactInfoType;
+  contactInfo?: IContactInfoType;
   registrationNumber: string;
   yearEstablished: number;
   legalEntityName: string;
@@ -47,7 +50,7 @@ export interface ICompanyInfo {
   website: string;
 }
 
-export interface ClientSettings {
+export interface IClientSettings {
   notificationPreferences: {
     email: boolean;
     sms: boolean;

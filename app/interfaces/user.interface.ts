@@ -1,5 +1,7 @@
 import { Types, Document } from 'mongoose';
 
+import { IClientUserConnections, IClientDocument } from './client.interface';
+
 export enum IUserRelationshipsEnum {
   parents = 'parents',
   sibling = 'sibling',
@@ -74,22 +76,15 @@ export interface ITenant extends IUser {
   activatedAt: Date;
   cid: string;
 }
-// CLIENT
-export interface IClientDocument extends Document {
-  accountType: {
-    planId: string;
-    name: string;
-    isEnterpriseAccount: boolean;
-  };
-  subscription: Types.ObjectId | null;
-  enterpriseProfile?: IEnterpriseInfo;
-  admin: Types.ObjectId;
-  _id: Types.ObjectId;
-  createdAt: Date;
-  updatedAt: Date;
-  cid: string;
-  id: string;
-}
+
+export type IdentificationType = {
+  idType: 'passport' | 'national-id' | 'drivers-license' | 'corporation-license';
+  idNumber: string;
+  authority: string;
+  issueDate: Date | string; // or Date if you prefer Date objects
+  expiryDate: Date | string; // or Date if you prefer Date objects
+  issuingState: string;
+};
 
 export interface IUserDocument extends Document, IUser {
   validatePassword: (pwd1: string) => Promise<boolean>;
@@ -102,29 +97,18 @@ export interface IUserDocument extends Document, IUser {
   updatedAt: Date;
   id: string;
 }
-
-export interface IClientUpdateData {
-  identification?: IdentificationType;
-  businessRegistrationNumber: string;
-  contactInfo?: ContactInfoType;
-  legalEntityName: string;
-  subscription?: string;
-  companyName: string;
-  userId?: string;
-  admin?: string;
-}
-
 export interface ICurrentUser {
-  role: IClientUserConnections['role'];
   isSubscriptionActive?: boolean;
   fullname: string | null;
   linkedAccounts: any[];
   isActive: boolean;
   email: string;
+  role: string;
   uid: string;
   cid: string;
   id: string;
 }
+
 export type ISignupData = Omit<
   IUser,
   | 'activationToken'
@@ -140,45 +124,19 @@ export interface ITenantDocument extends Document, ITenant {
   updatedAt: Date;
 }
 
-export type IPopulatedClientDocument = {
-  admin: IUserDocument | Types.ObjectId;
-} & Omit<IClientDocument, 'admin'>;
-
-export type IUserRoleType = 'admin' | 'tenant' | 'manager' | 'employee' | 'landlord';
-export type IRefreshToken = IRefreshTokenDocument;
-
-type IdentificationType = {
-  idType: 'passport' | 'national-id' | 'drivers-license' | 'corporation-license';
-  idNumber: string;
-  authority: string;
-  issueDate: Date | string; // or Date if you prefer Date objects
-  expiryDate: Date | string; // or Date if you prefer Date objects
-  issuingState: string;
-};
-
-interface IEnterpriseInfo {
-  identification?: IdentificationType;
-  businessRegistrationNumber: string;
-  contactInfo?: ContactInfoType;
-  legalEntityName: string;
-  companyName: string;
-}
-
-type ContactInfoType = {
+export type ContactInfoType = {
   email: string;
   address: string;
   phoneNumber: string;
   contactPerson: string;
 };
 
-interface IClientUserConnections {
-  roles: IUserRoleType[];
-  isConnected: boolean;
-  cid: string;
-}
-
 // REFRESH-TOKEN
-interface IRefreshTokenDocument extends Document {
+export interface IRefreshTokenDocument extends Document {
   user: Types.ObjectId;
   token: string;
 }
+
+export type IUserRoleType = 'admin' | 'tenant' | 'manager' | 'employee' | 'landlord';
+
+export type IRefreshToken = IRefreshTokenDocument;

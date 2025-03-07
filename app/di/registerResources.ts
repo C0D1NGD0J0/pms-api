@@ -5,18 +5,12 @@
 // import { EmailQueue, NotificationQueue, UploadQueue } from '@queues/index';
 // import { CloudinaryService, DiskStorage, S3FileUpload } from '@services/FileUploadService';
 // import { EmailWorker, FileUploadWorker, NotificationWorker } from '@workers/index';
-import { User } from '@models/index';
 import { UserDAO } from '@dao/index';
 import { asValue, asClass } from 'awilix';
+import { Client, User } from '@models/index';
 import { DatabaseService } from '@database/index';
 import { AuthController } from '@controllers/index';
-// import {
-//   AuthService,
-//   AuthTokenService,
-//   NotificationService,
-//   PaymentService,
-//   UserService,
-// } from '@services/index';
+import { AuthService } from '@services/index';
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
@@ -26,6 +20,7 @@ const ControllerResources = {
 
 const ModelResources = {
   userModel: asValue(User),
+  clientModel: asValue(Client),
   // profileModel: asValue(Profile),
   // categoryModel: asValue(Category),
   // notificationModel: asValue(Notification),
@@ -35,7 +30,7 @@ const ModelResources = {
 const ServiceResources = {
   // s3Service: asClass(S3FileUpload).singleton(),
   // userService: asClass(UserService).singleton(),
-  // authService: asClass(AuthService).singleton(),
+  authService: asClass(AuthService).singleton(),
   // mailerService: asClass(MailService).singleton(),
   // stripeService: asClass(StripeService).singleton(),
   // uploadService: asClass(CloudinaryService).singleton(),

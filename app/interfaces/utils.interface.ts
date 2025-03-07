@@ -1,5 +1,17 @@
 import { Response, Request, NextFunction } from 'express';
 
+export enum CURRENCIES {
+  USD = 'USD',
+  EUR = 'EUR',
+  GBP = 'GBP',
+  AUD = 'AUD',
+  CAD = 'CAD',
+  NZD = 'NZD',
+  JPY = 'JPY',
+  CNY = 'CNY',
+  NGN = 'NGN',
+}
+
 /**
  * File types that are supported for extraction
  */
@@ -55,7 +67,6 @@ export type MulterFile =
       [fieldname: string]: Express.Multer.File[];
     }
   | undefined;
-
 export interface IPaginationQuery {
   skip?: number | null;
   sortBy?: string;
@@ -68,6 +79,7 @@ export interface IEmailOptions<T = unknown> {
   to: string;
   data: T;
 }
+
 export interface ISuccessReturnData<T = unknown> {
   success: boolean;
   msg?: string;
@@ -83,5 +95,4 @@ export interface IUploadFileInterface {
 }
 
 export type IPromiseReturnedData<T = object> = Promise<ISuccessReturnData<T>>;
-
 export type TokenType = 'accessToken' | 'refreshToken';

@@ -3,13 +3,14 @@ import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
-export type Environments = 'development' | 'production' | 'test';
-
-interface IDatabaseService {
-  clearTestDataRecords: (env: Environments) => Promise<void>;
-  disconnect: (env: Environments) => Promise<void>;
-  connect: (env: Environments) => Promise<void>;
+export interface IDatabaseService {
+  clearTestDataRecords: (env?: Environments) => Promise<void>;
+  disconnect: (env?: Environments) => Promise<void>;
+  connect: (env?: Environments) => Promise<void>;
+  isConnected: () => boolean;
 }
+
+export type Environments = 'development' | 'production' | 'test';
 
 export class DatabaseService implements IDatabaseService {
   private log;
@@ -20,9 +21,14 @@ export class DatabaseService implements IDatabaseService {
     this.log = createLogger('DatabaseService');
   }
 
-  public async connect(env: Environments = 'development'): Promise<void> {
+  public isConnected(): boolean {
+    return this.connected && mongoose.connection.readyState === 1;
+  }
+
+  public async connect(env: Environments = envVariables.SERVER.ENV as Environments): Promise<void> {
     if (this.connected) {
-      return this.log.info('Database is already connected');
+      this.log.info('Database is already connected');
+      return;
     }
 
     try {
@@ -32,7 +38,7 @@ export class DatabaseService implements IDatabaseService {
       if (env === 'test') {
         this.mongoMemoryServer = await MongoMemoryServer.create({
           instance: {
-            dbName: envVariables.DATABASE.TESTDB_NAME,
+            dbName: envVariables.DATABASE.TEST_URL,
           },
         });
         url = this.mongoMemoryServer.getUri();
@@ -41,20 +47,32 @@ export class DatabaseService implements IDatabaseService {
       }
 
       await mongoose.connect(url);
-
+      mongoose.connection.on('disconnected', () => {
+        this.connected = false;
+        this.log.error('MongoDB disconnected....');
+      });
       this.connected = true;
       this.log.info(`Connected to ${env} database`);
     } catch (err) {
       this.log.error(`Database Connection Error for ${env}: `, err);
-      process.exit(1); // Exit process with failure
+      // process.exit(1);
+      throw err;
     }
   }
 
-  public async disconnect(env: Environments): Promise<void> {
+  public async disconnect(
+    env: Environments = envVariables.SERVER.ENV as Environments
+  ): Promise<void> {
     try {
+      if (!this.isConnected()) {
+        this.log.info('Database is already disconnected');
+        return;
+      }
+
       if (env === 'test' && this.mongoMemoryServer) {
-        await this.mongoMemoryServer.stop();
         await mongoose.connection.dropDatabase();
+        await this.mongoMemoryServer.stop();
+        this.mongoMemoryServer = null;
       }
 
       await mongoose.connection.close();
@@ -65,36 +83,46 @@ export class DatabaseService implements IDatabaseService {
     }
   }
 
-  public async clearTestDataRecords(env: Environments) {
-    if (env === 'test') {
-      const db = mongoose.connection.db;
+  public async clearTestDataRecords(env: Environments = envVariables.SERVER.ENV as Environments) {
+    if (env !== 'test') {
+      this.log.warn(
+        `Cannot clear data in ${env} environment. Operation only allowed in test environment.`
+      );
+      return;
+    }
 
-      if (!db) {
-        this.log.warn('No database connection found. Skipping test data clearance.');
-        return;
-      }
+    try {
+      if (env === 'test') {
+        const db = mongoose.connection.db;
 
-      const collections = await db.collections();
-      if (collections.length === 0) {
-        return;
-      }
+        if (!db) {
+          this.log.warn('No database connection found. Skipping test data clearance.');
+          return;
+        }
 
-      for (const collection of collections) {
-        await collection.deleteMany({});
-        await collection.dropIndexes();
+        const collections = await db.collections();
+        if (collections.length === 0) {
+          return;
+        }
+
+        for (const collection of collections) {
+          await collection.deleteMany({});
+          await collection.dropIndexes();
+        }
+        this.log.info('Test records have been cleared.');
       }
-      this.log.info('Test records have been cleared.');
+    } catch (error) {
+      this.log.error('Error clearing test data:', error);
+      throw error;
     }
   }
 
   private getDatabaseUrl(env: Environments): string {
     switch (env) {
       case 'development':
-        return envVariables.DATABASE.DEVDB_URL;
+        return envVariables.DATABASE.DEV_URL;
       case 'production':
-        return envVariables.DATABASE.PRODDB_URL;
-      case 'test':
-        return envVariables.DATABASE.TESTDB_URL;
+        return envVariables.DATABASE.PROD_URL;
       default:
         throw new Error('Unknown environment');
     }

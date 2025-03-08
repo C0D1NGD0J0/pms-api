@@ -11,6 +11,13 @@ import {
   AsyncRequestHandler,
 } from '@interfaces/utils.interface';
 
+interface LogRecord {
+  level: number;
+  name?: string;
+  streams: any;
+  msg: string;
+}
+
 /**
  * Creates a customized Bunyan logger instance with color-coded console output
  * @param name - The name of the logger to create
@@ -31,26 +38,27 @@ export function createLogger(name: string) {
     write: (record: unknown) => {
       try {
         let output: string;
+        const logRecord = record as LogRecord;
 
-        switch (record.level) {
+        switch (logRecord.level) {
           case LOG_LEVELS.ERROR:
           case LOG_LEVELS.FATAL:
-            output = color.red.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
+            output = color.red.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord.msg}`);
             break;
           case LOG_LEVELS.DEBUG:
-            output = color.cyan.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
+            output = color.cyan.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord.msg}`);
             break;
           case LOG_LEVELS.WARN:
-            output = color.magenta.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
+            output = color.magenta.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord.msg}`);
             break;
           case LOG_LEVELS.INFO:
-            output = color.yellow.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
+            output = color.yellow.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord.msg}`);
             break;
           default:
-            output = color.grey.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
+            output = color.grey.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord.msg}`);
         }
 
-        if (process.env.NODE_ENV === 'development') {
+        if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
           console.log(output);
         }
       } catch (err) {
@@ -148,7 +156,7 @@ export function hashGenerator(
 export function asyncWrapper(fn: AsyncRequestHandler) {
   return (req: Request, res: Response, next: NextFunction): void => {
     Promise.resolve(fn(req, res, next)).catch((err) => {
-      next(err);
+      return next(err);
     });
   };
 }

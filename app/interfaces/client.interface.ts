@@ -19,7 +19,7 @@ export interface IClientDocument extends Document {
   subscription: Types.ObjectId | null;
   accountAdmin: Types.ObjectId;
   companyInfo?: ICompanyInfo;
-  settings: ClientSettings;
+  settings: IClientSettings;
   isVerified: boolean;
   _id: Types.ObjectId;
   createdAt: Date;

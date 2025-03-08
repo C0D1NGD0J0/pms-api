@@ -1,6 +1,6 @@
 import { Types, Document } from 'mongoose';
 
-import { IClientUserConnections, IClientDocument } from './client.interface';
+import { ICompanyInfo, IClientUserConnections, IClientDocument } from './client.interface';
 
 export enum IUserRelationshipsEnum {
   parents = 'parents',
@@ -33,7 +33,7 @@ export interface IUser {
   };
   passwordResetTokenExpiresAt: Date | number | null;
   activationTokenExpiresAt: Date | number | null;
-  enterpriseProfile?: IEnterpriseInfo;
+  enterpriseProfile?: ICompanyInfo;
   passwordResetToken?: string;
   activationToken?: string;
   phoneNumber?: string;
@@ -116,7 +116,7 @@ export type ISignupData = Omit<
   | 'activationTokenExpiresAt'
   | 'passwordResetTokenExpiresAt'
 > &
-  Pick<IClientDocument, 'accountType' | 'enterpriseProfile'>;
+  Pick<IClientDocument, 'accountType' | 'companyInfo'>;
 
 export interface ITenantDocument extends Document, ITenant {
   _id: Types.ObjectId;

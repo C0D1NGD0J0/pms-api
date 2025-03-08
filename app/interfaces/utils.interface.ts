@@ -1,3 +1,4 @@
+import 'multer';
 import { Response, Request, NextFunction } from 'express';
 
 export enum CURRENCIES {

@@ -114,8 +114,8 @@ ClientSchema.pre('validate', function (next) {
   if (this.isNew) return next();
 
   // Check if identification is being updated partially
-  if (this.isModified('companyInfo.identification')) {
-    const identification = this.companyInfo?.identification;
+  if (this.isModified('identification')) {
+    const identification = this.identification;
 
     // If identification object exists and any field is provided, require all fields
     if (identification && Object.values(identification).some((value) => value !== undefined)) {
@@ -144,9 +144,9 @@ ClientSchema.pre('validate', function (next) {
   next();
 });
 
-ClientSchema.path('accountType.identification.expiryDate').validate(function (expiryDate) {
-  if (this.accountType && this.accountType.identification?.issueDate && expiryDate) {
-    return expiryDate > this.accountType.identification.issueDate;
+ClientSchema.path('identification.expiryDate').validate(function (expiryDate) {
+  if (this.identification?.issueDate && expiryDate) {
+    return expiryDate > this.identification?.issueDate;
   }
   return true; // if no date is set, skip validation
 }, 'Expiry date must be after issue date');

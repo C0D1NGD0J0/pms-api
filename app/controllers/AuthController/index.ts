@@ -2,11 +2,11 @@ import { Response, Request } from 'express';
 import { httpStatusCodes } from '@utils/index';
 
 interface IConstructor {
-  authService: AuthService;
+  authService: any;
 }
 
 export class AuthController {
-  private readonly authService: AuthService;
+  private readonly authService: any;
 
   constructor({ authService }: IConstructor) {
     this.authService = authService;

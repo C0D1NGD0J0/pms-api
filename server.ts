@@ -1,11 +1,16 @@
 import http from 'http';
-import { DatabaseService, Environments } from '@database/index';
+import { container } from '@di/index';
+import { IAppSetup, App } from '@root/app';
+import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import express, { Application } from 'express';
-import { App, IAppSetup } from '@root/app';
-import { createLogger } from '@utils/index';
+import { Environments, DatabaseService } from '@database/index';
 
 (global as any).rootDir = __dirname;
+
+interface IConstructor {
+  dbService: DatabaseService;
+}
 
 class Server {
   private app: IAppSetup;
@@ -16,20 +21,19 @@ class Server {
   private readonly log = createLogger('MainServer');
   private readonly SERVER_ENV = envVariables.SERVER.ENV as Environments;
 
-  constructor() {
+  constructor({ dbService }: IConstructor) {
     this.expApp = express();
+    this.dbService = dbService;
     this.app = new App(this.expApp);
   }
 
   start = async (): Promise<void> => {
-    // this.dbService.connect(this.SERVER_ENV);
+    this.dbService.connect();
     this.app.initConfig();
     await this.startServers(this.expApp);
   };
 
-  getAppInstance = () => {
-    return { server: this.expApp };
-  };
+  getInstance = () => ({ server: this.expApp, dbInstance: this.dbService });
 
   private async startServers(app: Application): Promise<void> {
     try {
@@ -57,5 +61,8 @@ class Server {
   }
 }
 
-const server = new Server();
+const dbService = container.resolve('dbService');
+const server = new Server({ dbService });
 server.start();
+
+export const serverInstance = server.getInstance();

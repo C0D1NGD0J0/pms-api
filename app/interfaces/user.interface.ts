@@ -33,7 +33,6 @@ export interface IUser {
   };
   passwordResetTokenExpiresAt: Date | number | null;
   activationTokenExpiresAt: Date | number | null;
-  enterpriseProfile?: ICompanyInfo;
   passwordResetToken?: string;
   activationToken?: string;
   phoneNumber?: string;
@@ -42,7 +41,21 @@ export interface IUser {
   password: string;
   lastName: string;
   email: string;
+}
+
+export interface IUserDocument extends Document, IUser {
+  validatePassword: (pwd1: string) => Promise<boolean>;
+  cids: IClientUserConnections[]; //
+  getGravatar: () => string;
+  deletedAt: Date | null;
+  _id: Types.ObjectId;
+  isActive: boolean;
+  fullname?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  cid: string; // active cid
   uid: string;
+  id: string;
 }
 
 export interface IInviteUserSignup {
@@ -85,18 +98,6 @@ export type IdentificationType = {
   expiryDate: Date | string; // or Date if you prefer Date objects
   issuingState: string;
 };
-
-export interface IUserDocument extends Document, IUser {
-  validatePassword: (pwd1: string) => Promise<boolean>;
-  cids: IClientUserConnections[];
-  deletedAt: Date | null;
-  _id: Types.ObjectId;
-  isActive: boolean;
-  fullname?: string;
-  createdAt: Date;
-  updatedAt: Date;
-  id: string;
-}
 export interface ICurrentUser {
   isSubscriptionActive?: boolean;
   fullname: string | null;

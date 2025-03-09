@@ -1,7 +1,7 @@
 import md5 from 'md5';
 import bcrypt from 'bcryptjs';
 import uniqueValidator from 'mongoose-unique-validator';
-import { model, Query, Schema, UpdateQuery } from 'mongoose';
+import { UpdateQuery, Schema, Query, model } from 'mongoose';
 import { IUserDocument, IUser } from '@interfaces/user.interface';
 
 const UserSchema = new Schema<IUserDocument>(
@@ -52,6 +52,7 @@ const UserSchema = new Schema<IUserDocument>(
     activationToken: { type: String, default: '' },
     isActive: { type: Boolean, default: false },
     passwordResetToken: { type: String, default: '' },
+    cid: { type: String, required: true, index: true },
     uid: { type: String, required: true, index: true },
     deletedAt: { type: Date, default: null, select: false },
     activationTokenExpiresAt: { type: Date, default: null },
@@ -105,14 +106,6 @@ UserSchema.plugin(uniqueValidator, {
 
 UserSchema.methods.validatePassword = async function (pwd: string): Promise<boolean> {
   return await bcrypt.compare(pwd, this.password);
-};
-
-UserSchema.methods.getActiveUserClient = function (cid: string) {
-  if (!this.cids) return null;
-  const userClient = this.cids.find(
-    (c: { role: string; cid: string; isConnected: boolean }) => c.cid === cid
-  );
-  return userClient ? userClient : null;
 };
 
 const UserModel = model<IUserDocument>('User', UserSchema);

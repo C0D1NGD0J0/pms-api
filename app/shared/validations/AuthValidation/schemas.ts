@@ -20,67 +20,108 @@ const isUniqueEmail = async (value: string) => {
   }
 };
 
-export const UserSignupSchema = z.object({
-  firstName: z
-    .string()
-    .min(2, 'First name must be at least 2 characters')
-    .max(25, 'First name must be at most 25 characters'),
-  lastName: z
-    .string()
-    .min(2, 'Last name must be at least 2 characters')
-    .max(25, 'Last name must be at most 25 characters'),
-  email: z
-    .string()
-    .email('Invalid email address')
-    .refine(
-      async (email) => {
-        const isUsed = await isUniqueEmail(email);
-        return isUsed;
-      },
-      { message: 'Email already in use.' }
-    ),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-  location: z.string().max(35, 'Location must be at most 35 characters').optional(),
-  phoneNumber: z.string().optional(),
-  emergencyContact: z
-    .object({
+export const UserSignupSchema = z
+  .object({
+    firstName: z
+      .string()
+      .min(2, 'First name must be at least 2 characters')
+      .max(25, 'First name must be at most 25 characters'),
+    lastName: z
+      .string()
+      .min(2, 'Last name must be at least 2 characters')
+      .max(25, 'Last name must be at most 25 characters'),
+    email: z
+      .string()
+      .email('Invalid email address')
+      .refine(
+        async (email) => {
+          const isUsed = await isUniqueEmail(email);
+          return isUsed;
+        },
+        { message: 'Email already in use.' }
+      ),
+    password: z.string().min(6, 'Password must be at least 6 characters'),
+    location: z.string().max(35, 'Location must be at most 35 characters').optional(),
+    phoneNumber: z.string().optional(),
+    userType: z.enum(['admin', 'tenant', 'manager', 'employee']),
+    accountType: z.object({
+      planId: z.string(),
       name: z.string(),
-      email: z.string().email('Invalid emergency contact email').optional(),
-      phoneNumber: z.string(),
-      relationship: z.enum(Object.values(IUserRelationshipsEnum) as [string, ...string[]]),
-    })
-    .optional(),
-  accountType: z.object({
-    planId: z.string(),
-    name: z.string(),
-    isEnterpriseAccount: z.boolean(),
-  }),
-  enterpriseProfile: z
-    .object({
-      companyName: z.string(),
-      legalEntityName: z.string(),
-      contactInfo: z
-        .object({
-          email: z.string().email('Invalid company email'),
-          address: z.string(),
-          phoneNumber: z.string(),
-          contactPerson: z.string(),
-        })
-        .optional(),
-      businessRegistrationNumber: z.string(),
-      identification: z
-        .object({
-          idType: z.enum(['passport', 'national-id', 'drivers-license', 'corporation-license']),
-          idNumber: z.string(),
-          authority: z.string(),
-          issueDate: z.string().or(z.date()),
-          expiryDate: z.string().or(z.date()),
-          issuingState: z.string(),
-        })
-        .optional(),
-    })
-    .optional(),
-});
+      isEnterpriseAccount: z.boolean(),
+    }),
+    companyProfile: z
+      .object({
+        companyName: z.string().min(2, 'Company name is required'),
+        legalEntityName: z.string().min(2, 'Legal entity name is required'),
+        contactInfo: z
+          .object({
+            email: z.string().email('Invalid company email'),
+            address: z.string().min(1, 'Company address is required'),
+            phoneNumber: z.string().min(1, 'Company phone number is required'),
+            contactPerson: z.string().min(1, 'Contact person is required'),
+          })
+          .optional(),
+        businessRegistrationNumber: z.string().min(1, 'Business registration number is required'),
+        identification: z
+          .object({
+            idType: z.enum(['passport', 'national-id', 'drivers-license', 'corporation-license']),
+            idNumber: z.string().min(1, 'ID number is required'),
+            authority: z.string().min(1, 'Issuing authority is required'),
+            issueDate: z.string().or(z.date()),
+            expiryDate: z.string().or(z.date()),
+            issuingState: z.string().min(1, 'Issuing state is required'),
+          })
+          .optional(),
+      })
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    // Make company information required for business accounts
+    if (data.accountType.isEnterpriseAccount) {
+      if (!data.companyProfile) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Company profile is required for business accounts',
+          path: ['companyProfile'],
+        });
+        return;
+      }
+
+      // Validate company profile fields for business accounts
+      if (!data.companyProfile.companyName) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Company name is required for business accounts',
+          path: ['companyProfile', 'companyName'],
+        });
+      }
+
+      if (!data.companyProfile.legalEntityName) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Legal entity name is required for business accounts',
+          path: ['companyProfile', 'legalEntityName'],
+        });
+      }
+
+      if (!data.companyProfile.businessRegistrationNumber) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Business registration number is required for business accounts',
+          path: ['companyProfile', 'businessRegistrationNumber'],
+        });
+      }
+
+      // Make contact info required for business accounts
+      if (!data.companyProfile.contactInfo) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Contact information is required for business accounts',
+          path: ['companyProfile', 'contactInfo'],
+        });
+      }
+    }
+  });
 
 export const InviteUserSignupSchema = z.object({
   cid: z.string(),

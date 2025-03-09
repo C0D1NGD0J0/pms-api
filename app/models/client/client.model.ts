@@ -85,11 +85,6 @@ const ClientSchema = new Schema<IClientDocument>(
         sms: { type: Boolean, default: false },
         inApp: { type: Boolean, default: true },
       },
-      currency: {
-        type: String,
-        enum: CURRENCIES,
-        default: 'USD',
-      },
       timeZone: { type: String, default: 'UTC' },
       lang: { type: String, default: 'en' },
     },

@@ -1,5 +1,4 @@
 import { asValue, asClass } from 'awilix';
-import { User, Client } from '@models/index';
 import { AuthService } from '@services/index';
 // import { RedisConfig } from '@db/redisConfig';
 // import { AuthMiddleware } from '@shared/middleware';
@@ -8,9 +7,10 @@ import { AuthService } from '@services/index';
 // import { EmailQueue, NotificationQueue, UploadQueue } from '@queues/index';
 // import { CloudinaryService, DiskStorage, S3FileUpload } from '@services/FileUploadService';
 // import { EmailWorker, FileUploadWorker, NotificationWorker } from '@workers/index';
-import { UserDAO, ClientDAO } from '@dao/index';
 import { DatabaseService } from '@database/index';
 import { AuthController } from '@controllers/index';
+import { User, Profile, Client } from '@models/index';
+import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
@@ -21,7 +21,7 @@ const ControllerResources = {
 const ModelResources = {
   userModel: asValue(User),
   clientModel: asValue(Client),
-  // profileModel: asValue(Profile),
+  profileModel: asValue(Profile),
   // categoryModel: asValue(Category),
   // notificationModel: asValue(Notification),
   // subscriptionModel: asValue(Subscription),
@@ -41,7 +41,7 @@ const ServiceResources = {
 const DAOResources = {
   userDAO: asClass(UserDAO).singleton(),
   clientDAO: asClass(ClientDAO).singleton(),
-  // profileDAO: asClass(ProfileDAO).singleton(),
+  profileDAO: asClass(ProfileDAO).singleton(),
   // notificationDAO: asClass(NotificationDAO).singleton(),
 };
 

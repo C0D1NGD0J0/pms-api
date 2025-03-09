@@ -250,6 +250,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * Insert a new document into the collection.
    *
    * @param data - The data for the new document.
+   * @param session - Optional MongoDB session for transaction support.
    * @returns A promise that resolves to the inserted document.
    */
   async insert(data: Partial<T>, session?: ClientSession): Promise<T> {
@@ -366,6 +367,43 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       return result.acknowledged && result.modifiedCount === 1;
     } catch (error) {
       throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Start a new MongoDB session for transaction operations.
+   *
+   * @returns A promise that resolves to a new MongoDB session.
+   */
+  async startSession(): Promise<ClientSession> {
+    try {
+      return await this.model.db.startSession();
+    } catch (error) {
+      this.logger.error('Error starting MongoDB session:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Execute operations within a transaction using the provided session.
+   *
+   * @param session - The MongoDB session to use for the transaction.
+   * @param operations - Async function containing operations to execute in the transaction.
+   * @returns A promise that resolves to the result of the operations.
+   */
+  async withTransaction<T>(
+    session: ClientSession,
+    operations: (session: ClientSession) => Promise<T>
+  ): Promise<T> {
+    try {
+      return await session.withTransaction(async () => {
+        return await operations(session);
+      });
+    } catch (error) {
+      this.logger.error('Transaction failed:', error);
+      throw this.throwErrorHandler(error);
+    } finally {
+      await session.endSession();
     }
   }
 }

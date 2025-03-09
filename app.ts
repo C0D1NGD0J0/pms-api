@@ -8,7 +8,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
-import requestID from 'express-request-id';
+// import requestID from 'express-request-id';
 import { envVariables } from '@shared/config';
 import sanitizer from 'perfect-express-sanitizer';
 import mongoSanitize from 'express-mongo-sanitize';
@@ -65,7 +65,7 @@ export class App implements IAppSetup {
     app.use(urlencoded({ extended: true, limit: '50mb' }));
     app.use(cookieParser());
     app.use(compression());
-    app.use(requestID());
+    // app.use(requestID());
     app.use(scopedMiddleware);
   }
 

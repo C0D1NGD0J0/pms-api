@@ -1,10 +1,8 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import { v4 as uuid } from 'uuid';
-import { ISignupData } from '@interfaces/index';
+import { hashGenerator, createLogger } from '@utils/index';
 import { Types, PipelineStage, Model, FilterQuery } from 'mongoose';
 import { IUserRoleType, IUserDocument } from '@interfaces/user.interface';
-import { hashGenerator, generateShortUID, createLogger } from '@utils/index';
 
 import { BaseDAO } from './baseDAO';
 import { dynamic } from './interfaces/baseDAO.interface';
@@ -90,30 +88,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   }
 
   /**
-   * Create a new user account.
-   *
-   * @param userData - The user data for creating a new account.
-   * @returns A promise that resolves to the created user document.
-   */
-  async createUser(userData: ISignupData): Promise<IUserDocument> {
-    try {
-      const newUser = {
-        ...userData,
-        isActive: false,
-        uid: generateShortUID(uuid()),
-        activationToken: hashGenerator(),
-        activationTokenExpiresAt: dayjs().add(2, 'hour').toDate(),
-      };
-
-      const user = this.insert(newUser);
-      return user;
-    } catch (error) {
-      this.logger.error(error);
-      throw this.throwErrorHandler(error);
-    }
-  }
-
-  /**
    * Update a user's information.
    *
    * @param userId - The ID of the user to update.
@@ -158,7 +132,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    */
   async createActivationToken(userId: string): Promise<string> {
     try {
-      const token = hashGenerator();
+      const token = hashGenerator({ usenano: true });
       await this.updateUser(userId, {
         activationToken: token,
         activationTokenExpiresAt: dayjs().add(4, 'hour').toDate(),
@@ -427,7 +401,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         return null;
       }
 
-      const token = hashGenerator();
+      const token = hashGenerator({ usenano: true });
       const expiresAt = dayjs().add(2, 'hour').toDate();
 
       await this.updateById(user._id.toString(), {

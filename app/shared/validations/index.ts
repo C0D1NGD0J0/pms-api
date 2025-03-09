@@ -1,12 +1,12 @@
-import { ZodError, AnyZodObject } from 'zod';
+import { ZodSchema, ZodError } from 'zod';
 import { httpStatusCodes } from '@utils/constants';
 import { Response, Request, NextFunction } from 'express';
 
-export const validateRequest = (schema: AnyZodObject) => {
+export const validateRequest = (schema: ZodSchema) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       await schema.parseAsync(req.body);
-      return next();
+      next();
     } catch (error) {
       if (error instanceof ZodError) {
         res.status(httpStatusCodes.UNPROCESSABLE).json({

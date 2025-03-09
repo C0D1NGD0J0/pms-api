@@ -145,14 +145,6 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
   createPasswordResetToken(email: string): Promise<string | null>;
 
   /**
-   * Create a new user account.
-   *
-   * @param userData - The user data for creating a new account.
-   * @returns A promise that resolves to the created user document.
-   */
-  createUser(userData: ISignupData): Promise<IUserDocument>;
-
-  /**
    * Get the currently authenticated user by their ID with complete profile information.
    *
    * @param userId - The ID of the currently authenticated user.

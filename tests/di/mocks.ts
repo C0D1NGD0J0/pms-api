@@ -1,10 +1,10 @@
 import { jest } from '@jest/globals';
 import { asValue, asClass } from 'awilix';
-import { User, Client } from '@models/index';
 import { AuthService } from '@services/index';
-import { UserDAO, ClientDAO } from '@dao/index';
 import { DatabaseService } from '@database/index';
 import { AuthController } from '@controllers/index';
+import { User, Profile, Client } from '@models/index';
+import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
 
 // Mock Controllers
 jest.mock('@controllers/index', () => ({
@@ -21,19 +21,24 @@ jest.mock('@services/index', () => ({
 // Mock DAOs
 jest.mock('@dao/index', () => ({
   ...(jest.requireActual('@dao/index') as object),
-  ClientDAO: jest.fn(),
   UserDAO: jest.fn(),
+  ClientDAO: jest.fn(),
+  ProfileDAO: jest.fn(),
 }));
 
-// DI Container Mock Resources
+jest.mock('@database/index', () => ({
+  ...(jest.requireActual('@database/index') as object),
+  DatabaseService: jest.fn(),
+}));
+
 const mockAuthController = jest.mocked(AuthController);
 
 const mockAuthService = jest.mocked(AuthService);
+const mockDatabaseService = jest.mocked(DatabaseService);
 
+const mockProfileDAO = jest.mocked(ProfileDAO);
 const mockClientDAO = jest.mocked(ClientDAO);
 const mockUserDAO = jest.mocked(UserDAO);
-
-const mockDatabaseService = jest.mocked(DatabaseService);
 
 // Controller Resources
 const MockControllerResources = {
@@ -44,6 +49,7 @@ const MockControllerResources = {
 const MockModelResources = {
   mockUserModel: asValue(User),
   mockClientModel: asValue(Client),
+  mockProfileModel: asValue(Profile),
 };
 
 // Service Resources
@@ -55,6 +61,7 @@ const MockServiceResources = {
 const MockDAOResources = {
   mockUserDAO: asClass(jest.fn().mockImplementation(() => mockUserDAO)).singleton(),
   mockClientDAO: asClass(jest.fn().mockImplementation(() => mockClientDAO)).singleton(),
+  mockProfileDAO: asClass(jest.fn().mockImplementation(() => mockProfileDAO)).singleton(),
 };
 
 // Cache Resources

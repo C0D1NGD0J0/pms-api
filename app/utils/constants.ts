@@ -5,10 +5,10 @@ export const httpStatusCodes = {
   BAD_REQUEST: 400,
   UNPROCESSABLE: 422,
   UNAUTHORIZED: 401,
-  INTERNAL_SERVER: 500,
   RATE_LIMITER: 429,
-  SERVICE_UNAVAILABLE: 503,
   EXPIRED_AUTH_TOKEN: 419,
+  SERVICE_UNAVAILABLE: 503,
+  INTERNAL_SERVER_ERROR: 500,
 };
 
 export const JWT_KEY_NAMES = {
@@ -17,3 +17,9 @@ export const JWT_KEY_NAMES = {
 };
 
 export const SLUGIFY_CONFIG = { lower: true, strict: true, replacement: '_', trim: true };
+
+export const EMAIL_TEMPLATES = {
+  PASSWORD_RESET: 'password-reset',
+  FORGOT_PASSWORD: 'forgot-password',
+  ACCOUNT_ACTIVATION: 'account-activation',
+};

@@ -19,12 +19,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   }
 
   /**
-   * Retrieves a client by its unique client ID (cid).
-   *
-   * @param cid - The unique client identifier
-   * @param opts - Optional parameters for the query (projection, population, etc.)
-   * @returns A promise that resolves to the client document or null if not found
-   * @throws Error if an error occurs during the query
+   * @inheritdoc
    */
   async getClientByCid(cid: string, opts?: dynamic): Promise<IClientDocument | null> {
     try {

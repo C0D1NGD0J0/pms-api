@@ -53,7 +53,7 @@ export class CorruptedFileRequestError extends CustomError {
  */
 export class InvalidRequestError extends CustomError {
   constructor(options?: {
-    message?: string;
+    message: string;
     statusCode?: number;
     errorInfo?: Record<string, string>[];
     originalError?: Error;
@@ -126,7 +126,7 @@ export class InternalServerError extends CustomError {
   constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
     super({
       message: options?.message || 'Internal Server Error.',
-      statusCode: options?.statusCode || httpStatusCodes.INTERNAL_SERVER,
+      statusCode: options?.statusCode || httpStatusCodes.INTERNAL_SERVER_ERROR,
       isOperational: false,
       originalError: options?.originalError,
     });
@@ -153,7 +153,7 @@ export class RedisError extends CustomError {
   constructor(options: { message: string; statusCode?: number; originalError?: Error }) {
     super({
       message: options.message,
-      statusCode: options.statusCode || httpStatusCodes.INTERNAL_SERVER,
+      statusCode: options.statusCode || httpStatusCodes.INTERNAL_SERVER_ERROR,
       isOperational: false,
       originalError: options.originalError,
     });
@@ -193,7 +193,7 @@ export class MongoDatabaseError extends CustomError {
   constructor(options: { message: string; statusCode?: number; originalError?: Error }) {
     super({
       message: options.message,
-      statusCode: options.statusCode || httpStatusCodes.INTERNAL_SERVER,
+      statusCode: options.statusCode || httpStatusCodes.INTERNAL_SERVER_ERROR,
       originalError: options.originalError,
     });
   }

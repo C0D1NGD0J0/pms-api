@@ -1,6 +1,6 @@
 import { Types, Document } from 'mongoose';
 
-import { ICompanyInfo, IClientUserConnections, IClientDocument } from './client.interface';
+import { IClientUserConnections, IClientDocument } from './client.interface';
 
 export enum IUserRelationshipsEnum {
   parents = 'parents',

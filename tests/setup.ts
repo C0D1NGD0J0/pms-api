@@ -16,12 +16,10 @@ beforeAll(async () => {
   const { server, dbInstance } = serverInstance;
   app = server;
   db = dbInstance;
-  log.info('Test environment fully initialized with actual server instance');
 });
 
 beforeEach(async () => {
   await db.clearTestDataRecords();
-  log.info('Test database reset completed');
 });
 
 afterEach(() => {

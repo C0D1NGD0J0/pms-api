@@ -29,7 +29,6 @@ const config: JestConfigWithTsJest = {
   modulePathIgnorePatterns: ['<rootDir>/dist/', '<rootDir>/tests/configs/'],
   globalTeardown: './tests/configs/teardown.ts',
   setupFilesAfterEnv: ['./tests/setup.ts'],
-  // setupFiles: ['./tests/setup.ts'],
   moduleNameMapper: {
     '@controllers/(.*)': '<rootDir>/app/controllers/$1',
     '@interfaces/(.*)': '<rootDir>/app/interfaces/$1',

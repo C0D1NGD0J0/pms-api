@@ -37,6 +37,18 @@ export interface IBaseDAO<T extends Document> {
   ): Promise<T | null>;
 
   /**
+   * Execute operations within a transaction using the provided session.
+   *
+   * @param session - The MongoDB session to use for the transaction.
+   * @param operations - Async function containing operations to execute in the transaction.
+   * @returns A promise that resolves to the result of the operations.
+   */
+  withTransaction<T>(
+    session: ClientSession,
+    operations: (session: ClientSession) => Promise<T>
+  ): Promise<T>;
+
+  /**
    * Upsert (update or insert) a document in the collection based on the provided filter.
    *
    * @param data - The data to update or insert.
@@ -114,6 +126,12 @@ export interface IBaseDAO<T extends Document> {
    */
   countDocuments(filter: FilterQuery<T>): Promise<number>;
 
+  /**
+   * Start a new MongoDB session for transaction operations.
+   *
+   * @returns A promise that resolves to a new MongoDB session.
+   */
+  startSession(): Promise<ClientSession>;
   /**
    * Insert a new document into the collection.
    *

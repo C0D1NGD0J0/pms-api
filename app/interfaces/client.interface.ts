@@ -1,6 +1,5 @@
 import { Types, Document } from 'mongoose';
 
-import { CURRENCIES } from './utils.interface';
 import {
   IUserRoleType,
   IUserDocument,
@@ -56,7 +55,6 @@ export interface IClientSettings {
     sms: boolean;
     inApp: boolean;
   };
-  currency: CURRENCIES;
   timeZone: string;
   lang: string;
 }

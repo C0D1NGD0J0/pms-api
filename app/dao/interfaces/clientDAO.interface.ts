@@ -92,6 +92,7 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
    * @param cid - The unique client identifier
    * @param opts - Optional parameters for the query (projection, population, etc.)
    * @returns A promise that resolves to the client document or null if not found
+   * @throws Error if an error occurs during the query
    */
   getClientByCid(cid: string, opts?: dynamic): Promise<IClientDocument | null>;
 

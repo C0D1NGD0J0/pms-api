@@ -1,6 +1,7 @@
 import color from 'colors';
 import crypto from 'crypto';
 import bunyan from 'bunyan';
+import { nanoid } from 'nanoid';
 import { envVariables } from '@shared/config';
 import { Response, Request, NextFunction } from 'express';
 import {
@@ -104,6 +105,33 @@ export function isValidPhoneNumber(phoneNumber: string): boolean {
 }
 
 /**
+ * Generates a random hash string using SHA-256
+ * @param opts - {
+  byteLength?: number;
+  algorithm?: 'sha256' | 'sha512' | 'md5';
+  usenano?: boolean;
+}
+ * @returns A hexadecimal string representation of the hash
+ * @throws Error if crypto operations fail
+ */
+export function hashGenerator(hashOpts: {
+  byteLength?: number;
+  algorithm?: string;
+  usenano?: boolean;
+}): string {
+  try {
+    const { byteLength = 16, algorithm = 'sha256', usenano = false } = hashOpts;
+    // if (usenano) {
+    //   return nanoid(10);
+    // }
+    const token = crypto.randomBytes(byteLength).toString('hex');
+    return crypto.createHash(algorithm).update(token).digest('hex');
+  } catch (error) {
+    throw new Error(`Failed to generate hash: ${error.message}`);
+  }
+}
+
+/**
  * Sets an authentication cookie in the HTTP response
  * @param cookieName - The name of the JWT cookie
  * @param token - The JWT token to store in the cookie
@@ -127,25 +155,6 @@ export function setAuthCookie(cookieName: string, token: string, res: Response) 
   const bearerJwt = `Bearer ${token}`;
   res.cookie(cookieName, bearerJwt, opts);
   return res;
-}
-
-/**
- * Generates a random hash string using SHA-256
- * @param byteLength - Number of random bytes to generate (default: 10)
- * @param algorithm - Hashing algorithm to use (default: 'sha256')
- * @returns A hexadecimal string representation of the hash
- * @throws Error if crypto operations fail
- */
-export function hashGenerator(
-  byteLength: number = 10,
-  algorithm: 'sha256' | 'sha512' | 'md5' = 'sha256'
-): string {
-  try {
-    const token = crypto.randomBytes(byteLength).toString('hex');
-    return crypto.createHash(algorithm).update(token).digest('hex');
-  } catch (error) {
-    throw new Error(`Failed to generate hash: ${error.message}`);
-  }
 }
 
 /**

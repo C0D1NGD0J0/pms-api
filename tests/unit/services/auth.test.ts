@@ -3,7 +3,7 @@ import dayjs from 'dayjs';
 import * as uuid from 'uuid';
 import { Types } from 'mongoose';
 import * as utils from '@utils/index';
-import { AuthService } from '@services/index';
+import { AuthService } from '@root/app/services/index';
 import { EMAIL_TEMPLATES } from '@utils/constants';
 import { IUserRole } from '@interfaces/user.interface';
 import { BadRequestError } from '@shared/customErrors';

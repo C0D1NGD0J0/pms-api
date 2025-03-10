@@ -29,7 +29,7 @@
       "@models/*": ["./app/models/*"],
       "@routes/*": ["./app/routes/*"],
       "@database/*": ["./app/database/*"],
-      "@services/*": ["./app/services/*"],
+      "@services/*": ["app/services/*"],
       "@sockets/*": ["./app/sockets/*"],
       "@caching/*": ["./app/caching/*"],
       "@queues/*": ["./app/queues/*"],

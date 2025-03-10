@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { asValue, asClass } from 'awilix';
-import { AuthService } from '@services/index';
+import { AuthService } from '@root/app/services/index';
 import { DatabaseService } from '@database/index';
 import { AuthController } from '@controllers/index';
 import { User, Profile, Client } from '@models/index';

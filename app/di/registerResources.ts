@@ -1,5 +1,4 @@
-import { asValue, asClass, asFunction } from 'awilix';
-import { AuthService } from '@services/index';
+import { BaseIO } from '@sockets/index';
 // import { AuthMiddleware } from '@shared/middleware';
 // import { AuthCache, UtilityCache } from '@caching/index';
 // import { MailService } from '@services/MailService/config.mailer';
@@ -7,9 +6,13 @@ import { AuthService } from '@services/index';
 // import { CloudinaryService, DiskStorage, S3FileUpload } from '@services/FileUploadService';
 // import { EmailWorker, FileUploadWorker, NotificationWorker } from '@workers/index';
 import { AuthController } from '@controllers/index';
+import { asValue, asFunction, asClass } from 'awilix';
 import { User, Profile, Client } from '@models/index';
+import { AuthService } from '@root/app/services/index';
 import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { RedisService, DatabaseService } from '@database/index';
+
+import { container } from './setup';
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
@@ -69,6 +72,12 @@ const UtilsResources = {
   // diskStorage: asClass(DiskStorage).singleton(),
 };
 
+const SocketIOResources = {
+  baseIO: asFunction(() => {
+    return new BaseIO('BaseIO', { ioServer: container.resolve('ioServer') });
+  }).singleton(),
+};
+
 export const registerResources = {
   ...ControllerResources,
   ...ModelResources,
@@ -78,4 +87,5 @@ export const registerResources = {
   ...ServiceResources,
   ...WorkerResources,
   ...UtilsResources,
+  ...SocketIOResources,
 };

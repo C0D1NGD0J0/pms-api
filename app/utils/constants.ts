@@ -33,3 +33,17 @@ export const MAIL_TYPES = {
   PASSWORD_RESET: 'passwordReset',
   ACCOUNT_UPDATE: 'accountUpdate',
 };
+
+export const QUEUE_NAMES = {
+  EMAIL_QUEUE: 'emailQueue',
+  IMAGE_QUEUE: 'imageUploadQueue',
+  VIDEO_QUEUE: 'videoUploadQueue',
+  NOTIFICATION_QUEUE: 'notificationQueue',
+  ASSET_REMOVAL_QUEUE: 'assetRemovalQueue',
+};
+
+export const JOB_NAME = {
+  ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
+  DELETE_REMOTE_ASSET: 'deleteRemoteAssetJob',
+  DELETE_LOCAL_ASSET: 'deleteLocalAssetJob',
+};

@@ -14,6 +14,7 @@ import mongoSanitize from 'express-mongo-sanitize';
 import { httpStatusCodes, createLogger } from '@utils/index';
 import express, { urlencoded, Response, Request, Application } from 'express';
 import { scopedMiddleware, errorHandlerMiddleware } from '@shared/middlewares';
+import { serverAdapter } from '@queues/index';
 
 export interface IAppSetup {
   initConfig(): void;
@@ -71,7 +72,7 @@ export class App implements IAppSetup {
     app.use(`${BASE_PATH}/healthcheck`, (req, res) => {
       res.status(200).json({ success: true });
     });
-    // app.use('/queues', serverAdapter.getRouter());
+    app.use('/queues', serverAdapter.getRouter());
     app.use(`${BASE_PATH}/auth`, routes.authRoutes);
     // app.use(`${BASE_PATH}/users`, routes.userRoutes);
     // app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);

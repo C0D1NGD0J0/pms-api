@@ -42,6 +42,7 @@
     "babel-jest": "^29.7.0",
     "bcryptjs": "^3.0.2",
     "bull": "^4.16.5",
+    "bullmq": "^5.41.8",
     "bunyan": "^1.8.15",
     "clamscan": "^2.4.0",
     "colors": "^1.4.0",

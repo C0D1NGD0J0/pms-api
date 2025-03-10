@@ -1,0 +1,126 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Property Management System</title>
+    <style type="text/css">
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+        body {
+            margin: 0;
+            font-family: 'Roboto', sans-serif;
+        }
+        table {
+            border-spacing: 0;
+        }
+        td {
+            padding: 0;
+        }
+        img {
+            border: 0;
+        }
+        .wrapper {
+            width: 100%;
+            table-layout: fixed;
+            padding-bottom: 5rem;
+            background-color: #f4f4f4;
+        }
+        .main {
+            width: 100%;
+            color: #062f4f;
+            max-width: 600px;
+            background-color: #fff;
+            box-shadow: 0 0 25px rgba(0,0,0,0.1);
+        }
+        .contact-info {
+            width: 100%;
+            padding: .5rem;
+            background-color: #062f4f;
+            color: white;
+        }
+        .contact-info ul {
+            margin: 0;
+            padding: 0;
+            text-align: center;
+            list-style-type: none;
+        }
+        .contact-info ul li {
+            padding: 0 10px;
+            display: inline-block;
+        }
+        .contact-info ul li a {
+            color: white;
+            font-size: 14px;
+            line-height: 1.4;
+            text-decoration: none;
+        }
+        .content {
+            padding: 20px 30px;
+            line-height: 1.6;
+        }
+        .content h1, .content h2, .content h3 {
+            color: #062f4f;
+            margin-bottom: 15px;
+        }
+        .cta {
+            padding-bottom: 30px;
+            text-align: center;
+        }
+        .signature {
+            text-align: center;
+            padding: 20px;
+            background-color: #f4f4f4;
+            font-size: 14px;
+            color: #666;
+        }
+        .btn {
+            background-color: #062f4f;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 16px;
+            border-radius: 5px;
+            padding: 12px 24px;
+            color: #fff;
+            display: inline-block;
+            margin-top: 15px;
+            transition: background-color 0.3s ease;
+        }
+        .btn:hover {
+            background-color: #39a9e0;
+        }
+    </style>
+</head>
+<body>
+  <div class="wrapper">
+    <table class="main" width="100%">
+      <tr>
+        <td height="9" style="background-color: #062f4f;"></td>
+      </tr>
+      <tr>
+        <td class="contact-info">
+          <ul>
+            <li><a href="#!">Property Solutions</a></li>
+            <li><a href="tel:+18005551234">+1 (800) 555-1234</a></li>
+            <li><a href="mailto:support@propertysolutions.com">support@propertysolutions.com</a></li>
+          </ul>
+        </td>
+      </tr>
+
+      <%- include("_header") %>
+
+      <tr>
+        <td style="padding: 0;">
+          <%- content %>
+        </td>
+      </tr>
+
+      <%- include("_footer", {year: year, appName: "Property Solutions"}) %>
+
+      <tr>
+        <td height="9" style="background-color: #062f4f;"></td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>

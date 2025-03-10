@@ -1,30 +1,43 @@
-import Queue from 'bull';
 import Logger from 'bunyan';
 import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
+import { createBullBoard } from '@bull-board/api';
+import { ExpressAdapter } from '@bull-board/express';
+import { BullAdapter } from '@bull-board/api/bullAdapter';
+import Queue, { QueueOptions as BullQueueOptions, JobOptions as BullJobOptions } from 'bull';
 
-import { DEFAULT_QUEUE_OPTIONS, DEFAULT_JOB_OPTIONS, BullBoardService } from './bullboard';
+export const DEFAULT_JOB_OPTIONS: BullJobOptions = {
+  attempts: 2,
+  timeout: 60000,
+  backoff: { type: 'fixed', delay: 10000 },
+  removeOnComplete: 1000,
+  removeOnFail: 5000,
+};
+
+export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions = {
+  settings: {
+    maxStalledCount: 1800000,
+    lockDuration: 3600000, // 1hr
+    stalledInterval: 100000,
+  },
+};
 
 export type JobData = any;
 
+let bullMQAdapters: BullAdapter[] = [];
+export let serverAdapter: ExpressAdapter;
+
 export class BaseQueue<T extends JobData = JobData> {
-  protected queue: Queue.Queue;
   protected log: Logger;
+  protected queue: Queue.Queue;
 
-  constructor(
-    queueName: string,
-    private bullBoardService: BullBoardService
-  ) {
+  constructor(queueName: string) {
     this.log = createLogger(queueName);
-
     this.queue = new Queue(queueName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
-    this.bullBoardService.registerQueue(this.queue);
+    this.initializeBullBoard(this.queue);
     this.initializeQueueEvents();
   }
 
-  /**
-   * Initialize queue event handlers with proper error handling
-   */
   protected initializeQueueEvents(): void {
     this.queue.on('completed', (job, result) => {
       this.log.info(`Job ${job.id} has completed`, result);
@@ -44,10 +57,24 @@ export class BaseQueue<T extends JobData = JobData> {
     });
   }
 
+  initializeBullBoard(queue: any): void {
+    serverAdapter = new ExpressAdapter();
+    serverAdapter.setBasePath(envVariables.BULL_BOARD.BASE_PATH);
+
+    bullMQAdapters.push(new BullAdapter(queue));
+    bullMQAdapters = [...new Set(bullMQAdapters)];
+
+    createBullBoard({
+      serverAdapter,
+      queues: bullMQAdapters,
+    });
+    this.log.info('BullBoard initialized');
+  }
+
   /**
    * Add a job to the queue with type safety
    */
-  public async addJob(name: string, data: T): Promise<Queue.Job<T>> {
+  async addJobToQueue(name: string, data: T): Promise<Queue.Job<T>> {
     try {
       return await this.queue.add(name, data, DEFAULT_JOB_OPTIONS);
     } catch (error) {
@@ -59,7 +86,7 @@ export class BaseQueue<T extends JobData = JobData> {
   /**
    * Process jobs in the queue
    */
-  public processJobs(
+  processQueueJobs(
     name: string,
     concurrency: number,
     callback: Queue.ProcessCallbackFunction<T>
@@ -70,7 +97,7 @@ export class BaseQueue<T extends JobData = JobData> {
   /**
    * Gracefully shut down the queue
    */
-  public async shutdown(): Promise<void> {
+  async shutdown(): Promise<void> {
     try {
       await this.queue.close();
       this.log.info(`Queue ${this.queue.name} shutdown complete`);
@@ -82,35 +109,35 @@ export class BaseQueue<T extends JobData = JobData> {
   /**
    * Get queue statistics
    */
-  public async getJobCounts(): Promise<Queue.JobCounts> {
+  async getJobCounts(): Promise<Queue.JobCounts> {
     return this.queue.getJobCounts();
   }
 
   /**
    * Empty the queue
    */
-  public async clearQueue(): Promise<void> {
+  async clearQueue(): Promise<void> {
     return this.queue.empty();
   }
 
   /**
    * Pause the queue
    */
-  public async pauseQueue(): Promise<void> {
+  async pauseQueue(): Promise<void> {
     return this.queue.pause();
   }
 
   /**
    * Resume the queue
    */
-  public async resumeQueue(): Promise<void> {
+  async resumeQueue(): Promise<void> {
     return this.queue.resume();
   }
 
   /**
    * Get a job by ID
    */
-  public async getJob(jobId: string | number): Promise<Queue.Job<T> | null> {
+  async getJob(jobId: string | number): Promise<Queue.Job<T> | null> {
     return this.queue.getJob(jobId);
   }
 }

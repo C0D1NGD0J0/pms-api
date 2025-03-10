@@ -1,16 +1,17 @@
 import { BaseIO } from '@sockets/index';
+import { MailService } from '@mailer/index';
 // import { AuthMiddleware } from '@shared/middleware';
 // import { AuthCache, UtilityCache } from '@caching/index';
 // import { MailService } from '@services/MailService/config.mailer';
-// import { EmailQueue, NotificationQueue, UploadQueue } from '@queues/index';
 // import { CloudinaryService, DiskStorage, S3FileUpload } from '@services/FileUploadService';
-// import { EmailWorker, FileUploadWorker, NotificationWorker } from '@workers/index';
+import { EmailWorker } from '@workers/index';
 import { AuthController } from '@controllers/index';
 import { asValue, asFunction, asClass } from 'awilix';
 import { User, Profile, Client } from '@models/index';
 import { AuthService } from '@root/app/services/index';
 import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { RedisService, DatabaseService } from '@database/index';
+import { EmailQueue, BullBoardService, BaseQueue } from '@queues/index';
 
 import { container } from './setup';
 
@@ -33,7 +34,8 @@ const ServiceResources = {
   // s3Service: asClass(S3FileUpload).singleton(),
   // userService: asClass(UserService).singleton(),
   authService: asClass(AuthService).singleton(),
-  // mailerService: asClass(MailService).singleton(),
+  mailerService: asClass(MailService).singleton(),
+  bullBoardService: asClass(BullBoardService).singleton(),
   // stripeService: asClass(StripeService).singleton(),
   // uploadService: asClass(CloudinaryService).singleton(),
   // authTokenService: asClass(AuthTokenService).singleton(),
@@ -52,15 +54,16 @@ const CacheResources = {
 };
 
 const WorkerResources = {
-  // emailWorker: asClass(EmailWorker).singleton(),
+  emailWorker: asClass(EmailWorker).singleton(),
   // uploadWorker: asClass(FileUploadWorker).singleton(),
   // notificationWorker: asClass(NotificationWorker).singleton(),
 };
 
 const QueuesResources = {
-  // emailQueue: asClass(EmailQueue).singleton(),
-  // uploadQueue: asClass(UploadQueue).singleton(),
-  // notificationQueue: asClass(NotificationQueue).singleton(),
+  baseQueue: asFunction(() => {
+    return new BaseQueue('BaseQueue');
+  }).singleton(),
+  emailQueue: asClass(EmailQueue).singleton(),
 };
 
 const UtilsResources = {

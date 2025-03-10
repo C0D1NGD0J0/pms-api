@@ -3,6 +3,8 @@ import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
+import { RedisService } from './redis-setup';
+
 export interface IDatabaseService {
   clearTestDataRecords: (env?: Environments) => Promise<void>;
   disconnect: (env?: Environments) => Promise<void>;
@@ -15,17 +17,19 @@ export type Environments = 'development' | 'production' | 'test';
 export class DatabaseService implements IDatabaseService {
   private log;
   private connected = false;
+  private redisService: RedisService;
   private mongoMemoryServer: MongoMemoryServer | null = null;
 
-  constructor() {
+  constructor({ redisService }: { redisService: RedisService }) {
     this.log = createLogger('DatabaseService');
+    this.redisService = redisService;
   }
 
-  public isConnected(): boolean {
+  isConnected(): boolean {
     return this.connected && mongoose.connection.readyState === 1;
   }
 
-  public async connect(env: Environments = envVariables.SERVER.ENV as Environments): Promise<void> {
+  async connect(env: Environments = envVariables.SERVER.ENV as Environments): Promise<void> {
     if (this.connected) {
       this.log.info('Database is already connected');
       return;
@@ -47,6 +51,9 @@ export class DatabaseService implements IDatabaseService {
       }
 
       await mongoose.connect(url);
+      if (env !== 'test') {
+        this.redisService.connect();
+      }
       mongoose.connection.on('disconnected', () => {
         this.connected = false;
         this.log.error('MongoDB disconnected....');
@@ -60,9 +67,7 @@ export class DatabaseService implements IDatabaseService {
     }
   }
 
-  public async disconnect(
-    env: Environments = envVariables.SERVER.ENV as Environments
-  ): Promise<void> {
+  async disconnect(env: Environments = envVariables.SERVER.ENV as Environments): Promise<void> {
     try {
       if (!this.isConnected()) {
         this.log.info('Database is already disconnected');
@@ -83,7 +88,7 @@ export class DatabaseService implements IDatabaseService {
     }
   }
 
-  public async clearTestDataRecords(env: Environments = envVariables.SERVER.ENV as Environments) {
+  async clearTestDataRecords(env: Environments = envVariables.SERVER.ENV as Environments) {
     if (env !== 'test') {
       this.log.warn(
         `Cannot clear data in ${env} environment. Operation only allowed in test environment.`

@@ -1,16 +1,15 @@
-import { asValue, asClass } from 'awilix';
+import { asValue, asClass, asFunction } from 'awilix';
 import { AuthService } from '@services/index';
-// import { RedisConfig } from '@db/redisConfig';
 // import { AuthMiddleware } from '@shared/middleware';
 // import { AuthCache, UtilityCache } from '@caching/index';
 // import { MailService } from '@services/MailService/config.mailer';
 // import { EmailQueue, NotificationQueue, UploadQueue } from '@queues/index';
 // import { CloudinaryService, DiskStorage, S3FileUpload } from '@services/FileUploadService';
 // import { EmailWorker, FileUploadWorker, NotificationWorker } from '@workers/index';
-import { DatabaseService } from '@database/index';
 import { AuthController } from '@controllers/index';
 import { User, Profile, Client } from '@models/index';
 import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { RedisService, DatabaseService } from '@database/index';
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
@@ -62,7 +61,9 @@ const QueuesResources = {
 };
 
 const UtilsResources = {
-  // redisConfig: asClass(RedisConfig).singleton(),
+  redisService: asFunction(() => {
+    return new RedisService('Redis Service');
+  }).singleton(),
   dbService: asClass(DatabaseService).singleton(),
   // authMiddleware: asClass(AuthMiddleware).scoped(),
   // diskStorage: asClass(DiskStorage).singleton(),

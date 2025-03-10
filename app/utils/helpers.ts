@@ -44,19 +44,19 @@ export function createLogger(name: string) {
         switch (logRecord.level) {
           case LOG_LEVELS.ERROR:
           case LOG_LEVELS.FATAL:
-            output = color.red.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord.msg}`);
+            output = color.red.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.DEBUG:
-            output = color.cyan.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord.msg}`);
+            output = color.cyan.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.WARN:
-            output = color.magenta.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord.msg}`);
+            output = color.magenta.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.INFO:
-            output = color.yellow.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord.msg}`);
+            output = color.yellow.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           default:
-            output = color.grey.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord.msg}`);
+            output = color.grey.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
         }
 
         if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {

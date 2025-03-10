@@ -89,11 +89,17 @@ export interface ISuccessReturnData<T = unknown> {
 
 export type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
+export interface ICacheResponse<T = any> {
+  success: boolean;
+  error?: string;
+  data?: T;
+}
+
 export interface IUploadFileInterface {
   filename?: string;
   key?: string;
   url: string;
 }
-
 export type IPromiseReturnedData<T = object> = Promise<ISuccessReturnData<T>>;
+
 export type TokenType = 'accessToken' | 'refreshToken';

@@ -1,7 +1,6 @@
 import { Schema, model } from 'mongoose';
 import { IClientDocument } from '@interfaces/index';
 import uniqueValidator from 'mongoose-unique-validator';
-import { CURRENCIES } from '@interfaces/utils.interface';
 
 const ClientSchema = new Schema<IClientDocument>(
   {

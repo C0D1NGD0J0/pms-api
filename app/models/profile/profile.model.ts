@@ -33,6 +33,18 @@ const ProfileSchema = new Schema<IProfileDocument>(
       filename: String,
       key: String,
     },
+    settings: {
+      theme: {
+        type: String,
+        default: 'light',
+        enum: ['light', 'dark'],
+      },
+      loginType: {
+        type: String,
+        default: 'otp',
+        enum: ['otp', 'password'],
+      },
+    },
     puid: { type: String, required: true, index: true },
     identification: {
       idType: {

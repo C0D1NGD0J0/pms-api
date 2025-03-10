@@ -3,6 +3,10 @@ import { Types, Document } from 'mongoose';
 import { IdentificationType } from './user.interface';
 
 export interface Profile {
+  settings: {
+    loginType: 'otp' | 'password';
+    theme: 'light' | 'dark';
+  };
   avatar?: {
     url: string;
     filename: string;

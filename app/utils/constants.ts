@@ -23,3 +23,13 @@ export const EMAIL_TEMPLATES = {
   FORGOT_PASSWORD: 'forgot-password',
   ACCOUNT_ACTIVATION: 'account-activation',
 };
+
+export const MAIL_TYPES = {
+  SUBSCRIPTION_UPDATE: 'subscriptionUpdate',
+  SUBSCRIPTION_CANCEL: 'subscriptionCancel',
+  ACCOUNT_ACTIVATION: 'accountActivation',
+  TENANT_REGISTRATION: 'tenantRegistration',
+  FORGOT_PASSWORD: 'forgotPassword',
+  PASSWORD_RESET: 'passwordReset',
+  ACCOUNT_UPDATE: 'accountUpdate',
+};

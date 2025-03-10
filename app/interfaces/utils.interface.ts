@@ -1,6 +1,16 @@
 import 'multer';
 import { Response, Request, NextFunction } from 'express';
 
+export enum MailType {
+  SUBSCRIPTION_UPDATE = 'SUBSCRIPTION_UPDATE',
+  SUBSCRIPTION_CANCEL = 'SUBSCRIPTION_CANCEL',
+  ACCOUNT_ACTIVATION = 'ACCOUNT_ACTIVATION',
+  USER_REGISTRATION = 'USER_REGISTRATION',
+  FORGOT_PASSWORD = 'FORGOT_PASSWORD',
+  PASSWORD_RESET = 'PASSWORD_RESET',
+  ACCOUNT_UPDATE = 'ACCOUNT_UPDATE',
+}
+
 export enum CURRENCIES {
   USD = 'USD',
   EUR = 'EUR',
@@ -61,7 +71,6 @@ export type ExtractedMediaFile = {
   filename: string;
   fileSize: number;
 };
-
 export type MulterFile =
   | Express.Multer.File[]
   | {
@@ -74,6 +83,7 @@ export interface IPaginationQuery {
   limit?: number;
   page?: number;
 }
+
 export interface IEmailOptions<T = unknown> {
   emailType: string;
   subject: string;
@@ -94,12 +104,12 @@ export interface ICacheResponse<T = any> {
   error?: string;
   data?: T;
 }
-
 export interface IUploadFileInterface {
   filename?: string;
   key?: string;
   url: string;
 }
+
 export type IPromiseReturnedData<T = object> = Promise<ISuccessReturnData<T>>;
 
 export type TokenType = 'accessToken' | 'refreshToken';

@@ -23,26 +23,6 @@ export enum IAccountType {
   enterprise = 'enterprise',
 }
 
-// USER INTERFACE
-export interface IUser {
-  emergencyContact?: {
-    name: string;
-    email?: string;
-    phoneNumber: string;
-    relationship: IUserRelationshipsEnum;
-  };
-  passwordResetTokenExpiresAt: Date | number | null;
-  activationTokenExpiresAt: Date | number | null;
-  passwordResetToken?: string;
-  activationToken?: string;
-  phoneNumber?: string;
-  firstName: string;
-  location?: string;
-  password: string;
-  lastName: string;
-  email: string;
-}
-
 export interface IUserDocument extends Document, IUser {
   validatePassword: (pwd1: string) => Promise<boolean>;
   cids: IClientUserConnections[]; //
@@ -98,6 +78,20 @@ export type IdentificationType = {
   expiryDate: Date | string; // or Date if you prefer Date objects
   issuingState: string;
 };
+
+// USER INTERFACE
+export interface IUser {
+  passwordResetTokenExpiresAt: Date | number | null;
+  activationTokenExpiresAt: Date | number | null;
+  passwordResetToken?: string;
+  activationToken?: string;
+  phoneNumber?: string;
+  firstName: string;
+  location: string;
+  password: string;
+  lastName: string;
+  email: string;
+}
 export interface ICurrentUser {
   isSubscriptionActive?: boolean;
   fullname: string | null;

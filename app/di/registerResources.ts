@@ -1,4 +1,5 @@
 import { BaseIO } from '@sockets/index';
+import { EmailQueue } from '@queues/index';
 import { MailService } from '@mailer/index';
 // import { AuthMiddleware } from '@shared/middleware';
 // import { AuthCache, UtilityCache } from '@caching/index';
@@ -11,7 +12,6 @@ import { User, Profile, Client } from '@models/index';
 import { AuthService } from '@root/app/services/index';
 import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { RedisService, DatabaseService } from '@database/index';
-import { EmailQueue, BullBoardService, BaseQueue } from '@queues/index';
 
 import { container } from './setup';
 
@@ -35,7 +35,6 @@ const ServiceResources = {
   // userService: asClass(UserService).singleton(),
   authService: asClass(AuthService).singleton(),
   mailerService: asClass(MailService).singleton(),
-  bullBoardService: asClass(BullBoardService).singleton(),
   // stripeService: asClass(StripeService).singleton(),
   // uploadService: asClass(CloudinaryService).singleton(),
   // authTokenService: asClass(AuthTokenService).singleton(),
@@ -60,9 +59,6 @@ const WorkerResources = {
 };
 
 const QueuesResources = {
-  baseQueue: asFunction(() => {
-    return new BaseQueue('BaseQueue');
-  }).singleton(),
   emailQueue: asClass(EmailQueue).singleton(),
 };
 

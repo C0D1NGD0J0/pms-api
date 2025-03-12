@@ -37,8 +37,9 @@ const UserSchema = new Schema<IUserDocument>(
     },
     location: {
       type: String,
-      maxlength: 35,
+      default: '',
       trim: true,
+      required: true,
     },
     cids: [
       {

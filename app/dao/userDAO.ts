@@ -32,7 +32,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       const query = { _id: new Types.ObjectId(id) };
       return await this.findFirst(query, opts);
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -49,7 +49,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       const query = { uid };
       return await this.findFirst(query, opts);
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -65,7 +65,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       return await this.list(query, opts);
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -82,7 +82,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       const query = { email, deletedAt: null };
       return await this.findFirst(query, opts);
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -98,7 +98,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       return await this.updateById(userId, { $set: updates });
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -119,7 +119,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       const isValid = await user.validatePassword(password);
       return isValid ? user : null;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -140,7 +140,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       return token;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -167,7 +167,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       await result.save();
       return true;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -222,7 +222,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       return !!result;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -250,7 +250,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       return await this.list(query, opts);
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -295,7 +295,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       return await this.aggregate(searchPipeline);
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -311,7 +311,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       const user = await this.getUserByEmail(email);
       return !user;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -332,7 +332,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       return !!result;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -353,7 +353,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       return user.cids;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -382,7 +382,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       await user.save();
       return !!user;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -413,7 +413,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       return token;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }

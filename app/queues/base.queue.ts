@@ -31,7 +31,7 @@ export class BaseQueue<T extends JobData = JobData> {
   protected log: Logger;
   protected queue: Queue.Queue;
 
-  constructor(queueName: string) {
+  constructor(queueName = 'BaseQueue') {
     this.log = createLogger(queueName);
     this.queue = new Queue(queueName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
     this.initializeBullBoard(this.queue);

@@ -41,8 +41,8 @@ export class MailService {
 
       const mailOptions: Mail.Options = {
         from: envVariables.EMAIL.APP_EMAIL_ADDRESS,
-        to: options.to,
-        subject: options.subject || this.getDefaultSubject(mailType),
+        to: data.to,
+        subject: data.subject || this.getDefaultSubject(mailType),
         html: await this.renderLayoutTemplate(html, {
           appName: envVariables.APP_NAME,
           year: new Date().getFullYear(),
@@ -60,7 +60,7 @@ export class MailService {
         {
           error,
           mailType,
-          recipient: options.to,
+          recipient: data.to,
         },
         'Failed to send email'
       );
@@ -112,25 +112,31 @@ export class MailService {
    * @returns Rendered email template
    */
   private async buildTemplate(filename: string, data: EmailTemplateData): Promise<EmailTemplate> {
+    const templatePath = (type: string) => `${filename}/${filename}${type}.ejs`;
+
+    const renderSafely = async (path: string): Promise<string> => {
+      try {
+        return await this.renderTemplateFile(path, data);
+      } catch (err) {
+        this.log.debug(`Template not found: ${path}`);
+        return '';
+      }
+    };
+
     try {
-      const [htmlTemplate, textTemplate] = await Promise.all([
-        this.renderTemplateFile(`${filename}/${filename}.ejs`, data),
-        this.renderTemplateFile(`${filename}/${filename}.text.ejs`, data),
+      const [html, text] = await Promise.all([
+        renderSafely(templatePath('')),
+        renderSafely(templatePath('.text')),
       ]);
 
-      return {
-        html: htmlTemplate,
-        text: textTemplate,
-      };
+      if (!html && !text) {
+        this.log.warn({ filename }, 'No templates found for this email type');
+      }
+
+      return { html, text };
     } catch (error) {
-      this.log.error(
-        {
-          error,
-          filename,
-        },
-        'Failed to build email template'
-      );
-      throw error;
+      this.log.error({ error, filename }, 'Unexpected error building email template');
+      return { html: '', text: '' };
     }
   }
 

@@ -45,7 +45,7 @@ export interface IBaseDAO<T extends Document> {
    */
   withTransaction<T>(
     session: ClientSession,
-    operations: (session: ClientSession) => Promise<T>
+    operations: (session?: ClientSession) => Promise<T>
   ): Promise<T>;
 
   /**

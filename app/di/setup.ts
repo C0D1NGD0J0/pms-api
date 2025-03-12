@@ -21,5 +21,6 @@ const initializeDI = () => {
 const container = initializeDI();
 // resolve singletons on intial load HERE...
 container.resolve('emailQueue');
+container.resolve('emailWorker');
 
 export { container };

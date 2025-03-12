@@ -1,7 +1,7 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
-import { MongoDatabaseError, handleMongoError } from '@shared/customErrors';
+import { handleMongoError } from '@shared/customErrors';
 import {
   UpdateWriteOpResult,
   UpdateQuery,
@@ -31,25 +31,26 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @param error - The error to handle.
    * @returns A formatted error object.
    */
-  throwErrorHandler(error: Error | MongooseError | unknown) {
-    const err = error as Error;
-    const errorMessage = err.message || 'An unknown error occurred';
-    const errorStack = err.stack || 'No stack trace available';
-    let result: MongoDatabaseError;
-
-    if (error instanceof MongooseError) {
-      result = handleMongoError(error);
-    } else {
-      result = new MongoDatabaseError({ message: errorMessage, statusCode: 500 });
-    }
-
+  throwErrorHandler(error: Error | MongooseError | any): {
+    errors: Record<string, string>[] | undefined;
+    errorType: string;
+    success: boolean;
+    message: string;
+    stack?: string;
+    statusCode: number;
+  } {
+    const result = handleMongoError(error);
+    this.logger.error('uuu', error);
     return {
       success: false,
-      message: result.message,
+      errorType: result?.name || 'UnknownError',
+      message: result?.message || 'Unknown db error occurred',
+      errors: result?.errorInfo,
+      statusCode: result.statusCode,
       ...(envVariables.SERVER.ENV === 'production'
         ? {}
         : {
-            stack: result.stack || errorStack,
+            stack: result?.stack || error.stack,
           }),
     };
   }
@@ -109,7 +110,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       if (options?.populate) query = query.populate(options.populate as any);
       return await query.exec();
     } catch (error) {
-      this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -145,7 +145,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
 
       return await this.model.findOneAndUpdate(filter, data, queryOptions);
     } catch (error) {
-      this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -163,7 +162,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       const result = await this.model.deleteMany({ _id: { $in: objectIds } }).exec();
       return result.deletedCount === ids.length;
     } catch (error) {
-      this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -187,7 +185,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
         .findOneAndUpdate({ _id: new Types.ObjectId(id) }, updateOperation, options)
         .exec();
     } catch (error) {
-      this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -209,7 +206,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       const options = { new: true, ...opts, upsert: false };
       return await this.model.findOneAndUpdate(filter, updateOperation, options).exec();
     } catch (error) {
-      this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -225,7 +221,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       const result = await this.model.deleteOne({ _id: new Types.ObjectId(id) }).exec();
       return result.deletedCount === 1;
     } catch (error) {
-      this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -258,7 +253,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       const result = await this.model.create([{ ...data }], { session: session ?? null });
       return result[0];
     } catch (error) {
-      this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -274,7 +268,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       const newInstance = new this.model(data);
       return newInstance;
     } catch (error) {
-      this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -290,7 +283,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       const res = await this.model.findById(id);
       return res;
     } catch (error: unknown) {
-      this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -305,7 +297,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     try {
       return await this.model.countDocuments(filter).exec();
     } catch (error: unknown) {
-      this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -380,7 +371,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       return await this.model.db.startSession();
     } catch (error) {
       this.logger.error('Error starting MongoDB session:', error);
-      throw this.throwErrorHandler(error);
+      throw error;
     }
   }
 
@@ -392,18 +383,30 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @returns A promise that resolves to the result of the operations.
    */
   async withTransaction<T>(
-    session: ClientSession,
-    operations: (session: ClientSession) => Promise<T>
+    session: ClientSession | null,
+    operations: (session?: ClientSession) => Promise<T>
   ): Promise<T> {
     try {
+      if (!session || envVariables.SERVER.ENV === 'development') {
+        return await operations();
+      }
+
       return await session.withTransaction(async () => {
         return await operations(session);
       });
     } catch (error) {
-      this.logger.error('Transaction failed:', error);
-      throw this.throwErrorHandler(error);
+      if (
+        error.codeName === 'IllegalOperation' &&
+        error.message?.includes('Transaction numbers are only allowed')
+      ) {
+        this.logger.error('Transactions not supported, executing without transaction');
+        return await operations(); // Try again without transaction
+      }
+      throw error;
     } finally {
-      await session.endSession();
+      if (session && !session.hasEnded) {
+        await session.endSession();
+      }
     }
   }
 }

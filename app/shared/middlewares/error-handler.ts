@@ -9,7 +9,7 @@ import { InternalServerError, handleMongoError, CustomError } from '@shared/cust
 const logger = createLogger('ErrorHandler_Middleware');
 
 export const errorHandlerMiddleware = async (
-  err: { statusCode?: number } & Error,
+  err: { statusCode?: number; errors: unknown[] } & Error,
   req: Request,
   res: Response,
   next: NextFunction
@@ -25,26 +25,24 @@ export const errorHandlerMiddleware = async (
       message: `${err.name}: ${err.message}` || 'An unexpected error occurred',
     });
   } else {
-    error = new InternalServerError({
-      message: `${err.name}: ${err.message}` || 'An unexpected error occurred',
-    });
+    error = err;
   }
 
-  const response = {
+  const errorResponse = {
     success: false,
     message: error.message,
-    statusCode: error.statusCode,
-    ...(error.errorInfo?.length ? { errorInfo: error.errorInfo } : {}),
+    statusCode: error.statusCode || 500,
+    ...(err.errors?.length ? { errors: err.errors } : {}),
     ...(envVariables.SERVER.ENV === 'development' && { stack: error.stack }),
   };
 
   if (envVariables.SERVER.ENV === 'development') {
-    logger.error(error);
+    logger.error(errorResponse);
   }
 
   if (res.headersSent) {
     // If headers are already sent, delegate to the default Express error handler
-    return next(response);
+    return next(errorResponse);
   }
-  res.status(error.statusCode).json(response);
+  res.status(errorResponse.statusCode).json(errorResponse);
 };

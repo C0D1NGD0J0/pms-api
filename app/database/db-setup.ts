@@ -37,19 +37,9 @@ export class DatabaseService implements IDatabaseService {
 
     try {
       mongoose.set('strictQuery', true);
-      let url: string;
+      const url = this.getDatabaseUrl(env);
 
-      if (env === 'test') {
-        this.mongoMemoryServer = await MongoMemoryServer.create({
-          instance: {
-            dbName: envVariables.DATABASE.TEST_URL,
-          },
-        });
-        url = this.mongoMemoryServer.getUri();
-      } else {
-        url = this.getDatabaseUrl(env);
-      }
-
+      this.log.debug('Database URL:', url);
       await mongoose.connect(url);
       if (env !== 'test') {
         this.redisService.connect();
@@ -74,14 +64,14 @@ export class DatabaseService implements IDatabaseService {
         return;
       }
 
-      if (env === 'test' && this.mongoMemoryServer) {
+      if (env === 'test') {
         await mongoose.connection.dropDatabase();
-        await this.mongoMemoryServer.stop();
+        // await this.mongoMemoryServer.stop();
+        await mongoose.connection.close();
         this.mongoMemoryServer = null;
+        this.connected = false;
       }
 
-      await mongoose.connection.close();
-      this.connected = false;
       this.log.info(`Disconnected from ${env} database`);
     } catch (err) {
       this.log.error(`Database Disconnection Error for ${env}: `, err);
@@ -128,6 +118,8 @@ export class DatabaseService implements IDatabaseService {
         return envVariables.DATABASE.DEV_URL;
       case 'production':
         return envVariables.DATABASE.PROD_URL;
+      case 'test':
+        return envVariables.DATABASE.TEST_URL;
       default:
         throw new Error('Unknown environment');
     }

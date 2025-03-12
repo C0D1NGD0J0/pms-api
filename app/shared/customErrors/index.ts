@@ -106,20 +106,6 @@ export class BadRequestError extends CustomError {
 }
 
 /**
- * Error representing a 503 Service Unavailable
- */
-export class ServiceUnavailableError extends CustomError {
-  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
-    super({
-      message: options?.message || 'Service Unavailable',
-      statusCode: options?.statusCode || httpStatusCodes.SERVICE_UNAVAILABLE,
-      isOperational: false,
-      originalError: options?.originalError,
-    });
-  }
-}
-
-/**
  * Error representing a 500 Internal Server Error
  */
 export class InternalServerError extends CustomError {
@@ -127,6 +113,20 @@ export class InternalServerError extends CustomError {
     super({
       message: options?.message || 'Internal Server Error.',
       statusCode: options?.statusCode || httpStatusCodes.INTERNAL_SERVER_ERROR,
+      isOperational: false,
+      originalError: options?.originalError,
+    });
+  }
+}
+
+/**
+ * Error representing a 503 Service Unavailable
+ */
+export class ServiceUnavailableError extends CustomError {
+  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
+    super({
+      message: options?.message || 'Service Unavailable',
+      statusCode: options?.statusCode || httpStatusCodes.SERVICE_UNAVAILABLE,
       isOperational: false,
       originalError: options?.originalError,
     });
@@ -223,21 +223,22 @@ export function handleMongoError(err: MongooseError | Error): CustomError {
   // Validation error
   if (err.name === 'ValidationError') {
     const validationErr = err as unknown as {
-      errors: Record<string, { message: string; name: string }>;
+      _message: string;
+      errors: Record<string, { message: string; name: string; path: string }>;
     };
     const messages = Object.values(validationErr.errors).map((error) => {
       if (error.name === 'CastError') {
-        return error.message.replace('Error, ', '');
+        return { [error.path]: error.message.replace('Error, ', '') };
       }
       if (error.name === 'ValidatorError') {
-        return error.message.replace('Path', '').trim();
+        return { [error.path]: error.message.replace('Path', '').trim() };
       }
-      return error.message || 'Unknown validation error';
+      return { [error.path]: error.message || 'Unknown validation error' };
     });
 
     return new ValidationRequestError({
-      message: 'Validation failed',
-      errorInfo: messages.map((msg) => ({ message: msg })),
+      message: validationErr._message,
+      errorInfo: messages,
       originalError: err,
     });
   }

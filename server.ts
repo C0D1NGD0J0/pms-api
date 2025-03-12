@@ -24,12 +24,12 @@ class Server {
   private httpServer: http.Server | null = null;
   private readonly log = createLogger('MainServer');
   private readonly SERVER_ENV = envVariables.SERVER.ENV as Environments;
-  private redisClients: { pub: unknown; sub: unknown } | null = null;
+  private redisClients: { pub: any; sub: any } | null = null;
 
   constructor({ dbService }: IConstructor) {
     this.expApp = express();
     this.dbService = dbService;
-    this.app = new App(this.expApp);
+    this.app = new App(this.expApp, this.dbService);
     this.setupProcessErrorHandlers();
   }
 

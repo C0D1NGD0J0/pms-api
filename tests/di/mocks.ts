@@ -1,10 +1,12 @@
 import { jest } from '@jest/globals';
 import { asValue, asClass } from 'awilix';
-import { AuthService } from '@root/app/services/index';
-import { DatabaseService } from '@database/index';
+import { EmailQueue } from '@queues/index';
+import { EmailWorker } from '@workers/index';
 import { AuthController } from '@controllers/index';
 import { User, Profile, Client } from '@models/index';
+import { AuthService } from '@root/app/services/index';
 import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { RedisService, DatabaseService } from '@database/index';
 
 // Mock Controllers
 jest.mock('@controllers/index', () => ({
@@ -31,6 +33,19 @@ jest.mock('@database/index', () => ({
   DatabaseService: jest.fn(),
 }));
 
+// Mock Workers
+jest.mock('@workers/index', () => ({
+  ...(jest.requireActual('@workers/index') as object),
+  EmailWorker: jest.fn(),
+}));
+
+// Mock Queues
+jest.mock('@queues/index', () => ({
+  ...(jest.requireActual('@queues/index') as object),
+  BaseQueue: jest.fn(),
+  EmailQueue: jest.fn(),
+}));
+
 const mockAuthController = jest.mocked(AuthController);
 
 const mockAuthService = jest.mocked(AuthService);
@@ -39,6 +54,11 @@ const mockDatabaseService = jest.mocked(DatabaseService);
 const mockProfileDAO = jest.mocked(ProfileDAO);
 const mockClientDAO = jest.mocked(ClientDAO);
 const mockUserDAO = jest.mocked(UserDAO);
+
+const mockEmailWorker = jest.mocked(EmailWorker);
+const mockEmailQueue = jest.mocked(EmailQueue);
+
+const mockRedisConfig = jest.mocked(RedisService);
 
 // Controller Resources
 const MockControllerResources = {
@@ -68,13 +88,18 @@ const MockDAOResources = {
 const MockCacheResources = {};
 
 // Worker Resources
-const MockWorkerResources = {};
+const MockWorkerResources = {
+  mockEmailWorker: asClass(jest.fn().mockImplementation(() => mockEmailWorker)).singleton(),
+};
 
 // Queue Resources
-const MockQueuesResources = {};
+const MockQueuesResources = {
+  mockEmailQueue: asClass(jest.fn().mockImplementation(() => mockEmailQueue)).singleton(),
+};
 
 // Utils and Config Resources
 const MockUtilsResources = {
+  mockRedisConfig: asClass(jest.fn().mockImplementation(() => mockRedisConfig)).singleton(),
   mockDatabaseService: asClass(jest.fn().mockImplementation(() => mockDatabaseService)).singleton(),
 };
 

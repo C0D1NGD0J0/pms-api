@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import dayjs from 'dayjs';
 import { User } from '@models/index';
+import { isValidLocation } from '@utils/index';
 import { IUserRelationshipsEnum } from '@interfaces/user.interface';
 
 const isUniqueEmail = async (value: string) => {
@@ -41,12 +42,20 @@ export const UserSignupSchema = z
         { message: 'Email already in use.' }
       ),
     password: z.string().min(6, 'Password must be at least 6 characters'),
-    location: z.string().max(35, 'Location must be at most 35 characters').optional(),
+    location: z
+      .string()
+      .max(35, 'Location(city) must be at most 35 characters')
+      .refine(
+        (cityName) => {
+          const normalizedCityName = cityName.trim().toLowerCase();
+          return isValidLocation(normalizedCityName);
+        },
+        { message: 'Please enter a valid city name' }
+      ),
     phoneNumber: z.string().optional(),
-    userType: z.enum(['admin', 'tenant', 'manager', 'employee']),
     accountType: z.object({
       planId: z.string(),
-      name: z.string(),
+      planName: z.string(),
       isEnterpriseAccount: z.boolean(),
     }),
     companyProfile: z

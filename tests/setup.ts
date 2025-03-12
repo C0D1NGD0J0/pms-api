@@ -19,7 +19,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await db.clearTestDataRecords();
+  // await db.clearTestDataRecords();
 });
 
 afterEach(() => {

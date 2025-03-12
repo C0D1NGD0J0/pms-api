@@ -2,15 +2,16 @@ import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { v4 as uuid } from 'uuid';
-import { EMAIL_TEMPLATES } from '@utils/constants';
-import { hashGenerator, createLogger } from '@utils/index';
+import { EmailQueue } from '@queues/index';
+import { InvalidRequestError } from '@shared/customErrors';
 import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
-import { ISuccessReturnData } from '@interfaces/utils.interface';
 import { IUserRole, ISignupData } from '@interfaces/user.interface';
-import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
+import { MailType, ISuccessReturnData } from '@interfaces/utils.interface';
+import { JOB_NAME, hashGenerator, getLocationDetails, createLogger } from '@utils/index';
 
 interface IConstructor {
   profileDAO: ProfileDAO;
+  emailQueue: EmailQueue;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
 }
@@ -20,82 +21,83 @@ export class AuthService {
   private userDAO: UserDAO;
   private clientDAO: ClientDAO;
   private profileDAO: ProfileDAO;
+  private emailQueue: EmailQueue;
 
-  constructor({ userDAO, clientDAO, profileDAO }: IConstructor) {
+  constructor({ userDAO, clientDAO, profileDAO, emailQueue }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
+    this.emailQueue = emailQueue;
     this.log = createLogger('AuthService');
   }
 
   signup = async (signupData: ISignupData): Promise<ISuccessReturnData> => {
-    try {
-      const session = await this.userDAO.startSession();
-      const result = await this.userDAO.withTransaction(session, async (session) => {
-        const _userId = new Types.ObjectId();
-        const clientId = uuid();
-        const { accountType, companyInfo, ...userData } = signupData;
+    const session = await this.userDAO.startSession();
+    const result = await this.userDAO.withTransaction(session, async (session) => {
+      const _userId = new Types.ObjectId();
+      const clientId = uuid();
+      const { accountType, companyInfo, ...userData } = signupData;
 
-        const user = await this.userDAO.insert(
-          {
-            ...userData,
-            _id: _userId,
-            uid: uuid(),
-            isActive: false,
-            activationToken: hashGenerator({ usenano: true }),
-            cids: [{ cid: clientId, roles: [IUserRole.ADMIN], isConnected: false }],
-            cid: clientId,
-            activationTokenExpiresAt: dayjs().add(2, 'hour').toDate(),
-          },
-          session
-        );
+      const locationInfo = getLocationDetails(userData.location);
 
-        if (!user) {
-          throw new InvalidRequestError({ message: 'User not created' });
-        }
+      const user = await this.userDAO.insert(
+        {
+          ...userData,
+          uid: uuid(),
+          _id: _userId,
+          cid: clientId,
+          isActive: false,
+          location: locationInfo || userData.location,
+          activationToken: hashGenerator({ usenano: true }),
+          activationTokenExpiresAt: dayjs().add(2, 'hour').toDate(),
+          cids: [{ cid: clientId, roles: [IUserRole.ADMIN], isConnected: false }],
+        },
+        session
+      );
 
-        const client = await this.clientDAO.insert(
-          {
-            cid: clientId,
-            accountAdmin: _userId,
-            accountType,
-            ...(accountType.isEnterpriseAccount ? { companyInfo } : {}),
-          },
-          session
-        );
+      if (!user) {
+        throw new InvalidRequestError({ message: 'User not created' });
+      }
 
-        await this.profileDAO.createUserProfile(
-          _userId,
-          {
-            user: _userId,
-            puid: uuid(),
-            lang: client.settings.lang,
-            timeZone: client.settings.timeZone,
-          },
-          session
-        );
+      const client = await this.clientDAO.insert(
+        {
+          cid: clientId,
+          accountAdmin: _userId,
+          accountType,
+          ...(accountType.isEnterpriseAccount ? { companyInfo } : {}),
+        },
+        session
+      );
 
-        return {
-          emailData: {
-            to: user.email,
-            subject: 'Activate your account',
-            template: EMAIL_TEMPLATES.ACCOUNT_ACTIVATION,
-            data: {
-              fullname: user.fullname,
-              activationUrl: `${process.env.FRONTEND_URL}/account_activation/${client.cid}?t=${user.activationToken}`,
-            },
-          },
-        };
-      });
+      await this.profileDAO.createUserProfile(
+        _userId,
+        {
+          user: _userId,
+          puid: uuid(),
+          lang: client.settings.lang,
+          timeZone: client.settings.timeZone,
+        },
+        session
+      );
 
       return {
-        success: true,
-        data: result,
-        msg: `Account activation email has been sent to ${result.emailData.to}`,
+        emailData: {
+          to: user.email,
+          subject: 'Activate your account',
+          emailType: MailType.ACCOUNT_ACTIVATION,
+          data: {
+            fullname: user.fullname,
+            activationUrl: `${process.env.FRONTEND_URL}/account_activation/${client.cid}?t=${user.activationToken}`,
+          },
+        },
       };
-    } catch (error) {
-      this.log.error({ error }, 'Error in signup process');
-      throw new BadRequestError({ message: 'Error in signup process' });
-    }
+    });
+
+    this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, result.emailData);
+    return {
+      success: true,
+      data: result,
+      msg: `Account activation email has been sent to ${result.emailData.to}`,
+    };
   };
 }

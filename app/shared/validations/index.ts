@@ -17,8 +17,9 @@ export const validateRequest = (schema: ZodSchema) => {
             message: err.message,
           })),
         });
+      } else {
+        next(error);
       }
-      next(error);
     }
   };
 };

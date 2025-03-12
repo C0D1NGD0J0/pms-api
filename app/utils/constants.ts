@@ -35,10 +35,9 @@ export const MAIL_TYPES = {
 };
 
 export const QUEUE_NAMES = {
-  EMAIL_QUEUE: 'emailQueue',
-  IMAGE_QUEUE: 'imageUploadQueue',
-  VIDEO_QUEUE: 'videoUploadQueue',
-  NOTIFICATION_QUEUE: 'notificationQueue',
+  ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
+  IMAGE_UPLOAD_QUEUE: 'imageUploadQueue',
+  VIDEO_UPLOAD_QUEUE: 'videoUploadQueue',
   ASSET_REMOVAL_QUEUE: 'assetRemovalQueue',
 };
 

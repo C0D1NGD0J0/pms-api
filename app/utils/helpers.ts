@@ -1,8 +1,8 @@
 import color from 'colors';
 import crypto from 'crypto';
 import bunyan from 'bunyan';
-import { nanoid } from 'nanoid';
 import { envVariables } from '@shared/config';
+import { Country, City } from 'country-state-city';
 import { Response, Request, NextFunction } from 'express';
 import {
   PaginateResult,
@@ -120,7 +120,7 @@ export function hashGenerator(hashOpts: {
   usenano?: boolean;
 }): string {
   try {
-    const { byteLength = 16, algorithm = 'sha256', usenano = false } = hashOpts;
+    const { byteLength = 16, algorithm = 'sha256' } = hashOpts;
     // if (usenano) {
     //   return nanoid(10);
     // }
@@ -266,4 +266,51 @@ export const paginateResult = (count: number, skip: number, limit: number): Pagi
   };
 
   return result;
+};
+
+/**
+ * Validates if the provided name is a valid city or country
+ * @param location The city or country name to validate
+ * @returns {boolean} True if the location is a valid city or country name
+ */
+export const isValidLocation = (location: string): boolean => {
+  if (!location) return false;
+
+  const normalizedLocation = location.trim().toLowerCase();
+
+  const isCity = City.getAllCities().some((city) => city.name.toLowerCase() === normalizedLocation);
+  if (isCity) return true;
+
+  const isCountry = Country.getAllCountries().some(
+    (country) => country.name.toLowerCase() === normalizedLocation
+  );
+  return isCountry;
+};
+
+/**
+ * Get location details for a city or country
+ * @param location The city or country name
+ * @returns Location details or null if not found
+ */
+export const getLocationDetails = (location: string): string | null => {
+  if (!location) return null;
+
+  const normalizedLocation = location.trim().toLowerCase();
+
+  const matchingCity = City.getAllCities().find(
+    (city) => city.name.toLowerCase() === normalizedLocation
+  );
+
+  if (matchingCity) {
+    const country = Country.getCountryByCode(matchingCity.countryCode);
+    return `${matchingCity.name}, ${country?.name}`;
+  }
+  const matchingCountry = Country.getAllCountries().find(
+    (country) => country.name.toLowerCase() === normalizedLocation
+  );
+
+  if (matchingCountry) {
+    return `${matchingCountry.name}`;
+  }
+  return null;
 };

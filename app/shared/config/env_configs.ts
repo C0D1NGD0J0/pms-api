@@ -3,15 +3,20 @@ dotenv.config();
 
 class EnvVariables {
   public EMAIL: {
-    PROVIDER_PORT: number;
-    APP_EMAIL_ADDRESS: string;
-    MAILTRAP: {
-      SMTP_USERNAME: string;
-      SMTP_PASSWORD: string;
+    DEV: {
+      PROVIDER: string;
+      PROVIDER_PORT: number;
+      PROVIDER_HOST: string;
+      PROVIDER_USERNAME: string;
+      PROVIDER_PASSWORD: string;
     };
-    GMAIL: {
-      USERNAME: string;
-      PASSWORD: string;
+    APP_EMAIL_ADDRESS: string;
+    PROD: {
+      PROVIDER: string;
+      PROVIDER_HOST: string;
+      PROVIDER_PORT: number;
+      PROVIDER_USERNAME: string;
+      PROVIDER_PASSWORD: string;
     };
   };
   public JWT: {
@@ -100,16 +105,21 @@ class EnvVariables {
       },
     };
     this.EMAIL = {
-      PROVIDER_PORT: Number(process.env.EMAIL_PROVIDER_PORT),
+      DEV: {
+        PROVIDER: process.env.EMAIL_PROVIDER_DEV || '',
+        PROVIDER_PORT: Number(process.env.EMAIL_PROVIDER_PORT_DEV),
+        PROVIDER_HOST: process.env.EMAIL_PROVIDER_HOST_DEV || '',
+        PROVIDER_USERNAME: process.env.EMAIL_PROVIDER_USERNAME_DEV || '',
+        PROVIDER_PASSWORD: process.env.EMAIL_PROVIDER_PASSWORD_DEV || '',
+      },
+      PROD: {
+        PROVIDER: process.env.EMAIL_PROVIDER_PROD || '',
+        PROVIDER_HOST: process.env.EMAIL_PROVIDER_HOST_PROD || '',
+        PROVIDER_PORT: Number(process.env.EMAIL_PROVIDER_PORT_PROD),
+        PROVIDER_USERNAME: process.env.EMAIL_PROVIDER_USERNAME_PROD || '',
+        PROVIDER_PASSWORD: process.env.EMAIL_PROVIDER_USERNAME_PROD || '',
+      },
       APP_EMAIL_ADDRESS: process.env.APP_EMAIL_ADDRESS || '',
-      MAILTRAP: {
-        SMTP_USERNAME: process.env.MAILTRAP_SMTP_USERNAME || '',
-        SMTP_PASSWORD: process.env.MAILTRAP_SMTP_PASSWORD || '',
-      },
-      GMAIL: {
-        USERNAME: process.env.GMAIL_USERNAME || '',
-        PASSWORD: process.env.GMAIL_PASSWORD || '',
-      },
     };
     this.FRONTEND = {
       URL: process.env.FRONTEND_URL || '',

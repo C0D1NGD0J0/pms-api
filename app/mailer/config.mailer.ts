@@ -194,43 +194,32 @@ export class MailService {
    * @returns Nodemailer transporter
    */
   private buildMailTransporter(): nodemailer.Transporter {
+    return nodemailer.createTransport(this.getEnvironmentTransportOptions());
+  }
+
+  private getEnvironmentTransportOptions() {
     const isProduction = envVariables.SERVER.ENV === 'production';
-
-    const transportOptions = isProduction
-      ? this.getGmailTransportOptions()
-      : this.getMailtrapTransportOptions();
-
-    return nodemailer.createTransport(transportOptions);
-  }
-
-  /**
-   * Gmail transport options for production
-   */
-  private getGmailTransportOptions() {
-    return {
-      service: 'gmail',
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: {
-        type: 'login',
-        user: envVariables.EMAIL.GMAIL.USERNAME,
-        pass: envVariables.EMAIL.GMAIL.PASSWORD,
-      },
-    };
-  }
-
-  /**
-   * Mailtrap transport options for development
-   */
-  private getMailtrapTransportOptions() {
-    return {
-      host: 'smtp.mailtrap.io',
-      port: envVariables.EMAIL.PROVIDER_PORT,
-      auth: {
-        user: envVariables.EMAIL.MAILTRAP.SMTP_USERNAME,
-        pass: envVariables.EMAIL.MAILTRAP.SMTP_PASSWORD,
-      },
-    };
+    if (isProduction) {
+      return {
+        service: envVariables.EMAIL.PROD.PROVIDER,
+        host: envVariables.EMAIL.PROD.PROVIDER_HOST,
+        port: envVariables.EMAIL.PROD.PROVIDER_PORT,
+        secure: true,
+        auth: {
+          user: envVariables.EMAIL.PROD.PROVIDER_USERNAME,
+          pass: envVariables.EMAIL.PROD.PROVIDER_PASSWORD,
+        },
+      };
+    } else {
+      return {
+        service: envVariables.EMAIL.DEV.PROVIDER,
+        host: envVariables.EMAIL.DEV.PROVIDER_HOST,
+        port: envVariables.EMAIL.DEV.PROVIDER_PORT,
+        auth: {
+          user: envVariables.EMAIL.DEV.PROVIDER_USERNAME,
+          pass: envVariables.EMAIL.DEV.PROVIDER_PASSWORD,
+        },
+      };
+    }
   }
 }

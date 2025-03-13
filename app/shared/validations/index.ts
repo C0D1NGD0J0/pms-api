@@ -1,11 +1,21 @@
-import { ZodSchema, ZodError } from 'zod';
 import { httpStatusCodes } from '@utils/constants';
+import { ZodSchema, ZodError, AnyZodObject } from 'zod';
 import { Response, Request, NextFunction } from 'express';
 
-export const validateRequest = (schema: ZodSchema) => {
+export const validateRequest = (schema: {
+  query?: AnyZodObject;
+  params?: AnyZodObject;
+  body?: ZodSchema;
+}) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await schema.parseAsync(req.body);
+      if (schema.query) {
+        req.query = await schema.query.parseAsync(req.query);
+      }
+      if (schema.params) {
+        req.params = await schema.params.parseAsync(req.params);
+      }
+      schema.body && (await schema.body.parseAsync(req.body));
       next();
     } catch (error) {
       if (error instanceof ZodError) {

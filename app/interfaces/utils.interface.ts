@@ -84,7 +84,7 @@ export interface IPaginationQuery {
   page?: number;
 }
 
-export interface IEmailOptions<T = unknown> {
+export interface IEmailOptions<T> {
   emailType: string;
   subject: string;
   to: string;

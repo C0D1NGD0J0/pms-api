@@ -1,5 +1,4 @@
 import { Types, FilterQuery } from 'mongoose';
-import { ISignupData, IInviteUserSignup } from '@interfaces/index';
 import { IUserRoleType, IUserDocument } from '@interfaces/user.interface';
 
 import { IBaseDAO, dynamic } from './baseDAO.interface';
@@ -46,6 +45,17 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
   updateUser(
     userId: string | Types.ObjectId,
     updates: Partial<IUserDocument>
+  ): Promise<IUserDocument | null>;
+
+  /**
+   * Generate and save an activation token for a user.
+   *
+   * @param userId - The ID of the user to generate a token for.
+   * @returns A promise that resolves to the generated token.
+   */
+  createActivationToken(
+    userId?: string | Types.ObjectId,
+    email?: string
   ): Promise<IUserDocument | null>;
 
   /**
@@ -109,14 +119,6 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
    * @returns A promise that resolves to the found user document or null if no user is found.
    */
   getUserByUId(uid: string, opts?: dynamic): Promise<IUserDocument | null>;
-
-  /**
-   * Generate and save an activation token for a user.
-   *
-   * @param userId - The ID of the user to generate a token for.
-   * @returns A promise that resolves to the generated token.
-   */
-  createActivationToken(userId: string | Types.ObjectId): Promise<string>;
 
   /**
    * Search for users by name, email, or other criteria.

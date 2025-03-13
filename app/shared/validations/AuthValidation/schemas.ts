@@ -204,14 +204,14 @@ export const ForgotPasswordSchema = z.object({
     .email({ message: 'Invalid email format.' })
     .refine(
       async (email) => {
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email, isActive: true });
         if (!user) {
           return false;
         }
         return true;
       },
       {
-        message: 'No account found with this email address',
+        message: 'Invalid email address provided.',
       }
     ),
 });

@@ -8,7 +8,7 @@ import {
 
 export class AuthValidations {
   static activationToken = AccountActivationSchema;
-  static forgotPassword = ForgotPasswordSchema;
+  static emailValidation = ForgotPasswordSchema;
   static resetPassword = ResetPasswordSchema;
   static signup = UserSignupSchema;
   static login = LoginSchema;

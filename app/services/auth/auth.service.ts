@@ -3,11 +3,12 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { v4 as uuid } from 'uuid';
 import { EmailQueue } from '@queues/index';
-import { InvalidRequestError } from '@shared/customErrors';
+import { BadRequestError, InvalidRequestError, NotFoundError } from '@shared/customErrors';
 import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { IUserRole, ISignupData } from '@interfaces/user.interface';
 import { MailType, ISuccessReturnData } from '@interfaces/utils.interface';
 import { JOB_NAME, hashGenerator, getLocationDetails, createLogger } from '@utils/index';
+import { envVariables } from '@shared/config';
 
 interface IConstructor {
   profileDAO: ProfileDAO;
@@ -31,7 +32,7 @@ export class AuthService {
     this.log = createLogger('AuthService');
   }
 
-  signup = async (signupData: ISignupData): Promise<ISuccessReturnData> => {
+  async signup(signupData: ISignupData): Promise<ISuccessReturnData> {
     const session = await this.userDAO.startSession();
     const result = await this.userDAO.withTransaction(session, async (session) => {
       const _userId = new Types.ObjectId();
@@ -95,9 +96,51 @@ export class AuthService {
 
     this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, result.emailData);
     return {
+      data: null,
       success: true,
-      data: result,
       msg: `Account activation email has been sent to ${result.emailData.to}`,
     };
-  };
+  }
+
+  async accountActivation(token: string): Promise<ISuccessReturnData> {
+    if (!token) {
+      this.log.error('Activation token missing.');
+      throw new BadRequestError({ message: 'Activation token missing.' });
+    }
+
+    const activated = await this.userDAO.activateAccount(token.trim());
+    if (!activated) {
+      const msg = 'Invalid or expired activation token.';
+      throw new NotFoundError({ message: msg });
+    }
+
+    return { success: true, data: null, msg: 'Account activated successfully.' };
+  }
+
+  async sendActivationLink(email: string): Promise<ISuccessReturnData> {
+    if (!email) {
+      throw new BadRequestError({ message: 'Email is required to resend activation link.' });
+    }
+
+    const user = await this.userDAO.createActivationToken('', email);
+    if (!user) {
+      throw new NotFoundError({ message: 'No record found with email provided.' });
+    }
+
+    const emailData = {
+      to: user.email,
+      subject: 'Activate your account',
+      emailType: MailType.ACCOUNT_ACTIVATION,
+      data: {
+        fullname: user.fullname,
+        activationUrl: `${envVariables.FRONTEND.URL}/account_activation/${user.cid}?t=${user.activationToken}`,
+      },
+    };
+    this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
+    return {
+      success: true,
+      data: emailData,
+      msg: `Account activation link has been sent to ${emailData.to}`,
+    };
+  }
 }

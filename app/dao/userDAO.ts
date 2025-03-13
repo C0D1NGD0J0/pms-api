@@ -130,15 +130,20 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * @param userId - The ID of the user to generate a token for.
    * @returns A promise that resolves to the generated token.
    */
-  async createActivationToken(userId: string): Promise<string> {
+  async createActivationToken(userId?: string, email?: string): Promise<IUserDocument | null> {
     try {
-      const token = hashGenerator({ usenano: true });
-      await this.updateUser(userId, {
+      if (!userId && !email) {
+        throw new Error('User ID or email is required to create activation token.');
+      }
+      const token = hashGenerator({});
+      const filter = { $or: [{ _id: userId }, { email }], deletedAt: null, isActive: false };
+
+      const user = await this.update(filter, {
         activationToken: token,
-        activationTokenExpiresAt: dayjs().add(4, 'hour').toDate(),
+        activationTokenExpiresAt: dayjs().add(2, 'hour').toDate(),
       } as Partial<IUserDocument>);
 
-      return token;
+      return user;
     } catch (error) {
       this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);

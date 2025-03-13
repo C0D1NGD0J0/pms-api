@@ -72,7 +72,7 @@ export class InvalidRequestError extends CustomError {
  */
 export class ValidationRequestError extends CustomError {
   constructor(options?: {
-    message?: string;
+    message: string;
     errorInfo?: Record<string, string>[];
     statusCode?: number;
     originalError?: Error;
@@ -91,7 +91,7 @@ export class ValidationRequestError extends CustomError {
  */
 export class BadRequestError extends CustomError {
   constructor(options?: {
-    message?: string;
+    message: string;
     statusCode?: number;
     errorInfo?: Record<string, string>[];
     originalError?: Error;

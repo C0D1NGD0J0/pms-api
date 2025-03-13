@@ -5,10 +5,10 @@ export const httpStatusCodes = {
   BAD_REQUEST: 400,
   UNPROCESSABLE: 422,
   UNAUTHORIZED: 401,
-  INTERNAL_SERVER: 500,
   RATE_LIMITER: 429,
-  SERVICE_UNAVAILABLE: 503,
   EXPIRED_AUTH_TOKEN: 419,
+  SERVICE_UNAVAILABLE: 503,
+  INTERNAL_SERVER_ERROR: 500,
 };
 
 export const JWT_KEY_NAMES = {
@@ -17,3 +17,32 @@ export const JWT_KEY_NAMES = {
 };
 
 export const SLUGIFY_CONFIG = { lower: true, strict: true, replacement: '_', trim: true };
+
+export const EMAIL_TEMPLATES = {
+  PASSWORD_RESET: 'password-reset',
+  FORGOT_PASSWORD: 'forgot-password',
+  ACCOUNT_ACTIVATION: 'account-activation',
+};
+
+export const MAIL_TYPES = {
+  SUBSCRIPTION_UPDATE: 'subscriptionUpdate',
+  SUBSCRIPTION_CANCEL: 'subscriptionCancel',
+  ACCOUNT_ACTIVATION: 'accountActivation',
+  TENANT_REGISTRATION: 'tenantRegistration',
+  FORGOT_PASSWORD: 'forgotPassword',
+  PASSWORD_RESET: 'passwordReset',
+  ACCOUNT_UPDATE: 'accountUpdate',
+};
+
+export const QUEUE_NAMES = {
+  ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
+  IMAGE_UPLOAD_QUEUE: 'imageUploadQueue',
+  VIDEO_UPLOAD_QUEUE: 'videoUploadQueue',
+  ASSET_REMOVAL_QUEUE: 'assetRemovalQueue',
+};
+
+export const JOB_NAME = {
+  ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
+  DELETE_REMOTE_ASSET: 'deleteRemoteAssetJob',
+  DELETE_LOCAL_ASSET: 'deleteLocalAssetJob',
+};

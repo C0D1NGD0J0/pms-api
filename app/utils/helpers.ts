@@ -1,28 +1,129 @@
 import color from 'colors';
 import crypto from 'crypto';
 import bunyan from 'bunyan';
-import { NextFunction, Request, Response } from 'express';
-
 import { envVariables } from '@shared/config';
+import { Country, City } from 'country-state-city';
+import { Response, Request, NextFunction } from 'express';
 import {
-  AsyncRequestHandler,
-  ExtractedMediaFile,
-  MulterFile,
   PaginateResult,
+  MulterFile,
+  FileType,
+  ExtractedMediaFile,
+  AsyncRequestHandler,
 } from '@interfaces/utils.interface';
+
+interface LogRecord {
+  level: number;
+  name?: string;
+  streams: any;
+  msg: string;
+}
+
+/**
+ * Creates a customized Bunyan logger instance with color-coded console output
+ * @param name - The name of the logger to create
+ * @param options - Optional configuration for the logger
+ * @returns A configured Bunyan logger instance
+ */
+export function createLogger(name: string) {
+  const LOG_LEVELS: Record<string, number> = {
+    INFO: 30,
+    ERROR: 50,
+    DEBUG: 20,
+    WARN: 40,
+    TRACE: 10,
+    FATAL: 60,
+  };
+
+  const customStream = {
+    write: (record: unknown) => {
+      try {
+        let output: string;
+        const logRecord = record as LogRecord;
+
+        switch (logRecord.level) {
+          case LOG_LEVELS.ERROR:
+          case LOG_LEVELS.FATAL:
+            output = color.red.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            break;
+          case LOG_LEVELS.DEBUG:
+            output = color.cyan.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            break;
+          case LOG_LEVELS.WARN:
+            output = color.magenta.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            break;
+          case LOG_LEVELS.INFO:
+            output = color.yellow.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            break;
+          default:
+            output = color.grey.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+        }
+
+        if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
+          console.log(output);
+        }
+      } catch (err) {
+        console.error('Logging Error:', err);
+      }
+    },
+  };
+
+  return bunyan.createLogger({
+    name,
+    level: 'debug',
+    streams: [
+      {
+        level: 'debug',
+        type: 'raw',
+        stream: customStream,
+      },
+    ],
+  });
+}
+
+/**
+ * Validates if a string is a valid phone number across multiple formats
+ * @param phoneNumber - The phone number string to validate
+ * @returns Boolean indicating if the phone number is valid
+ */
+export function isValidPhoneNumber(phoneNumber: string): boolean {
+  if (!phoneNumber) {
+    return false;
+  }
+  const PHONE_PATTERNS = {
+    US_CANADA: /^(\+\d{1,2}\s?)?1?\.?\s?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$/,
+    EUROPE: /^(\+3[0-9]|4[0-46-9]|5[1-8]|7[1-79])?\d{6,14}$/,
+    AFRICA: /^(\+2[0-46-8])?\d{6,14}$/,
+  };
+  const normalizedNumber = phoneNumber.trim();
+
+  return (
+    PHONE_PATTERNS.US_CANADA.test(normalizedNumber) ||
+    PHONE_PATTERNS.EUROPE.test(normalizedNumber) ||
+    PHONE_PATTERNS.AFRICA.test(normalizedNumber)
+  );
+}
 
 /**
  * Generates a random hash string using SHA-256
- * @param byteLength - Number of random bytes to generate (default: 10)
- * @param algorithm - Hashing algorithm to use (default: 'sha256')
+ * @param opts - {
+  byteLength?: number;
+  algorithm?: 'sha256' | 'sha512' | 'md5';
+  usenano?: boolean;
+}
  * @returns A hexadecimal string representation of the hash
  * @throws Error if crypto operations fail
  */
-export function hashGenerator(
-  byteLength: number = 10,
-  algorithm: 'sha256' | 'sha512' | 'md5' = 'sha256'
-): string {
+export function hashGenerator(hashOpts: {
+  byteLength?: number;
+  algorithm?: string;
+  usenano?: boolean;
+}): string {
   try {
+    const { byteLength = 16, algorithm = 'sha256' } = hashOpts;
+    // if (usenano) {
+    //   return nanoid(10);
+    // }
     const token = crypto.randomBytes(byteLength).toString('hex');
     return crypto.createHash(algorithm).update(token).digest('hex');
   } catch (error) {
@@ -57,90 +158,6 @@ export function setAuthCookie(cookieName: string, token: string, res: Response) 
 }
 
 /**
- * Validates if a string is a valid phone number across multiple formats
- * @param phoneNumber - The phone number string to validate
- * @returns Boolean indicating if the phone number is valid
- */
-export function isValidPhoneNumber(phoneNumber: string): boolean {
-  if (!phoneNumber) {
-    return false;
-  }
-  const PHONE_PATTERNS = {
-    US_CANADA: /^(\+\d{1,2}\s?)?1?\.?\s?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$/,
-    EUROPE: /^(\+3[0-9]|4[0-46-9]|5[1-8]|7[1-79])?\d{6,14}$/,
-    AFRICA: /^(\+2[0-46-8])?\d{6,14}$/,
-  };
-  const normalizedNumber = phoneNumber.trim();
-
-  return (
-    PHONE_PATTERNS.US_CANADA.test(normalizedNumber) ||
-    PHONE_PATTERNS.EUROPE.test(normalizedNumber) ||
-    PHONE_PATTERNS.AFRICA.test(normalizedNumber)
-  );
-}
-
-/**
- * Creates a customized Bunyan logger instance with color-coded console output
- * @param name - The name of the logger to create
- * @param options - Optional configuration for the logger
- * @returns A configured Bunyan logger instance
- */
-export function createLogger(name: string) {
-  const LOG_LEVELS: Record<string, number> = {
-    INFO: 30,
-    ERROR: 50,
-    DEBUG: 20,
-    WARN: 40,
-    TRACE: 10,
-    FATAL: 60,
-  };
-
-  const customStream = {
-    write: (record: unknown) => {
-      try {
-        let output: string;
-
-        switch (record.level) {
-          case LOG_LEVELS.ERROR:
-          case LOG_LEVELS.FATAL:
-            output = color.red.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
-            break;
-          case LOG_LEVELS.WARN:
-            output = color.magenta.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
-            break;
-          case LOG_LEVELS.INFO:
-            output = color.yellow.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
-            break;
-          case LOG_LEVELS.DEBUG:
-            output = color.cyan.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
-            break;
-          default:
-            output = color.grey.bold(`${record?.name || 'UNKNOWN'}: ${record.msg}`);
-        }
-
-        if (process.env.NODE_ENV === 'development') {
-          console.log(output);
-        }
-      } catch (err) {
-        console.error('Logging Error:', err);
-      }
-    },
-  };
-
-  return bunyan.createLogger({
-    name,
-    level: 'debug',
-    streams: [
-      {
-        level: 'debug',
-        type: 'raw',
-        stream: customStream,
-      },
-    ],
-  });
-}
-
-/**
  * Wraps an async Express request handler to properly catch and forward errors to Express error middleware
  * @param fn - The async request handler function to wrap
  * @returns A wrapped function that forwards errors to the next middleware
@@ -148,7 +165,7 @@ export function createLogger(name: string) {
 export function asyncWrapper(fn: AsyncRequestHandler) {
   return (req: Request, res: Response, next: NextFunction): void => {
     Promise.resolve(fn(req, res, next)).catch((err) => {
-      next(err);
+      return next(err);
     });
   };
 }
@@ -249,4 +266,51 @@ export const paginateResult = (count: number, skip: number, limit: number): Pagi
   };
 
   return result;
+};
+
+/**
+ * Validates if the provided name is a valid city or country
+ * @param location The city or country name to validate
+ * @returns {boolean} True if the location is a valid city or country name
+ */
+export const isValidLocation = (location: string): boolean => {
+  if (!location) return false;
+
+  const normalizedLocation = location.trim().toLowerCase();
+
+  const isCity = City.getAllCities().some((city) => city.name.toLowerCase() === normalizedLocation);
+  if (isCity) return true;
+
+  const isCountry = Country.getAllCountries().some(
+    (country) => country.name.toLowerCase() === normalizedLocation
+  );
+  return isCountry;
+};
+
+/**
+ * Get location details for a city or country
+ * @param location The city or country name
+ * @returns Location details or null if not found
+ */
+export const getLocationDetails = (location: string): string | null => {
+  if (!location) return null;
+
+  const normalizedLocation = location.trim().toLowerCase();
+
+  const matchingCity = City.getAllCities().find(
+    (city) => city.name.toLowerCase() === normalizedLocation
+  );
+
+  if (matchingCity) {
+    const country = Country.getCountryByCode(matchingCity.countryCode);
+    return `${matchingCity.name}, ${country?.name}`;
+  }
+  const matchingCountry = Country.getAllCountries().find(
+    (country) => country.name.toLowerCase() === normalizedLocation
+  );
+
+  if (matchingCountry) {
+    return `${matchingCountry.name}`;
+  }
+  return null;
 };

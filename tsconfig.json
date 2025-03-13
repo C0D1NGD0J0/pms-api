@@ -29,7 +29,7 @@
       "@models/*": ["./app/models/*"],
       "@routes/*": ["./app/routes/*"],
       "@database/*": ["./app/database/*"],
-      "@services/*": ["./app/services/*"],
+      "@services/*": ["app/services/*"],
       "@sockets/*": ["./app/sockets/*"],
       "@caching/*": ["./app/caching/*"],
       "@queues/*": ["./app/queues/*"],
@@ -38,11 +38,11 @@
       "@di/*": ["./app/di/*"],
       "@shared/*": ["./app/shared/*"],
       "@workers/*": ["./app/workers/*"],
-      "@tests/*": ["tests/*"],
+      "@tests/*": ["./tests/*"],
       "@utils/*": ["./app/utils/*"],
       "@root/*": ["*"]
     },
-    "typeRoots": ["./types/", "node_modules/@types"]
+    "typeRoots": ["./types/*", "node_modules/@types", "./types/express/index.d.ts"]
   },
   "ts-node": {
     "require": ["tsconfig-paths/register"],
@@ -50,19 +50,10 @@
     "swc": true
   },
   "compileOnSave": true,
-  "include": [
-    "./app/**/*.ts",
-    "./app/**/*.js",
-    "./server.ts",
-    "./app/**/*.ejs",
-    "./tests/configs/teardown.test.ts",
-    "types/custom.d.ts"
-  ],
+  "include": ["app/**/*", "app.ts", "server.ts", "tests/**/*", "types/**/*"],
   "exclude": [
     "node_modules",
     "**/*.spec.ts",
-    "**/*.test.*",
     "**/mocks/*",
-    "./tests/**/*"
   ]
 }

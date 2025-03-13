@@ -1,21 +1,23 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import dotenv from 'dotenv';
 dotenv.config();
-
+if (process.env.NODE_ENV !== 'test') {
+  require('@di/index');
+}
 import hpp from 'hpp';
 import cors from 'cors';
 import logger from 'morgan';
 import helmet from 'helmet';
 import compression from 'compression';
+import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
-import sanitizer from 'perfect-express-sanitizer';
-import mongoSanitize from 'express-mongo-sanitize';
-import express, { Application, Express, urlencoded, Request, Response } from 'express';
-
-// import { routes } from '@routes/index';
-import { createLogger, httpStatusCodes } from '@utils/index';
-import { errorHandlerMiddleware } from '@shared/middlewares';
 import { envVariables } from '@shared/config';
+import { serverAdapter } from '@queues/index';
+import sanitizer from 'perfect-express-sanitizer';
+import { DatabaseService } from '@database/index';
+import mongoSanitize from 'express-mongo-sanitize';
+import { httpStatusCodes, createLogger } from '@utils/index';
+import express, { urlencoded, Response, Request, Application } from 'express';
+import { scopedMiddleware, errorHandlerMiddleware } from '@shared/middlewares';
 
 export interface IAppSetup {
   initConfig(): void;
@@ -23,17 +25,19 @@ export interface IAppSetup {
 
 export class App implements IAppSetup {
   private readonly log = createLogger('App');
+  private readonly db: DatabaseService;
   protected expApp: Application;
 
-  constructor(expressApp: Application) {
+  constructor(expressApp: Application, dbService: DatabaseService) {
     this.expApp = expressApp;
+    this.db = dbService;
   }
 
   initConfig = (): void => {
     this.securityMiddleware(this.expApp);
     this.standardMiddleware(this.expApp);
     this.routes(this.expApp);
-    this.appErrorHandler();
+    this.expApp.use(errorHandlerMiddleware);
   };
 
   private securityMiddleware(app: Application): void {
@@ -62,19 +66,36 @@ export class App implements IAppSetup {
     if (process.env.NODE_ENV !== 'production') {
       app.use(logger('dev'));
     }
+    app.use((req, res, next) => {
+      // Fix common content-type error
+      const contentType = req.headers['content-type'];
+      if (contentType === 'applicationjson') {
+        req.headers['content-type'] = 'application/json';
+        console.log('Fixed malformed Content-Type header');
+      }
+      next();
+    });
     app.use(express.json({ limit: '50mb' }));
     app.use(urlencoded({ extended: true, limit: '50mb' }));
     app.use(cookieParser());
     app.use(compression());
+    app.use(scopedMiddleware);
   }
 
   private routes(app: Application) {
     const BASE_PATH = '/api/v1';
+
     app.use(`${BASE_PATH}/healthcheck`, (req, res) => {
-      res.status(200).json({ success: true });
+      const healthCheck = {
+        uptime: process.uptime(),
+        message: 'OK',
+        timestamp: Date.now(),
+        database: this.db.isConnected() ? 'Connected' : 'Disconnected',
+      };
+      res.status(200).json(healthCheck);
     });
-    // app.use('/queues', serverAdapter.getRouter());
-    // app.use(`${BASE_PATH}/auth`, routes.authRoutes);
+    app.use(`${BASE_PATH}/queues`, serverAdapter.getRouter());
+    app.use(`${BASE_PATH}/auth`, routes.authRoutes);
     // app.use(`${BASE_PATH}/users`, routes.userRoutes);
     // app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
     // app.use(`${BASE_PATH}/vendors`, routes.vendorRoutes);
@@ -89,44 +110,5 @@ export class App implements IAppSetup {
       // catch-all for non-existing routes
       res.status(httpStatusCodes.NOT_FOUND).json({ message: 'Invalid endpoint.' });
     });
-  }
-
-  private appErrorHandler(): void {
-    this.expApp.use(errorHandlerMiddleware);
-
-    process.on('uncaughtException', (err: Error) => {
-      this.log.error(`Uncaught Exception: ${err.message}`);
-      this.serverShutdown(1);
-    });
-
-    process.on('unhandledRejection', (reason: unknown) => {
-      this.log.error(
-        'Unhandled Rejection:',
-        reason instanceof Error ? reason.message : String(reason)
-      );
-      this.serverShutdown(2);
-    });
-
-    process.on('SIGTERM', () => {
-      this.log.info('SIGTERM signal received. Shutting down gracefully...');
-      this.serverShutdown(0);
-    });
-
-    process.on('SIGINT', () => {
-      this.log.info('SIGINT signal received. Shutting down gracefully...');
-      this.serverShutdown(0);
-    });
-  }
-
-  private serverShutdown(exitCode: number): void {
-    Promise.resolve()
-      .then(() => {
-        this.log.info('Shutdown complete.');
-        process.exit(exitCode);
-      })
-      .catch((error: Error) => {
-        this.log.error('Error occured during shutdown: ', error.message);
-        process.exit(1);
-      });
   }
 }

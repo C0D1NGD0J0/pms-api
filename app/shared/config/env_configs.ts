@@ -22,6 +22,9 @@ class EnvVariables {
       SECRET: string;
     };
   };
+  public BULL_BOARD: {
+    BASE_PATH: string;
+  };
   public AWS: {
     REGION: string;
     ACCESS_KEY: string;
@@ -68,6 +71,9 @@ class EnvVariables {
     };
     this.AUTH_COOKIE = {
       NAME: process.env.AUTH_COOKIE_NAME || '',
+    };
+    this.BULL_BOARD = {
+      BASE_PATH: process.env.BULL_BOARD_BASE_PATH || '',
     };
     this.REDIS = {
       PORT: Number(process.env.REDIS_PORT) || 6379,

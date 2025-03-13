@@ -30,44 +30,6 @@ export class CustomError extends Error {
 }
 
 /**
- * Error representing a 400 Bad Request
- */
-export class BadRequestError extends CustomError {
-  constructor(options?: {
-    message?: string;
-    statusCode?: number;
-    errorInfo?: Record<string, string>[];
-    originalError?: Error;
-  }) {
-    super({
-      message: options?.message || 'Bad Request.',
-      statusCode: options?.statusCode || httpStatusCodes.BAD_REQUEST,
-      errorInfo: options?.errorInfo,
-      originalError: options?.originalError,
-    });
-  }
-}
-
-/**
- * Error representing an unprocessable request (422)
- */
-export class InvalidRequestError extends CustomError {
-  constructor(options?: {
-    message?: string;
-    statusCode?: number;
-    errorInfo?: Record<string, string>[];
-    originalError?: Error;
-  }) {
-    super({
-      message: options?.message || 'Unable to process request.',
-      statusCode: options?.statusCode || httpStatusCodes.UNPROCESSABLE,
-      errorInfo: options?.errorInfo,
-      originalError: options?.originalError,
-    });
-  }
-}
-
-/**
  * Error for corrupted file uploads
  */
 export class CorruptedFileRequestError extends CustomError {
@@ -87,11 +49,30 @@ export class CorruptedFileRequestError extends CustomError {
 }
 
 /**
+ * Error representing an unprocessable request (422)
+ */
+export class InvalidRequestError extends CustomError {
+  constructor(options?: {
+    message: string;
+    statusCode?: number;
+    errorInfo?: Record<string, string>[];
+    originalError?: Error;
+  }) {
+    super({
+      message: options?.message || 'Unable to process request.',
+      statusCode: options?.statusCode || httpStatusCodes.UNPROCESSABLE,
+      errorInfo: options?.errorInfo,
+      originalError: options?.originalError,
+    });
+  }
+}
+
+/**
  * Error for validation failures
  */
 export class ValidationRequestError extends CustomError {
   constructor(options?: {
-    message?: string;
+    message: string;
     errorInfo?: Record<string, string>[];
     statusCode?: number;
     originalError?: Error;
@@ -106,39 +87,19 @@ export class ValidationRequestError extends CustomError {
 }
 
 /**
- * Error representing a 401 Unauthorized
+ * Error representing a 400 Bad Request
  */
-export class UnauthorizedError extends CustomError {
-  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
+export class BadRequestError extends CustomError {
+  constructor(options?: {
+    message: string;
+    statusCode?: number;
+    errorInfo?: Record<string, string>[];
+    originalError?: Error;
+  }) {
     super({
-      message: options?.message || 'Unauthorized access.',
-      statusCode: options?.statusCode || httpStatusCodes.UNAUTHORIZED,
-      originalError: options?.originalError,
-    });
-  }
-}
-
-/**
- * Error representing a 403 Forbidden
- */
-export class ForbiddenError extends CustomError {
-  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
-    super({
-      message: options?.message || 'Forbidden.',
-      statusCode: options?.statusCode || httpStatusCodes.FORBIDDEN,
-      originalError: options?.originalError,
-    });
-  }
-}
-
-/**
- * Error representing a 404 Not Found
- */
-export class NotFoundError extends CustomError {
-  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
-    super({
-      message: options?.message || 'Resource not found.',
-      statusCode: options?.statusCode || httpStatusCodes.NOT_FOUND,
+      message: options?.message || 'Bad Request.',
+      statusCode: options?.statusCode || httpStatusCodes.BAD_REQUEST,
+      errorInfo: options?.errorInfo,
       originalError: options?.originalError,
     });
   }
@@ -151,7 +112,7 @@ export class InternalServerError extends CustomError {
   constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
     super({
       message: options?.message || 'Internal Server Error.',
-      statusCode: options?.statusCode || httpStatusCodes.INTERNAL_SERVER,
+      statusCode: options?.statusCode || httpStatusCodes.INTERNAL_SERVER_ERROR,
       isOperational: false,
       originalError: options?.originalError,
     });
@@ -173,14 +134,14 @@ export class ServiceUnavailableError extends CustomError {
 }
 
 /**
- * Error related to MongoDB/Mongoose operations
+ * Error representing a 401 Unauthorized
  */
-export class MongoDatabaseError extends CustomError {
-  constructor(options: { message: string; statusCode?: number; originalError?: Error }) {
+export class UnauthorizedError extends CustomError {
+  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
     super({
-      message: options.message,
-      statusCode: options.statusCode || httpStatusCodes.INTERNAL_SERVER,
-      originalError: options.originalError,
+      message: options?.message || 'Unauthorized access.',
+      statusCode: options?.statusCode || httpStatusCodes.UNAUTHORIZED,
+      originalError: options?.originalError,
     });
   }
 }
@@ -192,8 +153,47 @@ export class RedisError extends CustomError {
   constructor(options: { message: string; statusCode?: number; originalError?: Error }) {
     super({
       message: options.message,
-      statusCode: options.statusCode || httpStatusCodes.INTERNAL_SERVER,
+      statusCode: options.statusCode || httpStatusCodes.INTERNAL_SERVER_ERROR,
       isOperational: false,
+      originalError: options.originalError,
+    });
+  }
+}
+
+/**
+ * Error representing a 404 Not Found
+ */
+export class NotFoundError extends CustomError {
+  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
+    super({
+      message: options?.message || 'Resource not found.',
+      statusCode: options?.statusCode || httpStatusCodes.NOT_FOUND,
+      originalError: options?.originalError,
+    });
+  }
+}
+
+/**
+ * Error representing a 403 Forbidden
+ */
+export class ForbiddenError extends CustomError {
+  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
+    super({
+      message: options?.message || 'Forbidden.',
+      statusCode: options?.statusCode || httpStatusCodes.FORBIDDEN,
+      originalError: options?.originalError,
+    });
+  }
+}
+
+/**
+ * Error related to MongoDB/Mongoose operations
+ */
+export class MongoDatabaseError extends CustomError {
+  constructor(options: { message: string; statusCode?: number; originalError?: Error }) {
+    super({
+      message: options.message,
+      statusCode: options.statusCode || httpStatusCodes.INTERNAL_SERVER_ERROR,
       originalError: options.originalError,
     });
   }
@@ -202,7 +202,7 @@ export class RedisError extends CustomError {
 /**
  * Utility function to handle and convert Mongoose errors
  */
-export function handleMongooseError(err: MongooseError | Error): CustomError {
+export function handleMongoError(err: MongooseError | Error): CustomError {
   // CastError - invalid ObjectId
   if (err.name === 'CastError') {
     const castErr = err as unknown as { value: string };
@@ -223,21 +223,22 @@ export function handleMongooseError(err: MongooseError | Error): CustomError {
   // Validation error
   if (err.name === 'ValidationError') {
     const validationErr = err as unknown as {
-      errors: Record<string, { message: string; name: string }>;
+      _message: string;
+      errors: Record<string, { message: string; name: string; path: string }>;
     };
     const messages = Object.values(validationErr.errors).map((error) => {
       if (error.name === 'CastError') {
-        return error.message.replace('Error, ', '');
+        return { [error.path]: error.message.replace('Error, ', '') };
       }
       if (error.name === 'ValidatorError') {
-        return error.message.replace('Path', '').trim();
+        return { [error.path]: error.message.replace('Path', '').trim() };
       }
-      return error.message || 'Unknown validation error';
+      return { [error.path]: error.message || 'Unknown validation error' };
     });
 
     return new ValidationRequestError({
-      message: 'Validation failed',
-      errorInfo: messages.map((msg) => ({ message: msg })),
+      message: validationErr._message,
+      errorInfo: messages,
       originalError: err,
     });
   }

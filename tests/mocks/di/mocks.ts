@@ -46,19 +46,19 @@ jest.mock('@queues/index', () => ({
   EmailQueue: jest.fn(),
 }));
 
-const mockAuthController = jest.mocked(AuthController);
+export const mockAuthController = jest.mocked(AuthController);
 
-const mockAuthService = jest.mocked(AuthService);
-const mockDatabaseService = jest.mocked(DatabaseService);
+export const MockAuthService = jest.mocked(AuthService);
+export const mockDatabaseService = jest.mocked(DatabaseService);
 
-const mockProfileDAO = jest.mocked(ProfileDAO);
-const mockClientDAO = jest.mocked(ClientDAO);
-const mockUserDAO = jest.mocked(UserDAO);
+export const mockProfileDAO = jest.mocked(ProfileDAO);
+export const mockClientDAO = jest.mocked(ClientDAO);
+export const mockUserDAO = jest.mocked(UserDAO);
 
-const mockEmailWorker = jest.mocked(EmailWorker);
-const mockEmailQueue = jest.mocked(EmailQueue);
+export const mockEmailWorker = jest.mocked(EmailWorker);
+export const mockEmailQueue = jest.mocked(EmailQueue);
 
-const mockRedisConfig = jest.mocked(RedisService);
+export const mockRedisConfig = jest.mocked(RedisService);
 
 // Controller Resources
 const MockControllerResources = {

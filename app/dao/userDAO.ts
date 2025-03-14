@@ -370,7 +370,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * @param newPassword - The new password.
    * @returns A promise that resolves to true if the password was reset successfully, false otherwise.
    */
-  async resetPassword(token: string, newPassword: string): Promise<boolean> {
+  async resetPassword(token: string, password: string): Promise<IUserDocument | null> {
     try {
       const user = await this.findFirst({
         passwordResetToken: token,
@@ -378,14 +378,14 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       });
 
       if (!user) {
-        return false;
+        return null;
       }
 
-      user.password = newPassword;
+      user.password = password;
       user.passwordResetToken = '';
       user.passwordResetTokenExpiresAt = null;
       await user.save();
-      return !!user;
+      return user;
     } catch (error) {
       this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
@@ -398,25 +398,25 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * @param email - The email address of the user.
    * @returns A promise that resolves to the reset token or null if the user doesn't exist.
    */
-  async createPasswordResetToken(email: string): Promise<string | null> {
+  async createPasswordResetToken(email: string): Promise<IUserDocument | null> {
     try {
-      const user = await this.getUserByEmail(email);
+      let user = await this.getUserByEmail(email);
 
       if (!user) {
         return null;
       }
 
-      const token = hashGenerator({ usenano: true });
+      const token = hashGenerator({});
       const expiresAt = dayjs().add(2, 'hour').toDate();
 
-      await this.updateById(user._id.toString(), {
+      user = await this.updateById(user._id.toString(), {
         $set: {
           passwordResetToken: token,
           passwordResetTokenExpiresAt: expiresAt,
         },
       });
 
-      return token;
+      return user;
     } catch (error) {
       this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);

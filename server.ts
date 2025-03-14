@@ -19,6 +19,8 @@ interface IConstructor {
 class Server {
   private app: IAppSetup;
   private expApp: Application;
+  private initialized = false;
+  private static instance: Server;
   private dbService: DatabaseService;
   private PORT = envVariables.SERVER.PORT;
   private httpServer: http.Server | null = null;
@@ -34,12 +36,31 @@ class Server {
   }
 
   start = async (): Promise<void> => {
+    if (this.initialized) {
+      this.log.info('Server already initialized, skipping startup');
+      return;
+    }
+
+    this.log.info('Server initialized...');
     this.dbService.connect();
     this.app.initConfig();
     await this.startServers(this.expApp);
+    this.initialized = true;
   };
 
-  getInstance = () => ({ server: this.expApp, dbInstance: this.dbService });
+  public static getInstance(): Server {
+    if (!Server.instance) {
+      const dbService = container.resolve('dbService');
+      Server.instance = new Server({ dbService });
+    }
+    return Server.instance;
+  }
+
+  public getInstances = () => {
+    return {
+      expApp: this.expApp,
+    };
+  };
 
   private async startServers(app: Application): Promise<void> {
     try {
@@ -181,8 +202,19 @@ class Server {
   }
 }
 
-const dbService = container.resolve('dbService');
-const server = new Server({ dbService });
-server.start();
+export const getServerInstance = () => {
+  const server = Server.getInstance();
+  return {
+    startServer: server.start,
+    appInstance: server.getInstances().expApp,
+  };
+};
 
-export const serverInstance = server.getInstance();
+// Only start the server if this file is run directly (not imported in tests)
+if (require.main === module) {
+  const server = Server.getInstance();
+  server.start().catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}

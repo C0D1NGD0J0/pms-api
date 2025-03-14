@@ -37,4 +37,26 @@ router.put(
   })
 );
 
+router.post(
+  '/forgot_password',
+  validateRequest({
+    body: AuthValidations.emailValidation,
+  }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.forgotPassword(req, res);
+  })
+);
+
+router.put(
+  '/reset_password',
+  validateRequest({
+    body: AuthValidations.resetPassword,
+  }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.resetPassword(req, res);
+  })
+);
+
 export default router;

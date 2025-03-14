@@ -30,4 +30,16 @@ export class AuthController {
     const data = await this.authService.sendActivationLink(email);
     res.status(httpStatusCodes.OK).json(data);
   };
+
+  forgotPassword = async (req: Request, res: Response) => {
+    const { email } = req.body;
+    const result = await this.authService.forgotPassword(email);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  resetPassword = async (req: Request, res: Response) => {
+    const { token, password } = req.body;
+    const result = await this.authService.resetPassword(token, password);
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

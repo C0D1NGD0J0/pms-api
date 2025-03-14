@@ -3,12 +3,12 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { v4 as uuid } from 'uuid';
 import { EmailQueue } from '@queues/index';
-import { BadRequestError, InvalidRequestError, NotFoundError } from '@shared/customErrors';
+import { envVariables } from '@shared/config';
 import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { IUserRole, ISignupData } from '@interfaces/user.interface';
 import { MailType, ISuccessReturnData } from '@interfaces/utils.interface';
 import { JOB_NAME, hashGenerator, getLocationDetails, createLogger } from '@utils/index';
-import { envVariables } from '@shared/config';
+import { NotFoundError, InvalidRequestError, BadRequestError } from '@shared/customErrors';
 
 interface IConstructor {
   profileDAO: ProfileDAO;
@@ -141,6 +141,63 @@ export class AuthService {
       success: true,
       data: emailData,
       msg: `Account activation link has been sent to ${emailData.to}`,
+    };
+  }
+
+  async forgotPassword(email: string): Promise<ISuccessReturnData> {
+    if (!email) {
+      this.log.error('User email is required. | ForgotPassword');
+      throw new BadRequestError({ message: 'User email is required.' });
+    }
+
+    const user = await this.userDAO.createPasswordResetToken(email);
+    if (!user) {
+      throw new NotFoundError({ message: 'No record found with email provided.' });
+    }
+
+    const emailData = {
+      subject: 'Account Password Reset',
+      to: user.email,
+      data: {
+        fullname: user.fullname || user.firstName,
+        resetUrl: `${process.env.FRONTEND_URL}/reset_password/${user.passwordResetToken}`,
+      },
+      emailType: MailType.FORGOT_PASSWORD,
+    };
+
+    this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
+    return {
+      data: null,
+      success: true,
+      msg: `Password reset email has been sent to ${user.email}`,
+    };
+  }
+
+  async resetPassword(email: string, token: string): Promise<ISuccessReturnData> {
+    if (!email && !token) {
+      this.log.error('User email and token are required. | ResetPassword');
+      throw new BadRequestError({ message: 'Invalid email/token is provided.' });
+    }
+
+    const user = await this.userDAO.resetPassword(email, token);
+    if (!user) {
+      throw new NotFoundError({ message: 'No record found with email provided.' });
+    }
+
+    const emailData = {
+      subject: 'Account Password Reset',
+      to: user.email,
+      data: {
+        fullname: user.fullname || user.firstName,
+      },
+      emailType: MailType.PASSWORD_RESET,
+    };
+
+    this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
+    return {
+      data: null,
+      success: true,
+      msg: `Password reset email has been sent to ${user.email}`,
     };
   }
 }

@@ -59,14 +59,23 @@ export function createLogger(name: string) {
             output = color.grey.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
         }
 
-        if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
-          console.log(output);
+        if (envVariables.SERVER.ENV !== 'production') {
+          return console.log(output);
         }
       } catch (err) {
         console.error('Logging Error:', err);
       }
     },
   };
+
+  const nullStream = {
+    write: () => {},
+  };
+
+  const stream =
+    process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'production'
+      ? nullStream
+      : customStream;
 
   return bunyan.createLogger({
     name,
@@ -75,7 +84,7 @@ export function createLogger(name: string) {
       {
         level: 'debug',
         type: 'raw',
-        stream: customStream,
+        stream,
       },
     ],
   });

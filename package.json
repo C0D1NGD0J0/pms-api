@@ -5,15 +5,18 @@
   "main": "server.js",
   "scripts": {
     "prettier:check": "prettier --check './app/**/*.{ts,json,js}'",
+    "prettier:write": "prettier --write './app/**/*.{ts,json,js}'",
     "build": "rm -rf ./dist && tsc -p . && tsc-alias",
     "lint:fix": "eslint './app/**/*.{ts,js}' --fix",
+    "dev": "nodemon | ./node_modules/.bin/bunyan",
     "lint": "eslint './app/**/*.{ts,js}'",
     "start": "node dist/server.js",
     "prepare": "husky",
-    "dev": "nodemon | ./node_modules/.bin/bunyan",
-    "test:integration": "cross-env NODE_ENV=test jest --testPathPattern=tests/integration",
+    "test": "cross-env NODE_ENV=test jest",
     "test:watch": "cross-env NODE_ENV=test jest --watch",
-    "test": "cross-env NODE_ENV=test jest"
+    "test:coverage": "cross-env NODE_ENV=test jest --coverage",
+    "test:unit": "cross-env NODE_ENV=test jest --testPathPattern=tests/unit",
+    "test:api": "cross-env NODE_ENV=test jest --testPathPattern=tests/api"
   },
   "husky": {
     "hooks": {

@@ -86,6 +86,15 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
   verifyCredentials(email: string, password: string): Promise<IUserDocument | null>;
 
   /**
+   * Reset a user's password using a token.
+   *
+   * @param token - The password reset token.
+   * @param newPassword - The new password.
+   * @returns A promise that resolves to true if the password was reset successfully, false otherwise.
+   */
+  resetPassword(token: string, newPassword: string): Promise<IUserDocument | null>;
+
+  /**
    * List users with optional filtering and projection.
    *
    * @param query - Filter criteria for the query.
@@ -130,21 +139,12 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
   searchUsers(query: string, clientId: string): Promise<IUserDocument[]>;
 
   /**
-   * Reset a user's password using a token.
-   *
-   * @param token - The password reset token.
-   * @param newPassword - The new password.
-   * @returns A promise that resolves to true if the password was reset successfully, false otherwise.
-   */
-  resetPassword(token: string, newPassword: string): Promise<boolean>;
-
-  /**
    * Generate and save a password reset token for a user.
    *
    * @param email - The email address of the user requesting a password reset.
    * @returns A promise that resolves to the generated token or null if user not found.
    */
-  createPasswordResetToken(email: string): Promise<string | null>;
+  createPasswordResetToken(email: string): Promise<IUserDocument | null>;
 
   /**
    * Get the currently authenticated user by their ID with complete profile information.

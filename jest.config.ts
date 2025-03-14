@@ -28,7 +28,8 @@ const config: JestConfigWithTsJest = {
   detectOpenHandles: true,
   modulePathIgnorePatterns: ['<rootDir>/dist/', '<rootDir>/tests/configs/'],
   globalTeardown: './tests/configs/teardown.ts',
-  setupFilesAfterEnv: ['./tests/setup.ts'],
+  globalSetup: './tests/configs/setup.ts',
+  // testTimeout: 30000,
   moduleNameMapper: {
     '@controllers/(.*)': '<rootDir>/app/controllers/$1',
     '@interfaces/(.*)': '<rootDir>/app/interfaces/$1',

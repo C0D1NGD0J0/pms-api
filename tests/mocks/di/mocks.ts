@@ -74,7 +74,7 @@ const MockModelResources = {
 
 // Service Resources
 const MockServiceResources = {
-  mockAuthService: asClass(jest.fn().mockImplementation(() => mockAuthService)).scoped(),
+  mockAuthService: asClass(jest.fn().mockImplementation(() => MockAuthService)).scoped(),
 };
 
 // DAO Resources

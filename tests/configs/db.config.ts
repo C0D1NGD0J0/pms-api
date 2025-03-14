@@ -1,10 +1,18 @@
 import mongoose from 'mongoose';
 import { envVariables } from '@shared/config';
 
+let isConnected = false;
+
 const connectTestDB = async () => {
+  if (isConnected && mongoose.connection.readyState === 1) {
+    console.log('Already connected to test database');
+    return true;
+  }
+
   try {
     mongoose.set('strictQuery', true);
     await mongoose.connect(envVariables.DATABASE.TEST_URL);
+    isConnected = true;
     console.log('Connected to test database');
     return true;
   } catch (error) {
@@ -33,8 +41,14 @@ const clearTestDB = async () => {
 };
 
 const disconnectTestDB = async () => {
+  if (!isConnected || mongoose.connection.readyState === 0) {
+    console.log('No database connection found. Skipping test data clearance.');
+    return true;
+  }
+
   await mongoose.connection.dropDatabase();
   await mongoose.connection.close();
+  isConnected = false;
   console.log('Disconnected from test database');
 };
 

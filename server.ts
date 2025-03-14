@@ -205,16 +205,16 @@ class Server {
 export const getServerInstance = () => {
   const server = Server.getInstance();
   return {
-    startServer: server.start,
+    // startServer: server.start,
     appInstance: server.getInstances().expApp,
   };
 };
 
 // Only start the server if this file is run directly (not imported in tests)
-if (require.main === module) {
-  const server = Server.getInstance();
-  server.start().catch((err) => {
-    console.error('Failed to start server:', err);
-    process.exit(1);
-  });
-}
+// if (require.main === module) {
+const server = Server.getInstance();
+server.start().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});
+// }

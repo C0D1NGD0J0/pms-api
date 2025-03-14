@@ -68,6 +68,15 @@ export function createLogger(name: string) {
     },
   };
 
+  const nullStream = {
+    write: () => {},
+  };
+
+  const stream =
+    process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'production'
+      ? nullStream
+      : customStream;
+
   return bunyan.createLogger({
     name,
     level: 'debug',
@@ -75,7 +84,7 @@ export function createLogger(name: string) {
       {
         level: 'debug',
         type: 'raw',
-        stream: customStream,
+        stream,
       },
     ],
   });

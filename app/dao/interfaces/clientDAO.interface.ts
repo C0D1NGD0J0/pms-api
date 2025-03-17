@@ -1,5 +1,5 @@
 import { IdentificationType } from '@interfaces/user.interface';
-import { ICompanyInfo, IClientSettings, IClientDocument } from '@interfaces/client.interface';
+import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/client.interface';
 
 import { dynamic } from './baseDAO.interface';
 import { IBaseDAO } from './baseDAO.interface';
@@ -53,7 +53,7 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
    */
   updateCompanyInfo(
     clientId: string,
-    companyInfo: Partial<ICompanyInfo>
+    companyInfo: Partial<ICompanyProfile>
   ): Promise<IClientDocument | null>;
 
   /**

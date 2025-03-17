@@ -88,22 +88,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   }
 
   /**
-   * Update a user's information.
-   *
-   * @param userId - The ID of the user to update.
-   * @param updates - The fields to update and their new values.
-   * @returns A promise that resolves to the updated user document or null if no user is found.
-   */
-  async updateUser(userId: string, updates: Partial<IUserDocument>): Promise<IUserDocument | null> {
-    try {
-      return await this.updateById(userId, { $set: updates });
-    } catch (error) {
-      this.logger.error(error.message || error);
-      throw this.throwErrorHandler(error);
-    }
-  }
-
-  /**
    * Verify user credentials for authentication.
    *
    * @param email - The user's email address.
@@ -115,7 +99,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       const user = await this.getUserByEmail(email);
       if (!user) return null;
 
-      // Use the validatePassword method from the user document
       const isValid = await user.validatePassword(password);
       return isValid ? user : null;
     } catch (error) {

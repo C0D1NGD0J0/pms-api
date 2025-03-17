@@ -4,7 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { Types, Model } from 'mongoose';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IdentificationType } from '@interfaces/user.interface';
-import { ICompanyInfo, IClientSettings, IClientDocument } from '@interfaces/client.interface';
+import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/client.interface';
 
 import { BaseDAO } from './baseDAO';
 import { dynamic } from './interfaces/baseDAO.interface';
@@ -107,7 +107,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
    */
   async updateCompanyInfo(
     clientId: string,
-    companyInfo: Partial<ICompanyInfo>
+    companyInfo: Partial<ICompanyProfile>
   ): Promise<IClientDocument | null> {
     try {
       // Create an update object that only updates the specified fields

@@ -4,7 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { faker } from '@faker-js/faker';
 import { User, Client } from '@models/index';
 import { hashGenerator } from '@utils/index';
-import { ICompanyInfo } from '@interfaces/client.interface';
+import { ICompanyProfile } from '@interfaces/client.interface';
 import { IUserRole, IUserDocument, ISignupData } from '@interfaces/user.interface';
 
 class UserFactory {
@@ -140,7 +140,7 @@ class UserFactory {
         };
   };
 
-  private defaultCompany = async (): Promise<ICompanyInfo> => {
+  private defaultCompany = async (): Promise<ICompanyProfile> => {
     const firstName = faker.person.firstName();
     const lastName = faker.person.lastName();
     const entityName = faker.company.name();

@@ -212,7 +212,6 @@ export class MailService {
       };
     } else {
       return {
-        service: envVariables.EMAIL.DEV.PROVIDER,
         host: envVariables.EMAIL.DEV.PROVIDER_HOST,
         port: envVariables.EMAIL.DEV.PROVIDER_PORT,
         auth: {

@@ -1,4 +1,3 @@
-import md5 from 'md5';
 import bcrypt from 'bcryptjs';
 import uniqueValidator from 'mongoose-unique-validator';
 import { UpdateQuery, Schema, Query, model } from 'mongoose';
@@ -6,22 +5,6 @@ import { IUserDocument, IUser } from '@interfaces/user.interface';
 
 const UserSchema = new Schema<IUserDocument>(
   {
-    firstName: {
-      type: String,
-      required: true,
-      maxlength: 25,
-      minlength: 2,
-      trim: true,
-      index: true,
-    },
-    lastName: {
-      type: String,
-      required: true,
-      maxlength: 25,
-      minlength: 2,
-      trim: true,
-      index: true,
-    },
     password: {
       type: String,
       required: [true, 'Password is required.'],
@@ -30,30 +13,26 @@ const UserSchema = new Schema<IUserDocument>(
     },
     email: {
       type: String,
-      index: true,
       required: [true, 'Please provide an email address.'],
       unique: true,
+      index: true,
+      trim: true,
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please add a valid email'],
     },
-    location: {
-      type: String,
-      default: '',
-      trim: true,
-      required: true,
-    },
+
     cids: [
       {
         roles: [{ type: String, required: true }],
+        displayName: { type: String, required: true },
         cid: { type: String, required: true, index: true },
         isConnected: { type: Boolean, required: true, default: false },
         _id: false,
       },
     ],
-    phoneNumber: { type: String, default: '' },
     activationToken: { type: String, default: '' },
     isActive: { type: Boolean, default: false },
     passwordResetToken: { type: String, default: '' },
-    cid: { type: String, required: true, index: true },
+    activeCid: { type: String, required: true, index: true },
     uid: { type: String, required: true, index: true },
     deletedAt: { type: Date, default: null, select: false },
     activationTokenExpiresAt: { type: Date, default: null },
@@ -65,12 +44,6 @@ const UserSchema = new Schema<IUserDocument>(
     toObject: { virtuals: true },
   }
 );
-
-UserSchema.index({
-  email: 'text',
-  firstName: 'text',
-  lastName: 'text',
-});
 
 UserSchema.pre('save', async function (this: IUserDocument, next) {
   if (this.isModified('password')) {
@@ -92,17 +65,22 @@ UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function (next) {
   next();
 });
 
-UserSchema.virtual('fullname').get(function (this: IUserDocument) {
-  return `${this.firstName} ${this.lastName}`;
+UserSchema.virtual('profile', {
+  ref: 'Profile',
+  localField: '_id',
+  foreignField: 'user',
+  justOne: true,
 });
-
-UserSchema.methods.getGravatar = function () {
-  const hash = md5(this.email);
-  return `https://gravatar.com/avatar/${hash}?s=200`;
-};
 
 UserSchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',
+});
+
+UserSchema.virtual('fullName').get(function () {
+  if (this.profile && this.profile.personalInfo) {
+    return `${this.profile.personalInfo.firstName} ${this.profile.personalInfo.lastName}`;
+  }
+  return null;
 });
 
 UserSchema.methods.validatePassword = async function (pwd: string): Promise<boolean> {

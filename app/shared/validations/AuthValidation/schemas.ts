@@ -60,7 +60,9 @@ export const UserSignupSchema = z
     }),
     companyProfile: z
       .object({
-        companyName: z.string().min(2, 'Company name is required'),
+        tradingName: z.string().min(2, 'Company name is required'),
+        website: z.string().url('Invalid website URL').optional(),
+        businessType: z.string().min(2, 'Industry is required'),
         legalEntityName: z.string().min(2, 'Legal entity name is required'),
         contactInfo: z
           .object({
@@ -70,7 +72,7 @@ export const UserSignupSchema = z
             contactPerson: z.string().min(1, 'Contact person is required'),
           })
           .optional(),
-        businessRegistrationNumber: z.string().min(1, 'Business registration number is required'),
+        registrationNumber: z.string().min(1, 'Business registration number is required'),
         identification: z
           .object({
             idType: z.enum(['passport', 'national-id', 'drivers-license', 'corporation-license']),
@@ -179,9 +181,9 @@ export const ClientUpdateSchema = z.object({
 });
 
 export const AccountActivationSchema = z.object({
-  token: z
+  t: z
     .string()
-    .length(64, {
+    .max(64, {
       message: 'Invalid token provided',
     })
     .refine(

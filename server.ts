@@ -41,7 +41,6 @@ class Server {
       return;
     }
 
-    this.log.info('Server initialized...');
     this.dbService.connect();
     this.app.initConfig();
     await this.startServers(this.expApp);
@@ -79,7 +78,7 @@ class Server {
     }
 
     httpServer.listen(this.PORT, () => {
-      this.log.info(`Server is currently running on port ${this.PORT}`);
+      this.log.info('Server initialized...');
     });
   }
 
@@ -205,7 +204,6 @@ class Server {
 export const getServerInstance = () => {
   const server = Server.getInstance();
   return {
-    // startServer: server.start,
     appInstance: server.getInstances().expApp,
   };
 };

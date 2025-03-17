@@ -3,16 +3,25 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { v4 as uuid } from 'uuid';
 import { EmailQueue } from '@queues/index';
+import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
+import { AuthTokenService } from '@services/auth';
 import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { IUserRole, ISignupData } from '@interfaces/user.interface';
 import { MailType, ISuccessReturnData } from '@interfaces/utils.interface';
 import { JOB_NAME, hashGenerator, getLocationDetails, createLogger } from '@utils/index';
-import { NotFoundError, InvalidRequestError, BadRequestError } from '@shared/customErrors';
+import {
+  NotFoundError,
+  InvalidRequestError,
+  ForbiddenError,
+  BadRequestError,
+} from '@shared/customErrors';
 
 interface IConstructor {
+  tokenService: AuthTokenService;
   profileDAO: ProfileDAO;
   emailQueue: EmailQueue;
+  authCache: AuthCache;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
 }
@@ -21,14 +30,25 @@ export class AuthService {
   private log: Logger;
   private userDAO: UserDAO;
   private clientDAO: ClientDAO;
+  private authCache: AuthCache;
   private profileDAO: ProfileDAO;
   private emailQueue: EmailQueue;
+  private tokenService: AuthTokenService;
 
-  constructor({ userDAO, clientDAO, profileDAO, emailQueue }: IConstructor) {
+  constructor({
+    userDAO,
+    clientDAO,
+    profileDAO,
+    emailQueue,
+    tokenService,
+    authCache,
+  }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
+    this.authCache = authCache;
     this.profileDAO = profileDAO;
     this.emailQueue = emailQueue;
+    this.tokenService = tokenService;
     this.log = createLogger('AuthService');
   }
 
@@ -37,21 +57,25 @@ export class AuthService {
     const result = await this.userDAO.withTransaction(session, async (session) => {
       const _userId = new Types.ObjectId();
       const clientId = uuid();
-      const { accountType, companyInfo, ...userData } = signupData;
-
-      const locationInfo = getLocationDetails(userData.location);
 
       const user = await this.userDAO.insert(
         {
-          ...userData,
           uid: uuid(),
           _id: _userId,
-          cid: clientId,
+          activeCid: clientId,
           isActive: false,
-          location: locationInfo || userData.location,
+          email: signupData.email,
+          password: signupData.password,
           activationToken: hashGenerator({ usenano: true }),
           activationTokenExpiresAt: dayjs().add(2, 'hour').toDate(),
-          cids: [{ cid: clientId, roles: [IUserRole.ADMIN], isConnected: false }],
+          cids: [
+            {
+              cid: clientId,
+              isConnected: true,
+              roles: [IUserRole.ADMIN],
+              displayName: signupData.displayName,
+            },
+          ],
         },
         session
       );
@@ -64,19 +88,27 @@ export class AuthService {
         {
           cid: clientId,
           accountAdmin: _userId,
-          accountType,
-          ...(accountType.isEnterpriseAccount ? { companyInfo } : {}),
+          displayName: signupData.displayName,
+          accountType: signupData.accountType,
+          ...(signupData.accountType.isCorporate && { companyProfile: signupData?.companyProfile }),
         },
         session
       );
 
-      await this.profileDAO.createUserProfile(
+      const profile = await this.profileDAO.createUserProfile(
         _userId,
         {
           user: _userId,
           puid: uuid(),
-          lang: client.settings.lang,
-          timeZone: client.settings.timeZone,
+          personalInfo: {
+            displayName: signupData.displayName,
+            firstName: signupData.firstName,
+            lastName: signupData.lastName,
+            location: getLocationDetails(signupData.location) || 'Unknown',
+            phoneNumber: signupData.phoneNumber,
+          },
+          lang: signupData.lang,
+          timeZone: signupData.timeZone,
         },
         session
       );
@@ -87,7 +119,7 @@ export class AuthService {
           subject: 'Activate your account',
           emailType: MailType.ACCOUNT_ACTIVATION,
           data: {
-            fullname: user.fullname,
+            fullname: profile.fullname,
             activationUrl: `${process.env.FRONTEND_URL}/account_activation/${client.cid}?t=${user.activationToken}`,
           },
         },
@@ -99,6 +131,107 @@ export class AuthService {
       data: null,
       success: true,
       msg: `Account activation email has been sent to ${result.emailData.to}`,
+    };
+  }
+
+  async login(
+    email: string,
+    password: string
+  ): Promise<
+    ISuccessReturnData<{
+      refreshToken: string;
+      accessToken: string;
+      activeAccount: { cid: string; displayName: string };
+      accounts: { cid: string; displayName: string }[] | null;
+    }>
+  > {
+    if (!email || !password) {
+      this.log.error('Email and password are required. | Login');
+      throw new BadRequestError({ message: 'Email and password are required.' });
+    }
+
+    let user = await this.userDAO.getUserByEmail(email);
+    if (!user) {
+      throw new NotFoundError({ message: 'Invalid email/password combination.' });
+    }
+
+    if (!user.isActive) {
+      throw new InvalidRequestError({ message: 'Account verification pending.' });
+    }
+
+    user = await this.userDAO.verifyCredentials(email, password);
+    if (!user) {
+      throw new NotFoundError({ message: 'Invalid email/password combination.' });
+    }
+
+    const activeAccount = user.cids.find((c) => c.cid === user.activeCid)!;
+    const tokens = this.tokenService.createJwtTokens({
+      sub: user._id,
+    });
+    await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken);
+    const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
+    currentuser && (await this.authCache.saveCurrentUser(currentuser));
+    if (user.cids.length === 1) {
+      return {
+        success: true,
+        data: {
+          refreshToken: tokens.refreshToken,
+          accessToken: tokens.accessToken,
+          activeAccount: {
+            cid: activeAccount.cid,
+            displayName: activeAccount.displayName,
+          },
+          accounts: null,
+        },
+        msg: 'Login successful.',
+      };
+    }
+
+    const otherAccounts = user.cids
+      .filter((c) => c.cid !== activeAccount.cid)
+      .map((c) => ({ cid: c.cid, displayName: c.displayName }));
+    return {
+      success: true,
+      data: {
+        refreshToken: tokens.refreshToken,
+        accessToken: tokens.accessToken,
+        activeAccount: {
+          cid: activeAccount.cid,
+          displayName: activeAccount.displayName,
+        },
+        accounts: otherAccounts,
+      },
+      msg: 'Login successful.',
+    };
+  }
+
+  async switchActiveAccount(userId: string, newCid: string): Promise<ISuccessReturnData> {
+    if (!userId || !newCid) {
+      throw new BadRequestError({ message: 'User ID and account CID are required.' });
+    }
+
+    const user = await this.userDAO.getUserById(userId);
+    if (!user) {
+      throw new NotFoundError({ message: 'User not found.' });
+    }
+
+    const accountExists = user.cids.some((c) => c.cid === newCid);
+    if (!accountExists) {
+      throw new ForbiddenError({ message: 'Account access denied.' });
+    }
+
+    await this.userDAO.updateById(userId, { $set: { activeCid: newCid } });
+    const activeAccount = user.cids.find((c) => c.cid === newCid)!;
+
+    return {
+      success: true,
+      data: {
+        activeAccount: {
+          cid: activeAccount.cid,
+          displayName: activeAccount.displayName,
+        },
+      },
+      msg: 'Account switched successfully.',
     };
   }
 
@@ -133,7 +266,7 @@ export class AuthService {
       emailType: MailType.ACCOUNT_ACTIVATION,
       data: {
         fullname: user.fullname,
-        activationUrl: `${envVariables.FRONTEND.URL}/account_activation/${user.cid}?t=${user.activationToken}`,
+        activationUrl: `${envVariables.FRONTEND.URL}/account_activation/${user.activeCid}?t=${user.activationToken}`,
       },
     };
     this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
@@ -159,7 +292,7 @@ export class AuthService {
       subject: 'Account Password Reset',
       to: user.email,
       data: {
-        fullname: user.fullname || user.firstName,
+        fullname: user.fullname,
         resetUrl: `${process.env.FRONTEND_URL}/reset_password/${user.passwordResetToken}`,
       },
       emailType: MailType.FORGOT_PASSWORD,
@@ -188,7 +321,7 @@ export class AuthService {
       subject: 'Account Password Reset',
       to: user.email,
       data: {
-        fullname: user.fullname || user.firstName,
+        fullname: user.fullname,
       },
       emailType: MailType.PASSWORD_RESET,
     };

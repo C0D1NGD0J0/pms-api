@@ -36,18 +36,6 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
   ): Promise<boolean>;
 
   /**
-   * Update a user's information.
-   *
-   * @param userId - The ID of the user to update.
-   * @param updates - The fields to update and their new values.
-   * @returns A promise that resolves to the updated user document or null if no user is found.
-   */
-  updateUser(
-    userId: string | Types.ObjectId,
-    updates: Partial<IUserDocument>
-  ): Promise<IUserDocument | null>;
-
-  /**
    * Generate and save an activation token for a user.
    *
    * @param userId - The ID of the user to generate a token for.

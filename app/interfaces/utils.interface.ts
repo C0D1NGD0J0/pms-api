@@ -11,6 +11,13 @@ export enum MailType {
   ACCOUNT_UPDATE = 'ACCOUNT_UPDATE',
 }
 
+export enum IdentificationType {
+  CORPORATION_LICENSE = 'corporation-license',
+  DRIVERS_LICENSE = 'drivers-license',
+  NATIONAL_ID = 'national-id',
+  PASSPORT = 'passport',
+}
+
 export enum CURRENCIES {
   USD = 'USD',
   EUR = 'EUR',
@@ -91,13 +98,13 @@ export interface IEmailOptions<T> {
   data: T;
 }
 
+export type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
+
 export interface ISuccessReturnData<T = unknown> {
   success: boolean;
   msg?: string;
   data: T;
 }
-
-export type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
 export interface ICacheResponse<T = any> {
   success: boolean;

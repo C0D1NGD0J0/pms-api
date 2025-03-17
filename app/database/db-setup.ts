@@ -42,7 +42,6 @@ export class DatabaseService implements IDatabaseService {
       mongoose.set('strictQuery', true);
       const url = this.getDatabaseUrl(env);
 
-      this.log.debug('Database URL:', url);
       await mongoose.connect(url);
       this.redisService.connect();
 

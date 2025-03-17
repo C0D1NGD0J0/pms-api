@@ -1,25 +1,40 @@
+import { Data } from 'ejs';
 import { Types, Document } from 'mongoose';
 
 import { IdentificationType } from './user.interface';
 
+enum DataRetentionPolicy {
+  STANDARD = 'standard',
+  EXTENDED = 'extended',
+  MINIMAL = 'minimal',
+}
+
 export interface Profile {
+  personalInfo: {
+    phoneNumber?: string;
+    displayName: string;
+    firstName: string;
+    location: string;
+    lastName: string;
+    avatar?: {
+      url: string;
+      filename: string;
+      key: string;
+    };
+    bio?: string;
+    dob?: Date;
+    headline?: string;
+  };
   settings: {
     loginType: 'otp' | 'password';
     theme: 'light' | 'dark';
+    notifications: NotificationSettings;
+    gdprSettings: GDPRSettings;
   };
-  avatar?: {
-    url: string;
-    filename: string;
-    key: string;
-  };
-  notifications: NotificationSettings;
   identification?: IdentificationType;
   user: Types.ObjectId;
-  headline?: string;
   timeZone: string;
   lang: string;
-  bio?: string;
-  dob?: Date;
 }
 
 export type IProfileDocument = {
@@ -28,9 +43,18 @@ export type IProfileDocument = {
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;
+  fullname?: string;
+  getGravatarUrl: () => string;
   _id: Types.ObjectId;
 } & Document &
   Profile;
+
+export interface GDPRSettings {
+  dataRetentionPolicy: DataRetentionPolicy;
+  dataProcessingConsent: boolean;
+  processingConsentDate: Date;
+  retentionExpiryDate: Date;
+}
 
 export interface NotificationSettings {
   announcements: boolean;

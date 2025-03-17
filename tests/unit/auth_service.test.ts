@@ -46,6 +46,8 @@ describe('AuthService', () => {
   let mockProfileDAO: any;
   let mockEmailQueue: any;
   let mockSession: any;
+  let mockTokenService: any;
+  let mockAuthCache: any;
 
   const mockUserId = new Types.ObjectId();
   const mockClientId = 'mock-cid';
@@ -55,10 +57,29 @@ describe('AuthService', () => {
     email: 'test@example.com',
     password: 'password123',
     location: 'Lagos',
+    phoneNumber: '1234567890',
     accountType: {
       planId: 'basic',
       planName: 'Basic Plan',
-      isEnterpriseAccount: false,
+      isCorporate: false,
+    },
+    displayName: 'Test User',
+    lang: 'en',
+    timeZone: 'UTC',
+    companyProfile: {
+      contactInfo: {
+        email: 'company_admin@company.com',
+        address: '123, Company Street',
+        phoneNumber: '12344321',
+        contactPerson: 'James Brown',
+      },
+      registrationNumber: 'ABC123456',
+      yearEstablished: '2000',
+      legalEntityName: 'Boring Company',
+      businessType: 'software',
+      tradingName: 'Boring Co',
+      industry: 'IT/Tech',
+      website: 'boringcompany.com',
     },
   };
 
@@ -101,6 +122,12 @@ describe('AuthService', () => {
         user: mockUserId,
       }),
     };
+    mockTokenService = {
+      createJwtTokens: jest.fn(),
+    };
+    mockAuthCache = {
+      saveRefreshToken: jest.fn(),
+    };
 
     mockEmailQueue = {
       addToEmailQueue: jest.fn(),
@@ -111,6 +138,8 @@ describe('AuthService', () => {
       clientDAO: mockClientDAO,
       profileDAO: mockProfileDAO,
       emailQueue: mockEmailQueue,
+      tokenService: mockTokenService,
+      authCache: mockAuthCache,
     });
   });
 

@@ -1,11 +1,8 @@
+import { asValue } from 'awilix';
 import { jest } from '@jest/globals';
-import { asValue, asClass } from 'awilix';
-import { EmailQueue } from '@queues/index';
 import { EmailWorker } from '@workers/index';
 import { AuthController } from '@controllers/index';
 import { User, Profile, Client } from '@models/index';
-import { AuthService } from '@root/app/services/index';
-import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { RedisService, DatabaseService } from '@database/index';
 
 // Mock Controllers
@@ -14,93 +11,101 @@ jest.mock('@controllers/index', () => ({
   AuthController: jest.fn(),
 }));
 
-// Mock Services
-jest.mock('@services/index', () => ({
-  ...(jest.requireActual('@services/index') as object),
-  AuthService: jest.fn(),
-}));
+export const mockAuthService = {
+  signup: jest.fn(),
+  login: jest.fn(),
+  accountActivation: jest.fn(),
+  sendActivationLink: jest.fn(),
+  forgotPassword: jest.fn(),
+  resetPassword: jest.fn(),
+  switchActiveAccount: jest.fn(),
+};
+
+export const mockAuthTokenService = {
+  createJwtTokens: jest.fn(),
+  verifyJwtToken: jest.fn(),
+  decodeJwt: jest.fn(),
+};
+
+export const mockAuthCache = {
+  saveRefreshToken: jest.fn(),
+  saveCurrentUser: jest.fn(),
+  getRefreshToken: jest.fn(),
+  getCurrentUser: jest.fn(),
+  deleteRefreshToken: jest.fn(),
+};
 
 // Mock DAOs
-jest.mock('@dao/index', () => ({
-  ...(jest.requireActual('@dao/index') as object),
-  UserDAO: jest.fn(),
-  ClientDAO: jest.fn(),
-  ProfileDAO: jest.fn(),
-}));
+export const mockUserDAO = {
+  startSession: jest.fn(),
+  withTransaction: jest.fn(),
+  insert: jest.fn(),
+  getUserByEmail: jest.fn(),
+  getUserById: jest.fn(),
+  activateAccount: jest.fn(),
+  createActivationToken: jest.fn(),
+  createPasswordResetToken: jest.fn(),
+  resetPassword: jest.fn(),
+  verifyCredentials: jest.fn(),
+  updateById: jest.fn(),
+};
 
-jest.mock('@database/index', () => ({
-  ...(jest.requireActual('@database/index') as object),
-  DatabaseService: jest.fn(),
-}));
+export const mockClientDAO = {
+  insert: jest.fn(),
+  findById: jest.fn(),
+  findByCid: jest.fn(),
+};
 
-// Mock Workers
-jest.mock('@workers/index', () => ({
-  ...(jest.requireActual('@workers/index') as object),
-  EmailWorker: jest.fn(),
-}));
+export const mockProfileDAO = {
+  createUserProfile: jest.fn(),
+  generateCurrentUserInfo: jest.fn(),
+  findByUserId: jest.fn(),
+};
 
-// Mock Queues
-jest.mock('@queues/index', () => ({
-  ...(jest.requireActual('@queues/index') as object),
-  BaseQueue: jest.fn(),
-  EmailQueue: jest.fn(),
-}));
+export const mockEmailQueue = {
+  addToEmailQueue: jest.fn(),
+};
 
 export const mockAuthController = jest.mocked(AuthController);
-
-export const MockAuthService = jest.mocked(AuthService);
 export const mockDatabaseService = jest.mocked(DatabaseService);
-
-export const mockProfileDAO = jest.mocked(ProfileDAO);
-export const mockClientDAO = jest.mocked(ClientDAO);
-export const mockUserDAO = jest.mocked(UserDAO);
-
 export const mockEmailWorker = jest.mocked(EmailWorker);
-export const mockEmailQueue = jest.mocked(EmailQueue);
-
 export const mockRedisConfig = jest.mocked(RedisService);
 
 // Controller Resources
 const MockControllerResources = {
-  mockAuthController: asClass(jest.fn().mockImplementation(() => mockAuthController)).scoped(),
+  authController: asValue(mockAuthController),
 };
 
 // Model Resources
 const MockModelResources = {
-  mockUserModel: asValue(User),
-  mockClientModel: asValue(Client),
-  mockProfileModel: asValue(Profile),
+  userModel: asValue(User),
+  clientModel: asValue(Client),
+  profileModel: asValue(Profile),
 };
 
 // Service Resources
 const MockServiceResources = {
-  mockAuthService: asClass(jest.fn().mockImplementation(() => MockAuthService)).scoped(),
+  authService: asValue(mockAuthService),
+  authTokenService: asValue(mockAuthTokenService),
+  authCache: asValue(mockAuthCache),
 };
 
 // DAO Resources
 const MockDAOResources = {
-  mockUserDAO: asClass(jest.fn().mockImplementation(() => mockUserDAO)).singleton(),
-  mockClientDAO: asClass(jest.fn().mockImplementation(() => mockClientDAO)).singleton(),
-  mockProfileDAO: asClass(jest.fn().mockImplementation(() => mockProfileDAO)).singleton(),
-};
-
-// Cache Resources
-const MockCacheResources = {};
-
-// Worker Resources
-const MockWorkerResources = {
-  mockEmailWorker: asClass(jest.fn().mockImplementation(() => mockEmailWorker)).singleton(),
+  userDAO: asValue(mockUserDAO),
+  clientDAO: asValue(mockClientDAO),
+  profileDAO: asValue(mockProfileDAO),
 };
 
 // Queue Resources
 const MockQueuesResources = {
-  mockEmailQueue: asClass(jest.fn().mockImplementation(() => mockEmailQueue)).singleton(),
+  emailQueue: asValue(mockEmailQueue),
 };
 
 // Utils and Config Resources
 const MockUtilsResources = {
-  mockRedisConfig: asClass(jest.fn().mockImplementation(() => mockRedisConfig)).singleton(),
-  mockDatabaseService: asClass(jest.fn().mockImplementation(() => mockDatabaseService)).singleton(),
+  redisConfig: asValue(mockRedisConfig),
+  databaseService: asValue(mockDatabaseService),
 };
 
 // Export all mocks and resources
@@ -109,8 +114,6 @@ export const mockResources = {
   ...MockModelResources,
   ...MockServiceResources,
   ...MockDAOResources,
-  ...MockCacheResources,
-  ...MockWorkerResources,
   ...MockQueuesResources,
   ...MockUtilsResources,
 };

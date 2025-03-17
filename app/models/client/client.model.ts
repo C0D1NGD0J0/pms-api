@@ -1,6 +1,8 @@
+import Zod from 'zod';
 import { Schema, model } from 'mongoose';
-import { IClientDocument } from '@interfaces/index';
+import { isValidPhoneNumber } from '@utils/index';
 import uniqueValidator from 'mongoose-unique-validator';
+import { IdentificationType, IClientDocument } from '@interfaces/index';
 
 const ClientSchema = new Schema<IClientDocument>(
   {
@@ -9,33 +11,52 @@ const ClientSchema = new Schema<IClientDocument>(
       required: true,
       unique: true,
       index: true,
+      immutable: true,
     },
     accountType: {
-      planId: { type: String, required: true },
-      planName: { type: String, required: true },
-      isEnterpriseAccount: { type: Boolean, default: false },
+      planId: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      planName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      isEnterpriseAccount: {
+        type: Boolean,
+        default: false,
+      },
     },
     identification: {
       idType: {
         type: String,
-        enum: ['passport', 'drivers-license', 'national-id', 'corporation-license'],
+        enum: Object.values(IdentificationType),
         required: function (this: IClientDocument) {
           if (this.isNew) return false;
-          return this.isModified('accountType.identification');
+          return this.isModified('identification.idType');
         },
+        // Field level encryption could be added here
       },
       issueDate: {
         type: Date,
         required: function (this: IClientDocument) {
           if (this.isNew) return false;
-          return this.isModified('accountType.issueDate');
+          return this.isModified('identification.issueDate');
         },
       },
       expiryDate: {
         type: Date,
         required: function (this: IClientDocument) {
           if (this.isNew) return false;
-          return this.isModified('accountType.expiryDate');
+          return this.isModified('identification.expiryDate');
+        },
+        validate: {
+          validator: function (this: IClientDocument, expiryDate: Date) {
+            return !this.identification?.issueDate || expiryDate > this.identification?.issueDate;
+          },
+          message: 'Expiry date must be after issue date',
         },
       },
       idNumber: {
@@ -43,49 +64,180 @@ const ClientSchema = new Schema<IClientDocument>(
         trim: true,
         required: function (this: IClientDocument) {
           if (this.isNew) return false;
-          return this.isModified('accountType.idNumber');
+          return this.isModified('identification.idNumber');
         },
       },
-      authority: { type: String, trim: true },
+      authority: {
+        type: String,
+        trim: true,
+      },
       issuingState: {
         type: String,
         trim: true,
         required: function (this: IClientDocument) {
           if (this.isNew) return false;
-          return this.isModified('accountType.issuingState');
+          return this.isModified('identification.issuingState');
         },
       },
-      name: { type: String, default: 'individual', enum: ['individual', 'corporate'] },
+      retentionExpiryDate: {
+        type: Date,
+        default: () => new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 7), // 7 years default
+      },
+      lastVerifiedAt: Date,
+      dataProcessingConsent: {
+        type: Boolean,
+        default: false,
+      },
+      processingConsentDate: Date,
     },
     subscription: {
       type: Schema.Types.ObjectId,
       ref: 'Subscription',
     },
-    isVerified: { type: Boolean, default: false },
-    accountAdmin: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    companyInfo: {
-      legalEntityName: { type: String, trim: true },
-      tradingName: { type: String, trim: true },
-      businessType: { type: String, trim: true },
-      registrationNumber: { type: String, trim: true },
-      yearEstablished: { type: Number },
-      industry: { type: String, trim: true },
-      website: { type: String, trim: true },
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+    accountAdmin: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
+    displayName: {
+      type: String,
+      trim: true,
+    },
+    companyProfile: {
+      legalEntityName: {
+        type: String,
+        trim: true,
+        index: true,
+      },
+      tradingName: {
+        type: String,
+        trim: true,
+      },
+      businessType: {
+        type: String,
+        trim: true,
+      },
+      registrationNumber: {
+        type: String,
+        trim: true,
+        index: true,
+      },
+      website: {
+        type: String,
+        trim: true,
+        validate: {
+          validator: function (v: string) {
+            if (!v) return true;
+            try {
+              const schema = Zod.string().url();
+              schema.parse(v);
+              return true;
+            } catch (error) {
+              return false;
+            }
+          },
+          message: 'Please enter a valid website URL',
+        },
+      },
       contactInfo: {
-        email: { type: String, trim: true },
-        address: { type: String, trim: true },
-        phoneNumber: { type: String, trim: true },
-        contactPerson: { type: String, trim: true },
+        email: {
+          type: String,
+          trim: true,
+          lowercase: true,
+          validate: {
+            validator: function (v: string) {
+              if (!v) return true;
+              try {
+                const schema = Zod.string().email();
+                schema.parse(v);
+                return true;
+              } catch (error) {
+                return false;
+              }
+            },
+            message: 'Please enter a valid email address',
+          },
+        },
+        address: {
+          type: String,
+          trim: true,
+        },
+        phoneNumber: {
+          type: String,
+          trim: true,
+          validate: {
+            validator: function (v: string) {
+              return isValidPhoneNumber(v);
+            },
+            message: 'Please enter a valid phone number',
+          },
+        },
+        contactPerson: {
+          type: String,
+          trim: true,
+        },
       },
     },
     settings: {
       notificationPreferences: {
-        email: { type: Boolean, default: true },
-        sms: { type: Boolean, default: false },
-        inApp: { type: Boolean, default: true },
+        email: {
+          type: Boolean,
+          default: true,
+        },
+        sms: {
+          type: Boolean,
+          default: false,
+        },
+        inApp: {
+          type: Boolean,
+          default: true,
+        },
       },
-      timeZone: { type: String, default: 'UTC' },
-      lang: { type: String, default: 'en' },
+      timeZone: {
+        type: String,
+        default: 'UTC',
+        validate: {
+          validator: function (v: string) {
+            // Validate timezone using Intl API
+            try {
+              Intl.DateTimeFormat(undefined, { timeZone: v });
+              return true;
+            } catch (error) {
+              return false;
+            }
+          },
+          message: 'Invalid timezone',
+        },
+      },
+      lang: {
+        type: String,
+        default: 'en',
+        validate: {
+          validator: function (v: string) {
+            // Validate language code format
+            return /^[a-z]{2}(-[A-Z]{2})?$/.test(v);
+          },
+          message: 'Invalid language code',
+        },
+      },
+    },
+    lastModifiedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    verifiedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+      index: true,
     },
   },
   {
@@ -95,32 +247,24 @@ const ClientSchema = new Schema<IClientDocument>(
   }
 );
 
-// Indexes for performance
-ClientSchema.index({ admin: 1 });
-ClientSchema.index({ active: 1 });
-ClientSchema.index({ 'contactInfo.primaryEmail': 1 });
-
 ClientSchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',
 });
+ClientSchema.virtual('fullCompanyName').get(function (this: IClientDocument) {
+  return this.companyProfile?.tradingName || this.companyProfile?.legalEntityName || 'Unknown';
+});
 
-ClientSchema.pre('validate', function (next) {
+// Pre-validation middleware
+ClientSchema.pre('validate', function (this: IClientDocument, next) {
   if (this.isNew) return next();
 
   // Check if identification is being updated partially
   if (this.isModified('identification')) {
     const identification = this.identification;
 
-    // If identification object exists and any field is provided, require all fields
+    // If identification object exists and any field is provided, require all mandatory fields
     if (identification && Object.values(identification).some((value) => value !== undefined)) {
-      const requiredFields = [
-        'idType',
-        'issueDate',
-        'expiryDate',
-        'idNumber',
-        'authority',
-        'issuingState',
-      ];
+      const requiredFields = ['idType', 'issueDate', 'expiryDate', 'idNumber', 'issuingState'];
 
       // Check if any required field is missing
       const missingFields = requiredFields.filter(
@@ -138,12 +282,13 @@ ClientSchema.pre('validate', function (next) {
   next();
 });
 
-ClientSchema.path('identification.expiryDate').validate(function (expiryDate) {
-  if (this.identification?.issueDate && expiryDate) {
-    return expiryDate > this.identification?.issueDate;
-  }
-  return true; // if no date is set, skip validation
-}, 'Expiry date must be after issue date');
+// Soft deletion method
+ClientSchema.methods.softDelete = async function (userId: string) {
+  this.status = 'deleted';
+  this.deletedAt = new Date();
+  this.lastModifiedBy = userId;
+  return await this.save();
+};
 
 const ClientModel = model<IClientDocument>('Client', ClientSchema);
 

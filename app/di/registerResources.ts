@@ -1,16 +1,16 @@
 import { BaseIO } from '@sockets/index';
+import { AuthCache } from '@caching/index';
 import { EmailQueue } from '@queues/index';
 import { MailService } from '@mailer/index';
 // import { AuthMiddleware } from '@shared/middleware';
-// import { AuthCache, UtilityCache } from '@caching/index';
 // import { MailService } from '@services/MailService/config.mailer';
 // import { CloudinaryService, DiskStorage, S3FileUpload } from '@services/FileUploadService';
 import { EmailWorker } from '@workers/index';
 import { AuthController } from '@controllers/index';
 import { asValue, asFunction, asClass } from 'awilix';
 import { User, Profile, Client } from '@models/index';
-import { AuthService } from '@root/app/services/index';
 import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { AuthTokenService, AuthService } from '@services/auth';
 import { RedisService, DatabaseService } from '@database/index';
 
 import { container } from './setup';
@@ -37,7 +37,7 @@ const ServiceResources = {
   mailerService: asClass(MailService).singleton(),
   // stripeService: asClass(StripeService).singleton(),
   // uploadService: asClass(CloudinaryService).singleton(),
-  // authTokenService: asClass(AuthTokenService).singleton(),
+  tokenService: asClass(AuthTokenService).singleton(),
   // notificationService: asClass(NotificationService).singleton(),
 };
 
@@ -49,7 +49,7 @@ const DAOResources = {
 };
 
 const CacheResources = {
-  // authCache: asClass(AuthCache).singleton(),
+  authCache: asClass(AuthCache).singleton(),
 };
 
 const WorkerResources = {

@@ -86,7 +86,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
         }
       }
 
-      return await query.lean().exec();
+      return await query.exec();
     } catch (error: any) {
       this.logger.error(error.message);
       throw this.throwErrorHandler(error);

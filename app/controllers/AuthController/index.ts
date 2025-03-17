@@ -1,6 +1,6 @@
 import { Response, Request } from 'express';
 import { AuthService } from '@services/index';
-import { httpStatusCodes } from '@utils/index';
+import { setAuthCookies, httpStatusCodes } from '@utils/index';
 
 interface IConstructor {
   authService: AuthService;
@@ -19,9 +19,24 @@ export class AuthController {
     res.status(httpStatusCodes.OK).json(rest);
   };
 
+  login = async (req: Request, res: Response) => {
+    const { email, password } = req.body;
+    const result = await this.authService.login(email, password);
+    res = setAuthCookies(
+      { accessToken: result.data.accessToken, refreshToken: result.data.refreshToken },
+      res
+    );
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      msg: result.msg,
+      accounts: result.data.accounts,
+      activeAccount: result.data.activeAccount,
+    });
+  };
+
   accountActivation = async (req: Request, res: Response) => {
-    const { token } = req.params;
-    const data = await this.authService.accountActivation(token);
+    const { t: token } = req.query;
+    const data = await this.authService.accountActivation(token as string);
     res.status(httpStatusCodes.OK).json(data);
   };
 

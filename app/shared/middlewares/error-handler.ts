@@ -37,7 +37,7 @@ export const errorHandlerMiddleware = async (
   };
 
   if (envVariables.SERVER.ENV === 'development') {
-    logger.error(errorResponse);
+    logger.error('Error Response', errorResponse);
   }
 
   if (res.headersSent) {

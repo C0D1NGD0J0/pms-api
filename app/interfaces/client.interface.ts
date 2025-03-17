@@ -5,43 +5,34 @@ import {
   IUserDocument,
   IdentificationType,
   IContactInfoType,
+  IAccountType,
 } from './user.interface';
 
 // CLIENT
-export interface IClientDocument extends Document {
-  accountType: {
-    planId: string;
-    planName: string;
-    isEnterpriseAccount: boolean;
-  };
+export interface IClient {
   identification?: IdentificationType;
   subscription: Types.ObjectId | null;
+  companyProfile?: ICompanyProfile;
+  lastModifiedBy: Types.ObjectId;
   accountAdmin: Types.ObjectId;
-  companyInfo?: ICompanyInfo;
   settings: IClientSettings;
+  accountType: IAccountType;
+  displayName: string;
+}
+
+export interface IClientDocument extends Document, IClient {
+  verifiedBy: string | Types.ObjectId;
   isVerified: boolean;
   _id: Types.ObjectId;
+  deletedAt: Date;
   createdAt: Date;
   updatedAt: Date;
   cid: string;
   id: string;
 }
-
-export interface IClientUpdateData {
-  identification?: IdentificationType;
-  businessRegistrationNumber: string;
-  contactInfo?: IContactInfoType;
-  legalEntityName: string;
-  subscription?: string;
-  companyName: string;
-  userId?: string;
-  admin?: string;
-}
-
-export interface ICompanyInfo {
+export interface ICompanyProfile {
   contactInfo?: IContactInfoType;
   registrationNumber: string;
-  yearEstablished: number;
   legalEntityName: string;
   businessType: string;
   tradingName: string;
@@ -59,12 +50,13 @@ export interface IClientSettings {
   lang: string;
 }
 
-export type IPopulatedClientDocument = {
-  admin: IUserDocument | Types.ObjectId;
-} & Omit<IClientDocument, 'admin'>;
-
 export interface IClientUserConnections {
   roles: IUserRoleType[];
   isConnected: boolean;
+  displayName: string;
   cid: string;
 }
+
+export type IPopulatedClientDocument = {
+  admin: IUserDocument | Types.ObjectId;
+} & Omit<IClientDocument, 'admin'>;

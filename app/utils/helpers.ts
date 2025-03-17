@@ -12,6 +12,8 @@ import {
   AsyncRequestHandler,
 } from '@interfaces/utils.interface';
 
+import { JWT_KEY_NAMES } from './constants';
+
 interface LogRecord {
   level: number;
   name?: string;
@@ -91,6 +93,49 @@ export function createLogger(name: string) {
 }
 
 /**
+ * Sets an authentication cookie in the HTTP response
+ * @param cookieName - The name of the JWT cookie
+ * @param token - The JWT token to store in the cookie
+ * @param res - Express response object
+ * @param cookieOptions - Optional cookie settings to override defaults
+ * @returns The modified response object with cookie set
+ */
+export function setAuthCookies(
+  tokens: { accessToken: string; refreshToken: string },
+  res: Response
+) {
+  if (!tokens.accessToken && !tokens.refreshToken) {
+    throw new Error('One or both tokens are required.');
+  }
+
+  if (tokens.refreshToken) {
+    const refreshOpts = {
+      path: '/api/auth/refresh', // Only accessible on the refresh endpoint
+      httpOnly: true,
+      sameSite: 'strict' as const,
+      secure: envVariables.SERVER.ENV !== 'development',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    };
+
+    const bearerJwt = `Bearer ${tokens.refreshToken}`;
+    res.cookie(JWT_KEY_NAMES.REFRESH_TOKEN, bearerJwt, refreshOpts);
+  }
+
+  if (tokens.accessToken) {
+    const opts = {
+      path: '/',
+      httpOnly: true,
+      maxAge: 2 * 60 * 60 * 1000, // 2 hours
+      sameSite: 'strict' as const,
+      secure: envVariables.SERVER.ENV !== 'development',
+    };
+    const bearerJwt = `Bearer ${tokens.accessToken}`;
+    res.cookie(JWT_KEY_NAMES.ACCESS_TOKEN, bearerJwt, opts);
+  }
+  return res;
+}
+
+/**
  * Validates if a string is a valid phone number across multiple formats
  * @param phoneNumber - The phone number string to validate
  * @returns Boolean indicating if the phone number is valid
@@ -138,32 +183,6 @@ export function hashGenerator(hashOpts: {
   } catch (error) {
     throw new Error(`Failed to generate hash: ${error.message}`);
   }
-}
-
-/**
- * Sets an authentication cookie in the HTTP response
- * @param cookieName - The name of the JWT cookie
- * @param token - The JWT token to store in the cookie
- * @param res - Express response object
- * @param cookieOptions - Optional cookie settings to override defaults
- * @returns The modified response object with cookie set
- */
-export function setAuthCookie(cookieName: string, token: string, res: Response) {
-  if (!cookieName || !token) {
-    throw new Error('Cookie name and token are required');
-  }
-
-  const opts = {
-    path: '/',
-    httpOnly: true,
-    sameSite: 'strict' as const,
-    secure: envVariables.SERVER.ENV !== 'development',
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours by default
-  };
-
-  const bearerJwt = `Bearer ${token}`;
-  res.cookie(cookieName, bearerJwt, opts);
-  return res;
 }
 
 /**
@@ -322,4 +341,59 @@ export const getLocationDetails = (location: string): string | null => {
     return `${matchingCountry.name}`;
   }
   return null;
+};
+
+/**
+ * Converts time expressions like '1d', '120min', '60s', '1 day', '2 days', '120 mins' into seconds and milliseconds.
+ * Supported units are 'd' (days), 'h' (hours), 'm' (minutes), 's' (seconds), 'day', 'days', 'min', 'mins'.
+ *
+ * @param {string} timeStr The time string to convert.
+ * @returns {object} An object containing the time in seconds and milliseconds.
+ */
+export const convertTimeToSecondsAndMilliseconds = (timeStr: string) => {
+  const timePattern = /^(\d+)\s?(d|day|days|h|hour|hours|m|min|mins|s|sec|secs|second|seconds)$/i;
+  const match = timeStr.match(timePattern);
+
+  if (!match) {
+    throw new Error(
+      "Invalid time format. Please use 'd', 'day', 'days', 'h', 'hour', 'hours', 'm', 'min', 'mins', 's', 'sec', 'secs', 'second', or 'seconds' as units."
+    );
+  }
+
+  const value = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+
+  let seconds = 0;
+
+  switch (unit) {
+    case 'seconds':
+    case 'second':
+    case 'secs':
+    case 'sec':
+    case 's':
+      seconds = value;
+      break;
+    case 'hours':
+    case 'hour':
+    case 'h':
+      seconds = value * 3600; // 60 * 60
+      break;
+    case 'days':
+    case 'day':
+    case 'd':
+      seconds = value * 86400; // 24 * 60 * 60
+      break;
+    case 'mins':
+    case 'min':
+    case 'm':
+      seconds = value * 60;
+      break;
+    default:
+      throw new Error('Unsupported time unit. Please use a recognized unit.');
+  }
+
+  return {
+    seconds: seconds,
+    milliseconds: seconds * 1000,
+  };
 };

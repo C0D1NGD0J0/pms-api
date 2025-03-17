@@ -1,6 +1,7 @@
 import { Types, Document } from 'mongoose';
 
-import { IClientUserConnections, IClientDocument } from './client.interface';
+import { IProfileDocument, GDPRSettings } from './profile.interface';
+import { ICompanyProfile, IClientUserConnections } from './client.interface';
 
 export enum IUserRelationshipsEnum {
   parents = 'parents',
@@ -11,29 +12,24 @@ export enum IUserRelationshipsEnum {
 }
 
 export enum IUserRole {
-  EMPLOYEE = 'employee',
   MANAGER = 'manager',
+  VENDOR = 'vendor',
   TENANT = 'tenant',
+  STAFF = 'staff',
   ADMIN = 'admin',
-}
-
-// USER
-export enum IAccountType {
-  individual = 'individual',
-  enterprise = 'enterprise',
 }
 
 export interface IUserDocument extends Document, IUser {
   validatePassword: (pwd1: string) => Promise<boolean>;
-  cids: IClientUserConnections[]; //
-  getGravatar: () => string;
+  cids: IClientUserConnections[];
+  profile?: IProfileDocument; //virtual property
   deletedAt: Date | null;
   _id: Types.ObjectId;
   isActive: boolean;
-  fullname?: string;
+  activeCid: string; // active cid
+  fullname?: string; //virtual property
   createdAt: Date;
   updatedAt: Date;
-  cid: string; // active cid
   uid: string;
   id: string;
 }
@@ -70,6 +66,22 @@ export interface ITenant extends IUser {
   cid: string;
 }
 
+export interface ICurrentUser {
+  preferences: {
+    theme?: 'light' | 'dark';
+    lang?: string;
+    timezone?: string;
+  };
+  cid: { id: string; displayname: string };
+  cids: IClientUserConnections[];
+  fullname: string | null;
+  role: IUserRoleType;
+  gdpr?: GDPRSettings;
+  avatarUrl: string;
+  isActive: boolean;
+  email: string;
+  sub: string;
+}
 export type IdentificationType = {
   idType: 'passport' | 'national-id' | 'drivers-license' | 'corporation-license';
   idNumber: string;
@@ -79,39 +91,29 @@ export type IdentificationType = {
   issuingState: string;
 };
 
+export type ISignupData = {
+  email: string;
+  location: string;
+  password: string;
+  phoneNumber: string;
+  displayName: string;
+  firstName: string;
+  lastName: string;
+  lang: string;
+  timeZone?: string;
+  companyProfile?: ICompanyProfile;
+  accountType: IAccountType;
+};
+
 // USER INTERFACE
 export interface IUser {
   passwordResetTokenExpiresAt: Date | number | null;
   activationTokenExpiresAt: Date | number | null;
   passwordResetToken?: string;
   activationToken?: string;
-  phoneNumber?: string;
-  firstName: string;
-  location: string;
   password: string;
-  lastName: string;
   email: string;
 }
-export interface ICurrentUser {
-  isSubscriptionActive?: boolean;
-  fullname: string | null;
-  linkedAccounts: any[];
-  isActive: boolean;
-  email: string;
-  role: string;
-  uid: string;
-  cid: string;
-  id: string;
-}
-
-export type ISignupData = Omit<
-  IUser,
-  | 'activationToken'
-  | 'passwordResetToken'
-  | 'activationTokenExpiresAt'
-  | 'passwordResetTokenExpiresAt'
-> &
-  Pick<IClientDocument, 'accountType' | 'companyInfo'>;
 
 export interface ITenantDocument extends Document, ITenant {
   _id: Types.ObjectId;
@@ -132,6 +134,13 @@ export interface IRefreshTokenDocument extends Document {
   token: string;
 }
 
-export type IUserRoleType = 'admin' | 'tenant' | 'manager' | 'employee' | 'landlord';
+// USER
+export interface IAccountType {
+  isCorporate: boolean;
+  planName: string;
+  planId: string;
+}
+
+export type IUserRoleType = 'admin' | 'tenant' | 'manager' | 'staff' | 'landlord' | 'vendor';
 
 export type IRefreshToken = IRefreshTokenDocument;

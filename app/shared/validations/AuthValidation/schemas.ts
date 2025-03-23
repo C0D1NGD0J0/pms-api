@@ -55,14 +55,17 @@ export const UserSignupSchema = z
     phoneNumber: z.string().optional(),
     accountType: z.object({
       planId: z.string(),
-      planName: z.string(),
-      isEnterpriseAccount: z.boolean(),
+      planName: z.enum(['personal', 'business'], { message: 'Invalid plan name provided.' }),
+      isCorporate: z.boolean(),
     }),
+    lang: z.string().optional(),
+    timeZone: z.string().optional(),
     companyProfile: z
       .object({
+        website: z.string().url('Invalid URL provided.').optional().or(z.literal('')),
         tradingName: z.string().min(2, 'Company name is required'),
-        website: z.string().url('Invalid website URL').optional(),
-        businessType: z.string().min(2, 'Industry is required'),
+        companyEmail: z.string().email('Invalid company email').optional(),
+        companyPhoneNumber: z.string().optional(),
         legalEntityName: z.string().min(2, 'Legal entity name is required'),
         contactInfo: z
           .object({
@@ -84,11 +87,12 @@ export const UserSignupSchema = z
           })
           .optional(),
       })
+      .partial()
       .optional(),
   })
   .superRefine((data, ctx) => {
     // Make company information required for business accounts
-    if (data.accountType.isEnterpriseAccount) {
+    if (data.accountType.isCorporate) {
       if (!data.companyProfile) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -99,7 +103,7 @@ export const UserSignupSchema = z
       }
 
       // Validate company profile fields for business accounts
-      if (!data.companyProfile.companyName) {
+      if (!data.companyProfile.tradingName) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: 'Company name is required for business accounts',
@@ -112,23 +116,6 @@ export const UserSignupSchema = z
           code: z.ZodIssueCode.custom,
           message: 'Legal entity name is required for business accounts',
           path: ['companyProfile', 'legalEntityName'],
-        });
-      }
-
-      if (!data.companyProfile.businessRegistrationNumber) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Business registration number is required for business accounts',
-          path: ['companyProfile', 'businessRegistrationNumber'],
-        });
-      }
-
-      // Make contact info required for business accounts
-      if (!data.companyProfile.contactInfo) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Contact information is required for business accounts',
-          path: ['companyProfile', 'contactInfo'],
         });
       }
     }
@@ -206,7 +193,25 @@ export const ForgotPasswordSchema = z.object({
     .email({ message: 'Invalid email format.' })
     .refine(
       async (email) => {
-        const user = await User.findOne({ email, isActive: true });
+        const user = await User.findOne({ email });
+        if (!user) {
+          return false;
+        }
+        return true;
+      },
+      {
+        message: 'Invalid email address provided.',
+      }
+    ),
+});
+
+export const ResendActivationSchema = z.object({
+  email: z
+    .string({ message: "Email can't be blank" })
+    .email({ message: 'Invalid email format.' })
+    .refine(
+      async (email) => {
+        const user = await User.findOne({ email, isActive: false });
         if (!user) {
           return false;
         }

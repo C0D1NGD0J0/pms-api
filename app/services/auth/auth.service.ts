@@ -84,6 +84,15 @@ export class AuthService {
         throw new InvalidRequestError({ message: 'User not created' });
       }
 
+      if (signupData.accountType.isCorporate) {
+        signupData.companyProfile = {
+          ...signupData.companyProfile,
+          contactInfo: {
+            email: signupData.email,
+            contactPerson: `${signupData.firstName} ${signupData.lastName}`,
+          },
+        };
+      }
       const client = await this.clientDAO.insert(
         {
           cid: clientId,
@@ -255,9 +264,11 @@ export class AuthService {
       throw new BadRequestError({ message: 'Email is required to resend activation link.' });
     }
 
-    const user = await this.userDAO.createActivationToken('', email);
+    await this.userDAO.createActivationToken('', email)!;
+    const user = await this.userDAO.getUserByEmail(email, { populate: 'profile' });
+
     if (!user) {
-      throw new NotFoundError({ message: 'No record found with email provided.' });
+      throw new NotFoundError({ message: `Activation link has been sent to ${email}.` });
     }
 
     const emailData = {
@@ -265,7 +276,7 @@ export class AuthService {
       subject: 'Activate your account',
       emailType: MailType.ACCOUNT_ACTIVATION,
       data: {
-        fullname: user.fullname,
+        fullname: user.profile?.fullname,
         activationUrl: `${envVariables.FRONTEND.URL}/account_activation/${user.activeCid}?t=${user.activationToken}`,
       },
     };

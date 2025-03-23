@@ -91,6 +91,8 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
    */
   listUsers(query: Record<string, any>, opts?: dynamic): Promise<IUserDocument[]>;
 
+  getUserWithProfileByEmailOrId(emailOrId: string): Promise<IUserDocument | null>;
+
   /**
    * Get all client associations for a user.
    *
@@ -127,20 +129,20 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
   searchUsers(query: string, clientId: string): Promise<IUserDocument[]>;
 
   /**
-   * Generate and save a password reset token for a user.
-   *
-   * @param email - The email address of the user requesting a password reset.
-   * @returns A promise that resolves to the generated token or null if user not found.
-   */
-  createPasswordResetToken(email: string): Promise<IUserDocument | null>;
-
-  /**
    * Get the currently authenticated user by their ID with complete profile information.
    *
    * @param userId - The ID of the currently authenticated user.
    * @returns A promise that resolves to the found user document or null if no user is found.
    */
   // getCurrentUser(userId: string): Promise<unknown | null>;
+
+  /**
+   * Generate and save a password reset token for a user.
+   *
+   * @param email - The email address of the user requesting a password reset.
+   * @returns A promise that resolves to the generated token or null if user not found.
+   */
+  createPasswordResetToken(email: string): Promise<IUserDocument | null>;
 
   /**
    * Activate a user account using a token.

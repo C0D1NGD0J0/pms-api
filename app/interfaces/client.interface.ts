@@ -20,6 +20,16 @@ export interface IClient {
   displayName: string;
 }
 
+export interface ICompanyProfile {
+  contactInfo?: IContactInfoType;
+  registrationNumber?: string;
+  legalEntityName?: string;
+  companyPhone?: string;
+  companyEmail?: string;
+  tradingName?: string;
+  industry?: string;
+  website?: string;
+}
 export interface IClientDocument extends Document, IClient {
   verifiedBy: string | Types.ObjectId;
   isVerified: boolean;
@@ -29,15 +39,6 @@ export interface IClientDocument extends Document, IClient {
   updatedAt: Date;
   cid: string;
   id: string;
-}
-export interface ICompanyProfile {
-  contactInfo?: IContactInfoType;
-  registrationNumber: string;
-  legalEntityName: string;
-  businessType: string;
-  tradingName: string;
-  industry: string;
-  website: string;
 }
 
 export interface IClientSettings {

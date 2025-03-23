@@ -2,7 +2,7 @@ import Zod from 'zod';
 import { Schema, model } from 'mongoose';
 import { isValidPhoneNumber } from '@utils/index';
 import uniqueValidator from 'mongoose-unique-validator';
-import { IdentificationType, IClientDocument } from '@interfaces/index';
+import { IdentificationEnumType, IClientDocument } from '@interfaces/index';
 
 const ClientSchema = new Schema<IClientDocument>(
   {
@@ -32,7 +32,7 @@ const ClientSchema = new Schema<IClientDocument>(
     identification: {
       idType: {
         type: String,
-        enum: Object.values(IdentificationType),
+        enum: Object.values(IdentificationEnumType),
         required: function (this: IClientDocument) {
           if (this.isNew) return false;
           return this.isModified('identification.idType');
@@ -118,9 +118,23 @@ const ClientSchema = new Schema<IClientDocument>(
         type: String,
         trim: true,
       },
-      businessType: {
+      companyEmail: {
         type: String,
         trim: true,
+        lowercase: true,
+        validate: {
+          validator: function (v: string) {
+            if (!v) return true;
+            try {
+              const schema = Zod.string().email();
+              schema.parse(v);
+              return true;
+            } catch (error) {
+              return false;
+            }
+          },
+          message: 'Please enter a valid email address',
+        },
       },
       registrationNumber: {
         type: String,
@@ -144,6 +158,16 @@ const ClientSchema = new Schema<IClientDocument>(
           message: 'Please enter a valid website URL',
         },
       },
+      companyPhone: {
+        type: String,
+        trim: true,
+        validate: {
+          validator: function (v: string) {
+            return isValidPhoneNumber(v);
+          },
+          message: 'Please enter a valid phone number',
+        },
+      },
       contactInfo: {
         email: {
           type: String,
@@ -162,10 +186,6 @@ const ClientSchema = new Schema<IClientDocument>(
             },
             message: 'Please enter a valid email address',
           },
-        },
-        address: {
-          type: String,
-          trim: true,
         },
         phoneNumber: {
           type: String,

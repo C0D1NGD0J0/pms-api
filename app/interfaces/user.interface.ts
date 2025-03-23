@@ -82,14 +82,14 @@ export interface ICurrentUser {
   email: string;
   sub: string;
 }
-// export type IdentificationType = {
-//   idType: 'passport' | 'national-id' | 'drivers-license' | 'corporation-license';
-//   idNumber: string;
-//   authority: string;
-//   issueDate: Date | string; // or Date if you prefer Date objects
-//   expiryDate: Date | string; // or Date if you prefer Date objects
-//   issuingState: string;
-// };
+export type IdentificationType = {
+  idType: 'passport' | 'national-id' | 'drivers-license' | 'corporation-license';
+  idNumber: string;
+  authority: string;
+  issueDate: Date | string; // or Date if you prefer Date objects
+  expiryDate: Date | string; // or Date if you prefer Date objects
+  issuingState: string;
+};
 
 export type ISignupData = {
   email: string;
@@ -123,8 +123,7 @@ export interface ITenantDocument extends Document, ITenant {
 
 export type IContactInfoType = {
   email: string;
-  address: string;
-  phoneNumber: string;
+  phoneNumber?: string;
   contactPerson: string;
 };
 

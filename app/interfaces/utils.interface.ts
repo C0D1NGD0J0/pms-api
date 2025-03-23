@@ -11,7 +11,7 @@ export enum MailType {
   ACCOUNT_UPDATE = 'ACCOUNT_UPDATE',
 }
 
-export enum IdentificationType {
+export enum IdentificationEnumType {
   CORPORATION_LICENSE = 'corporation-license',
   DRIVERS_LICENSE = 'drivers-license',
   NATIONAL_ID = 'national-id',

@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
+import { User } from '@models/index';
 import { hashGenerator, createLogger } from '@utils/index';
 import { Types, PipelineStage, Model, FilterQuery } from 'mongoose';
 import { IUserRoleType, IUserDocument } from '@interfaces/user.interface';
@@ -119,7 +120,15 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         throw new Error('User ID or email is required to create activation token.');
       }
       const token = hashGenerator({});
-      const filter = { $or: [{ _id: userId }, { email }], deletedAt: null, isActive: false };
+      const filter: FilterQuery<typeof User> = { deletedAt: null, isActive: false };
+      if (userId) {
+        filter.$or = [{ _id: userId }];
+        if (email) {
+          filter.$or.push({ email });
+        }
+      } else if (email) {
+        filter.email = email;
+      }
 
       const user = await this.update(filter, {
         activationToken: token,
@@ -400,6 +409,16 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       });
 
       return user;
+    } catch (error) {
+      this.logger.error(error.message || error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async getUserWithProfileByEmailOrId(email: string): Promise<IUserDocument | null> {
+    try {
+      const query = { email, deletedAt: null };
+      return await this.findFirst(query, { populate: 'profile' });
     } catch (error) {
       this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);

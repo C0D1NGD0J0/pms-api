@@ -29,7 +29,7 @@ router.put(
 router.put(
   '/resend_activation_link',
   validateRequest({
-    body: AuthValidations.emailValidation,
+    body: AuthValidations.resendActivation,
   }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -37,7 +37,7 @@ router.put(
   })
 );
 
-router.post(
+router.put(
   '/forgot_password',
   validateRequest({
     body: AuthValidations.emailValidation,

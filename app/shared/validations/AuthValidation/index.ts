@@ -1,6 +1,7 @@
 import {
   UserSignupSchema,
   ResetPasswordSchema,
+  ResendActivationSchema,
   LoginSchema,
   ForgotPasswordSchema,
   AccountActivationSchema,
@@ -8,6 +9,7 @@ import {
 
 export class AuthValidations {
   static activationToken = AccountActivationSchema;
+  static resendActivation = ResendActivationSchema;
   static emailValidation = ForgotPasswordSchema;
   static resetPassword = ResetPasswordSchema;
   static signup = UserSignupSchema;

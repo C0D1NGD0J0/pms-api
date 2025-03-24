@@ -294,7 +294,8 @@ export class AuthService {
       throw new BadRequestError({ message: 'User email is required.' });
     }
 
-    const user = await this.userDAO.createPasswordResetToken(email);
+    await this.userDAO.createPasswordResetToken(email);
+    const user = await this.userDAO.getUserByEmail(email, { populate: 'profile' });
     if (!user) {
       throw new NotFoundError({ message: 'No record found with email provided.' });
     }
@@ -303,7 +304,7 @@ export class AuthService {
       subject: 'Account Password Reset',
       to: user.email,
       data: {
-        fullname: user.fullname,
+        fullname: user.profile?.fullname,
         resetUrl: `${process.env.FRONTEND_URL}/reset_password/${user.passwordResetToken}`,
       },
       emailType: MailType.FORGOT_PASSWORD,
@@ -323,7 +324,8 @@ export class AuthService {
       throw new BadRequestError({ message: 'Invalid email/token is provided.' });
     }
 
-    const user = await this.userDAO.resetPassword(email, token);
+    await this.userDAO.resetPassword(email, token);
+    const user = await this.userDAO.getUserByEmail(email, { populate: 'profile' });
     if (!user) {
       throw new NotFoundError({ message: 'No record found with email provided.' });
     }
@@ -332,7 +334,7 @@ export class AuthService {
       subject: 'Account Password Reset',
       to: user.email,
       data: {
-        fullname: user.fullname,
+        fullname: user.profile?.fullname,
       },
       emailType: MailType.PASSWORD_RESET,
     };

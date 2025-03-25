@@ -1,5 +1,5 @@
 // app/dao/interfaces/profileDAO.interface.ts
-import { Types, ClientSession } from 'mongoose';
+import { ClientSession, Types } from 'mongoose';
 import { ICurrentUser } from '@interfaces/index';
 import { IProfileDocument } from '@interfaces/profile.interface';
 

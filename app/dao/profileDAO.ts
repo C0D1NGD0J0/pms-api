@@ -4,7 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { ICurrentUser } from '@interfaces/index';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IProfileDocument } from '@interfaces/profile.interface';
-import { Types, PipelineStage, Model, FilterQuery, ClientSession } from 'mongoose';
+import { PipelineStage, ClientSession, FilterQuery, Types, Model } from 'mongoose';
 
 import { BaseDAO } from './baseDAO';
 import { IProfileDAO } from './interfaces/index';
@@ -266,52 +266,141 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
    * @param userId - The unique identifier for the user.
    * @returns A promise that resolves to a CurrentUser object or null if no user is found.
    */
-
-  /**
-   * Retrieves the currently authenticated user along with their profile information.
-   * Uses MongoDB aggregation to join user data with their profile data and formats it into a CurrentUser object.
-   *
-   * @param userId - The unique identifier for the user.
-   * @param activeCid - The active client/company ID (optional).
-   * @returns A promise that resolves to a ICurrentUser object or null if no user is found.
-   */
   async generateCurrentUserInfo(userId: string): Promise<ICurrentUser | null> {
-    const pipeline: PipelineStage[] = [
-      { $match: { user: new Types.ObjectId(userId) } },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'user',
-          foreignField: '_id',
-          as: 'user',
-        },
-      },
-      { $unwind: '$user' },
-      {
-        $project: {
-          _id: 0,
-          gdpr: '$settings.gdprSettings',
-          preferences: {
-            theme: '$settings.theme',
-            lang: '$lang',
-            timezone: '$timeZone',
-          },
-          fullname: {
-            $concat: ['$personalInfo.firstName', ' ', '$personalInfo.lastName'],
-          },
-          avatarUrl: '$personalInfo.avatar.url',
-          isActive: '$user.isActive',
-          email: '$user.email',
-          sub: '$user._id',
-          cids: '$user.cids',
-        },
-      },
-    ];
-
     try {
+      const pipeline: PipelineStage[] = [
+        {
+          $match: {
+            user: new Types.ObjectId(userId),
+          },
+        },
+
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'user',
+            foreignField: '_id',
+            as: 'userData',
+          },
+        },
+        { $unwind: '$userData' },
+
+        // add client information for all the user's clients
+        {
+          $lookup: {
+            from: 'clients',
+            let: { cidList: '$userData.cids.cid' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $in: ['$cid', '$$cidList'] },
+                },
+              },
+              {
+                $project: {
+                  _id: 0,
+                  id: '$cid',
+                  displayname: '$displayName',
+                  isVerified: 1,
+                },
+              },
+            ],
+            as: 'clientsData',
+          },
+        },
+
+        // transform data into ICurrentUser structure
+        {
+          $project: {
+            _id: 0,
+            sub: { $toString: '$userData._id' },
+            email: '$userData.email',
+            isActive: '$userData.isActive',
+            displayName: '$personalInfo.displayName',
+            fullname: {
+              $concat: ['$personalInfo.firstName', ' ', '$personalInfo.lastName'],
+            },
+            avatarUrl: {
+              $ifNull: ['$personalInfo.avatar.url', ''],
+            },
+
+            // preferences
+            preferences: {
+              theme: { $ifNull: ['$settings.theme', 'light'] },
+              lang: { $ifNull: ['$lang', 'en'] },
+              timezone: { $ifNull: ['$timeZone', 'UTC'] },
+            },
+
+            // active client information
+            activeClient: {
+              $let: {
+                vars: {
+                  activeClient: {
+                    $arrayElemAt: [
+                      {
+                        $filter: {
+                          input: '$userData.cids',
+                          as: 'client',
+                          cond: { $eq: ['$$client.cid', '$userData.activeCid'] },
+                        },
+                      },
+                      0,
+                    ],
+                  },
+                },
+                in: {
+                  id: '$$activeClient.cid',
+                  displayname: '$$activeClient.displayName',
+                  role: { $arrayElemAt: ['$$activeClient.roles', 0] },
+                },
+              },
+            },
+
+            // all client connections
+            clients: {
+              $map: {
+                input: '$userData.cids',
+                as: 'conn',
+                in: {
+                  id: '$$conn.cid',
+                  displayname: '$$conn.displayName',
+                  role: { $arrayElemAt: ['$$conn.roles', 0] },
+                  isActive: { $eq: ['$$conn.cid', '$userData.activeCid'] },
+                },
+              },
+            },
+
+            // gdpr settings if available
+            gdpr: {
+              $cond: {
+                if: '$settings.gdprSettings',
+                then: {
+                  dataRetentionPolicy: '$settings.gdprSettings.dataRetentionPolicy',
+                  dataProcessingConsent: '$settings.gdprSettings.dataProcessingConsent',
+                  processingConsentDate: '$settings.gdprSettings.processingConsentDate',
+                  retentionExpiryDate: '$settings.gdprSettings.retentionExpiryDate',
+                },
+                else: '$$REMOVE',
+              },
+            },
+
+            // permissions array to be filled later
+            permissions: [],
+          },
+        },
+      ];
+
       const result = await this.aggregate(pipeline);
-      return (result[0] as unknown as ICurrentUser) || null;
+
+      if (!result.length) {
+        this.logger.warn(`No user profile found for userId: ${userId}`);
+        return null;
+      }
+
+      const currentUser = result[0] as unknown as ICurrentUser;
+      return currentUser;
     } catch (error) {
+      this.logger.error(`Error generating current user info for ${userId}:`, error);
       throw this.throwErrorHandler(error);
     }
   }

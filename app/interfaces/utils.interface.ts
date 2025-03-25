@@ -1,5 +1,5 @@
 import 'multer';
-import { Response, Request, NextFunction } from 'express';
+import { NextFunction, Response, Request } from 'express';
 
 export enum MailType {
   SUBSCRIPTION_UPDATE = 'SUBSCRIPTION_UPDATE',

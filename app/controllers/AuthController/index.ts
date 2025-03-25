@@ -1,6 +1,6 @@
 import { Response, Request } from 'express';
 import { AuthService } from '@services/index';
-import { setAuthCookies, httpStatusCodes } from '@utils/index';
+import { httpStatusCodes, setAuthCookies } from '@utils/index';
 
 interface IConstructor {
   authService: AuthService;

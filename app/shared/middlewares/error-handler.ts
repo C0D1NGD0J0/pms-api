@@ -3,7 +3,7 @@ import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
 import { AwilixResolutionError } from 'awilix';
 // import { DiskStorage } from '@services/FileUploadService';
-import { Response, Request, NextFunction } from 'express';
+import { NextFunction, Response, Request } from 'express';
 import { InternalServerError, handleMongoError, CustomError } from '@shared/customErrors';
 
 const logger = createLogger('ErrorHandler_Middleware');

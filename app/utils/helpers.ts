@@ -3,13 +3,13 @@ import crypto from 'crypto';
 import bunyan from 'bunyan';
 import { envVariables } from '@shared/config';
 import { Country, City } from 'country-state-city';
-import { Response, Request, NextFunction } from 'express';
+import { NextFunction, Response, Request } from 'express';
 import {
+  AsyncRequestHandler,
+  ExtractedMediaFile,
   PaginateResult,
   MulterFile,
   FileType,
-  ExtractedMediaFile,
-  AsyncRequestHandler,
 } from '@interfaces/utils.interface';
 
 import { JWT_KEY_NAMES } from './constants';

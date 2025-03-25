@@ -4,16 +4,16 @@ import { envVariables } from '@shared/config';
 import { handleMongoError } from '@shared/customErrors';
 import {
   UpdateWriteOpResult,
-  UpdateQuery,
-  Types,
+  AggregateOptions,
   PipelineStage,
   MongooseError,
+  ClientSession,
   ModifyResult,
-  Model,
+  UpdateQuery,
   FilterQuery,
   Document,
-  ClientSession,
-  AggregateOptions,
+  Types,
+  Model,
 } from 'mongoose';
 
 import { IFindOptions, IBaseDAO } from './interfaces/baseDAO.interface';

@@ -1,10 +1,10 @@
 import {
-  UserSignupSchema,
-  ResetPasswordSchema,
-  ResendActivationSchema,
-  LoginSchema,
-  ForgotPasswordSchema,
   AccountActivationSchema,
+  ResendActivationSchema,
+  ForgotPasswordSchema,
+  ResetPasswordSchema,
+  UserSignupSchema,
+  LoginSchema,
 } from './schemas';
 
 export class AuthValidations {

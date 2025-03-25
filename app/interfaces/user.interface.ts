@@ -1,7 +1,7 @@
-import { Types, Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 import { IProfileDocument, GDPRSettings } from './profile.interface';
-import { ICompanyProfile, IClientUserConnections } from './client.interface';
+import { IClientUserConnections, ICompanyProfile } from './client.interface';
 
 export enum IUserRelationshipsEnum {
   parents = 'parents',
@@ -17,6 +17,24 @@ export enum IUserRole {
   TENANT = 'tenant',
   STAFF = 'staff',
   ADMIN = 'admin',
+}
+
+export interface ICurrentUser {
+  preferences: {
+    theme?: 'light' | 'dark';
+    lang?: string;
+    timezone?: string;
+  };
+  activeClient: { id: string; displayname: string; role: IUserRoleType };
+  clients: IClientUserConnections[];
+  fullname: string | null;
+  permissions: string[];
+  displayName: string;
+  gdpr?: GDPRSettings;
+  avatarUrl: string;
+  isActive: boolean;
+  email: string;
+  sub: string;
 }
 
 export interface IUserDocument extends Document, IUser {
@@ -64,23 +82,6 @@ export interface ITenant extends IUser {
   user: Types.ObjectId;
   activatedAt: Date;
   cid: string;
-}
-
-export interface ICurrentUser {
-  preferences: {
-    theme?: 'light' | 'dark';
-    lang?: string;
-    timezone?: string;
-  };
-  cid: { id: string; displayname: string };
-  cids: IClientUserConnections[];
-  fullname: string | null;
-  role: IUserRoleType;
-  gdpr?: GDPRSettings;
-  avatarUrl: string;
-  isActive: boolean;
-  email: string;
-  sub: string;
 }
 export type IdentificationType = {
   idType: 'passport' | 'national-id' | 'drivers-license' | 'corporation-license';

@@ -29,7 +29,7 @@
       {
         "order": "desc",
         "ignoreCase": true,
-        "type": "natural"
+        "type": "line-length"
       }
     ],
     "perfectionist/sort-objects": "off",

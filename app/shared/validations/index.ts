@@ -1,6 +1,6 @@
 import { httpStatusCodes } from '@utils/constants';
-import { ZodSchema, ZodError, AnyZodObject } from 'zod';
-import { Response, Request, NextFunction } from 'express';
+import { AnyZodObject, ZodSchema, ZodError } from 'zod';
+import { NextFunction, Response, Request } from 'express';
 
 export const validateRequest = (schema: {
   query?: AnyZodObject;

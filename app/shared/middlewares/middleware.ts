@@ -1,5 +1,5 @@
 import { container } from '@di/index';
-import { Response, Request, NextFunction } from 'express';
+import { NextFunction, Response, Request } from 'express';
 
 export const scopedMiddleware = (req: Request, res: Response, next: NextFunction) => {
   // Create a scoped contaner

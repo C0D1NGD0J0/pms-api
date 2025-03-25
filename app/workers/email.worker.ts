@@ -2,7 +2,7 @@ import { Job } from 'bull';
 import Logger from 'bunyan';
 import { MailService } from '@mailer/index';
 import { createLogger } from '@utils/index';
-import { MailType, IEmailOptions } from '@interfaces/utils.interface';
+import { IEmailOptions, MailType } from '@interfaces/utils.interface';
 
 export class EmailWorker {
   mailer: MailService;

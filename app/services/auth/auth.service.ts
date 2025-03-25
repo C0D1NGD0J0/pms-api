@@ -6,15 +6,15 @@ import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
 import { AuthTokenService } from '@services/auth';
-import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
-import { IUserRole, ISignupData } from '@interfaces/user.interface';
-import { MailType, ISuccessReturnData } from '@interfaces/utils.interface';
-import { JOB_NAME, hashGenerator, getLocationDetails, createLogger } from '@utils/index';
+import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { ISignupData, IUserRole } from '@interfaces/user.interface';
+import { ISuccessReturnData, MailType } from '@interfaces/utils.interface';
+import { getLocationDetails, hashGenerator, createLogger, JOB_NAME } from '@utils/index';
 import {
-  NotFoundError,
   InvalidRequestError,
-  ForbiddenError,
   BadRequestError,
+  ForbiddenError,
+  NotFoundError,
 } from '@shared/customErrors';
 
 interface IConstructor {

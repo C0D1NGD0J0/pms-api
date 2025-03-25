@@ -84,10 +84,6 @@ export class App implements IAppSetup {
 
   private routes(app: Application) {
     const BASE_PATH = '/api/v1';
-    app.use((req, _res, next) => {
-      console.log(req.body, '-----debug');
-      next();
-    });
     app.use(`${BASE_PATH}/healthcheck`, (req, res) => {
       const healthCheck = {
         uptime: process.uptime(),

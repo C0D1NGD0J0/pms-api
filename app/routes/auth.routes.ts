@@ -15,6 +15,17 @@ router.post(
   })
 );
 
+router.post(
+  '/login',
+  validateRequest({
+    body: AuthValidations.login,
+  }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.login(req, res);
+  })
+);
+
 router.put(
   '/account_activation/:cid',
   validateRequest({
@@ -49,13 +60,13 @@ router.put(
 );
 
 router.post(
-  '/login',
+  '/reset_password',
   validateRequest({
-    body: AuthValidations.login,
+    body: AuthValidations.resetPassword,
   }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
-    return authController.login(req, res);
+    return authController.resetPassword(req, res);
   })
 );
 

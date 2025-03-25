@@ -224,7 +224,7 @@ export const ResendActivationSchema = z.object({
 });
 
 export const ResetPasswordSchema = z.object({
-  resetToken: z.string({ message: 'Invalid url, token missing.' }).refine(
+  token: z.string({ message: 'Invalid url, token missing.' }).refine(
     async (token) => {
       const user = await User.findOne({
         passwordResetToken: token,

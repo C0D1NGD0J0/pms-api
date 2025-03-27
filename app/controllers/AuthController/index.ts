@@ -1,6 +1,6 @@
 import { Response, Request } from 'express';
 import { AuthService } from '@services/index';
-import { httpStatusCodes, setAuthCookies } from '@utils/index';
+import { httpStatusCodes, setAuthCookies, JWT_KEY_NAMES } from '@utils/index';
 
 interface IConstructor {
   authService: AuthService;
@@ -20,15 +20,14 @@ export class AuthController {
   };
 
   login = async (req: Request, res: Response) => {
-    const { email, password } = req.body;
-    const result = await this.authService.login(email, password);
+    const result = await this.authService.login(req.body);
     res = setAuthCookies(
       { accessToken: result.data.accessToken, refreshToken: result.data.refreshToken },
       res
     );
     res.status(httpStatusCodes.OK).json({
       success: true,
-      msg: result.msg,
+      msg: result.message,
       accounts: result.data.accounts,
       activeAccount: result.data.activeAccount,
     });
@@ -55,6 +54,15 @@ export class AuthController {
   resetPassword = async (req: Request, res: Response) => {
     const { token, password } = req.body;
     const result = await this.authService.resetPassword(token, password);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  logout = async (req: Request, res: Response) => {
+    const token = req.cookies?.[JWT_KEY_NAMES.ACCESS_TOKEN];
+    const result = await this.authService.logout(token);
+
+    res.clearCookie(req.cookies?.[JWT_KEY_NAMES.ACCESS_TOKEN], { path: '/' });
+    res.clearCookie(req.cookies?.[JWT_KEY_NAMES.REFRESH_TOKEN], { path: '/api/v1/auth/refresh' });
     res.status(httpStatusCodes.OK).json(result);
   };
 }

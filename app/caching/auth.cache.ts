@@ -1,27 +1,38 @@
 import { envVariables } from '@shared/config';
 import { ICurrentUser } from '@interfaces/user.interface';
-import { ICacheResponse } from '@interfaces/utils.interface';
+import { ISuccessReturnData } from '@interfaces/utils.interface';
 import { convertTimeToSecondsAndMilliseconds } from '@utils/index';
 
 import { BaseCache } from './base.cache';
 
 export class AuthCache extends BaseCache {
+  private readonly ExtendedRefreshTokenTTL: number;
+  private readonly ExtendedUserCacheTTL: number;
   private readonly KEY_PREFIXES = {
     TOKEN: 'auth:token',
     USER: 'auth:user',
   };
 
-  private readonly ACCESS_TOKEN_TTL = convertTimeToSecondsAndMilliseconds(envVariables.JWT.EXPIREIN)
-    .seconds;
-  private readonly REFRESH_TOKEN_TTL = convertTimeToSecondsAndMilliseconds(
-    envVariables.JWT.REFRESH.EXPIRESIN
-  ).seconds;
+  private readonly ACCESS_TOKEN_TTL: number;
+  private readonly REFRESH_TOKEN_TTL: number;
+  private readonly USER_CACHE_TTL: number;
 
   constructor(cacheName = 'AuthCache') {
     super(cacheName);
     this.initializeClient().then(() => {
       console.info('AuthCache connected to Redis');
     });
+    this.ACCESS_TOKEN_TTL = convertTimeToSecondsAndMilliseconds(envVariables.JWT.EXPIREIN).seconds;
+    this.REFRESH_TOKEN_TTL = convertTimeToSecondsAndMilliseconds(
+      envVariables.JWT.REFRESH.EXPIRESIN
+    ).seconds;
+    this.USER_CACHE_TTL = this.ACCESS_TOKEN_TTL + 300; // 5 minutes buffer so user data outlive token for a bit
+    this.ExtendedRefreshTokenTTL = convertTimeToSecondsAndMilliseconds(
+      envVariables.JWT.EXTENDED_REFRESH_TOKEN_EXPIRY
+    ).seconds;
+    this.ExtendedUserCacheTTL = convertTimeToSecondsAndMilliseconds(
+      envVariables.JWT.EXTENDED_ACCESS_TOKEN_EXPIRY
+    ).seconds;
   }
 
   /**
@@ -48,21 +59,27 @@ export class AuthCache extends BaseCache {
    * @param userId - User identifier
    * @param refreshToken - JWT refresh token
    */
-  async saveRefreshToken(userId: string, refreshToken: string): Promise<ICacheResponse> {
+  async saveRefreshToken(
+    userId: string,
+    refreshToken: string,
+    rememberMe = false
+  ): Promise<ISuccessReturnData> {
     try {
       if (!userId || !this.isValidJwtFormat(refreshToken)) {
         return {
+          data: null,
           success: false,
           error: 'Invalid userId or token format',
         };
       }
-
+      const ttl = rememberMe ? this.ExtendedRefreshTokenTTL : this.REFRESH_TOKEN_TTL;
       const key = `${this.KEY_PREFIXES.TOKEN}:${userId}`;
-      await this.client.SETEX(key, this.REFRESH_TOKEN_TTL, refreshToken);
-      return { success: true };
+      await this.client.SETEX(key, ttl, refreshToken);
+      return { success: true, data: null };
     } catch (error) {
       this.log.error('Failed to save refresh token:', error);
       return {
+        data: null,
         success: false,
         error: (error as Error).message,
       };
@@ -72,7 +89,7 @@ export class AuthCache extends BaseCache {
   /**
    * Retrieves a stored refresh token
    */
-  async getRefreshToken(userId: string): Promise<ICacheResponse<string | null>> {
+  async getRefreshToken(userId: string): Promise<ISuccessReturnData<string | null>> {
     try {
       const key = `${this.KEY_PREFIXES.TOKEN}:${userId}`;
       const refreshToken = await this.client.get(key);
@@ -99,23 +116,25 @@ export class AuthCache extends BaseCache {
   /**
    * Removes user session data and tokens from cache
    */
-  async logoutUser(userId: string): Promise<ICacheResponse> {
+  async invalidateUserSession(userId: string): Promise<ISuccessReturnData> {
     try {
       if (!userId) {
         return {
+          data: null,
           success: false,
           error: 'User ID is required',
         };
       }
 
-      const userKey = `${this.KEY_PREFIXES.USER}:${userId}`;
-      const tokenKey = `${this.KEY_PREFIXES.TOKEN}:${userId}`;
+      const currentuserKey = `${this.KEY_PREFIXES.USER}:${userId}`;
+      const refreshTokenKey = `${this.KEY_PREFIXES.TOKEN}:${userId}`;
 
-      await this.deleteItems([userKey, tokenKey]);
-      return { success: true };
+      await this.deleteItems([currentuserKey, refreshTokenKey]);
+      return { data: null, success: true };
     } catch (error) {
       this.log.error('Failed to logout user:', error);
       return {
+        data: null,
         success: false,
         error: (error as Error).message,
       };
@@ -125,21 +144,25 @@ export class AuthCache extends BaseCache {
   /**
    * Stores current user info in cache
    */
-  async saveCurrentUser(userData: ICurrentUser): Promise<ICacheResponse> {
+  async saveCurrentUser(userData: ICurrentUser, rememberMe = false): Promise<ISuccessReturnData> {
     try {
       if (!userData || !userData.sub) {
         return {
           success: false,
+          data: null,
           error: 'Invalid user data',
         };
       }
 
       const key = `${this.KEY_PREFIXES.USER}:${userData.sub}`;
-      return await this.setItem(key, JSON.stringify(userData), this.ACCESS_TOKEN_TTL);
+      const ttl = rememberMe ? this.ExtendedUserCacheTTL : this.USER_CACHE_TTL;
+
+      return await this.setItem(key, JSON.stringify(userData), ttl);
     } catch (error) {
       this.log.error('Failed to save user data:', error);
       return {
         success: false,
+        data: null,
         error: (error as Error).message,
       };
     }
@@ -148,7 +171,7 @@ export class AuthCache extends BaseCache {
   /**
    * Retrieves current user info from cache
    */
-  async getCurrentUser(userId: string): Promise<ICacheResponse<ICurrentUser | null>> {
+  async getCurrentUser(userId: string): Promise<ISuccessReturnData<ICurrentUser | null>> {
     try {
       const key = `${this.KEY_PREFIXES.USER}:${userId}`;
       return await this.getItem<ICurrentUser>(key);
@@ -169,7 +192,7 @@ export class AuthCache extends BaseCache {
     userId: string,
     property: keyof ICurrentUser,
     value: any
-  ): Promise<ICacheResponse> {
+  ): Promise<ISuccessReturnData> {
     try {
       const key = `${this.KEY_PREFIXES.USER}:${userId}`;
       const userResponse = await this.getItem<ICurrentUser>(key);
@@ -177,7 +200,7 @@ export class AuthCache extends BaseCache {
       if (!userResponse.success || !userResponse.data) {
         return {
           success: false,
-
+          data: null,
           error: 'User not found in cache',
         };
       }
@@ -192,6 +215,7 @@ export class AuthCache extends BaseCache {
       this.log.error('Failed to update user property:', error);
       return {
         success: false,
+        data: null,
         error: (error as Error).message,
       };
     }
@@ -200,15 +224,16 @@ export class AuthCache extends BaseCache {
   /**
    * Removes refresh token from cache
    */
-  async removeRefreshToken(userId: string): Promise<ICacheResponse> {
+  async deleteRefreshToken(userId: string): Promise<ISuccessReturnData> {
     try {
       const key = `${this.KEY_PREFIXES.TOKEN}:${userId}`;
       await this.client.del(key);
-      return { success: true };
+      return { success: true, data: null };
     } catch (error) {
       this.log.error('Failed to remove refresh token:', error);
       return {
         success: false,
+        data: null,
         error: (error as Error).message,
       };
     }

@@ -1,4 +1,5 @@
 import Logger from 'bunyan';
+import { Request } from 'express';
 import { envVariables } from '@shared/config';
 import { TokenType } from '@interfaces/utils.interface';
 import { JWT_KEY_NAMES, createLogger } from '@utils/index';
@@ -10,18 +11,37 @@ export class AuthTokenService {
   private jwtRefreshSecret: string;
   private jwtSecret: string;
   private logger: Logger;
+  private extendedAccessTokenExpiry: string | number;
+  private extendedRefreshTokenExpiry: string | number;
 
   constructor() {
     this.logger = createLogger('AuthTokenService');
     this.jwtExpiresIn = envVariables.JWT.EXPIREIN;
     this.jwtSecret = envVariables.JWT.SECRET;
-
     this.jwtRefreshSecret = envVariables.JWT.REFRESH.SECRET;
     this.jwtRefreshExpiresIn = envVariables.JWT.REFRESH.EXPIRESIN;
+    this.extendedAccessTokenExpiry = envVariables.JWT.EXTENDED_ACCESS_TOKEN_EXPIRY;
+    this.extendedRefreshTokenExpiry = envVariables.JWT.EXTENDED_REFRESH_TOKEN_EXPIRY;
   }
 
-  private generateToken(payload: any, secret: string, options: SignOptions): string {
-    return jwt.sign({ data: payload }, secret, options);
+  createJwtTokens(payload: { sub: string; rememberMe: boolean }): {
+    accessToken: string;
+    refreshToken: string;
+  } {
+    const accessExpiry = payload.rememberMe ? this.extendedAccessTokenExpiry : this.jwtExpiresIn;
+    const refreshExpiry = payload.rememberMe
+      ? this.extendedRefreshTokenExpiry
+      : this.jwtRefreshExpiresIn;
+
+    const at = this.generateToken(payload, this.jwtSecret, { expiresIn: accessExpiry as any });
+    const rt = this.generateToken(payload, this.jwtRefreshSecret, {
+      expiresIn: refreshExpiry as any,
+    });
+
+    return {
+      accessToken: at,
+      refreshToken: rt,
+    };
   }
 
   async verifyJwtToken(
@@ -32,31 +52,14 @@ export class AuthTokenService {
       throw { success: false, error: 'Invalid token type.' };
     }
     try {
-      let secret: string;
-      if (tokenType === JWT_KEY_NAMES.REFRESH_TOKEN) {
-        secret = this.jwtRefreshSecret;
-      } else {
-        secret = this.jwtSecret;
-      }
-
+      const secret: string =
+        tokenType === JWT_KEY_NAMES.REFRESH_TOKEN ? this.jwtRefreshSecret : this.jwtSecret;
       const decoded = jwt.verify(token, secret) as JwtPayload;
       return { success: true, data: decoded.data };
     } catch (error) {
       this.logger.error('JWT verification failed: ', (error as Error).message);
-      return { success: false, error: (error as Error).message };
+      throw error;
     }
-  }
-
-  createJwtTokens(payload: any): { accessToken: string; refreshToken: string } {
-    const at = this.generateToken(payload, this.jwtSecret, { expiresIn: this.jwtExpiresIn as any });
-    const rt = this.generateToken(payload, this.jwtRefreshSecret, {
-      expiresIn: this.jwtRefreshExpiresIn as any,
-    });
-
-    return {
-      accessToken: at,
-      refreshToken: rt,
-    };
   }
 
   decodeJwt(token: string) {
@@ -77,5 +80,18 @@ export class AuthTokenService {
         exp: number;
       },
     };
+  }
+
+  extractTokenFromRequest(req: Request): string | undefined {
+    let token: string | undefined = req.cookies?.[JWT_KEY_NAMES.ACCESS_TOKEN];
+    if (token && token.startsWith('Bearer ')) {
+      token = token.split(' ')[1];
+    }
+
+    return token;
+  }
+
+  private generateToken(payload: { sub: string }, secret: string, options: SignOptions): string {
+    return jwt.sign({ data: payload }, secret, options);
   }
 }

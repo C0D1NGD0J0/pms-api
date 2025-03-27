@@ -16,8 +16,8 @@ import sanitizer from 'perfect-express-sanitizer';
 import { DatabaseService } from '@database/index';
 import mongoSanitize from 'express-mongo-sanitize';
 import { httpStatusCodes, createLogger } from '@utils/index';
-import express, { urlencoded, Response, Request, Application } from 'express';
-import { scopedMiddleware, errorHandlerMiddleware } from '@shared/middlewares';
+import express, { Application, urlencoded, Response, Request } from 'express';
+import { errorHandlerMiddleware, scopedMiddleware } from '@shared/middlewares';
 
 export interface IAppSetup {
   initConfig(): void;

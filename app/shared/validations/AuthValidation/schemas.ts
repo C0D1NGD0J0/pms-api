@@ -254,6 +254,7 @@ export const LoginSchema = z.object({
     .string({ message: "Password field can't be blank." })
     .min(6, { message: 'Password must be at least 6 characters long.' })
     .max(20, { message: 'Invalid password value provided.' }),
+  rememberMe: z.boolean().optional(),
 });
 
 export const TenantSchema = z.object({

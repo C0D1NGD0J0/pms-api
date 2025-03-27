@@ -3,11 +3,11 @@ import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
 import { RedisClientType, createClient } from 'redis';
 import { RedisMemoryServer } from 'redis-memory-server';
-import { ICacheResponse } from '@interfaces/utils.interface';
+import { ISuccessReturnData } from '@interfaces/utils.interface';
 
 export class RedisService {
   private redisMemoryServer: RedisMemoryServer | null = null;
-  private connectionPromise: Promise<ICacheResponse> | null = null;
+  private connectionPromise: Promise<ISuccessReturnData> | null = null;
   private redisTestUrl: string = '';
   client: RedisClientType;
   log: Logger;
@@ -26,24 +26,25 @@ export class RedisService {
     });
   }
 
-  protected handleError(error: unknown, operation = 'operation'): ICacheResponse {
+  protected handleError(error: unknown, operation = 'operation'): ISuccessReturnData {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    this.log.error({ err: error, operation }, `Redis ${operation} error: ${errorMessage}`);
+    this.log.error({ error: error, operation }, `Redis ${operation} error: ${errorMessage}`);
 
     return {
+      data: null,
       success: false,
       error: errorMessage || `Redis ${operation} error occurred.`,
     };
   }
 
-  async connect(): Promise<ICacheResponse> {
+  async connect(): Promise<ISuccessReturnData> {
     if (this.connectionPromise) {
       return this.connectionPromise;
     }
 
     if (this.client.isReady) {
       this.log.info('Redis client is already connected');
-      return { success: this.client.isReady };
+      return { success: this.client.isReady, data: null };
     }
 
     this.connectionPromise = this._connect();
@@ -55,7 +56,7 @@ export class RedisService {
     }
   }
 
-  async disconnect(): Promise<ICacheResponse> {
+  async disconnect(): Promise<ISuccessReturnData> {
     try {
       if (this.connectionPromise) {
         await this.connectionPromise.catch(() => {});
@@ -73,7 +74,7 @@ export class RedisService {
         this.redisMemoryServer = null;
       }
       this.log.info('Disconnected from redis');
-      return { success: true };
+      return { success: true, data: null };
     } catch (error) {
       return this.handleError(error);
     }
@@ -97,7 +98,7 @@ export class RedisService {
     }
   }
 
-  private async _connect(): Promise<ICacheResponse> {
+  private async _connect(): Promise<ISuccessReturnData> {
     try {
       let redisUrl: string;
 
@@ -121,10 +122,10 @@ export class RedisService {
 
       await this.client.connect();
       if (!this.client.isReady) {
-        return { success: false, error: 'Redis client failed to connect' };
+        return { success: false, data: null, error: 'Redis client failed to connect' };
       }
 
-      return { success: true };
+      return { success: true, data: null };
     } catch (error) {
       return this.handleError(error, 'connect');
     }

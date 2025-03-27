@@ -1,7 +1,7 @@
 import Logger from 'bunyan';
 import { createClient } from 'redis';
 import { RedisService } from '@database/index';
-import { ICacheResponse } from '@interfaces/utils.interface';
+import { ISuccessReturnData } from '@interfaces/utils.interface';
 
 export type RedisClient = ReturnType<typeof createClient>;
 
@@ -23,10 +23,10 @@ export class BaseCache extends RedisService implements IBaseCache {
    * @param value Value to store
    * @param ttl Time to live in seconds (optional)
    */
-  protected async setItem(key: string, value: string, ttl?: number): Promise<ICacheResponse> {
+  protected async setItem(key: string, value: string, ttl?: number): Promise<ISuccessReturnData> {
     try {
       if (!key) {
-        return { success: false, error: 'Cache key is required' };
+        return { success: false, data: null, error: 'Cache key is required' };
       }
 
       const result = ttl
@@ -35,10 +35,10 @@ export class BaseCache extends RedisService implements IBaseCache {
 
       if (result !== 'OK') {
         this.log.error(`Failed to save item in cache with key: ${key}`);
-        return { success: false, error: 'Failed to save item in cache' };
+        return { success: false, data: null, error: 'Failed to save item in cache' };
       }
 
-      return { success: true };
+      return { success: true, data: null };
     } catch (error) {
       return this.handleError(error, `setItem(${key})`);
     }
@@ -49,10 +49,10 @@ export class BaseCache extends RedisService implements IBaseCache {
    * @param key Cache key
    * @returns Cached value or null if not found
    */
-  protected async getItem<T>(key: string): Promise<ICacheResponse<T | null>> {
+  protected async getItem<T>(key: string): Promise<ISuccessReturnData<T | null>> {
     try {
       if (!key) {
-        return { success: false, error: 'Cache key is required', data: null };
+        return { success: false, data: null, error: 'Cache key is required' };
       }
 
       const res = await this.client.GET(key);
@@ -75,14 +75,14 @@ export class BaseCache extends RedisService implements IBaseCache {
     objName: string,
     data: T,
     ttl?: number
-  ): Promise<ICacheResponse> {
+  ): Promise<ISuccessReturnData> {
     try {
       if (!objName) {
-        return { success: false, error: 'Object name is required' };
+        return { success: false, data: null, error: 'Object name is required' };
       }
 
       if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
-        return { success: false, error: 'Invalid data object' };
+        return { success: false, data: null, error: 'Invalid data object' };
       }
 
       const fields = Object.entries(data).reduce(
@@ -104,6 +104,7 @@ export class BaseCache extends RedisService implements IBaseCache {
       const hsetResult = results?.[0];
 
       return {
+        data: null,
         success: typeof hsetResult === 'number' && hsetResult > 0,
       };
     } catch (error) {
@@ -116,7 +117,9 @@ export class BaseCache extends RedisService implements IBaseCache {
    * @param objName Hash name
    * @returns The cached object or null if not found
    */
-  protected async getObject<T extends object>(objName: string): Promise<ICacheResponse<T | null>> {
+  protected async getObject<T extends object>(
+    objName: string
+  ): Promise<ISuccessReturnData<T | null>> {
     try {
       if (!objName) {
         return { success: false, data: null, error: 'Object name is required' };
@@ -142,10 +145,10 @@ export class BaseCache extends RedisService implements IBaseCache {
    * Delete one or more items from the cache
    * @param keys Array of keys to delete
    */
-  protected async deleteItems(keys: string[]): Promise<ICacheResponse> {
+  protected async deleteItems(keys: string[]): Promise<ISuccessReturnData> {
     try {
       if (!keys || !keys.length) {
-        return { success: false, error: 'At least one key must be provided' };
+        return { success: false, data: null, error: 'At least one key must be provided' };
       }
 
       const resp = await this.client.del(keys);
@@ -162,7 +165,7 @@ export class BaseCache extends RedisService implements IBaseCache {
    * Check if a key exists in the cache
    * @param key Cache key to check
    */
-  protected async hasKey(key: string): Promise<ICacheResponse<boolean>> {
+  protected async hasKey(key: string): Promise<ISuccessReturnData<boolean>> {
     try {
       if (!key) {
         return { success: false, error: 'Cache key is required', data: false };
@@ -183,14 +186,14 @@ export class BaseCache extends RedisService implements IBaseCache {
    * @param key Cache key
    * @param ttl Time to live in seconds
    */
-  protected async setExpiration(key: string, ttl: number): Promise<ICacheResponse> {
+  protected async setExpiration(key: string, ttl: number): Promise<ISuccessReturnData> {
     try {
       if (!key) {
-        return { success: false, error: 'Cache key is required' };
+        return { success: false, data: null, error: 'Cache key is required' };
       }
 
       if (!ttl || ttl <= 0) {
-        return { success: false, error: 'TTL must be a positive number' };
+        return { success: false, data: null, error: 'TTL must be a positive number' };
       }
 
       const result = await this.client.expire(key, ttl);

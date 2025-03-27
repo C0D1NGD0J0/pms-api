@@ -8,8 +8,14 @@ import { envVariables } from '@shared/config';
 import { AuthTokenService } from '@services/auth';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { ISignupData, IUserRole } from '@interfaces/user.interface';
-import { ISuccessReturnData, MailType } from '@interfaces/utils.interface';
-import { getLocationDetails, hashGenerator, createLogger, JOB_NAME } from '@utils/index';
+import { ISuccessReturnData, MailType, TokenType } from '@interfaces/utils.interface';
+import {
+  getLocationDetails,
+  hashGenerator,
+  JWT_KEY_NAMES,
+  createLogger,
+  JOB_NAME,
+} from '@utils/index';
 import {
   InvalidRequestError,
   BadRequestError,
@@ -139,21 +145,20 @@ export class AuthService {
     return {
       data: null,
       success: true,
-      msg: `Account activation email has been sent to ${result.emailData.to}`,
+      message: `Account activation email has been sent to ${result.emailData.to}`,
     };
   }
 
-  async login(
-    email: string,
-    password: string
-  ): Promise<
+  async login(data: { email: string; password: string; rememberMe: boolean }): Promise<
     ISuccessReturnData<{
-      refreshToken: string;
       accessToken: string;
+      rememberMe: boolean;
+      refreshToken: string;
       activeAccount: { cid: string; displayName: string };
       accounts: { cid: string; displayName: string }[] | null;
     }>
   > {
+    const { email, password, rememberMe } = data;
     if (!email || !password) {
       this.log.error('Email and password are required. | Login');
       throw new BadRequestError({ message: 'Email and password are required.' });
@@ -175,24 +180,26 @@ export class AuthService {
 
     const activeAccount = user.cids.find((c) => c.cid === user.activeCid)!;
     const tokens = this.tokenService.createJwtTokens({
-      sub: user._id,
+      sub: user._id.toString(),
+      rememberMe,
     });
-    await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken);
+    await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, rememberMe);
     const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
     currentuser && (await this.authCache.saveCurrentUser(currentuser));
     if (user.cids.length === 1) {
       return {
         success: true,
         data: {
+          rememberMe,
           refreshToken: tokens.refreshToken,
           accessToken: tokens.accessToken,
           activeAccount: {
             cid: activeAccount.cid,
             displayName: activeAccount.displayName,
           },
-          accounts: null,
+          accounts: [],
         },
-        msg: 'Login successful.',
+        message: 'Login successful.',
       };
     }
 
@@ -202,6 +209,7 @@ export class AuthService {
     return {
       success: true,
       data: {
+        rememberMe,
         refreshToken: tokens.refreshToken,
         accessToken: tokens.accessToken,
         activeAccount: {
@@ -210,7 +218,7 @@ export class AuthService {
         },
         accounts: otherAccounts,
       },
-      msg: 'Login successful.',
+      message: 'Login successful.',
     };
   }
 
@@ -240,7 +248,7 @@ export class AuthService {
           displayName: activeAccount.displayName,
         },
       },
-      msg: 'Account switched successfully.',
+      message: 'Account switched successfully.',
     };
   }
 
@@ -256,7 +264,7 @@ export class AuthService {
       throw new NotFoundError({ message: msg });
     }
 
-    return { success: true, data: null, msg: 'Account activated successfully.' };
+    return { success: true, data: null, message: 'Account activated successfully.' };
   }
 
   async sendActivationLink(email: string): Promise<ISuccessReturnData> {
@@ -284,7 +292,7 @@ export class AuthService {
     return {
       success: true,
       data: emailData,
-      msg: `Account activation link has been sent to ${emailData.to}`,
+      message: `Account activation link has been sent to ${emailData.to}`,
     };
   }
 
@@ -314,7 +322,7 @@ export class AuthService {
     return {
       data: null,
       success: true,
-      msg: `Password reset email has been sent to ${user.email}`,
+      message: `Password reset email has been sent to ${user.email}`,
     };
   }
 
@@ -343,7 +351,23 @@ export class AuthService {
     return {
       data: null,
       success: true,
-      msg: `Password reset email has been sent to ${user.email}`,
+      message: `Password reset email has been sent to ${user.email}`,
     };
+  }
+
+  async logout(accessToken: string): Promise<ISuccessReturnData> {
+    if (!accessToken) {
+      this.log.error('Access token is required. | Logout');
+    }
+    const payload = await this.tokenService.verifyJwtToken(
+      JWT_KEY_NAMES.ACCESS_TOKEN as TokenType,
+      accessToken
+    );
+    if (!payload.success || !payload.data?.sub) {
+      throw new ForbiddenError({ message: 'Invalid access token.' });
+    }
+
+    await this.authCache.invalidateUserSession(payload.data.sub as string);
+    return { success: true, data: null, message: 'Logout successful.' };
   }
 }

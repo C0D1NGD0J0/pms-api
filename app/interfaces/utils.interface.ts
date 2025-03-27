@@ -60,6 +60,14 @@ export interface IAWSFileUploadResponse {
   key: string;
 }
 
+export interface ISuccessReturnData<T = unknown> {
+  errors?: [{ path: string; message: string }];
+  success: boolean;
+  message?: string;
+  error?: string;
+  data: T;
+}
+
 /**
  * Interface defining the structure of pagination metadata
  */
@@ -70,7 +78,6 @@ export interface PaginateResult {
   perPage: number;
   total: number;
 }
-
 export type ExtractedMediaFile = {
   fieldName: string;
   mimeType: string;
@@ -84,6 +91,7 @@ export type MulterFile =
       [fieldname: string]: Express.Multer.File[];
     }
   | undefined;
+
 export interface IPaginationQuery {
   skip?: number | null;
   sortBy?: string;
@@ -99,12 +107,6 @@ export interface IEmailOptions<T> {
 }
 
 export type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
-
-export interface ISuccessReturnData<T = unknown> {
-  success: boolean;
-  msg?: string;
-  data: T;
-}
 
 export interface ICacheResponse<T = any> {
   success: boolean;

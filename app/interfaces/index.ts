@@ -1,3 +1,4 @@
+export * from './property.interface';
 export * from './profile.interface';
 export * from './client.interface';
 export * from './utils.interface';

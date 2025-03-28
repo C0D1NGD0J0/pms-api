@@ -59,6 +59,10 @@ class EnvVariables {
   public FRONTEND: {
     URL: string;
   };
+  public GEOCODER: {
+    PROVIDER: string;
+    PROVIDER_KEY: string;
+  };
   public STRIPE: {
     SECRET_KEY: string;
     PUBLIC_KEY: string;
@@ -134,6 +138,10 @@ class EnvVariables {
       TEST_KEY: process.env.STRIPE_TEST_KEY || '',
       REDIRECT_URL: process.env.STRIPE_REDIRECT_URL || '',
       WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
+    };
+    this.GEOCODER = {
+      PROVIDER: process.env.GEOCODER_PROVIDER || '',
+      PROVIDER_KEY: process.env.GEOCODER_PROVIDER_KEY || '',
     };
     this.PLATFORM_FEE_PERCENTAGE = Number(process.env.PLATFORM_FEE_PERCENTAGE);
     this.validateSecretValue();

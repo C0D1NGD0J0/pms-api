@@ -174,7 +174,11 @@ export class AuthCache extends BaseCache {
   async getCurrentUser(userId: string): Promise<ISuccessReturnData<ICurrentUser | null>> {
     try {
       const key = `${this.KEY_PREFIXES.USER}:${userId}`;
-      return await this.getItem<ICurrentUser>(key);
+      const result = await this.getItem<ICurrentUser>(key);
+      return {
+        ...result,
+        data: result.data as ICurrentUser | null,
+      };
     } catch (error) {
       this.log.error('Failed to get user data:', error);
       return {

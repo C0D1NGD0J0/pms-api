@@ -45,7 +45,10 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       if (_currentuser) {
         await authCache.saveCurrentUser(_currentuser);
       }
+
+      req.currentuser = _currentuser;
     }
+    req.currentuser = currentUserResp.data;
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {

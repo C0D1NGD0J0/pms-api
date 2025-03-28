@@ -33,6 +33,21 @@ export class AuthController {
     });
   };
 
+  getCurrentUser = async (req: Request, res: Response) => {
+    const { currentuser } = req;
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'Unauthorized',
+      });
+    }
+
+    return res.status(httpStatusCodes.OK).json({
+      success: 200,
+      data: currentuser,
+    });
+  };
+
   accountActivation = async (req: Request, res: Response) => {
     const { t: token } = req.query;
     const data = await this.authService.accountActivation(token as string);

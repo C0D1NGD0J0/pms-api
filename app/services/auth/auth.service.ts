@@ -8,7 +8,7 @@ import { envVariables } from '@shared/config';
 import { AuthTokenService } from '@services/auth';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { ISignupData, IUserRole } from '@interfaces/user.interface';
-import { ISuccessReturnData, MailType, TokenType } from '@interfaces/utils.interface';
+import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
 import {
   getLocationDetails,
   hashGenerator,
@@ -21,6 +21,7 @@ import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
+  UnauthorizedError,
 } from '@shared/customErrors';
 
 interface IConstructor {
@@ -219,6 +220,32 @@ export class AuthService {
         accounts: otherAccounts,
       },
       message: 'Login successful.',
+    };
+  }
+
+  async getCurrentUser(userId: string): Promise<ISuccessReturnData> {
+    if (!userId) {
+      this.log.error('User ID is required. | GetCurrentUser');
+      throw new BadRequestError({ message: 'User ID is required.' });
+    }
+
+    const currentuser = await this.profileDAO.generateCurrentUserInfo(userId);
+    if (!currentuser) {
+      this.log.error('User not found. | GetCurrentUser');
+      throw new UnauthorizedError({ message: 'Unauthorized.' });
+    }
+
+    const cachedResp = await this.authCache.saveCurrentUser(currentuser);
+    if (!cachedResp.success) {
+      return {
+        success: cachedResp.success,
+        data: null,
+      };
+    }
+
+    return {
+      success: true,
+      data: currentuser,
     };
   }
 

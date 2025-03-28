@@ -49,7 +49,7 @@ export class BaseCache extends RedisService implements IBaseCache {
    * @param key Cache key
    * @returns Cached value or null if not found
    */
-  protected async getItem<T>(key: string): Promise<ISuccessReturnData<T | null>> {
+  protected async getItem<T>(key: string): Promise<ISuccessReturnData> {
     try {
       if (!key) {
         return { success: false, data: null, error: 'Cache key is required' };
@@ -119,7 +119,7 @@ export class BaseCache extends RedisService implements IBaseCache {
    */
   protected async getObject<T extends object>(
     objName: string
-  ): Promise<ISuccessReturnData<T | null>> {
+  ): Promise<ISuccessReturnData<any | null>> {
     try {
       if (!objName) {
         return { success: false, data: null, error: 'Object name is required' };
@@ -165,7 +165,7 @@ export class BaseCache extends RedisService implements IBaseCache {
    * Check if a key exists in the cache
    * @param key Cache key to check
    */
-  protected async hasKey(key: string): Promise<ISuccessReturnData<boolean>> {
+  protected async hasKey(key: string): Promise<ISuccessReturnData> {
     try {
       if (!key) {
         return { success: false, error: 'Cache key is required', data: false };

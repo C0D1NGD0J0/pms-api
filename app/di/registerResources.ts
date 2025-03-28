@@ -4,6 +4,7 @@ import { EmailQueue } from '@queues/index';
 import { MailService } from '@mailer/index';
 import { EmailWorker } from '@workers/index';
 import { AuthController } from '@controllers/index';
+import { GeoCoderService } from '@services/external';
 import { asFunction, asValue, asClass } from 'awilix';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { AuthTokenService, AuthService } from '@services/auth';
@@ -53,6 +54,7 @@ const UtilsResources = {
     return new RedisService('Redis Service');
   }).singleton(),
   dbService: asClass(DatabaseService).singleton(),
+  geoCoderService: asClass(GeoCoderService).singleton(),
 };
 
 const SocketIOResources = {

@@ -1,34 +1,33 @@
 import { Document, Types } from 'mongoose';
 
-export interface IPropertyDocument extends Document {
+export interface IProperty {
   communityAmenities: ICommunityAmenities;
   interiorAmenities: IInteriorAmenities;
   exteriorAmenities: IExteriorAmenities;
+  computedLocation?: IComputedLocation;
   financialDetails?: IFinancialDetails;
-  computedLocation: IComputedLocation;
   documents?: IPropertyDocumentItem[];
   occupancyStatus: OccupancyStatus;
   specifications: ISpecifications;
-  lastModifiedBy?: Types.ObjectId;
-  maintenanceRequests?: any[]; // update with IMaintenanceRequest[] when ready
   propertyType: PropertyType;
-  managedBy?: Types.ObjectId;
-  createdBy: Types.ObjectId;
   status: PropertyStatus;
   utilities: IUtilities;
   occupancyRate: number;
   description?: string;
   cid: Types.ObjectId;
   yearBuilt?: number;
+  address: string;
+  name: string;
+}
+
+export interface IPropertyDocument extends IProperty, Document {
+  lastModifiedBy?: Types.ObjectId;
+  managedBy?: Types.ObjectId;
+  createdBy: Types.ObjectId;
   deletedAt?: Date;
   address: string;
   createdAt: Date;
   updatedAt: Date;
-  leases?: any[]; // update with ILease[] when ready
-
-  // Virtual fields
-  units?: any[]; // update with IUnit[] when ready
-  name: string;
   pid: string;
 }
 

@@ -101,7 +101,7 @@ export class App implements IAppSetup {
     // app.use(`${BASE_PATH}/invites`, routes.inviteRoutes);
     // app.use(`${BASE_PATH}/tenants`, routes.tenantsRoutes);
     // app.use(`${BASE_PATH}/employees`, routes.employeeRoutes);
-    // app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
+    app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
     // app.use(`${BASE_PATH}/notifications`, routes.notificationRoutes);
     // app.use(`${BASE_PATH}/subscriptions`, routes.subscriptionsRoutes);
     // app.use(`${BASE_PATH}/service-requests`, routes.serviceRequestRoutes);

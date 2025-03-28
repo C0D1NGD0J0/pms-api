@@ -2,7 +2,7 @@ import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { User } from '@models/index';
 import { hashGenerator, createLogger } from '@utils/index';
-import { Types, PipelineStage, Model, FilterQuery } from 'mongoose';
+import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
 import { IUserRoleType, IUserDocument } from '@interfaces/user.interface';
 
 import { BaseDAO } from './baseDAO';

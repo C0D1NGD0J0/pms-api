@@ -8,7 +8,7 @@ import { envVariables } from '@shared/config';
 import express, { Application } from 'express';
 import { Server as SocketIOServer } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
-import { Environments, DatabaseService } from '@database/index';
+import { DatabaseService, Environments } from '@database/index';
 
 (global as any).rootDir = __dirname;
 

@@ -26,6 +26,8 @@ class EnvVariables {
       EXPIRESIN: string;
       SECRET: string;
     };
+    EXTENDED_ACCESS_TOKEN_EXPIRY: string;
+    EXTENDED_REFRESH_TOKEN_EXPIRY: string;
   };
   public BULL_BOARD: {
     BASE_PATH: string;
@@ -103,6 +105,8 @@ class EnvVariables {
         EXPIRESIN: process.env.JWT_REFRESH_EXPIRESIN || '',
         SECRET: process.env.JWT_REFRESH_SECRET || '',
       },
+      EXTENDED_ACCESS_TOKEN_EXPIRY: process.env.JWT_EXTENDED_EXPIRY || '',
+      EXTENDED_REFRESH_TOKEN_EXPIRY: process.env.JWT_EXTENDED_REFRESH_TOKEN_EXPIRY || '',
     };
     this.EMAIL = {
       DEV: {

@@ -3,13 +3,13 @@ import crypto from 'crypto';
 import bunyan from 'bunyan';
 import { envVariables } from '@shared/config';
 import { Country, City } from 'country-state-city';
-import { Response, Request, NextFunction } from 'express';
+import { NextFunction, Response, Request } from 'express';
 import {
+  AsyncRequestHandler,
+  ExtractedMediaFile,
   PaginateResult,
   MulterFile,
   FileType,
-  ExtractedMediaFile,
-  AsyncRequestHandler,
 } from '@interfaces/utils.interface';
 
 import { JWT_KEY_NAMES } from './constants';
@@ -101,37 +101,48 @@ export function createLogger(name: string) {
  * @returns The modified response object with cookie set
  */
 export function setAuthCookies(
-  tokens: { accessToken: string; refreshToken: string },
+  data: { accessToken: string; refreshToken: string; rememberMe?: boolean },
   res: Response
 ) {
-  if (!tokens.accessToken && !tokens.refreshToken) {
+  if (!data.accessToken && !data.refreshToken) {
     throw new Error('One or both tokens are required.');
   }
 
-  if (tokens.refreshToken) {
-    const refreshOpts = {
-      path: '/api/auth/refresh', // Only accessible on the refresh endpoint
+  let opts: Record<string, any>;
+  let bearerJwt: string;
+
+  if (data.refreshToken) {
+    opts = {
+      path: '/api/v1/auth/refresh', // Only accessible on the refresh endpoint
       httpOnly: true,
       sameSite: 'strict' as const,
       secure: envVariables.SERVER.ENV !== 'development',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     };
-
-    const bearerJwt = `Bearer ${tokens.refreshToken}`;
-    res.cookie(JWT_KEY_NAMES.REFRESH_TOKEN, bearerJwt, refreshOpts);
+    bearerJwt = `Bearer ${data.refreshToken}`;
+    if (data.rememberMe) {
+      opts.maxAge = convertTimeToSecondsAndMilliseconds(
+        envVariables.JWT.EXTENDED_REFRESH_TOKEN_EXPIRY
+      ).milliseconds;
+    }
+    res.cookie(JWT_KEY_NAMES.REFRESH_TOKEN, bearerJwt, opts);
   }
 
-  if (tokens.accessToken) {
-    const opts = {
+  if (data.accessToken) {
+    opts = {
       path: '/',
       httpOnly: true,
-      maxAge: 2 * 60 * 60 * 1000, // 2 hours
       sameSite: 'strict' as const,
       secure: envVariables.SERVER.ENV !== 'development',
     };
-    const bearerJwt = `Bearer ${tokens.accessToken}`;
+    bearerJwt = `Bearer ${data.accessToken}`;
+    if (data.rememberMe) {
+      opts.maxAge = convertTimeToSecondsAndMilliseconds(
+        envVariables.JWT.EXTENDED_ACCESS_TOKEN_EXPIRY
+      ).milliseconds;
+    }
     res.cookie(JWT_KEY_NAMES.ACCESS_TOKEN, bearerJwt, opts);
   }
+
   return res;
 }
 
@@ -350,7 +361,9 @@ export const getLocationDetails = (location: string): string | null => {
  * @param {string} timeStr The time string to convert.
  * @returns {object} An object containing the time in seconds and milliseconds.
  */
-export const convertTimeToSecondsAndMilliseconds = (timeStr: string) => {
+export const convertTimeToSecondsAndMilliseconds = (
+  timeStr: string
+): { seconds: number; milliseconds: number } => {
   const timePattern = /^(\d+)\s?(d|day|days|h|hour|hours|m|min|mins|s|sec|secs|second|seconds)$/i;
   const match = timeStr.match(timePattern);
 
@@ -393,7 +406,7 @@ export const convertTimeToSecondsAndMilliseconds = (timeStr: string) => {
   }
 
   return {
-    seconds: seconds,
+    seconds,
     milliseconds: seconds * 1000,
   };
 };

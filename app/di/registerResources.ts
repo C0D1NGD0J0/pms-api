@@ -7,11 +7,11 @@ import { MailService } from '@mailer/index';
 // import { CloudinaryService, DiskStorage, S3FileUpload } from '@services/FileUploadService';
 import { EmailWorker } from '@workers/index';
 import { AuthController } from '@controllers/index';
-import { asValue, asFunction, asClass } from 'awilix';
-import { User, Profile, Client } from '@models/index';
-import { UserDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { asFunction, asValue, asClass } from 'awilix';
+import { Profile, Client, User } from '@models/index';
+import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { AuthTokenService, AuthService } from '@services/auth';
-import { RedisService, DatabaseService } from '@database/index';
+import { DatabaseService, RedisService } from '@database/index';
 
 import { container } from './setup';
 

@@ -33,18 +33,6 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
   ): Promise<IClientDocument | null>;
 
   /**
-   * Updates a client's account type (individual / enterprise status).
-   *
-   * @param clientId - The MongoDB ObjectId of the client to update
-   * @param data - {planName: string, planId: string, isEnterprise: boolean} - The account type fields to update
-   * @returns A promise that resolves to the updated client document or null if not found
-   */
-  updateAccountType(
-    clientId: string,
-    data: IClientDocument['accountType']
-  ): Promise<IClientDocument | null>;
-
-  /**
    * Updates a client's company information.
    *
    * @param clientId - The MongoDB ObjectId of the client to update
@@ -54,6 +42,18 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
   updateCompanyInfo(
     clientId: string,
     companyInfo: Partial<ICompanyProfile>
+  ): Promise<IClientDocument | null>;
+
+  /**
+   * Updates a client's account type (individual / enterprise status).
+   *
+   * @param clientId - The MongoDB ObjectId of the client to update
+   * @param data - {planName: string, planId: string, isEnterprise: boolean} - The account type fields to update
+   * @returns A promise that resolves to the updated client document or null if not found
+   */
+  updateAccountType(
+    clientId: string,
+    data: IClientDocument['accountType']
   ): Promise<IClientDocument | null>;
 
   /**

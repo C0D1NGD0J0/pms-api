@@ -2,9 +2,8 @@ import { MongooseError } from 'mongoose';
 import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
 import { AwilixResolutionError } from 'awilix';
-// import { DiskStorage } from '@services/FileUploadService';
-import { Response, Request, NextFunction } from 'express';
-import { InternalServerError, handleMongoError, CustomError } from '@shared/customErrors';
+import { NextFunction, Response, Request } from 'express';
+import { handleMongoError, CustomError } from '@shared/customErrors';
 
 const logger = createLogger('ErrorHandler_Middleware');
 
@@ -14,35 +13,34 @@ export const errorHandlerMiddleware = async (
   res: Response,
   next: NextFunction
 ) => {
-  let error;
-
-  if (err instanceof CustomError) {
-    error = err;
-  } else if (err instanceof MongooseError) {
-    error = handleMongoError(err);
-  } else if (err instanceof AwilixResolutionError) {
-    error = new InternalServerError({
-      message: `${err.name}: ${err.message}` || 'An unexpected error occurred',
-    });
-  } else {
-    error = err;
-  }
+  const statusCode = err.statusCode || 500;
+  const message =
+    err instanceof CustomError
+      ? err.message
+      : err instanceof MongooseError
+        ? handleMongoError(err).message
+        : err instanceof AwilixResolutionError
+          ? `${err.name}: ${err.message}` || 'An unexpected error occurred'
+          : err.message || 'Internal Server Error';
 
   const errorResponse = {
     success: false,
-    message: error.message,
-    statusCode: error.statusCode || 500,
+    message,
+    statusCode,
     ...(err.errors?.length ? { errors: err.errors } : {}),
-    ...(envVariables.SERVER.ENV === 'development' && { stack: error.stack }),
   };
 
   if (envVariables.SERVER.ENV === 'development') {
-    logger.error('Error Response', errorResponse);
+    const limitedStack = err.stack
+      ? err.stack.split('\n').slice(0, 10).join('\n')
+      : 'No stack trace available';
+
+    logger.debug(`Limited stack: ${limitedStack}`);
   }
 
   if (res.headersSent) {
-    // If headers are already sent, delegate to the default Express error handler
-    return next(errorResponse);
+    // If headers are already sent, forward to the express error handler
+    return next(err);
   }
   res.status(errorResponse.statusCode).json(errorResponse);
 };

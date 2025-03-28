@@ -2,8 +2,8 @@ import { asValue } from 'awilix';
 import { jest } from '@jest/globals';
 import { EmailWorker } from '@workers/index';
 import { AuthController } from '@controllers/index';
-import { User, Profile, Client } from '@models/index';
-import { RedisService, DatabaseService } from '@database/index';
+import { Profile, Client, User } from '@models/index';
+import { DatabaseService, RedisService } from '@database/index';
 
 // Mock Controllers
 jest.mock('@controllers/index', () => ({
@@ -19,6 +19,8 @@ export const mockAuthService = {
   forgotPassword: jest.fn(),
   resetPassword: jest.fn(),
   switchActiveAccount: jest.fn(),
+  getCurrentUser: jest.fn(),
+  logout: jest.fn(),
 };
 
 export const mockAuthTokenService = {

@@ -1,5 +1,4 @@
-import { Data } from 'ejs';
-import { Types, Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 import { IdentificationType } from './user.interface';
 

@@ -3,6 +3,7 @@ import { asyncWrapper } from '@utils/index';
 import { AuthController } from '@controllers/index';
 import { validateRequest } from '@shared/validations';
 import { AuthValidations } from '@shared/validations/AuthValidation';
+import { isAuthenticated } from '@shared/middlewares';
 
 const router: Router = express.Router();
 
@@ -23,6 +24,14 @@ router.post(
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.login(req, res);
+  })
+);
+router.get(
+  '/me',
+  isAuthenticated,
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.getCurrentUser(req, res);
   })
 );
 

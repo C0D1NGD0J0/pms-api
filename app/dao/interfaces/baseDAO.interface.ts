@@ -1,14 +1,14 @@
 import {
   UpdateWriteOpResult,
-  UpdateQuery,
-  Types,
+  AggregateOptions,
   PopulateOptions,
   PipelineStage,
+  ClientSession,
   ModifyResult,
+  UpdateQuery,
   FilterQuery,
   Document,
-  ClientSession,
-  AggregateOptions,
+  Types,
 } from 'mongoose';
 
 /**

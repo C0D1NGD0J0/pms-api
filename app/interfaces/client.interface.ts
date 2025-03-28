@@ -1,10 +1,10 @@
-import { Types, Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 import {
-  IUserRoleType,
-  IUserDocument,
   IdentificationType,
   IContactInfoType,
+  IUserRoleType,
+  IUserDocument,
   IAccountType,
 } from './user.interface';
 

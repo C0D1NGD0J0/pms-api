@@ -1,5 +1,5 @@
 import { createLogger } from '@utils/index';
-import { InjectionMode, createContainer } from 'awilix';
+import { createContainer, InjectionMode } from 'awilix';
 
 import { registerResources } from './registerResources';
 

@@ -1,4 +1,4 @@
-import { Types, FilterQuery } from 'mongoose';
+import { FilterQuery, Types } from 'mongoose';
 import { IUserRoleType, IUserDocument } from '@interfaces/user.interface';
 
 import { IBaseDAO, dynamic } from './baseDAO.interface';

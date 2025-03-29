@@ -1,7 +1,7 @@
 import authRoutes from './auth.routes';
-import propertRoutes from './property.routes';
+import propertyRoutes from './property.routes';
 
 export const routes = {
   authRoutes,
-  propertRoutes,
+  propertyRoutes,
 };

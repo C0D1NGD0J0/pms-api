@@ -108,7 +108,7 @@ const PropertyDocumentSchema = z.object({
   description: z.string().optional(),
 });
 
-export const CreatePropertySchema = z.object({
+const CreatePropertySchema = z.object({
   name: z
     .string()
     .min(3, 'Property name must be at least 3 characters')
@@ -211,3 +211,29 @@ export const UpdateOccupancySchema = z.object({
   occupancyStatus: OccupancyStatusEnum,
   occupancyRate: z.number().min(0).max(100),
 });
+
+const PropertyClientRelationship = z.object({
+  cid: z.string().trim().min(1, 'Client ID is required'),
+  propertyId: z.string().trim().min(1, 'Property ID is required'),
+});
+
+export const PropertyClientRelationshipSchema = PropertyClientRelationship.superRefine(
+  async (data, ctx) => {
+    const property = await propertyDAO.findFirst({
+      _id: data.propertyId,
+      cid: data.cid,
+      deletedAt: null,
+    });
+
+    if (!property) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Property not found for the given client ID.',
+        path: ['propertyId'],
+      });
+      return false;
+    }
+
+    return true;
+  }
+);

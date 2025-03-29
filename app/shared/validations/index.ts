@@ -1,10 +1,10 @@
 import { httpStatusCodes } from '@utils/constants';
-import { AnyZodObject, ZodSchema, ZodError } from 'zod';
 import { NextFunction, Response, Request } from 'express';
+import { ZodTypeDef, ZodSchema, ZodError, ZodType } from 'zod';
 
 export const validateRequest = (schema: {
-  query?: AnyZodObject;
-  params?: AnyZodObject;
+  query?: ZodType<any, ZodTypeDef, any>;
+  params?: ZodType<any, ZodTypeDef, any>;
   body?: ZodSchema;
 }) => {
   return async (req: Request, res: Response, next: NextFunction) => {

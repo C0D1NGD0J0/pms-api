@@ -1,6 +1,7 @@
 import {
+  CreatePropertySchemaWithValidation,
+  PropertyClientRelationshipSchema,
   UpdateOccupancySchema,
-  CreatePropertySchema,
   UpdatePropertySchema,
   PropertySearchSchema,
   ValidateCidSchema,
@@ -8,10 +9,11 @@ import {
 } from './schema';
 
 export class PropertyValidations {
-  static create = CreatePropertySchema;
+  static getId = ValidateIdSchema;
   static update = UpdatePropertySchema;
   static search = PropertySearchSchema;
-  static getId = ValidateIdSchema;
   static validateCid = ValidateCidSchema;
   static updateOccupancy = UpdateOccupancySchema;
+  static create = CreatePropertySchemaWithValidation;
+  static validatePropertyAndClientIds = PropertyClientRelationshipSchema;
 }

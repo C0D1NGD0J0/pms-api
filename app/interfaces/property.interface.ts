@@ -13,8 +13,11 @@ export interface IProperty {
   status: PropertyStatus;
   utilities: IUtilities;
   occupancyRate: number;
-  description?: string;
-  cid: Types.ObjectId;
+  description?: {
+    html?: string;
+    text?: string;
+  };
+  cid: string;
   yearBuilt?: number;
   address: string;
   name: string;

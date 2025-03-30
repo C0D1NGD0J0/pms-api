@@ -5,11 +5,11 @@ import { MailService } from '@mailer/index';
 import { EmailWorker } from '@workers/index';
 import { GeoCoderService } from '@services/external';
 import { asFunction, asValue, asClass } from 'awilix';
-import { AuthTokenService, AuthService } from '@services/auth';
 import { Property, Profile, Client, User } from '@models/index';
 import { DatabaseService, RedisService } from '@database/index';
 import { PropertyController, AuthController } from '@controllers/index';
 import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { AuthTokenService, AuthService, PropertyService } from '@services/index';
 
 import { container } from './setup';
 
@@ -29,6 +29,7 @@ const ServiceResources = {
   authService: asClass(AuthService).singleton(),
   mailerService: asClass(MailService).singleton(),
   tokenService: asClass(AuthTokenService).singleton(),
+  propertyService: asClass(PropertyService).singleton(),
 };
 
 const DAOResources = {

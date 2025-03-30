@@ -11,7 +11,6 @@ const isUniqueAddress = async (address: string, clientId: string) => {
       cid: clientId,
       deletedAt: null,
     });
-
     return !existingProperty;
   } catch (error) {
     console.error('Error checking address uniqueness', error);
@@ -50,10 +49,28 @@ const SpecificationsSchema = z.object({
 
 const FinancialDetailsSchema = z.object({
   purchasePrice: z.number().positive('Purchase price must be a positive number').optional(),
-  purchaseDate: z.date().optional(),
+  purchaseDate: z.coerce
+    .date({
+      errorMap: (issue, { defaultError }) => ({
+        message:
+          issue.code === z.ZodIssueCode.invalid_date
+            ? 'Invalid date format for purchase date'
+            : defaultError,
+      }),
+    })
+    .optional(),
   marketValue: z.number().positive('Market value must be a positive number').optional(),
   propertyTax: z.number().min(0, 'Property tax must be a non-negative number').optional(),
-  lastAssessmentDate: z.date().optional(),
+  lastAssessmentDate: z.coerce
+    .date({
+      errorMap: (issue, { defaultError }) => ({
+        message:
+          issue.code === z.ZodIssueCode.invalid_date
+            ? 'Invalid date format for last-assesment date'
+            : defaultError,
+      }),
+    })
+    .optional(),
 });
 
 const UtilitiesSchema = z.object({

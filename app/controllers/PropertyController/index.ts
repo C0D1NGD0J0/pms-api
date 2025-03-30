@@ -1,12 +1,34 @@
+import sanitizeHtml from 'sanitize-html';
 import { Response, Request } from 'express';
 import { httpStatusCodes } from '@utils/index';
+import { PropertyService } from '@services/index';
 
-interface IConstructor {}
+interface IConstructor {
+  propertyService: PropertyService;
+}
 
 export class PropertyController {
-  constructor({}: IConstructor) {}
+  propertyService: PropertyService;
+  constructor({ propertyService }: IConstructor) {
+    this.propertyService = propertyService;
+  }
 
   create = async (req: Request, res: Response) => {
+    const { cid } = req.params;
+    const currentuser = req.currentuser;
+
+    const newPropertyData = {
+      ...req.body,
+      description: {
+        text: sanitizeHtml(req.body.description?.text || ''),
+        html: sanitizeHtml(req.body.description?.html || ''),
+      },
+    };
+    const newProperty = await this.propertyService.addNewProperty(
+      cid,
+      newPropertyData,
+      currentuser
+    );
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 

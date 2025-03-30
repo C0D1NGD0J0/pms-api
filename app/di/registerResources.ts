@@ -3,18 +3,19 @@ import { AuthCache } from '@caching/index';
 import { EmailQueue } from '@queues/index';
 import { MailService } from '@mailer/index';
 import { EmailWorker } from '@workers/index';
-import { AuthController } from '@controllers/index';
 import { GeoCoderService } from '@services/external';
 import { asFunction, asValue, asClass } from 'awilix';
-import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
-import { AuthTokenService, AuthService } from '@services/auth';
 import { Property, Profile, Client, User } from '@models/index';
 import { DatabaseService, RedisService } from '@database/index';
+import { PropertyController, AuthController } from '@controllers/index';
+import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { AuthTokenService, AuthService, PropertyService } from '@services/index';
 
 import { container } from './setup';
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
+  propertyController: asClass(PropertyController).scoped(),
 };
 
 const ModelResources = {
@@ -27,14 +28,15 @@ const ModelResources = {
 const ServiceResources = {
   authService: asClass(AuthService).singleton(),
   mailerService: asClass(MailService).singleton(),
-
   tokenService: asClass(AuthTokenService).singleton(),
+  propertyService: asClass(PropertyService).singleton(),
 };
 
 const DAOResources = {
   userDAO: asClass(UserDAO).singleton(),
   clientDAO: asClass(ClientDAO).singleton(),
   profileDAO: asClass(ProfileDAO).singleton(),
+  propertyDAO: asClass(PropertyDAO).singleton(),
 };
 
 const CacheResources = {

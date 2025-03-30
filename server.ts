@@ -1,3 +1,11 @@
+declare global {
+  namespace NodeJS {
+    interface Global {
+      gc(): void;
+    }
+  }
+}
+
 import http from 'http';
 import { asValue } from 'awilix';
 import { createClient } from 'redis';
@@ -9,9 +17,16 @@ import express, { Application } from 'express';
 import { Server as SocketIOServer } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { DatabaseService, Environments } from '@database/index';
+import { env } from 'process';
 
 (global as any).rootDir = __dirname;
-
+if (envVariables.SERVER.ENV !== 'production') {
+  if (typeof (global as any).gc === 'function') {
+    (global as any).gc();
+  } else {
+    console.log('GC not available - make sure you run with --expose-gc flag');
+  }
+}
 interface IConstructor {
   dbService: DatabaseService;
 }
@@ -35,6 +50,23 @@ class Server {
     this.setupProcessErrorHandlers();
   }
 
+  private scheduleMemoryCheck(): void {
+    // Was getting memory leaks in the app, so added a memory check
+    // to trigger garbage collection if memory usage exceeds a certain threshold
+    const memoryCheckInterval = setInterval(() => {
+      const memUsage = process.memoryUsage();
+      const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+      this.log.info(`Memory usage: ${heapUsedMB}MB`);
+
+      // if memory exceeds threshold, trigger GC
+      if (heapUsedMB > 1500 && typeof (global as any).gc === 'function') {
+        this.log.info('High memory usage detected, running garbage collection');
+        (global as any).gc();
+      }
+    }, 60000); // check every minute
+    process.on('beforeExit', () => clearInterval(memoryCheckInterval));
+  }
+
   start = async (): Promise<void> => {
     if (this.initialized) {
       this.log.info('Server already initialized, skipping startup');
@@ -45,17 +77,21 @@ class Server {
     this.app.initConfig();
     await this.startServers(this.expApp);
     this.initialized = true;
+    if (envVariables.SERVER.ENV !== 'production') {
+      this.scheduleMemoryCheck();
+    }
   };
 
   public static getInstance(): Server {
     if (!Server.instance) {
-      const dbService = container.resolve('dbService');
+      const { dbService } = container.cradle;
       Server.instance = new Server({ dbService });
+      this.instance.initialized = true;
     }
     return Server.instance;
   }
 
-  public getInstances = () => {
+  getInstances = () => {
     return {
       expApp: this.expApp,
     };
@@ -119,7 +155,12 @@ class Server {
   }
 
   private async socketConnections(_io: SocketIOServer): Promise<void> {
-    container.resolve('baseIO');
+    const scope = container.createScope();
+    try {
+      scope.resolve('baseIO');
+    } catch (error) {
+      this.log.error('Error resolving baseIO:', error);
+    }
   }
 
   async shutdown(exitCode = 0): Promise<void> {
@@ -137,7 +178,7 @@ class Server {
         });
       }
 
-      // Close Redis clients if they exist
+      // close Redis clients if they exist
       if (this.redisClients) {
         const { pub, sub } = this.redisClients;
         await Promise.all([
@@ -151,7 +192,7 @@ class Server {
         this.log.info('Redis clients closed');
       }
 
-      // Close HTTP server
+      // close HTTP server
       if (this.httpServer) {
         await new Promise<void>((resolve) => {
           this.httpServer?.close(() => {
@@ -161,7 +202,7 @@ class Server {
         });
       }
 
-      // Close database connection
+      // close database connection
       await this.dbService.disconnect();
 
       if (exitCode !== 0) {
@@ -188,7 +229,7 @@ class Server {
       this.shutdown(1);
     });
 
-    // Handle termination signals
+    // handle termination signals
     process.on('SIGTERM', () => {
       this.log.info('SIGTERM received');
       this.shutdown(0);
@@ -209,10 +250,19 @@ export const getServerInstance = () => {
 };
 
 // Only start the server if this file is run directly (not imported in tests)
-// if (require.main === module) {
-const server = Server.getInstance();
-server.start().catch((err) => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
-// }
+if (require.main === module) {
+  const start = function () {
+    if (envVariables.SERVER.ENV === 'test') {
+      console.log('Skipping server startup in test environment');
+      return;
+    }
+
+    const { dbService } = container.cradle;
+    const server = new Server({ dbService });
+    server.start().catch((err) => {
+      console.error('Failed to start server:', err);
+      process.exit(1);
+    });
+  };
+  start();
+}

@@ -47,7 +47,6 @@ export class App implements IAppSetup {
       sanitizer.clean({
         xss: true,
         noSql: true,
-        sql: true,
         level: 5,
       })
     );
@@ -56,7 +55,7 @@ export class App implements IAppSetup {
         credentials: true,
         optionsSuccessStatus: 200,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        origin: envVariables.SERVER.ENV !== 'production' ? envVariables.FRONTEND.URL : '*',
+        origin: '*',
       })
     );
     app.use(mongoSanitize());
@@ -66,15 +65,6 @@ export class App implements IAppSetup {
     if (process.env.NODE_ENV !== 'production') {
       app.use(logger('dev'));
     }
-    app.use((req, res, next) => {
-      // Fix common content-type error
-      const contentType = req.headers['content-type'];
-      if (contentType === 'applicationjson') {
-        req.headers['content-type'] = 'application/json';
-        console.log('Fixed malformed Content-Type header');
-      }
-      next();
-    });
     app.use(express.json({ limit: '50mb' }));
     app.use(urlencoded({ extended: true, limit: '50mb' }));
     app.use(cookieParser());
@@ -101,7 +91,7 @@ export class App implements IAppSetup {
     // app.use(`${BASE_PATH}/invites`, routes.inviteRoutes);
     // app.use(`${BASE_PATH}/tenants`, routes.tenantsRoutes);
     // app.use(`${BASE_PATH}/employees`, routes.employeeRoutes);
-    // app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
+    app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
     // app.use(`${BASE_PATH}/notifications`, routes.notificationRoutes);
     // app.use(`${BASE_PATH}/subscriptions`, routes.subscriptionsRoutes);
     // app.use(`${BASE_PATH}/service-requests`, routes.serviceRequestRoutes);

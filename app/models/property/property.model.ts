@@ -17,10 +17,11 @@ const PropertySchema = new Schema<IPropertyDocument>(
       default: () => generateShortUID(uuid()),
     },
     cid: {
-      type: Schema.Types.ObjectId,
-      ref: 'Client',
+      type: String,
       required: true,
+      unique: true,
       index: true,
+      immutable: true,
     },
     name: {
       type: String,
@@ -120,8 +121,14 @@ const PropertySchema = new Schema<IPropertyDocument>(
       cableTV: { type: Boolean, default: false },
     },
     description: {
-      type: String,
-      trim: true,
+      text: {
+        type: String,
+        trim: true,
+      },
+      html: {
+        type: String,
+        trim: true,
+      },
     },
     interiorAmenities: {
       airConditioning: { type: Boolean, default: false },

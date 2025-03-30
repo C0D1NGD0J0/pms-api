@@ -8,7 +8,7 @@ import { UnauthorizedError } from '@shared/customErrors';
 import { NextFunction, Response, Request } from 'express';
 
 interface DIServices {
-  authTokenService: AuthTokenService;
+  tokenService: AuthTokenService;
   profileDAO: ProfileDAO;
   authCache: AuthCache;
 }
@@ -22,20 +22,20 @@ export const scopedMiddleware = (req: Request, res: Response, next: NextFunction
 
 export const isAuthenticated = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { authTokenService, profileDAO, authCache }: DIServices = req.container.cradle;
+    const { tokenService, profileDAO, authCache }: DIServices = req.container.cradle;
 
-    const token = authTokenService.extractTokenFromRequest(req);
+    const token = tokenService.extractTokenFromRequest(req);
 
     if (!token) {
-      next(new UnauthorizedError({ message: 'Invalid authentication token' }));
+      return next(new UnauthorizedError({ message: 'Invalid authentication token' }));
     }
 
-    const payload = await authTokenService.verifyJwtToken(
+    const payload = await tokenService.verifyJwtToken(
       JWT_KEY_NAMES.ACCESS_TOKEN as TokenType,
       token as string
     );
     if (!payload.success || !payload.data?.sub) {
-      next(new UnauthorizedError({ message: 'Invalid authentication token' }));
+      return next(new UnauthorizedError({ message: 'Invalid authentication token' }));
     }
 
     const currentUserResp = await authCache.getCurrentUser(payload.data?.sub as string);

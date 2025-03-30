@@ -1,10 +1,11 @@
+import { ICurrentUser } from '@interfaces/user.interface';
 import { AwilixContainer } from 'awilix';
 
 declare global {
   namespace Express {
     export interface Request {
       container: AwilixContainer;
-      currentuser?: unknown;
+      currentuser: ICurrentUser | undefined;
       rawBody: Buffer;
     }
 

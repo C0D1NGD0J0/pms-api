@@ -11,6 +11,7 @@ import {
   MulterFile,
   FileType,
 } from '@interfaces/utils.interface';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 import { JWT_KEY_NAMES } from './constants';
 
@@ -132,7 +133,7 @@ export function setAuthCookies(
       path: '/',
       httpOnly: true,
       sameSite: 'strict' as const,
-      secure: envVariables.SERVER.ENV !== 'development',
+      secure: envVariables.SERVER.ENV === 'production',
     };
     bearerJwt = `Bearer ${data.accessToken}`;
     if (data.rememberMe) {
@@ -152,21 +153,16 @@ export function setAuthCookies(
  * @returns Boolean indicating if the phone number is valid
  */
 export function isValidPhoneNumber(phoneNumber: string): boolean {
-  if (!phoneNumber) {
+  if (!phoneNumber || phoneNumber.length > 17) {
     return false;
   }
-  const PHONE_PATTERNS = {
-    US_CANADA: /^(\+\d{1,2}\s?)?1?\.?\s?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$/,
-    EUROPE: /^(\+3[0-9]|4[0-46-9]|5[1-8]|7[1-79])?\d{6,14}$/,
-    AFRICA: /^(\+2[0-46-8])?\d{6,14}$/,
-  };
-  const normalizedNumber = phoneNumber.trim();
-
-  return (
-    PHONE_PATTERNS.US_CANADA.test(normalizedNumber) ||
-    PHONE_PATTERNS.EUROPE.test(normalizedNumber) ||
-    PHONE_PATTERNS.AFRICA.test(normalizedNumber)
-  );
+  try {
+    const parsedNumber = parsePhoneNumberFromString(phoneNumber);
+    return !!parsedNumber && parsedNumber.isValid();
+  } catch (error) {
+    console.error('Error validating phone number:', error);
+    return false;
+  }
 }
 
 /**

@@ -47,7 +47,6 @@ export class App implements IAppSetup {
       sanitizer.clean({
         xss: true,
         noSql: true,
-        sql: true,
         level: 5,
       })
     );
@@ -56,7 +55,7 @@ export class App implements IAppSetup {
         credentials: true,
         optionsSuccessStatus: 200,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        origin: envVariables.SERVER.ENV !== 'production' ? envVariables.FRONTEND.URL : '*',
+        origin: '*',
       })
     );
     app.use(mongoSanitize());
@@ -66,15 +65,6 @@ export class App implements IAppSetup {
     if (process.env.NODE_ENV !== 'production') {
       app.use(logger('dev'));
     }
-    app.use((req, res, next) => {
-      // Fix common content-type error
-      const contentType = req.headers['content-type'];
-      if (contentType === 'applicationjson') {
-        req.headers['content-type'] = 'application/json';
-        console.log('Fixed malformed Content-Type header');
-      }
-      next();
-    });
     app.use(express.json({ limit: '50mb' }));
     app.use(urlencoded({ extended: true, limit: '50mb' }));
     app.use(cookieParser());

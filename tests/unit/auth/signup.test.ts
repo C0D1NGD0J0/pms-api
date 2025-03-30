@@ -6,7 +6,7 @@ import { JOB_NAME } from '@utils/constants';
 import { AuthService } from '@root/app/services/index';
 import { MailType } from '@interfaces/utils.interface';
 import '@tests/di';
-import { NotFoundError, BadRequestError } from '@shared/customErrors';
+import { BadRequestError, NotFoundError } from '@shared/customErrors';
 
 // Mock dependencies
 jest.mock('uuid', () => ({
@@ -190,7 +190,7 @@ describe('AuthService', () => {
       const result = await authService.accountActivation('valid-token');
 
       expect(result.success).toBe(true);
-      expect(result.msg).toBe('Account activated successfully.');
+      expect(result.message).toBe('Account activated successfully.');
       expect(mockUserDAO.activateAccount).toHaveBeenCalledWith('valid-token');
     });
 
@@ -219,7 +219,7 @@ describe('AuthService', () => {
       const result = await authService.sendActivationLink('test@example.com');
 
       expect(result.success).toBe(true);
-      expect(result.msg).toContain('Account activation link has been sent');
+      expect(result.message).toContain('Account activation link has been sent');
       expect(mockEmailQueue.addToEmailQueue).toHaveBeenCalledWith(
         JOB_NAME.ACCOUNT_ACTIVATION_JOB,
         expect.objectContaining({
@@ -255,7 +255,7 @@ describe('AuthService', () => {
       const result = await authService.forgotPassword('test@example.com');
 
       expect(result.success).toBe(true);
-      expect(result.msg).toContain('Password reset email has been sent');
+      expect(result.message).toContain('Password reset email has been sent');
       expect(mockEmailQueue.addToEmailQueue).toHaveBeenCalledWith(
         JOB_NAME.ACCOUNT_ACTIVATION_JOB,
         expect.objectContaining({
@@ -290,7 +290,7 @@ describe('AuthService', () => {
       const result = await authService.resetPassword('test@example.com', 'valid-token');
 
       expect(result.success).toBe(true);
-      expect(result.msg).toContain('Password reset email has been sent');
+      expect(result.message).toContain('Password reset email has been sent');
       expect(mockEmailQueue.addToEmailQueue).toHaveBeenCalledWith(
         JOB_NAME.ACCOUNT_ACTIVATION_JOB,
         expect.objectContaining({

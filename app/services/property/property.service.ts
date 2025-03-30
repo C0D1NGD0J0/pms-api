@@ -1,6 +1,5 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import { v4 as uuid } from 'uuid';
 import { envVariables } from '@shared/config';
 import { AuthTokenService } from '@services/auth';
 import { ProfileDAO, ClientDAO, PropertyDAO } from '@dao/index';

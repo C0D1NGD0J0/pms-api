@@ -1,6 +1,7 @@
 import color from 'colors';
 import crypto from 'crypto';
 import bunyan from 'bunyan';
+import { nanoid } from 'nanoid';
 import { envVariables } from '@shared/config';
 import { Country, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
@@ -253,24 +254,12 @@ export const extractMulterFiles = (
 };
 
 /**
- * Generates a shortened UID from a UUID by removing hyphens and limiting length
- * @param uuid - The UUID string to shorten
+ * Generates a shortened UID
  * @param length - The desired length of the shortened UID (default: 9)
  * @returns The shortened UID string
- * @throws Error if uuid is not provided or not a valid UUID format
  */
-export function generateShortUID(uuid: string, length: number = 9): string {
-  if (!uuid) {
-    throw new Error('UUID is required');
-  }
-
-  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_REGEX.test(uuid)) {
-    throw new Error('Invalid UUID format');
-  }
-
-  const normalizedLength = Math.max(1, Math.min(32, length));
-  return uuid.replace(/-/g, '').slice(0, normalizedLength);
+export function generateShortUID(length: number = 9): string {
+  return nanoid(length);
 }
 
 /**

@@ -1,8 +1,8 @@
 import { BaseIO } from '@sockets/index';
 import { AuthCache } from '@caching/index';
-import { EmailQueue } from '@queues/index';
+import { EmailQueue, PropertyQueue } from '@queues/index';
 import { MailService } from '@mailer/index';
-import { EmailWorker } from '@workers/index';
+import { EmailWorker, PropertyWorker } from '@workers/index';
 import { GeoCoderService } from '@services/external';
 import { asFunction, asValue, asClass } from 'awilix';
 import { Property, Profile, Client, User } from '@models/index';
@@ -45,10 +45,12 @@ const CacheResources = {
 
 const WorkerResources = {
   emailWorker: asClass(EmailWorker).singleton(),
+  propertyWorker: asClass(PropertyWorker).singleton(),
 };
 
 const QueuesResources = {
   emailQueue: asClass(EmailQueue).singleton(),
+  propertyQueue: asClass(PropertyQueue).singleton(),
 };
 
 const UtilsResources = {

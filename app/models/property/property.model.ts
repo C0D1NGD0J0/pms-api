@@ -1,4 +1,3 @@
-import { v4 as uuid } from 'uuid';
 import { Schema, model } from 'mongoose';
 import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
@@ -14,7 +13,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
       unique: true,
       index: true,
       immutable: true,
-      default: () => generateShortUID(uuid()),
+      default: () => generateShortUID(),
     },
     cid: {
       type: String,

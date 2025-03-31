@@ -29,7 +29,7 @@ export class GeoCoderService {
    * @returns Promise resolving to geocoding results
    * @throws Error if geocoding fails
    */
-  public async geocodeLocation(location: string): Promise<Entry[]> {
+  public async parseLocation(location: string): Promise<Entry[]> {
     if (!location || typeof location !== 'string') {
       throw new Error('Invalid location: Location must be a non-empty string');
     }

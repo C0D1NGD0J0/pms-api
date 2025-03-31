@@ -39,10 +39,16 @@ export const QUEUE_NAMES = {
   IMAGE_UPLOAD_QUEUE: 'imageUploadQueue',
   VIDEO_UPLOAD_QUEUE: 'videoUploadQueue',
   ASSET_REMOVAL_QUEUE: 'assetRemovalQueue',
+  PROPERTY_QUEUE: 'propertyQueue',
+  PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
 };
 
 export const JOB_NAME = {
   ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
   DELETE_REMOTE_ASSET: 'deleteRemoteAssetJob',
   DELETE_LOCAL_ASSET: 'deleteLocalAssetJob',
+  PROPERTY_CREATE_JOB: 'propertyCreateJob',
+  PROPERTY_UPDATE_JOB: 'propertyUpdateJob',
+  PROPERTY_DELETE_JOB: 'propertyDeleteJob',
+  PROPERTY_MEDIA_PROCESSING_JOB: 'propertyMediaProcessingJob',
 };

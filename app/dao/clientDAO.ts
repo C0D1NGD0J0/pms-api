@@ -1,6 +1,5 @@
 // clientDAO.ts
 import Logger from 'bunyan';
-import { v4 as uuid } from 'uuid';
 import { Types, Model } from 'mongoose';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IdentificationType } from '@interfaces/user.interface';
@@ -68,7 +67,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   async createClient(clientData: Partial<IClientDocument>): Promise<IClientDocument> {
     try {
       if (!clientData.cid) {
-        clientData.cid = generateShortUID(uuid());
+        clientData.cid = generateShortUID();
       }
 
       return await this.insert(clientData);

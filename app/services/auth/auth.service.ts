@@ -1,7 +1,6 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { v4 as uuid } from 'uuid';
 import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
@@ -15,6 +14,7 @@ import {
   JWT_KEY_NAMES,
   createLogger,
   JOB_NAME,
+  generateShortUID,
 } from '@utils/index';
 import {
   InvalidRequestError,
@@ -63,11 +63,11 @@ export class AuthService {
     const session = await this.userDAO.startSession();
     const result = await this.userDAO.withTransaction(session, async (session) => {
       const _userId = new Types.ObjectId();
-      const clientId = uuid();
+      const clientId = generateShortUID();
 
       const user = await this.userDAO.insert(
         {
-          uid: uuid(),
+          uid: generateShortUID(),
           _id: _userId,
           activeCid: clientId,
           isActive: false,
@@ -115,7 +115,7 @@ export class AuthService {
         _userId,
         {
           user: _userId,
-          puid: uuid(),
+          puid: generateShortUID(),
           personalInfo: {
             displayName: signupData.displayName,
             firstName: signupData.firstName,

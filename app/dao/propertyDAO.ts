@@ -332,39 +332,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     session?: ClientSession
   ): Promise<IPropertyDocument> {
     try {
-      // Check for duplicate property by address
-      if (propertyData.address && propertyData.cid) {
-        const existingProperty = await this.findPropertyByAddress(
-          propertyData.address.toString(),
-          propertyData.cid.toString()
-        );
-
-        if (existingProperty) {
-          throw new Error('A property with this address already exists for this client');
-        }
-      }
-
-      // Check for duplicate property by coordinates
-      if (propertyData.computedLocation?.coordinates && propertyData.cid) {
-        const latLong = propertyData.computedLocation.coordinates.join(',');
-        const existingByLocation = await this.findFirst({
-          cid: propertyData.cid,
-          'computedLocation.latAndlon': latLong,
-          deletedAt: null,
-        });
-
-        if (existingByLocation) {
-          throw new Error('A property at this exact location already exists for this client');
-        }
-
-        // Set the latAndlon field for indexing
-        if (propertyData.computedLocation && !propertyData.computedLocation.latAndlon) {
-          if (!propertyData.computedLocation.latAndlon) {
-            propertyData.computedLocation.latAndlon = latLong;
-          }
-        }
-      }
-
       return await this.insert(propertyData, session);
     } catch (error) {
       this.logger.error('Error in createProperty:', error);

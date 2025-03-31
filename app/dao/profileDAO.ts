@@ -1,6 +1,5 @@
 // app/dao/profileDAO.ts
 import Logger from 'bunyan';
-import { v4 as uuid } from 'uuid';
 import { ICurrentUser } from '@interfaces/index';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IProfileDocument } from '@interfaces/profile.interface';
@@ -202,7 +201,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
       const data = {
         ...profileData,
         user: objectId,
-        puid: profileData.puid || generateShortUID(uuid()),
+        puid: profileData.puid || generateShortUID(),
       };
 
       // If personalInfo isn't provided, create a minimal structure

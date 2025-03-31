@@ -19,17 +19,18 @@ export interface IProperty {
   };
   cid: string;
   yearBuilt?: number;
+  createdBy: Types.ObjectId;
+  managedBy?: Types.ObjectId;
   address: string;
   name: string;
 }
 
 export interface IPropertyDocument extends IProperty, Document {
   lastModifiedBy?: Types.ObjectId;
-  managedBy?: Types.ObjectId;
-  createdBy: Types.ObjectId;
   deletedAt?: Date;
-  address: string;
   createdAt: Date;
+  _id: Types.ObjectId;
+  id: string;
   updatedAt: Date;
   pid: string;
 }

@@ -15,7 +15,7 @@ export class PropertyController {
 
   create = async (req: Request, res: Response) => {
     const { cid } = req.params;
-    const currentuser = req.currentuser;
+    const currentuser = req.currentuser!;
 
     const newPropertyData = {
       ...req.body,
@@ -24,12 +24,12 @@ export class PropertyController {
         html: sanitizeHtml(req.body.description?.html || ''),
       },
     };
-    const newProperty = await this.propertyService.addNewProperty(
+    const newProperty = await this.propertyService.createProperty(
       cid,
       newPropertyData,
       currentuser
     );
-    res.status(httpStatusCodes.OK).json({ success: true });
+    res.status(httpStatusCodes.OK).json(newProperty);
   };
 
   getAllProperties = async (req: Request, res: Response) => {

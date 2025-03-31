@@ -54,7 +54,6 @@ export class PropertyCache extends BaseCache {
         };
       }
 
-      // Store in tenant-specific key for the property
       const propertyKey = `${this.KEY_PREFIXES.CLIENT_PROPERTY}:${cid}:${propertyId}`;
       const propertyResult = await this.setItem(
         propertyKey,

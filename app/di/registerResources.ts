@@ -1,5 +1,5 @@
 import { BaseIO } from '@sockets/index';
-import { AuthCache } from '@caching/index';
+import { AuthCache, PropertyCache } from '@caching/index';
 import { EmailQueue, PropertyQueue } from '@queues/index';
 import { MailService } from '@mailer/index';
 import { EmailWorker, PropertyWorker } from '@workers/index';
@@ -41,6 +41,7 @@ const DAOResources = {
 
 const CacheResources = {
   authCache: asClass(AuthCache).singleton(),
+  propertyCache: asClass(PropertyCache).singleton(),
 };
 
 const WorkerResources = {

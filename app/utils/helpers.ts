@@ -1,7 +1,7 @@
 import color from 'colors';
 import crypto from 'crypto';
 import bunyan from 'bunyan';
-import { nanoid } from 'nanoid';
+import * as nanoid from 'nanoid';
 import { envVariables } from '@shared/config';
 import { Country, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
@@ -259,7 +259,7 @@ export const extractMulterFiles = (
  * @returns The shortened UID string
  */
 export function generateShortUID(length: number = 9): string {
-  return nanoid(length);
+  return nanoid.nanoid(length);
 }
 
 /**

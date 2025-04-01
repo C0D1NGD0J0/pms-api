@@ -3,5 +3,5 @@
   "ext": ".ts .js .ejs",
   "ignore": [".git", "node-modules/", "dist/*", "coverage/*", "app/tests/*"],
   "env": { "NODE_ENV": "development" },
-  "exec": "node -r ts-node/register server.ts"
+  "exec": "node --inspect -r ts-node/register server.ts"
 }

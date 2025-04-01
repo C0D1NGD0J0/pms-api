@@ -99,6 +99,19 @@ export interface IPropertyDAO {
   ): Promise<IPropertyDocument[]>;
 
   /**
+   * Remove a property document/photo
+   * @param propertyId - The property ID
+   * @param documentId - The document ID to remove
+   * @param userId - The ID of the user performing the action
+   * @returns A promise that resolves to the updated property document
+   */
+  removePropertyDocument(
+    propertyId: string,
+    documentId: string,
+    userId: string
+  ): Promise<IPropertyDocument | null>;
+
+  /**
    * Find a property by its address
    * @param address - The property address
    * @param clientId - The client ID
@@ -121,19 +134,6 @@ export interface IPropertyDAO {
     propertyData: Partial<IPropertyDocument>,
     session?: ClientSession
   ): Promise<IPropertyDocument>;
-
-  /**
-   * Remove a property document/photo
-   * @param propertyId - The property ID
-   * @param documentId - The document ID to remove
-   * @param userId - The ID of the user performing the action
-   * @returns A promise that resolves to the updated property document
-   */
-  removePropertyDocument(
-    propertyId: string,
-    documentId: string,
-    userId: string
-  ): Promise<IPropertyDocument | null>;
 
   /**
    * Search properties by various criteria

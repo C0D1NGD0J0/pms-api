@@ -5,6 +5,7 @@ import * as nanoid from 'nanoid';
 import { envVariables } from '@shared/config';
 import { Country, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import {
   AsyncRequestHandler,
   ExtractedMediaFile,
@@ -12,7 +13,6 @@ import {
   MulterFile,
   FileType,
 } from '@interfaces/utils.interface';
-import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 import { JWT_KEY_NAMES } from './constants';
 
@@ -149,24 +149,6 @@ export function setAuthCookies(
 }
 
 /**
- * Validates if a string is a valid phone number across multiple formats
- * @param phoneNumber - The phone number string to validate
- * @returns Boolean indicating if the phone number is valid
- */
-export function isValidPhoneNumber(phoneNumber: string): boolean {
-  if (!phoneNumber || phoneNumber.length > 17) {
-    return false;
-  }
-  try {
-    const parsedNumber = parsePhoneNumberFromString(phoneNumber);
-    return !!parsedNumber && parsedNumber.isValid();
-  } catch (error) {
-    console.error('Error validating phone number:', error);
-    return false;
-  }
-}
-
-/**
  * Generates a random hash string using SHA-256
  * @param opts - {
   byteLength?: number;
@@ -190,6 +172,24 @@ export function hashGenerator(hashOpts: {
     return crypto.createHash(algorithm).update(token).digest('hex');
   } catch (error) {
     throw new Error(`Failed to generate hash: ${error.message}`);
+  }
+}
+
+/**
+ * Validates if a string is a valid phone number across multiple formats
+ * @param phoneNumber - The phone number string to validate
+ * @returns Boolean indicating if the phone number is valid
+ */
+export function isValidPhoneNumber(phoneNumber: string): boolean {
+  if (!phoneNumber || phoneNumber.length > 17) {
+    return false;
+  }
+  try {
+    const parsedNumber = parsePhoneNumberFromString(phoneNumber);
+    return !!parsedNumber && parsedNumber.isValid();
+  } catch (error) {
+    console.error('Error validating phone number:', error);
+    return false;
   }
 }
 
@@ -235,8 +235,10 @@ export const extractMulterFiles = (
       fieldName: file.fieldname,
       mimeType,
       path: file.path,
+      originalFileName: file.originalname,
       filename: file.filename,
       fileSize: file.size,
+      uploadedAt: file.uploadedAt || new Date().toISOString(),
     });
   };
 

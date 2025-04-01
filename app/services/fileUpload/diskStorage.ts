@@ -3,8 +3,8 @@ import path from 'path';
 import multer from 'multer';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
-import { NextFunction, Request, Response } from 'express';
-import { NotFoundError, BadRequestError } from '@shared/customErrors';
+import { NextFunction, Response, Request } from 'express';
+import { BadRequestError, NotFoundError } from '@shared/customErrors';
 
 export class DiskStorage {
   private readonly upload: multer.Multer;
@@ -48,18 +48,18 @@ export class DiskStorage {
     upload(req, res, (err) => {
       if (err) {
         let errorMessage = 'File upload error';
-        let statusCode = 400;
+        const statusCode = 400;
 
         if (err instanceof multer.MulterError) {
           switch (err.code) {
-            case 'LIMIT_FILE_SIZE':
-              errorMessage = `File size exceeds limit`;
+            case 'LIMIT_UNEXPECTED_FILE':
+              errorMessage = `Unexpected field: ${err.field}`;
               break;
             case 'LIMIT_FILE_COUNT':
               errorMessage = 'Too many files uploaded';
               break;
-            case 'LIMIT_UNEXPECTED_FILE':
-              errorMessage = `Unexpected field: ${err.field}`;
+            case 'LIMIT_FILE_SIZE':
+              errorMessage = 'File size exceeds limit';
               break;
             default:
               errorMessage = err.message;
@@ -98,7 +98,7 @@ export class DiskStorage {
 
     for (const filename of filenames) {
       try {
-        const filePath = path.join(process.cwd(), this.storagePath, filename);
+        const filePath = path.join(this.storagePath, filename);
 
         await fs.promises.access(filePath, fs.constants.F_OK);
         await fs.promises.unlink(filePath);

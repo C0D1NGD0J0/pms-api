@@ -2,40 +2,40 @@ import fs from 'fs';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { Upload } from '@aws-sdk/lib-storage';
+import { envVariables } from '@shared/config';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {
-  S3Client,
   DeleteObjectsCommand,
-  GetObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
+  S3Client,
 } from '@aws-sdk/client-s3';
-import { envVariables } from '@shared/config';
+
+export interface UploadResult {
+  mediatype?: 'image' | 'video' | 'document';
+  resourceName?: string;
+  resourceId: string;
+  fieldName: string;
+  filename: string;
+  publicId: string;
+  size?: number;
+  url: string;
+}
 
 export interface UploadedFile {
-  path: string;
-  filename: string;
-  fieldName: string;
   originalname?: string;
+  fieldName: string;
   mimetype?: string;
+  filename: string;
   size?: number;
+  path: string;
 }
 
 export interface ResourceInfo {
-  id: string;
-  name: string;
-  ownerId?: string;
   type?: 'image' | 'video' | 'document';
-}
-
-export interface UploadResult {
-  resourceId: string;
-  url: string;
-  size?: number;
-  filename: string;
-  publicId: string;
-  fieldName: string;
-  resourceName?: string;
-  mediatype?: 'image' | 'video' | 'document';
+  ownerId?: string;
+  name: string;
+  id: string;
 }
 
 export class S3Service {
@@ -43,7 +43,7 @@ export class S3Service {
   private readonly log: Logger;
   private readonly bucketName = envVariables.AWS.BUCKET_NAME;
 
-  constructor({}: {}) {
+  constructor() {
     this.log = createLogger('S3Storage');
     this.s3 = new S3Client({
       region: envVariables.AWS.REGION,

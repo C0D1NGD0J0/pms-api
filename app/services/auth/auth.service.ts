@@ -10,18 +10,18 @@ import { ISignupData, IUserRole } from '@interfaces/user.interface';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
 import {
   getLocationDetails,
+  generateShortUID,
   hashGenerator,
   JWT_KEY_NAMES,
   createLogger,
   JOB_NAME,
-  generateShortUID,
 } from '@utils/index';
 import {
   InvalidRequestError,
+  UnauthorizedError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-  UnauthorizedError,
 } from '@shared/customErrors';
 
 interface IConstructor {

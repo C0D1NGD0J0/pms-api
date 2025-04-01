@@ -1,14 +1,14 @@
 import { container } from '@di/index';
 import ProfileDAO from '@dao/profileDAO';
-import { extractMulterFiles, JWT_KEY_NAMES } from '@utils/index';
 import { AuthCache } from '@caching/auth.cache';
-import { AuthTokenService } from '@services/auth';
-import { TokenType } from '@interfaces/utils.interface';
-import { InvalidRequestError, UnauthorizedError } from '@shared/customErrors';
-import { NextFunction, Response, Request } from 'express';
-import { DiskStorage } from '@services/fileUpload';
-import { clamScanner, ClamScannerService } from '@shared/config';
 import { ICurrentUser } from '@interfaces/index';
+import { AuthTokenService } from '@services/auth';
+import { DiskStorage } from '@services/fileUpload';
+import { ClamScannerService } from '@shared/config';
+import { TokenType } from '@interfaces/utils.interface';
+import { NextFunction, Response, Request } from 'express';
+import { extractMulterFiles, JWT_KEY_NAMES } from '@utils/index';
+import { InvalidRequestError, UnauthorizedError } from '@shared/customErrors';
 
 interface DIServices {
   tokenService: AuthTokenService;
@@ -43,7 +43,7 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
 
     const currentUserResp = await authCache.getCurrentUser(payload.data?.sub as string);
     if (!currentUserResp.success) {
-      console.error(`User not found in cache, fetching from database...`);
+      console.error('User not found in cache, fetching from database...');
       const _currentuser = await profileDAO.generateCurrentUserInfo(payload.data?.sub as string);
       if (_currentuser) {
         await authCache.saveCurrentUser(_currentuser);
@@ -83,7 +83,8 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
 
     const foundViruses: { file: string; viruses: string[]; createdAt: string }[] = [];
     const _files = extractMulterFiles(files);
-    const filenames = [];
+    const infectedFilesNames = [];
+    const validFiles = [];
 
     for (const file of _files) {
       const { isInfected, viruses } = await clamScanner.scanFile(file.path);
@@ -94,14 +95,24 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
           file: file.filename,
           createdAt: new Date().toISOString(),
         });
-        filenames.push(file.filename);
+        infectedFilesNames.push(file.filename);
+      } else {
+        validFiles.push(file);
       }
     }
+    if (infectedFilesNames.length !== 0) {
+      console.log('Deleting infected files:', infectedFilesNames);
+      await diskStorage.deleteFiles(infectedFilesNames);
+    }
 
-    await diskStorage.deleteFiles(filenames);
     if (foundViruses.length > 0) {
       console.error('Virus found in uploaded files:', foundViruses);
       return next(new InvalidRequestError({ message: 'Error processing uploaded files.' }));
+    }
+
+    if (validFiles.length) {
+      // this way we work with the files in the upload dir only that as been scanned and not req.files
+      req.body.scannedFiles = validFiles;
     }
 
     return next();

@@ -115,8 +115,16 @@ const DocumentPhotoSchema = z.object({
   url: z.string().url('Invalid URL format for photo'),
   filename: z.string().optional(),
   key: z.string().optional(),
-  caption: z.string().optional(),
-  isPrimary: z.boolean().default(false),
+  uploadedAt: z.coerce
+    .date({
+      errorMap: (issue, { defaultError }) => ({
+        message:
+          issue.code === z.ZodIssueCode.invalid_date
+            ? 'Invalid date format for uploaded date'
+            : defaultError,
+      }),
+    })
+    .optional(),
 });
 
 const PropertyDocumentSchema = z.object({

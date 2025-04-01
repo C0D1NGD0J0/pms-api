@@ -77,8 +77,12 @@ export interface ISpecifications {
 export interface IDocumentPhoto {
   uploadedBy: Types.ObjectId;
   isPrimary: boolean;
-  filename?: string;
-  caption?: string;
+  status: {
+    type: String;
+    enum: ['active', 'inactive'];
+    default: 'active';
+  };
+  externalUrl: String;
   uploadedAt: Date;
   key?: string;
   url: string;

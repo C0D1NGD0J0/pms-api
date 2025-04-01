@@ -1,1 +1,2 @@
-export * from './env_configs';
+export * from './clamav.configs';
+export * from './env.configs';

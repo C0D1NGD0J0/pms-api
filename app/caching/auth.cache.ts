@@ -177,7 +177,7 @@ export class AuthCache extends BaseCache {
       const result = await this.getItem<ICurrentUser>(key);
       return {
         ...result,
-        data: result.data as ICurrentUser | null,
+        data: result.data as ICurrentUser,
       };
     } catch (error) {
       this.log.error('Failed to get user data:', error);

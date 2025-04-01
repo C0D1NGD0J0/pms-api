@@ -12,6 +12,8 @@ import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { AuthTokenService, AuthService, PropertyService } from '@services/index';
 
 import { container } from './setup';
+import { ClamScannerService } from '@shared/config/index';
+import { DiskStorage, S3Service } from '@services/fileUpload';
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
@@ -55,11 +57,14 @@ const QueuesResources = {
 };
 
 const UtilsResources = {
+  geoCoderService: asClass(GeoCoderService).singleton(),
   redisService: asFunction(() => {
     return new RedisService('Redis Service');
   }).singleton(),
   dbService: asClass(DatabaseService).singleton(),
-  geoCoderService: asClass(GeoCoderService).singleton(),
+  s3Service: asClass(S3Service).singleton(),
+  clamScanner: asClass(ClamScannerService).singleton(),
+  diskStorage: asClass(DiskStorage).singleton(),
 };
 
 const SocketIOResources = {

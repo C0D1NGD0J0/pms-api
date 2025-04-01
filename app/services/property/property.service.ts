@@ -104,13 +104,18 @@ export class PropertyService {
         ? new Types.ObjectId(propertyData.managedBy)
         : new Types.ObjectId(currentUser.sub);
 
-      const property = await this.propertyDAO.createProperty(
-        {
-          ...propertyData,
-          cid,
-        },
-        session
-      );
+      // const property = await this.propertyDAO.createProperty(
+      //   {
+      //     ...propertyData,
+      //     cid,
+      //   },
+      //   session
+      // );
+
+      const property = await this.propertyDAO.createInstance({
+        ...propertyData,
+        cid,
+      });
 
       if (!property) {
         throw new BadRequestError({ message: 'Unable to create property.' });

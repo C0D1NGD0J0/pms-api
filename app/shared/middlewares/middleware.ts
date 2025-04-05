@@ -42,6 +42,7 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
     }
 
     const currentUserResp = await authCache.getCurrentUser(payload.data?.sub as string);
+    // if(currentUserResp.success && currentUserResp.data && payload.data?.csub) {
     if (!currentUserResp.success) {
       console.error('User not found in cache, fetching from database...');
       const _currentuser = await profileDAO.generateCurrentUserInfo(payload.data?.sub as string);

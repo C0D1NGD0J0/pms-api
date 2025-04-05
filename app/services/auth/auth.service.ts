@@ -155,8 +155,8 @@ export class AuthService {
       accessToken: string;
       rememberMe: boolean;
       refreshToken: string;
-      activeAccount: { cid: string; displayName: string };
-      accounts: { cid: string; displayName: string }[] | null;
+      activeAccount: { csub: string; displayName: string };
+      accounts: { csub: string; displayName: string }[] | null;
     }>
   > {
     const { email, password, rememberMe } = data;
@@ -183,6 +183,7 @@ export class AuthService {
     const tokens = this.tokenService.createJwtTokens({
       sub: user._id.toString(),
       rememberMe,
+      csub: activeAccount.cid,
     });
     await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, rememberMe);
     const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
@@ -195,7 +196,7 @@ export class AuthService {
           refreshToken: tokens.refreshToken,
           accessToken: tokens.accessToken,
           activeAccount: {
-            cid: activeAccount.cid,
+            csub: activeAccount.cid,
             displayName: activeAccount.displayName,
           },
           accounts: [],
@@ -206,7 +207,7 @@ export class AuthService {
 
     const otherAccounts = user.cids
       .filter((c) => c.cid !== activeAccount.cid)
-      .map((c) => ({ cid: c.cid, displayName: c.displayName }));
+      .map((c) => ({ csub: c.cid, displayName: c.displayName }));
     return {
       success: true,
       data: {
@@ -214,7 +215,7 @@ export class AuthService {
         refreshToken: tokens.refreshToken,
         accessToken: tokens.accessToken,
         activeAccount: {
-          cid: activeAccount.cid,
+          csub: activeAccount.cid,
           displayName: activeAccount.displayName,
         },
         accounts: otherAccounts,
@@ -249,7 +250,16 @@ export class AuthService {
     };
   }
 
-  async switchActiveAccount(userId: string, newCid: string): Promise<ISuccessReturnData> {
+  async switchActiveAccount(
+    userId: string,
+    newCid: string
+  ): Promise<
+    ISuccessReturnData<{
+      accessToken: string;
+      refreshToken: string;
+      activeAccount: { csub: string; displayName: string };
+    }>
+  > {
     if (!userId || !newCid) {
       throw new BadRequestError({ message: 'User ID and account CID are required.' });
     }
@@ -259,23 +269,33 @@ export class AuthService {
       throw new NotFoundError({ message: 'User not found.' });
     }
 
-    const accountExists = user.cids.some((c) => c.cid === newCid);
+    const accountExists = user.cids.find((c) => c.cid === newCid);
     if (!accountExists) {
-      throw new ForbiddenError({ message: 'Account access denied.' });
+      throw new NotFoundError({ message: 'Unable to select account.' });
     }
 
     await this.userDAO.updateById(userId, { $set: { activeCid: newCid } });
-    const activeAccount = user.cids.find((c) => c.cid === newCid)!;
+    const activeAccount = user.cids.find((c) => c.cid === user.activeCid)!;
+    const tokens = this.tokenService.createJwtTokens({
+      sub: user._id.toString(),
+      rememberMe: false,
+      csub: activeAccount.cid,
+    });
+    await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, false);
 
+    const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
+    currentuser && (await this.authCache.saveCurrentUser(currentuser));
     return {
       success: true,
       data: {
+        refreshToken: tokens.refreshToken,
+        accessToken: tokens.accessToken,
         activeAccount: {
-          cid: activeAccount.cid,
+          csub: activeAccount.cid,
           displayName: activeAccount.displayName,
         },
       },
-      message: 'Account switched successfully.',
+      message: 'Success.',
     };
   }
 
@@ -391,7 +411,7 @@ export class AuthService {
       accessToken
     );
     if (!payload.success || !payload.data?.sub) {
-      throw new ForbiddenError({ message: 'Invalid access token.' });
+      throw new ForbiddenError({ message: 'Invalid auth token.' });
     }
 
     await this.authCache.invalidateUserSession(payload.data.sub as string);

@@ -26,6 +26,7 @@ router.post(
     return authController.login(req, res);
   })
 );
+
 router.get(
   '/me',
   isAuthenticated,
@@ -57,6 +58,17 @@ router.put(
   })
 );
 
+router.patch(
+  '/switch_client_account',
+  validateRequest({
+    body: AuthValidations.resendActivation,
+  }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.switchClientAccount(req, res);
+  })
+);
+
 router.put(
   '/forgot_password',
   validateRequest({
@@ -76,6 +88,15 @@ router.post(
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.resetPassword(req, res);
+  })
+);
+
+router.delete(
+  '/logout',
+  isAuthenticated,
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.logout(req, res);
   })
 );
 

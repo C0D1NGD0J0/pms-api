@@ -298,7 +298,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               {
                 $project: {
                   _id: 0,
-                  id: '$cid',
+                  csub: '$cid',
                   displayname: '$displayName',
                   isVerified: 1,
                 },
@@ -331,7 +331,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
             },
 
             // active client information
-            activeClient: {
+            client: {
               $let: {
                 vars: {
                   activeClient: {

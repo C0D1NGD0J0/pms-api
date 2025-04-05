@@ -22,7 +22,10 @@ export class AuthController {
   login = async (req: Request, res: Response) => {
     const result = await this.authService.login(req.body);
     res = setAuthCookies(
-      { accessToken: result.data.accessToken, refreshToken: result.data.refreshToken },
+      {
+        accessToken: result.data.accessToken,
+        refreshToken: result.data.refreshToken,
+      },
       res
     );
     res.status(httpStatusCodes.OK).json({
@@ -45,6 +48,28 @@ export class AuthController {
     return res.status(httpStatusCodes.OK).json({
       success: 200,
       data: currentuser,
+    });
+  };
+
+  switchClientAccount = async (req: Request, res: Response) => {
+    const { clientId } = req.body;
+    const { currentuser } = req;
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'Unauthorized',
+      });
+    }
+
+    const result = await this.authService.switchActiveAccount(currentuser?.sub, clientId);
+    res = setAuthCookies(
+      { accessToken: result.data.accessToken, refreshToken: result.data.refreshToken },
+      res
+    );
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      msg: result.message,
+      activeAccount: result.data.activeAccount,
     });
   };
 

@@ -1,15 +1,17 @@
 import { BaseIO } from '@sockets/index';
-import { AuthCache, PropertyCache } from '@caching/index';
-import { EmailQueue, PropertyQueue } from '@queues/index';
 import { MailService } from '@mailer/index';
-import { EmailWorker, PropertyWorker } from '@workers/index';
 import { GeoCoderService } from '@services/external';
 import { asFunction, asValue, asClass } from 'awilix';
+import { PropertyCache, AuthCache } from '@caching/index';
+import { PropertyQueue, EmailQueue } from '@queues/index';
+import { ClamScannerService } from '@shared/config/index';
+import { PropertyWorker, EmailWorker } from '@workers/index';
+import { DiskStorage, S3Service } from '@services/fileUpload';
 import { Property, Profile, Client, User } from '@models/index';
 import { DatabaseService, RedisService } from '@database/index';
 import { PropertyController, AuthController } from '@controllers/index';
 import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
-import { AuthTokenService, AuthService, PropertyService } from '@services/index';
+import { AuthTokenService, PropertyService, AuthService } from '@services/index';
 
 import { container } from './setup';
 
@@ -55,11 +57,14 @@ const QueuesResources = {
 };
 
 const UtilsResources = {
+  geoCoderService: asClass(GeoCoderService).singleton(),
   redisService: asFunction(() => {
     return new RedisService('Redis Service');
   }).singleton(),
   dbService: asClass(DatabaseService).singleton(),
-  geoCoderService: asClass(GeoCoderService).singleton(),
+  s3Service: asClass(S3Service).singleton(),
+  clamScanner: asClass(ClamScannerService).singleton(),
+  diskStorage: asClass(DiskStorage).singleton(),
 };
 
 const SocketIOResources = {

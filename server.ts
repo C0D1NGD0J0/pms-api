@@ -56,7 +56,7 @@ class Server {
     const memoryCheckInterval = setInterval(() => {
       const memUsage = process.memoryUsage();
       const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-      this.log.info(`Memory usage: ${heapUsedMB}MB`);
+      // this.log.info(`Memory usage: ${heapUsedMB}MB`);
 
       // if memory exceeds threshold, trigger GC
       if (heapUsedMB > 1500 && typeof (global as any).gc === 'function') {

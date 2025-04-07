@@ -1,4 +1,3 @@
-import { JOB_NAME } from '@utils/constants';
 import { BaseQueue } from './base.queue';
 
 interface IConstructor {

@@ -1,9 +1,7 @@
-// app/caching/property.cache.ts
-
-import { BaseCache } from './base.cache';
-import { envVariables } from '@shared/config';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
 import { convertTimeToSecondsAndMilliseconds } from '@utils/index';
+
+import { BaseCache } from './base.cache';
 
 export class PropertyCache extends BaseCache {
   private readonly KEY_PREFIXES = {

@@ -1,6 +1,10 @@
 import { Document, Types } from 'mongoose';
 
 export interface IProperty {
+  description?: {
+    html?: string;
+    text?: string;
+  };
   communityAmenities: ICommunityAmenities;
   interiorAmenities: IInteriorAmenities;
   exteriorAmenities: IExteriorAmenities;
@@ -10,29 +14,28 @@ export interface IProperty {
   occupancyStatus: OccupancyStatus;
   specifications: ISpecifications;
   propertyType: PropertyType;
+  managedBy?: Types.ObjectId;
+  createdBy: Types.ObjectId;
   status: PropertyStatus;
   utilities: IUtilities;
   occupancyRate: number;
-  description?: {
-    html?: string;
-    text?: string;
-  };
-  cid: string;
   yearBuilt?: number;
-  createdBy: Types.ObjectId;
-  managedBy?: Types.ObjectId;
   address: string;
   name: string;
+  cid: string;
 }
 
-export interface IPropertyDocument extends IProperty, Document {
-  lastModifiedBy?: Types.ObjectId;
-  deletedAt?: Date;
-  createdAt: Date;
-  _id: Types.ObjectId;
-  id: string;
-  updatedAt: Date;
-  pid: string;
+export interface IDocumentPhoto {
+  status: {
+    type: string;
+    enum: ['active', 'inactive'];
+    default: 'active';
+  };
+  uploadedBy: Types.ObjectId;
+  externalUrl: string;
+  uploadedAt: Date;
+  key?: string;
+  url: string;
 }
 
 export interface IExteriorAmenities {
@@ -54,6 +57,16 @@ export interface IPropertyDocumentItem {
   uploadedAt: Date;
 }
 
+export interface IPropertyDocument extends IProperty, Document {
+  lastModifiedBy?: Types.ObjectId;
+  _id: Types.ObjectId;
+  deletedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  pid: string;
+  id: string;
+}
+
 export interface IInteriorAmenities {
   airConditioning: boolean;
   storageSpace: boolean;
@@ -72,16 +85,6 @@ export interface ISpecifications {
   bedrooms?: number;
   lotSize?: number;
   floors?: number;
-}
-
-export interface IDocumentPhoto {
-  uploadedBy: Types.ObjectId;
-  isPrimary: boolean;
-  filename?: string;
-  caption?: string;
-  uploadedAt: Date;
-  key?: string;
-  url: string;
 }
 
 export interface IFinancialDetails {

@@ -25,7 +25,7 @@ export interface ICurrentUser {
     lang?: string;
     timezone?: string;
   };
-  activeClient: { id: string; displayname: string; role: IUserRoleType };
+  client: { csub: string; displayname: string; role: IUserRoleType };
   clients: IClientUserConnections[];
   fullname: string | null;
   permissions: string[];

@@ -60,14 +60,23 @@ export interface IAWSFileUploadResponse {
   key: string;
 }
 
-export interface ISuccessReturnData<T = unknown> {
+export type ExtractedMediaFile = {
+  originalFileName: string;
+  fieldName: string;
+  mimeType: string;
+  path: string;
+  filename: string;
+  fileSize: number;
+  uploadedAt: Date;
+};
+
+export type ISuccessReturnData<T = any> = {
   errors?: [{ path: string; message: string }];
   success: boolean;
   message?: string;
   error?: string;
   data: T;
-}
-
+};
 /**
  * Interface defining the structure of pagination metadata
  */
@@ -78,13 +87,6 @@ export interface PaginateResult {
   perPage: number;
   total: number;
 }
-export type ExtractedMediaFile = {
-  fieldName: string;
-  mimeType: string;
-  path: string;
-  filename: string;
-  fileSize: number;
-};
 export type MulterFile =
   | Express.Multer.File[]
   | {

@@ -24,9 +24,10 @@ export class AuthTokenService {
     this.extendedRefreshTokenExpiry = envVariables.JWT.EXTENDED_REFRESH_TOKEN_EXPIRY;
   }
 
-  createJwtTokens(payload: { sub: string; rememberMe: boolean }): {
+  createJwtTokens(payload: { sub: string; rememberMe: boolean; csub: string }): {
     accessToken: string;
     refreshToken: string;
+    rememberMe: boolean;
   } {
     const accessExpiry = payload.rememberMe ? this.extendedAccessTokenExpiry : this.jwtExpiresIn;
     const refreshExpiry = payload.rememberMe
@@ -41,13 +42,24 @@ export class AuthTokenService {
     return {
       accessToken: at,
       refreshToken: rt,
+      rememberMe: payload.rememberMe,
     };
   }
 
   async verifyJwtToken(
     tokenType: TokenType,
     token: string
-  ): Promise<{ success: boolean; data?: string | JwtPayload; error?: string }> {
+  ): Promise<{
+    success: boolean;
+    data: {
+      rememberMe: boolean;
+      sub: string;
+      csub: string;
+      iat: number;
+      exp: number;
+    };
+    error?: string;
+  }> {
     if (tokenType !== JWT_KEY_NAMES.ACCESS_TOKEN && tokenType !== JWT_KEY_NAMES.REFRESH_TOKEN) {
       throw { success: false, error: 'Invalid token type.' };
     }
@@ -55,7 +67,16 @@ export class AuthTokenService {
       const secret: string =
         tokenType === JWT_KEY_NAMES.REFRESH_TOKEN ? this.jwtRefreshSecret : this.jwtSecret;
       const decoded = jwt.verify(token, secret) as JwtPayload;
-      return { success: true, data: decoded.data };
+      return {
+        success: true,
+        data: {
+          rememberMe: decoded.data.rememberMe || false,
+          sub: decoded.data.sub,
+          csub: decoded.data.csub,
+          iat: decoded.iat as number,
+          exp: decoded.exp as number,
+        },
+      };
     } catch (error) {
       this.logger.error('JWT verification failed: ', (error as Error).message);
       throw error;

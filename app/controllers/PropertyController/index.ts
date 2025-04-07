@@ -24,12 +24,12 @@ export class PropertyController {
         html: sanitizeHtml(req.body.description?.html || ''),
       },
     };
-    const newProperty = await this.propertyService.createProperty(
-      cid,
-      newPropertyData,
-      currentuser
-    );
-    res.status(httpStatusCodes.OK).json(newProperty);
+    // const newProperty = await this.propertyService.createProperty(
+    //   cid,
+    //   newPropertyData,
+    //   currentuser
+    // );
+    res.status(httpStatusCodes.OK).json({ success: true, data: newPropertyData });
   };
 
   getAllProperties = async (req: Request, res: Response) => {

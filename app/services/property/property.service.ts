@@ -1,33 +1,27 @@
-import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import { envVariables } from '@shared/config';
-import { AuthTokenService } from '@services/auth';
-import { ProfileDAO, ClientDAO, PropertyDAO } from '@dao/index';
-import { ISuccessReturnData } from '@interfaces/utils.interface';
-import { hashGenerator, JWT_KEY_NAMES, createLogger, JOB_NAME } from '@utils/index';
-import {
-  InvalidRequestError,
-  BadRequestError,
-  ForbiddenError,
-  NotFoundError,
-  UnauthorizedError,
-} from '@shared/customErrors';
-import { PropertyCache } from '@caching/index';
-import { IProperty } from '@interfaces/property.interface';
-import { ICurrentUser } from '@interfaces/user.interface';
-import { GeoCoderService } from '@services/external';
 import { Types } from 'mongoose';
+import { createLogger } from '@utils/index';
+import { PropertyCache } from '@caching/index';
+import { S3Service } from '@services/fileUpload';
+import { GeoCoderService } from '@services/external';
+import { ICurrentUser } from '@interfaces/user.interface';
+import { IProperty } from '@interfaces/property.interface';
+import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
+import { ExtractedMediaFile, ISuccessReturnData } from '@interfaces/utils.interface';
 
 interface IConstructor {
   geoCoderService: GeoCoderService;
   propertyCache: PropertyCache;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
+  s3Service: S3Service;
   clientDAO: ClientDAO;
 }
 
 export class PropertyService {
   private readonly log: Logger;
+  private readonly s3Service: S3Service;
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
@@ -40,7 +34,9 @@ export class PropertyService {
     propertyDAO,
     propertyCache,
     geoCoderService,
+    s3Service,
   }: IConstructor) {
+    this.s3Service = s3Service;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
@@ -51,7 +47,7 @@ export class PropertyService {
 
   async createProperty(
     cid: string,
-    propertyData: IProperty,
+    propertyData: { scannedFiles?: ExtractedMediaFile[] } & IProperty,
     currentUser: ICurrentUser
   ): Promise<ISuccessReturnData> {
     const session = await this.propertyDAO.startSession();
@@ -62,7 +58,7 @@ export class PropertyService {
         throw new BadRequestError({ message: 'Unable to add property to this account.' });
       }
 
-      let { address } = propertyData;
+      const { address } = propertyData;
       if (!address) {
         throw new BadRequestError({ message: 'Property address is required.' });
       }
@@ -104,6 +100,18 @@ export class PropertyService {
         ? new Types.ObjectId(propertyData.managedBy)
         : new Types.ObjectId(currentUser.sub);
 
+      if (propertyData.scannedFiles && propertyData.documents) {
+        propertyData.documents = propertyData.documents.map((doc, index) => {
+          return {
+            documentType: doc.documentType,
+            uploadedBy: new Types.ObjectId(currentUser.sub),
+            description: doc.description,
+            uploadedAt: new Date(),
+            photos: doc.photos,
+          };
+        });
+      }
+
       const property = await this.propertyDAO.createProperty(
         {
           ...propertyData,
@@ -112,13 +120,18 @@ export class PropertyService {
         session
       );
 
+      // const property = await this.propertyDAO.createInstance({
+      //   ...propertyData,
+      //   cid,
+      // });
+
       if (!property) {
         throw new BadRequestError({ message: 'Unable to create property.' });
       }
 
       return { property };
     });
-
+    // add document to s3 via queues
     await this.propertyCache.cacheProperty(cid, result.property.id, result.property);
     return { success: true, data: result.property, message: 'Property created successfully' };
   }

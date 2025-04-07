@@ -4,7 +4,6 @@ import { envVariables } from '@shared/config';
 import { TokenType } from '@interfaces/utils.interface';
 import { JWT_KEY_NAMES, createLogger } from '@utils/index';
 import jwt, { SignOptions, JwtPayload } from 'jsonwebtoken';
-import { number } from 'zod';
 
 export class AuthTokenService {
   private jwtRefreshExpiresIn: string | number;
@@ -28,6 +27,7 @@ export class AuthTokenService {
   createJwtTokens(payload: { sub: string; rememberMe: boolean; csub: string }): {
     accessToken: string;
     refreshToken: string;
+    rememberMe: boolean;
   } {
     const accessExpiry = payload.rememberMe ? this.extendedAccessTokenExpiry : this.jwtExpiresIn;
     const refreshExpiry = payload.rememberMe
@@ -42,6 +42,7 @@ export class AuthTokenService {
     return {
       accessToken: at,
       refreshToken: rt,
+      rememberMe: payload.rememberMe,
     };
   }
 
@@ -51,6 +52,7 @@ export class AuthTokenService {
   ): Promise<{
     success: boolean;
     data: {
+      rememberMe: boolean;
       sub: string;
       csub: string;
       iat: number;
@@ -68,6 +70,7 @@ export class AuthTokenService {
       return {
         success: true,
         data: {
+          rememberMe: decoded.data.rememberMe || false,
           sub: decoded.data.sub,
           csub: decoded.data.csub,
           iat: decoded.iat as number,

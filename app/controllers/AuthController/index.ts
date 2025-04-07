@@ -105,4 +105,15 @@ export class AuthController {
     res.clearCookie(req.cookies?.[JWT_KEY_NAMES.REFRESH_TOKEN], { path: '/api/v1/auth/refresh' });
     res.status(httpStatusCodes.OK).json(result);
   };
+
+  refreshToken = async (req: Request, res: Response) => {
+    const token = req.cookies?.[JWT_KEY_NAMES.REFRESH_TOKEN];
+    const result = await this.authService.refreshToken(token);
+    console.log(result, '----result');
+    // res = setAuthCookies(
+    //   { accessToken: result.data.accessToken, refreshToken: result.data.refreshToken },
+    //   res
+    // );
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

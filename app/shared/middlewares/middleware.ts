@@ -26,7 +26,6 @@ export const scopedMiddleware = (req: Request, res: Response, next: NextFunction
 export const isAuthenticated = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { tokenService, profileDAO, authCache }: DIServices = req.container.cradle;
-
     const token = tokenService.extractTokenFromRequest(req);
 
     if (!token) {
@@ -42,7 +41,6 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
     }
 
     const currentUserResp = await authCache.getCurrentUser(payload.data?.sub as string);
-    // if(currentUserResp.success && currentUserResp.data && payload.data?.csub) {
     if (!currentUserResp.success) {
       console.error('User not found in cache, fetching from database...');
       const _currentuser = await profileDAO.generateCurrentUserInfo(payload.data?.sub as string);
@@ -58,11 +56,12 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
-      next(
-        new UnauthorizedError({ message: 'Authentication token has expired.', statusCode: 419 })
-      );
+      if (req.originalUrl === '/api/v1/auth/refresh_token') {
+        return next();
+      }
+      return next(new UnauthorizedError({ message: 'Session expired.' }));
     }
-    next(new UnauthorizedError({ message: 'Authentication failed.' }));
+    return next(new UnauthorizedError());
   }
 };
 

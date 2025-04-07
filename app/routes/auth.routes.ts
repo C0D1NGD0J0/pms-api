@@ -28,7 +28,7 @@ router.post(
 );
 
 router.get(
-  '/me',
+  '/:cid/me',
   isAuthenticated,
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -37,7 +37,7 @@ router.get(
 );
 
 router.put(
-  '/account_activation/:cid',
+  '/:cid/account_activation',
   validateRequest({
     query: AuthValidations.activationToken,
   }),
@@ -92,11 +92,20 @@ router.post(
 );
 
 router.delete(
-  '/logout',
+  '/:cid/logout',
   isAuthenticated,
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.logout(req, res);
+  })
+);
+
+router.post(
+  '/:cid/refresh_token',
+  isAuthenticated,
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.refreshToken(req, res);
   })
 );
 

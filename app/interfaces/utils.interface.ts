@@ -70,13 +70,13 @@ export type ExtractedMediaFile = {
   uploadedAt: Date;
 };
 
-export interface ISuccessReturnData<T = unknown> {
+export type ISuccessReturnData<T = any> = {
   errors?: [{ path: string; message: string }];
   success: boolean;
   message?: string;
   error?: string;
   data: T;
-}
+};
 /**
  * Interface defining the structure of pagination metadata
  */

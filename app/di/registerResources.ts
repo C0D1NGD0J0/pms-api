@@ -11,6 +11,7 @@ import { Property, Profile, Client, User } from '@models/index';
 import { DatabaseService, RedisService } from '@database/index';
 import { PropertyController, AuthController } from '@controllers/index';
 import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { PropertyCsvProcessor } from '@services/csv/propertyCsvProcessor';
 import { AuthTokenService, PropertyService, AuthService } from '@services/index';
 
 import { container } from './setup';
@@ -65,6 +66,7 @@ const UtilsResources = {
   s3Service: asClass(S3Service).singleton(),
   clamScanner: asClass(ClamScannerService).singleton(),
   diskStorage: asClass(DiskStorage).singleton(),
+  propertyCsvService: asClass(PropertyCsvProcessor).singleton(),
 };
 
 const SocketIOResources = {

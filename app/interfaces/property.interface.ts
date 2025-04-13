@@ -1,13 +1,21 @@
 import { Document, Types } from 'mongoose';
 
+import { CURRENCIES } from './utils.interface';
+
 export interface IProperty {
+  fees: {
+    taxAmount: number;
+    currency: CURRENCIES;
+    rentalAmount: number | string;
+    managementFees: number | string;
+  };
   description?: {
     html?: string;
     text?: string;
   };
-  communityAmenities: ICommunityAmenities;
-  interiorAmenities: IInteriorAmenities;
-  exteriorAmenities: IExteriorAmenities;
+  communityAmenities?: ICommunityAmenities;
+  interiorAmenities?: IInteriorAmenities;
+  exteriorAmenities?: IExteriorAmenities;
   computedLocation?: IComputedLocation;
   financialDetails?: IFinancialDetails;
   documents?: IPropertyDocumentItem[];
@@ -28,8 +36,8 @@ export interface IProperty {
 export interface IDocumentPhoto {
   status: {
     type: string;
-    enum: ['active', 'inactive'];
-    default: 'active';
+    enum: ['pending', 'active', 'inactive', 'deleted'];
+    default: 'pending';
   };
   uploadedBy: Types.ObjectId;
   externalUrl: string;

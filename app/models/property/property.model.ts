@@ -76,6 +76,41 @@ const PropertySchema = new Schema<IPropertyDocument>(
         type: Date,
       },
     },
+    fees: {
+      currency: { type: String, required: true, default: 'USD' },
+      taxAmount: {
+        default: 0,
+        type: Number,
+        get: (val: number) => {
+          return (val / 100).toFixed(2);
+        },
+        set: (val: number) => val * 100,
+      },
+      rentalAmount: {
+        default: 0,
+        type: Number,
+        get: function (val: number) {
+          return (val / 100).toFixed(2);
+        },
+        set: (val: number) => val * 100,
+      },
+      managementFees: {
+        default: 0,
+        type: Number,
+        get: (val: number) => {
+          return (val / 100).toFixed(2);
+        },
+        set: (val: number) => val * 100,
+      },
+      securityDeposit: {
+        default: 0,
+        type: Number,
+        get: (val: number) => {
+          return (val / 100).toFixed(2);
+        },
+        set: (val: number) => val * 100,
+      },
+    },
     specifications: {
       totalArea: {
         type: Number,
@@ -200,10 +235,19 @@ const PropertySchema = new Schema<IPropertyDocument>(
             key: { type: String },
             status: {
               type: String,
-              enum: ['active', 'inactive'],
+              enum: ['active', 'inactive'], // if inactive it would be deleted via cron job ltr
               default: 'active',
             },
-            externalUrl: String,
+            externalUrl: {
+              type: String,
+              validate: {
+                validator: function (v: string) {
+                  // Basic URL validation
+                  return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
+                },
+                message: (props: any) => `${props.value} is not a valid URL!`,
+              },
+            },
             uploadedAt: { type: Date, default: Date.now },
             uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
           },

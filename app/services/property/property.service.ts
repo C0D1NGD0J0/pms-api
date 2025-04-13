@@ -76,7 +76,6 @@ export class PropertyService {
         }
       }
 
-      // Get computed addres details
       const gCode = await this.geoCoderService.parseLocation(address);
       if (!gCode) {
         throw new BadRequestError({ message: 'Invalid location provided.' });
@@ -119,11 +118,6 @@ export class PropertyService {
         },
         session
       );
-
-      // const property = await this.propertyDAO.createInstance({
-      //   ...propertyData,
-      //   cid,
-      // });
 
       if (!property) {
         throw new BadRequestError({ message: 'Unable to create property.' });

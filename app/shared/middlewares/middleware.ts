@@ -81,8 +81,11 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
       return next();
     }
 
+    if (!req.currentuser) {
+      return next(new UnauthorizedError({ message: 'Unauthorized action.' }));
+    }
     const foundViruses: { file: string; viruses: string[]; createdAt: string }[] = [];
-    const _files = extractMulterFiles(files);
+    const _files = extractMulterFiles(files, req.currentuser?.sub);
     const infectedFilesNames = [];
     const validFiles = [];
 

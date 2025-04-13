@@ -18,6 +18,7 @@ export class DiskStorage {
     'pdf',
     'mp4',
     'avi',
+    'csv',
     'mov',
     'x-matroska',
   ];

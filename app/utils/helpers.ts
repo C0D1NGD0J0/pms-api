@@ -209,12 +209,14 @@ export function asyncWrapper(fn: AsyncRequestHandler) {
 /**
  * Extracts and standardizes file information from Multer file objects
  * @param files - A Multer file object or array of file objects
+ * @param actorId - The ID of the user who uploaded the files
  * @param allowedTypes - Optional array of allowed file types (e.g., ['image', 'document'])
  * @returns An array of standardized file information objects
  * @throws Error if any files have invalid types when allowedTypes is provided
  */
 export const extractMulterFiles = (
   files: MulterFile,
+  actorId: string,
   allowedTypes?: FileType[]
 ): ExtractedMediaFile[] => {
   if (!files) {
@@ -238,6 +240,10 @@ export const extractMulterFiles = (
       originalFileName: file.originalname,
       filename: file.filename,
       fileSize: file.size,
+      uploadedBy: actorId || '',
+      url: '',
+      key: '',
+      status: 'pending',
       uploadedAt: file.uploadedAt || new Date().toISOString(),
     });
   };

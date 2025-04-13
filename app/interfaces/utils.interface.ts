@@ -65,9 +65,13 @@ export type ExtractedMediaFile = {
   fieldName: string;
   mimeType: string;
   path: string;
+  url?: string;
+  key?: string;
+  status: 'pending' | 'active' | 'inactive' | 'deleted';
   filename: string;
   fileSize: number;
   uploadedAt: Date;
+  uploadedBy: string;
 };
 
 export type ISuccessReturnData<T = any> = {

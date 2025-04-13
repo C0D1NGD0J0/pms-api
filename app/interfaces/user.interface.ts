@@ -19,6 +19,21 @@ export enum IUserRole {
   ADMIN = 'admin',
 }
 
+export interface IUserDocument extends Document, IUser {
+  validatePassword: (pwd1: string) => Promise<boolean>;
+  cids: IClientUserConnections[];
+  profile?: IProfileDocument; //virtual property
+  deletedAt: Date | null;
+  _id: Types.ObjectId;
+  isActive: boolean;
+  activeCid: string; // active cid
+  fullname?: string; //virtual property
+  createdAt: Date;
+  updatedAt: Date;
+  uid: string;
+  id: string;
+}
+
 export interface ICurrentUser {
   preferences: {
     theme?: 'light' | 'dark';
@@ -35,21 +50,6 @@ export interface ICurrentUser {
   isActive: boolean;
   email: string;
   sub: string;
-}
-
-export interface IUserDocument extends Document, IUser {
-  validatePassword: (pwd1: string) => Promise<boolean>;
-  cids: IClientUserConnections[];
-  profile?: IProfileDocument; //virtual property
-  deletedAt: Date | null;
-  _id: Types.ObjectId;
-  isActive: boolean;
-  activeCid: string; // active cid
-  fullname?: string; //virtual property
-  createdAt: Date;
-  updatedAt: Date;
-  uid: string;
-  id: string;
 }
 
 export interface IInviteUserSignup {

@@ -108,7 +108,7 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
    * @param opts - Additional options for the query.
    * @returns A promise that resolves to the found user document or null if no user is found.
    */
-  getUserByEmail(email: string, opts?: dynamic): Promise<IUserDocument | null>;
+  getActiveUserByEmail(email: string, opts?: dynamic): Promise<IUserDocument | null>;
 
   /**
    * Get a user by UID.

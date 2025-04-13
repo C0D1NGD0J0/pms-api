@@ -14,13 +14,26 @@ router.post(
   '/:cid/',
   diskUpload,
   scanFile,
-  // validateRequest({
-  //   params: PropertyValidations.validateCid,
-  //   body: PropertyValidations.create,
-  // }),
+  validateRequest({
+    params: PropertyValidations.validateCid,
+    body: PropertyValidations.create,
+  }),
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.create(req, res);
+  })
+);
+
+router.post(
+  '/:cid/validate_csv',
+  diskUpload,
+  scanFile,
+  validateRequest({
+    params: PropertyValidations.validateCid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.validateCsv(req, res);
   })
 );
 
@@ -31,7 +44,7 @@ router.get(
   }),
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
-    return propertyController.getProeprty(req, res);
+    return propertyController.getProperty(req, res);
   })
 );
 

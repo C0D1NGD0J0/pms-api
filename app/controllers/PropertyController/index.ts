@@ -24,12 +24,26 @@ export class PropertyController {
         html: sanitizeHtml(req.body.description?.html || ''),
       },
     };
-    // const newProperty = await this.propertyService.createProperty(
-    //   cid,
-    //   newPropertyData,
-    //   currentuser
-    // );
-    res.status(httpStatusCodes.OK).json({ success: true, data: newPropertyData });
+    const newProperty = await this.propertyService.createProperty(
+      cid,
+      newPropertyData,
+      currentuser
+    );
+    res.status(httpStatusCodes.OK).json({ success: true, data: newProperty });
+  };
+
+  validateCsv = async (req: Request, res: Response) => {
+    const { cid } = req.params;
+    const currentuser = req.currentuser!;
+
+    if (!req.body.scannedFiles) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: 'No CSV file uploaded',
+      });
+    }
+    const result = await this.propertyService.validateCsv(cid, req.body.scannedFiles, currentuser);
+    res.status(httpStatusCodes.OK).json({ success: true });
   };
 
   getAllProperties = async (req: Request, res: Response) => {
@@ -40,7 +54,7 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  getProeprty = async (req: Request, res: Response) => {
+  getProperty = async (req: Request, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
@@ -56,7 +70,7 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  searchProperty = async (req: Request, res: Response) => {
+  search = async (req: Request, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 

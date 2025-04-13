@@ -274,7 +274,7 @@ export class AuthService {
       throw new BadRequestError({ message: 'Email and password are required.' });
     }
 
-    let user = await this.userDAO.getUserByEmail(email);
+    let user = await this.userDAO.getActiveUserByEmail(email);
     if (!user) {
       throw new NotFoundError({ message: 'Invalid email/password combination.' });
     }
@@ -429,7 +429,7 @@ export class AuthService {
     }
 
     await this.userDAO.createActivationToken('', email)!;
-    const user = await this.userDAO.getUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
 
     if (!user) {
       throw new NotFoundError({ message: `Activation link has been sent to ${email}.` });
@@ -459,7 +459,7 @@ export class AuthService {
     }
 
     await this.userDAO.createPasswordResetToken(email);
-    const user = await this.userDAO.getUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
     if (!user) {
       throw new NotFoundError({ message: 'No record found with email provided.' });
     }
@@ -489,7 +489,7 @@ export class AuthService {
     }
 
     await this.userDAO.resetPassword(email, token);
-    const user = await this.userDAO.getUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
     if (!user) {
       throw new NotFoundError({ message: 'No record found with email provided.' });
     }

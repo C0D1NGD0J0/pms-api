@@ -47,7 +47,7 @@ describe('AuthService - Login and Session Management', () => {
     (uuid.v4 as jest.Mock).mockReturnValue(mockClientId);
 
     mockUserDAO = {
-      getUserByEmail: jest.fn(),
+      getActiveUserByEmail: jest.fn(),
       getUserById: jest.fn(),
       verifyCredentials: jest.fn(),
       updateById: jest.fn(),
@@ -98,31 +98,31 @@ describe('AuthService - Login and Session Management', () => {
       await expect(
         authService.login({ email: '', password: '', rememberMe: false })
       ).rejects.toThrow(BadRequestError);
-      expect(mockUserDAO.getUserByEmail).not.toHaveBeenCalled();
+      expect(mockUserDAO.getActiveUserByEmail).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundError if user is not found by email', async () => {
-      mockUserDAO.getUserByEmail.mockResolvedValue(null);
+      mockUserDAO.getActiveUserByEmail.mockResolvedValue(null);
 
       await expect(authService.login(loginData)).rejects.toThrow(NotFoundError);
-      expect(mockUserDAO.getUserByEmail).toHaveBeenCalledWith(loginData.email);
+      expect(mockUserDAO.getActiveUserByEmail).toHaveBeenCalledWith(loginData.email);
       expect(mockUserDAO.verifyCredentials).not.toHaveBeenCalled();
     });
 
     it('should throw InvalidRequestError if account is not activated', async () => {
-      mockUserDAO.getUserByEmail.mockResolvedValue({
+      mockUserDAO.getActiveUserByEmail.mockResolvedValue({
         _id: mockUserId,
         email: loginData.email,
         isActive: false,
       });
 
       await expect(authService.login(loginData)).rejects.toThrow(InvalidRequestError);
-      expect(mockUserDAO.getUserByEmail).toHaveBeenCalledWith(loginData.email);
+      expect(mockUserDAO.getActiveUserByEmail).toHaveBeenCalledWith(loginData.email);
       expect(mockUserDAO.verifyCredentials).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundError if credentials verification fails', async () => {
-      mockUserDAO.getUserByEmail.mockResolvedValue({
+      mockUserDAO.getActiveUserByEmail.mockResolvedValue({
         _id: mockUserId,
         email: loginData.email,
         isActive: true,
@@ -130,7 +130,7 @@ describe('AuthService - Login and Session Management', () => {
       mockUserDAO.verifyCredentials.mockResolvedValue(null);
 
       await expect(authService.login(loginData)).rejects.toThrow(NotFoundError);
-      expect(mockUserDAO.getUserByEmail).toHaveBeenCalledWith(loginData.email);
+      expect(mockUserDAO.getActiveUserByEmail).toHaveBeenCalledWith(loginData.email);
       expect(mockUserDAO.verifyCredentials).toHaveBeenCalledWith(
         loginData.email,
         loginData.password
@@ -144,7 +144,7 @@ describe('AuthService - Login and Session Management', () => {
       };
 
       // Setup user with one account
-      mockUserDAO.getUserByEmail.mockResolvedValue({
+      mockUserDAO.getActiveUserByEmail.mockResolvedValue({
         _id: mockUserId,
         email: loginData.email,
         isActive: true,
@@ -216,7 +216,7 @@ describe('AuthService - Login and Session Management', () => {
       };
 
       // Setup user with multiple accounts
-      mockUserDAO.getUserByEmail.mockResolvedValue({
+      mockUserDAO.getActiveUserByEmail.mockResolvedValue({
         _id: mockUserId,
         email: loginData.email,
         isActive: true,

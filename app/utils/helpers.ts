@@ -216,7 +216,7 @@ export function asyncWrapper(fn: AsyncRequestHandler) {
  */
 export const extractMulterFiles = (
   files: MulterFile,
-  actorId: string,
+  actorId?: string,
   allowedTypes?: FileType[]
 ): ExtractedMediaFile[] => {
   if (!files) {

@@ -3,15 +3,15 @@ import { MailService } from '@mailer/index';
 import { GeoCoderService } from '@services/external';
 import { asFunction, asValue, asClass } from 'awilix';
 import { PropertyCache, AuthCache } from '@caching/index';
-import { PropertyQueue, EmailQueue } from '@queues/index';
 import { ClamScannerService } from '@shared/config/index';
-import { PropertyWorker, EmailWorker } from '@workers/index';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { Property, Profile, Client, User } from '@models/index';
 import { DatabaseService, RedisService } from '@database/index';
+import { PropertyQueue, UploadQueue, EmailQueue } from '@queues/index';
 import { PropertyController, AuthController } from '@controllers/index';
 import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PropertyCsvProcessor } from '@services/csv/propertyCsvProcessor';
+import { PropertyWorker, UploadWorker, EmailWorker } from '@workers/index';
 import { AuthTokenService, PropertyService, AuthService } from '@services/index';
 
 import { container } from './setup';
@@ -49,11 +49,13 @@ const CacheResources = {
 
 const WorkerResources = {
   emailWorker: asClass(EmailWorker).singleton(),
+  uploadWorker: asClass(UploadWorker).singleton(),
   propertyWorker: asClass(PropertyWorker).singleton(),
 };
 
 const QueuesResources = {
   emailQueue: asClass(EmailQueue).singleton(),
+  uploadQueue: asClass(UploadQueue).singleton(),
   propertyQueue: asClass(PropertyQueue).singleton(),
 };
 

@@ -35,20 +35,17 @@ export const MAIL_TYPES = {
 };
 
 export const QUEUE_NAMES = {
-  ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
-  IMAGE_UPLOAD_QUEUE: 'imageUploadQueue',
-  VIDEO_UPLOAD_QUEUE: 'videoUploadQueue',
-  ASSET_REMOVAL_QUEUE: 'assetRemovalQueue',
+  MEDIA_QUEUE: 'mediaQueue',
   PROPERTY_QUEUE: 'propertyQueue',
+  ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
   PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
 };
 
 export const JOB_NAME = {
   ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
-  DELETE_REMOTE_ASSET: 'deleteRemoteAssetJob',
-  DELETE_LOCAL_ASSET: 'deleteLocalAssetJob',
+  MEDIA_UPLOAD_JOB: 'mediaUploadJob',
+  MEDIA_REMOVAL_JOB: 'mediaRemovalJob',
   PROPERTY_CREATE_JOB: 'propertyCreateJob',
   PROPERTY_UPDATE_JOB: 'propertyUpdateJob',
   PROPERTY_DELETE_JOB: 'propertyDeleteJob',
-  PROPERTY_MEDIA_PROCESSING_JOB: 'propertyMediaProcessingJob',
 };

@@ -1,6 +1,6 @@
 import { ClientSession, FilterQuery } from 'mongoose';
+import { UploadResult } from '@interfaces/utils.interface';
 import {
-  IPropertyDocumentItem,
   IPropertyDocument,
   OccupancyStatus,
   PropertyStatus,
@@ -79,9 +79,9 @@ export interface IPropertyDAO {
    * @param userId - The ID of the user performing the action
    * @returns A promise that resolves to the updated property document
    */
-  addPropertyDocument(
+  updatePropertyDocument(
     propertyId: string,
-    documentData: IPropertyDocumentItem,
+    documentData: UploadResult[],
     userId: string
   ): Promise<IPropertyDocument | null>;
 

@@ -33,13 +33,16 @@ export interface IProperty {
   cid: string;
 }
 
-export interface IDocumentPhoto {
+export interface IPropertyDocumentItem {
   status: {
     type: string;
     enum: ['pending', 'active', 'inactive', 'deleted'];
     default: 'pending';
   };
+  documentType?: 'deed' | 'tax' | 'insurance' | 'inspection' | 'other' | 'lease';
   uploadedBy: Types.ObjectId;
+  description?: string;
+  documentName: string;
   externalUrl: string;
   uploadedAt: Date;
   key?: string;
@@ -55,14 +58,6 @@ export interface IExteriorAmenities {
   balcony: boolean;
   parking: boolean;
   garden: boolean;
-}
-
-export interface IPropertyDocumentItem {
-  documentType?: 'deed' | 'tax' | 'insurance' | 'inspection' | 'other';
-  uploadedBy: Types.ObjectId;
-  photos: IDocumentPhoto[];
-  description?: string;
-  uploadedAt: Date;
 }
 
 export interface IPropertyDocument extends IProperty, Document {

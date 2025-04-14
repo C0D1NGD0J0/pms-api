@@ -220,45 +220,40 @@ const PropertySchema = new Schema<IPropertyDocument>(
     },
     documents: [
       {
-        photos: [
-          {
-            url: {
-              type: String,
-              validate: {
-                validator: function (v: string) {
-                  // Basic URL validation
-                  return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
-                },
-                message: (props: any) => `${props.value} is not a valid URL!`,
-              },
-            },
-            key: { type: String },
-            status: {
-              type: String,
-              enum: ['active', 'inactive'], // if inactive it would be deleted via cron job ltr
-              default: 'active',
-            },
-            externalUrl: {
-              type: String,
-              validate: {
-                validator: function (v: string) {
-                  // Basic URL validation
-                  return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
-                },
-                message: (props: any) => `${props.value} is not a valid URL!`,
-              },
-            },
-            uploadedAt: { type: Date, default: Date.now },
-            uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
-          },
-        ],
         documentType: {
           type: String,
           enum: ['deed', 'tax', 'insurance', 'inspection', 'other', 'lease'],
         },
-        description: { type: String },
+        url: {
+          type: String,
+          validate: {
+            validator: function (v: string) {
+              // Basic URL validation
+              return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
+            },
+            message: (props: any) => `${props.value} is not a valid URL!`,
+          },
+        },
+        key: { type: String },
+        status: {
+          type: String,
+          enum: ['active', 'inactive'], // if inactive it would be deleted via cron job ltr
+          default: 'active',
+        },
+        externalUrl: {
+          type: String,
+          validate: {
+            validator: function (v: string) {
+              // Basic URL validation
+              return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
+            },
+            message: (props: any) => `${props.value} is not a valid URL!`,
+          },
+        },
         uploadedAt: { type: Date, default: Date.now },
         uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        description: { type: String, trim: true, maxlength: 150 },
+        documentName: { type: String, trim: true, maxlength: 100 },
       },
     ],
     occupancyStatus: {

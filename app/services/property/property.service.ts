@@ -1,27 +1,29 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { createLogger } from '@utils/index';
+import { createLogger, JOB_NAME } from '@utils/index';
 import { PropertyCache } from '@caching/index';
 import { S3Service } from '@services/fileUpload';
+import { UploadQueue } from '@queues/upload.queue';
 import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IProperty } from '@interfaces/property.interface';
 import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
-import { ExtractedMediaFile, ISuccessReturnData } from '@interfaces/utils.interface';
+import { ExtractedMediaFile, ISuccessReturnData, UploadResult } from '@interfaces/utils.interface';
+import { unknown } from 'zod';
 
 interface IConstructor {
   geoCoderService: GeoCoderService;
   propertyCache: PropertyCache;
+  uploadQueue: UploadQueue;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
-  s3Service: S3Service;
   clientDAO: ClientDAO;
 }
 
 export class PropertyService {
   private readonly log: Logger;
-  private readonly s3Service: S3Service;
+  private uploadQueue: UploadQueue;
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
@@ -32,14 +34,14 @@ export class PropertyService {
     clientDAO,
     profileDAO,
     propertyDAO,
+    uploadQueue,
     propertyCache,
     geoCoderService,
-    s3Service,
   }: IConstructor) {
-    this.s3Service = s3Service;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
+    this.uploadQueue = uploadQueue;
     this.propertyCache = propertyCache;
     this.geoCoderService = geoCoderService;
     this.log = createLogger('PropertyService');
@@ -125,8 +127,49 @@ export class PropertyService {
 
       return { property };
     });
-    // add document to s3 via queues
+    if (propertyData.scannedFiles && propertyData.scannedFiles.length > 0) {
+      this.uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
+        resource: {
+          fieldName: 'documents',
+          resourceType: 'unknown',
+          resourceName: 'property',
+          actorId: currentUser.sub,
+          resourceId: result.property.id,
+        },
+        files: propertyData.scannedFiles,
+      });
+    }
     await this.propertyCache.cacheProperty(cid, result.property.id, result.property);
     return { success: true, data: result.property, message: 'Property created successfully' };
+  }
+
+  async updatePropertyDocuments(
+    propertyId: string,
+    uploadResult: UploadResult[],
+    userid: string
+  ): Promise<ISuccessReturnData> {
+    if (!propertyId) {
+      throw new BadRequestError({ message: 'Property ID is required.' });
+    }
+
+    if (!uploadResult || uploadResult.length === 0) {
+      throw new BadRequestError({ message: 'Upload result is required.' });
+    }
+    const property = await this.propertyDAO.findById(propertyId);
+    if (!property) {
+      throw new BadRequestError({ message: 'Unable to find client property.' });
+    }
+
+    const updatedProperty = await this.propertyDAO.updatePropertyDocument(
+      propertyId,
+      uploadResult,
+      userid
+    );
+
+    if (!updatedProperty) {
+      throw new BadRequestError({ message: 'Unable to update property.' });
+    }
+
+    return { success: true, data: updatedProperty, message: 'Property updated successfully' };
   }
 }

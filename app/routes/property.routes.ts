@@ -4,7 +4,6 @@ import { validateRequest } from '@shared/validations';
 import { PropertyController } from '@controllers/index';
 import { isAuthenticated, diskUpload, scanFile } from '@shared/middlewares';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
-// import { container } from '@di/index';
 
 const router: Router = express.Router();
 

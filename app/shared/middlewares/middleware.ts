@@ -71,11 +71,11 @@ export const diskUpload = async (req: Request, res: Response, next: NextFunction
 };
 
 export const scanFile = async (req: Request, res: Response, next: NextFunction) => {
+  const {
+    clamScanner,
+    diskStorage,
+  }: { diskStorage: DiskStorage; clamScanner: ClamScannerService } = req.container.cradle;
   try {
-    const {
-      clamScanner,
-      diskStorage,
-    }: { diskStorage: DiskStorage; clamScanner: ClamScannerService } = req.container.cradle;
     const files = req.files;
     if (!files) {
       return next();
@@ -121,6 +121,11 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
     return next();
   } catch (error) {
     console.error('Error during virus scan:', error);
+    // delete files from disk when an error occurs regardless if its valid or infected file(memory saver)
+    if (req.files) {
+      const filesToDelete = extractMulterFiles(req.files).map((file) => file.filename);
+      await diskStorage.deleteFiles(filesToDelete);
+    }
     next(new InvalidRequestError({ message: 'Error processing uploaded files.' }));
   }
 };

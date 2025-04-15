@@ -2,8 +2,8 @@ import { Job } from 'bull';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { PropertyService } from '@services/index';
-import { UploadJobData, ResourceInfo } from '@interfaces/index';
-import { UploadResult, DiskStorage, S3Service } from '@services/fileUpload';
+import { DiskStorage, S3Service } from '@services/fileUpload';
+import { UploadJobData, ResourceInfo, UploadResult } from '@interfaces/index';
 
 interface IConstructor {
   propertyService: PropertyService;
@@ -78,7 +78,11 @@ export class UploadWorker {
   ): Promise<void> {
     switch (resource.resourceName) {
       case 'property':
-        await this.propertyService.updateDocuments(resource.resourceId, uploadResults);
+        await this.propertyService.updatePropertyDocuments(
+          resource.resourceId,
+          uploadResults,
+          resource.actorId
+        );
         break;
       default:
         this.log.warn(`Unknown resource type: ${resource.resourceName}`);

@@ -403,3 +403,56 @@ export const convertTimeToSecondsAndMilliseconds = (
     milliseconds: seconds * 1000,
   };
 };
+
+/**
+ * Middleware to parse stringified JSON, booleans, and numbers in req.body
+ * Useful for multipart/form-data where nested fields are sent as strings
+ */
+export const parseJsonFields = (req: Request) => {
+  if (!req.body || typeof req.body !== 'object') return req.body;
+
+  const tryParse = (val: string) => {
+    try {
+      const parsed = JSON.parse(val);
+      return typeof parsed === 'object' ? parsed : val;
+    } catch {
+      return val;
+    }
+  };
+
+  const convertValue = (value: any): any => {
+    if (value == null) return value;
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+
+      if (
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))
+      ) {
+        return tryParse(trimmed);
+      }
+
+      if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+      if (trimmed.toLowerCase() === 'true') return true;
+      if (trimmed.toLowerCase() === 'false') return false;
+
+      return value;
+    }
+
+    if (Array.isArray(value)) return value.map(convertValue);
+    if (typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, convertValue(v)]));
+    }
+
+    return value;
+  };
+
+  try {
+    req.body = convertValue(req.body);
+  } catch (error) {
+    console.error('Error in parseJsonFields middleware:', error);
+  }
+
+  return req.body;
+};

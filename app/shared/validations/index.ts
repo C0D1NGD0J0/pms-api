@@ -1,8 +1,8 @@
 import { DiskStorage } from '@services/fileUpload';
 import { httpStatusCodes } from '@utils/constants';
-import { extractMulterFiles } from '@utils/helpers';
 import { NextFunction, Response, Request } from 'express';
 import { ZodTypeDef, ZodSchema, ZodError, ZodType } from 'zod';
+import { extractMulterFiles, parseJsonFields } from '@utils/helpers';
 
 export const validateRequest = (schema: {
   query?: ZodType<any, ZodTypeDef, any>;
@@ -18,7 +18,9 @@ export const validateRequest = (schema: {
       if (schema.params) {
         req.params = await schema.params.parseAsync(req.params);
       }
-      schema.body && (await schema.body.parseAsync(JSON.parse(req.body)));
+      // Parse nested JSON fields in the body if multipart/form-data
+      req.body = parseJsonFields(req);
+      schema.body && (await schema.body.parseAsync(req.body));
       next();
     } catch (error) {
       if (req.files) {

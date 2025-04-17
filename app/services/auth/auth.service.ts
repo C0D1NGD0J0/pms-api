@@ -4,7 +4,7 @@ import { Types } from 'mongoose';
 import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
-import { AuthTokenService } from '@services/auth';
+import { AuthTokenService } from '@services/index';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { ISignupData, IUserRole } from '@interfaces/user.interface';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
@@ -34,13 +34,13 @@ interface IConstructor {
 }
 
 export class AuthService {
-  private log: Logger;
-  private userDAO: UserDAO;
-  private clientDAO: ClientDAO;
-  private authCache: AuthCache;
-  private profileDAO: ProfileDAO;
-  private emailQueue: EmailQueue;
-  private tokenService: AuthTokenService;
+  private readonly log: Logger;
+  private readonly userDAO: UserDAO;
+  private readonly clientDAO: ClientDAO;
+  private readonly authCache: AuthCache;
+  private readonly profileDAO: ProfileDAO;
+  private readonly emailQueue: EmailQueue;
+  private readonly tokenService: AuthTokenService;
 
   constructor({
     userDAO,

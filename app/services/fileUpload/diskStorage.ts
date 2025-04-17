@@ -43,9 +43,7 @@ export class DiskStorage {
   }
 
   uploadMiddleware = (req: Request, res: Response, next: NextFunction): void => {
-    this.log.debug('Processing file upload');
     const upload = this.upload.fields(this.fields);
-
     upload(req, res, (err) => {
       if (err) {
         let errorMessage = 'File upload error';
@@ -72,8 +70,6 @@ export class DiskStorage {
         this.log.error(`Upload error: ${errorMessage}`);
         return next(new BadRequestError({ message: errorMessage, statusCode }));
       }
-
-      this.log.debug('File upload processed successfully');
       next();
     });
   };
@@ -94,22 +90,22 @@ export class DiskStorage {
       return true;
     }
 
-    this.log.debug(`Deleting ${filenames.length} files from disk`);
     let allSuccessful = true;
-
     for (const filename of filenames) {
       try {
         const filePath = path.join(this.storagePath, filename);
 
         await fs.promises.access(filePath, fs.constants.F_OK);
         await fs.promises.unlink(filePath);
-        this.log.debug(`Deleted file: ${filePath}`);
       } catch (err) {
         this.log.warn(`Failed to delete file ${filename}:`, err);
         allSuccessful = false;
       }
     }
 
+    if (allSuccessful) {
+      this.log.info(`Successfully deleted ${filenames.length} files`);
+    }
     return allSuccessful;
   }
 

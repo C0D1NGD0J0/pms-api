@@ -37,6 +37,7 @@ export const MAIL_TYPES = {
 export const QUEUE_NAMES = {
   MEDIA_QUEUE: 'mediaQueue',
   PROPERTY_QUEUE: 'propertyQueue',
+  EVENT_BUS_QUEUE: 'eventBusQueue',
   ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
   PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
 };

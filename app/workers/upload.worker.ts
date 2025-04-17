@@ -1,27 +1,26 @@
 import { Job } from 'bull';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
-import { PropertyService } from '@services/index';
 import { DiskStorage, S3Service } from '@services/fileUpload';
-import { UploadJobData, ResourceInfo, UploadResult } from '@interfaces/index';
+import { EventEmitterService, PropertyService } from '@services/index';
+import { UploadJobData, ResourceInfo, UploadResult, EventTypes } from '@interfaces/index';
 
 interface IConstructor {
+  emitterService: EventEmitterService;
   propertyService: PropertyService;
-  diskStorage: DiskStorage;
   s3Service: S3Service;
 }
 
 export class UploadWorker {
   private readonly awsS3Service: S3Service;
-  private propertyService: PropertyService;
+  private readonly emitterService: EventEmitterService;
   private diskStorage: DiskStorage;
   private log: Logger;
 
-  constructor({ s3Service, propertyService, diskStorage }: IConstructor) {
+  constructor({ s3Service, emitterService }: IConstructor) {
     this.log = createLogger('FileUploadWorker');
     this.awsS3Service = s3Service;
-    this.diskStorage = diskStorage;
-    this.propertyService = propertyService;
+    this.emitterService = emitterService;
   }
 
   uploadAsset = async (job: Job): Promise<void> => {
@@ -40,8 +39,7 @@ export class UploadWorker {
       const result = await this.awsS3Service.uploadFiles(files, resource);
       await this.updateResourceWithFileInfo(result, resource);
       const filesNames = result.map((file) => file.filename);
-      this.diskStorage.deleteFiles(filesNames);
-      console.log(result, '-------------upload-worker----------');
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, filesNames);
       Promise.resolve('Image uploaded successfully');
     } catch (error: any) {
       this.log.error(`Error uploading image: ${error.message}`);
@@ -78,11 +76,11 @@ export class UploadWorker {
   ): Promise<void> {
     switch (resource.resourceName) {
       case 'property':
-        await this.propertyService.updatePropertyDocuments(
-          resource.resourceId,
-          uploadResults,
-          resource.actorId
-        );
+        // await this.propertyService.updatePropertyDocuments(
+        //   resource.resourceId,
+        //   uploadResults,
+        //   resource.actorId
+        // );
         break;
       default:
         this.log.warn(`Unknown resource type: ${resource.resourceName}`);

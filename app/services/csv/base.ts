@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import fs from 'fs';
 import csvParser from 'csv-parser';
 import { createLogger } from '@utils/helpers';
@@ -24,15 +25,40 @@ export class BaseCSVProcessorService {
       throw new Error('CSV file path missing');
     }
 
-    // default header transformer
     const headerTransformer =
       options.headerTransformer ||
       (({ header }) => header.trim().toLowerCase().replace(/\./g, '_'));
 
-    const stream = fs.createReadStream(filePath).pipe(csvParser({ mapHeaders: headerTransformer }));
+    let expectedColumnCount = 0;
+    const headers: string[] = [];
+    const stream = fs.createReadStream(filePath).pipe(
+      csvParser({
+        mapHeaders: ({ header, index }: { header: string; index: number }) => {
+          expectedColumnCount++;
+          const transformedHeader = headerTransformer({ header });
+          headers.push(transformedHeader);
+          return transformedHeader;
+        },
+        skipLines: 0,
+        strict: false, // manually handle empty field so we can add null value
+      })
+    );
 
     try {
       for await (const row of stream) {
+        const rowColumnCount = Object.keys(row).length;
+        if (rowColumnCount !== expectedColumnCount) {
+          this.log.warn(
+            `Row ${rowNumber} has ${rowColumnCount} columns but ${expectedColumnCount} were expected`
+          );
+
+          // add null value to ensure all fields exist
+          headers.forEach((header) => {
+            if (row[header] === undefined) {
+              row[header] = null;
+            }
+          });
+        }
         try {
           if (options.validateRow) {
             const { isValid, errors } = await options.validateRow(row, options.context, rowNumber);
@@ -99,7 +125,7 @@ export class BaseCSVProcessorService {
   }
 
   static parseBoolean(value: any): boolean {
-    if (value === undefined || value === null) return false;
+    if (value === undefined || value === null || '') return false;
     if (typeof value === 'boolean') return value;
     if (typeof value === 'number') return value !== 0;
 

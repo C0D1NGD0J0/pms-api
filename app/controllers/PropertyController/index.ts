@@ -43,7 +43,7 @@ export class PropertyController {
       });
     }
     const result = await this.propertyService.validateCsv(cid, req.body.scannedFiles, currentuser);
-    res.status(httpStatusCodes.OK).json({ success: true });
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   getAllProperties = async (req: Request, res: Response) => {

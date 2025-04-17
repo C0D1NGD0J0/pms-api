@@ -2,7 +2,6 @@ import { BaseIO } from '@sockets/index';
 import { MailService } from '@mailer/index';
 import { GeoCoderService } from '@services/external';
 import { asFunction, asValue, asClass } from 'awilix';
-import { PropertyCache, AuthCache, EventsRegistryCache } from '@caching/index';
 import { ClamScannerService } from '@shared/config/index';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { Property, Profile, Client, User } from '@models/index';
@@ -11,6 +10,7 @@ import { PropertyController, AuthController } from '@controllers/index';
 import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PropertyCsvProcessor } from '@services/csv/propertyCsvProcessor';
 import { PropertyWorker, UploadWorker, EmailWorker } from '@workers/index';
+import { EventsRegistryCache, PropertyCache, AuthCache } from '@caching/index';
 import { PropertyQueue, EventBusQueue, UploadQueue, EmailQueue } from '@queues/index';
 import {
   EventEmitterService,
@@ -37,6 +37,7 @@ const ServiceResources = {
   tokenService: asClass(AuthTokenService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
   emitterService: asClass(EventEmitterService).singleton(),
+  propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
 };
 
 const DAOResources = {

@@ -261,7 +261,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
       enum: ['vacant', 'occupied', 'partially_occupied'],
       default: 'vacant',
     },
-    occupancyRate: {
+    occupancyLimit: {
       type: Number,
       min: 0,
       max: 100,

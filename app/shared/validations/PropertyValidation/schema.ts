@@ -234,7 +234,7 @@ export const UpdateOccupancySchema = z.object({
     }
   ),
   occupancyStatus: OccupancyStatusEnum,
-  occupancyRate: z.number().min(0).max(100),
+  occupancyLimit: z.number().min(0).max(100),
 });
 
 const PropertyClientRelationship = z.object({

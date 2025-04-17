@@ -22,7 +22,10 @@ export class DiskStorage {
     'mov',
     'x-matroska',
   ];
-  private readonly fields = [{ name: 'document.photos', maxCount: 10 }];
+  private readonly fields = [
+    { name: 'document.photos', maxCount: 10 },
+    { name: 'csv_file', maxCount: 1 },
+  ];
 
   constructor() {
     this.log = createLogger('DiskStorage');

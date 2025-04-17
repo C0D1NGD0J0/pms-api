@@ -1,18 +1,18 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { createLogger, JOB_NAME } from '@utils/index';
 import { PropertyCache } from '@caching/index';
-import { S3Service } from '@services/fileUpload';
 import { UploadQueue } from '@queues/upload.queue';
 import { GeoCoderService } from '@services/external';
+import { PropertyCsvProcessor } from '@services/csv';
+import { createLogger, JOB_NAME } from '@utils/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IProperty } from '@interfaces/property.interface';
 import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
 import { ExtractedMediaFile, ISuccessReturnData, UploadResult } from '@interfaces/utils.interface';
-import { unknown } from 'zod';
 
 interface IConstructor {
+  propertyCsvProcessor: PropertyCsvProcessor;
   geoCoderService: GeoCoderService;
   propertyCache: PropertyCache;
   uploadQueue: UploadQueue;
@@ -29,6 +29,7 @@ export class PropertyService {
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyCache: PropertyCache;
   private readonly geoCoderService: GeoCoderService;
+  private readonly propertyCsvProcessor: PropertyCsvProcessor;
 
   constructor({
     clientDAO,
@@ -37,6 +38,7 @@ export class PropertyService {
     uploadQueue,
     propertyCache,
     geoCoderService,
+    propertyCsvProcessor,
   }: IConstructor) {
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -45,6 +47,7 @@ export class PropertyService {
     this.propertyCache = propertyCache;
     this.geoCoderService = geoCoderService;
     this.log = createLogger('PropertyService');
+    this.propertyCsvProcessor = propertyCsvProcessor;
   }
 
   async createProperty(
@@ -141,6 +144,30 @@ export class PropertyService {
     }
     await this.propertyCache.cacheProperty(cid, result.property.id, result.property);
     return { success: true, data: result.property, message: 'Property created successfully' };
+  }
+
+  async validateCsv(
+    cid: string,
+    scannedFiles: ExtractedMediaFile[],
+    currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData> {
+    if (!scannedFiles || scannedFiles.length === 0) {
+      throw new BadRequestError({ message: 'No CSV file uploaded' });
+    }
+
+    const client = await this.clientDAO.getClientByCid(cid);
+    if (!client) {
+      this.log.error(`Client with cid ${cid} not found`);
+      throw new BadRequestError({ message: 'Unable to validate csv for this account.' });
+    }
+
+    const filePath = scannedFiles[0].path;
+    const result = await this.propertyCsvProcessor.validateCsv(filePath, {
+      cid,
+      userId: currentUser.sub,
+    });
+
+    return { success: true, data: result };
   }
 
   async updatePropertyDocuments(

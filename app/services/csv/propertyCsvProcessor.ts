@@ -18,9 +18,9 @@ interface IConstructor {
 }
 
 interface PropertyProcessingContext {
-  currentUser: ICurrentUser;
+  userId: ICurrentUser['sub'];
   propertyId?: string;
-  clientId: string;
+  cid: string;
 }
 
 export class PropertyCsvProcessor {
@@ -37,16 +37,16 @@ export class PropertyCsvProcessor {
     this.geoCoderService = geoCoderService;
   }
 
-  async processPropertyCsvFile(
+  async validateCsv(
     filePath: string,
     context: PropertyProcessingContext
   ): Promise<{
     validProperties: IProperty[];
     errors: null | IInvalidCsvProperty[];
   }> {
-    const client = await this.clientDAO.getClientByCid(context.clientId);
+    const client = await this.clientDAO.getClientByCid(context.cid);
     if (!client) {
-      throw new Error(`Client with ID ${context.clientId} not found`);
+      throw new Error(`Client with ID ${context.cid} not found`);
     }
 
     const result = await BaseCSVProcessorService.processCsvFile<
@@ -130,10 +130,7 @@ export class PropertyCsvProcessor {
     }
 
     if (row.managedby && row.managedby.includes('@')) {
-      const managerValidation = await this.validateAndResolveManagedBy(
-        row.managedby,
-        context.clientId
-      );
+      const managerValidation = await this.validateAndResolveManagedBy(row.managedby, context.cid);
 
       if (!managerValidation.valid) {
         errors.push({
@@ -155,22 +152,21 @@ export class PropertyCsvProcessor {
   ): Promise<IProperty> => {
     let managedBy;
     if (row.managedby && row.managedby.includes('@')) {
-      const managerResolution = await this.validateAndResolveManagedBy(
-        row.managedby,
-        context.clientId
-      );
+      const managerResolution = await this.validateAndResolveManagedBy(row.managedby, context.cid);
       if (managerResolution.valid && managerResolution.userId) {
         managedBy = new ObjectId(managerResolution.userId);
       }
     }
 
+    const documents = this.extractDocumentsFromRow(row, context);
     return {
       name: row.name?.trim(),
       address: row.address?.trim(),
       propertyType: row.propertytype,
+      ...(documents.length > 0 && { documents }),
       status: (row.status || 'available') as PropertyStatus,
       occupancyStatus: (row.occupancystatus || 'vacant') as OccupancyStatus,
-      occupancyRate: row.occupancyrate ? Number(row.occupancyrate) : 0,
+      occupancyLimit: row.occupancyLimit ? Number(row.occupancyLimit) : 0,
       yearBuilt: row.yearbuilt ? Number(row.yearbuilt) : undefined,
 
       description: {
@@ -243,9 +239,9 @@ export class PropertyCsvProcessor {
         },
       }),
 
-      cid: context.clientId,
+      cid: context.cid,
       managedBy,
-      createdBy: context.currentUser ? new ObjectId(context.currentUser.sub) : undefined,
+      createdBy: context.userId ? new ObjectId(context.userId) : undefined,
     } as IProperty;
   };
 
@@ -340,7 +336,7 @@ export class PropertyCsvProcessor {
 
   private async validateAndResolveManagedBy(
     email: string,
-    clientId: string
+    cid: string
   ): Promise<{
     valid: boolean;
     userId?: string;
@@ -358,7 +354,7 @@ export class PropertyCsvProcessor {
       }
 
       const clientAssociations = user.cids;
-      const clientAssociation = clientAssociations.find((c) => c.cid === clientId && c.isConnected);
+      const clientAssociation = clientAssociations.find((c) => c.cid === cid && c.isConnected);
 
       if (!clientAssociation) {
         return {
@@ -386,5 +382,51 @@ export class PropertyCsvProcessor {
         error: `Error validating manager email: ${error.message}`,
       };
     }
+  }
+
+  private extractDocumentsFromRow(row: any, context: PropertyProcessingContext): Array<any> {
+    const documents = [];
+
+    // Look for document columns (document_1_url, document_2_url, etc.)
+    const documentKeys = Object.keys(row).filter(
+      (key) => key.match(/^document_\d+_url$/) && row[key]
+    );
+
+    for (const urlKey of documentKeys) {
+      // extract number ("1" from "document_1_url")
+      const docNum = urlKey.match(/^document_(\d+)_url$/)?.[1];
+      if (!docNum) continue;
+
+      const externalUrl = row[urlKey];
+      if (!externalUrl) continue;
+
+      const typeKey = `document_${docNum}_type`;
+      const descKey = `document_${docNum}_description`;
+
+      const documentType =
+        row[typeKey] && ['inspection', 'insurance', 'other', 'deed', 'tax'].includes(row[typeKey])
+          ? row[typeKey]
+          : 'other';
+
+      const description = row[descKey] || '';
+
+      documents.push({
+        documentType,
+        description,
+        uploadedBy: new ObjectId(context.userId),
+        uploadedAt: new Date(),
+        photos: [
+          {
+            url: externalUrl,
+            externalUrl: externalUrl,
+            status: 'active',
+            uploadedBy: new ObjectId(context.userId),
+            uploadedAt: new Date(),
+          },
+        ],
+      });
+    }
+
+    return documents;
   }
 }

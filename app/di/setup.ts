@@ -2,6 +2,7 @@ import { createLogger } from '@utils/index';
 import { createContainer, InjectionMode } from 'awilix';
 
 import { registerResources } from './registerResources';
+import { EventListenerSetup } from './eventListenerSetup';
 
 const initializeDI = () => {
   const logger = createLogger('DI');
@@ -14,7 +15,8 @@ const initializeDI = () => {
     ...registerResources,
   });
 
-  logger.info('DI container initialized');
+  EventListenerSetup.registerQueueListeners(container);
+  logger.info('DI container initialized...');
   return container;
 };
 

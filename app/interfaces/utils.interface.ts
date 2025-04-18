@@ -1,6 +1,9 @@
 import 'multer';
 import { NextFunction, Response, Request } from 'express';
 
+import { IProperty } from './property.interface';
+import { IInvalidCsvProperty } from './csv.interface';
+
 export enum MailType {
   SUBSCRIPTION_UPDATE = 'SUBSCRIPTION_UPDATE',
   SUBSCRIPTION_CANCEL = 'SUBSCRIPTION_CANCEL',
@@ -141,6 +144,11 @@ export interface IEmailOptions<T> {
   to: string;
   data: T;
 }
+export type CsvProcessReturnData = {
+  data: IProperty[];
+  errors?: IInvalidCsvProperty[] | null;
+};
+
 export type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
 export interface ICacheResponse<T = any> {

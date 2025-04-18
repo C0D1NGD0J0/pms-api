@@ -65,10 +65,11 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
   }
 };
 
-export const diskUpload = async (req: Request, res: Response, next: NextFunction) => {
-  const { diskStorage }: { diskStorage: DiskStorage } = req.container.cradle;
-  diskStorage.uploadMiddleware(req, res, next);
-};
+export const diskUpload =
+  (fieldNames: string[]) => async (req: Request, res: Response, next: NextFunction) => {
+    const { diskStorage }: { diskStorage: DiskStorage } = req.container.cradle;
+    diskStorage.uploadMiddleware(fieldNames)(req, res, next);
+  };
 
 export const scanFile = async (req: Request, res: Response, next: NextFunction) => {
   const {

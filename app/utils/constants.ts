@@ -43,10 +43,12 @@ export const QUEUE_NAMES = {
 };
 
 export const JOB_NAME = {
-  ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
+  CSV_IMPORT_JOB: 'csv_import',
   MEDIA_UPLOAD_JOB: 'mediaUploadJob',
+  CSV_VALIDATION_JOB: 'csv_validation',
   MEDIA_REMOVAL_JOB: 'mediaRemovalJob',
   PROPERTY_CREATE_JOB: 'propertyCreateJob',
   PROPERTY_UPDATE_JOB: 'propertyUpdateJob',
   PROPERTY_DELETE_JOB: 'propertyDeleteJob',
+  ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
 };

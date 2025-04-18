@@ -11,7 +11,7 @@ router.use(isAuthenticated);
 
 router.post(
   '/:cid/',
-  diskUpload,
+  diskUpload(['document.photos']),
   scanFile,
   validateRequest({
     params: PropertyValidations.validateCid,
@@ -24,8 +24,8 @@ router.post(
 );
 
 router.post(
-  '/:cid/validate_csv',
-  diskUpload,
+  '/:cid/validate_properties_csv',
+  diskUpload(['csv_file']),
   scanFile,
   validateRequest({
     params: PropertyValidations.validateCid,
@@ -33,6 +33,19 @@ router.post(
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.validateCsv(req, res);
+  })
+);
+
+router.post(
+  '/:cid/create_properties_csv',
+  diskUpload(['csv_file']),
+  scanFile,
+  validateRequest({
+    params: PropertyValidations.validateCid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.createPropertiesFromCsv(req, res);
   })
 );
 

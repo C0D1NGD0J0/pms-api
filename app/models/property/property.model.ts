@@ -18,7 +18,6 @@ const PropertySchema = new Schema<IPropertyDocument>(
     cid: {
       type: String,
       required: true,
-      unique: true,
       index: true,
       immutable: true,
     },
@@ -42,6 +41,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
     },
     managedBy: {
       type: Schema.Types.ObjectId,
+      required: true,
       ref: 'User',
       index: true,
     },
@@ -151,11 +151,11 @@ const PropertySchema = new Schema<IPropertyDocument>(
       gas: { type: Boolean, default: false },
       electricity: { type: Boolean, default: false },
       internet: { type: Boolean, default: false },
-      trash: { type: Boolean, default: false },
       cableTV: { type: Boolean, default: false },
     },
     description: {
       text: {
+        required: true,
         type: String,
         trim: true,
       },
@@ -173,21 +173,14 @@ const PropertySchema = new Schema<IPropertyDocument>(
       furnished: { type: Boolean, default: false },
       storageSpace: { type: Boolean, default: false },
     },
-    exteriorAmenities: {
+    communityAmenities: {
       swimmingPool: { type: Boolean, default: false },
       fitnessCenter: { type: Boolean, default: false },
       elevator: { type: Boolean, default: false },
-      balcony: { type: Boolean, default: false },
       parking: { type: Boolean, default: false },
-      garden: { type: Boolean, default: false },
       securitySystem: { type: Boolean, default: false },
-      playground: { type: Boolean, default: false },
-    },
-    communityAmenities: {
-      petFriendly: { type: Boolean, default: false },
-      clubhouse: { type: Boolean, default: false },
-      bbqArea: { type: Boolean, default: false },
       laundryFacility: { type: Boolean, default: false },
+      petFriendly: { type: Boolean, default: false },
       doorman: { type: Boolean, default: false },
     },
     address: {
@@ -264,13 +257,13 @@ const PropertySchema = new Schema<IPropertyDocument>(
     occupancyLimit: {
       type: Number,
       min: 0,
-      max: 100,
+      max: 500,
       default: 0,
     },
     createdBy: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
       required: true,
+      ref: 'User',
     },
     lastModifiedBy: {
       type: Schema.Types.ObjectId,

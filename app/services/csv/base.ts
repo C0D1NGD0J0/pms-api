@@ -4,9 +4,6 @@ import csvParser from 'csv-parser';
 import { createLogger } from '@utils/helpers';
 import { ICsvProcessorOptions, ICsvProcessingError } from '@interfaces/csv.interface';
 
-/**
- * generic CSV processor that can be used for any type of CSV file
- */
 export class BaseCSVProcessorService {
   private static readonly log = createLogger('CsvProcessorService');
 
@@ -26,8 +23,7 @@ export class BaseCSVProcessorService {
     }
 
     const headerTransformer =
-      options.headerTransformer ||
-      (({ header }) => header.trim().toLowerCase().replace(/\./g, '_'));
+      options.headerTransformer || (({ header }) => header.trim().replace(/\./g, '_'));
 
     let expectedColumnCount = 0;
     const headers: string[] = [];
@@ -93,7 +89,7 @@ export class BaseCSVProcessorService {
       if (options.postProcess && results.length > 0) {
         const postProcessResult = await options.postProcess(results, options.context);
 
-        this.log.info(`Successfully processed ${postProcessResult.validItems.length} valid items.`);
+        this.log.info(`Successfully processed ${postProcessResult.validItems.length} valid rows.`);
         if (invalidItems.length > 0) {
           this.log.info(
             `${invalidItems.length} items were not processed due to validation errors.`
@@ -119,7 +115,7 @@ export class BaseCSVProcessorService {
         errors: invalidItems.length ? invalidItems : null,
       };
     } catch (streamError: any) {
-      this.log.error('Error reading or parsing CSV stream:', streamError);
+      this.log.error(streamError, 'Error reading or parsing CSV stream:');
       throw streamError;
     }
   }

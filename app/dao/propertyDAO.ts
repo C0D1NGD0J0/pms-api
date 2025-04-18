@@ -8,7 +8,6 @@ import {
   PropertyStatus,
   PropertyType,
   IProperty,
-  IPropertyDocumentItem,
 } from '@interfaces/property.interface';
 
 import { BaseDAO } from './baseDAO';

@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { container } from '@di/setup';
 import { PropertyDAO, ClientDAO } from '@dao/index';
+import { BaseCSVProcessorService } from '@services/csv/base';
 
-const { propertyDAO, clientDAO }: { propertyDAO: PropertyDAO; clientDAO: ClientDAO } =
-  container.cradle;
 const isUniqueAddress = async (address: string, clientId: string) => {
+  const { propertyDAO }: { propertyDAO: PropertyDAO; clientDAO: ClientDAO } = container.cradle;
   try {
     const existingProperty = await propertyDAO.findFirst({
       address,
@@ -92,21 +92,13 @@ const InteriorAmenitiesSchema = z.object({
   storageSpace: z.boolean().default(false),
 });
 
-const ExteriorAmenitiesSchema = z.object({
+const CommunityAmenitiesSchema = z.object({
+  petFriendly: z.boolean().default(false),
   swimmingPool: z.boolean().default(false),
   fitnessCenter: z.boolean().default(false),
   elevator: z.boolean().default(false),
-  balcony: z.boolean().default(false),
   parking: z.boolean().default(false),
-  garden: z.boolean().default(false),
   securitySystem: z.boolean().default(false),
-  playground: z.boolean().default(false),
-});
-
-const CommunityAmenitiesSchema = z.object({
-  petFriendly: z.boolean().default(false),
-  clubhouse: z.boolean().default(false),
-  bbqArea: z.boolean().default(false),
   laundryFacility: z.boolean().default(false),
   doorman: z.boolean().default(false),
 });
@@ -157,7 +149,6 @@ const CreatePropertySchema = z.object({
   financialDetails: FinancialDetailsSchema.optional(),
   utilities: UtilitiesSchema.optional(),
   interiorAmenities: InteriorAmenitiesSchema.optional(),
-  exteriorAmenities: ExteriorAmenitiesSchema.optional(),
   communityAmenities: CommunityAmenitiesSchema.optional(),
   documents: z.array(PropertyDocumentSchema).optional(),
 });
@@ -202,6 +193,7 @@ export const PropertySearchSchema = z.object({
 export const ValidateIdSchema = z.object({
   id: z.string().refine(
     async (id) => {
+      const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
       const property = await propertyDAO.findById(id);
       return !!property;
     },
@@ -214,6 +206,7 @@ export const ValidateIdSchema = z.object({
 export const ValidateCidSchema = z.object({
   cid: z.string().refine(
     async (id) => {
+      const { clientDAO }: { clientDAO: ClientDAO } = container.cradle;
       const client = await clientDAO.findFirst({ cid: id });
       return !!client;
     },
@@ -226,6 +219,7 @@ export const ValidateCidSchema = z.object({
 export const UpdateOccupancySchema = z.object({
   propertyId: z.string().refine(
     async (id) => {
+      const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
       const property = await propertyDAO.findById(id);
       return !!property;
     },
@@ -244,6 +238,7 @@ const PropertyClientRelationship = z.object({
 
 export const PropertyClientRelationshipSchema = PropertyClientRelationship.superRefine(
   async (data, ctx) => {
+    const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
     const property = await propertyDAO.findFirst({
       _id: data.propertyId,
       cid: data.cid,
@@ -262,3 +257,147 @@ export const PropertyClientRelationshipSchema = PropertyClientRelationship.super
     return true;
   }
 );
+
+export const PropertyCsvSchema = z.object({
+  name: z
+    .string()
+    .min(3, 'Property name must be at least 3 characters')
+    .max(100, 'Property name must be at most 100 characters'),
+  address: z.string().min(5, 'Address must be at least 5 characters'),
+  propertyType: PropertyTypeEnum,
+  status: PropertyStatusEnum.optional().default('available'),
+  occupancyStatus: OccupancyStatusEnum.optional().default('vacant'),
+  occupancyLimit: z.coerce.number().min(0).max(100).optional(),
+  yearBuilt: z.coerce
+    .number()
+    .int()
+    .min(1800, 'Year built must be at least 1800')
+    .max(
+      new Date().getFullYear() + 10,
+      `Year built must be at most ${new Date().getFullYear() + 10}`
+    )
+    .optional(),
+  managedBy: z.string().optional(),
+  description_text: z.string().max(2000, 'Description must be at most 2000 characters').optional(),
+  description_html: z.string().max(2000, 'Description must be at most 2000 characters').optional(),
+
+  // Specifications
+  specifications_totalArea: z.coerce.number().positive('Total area must be a positive number'),
+  specifications_bedrooms: z.coerce
+    .number()
+    .int()
+    .min(0, 'Bedrooms must be a non-negative integer')
+    .optional(),
+  specifications_bathrooms: z.coerce
+    .number()
+    .min(0, 'Bathrooms must be a non-negative number')
+    .optional(),
+  specifications_floors: z.coerce.number().int().min(1, 'Floors must be at least 1').optional(),
+  specifications_garageSpaces: z.coerce
+    .number()
+    .int()
+    .min(0, 'Garage spaces must be a non-negative integer')
+    .optional(),
+  specifications_maxOccupants: z.coerce
+    .number()
+    .int()
+    .min(1, 'Maximum occupants must be at least 1')
+    .optional(),
+  specifications_lotSize: z.coerce
+    .number()
+    .positive('Lot size must be a positive number')
+    .optional(),
+
+  // Fees
+  fees_taxAmount: z.coerce.number().min(0).optional(),
+  fees_rentalAmount: z.coerce.number().min(0).optional(),
+  fees_managementFees: z.coerce.number().min(0).optional(),
+  fees_currency: z.enum(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY']).optional().default('USD'),
+
+  // Utilities - using boolean validation
+  utilities_water: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  utilities_gas: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  utilities_electricity: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  utilities_internet: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  utilities_cabletv: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+
+  // Interior amenities
+  interiorAmenities_airConditioning: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  interiorAmenities_heating: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  interiorAmenities_washerDryer: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  interiorAmenities_dishwasher: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  interiorAmenities_fridge: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  interiorAmenities_furnished: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  interiorAmenities_storageSpace: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+
+  // Community amenities
+  communityAmenities_swimmingPool: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  communityAmenities_fitnessCenter: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  communityAmenities_elevator: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  communityAmenities_parking: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  communityAmenities_securitySystem: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  communityAmenities_petFriendly: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+
+  communityAmenities_laundryFacility: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  communityAmenities_doorman: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+});

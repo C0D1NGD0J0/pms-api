@@ -5,6 +5,7 @@ import { GeoCoderService } from '@services/external';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
+import { PropertyValidations } from '@shared/validations/PropertyValidation';
 import { ICsvValidationResult, IInvalidCsvProperty } from '@interfaces/csv.interface';
 import { OccupancyStatus, PropertyStatus, IProperty } from '@interfaces/property.interface';
 
@@ -69,81 +70,48 @@ export class PropertyCsvProcessor {
     row: any,
     context: PropertyProcessingContext
   ): Promise<ICsvValidationResult> => {
-    const errors: { field: string; error: string }[] = [];
-
-    if (!row.name || row.name.length < 3) {
-      errors.push({ field: 'name', error: 'Name is required and must be at least 3 characters' });
-    }
-
-    if (!row.address || row.address.length < 5) {
-      errors.push({
-        field: 'address',
-        error: 'Address is required and must be at least 5 characters',
-      });
-    }
-
-    if (
-      !row.propertytype ||
-      !['condominium', 'commercial', 'industrial', 'apartment', 'townhouse', 'house'].includes(
-        row.propertytype
-      )
-    ) {
-      errors.push({
-        field: 'propertyType',
-        error: `Invalid propertyType: ${row.propertytype}`,
-      });
-    }
-
-    if (
-      row.status &&
-      !['construction', 'maintenance', 'available', 'occupied', 'inactive'].includes(row.status)
-    ) {
-      errors.push({ field: 'status', error: `Invalid status: ${row.status}` });
-    }
-
-    if (
-      row.occupancystatus &&
-      !['partially_occupied', 'occupied', 'vacant'].includes(row.occupancystatus)
-    ) {
-      errors.push({
-        field: 'occupancyStatus',
-        error: `Invalid occupancyStatus: ${row.occupancystatus}`,
-      });
-    }
-
-    if (
-      (!row.totalarea && !row.total_area) ||
-      isNaN(Number(row.totalarea || row.total_area)) ||
-      Number(row.totalarea || row.total_area) <= 0
-    ) {
-      errors.push({
-        field: 'specifications.totalArea',
-        error: 'Total area is required and must be a positive number',
-      });
-    }
-
-    if (row.fees_currency && !Object.values(CURRENCIES).includes(row.fees_currency as CURRENCIES)) {
-      errors.push({
-        field: 'fees.currency',
-        error: `Invalid currency: ${row.fees_currency}`,
-      });
-    }
-
-    if (row.managedby && row.managedby.includes('@')) {
-      const managerValidation = await this.validateAndResolveManagedBy(row.managedby, context.cid);
-
-      if (!managerValidation.valid) {
-        errors.push({
-          field: 'managedBy',
-          error: managerValidation.error || 'Invalid manager email',
-        });
-      }
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
+    const rowWithContext = {
+      ...row,
+      cid: context.cid,
     };
+    console.log(row, '-----row');
+    const validationResult = await PropertyValidations.propertyCsv.safeParseAsync(rowWithContext);
+    if (validationResult.success) {
+      // check manager email if it exists
+      if (row.managedBy && row.managedBy.includes('@')) {
+        const managerValidation = await this.validateAndResolveManagedBy(
+          row.managedBy,
+          context.cid
+        );
+
+        if (!managerValidation.valid) {
+          return {
+            isValid: false,
+            errors: [
+              {
+                field: 'managedBy',
+                error: managerValidation.error || 'Invalid manager email',
+              },
+            ],
+          };
+        }
+      }
+
+      return {
+        isValid: true,
+        errors: [],
+      };
+    } else {
+      const formattedErrors = validationResult.error.errors.map((err) => ({
+        field: err.path.join('.'),
+        error: err.message,
+      }));
+
+      return {
+        isValid: false,
+        errors: formattedErrors,
+      };
+    }
   };
 
   private transformPropertyRow = async (
@@ -151,8 +119,8 @@ export class PropertyCsvProcessor {
     context: PropertyProcessingContext
   ): Promise<IProperty> => {
     let managedBy;
-    if (row.managedby && row.managedby.includes('@')) {
-      const managerResolution = await this.validateAndResolveManagedBy(row.managedby, context.cid);
+    if (row.managedBy && row.managedBy.includes('@')) {
+      const managerResolution = await this.validateAndResolveManagedBy(row.managedBy, context.cid);
       if (managerResolution.valid && managerResolution.userId) {
         managedBy = new ObjectId(managerResolution.userId);
       }
@@ -162,12 +130,12 @@ export class PropertyCsvProcessor {
     return {
       name: row.name?.trim(),
       address: row.address?.trim(),
-      propertyType: row.propertytype,
+      propertyType: row.propertyType,
       ...(documents.length > 0 && { documents }),
       status: (row.status || 'available') as PropertyStatus,
-      occupancyStatus: (row.occupancystatus || 'vacant') as OccupancyStatus,
+      occupancyStatus: (row.occupancyStatus || 'vacant') as OccupancyStatus,
       occupancyLimit: row.occupancyLimit ? Number(row.occupancyLimit) : 0,
-      yearBuilt: row.yearbuilt ? Number(row.yearbuilt) : undefined,
+      yearBuilt: row.yearBuilt ? Number(row.yearBuilt) : undefined,
 
       description: {
         text: row.description_text ? sanitizeHtml(row.description_text) : '',
@@ -175,17 +143,25 @@ export class PropertyCsvProcessor {
       },
 
       specifications: {
-        totalArea: BaseCSVProcessorService.parseNumber(row.totalarea || row.total_area, 0),
-        bedrooms: row.bedrooms ? BaseCSVProcessorService.parseNumber(row.bedrooms) : undefined,
-        bathrooms: row.bathrooms ? BaseCSVProcessorService.parseNumber(row.bathrooms) : undefined,
-        floors: row.floors ? BaseCSVProcessorService.parseNumber(row.floors) : undefined,
-        garageSpaces: row.garagespaces
-          ? BaseCSVProcessorService.parseNumber(row.garagespaces)
+        totalArea: BaseCSVProcessorService.parseNumber(row.specifications_totalArea, 0),
+        bedrooms: row.bedrooms
+          ? BaseCSVProcessorService.parseNumber(row.specifications_bedrooms)
           : undefined,
-        maxOccupants: row.maxoccupants
-          ? BaseCSVProcessorService.parseNumber(row.maxoccupants)
+        bathrooms: row.bathrooms
+          ? BaseCSVProcessorService.parseNumber(row.specifications_bathrooms)
           : undefined,
-        lotSize: row.lotsize ? BaseCSVProcessorService.parseNumber(row.lotsize) : undefined,
+        floors: row.floors
+          ? BaseCSVProcessorService.parseNumber(row.specifications_floors)
+          : undefined,
+        garageSpaces: row.specifications_garageSpaces
+          ? BaseCSVProcessorService.parseNumber(row.specifications_garageSpaces)
+          : undefined,
+        maxOccupants: row.specifications_maxOccupants
+          ? BaseCSVProcessorService.parseNumber(row.specifications_maxOccupants)
+          : undefined,
+        lotSize: row.specifications_lotSize
+          ? BaseCSVProcessorService.parseNumber(row.specifications_lotSize)
+          : undefined,
       },
 
       fees: {
@@ -196,46 +172,42 @@ export class PropertyCsvProcessor {
       },
 
       utilities: {
-        water: BaseCSVProcessorService.parseBoolean(row.water),
-        gas: BaseCSVProcessorService.parseBoolean(row.gas),
-        electricity: BaseCSVProcessorService.parseBoolean(row.electricity),
-        internet: BaseCSVProcessorService.parseBoolean(row.internet),
-        trash: BaseCSVProcessorService.parseBoolean(row.trash),
-        cableTV: BaseCSVProcessorService.parseBoolean(row.cabletv),
+        water: BaseCSVProcessorService.parseBoolean(row.utilities_water),
+        gas: BaseCSVProcessorService.parseBoolean(row.utilities_gas),
+        electricity: BaseCSVProcessorService.parseBoolean(row.utilities_electricity),
+        internet: BaseCSVProcessorService.parseBoolean(row.utilities_internet),
+        trash: BaseCSVProcessorService.parseBoolean(row.utilities_trash),
+        cableTV: BaseCSVProcessorService.parseBoolean(row.utilities_cabletv),
       },
 
       ...(this.hasAnyInteriorAmenity(row) && {
         interiorAmenities: {
-          airConditioning: BaseCSVProcessorService.parseBoolean(row.airconditioning),
-          heating: BaseCSVProcessorService.parseBoolean(row.heating),
-          washerDryer: BaseCSVProcessorService.parseBoolean(row.washerdryer),
-          dishwasher: BaseCSVProcessorService.parseBoolean(row.dishwasher),
-          fridge: BaseCSVProcessorService.parseBoolean(row.fridge),
-          furnished: BaseCSVProcessorService.parseBoolean(row.furnished),
-          storageSpace: BaseCSVProcessorService.parseBoolean(row.storagespace),
-        },
-      }),
-
-      ...(this.hasAnyExteriorAmenity(row) && {
-        exteriorAmenities: {
-          swimmingPool: BaseCSVProcessorService.parseBoolean(row.swimmingpool),
-          fitnessCenter: BaseCSVProcessorService.parseBoolean(row.fitnesscenter),
-          elevator: BaseCSVProcessorService.parseBoolean(row.elevator),
-          balcony: BaseCSVProcessorService.parseBoolean(row.balcony),
-          parking: BaseCSVProcessorService.parseBoolean(row.parking),
-          garden: BaseCSVProcessorService.parseBoolean(row.garden),
-          securitySystem: BaseCSVProcessorService.parseBoolean(row.securitysystem),
-          playground: BaseCSVProcessorService.parseBoolean(row.playground),
+          airConditioning: BaseCSVProcessorService.parseBoolean(
+            row.interiorAmenities_airConditioning
+          ),
+          heating: BaseCSVProcessorService.parseBoolean(row.interiorAmenities_heating),
+          washerDryer: BaseCSVProcessorService.parseBoolean(row.interiorAmenities_washerDryer),
+          dishwasher: BaseCSVProcessorService.parseBoolean(row.interiorAmenities_dishwasher),
+          fridge: BaseCSVProcessorService.parseBoolean(row.interiorAmenities_fridge),
+          furnished: BaseCSVProcessorService.parseBoolean(row.interiorAmenities_furnished),
+          storageSpace: BaseCSVProcessorService.parseBoolean(row.interiorAmenities_storageSpace),
         },
       }),
 
       ...(this.hasAnyCommunityAmenity(row) && {
         communityAmenities: {
-          petFriendly: BaseCSVProcessorService.parseBoolean(row.petfriendly),
-          clubhouse: BaseCSVProcessorService.parseBoolean(row.clubhouse),
-          bbqArea: BaseCSVProcessorService.parseBoolean(row.bbqarea),
-          laundryFacility: BaseCSVProcessorService.parseBoolean(row.laundryfacility),
-          doorman: BaseCSVProcessorService.parseBoolean(row.doorman),
+          petFriendly: BaseCSVProcessorService.parseBoolean(row.communityAmenities_petFriendly),
+          swimmingPool: BaseCSVProcessorService.parseBoolean(row.communityAmenities_swimmingPool),
+          fitnessCenter: BaseCSVProcessorService.parseBoolean(row.communityAmenities_fitnessCenter),
+          elevator: BaseCSVProcessorService.parseBoolean(row.communityAmenities_elevator),
+          parking: BaseCSVProcessorService.parseBoolean(row.communityAmenities_parking),
+          securitySystem: BaseCSVProcessorService.parseBoolean(
+            row.communityAmenities_securitySystem
+          ),
+          laundryFacility: BaseCSVProcessorService.parseBoolean(
+            row.communityAmenities_laundryFacility
+          ),
+          doorman: BaseCSVProcessorService.parseBoolean(row.communityAmenities_doorman),
         },
       }),
 
@@ -305,33 +277,27 @@ export class PropertyCsvProcessor {
 
   private hasAnyInteriorAmenity(data: any): boolean {
     return [
-      'airconditioning',
-      'heating',
-      'washerdryer',
-      'dishwasher',
-      'fridge',
-      'furnished',
-      'storagespace',
-    ].some((field) => data[field] !== undefined);
-  }
-
-  private hasAnyExteriorAmenity(data: any): boolean {
-    return [
-      'swimmingpool',
-      'fitnesscenter',
-      'elevator',
-      'balcony',
-      'parking',
-      'garden',
-      'securitysystem',
-      'playground',
+      'interiorAmenities_airconditioning',
+      'interiorAmenities_heating',
+      'interiorAmenities_washerdryer',
+      'interiorAmenities_dishwasher',
+      'interiorAmenities_fridge',
+      'interiorAmenities_furnished',
+      'interiorAmenities_storagespace',
     ].some((field) => data[field] !== undefined);
   }
 
   private hasAnyCommunityAmenity(data: any): boolean {
-    return ['petfriendly', 'clubhouse', 'bbqarea', 'laundryfacility', 'doorman'].some(
-      (field) => data[field] !== undefined
-    );
+    return [
+      'communityAmenity_swimmingpool',
+      'communityAmenity_fitnesscenter',
+      'communityAmenity_elevator',
+      'communityAmenity_parking',
+      'communityAmenity_securitysystem',
+      'communityAmenity_petfriendly',
+      'communityAmenity_laundryfacility',
+      'communityAmenity_doorman',
+    ].some((field) => data[field] !== undefined);
   }
 
   private async validateAndResolveManagedBy(

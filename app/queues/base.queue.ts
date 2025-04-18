@@ -200,6 +200,28 @@ export class BaseQueue<T extends JobData = JobData> {
   async getJob(jobId: string | number): Promise<Queue.Job<T> | null> {
     return this.queue.getJob(jobId);
   }
+  /**
+   * Get the status of a job
+   * @param jobId
+   * @returns { exists: boolean; id: string; state: string; progress: number; data: T; result: any; completedOn: Date | undefined; failedReason: string | undefined }
+   */
+  async getJobStatus(jobId: string) {
+    const job = await this.getJob(jobId);
+    if (!job) {
+      return { exists: false };
+    }
+
+    return {
+      exists: true,
+      id: job.id,
+      state: await job.getState(),
+      progress: job.progress(),
+      data: job.data,
+      result: job.returnvalue,
+      completedOn: job.finishedOn ? new Date(job.finishedOn) : undefined,
+      failedReason: job.failedReason,
+    };
+  }
 }
 
 function initializeBullBoard() {

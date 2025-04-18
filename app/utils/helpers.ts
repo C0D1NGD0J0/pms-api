@@ -151,10 +151,10 @@ export function setAuthCookies(
 /**
  * Generates a random hash string using SHA-256
  * @param opts - {
-  byteLength?: number;
-  algorithm?: 'sha256' | 'sha512' | 'md5';
-  usenano?: boolean;
-}
+      byteLength?: number;
+      algorithm?: 'sha256' | 'sha512' | 'md5';
+      usenano?: boolean;
+    }
  * @returns A hexadecimal string representation of the hash
  * @throws Error if crypto operations fail
  */

@@ -15,7 +15,6 @@ export interface IProperty {
   };
   communityAmenities?: ICommunityAmenities;
   interiorAmenities?: IInteriorAmenities;
-  exteriorAmenities?: IExteriorAmenities;
   computedLocation?: IComputedLocation;
   financialDetails?: IFinancialDetails;
   documents?: IPropertyDocumentItem[];
@@ -25,8 +24,8 @@ export interface IProperty {
   managedBy?: Types.ObjectId;
   createdBy: Types.ObjectId;
   status: PropertyStatus;
-  utilities: IUtilities;
   occupancyLimit: number;
+  utilities: IUtilities;
   yearBuilt?: number;
   address: string;
   name: string;
@@ -49,15 +48,15 @@ export interface IPropertyDocumentItem {
   url: string;
 }
 
-export interface IExteriorAmenities {
+export interface ICommunityAmenities {
+  laundryFacility: boolean;
   securitySystem: boolean;
   fitnessCenter: boolean;
   swimmingPool: boolean;
-  playground: boolean;
+  petFriendly: boolean;
   elevator: boolean;
-  balcony: boolean;
   parking: boolean;
-  garden: boolean;
+  doorman: boolean;
 }
 
 export interface IPropertyDocument extends IProperty, Document {
@@ -107,14 +106,6 @@ export interface IAddressDetails {
   city?: string;
 }
 
-export interface ICommunityAmenities {
-  laundryFacility: boolean;
-  petFriendly: boolean;
-  clubhouse: boolean;
-  bbqArea: boolean;
-  doorman: boolean;
-}
-
 export interface IUtilities {
   electricity: boolean;
   internet: boolean;
@@ -137,6 +128,13 @@ export type PropertyType =
   | 'townhouse'
   | 'commercial'
   | 'industrial';
+export interface CsvJobData {
+  csvFilePath: string;
+  userId: string;
+  jobId?: string;
+  cid: string;
+}
+
 export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
 
 export type OccupancyStatus = 'vacant' | 'occupied' | 'partially_occupied';

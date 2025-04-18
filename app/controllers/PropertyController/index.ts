@@ -2,6 +2,7 @@ import sanitizeHtml from 'sanitize-html';
 import { Response, Request } from 'express';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyService } from '@services/index';
+import { ExtractedMediaFile } from '@interfaces/utils.interface';
 
 interface IConstructor {
   propertyService: PropertyService;
@@ -42,7 +43,26 @@ export class PropertyController {
         message: 'No CSV file uploaded',
       });
     }
-    const result = await this.propertyService.validateCsv(cid, req.body.scannedFiles, currentuser);
+    const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
+    const result = await this.propertyService.validateCsv(cid, csvFile, currentuser);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  createPropertiesFromCsv = async (req: Request, res: Response) => {
+    const { cid } = req.params;
+    const currentuser = req.currentuser!;
+    if (!req.body.scannedFiles) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: 'No CSV file uploaded',
+      });
+    }
+    const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
+    const result = await this.propertyService.createPropertiesFromCsv(
+      cid,
+      csvFile.path,
+      currentuser.sub
+    );
     res.status(httpStatusCodes.OK).json(result);
   };
 

@@ -74,7 +74,6 @@ export class PropertyCsvProcessor {
       ...row,
       cid: context.cid,
     };
-    console.log(row, '-----row');
     const validationResult = await PropertyValidations.propertyCsv.safeParseAsync(rowWithContext);
     if (validationResult.success) {
       // check manager email if it exists

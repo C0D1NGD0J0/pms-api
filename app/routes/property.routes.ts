@@ -4,7 +4,6 @@ import { validateRequest } from '@shared/validations';
 import { PropertyController } from '@controllers/index';
 import { isAuthenticated, diskUpload, scanFile } from '@shared/middlewares';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
-// import { container } from '@di/index';
 
 const router: Router = express.Router();
 
@@ -12,15 +11,41 @@ router.use(isAuthenticated);
 
 router.post(
   '/:cid/',
-  diskUpload,
+  diskUpload(['document.photos']),
   scanFile,
-  // validateRequest({
-  //   params: PropertyValidations.validateCid,
-  //   body: PropertyValidations.create,
-  // }),
+  validateRequest({
+    params: PropertyValidations.validateCid,
+    body: PropertyValidations.create,
+  }),
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.create(req, res);
+  })
+);
+
+router.post(
+  '/:cid/validate_properties_csv',
+  diskUpload(['csv_file']),
+  scanFile,
+  validateRequest({
+    params: PropertyValidations.validateCid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.validateCsv(req, res);
+  })
+);
+
+router.post(
+  '/:cid/create_properties_csv',
+  diskUpload(['csv_file']),
+  scanFile,
+  validateRequest({
+    params: PropertyValidations.validateCid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.createPropertiesFromCsv(req, res);
   })
 );
 
@@ -31,7 +56,7 @@ router.get(
   }),
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
-    return propertyController.getProeprty(req, res);
+    return propertyController.getProperty(req, res);
   })
 );
 

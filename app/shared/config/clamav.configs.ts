@@ -81,7 +81,6 @@ export class ClamScannerService {
     }
 
     try {
-      this.log.debug(`Scanning file: ${filePath}`);
       const result = await this.clamscan.scanFile(filePath);
       if (result.isInfected) {
         this.log.warn(`Virus detected in ${filePath}: ${result.viruses.join(', ')}`);

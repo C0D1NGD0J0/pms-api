@@ -2,18 +2,22 @@ import { BaseIO } from '@sockets/index';
 import { MailService } from '@mailer/index';
 import { GeoCoderService } from '@services/external';
 import { asFunction, asValue, asClass } from 'awilix';
-import { PropertyCache, AuthCache } from '@caching/index';
-import { PropertyQueue, EmailQueue } from '@queues/index';
 import { ClamScannerService } from '@shared/config/index';
-import { PropertyWorker, EmailWorker } from '@workers/index';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { Property, Profile, Client, User } from '@models/index';
 import { DatabaseService, RedisService } from '@database/index';
 import { PropertyController, AuthController } from '@controllers/index';
 import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
-import { AuthTokenService, PropertyService, AuthService } from '@services/index';
-
-import { container } from './setup';
+import { PropertyCsvProcessor } from '@services/csv/propertyCsvProcessor';
+import { PropertyWorker, UploadWorker, EmailWorker } from '@workers/index';
+import { EventsRegistryCache, PropertyCache, AuthCache } from '@caching/index';
+import { PropertyQueue, EventBusQueue, UploadQueue, EmailQueue } from '@queues/index';
+import {
+  EventEmitterService,
+  AuthTokenService,
+  PropertyService,
+  AuthService,
+} from '@services/index';
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
@@ -32,6 +36,8 @@ const ServiceResources = {
   mailerService: asClass(MailService).singleton(),
   tokenService: asClass(AuthTokenService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
+  emitterService: asClass(EventEmitterService).singleton(),
+  propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
 };
 
 const DAOResources = {
@@ -44,15 +50,19 @@ const DAOResources = {
 const CacheResources = {
   authCache: asClass(AuthCache).singleton(),
   propertyCache: asClass(PropertyCache).singleton(),
+  eventsRegistry: asClass(EventsRegistryCache).singleton(),
 };
 
 const WorkerResources = {
   emailWorker: asClass(EmailWorker).singleton(),
+  uploadWorker: asClass(UploadWorker).singleton(),
   propertyWorker: asClass(PropertyWorker).singleton(),
 };
 
 const QueuesResources = {
   emailQueue: asClass(EmailQueue).singleton(),
+  uploadQueue: asClass(UploadQueue).singleton(),
+  eventBusQueue: asClass(EventBusQueue).singleton(),
   propertyQueue: asClass(PropertyQueue).singleton(),
 };
 
@@ -65,12 +75,11 @@ const UtilsResources = {
   s3Service: asClass(S3Service).singleton(),
   clamScanner: asClass(ClamScannerService).singleton(),
   diskStorage: asClass(DiskStorage).singleton(),
+  propertyCsvService: asClass(PropertyCsvProcessor).singleton(),
 };
 
 const SocketIOResources = {
-  baseIO: asFunction(() => {
-    return new BaseIO('BaseIO', { ioServer: container.resolve('ioServer') });
-  }).singleton(),
+  baseIO: asClass(BaseIO).singleton(),
 };
 
 export const registerResources = {

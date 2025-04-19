@@ -1,16 +1,16 @@
 import { container } from '@di/index';
 import ProfileDAO from '@dao/profileDAO';
 import { AuthCache } from '@caching/auth.cache';
-import { ICurrentUser } from '@interfaces/index';
-import { AuthTokenService } from '@services/auth';
-import { DiskStorage } from '@services/fileUpload';
 import { ClamScannerService } from '@shared/config';
 import { TokenType } from '@interfaces/utils.interface';
 import { NextFunction, Response, Request } from 'express';
+import { ICurrentUser, EventTypes } from '@interfaces/index';
 import { extractMulterFiles, JWT_KEY_NAMES } from '@utils/index';
 import { InvalidRequestError, UnauthorizedError } from '@shared/customErrors';
+import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
 
 interface DIServices {
+  emitterService: EventEmitterService;
   tokenService: AuthTokenService;
   profileDAO: ProfileDAO;
   authCache: AuthCache;
@@ -65,48 +65,48 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
   }
 };
 
-export const diskUpload = async (req: Request, res: Response, next: NextFunction) => {
-  const { diskStorage }: { diskStorage: DiskStorage } = req.container.cradle;
-  diskStorage.uploadMiddleware(req, res, next);
-};
+export const diskUpload =
+  (fieldNames: string[]) => async (req: Request, res: Response, next: NextFunction) => {
+    const { diskStorage }: { diskStorage: DiskStorage } = req.container.cradle;
+    diskStorage.uploadMiddleware(fieldNames)(req, res, next);
+  };
 
 export const scanFile = async (req: Request, res: Response, next: NextFunction) => {
+  const {
+    emitterService,
+    clamScanner,
+  }: { emitterService: EventEmitterService; clamScanner: ClamScannerService } =
+    req.container.cradle;
+  const files = req.files;
+  if (!files) {
+    return next();
+  }
+  const _files = extractMulterFiles(files, req.currentuser?.sub);
+  if (!req.currentuser) {
+    return next(new UnauthorizedError({ message: 'Unauthorized action.' }));
+  }
   try {
-    const {
-      clamScanner,
-      diskStorage,
-    }: { diskStorage: DiskStorage; clamScanner: ClamScannerService } = req.container.cradle;
-    const files = req.files;
-    if (!files) {
-      return next();
-    }
-
-    const foundViruses: { file: string; viruses: string[]; createdAt: string }[] = [];
-    const _files = extractMulterFiles(files);
-    const infectedFilesNames = [];
+    const foundViruses: { fileName: string; viruses: string[]; createdAt: string }[] = [];
     const validFiles = [];
 
     for (const file of _files) {
       const { isInfected, viruses } = await clamScanner.scanFile(file.path);
-
       if (isInfected) {
         foundViruses.push({
           viruses,
-          file: file.filename,
+          fileName: file.filename,
           createdAt: new Date().toISOString(),
         });
-        infectedFilesNames.push(file.filename);
       } else {
         validFiles.push(file);
       }
     }
-    if (infectedFilesNames.length !== 0) {
-      console.log('Deleting infected files:', infectedFilesNames);
-      await diskStorage.deleteFiles(infectedFilesNames);
-    }
-
     if (foundViruses.length > 0) {
-      console.error('Virus found in uploaded files:', foundViruses);
+      console.log('Deleting infected files:', foundViruses);
+      emitterService.emit(
+        EventTypes.DELETE_LOCAL_ASSET,
+        foundViruses.map((file) => file.fileName)
+      );
       return next(new InvalidRequestError({ message: 'Error processing uploaded files.' }));
     }
 
@@ -118,6 +118,11 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
     return next();
   } catch (error) {
     console.error('Error during virus scan:', error);
+    // delete files from disk when an error occurs regardless if its valid or infected file(memory saver)
+    if (req.files) {
+      const filesToDelete = extractMulterFiles(req.files).map((file) => file.filename);
+      emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, filesToDelete);
+    }
     next(new InvalidRequestError({ message: 'Error processing uploaded files.' }));
   }
 };

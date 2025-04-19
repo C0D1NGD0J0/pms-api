@@ -1,48 +1,69 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { createLogger } from '@utils/index';
+import { EventTypes } from '@interfaces/index';
 import { PropertyCache } from '@caching/index';
-import { S3Service } from '@services/fileUpload';
 import { GeoCoderService } from '@services/external';
+import { PropertyCsvProcessor } from '@services/csv';
+import { createLogger, JOB_NAME } from '@utils/index';
 import { ICurrentUser } from '@interfaces/user.interface';
+import { PropertyQueue, UploadQueue } from '@queues/index';
 import { IProperty } from '@interfaces/property.interface';
+import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { IInvalidCsvProperty } from '@interfaces/csv.interface';
 import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
-import { ExtractedMediaFile, ISuccessReturnData } from '@interfaces/utils.interface';
+import {
+  CsvProcessReturnData,
+  ExtractedMediaFile,
+  ISuccessReturnData,
+  UploadResult,
+} from '@interfaces/utils.interface';
 
 interface IConstructor {
+  propertyCsvProcessor: PropertyCsvProcessor;
+  emitterService: EventEmitterService;
   geoCoderService: GeoCoderService;
   propertyCache: PropertyCache;
+  propertyQueue: PropertyQueue;
+  uploadQueue: UploadQueue;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
-  s3Service: S3Service;
   clientDAO: ClientDAO;
 }
 
 export class PropertyService {
   private readonly log: Logger;
-  private readonly s3Service: S3Service;
+  private uploadQueue: UploadQueue;
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
+  private readonly propertyQueue: PropertyQueue;
   private readonly propertyCache: PropertyCache;
   private readonly geoCoderService: GeoCoderService;
+  private readonly emitterService: EventEmitterService;
+  private readonly propertyCsvProcessor: PropertyCsvProcessor;
 
   constructor({
     clientDAO,
     profileDAO,
     propertyDAO,
+    uploadQueue,
     propertyCache,
+    emitterService,
+    propertyQueue,
     geoCoderService,
-    s3Service,
+    propertyCsvProcessor,
   }: IConstructor) {
-    this.s3Service = s3Service;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
+    this.uploadQueue = uploadQueue;
+    this.propertyQueue = propertyQueue;
     this.propertyCache = propertyCache;
+    this.emitterService = emitterService;
     this.geoCoderService = geoCoderService;
     this.log = createLogger('PropertyService');
+    this.propertyCsvProcessor = propertyCsvProcessor;
   }
 
   async createProperty(
@@ -76,7 +97,6 @@ export class PropertyService {
         }
       }
 
-      // Get computed addres details
       const gCode = await this.geoCoderService.parseLocation(address);
       if (!gCode) {
         throw new BadRequestError({ message: 'Invalid location provided.' });
@@ -100,17 +120,18 @@ export class PropertyService {
         ? new Types.ObjectId(propertyData.managedBy)
         : new Types.ObjectId(currentUser.sub);
 
-      if (propertyData.scannedFiles && propertyData.documents) {
-        propertyData.documents = propertyData.documents.map((doc, index) => {
-          return {
-            documentType: doc.documentType,
-            uploadedBy: new Types.ObjectId(currentUser.sub),
-            description: doc.description,
-            uploadedAt: new Date(),
-            photos: doc.photos,
-          };
-        });
-      }
+      // if (propertyData.scannedFiles && propertyData.documents) {
+      //   propertyData.documents = propertyData.documents.map((doc, index) => {
+      //     return {
+      //       documentType: doc.documentType,
+      //       uploadedBy: new Types.ObjectId(currentUser.sub),
+      //       description: doc.description,
+      //       uploadedAt: new Date(),
+      //       status: 'active',
+      //       documentName:
+      //     };
+      //   });
+      // }
 
       const property = await this.propertyDAO.createProperty(
         {
@@ -120,19 +141,188 @@ export class PropertyService {
         session
       );
 
-      // const property = await this.propertyDAO.createInstance({
-      //   ...propertyData,
-      //   cid,
-      // });
-
       if (!property) {
         throw new BadRequestError({ message: 'Unable to create property.' });
       }
 
       return { property };
     });
-    // add document to s3 via queues
+    if (propertyData.scannedFiles && propertyData.scannedFiles.length > 0) {
+      this.uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
+        resource: {
+          fieldName: 'documents',
+          resourceType: 'unknown',
+          resourceName: 'property',
+          actorId: currentUser.sub,
+          resourceId: result.property.id,
+        },
+        files: propertyData.scannedFiles,
+      });
+    }
     await this.propertyCache.cacheProperty(cid, result.property.id, result.property);
     return { success: true, data: result.property, message: 'Property created successfully' };
+  }
+
+  async validateCsv(
+    cid: string,
+    csvFile: ExtractedMediaFile,
+    currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData> {
+    if (!csvFile) {
+      throw new BadRequestError({ message: 'No CSV file uploaded' });
+    }
+
+    const client = await this.clientDAO.getClientByCid(cid);
+    if (!client) {
+      this.log.error(`Client with cid ${cid} not found`);
+      throw new BadRequestError({ message: 'Unable to validate csv for this account.' });
+    }
+
+    if (csvFile.fileSize > 10 * 1024 * 1024) {
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+      throw new BadRequestError({ message: 'File size to large for processing.' });
+    }
+
+    const jobData = {
+      cid,
+      userId: currentUser.sub,
+      csvFilePath: csvFile.path,
+    };
+    this.propertyQueue.addCsvValidationJob(jobData);
+    return {
+      data: null,
+      success: true,
+      message: 'CSV validation process started.',
+    };
+  }
+
+  async createPropertiesFromCsv(
+    cid: string,
+    csvFilePath: string,
+    actorId: string
+  ): Promise<ISuccessReturnData> {
+    if (!csvFilePath || !cid) {
+      throw new BadRequestError({ message: 'No CSV file path provided' });
+    }
+    const client = await this.clientDAO.getClientByCid(cid);
+    if (!client) {
+      this.log.error(`Client with cid ${cid} not found`);
+      throw new BadRequestError({ message: 'Unable to add property to this account.' });
+    }
+
+    const jobData = {
+      csvFilePath,
+      cid,
+      userId: actorId,
+    };
+
+    await this.propertyQueue.addCsvImportJob(jobData);
+    return {
+      success: true,
+      data: null,
+      message: 'CSV import job started',
+    };
+  }
+
+  async updatePropertyDocuments(
+    propertyId: string,
+    uploadResult: UploadResult[],
+    userid: string
+  ): Promise<ISuccessReturnData> {
+    if (!propertyId) {
+      throw new BadRequestError({ message: 'Property ID is required.' });
+    }
+
+    if (!uploadResult || uploadResult.length === 0) {
+      throw new BadRequestError({ message: 'Upload result is required.' });
+    }
+    const property = await this.propertyDAO.findById(propertyId);
+    if (!property) {
+      throw new BadRequestError({ message: 'Unable to find client property.' });
+    }
+
+    const updatedProperty = await this.propertyDAO.updatePropertyDocument(
+      propertyId,
+      uploadResult,
+      userid
+    );
+
+    if (!updatedProperty) {
+      throw new BadRequestError({ message: 'Unable to update property.' });
+    }
+
+    return { success: true, data: updatedProperty, message: 'Property updated successfully' };
+  }
+
+  async processCsv(cid: string, filePath: string, userId: string): Promise<CsvProcessReturnData> {
+    if (!filePath) {
+      throw new BadRequestError({ message: 'No CSV file path provided.' });
+    }
+
+    const result = await this.propertyCsvProcessor.validateCsv(filePath, {
+      cid,
+      userId,
+    });
+
+    return {
+      data: result.validProperties,
+      errors: result.errors,
+    };
+  }
+
+  async createProperties(
+    data: CsvProcessReturnData,
+    csvFilePath: string
+  ): Promise<{
+    success: boolean;
+    data: IProperty[];
+    message?: string;
+    error?: string;
+    errors?: IInvalidCsvProperty[];
+  }> {
+    try {
+      let properties = [];
+      const session = await this.propertyDAO.startSession();
+      const propertiesResult = await this.propertyDAO.withTransaction(session, async (session) => {
+        const batchSize = 20;
+        let batchCounter = 0;
+        const batches = [];
+        properties = [];
+
+        for (let i = 0; i < data.data.length; i += batchSize) {
+          const batch = data.data.slice(i, i + batchSize);
+          batches.push(batch);
+        }
+
+        for (const batch of batches) {
+          const batchProperties = await this.propertyDAO.insertMany(batch, session);
+          properties.push(...batchProperties);
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          batchCounter++;
+        }
+
+        return { properties };
+      });
+
+      const returnResult = {
+        data: propertiesResult.properties,
+        errors: null,
+        message: 'Properties added successfully.',
+      } as CsvProcessReturnData & { message: string };
+
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+
+      return {
+        success: true,
+        data: returnResult.data,
+        message: returnResult.message,
+        ...(returnResult.errors ? { errors: returnResult.errors } : null),
+      };
+    } catch (error) {
+      this.log.error(error, 'Error creating properties from CSV: ');
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+      return { success: false, data: [], error: 'Unable to create properties from CSV.' };
+      // throw new BadRequestError({ message: 'Unable to create properties from CSV.' });
+    }
   }
 }

@@ -1,12 +1,14 @@
-declare global {
-  namespace NodeJS {
-    interface Global {
-      gc(): void;
-    }
-  }
-}
+// declare global {
+//   namespace NodeJS {
+//     interface Global {
+//       gc(): void;
+//     }
+//   }
+// }
 
 import http from 'http';
+import path from 'path';
+import heapdump from 'heapdump';
 import { asValue } from 'awilix';
 import { createClient } from 'redis';
 import { container } from '@di/index';
@@ -17,7 +19,6 @@ import express, { Application } from 'express';
 import { Server as SocketIOServer } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { DatabaseService, Environments } from '@database/index';
-import { env } from 'process';
 
 (global as any).rootDir = __dirname;
 if (envVariables.SERVER.ENV !== 'production') {
@@ -30,6 +31,8 @@ if (envVariables.SERVER.ENV !== 'production') {
 interface IConstructor {
   dbService: DatabaseService;
 }
+let lastSnapshotTime = 0;
+const SNAPSHOT_COOLDOWN = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 class Server {
   private app: IAppSetup;
@@ -78,7 +81,7 @@ class Server {
     await this.startServers(this.expApp);
     this.initialized = true;
     if (envVariables.SERVER.ENV !== 'production') {
-      this.scheduleMemoryCheck();
+      // this.scheduleMemoryCheck();
     }
   };
 
@@ -229,6 +232,13 @@ class Server {
       this.shutdown(1);
     });
 
+    process.on('warning', (warning) => {
+      if (warning.name === 'HeapSizeLimit' || warning.name === 'MemoryLimitError') {
+        console.warn('----WARNIGN----', warning);
+        // captureHeapSnapshot();
+      }
+    });
+
     // handle termination signals
     process.on('SIGTERM', () => {
       this.log.info('SIGTERM received');
@@ -241,6 +251,35 @@ class Server {
     });
   }
 }
+
+// function captureHeapSnapshot() {
+//   const memoryUsage = process.memoryUsage();
+//   const mbUsed = Math.round(memoryUsage.heapUsed / 1024 / 1024);
+
+//   if (mbUsed > 1500) {
+//     const snapshotPath = path.join(process.cwd(), `heapdump-${Date.now()}.heapsnapshot`);
+//     heapdump.writeSnapshot(snapshotPath, (err, filename) => {
+//       if (err) console.error('Failed to create heap snapshot', err);
+//       else console.log(`Heap snapshot written to ${filename}`);
+//     });
+//   }
+// }
+
+// function monitorMemory() {
+//   const memoryUsage = process.memoryUsage();
+//   const mbUsed = Math.round(memoryUsage.heapUsed / 1024 / 1024);
+//   const mbTotal = Math.round(memoryUsage.heapTotal / 1024 / 1024);
+
+//   console.log(`Memory: ${mbUsed}MB / ${mbTotal}MB`);
+//   const now = Date.now();
+//   if (mbUsed > 1500 && now - lastSnapshotTime > SNAPSHOT_COOLDOWN) {
+//     captureHeapSnapshot();
+//     lastSnapshotTime = now;
+//   }
+// }
+
+// const testfn = setInterval(monitorMemory, 60000); // every minute
+// process.on('beforeExit', () => clearInterval(testfn));
 
 export const getServerInstance = () => {
   const server = Server.getInstance();

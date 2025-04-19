@@ -18,7 +18,6 @@ const PropertySchema = new Schema<IPropertyDocument>(
     cid: {
       type: String,
       required: true,
-      unique: true,
       index: true,
       immutable: true,
     },
@@ -42,6 +41,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
     },
     managedBy: {
       type: Schema.Types.ObjectId,
+      required: true,
       ref: 'User',
       index: true,
     },
@@ -74,6 +74,41 @@ const PropertySchema = new Schema<IPropertyDocument>(
       },
       lastAssessmentDate: {
         type: Date,
+      },
+    },
+    fees: {
+      currency: { type: String, required: true, default: 'USD' },
+      taxAmount: {
+        default: 0,
+        type: Number,
+        get: (val: number) => {
+          return (val / 100).toFixed(2);
+        },
+        set: (val: number) => val * 100,
+      },
+      rentalAmount: {
+        default: 0,
+        type: Number,
+        get: function (val: number) {
+          return (val / 100).toFixed(2);
+        },
+        set: (val: number) => val * 100,
+      },
+      managementFees: {
+        default: 0,
+        type: Number,
+        get: (val: number) => {
+          return (val / 100).toFixed(2);
+        },
+        set: (val: number) => val * 100,
+      },
+      securityDeposit: {
+        default: 0,
+        type: Number,
+        get: (val: number) => {
+          return (val / 100).toFixed(2);
+        },
+        set: (val: number) => val * 100,
       },
     },
     specifications: {
@@ -116,11 +151,11 @@ const PropertySchema = new Schema<IPropertyDocument>(
       gas: { type: Boolean, default: false },
       electricity: { type: Boolean, default: false },
       internet: { type: Boolean, default: false },
-      trash: { type: Boolean, default: false },
       cableTV: { type: Boolean, default: false },
     },
     description: {
       text: {
+        required: true,
         type: String,
         trim: true,
       },
@@ -138,21 +173,14 @@ const PropertySchema = new Schema<IPropertyDocument>(
       furnished: { type: Boolean, default: false },
       storageSpace: { type: Boolean, default: false },
     },
-    exteriorAmenities: {
+    communityAmenities: {
       swimmingPool: { type: Boolean, default: false },
       fitnessCenter: { type: Boolean, default: false },
       elevator: { type: Boolean, default: false },
-      balcony: { type: Boolean, default: false },
       parking: { type: Boolean, default: false },
-      garden: { type: Boolean, default: false },
       securitySystem: { type: Boolean, default: false },
-      playground: { type: Boolean, default: false },
-    },
-    communityAmenities: {
-      petFriendly: { type: Boolean, default: false },
-      clubhouse: { type: Boolean, default: false },
-      bbqArea: { type: Boolean, default: false },
       laundryFacility: { type: Boolean, default: false },
+      petFriendly: { type: Boolean, default: false },
       doorman: { type: Boolean, default: false },
     },
     address: {
@@ -185,36 +213,40 @@ const PropertySchema = new Schema<IPropertyDocument>(
     },
     documents: [
       {
-        photos: [
-          {
-            url: {
-              type: String,
-              validate: {
-                validator: function (v: string) {
-                  // Basic URL validation
-                  return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
-                },
-                message: (props: any) => `${props.value} is not a valid URL!`,
-              },
-            },
-            key: { type: String },
-            status: {
-              type: String,
-              enum: ['active', 'inactive'],
-              default: 'active',
-            },
-            externalUrl: String,
-            uploadedAt: { type: Date, default: Date.now },
-            uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
-          },
-        ],
         documentType: {
           type: String,
           enum: ['deed', 'tax', 'insurance', 'inspection', 'other', 'lease'],
         },
-        description: { type: String },
+        url: {
+          type: String,
+          validate: {
+            validator: function (v: string) {
+              // Basic URL validation
+              return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
+            },
+            message: (props: any) => `${props.value} is not a valid URL!`,
+          },
+        },
+        key: { type: String },
+        status: {
+          type: String,
+          enum: ['active', 'inactive'], // if inactive it would be deleted via cron job ltr
+          default: 'active',
+        },
+        externalUrl: {
+          type: String,
+          validate: {
+            validator: function (v: string) {
+              // Basic URL validation
+              return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
+            },
+            message: (props: any) => `${props.value} is not a valid URL!`,
+          },
+        },
         uploadedAt: { type: Date, default: Date.now },
         uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        description: { type: String, trim: true, maxlength: 150 },
+        documentName: { type: String, trim: true, maxlength: 100 },
       },
     ],
     occupancyStatus: {
@@ -222,16 +254,16 @@ const PropertySchema = new Schema<IPropertyDocument>(
       enum: ['vacant', 'occupied', 'partially_occupied'],
       default: 'vacant',
     },
-    occupancyRate: {
+    occupancyLimit: {
       type: Number,
       min: 0,
-      max: 100,
+      max: 500,
       default: 0,
     },
     createdBy: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
       required: true,
+      ref: 'User',
     },
     lastModifiedBy: {
       type: Schema.Types.ObjectId,

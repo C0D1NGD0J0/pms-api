@@ -4,7 +4,7 @@ import { Types } from 'mongoose';
 import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
-import { AuthTokenService } from '@services/auth';
+import { AuthTokenService } from '@services/index';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { ISignupData, IUserRole } from '@interfaces/user.interface';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
@@ -34,13 +34,13 @@ interface IConstructor {
 }
 
 export class AuthService {
-  private log: Logger;
-  private userDAO: UserDAO;
-  private clientDAO: ClientDAO;
-  private authCache: AuthCache;
-  private profileDAO: ProfileDAO;
-  private emailQueue: EmailQueue;
-  private tokenService: AuthTokenService;
+  private readonly log: Logger;
+  private readonly userDAO: UserDAO;
+  private readonly clientDAO: ClientDAO;
+  private readonly authCache: AuthCache;
+  private readonly profileDAO: ProfileDAO;
+  private readonly emailQueue: EmailQueue;
+  private readonly tokenService: AuthTokenService;
 
   constructor({
     userDAO,
@@ -274,7 +274,7 @@ export class AuthService {
       throw new BadRequestError({ message: 'Email and password are required.' });
     }
 
-    let user = await this.userDAO.getUserByEmail(email);
+    let user = await this.userDAO.getActiveUserByEmail(email);
     if (!user) {
       throw new NotFoundError({ message: 'Invalid email/password combination.' });
     }
@@ -429,7 +429,7 @@ export class AuthService {
     }
 
     await this.userDAO.createActivationToken('', email)!;
-    const user = await this.userDAO.getUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
 
     if (!user) {
       throw new NotFoundError({ message: `Activation link has been sent to ${email}.` });
@@ -459,7 +459,7 @@ export class AuthService {
     }
 
     await this.userDAO.createPasswordResetToken(email);
-    const user = await this.userDAO.getUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
     if (!user) {
       throw new NotFoundError({ message: 'No record found with email provided.' });
     }
@@ -489,7 +489,7 @@ export class AuthService {
     }
 
     await this.userDAO.resetPassword(email, token);
-    const user = await this.userDAO.getUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
     if (!user) {
       throw new NotFoundError({ message: 'No record found with email provided.' });
     }

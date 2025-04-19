@@ -1,8 +1,8 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
+import { UploadResult } from '@interfaces/index';
 import { ClientSession, FilterQuery, Types, Model } from 'mongoose';
 import {
-  IPropertyDocumentItem,
   IPropertyDocument,
   OccupancyStatus,
   PropertyStatus,
@@ -11,8 +11,7 @@ import {
 } from '@interfaces/property.interface';
 
 import { BaseDAO } from './baseDAO';
-import { dynamic } from './interfaces/baseDAO.interface';
-import { IPropertyDAO } from './interfaces/propertyDAO.interface';
+import { IPropertyDAO, dynamic } from './interfaces/index';
 
 export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IPropertyDAO {
   protected logger: Logger;
@@ -138,14 +137,14 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
    * Update property occupancy status
    * @param propertyId - The property ID
    * @param status - The new occupancy status
-   * @param occupancyRate - The new occupancy rate percentage
+   * @param occupancyLimit - The new occupancy rate percentage
    * @param userId - The ID of the user performing the update
    * @returns A promise that resolves to the updated property document
    */
   async updatePropertyOccupancy(
     propertyId: string,
     status: OccupancyStatus,
-    occupancyRate: number,
+    occupancyLimit: number,
     userId: string
   ): Promise<IPropertyDocument | null> {
     try {
@@ -153,14 +152,14 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property ID and status are required');
       }
 
-      if (occupancyRate < 0 || occupancyRate > 200) {
+      if (occupancyLimit < 0 || occupancyLimit > 200) {
         throw new Error('Occupancy rate must be between 0 and 200');
       }
 
       const updateOperation = {
         $set: {
           occupancyStatus: status,
-          occupancyRate: occupancyRate,
+          occupancyLimit: occupancyLimit,
           lastModifiedBy: new Types.ObjectId(userId),
           updatedAt: new Date(),
         },
@@ -204,30 +203,54 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
   }
 
   /**
-   * Add or update property documents/photos
+   * Update property documents/photos
    * @param propertyId - The property ID
    * @param documentData - The document data to add
    * @param userId - The ID of the user performing the action
    * @returns A promise that resolves to the updated property document
    */
-  async addPropertyDocument(
+  async updatePropertyDocument(
     propertyId: string,
-    documentData: IPropertyDocumentItem,
+    uploadData: UploadResult[],
     userId: string
   ): Promise<IPropertyDocument | null> {
     try {
-      if (!propertyId || !documentData || !userId) {
+      if (!propertyId || !uploadData.length) {
         throw new Error('Property ID, document data, and user ID are required');
       }
 
-      const document = {
-        ...documentData,
-        uploadedBy: new Types.ObjectId(userId),
-        uploadedAt: new Date(),
-      };
+      const property = await this.findById(propertyId);
+      if (!property) {
+        throw new Error('Property not found');
+      }
+
+      let result = null;
+      if (uploadData) {
+        result = uploadData
+          .map((upload) => {
+            const foundDocument = property.documents?.find(
+              (doc) => doc.documentName === upload?.documentName
+            );
+            if (!foundDocument) {
+              return null;
+            }
+            return {
+              key: upload.key,
+              url: upload.url,
+              status: 'active',
+              uploadedAt: new Date(),
+              externalUrl: upload.url,
+              documentName: upload.documentName,
+              description: foundDocument.description,
+              documentType: foundDocument.documentType,
+              uploadedBy: new Types.ObjectId(upload.actorId),
+            };
+          })
+          .filter((document) => document !== null);
+      }
 
       const updateOperation = {
-        $push: { documents: document },
+        $push: { documents: result },
         $set: { lastModifiedBy: new Types.ObjectId(userId) },
       };
 

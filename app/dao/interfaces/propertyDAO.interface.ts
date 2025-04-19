@@ -1,6 +1,6 @@
 import { ClientSession, FilterQuery } from 'mongoose';
+import { UploadResult } from '@interfaces/utils.interface';
 import {
-  IPropertyDocumentItem,
   IPropertyDocument,
   OccupancyStatus,
   PropertyStatus,
@@ -35,14 +35,14 @@ export interface IPropertyDAO {
    * Update property occupancy status
    * @param propertyId - The property ID
    * @param status - The new occupancy status
-   * @param occupancyRate - The new occupancy rate percentage
+   * @param occupancyLimit - The new occupancy rate percentage
    * @param userId - The ID of the user performing the update
    * @returns A promise that resolves to the updated property document
    */
   updatePropertyOccupancy(
     propertyId: string,
     status: OccupancyStatus,
-    occupancyRate: number,
+    occupancyLimit: number,
     userId: string
   ): Promise<IPropertyDocument | null>;
 
@@ -79,9 +79,9 @@ export interface IPropertyDAO {
    * @param userId - The ID of the user performing the action
    * @returns A promise that resolves to the updated property document
    */
-  addPropertyDocument(
+  updatePropertyDocument(
     propertyId: string,
-    documentData: IPropertyDocumentItem,
+    documentData: UploadResult[],
     userId: string
   ): Promise<IPropertyDocument | null>;
 

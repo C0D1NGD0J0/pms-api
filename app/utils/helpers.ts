@@ -151,10 +151,10 @@ export function setAuthCookies(
 /**
  * Generates a random hash string using SHA-256
  * @param opts - {
-  byteLength?: number;
-  algorithm?: 'sha256' | 'sha512' | 'md5';
-  usenano?: boolean;
-}
+      byteLength?: number;
+      algorithm?: 'sha256' | 'sha512' | 'md5';
+      usenano?: boolean;
+    }
  * @returns A hexadecimal string representation of the hash
  * @throws Error if crypto operations fail
  */
@@ -209,12 +209,14 @@ export function asyncWrapper(fn: AsyncRequestHandler) {
 /**
  * Extracts and standardizes file information from Multer file objects
  * @param files - A Multer file object or array of file objects
+ * @param actorId - The ID of the user who uploaded the files
  * @param allowedTypes - Optional array of allowed file types (e.g., ['image', 'document'])
  * @returns An array of standardized file information objects
  * @throws Error if any files have invalid types when allowedTypes is provided
  */
 export const extractMulterFiles = (
   files: MulterFile,
+  actorId?: string,
   allowedTypes?: FileType[]
 ): ExtractedMediaFile[] => {
   if (!files) {
@@ -238,6 +240,10 @@ export const extractMulterFiles = (
       originalFileName: file.originalname,
       filename: file.filename,
       fileSize: file.size,
+      uploadedBy: actorId || '',
+      url: '',
+      key: '',
+      status: 'pending',
       uploadedAt: file.uploadedAt || new Date().toISOString(),
     });
   };
@@ -396,4 +402,57 @@ export const convertTimeToSecondsAndMilliseconds = (
     seconds,
     milliseconds: seconds * 1000,
   };
+};
+
+/**
+ * Middleware to parse stringified JSON, booleans, and numbers in req.body
+ * Useful for multipart/form-data where nested fields are sent as strings
+ */
+export const parseJsonFields = (req: Request) => {
+  if (!req.body || typeof req.body !== 'object') return req.body;
+
+  const tryParse = (val: string) => {
+    try {
+      const parsed = JSON.parse(val);
+      return typeof parsed === 'object' ? parsed : val;
+    } catch {
+      return val;
+    }
+  };
+
+  const convertValue = (value: any): any => {
+    if (value == null) return value;
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+
+      if (
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))
+      ) {
+        return tryParse(trimmed);
+      }
+
+      if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+      if (trimmed.toLowerCase() === 'true') return true;
+      if (trimmed.toLowerCase() === 'false') return false;
+
+      return value;
+    }
+
+    if (Array.isArray(value)) return value.map(convertValue);
+    if (typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, convertValue(v)]));
+    }
+
+    return value;
+  };
+
+  try {
+    req.body = convertValue(req.body);
+  } catch (error) {
+    console.error('Error in parseJsonFields middleware:', error);
+  }
+
+  return req.body;
 };

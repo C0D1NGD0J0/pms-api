@@ -4,39 +4,13 @@ import { createLogger } from '@utils/index';
 import { Upload } from '@aws-sdk/lib-storage';
 import { envVariables } from '@shared/config';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { ResourceInfo, UploadedFile, UploadResult } from '@interfaces/index';
 import {
   DeleteObjectsCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-
-export interface UploadResult {
-  mediatype?: 'image' | 'video' | 'document';
-  resourceName?: string;
-  resourceId: string;
-  fieldName: string;
-  filename: string;
-  publicId: string;
-  size?: number;
-  url: string;
-}
-
-export interface UploadedFile {
-  originalname?: string;
-  fieldName: string;
-  mimetype?: string;
-  filename: string;
-  size?: number;
-  path: string;
-}
-
-export interface ResourceInfo {
-  type?: 'image' | 'video' | 'document';
-  ownerId?: string;
-  name: string;
-  id: string;
-}
 
 export class S3Service {
   private readonly s3: S3Client;
@@ -54,22 +28,22 @@ export class S3Service {
     });
   }
 
-  async uploadFiles(files: UploadedFile[], resource: ResourceInfo): Promise<UploadResult[]> {
-    this.log.info(`Uploading ${files.length} files to S3 for resource ${resource.id}`);
+  async uploadFiles(files: UploadedFile[], context: ResourceInfo): Promise<UploadResult[]> {
+    this.log.info(`Uploading ${files.length} files to S3 for resource ${context.resourceId}`);
     const results: UploadResult[] = [];
 
     for (const file of files) {
       try {
         this.log.debug(`Uploading file: ${file.filename}`);
         const fileStream = fs.createReadStream(file.path);
-        const s3Key = `${resource.id}_${file.originalname || file.filename}`;
+        const s3Key = `${context.resourceName}_${file.originalname || file.filename}`;
 
         const params = {
           Bucket: this.bucketName,
           Key: s3Key,
           Body: fileStream,
           ContentType: file.mimetype,
-          Tagging: this.generateResourceTag(resource.id),
+          Tagging: this.generateResourceTag(context.resourceId),
         };
 
         const upload = new Upload({
@@ -89,7 +63,8 @@ export class S3Service {
         this.log.info(`Successfully uploaded ${file.filename} to S3`);
 
         results.push({
-          resourceId: resource.id,
+          resourceId: context.resourceId,
+          resourceName: context.resourceName,
           url: result.Location!,
           publicId: result.Key!,
           fieldName: file.fieldName.split('.')[0] || file.fieldName,

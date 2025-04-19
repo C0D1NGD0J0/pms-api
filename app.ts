@@ -47,7 +47,7 @@ export class App implements IAppSetup {
       sanitizer.clean({
         xss: true,
         noSql: true,
-        level: 5,
+        level: 3,
       })
     );
     app.use(

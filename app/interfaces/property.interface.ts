@@ -1,13 +1,20 @@
 import { Document, Types } from 'mongoose';
 
+import { CURRENCIES } from './utils.interface';
+
 export interface IProperty {
+  fees: {
+    taxAmount: number;
+    currency: CURRENCIES;
+    rentalAmount: number | string;
+    managementFees: number | string;
+  };
   description?: {
     html?: string;
     text?: string;
   };
-  communityAmenities: ICommunityAmenities;
-  interiorAmenities: IInteriorAmenities;
-  exteriorAmenities: IExteriorAmenities;
+  communityAmenities?: ICommunityAmenities;
+  interiorAmenities?: IInteriorAmenities;
   computedLocation?: IComputedLocation;
   financialDetails?: IFinancialDetails;
   documents?: IPropertyDocumentItem[];
@@ -17,44 +24,39 @@ export interface IProperty {
   managedBy?: Types.ObjectId;
   createdBy: Types.ObjectId;
   status: PropertyStatus;
+  occupancyLimit: number;
   utilities: IUtilities;
-  occupancyRate: number;
   yearBuilt?: number;
   address: string;
   name: string;
   cid: string;
 }
 
-export interface IDocumentPhoto {
+export interface IPropertyDocumentItem {
   status: {
     type: string;
-    enum: ['active', 'inactive'];
-    default: 'active';
+    enum: ['pending', 'active', 'inactive', 'deleted'];
+    default: 'pending';
   };
+  documentType?: 'deed' | 'tax' | 'insurance' | 'inspection' | 'other' | 'lease';
   uploadedBy: Types.ObjectId;
+  description?: string;
+  documentName: string;
   externalUrl: string;
   uploadedAt: Date;
   key?: string;
   url: string;
 }
 
-export interface IExteriorAmenities {
+export interface ICommunityAmenities {
+  laundryFacility: boolean;
   securitySystem: boolean;
   fitnessCenter: boolean;
   swimmingPool: boolean;
-  playground: boolean;
+  petFriendly: boolean;
   elevator: boolean;
-  balcony: boolean;
   parking: boolean;
-  garden: boolean;
-}
-
-export interface IPropertyDocumentItem {
-  documentType?: 'deed' | 'tax' | 'insurance' | 'inspection' | 'other';
-  uploadedBy: Types.ObjectId;
-  photos: IDocumentPhoto[];
-  description?: string;
-  uploadedAt: Date;
+  doorman: boolean;
 }
 
 export interface IPropertyDocument extends IProperty, Document {
@@ -104,14 +106,6 @@ export interface IAddressDetails {
   city?: string;
 }
 
-export interface ICommunityAmenities {
-  laundryFacility: boolean;
-  petFriendly: boolean;
-  clubhouse: boolean;
-  bbqArea: boolean;
-  doorman: boolean;
-}
-
 export interface IUtilities {
   electricity: boolean;
   internet: boolean;
@@ -134,6 +128,13 @@ export type PropertyType =
   | 'townhouse'
   | 'commercial'
   | 'industrial';
+export interface CsvJobData {
+  csvFilePath: string;
+  userId: string;
+  jobId?: string;
+  cid: string;
+}
+
 export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
 
 export type OccupancyStatus = 'vacant' | 'occupied' | 'partially_occupied';

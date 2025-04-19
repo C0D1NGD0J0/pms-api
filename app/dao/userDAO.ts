@@ -78,9 +78,9 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * @param opts - Additional options for the query.
    * @returns A promise that resolves to the found user document or null if no user is found.
    */
-  async getUserByEmail(email: string, opts?: dynamic): Promise<IUserDocument | null> {
+  async getActiveUserByEmail(email: string, opts?: dynamic): Promise<IUserDocument | null> {
     try {
-      const query = { email, deletedAt: null };
+      const query = { email, deletedAt: null, isActive: true };
       return await this.findFirst(query, opts);
     } catch (error) {
       this.logger.error(error.message || error);
@@ -97,7 +97,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    */
   async verifyCredentials(email: string, password: string): Promise<IUserDocument | null> {
     try {
-      const user = await this.getUserByEmail(email);
+      const user = await this.getActiveUserByEmail(email);
       if (!user) return null;
 
       const isValid = await user.validatePassword(password);
@@ -305,7 +305,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    */
   async isEmailUnique(email: string): Promise<boolean> {
     try {
-      const user = await this.getUserByEmail(email);
+      const user = await this.getActiveUserByEmail(email);
       return !user;
     } catch (error) {
       this.logger.error(error.message || error);
@@ -392,7 +392,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    */
   async createPasswordResetToken(email: string): Promise<IUserDocument | null> {
     try {
-      let user = await this.getUserByEmail(email);
+      let user = await this.getActiveUserByEmail(email);
 
       if (!user) {
         return null;

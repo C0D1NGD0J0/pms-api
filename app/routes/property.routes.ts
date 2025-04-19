@@ -2,8 +2,8 @@ import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/helpers';
 import { validateRequest } from '@shared/validations';
 import { PropertyController } from '@controllers/index';
-import { isAuthenticated, diskUpload, scanFile } from '@shared/middlewares';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
+import { isAuthenticated, speedLimiter, diskUpload, scanFile, limiter } from '@shared/middlewares';
 
 const router: Router = express.Router();
 
@@ -46,6 +46,19 @@ router.post(
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.createPropertiesFromCsv(req, res);
+  })
+);
+
+router.get(
+  '/:cid/client_properties',
+  limiter,
+  speedLimiter,
+  validateRequest({
+    params: PropertyValidations.validateCid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getClientProperties(req, res);
   })
 );
 

@@ -1,5 +1,5 @@
 import { ClientSession, FilterQuery } from 'mongoose';
-import { UploadResult } from '@interfaces/utils.interface';
+import { ListResultWithPagination, UploadResult } from '@interfaces/utils.interface';
 import {
   IPropertyDocument,
   OccupancyStatus,
@@ -7,7 +7,7 @@ import {
   PropertyType,
 } from '@interfaces/property.interface';
 
-import { dynamic } from './baseDAO.interface';
+import { IFindOptions } from './baseDAO.interface';
 
 export interface IPropertyDAO {
   /**
@@ -29,22 +29,20 @@ export interface IPropertyDAO {
       location?: { city?: string; state?: string; postCode?: string };
     },
     pagination: { page: number; limit: number; sort?: string }
-  ): Promise<{ properties: IPropertyDocument[]; total: number; pages: number }>;
+  ): ListResultWithPagination<IPropertyDocument[]>;
 
   /**
-   * Update property occupancy status
-   * @param propertyId - The property ID
-   * @param status - The new occupancy status
-   * @param occupancyLimit - The new occupancy rate percentage
-   * @param userId - The ID of the user performing the update
-   * @returns A promise that resolves to the updated property document
+   * Get properties by client ID
+   * @param clientId - The client ID
+   * @param filter - Additional filter criteria
+   * @param opts - Additional options for the query
+   * @returns A promise that resolves to an array of property documents
    */
-  updatePropertyOccupancy(
-    propertyId: string,
-    status: OccupancyStatus,
-    occupancyLimit: number,
-    userId: string
-  ): Promise<IPropertyDocument | null>;
+  getPropertiesByClientId(
+    clientId: string,
+    filter?: FilterQuery<IPropertyDocument>,
+    opts?: IFindOptions
+  ): ListResultWithPagination<IPropertyDocument[]>;
 
   /**
    * Check if a property is available for a specific date range
@@ -60,17 +58,19 @@ export interface IPropertyDAO {
   // ): Promise<{ isAvailable: boolean; conflictingLeases?: any[] }>;
 
   /**
-   * Get properties by client ID
-   * @param clientId - The client ID
-   * @param filter - Additional filter criteria
-   * @param opts - Additional options for the query
-   * @returns A promise that resolves to an array of property documents
+   * Update property occupancy status
+   * @param propertyId - The property ID
+   * @param status - The new occupancy status
+   * @param occupancyLimit - The new occupancy rate percentage
+   * @param userId - The ID of the user performing the update
+   * @returns A promise that resolves to the updated property document
    */
-  getPropertiesByClientId(
-    clientId: string,
-    filter?: FilterQuery<IPropertyDocument>,
-    opts?: dynamic
-  ): Promise<IPropertyDocument[]>;
+  updatePropertyOccupancy(
+    propertyId: string,
+    status: OccupancyStatus,
+    occupancyLimit: number,
+    userId: string
+  ): Promise<IPropertyDocument | null>;
 
   /**
    * Add or update property documents/photos
@@ -121,7 +121,7 @@ export interface IPropertyDAO {
   findPropertyByAddress(
     address: string,
     clientId: string,
-    opts?: dynamic
+    opts?: IFindOptions
   ): Promise<IPropertyDocument | null>;
 
   /**
@@ -141,7 +141,7 @@ export interface IPropertyDAO {
    * @param clientId - The client ID
    * @returns A promise that resolves to an array of property documents
    */
-  searchProperties(query: string, clientId: string): Promise<IPropertyDocument[]>;
+  searchProperties(query: string, clientId: string): ListResultWithPagination<IPropertyDocument[]>;
 
   /**
    * Archive a property (soft delete)

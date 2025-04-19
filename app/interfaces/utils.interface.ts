@@ -99,6 +99,16 @@ export interface UploadResult {
   url: string;
 }
 
+export interface PaginateResult {
+  hasMoreResource: boolean;
+  currentPage: number;
+  totalPages: number;
+  nextPage?: string;
+  prevPage?: string;
+  perPage: number;
+  total: number;
+}
+
 export type ISuccessReturnData<T = any> = {
   errors?: [{ path: string; message: string }];
   success: boolean;
@@ -116,14 +126,6 @@ export interface UploadedFile {
   path: string;
 }
 
-export interface PaginateResult {
-  hasMoreResource: boolean;
-  currentPage: number;
-  totalPages: number;
-  perPage: number;
-  total: number;
-}
-
 export type MulterFile =
   | Express.Multer.File[]
   | {
@@ -132,10 +134,10 @@ export type MulterFile =
   | undefined;
 
 export interface IPaginationQuery {
-  skip?: number | null;
-  sortBy?: string;
-  limit?: number;
-  page?: number;
+  limit: number;
+  sort?: string;
+  skip: number;
+  page: number;
 }
 
 export interface IEmailOptions<T> {
@@ -144,12 +146,17 @@ export interface IEmailOptions<T> {
   to: string;
   data: T;
 }
+
 export type CsvProcessReturnData = {
   data: IProperty[];
   errors?: IInvalidCsvProperty[] | null;
 };
-
 export type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
+
+export type ListResultWithPagination<T> = Promise<{
+  data: T;
+  pagination?: PaginateResult;
+}>;
 
 export interface ICacheResponse<T = any> {
   success: boolean;

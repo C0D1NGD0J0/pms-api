@@ -78,20 +78,14 @@ export class PropertyWorker {
         };
       }
 
-      let properties = [];
+      const properties: any[] = [];
       const session = await this.propertyDAO.startSession();
       const propertiesResult = await this.propertyDAO.withTransaction(session, async (session) => {
         const batchSize = 20;
         let batchCounter = 0;
-        const batches = [];
-        properties = [];
 
         for (let i = 0; i < csvResult.validProperties.length; i += batchSize) {
           const batch = csvResult.validProperties.slice(i, i + batchSize);
-          batches.push(batch);
-        }
-
-        for (const batch of batches) {
           const batchProperties = await this.propertyDAO.insertMany(batch, session);
           properties.push(...batchProperties);
           // eslint-disable-next-line @typescript-eslint/no-unused-vars

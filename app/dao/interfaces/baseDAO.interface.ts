@@ -1,3 +1,4 @@
+import { ListResultWithPagination } from '@interfaces/index';
 import {
   UpdateWriteOpResult,
   AggregateOptions,
@@ -68,6 +69,15 @@ export interface IBaseDAO<T extends Document> {
   update(filter: FilterQuery<T> | Types.ObjectId, data: UpdateQuery<T>): Promise<T | null>;
 
   /**
+   * List documents in the collection that match the filter.
+   *
+   * @param filter - Query used to filter the documents.
+   * @param opts - Optional settings for the query.
+   * @returns A promise that resolves to an array of found documents.
+   */
+  list(filter: FilterQuery<T>, opts?: IFindOptions): ListResultWithPagination<T[]>;
+
+  /**
    * Perform an aggregation operation on the collection.
    *
    * @param pipeline - An array of aggregation stages to be executed.
@@ -84,15 +94,6 @@ export interface IBaseDAO<T extends Document> {
    * @returns A promise that resolves to the updated document or null if no document is found.
    */
   updateById(id: string, data: UpdateQuery<T>): Promise<T | null>;
-
-  /**
-   * List documents in the collection that match the filter.
-   *
-   * @param filter - Query used to filter the documents.
-   * @param opts - Optional settings for the query.
-   * @returns A promise that resolves to an array of found documents.
-   */
-  list(filter: FilterQuery<T>, opts?: IFindOptions): Promise<T[]>;
 
   /**
    * Delete a document from the collection by its unique identifier.
@@ -153,8 +154,8 @@ export interface IFindOptions {
   sort?: Record<string, 1 | -1 | { $meta: 'textScore' }> | string;
   projection?: Record<string, any> | string;
   select?: Record<string, any> | string;
-  limit?: number;
-  skip?: number;
+  limit: number;
+  skip: number;
 }
 
 export interface dynamic<T = unknown> {

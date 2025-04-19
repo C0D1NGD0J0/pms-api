@@ -1,7 +1,7 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
-import { UploadResult } from '@interfaces/index';
 import { ClientSession, FilterQuery, Types, Model } from 'mongoose';
+import { ListResultWithPagination, IPaginationQuery, UploadResult } from '@interfaces/index';
 import {
   IPropertyDocument,
   OccupancyStatus,
@@ -11,7 +11,7 @@ import {
 } from '@interfaces/property.interface';
 
 import { BaseDAO } from './baseDAO';
-import { IPropertyDAO, dynamic } from './interfaces/index';
+import { IFindOptions, IPropertyDAO } from './interfaces/index';
 
 export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IPropertyDAO {
   protected logger: Logger;
@@ -40,7 +40,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       location?: { city?: string; state?: string; postCode?: string };
     },
     pagination: { page: number; limit: number; sort?: string }
-  ): Promise<{ properties: IPropertyDocument[]; total: number; pages: number }> {
+  ) {
     try {
       if (!clientId) {
         throw new Error('Client ID is required');
@@ -113,8 +113,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       } else {
         sortOption = { createdAt: -1 };
       }
-      const total = await this.countDocuments(query);
-      const pages = Math.ceil(total / limit);
 
       const properties = await this.list(query, {
         skip,
@@ -122,11 +120,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         sort: sortOption,
       });
 
-      return {
-        properties,
-        total,
-        pages,
-      };
+      return properties;
     } catch (error) {
       this.logger.error('Error in getFilteredProperties:', error);
       throw this.throwErrorHandler(error);
@@ -182,8 +176,8 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
   async getPropertiesByClientId(
     clientId: string,
     filter: FilterQuery<IPropertyDocument> = {},
-    opts?: dynamic
-  ): Promise<IPropertyDocument[]> {
+    opts?: IFindOptions
+  ): ListResultWithPagination<IPropertyDocument[]> {
     try {
       if (!clientId) {
         throw new Error('Client ID is required');
@@ -306,7 +300,8 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         },
       };
 
-      return await this.list(query);
+      const result = await this.list(query);
+      return result.data;
     } catch (error) {
       this.logger.error('Error in findPropertiesNearby:', error);
       throw this.throwErrorHandler(error);
@@ -323,7 +318,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
   async findPropertyByAddress(
     address: string,
     clientId: string,
-    opts?: dynamic
+    opts?: IFindOptions
   ): Promise<IPropertyDocument | null> {
     try {
       if (!address || !clientId) {
@@ -397,7 +392,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
    * @param clientId - The client ID
    * @returns A promise that resolves to an array of property documents
    */
-  async searchProperties(query: string, clientId: string): Promise<IPropertyDocument[]> {
+  async searchProperties(query: string, clientId: string, paginationQuery?: IPaginationQuery) {
     try {
       if (!clientId) {
         throw new Error('Client ID is required');
@@ -421,7 +416,11 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         ],
       };
 
-      return await this.list(searchQuery);
+      return await this.list(searchQuery, {
+        skip: paginationQuery?.skip ?? 10,
+        limit: paginationQuery?.limit ?? 10,
+        sort: paginationQuery?.sort,
+      });
     } catch (error) {
       this.logger.error('Error in searchProperties:', error);
       throw this.throwErrorHandler(error);

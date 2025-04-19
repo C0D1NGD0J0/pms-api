@@ -16,6 +16,7 @@ import {
   CsvProcessReturnData,
   ExtractedMediaFile,
   ISuccessReturnData,
+  IPaginationQuery,
   UploadResult,
 } from '@interfaces/utils.interface';
 
@@ -66,7 +67,7 @@ export class PropertyService {
     this.propertyCsvProcessor = propertyCsvProcessor;
   }
 
-  async createProperty(
+  async addProperty(
     cid: string,
     propertyData: { scannedFiles?: ExtractedMediaFile[] } & IProperty,
     currentUser: ICurrentUser
@@ -163,40 +164,7 @@ export class PropertyService {
     return { success: true, data: result.property, message: 'Property created successfully' };
   }
 
-  async validateCsv(
-    cid: string,
-    csvFile: ExtractedMediaFile,
-    currentUser: ICurrentUser
-  ): Promise<ISuccessReturnData> {
-    if (!csvFile) {
-      throw new BadRequestError({ message: 'No CSV file uploaded' });
-    }
-
-    const client = await this.clientDAO.getClientByCid(cid);
-    if (!client) {
-      this.log.error(`Client with cid ${cid} not found`);
-      throw new BadRequestError({ message: 'Unable to validate csv for this account.' });
-    }
-
-    if (csvFile.fileSize > 10 * 1024 * 1024) {
-      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
-      throw new BadRequestError({ message: 'File size to large for processing.' });
-    }
-
-    const jobData = {
-      cid,
-      userId: currentUser.sub,
-      csvFilePath: csvFile.path,
-    };
-    this.propertyQueue.addCsvValidationJob(jobData);
-    return {
-      data: null,
-      success: true,
-      message: 'CSV validation process started.',
-    };
-  }
-
-  async createPropertiesFromCsv(
+  async addPropertiesFromCsv(
     cid: string,
     csvFilePath: string,
     actorId: string
@@ -254,22 +222,6 @@ export class PropertyService {
     return { success: true, data: updatedProperty, message: 'Property updated successfully' };
   }
 
-  async processCsv(cid: string, filePath: string, userId: string): Promise<CsvProcessReturnData> {
-    if (!filePath) {
-      throw new BadRequestError({ message: 'No CSV file path provided.' });
-    }
-
-    const result = await this.propertyCsvProcessor.validateCsv(filePath, {
-      cid,
-      userId,
-    });
-
-    return {
-      data: result.validProperties,
-      errors: result.errors,
-    };
-  }
-
   async createProperties(
     data: CsvProcessReturnData,
     csvFilePath: string
@@ -324,5 +276,63 @@ export class PropertyService {
       return { success: false, data: [], error: 'Unable to create properties from CSV.' };
       // throw new BadRequestError({ message: 'Unable to create properties from CSV.' });
     }
+  }
+
+  async validateCsv(
+    cid: string,
+    csvFile: ExtractedMediaFile,
+    currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData> {
+    if (!csvFile) {
+      throw new BadRequestError({ message: 'No CSV file uploaded' });
+    }
+
+    const client = await this.clientDAO.getClientByCid(cid);
+    if (!client) {
+      this.log.error(`Client with cid ${cid} not found`);
+      throw new BadRequestError({ message: 'Unable to validate csv for this account.' });
+    }
+
+    if (csvFile.fileSize > 10 * 1024 * 1024) {
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+      throw new BadRequestError({ message: 'File size to large for processing.' });
+    }
+
+    const jobData = {
+      cid,
+      userId: currentUser.sub,
+      csvFilePath: csvFile.path,
+    };
+    this.propertyQueue.addCsvValidationJob(jobData);
+    return {
+      data: null,
+      success: true,
+      message: 'CSV validation process started.',
+    };
+  }
+
+  async getClientProperties(cid: string, paginationData: IPaginationQuery) {
+    if (!cid) {
+      throw new BadRequestError({ message: 'Client ID is required.' });
+    }
+
+    const client = await this.clientDAO.getClientByCid(cid);
+    if (!client) {
+      this.log.error(`Client with cid ${cid} not found`);
+      throw new BadRequestError({ message: 'Unable to get properties for this account.' });
+    }
+
+    const filter = {};
+    const opts = {
+      projection: '-computedLocation',
+      skip: paginationData.skip ?? 0,
+      limit: paginationData.limit ?? 10,
+      sort: paginationData.sort,
+    };
+    const properties = await this.propertyDAO.getPropertiesByClientId(cid, filter, opts);
+    return {
+      success: true,
+      ...properties,
+    };
   }
 }

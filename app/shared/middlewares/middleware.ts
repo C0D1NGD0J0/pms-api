@@ -1,12 +1,14 @@
 import { container } from '@di/index';
 import ProfileDAO from '@dao/profileDAO';
+import slowDown from 'express-slow-down';
+import rateLimit from 'express-rate-limit';
 import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
 import { TokenType } from '@interfaces/utils.interface';
 import { NextFunction, Response, Request } from 'express';
 import { ICurrentUser, EventTypes } from '@interfaces/index';
-import { extractMulterFiles, JWT_KEY_NAMES } from '@utils/index';
 import { InvalidRequestError, UnauthorizedError } from '@shared/customErrors';
+import { extractMulterFiles, httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
 import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
 
 interface DIServices {
@@ -126,3 +128,20 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
     next(new InvalidRequestError({ message: 'Error processing uploaded files.' }));
   }
 };
+
+export const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  handler: (_req: Request, res: Response, _next: NextFunction) => {
+    return res
+      .status(httpStatusCodes.RATE_LIMITER)
+      .send('Too many requests, please try again later.');
+  },
+});
+
+export const speedLimiter = slowDown({
+  windowMs: 1 * 60 * 1000, // 1 minutes
+  delayAfter: 30, // Allow 100 requests per 15 minutes, then...
+  delayMs: () => 500, // Begin adding 500ms of delay per request above 100
+});

@@ -2,7 +2,7 @@ import sanitizeHtml from 'sanitize-html';
 import { Response, Request } from 'express';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyService } from '@services/index';
-import { ExtractedMediaFile } from '@interfaces/utils.interface';
+import { ExtractedMediaFile, IPaginationQuery } from '@interfaces/utils.interface';
 
 interface IConstructor {
   propertyService: PropertyService;
@@ -25,11 +25,7 @@ export class PropertyController {
         html: sanitizeHtml(req.body.description?.html || ''),
       },
     };
-    const newProperty = await this.propertyService.createProperty(
-      cid,
-      newPropertyData,
-      currentuser
-    );
+    const newProperty = await this.propertyService.addProperty(cid, newPropertyData, currentuser);
     res.status(httpStatusCodes.OK).json({ success: true, data: newProperty });
   };
 
@@ -58,7 +54,7 @@ export class PropertyController {
       });
     }
     const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
-    const result = await this.propertyService.createPropertiesFromCsv(
+    const result = await this.propertyService.addPropertiesFromCsv(
       cid,
       csvFile.path,
       currentuser.sub
@@ -66,8 +62,18 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  getAllProperties = async (req: Request, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
+  getClientProperties = async (req: Request, res: Response) => {
+    const { page, limit, sort, skip } = req.query;
+    const { cid } = req.params;
+
+    const paginationQuery: IPaginationQuery = {
+      page: page ? parseInt(page as string, 10) : 1,
+      limit: limit ? parseInt(limit as string, 10) : 10,
+      sort: sort as string,
+      skip: skip ? parseInt(skip as string, 10) : 5,
+    };
+    const data = await this.propertyService.getClientProperties(cid, paginationQuery);
+    res.status(httpStatusCodes.OK).json(data);
   };
 
   getPropertyUnits = async (req: Request, res: Response) => {

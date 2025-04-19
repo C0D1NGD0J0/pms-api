@@ -188,7 +188,6 @@ export class PropertyService {
       userId: currentUser.sub,
       csvFilePath: csvFile.path,
     };
-
     this.propertyQueue.addCsvValidationJob(jobData);
     return {
       data: null,

@@ -1,46 +1,50 @@
 import { Job } from 'bull';
 import Logger from 'bunyan';
-import { ClientDAO } from '@dao/index';
 import { createLogger } from '@utils/index';
-import { CsvJobData } from '@interfaces/index';
+import { PropertyDAO, ClientDAO } from '@dao/index';
 import { PropertyCsvProcessor } from '@services/csv';
-import { PropertyService } from '@services/property';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { CsvProcessReturnData, CsvJobData } from '@interfaces/index';
 
 interface IConstructor {
   propertyCsvProcessor: PropertyCsvProcessor;
   emitterService: EventEmitterService;
-  propertyService: PropertyService;
+  propertyDAO: PropertyDAO;
   clientDAO: ClientDAO;
 }
 
 export class PropertyWorker {
   log: Logger;
   private readonly clientDAO: ClientDAO;
-  private readonly propertyService: PropertyService;
+  private readonly propertyDAO: PropertyDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly propertyCsvProcessor: PropertyCsvProcessor;
 
-  constructor({ propertyService, clientDAO, emitterService }: IConstructor) {
+  constructor({ propertyDAO, clientDAO, emitterService, propertyCsvProcessor }: IConstructor) {
     this.clientDAO = clientDAO;
-    this.propertyService = propertyService;
+    this.propertyDAO = propertyDAO;
     this.emitterService = emitterService;
     this.log = createLogger('PropertyWorker');
+    this.propertyCsvProcessor = propertyCsvProcessor;
   }
 
   processCsvValidation = async (job: Job<CsvJobData>) => {
+    job.progress(10);
     const { csvFilePath, cid, userId } = job.data;
     this.log.info(`Processing CSV validation job ${job.id} for client ${cid}`);
-    job.progress(10);
 
     try {
       job.progress(30);
-      const result = await this.propertyService.processCsv(cid, csvFilePath, userId);
+      const result = await this.propertyCsvProcessor.validateCsv(csvFilePath, {
+        cid,
+        userId,
+      });
 
       job.progress(100);
 
       return {
-        validCount: result.data.length,
+        validCount: result.validProperties.length,
         errorCount: result.errors ? result.errors.length : 0,
         errors: result.errors,
         success: true,
@@ -58,10 +62,13 @@ export class PropertyWorker {
     this.log.info(`Processing CSV import job ${job.id} for client ${cid}`);
 
     try {
-      const csvResult = await this.propertyService.processCsv(cid, csvFilePath, userId);
+      const csvResult = await this.propertyCsvProcessor.validateCsv(csvFilePath, {
+        cid,
+        userId,
+      });
       job.progress(50);
 
-      if (!csvResult.data.length) {
+      if (!csvResult.validProperties.length) {
         // instead of returning, sending notification to user. 'CREATE NOTIFICATION SYSTEM' later
         this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
         return {
@@ -70,16 +77,46 @@ export class PropertyWorker {
           message: 'No valid properties found in CSV',
         };
       }
-      const insertResponse = await this.propertyService.createProperties(csvResult, csvFilePath);
+
+      let properties = [];
+      const session = await this.propertyDAO.startSession();
+      const propertiesResult = await this.propertyDAO.withTransaction(session, async (session) => {
+        const batchSize = 20;
+        let batchCounter = 0;
+        const batches = [];
+        properties = [];
+
+        for (let i = 0; i < csvResult.validProperties.length; i += batchSize) {
+          const batch = csvResult.validProperties.slice(i, i + batchSize);
+          batches.push(batch);
+        }
+
+        for (const batch of batches) {
+          const batchProperties = await this.propertyDAO.insertMany(batch, session);
+          properties.push(...batchProperties);
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          batchCounter++;
+        }
+
+        return { properties };
+      });
+
+      const returnResult = {
+        data: propertiesResult.properties,
+        errors: null,
+        message: csvResult.errors?.length
+          ? 'Properties imported with some errors'
+          : 'All properties imported successfully',
+      } as CsvProcessReturnData & { message: string };
+
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
       job.progress(100);
 
       return {
         success: true,
-        count: insertResponse.data.length,
-        errors: csvResult.errors,
-        message: csvResult.errors?.length
-          ? 'Properties imported with some errors'
-          : 'All properties imported successfully',
+        data: returnResult.data,
+        message: returnResult.message,
+        ...(returnResult.errors ? { errors: returnResult.errors } : null),
       };
     } catch (error) {
       this.log.error(`Error processing CSV import job ${job.id}:`, error);

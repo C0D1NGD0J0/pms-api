@@ -161,13 +161,10 @@ export function setAuthCookies(
 export function hashGenerator(hashOpts: {
   byteLength?: number;
   algorithm?: string;
-  usenano?: boolean;
+  _usenano?: boolean;
 }): string {
   try {
     const { byteLength = 16, algorithm = 'sha256' } = hashOpts;
-    // if (usenano) {
-    //   return nanoid(10);
-    // }
     const token = crypto.randomBytes(byteLength).toString('hex');
     return crypto.createHash(algorithm).update(token).digest('hex');
   } catch (error) {

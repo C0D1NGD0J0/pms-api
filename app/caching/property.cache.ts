@@ -1,5 +1,6 @@
-import { ISuccessReturnData } from '@interfaces/utils.interface';
+import { IProperty } from '@interfaces/property.interface';
 import { convertTimeToSecondsAndMilliseconds } from '@utils/index';
+import { ISuccessReturnData, IPaginationQuery } from '@interfaces/utils.interface';
 
 import { BaseCache } from './base.cache';
 
@@ -18,8 +19,8 @@ export class PropertyCache extends BaseCache {
       console.info('PropertyCache connected to Redis');
     });
 
-    this.PROPERTY_CACHE_TTL = convertTimeToSecondsAndMilliseconds('10m').seconds;
-    this.LIST_CACHE_TTL = convertTimeToSecondsAndMilliseconds('30m').seconds;
+    this.PROPERTY_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;
+    this.LIST_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;
   }
 
   private async initializeClient() {
@@ -110,24 +111,48 @@ export class PropertyCache extends BaseCache {
    * @param limit - Items per page
    * @param propertyList - Array of property data
    */
-  async cachePropertyList(
+  async saveClientProperties(
     cid: string,
-    listKey: string,
-    page: number,
-    limit: number,
-    propertyList: any[]
+    propertyList: IProperty[],
+    pagination: IPaginationQuery
   ): Promise<ISuccessReturnData> {
     try {
-      if (!cid || !listKey || !propertyList) {
+      if (!cid || !propertyList) {
         return {
           data: null,
           success: false,
           error: 'Invalid client ID, list key, or property list',
         };
       }
+      const listKey = this.generateListKeyFromPagination(pagination);
+      const key = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}:${listKey}`;
 
-      const key = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}:${listKey}:${page}:${limit}`;
-      return await this.setItem(key, JSON.stringify(propertyList), this.LIST_CACHE_TTL);
+      await this.deleteItems([key]);
+      const multi = this.client.multi();
+
+      for (const property of propertyList) {
+        multi.RPUSH(key, this.serialize(property));
+      }
+
+      const metaKey = `${key}:meta`;
+      await this.setObject(
+        metaKey,
+        {
+          total: propertyList.length,
+          lastUpdated: Date.now(),
+          listKey,
+          cid,
+        },
+        this.LIST_CACHE_TTL
+      );
+
+      multi.EXPIRE(key, this.LIST_CACHE_TTL);
+      await multi.exec();
+
+      return {
+        data: { count: propertyList.length },
+        success: true,
+      };
     } catch (error) {
       this.log.error('Failed to cache property list:', error);
       return {
@@ -145,24 +170,46 @@ export class PropertyCache extends BaseCache {
    * @param page - Page number
    * @param limit - Items per page
    */
-  async getPropertyList(
+  async getClientProperties(
     cid: string,
-    listKey: string,
-    page: number,
-    limit: number
-  ): Promise<ISuccessReturnData<any[] | null>> {
+    pagination: IPaginationQuery
+  ): Promise<ISuccessReturnData<any>> {
     try {
-      if (!cid || !listKey) {
+      if (!cid || !pagination) {
         return {
           success: false,
           data: null,
           error: 'Client ID and list key are required',
         };
       }
+      const listKey = this.generateListKeyFromPagination(pagination);
+      const key = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}:${listKey}`;
 
-      const key = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}:${listKey}:${page}:${limit}`;
-      const result = await this.getItem<any[]>(key);
-      return result as ISuccessReturnData<any[] | null>;
+      const listResult = await this.getListRange(key, 0, -1);
+      if (!listResult.success || !listResult.data || listResult.data.length === 0) {
+        return {
+          data: null,
+          success: false,
+          error: 'No cached properties found',
+        };
+      }
+
+      // get metadata for pagination info
+      const metaKey = `${key}:meta`;
+      const metaResult = await this.getObject<{ total: number }>(metaKey);
+      const total = metaResult.success ? metaResult.data.total : listResult.data.length;
+
+      return {
+        success: true,
+        data: {
+          properties: listResult.data,
+          pagination: {
+            page: pagination.page,
+            limit: pagination.limit,
+            total,
+          },
+        },
+      };
     } catch (error) {
       this.log.error('Failed to get property list from cache:', error);
       return {
@@ -282,5 +329,10 @@ export class PropertyCache extends BaseCache {
         error: (error as Error).message,
       };
     }
+  }
+
+  private generateListKeyFromPagination(pagination: IPaginationQuery): string {
+    const pstring = this.hashData(pagination);
+    return `q:${pstring}`;
   }
 }

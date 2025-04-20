@@ -325,11 +325,21 @@ export class PropertyService {
     const filter = {};
     const opts = {
       projection: '-computedLocation',
+      page: paginationData.page ?? 1,
       skip: paginationData.skip ?? 0,
       limit: paginationData.limit ?? 10,
       sort: paginationData.sort,
     };
+    const cachedResult = await this.propertyCache.getClientProperties(cid, opts);
+    if (cachedResult.success && cachedResult.data) {
+      return {
+        success: true,
+        ...cachedResult.data,
+      };
+    }
+
     const properties = await this.propertyDAO.getPropertiesByClientId(cid, filter, opts);
+    await this.propertyCache.saveClientProperties(cid, properties.data, paginationData);
     return {
       success: true,
       ...properties,

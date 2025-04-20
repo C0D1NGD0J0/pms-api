@@ -11,7 +11,7 @@ import { IProperty } from '@interfaces/property.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { IInvalidCsvProperty } from '@interfaces/csv.interface';
-import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
+import { InvalidRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
   CsvProcessReturnData,
   ExtractedMediaFile,
@@ -344,5 +344,32 @@ export class PropertyService {
       success: true,
       ...properties,
     };
+  }
+
+  async getClientProperty(
+    cid: string,
+    propertyId: string,
+    _currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData> {
+    if (!cid || !propertyId) {
+      throw new BadRequestError({ message: 'Client ID and Property ID are required.' });
+    }
+
+    const client = await this.clientDAO.getClientByCid(cid);
+    if (!client) {
+      this.log.error(`Client with cid ${cid} not found`);
+      throw new BadRequestError({ message: 'Unable to get properties for this account.' });
+    }
+
+    const property = await this.propertyDAO.findFirst({
+      _id: propertyId,
+      cid,
+      deletedAt: null,
+    });
+    if (!property) {
+      throw new NotFoundError({ message: 'Unable to find property.' });
+    }
+
+    return { success: true, data: property };
   }
 }

@@ -73,4 +73,48 @@ router.get(
   })
 );
 
+router.put(
+  '/:cid/:propertyId',
+  validateRequest({
+    params: PropertyValidations.validatePropertyAndClientIds,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.updateProperty(req, res);
+  })
+);
+
+router.patch(
+  '/:cid/:propertyId/add_property_media',
+  validateRequest({
+    params: PropertyValidations.validatePropertyAndClientIds,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.addMediaToProperty(req, res);
+  })
+);
+
+router.patch(
+  '/:cid/:propertyId/remove_property_media',
+  validateRequest({
+    params: PropertyValidations.validatePropertyAndClientIds,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.deleteMediaFromProperty(req, res);
+  })
+);
+
+router.delete(
+  '/:cid/:propertyId',
+  validateRequest({
+    params: PropertyValidations.validatePropertyAndClientIds,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.achiveProperty(req, res);
+  })
+);
+
 export default router;

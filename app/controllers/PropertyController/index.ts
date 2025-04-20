@@ -81,7 +81,11 @@ export class PropertyController {
   };
 
   getProperty = async (req: Request, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
+    const { cid, propertyId } = req.params;
+    const currentuser = req.currentuser!;
+
+    const data = await this.propertyService.getClientProperty(cid, propertyId, currentuser);
+    res.status(httpStatusCodes.OK).json(data);
   };
 
   updateProperty = async (req: Request, res: Response) => {

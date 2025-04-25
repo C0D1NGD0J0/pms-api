@@ -295,7 +295,7 @@ export class PropertyService {
 
     if (csvFile.fileSize > 10 * 1024 * 1024) {
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
-      throw new BadRequestError({ message: 'File size to large for processing.' });
+      throw new BadRequestError({ message: 'File size too large for processing.' });
     }
 
     const jobData = {

@@ -2,7 +2,8 @@ import sanitizeHtml from 'sanitize-html';
 import { Response, Request } from 'express';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyService } from '@services/index';
-import { ExtractedMediaFile } from '@interfaces/utils.interface';
+import propertyFormMeta from '@shared/constants/propertyFormMeta.json';
+import { ExtractedMediaFile, IPaginationQuery } from '@interfaces/utils.interface';
 
 interface IConstructor {
   propertyService: PropertyService;
@@ -25,11 +26,7 @@ export class PropertyController {
         html: sanitizeHtml(req.body.description?.html || ''),
       },
     };
-    const newProperty = await this.propertyService.createProperty(
-      cid,
-      newPropertyData,
-      currentuser
-    );
+    const newProperty = await this.propertyService.addProperty(cid, newPropertyData, currentuser);
     res.status(httpStatusCodes.OK).json({ success: true, data: newProperty });
   };
 
@@ -58,7 +55,7 @@ export class PropertyController {
       });
     }
     const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
-    const result = await this.propertyService.createPropertiesFromCsv(
+    const result = await this.propertyService.addPropertiesFromCsv(
       cid,
       csvFile.path,
       currentuser.sub
@@ -66,23 +63,49 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  getAllProperties = async (req: Request, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
+  getClientProperties = async (req: Request, res: Response) => {
+    const { page, limit, sort, skip } = req.query;
+    const { cid } = req.params;
+
+    const paginationQuery: IPaginationQuery = {
+      page: page ? parseInt(page as string, 10) : 1,
+      limit: limit ? parseInt(limit as string, 10) : 10,
+      sort: sort as string,
+      skip: skip ? parseInt(skip as string, 10) : 0,
+    };
+    const data = await this.propertyService.getClientProperties(cid, paginationQuery);
+    res.status(httpStatusCodes.OK).json(data);
   };
 
   getPropertyUnits = async (req: Request, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
+  getFormattedAddress = async (req: Request, res: Response) => {
+    const currentuser = req.currentuser!;
+    if (!req.body.address) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: 'No address provided',
+      });
+    }
+    const data = await this.propertyService.getFormattedAddress(req.body, currentuser);
+    res.status(httpStatusCodes.OK).json(data);
+  };
+
   getProperty = async (req: Request, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
+    const { cid, pid } = req.params;
+    const currentuser = req.currentuser!;
+
+    const data = await this.propertyService.getClientProperty(cid, pid, currentuser);
+    res.status(httpStatusCodes.OK).json(data);
   };
 
   updateProperty = async (req: Request, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  achiveProperty = async (req: Request, res: Response) => {
+  archiveProperty = async (req: Request, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
@@ -112,5 +135,12 @@ export class PropertyController {
 
   restorArchivedProperty = async (req: Request, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
+  };
+
+  getPropertyFormMetadata = async (req: Request, res: Response) => {
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: propertyFormMeta,
+    });
   };
 }

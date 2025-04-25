@@ -1,5 +1,5 @@
-import { JOB_NAME } from '@utils/index';
 import { CsvJobData } from '@interfaces/index';
+import { QUEUE_NAMES, JOB_NAME } from '@utils/index';
 import { PropertyWorker } from '@workers/property.worker';
 
 import { BaseQueue } from './base.queue';
@@ -12,9 +12,10 @@ export class PropertyQueue extends BaseQueue {
   private readonly propertyWorker: PropertyWorker;
 
   constructor({ propertyWorker }: IConstructor) {
-    super('propertyQueue');
+    super(QUEUE_NAMES.PROPERTY_QUEUE);
     this.propertyWorker = propertyWorker;
-    this.processJobs();
+    this.processQueueJobs(JOB_NAME.CSV_VALIDATION_JOB, 2, this.propertyWorker.processCsvValidation);
+    this.processQueueJobs(JOB_NAME.CSV_IMPORT_JOB, 1, this.propertyWorker.processCsvImport);
   }
 
   async addCsvValidationJob(data: CsvJobData) {
@@ -25,10 +26,5 @@ export class PropertyQueue extends BaseQueue {
   async addCsvImportJob(data: CsvJobData) {
     const jobId = await this.addJobToQueue(JOB_NAME.CSV_IMPORT_JOB, data);
     return jobId;
-  }
-
-  private processJobs() {
-    this.processQueueJobs(JOB_NAME.CSV_VALIDATION_JOB, 2, this.propertyWorker.processCsvValidation);
-    this.processQueueJobs(JOB_NAME.CSV_IMPORT_JOB, 1, this.propertyWorker.processCsvImport);
   }
 }

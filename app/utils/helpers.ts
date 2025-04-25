@@ -151,23 +151,20 @@ export function setAuthCookies(
 /**
  * Generates a random hash string using SHA-256
  * @param opts - {
-      byteLength?: number;
-      algorithm?: 'sha256' | 'sha512' | 'md5';
-      usenano?: boolean;
-    }
+  byteLength?: number;
+  algorithm?: 'sha256' | 'sha512' | 'md5';
+  usenano?: boolean;
+}
  * @returns A hexadecimal string representation of the hash
  * @throws Error if crypto operations fail
  */
 export function hashGenerator(hashOpts: {
   byteLength?: number;
   algorithm?: string;
-  usenano?: boolean;
+  _usenano?: boolean;
 }): string {
   try {
     const { byteLength = 16, algorithm = 'sha256' } = hashOpts;
-    // if (usenano) {
-    //   return nanoid(10);
-    // }
     const token = crypto.randomBytes(byteLength).toString('hex');
     return crypto.createHash(algorithm).update(token).digest('hex');
   } catch (error) {

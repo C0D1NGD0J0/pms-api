@@ -26,8 +26,7 @@ export type JobData = any;
 
 export let serverAdapter: ExpressAdapter;
 const bullMQAdapters: BullAdapter[] = [];
-let isBullBoardInitialized = false;
-let deadLetterQueue: Queue.Queue;
+let deadLetterQueue: Queue.Queue | null;
 
 export class BaseQueue<T extends JobData = JobData> {
   protected log: Logger;
@@ -35,16 +34,16 @@ export class BaseQueue<T extends JobData = JobData> {
   protected queue: Queue.Queue;
 
   constructor(queueName: string) {
-    this.log = createLogger('BaseQueue');
+    this.log = createLogger(queueName);
     this.queue = new Queue(queueName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
     if (!deadLetterQueue) {
       const dlqName = `${queueName}-DLQ`;
-      deadLetterQueue = new Queue(dlqName, envVariables.REDIS.URL);
-      this.log.info('DLQ initialized');
+      deadLetterQueue = new Queue(dlqName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
     }
     this.dlq = deadLetterQueue;
     this.addQueueToBullBoard(this.queue, this.dlq);
     this.initializeQueueEvents();
+    deadLetterQueue = null;
   }
 
   protected initializeQueueEvents(): void {
@@ -122,7 +121,10 @@ export class BaseQueue<T extends JobData = JobData> {
     adaptersToAdd.forEach((q) => {
       bullMQAdapters.push(new BullAdapter(q));
     });
-    initializeBullBoard();
+    createBullBoard({
+      serverAdapter,
+      queues: bullMQAdapters,
+    });
   }
 
   /**
@@ -221,17 +223,5 @@ export class BaseQueue<T extends JobData = JobData> {
       completedOn: job.finishedOn ? new Date(job.finishedOn) : undefined,
       failedReason: job.failedReason,
     };
-  }
-}
-
-function initializeBullBoard() {
-  if (!isBullBoardInitialized) {
-    createBullBoard({
-      serverAdapter,
-      queues: bullMQAdapters,
-    });
-    const log = createLogger('BaseQueue');
-    log.info('BullBoard initialized');
-    isBullBoardInitialized = true;
   }
 }

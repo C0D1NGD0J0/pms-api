@@ -11,11 +11,12 @@ import { IProperty } from '@interfaces/property.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { IInvalidCsvProperty } from '@interfaces/csv.interface';
-import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
+import { InvalidRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
   CsvProcessReturnData,
   ExtractedMediaFile,
   ISuccessReturnData,
+  IPaginationQuery,
   UploadResult,
 } from '@interfaces/utils.interface';
 
@@ -66,7 +67,7 @@ export class PropertyService {
     this.propertyCsvProcessor = propertyCsvProcessor;
   }
 
-  async createProperty(
+  async addProperty(
     cid: string,
     propertyData: { scannedFiles?: ExtractedMediaFile[] } & IProperty,
     currentUser: ICurrentUser
@@ -103,18 +104,18 @@ export class PropertyService {
       }
       propertyData.computedLocation = {
         type: 'Point',
-        coordinates: [gCode[0]?.longitude || 200, gCode[0]?.latitude || 201],
+        coordinates: gCode.coordinates,
         address: {
-          city: gCode[0].city,
-          state: gCode[0].state,
-          country: gCode[0].country,
-          postCode: gCode[0].zipcode,
-          street: gCode[0].streetName,
-          streetNumber: gCode[0].streetNumber,
+          city: gCode.city,
+          state: gCode.state,
+          country: gCode.country,
+          postCode: gCode.postCode,
+          street: gCode.street,
+          streetNumber: gCode.streetNumber,
         },
-        latAndlon: `${gCode[0].longitude || 200} ${gCode[0].latitude || 201}`,
+        latAndlon: gCode.latAndlon,
       };
-      propertyData.address = gCode[0]?.formattedAddress || '';
+      propertyData.address = gCode.formattedAddress || '';
       propertyData.createdBy = new Types.ObjectId(currentUser.sub);
       propertyData.managedBy = propertyData.managedBy
         ? new Types.ObjectId(propertyData.managedBy)
@@ -163,40 +164,7 @@ export class PropertyService {
     return { success: true, data: result.property, message: 'Property created successfully' };
   }
 
-  async validateCsv(
-    cid: string,
-    csvFile: ExtractedMediaFile,
-    currentUser: ICurrentUser
-  ): Promise<ISuccessReturnData> {
-    if (!csvFile) {
-      throw new BadRequestError({ message: 'No CSV file uploaded' });
-    }
-
-    const client = await this.clientDAO.getClientByCid(cid);
-    if (!client) {
-      this.log.error(`Client with cid ${cid} not found`);
-      throw new BadRequestError({ message: 'Unable to validate csv for this account.' });
-    }
-
-    if (csvFile.fileSize > 10 * 1024 * 1024) {
-      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
-      throw new BadRequestError({ message: 'File size to large for processing.' });
-    }
-
-    const jobData = {
-      cid,
-      userId: currentUser.sub,
-      csvFilePath: csvFile.path,
-    };
-    this.propertyQueue.addCsvValidationJob(jobData);
-    return {
-      data: null,
-      success: true,
-      message: 'CSV validation process started.',
-    };
-  }
-
-  async createPropertiesFromCsv(
+  async addPropertiesFromCsv(
     cid: string,
     csvFilePath: string,
     actorId: string
@@ -216,10 +184,10 @@ export class PropertyService {
       userId: actorId,
     };
 
-    await this.propertyQueue.addCsvImportJob(jobData);
+    const job = await this.propertyQueue.addCsvImportJob(jobData);
     return {
       success: true,
-      data: null,
+      data: { processId: job.id },
       message: 'CSV import job started',
     };
   }
@@ -252,22 +220,6 @@ export class PropertyService {
     }
 
     return { success: true, data: updatedProperty, message: 'Property updated successfully' };
-  }
-
-  async processCsv(cid: string, filePath: string, userId: string): Promise<CsvProcessReturnData> {
-    if (!filePath) {
-      throw new BadRequestError({ message: 'No CSV file path provided.' });
-    }
-
-    const result = await this.propertyCsvProcessor.validateCsv(filePath, {
-      cid,
-      userId,
-    });
-
-    return {
-      data: result.validProperties,
-      errors: result.errors,
-    };
   }
 
   async createProperties(
@@ -324,5 +276,116 @@ export class PropertyService {
       return { success: false, data: [], error: 'Unable to create properties from CSV.' };
       // throw new BadRequestError({ message: 'Unable to create properties from CSV.' });
     }
+  }
+
+  async validateCsv(
+    cid: string,
+    csvFile: ExtractedMediaFile,
+    currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData> {
+    if (!csvFile) {
+      throw new BadRequestError({ message: 'No CSV file uploaded' });
+    }
+
+    const client = await this.clientDAO.getClientByCid(cid);
+    if (!client) {
+      this.log.error(`Client with cid ${cid} not found`);
+      throw new BadRequestError({ message: 'Unable to validate csv for this account.' });
+    }
+
+    if (csvFile.fileSize > 10 * 1024 * 1024) {
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+      throw new BadRequestError({ message: 'File size too large for processing.' });
+    }
+
+    const jobData = {
+      cid,
+      userId: currentUser.sub,
+      csvFilePath: csvFile.path,
+    };
+    const job = await this.propertyQueue.addCsvValidationJob(jobData);
+    return {
+      success: true,
+      data: { processId: job.id },
+      message: 'CSV validation process started.',
+    };
+  }
+
+  async getClientProperties(cid: string, paginationData: IPaginationQuery) {
+    if (!cid) {
+      throw new BadRequestError({ message: 'Client ID is required.' });
+    }
+
+    const client = await this.clientDAO.getClientByCid(cid);
+    if (!client) {
+      this.log.error(`Client with cid ${cid} not found`);
+      throw new BadRequestError({ message: 'Unable to get properties for this account.' });
+    }
+
+    const filter = {};
+    const opts = {
+      projection: '-computedLocation',
+      page: paginationData.page ?? 1,
+      skip: paginationData.skip ?? 0,
+      limit: paginationData.limit ?? 10,
+      sort: paginationData.sort,
+    };
+    const cachedResult = await this.propertyCache.getClientProperties(cid, opts);
+    if (cachedResult.success && cachedResult.data) {
+      return {
+        success: true,
+        ...cachedResult.data,
+      };
+    }
+
+    const properties = await this.propertyDAO.getPropertiesByClientId(cid, filter, opts);
+    await this.propertyCache.saveClientProperties(cid, properties.data, paginationData);
+    return {
+      success: true,
+      ...properties,
+    };
+  }
+
+  async getClientProperty(
+    cid: string,
+    pid: string,
+    _currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData> {
+    if (!cid || !pid) {
+      throw new BadRequestError({ message: 'Client ID and Property ID are required.' });
+    }
+
+    const client = await this.clientDAO.getClientByCid(cid);
+    if (!client) {
+      this.log.error(`Client with cid ${cid} not found`);
+      throw new BadRequestError({ message: 'Unable to get properties for this account.' });
+    }
+
+    const property = await this.propertyDAO.findFirst({
+      pid,
+      cid,
+      deletedAt: null,
+    });
+    if (!property) {
+      throw new NotFoundError({ message: 'Unable to find property.' });
+    }
+
+    return { success: true, data: property };
+  }
+
+  async getFormattedAddress(
+    data: { address: string },
+    _currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData> {
+    if (!data.address) {
+      throw new BadRequestError({ message: 'Address is required.' });
+    }
+
+    const gCode = await this.geoCoderService.parseLocation(data.address);
+    if (!gCode) {
+      throw new BadRequestError({ message: 'Invalid location provided.' });
+    }
+
+    return { success: true, data: gCode };
   }
 }

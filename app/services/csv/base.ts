@@ -12,6 +12,8 @@ export class BaseCSVProcessorService {
     options: ICsvProcessorOptions<T, C>
   ): Promise<{
     validItems: T[];
+    finishedAt: Date;
+    totalRows: number;
     errors: null | ICsvProcessingError[];
   }> {
     const results: T[] = [];
@@ -39,7 +41,6 @@ export class BaseCSVProcessorService {
         strict: false, // manually handle empty field so we can add null value
       })
     );
-
     try {
       for await (const row of stream) {
         const rowColumnCount = Object.keys(row).length;
@@ -101,6 +102,8 @@ export class BaseCSVProcessorService {
 
         return {
           validItems: postProcessResult.validItems,
+          finishedAt: new Date(),
+          totalRows: rowNumber - 1,
           errors: invalidItems.length ? invalidItems : null,
         };
       }
@@ -112,6 +115,8 @@ export class BaseCSVProcessorService {
 
       return {
         validItems: results,
+        finishedAt: new Date(),
+        totalRows: rowNumber - 1,
         errors: invalidItems.length ? invalidItems : null,
       };
     } catch (streamError: any) {

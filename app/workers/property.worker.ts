@@ -1,5 +1,5 @@
-import { Job } from 'bull';
 import Logger from 'bunyan';
+import { DoneCallback, Job } from 'bull';
 import { createLogger } from '@utils/index';
 import { PropertyDAO, ClientDAO } from '@dao/index';
 import { PropertyCsvProcessor } from '@services/csv';
@@ -29,7 +29,7 @@ export class PropertyWorker {
     this.propertyCsvProcessor = propertyCsvProcessor;
   }
 
-  processCsvValidation = async (job: Job<CsvJobData>) => {
+  processCsvValidation = async (job: Job<CsvJobData>, done: DoneCallback) => {
     job.progress(10);
     const { csvFilePath, cid, userId } = job.data;
     this.log.info(`Processing CSV validation job ${job.id} for client ${cid}`);
@@ -40,22 +40,22 @@ export class PropertyWorker {
         cid,
         userId,
       });
-
       job.progress(100);
-
-      return {
+      done(null, {
+        processId: job.id,
         validCount: result.validProperties.length,
         errorCount: result.errors ? result.errors.length : 0,
         errors: result.errors,
         success: true,
-      };
+      });
+      this.log.info(`Done processing CSV validation job ${job.id} for client ${cid}`);
     } catch (error) {
       this.log.error(`Error processing CSV validation job ${job.id}:`, error);
-      throw error;
+      done(error, null);
     }
   };
 
-  processCsvImport = async (job: Job<CsvJobData>) => {
+  processCsvImport = async (job: Job<CsvJobData>, done: DoneCallback) => {
     const { csvFilePath, cid, userId } = job.data;
 
     job.progress(10);
@@ -71,27 +71,24 @@ export class PropertyWorker {
       if (!csvResult.validProperties.length) {
         // instead of returning, sending notification to user. 'CREATE NOTIFICATION SYSTEM' later
         this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
-        return {
+        done(null, {
           success: false,
+          processId: job.id,
+          data: null,
+          finishedAt: new Date(),
           errors: csvResult.errors,
           message: 'No valid properties found in CSV',
-        };
+        });
       }
 
-      let properties = [];
+      const properties: any[] = [];
       const session = await this.propertyDAO.startSession();
       const propertiesResult = await this.propertyDAO.withTransaction(session, async (session) => {
         const batchSize = 20;
         let batchCounter = 0;
-        const batches = [];
-        properties = [];
 
         for (let i = 0; i < csvResult.validProperties.length; i += batchSize) {
           const batch = csvResult.validProperties.slice(i, i + batchSize);
-          batches.push(batch);
-        }
-
-        for (const batch of batches) {
           const batchProperties = await this.propertyDAO.insertMany(batch, session);
           properties.push(...batchProperties);
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -112,15 +109,20 @@ export class PropertyWorker {
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
       job.progress(100);
 
-      return {
+      done(null, {
         success: true,
-        data: returnResult.data,
+        processId: job.id,
+        data: {
+          totalInserted: returnResult.data.length,
+          validRecord: csvResult.validProperties.length,
+        },
+        finishedAt: new Date(),
         message: returnResult.message,
         ...(returnResult.errors ? { errors: returnResult.errors } : null),
-      };
+      });
     } catch (error) {
       this.log.error(`Error processing CSV import job ${job.id}:`, error);
-      throw error;
+      done(error, null);
     }
   };
 }

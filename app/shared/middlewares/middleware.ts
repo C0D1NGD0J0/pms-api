@@ -1,12 +1,14 @@
 import { container } from '@di/index';
 import ProfileDAO from '@dao/profileDAO';
+import slowDown from 'express-slow-down';
+import rateLimit from 'express-rate-limit';
 import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
-import { TokenType } from '@interfaces/utils.interface';
 import { NextFunction, Response, Request } from 'express';
 import { ICurrentUser, EventTypes } from '@interfaces/index';
-import { extractMulterFiles, JWT_KEY_NAMES } from '@utils/index';
+import { RateLimitOptions, TokenType } from '@interfaces/utils.interface';
 import { InvalidRequestError, UnauthorizedError } from '@shared/customErrors';
+import { extractMulterFiles, httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
 import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
 
 interface DIServices {
@@ -125,4 +127,57 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
     }
     next(new InvalidRequestError({ message: 'Error processing uploaded files.' }));
   }
+};
+
+export const routeLimiter = (options: RateLimitOptions = {}) => {
+  const defaultOptions: RateLimitOptions = {
+    windowMs: 5 * 60 * 1000, // 15 minutes
+    max: 20,
+    delayAfter: 10,
+    delayMs: () => 500,
+    message: 'Too many requests, please try again later.',
+    enableSpeedLimit: true,
+    enableRateLimit: true,
+  };
+
+  const middlewares: any[] = [];
+  const mergedOptions = { ...defaultOptions, ...options };
+
+  if (mergedOptions.enableRateLimit) {
+    middlewares.push(
+      rateLimit({
+        windowMs: mergedOptions.windowMs,
+        max: mergedOptions.max,
+        standardHeaders: true,
+        handler: (_req, res, _next) => {
+          return res.status(httpStatusCodes.RATE_LIMITER).send(mergedOptions.message);
+        },
+      })
+    );
+  }
+
+  if (mergedOptions.enableSpeedLimit) {
+    middlewares.push(
+      slowDown({
+        windowMs: mergedOptions.windowMs,
+        delayAfter: mergedOptions.delayAfter,
+        delayMs: mergedOptions.delayMs,
+      })
+    );
+  }
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    const applyMiddleware = (index: number) => {
+      if (index >= middlewares.length) {
+        return next();
+      }
+
+      middlewares[index](req, res, (err?: any) => {
+        if (err) return next(err);
+        applyMiddleware(index + 1);
+      });
+    };
+
+    applyMiddleware(0);
+  };
 };

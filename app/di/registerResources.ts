@@ -1,11 +1,11 @@
 import { BaseIO } from '@sockets/index';
 import { MailService } from '@mailer/index';
 import { GeoCoderService } from '@services/external';
-import { asFunction, asValue, asClass } from 'awilix';
 import { ClamScannerService } from '@shared/config/index';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { Property, Profile, Client, User } from '@models/index';
 import { DatabaseService, RedisService } from '@database/index';
+import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { PropertyController, AuthController } from '@controllers/index';
 import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PropertyCsvProcessor } from '@services/csv/propertyCsvProcessor';
@@ -80,6 +80,16 @@ const UtilsResources = {
 
 const SocketIOResources = {
   baseIO: asClass(BaseIO).singleton(),
+};
+export const resolveQueuesOnInit = (container: AwilixContainer) => {
+  container.resolve('emailQueue');
+  container.resolve('uploadQueue');
+  container.resolve('eventBusQueue');
+  container.resolve('propertyQueue');
+
+  container.resolve('emailWorker');
+  container.resolve('uploadWorker');
+  container.resolve('propertyWorker');
 };
 
 export const registerResources = {

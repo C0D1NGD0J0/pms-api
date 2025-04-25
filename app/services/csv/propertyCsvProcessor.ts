@@ -43,6 +43,8 @@ export class PropertyCsvProcessor {
     context: PropertyProcessingContext
   ): Promise<{
     validProperties: IProperty[];
+    totalRows: number;
+    finishedAt: Date;
     errors: null | IInvalidCsvProperty[];
   }> {
     const client = await this.clientDAO.getClientByCid(context.cid);
@@ -62,7 +64,9 @@ export class PropertyCsvProcessor {
 
     return {
       validProperties: result.validItems,
-      errors: result.errors as IInvalidCsvProperty[],
+      totalRows: result.totalRows,
+      finishedAt: new Date(),
+      errors: result.errors,
     };
   }
 
@@ -239,7 +243,7 @@ export class PropertyCsvProcessor {
       try {
         const geoCode = await this.geoCoderService.parseLocation(property.address);
 
-        if (!geoCode || geoCode.length === 0) {
+        if (!geoCode) {
           invalidProperties.push({
             field: 'address',
             error: `Invalid address: ${property.address}`,
@@ -249,19 +253,19 @@ export class PropertyCsvProcessor {
 
         property.computedLocation = {
           type: 'Point',
-          coordinates: [geoCode[0]?.longitude || 0, geoCode[0]?.latitude || 0],
+          coordinates: geoCode.coordinates,
           address: {
-            city: geoCode[0].city,
-            state: geoCode[0].state,
-            country: geoCode[0].country,
-            postCode: geoCode[0].zipcode,
-            street: geoCode[0].streetName,
-            streetNumber: geoCode[0].streetNumber,
+            city: geoCode.city,
+            state: geoCode.state,
+            country: geoCode.country,
+            postCode: geoCode.postCode,
+            street: geoCode.street,
+            streetNumber: geoCode.streetNumber,
           },
-          latAndlon: `${geoCode[0].longitude || 0} ${geoCode[0].latitude || 0}`,
+          latAndlon: geoCode.latAndlon,
         };
 
-        property.address = geoCode[0]?.formattedAddress || property.address;
+        property.address = geoCode.formattedAddress || property.address;
         validProperties.push(property);
       } catch (error) {
         invalidProperties.push({

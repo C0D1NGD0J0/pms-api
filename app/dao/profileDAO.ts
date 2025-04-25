@@ -348,7 +348,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   },
                 },
                 in: {
-                  id: '$$activeClient.cid',
+                  csub: '$$activeClient.cid',
                   displayname: '$$activeClient.displayName',
                   role: { $arrayElemAt: ['$$activeClient.roles', 0] },
                 },

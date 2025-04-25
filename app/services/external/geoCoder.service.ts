@@ -29,7 +29,17 @@ export class GeoCoderService {
    * @returns Promise resolving to geocoding results
    * @throws Error if geocoding fails
    */
-  public async parseLocation(location: string): Promise<Entry[]> {
+  public async parseLocation(location: string): Promise<{
+    street: string;
+    city: string;
+    state: string;
+    country: string;
+    postCode: string;
+    latAndlon: string;
+    streetNumber: string;
+    formattedAddress: string;
+    coordinates: [number, number];
+  } | null> {
     if (!location || typeof location !== 'string') {
       throw new Error('Invalid location: Location must be a non-empty string');
     }
@@ -40,8 +50,7 @@ export class GeoCoderService {
       if (!results || results.length === 0) {
         throw new Error(`No results found for location: ${location}`);
       }
-
-      return results;
+      return this.formatAddress(results[0]);
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Geocoding failed: ${error.message}`);
@@ -100,19 +109,25 @@ export class GeoCoderService {
     state: string;
     country: string;
     postCode: string;
+    latAndlon: string;
     streetNumber: string;
     formattedAddress: string;
     coordinates: [number, number];
-  } {
+  } | null {
+    if (!result) {
+      return null;
+    }
+
     return {
-      street: result.streetName || '',
       city: result.city || '',
-      state: result.administrativeLevels?.level1long || result.state || '',
       country: result.country || '',
       postCode: result.zipcode || '',
+      street: result.streetName || '',
       streetNumber: result.streetNumber || '',
       formattedAddress: result.formattedAddress || '',
       coordinates: [result.longitude || 0, result.latitude || 0],
+      latAndlon: `${result.latitude || 0}, ${result.longitude || 0}`,
+      state: result.administrativeLevels?.level1long || result.state || '',
     };
   }
 }

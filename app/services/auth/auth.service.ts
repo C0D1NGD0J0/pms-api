@@ -182,7 +182,7 @@ export class AuthService {
           isActive: false,
           email: signupData.email,
           password: signupData.password,
-          activationToken: hashGenerator({ usenano: true }),
+          activationToken: hashGenerator({ _usenano: true }),
           activationTokenExpiresAt: dayjs().add(2, 'hour').toDate(),
           cids: [
             {

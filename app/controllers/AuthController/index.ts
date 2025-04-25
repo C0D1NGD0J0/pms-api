@@ -98,11 +98,12 @@ export class AuthController {
   };
 
   logout = async (req: Request, res: Response) => {
-    const token = req.cookies?.[JWT_KEY_NAMES.ACCESS_TOKEN];
+    let token = req.cookies?.[JWT_KEY_NAMES.ACCESS_TOKEN];
+    token = token.split(' ')[1];
     const result = await this.authService.logout(token);
 
-    res.clearCookie(req.cookies?.[JWT_KEY_NAMES.ACCESS_TOKEN], { path: '/' });
-    res.clearCookie(req.cookies?.[JWT_KEY_NAMES.REFRESH_TOKEN], { path: '/api/v1/auth/refresh' });
+    res.clearCookie(JWT_KEY_NAMES.ACCESS_TOKEN, { path: '/' });
+    res.clearCookie(JWT_KEY_NAMES.REFRESH_TOKEN, { path: '/api/v1/auth/refresh' });
     res.status(httpStatusCodes.OK).json(result);
   };
 

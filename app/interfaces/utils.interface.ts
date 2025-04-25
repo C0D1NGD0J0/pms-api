@@ -43,6 +43,19 @@ export enum FileType {
   AUDIO = 'audio',
 }
 
+export interface RateLimitOptions {
+  delayMs?: number | ((numRequests: number) => number); // delay in ms to add
+  enableSpeedLimit?: boolean;
+  enableRateLimit?: boolean;
+
+  // speed limiting params
+  delayAfter?: number; // number of requests before adding delay
+  // rate limiting params
+  windowMs?: number; // time window in milliseconds
+  message?: string; // custom message on rate limit exceeded
+  max?: number; // max requests per window
+}
+
 export interface IAWSFileUploadResponse {
   serverSideEncryption: string | null;
   contentDisposition: string | null;
@@ -146,11 +159,11 @@ export interface IEmailOptions<T> {
   to: string;
   data: T;
 }
-
 export type CsvProcessReturnData = {
   data: IProperty[];
   errors?: IInvalidCsvProperty[] | null;
 };
+
 export type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
 export type ListResultWithPagination<T> = Promise<{

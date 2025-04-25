@@ -12,7 +12,7 @@ export class EmailQueue extends BaseQueue {
   private readonly emailWorker: EmailWorker;
 
   constructor({ emailWorker }: IConstructor) {
-    super(QUEUE_NAMES.ACCOUNT_ACTIVATION_QUEUE);
+    super(QUEUE_NAMES.EMAIL_QUEUE);
     this.emailWorker = emailWorker;
     this.processQueueJobs(JOB_NAME.ACCOUNT_ACTIVATION_JOB, 15, this.emailWorker.sendMail);
   }

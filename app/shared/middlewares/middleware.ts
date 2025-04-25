@@ -1,3 +1,4 @@
+import bunyan from 'bunyan';
 import { container } from '@di/index';
 import ProfileDAO from '@dao/profileDAO';
 import slowDown from 'express-slow-down';
@@ -181,3 +182,34 @@ export const routeLimiter = (options: RateLimitOptions = {}) => {
     applyMiddleware(0);
   };
 };
+
+export const requestLogger =
+  (logger: bunyan) => (req: Request, res: Response, next: NextFunction) => {
+    const start = process.hrtime();
+
+    res.on('finish', () => {
+      const [s, ns] = process.hrtime(start);
+      const timestamp = new Date().toISOString();
+      const duration = (s * 1000 + ns / 1e6).toFixed(2);
+      console.log();
+      const clientInfo = {
+        ip: req.ip || req.socket.remoteAddress,
+        userAgent: req.get('user-agent'),
+        referer: req.get('referer') || '-',
+      };
+
+      logger.trace(
+        {
+          method: req.method,
+          url: req.originalUrl,
+          statusCode: res.statusCode,
+          duration: `${duration}ms`,
+          timestamp,
+          ...clientInfo,
+        },
+        `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms --> ${timestamp}`
+      );
+    });
+
+    next();
+  };

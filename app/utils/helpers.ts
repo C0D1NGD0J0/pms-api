@@ -46,6 +46,9 @@ export function createLogger(name: string) {
         const logRecord = record as LogRecord;
 
         switch (logRecord.level) {
+          case LOG_LEVELS.TRACE:
+            output = color.green.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            break;
           case LOG_LEVELS.ERROR:
           case LOG_LEVELS.FATAL:
             output = color.red.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
@@ -64,7 +67,7 @@ export function createLogger(name: string) {
         }
 
         if (envVariables.SERVER.ENV !== 'production') {
-          return console.log(output);
+          console.log(output);
         }
       } catch (err) {
         console.error('Logging Error:', err);
@@ -86,7 +89,7 @@ export function createLogger(name: string) {
     level: 'debug',
     streams: [
       {
-        level: 'debug',
+        level: 'trace',
         type: 'raw',
         stream,
       },

@@ -104,18 +104,18 @@ export class PropertyService {
       }
       propertyData.computedLocation = {
         type: 'Point',
-        coordinates: [gCode[0]?.longitude || 200, gCode[0]?.latitude || 201],
+        coordinates: gCode.coordinates,
         address: {
-          city: gCode[0].city,
-          state: gCode[0].state,
-          country: gCode[0].country,
-          postCode: gCode[0].zipcode,
-          street: gCode[0].streetName,
-          streetNumber: gCode[0].streetNumber,
+          city: gCode.city,
+          state: gCode.state,
+          country: gCode.country,
+          postCode: gCode.postCode,
+          street: gCode.street,
+          streetNumber: gCode.streetNumber,
         },
-        latAndlon: `${gCode[0].longitude || 200} ${gCode[0].latitude || 201}`,
+        latAndlon: gCode.latAndlon,
       };
-      propertyData.address = gCode[0]?.formattedAddress || '';
+      propertyData.address = gCode.formattedAddress || '';
       propertyData.createdBy = new Types.ObjectId(currentUser.sub);
       propertyData.managedBy = propertyData.managedBy
         ? new Types.ObjectId(propertyData.managedBy)
@@ -184,10 +184,10 @@ export class PropertyService {
       userId: actorId,
     };
 
-    await this.propertyQueue.addCsvImportJob(jobData);
+    const job = await this.propertyQueue.addCsvImportJob(jobData);
     return {
       success: true,
-      data: null,
+      data: { processId: job.id },
       message: 'CSV import job started',
     };
   }
@@ -303,10 +303,10 @@ export class PropertyService {
       userId: currentUser.sub,
       csvFilePath: csvFile.path,
     };
-    this.propertyQueue.addCsvValidationJob(jobData);
+    const job = await this.propertyQueue.addCsvValidationJob(jobData);
     return {
-      data: null,
       success: true,
+      data: { processId: job.id },
       message: 'CSV validation process started.',
     };
   }
@@ -348,10 +348,10 @@ export class PropertyService {
 
   async getClientProperty(
     cid: string,
-    propertyId: string,
+    pid: string,
     _currentUser: ICurrentUser
   ): Promise<ISuccessReturnData> {
-    if (!cid || !propertyId) {
+    if (!cid || !pid) {
       throw new BadRequestError({ message: 'Client ID and Property ID are required.' });
     }
 
@@ -362,7 +362,7 @@ export class PropertyService {
     }
 
     const property = await this.propertyDAO.findFirst({
-      _id: propertyId,
+      pid,
       cid,
       deletedAt: null,
     });
@@ -371,5 +371,21 @@ export class PropertyService {
     }
 
     return { success: true, data: property };
+  }
+
+  async getFormattedAddress(
+    data: { address: string },
+    _currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData> {
+    if (!data.address) {
+      throw new BadRequestError({ message: 'Address is required.' });
+    }
+
+    const gCode = await this.geoCoderService.parseLocation(data.address);
+    if (!gCode) {
+      throw new BadRequestError({ message: 'Invalid location provided.' });
+    }
+
+    return { success: true, data: gCode };
   }
 }

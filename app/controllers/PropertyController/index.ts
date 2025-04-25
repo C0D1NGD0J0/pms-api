@@ -2,6 +2,7 @@ import sanitizeHtml from 'sanitize-html';
 import { Response, Request } from 'express';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyService } from '@services/index';
+import propertyFormMeta from '@shared/constants/propertyFormMeta.json';
 import { ExtractedMediaFile, IPaginationQuery } from '@interfaces/utils.interface';
 
 interface IConstructor {
@@ -80,11 +81,23 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
+  getFormattedAddress = async (req: Request, res: Response) => {
+    const currentuser = req.currentuser!;
+    if (!req.body.address) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: 'No address provided',
+      });
+    }
+    const data = await this.propertyService.getFormattedAddress(req.body, currentuser);
+    res.status(httpStatusCodes.OK).json(data);
+  };
+
   getProperty = async (req: Request, res: Response) => {
-    const { cid, propertyId } = req.params;
+    const { cid, pid } = req.params;
     const currentuser = req.currentuser!;
 
-    const data = await this.propertyService.getClientProperty(cid, propertyId, currentuser);
+    const data = await this.propertyService.getClientProperty(cid, pid, currentuser);
     res.status(httpStatusCodes.OK).json(data);
   };
 
@@ -92,7 +105,7 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  achiveProperty = async (req: Request, res: Response) => {
+  archiveProperty = async (req: Request, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
@@ -122,5 +135,12 @@ export class PropertyController {
 
   restorArchivedProperty = async (req: Request, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
+  };
+
+  getPropertyFormMetadata = async (req: Request, res: Response) => {
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: propertyFormMeta,
+    });
   };
 }

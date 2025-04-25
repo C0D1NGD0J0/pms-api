@@ -73,6 +73,14 @@ const FinancialDetailsSchema = z.object({
     .optional(),
 });
 
+const FeesSchema = z.object({
+  currency: z.enum(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY']).default('USD'),
+  taxAmount: z.number().min(0, 'Tax amount must be a non-negative number').default(0),
+  rentalAmount: z.number().min(0, 'Rental amount must be a non-negative number').default(0),
+  managementFees: z.number().min(0, 'Management fees must be a non-negative number').default(0),
+  securityDeposit: z.number().min(0, 'Security deposit must be a non-negative number').default(0),
+});
+
 const UtilitiesSchema = z.object({
   water: z.boolean().default(false),
   gas: z.boolean().default(false),
@@ -103,10 +111,12 @@ const CommunityAmenitiesSchema = z.object({
   doorman: z.boolean().default(false),
 });
 
-const DocumentPhotoSchema = z.object({
-  url: z.string().url('Invalid URL format for photo'),
-  filename: z.string().optional(),
+const PropertyDocumentSchema = z.object({
+  documentType: z.enum(['deed', 'tax', 'insurance', 'inspection', 'other', 'lease']).optional(),
+  url: z.string().url('Invalid URL format for document'),
   key: z.string().optional(),
+  status: z.enum(['active', 'inactive']).default('active'),
+  externalUrl: z.string().url('Invalid external URL format').optional(),
   uploadedAt: z.coerce
     .date({
       errorMap: (issue, { defaultError }) => ({
@@ -116,13 +126,15 @@ const DocumentPhotoSchema = z.object({
             : defaultError,
       }),
     })
-    .optional(),
+    .default(() => new Date()),
+  uploadedBy: z.string(),
+  description: z.string().max(150, 'Description must be at most 150 characters').optional(),
+  documentName: z.string().max(100, 'Document name must be at most 100 characters').optional(),
 });
 
-const PropertyDocumentSchema = z.object({
-  photos: z.array(DocumentPhotoSchema).optional(),
-  documentType: z.enum(['deed', 'tax', 'insurance', 'inspection', 'other']).optional(),
-  description: z.string().optional(),
+const DescriptionSchema = z.object({
+  text: z.string().max(2000, 'Description text must be at most 2000 characters'),
+  html: z.string().max(2000, 'Description HTML must be at most 2000 characters').optional(),
 });
 
 const CreatePropertySchema = z.object({
@@ -132,7 +144,7 @@ const CreatePropertySchema = z.object({
     .max(100, 'Property name must be at most 100 characters'),
   propertyType: PropertyTypeEnum,
   status: PropertyStatusEnum.default('available'),
-  managedBy: z.string().optional(),
+  managedBy: z.string(),
   yearBuilt: z
     .number()
     .int()
@@ -143,10 +155,13 @@ const CreatePropertySchema = z.object({
     )
     .optional(),
   address: z.string().min(5, 'Address must be at least 5 characters'),
-  description: z.string().max(2000, 'Description must be at most 2000 characters').optional(),
+  description: DescriptionSchema,
   cid: z.string(),
+  occupancyStatus: OccupancyStatusEnum.default('vacant'),
+  occupancyLimit: z.number().int().min(0).max(500).default(0),
   specifications: SpecificationsSchema,
   financialDetails: FinancialDetailsSchema.optional(),
+  fees: FeesSchema,
   utilities: UtilitiesSchema.optional(),
   interiorAmenities: InteriorAmenitiesSchema.optional(),
   communityAmenities: CommunityAmenitiesSchema.optional(),
@@ -217,10 +232,10 @@ export const ValidateCidSchema = z.object({
 });
 
 export const UpdateOccupancySchema = z.object({
-  propertyId: z.string().refine(
-    async (id) => {
+  pid: z.string().refine(
+    async (pid) => {
       const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
-      const property = await propertyDAO.findById(id);
+      const property = await propertyDAO.findFirst({ pid });
       return !!property;
     },
     {
@@ -228,19 +243,19 @@ export const UpdateOccupancySchema = z.object({
     }
   ),
   occupancyStatus: OccupancyStatusEnum,
-  occupancyLimit: z.number().min(0).max(100),
+  occupancyLimit: z.number().min(0).max(500),
 });
 
 const PropertyClientRelationship = z.object({
-  cid: z.string().trim().min(1, 'Client ID is required'),
-  propertyId: z.string().trim().min(1, 'Property ID is required'),
+  cid: z.string().trim().min(10, 'Client ID is required'),
+  pid: z.string().trim().min(10, 'Property ID is required'),
 });
 
 export const PropertyClientRelationshipSchema = PropertyClientRelationship.superRefine(
   async (data, ctx) => {
     const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
     const property = await propertyDAO.findFirst({
-      _id: data.propertyId,
+      pid: data.pid,
       cid: data.cid,
       deletedAt: null,
     });
@@ -267,7 +282,7 @@ export const PropertyCsvSchema = z.object({
   propertyType: PropertyTypeEnum,
   status: PropertyStatusEnum.optional().default('available'),
   occupancyStatus: OccupancyStatusEnum.optional().default('vacant'),
-  occupancyLimit: z.coerce.number().min(0).max(100).optional(),
+  occupancyLimit: z.coerce.number().min(0).max(500).optional(),
   yearBuilt: z.coerce
     .number()
     .int()
@@ -312,6 +327,7 @@ export const PropertyCsvSchema = z.object({
   fees_taxAmount: z.coerce.number().min(0).optional(),
   fees_rentalAmount: z.coerce.number().min(0).optional(),
   fees_managementFees: z.coerce.number().min(0).optional(),
+  fees_securityDeposit: z.coerce.number().min(0).optional(),
   fees_currency: z.enum(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY']).optional().default('USD'),
 
   // Utilities - using boolean validation
@@ -332,6 +348,10 @@ export const PropertyCsvSchema = z.object({
     .optional()
     .transform(BaseCSVProcessorService.parseBoolean),
   utilities_cabletv: z
+    .union([z.boolean(), z.string(), z.number()])
+    .optional()
+    .transform(BaseCSVProcessorService.parseBoolean),
+  utilities_trash: z
     .union([z.boolean(), z.string(), z.number()])
     .optional()
     .transform(BaseCSVProcessorService.parseBoolean),

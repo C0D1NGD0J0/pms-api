@@ -3,14 +3,24 @@ import { asyncWrapper } from '@utils/helpers';
 import { validateRequest } from '@shared/validations';
 import { PropertyController } from '@controllers/index';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
-import { isAuthenticated, speedLimiter, diskUpload, scanFile, limiter } from '@shared/middlewares';
+import { isAuthenticated, routeLimiter, diskUpload, scanFile } from '@shared/middlewares';
 
 const router: Router = express.Router();
 
 router.use(isAuthenticated);
 
+router.get(
+  '/property_form_metadata',
+  routeLimiter({ enableRateLimit: true }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getPropertyFormMetadata(req, res);
+  })
+);
+
 router.post(
-  '/:cid/',
+  '/:cid/add_property',
+  routeLimiter(),
   diskUpload(['document.photos']),
   scanFile,
   validateRequest({
@@ -24,7 +34,7 @@ router.post(
 );
 
 router.post(
-  '/:cid/validate_properties_csv',
+  '/:cid/validate_csv',
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
@@ -37,7 +47,7 @@ router.post(
 );
 
 router.post(
-  '/:cid/create_properties_csv',
+  '/:cid/import_properties_csv',
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
@@ -51,8 +61,7 @@ router.post(
 
 router.get(
   '/:cid/client_properties',
-  limiter,
-  speedLimiter,
+  routeLimiter(),
   validateRequest({
     params: PropertyValidations.validateCid,
   }),
@@ -63,7 +72,7 @@ router.get(
 );
 
 router.get(
-  '/:cid/:propertyId',
+  '/:cid/client_property/:pid',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -73,8 +82,17 @@ router.get(
   })
 );
 
+router.post(
+  '/:cid/generate_location',
+  routeLimiter(),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getFormattedAddress(req, res);
+  })
+);
+
 router.put(
-  '/:cid/:propertyId',
+  '/:cid/client_property/:pid',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -85,7 +103,7 @@ router.put(
 );
 
 router.patch(
-  '/:cid/:propertyId/add_property_media',
+  '/:cid/client_property/:pid/add_media',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -96,7 +114,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cid/:propertyId/remove_property_media',
+  '/:cid/client_property/:pid/remove_media',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -106,14 +124,14 @@ router.patch(
   })
 );
 
-router.delete(
-  '/:cid/:propertyId',
+router.patch(
+  '/:cid/archive_properties',
   validateRequest({
-    params: PropertyValidations.validatePropertyAndClientIds,
+    body: PropertyValidations.validatePropertyAndClientIds,
   }),
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
-    return propertyController.achiveProperty(req, res);
+    return propertyController.archiveProperty(req, res);
   })
 );
 

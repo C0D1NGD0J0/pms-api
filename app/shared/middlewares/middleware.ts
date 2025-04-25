@@ -207,7 +207,7 @@ export const requestLogger =
           timestamp,
           ...clientInfo,
         },
-        `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms --> ${timestamp}`
+        `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
       );
     });
 

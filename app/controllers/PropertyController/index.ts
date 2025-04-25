@@ -71,7 +71,7 @@ export class PropertyController {
       page: page ? parseInt(page as string, 10) : 1,
       limit: limit ? parseInt(limit as string, 10) : 10,
       sort: sort as string,
-      skip: skip ? parseInt(skip as string, 10) : 5,
+      skip: skip ? parseInt(skip as string, 10) : 0,
     };
     const data = await this.propertyService.getClientProperties(cid, paginationQuery);
     res.status(httpStatusCodes.OK).json(data);

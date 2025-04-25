@@ -191,7 +191,6 @@ export const requestLogger =
       const [s, ns] = process.hrtime(start);
       const timestamp = new Date().toISOString();
       const duration = (s * 1000 + ns / 1e6).toFixed(2);
-      console.log();
       const clientInfo = {
         ip: req.ip || req.socket.remoteAddress,
         userAgent: req.get('user-agent'),

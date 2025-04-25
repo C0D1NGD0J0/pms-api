@@ -24,8 +24,8 @@ export interface IProperty {
   managedBy?: Types.ObjectId;
   createdBy: Types.ObjectId;
   status: PropertyStatus;
-  occupancyLimit: number;
   utilities: IUtilities;
+  totalUnits?: number;
   yearBuilt?: number;
   address: string;
   name: string;

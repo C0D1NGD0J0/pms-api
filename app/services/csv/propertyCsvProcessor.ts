@@ -137,7 +137,7 @@ export class PropertyCsvProcessor {
       ...(documents.length > 0 && { documents }),
       status: (row.status || 'available') as PropertyStatus,
       occupancyStatus: (row.occupancyStatus || 'vacant') as OccupancyStatus,
-      occupancyLimit: row.occupancyLimit ? Number(row.occupancyLimit) : 0,
+      totalUnits: row.totalUnits ? Number(row.totalUnits) : 0,
       yearBuilt: row.yearBuilt ? Number(row.yearBuilt) : undefined,
 
       description: {

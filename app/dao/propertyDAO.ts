@@ -131,14 +131,14 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
    * Update property occupancy status
    * @param propertyId - The property ID
    * @param status - The new occupancy status
-   * @param occupancyLimit - The new occupancy rate percentage
+   * @param totalUnits - The new occupancy rate percentage
    * @param userId - The ID of the user performing the update
    * @returns A promise that resolves to the updated property document
    */
   async updatePropertyOccupancy(
     propertyId: string,
     status: OccupancyStatus,
-    occupancyLimit: number,
+    totalUnits: number,
     userId: string
   ): Promise<IPropertyDocument | null> {
     try {
@@ -146,14 +146,14 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property ID and status are required');
       }
 
-      if (occupancyLimit < 0 || occupancyLimit > 200) {
+      if (totalUnits < 0 || totalUnits > 200) {
         throw new Error('Occupancy rate must be between 0 and 200');
       }
 
       const updateOperation = {
         $set: {
           occupancyStatus: status,
-          occupancyLimit: occupancyLimit,
+          totalUnits: totalUnits,
           lastModifiedBy: new Types.ObjectId(userId),
           updatedAt: new Date(),
         },

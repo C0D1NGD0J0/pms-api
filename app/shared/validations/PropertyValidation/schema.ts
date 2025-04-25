@@ -158,7 +158,7 @@ const CreatePropertySchema = z.object({
   description: DescriptionSchema,
   cid: z.string(),
   occupancyStatus: OccupancyStatusEnum.default('vacant'),
-  occupancyLimit: z.number().int().min(0).max(500).default(0),
+  totalUnits: z.number().int().min(0).max(250).default(0),
   specifications: SpecificationsSchema,
   financialDetails: FinancialDetailsSchema.optional(),
   fees: FeesSchema,
@@ -243,7 +243,7 @@ export const UpdateOccupancySchema = z.object({
     }
   ),
   occupancyStatus: OccupancyStatusEnum,
-  occupancyLimit: z.number().min(0).max(500),
+  totalUnits: z.number().min(0).max(500),
 });
 
 const PropertyClientRelationship = z.object({
@@ -282,7 +282,7 @@ export const PropertyCsvSchema = z.object({
   propertyType: PropertyTypeEnum,
   status: PropertyStatusEnum.optional().default('available'),
   occupancyStatus: OccupancyStatusEnum.optional().default('vacant'),
-  occupancyLimit: z.coerce.number().min(0).max(500).optional(),
+  totalUnits: z.coerce.number().min(0).max(500).optional(),
   yearBuilt: z.coerce
     .number()
     .int()
@@ -348,10 +348,6 @@ export const PropertyCsvSchema = z.object({
     .optional()
     .transform(BaseCSVProcessorService.parseBoolean),
   utilities_cabletv: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform(BaseCSVProcessorService.parseBoolean),
-  utilities_trash: z
     .union([z.boolean(), z.string(), z.number()])
     .optional()
     .transform(BaseCSVProcessorService.parseBoolean),

@@ -83,7 +83,8 @@ export class DatabaseService implements IDatabaseService {
       case 'production':
         return envVariables.DATABASE.PROD_URL;
       default:
-        throw new Error('Unknown environment');
+        return envVariables.DATABASE.DEV_URL;
+      // throw new Error('Unknown environment');
     }
   }
 }

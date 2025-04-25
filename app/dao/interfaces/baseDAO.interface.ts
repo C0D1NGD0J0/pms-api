@@ -153,9 +153,9 @@ export interface IFindOptions {
   populate?: string | Array<string | PopulateOptions> | PopulateOptions;
   sort?: Record<string, 1 | -1 | { $meta: 'textScore' }> | string;
   projection?: Record<string, any> | string;
-  select?: Record<string, any> | string;
-  limit: number;
-  skip: number;
+  select?: Record<string, number> | string;
+  limit?: number;
+  skip?: number;
 }
 
 export interface dynamic<T = unknown> {

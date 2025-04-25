@@ -2,12 +2,13 @@ import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { User } from '@models/index';
 import { hashGenerator, createLogger } from '@utils/index';
+import { ListResultWithPagination } from '@interfaces/index';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
 import { IUserRoleType, IUserDocument } from '@interfaces/user.interface';
 
 import { BaseDAO } from './baseDAO';
-import { dynamic } from './interfaces/baseDAO.interface';
 import { IUserDAO } from './interfaces/userDAO.interface';
+import { IFindOptions, dynamic } from './interfaces/baseDAO.interface';
 
 export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   protected logger: Logger;
@@ -24,7 +25,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * @param opts - Additional options for the query.
    * @returns A promise that resolves to the found user document or null if no user is found.
    */
-  async getUserById(id: string, opts?: dynamic): Promise<IUserDocument | null> {
+  async getUserById(id: string, opts?: IFindOptions): Promise<IUserDocument | null> {
     try {
       if (!id) {
         throw new Error('UserID missing.');
@@ -62,7 +63,10 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * @param opts - Additional options for the query.
    * @returns A promise that resolves to an array of user documents.
    */
-  async listUsers(query: Record<string, any>, opts?: dynamic): Promise<IUserDocument[]> {
+  async listUsers(
+    query: Record<string, any>,
+    opts?: IFindOptions
+  ): ListResultWithPagination<IUserDocument[]> {
     try {
       return await this.list(query, opts);
     } catch (error) {
@@ -235,8 +239,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   async getUsersByClientId(
     clientId: string,
     filter: FilterQuery<IUserDocument> = {},
-    opts?: dynamic
-  ): Promise<IUserDocument[]> {
+    opts?: IFindOptions
+  ): ListResultWithPagination<IUserDocument[]> {
     try {
       const query = {
         ...filter,

@@ -1,13 +1,13 @@
-// clientDAO.ts
 import Logger from 'bunyan';
 import { Types, Model } from 'mongoose';
+import { ListResultWithPagination } from '@interfaces/index';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IdentificationType } from '@interfaces/user.interface';
 import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/client.interface';
 
 import { BaseDAO } from './baseDAO';
-import { dynamic } from './interfaces/baseDAO.interface';
 import { IClientDAO } from './interfaces/clientDAO.interface';
+import { IFindOptions, dynamic } from './interfaces/baseDAO.interface';
 
 export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   protected logger: Logger;
@@ -20,7 +20,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   /**
    * @inheritdoc
    */
-  async getClientByCid(cid: string, opts?: dynamic): Promise<IClientDocument | null> {
+  async getClientByCid(cid: string, opts?: IFindOptions): Promise<IClientDocument | null> {
     try {
       const query = { cid };
       return await this.findFirst(query, opts);
@@ -31,12 +31,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   }
 
   /**
-   * Updates a client's account type settings.
-   *
-   * @param clientId - The MongoDB ObjectId of the client to update
-   * @param data - Account type information including plan details and enterprise status
-   * @returns A promise that resolves to the updated client document or null if not found
-   * @throws Error if an error occurs during the update
+   * @inheritdoc
    */
   async updateAccountType(
     clientId: string,
@@ -57,12 +52,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   }
 
   /**
-   * Creates a new client in the database.
-   * Generates a unique client ID (cid) if one is not provided.
-   *
-   * @param clientData - The data for the new client
-   * @returns A promise that resolves to the created client document
-   * @throws Error if an error occurs during client creation
+   * @inheritdoc
    */
   async createClient(clientData: Partial<IClientDocument>): Promise<IClientDocument> {
     try {
@@ -78,14 +68,12 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   }
 
   /**
-   * Retrieves all clients associated with a specific account admin.
-   *
-   * @param adminId - The MongoDB ObjectId of the admin user
-   * @param opts - Optional parameters for the query (projection, population, etc.)
-   * @returns A promise that resolves to an array of client documents
-   * @throws Error if an error occurs during the query
+   * @inheritdoc
    */
-  async getClientsByAccountAdmin(adminId: string, opts?: dynamic): Promise<IClientDocument[]> {
+  async getClientsByAccountAdmin(
+    adminId: string,
+    opts?: IFindOptions
+  ): ListResultWithPagination<IClientDocument[]> {
     try {
       const query = { accountAdmin: new Types.ObjectId(adminId) };
       return await this.list(query, opts);
@@ -96,13 +84,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   }
 
   /**
-   * Updates a client's company information.
-   * Only updates the fields that are provided in the companyInfo parameter.
-   *
-   * @param clientId - The MongoDB ObjectId of the client to update
-   * @param companyInfo - The company information fields to update
-   * @returns A promise that resolves to the updated client document or null if not found
-   * @throws Error if an error occurs during the update
+   * @inheritdoc
    */
   async updateCompanyInfo(
     clientId: string,
@@ -124,13 +106,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   }
 
   /**
-   * Updates a client's settings.
-   * Only updates the fields that are provided in the settings parameter.
-   *
-   * @param clientId - The MongoDB ObjectId of the client to update
-   * @param settings - The settings fields to update
-   * @returns A promise that resolves to the updated client document or null if not found
-   * @throws Error if an error occurs during the update
+   * @inheritdoc
    */
   async updateClientSettings(
     clientId: string,
@@ -152,12 +128,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   }
 
   /**
-   * Updates a client's identification information.
-   *
-   * @param clientId - The MongoDB ObjectId of the client to update
-   * @param identification - The identification information
-   * @returns A promise that resolves to the updated client document or null if not found
-   * @throws Error if an error occurs during the update
+   * @inheritdoc
    */
   async updateIdentification(
     clientId: string,
@@ -174,13 +145,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   }
 
   /**
-   * Updates a client's subscription.
-   * Can set a new subscription or remove an existing one.
-   *
-   * @param clientId - The MongoDB ObjectId of the client to update
-   * @param subscriptionId - The MongoDB ObjectId of the subscription or null to remove
-   * @returns A promise that resolves to the updated client document or null if not found
-   * @throws Error if an error occurs during the update
+   * @inheritdoc
    */
   async updateSubscription(
     clientId: string,
@@ -199,11 +164,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   }
 
   /**
-   * Checks if a client with the specified client ID exists.
-   *
-   * @param cid - The unique client identifier to check
-   * @returns A promise that resolves to true if the client exists, false otherwise
-   * @throws Error if an error occurs during the check
+   * @inheritdoc
    */
   async doesClientExist(cid: string): Promise<boolean> {
     try {
@@ -216,15 +177,12 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   }
 
   /**
-   * Searches for clients matching a search term across various fields.
-   * Performs a case-insensitive search on cid, company names, and contact information.
-   *
-   * @param searchTerm - The term to search for
-   * @param opts - Optional parameters for the query (pagination, sorting, etc.)
-   * @returns A promise that resolves to an array of matching client documents
-   * @throws Error if an error occurs during the search
+   * @inheritdoc
    */
-  async searchClients(searchTerm: string, opts?: dynamic): Promise<IClientDocument[]> {
+  async searchClients(
+    searchTerm: string,
+    opts?: IFindOptions
+  ): ListResultWithPagination<IClientDocument[]> {
     try {
       // Create a search filter that looks for the term in various fields
       const filter = {

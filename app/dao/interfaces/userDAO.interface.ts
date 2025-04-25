@@ -1,7 +1,8 @@
 import { FilterQuery, Types } from 'mongoose';
+import { ListResultWithPagination } from '@interfaces/index';
 import { IUserRoleType, IUserDocument } from '@interfaces/user.interface';
 
-import { IBaseDAO, dynamic } from './baseDAO.interface';
+import { IFindOptions, IBaseDAO, dynamic } from './baseDAO.interface';
 
 /**
  * The UserDAO interface defines data access methods for user operations in a property management system.
@@ -18,8 +19,8 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
   getUsersByClientId(
     clientId: string,
     filter?: FilterQuery<IUserDocument>,
-    opts?: dynamic
-  ): Promise<IUserDocument[]>;
+    opts?: IFindOptions
+  ): ListResultWithPagination<IUserDocument[]>;
 
   /**
    * Associate a user with a client (multi-tenant functionality).
@@ -47,6 +48,18 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
   ): Promise<IUserDocument | null>;
 
   /**
+   * List users with optional filtering and projection.
+   *
+   * @param query - Filter criteria for the query.
+   * @param opts - Additional options for the query.
+   * @returns A promise that resolves to an array of user documents.
+   */
+  listUsers(
+    query: Record<string, any>,
+    opts?: IFindOptions
+  ): ListResultWithPagination<IUserDocument[]>;
+
+  /**
    * Remove a client association from a user.
    *
    * @param userId - The ID of the user.
@@ -62,7 +75,16 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
    * @param opts - Additional options for the query.
    * @returns A promise that resolves to the found user document or null if no user is found.
    */
-  getUserById(id: Types.ObjectId | string, opts?: dynamic): Promise<IUserDocument | null>;
+  getUserById(id: Types.ObjectId | string, opts?: IFindOptions): Promise<IUserDocument | null>;
+
+  /**
+   * Get a user by email address.
+   *
+   * @param email - The email address of the user.
+   * @param opts - Additional options for the query.
+   * @returns A promise that resolves to the found user document or null if no user is found.
+   */
+  getActiveUserByEmail(email: string, opts?: dynamic): Promise<IUserDocument | null>;
 
   /**
    * Verify user credentials for authentication.
@@ -82,15 +104,6 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
    */
   resetPassword(token: string, newPassword: string): Promise<IUserDocument | null>;
 
-  /**
-   * List users with optional filtering and projection.
-   *
-   * @param query - Filter criteria for the query.
-   * @param opts - Additional options for the query.
-   * @returns A promise that resolves to an array of user documents.
-   */
-  listUsers(query: Record<string, any>, opts?: dynamic): Promise<IUserDocument[]>;
-
   getUserWithProfileByEmailOrId(emailOrId: string): Promise<IUserDocument | null>;
 
   /**
@@ -100,15 +113,6 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
    * @returns A promise that resolves to an array of client associations.
    */
   getUserClientAssociations(userId: string | Types.ObjectId): Promise<unknown[]>;
-
-  /**
-   * Get a user by email address.
-   *
-   * @param email - The email address of the user.
-   * @param opts - Additional options for the query.
-   * @returns A promise that resolves to the found user document or null if no user is found.
-   */
-  getActiveUserByEmail(email: string, opts?: dynamic): Promise<IUserDocument | null>;
 
   /**
    * Get a user by UID.

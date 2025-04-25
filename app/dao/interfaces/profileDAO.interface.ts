@@ -1,9 +1,9 @@
 // app/dao/interfaces/profileDAO.interface.ts
 import { ClientSession, Types } from 'mongoose';
-import { ICurrentUser } from '@interfaces/index';
 import { IProfileDocument } from '@interfaces/profile.interface';
+import { ListResultWithPagination, ICurrentUser } from '@interfaces/index';
 
-import { IBaseDAO } from './baseDAO.interface';
+import { IFindOptions, IBaseDAO } from './baseDAO.interface';
 
 export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   /**
@@ -112,6 +112,18 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   ): Promise<IProfileDocument | null>;
 
   /**
+   * Finds profiles matching the search criteria.
+   *
+   * @param searchTerm - Term to search for in displayName, firstName, lastName, etc.
+   * @param limit - Maximum number of profiles to return
+   * @returns A promise that resolves to an array of matching profiles
+   */
+  searchProfiles(
+    searchTerm: string,
+    opts?: IFindOptions
+  ): ListResultWithPagination<IProfileDocument[]>;
+
+  /**
    * Updates theme settings for a profile.
    *
    * @param profileId - The ID of the profile to update
@@ -127,15 +139,6 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
    * @returns A promise that resolves to the found profile or null if not found
    */
   getProfileByUserId(userId: string | Types.ObjectId): Promise<IProfileDocument | null>;
-
-  /**
-   * Finds profiles matching the search criteria.
-   *
-   * @param searchTerm - Term to search for in displayName, firstName, lastName, etc.
-   * @param limit - Maximum number of profiles to return
-   * @returns A promise that resolves to an array of matching profiles
-   */
-  searchProfiles(searchTerm: string, limit?: number): Promise<IProfileDocument[]>;
   /**
    * Retrieves the currently authenticated user along with their profile information.
    * Uses MongoDB aggregation to join user data with their profile data and formats it into a CurrentUser object.

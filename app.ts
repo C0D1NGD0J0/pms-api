@@ -5,19 +5,17 @@ if (process.env.NODE_ENV !== 'test') {
 }
 import hpp from 'hpp';
 import cors from 'cors';
-import logger from 'morgan';
 import helmet from 'helmet';
 import compression from 'compression';
 import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
-import { envVariables } from '@shared/config';
 import { serverAdapter } from '@queues/index';
 import sanitizer from 'perfect-express-sanitizer';
 import { DatabaseService } from '@database/index';
 import mongoSanitize from 'express-mongo-sanitize';
 import { httpStatusCodes, createLogger } from '@utils/index';
 import express, { Application, urlencoded, Response, Request } from 'express';
-import { errorHandlerMiddleware, scopedMiddleware } from '@shared/middlewares';
+import { errorHandlerMiddleware, scopedMiddleware, requestLogger } from '@shared/middlewares';
 
 export interface IAppSetup {
   initConfig(): void;
@@ -63,7 +61,7 @@ export class App implements IAppSetup {
 
   private standardMiddleware(app: Application): void {
     if (process.env.NODE_ENV !== 'production') {
-      app.use(logger('dev'));
+      app.use(requestLogger(this.log));
     }
     app.use(express.json({ limit: '50mb' }));
     app.use(urlencoded({ extended: true, limit: '50mb' }));

@@ -1,14 +1,15 @@
-// declare global {
-//   namespace NodeJS {
-//     interface Global {
-//       gc(): void;
-//     }
-//   }
-// }
-
+/* eslint-disable @typescript-eslint/no-namespace */
+declare global {
+  namespace NodeJS {
+    interface Global {
+      gc(): void;
+    }
+  }
+}
+// import fs from 'fs';
 import http from 'http';
-import path from 'path';
-import heapdump from 'heapdump';
+// import path from 'path';
+// import heapdump from 'heapdump';
 import { asValue } from 'awilix';
 import { createClient } from 'redis';
 import { container } from '@di/index';
@@ -31,8 +32,8 @@ if (envVariables.SERVER.ENV !== 'production') {
 interface IConstructor {
   dbService: DatabaseService;
 }
-let lastSnapshotTime = 0;
-const SNAPSHOT_COOLDOWN = 5 * 60 * 1000; // 5 minutes in milliseconds
+// let lastSnapshotTime = 0;
+// const SNAPSHOT_COOLDOWN = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 class Server {
   private app: IAppSetup;
@@ -59,7 +60,6 @@ class Server {
     const memoryCheckInterval = setInterval(() => {
       const memUsage = process.memoryUsage();
       const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-      // this.log.info(`Memory usage: ${heapUsedMB}MB`);
 
       // if memory exceeds threshold, trigger GC
       if (heapUsedMB > 1500 && typeof (global as any).gc === 'function') {
@@ -81,7 +81,7 @@ class Server {
     await this.startServers(this.expApp);
     this.initialized = true;
     if (envVariables.SERVER.ENV !== 'production') {
-      // this.scheduleMemoryCheck();
+      this.scheduleMemoryCheck();
     }
   };
 
@@ -257,11 +257,26 @@ class Server {
 //   const mbUsed = Math.round(memoryUsage.heapUsed / 1024 / 1024);
 
 //   if (mbUsed > 1500) {
-//     const snapshotPath = path.join(process.cwd(), `heapdump-${Date.now()}.heapsnapshot`);
-//     heapdump.writeSnapshot(snapshotPath, (err, filename) => {
-//       if (err) console.error('Failed to create heap snapshot', err);
-//       else console.log(`Heap snapshot written to ${filename}`);
-//     });
+//     const heapdumpDir = path.join(process.cwd(), 'heapdump');
+
+//     try {
+//       if (!fs.existsSync(heapdumpDir)) {
+//         fs.mkdirSync(heapdumpDir, { recursive: true });
+//         console.log(`Created heapdump directory at ${heapdumpDir}`);
+//       }
+
+//       const snapshotPath = path.join(heapdumpDir, `heapdump-${Date.now()}.heapsnapshot`);
+
+//       heapdump.writeSnapshot(snapshotPath, (err, filename) => {
+//         if (err) {
+//           console.error('Failed to create heap snapshot', err);
+//         } else {
+//           console.log(`Heap snapshot written to ${filename}`);
+//         }
+//       });
+//     } catch (error) {
+//       console.error('Error in heap snapshot capture:', error);
+//     }
 //   }
 // }
 
@@ -269,16 +284,15 @@ class Server {
 //   const memoryUsage = process.memoryUsage();
 //   const mbUsed = Math.round(memoryUsage.heapUsed / 1024 / 1024);
 //   const mbTotal = Math.round(memoryUsage.heapTotal / 1024 / 1024);
-
-//   console.log(`Memory: ${mbUsed}MB / ${mbTotal}MB`);
 //   const now = Date.now();
 //   if (mbUsed > 1500 && now - lastSnapshotTime > SNAPSHOT_COOLDOWN) {
 //     captureHeapSnapshot();
 //     lastSnapshotTime = now;
+//     console.log(`Memory: ${mbUsed}MB / ${mbTotal}MB`);
 //   }
 // }
 
-// const testfn = setInterval(monitorMemory, 60000); // every minute
+// const testfn = setInterval(monitorMemory, 30000); // every minute
 // process.on('beforeExit', () => clearInterval(testfn));
 
 export const getServerInstance = () => {

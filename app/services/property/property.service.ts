@@ -7,10 +7,10 @@ import { PropertyCsvProcessor } from '@services/csv';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
-import { IProperty } from '@interfaces/property.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { IInvalidCsvProperty } from '@interfaces/csv.interface';
+import { NewPropertyType, IProperty } from '@interfaces/property.interface';
 import { InvalidRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
   CsvProcessReturnData,
@@ -69,7 +69,7 @@ export class PropertyService {
 
   async addProperty(
     cid: string,
-    propertyData: { scannedFiles?: ExtractedMediaFile[] } & IProperty,
+    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
     currentUser: ICurrentUser
   ): Promise<ISuccessReturnData> {
     const session = await this.propertyDAO.startSession();
@@ -80,14 +80,14 @@ export class PropertyService {
         throw new BadRequestError({ message: 'Unable to add property to this account.' });
       }
 
-      const { address } = propertyData;
-      if (!address) {
+      const { fullAddress } = propertyData;
+      if (!fullAddress) {
         throw new BadRequestError({ message: 'Property address is required.' });
       }
 
-      if (address && cid) {
+      if (fullAddress && cid) {
         const existingProperty = await this.propertyDAO.findPropertyByAddress(
-          address.toString(),
+          fullAddress.toString(),
           cid.toString()
         );
 
@@ -98,24 +98,23 @@ export class PropertyService {
         }
       }
 
-      const gCode = await this.geoCoderService.parseLocation(address);
+      const gCode = await this.geoCoderService.parseLocation(fullAddress);
       if (!gCode) {
-        throw new BadRequestError({ message: 'Invalid location provided.' });
+        throw new InvalidRequestError({ message: 'Invalid location provided.' });
       }
       propertyData.computedLocation = {
-        type: 'Point',
         coordinates: gCode.coordinates,
-        address: {
-          city: gCode.city,
-          state: gCode.state,
-          country: gCode.country,
-          postCode: gCode.postCode,
-          street: gCode.street,
-          streetNumber: gCode.streetNumber,
-        },
-        latAndlon: gCode.latAndlon,
       };
-      propertyData.address = gCode.formattedAddress || '';
+      propertyData.address = {
+        city: gCode.city,
+        state: gCode.state,
+        street: gCode.street,
+        country: gCode.country,
+        postCode: gCode.postCode,
+        latAndlon: gCode.latAndlon,
+        streetNumber: gCode.streetNumber,
+        formattedAddress: gCode.formattedAddress,
+      };
       propertyData.createdBy = new Types.ObjectId(currentUser.sub);
       propertyData.managedBy = propertyData.managedBy
         ? new Types.ObjectId(propertyData.managedBy)

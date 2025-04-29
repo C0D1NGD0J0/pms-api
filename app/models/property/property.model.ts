@@ -184,31 +184,23 @@ const PropertySchema = new Schema<IPropertyDocument>(
       doorman: { type: Boolean, default: false },
     },
     address: {
-      type: String,
-      required: true,
-      index: true,
-      validate: {
-        validator: function (v: string) {
-          return Boolean(v && v.length > 10);
-        },
-        message: (props) => `${props.value} is not a valid address!`,
-      },
+      street: { type: String },
+      city: { type: String, index: true }, // Index city/state if you filter by them often
+      state: { type: String, index: true },
+      country: { type: String },
+      postCode: { type: String },
+      streetNumber: { type: String },
+      formattedAddress: { type: String }, // Store the full address string if needed
     },
     computedLocation: {
-      type: { type: String, default: 'Point' },
-      coordinates: [Number],
-      address: {
-        street: { type: String },
-        city: { type: String },
-        state: { type: String },
-        country: { type: String },
-        postCode: { type: String },
-        streetNumber: { type: String },
-      },
-      latAndlon: {
+      type: {
         type: String,
-        select: false,
-        index: true,
+        enum: ['Point'],
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number],
+        required: true,
       },
     },
     documents: [
@@ -290,17 +282,7 @@ PropertySchema.index(
   }
 );
 
-PropertySchema.index(
-  { cid: 1, 'computedLocation.latAndlon': 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      deletedAt: null,
-      'computedLocation.latAndlon': { $exists: true },
-    },
-  }
-);
-
+PropertySchema.index({ computedLocation: '2dsphere' });
 PropertySchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',
 });
@@ -337,7 +319,6 @@ PropertySchema.pre('save', async function (next) {
     if (this.isNew || this.isModified('address') || this.isModified('computedLocation.latAndlon')) {
       const PropertyModel = this.constructor as any;
 
-      // Check for existing properties with same address or coordinates for this client
       const duplicateCheck = await PropertyModel.findOne({
         cid: this.cid,
         $or: [
@@ -362,7 +343,7 @@ PropertySchema.pre('save', async function (next) {
 });
 
 const PropertyModel = model<IPropertyDocument>('Property', PropertySchema);
-
+PropertyModel.cleanIndexes();
 PropertyModel.syncIndexes();
 
 export default PropertyModel;

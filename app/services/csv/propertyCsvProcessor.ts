@@ -7,7 +7,12 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
 import { ICsvValidationResult, IInvalidCsvProperty } from '@interfaces/csv.interface';
-import { OccupancyStatus, PropertyStatus, IProperty } from '@interfaces/property.interface';
+import {
+  OccupancyStatus,
+  NewPropertyType,
+  PropertyStatus,
+  IProperty,
+} from '@interfaces/property.interface';
 
 import { BaseCSVProcessorService } from './base';
 
@@ -24,6 +29,7 @@ interface PropertyProcessingContext {
   cid: string;
 }
 
+type TempPropertiesArray = Array<NewPropertyType | IProperty>;
 export class PropertyCsvProcessor {
   private readonly log = createLogger('PropertyCsvProcessor');
   private readonly geoCoderService: GeoCoderService;
@@ -120,7 +126,7 @@ export class PropertyCsvProcessor {
   private transformPropertyRow = async (
     row: any,
     context: PropertyProcessingContext
-  ): Promise<IProperty> => {
+  ): Promise<NewPropertyType> => {
     let managedBy;
     if (row.managedBy && row.managedBy.includes('@')) {
       const managerResolution = await this.validateAndResolveManagedBy(row.managedBy, context.cid);
@@ -131,8 +137,9 @@ export class PropertyCsvProcessor {
 
     const documents = this.extractDocumentsFromRow(row, context);
     return {
+      address: null,
       name: row.name?.trim(),
-      address: row.address?.trim(),
+      fullAddress: row.fullAddress?.trim(),
       propertyType: row.propertyType,
       ...(documents.length > 0 && { documents }),
       status: (row.status || 'available') as PropertyStatus,
@@ -214,17 +221,19 @@ export class PropertyCsvProcessor {
         },
       }),
 
-      cid: context.cid,
       managedBy,
-      createdBy: context.userId ? new ObjectId(context.userId) : undefined,
-    } as IProperty;
+      cid: context.cid,
+      createdBy: new ObjectId(context.userId),
+    };
   };
 
   private postProcessProperties = async (
-    properties: IProperty[]
+    properties: TempPropertiesArray,
+    _ctx: PropertyProcessingContext
   ): Promise<{ validItems: IProperty[]; invalidItems: any[] }> => {
-    const { validProperties, invalidProperties } =
-      await this.processGeocodingForProperties(properties);
+    const { validProperties, invalidProperties } = await this.processGeocodingForProperties(
+      properties as NewPropertyType[]
+    );
 
     return {
       validItems: validProperties,
@@ -232,7 +241,7 @@ export class PropertyCsvProcessor {
     };
   };
 
-  private async processGeocodingForProperties(properties: IProperty[]): Promise<{
+  private async processGeocodingForProperties(properties: NewPropertyType[]): Promise<{
     validProperties: IProperty[];
     invalidProperties: { field: string; error: string }[];
   }> {
@@ -241,31 +250,29 @@ export class PropertyCsvProcessor {
 
     for (const property of properties) {
       try {
-        const geoCode = await this.geoCoderService.parseLocation(property.address);
+        const geoCode = await this.geoCoderService.parseLocation(property.fullAddress);
 
         if (!geoCode) {
           invalidProperties.push({
             field: 'address',
-            error: `Invalid address: ${property.address}`,
+            error: `Invalid address: ${property.fullAddress}`,
           });
           continue;
         }
 
         property.computedLocation = {
-          type: 'Point',
           coordinates: geoCode.coordinates,
-          address: {
-            city: geoCode.city,
-            state: geoCode.state,
-            country: geoCode.country,
-            postCode: geoCode.postCode,
-            street: geoCode.street,
-            streetNumber: geoCode.streetNumber,
-          },
-          latAndlon: geoCode.latAndlon,
         };
 
-        property.address = geoCode.formattedAddress || property.address;
+        property.address = {
+          city: geoCode.city,
+          state: geoCode.state,
+          street: geoCode.street,
+          country: geoCode.country,
+          postCode: geoCode.postCode,
+          latAndlon: geoCode.latAndlon,
+          streetNumber: geoCode.streetNumber,
+        };
         validProperties.push(property);
       } catch (error) {
         invalidProperties.push({

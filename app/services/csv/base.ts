@@ -92,7 +92,7 @@ export class BaseCSVProcessorService {
 
         this.log.info(`Successfully processed ${postProcessResult.validItems.length} valid rows.`);
         if (invalidItems.length > 0) {
-          this.log.info(
+          this.log.error(
             `${invalidItems.length} items were not processed due to validation errors.`
           );
         }

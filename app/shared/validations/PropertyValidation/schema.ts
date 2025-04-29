@@ -7,7 +7,7 @@ const isUniqueAddress = async (address: string, clientId: string) => {
   const { propertyDAO }: { propertyDAO: PropertyDAO; clientDAO: ClientDAO } = container.cradle;
   try {
     const existingProperty = await propertyDAO.findFirst({
-      address,
+      'address.formattedAddress': address,
       cid: clientId,
       deletedAt: null,
     });
@@ -111,7 +111,7 @@ const CommunityAmenitiesSchema = z.object({
   doorman: z.boolean().default(false),
 });
 
-const PropertyDocumentSchema = z.object({
+const PropertyMediaDocumentSchema = z.object({
   documentType: z.enum(['deed', 'tax', 'insurance', 'inspection', 'other', 'lease']).optional(),
   url: z.string().url('Invalid URL format for document'),
   key: z.string().optional(),
@@ -154,7 +154,7 @@ const CreatePropertySchema = z.object({
       `Year built must be at most ${new Date().getFullYear() + 10}`
     )
     .optional(),
-  address: z.string().min(5, 'Address must be at least 5 characters'),
+  fullAddress: z.string().min(5, 'Address must be at least 5 characters'),
   description: DescriptionSchema,
   cid: z.string(),
   occupancyStatus: OccupancyStatusEnum.default('vacant'),
@@ -162,16 +162,25 @@ const CreatePropertySchema = z.object({
   specifications: SpecificationsSchema,
   financialDetails: FinancialDetailsSchema.optional(),
   fees: FeesSchema,
+  address: z.object({
+    formattedAddress: z.string().min(5, 'Formatted address must be at least 5 characters'),
+    street: z.string().optional(),
+    streetNumber: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    postCode: z.string().optional(),
+    country: z.string().optional(),
+  }),
   utilities: UtilitiesSchema.optional(),
   interiorAmenities: InteriorAmenitiesSchema.optional(),
   communityAmenities: CommunityAmenitiesSchema.optional(),
-  documents: z.array(PropertyDocumentSchema).optional(),
+  documents: z.array(PropertyMediaDocumentSchema).optional(),
 });
 
 export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefine(
   async (data, ctx) => {
-    if (data.address && data.cid) {
-      const isUnique = await isUniqueAddress(data.address, data.cid);
+    if (data.fullAddress && data.cid) {
+      const isUnique = await isUniqueAddress(data.fullAddress, data.cid);
       if (!isUnique) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -278,7 +287,7 @@ export const PropertyCsvSchema = z.object({
     .string()
     .min(3, 'Property name must be at least 3 characters')
     .max(100, 'Property name must be at most 100 characters'),
-  address: z.string().min(5, 'Address must be at least 5 characters'),
+  fullAddress: z.string().min(5, 'Address must be at least 5 characters'),
   propertyType: PropertyTypeEnum,
   status: PropertyStatusEnum.optional().default('available'),
   occupancyStatus: OccupancyStatusEnum.optional().default('vacant'),

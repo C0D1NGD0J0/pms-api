@@ -88,17 +88,17 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
 
       if (filters.location) {
         if (filters.location.city) {
-          query['computedLocation.address.city'] = {
+          query['address.city'] = {
             $regex: new RegExp(filters.location.city, 'i'),
           };
         }
         if (filters.location.state) {
-          query['computedLocation.address.state'] = {
+          query['address.state'] = {
             $regex: new RegExp(filters.location.state, 'i'),
           };
         }
         if (filters.location.postCode) {
-          query['computedLocation.address.postCode'] = filters.location.postCode;
+          query['address.postCode'] = filters.location.postCode;
         }
       }
 
@@ -327,7 +327,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
 
       const normalizedAddress = address.trim().toLowerCase();
       const query = {
-        address: { $regex: new RegExp(`^${normalizedAddress}$`, 'i') },
+        'address.formattedAddress': { $regex: new RegExp(`^${normalizedAddress}$`, 'i') },
         cid: clientId,
         deletedAt: null,
       };
@@ -408,11 +408,11 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         deletedAt: null,
         $or: [
           { name: { $regex: query, $options: 'i' } },
-          { address: { $regex: query, $options: 'i' } },
           { pid: { $regex: query, $options: 'i' } },
-          { 'computedLocation.address.city': { $regex: query, $options: 'i' } },
-          { 'computedLocation.address.state': { $regex: query, $options: 'i' } },
-          { 'computedLocation.address.postCode': { $regex: query, $options: 'i' } },
+          { 'address.city': { $regex: query, $options: 'i' } },
+          { 'address.state': { $regex: query, $options: 'i' } },
+          { 'address.postCode': { $regex: query, $options: 'i' } },
+          { 'address.formattedAddress': { $regex: query, $options: 'i' } },
         ],
       };
 

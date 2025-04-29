@@ -19,6 +19,7 @@ export interface IProperty {
   financialDetails?: IFinancialDetails;
   documents?: IPropertyDocumentItem[];
   occupancyStatus: OccupancyStatus;
+  address: IAddressDetails | null;
   specifications: ISpecifications;
   propertyType: PropertyType;
   managedBy?: Types.ObjectId;
@@ -27,7 +28,6 @@ export interface IProperty {
   utilities: IUtilities;
   totalUnits?: number;
   yearBuilt?: number;
-  address: string;
   name: string;
   cid: string;
 }
@@ -69,6 +69,17 @@ export interface IPropertyDocument extends IProperty, Document {
   id: string;
 }
 
+export interface IAddressDetails {
+  formattedAddress?: string;
+  streetNumber?: string;
+  latAndlon?: string;
+  postCode?: string;
+  country?: string;
+  street?: string;
+  state?: string;
+  city?: string;
+}
+
 export interface IInteriorAmenities {
   airConditioning: boolean;
   storageSpace: boolean;
@@ -97,15 +108,6 @@ export interface IFinancialDetails {
   purchaseDate?: Date;
 }
 
-export interface IAddressDetails {
-  streetNumber?: string;
-  postCode?: string;
-  country?: string;
-  street?: string;
-  state?: string;
-  city?: string;
-}
-
 export interface IUtilities {
   electricity: boolean;
   internet: boolean;
@@ -115,12 +117,6 @@ export interface IUtilities {
   gas: boolean;
 }
 
-export interface IComputedLocation {
-  address: IAddressDetails;
-  coordinates: number[];
-  latAndlon: string;
-  type: string;
-}
 export type PropertyType =
   | 'apartment'
   | 'house'
@@ -128,13 +124,20 @@ export type PropertyType =
   | 'townhouse'
   | 'commercial'
   | 'industrial';
+
 export interface CsvJobData {
   csvFilePath: string;
   userId: string;
   jobId?: string;
   cid: string;
 }
-
 export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
+export type NewPropertyType = {
+  fullAddress: string;
+} & Omit<IProperty, 'pid'>;
 
 export type OccupancyStatus = 'vacant' | 'occupied' | 'partially_occupied';
+
+export interface IComputedLocation {
+  coordinates: number[];
+}

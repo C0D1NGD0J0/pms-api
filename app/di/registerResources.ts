@@ -81,12 +81,12 @@ const UtilsResources = {
 const SocketIOResources = {
   baseIO: asClass(BaseIO).singleton(),
 };
-export const resolveQueuesOnInit = (container: AwilixContainer) => {
+export const initQueues = (container: AwilixContainer) => {
   container.resolve('emailQueue');
   container.resolve('uploadQueue');
   container.resolve('eventBusQueue');
   container.resolve('propertyQueue');
-
+  container.resolve('clamScanner');
   container.resolve('emailWorker');
   container.resolve('uploadWorker');
   container.resolve('propertyWorker');

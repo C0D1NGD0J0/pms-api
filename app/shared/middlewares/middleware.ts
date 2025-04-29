@@ -19,9 +19,7 @@ interface DIServices {
   authCache: AuthCache;
 }
 export const scopedMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  // Create a scoped contaner
   const scope = container.createScope();
-  // Attach the scoped container to the request
   req.container = scope;
   next();
 };
@@ -80,6 +78,7 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
     clamScanner,
   }: { emitterService: EventEmitterService; clamScanner: ClamScannerService } =
     req.container.cradle;
+  console.log('Scanning files...', clamScanner.isReady());
   const files = req.files;
   if (!files) {
     return next();
@@ -196,18 +195,35 @@ export const requestLogger =
         userAgent: req.get('user-agent'),
         referer: req.get('referer') || '-',
       };
-
-      logger.trace(
-        {
-          method: req.method,
-          url: req.originalUrl,
-          statusCode: res.statusCode,
-          duration: `${duration}ms`,
-          timestamp,
-          ...clientInfo,
-        },
-        `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
-      );
+      const responseObject = {
+        method: req.method,
+        url: req.originalUrl,
+        statusCode: res.statusCode,
+        duration: `${duration}ms`,
+        timestamp,
+        ...clientInfo,
+      };
+      if (res.statusCode >= 400) {
+        logger.error(
+          responseObject,
+          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`.toLocaleUpperCase()
+        );
+      } else if (res.statusCode >= 300) {
+        logger.warn(
+          responseObject,
+          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`.toLocaleLowerCase()
+        );
+      } else if (res.statusCode >= 200) {
+        logger.trace(
+          responseObject,
+          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`.toLocaleLowerCase()
+        );
+      } else {
+        logger.debug(
+          responseObject,
+          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`.toLocaleLowerCase()
+        );
+      }
     });
 
     next();

@@ -38,7 +38,10 @@ export function createLogger(name: string) {
     TRACE: 10,
     FATAL: 60,
   };
-
+  const loggers: Map<string, bunyan> = new Map();
+  if (loggers.has(name)) {
+    return loggers.get(name)!;
+  }
   const customStream = {
     write: (record: unknown) => {
       try {
@@ -47,20 +50,20 @@ export function createLogger(name: string) {
 
         switch (logRecord.level) {
           case LOG_LEVELS.TRACE:
-            output = color.green.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.white.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.ERROR:
           case LOG_LEVELS.FATAL:
             output = color.red.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.DEBUG:
-            output = color.cyan.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.cyan(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.WARN:
-            output = color.magenta.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.yellow.italic(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.INFO:
-            output = color.yellow.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.grey(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           default:
             output = color.grey.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
@@ -80,13 +83,13 @@ export function createLogger(name: string) {
   };
 
   const stream =
-    process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'production'
-      ? nullStream
-      : customStream;
+    process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev'
+      ? customStream
+      : nullStream;
 
-  return bunyan.createLogger({
+  const logger = bunyan.createLogger({
     name,
-    level: 'debug',
+    level: LOG_LEVELS[process.env.LOG_LEVEL || 'info'],
     streams: [
       {
         level: 'trace',
@@ -95,6 +98,8 @@ export function createLogger(name: string) {
       },
     ],
   });
+  loggers.set(name, logger);
+  return logger;
 }
 
 /**
@@ -267,7 +272,7 @@ export const extractMulterFiles = (
  * @returns The shortened UID string
  */
 export function generateShortUID(length: number = 9): string {
-  return nanoid.nanoid(length);
+  return nanoid.nanoid(length).toUpperCase();
 }
 
 /**

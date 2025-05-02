@@ -139,19 +139,20 @@ export interface UploadedFile {
   path: string;
 }
 
+export interface IPaginationQuery {
+  sort?: string | Record<string, 1 | -1>;
+  sortBy?: string;
+  limit: number;
+  page?: number;
+  skip?: number;
+}
+
 export type MulterFile =
   | Express.Multer.File[]
   | {
       [fieldname: string]: Express.Multer.File[];
     }
   | undefined;
-
-export interface IPaginationQuery {
-  limit: number;
-  sort?: string;
-  skip: number;
-  page: number;
-}
 
 export interface IEmailOptions<T> {
   emailType: string;

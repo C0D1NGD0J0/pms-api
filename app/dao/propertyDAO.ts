@@ -176,20 +176,48 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
   async getPropertiesByClientId(
     clientId: string,
     filter: FilterQuery<IPropertyDocument> = {},
-    opts?: IFindOptions
+    opts?: IPaginationQuery
   ): ListResultWithPagination<IPropertyDocument[]> {
     try {
       if (!clientId) {
         throw new Error('Client ID is required');
       }
 
-      const query = {
-        ...filter,
-        cid: clientId,
-        deletedAt: null,
-      };
+      if (opts && opts.sort && opts.sortBy) {
+        const sortDirection = opts.sort === 'desc' ? -1 : 1;
 
-      return await this.list(query, opts);
+        if (opts.sortBy) {
+          switch (opts.sortBy) {
+            case 'occupancyStatus':
+              opts.sort = { occupancyStatus: sortDirection };
+              break;
+            case 'propertyType':
+              opts.sort = { propertyType: sortDirection };
+              break;
+            case 'createdAt':
+              opts.sort = { createdAt: sortDirection };
+              break;
+            case 'status':
+              opts.sort = { status: sortDirection };
+              break;
+            case 'price':
+              opts.sort = { 'financialDetails.marketValue': sortDirection };
+              break;
+            case 'name':
+              opts.sort = { name: sortDirection };
+              break;
+            case 'area':
+              opts.sort = { 'specifications.totalArea': sortDirection };
+              break;
+            default:
+              opts.sort = undefined;
+          }
+        } else {
+          opts.sort = { createdAt: -1 };
+        }
+      }
+
+      return await this.list(filter, opts);
     } catch (error) {
       this.logger.error('Error in getPropertiesByClientId:', error);
       throw this.throwErrorHandler(error);

@@ -1,5 +1,9 @@
 import { ClientSession, FilterQuery } from 'mongoose';
-import { ListResultWithPagination, UploadResult } from '@interfaces/utils.interface';
+import {
+  IPaginationQuery,
+  ListResultWithPagination,
+  UploadResult,
+} from '@interfaces/utils.interface';
 import {
   IPropertyDocument,
   OccupancyStatus,
@@ -41,7 +45,7 @@ export interface IPropertyDAO {
   getPropertiesByClientId(
     clientId: string,
     filter?: FilterQuery<IPropertyDocument>,
-    opts?: IFindOptions
+    opts?: IPaginationQuery
   ): ListResultWithPagination<IPropertyDocument[]>;
 
   /**

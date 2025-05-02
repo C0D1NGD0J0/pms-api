@@ -272,7 +272,11 @@ export const extractMulterFiles = (
  * @returns The shortened UID string
  */
 export function generateShortUID(length: number = 9): string {
-  return nanoid.nanoid(length).toUpperCase();
+  const uuid = nanoid.nanoid(length);
+  if (uuid.length <= 9) {
+    return uuid.toUpperCase();
+  }
+  return uuid;
 }
 
 /**
@@ -283,7 +287,7 @@ export function generateShortUID(length: number = 9): string {
  * @returns An object containing pagination metadata
  * @throws Error if negative values are provided
  */
-export const paginateResult = (count: number, skip: number, limit: number): PaginateResult => {
+export const paginateResult = (count: number, skip = 0, limit = 10): PaginateResult => {
   if (count < 0 || skip < 0 || limit <= 0) {
     throw new Error(
       'Invalid pagination parameters: count and skip must be non-negative, limit must be positive'

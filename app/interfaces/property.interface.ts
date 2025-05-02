@@ -1,6 +1,6 @@
 import { Document, Types } from 'mongoose';
 
-import { CURRENCIES } from './utils.interface';
+import { IPaginationQuery, CURRENCIES } from './utils.interface';
 
 export interface IProperty {
   fees: {
@@ -30,6 +30,39 @@ export interface IProperty {
   yearBuilt?: number;
   name: string;
   cid: string;
+}
+
+export interface IPropertyFilterQuery {
+  filters: {
+    propertyType?: string;
+    status?: PropertyStatus;
+    occupancyStatus?: OccupancyStatus;
+    priceRange?: {
+      min?: number;
+      max?: number;
+    };
+    areaRange?: {
+      min?: number;
+      max?: number;
+    };
+    location?: {
+      city?: string;
+      state?: string;
+      postCode?: string;
+    };
+    yearBuilt?: {
+      min?: number;
+      max?: number;
+    };
+    searchTerm?: string;
+    managedBy?: string;
+    dateRange?: {
+      field: 'createdAt' | 'updatedAt' | 'financialDetails.purchaseDate';
+      start?: Date | string;
+      end?: Date | string;
+    };
+  } | null;
+  pagination: IPaginationQuery;
 }
 
 export interface IPropertyDocumentItem {
@@ -124,7 +157,6 @@ export type PropertyType =
   | 'townhouse'
   | 'commercial'
   | 'industrial';
-
 export interface CsvJobData {
   csvFilePath: string;
   userId: string;
@@ -132,6 +164,7 @@ export interface CsvJobData {
   cid: string;
 }
 export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
+
 export type NewPropertyType = {
   fullAddress: string;
 } & Omit<IProperty, 'pid'>;

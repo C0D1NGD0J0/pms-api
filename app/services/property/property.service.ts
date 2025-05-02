@@ -1,5 +1,5 @@
 import Logger from 'bunyan';
-import { Types } from 'mongoose';
+import { FilterQuery, Types } from 'mongoose';
 import { EventTypes } from '@interfaces/index';
 import { PropertyCache } from '@caching/index';
 import { GeoCoderService } from '@services/external';
@@ -9,11 +9,13 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
-import { IInvalidCsvProperty } from '@interfaces/csv.interface';
-import { NewPropertyType, IProperty } from '@interfaces/property.interface';
 import { InvalidRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
-  CsvProcessReturnData,
+  IPropertyFilterQuery,
+  IPropertyDocument,
+  NewPropertyType,
+} from '@interfaces/property.interface';
+import {
   ExtractedMediaFile,
   ISuccessReturnData,
   IPaginationQuery,
@@ -221,62 +223,6 @@ export class PropertyService {
     return { success: true, data: updatedProperty, message: 'Property updated successfully' };
   }
 
-  async createProperties(
-    data: CsvProcessReturnData,
-    csvFilePath: string
-  ): Promise<{
-    success: boolean;
-    data: IProperty[];
-    message?: string;
-    error?: string;
-    errors?: IInvalidCsvProperty[];
-  }> {
-    try {
-      let properties = [];
-      const session = await this.propertyDAO.startSession();
-      const propertiesResult = await this.propertyDAO.withTransaction(session, async (session) => {
-        const batchSize = 20;
-        let batchCounter = 0;
-        const batches = [];
-        properties = [];
-
-        for (let i = 0; i < data.data.length; i += batchSize) {
-          const batch = data.data.slice(i, i + batchSize);
-          batches.push(batch);
-        }
-
-        for (const batch of batches) {
-          const batchProperties = await this.propertyDAO.insertMany(batch, session);
-          properties.push(...batchProperties);
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          batchCounter++;
-        }
-
-        return { properties };
-      });
-
-      const returnResult = {
-        data: propertiesResult.properties,
-        errors: null,
-        message: 'Properties added successfully.',
-      } as CsvProcessReturnData & { message: string };
-
-      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
-
-      return {
-        success: true,
-        data: returnResult.data,
-        message: returnResult.message,
-        ...(returnResult.errors ? { errors: returnResult.errors } : null),
-      };
-    } catch (error) {
-      this.log.error(error, 'Error creating properties from CSV: ');
-      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
-      return { success: false, data: [], error: 'Unable to create properties from CSV.' };
-      // throw new BadRequestError({ message: 'Unable to create properties from CSV.' });
-    }
-  }
-
   async validateCsv(
     cid: string,
     csvFile: ExtractedMediaFile,
@@ -310,7 +256,10 @@ export class PropertyService {
     };
   }
 
-  async getClientProperties(cid: string, paginationData: IPaginationQuery) {
+  async getClientProperties(
+    cid: string,
+    queryParams: IPropertyFilterQuery
+  ): Promise<ISuccessReturnData> {
     if (!cid) {
       throw new BadRequestError({ message: 'Client ID is required.' });
     }
@@ -321,13 +270,102 @@ export class PropertyService {
       throw new BadRequestError({ message: 'Unable to get properties for this account.' });
     }
 
-    const filter = {};
-    const opts = {
-      projection: '-computedLocation',
-      page: paginationData.page ?? 1,
-      skip: paginationData.skip ?? 0,
-      limit: paginationData.limit ?? 10,
-      sort: paginationData.sort,
+    const { pagination, filters } = queryParams;
+    const filter: FilterQuery<IPropertyDocument> = {
+      cid,
+      deletedAt: null,
+    };
+
+    if (filters) {
+      if (filters.propertyType) {
+        filter.propertyType = { $in: filters.propertyType };
+      }
+
+      if (filters.status) {
+        filter.status = { $in: filters.status };
+      }
+
+      if (filters.occupancyStatus) {
+        filter.occupancyStatus = filters.occupancyStatus;
+      }
+
+      if (filters.priceRange) {
+        const priceFilter: any = {};
+        if (typeof filters.priceRange.min === 'number') {
+          priceFilter.$gte = filters.priceRange.min;
+        }
+        if (typeof filters.priceRange.max === 'number') {
+          priceFilter.$lte = filters.priceRange.max;
+        }
+        if (Object.keys(priceFilter).length > 0) {
+          filter['financialDetails.marketValue'] = priceFilter;
+        }
+      }
+
+      if (filters.areaRange) {
+        const areaFilter: any = {};
+        if (typeof filters.areaRange.min === 'number') {
+          areaFilter.$gte = filters.areaRange.min;
+        }
+        if (typeof filters.areaRange.max === 'number') {
+          areaFilter.$lte = filters.areaRange.max;
+        }
+        if (Object.keys(areaFilter).length > 0) {
+          filter['specifications.totalArea'] = areaFilter;
+        }
+      }
+
+      if (filters.location) {
+        if (filters.location.city) {
+          filter['address.city'] = { $regex: new RegExp(filters.location.city, 'i') };
+        }
+        if (filters.location.state) {
+          filter['address.state'] = { $regex: new RegExp(filters.location.state, 'i') };
+        }
+        if (filters.location.postCode) {
+          filter['address.postCode'] = filters.location.postCode;
+        }
+      }
+
+      if (filters.dateRange && filters.dateRange.field) {
+        const dateFilter: any = {};
+        if (filters.dateRange.start) {
+          const startDate =
+            typeof filters.dateRange.start === 'string'
+              ? new Date(filters.dateRange.start)
+              : filters.dateRange.start;
+          dateFilter.$gte = startDate;
+        }
+        if (filters.dateRange.end) {
+          const endDate =
+            typeof filters.dateRange.end === 'string'
+              ? new Date(filters.dateRange.end)
+              : filters.dateRange.end;
+          dateFilter.$lte = endDate;
+        }
+        if (Object.keys(dateFilter).length > 0) {
+          filter[filters.dateRange.field] = dateFilter;
+        }
+      }
+
+      if (filters.searchTerm && filters.searchTerm.trim()) {
+        const searchRegex = new RegExp(filters.searchTerm.trim(), 'i');
+        filter.$or = [
+          { name: searchRegex },
+          { 'address.city': searchRegex },
+          { 'address.state': searchRegex },
+          { 'address.postCode': searchRegex },
+          { 'address.formattedAddress': searchRegex },
+        ];
+      }
+    }
+
+    const opts: IPaginationQuery = {
+      page: pagination.page,
+      sort: pagination.sort,
+      sortBy: pagination.sortBy,
+      limit: Math.max(1, Math.min(pagination.limit || 10, 100)),
+      skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
     };
     const cachedResult = await this.propertyCache.getClientProperties(cid, opts);
     if (cachedResult.success && cachedResult.data) {
@@ -336,9 +374,12 @@ export class PropertyService {
         ...cachedResult.data,
       };
     }
-
     const properties = await this.propertyDAO.getPropertiesByClientId(cid, filter, opts);
-    await this.propertyCache.saveClientProperties(cid, properties.data, paginationData);
+    await this.propertyCache.saveClientProperties(cid, properties.data, {
+      filter,
+      pagination: opts,
+    });
+
     return {
       success: true,
       ...properties,

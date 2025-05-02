@@ -131,9 +131,9 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
 
 export const routeLimiter = (options: RateLimitOptions = {}) => {
   const defaultOptions: RateLimitOptions = {
-    windowMs: 5 * 60 * 1000, // 15 minutes
-    max: 20,
-    delayAfter: 10,
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 30,
+    delayAfter: 20,
     delayMs: () => 500,
     message: 'Too many requests, please try again later.',
     enableSpeedLimit: true,
@@ -206,22 +206,22 @@ export const requestLogger =
       if (res.statusCode >= 400) {
         logger.error(
           responseObject,
-          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`.toLocaleUpperCase()
+          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
         );
       } else if (res.statusCode >= 300) {
         logger.warn(
           responseObject,
-          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`.toLocaleLowerCase()
+          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
         );
       } else if (res.statusCode >= 200) {
         logger.trace(
           responseObject,
-          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`.toLocaleLowerCase()
+          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
         );
       } else {
         logger.debug(
           responseObject,
-          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`.toLocaleLowerCase()
+          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
         );
       }
     });

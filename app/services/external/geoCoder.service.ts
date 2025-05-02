@@ -126,7 +126,7 @@ export class GeoCoderService {
       streetNumber: result.streetNumber || '',
       formattedAddress: result.formattedAddress || '',
       coordinates: [result.longitude || 0, result.latitude || 0],
-      latAndlon: `${result.latitude || 0}, ${result.longitude || 0}`,
+      latAndlon: `${result.latitude || 0}|||${result.longitude || 0}`,
       state: result.administrativeLevels?.level1long || result.state || '',
     };
   }

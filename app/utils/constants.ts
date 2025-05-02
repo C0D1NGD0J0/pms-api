@@ -1,3 +1,5 @@
+import { IPropertyFilterQuery } from '@interfaces/index';
+
 export const httpStatusCodes = {
   OK: 200,
   FORBIDDEN: 403,
@@ -52,4 +54,17 @@ export const JOB_NAME = {
   PROPERTY_UPDATE_JOB: 'propertyUpdateJob',
   PROPERTY_DELETE_JOB: 'propertyDeleteJob',
   ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
+};
+
+export const defaultPagination: IPropertyFilterQuery = {
+  pagination: {
+    page: 1,
+    limit: 10,
+    sortBy: 'createdAt',
+    sort: {
+      createdAt: -1,
+    },
+    skip: 0,
+  },
+  filters: undefined,
 };

@@ -1,6 +1,6 @@
 import { Document, Types } from 'mongoose';
 
-import { CURRENCIES } from './utils.interface';
+import { IPaginationQuery, CURRENCIES } from './utils.interface';
 
 export interface IProperty {
   fees: {
@@ -19,17 +19,50 @@ export interface IProperty {
   financialDetails?: IFinancialDetails;
   documents?: IPropertyDocumentItem[];
   occupancyStatus: OccupancyStatus;
+  address: IAddressDetails | null;
   specifications: ISpecifications;
   propertyType: PropertyType;
   managedBy?: Types.ObjectId;
   createdBy: Types.ObjectId;
   status: PropertyStatus;
-  occupancyLimit: number;
   utilities: IUtilities;
+  totalUnits?: number;
   yearBuilt?: number;
-  address: string;
   name: string;
   cid: string;
+}
+
+export interface IPropertyFilterQuery {
+  filters: {
+    propertyType?: string;
+    status?: PropertyStatus;
+    occupancyStatus?: OccupancyStatus;
+    priceRange?: {
+      min?: number;
+      max?: number;
+    };
+    areaRange?: {
+      min?: number;
+      max?: number;
+    };
+    location?: {
+      city?: string;
+      state?: string;
+      postCode?: string;
+    };
+    yearBuilt?: {
+      min?: number;
+      max?: number;
+    };
+    searchTerm?: string;
+    managedBy?: string;
+    dateRange?: {
+      field: 'createdAt' | 'updatedAt' | 'financialDetails.purchaseDate';
+      start?: Date | string;
+      end?: Date | string;
+    };
+  } | null;
+  pagination: IPaginationQuery;
 }
 
 export interface IPropertyDocumentItem {
@@ -69,6 +102,17 @@ export interface IPropertyDocument extends IProperty, Document {
   id: string;
 }
 
+export interface IAddressDetails {
+  formattedAddress?: string;
+  streetNumber?: string;
+  latAndlon?: string;
+  postCode?: string;
+  country?: string;
+  street?: string;
+  state?: string;
+  city?: string;
+}
+
 export interface IInteriorAmenities {
   airConditioning: boolean;
   storageSpace: boolean;
@@ -97,15 +141,6 @@ export interface IFinancialDetails {
   purchaseDate?: Date;
 }
 
-export interface IAddressDetails {
-  streetNumber?: string;
-  postCode?: string;
-  country?: string;
-  street?: string;
-  state?: string;
-  city?: string;
-}
-
 export interface IUtilities {
   electricity: boolean;
   internet: boolean;
@@ -115,12 +150,6 @@ export interface IUtilities {
   gas: boolean;
 }
 
-export interface IComputedLocation {
-  address: IAddressDetails;
-  coordinates: number[];
-  latAndlon: string;
-  type: string;
-}
 export type PropertyType =
   | 'apartment'
   | 'house'
@@ -134,7 +163,14 @@ export interface CsvJobData {
   jobId?: string;
   cid: string;
 }
-
 export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
 
+export type NewPropertyType = {
+  fullAddress: string;
+} & Omit<IProperty, 'pid'>;
+
 export type OccupancyStatus = 'vacant' | 'occupied' | 'partially_occupied';
+
+export interface IComputedLocation {
+  coordinates: number[];
+}

@@ -88,17 +88,17 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
 
       if (filters.location) {
         if (filters.location.city) {
-          query['computedLocation.address.city'] = {
+          query['address.city'] = {
             $regex: new RegExp(filters.location.city, 'i'),
           };
         }
         if (filters.location.state) {
-          query['computedLocation.address.state'] = {
+          query['address.state'] = {
             $regex: new RegExp(filters.location.state, 'i'),
           };
         }
         if (filters.location.postCode) {
-          query['computedLocation.address.postCode'] = filters.location.postCode;
+          query['address.postCode'] = filters.location.postCode;
         }
       }
 
@@ -131,14 +131,14 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
    * Update property occupancy status
    * @param propertyId - The property ID
    * @param status - The new occupancy status
-   * @param occupancyLimit - The new occupancy rate percentage
+   * @param totalUnits - The new occupancy rate percentage
    * @param userId - The ID of the user performing the update
    * @returns A promise that resolves to the updated property document
    */
   async updatePropertyOccupancy(
     propertyId: string,
     status: OccupancyStatus,
-    occupancyLimit: number,
+    totalUnits: number,
     userId: string
   ): Promise<IPropertyDocument | null> {
     try {
@@ -146,14 +146,14 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property ID and status are required');
       }
 
-      if (occupancyLimit < 0 || occupancyLimit > 200) {
+      if (totalUnits < 0 || totalUnits > 200) {
         throw new Error('Occupancy rate must be between 0 and 200');
       }
 
       const updateOperation = {
         $set: {
           occupancyStatus: status,
-          occupancyLimit: occupancyLimit,
+          totalUnits: totalUnits,
           lastModifiedBy: new Types.ObjectId(userId),
           updatedAt: new Date(),
         },
@@ -176,20 +176,48 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
   async getPropertiesByClientId(
     clientId: string,
     filter: FilterQuery<IPropertyDocument> = {},
-    opts?: IFindOptions
+    opts?: IPaginationQuery
   ): ListResultWithPagination<IPropertyDocument[]> {
     try {
       if (!clientId) {
         throw new Error('Client ID is required');
       }
 
-      const query = {
-        ...filter,
-        cid: clientId,
-        deletedAt: null,
-      };
+      if (opts && opts.sort && opts.sortBy) {
+        const sortDirection = opts.sort === 'desc' ? -1 : 1;
 
-      return await this.list(query, opts);
+        if (opts.sortBy) {
+          switch (opts.sortBy) {
+            case 'occupancyStatus':
+              opts.sort = { occupancyStatus: sortDirection };
+              break;
+            case 'propertyType':
+              opts.sort = { propertyType: sortDirection };
+              break;
+            case 'createdAt':
+              opts.sort = { createdAt: sortDirection };
+              break;
+            case 'status':
+              opts.sort = { status: sortDirection };
+              break;
+            case 'price':
+              opts.sort = { 'financialDetails.marketValue': sortDirection };
+              break;
+            case 'name':
+              opts.sort = { name: sortDirection };
+              break;
+            case 'area':
+              opts.sort = { 'specifications.totalArea': sortDirection };
+              break;
+            default:
+              opts.sort = undefined;
+          }
+        } else {
+          opts.sort = { createdAt: -1 };
+        }
+      }
+
+      return await this.list(filter, opts);
     } catch (error) {
       this.logger.error('Error in getPropertiesByClientId:', error);
       throw this.throwErrorHandler(error);
@@ -327,7 +355,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
 
       const normalizedAddress = address.trim().toLowerCase();
       const query = {
-        address: { $regex: new RegExp(`^${normalizedAddress}$`, 'i') },
+        'address.formattedAddress': { $regex: new RegExp(`^${normalizedAddress}$`, 'i') },
         cid: clientId,
         deletedAt: null,
       };
@@ -408,11 +436,11 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         deletedAt: null,
         $or: [
           { name: { $regex: query, $options: 'i' } },
-          { address: { $regex: query, $options: 'i' } },
           { pid: { $regex: query, $options: 'i' } },
-          { 'computedLocation.address.city': { $regex: query, $options: 'i' } },
-          { 'computedLocation.address.state': { $regex: query, $options: 'i' } },
-          { 'computedLocation.address.postCode': { $regex: query, $options: 'i' } },
+          { 'address.city': { $regex: query, $options: 'i' } },
+          { 'address.state': { $regex: query, $options: 'i' } },
+          { 'address.postCode': { $regex: query, $options: 'i' } },
+          { 'address.formattedAddress': { $regex: query, $options: 'i' } },
         ],
       };
 

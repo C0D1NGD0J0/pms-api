@@ -19,9 +19,7 @@ interface DIServices {
   authCache: AuthCache;
 }
 export const scopedMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  // Create a scoped contaner
   const scope = container.createScope();
-  // Attach the scoped container to the request
   req.container = scope;
   next();
 };
@@ -80,6 +78,7 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
     clamScanner,
   }: { emitterService: EventEmitterService; clamScanner: ClamScannerService } =
     req.container.cradle;
+  console.log('Scanning files...', clamScanner.isReady());
   const files = req.files;
   if (!files) {
     return next();
@@ -132,9 +131,9 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
 
 export const routeLimiter = (options: RateLimitOptions = {}) => {
   const defaultOptions: RateLimitOptions = {
-    windowMs: 5 * 60 * 1000, // 15 minutes
-    max: 20,
-    delayAfter: 10,
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 30,
+    delayAfter: 20,
     delayMs: () => 500,
     message: 'Too many requests, please try again later.',
     enableSpeedLimit: true,
@@ -191,24 +190,40 @@ export const requestLogger =
       const [s, ns] = process.hrtime(start);
       const timestamp = new Date().toISOString();
       const duration = (s * 1000 + ns / 1e6).toFixed(2);
-      console.log();
       const clientInfo = {
         ip: req.ip || req.socket.remoteAddress,
         userAgent: req.get('user-agent'),
         referer: req.get('referer') || '-',
       };
-
-      logger.trace(
-        {
-          method: req.method,
-          url: req.originalUrl,
-          statusCode: res.statusCode,
-          duration: `${duration}ms`,
-          timestamp,
-          ...clientInfo,
-        },
-        `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms --> ${timestamp}`
-      );
+      const responseObject = {
+        method: req.method,
+        url: req.originalUrl,
+        statusCode: res.statusCode,
+        duration: `${duration}ms`,
+        timestamp,
+        ...clientInfo,
+      };
+      if (res.statusCode >= 400) {
+        logger.error(
+          responseObject,
+          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
+        );
+      } else if (res.statusCode >= 300) {
+        logger.warn(
+          responseObject,
+          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
+        );
+      } else if (res.statusCode >= 200) {
+        logger.trace(
+          responseObject,
+          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
+        );
+      } else {
+        logger.debug(
+          responseObject,
+          `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
+        );
+      }
     });
 
     next();

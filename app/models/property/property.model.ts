@@ -13,12 +13,12 @@ const PropertySchema = new Schema<IPropertyDocument>(
       unique: true,
       index: true,
       immutable: true,
-      default: () => generateShortUID(),
+      default: () => generateShortUID(12),
     },
     cid: {
+      index: true,
       type: String,
       required: true,
-      index: true,
       immutable: true,
     },
     name: {
@@ -184,31 +184,23 @@ const PropertySchema = new Schema<IPropertyDocument>(
       doorman: { type: Boolean, default: false },
     },
     address: {
-      type: String,
-      required: true,
-      index: true,
-      validate: {
-        validator: function (v: string) {
-          return Boolean(v && v.length > 10);
-        },
-        message: (props) => `${props.value} is not a valid address!`,
-      },
+      street: { type: String },
+      city: { type: String, index: true }, // Index city/state if you filter by them often
+      state: { type: String, index: true },
+      country: { type: String },
+      postCode: { type: String },
+      streetNumber: { type: String },
+      formattedAddress: { type: String }, // Store the full address string if needed
     },
     computedLocation: {
-      type: { type: String, default: 'Point' },
-      coordinates: [Number],
-      address: {
-        street: { type: String },
-        city: { type: String },
-        state: { type: String },
-        country: { type: String },
-        postCode: { type: String },
-        streetNumber: { type: String },
-      },
-      latAndlon: {
+      type: {
         type: String,
-        select: false,
-        index: true,
+        enum: ['Point'],
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number],
+        required: true,
       },
     },
     documents: [
@@ -254,10 +246,10 @@ const PropertySchema = new Schema<IPropertyDocument>(
       enum: ['vacant', 'occupied', 'partially_occupied'],
       default: 'vacant',
     },
-    occupancyLimit: {
+    totalUnits: {
       type: Number,
       min: 0,
-      max: 500,
+      max: 400,
       default: 0,
     },
     createdBy: {
@@ -290,17 +282,7 @@ PropertySchema.index(
   }
 );
 
-PropertySchema.index(
-  { cid: 1, 'computedLocation.latAndlon': 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      deletedAt: null,
-      'computedLocation.latAndlon': { $exists: true },
-    },
-  }
-);
-
+PropertySchema.index({ computedLocation: '2dsphere' });
 PropertySchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',
 });
@@ -331,26 +313,40 @@ PropertySchema.pre('validate', async function (this: IPropertyDocument, next) {
 });
 
 // hook to prevent duplicate properties
-PropertySchema.pre('save', async function (next) {
+PropertySchema.pre('validate', async function (next) {
   try {
     // this runs if the address or location has changed, or it's a new property
-    if (this.isNew || this.isModified('address') || this.isModified('computedLocation.latAndlon')) {
-      const PropertyModel = this.constructor as any;
+    if (this.isNew || this.isModified('address') || this.isModified('computedLocation')) {
+      const PropertyModel = model<IPropertyDocument>('Property');
 
-      // Check for existing properties with same address or coordinates for this client
-      const duplicateCheck = await PropertyModel.findOne({
+      const query = {
         cid: this.cid,
-        $or: [
-          { address: this.address },
-          { 'computedLocation.latAndlon': this.computedLocation?.latAndlon },
-        ],
-        _id: { $ne: this._id }, // Exclude this document if it's an update
+        _id: { $ne: this._id },
         deletedAt: null,
-      });
+      };
 
-      if (duplicateCheck) {
-        const error = new Error('A property with this address already exists for this client');
-        return next(error);
+      if (this.address && this.address.formattedAddress) {
+        const addressQuery = await PropertyModel.findOne({
+          ...query,
+          'address.formattedAddress': this.address.formattedAddress,
+        });
+
+        if (addressQuery) {
+          return next(new Error('A property with this address already exists for this client'));
+        }
+      }
+
+      if (this.computedLocation?.coordinates?.length === 2) {
+        const locationQuery = await PropertyModel.findOne({
+          ...query,
+          'computedLocation.coordinates': this.computedLocation.coordinates,
+        });
+
+        if (locationQuery) {
+          return next(
+            new Error('A property with these coordinates already exists for this client')
+          );
+        }
       }
     }
 
@@ -362,7 +358,7 @@ PropertySchema.pre('save', async function (next) {
 });
 
 const PropertyModel = model<IPropertyDocument>('Property', PropertySchema);
-
+PropertyModel.cleanIndexes();
 PropertyModel.syncIndexes();
 
 export default PropertyModel;

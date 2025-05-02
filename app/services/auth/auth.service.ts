@@ -245,7 +245,7 @@ export class AuthService {
           emailType: MailType.ACCOUNT_ACTIVATION,
           data: {
             fullname: profile.fullname,
-            activationUrl: `${process.env.FRONTEND_URL}/account_activation/${client.cid}?t=${user.activationToken}`,
+            activationUrl: `${process.env.FRONTEND_URL}/${client.cid}/account_activation?t=${user.activationToken}`,
           },
         },
       };
@@ -441,7 +441,7 @@ export class AuthService {
       emailType: MailType.ACCOUNT_ACTIVATION,
       data: {
         fullname: user.profile?.fullname,
-        activationUrl: `${envVariables.FRONTEND.URL}/account_activation/${user.activeCid}?t=${user.activationToken}`,
+        activationUrl: `${envVariables.FRONTEND.URL}/${user.activeCid}/account_activation/?t=${user.activationToken}`,
       },
     };
     this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);

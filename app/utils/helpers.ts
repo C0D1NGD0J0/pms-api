@@ -38,7 +38,10 @@ export function createLogger(name: string) {
     TRACE: 10,
     FATAL: 60,
   };
-
+  const loggers: Map<string, bunyan> = new Map();
+  if (loggers.has(name)) {
+    return loggers.get(name)!;
+  }
   const customStream = {
     write: (record: unknown) => {
       try {
@@ -47,20 +50,20 @@ export function createLogger(name: string) {
 
         switch (logRecord.level) {
           case LOG_LEVELS.TRACE:
-            output = color.green.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.white.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.ERROR:
           case LOG_LEVELS.FATAL:
             output = color.red.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.DEBUG:
-            output = color.cyan.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.cyan(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.WARN:
-            output = color.magenta.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.yellow.italic(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.INFO:
-            output = color.yellow.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.grey(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           default:
             output = color.grey.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
@@ -80,13 +83,13 @@ export function createLogger(name: string) {
   };
 
   const stream =
-    process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'production'
-      ? nullStream
-      : customStream;
+    process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev'
+      ? customStream
+      : nullStream;
 
-  return bunyan.createLogger({
+  const logger = bunyan.createLogger({
     name,
-    level: 'debug',
+    level: LOG_LEVELS[process.env.LOG_LEVEL || 'info'],
     streams: [
       {
         level: 'trace',
@@ -95,6 +98,8 @@ export function createLogger(name: string) {
       },
     ],
   });
+  loggers.set(name, logger);
+  return logger;
 }
 
 /**
@@ -267,7 +272,11 @@ export const extractMulterFiles = (
  * @returns The shortened UID string
  */
 export function generateShortUID(length: number = 9): string {
-  return nanoid.nanoid(length);
+  const uuid = nanoid.nanoid(length);
+  if (uuid.length <= 9) {
+    return uuid.toUpperCase();
+  }
+  return uuid;
 }
 
 /**
@@ -278,7 +287,7 @@ export function generateShortUID(length: number = 9): string {
  * @returns An object containing pagination metadata
  * @throws Error if negative values are provided
  */
-export const paginateResult = (count: number, skip: number, limit: number): PaginateResult => {
+export const paginateResult = (count: number, skip = 0, limit = 10): PaginateResult => {
   if (count < 0 || skip < 0 || limit <= 0) {
     throw new Error(
       'Invalid pagination parameters: count and skip must be non-negative, limit must be positive'

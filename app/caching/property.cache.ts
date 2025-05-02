@@ -1,5 +1,6 @@
-import { IProperty } from '@interfaces/property.interface';
+import { FilterQuery } from 'mongoose';
 import { convertTimeToSecondsAndMilliseconds } from '@utils/index';
+import { IPropertyDocument, IProperty } from '@interfaces/property.interface';
 import { ISuccessReturnData, IPaginationQuery } from '@interfaces/utils.interface';
 
 import { BaseCache } from './base.cache';
@@ -114,7 +115,10 @@ export class PropertyCache extends BaseCache {
   async saveClientProperties(
     cid: string,
     propertyList: IProperty[],
-    pagination: IPaginationQuery
+    opts: {
+      pagination: IPaginationQuery;
+      filter: FilterQuery<IPropertyDocument>;
+    }
   ): Promise<ISuccessReturnData> {
     try {
       if (!cid || !propertyList) {
@@ -124,7 +128,7 @@ export class PropertyCache extends BaseCache {
           error: 'Invalid client ID, list key, or property list',
         };
       }
-      const listKey = this.generateListKeyFromPagination(pagination);
+      const listKey = this.generateListKeyFromPagination(opts.pagination);
       const key = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}:${listKey}`;
 
       await this.deleteItems([key]);

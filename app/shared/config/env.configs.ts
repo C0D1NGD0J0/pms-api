@@ -78,7 +78,7 @@ class EnvVariables {
     this.SERVER = {
       PORT: Number(process.env.PORT),
       ENV: process.env.NODE_ENV || 'dev',
-      CLAMDSCAN_SOCKET: process.env.CLAMDSCAN_SOCKET || '/usr/local/var/run/clamav/clamd.sock',
+      CLAMDSCAN_SOCKET: process.env.CLAMDSCAN_SOCKET || '/tmp/clamd.sock',
     };
     this.AUTH_COOKIE = {
       NAME: process.env.AUTH_COOKIE_NAME || '',

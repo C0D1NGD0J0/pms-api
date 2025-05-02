@@ -42,7 +42,14 @@ export class DatabaseService implements IDatabaseService {
       mongoose.set('strictQuery', true);
       const url = this.getDatabaseUrl(env);
 
-      await mongoose.connect(url);
+      await mongoose.connect(url, {
+        maxPoolSize: 20,
+        minPoolSize: 5,
+        socketTimeoutMS: 45000,
+        connectTimeoutMS: 10000,
+        family: 4,
+        serverSelectionTimeoutMS: 5000,
+      });
       this.redisService.connect();
 
       mongoose.connection.on('disconnected', () => {

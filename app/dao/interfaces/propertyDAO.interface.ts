@@ -1,5 +1,9 @@
 import { ClientSession, FilterQuery } from 'mongoose';
-import { ListResultWithPagination, UploadResult } from '@interfaces/utils.interface';
+import {
+  IPaginationQuery,
+  ListResultWithPagination,
+  UploadResult,
+} from '@interfaces/utils.interface';
 import {
   IPropertyDocument,
   OccupancyStatus,
@@ -41,7 +45,7 @@ export interface IPropertyDAO {
   getPropertiesByClientId(
     clientId: string,
     filter?: FilterQuery<IPropertyDocument>,
-    opts?: IFindOptions
+    opts?: IPaginationQuery
   ): ListResultWithPagination<IPropertyDocument[]>;
 
   /**
@@ -61,14 +65,14 @@ export interface IPropertyDAO {
    * Update property occupancy status
    * @param propertyId - The property ID
    * @param status - The new occupancy status
-   * @param occupancyLimit - The new occupancy rate percentage
+   * @param totalUnits - The new occupancy rate percentage
    * @param userId - The ID of the user performing the update
    * @returns A promise that resolves to the updated property document
    */
   updatePropertyOccupancy(
     propertyId: string,
     status: OccupancyStatus,
-    occupancyLimit: number,
+    totalUnits: number,
     userId: string
   ): Promise<IPropertyDocument | null>;
 

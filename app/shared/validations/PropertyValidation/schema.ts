@@ -256,8 +256,8 @@ export const UpdateOccupancySchema = z.object({
 });
 
 const PropertyClientRelationship = z.object({
-  cid: z.string().trim().min(10, 'Client ID is required'),
-  pid: z.string().trim().min(10, 'Property ID is required'),
+  cid: z.string().trim().min(8, 'Client ID is required'),
+  pid: z.string().trim().min(8, 'Property ID is required'),
 });
 
 export const PropertyClientRelationshipSchema = PropertyClientRelationship.superRefine(

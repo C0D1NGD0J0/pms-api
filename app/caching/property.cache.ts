@@ -170,9 +170,9 @@ export class PropertyCache extends BaseCache {
   /**
    * Get cached property list with tenant isolation
    * @param cid - Client/tenant identifier
-   * @param listKey - Unique key identifying this list
-   * @param page - Page number
-   * @param limit - Items per page
+   * @param pagination - Pagination object
+   * @returns - List of properties and pagination info
+   * @throws - Error if client ID or pagination is invalid
    */
   async getClientProperties(
     cid: string,
@@ -188,13 +188,12 @@ export class PropertyCache extends BaseCache {
       }
       const listKey = this.generateListKeyFromPagination(pagination);
       const key = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}:${listKey}`;
-
       const listResult = await this.getListRange(key, 0, -1);
       if (!listResult.success || !listResult.data || listResult.data.length === 0) {
         return {
           data: null,
           success: false,
-          error: 'No cached properties found',
+          message: 'No cached properties found',
         };
       }
 

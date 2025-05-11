@@ -18,7 +18,7 @@ export class PropertyController {
 
   create = async (req: Request, res: Response) => {
     const { cid } = req.params;
-    const currentuser = req.currentuser!;
+    const { currentuser } = req.context;
 
     const newPropertyData = {
       ...req.body,
@@ -33,7 +33,7 @@ export class PropertyController {
 
   validateCsv = async (req: Request, res: Response) => {
     const { cid } = req.params;
-    const currentuser = req.currentuser!;
+    const { currentuser } = req.context;
 
     if (!req.body.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
@@ -48,7 +48,7 @@ export class PropertyController {
 
   createPropertiesFromCsv = async (req: Request, res: Response) => {
     const { cid } = req.params;
-    const currentuser = req.currentuser!;
+    const { currentuser } = req.context;
     if (!req.body.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
@@ -115,28 +115,25 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  getFormattedAddress = async (req: Request, res: Response) => {
-    const currentuser = req.currentuser!;
-    if (!req.body.address) {
-      return res.status(httpStatusCodes.BAD_REQUEST).json({
-        success: false,
-        message: 'No address provided',
-      });
-    }
-    const data = await this.propertyService.getFormattedAddress(req.body, currentuser);
-    res.status(httpStatusCodes.OK).json(data);
-  };
-
   getProperty = async (req: Request, res: Response) => {
     const { cid, pid } = req.params;
-    const currentuser = req.currentuser!;
+    const { currentuser } = req.context;
 
     const data = await this.propertyService.getClientProperty(cid, pid, currentuser);
     res.status(httpStatusCodes.OK).json(data);
   };
 
-  updateProperty = async (req: Request, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
+  updateClientProperty = async (req: Request, res: Response) => {
+    const { cid, pid } = req.params;
+    const { currentuser } = req.context;
+    const ctx = {
+      cid,
+      pid,
+      currentuser,
+    };
+    const result = await this.propertyService.updateClientProperty(ctx, req.body);
+
+    res.status(httpStatusCodes.OK).json({ ...result });
   };
 
   archiveProperty = async (req: Request, res: Response) => {

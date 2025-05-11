@@ -15,7 +15,12 @@ import { DatabaseService } from '@database/index';
 import mongoSanitize from 'express-mongo-sanitize';
 import { httpStatusCodes, createLogger } from '@utils/index';
 import express, { Application, urlencoded, Response, Request } from 'express';
-import { errorHandlerMiddleware, scopedMiddleware, requestLogger } from '@shared/middlewares';
+import {
+  errorHandlerMiddleware,
+  scopedMiddleware,
+  requestLogger,
+  contextBuilder,
+} from '@shared/middlewares';
 
 export interface IAppSetup {
   initConfig(): void;
@@ -52,7 +57,7 @@ export class App implements IAppSetup {
       cors({
         credentials: true,
         optionsSuccessStatus: 200,
-        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
         origin: 'http://localhost:3000',
       })
     );
@@ -72,6 +77,7 @@ export class App implements IAppSetup {
 
   private routes(app: Application) {
     const BASE_PATH = '/api/v1';
+    app.use(contextBuilder);
     app.use(`${BASE_PATH}/healthcheck`, (req, res) => {
       const healthCheck = {
         uptime: process.uptime(),

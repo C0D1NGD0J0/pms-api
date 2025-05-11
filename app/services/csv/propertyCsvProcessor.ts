@@ -252,7 +252,7 @@ export class PropertyCsvProcessor {
       try {
         const geoCode = await this.geoCoderService.parseLocation(property.fullAddress);
 
-        if (!geoCode) {
+        if (!geoCode.success) {
           invalidProperties.push({
             field: 'address',
             error: `Invalid address: ${property.fullAddress}`,
@@ -261,17 +261,18 @@ export class PropertyCsvProcessor {
         }
 
         property.computedLocation = {
-          coordinates: geoCode.coordinates,
+          coordinates: geoCode.data?.coordinates || [0, 0],
         };
 
         property.address = {
-          city: geoCode.city,
-          state: geoCode.state,
-          street: geoCode.street,
-          country: geoCode.country,
-          postCode: geoCode.postCode,
-          latAndlon: geoCode.latAndlon,
-          streetNumber: geoCode.streetNumber,
+          city: geoCode.data?.city,
+          state: geoCode.data?.state,
+          street: geoCode.data?.street,
+          country: geoCode.data?.country,
+          postCode: geoCode.data?.postCode,
+          latAndlon: geoCode.data?.latAndlon,
+          fullAddress: geoCode.data?.fullAddress,
+          streetNumber: geoCode.data?.streetNumber,
         };
         validProperties.push(property);
       } catch (error) {

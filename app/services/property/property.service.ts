@@ -1,4 +1,5 @@
 import Logger from 'bunyan';
+import sanitizeHtml from 'sanitize-html';
 import { FilterQuery, Types } from 'mongoose';
 import { EventTypes } from '@interfaces/index';
 import { PropertyCache } from '@caching/index';
@@ -9,16 +10,22 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
-import { InvalidRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
   IPropertyFilterQuery,
   IPropertyDocument,
   NewPropertyType,
 } from '@interfaces/property.interface';
 import {
+  ValidationRequestError,
+  InvalidRequestError,
+  BadRequestError,
+  NotFoundError,
+} from '@shared/customErrors';
+import {
   ExtractedMediaFile,
   ISuccessReturnData,
   IPaginationQuery,
+  PaginateResult,
   UploadResult,
 } from '@interfaces/utils.interface';
 
@@ -101,21 +108,21 @@ export class PropertyService {
       }
 
       const gCode = await this.geoCoderService.parseLocation(fullAddress);
-      if (!gCode) {
+      if (!gCode.success) {
         throw new InvalidRequestError({ message: 'Invalid location provided.' });
       }
       propertyData.computedLocation = {
-        coordinates: gCode.coordinates,
+        coordinates: gCode.data?.coordinates || [0, 0],
       };
       propertyData.address = {
-        city: gCode.city,
-        state: gCode.state,
-        street: gCode.street,
-        country: gCode.country,
-        postCode: gCode.postCode,
-        latAndlon: gCode.latAndlon,
-        streetNumber: gCode.streetNumber,
-        formattedAddress: gCode.formattedAddress,
+        city: gCode.data?.city,
+        state: gCode.data?.state,
+        street: gCode.data?.street,
+        country: gCode.data?.country,
+        postCode: gCode.data?.postCode,
+        latAndlon: gCode.data?.latAndlon,
+        streetNumber: gCode.data?.streetNumber,
+        fullAddress: gCode.data?.fullAddress,
       };
       propertyData.createdBy = new Types.ObjectId(currentUser.sub);
       propertyData.managedBy = propertyData.managedBy
@@ -259,7 +266,12 @@ export class PropertyService {
   async getClientProperties(
     cid: string,
     queryParams: IPropertyFilterQuery
-  ): Promise<ISuccessReturnData> {
+  ): Promise<
+    ISuccessReturnData<{
+      items: IPropertyDocument[];
+      pagination: PaginateResult | undefined;
+    }>
+  > {
     if (!cid) {
       throw new BadRequestError({ message: 'Client ID is required.' });
     }
@@ -355,7 +367,7 @@ export class PropertyService {
           { 'address.city': searchRegex },
           { 'address.state': searchRegex },
           { 'address.postCode': searchRegex },
-          { 'address.formattedAddress': searchRegex },
+          { 'address.fullAddress': searchRegex },
         ];
       }
     }
@@ -371,7 +383,10 @@ export class PropertyService {
     if (cachedResult.success && cachedResult.data) {
       return {
         success: true,
-        ...cachedResult.data,
+        data: {
+          items: cachedResult.data.properties,
+          pagination: cachedResult.data.pagination,
+        },
       };
     }
     const properties = await this.propertyDAO.getPropertiesByClientId(cid, filter, opts);
@@ -382,7 +397,10 @@ export class PropertyService {
 
     return {
       success: true,
-      ...properties,
+      data: {
+        items: properties.data,
+        pagination: properties.pagination,
+      },
     };
   }
 
@@ -413,19 +431,130 @@ export class PropertyService {
     return { success: true, data: property };
   }
 
-  async getFormattedAddress(
-    data: { address: string },
-    _currentUser: ICurrentUser
+  async updateClientProperty(
+    ctx: {
+      cid: string;
+      pid: string;
+      currentuser: ICurrentUser;
+    },
+    updateData: Partial<IPropertyDocument>
   ): Promise<ISuccessReturnData> {
-    if (!data.address) {
-      throw new BadRequestError({ message: 'Address is required.' });
+    const { cid, pid } = ctx;
+    const validationErrors: { [x: string]: string[] } = {};
+
+    if (!cid || !pid) {
+      this.log.error('Client ID and Property ID are required');
+      throw new BadRequestError({ message: '.' });
     }
 
-    const gCode = await this.geoCoderService.parseLocation(data.address);
-    if (!gCode) {
-      throw new BadRequestError({ message: 'Invalid location provided.' });
+    const client = await this.clientDAO.getClientByCid(cid);
+    if (!client) {
+      this.log.error(`Client with cid ${cid} not found`);
+      throw new InvalidRequestError();
     }
 
-    return { success: true, data: gCode };
+    const property = await this.propertyDAO.findFirst({
+      pid,
+      cid,
+      deletedAt: null,
+    });
+    if (!property) {
+      throw new NotFoundError({ message: 'Unable to find property.' });
+    }
+
+    if (property.description?.text !== updateData.description?.text) {
+      updateData.description = {
+        text: sanitizeHtml(updateData.description?.text || ''),
+        html: sanitizeHtml(updateData.description?.html || ''),
+      };
+    }
+
+    if (updateData.propertyType) {
+      validationErrors['propertyType'] = [];
+      switch (updateData.propertyType) {
+        case 'condominium':
+        case 'apartment':
+          if (updateData.totalUnits !== undefined && updateData.totalUnits < 1) {
+            validationErrors['propertyType'].push(
+              'Apartments and condominiums must have at least 1 unit'
+            );
+          }
+          break;
+
+        case 'commercial':
+        case 'industrial':
+          if (
+            updateData.specifications &&
+            updateData.specifications.bedrooms !== undefined &&
+            updateData.specifications.bedrooms > 0
+          ) {
+            validationErrors['propertyType'].push(
+              'Commercial properties typically do not have bedrooms'
+            );
+          }
+          break;
+      }
+    }
+    updateData.lastModifiedBy = new Types.ObjectId(ctx.currentuser.sub);
+    if (updateData.financialDetails) {
+      if (updateData.financialDetails.purchaseDate) {
+        updateData.financialDetails.purchaseDate = new Date(
+          updateData.financialDetails.purchaseDate
+        );
+      }
+
+      if (updateData.financialDetails.lastAssessmentDate) {
+        updateData.financialDetails.lastAssessmentDate = new Date(
+          updateData.financialDetails.lastAssessmentDate
+        );
+      }
+    }
+
+    if (updateData.occupancyStatus) {
+      if (updateData.occupancyStatus === 'occupied' && property.occupancyStatus !== 'occupied') {
+        if (
+          !property.fees?.rentalAmount &&
+          (!updateData.fees || updateData.fees.rentalAmount === undefined)
+        ) {
+          validationErrors['occupancyStatus'].push('Occupied properties must have a rental amount');
+        }
+      }
+
+      if (
+        updateData.occupancyStatus === 'partially_occupied' &&
+        property.totalUnits &&
+        property.totalUnits <= 1 &&
+        (!updateData.totalUnits || updateData.totalUnits <= 1)
+      ) {
+        validationErrors['occupancyStatus'].push(
+          'Single-unit properties cannot be partially occupied'
+        );
+      }
+    }
+
+    if (Object.values(validationErrors).length > 0) {
+      this.log.error('Validation errors occurred', { validationErrors });
+      throw new ValidationRequestError({
+        message: 'Unable to process request due to validation errors',
+        errorInfo: validationErrors,
+      });
+    }
+
+    const updatedProperty = await this.propertyDAO.update(
+      {
+        cid,
+        pid,
+        deletedAt: null,
+      },
+      {
+        $set: updateData,
+      }
+    );
+
+    if (!updatedProperty) {
+      throw new BadRequestError({ message: 'Unable to update property.' });
+    }
+
+    return { success: true, data: updatedProperty, message: 'Property updated successfully' };
   }
 }

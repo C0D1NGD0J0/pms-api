@@ -103,8 +103,8 @@ export interface IPropertyDocument extends IProperty, Document {
 }
 
 export interface IAddressDetails {
-  formattedAddress?: string;
   streetNumber?: string;
+  fullAddress?: string;
   latAndlon?: string;
   postCode?: string;
   country?: string;

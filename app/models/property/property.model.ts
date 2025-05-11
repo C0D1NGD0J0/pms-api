@@ -30,6 +30,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
     propertyType: {
       type: String,
       required: [true, 'Property type is required'],
+      default: 'house',
       enum: ['apartment', 'house', 'condominium', 'townhouse', 'commercial', 'industrial'],
       index: true,
     },
@@ -115,7 +116,6 @@ const PropertySchema = new Schema<IPropertyDocument>(
       totalArea: {
         type: Number,
         min: 0,
-        required: true,
       },
       lotSize: {
         type: Number,
@@ -185,12 +185,13 @@ const PropertySchema = new Schema<IPropertyDocument>(
     },
     address: {
       street: { type: String },
-      city: { type: String, index: true }, // Index city/state if you filter by them often
-      state: { type: String, index: true },
       country: { type: String },
       postCode: { type: String },
+      unitNumber: { type: String },
       streetNumber: { type: String },
-      formattedAddress: { type: String }, // Store the full address string if needed
+      city: { type: String, index: true },
+      state: { type: String, index: true },
+      fullAddress: { type: String, index: true, required: true },
     },
     computedLocation: {
       type: {
@@ -325,10 +326,10 @@ PropertySchema.pre('validate', async function (next) {
         deletedAt: null,
       };
 
-      if (this.address && this.address.formattedAddress) {
+      if (this.address && this.address.fullAddress) {
         const addressQuery = await PropertyModel.findOne({
           ...query,
-          'address.formattedAddress': this.address.formattedAddress,
+          'address.fullAddress': this.address.fullAddress,
         });
 
         if (addressQuery) {

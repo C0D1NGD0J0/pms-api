@@ -1,6 +1,7 @@
 import 'multer';
 import { NextFunction, Response, Request } from 'express';
 
+import { ICurrentUser } from './user.interface';
 import { IProperty } from './property.interface';
 import { IInvalidCsvProperty } from './csv.interface';
 
@@ -43,6 +44,13 @@ export enum FileType {
   AUDIO = 'audio',
 }
 
+export enum RequestSource {
+  UNKNOWN = 'unknown',
+  MOBILE = 'mobile',
+  WEB = 'web',
+  API = 'api',
+}
+
 export interface RateLimitOptions {
   delayMs?: number | ((numRequests: number) => number); // delay in ms to add
   enableSpeedLimit?: boolean;
@@ -74,6 +82,23 @@ export interface IAWSFileUploadResponse {
   acl?: string;
   etag: string;
   key: string;
+}
+
+export interface IRequestContext {
+  userAgent: {
+    browser?: string;
+    version?: string;
+    os?: string;
+    isMobile: boolean;
+    isBot: boolean;
+  };
+  currentuser: ICurrentUser | null;
+  source: RequestSource;
+  requestUrl: string;
+  requestId: string;
+  duration: number;
+  timestamp: Date;
+  ip?: string;
 }
 
 export interface ResourceInfo {
@@ -146,7 +171,6 @@ export interface IPaginationQuery {
   page?: number;
   skip?: number;
 }
-
 export type MulterFile =
   | Express.Multer.File[]
   | {
@@ -160,6 +184,7 @@ export interface IEmailOptions<T> {
   to: string;
   data: T;
 }
+
 export type CsvProcessReturnData = {
   data: IProperty[];
   errors?: IInvalidCsvProperty[] | null;

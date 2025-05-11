@@ -30,16 +30,10 @@ export class GeoCoderService {
    * @throws Error if geocoding fails
    */
   public async parseLocation(location: string): Promise<{
-    street: string;
-    city: string;
-    state: string;
-    country: string;
-    postCode: string;
-    latAndlon: string;
-    streetNumber: string;
-    formattedAddress: string;
-    coordinates: [number, number];
-  } | null> {
+    message: string;
+    success: boolean;
+    data: any;
+  }> {
     if (!location || typeof location !== 'string') {
       throw new Error('Invalid location: Location must be a non-empty string');
     }
@@ -50,12 +44,21 @@ export class GeoCoderService {
       if (!results || results.length === 0) {
         throw new Error(`No results found for location: ${location}`);
       }
-      return this.formatAddress(results[0]);
+      return {
+        data: this.formatAddress(results[0]),
+        message: 'Address parsed successfully',
+        success: true,
+      };
     } catch (error) {
       if (error instanceof Error) {
-        throw new Error(`Geocoding failed: ${error.message}`);
+        console.error(`Geocoding failed: ${error.message}`);
       }
-      throw new Error('Geocoding failed with unknown error');
+      console.error('Geocoding failed with unknown error');
+      return {
+        message: 'Failed to parse address',
+        success: false,
+        data: null,
+      };
     }
   }
 
@@ -111,7 +114,7 @@ export class GeoCoderService {
     postCode: string;
     latAndlon: string;
     streetNumber: string;
-    formattedAddress: string;
+    fullAddress: string;
     coordinates: [number, number];
   } | null {
     if (!result) {
@@ -124,7 +127,7 @@ export class GeoCoderService {
       postCode: result.zipcode || '',
       street: result.streetName || '',
       streetNumber: result.streetNumber || '',
-      formattedAddress: result.formattedAddress || '',
+      fullAddress: result.formattedAddress || '',
       coordinates: [result.longitude || 0, result.latitude || 0],
       latAndlon: `${result.latitude || 0}|||${result.longitude || 0}`,
       state: result.administrativeLevels?.level1long || result.state || '',

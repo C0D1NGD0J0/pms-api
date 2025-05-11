@@ -1,5 +1,6 @@
 import bunyan from 'bunyan';
 import { container } from '@di/index';
+import { UAParser } from 'ua-parser-js';
 import ProfileDAO from '@dao/profileDAO';
 import slowDown from 'express-slow-down';
 import rateLimit from 'express-rate-limit';
@@ -7,10 +8,10 @@ import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
 import { NextFunction, Response, Request } from 'express';
 import { ICurrentUser, EventTypes } from '@interfaces/index';
-import { RateLimitOptions, TokenType } from '@interfaces/utils.interface';
 import { InvalidRequestError, UnauthorizedError } from '@shared/customErrors';
-import { extractMulterFiles, httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
+import { extractMulterFiles, generateShortUID, httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
 import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
+import { RateLimitOptions, RequestSource, TokenType } from '@interfaces/utils.interface';
 
 interface DIServices {
   emitterService: EventEmitterService;
@@ -47,12 +48,12 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       const _currentuser = await profileDAO.generateCurrentUserInfo(payload.data?.sub as string);
       if (_currentuser) {
         await authCache.saveCurrentUser(_currentuser);
-        req.currentuser = _currentuser;
+        req.context.currentuser = _currentuser;
       }
     }
 
-    if (currentUserResp.success && !req.currentuser) {
-      req.currentuser = currentUserResp.data as ICurrentUser;
+    if (currentUserResp.success && !req.context.currentuser) {
+      req.context.currentuser = currentUserResp.data as ICurrentUser;
     }
     next();
   } catch (error) {
@@ -62,6 +63,7 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       }
       return next(new UnauthorizedError({ message: 'Session expired.' }));
     }
+    console.log(error);
     return next(new UnauthorizedError());
   }
 };
@@ -228,3 +230,45 @@ export const requestLogger =
 
     next();
   };
+
+export const contextBuilder = (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sourceHeader = req.header('X-Request-Source') || RequestSource.UNKNOWN;
+    const source = Object.values(RequestSource).includes(sourceHeader as RequestSource)
+      ? (sourceHeader as RequestSource)
+      : RequestSource.UNKNOWN;
+
+    const uaParser = new UAParser(req.headers['user-agent'] as string);
+    const uaResult = uaParser.getResult();
+    req.context = {
+      timestamp: new Date(),
+      requestId: generateShortUID(12),
+      source,
+      ipAddress: req.ip || req.socket.remoteAddress || '',
+      userAgent: {
+        raw: (req.headers['user-agent'] as string) || '',
+        browser: uaResult.browser.name,
+        version: uaResult.browser.version,
+        os: uaResult.os.name,
+        isMobile: /mobile|android|iphone/i.test((req.headers['user-agent'] as string) || ''),
+      },
+      currentUser: null,
+      request: {
+        method: req.method,
+        path: req.path,
+        url: req.originalUrl,
+        query: req.query as Record<string, any>,
+      },
+      timing: {
+        startTime: Date.now(),
+      },
+      service: {
+        environment: process.env.NODE_ENV || 'development',
+      },
+    };
+    next();
+  } catch (error) {
+    console.error('Error in context middleware:', error);
+    next(error);
+  }
+};

@@ -37,7 +37,7 @@ export class AuthController {
   };
 
   getCurrentUser = async (req: Request, res: Response) => {
-    const { currentuser } = req;
+    const { currentuser } = req.context;
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,

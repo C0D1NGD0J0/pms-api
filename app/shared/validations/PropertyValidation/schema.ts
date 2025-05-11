@@ -7,7 +7,7 @@ const isUniqueAddress = async (address: string, clientId: string) => {
   const { propertyDAO }: { propertyDAO: PropertyDAO; clientDAO: ClientDAO } = container.cradle;
   try {
     const existingProperty = await propertyDAO.findFirst({
-      'address.formattedAddress': address,
+      'address.fullAddress': address,
       cid: clientId,
       deletedAt: null,
     });
@@ -163,7 +163,7 @@ const CreatePropertySchema = z.object({
   financialDetails: FinancialDetailsSchema.optional(),
   fees: FeesSchema,
   address: z.object({
-    formattedAddress: z.string().min(5, 'Formatted address must be at least 5 characters'),
+    fullAddress: z.string().min(5, 'Formatted address must be at least 5 characters'),
     street: z.string().optional(),
     streetNumber: z.string().optional(),
     city: z.string().optional(),
@@ -425,4 +425,21 @@ export const PropertyCsvSchema = z.object({
     .union([z.boolean(), z.string(), z.number()])
     .optional()
     .transform(BaseCSVProcessorService.parseBoolean),
+});
+
+export const AddressValidationSchema = z.object({
+  address: z
+    .string()
+    .min(5, 'Address must be at least 5 characters')
+    .max(200, 'Address is too long')
+    .refine(
+      (addr) => {
+        const hasStreetNumber = /\d+/.test(addr);
+        const hasStreetName = /[a-zA-Z]+/.test(addr);
+        return hasStreetNumber && hasStreetName;
+      },
+      {
+        message: 'Address should contain street number and name',
+      }
+    ),
 });

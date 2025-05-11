@@ -82,23 +82,15 @@ router.get(
   })
 );
 
-router.post(
-  '/:cid/generate_location',
-  routeLimiter(),
-  asyncWrapper((req, res) => {
-    const propertyController = req.container.resolve<PropertyController>('propertyController');
-    return propertyController.getFormattedAddress(req, res);
-  })
-);
-
-router.put(
+router.patch(
   '/:cid/client_property/:pid',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
+    body: PropertyValidations.updateProperty,
   }),
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
-    return propertyController.updateProperty(req, res);
+    return propertyController.updateClientProperty(req, res);
   })
 );
 
@@ -124,10 +116,10 @@ router.patch(
   })
 );
 
-router.patch(
-  '/:cid/archive_properties',
+router.delete(
+  '/:cid/delete_properties/:pid',
   validateRequest({
-    body: PropertyValidations.validatePropertyAndClientIds,
+    query: PropertyValidations.validatePropertyAndClientIds,
   }),
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');

@@ -355,7 +355,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
 
       const normalizedAddress = address.trim().toLowerCase();
       const query = {
-        'address.formattedAddress': { $regex: new RegExp(`^${normalizedAddress}$`, 'i') },
+        'address.fullAddress': { $regex: new RegExp(`^${normalizedAddress}$`, 'i') },
         cid: clientId,
         deletedAt: null,
       };
@@ -440,7 +440,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
           { 'address.city': { $regex: query, $options: 'i' } },
           { 'address.state': { $regex: query, $options: 'i' } },
           { 'address.postCode': { $regex: query, $options: 'i' } },
-          { 'address.formattedAddress': { $regex: query, $options: 'i' } },
+          { 'address.fullAddress': { $regex: query, $options: 'i' } },
         ],
       };
 

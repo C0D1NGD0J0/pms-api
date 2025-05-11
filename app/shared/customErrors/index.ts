@@ -30,6 +30,25 @@ export class CustomError extends Error {
 }
 
 /**
+ * Error for validation failures
+ */
+export class ValidationRequestError extends CustomError {
+  constructor(options?: {
+    message: string;
+    errorInfo?: Record<string, string>[] | { [key: string]: string[] };
+    statusCode?: number;
+    originalError?: Error;
+  }) {
+    super({
+      message: options?.message || 'Validation Request.',
+      statusCode: options?.statusCode || httpStatusCodes.UNPROCESSABLE,
+      errorInfo: options?.errorInfo,
+      originalError: options?.originalError,
+    });
+  }
+}
+
+/**
  * Error for corrupted file uploads
  */
 export class CorruptedFileRequestError extends CustomError {
@@ -60,25 +79,6 @@ export class InvalidRequestError extends CustomError {
   }) {
     super({
       message: options?.message || 'Unable to process request.',
-      statusCode: options?.statusCode || httpStatusCodes.UNPROCESSABLE,
-      errorInfo: options?.errorInfo,
-      originalError: options?.originalError,
-    });
-  }
-}
-
-/**
- * Error for validation failures
- */
-export class ValidationRequestError extends CustomError {
-  constructor(options?: {
-    message: string;
-    errorInfo?: Record<string, string>[];
-    statusCode?: number;
-    originalError?: Error;
-  }) {
-    super({
-      message: options?.message || 'Validation Request.',
       statusCode: options?.statusCode || httpStatusCodes.UNPROCESSABLE,
       errorInfo: options?.errorInfo,
       originalError: options?.originalError,

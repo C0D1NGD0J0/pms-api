@@ -15,8 +15,8 @@
     "test": "cross-env NODE_ENV=test jest",
     "test:watch": "cross-env NODE_ENV=test jest --watch",
     "test:coverage": "cross-env NODE_ENV=test jest --coverage",
-    "test:unit": "cross-env NODE_ENV=test jest --testPathPattern=tests/unit",
-    "test:api": "cross-env NODE_ENV=test jest --testPathPattern=tests/api"
+    "test:unit": "cross-env NODE_ENV=test jest --testPathPattern=\"tests/unit/${npm_config_path:-}\"",
+    "test:api": "cross-env NODE_ENV=test jest --testPathPattern=\"tests/api/${npm_config_path:-}\""
   },
   "husky": {
     "hooks": {

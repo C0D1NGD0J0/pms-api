@@ -557,4 +557,41 @@ export class PropertyService {
 
     return { success: true, data: updatedProperty, message: 'Property updated successfully' };
   }
+
+  async archiveClientProperty(
+    cid: string,
+    pid: string,
+    currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData> {
+    if (!cid || !pid) {
+      this.log.error('Client ID and Property ID are required');
+      throw new BadRequestError({ message: 'Client ID and Property ID are required' });
+    }
+
+    const client = await this.clientDAO.getClientByCid(cid);
+    if (!client) {
+      this.log.error(`Client with cid ${cid} not found`);
+      throw new BadRequestError({ message: 'Unable to archive property.' });
+    }
+
+    const property = await this.propertyDAO.findFirst({
+      pid,
+      cid,
+      deletedAt: null,
+    });
+    if (!property) {
+      throw new NotFoundError({ message: 'Unable to find property.' });
+    }
+
+    const archivedProperty = await this.propertyDAO.archiveProperty(property.id, currentUser.sub);
+
+    if (!archivedProperty) {
+      throw new BadRequestError({ message: 'Unable to archive property.' });
+    }
+
+    await this.propertyCache.invalidateProperty(cid, property.id);
+    await this.propertyCache.invalidatePropertyLists(cid);
+
+    return { success: true, data: null, message: 'Property archived successfully' };
+  }
 }

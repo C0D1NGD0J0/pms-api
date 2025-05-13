@@ -1,6 +1,10 @@
 import 'multer';
 import { NextFunction, Response, Request } from 'express';
 
+import { ICurrentUser } from './user.interface';
+import { IProperty } from './property.interface';
+import { IInvalidCsvProperty } from './csv.interface';
+
 export enum MailType {
   SUBSCRIPTION_UPDATE = 'SUBSCRIPTION_UPDATE',
   SUBSCRIPTION_CANCEL = 'SUBSCRIPTION_CANCEL',
@@ -40,6 +44,26 @@ export enum FileType {
   AUDIO = 'audio',
 }
 
+export enum RequestSource {
+  UNKNOWN = 'unknown',
+  MOBILE = 'mobile',
+  WEB = 'web',
+  API = 'api',
+}
+
+export interface RateLimitOptions {
+  delayMs?: number | ((numRequests: number) => number); // delay in ms to add
+  enableSpeedLimit?: boolean;
+  enableRateLimit?: boolean;
+
+  // speed limiting params
+  delayAfter?: number; // number of requests before adding delay
+  // rate limiting params
+  windowMs?: number; // time window in milliseconds
+  message?: string; // custom message on rate limit exceeded
+  max?: number; // max requests per window
+}
+
 export interface IAWSFileUploadResponse {
   serverSideEncryption: string | null;
   contentDisposition: string | null;
@@ -60,44 +84,99 @@ export interface IAWSFileUploadResponse {
   key: string;
 }
 
-export interface ISuccessReturnData<T = unknown> {
+export interface IRequestContext {
+  userAgent: {
+    browser?: string;
+    version?: string;
+    os?: string;
+    isMobile: boolean;
+    isBot: boolean;
+  };
+  currentuser: ICurrentUser | null;
+  source: RequestSource;
+  requestUrl: string;
+  requestId: string;
+  duration: number;
+  timestamp: Date;
+  ip?: string;
+}
+
+export interface ResourceInfo {
+  resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
+  resourceName: 'property' | 'profile'; //name of the resource
+  resourceId: string; //id of the resource
+  fieldName: string; //name of the field
+  actorId: string; //user who uploaded the file
+}
+
+export type ExtractedMediaFile = {
+  originalFileName: string;
+  fieldName: string;
+  mimeType: string;
+  path: string;
+  url?: string;
+  key?: string;
+  status: 'pending' | 'active' | 'inactive' | 'deleted';
+  filename: string;
+  fileSize: number;
+  uploadedAt: Date;
+  uploadedBy: string;
+};
+
+export interface UploadResult {
+  mediatype?: 'image' | 'video' | 'document';
+  documentName?: string;
+  resourceName?: string;
+  resourceId: string;
+  fieldName: string;
+  actorId?: string;
+  filename: string;
+  publicId: string;
+  size?: number;
+  key?: string;
+  url: string;
+}
+
+export interface PaginateResult {
+  hasMoreResource: boolean;
+  currentPage: number;
+  totalPages: number;
+  nextPage?: string;
+  prevPage?: string;
+  perPage: number;
+  total: number;
+}
+
+export type ISuccessReturnData<T = any> = {
   errors?: [{ path: string; message: string }];
   success: boolean;
   message?: string;
   error?: string;
   data: T;
+};
+
+export interface UploadedFile {
+  originalname?: string;
+  fieldName: string;
+  mimetype?: string;
+  filename: string;
+  size?: number;
+  path: string;
 }
 
-/**
- * Interface defining the structure of pagination metadata
- */
-export interface PaginateResult {
-  hasMoreResource: boolean;
-  currentPage: number;
-  totalPages: number;
-  perPage: number;
-  total: number;
+export interface IPaginationQuery {
+  sort?: string | Record<string, 1 | -1>;
+  sortBy?: string;
+  limit: number;
+  page?: number;
+  skip?: number;
 }
-export type ExtractedMediaFile = {
-  fieldName: string;
-  mimeType: string;
-  path: string;
-  filename: string;
-  fileSize: number;
-};
 export type MulterFile =
   | Express.Multer.File[]
   | {
       [fieldname: string]: Express.Multer.File[];
     }
   | undefined;
-
-export interface IPaginationQuery {
-  skip?: number | null;
-  sortBy?: string;
-  limit?: number;
-  page?: number;
-}
 
 export interface IEmailOptions<T> {
   emailType: string;
@@ -106,18 +185,34 @@ export interface IEmailOptions<T> {
   data: T;
 }
 
+export type CsvProcessReturnData = {
+  data: IProperty[];
+  errors?: IInvalidCsvProperty[] | null;
+};
+
 export type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
+
+export type ListResultWithPagination<T> = Promise<{
+  data: T;
+  pagination?: PaginateResult;
+}>;
 
 export interface ICacheResponse<T = any> {
   success: boolean;
   error?: string;
   data?: T;
 }
+
 export interface IUploadFileInterface {
   filename?: string;
   key?: string;
   url: string;
 }
+
+export type UploadJobData = {
+  resource: ResourceInfo;
+  files: ExtractedMediaFile[];
+};
 
 export type IPromiseReturnedData<T = object> = Promise<ISuccessReturnData<T>>;
 

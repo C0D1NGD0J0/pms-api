@@ -1,4 +1,5 @@
 import Logger from 'bunyan';
+import crypto from 'crypto';
 import { createClient } from 'redis';
 import { RedisService } from '@database/index';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
@@ -230,6 +231,102 @@ export class BaseCache extends RedisService implements IBaseCache {
     } catch (e) {
       // Silent failure - just return null for invalid JSON
       return null;
+    }
+  }
+
+  /*
+   ** Generate a hash for the given data
+   ** @param data Data to hash
+   ** @returns Hash string
+   */
+  protected hashData(data: unknown): string {
+    const paramsString = JSON.stringify(data);
+    const hash = crypto.createHash('md5').update(paramsString).digest('hex').substring(0, 8);
+    return hash;
+  }
+
+  /**
+   * Add an item to a Redis list
+   * @param key List key
+   * @param value Value to add to the list
+   * @param ttl Optional TTL in seconds
+   */
+  protected async addToList(key: string, value: string, ttl?: number): Promise<ISuccessReturnData> {
+    try {
+      if (!key) {
+        return { success: false, data: null, error: 'List key is required' };
+      }
+
+      const multi = this.client.multi();
+      multi.RPUSH(key, value);
+
+      if (ttl) {
+        multi.EXPIRE(key, ttl);
+      }
+
+      const results = await multi.exec();
+      const rpushResult = results?.[0];
+
+      return {
+        success: typeof rpushResult === 'number' && rpushResult > 0,
+        data: { listLength: rpushResult },
+      };
+    } catch (error) {
+      return this.handleError(error, `addToList(${key})`);
+    }
+  }
+
+  /**
+   * Get a range of items from a Redis list
+   * @param key List key
+   * @param start Start index (0-based)
+   * @param end End index (inclusive)
+   * @returns Array of items or empty array if list not found
+   */
+  protected async getListRange<T>(
+    key: string,
+    start: number,
+    end: number
+  ): Promise<ISuccessReturnData<T[]>> {
+    try {
+      if (!key) {
+        return { success: false, data: [], error: 'List key is required' };
+      }
+
+      const items = await this.client.LRANGE(key, start, end);
+
+      if (!items || items.length === 0) {
+        return { success: false, data: [], error: 'List not found or empty' };
+      }
+
+      const parsedItems = items.map((item) => this.deserialize<T>(item));
+      return {
+        success: true,
+        data: parsedItems.filter((item) => item !== null) as T[],
+      };
+    } catch (error) {
+      return this.handleError(error, `getListRange(${key})`);
+    }
+  }
+
+  /**
+   * Get the length of a Redis list
+   * @param key List key
+   * @returns List length or 0 if not found
+   */
+  protected async getListLength(key: string): Promise<ISuccessReturnData<number>> {
+    try {
+      if (!key) {
+        return { success: false, data: 0, error: 'List key is required' };
+      }
+
+      const length = await this.client.LLEN(key);
+      return {
+        success: true,
+        data: length,
+      };
+    } catch (error) {
+      return this.handleError(error, `getListLength(${key})`);
     }
   }
 }

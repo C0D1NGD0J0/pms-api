@@ -1,4 +1,5 @@
 import Logger from 'bunyan';
+import { container } from '@di/index';
 import { createLogger } from '@utils/index';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 
@@ -6,7 +7,8 @@ export class BaseIO {
   protected log: Logger;
   protected io: SocketIOServer;
 
-  constructor(socketname: string, { ioServer }: { ioServer: SocketIOServer }) {
+  constructor(socketname: string) {
+    const { ioServer }: { ioServer: SocketIOServer } = container.cradle;
     this.io = ioServer;
     this.initializeConnection();
     this.log = createLogger(socketname);

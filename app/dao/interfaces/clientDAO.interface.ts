@@ -1,8 +1,9 @@
 import { IdentificationType } from '@interfaces/user.interface';
+import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/client.interface';
 
-import { dynamic } from './baseDAO.interface';
 import { IBaseDAO } from './baseDAO.interface';
+import { IFindOptions } from './baseDAO.interface';
 
 /**
  * Data Access Object interface for Client operations.
@@ -45,6 +46,18 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
   ): Promise<IClientDocument | null>;
 
   /**
+   * Retrieves all clients associated with a specific account admin.
+   *
+   * @param adminId - The MongoDB ObjectId of the admin user
+   * @param opts - Optional parameters for the query (projection, population, etc.)
+   * @returns A promise that resolves to an array of client documents
+   */
+  getClientsByAccountAdmin(
+    adminId: string,
+    opts?: IFindOptions
+  ): ListResultWithPagination<IClientDocument[]>;
+
+  /**
    * Updates a client's account type (individual / enterprise status).
    *
    * @param clientId - The MongoDB ObjectId of the client to update
@@ -69,22 +82,16 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
   ): Promise<IClientDocument | null>;
 
   /**
-   * Retrieves all clients associated with a specific account admin.
-   *
-   * @param adminId - The MongoDB ObjectId of the admin user
-   * @param opts - Optional parameters for the query (projection, population, etc.)
-   * @returns A promise that resolves to an array of client documents
-   */
-  getClientsByAccountAdmin(adminId: string, opts?: dynamic): Promise<IClientDocument[]>;
-
-  /**
    * Searches for clients matching a search term across various fields.
    *
    * @param searchTerm - The term to search for
    * @param opts - Optional parameters for the query (pagination, sorting, etc.)
    * @returns A promise that resolves to an array of matching client documents
    */
-  searchClients(searchTerm: string, opts?: dynamic): Promise<IClientDocument[]>;
+  searchClients(
+    searchTerm: string,
+    opts?: IFindOptions
+  ): ListResultWithPagination<IClientDocument[]>;
 
   /**
    * Retrieves a client by its unique client ID (cid).
@@ -94,7 +101,7 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
    * @returns A promise that resolves to the client document or null if not found
    * @throws Error if an error occurs during the query
    */
-  getClientByCid(cid: string, opts?: dynamic): Promise<IClientDocument | null>;
+  getClientByCid(cid: string, opts?: IFindOptions): Promise<IClientDocument | null>;
 
   /**
    * Creates a new client in the database.

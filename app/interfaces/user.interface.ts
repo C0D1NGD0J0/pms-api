@@ -19,24 +19,6 @@ export enum IUserRole {
   ADMIN = 'admin',
 }
 
-export interface ICurrentUser {
-  preferences: {
-    theme?: 'light' | 'dark';
-    lang?: string;
-    timezone?: string;
-  };
-  activeClient: { id: string; displayname: string; role: IUserRoleType };
-  clients: IClientUserConnections[];
-  fullname: string | null;
-  permissions: string[];
-  displayName: string;
-  gdpr?: GDPRSettings;
-  avatarUrl: string;
-  isActive: boolean;
-  email: string;
-  sub: string;
-}
-
 export interface IUserDocument extends Document, IUser {
   validatePassword: (pwd1: string) => Promise<boolean>;
   cids: IClientUserConnections[];
@@ -50,6 +32,24 @@ export interface IUserDocument extends Document, IUser {
   updatedAt: Date;
   uid: string;
   id: string;
+}
+
+export interface ICurrentUser {
+  preferences: {
+    theme?: 'light' | 'dark';
+    lang?: string;
+    timezone?: string;
+  };
+  client: { csub: string; displayname: string; role: IUserRoleType };
+  clients: IClientUserConnections[];
+  fullname: string | null;
+  permissions: string[];
+  displayName: string;
+  gdpr?: GDPRSettings;
+  avatarUrl: string;
+  isActive: boolean;
+  email: string;
+  sub: string;
 }
 
 export interface IInviteUserSignup {

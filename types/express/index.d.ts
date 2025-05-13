@@ -4,7 +4,7 @@ declare global {
   namespace Express {
     export interface Request {
       container: AwilixContainer;
-      currentuser?: unknown;
+      context: IRequestContext;
       rawBody: Buffer;
     }
 

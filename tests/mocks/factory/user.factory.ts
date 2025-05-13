@@ -1,16 +1,15 @@
 import dayjs from 'dayjs';
 import { Types } from 'mongoose';
-import { v4 as uuid } from 'uuid';
 import { faker } from '@faker-js/faker';
 import { User, Client } from '@models/index';
-import { hashGenerator } from '@utils/index';
+import { generateShortUID, hashGenerator } from '@utils/index';
 import { ICompanyProfile } from '@interfaces/client.interface';
 import { IUserRole, IUserDocument, ISignupData } from '@interfaces/user.interface';
 
 class UserFactory {
   create = async (data: Partial<ISignupData>) => {
     const _userId = new Types.ObjectId();
-    const clientId = uuid();
+    const clientId = generateShortUID();
 
     // create client record with proper accountType structure
     await Client.create({
@@ -26,7 +25,7 @@ class UserFactory {
     return (await User.create({
       ...(await this.defaultUser()),
       ...data,
-      uid: uuid(),
+      uid: generateShortUID(),
       _id: _userId,
       cid: clientId,
       isActive: true,
@@ -38,7 +37,7 @@ class UserFactory {
 
   build = async (data: Partial<ISignupData>) => {
     const _userId = new Types.ObjectId();
-    const clientId = uuid();
+    const clientId = generateShortUID();
 
     // create client record with proper accountType structure
     await Client.create({
@@ -54,7 +53,7 @@ class UserFactory {
     return new User({
       ...(await this.defaultUser()),
       ...data,
-      uid: uuid(),
+      uid: generateShortUID(),
       _id: _userId,
       cid: clientId,
       isActive: false,

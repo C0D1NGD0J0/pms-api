@@ -67,8 +67,8 @@ export class AuthCache extends BaseCache {
     try {
       if (!userId || !this.isValidJwtFormat(refreshToken)) {
         return {
-          data: null,
           success: false,
+          data: null,
           error: 'Invalid userId or token format',
         };
       }
@@ -79,8 +79,8 @@ export class AuthCache extends BaseCache {
     } catch (error) {
       this.log.error('Failed to save refresh token:', error);
       return {
-        data: null,
         success: false,
+        data: null,
         error: (error as Error).message,
       };
     }
@@ -177,7 +177,7 @@ export class AuthCache extends BaseCache {
       const result = await this.getItem<ICurrentUser>(key);
       return {
         ...result,
-        data: result.data as ICurrentUser | null,
+        data: result.data as ICurrentUser,
       };
     } catch (error) {
       this.log.error('Failed to get user data:', error);

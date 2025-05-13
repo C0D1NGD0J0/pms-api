@@ -1,7 +1,8 @@
 import { createLogger } from '@utils/index';
 import { createContainer, InjectionMode } from 'awilix';
 
-import { registerResources } from './registerResources';
+import { EventListenerSetup } from './eventListenerSetup';
+import { registerResources, initQueues } from './registerResources';
 
 const initializeDI = () => {
   const logger = createLogger('DI');
@@ -14,13 +15,12 @@ const initializeDI = () => {
     ...registerResources,
   });
 
-  logger.info('DI container initialized');
+  initQueues(container);
+  logger.info('DI container initialized...');
+  EventListenerSetup.registerQueueListeners(container);
   return container;
 };
 
 const container = initializeDI();
-// resolve singletons on intial load HERE...
-container.resolve('emailQueue');
-container.resolve('emailWorker');
 
 export { container };

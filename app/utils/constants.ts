@@ -1,3 +1,5 @@
+import { IPropertyFilterQuery } from '@interfaces/index';
+
 export const httpStatusCodes = {
   OK: 200,
   FORBIDDEN: 403,
@@ -35,14 +37,34 @@ export const MAIL_TYPES = {
 };
 
 export const QUEUE_NAMES = {
+  MEDIA_QUEUE: 'mediaQueue',
+  EMAIL_QUEUE: 'emailQueue',
+  PROPERTY_QUEUE: 'propertyQueue',
+  EVENT_BUS_QUEUE: 'eventBusQueue',
   ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
-  IMAGE_UPLOAD_QUEUE: 'imageUploadQueue',
-  VIDEO_UPLOAD_QUEUE: 'videoUploadQueue',
-  ASSET_REMOVAL_QUEUE: 'assetRemovalQueue',
+  PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
 };
 
 export const JOB_NAME = {
+  CSV_IMPORT_JOB: 'csv_import',
+  MEDIA_UPLOAD_JOB: 'mediaUploadJob',
+  CSV_VALIDATION_JOB: 'csv_validation',
+  MEDIA_REMOVAL_JOB: 'mediaRemovalJob',
+  PROPERTY_CREATE_JOB: 'propertyCreateJob',
+  PROPERTY_UPDATE_JOB: 'propertyUpdateJob',
+  PROPERTY_DELETE_JOB: 'propertyDeleteJob',
   ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
-  DELETE_REMOTE_ASSET: 'deleteRemoteAssetJob',
-  DELETE_LOCAL_ASSET: 'deleteLocalAssetJob',
+};
+
+export const defaultPagination: IPropertyFilterQuery = {
+  pagination: {
+    page: 1,
+    limit: 10,
+    sortBy: 'createdAt',
+    sort: {
+      createdAt: -1,
+    },
+    skip: 0,
+  },
+  filters: undefined,
 };

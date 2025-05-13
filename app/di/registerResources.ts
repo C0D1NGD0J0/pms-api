@@ -1,80 +1,95 @@
 import { BaseIO } from '@sockets/index';
-import { AuthCache } from '@caching/index';
-import { EmailQueue } from '@queues/index';
 import { MailService } from '@mailer/index';
-// import { AuthMiddleware } from '@shared/middleware';
-// import { MailService } from '@services/MailService/config.mailer';
-// import { CloudinaryService, DiskStorage, S3FileUpload } from '@services/FileUploadService';
-import { EmailWorker } from '@workers/index';
-import { AuthController } from '@controllers/index';
-import { asFunction, asValue, asClass } from 'awilix';
-import { Profile, Client, User } from '@models/index';
-import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
-import { AuthTokenService, AuthService } from '@services/auth';
+import { GeoCoderService } from '@services/external';
+import { ClamScannerService } from '@shared/config/index';
+import { DiskStorage, S3Service } from '@services/fileUpload';
+import { Property, Profile, Client, User } from '@models/index';
 import { DatabaseService, RedisService } from '@database/index';
-
-import { container } from './setup';
+import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
+import { PropertyController, AuthController } from '@controllers/index';
+import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { PropertyWorker, UploadWorker, EmailWorker } from '@workers/index';
+import { EventsRegistryCache, PropertyCache, AuthCache } from '@caching/index';
+import { PropertyQueue, EventBusQueue, UploadQueue, EmailQueue } from '@queues/index';
+import {
+  PropertyCsvProcessor,
+  EventEmitterService,
+  AuthTokenService,
+  PropertyService,
+  AuthService,
+} from '@services/index';
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
-  // userController: asClass(UserController).scoped(),
-  // notificationController: asClass(NotificationController).scoped(),
+  propertyController: asClass(PropertyController).scoped(),
 };
 
 const ModelResources = {
   userModel: asValue(User),
   clientModel: asValue(Client),
   profileModel: asValue(Profile),
-  // categoryModel: asValue(Category),
-  // notificationModel: asValue(Notification),
-  // subscriptionModel: asValue(Subscription),
+  propertyModel: asValue(Property),
 };
 
 const ServiceResources = {
-  // s3Service: asClass(S3FileUpload).singleton(),
-  // userService: asClass(UserService).singleton(),
   authService: asClass(AuthService).singleton(),
   mailerService: asClass(MailService).singleton(),
-  // stripeService: asClass(StripeService).singleton(),
-  // uploadService: asClass(CloudinaryService).singleton(),
   tokenService: asClass(AuthTokenService).singleton(),
-  // notificationService: asClass(NotificationService).singleton(),
+  propertyService: asClass(PropertyService).singleton(),
+  emitterService: asClass(EventEmitterService).singleton(),
+  propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
 };
 
 const DAOResources = {
   userDAO: asClass(UserDAO).singleton(),
   clientDAO: asClass(ClientDAO).singleton(),
   profileDAO: asClass(ProfileDAO).singleton(),
-  // notificationDAO: asClass(NotificationDAO).singleton(),
+  propertyDAO: asClass(PropertyDAO).singleton(),
 };
 
 const CacheResources = {
   authCache: asClass(AuthCache).singleton(),
+  propertyCache: asClass(PropertyCache).singleton(),
+  eventsRegistry: asClass(EventsRegistryCache).singleton(),
 };
 
 const WorkerResources = {
   emailWorker: asClass(EmailWorker).singleton(),
-  // uploadWorker: asClass(FileUploadWorker).singleton(),
-  // notificationWorker: asClass(NotificationWorker).singleton(),
+  uploadWorker: asClass(UploadWorker).singleton(),
+  propertyWorker: asClass(PropertyWorker).singleton(),
 };
 
 const QueuesResources = {
   emailQueue: asClass(EmailQueue).singleton(),
+  uploadQueue: asClass(UploadQueue).singleton(),
+  eventBusQueue: asClass(EventBusQueue).singleton(),
+  propertyQueue: asClass(PropertyQueue).singleton(),
 };
 
 const UtilsResources = {
+  geoCoderService: asClass(GeoCoderService).singleton(),
   redisService: asFunction(() => {
     return new RedisService('Redis Service');
   }).singleton(),
   dbService: asClass(DatabaseService).singleton(),
-  // authMiddleware: asClass(AuthMiddleware).scoped(),
-  // diskStorage: asClass(DiskStorage).singleton(),
+  s3Service: asClass(S3Service).singleton(),
+  clamScanner: asClass(ClamScannerService).singleton(),
+  diskStorage: asClass(DiskStorage).singleton(),
+  propertyCsvService: asClass(PropertyCsvProcessor).singleton(),
 };
 
 const SocketIOResources = {
-  baseIO: asFunction(() => {
-    return new BaseIO('BaseIO', { ioServer: container.resolve('ioServer') });
-  }).singleton(),
+  baseIO: asClass(BaseIO).singleton(),
+};
+export const initQueues = (container: AwilixContainer) => {
+  container.resolve('emailQueue');
+  container.resolve('uploadQueue');
+  container.resolve('eventBusQueue');
+  container.resolve('propertyQueue');
+  container.resolve('clamScanner');
+  container.resolve('emailWorker');
+  container.resolve('uploadWorker');
+  container.resolve('propertyWorker');
 };
 
 export const registerResources = {

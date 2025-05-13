@@ -1,13 +1,12 @@
 // app/dao/profileDAO.ts
 import Logger from 'bunyan';
-import { v4 as uuid } from 'uuid';
-import { ICurrentUser } from '@interfaces/index';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IProfileDocument } from '@interfaces/profile.interface';
+import { ListResultWithPagination, ICurrentUser } from '@interfaces/index';
 import { PipelineStage, ClientSession, FilterQuery, Types, Model } from 'mongoose';
 
 import { BaseDAO } from './baseDAO';
-import { IProfileDAO } from './interfaces/index';
+import { IFindOptions, IProfileDAO } from './interfaces/index';
 
 export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO {
   protected logger: Logger;
@@ -202,7 +201,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
       const data = {
         ...profileData,
         user: objectId,
-        puid: profileData.puid || generateShortUID(uuid()),
+        puid: profileData.puid || generateShortUID(),
       };
 
       // If personalInfo isn't provided, create a minimal structure
@@ -225,7 +224,10 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   /**
    * @inheritdoc
    */
-  async searchProfiles(searchTerm: string, limit = 10): Promise<IProfileDocument[]> {
+  async searchProfiles(
+    searchTerm: string,
+    opts?: IFindOptions
+  ): ListResultWithPagination<IProfileDocument[]> {
     try {
       // Create a search filter that looks across various fields
       const filter: FilterQuery<IProfileDocument> = {
@@ -239,7 +241,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         ],
       };
 
-      return await this.list(filter, { limit });
+      return await this.list(filter, opts);
     } catch (error) {
       this.logger.error(`Error searching profiles with term "${searchTerm}":`, error);
       throw this.throwErrorHandler(error);
@@ -299,7 +301,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               {
                 $project: {
                   _id: 0,
-                  id: '$cid',
+                  csub: '$cid',
                   displayname: '$displayName',
                   isVerified: 1,
                 },
@@ -332,7 +334,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
             },
 
             // active client information
-            activeClient: {
+            client: {
               $let: {
                 vars: {
                   activeClient: {
@@ -349,7 +351,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   },
                 },
                 in: {
-                  id: '$$activeClient.cid',
+                  csub: '$$activeClient.cid',
                   displayname: '$$activeClient.displayName',
                   role: { $arrayElemAt: ['$$activeClient.roles', 0] },
                 },

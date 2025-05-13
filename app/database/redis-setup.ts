@@ -19,7 +19,19 @@ export class RedisService {
       this.redisMemoryServer = new RedisMemoryServer();
     }
 
-    this.client = createClient();
+    this.client = createClient({
+      socket: {
+        reconnectStrategy: (retries) => {
+          if (retries > 5) {
+            return new Error('Too many reconnect attempts');
+          }
+          return Math.min(retries * 100, 3000);
+        },
+        connectTimeout: 10000,
+        keepAlive: 30000,
+      },
+      commandsQueueMaxLength: 100,
+    });
 
     this.client.on('error', (err: Error) => {
       console.error('Redis client error', err);

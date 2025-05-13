@@ -1,16 +1,16 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { v4 as uuid } from 'uuid';
 import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
-import { AuthTokenService } from '@services/auth';
+import { AuthTokenService } from '@services/index';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { ISignupData, IUserRole } from '@interfaces/user.interface';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
 import {
   getLocationDetails,
+  generateShortUID,
   hashGenerator,
   JWT_KEY_NAMES,
   createLogger,
@@ -18,10 +18,10 @@ import {
 } from '@utils/index';
 import {
   InvalidRequestError,
+  UnauthorizedError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-  UnauthorizedError,
 } from '@shared/customErrors';
 
 interface IConstructor {
@@ -34,13 +34,13 @@ interface IConstructor {
 }
 
 export class AuthService {
-  private log: Logger;
-  private userDAO: UserDAO;
-  private clientDAO: ClientDAO;
-  private authCache: AuthCache;
-  private profileDAO: ProfileDAO;
-  private emailQueue: EmailQueue;
-  private tokenService: AuthTokenService;
+  private readonly log: Logger;
+  private readonly userDAO: UserDAO;
+  private readonly clientDAO: ClientDAO;
+  private readonly authCache: AuthCache;
+  private readonly profileDAO: ProfileDAO;
+  private readonly emailQueue: EmailQueue;
+  private readonly tokenService: AuthTokenService;
 
   constructor({
     userDAO,
@@ -59,21 +59,130 @@ export class AuthService {
     this.log = createLogger('AuthService');
   }
 
+  async refreshToken(data: { refreshToken: string; userId: string }): Promise<
+    ISuccessReturnData<{
+      accessToken: string;
+      refreshToken: string;
+      rememberMe: boolean;
+    }>
+  > {
+    const { refreshToken, userId } = data;
+
+    if (!refreshToken || !userId) {
+      this.log.error('RefreshToken or userId missing');
+      throw new UnauthorizedError({ message: 'Invalid refresh token' });
+    }
+
+    const storedRefreshToken = await this.authCache.getRefreshToken(userId);
+    if (!storedRefreshToken.success) {
+      this.log.error('RefreshToken does not match stored token or expired');
+      throw new UnauthorizedError();
+    }
+
+    const decoded = await this.tokenService.verifyJwtToken(
+      JWT_KEY_NAMES.REFRESH_TOKEN as TokenType,
+      refreshToken
+    );
+
+    if (!decoded.success || !decoded.data?.sub) {
+      this.log.error('RefreshToken validation failed');
+      throw new UnauthorizedError({ message: 'token expired.' });
+    }
+
+    const tokens = this.tokenService.createJwtTokens({
+      sub: userId,
+      rememberMe: decoded.data.rememberMe,
+      csub: decoded.data.csub,
+    });
+
+    const saved = await this.authCache.saveRefreshToken(
+      userId,
+      tokens.refreshToken,
+      decoded.data.rememberMe
+    );
+    if (!saved.success) {
+      throw new UnauthorizedError({ message: 'Invalid refresh token' });
+    }
+
+    return {
+      success: true,
+      data: tokens,
+      message: 'Token refreshed successfully',
+    };
+  }
+
+  async getTokenUser(token: string): Promise<ISuccessReturnData> {
+    if (!token) {
+      this.log.error('Token missing in validateToken');
+      throw new UnauthorizedError({ message: 'Authentication required' });
+    }
+
+    const decoded = await this.tokenService.verifyJwtToken(
+      JWT_KEY_NAMES.ACCESS_TOKEN as TokenType,
+      token
+    );
+
+    if (!decoded.success || !decoded.data?.sub) {
+      this.log.error('Token validation failed');
+      throw new UnauthorizedError({ message: 'Invalid authentication token' });
+    }
+
+    const user = await this.userDAO.getUserById(decoded.data.sub);
+    if (!user) {
+      this.log.error('User not found for token');
+      throw new UnauthorizedError();
+    }
+
+    if (!user.isActive) {
+      this.log.error('User account inactive');
+      throw new UnauthorizedError({ message: 'Account verification pending' });
+    }
+
+    return {
+      data: null,
+      success: true,
+      message: 'Token validated successfully',
+    };
+  }
+
+  async verifyClientAccess(userId: string, clientId: string): Promise<ISuccessReturnData> {
+    const user = await this.userDAO.getUserById(userId);
+
+    if (!user) {
+      throw new ForbiddenError({ message: 'User not found' });
+    }
+    const client = await this.clientDAO.getClientByCid(clientId);
+    if (!client) {
+      throw new ForbiddenError({ message: 'Client not found' });
+    }
+
+    const clientAccount = user.cids.find((c) => c.cid === clientId);
+    if (!clientAccount) {
+      throw new ForbiddenError({ message: 'User does not have access to this client' });
+    }
+
+    return {
+      success: true,
+      data: null,
+      message: 'User has access to client',
+    };
+  }
+
   async signup(signupData: ISignupData): Promise<ISuccessReturnData> {
     const session = await this.userDAO.startSession();
     const result = await this.userDAO.withTransaction(session, async (session) => {
       const _userId = new Types.ObjectId();
-      const clientId = uuid();
+      const clientId = generateShortUID();
 
       const user = await this.userDAO.insert(
         {
-          uid: uuid(),
+          uid: generateShortUID(),
           _id: _userId,
           activeCid: clientId,
           isActive: false,
           email: signupData.email,
           password: signupData.password,
-          activationToken: hashGenerator({ usenano: true }),
+          activationToken: hashGenerator({ _usenano: true }),
           activationTokenExpiresAt: dayjs().add(2, 'hour').toDate(),
           cids: [
             {
@@ -115,7 +224,7 @@ export class AuthService {
         _userId,
         {
           user: _userId,
-          puid: uuid(),
+          puid: generateShortUID(),
           personalInfo: {
             displayName: signupData.displayName,
             firstName: signupData.firstName,
@@ -136,7 +245,7 @@ export class AuthService {
           emailType: MailType.ACCOUNT_ACTIVATION,
           data: {
             fullname: profile.fullname,
-            activationUrl: `${process.env.FRONTEND_URL}/account_activation/${client.cid}?t=${user.activationToken}`,
+            activationUrl: `${process.env.FRONTEND_URL}/${client.cid}/account_activation?t=${user.activationToken}`,
           },
         },
       };
@@ -155,8 +264,8 @@ export class AuthService {
       accessToken: string;
       rememberMe: boolean;
       refreshToken: string;
-      activeAccount: { cid: string; displayName: string };
-      accounts: { cid: string; displayName: string }[] | null;
+      activeAccount: { csub: string; displayName: string };
+      accounts: { csub: string; displayName: string }[] | null;
     }>
   > {
     const { email, password, rememberMe } = data;
@@ -165,7 +274,7 @@ export class AuthService {
       throw new BadRequestError({ message: 'Email and password are required.' });
     }
 
-    let user = await this.userDAO.getUserByEmail(email);
+    let user = await this.userDAO.getActiveUserByEmail(email);
     if (!user) {
       throw new NotFoundError({ message: 'Invalid email/password combination.' });
     }
@@ -183,6 +292,7 @@ export class AuthService {
     const tokens = this.tokenService.createJwtTokens({
       sub: user._id.toString(),
       rememberMe,
+      csub: activeAccount.cid,
     });
     await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, rememberMe);
     const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
@@ -195,7 +305,7 @@ export class AuthService {
           refreshToken: tokens.refreshToken,
           accessToken: tokens.accessToken,
           activeAccount: {
-            cid: activeAccount.cid,
+            csub: activeAccount.cid,
             displayName: activeAccount.displayName,
           },
           accounts: [],
@@ -206,7 +316,7 @@ export class AuthService {
 
     const otherAccounts = user.cids
       .filter((c) => c.cid !== activeAccount.cid)
-      .map((c) => ({ cid: c.cid, displayName: c.displayName }));
+      .map((c) => ({ csub: c.cid, displayName: c.displayName }));
     return {
       success: true,
       data: {
@@ -214,7 +324,7 @@ export class AuthService {
         refreshToken: tokens.refreshToken,
         accessToken: tokens.accessToken,
         activeAccount: {
-          cid: activeAccount.cid,
+          csub: activeAccount.cid,
           displayName: activeAccount.displayName,
         },
         accounts: otherAccounts,
@@ -249,7 +359,16 @@ export class AuthService {
     };
   }
 
-  async switchActiveAccount(userId: string, newCid: string): Promise<ISuccessReturnData> {
+  async switchActiveAccount(
+    userId: string,
+    newCid: string
+  ): Promise<
+    ISuccessReturnData<{
+      accessToken: string;
+      refreshToken: string;
+      activeAccount: { csub: string; displayName: string };
+    }>
+  > {
     if (!userId || !newCid) {
       throw new BadRequestError({ message: 'User ID and account CID are required.' });
     }
@@ -259,23 +378,33 @@ export class AuthService {
       throw new NotFoundError({ message: 'User not found.' });
     }
 
-    const accountExists = user.cids.some((c) => c.cid === newCid);
+    const accountExists = user.cids.find((c) => c.cid === newCid);
     if (!accountExists) {
-      throw new ForbiddenError({ message: 'Account access denied.' });
+      throw new NotFoundError({ message: 'Unable to select account.' });
     }
 
     await this.userDAO.updateById(userId, { $set: { activeCid: newCid } });
-    const activeAccount = user.cids.find((c) => c.cid === newCid)!;
+    const activeAccount = user.cids.find((c) => c.cid === user.activeCid)!;
+    const tokens = this.tokenService.createJwtTokens({
+      sub: user._id.toString(),
+      rememberMe: false,
+      csub: activeAccount.cid,
+    });
+    await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, false);
 
+    const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
+    currentuser && (await this.authCache.saveCurrentUser(currentuser));
     return {
       success: true,
       data: {
+        refreshToken: tokens.refreshToken,
+        accessToken: tokens.accessToken,
         activeAccount: {
-          cid: activeAccount.cid,
+          csub: activeAccount.cid,
           displayName: activeAccount.displayName,
         },
       },
-      message: 'Account switched successfully.',
+      message: 'Success.',
     };
   }
 
@@ -300,7 +429,7 @@ export class AuthService {
     }
 
     await this.userDAO.createActivationToken('', email)!;
-    const user = await this.userDAO.getUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
 
     if (!user) {
       throw new NotFoundError({ message: `Activation link has been sent to ${email}.` });
@@ -312,7 +441,7 @@ export class AuthService {
       emailType: MailType.ACCOUNT_ACTIVATION,
       data: {
         fullname: user.profile?.fullname,
-        activationUrl: `${envVariables.FRONTEND.URL}/account_activation/${user.activeCid}?t=${user.activationToken}`,
+        activationUrl: `${envVariables.FRONTEND.URL}/${user.activeCid}/account_activation/?t=${user.activationToken}`,
       },
     };
     this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
@@ -330,7 +459,7 @@ export class AuthService {
     }
 
     await this.userDAO.createPasswordResetToken(email);
-    const user = await this.userDAO.getUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
     if (!user) {
       throw new NotFoundError({ message: 'No record found with email provided.' });
     }
@@ -360,7 +489,7 @@ export class AuthService {
     }
 
     await this.userDAO.resetPassword(email, token);
-    const user = await this.userDAO.getUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
     if (!user) {
       throw new NotFoundError({ message: 'No record found with email provided.' });
     }
@@ -391,7 +520,7 @@ export class AuthService {
       accessToken
     );
     if (!payload.success || !payload.data?.sub) {
-      throw new ForbiddenError({ message: 'Invalid access token.' });
+      throw new ForbiddenError({ message: 'Invalid auth token.' });
     }
 
     await this.authCache.invalidateUserSession(payload.data.sub as string);

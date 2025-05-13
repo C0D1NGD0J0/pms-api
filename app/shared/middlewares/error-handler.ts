@@ -1,8 +1,9 @@
 import { MongooseError } from 'mongoose';
 import { envVariables } from '@shared/config';
-import { createLogger } from '@utils/helpers';
 import { AwilixResolutionError } from 'awilix';
+import { EventTypes } from '@interfaces/index';
 import { NextFunction, Response, Request } from 'express';
+import { extractMulterFiles, createLogger } from '@utils/helpers';
 import { handleMongoError, CustomError } from '@shared/customErrors';
 
 const logger = createLogger('ErrorHandler_Middleware');
@@ -13,6 +14,7 @@ export const errorHandlerMiddleware = async (
   res: Response,
   next: NextFunction
 ) => {
+  const { emitterService } = req.container.cradle;
   const statusCode = err.statusCode || 500;
   const message =
     err instanceof CustomError
@@ -38,6 +40,10 @@ export const errorHandlerMiddleware = async (
     logger.debug(`Limited stack: ${limitedStack}`);
   }
 
+  if (req.files) {
+    const filesToDelete = extractMulterFiles(req.files).map((file) => file.filename);
+    emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, filesToDelete);
+  }
   if (res.headersSent) {
     // If headers are already sent, forward to the express error handler
     return next(err);

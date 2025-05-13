@@ -42,7 +42,7 @@ export const mockUserDAO = {
   startSession: jest.fn(),
   withTransaction: jest.fn(),
   insert: jest.fn(),
-  getUserByEmail: jest.fn(),
+  getActiveUserByEmail: jest.fn(),
   getUserById: jest.fn(),
   activateAccount: jest.fn(),
   createActivationToken: jest.fn(),

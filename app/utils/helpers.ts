@@ -1,9 +1,11 @@
 import color from 'colors';
 import crypto from 'crypto';
 import bunyan from 'bunyan';
+import * as nanoid from 'nanoid';
 import { envVariables } from '@shared/config';
 import { Country, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import {
   AsyncRequestHandler,
   ExtractedMediaFile,
@@ -36,7 +38,10 @@ export function createLogger(name: string) {
     TRACE: 10,
     FATAL: 60,
   };
-
+  const loggers: Map<string, bunyan> = new Map();
+  if (loggers.has(name)) {
+    return loggers.get(name)!;
+  }
   const customStream = {
     write: (record: unknown) => {
       try {
@@ -44,25 +49,28 @@ export function createLogger(name: string) {
         const logRecord = record as LogRecord;
 
         switch (logRecord.level) {
+          case LOG_LEVELS.TRACE:
+            output = color.white.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            break;
           case LOG_LEVELS.ERROR:
           case LOG_LEVELS.FATAL:
             output = color.red.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.DEBUG:
-            output = color.cyan.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.cyan(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.WARN:
-            output = color.magenta.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.yellow.italic(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           case LOG_LEVELS.INFO:
-            output = color.yellow.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.grey(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
             break;
           default:
             output = color.grey.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
         }
 
         if (envVariables.SERVER.ENV !== 'production') {
-          return console.log(output);
+          console.log(output);
         }
       } catch (err) {
         console.error('Logging Error:', err);
@@ -75,21 +83,23 @@ export function createLogger(name: string) {
   };
 
   const stream =
-    process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'production'
-      ? nullStream
-      : customStream;
+    process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev'
+      ? customStream
+      : nullStream;
 
-  return bunyan.createLogger({
+  const logger = bunyan.createLogger({
     name,
-    level: 'debug',
+    level: LOG_LEVELS[process.env.LOG_LEVEL || 'info'],
     streams: [
       {
-        level: 'debug',
+        level: 'trace',
         type: 'raw',
         stream,
       },
     ],
   });
+  loggers.set(name, logger);
+  return logger;
 }
 
 /**
@@ -132,7 +142,7 @@ export function setAuthCookies(
       path: '/',
       httpOnly: true,
       sameSite: 'strict' as const,
-      secure: envVariables.SERVER.ENV !== 'development',
+      secure: envVariables.SERVER.ENV === 'production',
     };
     bearerJwt = `Bearer ${data.accessToken}`;
     if (data.rememberMe) {
@@ -144,29 +154,6 @@ export function setAuthCookies(
   }
 
   return res;
-}
-
-/**
- * Validates if a string is a valid phone number across multiple formats
- * @param phoneNumber - The phone number string to validate
- * @returns Boolean indicating if the phone number is valid
- */
-export function isValidPhoneNumber(phoneNumber: string): boolean {
-  if (!phoneNumber) {
-    return false;
-  }
-  const PHONE_PATTERNS = {
-    US_CANADA: /^(\+\d{1,2}\s?)?1?\.?\s?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$/,
-    EUROPE: /^(\+3[0-9]|4[0-46-9]|5[1-8]|7[1-79])?\d{6,14}$/,
-    AFRICA: /^(\+2[0-46-8])?\d{6,14}$/,
-  };
-  const normalizedNumber = phoneNumber.trim();
-
-  return (
-    PHONE_PATTERNS.US_CANADA.test(normalizedNumber) ||
-    PHONE_PATTERNS.EUROPE.test(normalizedNumber) ||
-    PHONE_PATTERNS.AFRICA.test(normalizedNumber)
-  );
 }
 
 /**
@@ -182,17 +169,32 @@ export function isValidPhoneNumber(phoneNumber: string): boolean {
 export function hashGenerator(hashOpts: {
   byteLength?: number;
   algorithm?: string;
-  usenano?: boolean;
+  _usenano?: boolean;
 }): string {
   try {
     const { byteLength = 16, algorithm = 'sha256' } = hashOpts;
-    // if (usenano) {
-    //   return nanoid(10);
-    // }
     const token = crypto.randomBytes(byteLength).toString('hex');
     return crypto.createHash(algorithm).update(token).digest('hex');
   } catch (error) {
     throw new Error(`Failed to generate hash: ${error.message}`);
+  }
+}
+
+/**
+ * Validates if a string is a valid phone number across multiple formats
+ * @param phoneNumber - The phone number string to validate
+ * @returns Boolean indicating if the phone number is valid
+ */
+export function isValidPhoneNumber(phoneNumber: string): boolean {
+  if (!phoneNumber || phoneNumber.length > 17) {
+    return false;
+  }
+  try {
+    const parsedNumber = parsePhoneNumberFromString(phoneNumber);
+    return !!parsedNumber && parsedNumber.isValid();
+  } catch (error) {
+    console.error('Error validating phone number:', error);
+    return false;
   }
 }
 
@@ -212,12 +214,14 @@ export function asyncWrapper(fn: AsyncRequestHandler) {
 /**
  * Extracts and standardizes file information from Multer file objects
  * @param files - A Multer file object or array of file objects
+ * @param actorId - The ID of the user who uploaded the files
  * @param allowedTypes - Optional array of allowed file types (e.g., ['image', 'document'])
  * @returns An array of standardized file information objects
  * @throws Error if any files have invalid types when allowedTypes is provided
  */
 export const extractMulterFiles = (
   files: MulterFile,
+  actorId?: string,
   allowedTypes?: FileType[]
 ): ExtractedMediaFile[] => {
   if (!files) {
@@ -238,8 +242,14 @@ export const extractMulterFiles = (
       fieldName: file.fieldname,
       mimeType,
       path: file.path,
+      originalFileName: file.originalname,
       filename: file.filename,
       fileSize: file.size,
+      uploadedBy: actorId || '',
+      url: '',
+      key: '',
+      status: 'pending',
+      uploadedAt: file.uploadedAt || new Date().toISOString(),
     });
   };
 
@@ -257,24 +267,16 @@ export const extractMulterFiles = (
 };
 
 /**
- * Generates a shortened UID from a UUID by removing hyphens and limiting length
- * @param uuid - The UUID string to shorten
+ * Generates a shortened UID
  * @param length - The desired length of the shortened UID (default: 9)
  * @returns The shortened UID string
- * @throws Error if uuid is not provided or not a valid UUID format
  */
-export function generateShortUID(uuid: string, length: number = 9): string {
-  if (!uuid) {
-    throw new Error('UUID is required');
+export function generateShortUID(length: number = 9): string {
+  const uuid = nanoid.nanoid(length);
+  if (uuid.length <= 9) {
+    return uuid.toUpperCase();
   }
-
-  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_REGEX.test(uuid)) {
-    throw new Error('Invalid UUID format');
-  }
-
-  const normalizedLength = Math.max(1, Math.min(32, length));
-  return uuid.replace(/-/g, '').slice(0, normalizedLength);
+  return uuid;
 }
 
 /**
@@ -285,7 +287,7 @@ export function generateShortUID(uuid: string, length: number = 9): string {
  * @returns An object containing pagination metadata
  * @throws Error if negative values are provided
  */
-export const paginateResult = (count: number, skip: number, limit: number): PaginateResult => {
+export const paginateResult = (count: number, skip = 0, limit = 10): PaginateResult => {
   if (count < 0 || skip < 0 || limit <= 0) {
     throw new Error(
       'Invalid pagination parameters: count and skip must be non-negative, limit must be positive'
@@ -409,4 +411,57 @@ export const convertTimeToSecondsAndMilliseconds = (
     seconds,
     milliseconds: seconds * 1000,
   };
+};
+
+/**
+ * Middleware to parse stringified JSON, booleans, and numbers in req.body
+ * Useful for multipart/form-data where nested fields are sent as strings
+ */
+export const parseJsonFields = (req: Request) => {
+  if (!req.body || typeof req.body !== 'object') return req.body;
+
+  const tryParse = (val: string) => {
+    try {
+      const parsed = JSON.parse(val);
+      return typeof parsed === 'object' ? parsed : val;
+    } catch {
+      return val;
+    }
+  };
+
+  const convertValue = (value: any): any => {
+    if (value == null) return value;
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+
+      if (
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))
+      ) {
+        return tryParse(trimmed);
+      }
+
+      if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+      if (trimmed.toLowerCase() === 'true') return true;
+      if (trimmed.toLowerCase() === 'false') return false;
+
+      return value;
+    }
+
+    if (Array.isArray(value)) return value.map(convertValue);
+    if (typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, convertValue(v)]));
+    }
+
+    return value;
+  };
+
+  try {
+    req.body = convertValue(req.body);
+  } catch (error) {
+    console.error('Error in parseJsonFields middleware:', error);
+  }
+
+  return req.body;
 };

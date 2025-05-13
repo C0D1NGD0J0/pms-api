@@ -1,7 +1,8 @@
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { handleMongoError } from '@shared/customErrors';
+import { paginateResult, createLogger } from '@utils/index';
+import { IPaginationQuery } from '@interfaces/utils.interface';
 import {
   UpdateWriteOpResult,
   AggregateOptions,
@@ -100,15 +101,25 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @param options - Optional settings for the query.
    * @returns A promise that resolves to an array of found documents.
    */
-  async list(filter: FilterQuery<T>, options?: IFindOptions): Promise<T[]> {
+  async list(
+    filter: FilterQuery<T>,
+    options?: { projection?: string; populate?: string } & IPaginationQuery
+  ) {
     try {
       let query: any = this.model.find(filter);
+      if (options?.sort) query = query.sort(options.sort);
       if (options?.skip) query = query.skip(options.skip);
       if (options?.limit) query = query.limit(options.limit);
-      if (options?.sort) query = query.sort(options.sort);
       if (options?.projection) query = query.select(options.projection);
       if (options?.populate) query = query.populate(options.populate as any);
-      return await query.exec();
+      const count = await this.model.countDocuments(filter).exec();
+      const result = await query.exec();
+      const pagination = paginateResult(count, options?.skip, options?.limit);
+
+      return {
+        data: result,
+        ...(pagination ? { pagination } : null),
+      };
     } catch (error) {
       throw this.throwErrorHandler(error);
     }

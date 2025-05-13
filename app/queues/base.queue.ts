@@ -24,51 +24,107 @@ export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions = {
 
 export type JobData = any;
 
-let bullMQAdapters: BullAdapter[] = [];
 export let serverAdapter: ExpressAdapter;
+const bullMQAdapters: BullAdapter[] = [];
+let deadLetterQueue: Queue.Queue | null;
 
 export class BaseQueue<T extends JobData = JobData> {
   protected log: Logger;
+  protected dlq: Queue.Queue;
   protected queue: Queue.Queue;
 
-  constructor(queueName = 'BaseQueue') {
+  constructor(queueName: string) {
     this.log = createLogger(queueName);
     this.queue = new Queue(queueName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
-    this.initializeBullBoard(this.queue);
+    if (!deadLetterQueue) {
+      const dlqName = `${queueName}-DLQ`;
+      deadLetterQueue = new Queue(dlqName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
+    }
+    this.dlq = deadLetterQueue;
+    this.addQueueToBullBoard(this.queue, this.dlq);
     this.initializeQueueEvents();
+    deadLetterQueue = null;
   }
 
   protected initializeQueueEvents(): void {
     this.queue.on('completed', (job, result) => {
-      this.log.info(`Job ${job.id} has completed`, result);
+      const processingTime = job.finishedOn ? job.finishedOn - job.processedOn! : 'N/A';
+      this.log.info(
+        { jobId: job.id, jobName: job.name, processingTimeMs: processingTime, result: result },
+        `Job ${job.id} (${job.name}) completed successfully.`
+      );
     });
 
-    this.queue.on('failed', (job, err) => {
-      this.log.error(`Job ${job.id} has failed: ${err.message}`, err);
+    this.queue.on('failed', async (job, err) => {
+      this.log.error(
+        { jobId: job.id, jobName: job.name, attemptsMade: job.attemptsMade, error: err },
+        `Job ${job.id} (${job.name}) failed after ${job.attemptsMade} attempts: ${err.message}`
+      );
+
+      if (job.attemptsMade >= (job.opts.attempts ?? DEFAULT_JOB_OPTIONS.attempts ?? 3)) {
+        this.log.warn(
+          { jobId: job.id, jobName: job.name },
+          `Job ${job.id} reached max attempts. Moving to DLQ: ${this.dlq.name}`
+        );
+        try {
+          await this.dlq.add(
+            job.name,
+            {
+              originalJobId: job.id,
+              originalQueue: this.queue.name,
+              data: job.data,
+              failedReason: err.message,
+              failedStack: err.stack,
+              failedTimestamp: new Date().toISOString(),
+              attemptsMade: job.attemptsMade,
+            },
+            { removeOnComplete: true, removeOnFail: true }
+          );
+        } catch (dlqError: any) {
+          this.log.error(
+            { jobId: job.id, dlqName: this.dlq.name, error: dlqError },
+            `Failed to move job ${job.id} to DLQ: ${dlqError.message}`
+          );
+        }
+      }
     });
 
     this.queue.on('error', (error) => {
-      this.log.error('Queue error:', error);
+      this.log.error({ error }, `Queue ${this.queue.name} encountered an error: ${error.message}`);
     });
 
     this.queue.on('stalled', (job) => {
-      this.log.error(`Job ${job.id} has stalled`);
-      job.moveToFailed({ message: 'Job stalled and moved to failed' }, false);
+      this.log.warn(
+        { jobId: job.id, jobName: job.name },
+        `Job ${job.id} (${job.name}) has stalled.`
+      );
+      job.moveToFailed({ message: 'Job stalled' }, true);
     });
   }
 
-  initializeBullBoard(queue: any): void {
-    serverAdapter = new ExpressAdapter();
-    serverAdapter.setBasePath(envVariables.BULL_BOARD.BASE_PATH);
+  addQueueToBullBoard(queue: Queue.Queue, dlq?: Queue.Queue): void {
+    if (!serverAdapter) {
+      serverAdapter = new ExpressAdapter();
+      serverAdapter.setBasePath(envVariables.BULL_BOARD.BASE_PATH);
+    }
 
-    bullMQAdapters.push(new BullAdapter(queue));
-    bullMQAdapters = [...new Set(bullMQAdapters)];
+    let adaptersToAdd: Queue.Queue[] = [queue];
+    if (dlq && dlq !== queue) {
+      adaptersToAdd.push(dlq);
+    }
 
+    const existingQueueNames = bullMQAdapters.map(
+      (adapter) => (adapter as any).queue?.name || 'unknown'
+    );
+
+    adaptersToAdd = adaptersToAdd.filter((q) => !existingQueueNames.includes(q.name));
+    adaptersToAdd.forEach((q) => {
+      bullMQAdapters.push(new BullAdapter(q));
+    });
     createBullBoard({
       serverAdapter,
       queues: bullMQAdapters,
     });
-    this.log.info('BullBoard initialized');
   }
 
   /**
@@ -78,7 +134,10 @@ export class BaseQueue<T extends JobData = JobData> {
     try {
       return await this.queue.add(name, data, DEFAULT_JOB_OPTIONS);
     } catch (error) {
-      this.log.error(`Failed to add job '${name}' to queue:`, error);
+      this.log.error(
+        { jobName: name, queueName: this.queue.name, error: error },
+        `Failed to add job '${name}' to queue: ${error.message}`
+      );
       throw error;
     }
   }
@@ -88,7 +147,7 @@ export class BaseQueue<T extends JobData = JobData> {
    */
   processQueueJobs(
     name: string,
-    concurrency: number,
+    concurrency = 5,
     callback: Queue.ProcessCallbackFunction<T>
   ): void {
     this.queue.process(name, concurrency, callback);
@@ -100,6 +159,9 @@ export class BaseQueue<T extends JobData = JobData> {
   async shutdown(): Promise<void> {
     try {
       await this.queue.close();
+      if (this.dlq) {
+        await this.dlq.close();
+      }
       this.log.info(`Queue ${this.queue.name} shutdown complete`);
     } catch (error) {
       this.log.error(`Error shutting down queue ${this.queue.name}:`, error);
@@ -139,5 +201,27 @@ export class BaseQueue<T extends JobData = JobData> {
    */
   async getJob(jobId: string | number): Promise<Queue.Job<T> | null> {
     return this.queue.getJob(jobId);
+  }
+  /**
+   * Get the status of a job
+   * @param jobId
+   * @returns { exists: boolean; id: string; state: string; progress: number; data: T; result: any; completedOn: Date | undefined; failedReason: string | undefined }
+   */
+  async getJobStatus(jobId: string) {
+    const job = await this.getJob(jobId);
+    if (!job) {
+      return { exists: false };
+    }
+
+    return {
+      exists: true,
+      id: job.id,
+      state: await job.getState(),
+      progress: job.progress(),
+      data: job.data,
+      result: job.returnvalue,
+      completedOn: job.finishedOn ? new Date(job.finishedOn) : undefined,
+      failedReason: job.failedReason,
+    };
   }
 }

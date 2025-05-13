@@ -2,8 +2,8 @@ import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { AuthController } from '@controllers/index';
 import { validateRequest } from '@shared/validations';
-import { AuthValidations } from '@shared/validations/AuthValidation';
 import { isAuthenticated } from '@shared/middlewares';
+import { AuthValidations } from '@shared/validations/AuthValidation';
 
 const router: Router = express.Router();
 
@@ -26,8 +26,9 @@ router.post(
     return authController.login(req, res);
   })
 );
+
 router.get(
-  '/me',
+  '/:cid/me',
   isAuthenticated,
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -36,7 +37,7 @@ router.get(
 );
 
 router.put(
-  '/account_activation/:cid',
+  '/:cid/account_activation',
   validateRequest({
     query: AuthValidations.activationToken,
   }),
@@ -54,6 +55,17 @@ router.put(
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.sendActivationLink(req, res);
+  })
+);
+
+router.patch(
+  '/switch_client_account',
+  validateRequest({
+    body: AuthValidations.resendActivation,
+  }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.switchClientAccount(req, res);
   })
 );
 
@@ -76,6 +88,24 @@ router.post(
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.resetPassword(req, res);
+  })
+);
+
+router.delete(
+  '/:cid/logout',
+  isAuthenticated,
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.logout(req, res);
+  })
+);
+
+router.post(
+  '/:cid/refresh_token',
+  isAuthenticated,
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.refreshToken(req, res);
   })
 );
 

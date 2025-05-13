@@ -137,7 +137,11 @@ export class PropertyController {
   };
 
   archiveProperty = async (req: Request, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
+    const { cid, pid } = req.params;
+    const { currentuser } = req.context;
+
+    const data = await this.propertyService.archiveClientProperty(cid, pid, currentuser);
+    res.status(httpStatusCodes.OK).json(data);
   };
 
   verifyOccupancyStatus = async (req: Request, res: Response) => {

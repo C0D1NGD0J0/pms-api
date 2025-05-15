@@ -1,7 +1,8 @@
 import { ClientSession, FilterQuery } from 'mongoose';
+import { IUnitDocument } from '@interfaces/unit.interface';
 import {
-  IPaginationQuery,
   ListResultWithPagination,
+  IPaginationQuery,
   UploadResult,
 } from '@interfaces/utils.interface';
 import {
@@ -36,17 +37,18 @@ export interface IPropertyDAO {
   ): ListResultWithPagination<IPropertyDocument[]>;
 
   /**
-   * Get properties by client ID
-   * @param clientId - The client ID
-   * @param filter - Additional filter criteria
-   * @param opts - Additional options for the query
-   * @returns A promise that resolves to an array of property documents
+   * Get unit count by status for a property
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to counts of units by status
    */
-  getPropertiesByClientId(
-    clientId: string,
-    filter?: FilterQuery<IPropertyDocument>,
-    opts?: IPaginationQuery
-  ): ListResultWithPagination<IPropertyDocument[]>;
+  getUnitCountsByStatus(propertyId: string): Promise<{
+    total: number;
+    available: number;
+    occupied: number;
+    reserved: number;
+    maintenance: number;
+    inactive: number;
+  }>;
 
   /**
    * Check if a property is available for a specific date range
@@ -62,6 +64,19 @@ export interface IPropertyDAO {
   // ): Promise<{ isAvailable: boolean; conflictingLeases?: any[] }>;
 
   /**
+   * Get properties by client ID
+   * @param clientId - The client ID
+   * @param filter - Additional filter criteria
+   * @param opts - Additional options for the query
+   * @returns A promise that resolves to an array of property documents
+   */
+  getPropertiesByClientId(
+    clientId: string,
+    filter?: FilterQuery<IPropertyDocument>,
+    opts?: IPaginationQuery
+  ): ListResultWithPagination<IPropertyDocument[]>;
+
+  /**
    * Update property occupancy status
    * @param propertyId - The property ID
    * @param status - The new occupancy status
@@ -75,6 +90,17 @@ export interface IPropertyDAO {
     totalUnits: number,
     userId: string
   ): Promise<IPropertyDocument | null>;
+
+  /**
+   * Check if a property can be archived (has no active units)
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to whether the property can be archived and why if not
+   */
+  canArchiveProperty(propertyId: string): Promise<{
+    canArchive: boolean;
+    activeUnitCount?: number;
+    occupiedUnitCount?: number;
+  }>;
 
   /**
    * Add or update property documents/photos
@@ -129,6 +155,17 @@ export interface IPropertyDAO {
   ): Promise<IPropertyDocument | null>;
 
   /**
+   * Check if a property can accommodate more units
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to whether the property can have more units
+   */
+  canAddUnitToProperty(propertyId: string): Promise<{
+    canAdd: boolean;
+    currentCount: number;
+    maxCapacity: number;
+  }>;
+
+  /**
    * Create a new property with validation
    * @param propertyData - The property data
    * @param session - Optional MongoDB session for transactions
@@ -138,6 +175,17 @@ export interface IPropertyDAO {
     propertyData: Partial<IPropertyDocument>,
     session?: ClientSession
   ): Promise<IPropertyDocument>;
+
+  /**
+   * Recalculate and update property occupancy status based on its units
+   * @param propertyId - The property ID
+   * @param userId - The ID of the user triggering the update
+   * @returns A promise that resolves to the updated property
+   */
+  syncPropertyOccupancyWithUnits(
+    propertyId: string,
+    userId: string
+  ): Promise<IPropertyDocument | null>;
 
   /**
    * Search properties by various criteria
@@ -154,4 +202,11 @@ export interface IPropertyDAO {
    * @returns A promise that resolves to true if successful
    */
   archiveProperty(propertyId: string, userId: string): Promise<boolean>;
+
+  /**
+   * Get all units for a property
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to an array of unit documents
+   */
+  getPropertyUnits(propertyId: string): Promise<IUnitDocument[]>;
 }

@@ -9,6 +9,7 @@ import {
   IUnitDocument,
   UnitTypeEnum,
 } from '@interfaces/unit.interface';
+import { name } from 'ejs';
 
 const logger = createLogger('UnitModel');
 
@@ -154,7 +155,11 @@ const UnitSchema = new Schema<IUnitDocument>(
     inspections: [
       {
         inspectionDate: { type: Date, required: true },
-        inspector: { tname: String, trim: true },
+        inspector: {
+          name: { type: String, required: true },
+          contact: { type: String, required: true },
+          company: { type: String },
+        },
         status: {
           type: String,
           enum: Object.values(InspectionStatusEnum),

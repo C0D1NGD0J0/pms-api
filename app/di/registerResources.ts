@@ -3,13 +3,13 @@ import { MailService } from '@mailer/index';
 import { GeoCoderService } from '@services/external';
 import { ClamScannerService } from '@shared/config/index';
 import { DiskStorage, S3Service } from '@services/fileUpload';
-import { Property, Profile, Client, User } from '@models/index';
 import { DatabaseService, RedisService } from '@database/index';
+import { Property, Profile, Client, User, Unit } from '@models/index';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { PropertyController, AuthController } from '@controllers/index';
-import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PropertyWorker, UploadWorker, EmailWorker } from '@workers/index';
 import { EventsRegistryCache, PropertyCache, AuthCache } from '@caching/index';
+import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO, UnitDAO } from '@dao/index';
 import { PropertyQueue, EventBusQueue, UploadQueue, EmailQueue } from '@queues/index';
 import {
   PropertyCsvProcessor,
@@ -29,6 +29,7 @@ const ModelResources = {
   clientModel: asValue(Client),
   profileModel: asValue(Profile),
   propertyModel: asValue(Property),
+  unitModel: asValue(Unit),
 };
 
 const ServiceResources = {
@@ -45,6 +46,7 @@ const DAOResources = {
   clientDAO: asClass(ClientDAO).singleton(),
   profileDAO: asClass(ProfileDAO).singleton(),
   propertyDAO: asClass(PropertyDAO).singleton(),
+  unitDAO: asClass(UnitDAO).singleton(),
 };
 
 const CacheResources = {

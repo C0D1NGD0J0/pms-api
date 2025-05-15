@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
-import { ClientSession, FilterQuery, Types, Model } from 'mongoose';
+import { ClientSession, FilterQuery, Types, Model, model } from 'mongoose';
+import { UnitStatusEnum, IUnitDocument } from '@interfaces/unit.interface';
 import { ListResultWithPagination, IPaginationQuery, UploadResult } from '@interfaces/index';
 import {
   IPropertyDocument,
@@ -456,7 +457,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
   }
 
   /**
-   * Archive a property (soft delete)
+   * Archive a property (soft delete) - now checks if property can be archived first
    * @param propertyId - The property ID
    * @param userId - The ID of the user performing the action
    * @returns A promise that resolves to true if successful
@@ -465,6 +466,14 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     try {
       if (!propertyId || !userId) {
         throw new Error('Property ID and user ID are required');
+      }
+
+      // Check if property can be archived
+      const archiveCheck = await this.canArchiveProperty(propertyId);
+      if (!archiveCheck.canArchive) {
+        throw new Error(
+          `Cannot archive property with ${archiveCheck.activeUnitCount} active units (${archiveCheck.occupiedUnitCount} occupied)`
+        );
       }
 
       const updateOperation = {
@@ -478,6 +487,219 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       return !!result;
     } catch (error) {
       this.logger.error('Error in archiveProperty:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Get all units for a property
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to an array of unit documents
+   */
+  async getPropertyUnits(propertyId: string): Promise<IUnitDocument[]> {
+    try {
+      if (!propertyId) {
+        throw new Error('Property ID is required');
+      }
+
+      const Unit = model('Unit');
+      const units = await Unit.find({
+        propertyId: new Types.ObjectId(propertyId),
+        deletedAt: null,
+      }).exec();
+
+      return units;
+    } catch (error) {
+      this.logger.error('Error in getPropertyUnits:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Get unit count by status for a property
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to counts of units by status
+   */
+  async getUnitCountsByStatus(propertyId: string): Promise<{
+    total: number;
+    available: number;
+    occupied: number;
+    reserved: number;
+    maintenance: number;
+    inactive: number;
+  }> {
+    try {
+      if (!propertyId) {
+        throw new Error('Property ID is required');
+      }
+
+      const Unit = model('Unit');
+      const aggregationResults = await Unit.aggregate([
+        {
+          $match: {
+            propertyId: new Types.ObjectId(propertyId),
+            deletedAt: null,
+          },
+        },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+          },
+        },
+      ]).exec();
+
+      const result = {
+        total: 0,
+        available: 0,
+        occupied: 0,
+        reserved: 0,
+        maintenance: 0,
+        inactive: 0,
+      };
+
+      // get total count
+      result.total = await Unit.countDocuments({
+        propertyId: new Types.ObjectId(propertyId),
+        deletedAt: null,
+      }).exec();
+
+      // update counts based on aggregation results
+      aggregationResults.forEach((item) => {
+        switch (item._id) {
+          case UnitStatusEnum.MAINTENANCE:
+            result.maintenance = item.count;
+            break;
+          case UnitStatusEnum.AVAILABLE:
+            result.available = item.count;
+            break;
+          case UnitStatusEnum.OCCUPIED:
+            result.occupied = item.count;
+            break;
+          case UnitStatusEnum.RESERVED:
+            result.reserved = item.count;
+            break;
+          case UnitStatusEnum.INACTIVE:
+            result.inactive = item.count;
+            break;
+        }
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error('Error in getUnitCountsByStatus:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Check if a property can accommodate more units
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to whether the property can have more units
+   */
+  async canAddUnitToProperty(propertyId: string): Promise<{
+    canAdd: boolean;
+    currentCount: number;
+    maxCapacity: number;
+  }> {
+    try {
+      if (!propertyId) {
+        throw new Error('Property ID is required');
+      }
+
+      const property = await this.findById(propertyId);
+      if (!property) {
+        throw new Error('Property not found');
+      }
+
+      const Unit = model('Unit');
+      const currentCount = await Unit.countDocuments({
+        propertyId: new Types.ObjectId(propertyId),
+        deletedAt: null,
+      }).exec();
+
+      // get max capacity from property totalUnits field
+      const maxCapacity = property.totalUnits || 0;
+
+      return {
+        canAdd: maxCapacity === 0 || currentCount < maxCapacity, // if maxCapacity is 0, there's no limit
+        currentCount,
+        maxCapacity,
+      };
+    } catch (error) {
+      this.logger.error('Error in canAddUnitToProperty:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Recalculate and update property occupancy status based on its units
+   * @param propertyId - The property ID
+   * @param userId - The ID of the user triggering the update
+   * @returns A promise that resolves to the updated property
+   */
+  async syncPropertyOccupancyWithUnits(
+    propertyId: string,
+    userId: string
+  ): Promise<IPropertyDocument | null> {
+    try {
+      if (!propertyId || !userId) {
+        throw new Error('Property ID and user ID are required');
+      }
+
+      const unitCounts = await this.getUnitCountsByStatus(propertyId);
+      let occupancyStatus: OccupancyStatus = 'vacant';
+
+      if (unitCounts.total === 0) {
+        occupancyStatus = 'vacant';
+      } else if (unitCounts.occupied === unitCounts.total) {
+        occupancyStatus = 'occupied';
+      } else if (unitCounts.occupied > 0) {
+        occupancyStatus = 'partially_occupied';
+      } else {
+        occupancyStatus = 'vacant';
+      }
+
+      return await this.updatePropertyOccupancy(
+        propertyId,
+        occupancyStatus,
+        unitCounts.total,
+        userId
+      );
+    } catch (error) {
+      this.logger.error('Error in syncPropertyOccupancyWithUnits:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Check if a property can be archived (has no active units)
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to whether the property can be archived and why if not
+   */
+  async canArchiveProperty(propertyId: string): Promise<{
+    canArchive: boolean;
+    activeUnitCount?: number;
+    occupiedUnitCount?: number;
+  }> {
+    try {
+      if (!propertyId) {
+        throw new Error('Property ID is required');
+      }
+
+      const unitCounts = await this.getUnitCountsByStatus(propertyId);
+
+      // a property can be archived if it has no active or occupied units
+      const activeUnitCount = unitCounts.total - unitCounts.inactive;
+      const occupiedUnitCount = unitCounts.occupied;
+
+      return {
+        canArchive: activeUnitCount === 0,
+        activeUnitCount,
+        occupiedUnitCount,
+      };
+    } catch (error) {
+      this.logger.error('Error in canArchiveProperty:', error);
       throw this.throwErrorHandler(error);
     }
   }

@@ -2,7 +2,6 @@ import { Document, Types } from 'mongoose';
 
 import { CURRENCIES } from './utils.interface';
 
-// Unit Type Enum
 export const UnitTypeEnum = {
   STUDIO: 'studio',
   ONE_BR: '1BR',
@@ -15,7 +14,6 @@ export const UnitTypeEnum = {
   OTHER: 'other',
 } as const;
 
-// Unit Status Enum
 export const UnitStatusEnum = {
   AVAILABLE: 'available',
   OCCUPIED: 'occupied',
@@ -24,20 +22,17 @@ export const UnitStatusEnum = {
   INACTIVE: 'inactive',
 } as const;
 
-// Document Type Enum
 export const DocumentTypeEnum = {
   LEASE: 'lease',
   INSPECTION: 'inspection',
   OTHER: 'other',
 } as const;
 
-// Document Status Enum
 export const DocumentStatusEnum = {
   ACTIVE: 'active',
   INACTIVE: 'inactive',
 } as const;
 
-// Inspection Status Enum
 export const InspectionStatusEnum = {
   PASSED: 'passed',
   FAILED: 'failed',
@@ -172,8 +167,12 @@ export interface UnitDocument {
   url: string;
 }
 export interface UnitInspection {
+  inspector: {
+    name: string;
+    contact: string;
+    company?: string;
+  };
   attachments?: UnitInspectionAttachment[];
-  inspector: Types.ObjectId;
   status: InspectionStatus;
   inspectionDate: Date;
   notes?: string;

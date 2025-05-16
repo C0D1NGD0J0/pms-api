@@ -13,11 +13,9 @@ router.use(isAuthenticated);
 router.get(
   '/',
   routeLimiter(),
-  /* Uncomment when UnitValidation is updated to PropertyUnitValidation
   validateRequest({
     query: PropertyUnitValidation.schemas.unitFilterQuery,
   }),
-  */
   asyncWrapper((req, res) => {
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');

@@ -13,11 +13,7 @@ router.use(isAuthenticated);
 router.get(
   '/',
   routeLimiter(),
-  /* Unable to use validation here until we properly fix the UnitValidation schemas
-  validateRequest({
-    query: UnitValidation.schemas.unitFilterQuery,
-  }),
-  */
+// Removed commented-out validation middleware for clarity.
   asyncWrapper((req, res) => {
     const unitController = req.container.resolve<UnitController>('unitController');
     return unitController.getPropertyUnits(req, res);

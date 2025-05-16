@@ -5,6 +5,8 @@ import { PropertyController } from '@controllers/index';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
 import { isAuthenticated, routeLimiter, diskUpload, scanFile } from '@shared/middlewares';
 
+import propertyUnitRoutes from './property-unit.routes';
+
 const router: Router = express.Router();
 
 router.use(isAuthenticated);
@@ -126,5 +128,8 @@ router.delete(
     return propertyController.archiveProperty(req, res);
   })
 );
+
+// Mount unit routes for properties
+router.use('/:cid/property/:pid/property-units', propertyUnitRoutes);
 
 export default router;

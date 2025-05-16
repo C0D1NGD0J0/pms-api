@@ -1,5 +1,5 @@
 import { ClientSession, FilterQuery } from 'mongoose';
-import { IUnitDocument } from '@interfaces/unit.interface';
+import { IPropertyUnitDocument } from '@interfaces/property-unit.interface';
 import {
   ListResultWithPagination,
   IPaginationQuery,
@@ -206,7 +206,7 @@ export interface IPropertyDAO {
   /**
    * Get all units for a property
    * @param propertyId - The property ID
-   * @returns A promise that resolves to an array of unit documents
+   * @returns A promise that resolves to an array of property unit documents
    */
-  getPropertyUnits(propertyId: string): Promise<IUnitDocument[]>;
+  getPropertyUnits(propertyId: string): Promise<IPropertyUnitDocument[]>;
 }

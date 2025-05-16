@@ -9,8 +9,6 @@ import {
   IUnitDocument,
   UnitTypeEnum,
 } from '@interfaces/unit.interface';
-import { name } from 'ejs';
-
 const logger = createLogger('UnitModel');
 
 const UnitSchema = new Schema<IUnitDocument>(

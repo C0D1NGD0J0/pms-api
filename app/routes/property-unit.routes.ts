@@ -1,21 +1,31 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/helpers';
+import { validateRequest } from '@shared/validations';
 import { PropertyUnitController } from '@controllers/PropertyUnitController';
+import { PropertyUnitValidations } from '@shared/validations/PropertyUnitValidation';
 import { isAuthenticated, routeLimiter, diskUpload, scanFile } from '@shared/middlewares';
 
-// mergeParams: true ensures this router has access to params from parent router
 const router: Router = express.Router({ mergeParams: true });
-
-// All routes require authentication
 router.use(isAuthenticated);
 
-// Get all property units for a property
-router.get(
-  '/',
+router.post(
+  '/add_unit',
   routeLimiter(),
+  diskUpload(['propertyUnit.media']),
+  scanFile,
   validateRequest({
-    query: PropertyUnitValidation.schemas.unitFilterQuery,
+    body: PropertyUnitValidations.createUnit,
   }),
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.addUnit(req, res);
+  })
+);
+
+router.get(
+  '/get_property_units',
+  routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');
@@ -23,47 +33,24 @@ router.get(
   })
 );
 
-// Get a specific property unit
 router.get(
-  '/:unitId',
-  /* Uncomment when UnitValidation is updated to PropertyUnitValidation
-  validateRequest({
-    params: PropertyUnitValidation.schemas.unitExists,
-  }),
-  */
+  '/get_property_unit/:unitId',
+  routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');
-    return propertyUnitController.getUnit(req, res);
+    return propertyUnitController.getPropertyUnit(req, res);
   })
 );
 
-// Create a new property unit
-router.post(
-  '/',
+router.patch(
+  '/update_property_unit/:unitId',
+  routeLimiter(),
   diskUpload(['propertyUnit.media']),
   scanFile,
-  /* Uncomment when UnitValidation is updated to PropertyUnitValidation
   validateRequest({
-    body: PropertyUnitValidation.schemas.createUnit,
+    body: PropertyUnitValidations.updateUnit,
   }),
-  */
-  asyncWrapper((req, res) => {
-    const propertyUnitController =
-      req.container.resolve<PropertyUnitController>('propertyUnitController');
-    return propertyUnitController.createUnit(req, res);
-  })
-);
-
-// Update a property unit
-router.patch(
-  '/:unitId',
-  /* Uncomment when UnitValidation is updated to PropertyUnitValidation
-  validateRequest({
-    params: PropertyUnitValidation.schemas.unitExists,
-    body: PropertyUnitValidation.schemas.updateUnit,
-  }),
-  */
   asyncWrapper((req, res) => {
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');
@@ -71,9 +58,22 @@ router.patch(
   })
 );
 
-// Update property unit status
+router.delete(
+  '/delete_property_unit/:unitId',
+  routeLimiter(),
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.archiveUnit(req, res);
+  })
+);
+
 router.patch(
-  '/:unitId/status',
+  '/update_property_unit_status/:unitId',
+  routeLimiter(),
+  validateRequest({
+    body: PropertyUnitValidations.updateUnit,
+  }),
   asyncWrapper((req, res) => {
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');
@@ -81,23 +81,31 @@ router.patch(
   })
 );
 
-// Add inspection to property unit
 router.post(
-  '/:unitId/inspections',
+  '/setup_inspection/:unitId',
+  routeLimiter(),
+  validateRequest({
+    body: PropertyUnitValidations.inspectUnit,
+  }),
   asyncWrapper((req, res) => {
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');
-    return propertyUnitController.addInspection(req, res);
+    return propertyUnitController.setupInpection(req, res);
   })
 );
 
-// Archive a property unit
-router.delete(
-  '/:unitId',
+router.patch(
+  '/upload_unit_media/:unitId',
+  routeLimiter(),
+  validateRequest({
+    body: PropertyUnitValidations.uploadUnitMedia,
+  }),
+  diskUpload(['propertyUnit.media']),
+  scanFile,
   asyncWrapper((req, res) => {
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');
-    return propertyUnitController.archiveUnit(req, res);
+    return propertyUnitController.addDocumentToUnit(req, res);
   })
 );
 

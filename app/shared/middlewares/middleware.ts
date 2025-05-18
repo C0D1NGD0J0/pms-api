@@ -254,8 +254,9 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
       },
       currentUser: null,
       request: {
-        method: req.method,
         path: req.path,
+        method: req.method,
+        params: req.params,
         url: req.originalUrl,
         query: req.query as Record<string, any>,
       },

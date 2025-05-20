@@ -465,3 +465,9 @@ export const parseJsonFields = (req: Request) => {
 
   return req.body;
 };
+
+export const getRequestDuration = (start: bigint): { durationInMs: number } => {
+  const diff = process.hrtime.bigint() - start;
+  const durationInMs = Number(diff) / 1000000;
+  return { durationInMs };
+};

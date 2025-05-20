@@ -264,7 +264,7 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
         startTime: Date.now(),
       },
       service: {
-        environment: process.env.NODE_ENV || 'development',
+        env: process.env.NODE_ENV || 'development',
       },
     };
     next();

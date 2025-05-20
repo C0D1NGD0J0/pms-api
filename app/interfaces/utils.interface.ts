@@ -51,6 +51,36 @@ export enum RequestSource {
   API = 'api',
 }
 
+export interface IRequestContext {
+  request: {
+    path: string;
+    method: string;
+    params: Record<string, any>;
+    url: string;
+    query: Record<string, any>;
+  };
+  userAgent: {
+    browser?: string;
+    version?: string;
+    os?: string;
+    isMobile: boolean;
+    isBot: boolean;
+  };
+  timing: {
+    startTime: number;
+    endTime?: number;
+    duration?: number;
+  };
+  currentuser: ICurrentUser | null;
+  service: { env: string };
+  source: RequestSource;
+  requestUrl: string;
+  requestId: string;
+  duration: number;
+  timestamp: Date;
+  ip?: string;
+}
+
 export interface RateLimitOptions {
   delayMs?: number | ((numRequests: number) => number); // delay in ms to add
   enableSpeedLimit?: boolean;
@@ -83,24 +113,6 @@ export interface IAWSFileUploadResponse {
   etag: string;
   key: string;
 }
-
-export interface IRequestContext {
-  userAgent: {
-    browser?: string;
-    version?: string;
-    os?: string;
-    isMobile: boolean;
-    isBot: boolean;
-  };
-  currentuser: ICurrentUser | null;
-  source: RequestSource;
-  requestUrl: string;
-  requestId: string;
-  duration: number;
-  timestamp: Date;
-  ip?: string;
-}
-
 export interface ResourceInfo {
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
   resourceName: 'property' | 'profile'; //name of the resource

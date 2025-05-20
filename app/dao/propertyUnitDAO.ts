@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { FilterQuery, Model, Types } from 'mongoose';
+import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
 import {
   PropertyUnitStatusEnum,
   PropertyUnitInspection,
@@ -24,7 +25,10 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
    * @param propertyId - The property ID
    * @returns A promise that resolves to an array of property unit documents
    */
-  async findUnitsByProperty(propertyId: string): Promise<IPropertyUnitDocument[]> {
+  async findUnitsByProperty(
+    propertyId: string,
+    opts: IPaginationQuery
+  ): ListResultWithPagination<IPropertyUnitDocument[]> {
     try {
       if (!propertyId) {
         throw new Error('Property ID is required');
@@ -35,7 +39,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         deletedAt: null,
       };
 
-      const result = await this.list(query);
+      const result = await this.list(query, opts);
       return result.data;
     } catch (error) {
       this.logger.error('Error in findUnitsByProperty:', error);

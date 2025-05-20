@@ -40,57 +40,6 @@ export const InspectionStatusEnum = {
   SCHEDULED: 'scheduled',
 } as const;
 
-export interface IUnit {
-  amenities: {
-    airConditioning: boolean;
-    heating: boolean;
-    washerDryer: boolean;
-    dishwasher: boolean;
-    fireplace: boolean;
-    hardwoodFloors: boolean;
-    furnished: boolean;
-    balcony: boolean;
-    parking: boolean;
-    storage: boolean;
-    walkInCloset: boolean;
-  };
-  utilities: {
-    water: boolean;
-    gas: boolean;
-    electricity: boolean;
-    internet: boolean;
-    trash: boolean;
-    cableTV: boolean;
-  };
-  specifications: {
-    totalArea: number;
-    bedrooms?: number;
-    bathrooms?: number;
-    maxOccupants?: number;
-  };
-  fees: {
-    currency: CURRENCIES;
-    rentAmount: number;
-    securityDeposit?: number;
-  };
-  media?: {
-    photos: UnitPhoto[];
-  };
-  lastModifiedBy?: Types.ObjectId;
-  inspections?: UnitInspection[];
-  currentLease?: Types.ObjectId;
-  propertyId: Types.ObjectId;
-  documents?: UnitDocument[];
-  createdBy: Types.ObjectId;
-  description?: string;
-  unitNumber: string;
-  status: UnitStatus;
-  isActive: boolean;
-  floor?: number;
-  type: UnitType;
-  uid: string;
-  cid: string;
-}
 export interface IUnitDocument extends Document, IUnit {
   calculateRentAdjustment: (percentage: number) => {
     oldAmount: number;
@@ -111,15 +60,59 @@ export interface IUnitDocument extends Document, IUnit {
   makeUnitAvailable: (userId: string) => Promise<IUnitDocument>;
 
   markUnitAsVacant: (userId: string) => Promise<IUnitDocument>;
-  // Methods
   softDelete: (userId: string) => Promise<IUnitDocument>;
+  propertyId: Types.ObjectId;
   lastInspectionDate?: Date;
-  // Document fields
+  description?: string;
   _id: Types.ObjectId;
   deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+  uid: string;
+  cid: string;
   id: string;
+}
+export interface IUnit {
+  amenities: {
+    airConditioning: boolean;
+    washerDryer: boolean;
+    dishwasher: boolean;
+    parking: boolean;
+    storage: boolean;
+    cableTV: boolean;
+    internet: boolean;
+  };
+  utilities: {
+    gas: boolean;
+    trash: boolean;
+    water: boolean;
+    heating: boolean;
+    centralAC: boolean;
+  };
+  specifications: {
+    totalArea: number;
+    bedrooms?: number;
+    bathrooms?: number;
+    maxOccupants?: number;
+  };
+  fees: {
+    currency: CURRENCIES;
+    rentAmount: number;
+    securityDeposit?: number;
+  };
+  media?: {
+    photos: UnitPhoto[];
+  };
+  lastModifiedBy?: Types.ObjectId;
+  inspections?: UnitInspection[];
+  currentLease?: Types.ObjectId;
+  documents?: UnitDocument[];
+  createdBy: Types.ObjectId;
+  unitNumber: string;
+  status: UnitStatus;
+  isActive: boolean;
+  floor?: number;
+  type: UnitType;
 }
 export interface IUnitFilterQuery {
   filters: {

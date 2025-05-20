@@ -1,4 +1,5 @@
 import { PropertyUnitInspection } from '@interfaces/property-unit.interface';
+import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
 import { IPropertyUnitDocument, PropertyUnitStatus } from '@interfaces/property-unit.interface';
 
 import { IBaseDAO } from './baseDAO.interface';
@@ -31,6 +32,16 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
   ): Promise<IPropertyUnitDocument | null>;
 
   /**
+   * Find all units for a specific property
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to an array of property unit documents
+   */
+  findUnitsByProperty(
+    propertyId: string,
+    opts: IPaginationQuery
+  ): ListResultWithPagination<IPropertyUnitDocument[]>;
+
+  /**
    * Find a specific unit by its number within a property
    * @param unitNumber - The unit number
    * @param propertyId - The property ID
@@ -58,13 +69,6 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
    * @returns A promise that resolves to an object with counts for each status
    */
   getUnitCountsByStatus(propertyId?: string): Promise<Record<PropertyUnitStatus, number>>;
-
-  /**
-   * Find all units for a specific property
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to an array of property unit documents
-   */
-  findUnitsByProperty(propertyId: string): Promise<IPropertyUnitDocument[]>;
 
   /**
    * Find units with available status

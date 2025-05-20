@@ -1,36 +1,26 @@
 import { Response, Request } from 'express';
 import { httpStatusCodes } from '@utils/index';
+import { PropertyUnitService } from '@services/property';
 import { IPropertyFilterQuery } from '@interfaces/property.interface';
-import { PropertyUnitService, PropertyService } from '@services/property';
 
 interface IConstructor {
   propertyUnitService: PropertyUnitService;
-  propertyService: PropertyService;
 }
 
 export class PropertyUnitController {
-  private readonly propertyService: PropertyService;
   private readonly propertyUnitService: PropertyUnitService;
 
-  constructor({ propertyService, propertyUnitService }: IConstructor) {
-    this.propertyService = propertyService;
+  constructor({ propertyUnitService }: IConstructor) {
     this.propertyUnitService = propertyUnitService;
   }
 
   addUnit = async (req: Request, res: Response) => {
     const unitData = req.body;
-    const { currentUser } = req.context;
-    const { cid, pid } = req.params;
-
-    const result = await this.propertyUnitService.addPropertyUnit(
-      { cid, pid, currentUser },
-      unitData
-    );
+    const result = await this.propertyUnitService.addPropertyUnit(req.context, unitData);
     res.status(httpStatusCodes.OK).json(result);
   };
 
   getPropertyUnits = async (req: Request, res: Response) => {
-    const { cid, pid } = req.params;
     const { page, limit, sort, sortBy } = req.query;
     const queryParams: IPropertyFilterQuery = {
       pagination: {
@@ -41,90 +31,55 @@ export class PropertyUnitController {
       },
       filters: {},
     };
-    const { currentUser } = req.context;
 
     const result = await this.propertyUnitService.getPropertyUnits(
-      { cid, pid, currentUser },
-      queryParams
+      req.context,
+      queryParams['pagination']
     );
     res.status(httpStatusCodes.OK).json(result);
   };
 
   getPropertyUnit = async (req: Request, res: Response) => {
-    const { cid, pid, unitId } = req.params;
-    const { currentUser } = req.context;
-
-    const result = await this.propertyUnitService.getPropertyUnit(
-      { cid, pid, unitId },
-      currentUser
-    );
+    const result = await this.propertyUnitService.getPropertyUnit(req.context);
     res.status(httpStatusCodes.OK).json(result);
   };
 
   updateUnit = async (req: Request, res: Response) => {
-    const { cid, pid, unitId } = req.params;
-    const { currentUser } = req.context;
-    const unitData = req.body;
-
-    const result = await this.propertyUnitService.updateUnit(
-      { cid, pid, unitId, unitData },
-      currentUser
-    );
+    const result = await this.propertyUnitService.updatePropertyUnit(req.context, req.body);
     res.status(httpStatusCodes.OK).json(result);
   };
 
   updateUnitStatus = async (req: Request, res: Response) => {
-    const { cid, pid, unitId } = req.params;
-    const { currentUser } = req.context;
-    const { status } = req.body;
-
-    const result = await this.propertyUnitService.updateUnitStatus(
-      { cid, pid, unitId, status },
-      currentUser
-    );
+    const result = await this.propertyUnitService.updateUnitStatus(req.context, req.body);
     res.status(httpStatusCodes.OK).json(result);
   };
 
   archiveUnit = async (req: Request, res: Response) => {
-    const { cid, pid, unitId } = req.params;
-    const { currentUser } = req.context;
-
-    const result = await this.propertyUnitService.archiveUnit({ cid, pid, unitId }, currentUser);
+    const result = await this.propertyUnitService.archiveUnit(req.context);
     res.status(httpStatusCodes.OK).json(result);
   };
 
   setupInpection = async (req: Request, res: Response) => {
-    const { cid, pid, unitId } = req.params;
-    const { currentUser } = req.context;
-    const inspectionData = req.body;
-
-    const result = await this.propertyUnitService.setupInspection(
-      { cid, pid, unitId, inspectionData },
-      currentUser
-    );
+    const result = await this.propertyUnitService.setupInspection(req.context, req.body);
     res.status(httpStatusCodes.OK).json(result);
   };
 
   addDocumentToUnit = async (req: Request, res: Response) => {
-    const { cid, pid, unitId } = req.params;
-    const { currentUser } = req.context;
-    const documentData = req.body;
-
+    if (!req.body.scannedFiles) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: 'No document file uploaded',
+      });
+    }
     const result = await this.propertyUnitService.addDocumentToUnit(
-      { cid, pid, unitId, documentData },
-      currentUser
+      req.context,
+      req.body.scannedFiles
     );
     res.status(httpStatusCodes.OK).json(result);
   };
 
   deleteDocumentFromUnit = async (req: Request, res: Response) => {
-    const { cid, pid, unitId, documentId } = req.params;
-    const { currentUser } = req.context;
-
-    const result = await this.propertyUnitService.deleteDocumentFromUnit(
-      { cid, pid, unitId, documentId },
-      currentUser
-    );
+    const result = await this.propertyUnitService.deleteDocumentFromUnit(req.context);
     res.status(httpStatusCodes.OK).json(result);
   };
 }

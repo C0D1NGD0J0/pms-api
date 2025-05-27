@@ -5,12 +5,23 @@ import { ClamScannerService } from '@shared/config/index';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
-import { PropertyWorker, UploadWorker, EmailWorker } from '@workers/index';
 import { PropertyUnit, Property, Profile, Client, User } from '@models/index';
 import { EventsRegistryCache, PropertyCache, AuthCache } from '@caching/index';
-import { PropertyQueue, EventBusQueue, UploadQueue, EmailQueue } from '@queues/index';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PropertyUnitController, PropertyController, AuthController } from '@controllers/index';
+import {
+  DocumentProcessingWorker,
+  PropertyWorker,
+  UploadWorker,
+  EmailWorker,
+} from '@workers/index';
+import {
+  DocumentProcessingQueue,
+  EventBusQueue,
+  PropertyQueue,
+  UploadQueue,
+  EmailQueue,
+} from '@queues/index';
 import {
   PropertyCsvProcessor,
   EventEmitterService,
@@ -59,16 +70,18 @@ const CacheResources = {
 };
 
 const WorkerResources = {
+  documentProcessingWorker: asClass(DocumentProcessingWorker).singleton(),
   emailWorker: asClass(EmailWorker).singleton(),
-  uploadWorker: asClass(UploadWorker).singleton(),
   propertyWorker: asClass(PropertyWorker).singleton(),
+  uploadWorker: asClass(UploadWorker).singleton(),
 };
 
 const QueuesResources = {
+  documentProcessingQueue: asClass(DocumentProcessingQueue).singleton(),
   emailQueue: asClass(EmailQueue).singleton(),
-  uploadQueue: asClass(UploadQueue).singleton(),
   eventBusQueue: asClass(EventBusQueue).singleton(),
   propertyQueue: asClass(PropertyQueue).singleton(),
+  uploadQueue: asClass(UploadQueue).singleton(),
 };
 
 const UtilsResources = {
@@ -86,15 +99,18 @@ const UtilsResources = {
 const SocketIOResources = {
   baseIO: asClass(BaseIO).singleton(),
 };
+
 export const initQueues = (container: AwilixContainer) => {
+  container.resolve('documentProcessingQueue');
   container.resolve('emailQueue');
-  container.resolve('uploadQueue');
   container.resolve('eventBusQueue');
   container.resolve('propertyQueue');
+  container.resolve('uploadQueue');
   container.resolve('clamScanner');
+  container.resolve('documentProcessingWorker');
   container.resolve('emailWorker');
-  container.resolve('uploadWorker');
   container.resolve('propertyWorker');
+  container.resolve('uploadWorker');
 };
 
 export const registerResources = {

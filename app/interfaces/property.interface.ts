@@ -65,6 +65,31 @@ export interface IPropertyFilterQuery {
   pagination: IPaginationQuery;
 }
 
+export interface PropertyTypeRule {
+  validationRules?: {
+    maxTotalArea?: number;
+    minTotalArea?: number;
+    maxUnits?: number;
+    allowBedrooms?: boolean;
+    allowBathrooms?: boolean;
+    requiresElevator?: boolean;
+  };
+  visibleFields: {
+    core: string[];
+    specifications: string[];
+    financial: string[];
+    amenities: string[];
+    documents: string[];
+    unit: string[];
+  };
+  helpText: Record<string, string>;
+  validateBedBath: boolean;
+  requiredFields: string[];
+  isMultiUnit: boolean;
+  defaultUnits: number;
+  minUnits: number;
+}
+
 export interface IPropertyDocumentItem {
   documentType?: 'deed' | 'tax' | 'insurance' | 'inspection' | 'other' | 'lease' | 'unknown';
   status: 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
@@ -145,7 +170,6 @@ export interface IUtilities {
   trash: boolean;
   gas: boolean;
 }
-
 export type PropertyType =
   | 'apartment'
   | 'house'
@@ -159,6 +183,7 @@ export interface CsvJobData {
   jobId?: string;
   cid: string;
 }
+
 export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
 
 export type NewPropertyType = {
@@ -166,6 +191,8 @@ export type NewPropertyType = {
 } & Omit<IProperty, 'pid'>;
 
 export type OccupancyStatus = 'vacant' | 'occupied' | 'partially_occupied';
+
+export type PropertyTypeRules = Record<string, PropertyTypeRule>;
 
 export interface IComputedLocation {
   coordinates: number[];

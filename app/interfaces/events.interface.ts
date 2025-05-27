@@ -78,6 +78,7 @@ export interface UploadCompletedPayload {
   resourceType: string;
   resourceName: string;
   resourceId: string;
+  actorId: string;
 }
 
 export interface DeleteAssetCompletedPayload {

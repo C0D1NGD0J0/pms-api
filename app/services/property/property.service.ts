@@ -1,7 +1,6 @@
 import Logger from 'bunyan';
 import sanitizeHtml from 'sanitize-html';
 import { FilterQuery, Types } from 'mongoose';
-import { EventTypes } from '@interfaces/index';
 import { PropertyCache } from '@caching/index';
 import { GeoCoderService } from '@services/external';
 import { PropertyCsvProcessor } from '@services/csv';
@@ -11,6 +10,7 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { PropertyTypeManager } from '@utils/PropertyTypeManager';
 import { getRequestDuration, createLogger, JOB_NAME } from '@utils/index';
+import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
 import {
   IPropertyFilterQuery,
   IPropertyDocument,
@@ -78,6 +78,12 @@ export class PropertyService {
     this.geoCoderService = geoCoderService;
     this.log = createLogger('PropertyService');
     this.propertyCsvProcessor = propertyCsvProcessor;
+  }
+
+  private setupEventListeners(): void {
+    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
+    this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
+    this.log.info('PropertyService event listeners initialized');
   }
 
   async addProperty(
@@ -704,5 +710,104 @@ export class PropertyService {
     await this.propertyCache.invalidatePropertyLists(cid);
 
     return { success: true, data: null, message: 'Property archived successfully' };
+  }
+
+  async markDocumentsAsFailed(propertyId: string, errorMessage: string): Promise<void> {
+    try {
+      const property = await this.propertyDAO.findById(propertyId);
+      if (!property || !property.documents) return;
+
+      const updateOperations: any = {};
+      const now = new Date();
+
+      property.documents.forEach((doc, index) => {
+        const isPending = doc.status === 'pending';
+
+        if (isPending) {
+          updateOperations[`documents.${index}.status`] = 'failed';
+          updateOperations[`documents.${index}.errorMessage`] = errorMessage;
+          updateOperations[`documents.${index}.processingCompleted`] = now;
+        }
+      });
+
+      if (Object.keys(updateOperations).length > 0) {
+        await this.propertyDAO.update(
+          { _id: new Types.ObjectId(propertyId) },
+          { $set: updateOperations }
+        );
+
+        this.log.warn(`Marked documents as failed for property ${propertyId}`, { errorMessage });
+      }
+    } catch (error) {
+      this.log.error(`Error marking documents as failed for property ${propertyId}:`, error);
+    }
+  }
+
+  private async handleUploadCompleted(payload: UploadCompletedPayload): Promise<void> {
+    const { results, resourceName, resourceId, actorId } = payload;
+
+    if (resourceName !== 'property') {
+      this.log.debug('Ignoring upload completed event for non-property resource', {
+        resourceName,
+      });
+      return;
+    }
+
+    try {
+      await this.updatePropertyDocuments(resourceId, results, actorId);
+
+      this.log.info(
+        {
+          propertyId: resourceId,
+        },
+        'Successfully processed upload completed event'
+      );
+    } catch (error) {
+      this.log.error(
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          propertyId: resourceId,
+        },
+        'Error processing upload completed event'
+      );
+
+      try {
+        await this.markDocumentsAsFailed(
+          resourceId,
+          `Failed to process completed upload: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
+      } catch (markFailedError) {
+        this.log.error(
+          {
+            error: markFailedError instanceof Error ? markFailedError.message : 'Unknown error',
+            propertyId: resourceId,
+          },
+          'Failed to mark documents as failed after upload processing error'
+        );
+      }
+    }
+  }
+
+  private async handleUploadFailed(payload: UploadFailedPayload): Promise<void> {
+    const { error, resourceType, resourceId } = payload;
+
+    this.log.info('Received UPLOAD_FAILED event', {
+      resourceType,
+      resourceId,
+      error: error.message,
+    });
+
+    try {
+      await this.markDocumentsAsFailed(resourceId, error.message);
+
+      this.log.info('Successfully processed upload failed event', {
+        propertyId: resourceId,
+      });
+    } catch (markFailedError) {
+      this.log.error('Error processing upload failed event', {
+        error: markFailedError instanceof Error ? markFailedError.message : 'Unknown error',
+        propertyId: resourceId,
+      });
+    }
   }
 }

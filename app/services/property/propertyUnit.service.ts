@@ -5,10 +5,10 @@ import { PropertyQueue } from '@queues/property.queue';
 import { BadRequestError } from '@shared/customErrors';
 import { PropertyCache } from '@caching/property.cache';
 import { EventEmitterService } from '@services/eventEmitter';
-import { IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
 import { getRequestDuration, createLogger } from '@utils/index';
-import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { IPropertyFilterQuery } from '@interfaces/property.interface';
+import { IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 
 interface IConstructor {
   emitterService: EventEmitterService;
@@ -49,15 +49,15 @@ export class PropertyUnitService {
   }
 
   async addPropertyUnit(cxt: IRequestContext, data: IUnit) {
-    const { request, currentuser } = cxt;
-    const { cid, pid } = request.params;
+    const currentuser = cxt.currentuser!;
+    const { cid, pid } = cxt.request.params;
     const start = process.hrtime.bigint();
     if (!pid || !cid) {
       this.log.error(
         {
           cid,
           pid,
-          url: request.url,
+          url: cxt.request.url,
           userId: currentuser?.sub,
           requestId: cxt.requestId,
           duration: getRequestDuration(start).durationInMs,
@@ -72,7 +72,7 @@ export class PropertyUnitService {
         {
           cid,
           pid,
-          url: request.url,
+          url: cxt.request.url,
           userId: currentuser?.sub,
           requestId: cxt.requestId,
           duration: getRequestDuration(start).durationInMs,
@@ -90,7 +90,7 @@ export class PropertyUnitService {
           {
             cid,
             pid,
-            url: request.url,
+            url: cxt.request.url,
             userId: currentuser?.sub,
             requestId: cxt.requestId,
             duration: getRequestDuration(start).durationInMs,
@@ -233,12 +233,151 @@ export class PropertyUnitService {
       skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
     };
 
-    const units = await this.propertyUnitDAO.findAll({ propertyId: property.id });
+    const units = await this.propertyDAO.getPropertyUnits(property.id, opts);
 
     return {
       data: units,
       success: true,
       message: 'Units retrieved successfully.',
+    };
+  }
+
+  async updatePropertyUnit(cxt: IRequestContext, updateData: Partial<IUnit>) {
+    const currentuser = cxt.currentuser!;
+    const start = process.hrtime.bigint();
+    const { cid, pid, unitId } = cxt.request.params;
+
+    if (!pid || !cid || !unitId) {
+      this.log.error(
+        {
+          cid,
+          pid,
+          unitId,
+          url: request.url,
+          userId: currentuser?.sub,
+          requestId: cxt.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Missing required parameters'
+      );
+      throw new BadRequestError({ message: 'Unable to update property unit.' });
+    }
+
+    const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
+    if (!property) {
+      this.log.error(
+        {
+          cid,
+          pid,
+          unitId,
+          url: request.url,
+          userId: currentuser?.sub,
+          requestId: cxt.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Property not found'
+      );
+      throw new BadRequestError({ message: 'Property not found.' });
+    }
+
+    const unit = await this.propertyUnitDAO.findFirst({
+      id: unitId,
+      deletedAt: null,
+      propertyId: property.id,
+    });
+
+    if (!unit) {
+      this.log.error(
+        {
+          cid,
+          pid,
+          unitId,
+          url: cxt.request.url,
+          userId: currentuser?.sub,
+          requestId: cxt.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Unit not found'
+      );
+      throw new BadRequestError({ message: 'Unit not found.' });
+    }
+
+    if (property.status === 'inactive' || property.deletedAt) {
+      this.log.error(
+        {
+          cid,
+          pid,
+          unitId,
+          url: cxt.request.url,
+          userId: currentuser?.sub,
+          requestId: cxt.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Cannot update unit for inactive or archived property'
+      );
+      throw new BadRequestError({
+        message: `Cannot update unit, due to property status of ${property.status}.`,
+      });
+    }
+
+    const validationErrors: { [key: string]: string[] } = {};
+
+    if (updateData.fees) {
+      if (updateData.fees.rentAmount !== undefined) {
+        if (isNaN(updateData.fees.rentAmount) || updateData.fees.rentAmount < 0) {
+          validationErrors['fees.rentAmount'].push('Rental amount must be a non-negative number');
+        }
+      }
+
+      if (updateData.fees.securityDeposit !== undefined) {
+        if (isNaN(updateData.fees.securityDeposit) || updateData.fees.securityDeposit < 0) {
+          validationErrors['fees.securityDeposit'].push(
+            'Security deposit must be a non-negative number'
+          );
+        }
+      }
+    }
+
+    if (updateData.status) {
+      if (updateData.status === 'occupied' && property.status !== 'available') {
+        validationErrors['status'].push(
+          `Cannot set unit as occupied when property is ${property.status}`
+        );
+      }
+
+      if (
+        updateData.status === 'occupied' &&
+        !unit.fees?.rentAmount &&
+        (!updateData.fees || updateData.fees.rentAmount === undefined)
+      ) {
+        validationErrors['status'].push('Occupied units must have a rental amount');
+      }
+    }
+
+    const session = await this.propertyUnitDAO.startSession();
+    const result = await this.propertyUnitDAO.withTransaction(session, async (session) => {
+      const updatedUnit = await this.propertyUnitDAO.update(
+        { id: unitId, propertyId: property.id },
+        {
+          ...updateData,
+          lastModifiedBy: new Types.ObjectId(currentuser.sub),
+        },
+        session
+      );
+
+      if (updateData.status) {
+        await this.propertyDAO.syncPropertyOccupancyWithUnits(pid, currentuser.sub);
+      }
+
+      return { data: updatedUnit };
+    });
+    await this.propertyCache.invalidateProperty(cid, pid);
+    await this.propertyCache.invalidatePropertyLists(cid);
+
+    return {
+      success: true,
+      data: result.data,
+      message: 'Unit updated successfully',
     };
   }
 }

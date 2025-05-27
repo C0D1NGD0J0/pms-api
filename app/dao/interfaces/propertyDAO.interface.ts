@@ -166,6 +166,16 @@ export interface IPropertyDAO {
   }>;
 
   /**
+   * Get all units for a property
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to an array of property unit documents
+   */
+  getPropertyUnits(
+    propertyId: string,
+    opts: IPaginationQuery
+  ): ListResultWithPagination<IPropertyUnitDocument[]>;
+
+  /**
    * Create a new property with validation
    * @param propertyData - The property data
    * @param session - Optional MongoDB session for transactions
@@ -202,11 +212,4 @@ export interface IPropertyDAO {
    * @returns A promise that resolves to true if successful
    */
   archiveProperty(propertyId: string, userId: string): Promise<boolean>;
-
-  /**
-   * Get all units for a property
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to an array of property unit documents
-   */
-  getPropertyUnits(propertyId: string): Promise<IPropertyUnitDocument[]>;
 }

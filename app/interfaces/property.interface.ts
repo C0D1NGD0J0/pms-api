@@ -19,11 +19,11 @@ export interface IProperty {
   financialDetails?: IFinancialDetails;
   documents?: IPropertyDocumentItem[];
   occupancyStatus: OccupancyStatus;
-  address: IAddressDetails | null;
   specifications: ISpecifications;
   propertyType: PropertyType;
   managedBy?: Types.ObjectId;
   createdBy: Types.ObjectId;
+  address: IAddressDetails;
   status: PropertyStatus;
   utilities: IUtilities;
   totalUnits?: number;
@@ -66,12 +66,8 @@ export interface IPropertyFilterQuery {
 }
 
 export interface IPropertyDocumentItem {
-  status: {
-    type: string;
-    enum: ['pending', 'active', 'inactive', 'deleted'];
-    default: 'pending';
-  };
-  documentType?: 'deed' | 'tax' | 'insurance' | 'inspection' | 'other' | 'lease';
+  documentType?: 'deed' | 'tax' | 'insurance' | 'inspection' | 'other' | 'lease' | 'unknown';
+  status: 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
   uploadedBy: Types.ObjectId;
   description?: string;
   documentName: string;

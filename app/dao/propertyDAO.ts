@@ -502,13 +502,16 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
    * @param propertyId - The property ID
    * @returns A promise that resolves to an array of property unit documents
    */
-  async getPropertyUnits(propertyId: string): Promise<IPropertyUnitDocument[]> {
+  async getPropertyUnits(
+    propertyId: string,
+    opts: IPaginationQuery
+  ): ListResultWithPagination<IPropertyUnitDocument[]> {
     try {
       if (!propertyId) {
         throw new Error('Property ID is required');
       }
 
-      return await this.propertyUnitDAO.findUnitsByProperty(propertyId);
+      return await this.propertyUnitDAO.findUnitsByProperty(propertyId, opts);
     } catch (error) {
       this.logger.error('Error in getPropertyUnits:', error);
       throw this.throwErrorHandler(error);
@@ -573,21 +576,10 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property not found');
       }
 
-      // Get all units for the property and count them
-      const units = await this.propertyUnitDAO.findUnitsByProperty(propertyId);
-      const currentCount = units.length;
-
-      // Get max capacity from property totalUnits field
+      const units = await this.propertyUnitDAO.countDocuments({ propertyId });
+      const currentCount = units;
       const maxCapacity = property.totalUnits || 0;
-
-      // Base capacity check (from original implementation)
       const canAdd = maxCapacity === 0 || currentCount < maxCapacity;
-
-      // Implementation note: we actually check property type specific validations
-      // but to match the interface, we're only returning the basic info here
-      // For detailed validation including unit type compatibility, use the internal
-      // validateUnitToPropertyCompatibility method
-
       return {
         canAdd,
         currentCount,

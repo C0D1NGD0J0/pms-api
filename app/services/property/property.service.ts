@@ -5,11 +5,12 @@ import { EventTypes } from '@interfaces/index';
 import { PropertyCache } from '@caching/index';
 import { GeoCoderService } from '@services/external';
 import { PropertyCsvProcessor } from '@services/csv';
-import { createLogger, JOB_NAME } from '@utils/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { PropertyTypeManager } from '@utils/PropertyTypeManager';
+import { getRequestDuration, createLogger, JOB_NAME } from '@utils/index';
 import {
   IPropertyFilterQuery,
   IPropertyDocument,
@@ -25,9 +26,12 @@ import {
   ExtractedMediaFile,
   ISuccessReturnData,
   IPaginationQuery,
+  IRequestContext,
   PaginateResult,
   UploadResult,
 } from '@interfaces/utils.interface';
+
+import { PropertyValidationService } from './propertyValidation.service';
 
 interface IConstructor {
   propertyCsvProcessor: PropertyCsvProcessor;
@@ -77,10 +81,46 @@ export class PropertyService {
   }
 
   async addProperty(
-    cid: string,
-    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
-    currentUser: ICurrentUser
+    cxt: IRequestContext,
+    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType
   ): Promise<ISuccessReturnData> {
+    const {
+      params: { cid },
+    } = cxt.request;
+    const currentuser = cxt.currentuser!;
+    const start = process.hrtime.bigint();
+
+    this.log.info('Starting property creation process');
+
+    const validationResult = PropertyValidationService.validateProperty(propertyData);
+    if (!validationResult.valid) {
+      this.log.error(
+        {
+          cid,
+          url: cxt.request.url,
+          userId: currentuser.sub,
+          requestId: cxt.requestId,
+          errors: validationResult.errors,
+          propertyType: propertyData.propertyType,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Property validation failed'
+      );
+
+      const errorInfo: { [key: string]: string[] } = {};
+      validationResult.errors.forEach((error) => {
+        if (!errorInfo[error.field]) {
+          errorInfo[error.field] = [];
+        }
+        errorInfo[error.field].push(error.message);
+      });
+
+      throw new ValidationRequestError({
+        message: 'Property validation failed. Please correct the errors and try again.',
+        errorInfo,
+      });
+    }
+
     const session = await this.propertyDAO.startSession();
     const result = await this.propertyDAO.withTransaction(session, async (session) => {
       const client = await this.clientDAO.getClientByCid(cid);
@@ -89,14 +129,11 @@ export class PropertyService {
         throw new BadRequestError({ message: 'Unable to add property to this account.' });
       }
 
-      const { fullAddress } = propertyData;
-      if (!fullAddress) {
-        throw new BadRequestError({ message: 'Property address is required.' });
-      }
-
+      const fullAddress = propertyData.address.fullAddress;
+      // address uniqueness check
       if (fullAddress && cid) {
         const existingProperty = await this.propertyDAO.findPropertyByAddress(
-          fullAddress.toString(),
+          fullAddress,
           cid.toString()
         );
 
@@ -107,39 +144,31 @@ export class PropertyService {
         }
       }
 
-      const gCode = await this.geoCoderService.parseLocation(fullAddress);
-      if (!gCode.success) {
-        throw new InvalidRequestError({ message: 'Invalid location provided.' });
-      }
-      propertyData.computedLocation = {
-        coordinates: gCode.data?.coordinates || [0, 0],
-      };
-      propertyData.address = {
-        city: gCode.data?.city,
-        state: gCode.data?.state,
-        street: gCode.data?.street,
-        country: gCode.data?.country,
-        postCode: gCode.data?.postCode,
-        latAndlon: gCode.data?.latAndlon,
-        streetNumber: gCode.data?.streetNumber,
-        fullAddress: gCode.data?.fullAddress,
-      };
-      propertyData.createdBy = new Types.ObjectId(currentUser.sub);
+      this.propertyTypeValidation(propertyData);
+
+      propertyData.createdBy = new Types.ObjectId(currentuser.sub);
       propertyData.managedBy = propertyData.managedBy
         ? new Types.ObjectId(propertyData.managedBy)
-        : new Types.ObjectId(currentUser.sub);
+        : new Types.ObjectId(currentuser.sub);
 
       // if (propertyData.scannedFiles && propertyData.documents) {
-      //   propertyData.documents = propertyData.documents.map((doc, index) => {
-      //     return {
-      //       documentType: doc.documentType,
-      //       uploadedBy: new Types.ObjectId(currentUser.sub),
-      //       description: doc.description,
-      //       uploadedAt: new Date(),
-      //       status: 'active',
-      //       documentName:
-      //     };
-      //   });
+      //   const documentItems: IPropertyDocumentItem[] = propertyData.scannedFiles.map(
+      //     (file, index) => {;
+      //       return {
+      //         status: 'processing',
+      //         documentType: 'unknown',
+      //         description: `Uploaded document ${index + 1}`,
+      //         uploadedBy: new Types.ObjectId(currentuser.sub),
+      //         documentName: file.originalFileName || `document-${index + 1}`,
+      //         uploadedAt: new Date(),
+      //         url: '',
+      //         key: '',
+      //         externalUrl: '',
+      //       };
+      //     }
+      //   );
+
+      //   propertyData.documents = documentItems;
       // }
 
       const property = await this.propertyDAO.createProperty(
@@ -154,22 +183,95 @@ export class PropertyService {
         throw new BadRequestError({ message: 'Unable to create property.' });
       }
 
+      this.log.info(
+        {
+          propertyId: property.id,
+          propertyName: property.name,
+          propertyType: property.propertyType,
+        },
+        'Property created successfully'
+      );
+
       return { property };
     });
+
     if (propertyData.scannedFiles && propertyData.scannedFiles.length > 0) {
       this.uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
         resource: {
           fieldName: 'documents',
           resourceType: 'unknown',
           resourceName: 'property',
-          actorId: currentUser.sub,
+          actorId: currentuser.sub,
           resourceId: result.property.id,
         },
         files: propertyData.scannedFiles,
       });
     }
+
     await this.propertyCache.cacheProperty(cid, result.property.id, result.property);
-    return { success: true, data: result.property, message: 'Property created successfully' };
+    return { success: true, data: result.property, message: 'Property created successfully.' };
+  }
+
+  private propertyTypeValidation(propertyData: NewPropertyType): void {
+    const { propertyType, totalUnits = 1, specifications, fees } = propertyData;
+
+    if (!propertyType) return;
+
+    const rules = PropertyTypeManager.getRules(propertyType);
+    const errors: string[] = [];
+
+    if (rules.isMultiUnit) {
+      if (totalUnits < rules.minUnits) {
+        errors.push(`${propertyType} properties require at least ${rules.minUnits} units`);
+      }
+
+      // For multi-unit properties, bedrooms/bathrooms should be managed at unit level
+      if (specifications?.bedrooms && specifications.bedrooms > 0) {
+        this.log.warn(
+          {
+            propertyType,
+            bedrooms: specifications.bedrooms,
+          },
+          `${propertyType} property has bedrooms defined at property level`
+        );
+      }
+    }
+
+    if (propertyType === 'commercial') {
+      if (specifications?.bedrooms && specifications.bedrooms > 0) {
+        errors.push('Commercial properties should not have bedrooms defined at property level');
+      }
+
+      if (!specifications?.totalArea || specifications.totalArea < 200) {
+        errors.push('Commercial properties must have at least 200 sq ft of total area');
+      }
+    }
+
+    if (propertyType === 'industrial') {
+      if (!specifications?.lotSize) {
+        errors.push('Industrial properties must specify lot size');
+      }
+
+      if (!specifications?.totalArea || specifications.totalArea < 1000) {
+        errors.push('Industrial properties must have at least 1000 sq ft of total area');
+      }
+    }
+
+    if (propertyData.occupancyStatus === 'occupied') {
+      const rentalAmount =
+        typeof fees?.rentalAmount === 'string' ? parseFloat(fees.rentalAmount) : fees?.rentalAmount;
+
+      if (!rentalAmount || rentalAmount <= 0) {
+        errors.push('Occupied properties must have a valid rental amount');
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new ValidationRequestError({
+        message: 'Property type business rule validation failed',
+        errorInfo: { propertyType: errors },
+      });
+    }
   }
 
   async addPropertiesFromCsv(
@@ -440,17 +542,16 @@ export class PropertyService {
     updateData: Partial<IPropertyDocument>
   ): Promise<ISuccessReturnData> {
     const { cid, pid } = ctx;
-    const validationErrors: { [x: string]: string[] } = {};
 
     if (!cid || !pid) {
       this.log.error('Client ID and Property ID are required');
-      throw new BadRequestError({ message: '.' });
+      throw new BadRequestError({ message: 'Client ID and Property ID are required.' });
     }
 
     const client = await this.clientDAO.getClientByCid(cid);
     if (!client) {
       this.log.error(`Client with cid ${cid} not found`);
-      throw new InvalidRequestError();
+      throw new InvalidRequestError({ message: 'Client not found.' });
     }
 
     const property = await this.propertyDAO.findFirst({
@@ -462,6 +563,35 @@ export class PropertyService {
       throw new NotFoundError({ message: 'Unable to find property.' });
     }
 
+    if (
+      updateData.propertyType ||
+      updateData.specifications ||
+      updateData.financialDetails ||
+      updateData.fees
+    ) {
+      const dataToValidate = {
+        ...property,
+        ...updateData,
+        fullAddress: property.address?.fullAddress || 'existing-address',
+      } as NewPropertyType;
+
+      const validationResult = PropertyValidationService.validateProperty(dataToValidate);
+      if (!validationResult.valid) {
+        const errorInfo: { [key: string]: string[] } = {};
+        validationResult.errors.forEach((error) => {
+          if (!errorInfo[error.field]) {
+            errorInfo[error.field] = [];
+          }
+          errorInfo[error.field].push(error.message);
+        });
+
+        throw new ValidationRequestError({
+          message: 'Update validation failed. Please correct the errors and try again.',
+          errorInfo,
+        });
+      }
+    }
+
     if (property.description?.text !== updateData.description?.text) {
       updateData.description = {
         text: sanitizeHtml(updateData.description?.text || ''),
@@ -469,32 +599,6 @@ export class PropertyService {
       };
     }
 
-    if (updateData.propertyType) {
-      validationErrors['propertyType'] = [];
-      switch (updateData.propertyType) {
-        case 'condominium':
-        case 'apartment':
-          if (updateData.totalUnits !== undefined && updateData.totalUnits < 1) {
-            validationErrors['propertyType'].push(
-              'Apartments and condominiums must have at least 1 unit'
-            );
-          }
-          break;
-
-        case 'commercial':
-        case 'industrial':
-          if (
-            updateData.specifications &&
-            updateData.specifications.bedrooms !== undefined &&
-            updateData.specifications.bedrooms > 0
-          ) {
-            validationErrors['propertyType'].push(
-              'Commercial properties typically do not have bedrooms'
-            );
-          }
-          break;
-      }
-    }
     updateData.lastModifiedBy = new Types.ObjectId(ctx.currentuser.sub);
     if (updateData.financialDetails) {
       if (updateData.financialDetails.purchaseDate) {
@@ -511,33 +615,7 @@ export class PropertyService {
     }
 
     if (updateData.occupancyStatus) {
-      if (updateData.occupancyStatus === 'occupied' && property.occupancyStatus !== 'occupied') {
-        if (
-          !property.fees?.rentalAmount &&
-          (!updateData.fees || updateData.fees.rentalAmount === undefined)
-        ) {
-          validationErrors['occupancyStatus'].push('Occupied properties must have a rental amount');
-        }
-      }
-
-      if (
-        updateData.occupancyStatus === 'partially_occupied' &&
-        property.totalUnits &&
-        property.totalUnits <= 1 &&
-        (!updateData.totalUnits || updateData.totalUnits <= 1)
-      ) {
-        validationErrors['occupancyStatus'].push(
-          'Single-unit properties cannot be partially occupied'
-        );
-      }
-    }
-
-    if (Object.values(validationErrors).length > 0) {
-      this.log.error('Validation errors occurred', { validationErrors });
-      throw new ValidationRequestError({
-        message: 'Unable to process request due to validation errors',
-        errorInfo: validationErrors,
-      });
+      this.validateOccupancyStatusChange(property, updateData);
     }
 
     const updatedProperty = await this.propertyDAO.update(
@@ -555,7 +633,40 @@ export class PropertyService {
       throw new BadRequestError({ message: 'Unable to update property.' });
     }
 
+    await this.propertyCache.invalidateProperty(cid, property.id);
     return { success: true, data: updatedProperty, message: 'Property updated successfully' };
+  }
+
+  private validateOccupancyStatusChange(
+    existingProperty: IPropertyDocument,
+    updateData: Partial<IPropertyDocument>
+  ): void {
+    const errors: string[] = [];
+
+    if (
+      updateData.occupancyStatus === 'occupied' &&
+      existingProperty.occupancyStatus !== 'occupied'
+    ) {
+      // Check if rental amount is set
+      const hasRentalAmount = existingProperty.fees?.rentalAmount || updateData.fees?.rentalAmount;
+      if (!hasRentalAmount) {
+        errors.push('Occupied properties must have a rental amount');
+      }
+    }
+
+    if (updateData.occupancyStatus === 'partially_occupied') {
+      const totalUnits = updateData.totalUnits || existingProperty.totalUnits || 1;
+      if (totalUnits <= 1) {
+        errors.push('Single-unit properties cannot be partially occupied');
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new ValidationRequestError({
+        message: 'Occupancy status change validation failed',
+        errorInfo: { occupancyStatus: errors },
+      });
+    }
   }
 
   async archiveClientProperty(

@@ -5,7 +5,8 @@
     "condominium",
     "townhouse",
     "commercial",
-    "industrial"
+    "industrial",
+    "mixedProperty"
   ],
   "propertyStatuses": [
     "available",

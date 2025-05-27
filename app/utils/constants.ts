@@ -43,6 +43,7 @@ export const QUEUE_NAMES = {
   EVENT_BUS_QUEUE: 'eventBusQueue',
   ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
   PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
+  DOCUMENT_PROCESSING_QUEUE: 'documentProcessingQueue',
 };
 
 export const JOB_NAME = {
@@ -54,6 +55,8 @@ export const JOB_NAME = {
   PROPERTY_UPDATE_JOB: 'propertyUpdateJob',
   PROPERTY_DELETE_JOB: 'propertyDeleteJob',
   ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
+  DOCUMENT_UPDATE_JOB: 'documentUpdateJob',
+  DOCUMENT_FAILURE_JOB: 'documentFailureJob',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {
@@ -66,5 +69,5 @@ export const defaultPagination: IPropertyFilterQuery = {
     },
     skip: 0,
   },
-  filters: undefined,
+  filters: null,
 };

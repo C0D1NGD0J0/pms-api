@@ -7,9 +7,9 @@ import { PropertyCsvProcessor } from '@services/csv';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
-import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { PropertyTypeManager } from '@utils/PropertyTypeManager';
 import { getRequestDuration, createLogger, JOB_NAME } from '@utils/index';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
 import {
   IPropertyFilterQuery,
@@ -37,6 +37,7 @@ interface IConstructor {
   propertyCsvProcessor: PropertyCsvProcessor;
   emitterService: EventEmitterService;
   geoCoderService: GeoCoderService;
+  propertyUnitDAO: PropertyUnitDAO;
   propertyCache: PropertyCache;
   propertyQueue: PropertyQueue;
   uploadQueue: UploadQueue;
@@ -51,6 +52,7 @@ export class PropertyService {
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly propertyQueue: PropertyQueue;
   private readonly propertyCache: PropertyCache;
   private readonly geoCoderService: GeoCoderService;
@@ -61,6 +63,7 @@ export class PropertyService {
     clientDAO,
     profileDAO,
     propertyDAO,
+    propertyUnitDAO,
     uploadQueue,
     propertyCache,
     emitterService,
@@ -71,6 +74,7 @@ export class PropertyService {
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
     this.uploadQueue = uploadQueue;
     this.propertyQueue = propertyQueue;
     this.propertyCache = propertyCache;
@@ -78,12 +82,165 @@ export class PropertyService {
     this.geoCoderService = geoCoderService;
     this.log = createLogger('PropertyService');
     this.propertyCsvProcessor = propertyCsvProcessor;
+
+    // Initialize event listeners
+    this.setupEventListeners();
   }
 
   private setupEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
     this.log.info('PropertyService event listeners initialized');
+  }
+
+  /**
+   * Get unit information for a property, handling single-unit vs multi-unit logic
+   */
+  private async getUnitInfoForProperty(property: IPropertyDocument): Promise<{
+    canAddUnit: boolean;
+    totalUnits: number;
+    currentUnits: number;
+    availableSpaces: number;
+    lastUnitNumber?: string;
+    suggestedNextUnitNumber?: string;
+    unitStats: {
+      occupied: number;
+      vacant: number;
+      maintenance: number;
+      available: number;
+      reserved: number;
+      inactive: number;
+    };
+  }> {
+    const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
+    const totalUnits = property.totalUnits || 1;
+
+    if (isMultiUnit) {
+      // Multi-unit property: use PropertyUnit records
+      const unitData = await this.propertyUnitDAO.getPropertyUnitInfo(property.id);
+      const canAddUnitResult = await this.propertyDAO.canAddUnitToProperty(property.id);
+      const availableSpaces = Math.max(0, totalUnits - unitData.currentUnits);
+
+      // Get existing unit numbers and determine the last/highest one
+      let lastUnitNumber: string | undefined;
+      let suggestedNextUnitNumber: string | undefined;
+
+      if (unitData.currentUnits > 0) {
+        try {
+          const existingUnitNumbers = await this.propertyUnitDAO.getExistingUnitNumbers(
+            property.id
+          );
+
+          if (existingUnitNumbers.length > 0) {
+            // Find the highest numerical unit number
+            const numericUnits = existingUnitNumbers
+              .map((num) => {
+                const match = num.match(/(\d+)/);
+                return match ? parseInt(match[1], 10) : 0;
+              })
+              .filter((num) => num > 0);
+
+            if (numericUnits.length > 0) {
+              const highestNumber = Math.max(...numericUnits);
+              lastUnitNumber = highestNumber.toString();
+
+              // Get suggested next unit number using PropertyUnitDAO logic
+              suggestedNextUnitNumber = await this.propertyUnitDAO.getNextAvailableUnitNumber(
+                property.id,
+                'sequential'
+              );
+            } else {
+              // No numeric patterns found, get the last unit alphabetically
+              lastUnitNumber = existingUnitNumbers.sort().pop();
+              suggestedNextUnitNumber = await this.propertyUnitDAO.getNextAvailableUnitNumber(
+                property.id,
+                'custom'
+              );
+            }
+          }
+        } catch (error) {
+          this.log.warn(`Error getting unit numbers for property ${property.id}:`, error);
+          // Continue without unit numbering info
+        }
+      } else {
+        // No existing units, suggest starting numbers based on property type
+        suggestedNextUnitNumber = this.getSuggestedStartingUnitNumber(property.propertyType);
+      }
+
+      return {
+        canAddUnit: canAddUnitResult.canAdd,
+        totalUnits,
+        currentUnits: unitData.currentUnits,
+        availableSpaces,
+        lastUnitNumber,
+        suggestedNextUnitNumber,
+        unitStats: unitData.unitStats,
+      };
+    } else {
+      // Single-unit property: derive stats from property status
+      const unitStats = {
+        occupied: 0,
+        vacant: 0,
+        maintenance: 0,
+        available: 0,
+        reserved: 0,
+        inactive: 0,
+      };
+
+      // Map property occupancy status to unit stats
+      switch (property.occupancyStatus) {
+        case 'occupied':
+          unitStats.occupied = 1;
+          break;
+        case 'vacant':
+          unitStats.available = 1;
+          break;
+        case 'partially_occupied':
+          // For single-unit properties, partially occupied doesn't make sense,
+          // but treat it as occupied
+          unitStats.occupied = 1;
+          break;
+        default:
+          // Default to available for unknown status
+          unitStats.available = 1;
+          break;
+      }
+
+      // For single-unit properties, suggest unit numbers if they want to convert to multi-unit
+      const suggestedNextUnitNumber =
+        property.propertyType === 'house' || property.propertyType === 'townhouse'
+          ? '2' // If converting house to duplex, start with unit 2
+          : this.getSuggestedStartingUnitNumber(property.propertyType);
+
+      return {
+        canAddUnit: false, // Single-unit properties typically can't add more units
+        totalUnits: 1,
+        currentUnits: 1, // Single-unit property always has 1 unit (itself)
+        availableSpaces: 0, // No space to add more units
+        lastUnitNumber: '1', // The property itself can be considered unit 1
+        suggestedNextUnitNumber,
+        unitStats,
+      };
+    }
+  }
+
+  /**
+   * Get suggested starting unit number based on property type
+   */
+  private getSuggestedStartingUnitNumber(propertyType: string): string {
+    switch (propertyType) {
+      case 'apartment':
+      case 'condominium':
+        return '101'; // Floor-based numbering
+      case 'commercial':
+      case 'industrial':
+        return 'A-1001'; // Letter prefix pattern
+      case 'house':
+      case 'townhouse':
+        return '1'; // Simple sequential
+      default:
+        return '101'; // Default floor-based
+    }
   }
 
   async addProperty(
@@ -156,26 +313,6 @@ export class PropertyService {
       propertyData.managedBy = propertyData.managedBy
         ? new Types.ObjectId(propertyData.managedBy)
         : new Types.ObjectId(currentuser.sub);
-
-      // if (propertyData.scannedFiles && propertyData.documents) {
-      //   const documentItems: IPropertyDocumentItem[] = propertyData.scannedFiles.map(
-      //     (file, index) => {;
-      //       return {
-      //         status: 'processing',
-      //         documentType: 'unknown',
-      //         description: `Uploaded document ${index + 1}`,
-      //         uploadedBy: new Types.ObjectId(currentuser.sub),
-      //         documentName: file.originalFileName || `document-${index + 1}`,
-      //         uploadedAt: new Date(),
-      //         url: '',
-      //         key: '',
-      //         externalUrl: '',
-      //       };
-      //     }
-      //   );
-
-      //   propertyData.documents = documentItems;
-      // }
 
       const property = await this.propertyDAO.createProperty(
         {
@@ -536,7 +673,16 @@ export class PropertyService {
       throw new NotFoundError({ message: 'Unable to find property.' });
     }
 
-    return { success: true, data: property };
+    // Get unit information using the new logic that handles single vs multi-unit properties
+    const unitInfo = await this.getUnitInfoForProperty(property);
+
+    return {
+      success: true,
+      data: {
+        ...property.toJSON(),
+        unitInfo,
+      },
+    };
   }
 
   async updateClientProperty(

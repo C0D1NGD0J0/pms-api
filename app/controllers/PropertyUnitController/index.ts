@@ -1,6 +1,7 @@
-import { Response, Request } from 'express';
+import { Response } from 'express';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyUnitService } from '@services/property';
+import { AppRequest } from '@interfaces/utils.interface';
 import { IPropertyFilterQuery } from '@interfaces/property.interface';
 
 interface IConstructor {
@@ -14,13 +15,13 @@ export class PropertyUnitController {
     this.propertyUnitService = propertyUnitService;
   }
 
-  addUnit = async (req: Request, res: Response) => {
+  addUnit = async (req: AppRequest, res: Response) => {
     const unitData = req.body;
     const result = await this.propertyUnitService.addPropertyUnit(req.context, unitData);
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  getPropertyUnits = async (req: Request, res: Response) => {
+  getPropertyUnits = async (req: AppRequest, res: Response) => {
     const { page, limit, sort, sortBy } = req.query;
     const queryParams: IPropertyFilterQuery = {
       pagination: {
@@ -39,32 +40,32 @@ export class PropertyUnitController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  getPropertyUnit = async (req: Request, res: Response) => {
+  getPropertyUnit = async (req: AppRequest, res: Response) => {
     const result = await this.propertyUnitService.getPropertyUnit(req.context);
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  updateUnit = async (req: Request, res: Response) => {
+  updateUnit = async (req: AppRequest, res: Response) => {
     const result = await this.propertyUnitService.updatePropertyUnit(req.context, req.body);
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  updateUnitStatus = async (req: Request, res: Response) => {
+  updateUnitStatus = async (req: AppRequest, res: Response) => {
     const result = await this.propertyUnitService.updateUnitStatus(req.context, req.body);
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  archiveUnit = async (req: Request, res: Response) => {
+  archiveUnit = async (req: AppRequest, res: Response) => {
     const result = await this.propertyUnitService.archiveUnit(req.context);
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  setupInpection = async (req: Request, res: Response) => {
+  setupInpection = async (req: AppRequest, res: Response) => {
     const result = await this.propertyUnitService.setupInspection(req.context, req.body);
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  addDocumentToUnit = async (req: Request, res: Response) => {
+  addDocumentToUnit = async (req: AppRequest, res: Response) => {
     if (!req.body.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
@@ -78,7 +79,7 @@ export class PropertyUnitController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  deleteDocumentFromUnit = async (req: Request, res: Response) => {
+  deleteDocumentFromUnit = async (req: AppRequest, res: Response) => {
     const result = await this.propertyUnitService.deleteDocumentFromUnit(req.context);
     res.status(httpStatusCodes.OK).json(result);
   };

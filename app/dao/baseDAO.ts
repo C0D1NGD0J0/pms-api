@@ -33,7 +33,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @returns A formatted error object.
    */
   throwErrorHandler(error: Error | MongooseError | any): {
-    errors: Record<string, string>[] | undefined;
+    errors: Record<string, string[]> | null;
     errorType: string;
     success: boolean;
     message: string;
@@ -46,7 +46,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       success: false,
       errorType: result?.name || 'UnknownError',
       message: result?.message || 'Unknown db error occurred',
-      errors: result?.errorInfo,
+      errors: result.errorInfo || null,
       statusCode: result.statusCode,
       ...(envVariables.SERVER.ENV === 'production'
         ? {}

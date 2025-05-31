@@ -1,4 +1,5 @@
 import 'multer';
+import { AwilixContainer } from 'awilix';
 import { NextFunction, Response, Request } from 'express';
 
 import { ICurrentUser } from './user.interface';
@@ -71,7 +72,7 @@ export interface IRequestContext {
     endTime?: number;
     duration?: number;
   };
-  currentuser: ICurrentUser | null;
+  currentuser: ICurrentUser;
   service: { env: string };
   source: RequestSource;
   requestUrl: string;
@@ -189,6 +190,12 @@ export type MulterFile =
       [fieldname: string]: Express.Multer.File[];
     }
   | undefined;
+
+export interface AppRequest extends Request {
+  container: AwilixContainer;
+  context: IRequestContext;
+  rawBody: Buffer;
+}
 
 export interface IEmailOptions<T> {
   emailType: string;

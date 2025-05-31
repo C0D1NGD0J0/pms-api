@@ -581,7 +581,7 @@ export class PropertyService {
         fullAddress: property.address?.fullAddress || 'existing-address',
       } as NewPropertyType;
 
-      const validationResult = PropertyValidationService.validateProperty(dataToValidate);
+      const validationResult = PropertyValidationService.validateProperty(dataToValidate, true);
       if (!validationResult.valid) {
         const errorInfo: { [key: string]: string[] } = {};
         validationResult.errors.forEach((error) => {

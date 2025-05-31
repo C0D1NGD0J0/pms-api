@@ -229,36 +229,63 @@ export class PropertyValidationService {
     return errors;
   }
 
-  static validateProperty(propertyData: NewPropertyType): ValidationResult {
+  static validateProperty(
+    propertyData: NewPropertyType,
+    isUpdate: boolean = false
+  ): ValidationResult {
     const errors: ValidationError[] = [];
     const { propertyType, totalUnits = 1 } = propertyData;
 
-    // Validate basic required fields
-    if (!propertyData.name || propertyData.name.trim().length < 3) {
-      errors.push({
-        field: 'name',
-        message: 'Property name must be at least 3 characters',
-        code: 'INVALID_NAME',
-      });
-    }
-
-    if (!propertyData.fullAddress || propertyData.fullAddress.trim().length < 5) {
-      errors.push({
-        field: 'fullAddress',
-        message: 'Property address must be at least 5 characters',
-        code: 'INVALID_ADDRESS',
-      });
-    }
-
-    // Validate property type specific rules
-    if (propertyType) {
-      const unitValidation = PropertyTypeManager.validateUnitCount(propertyType, totalUnits);
-      if (!unitValidation.valid) {
+    if (!isUpdate) {
+      if (!propertyData.name || propertyData.name.trim().length < 3) {
         errors.push({
-          field: 'totalUnits',
-          message: unitValidation.message!,
-          code: 'INVALID_UNIT_COUNT',
+          field: 'name',
+          message: 'Property name must be at least 3 characters',
+          code: 'INVALID_NAME',
         });
+      }
+
+      if (!propertyData.fullAddress || propertyData.fullAddress.trim().length < 5) {
+        errors.push({
+          field: 'fullAddress',
+          message: 'Property address must be at least 5 characters',
+          code: 'INVALID_ADDRESS',
+        });
+      }
+    } else {
+      if (
+        propertyData.name !== undefined &&
+        (!propertyData.name || propertyData.name.trim().length < 3)
+      ) {
+        errors.push({
+          field: 'name',
+          message: 'Property name must be at least 3 characters',
+          code: 'INVALID_NAME',
+        });
+      }
+
+      if (
+        propertyData.fullAddress !== undefined &&
+        (!propertyData.fullAddress || propertyData.fullAddress.trim().length < 5)
+      ) {
+        errors.push({
+          field: 'fullAddress',
+          message: 'Property address must be at least 5 characters',
+          code: 'INVALID_ADDRESS',
+        });
+      }
+    }
+
+    if (propertyType) {
+      if (!isUpdate || propertyData.totalUnits !== undefined) {
+        const unitValidation = PropertyTypeManager.validateUnitCount(propertyType, totalUnits);
+        if (!unitValidation.valid) {
+          errors.push({
+            field: 'totalUnits',
+            message: unitValidation.message!,
+            code: 'INVALID_UNIT_COUNT',
+          });
+        }
       }
 
       if (propertyData.specifications?.totalArea) {
@@ -276,7 +303,7 @@ export class PropertyValidationService {
       }
 
       if (
-        propertyData.specifications?.bedrooms &&
+        propertyData.specifications?.bedrooms !== undefined &&
         !PropertyTypeManager.allowsBedroomsAtPropertyLevel(propertyType)
       ) {
         errors.push({
@@ -287,7 +314,7 @@ export class PropertyValidationService {
       }
 
       if (
-        propertyData.specifications?.bathrooms &&
+        propertyData.specifications?.bathrooms !== undefined &&
         !PropertyTypeManager.allowsBathroomsAtPropertyLevel(propertyType)
       ) {
         errors.push({
@@ -297,23 +324,26 @@ export class PropertyValidationService {
         });
       }
 
-      const requiredFields = PropertyTypeManager.getRules(propertyType).requiredFields;
-      requiredFields.forEach((field) => {
-        if (field === 'totalArea' && !propertyData.specifications?.totalArea) {
-          errors.push({
-            field: 'totalArea',
-            message: `Total area is required for ${propertyType} properties`,
-            code: 'REQUIRED_FIELD',
-          });
-        }
-        if (field === 'lotSize' && !propertyData.specifications?.lotSize) {
-          errors.push({
-            field: 'lotSize',
-            message: `Lot size is required for ${propertyType} properties`,
-            code: 'REQUIRED_FIELD',
-          });
-        }
-      });
+      // Only validate required fields during creation
+      if (!isUpdate) {
+        const requiredFields = PropertyTypeManager.getRules(propertyType).requiredFields;
+        requiredFields.forEach((field) => {
+          if (field === 'totalArea' && !propertyData.specifications?.totalArea) {
+            errors.push({
+              field: 'totalArea',
+              message: `Total area is required for ${propertyType} properties`,
+              code: 'REQUIRED_FIELD',
+            });
+          }
+          if (field === 'lotSize' && !propertyData.specifications?.lotSize) {
+            errors.push({
+              field: 'lotSize',
+              message: `Lot size is required for ${propertyType} properties`,
+              code: 'REQUIRED_FIELD',
+            });
+          }
+        });
+      }
     }
 
     if (propertyData.financialDetails) {
@@ -462,7 +492,7 @@ export class PropertyValidationService {
       );
     }
 
-    this.validateBusinessRules(propertyData, errors);
+    this.validateBusinessRules(propertyData, errors, isUpdate);
 
     return {
       valid: errors.length === 0,
@@ -475,7 +505,8 @@ export class PropertyValidationService {
    */
   private static validateBusinessRules(
     propertyData: NewPropertyType,
-    errors: ValidationError[]
+    errors: ValidationError[],
+    isUpdate: boolean = false
   ): void {
     const { propertyType, occupancyStatus, totalUnits = 1, fees } = propertyData;
 
@@ -492,7 +523,11 @@ export class PropertyValidationService {
       }
     }
 
-    if (occupancyStatus === 'partially_occupied' && totalUnits <= 1) {
+    if (
+      occupancyStatus === 'partially_occupied' &&
+      (!isUpdate || propertyData.totalUnits !== undefined) &&
+      totalUnits <= 1
+    ) {
       errors.push({
         field: 'occupancyStatus',
         message: 'Single-unit properties cannot be partially occupied',
@@ -502,7 +537,7 @@ export class PropertyValidationService {
 
     if (
       propertyType === 'commercial' &&
-      propertyData.specifications?.bedrooms &&
+      propertyData.specifications?.bedrooms !== undefined &&
       propertyData.specifications.bedrooms > 0
     ) {
       errors.push({
@@ -512,7 +547,11 @@ export class PropertyValidationService {
       });
     }
 
-    if (propertyType && PropertyTypeManager.supportsMultipleUnits(propertyType)) {
+    if (
+      propertyType &&
+      PropertyTypeManager.supportsMultipleUnits(propertyType) &&
+      (!isUpdate || propertyData.totalUnits !== undefined)
+    ) {
       const minUnits = PropertyTypeManager.getMinUnits(propertyType);
       if (totalUnits < minUnits) {
         errors.push({

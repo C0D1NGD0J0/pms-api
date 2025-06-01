@@ -1,4 +1,7 @@
-export interface ClientUnitPreferences {
+/**
+ * Client Unit Preferences
+ */
+export type ClientUnitPreferences = {
   patterns: {
     [propertyType: string]: {
       createdAt: Date;
@@ -7,9 +10,12 @@ export interface ClientUnitPreferences {
       updatedAt: Date;
     };
   };
-}
+};
 
-export interface UnitNumberPattern {
+/**
+ * Unit Number Pattern Configuration
+ */
+export type UnitNumberPattern = {
   propertyTypes: string[];
   description: string;
   template: string;
@@ -17,28 +23,44 @@ export interface UnitNumberPattern {
   regex: RegExp;
   name: string;
   id: string;
-}
+};
 
-export interface UnitNumberSuggestion {
+/**
+ * Unit Number Suggestion
+ */
+export type UnitNumberSuggestion = {
   isBasedOnUserPreference: boolean;
   pattern: UnitNumberPattern;
   nextInSequence?: string;
   suggestion: string;
-}
+};
 
-export interface UnitNumberValidationRules {
+/**
+ * Unit Number Validation Rules
+ */
+export type UnitNumberValidationRules = {
   allowedSeparators: ['-', '_'];
   maxNumberDigits: 4;
   maxPrefixLength: 3;
   maxTotalLength: 8;
-}
+};
 
-export interface ValidationResult {
+/**
+ * Validation Result
+ */
+export type ValidationResult = {
   error?: string;
   valid: boolean;
-}
+};
 
-// Allowed unit number patterns as an object
+/**
+ * Unit Number Pattern ID Type
+ */
+export type UnitNumberPatternId = keyof typeof UNIT_NUMBER_PATTERNS;
+
+/**
+ * Predefined Unit Number Patterns
+ */
 export const UNIT_NUMBER_PATTERNS: { [key: string]: UnitNumberPattern } = {
   sequential: {
     description: 'Simple sequential numbering starting from 1 or 101',
@@ -86,5 +108,3 @@ export const UNIT_NUMBER_PATTERNS: { [key: string]: UnitNumberPattern } = {
     template: '{wing}{unit}',
   },
 };
-
-export type UnitNumberPatternId = keyof typeof UNIT_NUMBER_PATTERNS;

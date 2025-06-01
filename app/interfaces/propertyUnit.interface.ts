@@ -2,39 +2,9 @@ import { Document, Types } from 'mongoose';
 
 import { CURRENCIES } from './utils.interface';
 
-export const PropertyUnitTypeEnum = {
-  RESIDENTIAL: 'residential',
-  COMMERCIAL: 'commercial',
-  STORAGE: 'storage',
-  OTHER: 'other',
-} as const;
-
-export const PropertyUnitStatusEnum = {
-  AVAILABLE: 'available',
-  OCCUPIED: 'occupied',
-  RESERVED: 'reserved',
-  MAINTENANCE: 'maintenance',
-  INACTIVE: 'inactive',
-} as const;
-
-export const DocumentTypeEnum = {
-  LEASE: 'lease',
-  INSPECTION: 'inspection',
-  OTHER: 'other',
-} as const;
-
-export const DocumentStatusEnum = {
-  ACTIVE: 'active',
-  INACTIVE: 'inactive',
-} as const;
-
-export const InspectionStatusEnum = {
-  PASSED: 'passed',
-  FAILED: 'failed',
-  NEEDS_REPAIR: 'needs_repair',
-  SCHEDULED: 'scheduled',
-} as const;
-
+/**
+ * Property Unit Document Interface (extends Mongoose Document)
+ */
 export interface IPropertyUnitDocument extends IPropertyUnit, Document {
   calculateRentAdjustment: (percentage: number) => {
     oldAmount: number;
@@ -54,12 +24,8 @@ export interface IPropertyUnitDocument extends IPropertyUnit, Document {
   addInspection: (inspectionData: any, userId: string) => Promise<IPropertyUnitDocument>;
   makeUnitAvailable: (userId: string) => Promise<IPropertyUnitDocument>;
   markUnitAsVacant: (userId: string) => Promise<IPropertyUnitDocument>;
-
-  // Methods
   softDelete: (userId: string) => Promise<IPropertyUnitDocument>;
   lastInspectionDate?: Date;
-
-  // Document fields
   _id: Types.ObjectId;
   deletedAt?: Date;
   createdAt: Date;
@@ -67,6 +33,9 @@ export interface IPropertyUnitDocument extends IPropertyUnit, Document {
   id: string;
 }
 
+/**
+ * Core Property Unit Interface
+ */
 export interface IPropertyUnit {
   amenities: {
     airConditioning: boolean;
@@ -114,7 +83,10 @@ export interface IPropertyUnit {
   cid: string;
 }
 
-export interface IPropertyUnitFilterQuery {
+/**
+ * Property Unit Filter Query Type
+ */
+export type PropertyUnitFilterQuery = {
   filters: {
     propertyId?: string | Types.ObjectId;
     status?: PropertyUnitStatus;
@@ -147,9 +119,12 @@ export interface IPropertyUnitFilterQuery {
       [key: string]: 1 | -1;
     };
   };
-}
+};
 
-export interface PropertyUnitDocument {
+/**
+ * Property Unit Document Type
+ */
+export type PropertyUnitDocument = {
   uploadedBy?: Types.ObjectId;
   documentType: DocumentType;
   status: DocumentStatus;
@@ -159,9 +134,12 @@ export interface PropertyUnitDocument {
   uploadedAt: Date;
   key?: string;
   url: string;
-}
+};
 
-export interface PropertyUnitInspection {
+/**
+ * Property Unit Inspection Type
+ */
+export type PropertyUnitInspection = {
   inspector: {
     name: string;
     contact: string;
@@ -171,9 +149,26 @@ export interface PropertyUnitInspection {
   status: InspectionStatus;
   inspectionDate: Date;
   notes?: string;
+};
+
+/**
+ * Unit Type Management Rules Interface
+ */
+export interface UnitTypeRule {
+  visibleFields: {
+    amenities: string[];
+    fees: string[];
+    specifications: string[];
+    utilities: string[];
+  };
+  helpText?: { [fieldName: string]: string };
+  requiredFields?: string[];
 }
 
-export interface PropertyUnitPhoto {
+/**
+ * Property Unit Photo Type
+ */
+export type PropertyUnitPhoto = {
   uploadedBy?: Types.ObjectId;
   isPrimary: boolean;
   filename?: string;
@@ -181,195 +176,72 @@ export interface PropertyUnitPhoto {
   uploadedAt: Date;
   key?: string;
   url: string;
-}
+};
 
-export interface PropertyUnitInspectionAttachment {
+/**
+ * Unit Feature Configuration
+ */
+export type UnitFeature = {
+  category: 'basic' | 'premium' | 'luxury';
+  description?: string;
+  amenityKey: string;
+  label: string;
+};
+
+/**
+ * Legacy Types (for backward compatibility)
+ * @deprecated Use PropertyUnitType and PropertyUnitStatus instead
+ */
+export type UnitType =
+  | 'studio'
+  | '1BR'
+  | '2BR'
+  | '3BR'
+  | '4BR+'
+  | 'penthouse'
+  | 'loft'
+  | 'commercial'
+  | 'other';
+
+/**
+ * Property Unit Inspection Attachment Type
+ */
+export type PropertyUnitInspectionAttachment = {
   filename: string;
   uploadedAt: Date;
   key?: string;
   url: string;
-}
+};
 
-export type PropertyUnitStatus =
-  (typeof PropertyUnitStatusEnum)[keyof typeof PropertyUnitStatusEnum];
+/**
+ * Property Unit Status Types
+ */
+export type PropertyUnitStatus = 'available' | 'occupied' | 'reserved' | 'maintenance' | 'inactive';
 
-export type InspectionStatus = (typeof InspectionStatusEnum)[keyof typeof InspectionStatusEnum];
+/**
+ * Property Unit Type Classifications
+ */
+export type PropertyUnitType = 'residential' | 'commercial' | 'storage' | 'other';
 
-export type PropertyUnitType = (typeof PropertyUnitTypeEnum)[keyof typeof PropertyUnitTypeEnum];
+/**
+ * Inspection Status Types
+ */
+export type InspectionStatus = 'passed' | 'failed' | 'needs_repair' | 'scheduled';
 
-export type DocumentStatus = (typeof DocumentStatusEnum)[keyof typeof DocumentStatusEnum];
+/**
+ * Unit Type Rules Collection
+ */
+export type UnitTypeRules = {
+  [unitType: string]: UnitTypeRule;
+};
 
-export type DocumentType = (typeof DocumentTypeEnum)[keyof typeof DocumentTypeEnum];
+/**
+ * Document Type Classifications
+ */
+export type DocumentType = 'lease' | 'inspection' | 'other';
 
-export const UnitTypeEnum = {
-  STUDIO: 'studio',
-  ONE_BR: '1BR',
-  TWO_BR: '2BR',
-  THREE_BR: '3BR',
-  FOUR_BR_PLUS: '4BR+',
-  PENTHOUSE: 'penthouse',
-  LOFT: 'loft',
-  COMMERCIAL: 'commercial',
-  OTHER: 'other',
-} as const;
-
-export const UnitStatusEnum = {
-  AVAILABLE: 'available',
-  OCCUPIED: 'occupied',
-  RESERVED: 'reserved',
-  MAINTENANCE: 'maintenance',
-  INACTIVE: 'inactive',
-} as const;
-
-export interface IUnitDocument extends Document, IUnit {
-  calculateRentAdjustment: (percentage: number) => {
-    oldAmount: number;
-    newAmount: number;
-    difference: number;
-    percentageApplied: number;
-  };
-  notes?: Array<{
-    title: string;
-    content: string;
-    createdAt: Date;
-    createdBy: string;
-  }>;
-  applyRentAdjustment: (percentage: number, userId: string) => Promise<IUnitDocument>;
-  prepareForMaintenance: (reason: string, userId: string) => Promise<IUnitDocument>;
-  markUnitAsOccupied: (leaseId: string, userId: string) => Promise<IUnitDocument>;
-  addInspection: (inspectionData: any, userId: string) => Promise<IUnitDocument>;
-  makeUnitAvailable: (userId: string) => Promise<IUnitDocument>;
-
-  markUnitAsVacant: (userId: string) => Promise<IUnitDocument>;
-  softDelete: (userId: string) => Promise<IUnitDocument>;
-  propertyId: Types.ObjectId;
-  lastInspectionDate?: Date;
-  description?: string;
-  _id: Types.ObjectId;
-  deletedAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-  uid: string;
-  cid: string;
-  id: string;
-}
-export interface IUnit {
-  amenities: {
-    airConditioning: boolean;
-    washerDryer: boolean;
-    dishwasher: boolean;
-    parking: boolean;
-    storage: boolean;
-    cableTV: boolean;
-    internet: boolean;
-  };
-  utilities: {
-    gas: boolean;
-    trash: boolean;
-    water: boolean;
-    heating: boolean;
-    centralAC: boolean;
-  };
-  specifications: {
-    totalArea: number;
-    bedrooms?: number;
-    bathrooms?: number;
-    maxOccupants?: number;
-  };
-  fees: {
-    currency: CURRENCIES;
-    rentAmount: number;
-    securityDeposit?: number;
-  };
-  media?: {
-    photos: UnitPhoto[];
-  };
-  lastModifiedBy?: Types.ObjectId;
-  inspections?: UnitInspection[];
-  currentLease?: Types.ObjectId;
-  documents?: UnitDocument[];
-  createdBy: Types.ObjectId;
-  unitNumber: string;
-  status: UnitStatus;
-  isActive: boolean;
-  floor?: number;
-  type: UnitType;
-}
-export interface IUnitFilterQuery {
-  filters: {
-    propertyId?: string | Types.ObjectId;
-    status?: UnitStatus;
-    type?: UnitType;
-    priceRange?: {
-      min?: number;
-      max?: number;
-    };
-    areaRange?: {
-      min?: number;
-      max?: number;
-    };
-    bedrooms?: number | 'any';
-    bathrooms?: number | 'any';
-    floor?: number | 'any';
-    amenities?: string[];
-    utilities?: string[];
-    isActive?: boolean;
-    searchTerm?: string;
-    dateRange?: {
-      field: 'createdAt' | 'updatedAt' | 'lastInspectionDate';
-      start?: Date | string;
-      end?: Date | string;
-    };
-  };
-  pagination: {
-    page: number;
-    limit: number;
-    sort?: {
-      [key: string]: 1 | -1;
-    };
-  };
-}
-export interface UnitDocument {
-  uploadedBy?: Types.ObjectId;
-  documentType: DocumentType;
-  status: DocumentStatus;
-  documentName?: string;
-  externalUrl?: string;
-  description?: string;
-  uploadedAt: Date;
-  key?: string;
-  url: string;
-}
-export interface UnitInspection {
-  inspector: {
-    name: string;
-    contact: string;
-    company?: string;
-  };
-  attachments?: UnitInspectionAttachment[];
-  status: InspectionStatus;
-  inspectionDate: Date;
-  notes?: string;
-}
-
-export interface UnitPhoto {
-  uploadedBy?: Types.ObjectId;
-  isPrimary: boolean;
-  filename?: string;
-  caption?: string;
-  uploadedAt: Date;
-  key?: string;
-  url: string;
-}
-
-export interface UnitInspectionAttachment {
-  filename: string;
-  uploadedAt: Date;
-  key?: string;
-  url: string;
-}
-
-export type UnitStatus = (typeof UnitStatusEnum)[keyof typeof UnitStatusEnum];
-
-// Type definitions using the enums
-export type UnitType = (typeof UnitTypeEnum)[keyof typeof UnitTypeEnum];
+/**
+ * Document Status Types
+ */
+export type DocumentStatus = 'active' | 'inactive';
+export type UnitStatus = PropertyUnitStatus;

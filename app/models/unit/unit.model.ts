@@ -8,7 +8,7 @@ import {
   UnitStatusEnum,
   IUnitDocument,
   UnitTypeEnum,
-} from '@interfaces/unit.interface';
+} from '@interfaces/propertyUnit.interface';
 const logger = createLogger('UnitModel');
 
 const UnitSchema = new Schema<IUnitDocument>(

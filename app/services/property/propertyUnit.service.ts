@@ -1,15 +1,14 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { IUnit } from '@interfaces/unit.interface';
 import { PropertyQueue } from '@queues/property.queue';
 import { BadRequestError } from '@shared/customErrors';
 import { PropertyCache } from '@caching/property.cache';
+import { IUnit } from '@interfaces/propertyUnit.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { getRequestDuration, createLogger } from '@utils/index';
-import { PropertyTypeManager } from '@utils/PropertyTypeManager';
+import { IPropertyFilterQuery } from '@interfaces/property.interface';
 import { IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
-import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
 
 interface IConstructor {
   emitterService: EventEmitterService;

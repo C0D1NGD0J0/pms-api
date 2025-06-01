@@ -1,5 +1,5 @@
 import { ClientSession, FilterQuery } from 'mongoose';
-import { IPropertyUnitDocument } from '@interfaces/property-unit.interface';
+import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import {
   ListResultWithPagination,
   IPaginationQuery,

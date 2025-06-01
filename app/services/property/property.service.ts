@@ -12,16 +12,17 @@ import { getRequestDuration, createLogger, JOB_NAME } from '@utils/index';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
 import {
-  IPropertyFilterQuery,
-  IPropertyDocument,
-  NewPropertyType,
-} from '@interfaces/property.interface';
-import {
   ValidationRequestError,
   InvalidRequestError,
   BadRequestError,
   NotFoundError,
 } from '@shared/customErrors';
+import {
+  IPropertyWithUnitInfo,
+  IPropertyFilterQuery,
+  IPropertyDocument,
+  NewPropertyType,
+} from '@interfaces/property.interface';
 import {
   ExtractedMediaFile,
   ISuccessReturnData,
@@ -91,156 +92,6 @@ export class PropertyService {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
     this.log.info('PropertyService event listeners initialized');
-  }
-
-  /**
-   * Get unit information for a property, handling single-unit vs multi-unit logic
-   */
-  private async getUnitInfoForProperty(property: IPropertyDocument): Promise<{
-    canAddUnit: boolean;
-    totalUnits: number;
-    currentUnits: number;
-    availableSpaces: number;
-    lastUnitNumber?: string;
-    suggestedNextUnitNumber?: string;
-    unitStats: {
-      occupied: number;
-      vacant: number;
-      maintenance: number;
-      available: number;
-      reserved: number;
-      inactive: number;
-    };
-  }> {
-    const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
-    const totalUnits = property.totalUnits || 1;
-
-    if (isMultiUnit) {
-      // Multi-unit property: use PropertyUnit records
-      const unitData = await this.propertyUnitDAO.getPropertyUnitInfo(property.id);
-      const canAddUnitResult = await this.propertyDAO.canAddUnitToProperty(property.id);
-      const availableSpaces = Math.max(0, totalUnits - unitData.currentUnits);
-
-      // Get existing unit numbers and determine the last/highest one
-      let lastUnitNumber: string | undefined;
-      let suggestedNextUnitNumber: string | undefined;
-
-      if (unitData.currentUnits > 0) {
-        try {
-          const existingUnitNumbers = await this.propertyUnitDAO.getExistingUnitNumbers(
-            property.id
-          );
-
-          if (existingUnitNumbers.length > 0) {
-            // Find the highest numerical unit number
-            const numericUnits = existingUnitNumbers
-              .map((num) => {
-                const match = num.match(/(\d+)/);
-                return match ? parseInt(match[1], 10) : 0;
-              })
-              .filter((num) => num > 0);
-
-            if (numericUnits.length > 0) {
-              const highestNumber = Math.max(...numericUnits);
-              lastUnitNumber = highestNumber.toString();
-
-              // Get suggested next unit number using PropertyUnitDAO logic
-              suggestedNextUnitNumber = await this.propertyUnitDAO.getNextAvailableUnitNumber(
-                property.id,
-                'sequential'
-              );
-            } else {
-              // No numeric patterns found, get the last unit alphabetically
-              lastUnitNumber = existingUnitNumbers.sort().pop();
-              suggestedNextUnitNumber = await this.propertyUnitDAO.getNextAvailableUnitNumber(
-                property.id,
-                'custom'
-              );
-            }
-          }
-        } catch (error) {
-          this.log.warn(`Error getting unit numbers for property ${property.id}:`, error);
-          // Continue without unit numbering info
-        }
-      } else {
-        // No existing units, suggest starting numbers based on property type
-        suggestedNextUnitNumber = this.getSuggestedStartingUnitNumber(property.propertyType);
-      }
-
-      return {
-        canAddUnit: canAddUnitResult.canAdd,
-        totalUnits,
-        currentUnits: unitData.currentUnits,
-        availableSpaces,
-        lastUnitNumber,
-        suggestedNextUnitNumber,
-        unitStats: unitData.unitStats,
-      };
-    } else {
-      // Single-unit property: derive stats from property status
-      const unitStats = {
-        occupied: 0,
-        vacant: 0,
-        maintenance: 0,
-        available: 0,
-        reserved: 0,
-        inactive: 0,
-      };
-
-      // Map property occupancy status to unit stats
-      switch (property.occupancyStatus) {
-        case 'occupied':
-          unitStats.occupied = 1;
-          break;
-        case 'vacant':
-          unitStats.available = 1;
-          break;
-        case 'partially_occupied':
-          // For single-unit properties, partially occupied doesn't make sense,
-          // but treat it as occupied
-          unitStats.occupied = 1;
-          break;
-        default:
-          // Default to available for unknown status
-          unitStats.available = 1;
-          break;
-      }
-
-      // For single-unit properties, suggest unit numbers if they want to convert to multi-unit
-      const suggestedNextUnitNumber =
-        property.propertyType === 'house' || property.propertyType === 'townhouse'
-          ? '2' // If converting house to duplex, start with unit 2
-          : this.getSuggestedStartingUnitNumber(property.propertyType);
-
-      return {
-        canAddUnit: false, // Single-unit properties typically can't add more units
-        totalUnits: 1,
-        currentUnits: 1, // Single-unit property always has 1 unit (itself)
-        availableSpaces: 0, // No space to add more units
-        lastUnitNumber: '1', // The property itself can be considered unit 1
-        suggestedNextUnitNumber,
-        unitStats,
-      };
-    }
-  }
-
-  /**
-   * Get suggested starting unit number based on property type
-   */
-  private getSuggestedStartingUnitNumber(propertyType: string): string {
-    switch (propertyType) {
-      case 'apartment':
-      case 'condominium':
-        return '101'; // Floor-based numbering
-      case 'commercial':
-      case 'industrial':
-        return 'A-1001'; // Letter prefix pattern
-      case 'house':
-      case 'townhouse':
-        return '1'; // Simple sequential
-      default:
-        return '101'; // Default floor-based
-    }
   }
 
   async addProperty(
@@ -653,7 +504,7 @@ export class PropertyService {
     cid: string,
     pid: string,
     _currentUser: ICurrentUser
-  ): Promise<ISuccessReturnData> {
+  ): Promise<ISuccessReturnData<IPropertyWithUnitInfo>> {
     if (!cid || !pid) {
       throw new BadRequestError({ message: 'Client ID and Property ID are required.' });
     }
@@ -672,8 +523,6 @@ export class PropertyService {
     if (!property) {
       throw new NotFoundError({ message: 'Unable to find property.' });
     }
-
-    // Get unit information using the new logic that handles single vs multi-unit properties
     const unitInfo = await this.getUnitInfoForProperty(property);
 
     return {
@@ -954,6 +803,130 @@ export class PropertyService {
         error: markFailedError instanceof Error ? markFailedError.message : 'Unknown error',
         propertyId: resourceId,
       });
+    }
+  }
+
+  async getUnitInfoForProperty(property: IPropertyDocument): Promise<{
+    canAddUnit: boolean;
+    totalUnits: number;
+    currentUnits: number;
+    availableSpaces: number;
+    lastUnitNumber?: string;
+    suggestedNextUnitNumber?: string;
+    unitStats: {
+      occupied: number;
+      vacant: number;
+      maintenance: number;
+      available: number;
+      reserved: number;
+      inactive: number;
+    };
+  }> {
+    const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
+    const totalUnits = property.totalUnits || 1;
+
+    if (isMultiUnit) {
+      const unitData = await this.propertyUnitDAO.getPropertyUnitInfo(property.id);
+      const canAddUnitResult = await this.propertyDAO.canAddUnitToProperty(property.id);
+      const availableSpaces = Math.max(0, totalUnits - unitData.currentUnits);
+
+      let lastUnitNumber: string | undefined;
+      let suggestedNextUnitNumber: string | undefined;
+
+      if (unitData.currentUnits > 0) {
+        try {
+          const existingUnitNumbers = await this.propertyUnitDAO.getExistingUnitNumbers(
+            property.id
+          );
+
+          if (existingUnitNumbers.length > 0) {
+            // Find the highest numerical unit number
+            const numericUnits = existingUnitNumbers
+              .map((num) => {
+                const match = num.match(/(\d+)/);
+                return match ? parseInt(match[1], 10) : 0;
+              })
+              .filter((num) => num > 0);
+
+            if (numericUnits.length > 0) {
+              const highestNumber = Math.max(...numericUnits);
+              lastUnitNumber = highestNumber.toString();
+
+              // get suggested next unit number
+              suggestedNextUnitNumber = await this.propertyUnitDAO.getNextAvailableUnitNumber(
+                property.id,
+                'sequential'
+              );
+            } else {
+              // No numeric patterns found, get the last unit alphabetically
+              lastUnitNumber = existingUnitNumbers.sort().pop();
+              suggestedNextUnitNumber = await this.propertyUnitDAO.getNextAvailableUnitNumber(
+                property.id,
+                'custom'
+              );
+            }
+          }
+        } catch (error) {
+          this.log.warn(`Error getting unit numbers for property ${property.id}:`, error);
+          // continue without unit numbering info
+        }
+      } else {
+        suggestedNextUnitNumber = this.propertyUnitDAO.getSuggestedStartingUnitNumber(
+          property.propertyType
+        );
+      }
+
+      return {
+        canAddUnit: canAddUnitResult.canAdd,
+        totalUnits,
+        currentUnits: unitData.currentUnits,
+        availableSpaces,
+        lastUnitNumber,
+        suggestedNextUnitNumber,
+        unitStats: unitData.unitStats,
+      };
+    } else {
+      // Single-unit property: derive stats from property status
+      const unitStats = {
+        occupied: 0,
+        vacant: 0,
+        maintenance: 0,
+        available: 0,
+        reserved: 0,
+        inactive: 0,
+      };
+
+      // map property occupancy status to unit stats
+      switch (property.occupancyStatus) {
+        case 'partially_occupied':
+          unitStats.occupied = 1;
+          break;
+        case 'occupied':
+          unitStats.occupied = 1;
+          break;
+        case 'vacant':
+          unitStats.available = 1;
+          break;
+        default:
+          unitStats.available = 1;
+          break;
+      }
+
+      // For single-unit properties, suggest unit numbers if they want to convert to multi-unit
+      const suggestedNextUnitNumber =
+        property.propertyType === 'house' || property.propertyType === 'townhouse'
+          ? '2' // If converting house to duplex, start with unit 2
+          : this.propertyUnitDAO.getSuggestedStartingUnitNumber(property.propertyType);
+
+      return {
+        canAddUnit: false, // Single-unit properties typically can't add more units
+        totalUnits: 1,
+        currentUnits: 1, // Single-unit property always has 1 unit (itself)
+        availableSpaces: 0, // No space to add more units
+        lastUnitNumber: '1', // The property itself can be considered unit 1
+        suggestedNextUnitNumber,
+        unitStats,
+      };
     }
   }
 }

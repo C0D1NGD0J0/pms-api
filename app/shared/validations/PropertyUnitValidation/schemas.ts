@@ -7,7 +7,7 @@ import {
   DocumentTypeEnum,
   UnitStatusEnum,
   UnitTypeEnum,
-} from '@interfaces/unit.interface';
+} from '@interfaces/propertyUnit.interface';
 
 const isValidProperty = async (propertyId: string) => {
   const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;

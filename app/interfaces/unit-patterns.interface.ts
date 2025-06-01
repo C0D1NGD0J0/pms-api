@@ -10,20 +10,20 @@ export interface ClientUnitPreferences {
 }
 
 export interface UnitNumberPattern {
-  description: string;
-  example: string;
-  id: string;
-  name: string;
   propertyTypes: string[];
-  regex: RegExp;
+  description: string;
   template: string;
+  example: string;
+  regex: RegExp;
+  name: string;
+  id: string;
 }
 
 export interface UnitNumberSuggestion {
   isBasedOnUserPreference: boolean;
   pattern: UnitNumberPattern;
-  suggestion: string;
   nextInSequence?: string;
+  suggestion: string;
 }
 
 export interface UnitNumberValidationRules {

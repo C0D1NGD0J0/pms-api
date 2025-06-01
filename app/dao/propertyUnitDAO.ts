@@ -7,7 +7,7 @@ import {
   PropertyUnitInspection,
   IPropertyUnitDocument,
   PropertyUnitStatus,
-} from '@interfaces/property-unit.interface';
+} from '@interfaces/propertyUnit.interface';
 
 import { BaseDAO } from './baseDAO';
 import { IPropertyUnitDAO } from './interfaces/propertyUnitDAO.interface';
@@ -574,6 +574,22 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     } else {
       // Default to letter prefix pattern
       return 'A-1001';
+    }
+  }
+
+  getSuggestedStartingUnitNumber(propertyType: string): string {
+    switch (propertyType) {
+      case 'condominium':
+      case 'apartment':
+        return '101'; // Floor-based numbering
+      case 'commercial':
+      case 'industrial':
+        return 'A-1001'; // Letter prefix pattern
+      case 'townhouse':
+      case 'house':
+        return '1'; // Simple sequential
+      default:
+        return '101'; // Default floor-based
     }
   }
 }

@@ -54,7 +54,7 @@
   "unitForm": {
     "unitTypes": [
       { "value": "residential", "label": "Residential" },
-      { "value": "commercial", "label": "Commercial" },
+      { "value": "commercial", "label": "Office" },
       { "value": "storage", "label": "Storage" },
       { "value": "other", "label": "Other" }
     ],

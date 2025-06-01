@@ -2,7 +2,7 @@ import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { ClientSession, FilterQuery, Types, Model } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery, UploadResult } from '@interfaces/index';
-import { PropertyUnitStatusEnum, IPropertyUnitDocument } from '@interfaces/property-unit.interface';
+import { PropertyUnitStatusEnum, IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import {
   IPropertyDocument,
   OccupancyStatus,

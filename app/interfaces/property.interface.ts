@@ -184,6 +184,10 @@ export interface CsvJobData {
   cid: string;
 }
 
+export interface IPropertyWithUnitInfo extends Partial<IPropertyDocument> {
+  unitInfo: IUnitInfo;
+}
+
 export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
 
 export type NewPropertyType = {
@@ -196,4 +200,22 @@ export type PropertyTypeRules = Record<string, PropertyTypeRule>;
 
 export interface IComputedLocation {
   coordinates: number[];
+}
+
+interface IUnitInfo {
+  suggestedNextUnitNumber?: string;
+  availableSpaces: number;
+  lastUnitNumber?: string;
+  unitStats: IUnitStats;
+  currentUnits: number;
+  canAddUnit: boolean;
+  totalUnits: number;
+}
+interface IUnitStats {
+  maintenance: number;
+  available: number;
+  occupied: number;
+  reserved: number;
+  inactive: number;
+  vacant: number;
 }

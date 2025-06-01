@@ -1,6 +1,6 @@
-import { PropertyUnitInspection } from '@interfaces/property-unit.interface';
+import { PropertyUnitInspection } from '@interfaces/propertyUnit.interface';
 import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
-import { IPropertyUnitDocument, PropertyUnitStatus } from '@interfaces/property-unit.interface';
+import { IPropertyUnitDocument, PropertyUnitStatus } from '@interfaces/propertyUnit.interface';
 
 import { IBaseDAO } from './baseDAO.interface';
 
@@ -76,4 +76,6 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
    * @returns A promise that resolves to an array of available property unit documents
    */
   findAvailableUnits(propertyId?: string): Promise<IPropertyUnitDocument[]>;
+
+  getSuggestedStartingUnitNumber(propertyType: string): string | null;
 }

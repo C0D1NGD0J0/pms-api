@@ -6,7 +6,7 @@ import {
   PropertyUnitStatusEnum,
   IPropertyUnitDocument,
   PropertyUnitTypeEnum,
-} from '@interfaces/property-unit.interface';
+} from '@interfaces/propertyUnit.interface';
 
 const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
   {

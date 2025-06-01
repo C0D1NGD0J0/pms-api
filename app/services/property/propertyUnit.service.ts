@@ -6,9 +6,10 @@ import { BadRequestError } from '@shared/customErrors';
 import { PropertyCache } from '@caching/property.cache';
 import { EventEmitterService } from '@services/eventEmitter';
 import { getRequestDuration, createLogger } from '@utils/index';
-import { IPropertyFilterQuery } from '@interfaces/property.interface';
+import { PropertyTypeManager } from '@utils/PropertyTypeManager';
 import { IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
 
 interface IConstructor {
   emitterService: EventEmitterService;
@@ -253,7 +254,7 @@ export class PropertyUnitService {
           cid,
           pid,
           unitId,
-          url: request.url,
+          url: cxt.request.url,
           userId: currentuser?.sub,
           requestId: cxt.requestId,
           duration: getRequestDuration(start).durationInMs,
@@ -270,7 +271,7 @@ export class PropertyUnitService {
           cid,
           pid,
           unitId,
-          url: request.url,
+          url: cxt.request.url,
           userId: currentuser?.sub,
           requestId: cxt.requestId,
           duration: getRequestDuration(start).durationInMs,

@@ -10,8 +10,8 @@ export const DEFAULT_JOB_OPTIONS: BullJobOptions = {
   attempts: 2,
   timeout: 60000,
   backoff: { type: 'fixed', delay: 10000 },
-  removeOnComplete: 1000,
-  removeOnFail: 5000,
+  removeOnComplete: 100, // Reduced from 1000 to 100
+  removeOnFail: 500, // Reduced from 5000 to 500
 };
 
 export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions = {

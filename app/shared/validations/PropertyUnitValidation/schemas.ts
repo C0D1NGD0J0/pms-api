@@ -2,11 +2,11 @@ import { z } from 'zod';
 import { container } from '@di/setup';
 import { PropertyDAO } from '@dao/index';
 import {
+  PropertyUnitStatusEnum,
+  PropertyUnitTypeEnum,
   InspectionStatusEnum,
   DocumentStatusEnum,
   DocumentTypeEnum,
-  UnitStatusEnum,
-  UnitTypeEnum,
 } from '@interfaces/propertyUnit.interface';
 
 const isValidProperty = async (propertyId: string) => {
@@ -43,8 +43,8 @@ const isUniqueUnitNumber = async (unitNumber: string, propertyId: string, unitId
 };
 
 // Convert enum objects to Zod enums
-const UnitTypeZodEnum = z.enum(Object.values(UnitTypeEnum) as [string, ...string[]]);
-const UnitStatusZodEnum = z.enum(Object.values(UnitStatusEnum) as [string, ...string[]]);
+const UnitTypeZodEnum = z.enum(Object.values(PropertyUnitTypeEnum) as [string, ...string[]]);
+const UnitStatusZodEnum = z.enum(Object.values(PropertyUnitStatusEnum) as [string, ...string[]]);
 const DocumentTypeZodEnum = z.enum(Object.values(DocumentTypeEnum) as [string, ...string[]]);
 const DocumentStatusZodEnum = z.enum(Object.values(DocumentStatusEnum) as [string, ...string[]]);
 const InspectionStatusZodEnum = z.enum(

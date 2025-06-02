@@ -3,6 +3,7 @@ export type ICsvProcessorOptions<T, C = any> = {
   validateRow?: (row: any, context: C, rowNumber: number) => Promise<ICsvValidationResult>;
   transformRow?: (row: any, context: C, rowNumber: number) => Promise<T>;
   headerTransformer?: (header: { header: string }) => string;
+  processBatch?: (batch: T[], context: C) => Promise<void>; // Stream processing option
   context: C;
 };
 

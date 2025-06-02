@@ -60,30 +60,35 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * Find the first document that matches the filter.
    *
    * @param filter - Query used to find the document.
-   * @param options - Optional settings for the query.
+   * @param opts - Optional settings for the query.
+   * @param select - Optional field selection.
    * @returns A promise that resolves to the found document or null if no document is found.
    */
-  async findFirst(filter: FilterQuery<T>, options?: IFindOptions): Promise<T | null> {
+  async findFirst(
+    filter: FilterQuery<T>,
+    opts?: IFindOptions,
+    select?: Record<string, number>
+  ): Promise<T | null> {
     try {
       let query: any = this.model.findOne(filter);
 
-      // Handle projection/select (use one or the other, not both)
-      if (options?.select) {
-        query = query.select(options.select);
-      } else if (options?.projection) {
-        query = query.select(options.projection);
+      if (select) {
+        query = query.select(select);
+      } else if (opts?.select) {
+        query = query.select(opts.select);
+      } else if (opts?.projection) {
+        query = query.select(opts.projection);
       }
 
-      if (options?.sort) query = query.sort(options.sort);
+      if (opts?.sort) query = query.sort(opts.sort);
 
-      // Properly type the populate option
-      if (options?.populate) {
-        if (Array.isArray(options.populate)) {
-          options.populate.forEach((option) => {
+      if (opts?.populate) {
+        if (Array.isArray(opts.populate)) {
+          opts.populate.forEach((option) => {
             query = query.populate(option);
           });
         } else {
-          query = query.populate(options.populate);
+          query = query.populate(opts.populate);
         }
       }
 
@@ -99,14 +104,22 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    *
    * @param filter - Query used to filter the documents.
    * @param options - Optional settings for the query.
+   * @param useLean - Whether to return plain objects (true) or Mongoose documents (false). Defaults to false for backward compatibility.
    * @returns A promise that resolves to an array of found documents.
    */
   async list(
     filter: FilterQuery<T>,
-    options?: { projection?: string; populate?: string } & IPaginationQuery
+    options?: { projection?: string; populate?: string } & IPaginationQuery,
+    useLean = false
   ) {
     try {
       let query: any = this.model.find(filter);
+
+      // Add lean() for read-only operations unless populate is used
+      if (useLean) {
+        query = query.lean();
+      }
+
       if (options?.sort) query = query.sort(options.sort);
       if (options?.skip) query = query.skip(options.skip);
       if (options?.limit) query = query.limit(options.limit);
@@ -289,10 +302,10 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @param id - The unique identifier of the document.
    * @returns A promise that resolves to the found document or null if no document is found.
    */
-  async findById(id: string): Promise<T | null> {
+  async findById(id: string | Types.ObjectId): Promise<T | null> {
     try {
-      const res = await this.model.findById(id);
-      return res;
+      const result = await this.model.findById(id).exec();
+      return result;
     } catch (error: unknown) {
       throw this.throwErrorHandler(error);
     }

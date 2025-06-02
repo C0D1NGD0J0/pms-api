@@ -3,6 +3,54 @@ import { Document, Types } from 'mongoose';
 import { CURRENCIES } from './utils.interface';
 
 /**
+ * Property Unit Status Enum
+ */
+export enum PropertyUnitStatusEnum {
+  MAINTENANCE = 'maintenance',
+  AVAILABLE = 'available',
+  INACTIVE = 'inactive',
+  OCCUPIED = 'occupied',
+  RESERVED = 'reserved',
+}
+
+/**
+ * Property Unit Type Enum
+ */
+export enum PropertyUnitTypeEnum {
+  RESIDENTIAL = 'residential',
+  COMMERCIAL = 'commercial',
+  STORAGE = 'storage',
+  OTHER = 'other',
+}
+
+/**
+ * Inspection Status Enum
+ */
+export enum InspectionStatusEnum {
+  NEEDS_REPAIR = 'needs_repair',
+  SCHEDULED = 'scheduled',
+  FAILED = 'failed',
+  PASSED = 'passed',
+}
+
+/**
+ * Document Type Enum
+ */
+export enum DocumentTypeEnum {
+  INSPECTION = 'inspection',
+  LEASE = 'lease',
+  OTHER = 'other',
+}
+
+/**
+ * Document Status Enum
+ */
+export enum DocumentStatusEnum {
+  INACTIVE = 'inactive',
+  ACTIVE = 'active',
+}
+
+/**
  * Property Unit Document Interface (extends Mongoose Document)
  */
 export interface IPropertyUnitDocument extends IPropertyUnit, Document {

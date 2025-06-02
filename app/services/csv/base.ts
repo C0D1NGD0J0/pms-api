@@ -6,7 +6,7 @@ import { ICsvProcessorOptions, ICsvProcessingError } from '@interfaces/csv.inter
 
 export class BaseCSVProcessorService {
   private static readonly log = createLogger('CsvProcessorService');
-  private static readonly BATCH_SIZE = 1000;
+  private static readonly BATCH_SIZE = 100; // Reduced from 1000 to 100
 
   static async processCsvFile<T, C>(
     filePath: string,
@@ -21,6 +21,7 @@ export class BaseCSVProcessorService {
     const invalidItems: ICsvProcessingError[] = [];
     let rowNumber = 1;
     let batch: T[] = [];
+    let totalProcessed = 0;
 
     if (!filePath) {
       throw new Error('CSV file path missing');
@@ -83,10 +84,18 @@ export class BaseCSVProcessorService {
 
           // Process batch when it reaches BATCH_SIZE
           if (batch.length >= this.BATCH_SIZE) {
-            results.push(...batch);
+            // Process batch immediately instead of accumulating
+            if (options.processBatch) {
+              await options.processBatch(batch, options.context);
+              totalProcessed += batch.length;
+              this.log.info(`Processed batch: ${totalProcessed} total rows`);
+            } else {
+              results.push(...batch);
+            }
+            
             batch = []; // Clear batch
-
-            // Force garbage collection hint
+            
+            // Force garbage collection every batch
             if (global.gc) {
               global.gc();
             }
@@ -111,30 +120,41 @@ export class BaseCSVProcessorService {
 
       stream.on('end', async () => {
         try {
+          // Process remaining batch
           if (batch.length > 0) {
-            results.push(...batch);
+            if (options.processBatch) {
+              await options.processBatch(batch, options.context);
+              totalProcessed += batch.length;
+              this.log.info(`Processed final batch: ${totalProcessed} total rows`);
+            } else {
+              results.push(...batch);
+            }
           }
 
           let finalResults = results;
 
-          if (options.postProcess && results.length > 0) {
-            const chunks = [];
-            const chunkSize = 5000;
-
+          // Only run postProcess if we accumulated results (no processBatch)
+          if (options.postProcess && results.length > 0 && !options.processBatch) {
+            const chunkSize = 500; // Reduced from 5000
+            
             for (let i = 0; i < results.length; i += chunkSize) {
-              chunks.push(results.slice(i, i + chunkSize));
-            }
-
-            const processedChunks = [];
-            for (const chunk of chunks) {
+              const chunk = results.slice(i, i + chunkSize);
               const processed = await options.postProcess(chunk, options.context);
-              processedChunks.push(...processed.validItems);
+              
+              // Replace chunk in place to avoid memory growth
+              results.splice(i, chunk.length, ...processed.validItems);
+              
+              // GC after each chunk
+              if (global.gc) {
+                global.gc();
+              }
             }
 
-            finalResults = processedChunks;
+            finalResults = results;
           }
 
-          this.log.info(`Successfully processed ${finalResults.length} valid rows.`);
+          const finalCount = options.processBatch ? totalProcessed : finalResults.length;
+          this.log.info(`Successfully processed ${finalCount} valid rows.`);
           if (invalidItems.length > 0) {
             this.log.error(
               `${invalidItems.length} items were not processed due to validation errors.`
@@ -142,7 +162,7 @@ export class BaseCSVProcessorService {
           }
 
           resolve({
-            validItems: finalResults,
+            validItems: options.processBatch ? [] : finalResults, // Empty if using streaming
             finishedAt: new Date(),
             totalRows: rowNumber - 1,
             errors: invalidItems.length ? invalidItems : null,

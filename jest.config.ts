@@ -29,7 +29,10 @@ const config: JestConfigWithTsJest = {
   modulePathIgnorePatterns: ['<rootDir>/dist/', '<rootDir>/tests/configs/'],
   globalTeardown: './tests/configs/teardown.ts',
   globalSetup: './tests/configs/setup.ts',
-  // testTimeout: 30000,
+  setupFilesAfterEnv: ['<rootDir>/tests/configs/jest.setup.ts'],
+  testTimeout: 30000,
+  maxWorkers: 1,
+  workerIdleMemoryLimit: '512MB',
   moduleNameMapper: {
     '@controllers/(.*)': '<rootDir>/app/controllers/$1',
     '@interfaces/(.*)': '<rootDir>/app/interfaces/$1',

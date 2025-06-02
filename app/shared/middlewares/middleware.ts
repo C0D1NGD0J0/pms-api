@@ -8,10 +8,11 @@ import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
 import { NextFunction, Response, Request } from 'express';
 import { ICurrentUser, EventTypes } from '@interfaces/index';
+import { LanguageService } from '@shared/languages/language.service';
 import { InvalidRequestError, UnauthorizedError } from '@shared/customErrors';
-import { extractMulterFiles, generateShortUID, httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
 import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
 import { RateLimitOptions, RequestSource, TokenType } from '@interfaces/utils.interface';
+import { extractMulterFiles, generateShortUID, httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
 
 interface DIServices {
   emitterService: EventEmitterService;
@@ -85,8 +86,8 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
   if (!files) {
     return next();
   }
-  const _files = extractMulterFiles(files, req.currentuser?.sub);
-  if (!req.currentuser) {
+  const _files = extractMulterFiles(files, req.context?.currentuser?.sub);
+  if (!req.context?.currentuser) {
     return next(new UnauthorizedError({ message: 'Unauthorized action.' }));
   }
   try {
@@ -231,6 +232,69 @@ export const requestLogger =
     next();
   };
 
+/**
+ * Middleware to detect and set language based on request headers or query params
+ */
+export const detectLanguage = (req: Request, _res: Response, next: NextFunction) => {
+  const { languageService }: { languageService: LanguageService } = req.container.cradle;
+
+  // Priority order: query param > header > default
+  const language =
+    (req.query.lang as string) ||
+    req.headers['accept-language']?.split(',')[0]?.split('-')[0] ||
+    'en';
+
+  // Validate language is supported
+  const supportedLanguages = languageService.getAvailableLanguages();
+  const selectedLanguage = supportedLanguages.includes(language) ? language : 'en';
+
+  // Set language for this request
+  languageService.setLanguage(selectedLanguage);
+
+  // Add language info to context object
+  req.context.langSetting = {
+    lang: selectedLanguage,
+  };
+
+  next();
+};
+
+/**
+ * set language from user preferences (after authentication)
+ * order of choice: user.preferences.lang > client.settings.lang > profile.lang > request.lang > default
+ */
+export const setUserLanguage = async (req: Request, _res: Response, next: NextFunction) => {
+  try {
+    const { languageService }: { languageService: LanguageService } = req.container.cradle;
+    const currentUser = req.context?.currentuser;
+    let userLanguage = req.context?.langSetting?.lang || 'en';
+
+    if (currentUser) {
+      if (currentUser.preferences?.lang) {
+        userLanguage = currentUser.preferences.lang;
+      } else if ((currentUser as any).clientSettings?.lang) {
+        userLanguage = (currentUser as any).clientSettings.lang;
+      } else if ((currentUser as any).profile?.lang) {
+        userLanguage = (currentUser as any).profile.lang;
+      }
+    }
+
+    const supportedLanguages = languageService.getAvailableLanguages();
+    const selectedLanguage = supportedLanguages.includes(userLanguage) ? userLanguage : 'en';
+
+    await languageService.setLanguage(selectedLanguage);
+
+    req.context.langSetting = {
+      lang: selectedLanguage,
+    };
+
+    next();
+  } catch (error) {
+    console.error('Error in setUserLanguage middleware:', error);
+    next();
+  }
+};
+
 export const contextBuilder = (req: Request, res: Response, next: NextFunction) => {
   try {
     const sourceHeader = req.header('X-Request-Source') || RequestSource.UNKNOWN;
@@ -245,14 +309,17 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
       requestId: generateShortUID(12),
       source,
       ipAddress: req.ip || req.socket.remoteAddress || '',
+      requestUrl: req.originalUrl,
+      duration: 0,
       userAgent: {
         raw: (req.headers['user-agent'] as string) || '',
         browser: uaResult.browser.name,
         version: uaResult.browser.version,
         os: uaResult.os.name,
         isMobile: /mobile|android|iphone/i.test((req.headers['user-agent'] as string) || ''),
+        isBot: /bot|crawler|spider|scraper/i.test((req.headers['user-agent'] as string) || ''),
       },
-      currentUser: null,
+      currentuser: null,
       request: {
         path: req.path,
         method: req.method,

@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { t } from '@shared/languages';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyService } from '@services/index';
 import propertyFormMeta from '@shared/constants/propertyFormMeta.json';
@@ -27,7 +28,7 @@ export class PropertyController {
     if (!req.body.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
-        message: 'No CSV file uploaded',
+        message: t('property.errors.noCsvFileUploaded'),
       });
     }
     const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
@@ -41,7 +42,7 @@ export class PropertyController {
     if (!req.body.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
-        message: 'No CSV file uploaded',
+        message: t('property.errors.noCsvFileUploaded'),
       });
     }
     const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
@@ -166,7 +167,7 @@ export class PropertyController {
     if (formType && !propertyFormMeta[formType]) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
-        message: `Invalid form type: ${formType}`,
+        message: t('property.errors.invalidFormType', { formType }),
       });
     }
     res.status(httpStatusCodes.OK).json({

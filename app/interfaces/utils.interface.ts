@@ -53,6 +53,14 @@ export enum RequestSource {
 }
 
 export interface IRequestContext {
+  userAgent: {
+    raw?: string;
+    browser?: string;
+    version?: string;
+    os?: string;
+    isMobile: boolean;
+    isBot: boolean;
+  };
   request: {
     path: string;
     method: string;
@@ -60,22 +68,19 @@ export interface IRequestContext {
     url: string;
     query: Record<string, any>;
   };
-  userAgent: {
-    browser?: string;
-    version?: string;
-    os?: string;
-    isMobile: boolean;
-    isBot: boolean;
-  };
   timing: {
     startTime: number;
     endTime?: number;
     duration?: number;
   };
-  currentuser: ICurrentUser;
+  langSetting?: {
+    lang: string;
+  };
+  currentuser?: ICurrentUser | null;
   service: { env: string };
   source: RequestSource;
   requestUrl: string;
+  ipAddress?: string;
   requestId: string;
   duration: number;
   timestamp: Date;

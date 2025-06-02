@@ -1,5 +1,7 @@
+import { t } from '@shared/languages';
 import { Response, Request } from 'express';
 import { AuthService } from '@services/index';
+import { AppRequest } from '@interfaces/utils.interface';
 import { httpStatusCodes, setAuthCookies, JWT_KEY_NAMES } from '@utils/index';
 
 interface IConstructor {
@@ -36,12 +38,12 @@ export class AuthController {
     });
   };
 
-  getCurrentUser = async (req: Request, res: Response) => {
+  getCurrentUser = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: 'Unauthorized',
+        message: t('auth.errors.unauthorized'),
       });
     }
 
@@ -51,13 +53,13 @@ export class AuthController {
     });
   };
 
-  switchClientAccount = async (req: Request, res: Response) => {
+  switchClientAccount = async (req: AppRequest, res: Response) => {
     const { clientId } = req.body;
-    const { currentuser } = req;
+    const { currentuser } = req.context;
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: 'Unauthorized',
+        message: t('auth.errors.unauthorized'),
       });
     }
 

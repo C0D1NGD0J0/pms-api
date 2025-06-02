@@ -1,0 +1,200 @@
+{
+  "auth": {
+    "errors": {
+      "unauthorized": "Unauthorized",
+      "invalidRefreshToken": "Invalid refresh token",
+      "tokenExpired": "token expired.",
+      "authenticationRequired": "Authentication required",
+      "invalidAuthToken": "Invalid authentication token",
+      "accountVerificationPending": "Account verification pending",
+      "userNotFound": "User not found",
+      "clientNotFound": "Client not found",
+      "noAccessToClient": "User does not have access to this client",
+      "userNotCreated": "User not created",
+      "emailPasswordRequired": "Email and password are required.",
+      "invalidCredentials": "Invalid email/password combination.",
+      "userIdRequired": "User ID is required.",
+      "userIdAndCidRequired": "User ID and account CID are required.",
+      "unableToSelectAccount": "Unable to select account.",
+      "activationTokenMissing": "Activation token missing.",
+      "invalidActivationToken": "Invalid or expired activation token.",
+      "emailRequired": "Email is required to resend activation link.",
+      "userEmailRequired": "User email is required.",
+      "noRecordFound": "No record found with email provided.",
+      "invalidEmailToken": "Invalid email/token is provided.",
+      "invalidAuthTokenLogout": "Invalid auth token."
+    },
+    "success": {
+      "tokenRefreshed": "Token refreshed successfully",
+      "tokenValidated": "Token validated successfully",
+      "userHasAccess": "User has access to client",
+      "activationEmailSent": "Account activation email has been sent to {{email}}",
+      "loginSuccessful": "Login successful.",
+      "accountSelected": "Success.",
+      "accountActivated": "Account activated successfully.",
+      "activationLinkSent": "Activation link has been sent to {{email}}.",
+      "passwordResetEmailSent": "Password reset email has been sent to {{email}}",
+      "logoutSuccessful": "Logout successful."
+    }
+  },
+  "property": {
+    "errors": {
+      "noCsvFileUploaded": "No CSV file uploaded",
+      "invalidFormType": "Invalid form type: {{formType}}",
+      "validationFailed": "Property validation failed. Please correct the errors and try again.",
+      "unableToAddProperty": "Unable to add property to this account.",
+      "duplicateAddress": "A property with this address already exists for this client",
+      "unableToCreateProperty": "Unable to create property.",
+      "minUnitsRequired": "{{propertyType}} properties require at least {{minUnits}} units",
+      "noBedroomsForCommercial": "Commercial properties should not have bedrooms defined at property level",
+      "commercialMinArea": "Commercial properties must have at least 200 sq ft of total area",
+      "industrialLotSizeRequired": "Industrial properties must specify lot size",
+      "industrialMinArea": "Industrial properties must have at least 1000 sq ft of total area",
+      "occupiedRentalRequired": "Occupied properties must have a valid rental amount",
+      "businessRuleValidationFailed": "Property type business rule validation failed",
+      "noCsvFilePath": "No CSV file path provided",
+      "propertyIdRequired": "Property ID is required.",
+      "uploadResultRequired": "Upload result is required.",
+      "propertyNotFound": "Unable to find client property.",
+      "unableToUpdateProperty": "Unable to update property.",
+      "fileSizeTooLarge": "File size too large for processing.",
+      "clientIdRequired": "Client ID is required.",
+      "unableToGetProperties": "Unable to get properties for this account.",
+      "clientIdAndPropertyIdRequired": "Client ID and Property ID are required.",
+      "updateValidationFailed": "Update validation failed. Please correct the errors and try again.",
+      "occupiedPropertiesMustHaveRental": "Occupied properties must have a rental amount",
+      "singleUnitCannotBePartiallyOccupied": "Single-unit properties cannot be partially occupied",
+      "occupancyStatusValidationFailed": "Occupancy status change validation failed",
+      "unableToArchiveProperty": "Unable to archive property."
+    },
+    "success": {
+      "propertyCreated": "Property created successfully.",
+      "csvImportStarted": "CSV import job started",
+      "propertyUpdated": "Property updated successfully",
+      "csvValidationStarted": "CSV validation process started.",
+      "propertyArchived": "Property archived successfully"
+    }
+  },
+  "propertyUnit": {
+    "errors": {
+      "noDocumentFileUploaded": "No document file uploaded",
+      "unableToAddUnit": "Unable to add unit to property.",
+      "propertyNotFound": "Unable to add unit to property, property not found."
+    }
+  },
+  "validation": {
+    "auth": {
+      "firstNameMinLength": "First name must be at least 2 characters",
+      "firstNameMaxLength": "First name must be at most 25 characters",
+      "lastNameMinLength": "Last name must be at least 2 characters",
+      "lastNameMaxLength": "Last name must be at most 25 characters",
+      "invalidEmail": "Invalid email address",
+      "emailInUse": "Email already in use.",
+      "passwordMinLength": "Password must be at least 6 characters",
+      "locationMaxLength": "Location(city) must be at most 35 characters",
+      "invalidCityName": "Please enter a valid city name",
+      "invalidPlanName": "Invalid plan name provided.",
+      "invalidUrl": "Invalid URL provided.",
+      "companyNameRequired": "Company name is required",
+      "invalidCompanyEmail": "Invalid company email",
+      "legalEntityNameRequired": "Legal entity name is required",
+      "companyAddressRequired": "Company address is required",
+      "companyPhoneRequired": "Company phone number is required",
+      "contactPersonRequired": "Contact person is required",
+      "businessRegNumberRequired": "Business registration number is required",
+      "idNumberRequired": "ID number is required",
+      "issuingAuthorityRequired": "Issuing authority is required",
+      "issuingStateRequired": "Issuing state is required",
+      "companyProfileRequired": "Company profile is required for business accounts",
+      "invalidEmergencyEmail": "Invalid emergency contact email",
+      "invalidToken": "Invalid token provided",
+      "tokenExpiredOrInvalid": "Token is invalid or has expired",
+      "emailBlank": "Email can't be blank",
+      "invalidEmailFormat": "Invalid email format.",
+      "invalidEmailAddress": "Invalid email address provided.",
+      "invalidUrlTokenMissing": "Invalid url, token missing.",
+      "passwordResetTokenInvalid": "Password reset token is invalid or has expired",
+      "passwordBlank": "Password field can't be blank",
+      "passwordMinLengthDetailed": "Password must be at least 6 characters long.",
+      "passwordMaxLength": "Password must be no longer than 15 characters.",
+      "emailFieldBlank": "Email field can't be blank.",
+      "invalidPasswordValue": "Invalid password value provided."
+    },
+    "property": {
+      "totalAreaPositive": "Total area must be a positive number",
+      "lotSizePositive": "Lot size must be a positive number",
+      "bedroomsNonNegative": "Bedrooms must be a non-negative integer",
+      "bathroomsNonNegative": "Bathrooms must be a non-negative number",
+      "floorsMinOne": "Floors must be at least 1",
+      "garageSpacesNonNegative": "Garage spaces must be a non-negative integer",
+      "maxOccupantsMinOne": "Maximum occupants must be at least 1",
+      "purchasePricePositive": "Purchase price must be a positive number",
+      "invalidPurchaseDate": "Invalid date format for purchase date",
+      "marketValuePositive": "Market value must be a positive number",
+      "propertyTaxNonNegative": "Property tax must be a non-negative number",
+      "invalidAssessmentDate": "Invalid date format for last-assesment date",
+      "taxAmountNonNegative": "Tax amount must be a non-negative number",
+      "rentalAmountNonNegative": "Rental amount must be a non-negative number",
+      "managementFeesNonNegative": "Management fees must be a non-negative number",
+      "securityDepositNonNegative": "Security deposit must be a non-negative number"
+    }
+  },
+  "fileUpload": {
+    "errors": {
+      "uploadError": "File upload error",
+      "unexpectedField": "Unexpected field: {{field}}",
+      "tooManyFiles": "Too many files uploaded",
+      "fileNotFound": "File {{filename}} not found",
+      "fileTypeNotSupported": "File type not supported. Allowed types: {{allowedTypes}}",
+      "invalidFileTypeForField": "For field \"{{fieldname}}\", only these file types are allowed: {{fileTypes}}",
+      "fileSizeExceeded": "{{filename}} exceeds max allowed size of {{maxSize}}MB for field \"{{fieldname}}\""
+    }
+  },
+  "csv": {
+    "errors": {
+      "clientNotFound": "Client with ID {{cid}} not found",
+      "invalidManagerEmail": "Invalid manager email",
+      "invalidAddress": "Invalid address: {{address}}",
+      "geocodingError": "Error during geocoding: {{error}}",
+      "managerEmailRequired": "Manager email is required",
+      "userNotFound": "No user found with email: {{email}}",
+      "userNotAssociated": "User {{email}} is not associated with this client",
+      "userRoleNotPermitted": "User role not permitted for this action.",
+      "managerEmailValidationError": "Error validating manager email: {{error}}"
+    }
+  },
+  "email": {
+    "accountUpdate": {
+      "greeting": "Hello {{fullname}},",
+      "message": "This email is to inform you that, your account was recently updated at {{updatedAt}}. If you feel this update wasn't carried out by you please contact customer support.",
+      "supportText": "customer support email: Customer support"
+    },
+    "forgotPassword": {
+      "subject": "Reset Your Password",
+      "greeting": "Hello {{fullname}},",
+      "message": "We received a request to reset your password. Click the button below to set a new password for your Property Solutions account.",
+      "buttonText": "Reset Password",
+      "alternativeText": "If the button doesn't work, copy and paste this link in your browser:",
+      "expiryText": "This link will expire in 1 hour. If you didn't request a password reset, please ignore this email."
+    },
+    "registration": {
+      "subject": "Activate Your Account",
+      "greeting": "Hello {{fullname}},",
+      "message": "Welcome to Property Solutions! To complete your account setup, please click the button below to activate your account.",
+      "buttonText": "Activate Account",
+      "alternativeText": "If the button doesn't work, copy and paste this link in your browser:",
+      "expiryText": "This link will expire in 2 hours. If you didn't create an account, please ignore this email."
+    },
+    "resetPassword": {
+      "greeting": "Hello {{fullname}},",
+      "message": "Your password has successfully been updated.for your account.",
+      "warningText": "If you didn't initiate this equest please contact customer care urgently."
+    }
+  },
+  "system": {
+    "errors": {
+      "unexpectedError": "An unexpected error occurred",
+      "internalServerError": "Internal Server Error"
+    }
+  }
+}

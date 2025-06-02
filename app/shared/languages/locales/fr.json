@@ -1,0 +1,200 @@
+{
+  "auth": {
+    "errors": {
+      "unauthorized": "Non autorisé",
+      "invalidRefreshToken": "Jeton de rafraîchissement invalide",
+      "tokenExpired": "jeton expiré.",
+      "authenticationRequired": "Authentification requise",
+      "invalidAuthToken": "Jeton d'authentification invalide",
+      "accountVerificationPending": "Vérification de compte en attente",
+      "userNotFound": "Utilisateur introuvable",
+      "clientNotFound": "Client introuvable",
+      "noAccessToClient": "L'utilisateur n'a pas accès à ce client",
+      "userNotCreated": "Utilisateur non créé",
+      "emailPasswordRequired": "Email et mot de passe sont requis.",
+      "invalidCredentials": "Combinaison email/mot de passe invalide.",
+      "userIdRequired": "ID utilisateur requis.",
+      "userIdAndCidRequired": "ID utilisateur et CID de compte requis.",
+      "unableToSelectAccount": "Impossible de sélectionner le compte.",
+      "activationTokenMissing": "Jeton d'activation manquant.",
+      "invalidActivationToken": "Jeton d'activation invalide ou expiré.",
+      "emailRequired": "Email requis pour renvoyer le lien d'activation.",
+      "userEmailRequired": "Email utilisateur requis.",
+      "noRecordFound": "Aucun enregistrement trouvé avec l'email fourni.",
+      "invalidEmailToken": "Email/jeton invalide fourni.",
+      "invalidAuthTokenLogout": "Jeton d'authentification invalide."
+    },
+    "success": {
+      "tokenRefreshed": "Jeton rafraîchi avec succès",
+      "tokenValidated": "Jeton validé avec succès",
+      "userHasAccess": "L'utilisateur a accès au client",
+      "activationEmailSent": "Email d'activation de compte envoyé à {{email}}",
+      "loginSuccessful": "Connexion réussie.",
+      "accountSelected": "Succès.",
+      "accountActivated": "Compte activé avec succès.",
+      "activationLinkSent": "Lien d'activation envoyé à {{email}}.",
+      "passwordResetEmailSent": "Email de réinitialisation de mot de passe envoyé à {{email}}",
+      "logoutSuccessful": "Déconnexion réussie."
+    }
+  },
+  "property": {
+    "errors": {
+      "noCsvFileUploaded": "Aucun fichier CSV téléchargé",
+      "invalidFormType": "Type de formulaire invalide: {{formType}}",
+      "validationFailed": "La validation de la propriété a échoué. Veuillez corriger les erreurs et réessayer.",
+      "unableToAddProperty": "Impossible d'ajouter une propriété à ce compte.",
+      "duplicateAddress": "Une propriété avec cette adresse existe déjà pour ce client",
+      "unableToCreateProperty": "Impossible de créer la propriété.",
+      "minUnitsRequired": "Les propriétés {{propertyType}} nécessitent au moins {{minUnits}} unités",
+      "noBedroomsForCommercial": "Les propriétés commerciales ne doivent pas avoir de chambres définies au niveau de la propriété",
+      "commercialMinArea": "Les propriétés commerciales doivent avoir au moins 200 pieds carrés de superficie totale",
+      "industrialLotSizeRequired": "Les propriétés industrielles doivent spécifier la taille du lot",
+      "industrialMinArea": "Les propriétés industrielles doivent avoir au moins 1000 pieds carrés de superficie totale",
+      "occupiedRentalRequired": "Les propriétés occupées doivent avoir un montant de loyer valide",
+      "businessRuleValidationFailed": "La validation des règles métier du type de propriété a échoué",
+      "noCsvFilePath": "Aucun chemin de fichier CSV fourni",
+      "propertyIdRequired": "ID de propriété requis.",
+      "uploadResultRequired": "Résultat de téléchargement requis.",
+      "propertyNotFound": "Impossible de trouver la propriété du client.",
+      "unableToUpdateProperty": "Impossible de mettre à jour la propriété.",
+      "fileSizeTooLarge": "Taille de fichier trop importante pour le traitement.",
+      "clientIdRequired": "ID client requis.",
+      "unableToGetProperties": "Impossible d'obtenir les propriétés pour ce compte.",
+      "clientIdAndPropertyIdRequired": "ID client et ID propriété requis.",
+      "updateValidationFailed": "La validation de mise à jour a échoué. Veuillez corriger les erreurs et réessayer.",
+      "occupiedPropertiesMustHaveRental": "Les propriétés occupées doivent avoir un montant de loyer",
+      "singleUnitCannotBePartiallyOccupied": "Les propriétés à unité unique ne peuvent pas être partiellement occupées",
+      "occupancyStatusValidationFailed": "La validation du changement de statut d'occupation a échoué",
+      "unableToArchiveProperty": "Impossible d'archiver la propriété."
+    },
+    "success": {
+      "propertyCreated": "Propriété créée avec succès.",
+      "csvImportStarted": "Tâche d'importation CSV démarrée",
+      "propertyUpdated": "Propriété mise à jour avec succès",
+      "csvValidationStarted": "Processus de validation CSV démarré.",
+      "propertyArchived": "Propriété archivée avec succès"
+    }
+  },
+  "propertyUnit": {
+    "errors": {
+      "noDocumentFileUploaded": "Aucun fichier de document téléchargé",
+      "unableToAddUnit": "Impossible d'ajouter une unité à la propriété.",
+      "propertyNotFound": "Impossible d'ajouter une unité à la propriété, propriété introuvable."
+    }
+  },
+  "validation": {
+    "auth": {
+      "firstNameMinLength": "Le prénom doit contenir au moins 2 caractères",
+      "firstNameMaxLength": "Le prénom doit contenir au maximum 25 caractères",
+      "lastNameMinLength": "Le nom doit contenir au moins 2 caractères",
+      "lastNameMaxLength": "Le nom doit contenir au maximum 25 caractères",
+      "invalidEmail": "Adresse email invalide",
+      "emailInUse": "Email déjà utilisé.",
+      "passwordMinLength": "Le mot de passe doit contenir au moins 6 caractères",
+      "locationMaxLength": "Localisation(ville) doit contenir au maximum 35 caractères",
+      "invalidCityName": "Veuillez entrer un nom de ville valide",
+      "invalidPlanName": "Nom de plan invalide fourni.",
+      "invalidUrl": "URL invalide fournie.",
+      "companyNameRequired": "Nom de l'entreprise requis",
+      "invalidCompanyEmail": "Email de l'entreprise invalide",
+      "legalEntityNameRequired": "Nom de l'entité légale requis",
+      "companyAddressRequired": "Adresse de l'entreprise requise",
+      "companyPhoneRequired": "Numéro de téléphone de l'entreprise requis",
+      "contactPersonRequired": "Personne de contact requise",
+      "businessRegNumberRequired": "Numéro d'enregistrement commercial requis",
+      "idNumberRequired": "Numéro d'identification requis",
+      "issuingAuthorityRequired": "Autorité d'émission requise",
+      "issuingStateRequired": "État d'émission requis",
+      "companyProfileRequired": "Profil de l'entreprise requis pour les comptes professionnels",
+      "invalidEmergencyEmail": "Email de contact d'urgence invalide",
+      "invalidToken": "Jeton invalide fourni",
+      "tokenExpiredOrInvalid": "Le jeton est invalide ou a expiré",
+      "emailBlank": "L'email ne peut pas être vide",
+      "invalidEmailFormat": "Format d'email invalide.",
+      "invalidEmailAddress": "Adresse email invalide fournie.",
+      "invalidUrlTokenMissing": "URL invalide, jeton manquant.",
+      "passwordResetTokenInvalid": "Le jeton de réinitialisation du mot de passe est invalide ou a expiré",
+      "passwordBlank": "Le champ mot de passe ne peut pas être vide",
+      "passwordMinLengthDetailed": "Le mot de passe doit contenir au moins 6 caractères.",
+      "passwordMaxLength": "Le mot de passe ne doit pas dépasser 15 caractères.",
+      "emailFieldBlank": "Le champ email ne peut pas être vide.",
+      "invalidPasswordValue": "Valeur de mot de passe invalide fournie."
+    },
+    "property": {
+      "totalAreaPositive": "La superficie totale doit être un nombre positif",
+      "lotSizePositive": "La taille du lot doit être un nombre positif",
+      "bedroomsNonNegative": "Les chambres doivent être un entier non négatif",
+      "bathroomsNonNegative": "Les salles de bain doivent être un nombre non négatif",
+      "floorsMinOne": "Les étages doivent être au moins 1",
+      "garageSpacesNonNegative": "Les places de garage doivent être un entier non négatif",
+      "maxOccupantsMinOne": "Le nombre maximum d'occupants doit être au moins 1",
+      "purchasePricePositive": "Le prix d'achat doit être un nombre positif",
+      "invalidPurchaseDate": "Format de date invalide pour la date d'achat",
+      "marketValuePositive": "La valeur marchande doit être un nombre positif",
+      "propertyTaxNonNegative": "La taxe foncière doit être un nombre non négatif",
+      "invalidAssessmentDate": "Format de date invalide pour la date de dernière évaluation",
+      "taxAmountNonNegative": "Le montant de la taxe doit être un nombre non négatif",
+      "rentalAmountNonNegative": "Le montant du loyer doit être un nombre non négatif",
+      "managementFeesNonNegative": "Les frais de gestion doivent être un nombre non négatif",
+      "securityDepositNonNegative": "Le dépôt de garantie doit être un nombre non négatif"
+    }
+  },
+  "fileUpload": {
+    "errors": {
+      "uploadError": "Erreur de téléchargement de fichier",
+      "unexpectedField": "Champ inattendu: {{field}}",
+      "tooManyFiles": "Trop de fichiers téléchargés",
+      "fileNotFound": "Fichier {{filename}} introuvable",
+      "fileTypeNotSupported": "Type de fichier non pris en charge. Types autorisés: {{allowedTypes}}",
+      "invalidFileTypeForField": "Pour le champ \"{{fieldname}}\", seuls ces types de fichiers sont autorisés: {{fileTypes}}",
+      "fileSizeExceeded": "{{filename}} dépasse la taille maximale autorisée de {{maxSize}}MB pour le champ \"{{fieldname}}\""
+    }
+  },
+  "csv": {
+    "errors": {
+      "clientNotFound": "Client avec ID {{cid}} introuvable",
+      "invalidManagerEmail": "Email du gestionnaire invalide",
+      "invalidAddress": "Adresse invalide: {{address}}",
+      "geocodingError": "Erreur lors du géocodage: {{error}}",
+      "managerEmailRequired": "Email du gestionnaire requis",
+      "userNotFound": "Aucun utilisateur trouvé avec l'email: {{email}}",
+      "userNotAssociated": "L'utilisateur {{email}} n'est pas associé à ce client",
+      "userRoleNotPermitted": "Rôle utilisateur non autorisé pour cette action.",
+      "managerEmailValidationError": "Erreur lors de la validation de l'email du gestionnaire: {{error}}"
+    }
+  },
+  "email": {
+    "accountUpdate": {
+      "greeting": "Bonjour {{fullname}},",
+      "message": "Cet email vous informe que votre compte a été récemment mis à jour le {{updatedAt}}. Si vous pensez que cette mise à jour n'a pas été effectuée par vous, veuillez contacter le support client.",
+      "supportText": "email du support client: Support client"
+    },
+    "forgotPassword": {
+      "subject": "Réinitialisez votre mot de passe",
+      "greeting": "Bonjour {{fullname}},",
+      "message": "Nous avons reçu une demande de réinitialisation de votre mot de passe. Cliquez sur le bouton ci-dessous pour définir un nouveau mot de passe pour votre compte Property Solutions.",
+      "buttonText": "Réinitialiser le mot de passe",
+      "alternativeText": "Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur:",
+      "expiryText": "Ce lien expirera dans 1 heure. Si vous n'avez pas demandé de réinitialisation de mot de passe, veuillez ignorer cet email."
+    },
+    "registration": {
+      "subject": "Activez votre compte",
+      "greeting": "Bonjour {{fullname}},",
+      "message": "Bienvenue chez Property Solutions! Pour terminer la configuration de votre compte, veuillez cliquer sur le bouton ci-dessous pour activer votre compte.",
+      "buttonText": "Activer le compte",
+      "alternativeText": "Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur:",
+      "expiryText": "Ce lien expirera dans 2 heures. Si vous n'avez pas créé de compte, veuillez ignorer cet email."
+    },
+    "resetPassword": {
+      "greeting": "Bonjour {{fullname}},",
+      "message": "Votre mot de passe a été mis à jour avec succès pour votre compte.",
+      "warningText": "Si vous n'avez pas initié cette demande, veuillez contacter le service client de toute urgence."
+    }
+  },
+  "system": {
+    "errors": {
+      "unexpectedError": "Une erreur inattendue s'est produite",
+      "internalServerError": "Erreur interne du serveur"
+    }
+  }
+}

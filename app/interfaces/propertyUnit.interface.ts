@@ -103,7 +103,7 @@ export interface IPropertyUnit {
   };
   specifications: {
     totalArea: number;
-    bedrooms?: number;
+    room?: number;
     bathrooms?: number;
     maxOccupants?: number;
   };

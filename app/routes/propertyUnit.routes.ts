@@ -9,7 +9,7 @@ const router: Router = express.Router({ mergeParams: true });
 router.use(isAuthenticated);
 
 router.post(
-  '/add_unit',
+  '/',
   routeLimiter(),
   diskUpload(['propertyUnit.media']),
   scanFile,
@@ -24,7 +24,7 @@ router.post(
 );
 
 router.get(
-  '/get_property_units',
+  '/',
   routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -34,7 +34,7 @@ router.get(
 );
 
 router.get(
-  '/get_property_unit/:unitId',
+  '/:unitId',
   routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -44,7 +44,7 @@ router.get(
 );
 
 router.patch(
-  '/update_property_unit/:unitId',
+  '/:unitId',
   routeLimiter(),
   diskUpload(['propertyUnit.media']),
   scanFile,
@@ -59,7 +59,7 @@ router.patch(
 );
 
 router.delete(
-  '/delete_property_unit/:unitId',
+  '/:unitId',
   routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -69,7 +69,7 @@ router.delete(
 );
 
 router.patch(
-  '/update_property_unit_status/:unitId',
+  '/update_status/:unitId',
   routeLimiter(),
   validateRequest({
     body: PropertyUnitValidations.updateUnit,
@@ -95,7 +95,7 @@ router.post(
 );
 
 router.patch(
-  '/upload_unit_media/:unitId',
+  '/upload_media/:unitId',
   routeLimiter(),
   validateRequest({
     body: PropertyUnitValidations.uploadUnitMedia,

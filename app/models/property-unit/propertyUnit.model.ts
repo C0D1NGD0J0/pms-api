@@ -74,7 +74,7 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
         min: 0,
         required: true,
       },
-      bedrooms: {
+      rooms: {
         type: Number,
         min: 0,
         default: 1,
@@ -97,13 +97,12 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
       centralAC: { type: Boolean, default: false },
     },
     amenities: {
-      internet: { type: Boolean, default: false },
-      airConditioning: { type: Boolean, default: false },
-      washerDryer: { type: Boolean, default: false },
       parking: { type: Boolean, default: false },
       cableTV: { type: Boolean, default: false },
-      dishwasher: { type: Boolean, default: false },
       storage: { type: Boolean, default: false },
+      internet: { type: Boolean, default: false },
+      dishwasher: { type: Boolean, default: false },
+      washerDryer: { type: Boolean, default: false },
     },
     description: {
       type: String,

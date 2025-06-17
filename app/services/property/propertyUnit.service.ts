@@ -1,16 +1,19 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { JobCache } from '@caching/job.cache';
 import { PropertyQueue } from '@queues/property.queue';
 import { BadRequestError } from '@shared/customErrors';
 import { PropertyCache } from '@caching/property.cache';
-import { IUnit } from '@interfaces/propertyUnit.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { PropertyUnitQueue } from '@queues/propertyUnit.queue';
 import { getRequestDuration, createLogger } from '@utils/index';
+import { IPropertyUnit } from '@interfaces/propertyUnit.interface';
 import { IPropertyFilterQuery } from '@interfaces/property.interface';
 import { IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 
 interface IConstructor {
+  propertyUnitQueue: PropertyUnitQueue;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   propertyCache: PropertyCache;
@@ -18,16 +21,26 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
+  jobCache: JobCache;
 }
+
+interface BatchUnitData {
+  units: IPropertyUnit[];
+  pid: string;
+  cid: string;
+}
+
 export class PropertyUnitService {
   private readonly log: Logger;
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyQueue: PropertyQueue;
+  private readonly propertyUnitQueue: PropertyUnitQueue;
   private readonly propertyCache: PropertyCache;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly jobCache: JobCache;
 
   constructor({
     clientDAO,
@@ -35,9 +48,12 @@ export class PropertyUnitService {
     propertyDAO,
     propertyUnitDAO,
     propertyQueue,
+    propertyUnitQueue,
     propertyCache,
     emitterService,
+    jobCache,
   }: IConstructor) {
+    this.jobCache = jobCache;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
@@ -45,13 +61,15 @@ export class PropertyUnitService {
     this.propertyQueue = propertyQueue;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
+    this.propertyUnitQueue = propertyUnitQueue;
     this.log = createLogger('PropertyUnitService');
   }
 
-  async addPropertyUnit(cxt: IRequestContext, data: IUnit) {
+  async addPropertyUnit(cxt: IRequestContext, data: BatchUnitData) {
     const currentuser = cxt.currentuser!;
     const { cid, pid } = cxt.request.params;
     const start = process.hrtime.bigint();
+
     if (!pid || !cid) {
       this.log.error(
         {
@@ -66,6 +84,7 @@ export class PropertyUnitService {
       );
       throw new BadRequestError({ message: 'Unable to add unit to property.' });
     }
+
     const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
     if (!property) {
       this.log.error(
@@ -82,47 +101,45 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: 'Unable to add unit to property, property not found.' });
     }
 
-    const session = await this.propertyUnitDAO.startSession();
-    const result = await this.propertyUnitDAO.withTransaction(session, async (session) => {
-      const canAddUnit = await this.propertyDAO.canAddUnitToProperty(property.id);
-      if (!canAddUnit.canAdd) {
-        this.log.error(
-          {
-            cid,
-            pid,
-            url: cxt.request.url,
-            userId: currentuser?.sub,
-            requestId: cxt.requestId,
-            duration: getRequestDuration(start).durationInMs,
-          },
-          'Property has reached maximum unit capacity.'
-        );
-        throw new BadRequestError({
-          message: 'Unable to add unit to property, maximum capacity reached.',
-        });
+    if (data.units.length <= 5) {
+      return this.createUnitsDirectly(cxt, data, property);
+    } else {
+      return this.createUnitsViaQueue(cxt, data, currentuser.sub);
+    }
+  }
+
+  async getJobStatus(jobId: string) {
+    return this.propertyUnitQueue.getJobStatus(jobId);
+  }
+
+  async getUserJobs(userId: string) {
+    const result = await this.jobCache.getUserJobs(userId);
+
+    if (!result.success) {
+      return [];
+    }
+
+    const enhancedJobs = await Promise.all(
+      result.data.map(async (job) => {
+        const queueStatus = await this.propertyUnitQueue.getJobStatus(job.jobId);
+        return {
+          ...job,
+          ...queueStatus,
+        };
+      })
+    );
+
+    const completedJobIds = enhancedJobs
+      .filter((job: any) => job.state === 'completed' || job.state === 'failed')
+      .map((job: any) => job.jobId);
+
+    if (completedJobIds.length > 0) {
+      for (const jobId of completedJobIds) {
+        await this.jobCache.removeUserJob(userId, jobId);
       }
+    }
 
-      const newUnitData = {
-        ...data,
-        cid,
-        propertyId: pid,
-        createdBy: new Types.ObjectId(currentuser.sub),
-        lastModifiedBy: new Types.ObjectId(currentuser.sub),
-      };
-
-      const unit = await this.propertyUnitDAO.insert(newUnitData, session);
-      await this.propertyDAO.syncPropertyOccupancyWithUnits(pid, currentuser.sub);
-
-      return {
-        data: unit,
-      };
-    });
-    await this.propertyCache.invalidateProperty(cid, pid);
-    return {
-      success: true,
-      data: result.data,
-      message: 'Unit added successfully',
-    };
+    return enhancedJobs.filter((job: any) => job.state !== 'completed' && job.state !== 'failed');
   }
 
   async getPropertyUnit(cxt: IRequestContext) {
@@ -242,7 +259,7 @@ export class PropertyUnitService {
     };
   }
 
-  async updatePropertyUnit(cxt: IRequestContext, updateData: Partial<IUnit>) {
+  async updatePropertyUnit(cxt: IRequestContext, updateData: Partial<IPropertyUnit>) {
     const currentuser = cxt.currentuser!;
     const start = process.hrtime.bigint();
     const { cid, pid, unitId } = cxt.request.params;
@@ -378,6 +395,147 @@ export class PropertyUnitService {
       success: true,
       data: result.data,
       message: 'Unit updated successfully',
+    };
+  }
+
+  async updateUnitStatus(cxt: IRequestContext, updateData: any) {
+    return this.updatePropertyUnit(cxt, updateData);
+  }
+
+  async archiveUnit(cxt: IRequestContext) {
+    const currentuser = cxt.currentuser!;
+    const updateData = {
+      deletedAt: new Date(),
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    };
+    return this.updatePropertyUnit(cxt, updateData);
+  }
+
+  async setupInspection(cxt: IRequestContext, inspectionData: any) {
+    const currentuser = cxt.currentuser!;
+    const updateData = {
+      inspections: [inspectionData],
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    };
+    return this.updatePropertyUnit(cxt, updateData);
+  }
+
+  async addDocumentToUnit(cxt: IRequestContext, documentData: any) {
+    const currentuser = cxt.currentuser!;
+    const updateData = {
+      documents: [documentData],
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    };
+    return this.updatePropertyUnit(cxt, updateData);
+  }
+
+  async deleteDocumentFromUnit(_cxt: IRequestContext) {
+    return {
+      success: true,
+      message: 'Document deletion functionality needs to be implemented',
+    };
+  }
+
+  private async createUnitsDirectly(cxt: IRequestContext, data: BatchUnitData, property: any) {
+    const currentuser = cxt.currentuser!;
+    const { cid, pid } = cxt.request.params;
+    const start = process.hrtime.bigint();
+
+    const session = await this.propertyUnitDAO.startSession();
+    const result = await this.propertyUnitDAO.withTransaction(session, async (session) => {
+      const canAddUnits = await this.propertyDAO.canAddUnitToProperty(property.id);
+      if (!canAddUnits.canAdd) {
+        this.log.error(
+          {
+            cid,
+            pid,
+            url: cxt.request.url,
+            userId: currentuser?.sub,
+            requestId: cxt.requestId,
+            duration: getRequestDuration(start).durationInMs,
+          },
+          'Property has reached maximum unit capacity.'
+        );
+        throw new BadRequestError({
+          message: 'Unable to add units to property, maximum capacity reached.',
+        });
+      }
+
+      const createdUnits = [];
+      const errors = [];
+
+      for (let i = 0; i < data.units.length; i++) {
+        const unit = data.units[i];
+        try {
+          const newUnitData = {
+            ...unit,
+            cid,
+            propertyId: property.id,
+            createdBy: new Types.ObjectId(currentuser.sub),
+            lastModifiedBy: new Types.ObjectId(currentuser.sub),
+          };
+
+          const createdUnit = await this.propertyUnitDAO.insert(newUnitData, session);
+          createdUnits.push(createdUnit);
+        } catch (error: any) {
+          errors.push({
+            unitIndex: i,
+            unitNumber: unit.unitNumber,
+            error: error.message,
+          });
+        }
+      }
+
+      if (createdUnits.length > 0) {
+        await this.propertyDAO.syncPropertyOccupancyWithUnits(pid, currentuser.sub);
+      }
+
+      return { createdUnits, errors };
+    });
+
+    await this.propertyCache.invalidateProperty(cid, pid);
+
+    return {
+      success: true,
+      data: result.createdUnits,
+      errors: result.errors,
+      message:
+        result.errors.length > 0
+          ? `${result.createdUnits.length} units created successfully, ${result.errors.length} failed`
+          : `All ${result.createdUnits.length} units created successfully`,
+      processingType: 'direct',
+      totalUnits: data.units.length,
+    };
+  }
+
+  private async createUnitsViaQueue(cxt: IRequestContext, data: BatchUnitData, userId: string) {
+    const jobId = await this.propertyUnitQueue.addUnitBatchCreationJob({
+      units: data.units,
+      pid: data.pid,
+      cid: data.cid,
+      userId: userId,
+      requestId: cxt.requestId,
+    });
+
+    await this.jobCache.addUserJob(
+      userId,
+      jobId.toString(),
+      'unit_batch_creation',
+      3600, // 1 hour TTL
+      {
+        pid: data.pid,
+        cid: data.cid,
+        unitCount: data.units.length,
+      }
+    );
+
+    return {
+      success: true,
+      jobId: jobId.toString(),
+      message: 'Unit creation job queued successfully',
+      estimatedCompletion: '2-3 minutes',
+      totalUnits: data.units.length,
+      processingType: 'queued',
     };
   }
 }

@@ -17,8 +17,9 @@ export class PropertyUnitController {
 
   addUnit = async (req: AppRequest, res: Response) => {
     const unitData = req.body;
-    const result = await this.propertyUnitService.addPropertyUnit(req.context, unitData);
-    res.status(httpStatusCodes.OK).json(result);
+    console.log('Received unit data:', unitData);
+    // const result = await this.propertyUnitService.addPropertyUnit(req.context, unitData);
+    res.status(httpStatusCodes.OK).json({});
   };
 
   getPropertyUnits = async (req: AppRequest, res: Response) => {
@@ -43,6 +44,27 @@ export class PropertyUnitController {
   getPropertyUnit = async (req: AppRequest, res: Response) => {
     const result = await this.propertyUnitService.getPropertyUnit(req.context);
     res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getJobStatus = async (req: AppRequest, res: Response) => {
+    const { jobId } = req.params;
+    const result = await this.propertyUnitService.getJobStatus(jobId);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getUserJobs = async (req: AppRequest, res: Response) => {
+    const userId = req.context.currentuser?.sub;
+    if (!userId) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'Unauthorized',
+      });
+    }
+    const result = await this.propertyUnitService.getUserJobs(userId);
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: result,
+    });
   };
 
   updateUnit = async (req: AppRequest, res: Response) => {

@@ -14,7 +14,7 @@ router.post(
   diskUpload(['propertyUnit.media']),
   scanFile,
   validateRequest({
-    body: PropertyUnitValidations.createUnit,
+    body: PropertyUnitValidations.createUnits,
   }),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -30,6 +30,26 @@ router.get(
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');
     return propertyUnitController.getPropertyUnits(req, res);
+  })
+);
+
+router.get(
+  '/jobs/:jobId/status',
+  routeLimiter(),
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.getJobStatus(req, res);
+  })
+);
+
+router.get(
+  '/jobs/user/active',
+  routeLimiter(),
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.getUserJobs(req, res);
   })
 );
 

@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { Types } from 'mongoose';
 import { container } from '@di/setup';
-import { PropertyDAO } from '@dao/index';
+import { isValidObjectId, Types } from 'mongoose';
 import { UnitNumberingService } from '@services/index';
+import { PropertyUnitDAO, PropertyDAO } from '@dao/index';
 import {
   PropertyUnitStatusEnum,
   PropertyUnitTypeEnum,
@@ -11,37 +11,73 @@ import {
   DocumentTypeEnum,
 } from '@interfaces/propertyUnit.interface';
 
-// Initialize unit numbering service
 const unitNumberingService = new UnitNumberingService();
 
-export const isValidProperty = async (id: string | Types.ObjectId) => {
+export const isValidResource = async (resourceName: 'property' | 'propertyUnit', filter: any) => {
   const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
   try {
-    const property = await propertyDAO.findFirst({
-      $or: [{ id }, { pid: id }],
-    });
-    return !!property;
+    if (resourceName === 'property') {
+      if (!filter.pid && !filter.id) {
+        return false;
+      }
+      if (filter.id && isValidObjectId(filter.id)) {
+        const property = await propertyDAO.findFirst({ _id: filter.id, deletedAt: null });
+        return !!property;
+      }
+      if (filter.pid) {
+        const property = await propertyDAO.findFirst({ pid: filter.pid, deletedAt: null });
+        return !!property;
+      }
+    } else if (resourceName === 'propertyUnit') {
+      const { propertyUnitDAO }: { propertyUnitDAO: PropertyUnitDAO } = container.cradle;
+      if (!filter.unitId && !filter.unitNumber) {
+        return false;
+      }
+      if (filter.unitId && isValidObjectId(filter.unitId)) {
+        const unit = await propertyUnitDAO.findFirst({ _id: filter.unitId, deletedAt: null });
+        return !!unit;
+      }
+      if (filter.propertyId) {
+        const unit = await propertyUnitDAO.findFirst({
+          propertyId: filter.propertyId,
+          deletedAt: null,
+        });
+        return !!unit;
+      }
+    }
+    return false;
   } catch (error) {
     console.error('Error checking property existence', error);
     return false;
   }
 };
 
-const isUniqueUnitNumber = async (propertyId: string, unitNumber: string, unitId?: string) => {
-  const { unitDAO }: { unitDAO: any } = container.cradle;
+const isUniqueUnitNumber = async (pid: string, unitNumber: string, unitId?: string) => {
+  const {
+    propertyUnitDAO,
+    propertyDAO,
+  }: { propertyUnitDAO: PropertyUnitDAO; propertyDAO: PropertyDAO } = container.cradle;
   try {
     const query: any = {
       unitNumber,
-      propertyId,
+      propertyId: '',
       deletedAt: null,
     };
+
+    const property = await propertyDAO.findFirst({ pid });
+    if (!property) {
+      return false;
+    }
 
     if (unitId) {
       query._id = { $ne: unitId };
     }
-
-    const existingUnit = await unitDAO.findFirst(query);
-    return !existingUnit;
+    query.propertyId = property.id;
+    const existingUnit = await propertyUnitDAO.findFirst(query);
+    if (!existingUnit) {
+      return true;
+    }
+    return false;
   } catch (error) {
     console.error('Error checking unit number uniqueness', error);
     return false;
@@ -154,12 +190,11 @@ const BaseUnitSchema = z.object({
 });
 
 export const CreateUnitSchema = BaseUnitSchema.extend({
-  pid: z.string().refine(async (id) => await isValidProperty(id), {
+  pid: z.string().refine(async (pid) => await isValidResource('property', { pid }), {
     message: 'Property does not exist',
   }),
   cid: z.string(),
 }).superRefine(async (data, ctx) => {
-  // Check uniqueness
   const isUnique = await isUniqueUnitNumber(data.pid, data.unitNumber);
   if (!isUnique) {
     ctx.addIssue({
@@ -188,7 +223,7 @@ const CreateUnitsSchema = z.object({
     .array(BaseUnitSchema)
     .min(1, 'At least one unit is required')
     .max(20, 'Maximum 20 units allowed. For bulk operations, please use CSV upload instead.'),
-  pid: z.string().refine(async (id) => await isValidProperty(id), {
+  pid: z.string().refine(async (pid) => await isValidResource('property', { pid }), {
     message: 'Property does not exist',
   }),
   cid: z.string(),
@@ -198,7 +233,7 @@ export const CreateUnitsSchemaRefined = CreateUnitsSchema.superRefine(async (dat
   if ('units' in data) {
     const unitNumbers = data.units.map((unit) => unit.unitNumber);
 
-    // Check for duplicates within the batch
+    // duplicates within the batch
     const duplicates = unitNumbers.filter((num, index) => unitNumbers.indexOf(num) !== index);
     if (duplicates.length > 0) {
       ctx.addIssue({
@@ -255,15 +290,17 @@ export const CreateUnitsSchemaRefined = CreateUnitsSchema.superRefine(async (dat
 });
 
 const UpdateUnitBaseSchema = BaseUnitSchema.extend({
-  id: z.instanceof(Types.ObjectId).refine(async (id) => await isValidProperty(id), {
-    message: 'Invalid unit ID',
-  }),
-  propertyId: z.instanceof(Types.ObjectId).refine(async (id) => await isValidProperty(id), {
-    message: 'Invalid property ID',
-  }),
-  pid: z.string().refine(async (id) => await isValidProperty(id), {
-    message: 'Property does not exist',
-  }),
+  id: z
+    .instanceof(Types.ObjectId)
+    .refine(async (unitId) => await isValidResource('propertyUnit', { unitId }), {
+      message: 'Invalid unit ID',
+    }),
+  propertyId: z
+    .instanceof(Types.ObjectId)
+    .refine(async (propertyId) => await isValidResource('propertyUnit', { propertyId }), {
+      message: 'Invalid property ID',
+    }),
+  pid: z.string().optional(),
   cid: z.string(),
   createdBy: z.string(),
   lastModifiedBy: z.string().optional(),
@@ -359,9 +396,11 @@ export const UploadUnitMediaSchema = z.object({
 
 export const UnitExistsSchema = z
   .object({
-    propertyId: z.string().refine(async (id) => await isValidProperty(id), {
-      message: 'Property does not exist',
-    }),
+    propertyId: z
+      .string()
+      .refine(async (propertyId) => await isValidResource('propertyUnit', { propertyId }), {
+        message: 'Property does not exist',
+      }),
     unitNumber: z.string().min(1, 'Unit number must not be empty'),
   })
   .superRefine(async (data, ctx) => {
@@ -377,9 +416,11 @@ export const UnitExistsSchema = z
 
 // Unit Number Suggestion Schema
 export const UnitNumberSuggestionSchema = z.object({
-  propertyId: z.string().refine(async (id) => await isValidProperty(id), {
-    message: 'Property does not exist',
-  }),
+  propertyId: z
+    .string()
+    .refine(async (propertyId) => await isValidResource('propertyUnit', { propertyId }), {
+      message: 'Property does not exist',
+    }),
   pattern: z
     .enum([
       'sequential',

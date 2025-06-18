@@ -7,8 +7,8 @@ import { DatabaseService, RedisService } from '@database/index';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { PropertyUnit, Property, Profile, Client, User } from '@models/index';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
-import { EventsRegistryCache, PropertyCache, AuthCache, JobCache } from '@caching/index';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { EventsRegistryCache, PropertyCache, JobTracker, AuthCache } from '@caching/index';
 import { PropertyUnitController, PropertyController, AuthController } from '@controllers/index';
 import {
   DocumentProcessingWorker,
@@ -69,7 +69,7 @@ const DAOResources = {
 
 const CacheResources = {
   authCache: asClass(AuthCache).singleton(),
-  jobCache: asClass(JobCache).singleton(),
+  jobTracker: asClass(JobTracker).singleton(),
   propertyCache: asClass(PropertyCache).singleton(),
   eventsRegistry: asClass(EventsRegistryCache).singleton(),
 };

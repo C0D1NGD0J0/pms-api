@@ -138,7 +138,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
    * @param propertyId - Optional property ID to filter by
    * @returns A promise that resolves to an object with counts for each status
    */
-  async getUnitCountsByStatus(propertyId?: string): Promise<Record<PropertyUnitStatus, number>> {
+  async getUnitCountsByStatus(propertyId: string): Promise<Record<PropertyUnitStatus, number>> {
     try {
       const match: FilterQuery<IPropertyUnitDocument> = {
         isActive: true,

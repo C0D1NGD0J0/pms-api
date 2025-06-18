@@ -1,5 +1,13 @@
 import { UNIT_NUMBER_PATTERNS, UnitNumberPattern } from '@interfaces/unit-patterns.types';
 
+export interface UnitUpdateValidationResult {
+  suggestion?: string;
+  conflict?: boolean;
+  isValid: boolean;
+  message: string;
+  pattern: string;
+}
+
 export interface PatternValidationResult {
   suggestedFloor: number | null;
   detectedPattern: string;
@@ -12,6 +20,12 @@ export interface UnitNumberSuggestion {
   isConsistent: boolean;
   nextNumber: string;
   pattern: string;
+}
+
+export interface ConflictDetectionResult {
+  conflictingUnit?: string;
+  hasConflict: boolean;
+  suggestion?: string;
 }
 
 export interface UnitFormValues {
@@ -398,5 +412,87 @@ export class UnitNumberingService {
   parseCustomUnit(unitNumber: string): { number: number; prefix: string } | null {
     const match = unitNumber.match(/^([A-Za-z]+)-(\d+)$/);
     return match ? { number: parseInt(match[2]), prefix: match[1] } : null;
+  }
+
+  /**
+   * Check for unit number conflicts
+   */
+  detectConflicts(
+    unitNumber: string,
+    existingUnits: UnitFormValues[],
+    _excludeUnitId?: string
+  ): ConflictDetectionResult {
+    const conflict = existingUnits.find((unit) => unit.unitNumber === unitNumber);
+
+    if (conflict) {
+      const pattern = this.detectNumberingPattern(unitNumber);
+      const suggestion = this.generateNextUnitNumber(existingUnits, pattern, 1).nextNumber;
+
+      return {
+        hasConflict: true,
+        conflictingUnit: conflict.unitNumber,
+        suggestion,
+      };
+    }
+
+    return {
+      hasConflict: false,
+    };
+  }
+
+  /**
+   * Validate unit number update
+   */
+  validateUnitNumberUpdate(
+    unitNumber: string,
+    floor: number,
+    existingUnits: UnitFormValues[],
+    currentUnitId?: string
+  ): UnitUpdateValidationResult {
+    const pattern = this.detectNumberingPattern(unitNumber);
+
+    // Check for conflicts
+    const conflictCheck = this.detectConflicts(unitNumber, existingUnits, currentUnitId);
+    if (conflictCheck.hasConflict) {
+      return {
+        isValid: false,
+        conflict: true,
+        message: `Unit number "${unitNumber}" already exists`,
+        pattern,
+        suggestion: conflictCheck.suggestion,
+      };
+    }
+
+    // Check floor correlation
+    const floorValidation = this.validateUnitNumberFloorCorrelation(unitNumber, floor);
+    if (!floorValidation.isValid) {
+      const suggestion = this.suggestUnitNumberForFloor(floor, existingUnits, pattern);
+      return {
+        isValid: false,
+        conflict: false,
+        message: floorValidation.message,
+        pattern,
+        suggestion: suggestion.nextNumber,
+      };
+    }
+
+    return {
+      isValid: true,
+      conflict: false,
+      message: 'Unit number is valid',
+      pattern,
+    };
+  }
+
+  /**
+   * Suggest unit number for specific floor
+   */
+  suggestUnitNumberForFloor(
+    floor: number,
+    existingUnits: UnitFormValues[],
+    pattern: string
+  ): UnitNumberSuggestion {
+    const floorUnits = existingUnits.filter((unit) => unit.floor === floor);
+    return this.generateNextUnitNumber(floorUnits, pattern, floor);
   }
 }

@@ -17,9 +17,8 @@ export class PropertyUnitController {
 
   addUnit = async (req: AppRequest, res: Response) => {
     const unitData = req.body;
-    console.log('Received unit data:', unitData);
-    // const result = await this.propertyUnitService.addPropertyUnit(req.context, unitData);
-    res.status(httpStatusCodes.OK).json({});
+    const result = await this.propertyUnitService.addPropertyUnit(req.context, unitData);
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   getPropertyUnits = async (req: AppRequest, res: Response) => {

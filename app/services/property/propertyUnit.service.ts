@@ -1,18 +1,20 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { JobCache } from '@caching/job.cache';
+import { JobTracker } from '@caching/jobTracker';
 import { PropertyQueue } from '@queues/property.queue';
-import { BadRequestError } from '@shared/customErrors';
 import { PropertyCache } from '@caching/property.cache';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyUnitQueue } from '@queues/propertyUnit.queue';
 import { getRequestDuration, createLogger } from '@utils/index';
 import { IPropertyUnit } from '@interfaces/propertyUnit.interface';
-import { IPropertyFilterQuery } from '@interfaces/property.interface';
+import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
 import { IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
+import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
 
 interface IConstructor {
+  unitNumberingService: UnitNumberingService;
   propertyUnitQueue: PropertyUnitQueue;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
@@ -21,7 +23,7 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
-  jobCache: JobCache;
+  jobTracker: JobTracker;
 }
 
 interface BatchUnitData {
@@ -40,7 +42,8 @@ export class PropertyUnitService {
   private readonly propertyCache: PropertyCache;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
-  private readonly jobCache: JobCache;
+  private readonly jobTracker: JobTracker;
+  private readonly unitNumberingService: UnitNumberingService;
 
   constructor({
     clientDAO,
@@ -51,9 +54,10 @@ export class PropertyUnitService {
     propertyUnitQueue,
     propertyCache,
     emitterService,
-    jobCache,
+    jobTracker,
+    unitNumberingService,
   }: IConstructor) {
-    this.jobCache = jobCache;
+    this.jobTracker = jobTracker;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
@@ -62,6 +66,7 @@ export class PropertyUnitService {
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
     this.propertyUnitQueue = propertyUnitQueue;
+    this.unitNumberingService = unitNumberingService;
     this.log = createLogger('PropertyUnitService');
   }
 
@@ -113,7 +118,7 @@ export class PropertyUnitService {
   }
 
   async getUserJobs(userId: string) {
-    const result = await this.jobCache.getUserJobs(userId);
+    const result = await this.jobTracker.getUserJobs(userId);
 
     if (!result.success) {
       return [];
@@ -134,9 +139,7 @@ export class PropertyUnitService {
       .map((job: any) => job.jobId);
 
     if (completedJobIds.length > 0) {
-      for (const jobId of completedJobIds) {
-        await this.jobCache.removeUserJob(userId, jobId);
-      }
+      await this.jobTracker.removeCompletedJobs(userId, completedJobIds);
     }
 
     return enhancedJobs.filter((job: any) => job.state !== 'completed' && job.state !== 'failed');
@@ -338,16 +341,51 @@ export class PropertyUnitService {
     }
 
     const validationErrors: { [key: string]: string[] } = {};
+    let unitNumberSuggestion: string | undefined;
+
+    if (updateData.unitNumber || updateData.floor) {
+      const newUnitNumber = updateData.unitNumber || unit.unitNumber;
+      const newFloor = updateData.floor || unit.floor || 1;
+
+      const existingUnits = await this.propertyDAO.getPropertyUnits(property.id, {
+        limit: 1000,
+        skip: 0,
+        page: 1,
+      });
+      const unitFormValues = existingUnits.data.map((u: any) => ({
+        unitNumber: u.unitNumber,
+        unitType: u.unitType,
+        floor: u.floor || 1,
+      }));
+
+      const validation = this.unitNumberingService.validateUnitNumberUpdate(
+        newUnitNumber,
+        newFloor,
+        unitFormValues,
+        unitId
+      );
+
+      if (!validation.isValid) {
+        if (!validationErrors['unitNumber']) validationErrors['unitNumber'] = [];
+        validationErrors['unitNumber'].push(validation.message);
+        if (validation.suggestion) {
+          unitNumberSuggestion = validation.suggestion;
+        }
+      }
+    }
 
     if (updateData.fees) {
       if (updateData.fees.rentAmount !== undefined) {
         if (isNaN(updateData.fees.rentAmount) || updateData.fees.rentAmount < 0) {
+          if (!validationErrors['fees.rentAmount']) validationErrors['fees.rentAmount'] = [];
           validationErrors['fees.rentAmount'].push('Rental amount must be a non-negative number');
         }
       }
 
       if (updateData.fees.securityDeposit !== undefined) {
         if (isNaN(updateData.fees.securityDeposit) || updateData.fees.securityDeposit < 0) {
+          if (!validationErrors['fees.securityDeposit'])
+            validationErrors['fees.securityDeposit'] = [];
           validationErrors['fees.securityDeposit'].push(
             'Security deposit must be a non-negative number'
           );
@@ -357,6 +395,7 @@ export class PropertyUnitService {
 
     if (updateData.status) {
       if (updateData.status === 'occupied' && property.status !== 'available') {
+        if (!validationErrors['status']) validationErrors['status'] = [];
         validationErrors['status'].push(
           `Cannot set unit as occupied when property is ${property.status}`
         );
@@ -367,8 +406,21 @@ export class PropertyUnitService {
         !unit.fees?.rentAmount &&
         (!updateData.fees || updateData.fees.rentAmount === undefined)
       ) {
+        if (!validationErrors['status']) validationErrors['status'] = [];
         validationErrors['status'].push('Occupied units must have a rental amount');
       }
+    }
+
+    if (Object.keys(validationErrors).length > 0) {
+      // add suggestion to error message if available
+      if (unitNumberSuggestion && validationErrors['unitNumber']) {
+        validationErrors['unitNumber'].push(`Suggested unit number: ${unitNumberSuggestion}`);
+      }
+
+      throw new ValidationRequestError({
+        message: 'Validation failed',
+        errorInfo: validationErrors,
+      });
     }
 
     const session = await this.propertyUnitDAO.startSession();
@@ -436,7 +488,11 @@ export class PropertyUnitService {
     };
   }
 
-  private async createUnitsDirectly(cxt: IRequestContext, data: BatchUnitData, property: any) {
+  private async createUnitsDirectly(
+    cxt: IRequestContext,
+    data: BatchUnitData,
+    property: IPropertyDocument
+  ) {
     const currentuser = cxt.currentuser!;
     const { cid, pid } = cxt.request.params;
     const start = process.hrtime.bigint();
@@ -461,49 +517,95 @@ export class PropertyUnitService {
         });
       }
 
+      // Get existing units for validation
+      const existingUnits = await this.propertyDAO.getPropertyUnits(property.id, {
+        limit: 1000,
+        skip: 0,
+        page: 1,
+      });
+      const unitFormValues = existingUnits.data.map((u: any) => ({
+        unitNumber: u.unitNumber,
+        unitType: u.unitType,
+        floor: u.floor || 1,
+      }));
+
       const createdUnits = [];
-      const errors = [];
+      const errors: any = {};
 
       for (let i = 0; i < data.units.length; i++) {
         const unit = data.units[i];
         try {
+          const validation = this.unitNumberingService.validateUnitNumberUpdate(
+            unit.unitNumber,
+            unit.floor || 1,
+            unitFormValues
+          );
+
+          if (!validation.isValid) {
+            const errorMessage = validation.suggestion
+              ? `${validation.message}. Suggested: ${validation.suggestion}`
+              : validation.message;
+
+            errors[`unit-${unit.unitNumber}`] = {
+              unitNumber: unit.unitNumber,
+              error: errorMessage,
+            };
+            continue;
+          }
+
           const newUnitData = {
             ...unit,
             cid,
-            propertyId: property.id,
+            propertyId: new Types.ObjectId(property.id),
             createdBy: new Types.ObjectId(currentuser.sub),
             lastModifiedBy: new Types.ObjectId(currentuser.sub),
           };
 
           const createdUnit = await this.propertyUnitDAO.insert(newUnitData, session);
           createdUnits.push(createdUnit);
-        } catch (error: any) {
-          errors.push({
-            unitIndex: i,
+
+          unitFormValues.push({
             unitNumber: unit.unitNumber,
-            error: error.message,
+            unitType: unit.unitType,
+            floor: unit.floor || 1,
           });
+        } catch (error: any) {
+          errors[`unit-${unit.unitNumber}`] = {
+            unitNumber: unit.unitNumber,
+            error: error.message || 'Failed to create unit',
+          };
         }
       }
 
+      if (Object.keys(errors).length > 0) {
+        this.log.error('Some units could not be created.', {
+          cid,
+          pid,
+          error: errors,
+          url: cxt.request.url,
+          userId: currentuser?.sub,
+          requestId: cxt.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        });
+      }
+
       if (createdUnits.length > 0) {
-        await this.propertyDAO.syncPropertyOccupancyWithUnits(pid, currentuser.sub);
+        await this.propertyDAO.syncPropertyOccupancyWithUnits(property.id, currentuser.sub);
       }
 
       return { createdUnits, errors };
     });
 
     await this.propertyCache.invalidateProperty(cid, pid);
-
+    const errorsArray = Object.keys(result.errors);
     return {
       success: true,
       data: result.createdUnits,
       errors: result.errors,
       message:
-        result.errors.length > 0
-          ? `${result.createdUnits.length} units created successfully, ${result.errors.length} failed`
+        errorsArray.length > 0
+          ? `${result.createdUnits.length} units created successfully, ${errorsArray.length} failed`
           : `All ${result.createdUnits.length} units created successfully`,
-      processingType: 'direct',
       totalUnits: data.units.length,
     };
   }
@@ -517,17 +619,11 @@ export class PropertyUnitService {
       requestId: cxt.requestId,
     });
 
-    await this.jobCache.addUserJob(
-      userId,
-      jobId.toString(),
-      'unit_batch_creation',
-      3600, // 1 hour TTL
-      {
-        pid: data.pid,
-        cid: data.cid,
-        unitCount: data.units.length,
-      }
-    );
+    await this.jobTracker.trackJob(userId, jobId.toString(), 'unit_batch_creation', {
+      pid: data.pid,
+      cid: data.cid,
+      unitCount: data.units.length,
+    });
 
     return {
       success: true,

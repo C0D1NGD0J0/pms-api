@@ -251,7 +251,7 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
         browser: uaResult.browser.name,
         version: uaResult.browser.version,
         os: uaResult.os.name,
-        isBot: uaResult.is('bot'),
+        isBot: false,
         isMobile: /mobile|android|iphone/i.test((req.headers['user-agent'] as string) || ''),
       },
       request: {

@@ -39,9 +39,9 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
    * @param propertyId - The property ID
    * @returns A promise that resolves to an array of property unit documents
    */
-  findUnitsByProperty(
+  findUnitsByPropertyId(
     propertyId: string,
-    opts: IPaginationQuery
+    opts?: IPaginationQuery
   ): ListResultWithPagination<IPropertyUnitDocument[]>;
 
   /**

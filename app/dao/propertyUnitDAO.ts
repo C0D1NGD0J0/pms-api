@@ -25,9 +25,12 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
    * @param propertyId - The property ID
    * @returns A promise that resolves to an array of property unit documents
    */
-  async findUnitsByProperty(
+  async findUnitsByPropertyId(
     propertyId: string,
-    opts: IPaginationQuery
+    opts: IPaginationQuery = {
+      page: 1,
+      limit: 1000,
+    }
   ): ListResultWithPagination<IPropertyUnitDocument[]> {
     try {
       if (!propertyId) {

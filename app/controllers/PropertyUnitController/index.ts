@@ -1,7 +1,7 @@
 import { Response } from 'express';
-import { httpStatusCodes } from '@utils/index';
 import { PropertyUnitService } from '@services/property';
 import { AppRequest } from '@interfaces/utils.interface';
+import { generateShortUID, httpStatusCodes } from '@utils/index';
 import { IPropertyFilterQuery } from '@interfaces/property.interface';
 
 interface IConstructor {

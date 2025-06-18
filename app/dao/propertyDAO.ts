@@ -2,7 +2,7 @@ import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { ClientSession, FilterQuery, Types, Model } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery, UploadResult } from '@interfaces/index';
-import { PropertyUnitStatusEnum, IPropertyUnitDocument } from '@interfaces/property-unit.interface';
+import { PropertyUnitStatusEnum, IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import {
   IPropertyDocument,
   OccupancyStatus,
@@ -502,13 +502,16 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
    * @param propertyId - The property ID
    * @returns A promise that resolves to an array of property unit documents
    */
-  async getPropertyUnits(propertyId: string): Promise<IPropertyUnitDocument[]> {
+  async getPropertyUnits(
+    propertyId: string,
+    opts: IPaginationQuery
+  ): ListResultWithPagination<IPropertyUnitDocument[]> {
     try {
       if (!propertyId) {
         throw new Error('Property ID is required');
       }
 
-      return await this.propertyUnitDAO.findUnitsByProperty(propertyId);
+      return await this.propertyUnitDAO.findUnitsByProperty(propertyId, opts);
     } catch (error) {
       this.logger.error('Error in getPropertyUnits:', error);
       throw this.throwErrorHandler(error);
@@ -573,21 +576,10 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property not found');
       }
 
-      // Get all units for the property and count them
-      const units = await this.propertyUnitDAO.findUnitsByProperty(propertyId);
-      const currentCount = units.length;
-
-      // Get max capacity from property totalUnits field
+      const units = await this.propertyUnitDAO.countDocuments({ propertyId });
+      const currentCount = units;
       const maxCapacity = property.totalUnits || 0;
-
-      // Base capacity check (from original implementation)
       const canAdd = maxCapacity === 0 || currentCount < maxCapacity;
-
-      // Implementation note: we actually check property type specific validations
-      // but to match the interface, we're only returning the basic info here
-      // For detailed validation including unit type compatibility, use the internal
-      // validateUnitToPropertyCompatibility method
-
       return {
         canAdd,
         currentCount,
@@ -625,39 +617,31 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property not found');
       }
 
-      // Get all units for the property and count them
       const units = await this.propertyUnitDAO.findUnitsByProperty(propertyId);
       const currentCount = units.length;
-
-      // Get max capacity from property totalUnits field
       const maxCapacity = property.totalUnits || 0;
 
-      // Base capacity check (from original implementation)
+      // base capacity check
       let canAdd = maxCapacity === 0 || currentCount < maxCapacity;
       let reason;
 
       // Property Type-specific Unit Validations
       if (canAdd && unitType) {
-        // Check if unit type is compatible with property type
         canAdd = this.isUnitTypeCompatibleWithProperty(property.propertyType, unitType);
         if (!canAdd) {
           reason = `Unit type '${unitType}' is not compatible with property type '${property.propertyType}'`;
         }
       }
 
-      // Capacity-based decisions - check for property type specific limits
+      // check for property type specific limits
       if (canAdd && property.propertyType === 'house' && currentCount >= 1) {
-        // Houses typically can only have one unit unless configured for multi-family
         canAdd = false;
         reason = 'Houses can only have one unit unless configured for multi-family';
       }
 
-      // Cross-entity validations - check if adding more units would violate any business rules
       if (canAdd && property.propertyType === 'commercial' && currentCount > 0) {
-        // Check for any special restrictions for commercial properties
         const commercialUnitTypeCount = units.filter((u) => u.unitType === 'commercial').length;
-
-        // For example, ensure commercial properties maintain a balance of unit types
+        // ensure commercial properties maintain a balance of unit types
         if (commercialUnitTypeCount < currentCount * 0.5) {
           canAdd = false;
           reason = 'Commercial properties must maintain at least 50% commercial units';
@@ -683,7 +667,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
    * @returns Boolean indicating if the unit type is compatible with the property type
    */
   private isUnitTypeCompatibleWithProperty(propertyType: string, unitType: string): boolean {
-    // Define compatibility between property types and unit types
     const compatibilityMap: Record<string, string[]> = {
       apartment: ['studio', '1BR', '2BR', '3BR', '4BR+', 'penthouse', 'loft'],
       house: ['1BR', '2BR', '3BR', '4BR+'],

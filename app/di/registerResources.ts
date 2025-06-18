@@ -4,16 +4,31 @@ import { GeoCoderService } from '@services/external';
 import { ClamScannerService } from '@shared/config/index';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
-import { Property, Profile, Client, User, Unit } from '@models/index';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
-import { PropertyController, AuthController } from '@controllers/index';
-import { PropertyWorker, UploadWorker, EmailWorker } from '@workers/index';
-import { EventsRegistryCache, PropertyCache, AuthCache } from '@caching/index';
-import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO, UnitDAO } from '@dao/index';
-import { PropertyQueue, EventBusQueue, UploadQueue, EmailQueue } from '@queues/index';
+import { PropertyUnit, Property, Profile, Client, User } from '@models/index';
+import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { EventsRegistryCache, PropertyCache, JobTracker, AuthCache } from '@caching/index';
+import { PropertyUnitController, PropertyController, AuthController } from '@controllers/index';
+import {
+  DocumentProcessingWorker,
+  PropertyUnitWorker,
+  PropertyWorker,
+  UploadWorker,
+  EmailWorker,
+} from '@workers/index';
+import {
+  DocumentProcessingQueue,
+  PropertyUnitQueue,
+  EventBusQueue,
+  PropertyQueue,
+  UploadQueue,
+  EmailQueue,
+} from '@queues/index';
 import {
   PropertyCsvProcessor,
   EventEmitterService,
+  PropertyUnitService,
   AuthTokenService,
   PropertyService,
   AuthService,
@@ -22,6 +37,7 @@ import {
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
   propertyController: asClass(PropertyController).scoped(),
+  propertyUnitController: asClass(PropertyUnitController).scoped(),
 };
 
 const ModelResources = {
@@ -29,7 +45,7 @@ const ModelResources = {
   clientModel: asValue(Client),
   profileModel: asValue(Profile),
   propertyModel: asValue(Property),
-  unitModel: asValue(Unit),
+  propertyUnitModel: asValue(PropertyUnit),
 };
 
 const ServiceResources = {
@@ -38,7 +54,9 @@ const ServiceResources = {
   tokenService: asClass(AuthTokenService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
   emitterService: asClass(EventEmitterService).singleton(),
+  propertyUnitService: asClass(PropertyUnitService).singleton(),
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
+  unitNumberingService: asClass(UnitNumberingService).singleton(),
 };
 
 const DAOResources = {
@@ -46,26 +64,31 @@ const DAOResources = {
   clientDAO: asClass(ClientDAO).singleton(),
   profileDAO: asClass(ProfileDAO).singleton(),
   propertyDAO: asClass(PropertyDAO).singleton(),
-  unitDAO: asClass(UnitDAO).singleton(),
+  propertyUnitDAO: asClass(PropertyUnitDAO).singleton(),
 };
 
 const CacheResources = {
   authCache: asClass(AuthCache).singleton(),
+  jobTracker: asClass(JobTracker).singleton(),
   propertyCache: asClass(PropertyCache).singleton(),
   eventsRegistry: asClass(EventsRegistryCache).singleton(),
 };
 
 const WorkerResources = {
+  documentProcessingWorker: asClass(DocumentProcessingWorker).singleton(),
   emailWorker: asClass(EmailWorker).singleton(),
-  uploadWorker: asClass(UploadWorker).singleton(),
   propertyWorker: asClass(PropertyWorker).singleton(),
+  propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
+  uploadWorker: asClass(UploadWorker).singleton(),
 };
 
 const QueuesResources = {
+  documentProcessingQueue: asClass(DocumentProcessingQueue).singleton(),
   emailQueue: asClass(EmailQueue).singleton(),
-  uploadQueue: asClass(UploadQueue).singleton(),
   eventBusQueue: asClass(EventBusQueue).singleton(),
   propertyQueue: asClass(PropertyQueue).singleton(),
+  propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
+  uploadQueue: asClass(UploadQueue).singleton(),
 };
 
 const UtilsResources = {
@@ -83,15 +106,20 @@ const UtilsResources = {
 const SocketIOResources = {
   baseIO: asClass(BaseIO).singleton(),
 };
+
 export const initQueues = (container: AwilixContainer) => {
+  container.resolve('documentProcessingQueue');
   container.resolve('emailQueue');
-  container.resolve('uploadQueue');
   container.resolve('eventBusQueue');
   container.resolve('propertyQueue');
+  container.resolve('propertyUnitQueue');
+  container.resolve('uploadQueue');
   container.resolve('clamScanner');
+  container.resolve('documentProcessingWorker');
   container.resolve('emailWorker');
-  container.resolve('uploadWorker');
   container.resolve('propertyWorker');
+  container.resolve('propertyUnitWorker');
+  container.resolve('uploadWorker');
 };
 
 export const registerResources = {

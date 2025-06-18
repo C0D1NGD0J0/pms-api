@@ -23,6 +23,8 @@ interface LogRecord {
   msg: string;
 }
 
+const loggers = new WeakMap<object, bunyan>();
+const loggerKeys = new Map<string, object>();
 /**
  * Creates a customized Bunyan logger instance with color-coded console output
  * @param name - The name of the logger to create
@@ -30,6 +32,7 @@ interface LogRecord {
  * @returns A configured Bunyan logger instance
  */
 export function createLogger(name: string) {
+  const MAX_LOGGERS = 100;
   const LOG_LEVELS: Record<string, number> = {
     INFO: 30,
     ERROR: 50,
@@ -38,10 +41,28 @@ export function createLogger(name: string) {
     TRACE: 10,
     FATAL: 60,
   };
-  const loggers: Map<string, bunyan> = new Map();
-  if (loggers.has(name)) {
-    return loggers.get(name)!;
+
+  // Check if logger exists
+  let loggerKey = loggerKeys.get(name);
+  if (loggerKey) {
+    const existingLogger = loggers.get(loggerKey);
+    if (existingLogger) {
+      return existingLogger;
+    }
   }
+
+  // Clean up old loggers if we're at the limit
+  if (loggerKeys.size >= MAX_LOGGERS) {
+    const oldestKey = loggerKeys.keys().next().value;
+    if (oldestKey) {
+      const keyToDelete = loggerKeys.get(oldestKey);
+      if (keyToDelete) {
+        loggers.delete(keyToDelete);
+      }
+      loggerKeys.delete(oldestKey);
+    }
+  }
+
   const customStream = {
     write: (record: unknown) => {
       try {
@@ -98,7 +119,10 @@ export function createLogger(name: string) {
       },
     ],
   });
-  loggers.set(name, logger);
+  loggerKey = {};
+  loggerKeys.set(name, loggerKey);
+  loggers.set(loggerKey, logger);
+
   return logger;
 }
 
@@ -442,7 +466,6 @@ export const parseJsonFields = (req: Request) => {
         return tryParse(trimmed);
       }
 
-      if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
       if (trimmed.toLowerCase() === 'true') return true;
       if (trimmed.toLowerCase() === 'false') return false;
 
@@ -464,4 +487,10 @@ export const parseJsonFields = (req: Request) => {
   }
 
   return req.body;
+};
+
+export const getRequestDuration = (start: bigint): { durationInMs: number } => {
+  const diff = process.hrtime.bigint() - start;
+  const durationInMs = Number(diff) / 1000000;
+  return { durationInMs };
 };

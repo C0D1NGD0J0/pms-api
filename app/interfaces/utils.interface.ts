@@ -1,4 +1,5 @@
 import 'multer';
+import { AwilixContainer } from 'awilix';
 import { NextFunction, Response, Request } from 'express';
 
 import { ICurrentUser } from './user.interface';
@@ -51,6 +52,35 @@ export enum RequestSource {
   API = 'api',
 }
 
+export interface IRequestContext {
+  userAgent: {
+    browser?: string;
+    version?: string;
+    os?: string;
+    raw?: string;
+    isMobile: boolean;
+    isBot: boolean;
+  };
+  request: {
+    path: string;
+    method: string;
+    params: Record<string, any>;
+    url: string;
+    query: Record<string, any>;
+  };
+  timing: {
+    startTime: number;
+    endTime?: number;
+    duration?: number;
+  };
+  currentuser: ICurrentUser;
+  service: { env: string };
+  source: RequestSource;
+  requestId: string;
+  timestamp: Date;
+  ip?: string;
+}
+
 export interface RateLimitOptions {
   delayMs?: number | ((numRequests: number) => number); // delay in ms to add
   enableSpeedLimit?: boolean;
@@ -83,24 +113,6 @@ export interface IAWSFileUploadResponse {
   etag: string;
   key: string;
 }
-
-export interface IRequestContext {
-  userAgent: {
-    browser?: string;
-    version?: string;
-    os?: string;
-    isMobile: boolean;
-    isBot: boolean;
-  };
-  currentuser: ICurrentUser | null;
-  source: RequestSource;
-  requestUrl: string;
-  requestId: string;
-  duration: number;
-  timestamp: Date;
-  ip?: string;
-}
-
 export interface ResourceInfo {
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
   resourceName: 'property' | 'profile'; //name of the resource
@@ -177,6 +189,12 @@ export type MulterFile =
       [fieldname: string]: Express.Multer.File[];
     }
   | undefined;
+
+export interface AppRequest extends Request {
+  container: AwilixContainer;
+  context: IRequestContext;
+  rawBody: Buffer;
+}
 
 export interface IEmailOptions<T> {
   emailType: string;

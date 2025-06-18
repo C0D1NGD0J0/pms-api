@@ -466,7 +466,6 @@ export const parseJsonFields = (req: Request) => {
         return tryParse(trimmed);
       }
 
-      // if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
       if (trimmed.toLowerCase() === 'true') return true;
       if (trimmed.toLowerCase() === 'false') return false;
 

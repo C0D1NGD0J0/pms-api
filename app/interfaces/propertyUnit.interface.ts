@@ -51,6 +51,64 @@ export enum DocumentStatusEnum {
 }
 
 /**
+ * Core Property Unit Interface
+ */
+export interface IPropertyUnit {
+  amenities: {
+    airConditioning: boolean;
+    washerDryer: boolean;
+    dishwasher: boolean;
+    parking: boolean;
+    cableTV: boolean;
+    internet: boolean;
+    storage: boolean;
+  };
+  utilities: {
+    water: boolean;
+    centralAC: boolean;
+    heating: boolean;
+    gas: boolean;
+    trash: boolean;
+  };
+  specifications: {
+    totalArea: number;
+    room?: number;
+    bathrooms?: number;
+    maxOccupants?: number;
+  };
+  notes?: [
+    {
+      title: string;
+      content: string;
+      createdAt: Date;
+      createdBy: Types.ObjectId;
+    },
+  ];
+  fees: {
+    currency: CURRENCIES;
+    rentAmount: number;
+    securityDeposit?: number;
+  };
+  media?: {
+    photos: PropertyUnitPhoto[];
+  };
+  inspections?: PropertyUnitInspection[];
+  documents?: PropertyUnitDocument[];
+  lastModifiedBy?: Types.ObjectId;
+  currentLease?: Types.ObjectId;
+  propertyId: Types.ObjectId;
+  status: PropertyUnitStatus;
+  unitType: PropertyUnitType;
+  createdBy: Types.ObjectId;
+  description?: string;
+  unitNumber: string;
+  isActive: boolean;
+  floor?: number;
+  puid: string;
+  cid: string;
+}
+
+/**
  * Property Unit Document Interface (extends Mongoose Document)
  */
 export interface IPropertyUnitDocument extends IPropertyUnit, Document {
@@ -79,56 +137,6 @@ export interface IPropertyUnitDocument extends IPropertyUnit, Document {
   createdAt: Date;
   updatedAt: Date;
   id: string;
-}
-
-/**
- * Core Property Unit Interface
- */
-export interface IPropertyUnit {
-  amenities: {
-    airConditioning: boolean;
-    washerDryer: boolean;
-    dishwasher: boolean;
-    parking: boolean;
-    cableTV: boolean;
-    internet: boolean;
-    storage: boolean;
-  };
-  utilities: {
-    water: boolean;
-    centralAC: boolean;
-    heating: boolean;
-    gas: boolean;
-    trash: boolean;
-  };
-  specifications: {
-    totalArea: number;
-    room?: number;
-    bathrooms?: number;
-    maxOccupants?: number;
-  };
-  fees: {
-    currency: CURRENCIES;
-    rentAmount: number;
-    securityDeposit?: number;
-  };
-  media?: {
-    photos: PropertyUnitPhoto[];
-  };
-  inspections?: PropertyUnitInspection[];
-  documents?: PropertyUnitDocument[];
-  lastModifiedBy?: Types.ObjectId;
-  currentLease?: Types.ObjectId;
-  propertyId: Types.ObjectId;
-  status: PropertyUnitStatus;
-  unitType: PropertyUnitType;
-  createdBy: Types.ObjectId;
-  description?: string;
-  unitNumber: string;
-  isActive: boolean;
-  floor?: number;
-  puid: string;
-  cid: string;
 }
 
 /**

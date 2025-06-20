@@ -130,7 +130,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       const pagination = paginateResult(count, options?.skip, options?.limit);
 
       return {
-        data: result,
+        items: result,
         ...(pagination ? { pagination } : null),
       };
     } catch (error) {

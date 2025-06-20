@@ -22,8 +22,8 @@ interface IConstructor {
   propertyQueue: PropertyQueue;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
-  clientDAO: ClientDAO;
   jobTracker: JobTracker;
+  clientDAO: ClientDAO;
 }
 
 interface BatchUnitData {
@@ -254,7 +254,6 @@ export class PropertyUnitService {
     };
 
     const units = await this.propertyDAO.getPropertyUnits(property.id, opts);
-
     return {
       data: units,
       success: true,
@@ -352,7 +351,7 @@ export class PropertyUnitService {
         skip: 0,
         page: 1,
       });
-      const unitFormValues = existingUnits.data.map((u: any) => ({
+      const unitFormValues = existingUnits.items.map((u: any) => ({
         unitNumber: u.unitNumber,
         unitType: u.unitType,
         floor: u.floor || 1,
@@ -523,7 +522,7 @@ export class PropertyUnitService {
         skip: 0,
         page: 1,
       });
-      const unitFormValues = existingUnits.data.map((u: any) => ({
+      const unitFormValues = existingUnits.items.map((u: any) => ({
         unitNumber: u.unitNumber,
         unitType: u.unitType,
         floor: u.floor || 1,

@@ -511,7 +511,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property ID is required');
       }
 
-      return await this.propertyUnitDAO.findUnitsByProperty(propertyId, opts);
+      return await this.propertyUnitDAO.findUnitsByPropertyId(propertyId, opts);
     } catch (error) {
       this.logger.error('Error in getPropertyUnits:', error);
       throw this.throwErrorHandler(error);
@@ -617,8 +617,8 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property not found');
       }
 
-      const units = await this.propertyUnitDAO.findUnitsByProperty(propertyId);
-      const currentCount = units.length;
+      const units = await this.propertyUnitDAO.findUnitsByPropertyId(propertyId);
+      const currentCount = units.data.length;
       const maxCapacity = property.totalUnits || 0;
 
       // base capacity check
@@ -640,7 +640,9 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       }
 
       if (canAdd && property.propertyType === 'commercial' && currentCount > 0) {
-        const commercialUnitTypeCount = units.filter((u) => u.unitType === 'commercial').length;
+        const commercialUnitTypeCount = units.data.filter(
+          (u) => u.unitType === 'commercial'
+        ).length;
         // ensure commercial properties maintain a balance of unit types
         if (commercialUnitTypeCount < currentCount * 0.5) {
           canAdd = false;

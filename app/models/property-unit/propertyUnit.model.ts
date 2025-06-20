@@ -189,6 +189,7 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
 
 PropertyUnitSchema.index({ propertyId: 1, unitNumber: 1 }, { unique: true });
 PropertyUnitSchema.index({ cid: 1, status: 1 });
+PropertyUnitSchema.index({ propertyId: 1, floor: 1, unitNumber: 1 }); // For sorted unit queries
 
 PropertyUnitSchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',

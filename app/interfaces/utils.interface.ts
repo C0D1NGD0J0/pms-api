@@ -211,7 +211,7 @@ export type CsvProcessReturnData = {
 export type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
 export type ListResultWithPagination<T> = Promise<{
-  data: T;
+  items: T;
   pagination?: PaginateResult;
 }>;
 

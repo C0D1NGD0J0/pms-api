@@ -45,6 +45,17 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
   ): ListResultWithPagination<IPropertyUnitDocument[]>;
 
   /**
+   * Find units by specific status
+   * @param status - The property unit status to filter by
+   * @param propertyId - Optional property ID to filter by
+   * @returns A promise that resolves to an array of property unit documents with the specified status
+   */
+  findUnitsByStatus(
+    status: PropertyUnitStatus,
+    propertyId: string
+  ): ListResultWithPagination<IPropertyUnitDocument[]>;
+
+  /**
    * Find a specific unit by its number within a property
    * @param unitNumber - The unit number
    * @param propertyId - The property ID
@@ -56,15 +67,11 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
   ): Promise<IPropertyUnitDocument | null>;
 
   /**
-   * Find units by specific status
-   * @param status - The property unit status to filter by
+   * Find units with available status
    * @param propertyId - Optional property ID to filter by
-   * @returns A promise that resolves to an array of property unit documents with the specified status
+   * @returns A promise that resolves to an array of available property unit documents
    */
-  findUnitsByStatus(
-    status: PropertyUnitStatus,
-    propertyId: string
-  ): Promise<IPropertyUnitDocument[]>;
+  findAvailableUnits(propertyId: string): ListResultWithPagination<IPropertyUnitDocument[]>;
 
   /**
    * Get count of units grouped by status
@@ -72,13 +79,6 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
    * @returns A promise that resolves to an object with counts for each status
    */
   getUnitCountsByStatus(propertyId: string): Promise<Record<PropertyUnitStatus, number>>;
-
-  /**
-   * Find units with available status
-   * @param propertyId - Optional property ID to filter by
-   * @returns A promise that resolves to an array of available property unit documents
-   */
-  findAvailableUnits(propertyId: string): Promise<IPropertyUnitDocument[]>;
 
   getSuggestedStartingUnitNumber(propertyType: string): string | null;
 }

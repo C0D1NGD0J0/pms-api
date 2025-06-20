@@ -63,6 +63,14 @@ export interface IPropertyUnit {
     internet: boolean;
     storage: boolean;
   };
+  notes?: [
+    {
+      title: string;
+      content: string;
+      createdAt: Date;
+      createdBy: Types.ObjectId;
+    },
+  ];
   utilities: {
     water: boolean;
     centralAC: boolean;
@@ -76,14 +84,6 @@ export interface IPropertyUnit {
     bathrooms?: number;
     maxOccupants?: number;
   };
-  notes?: [
-    {
-      title: string;
-      content: string;
-      createdAt: Date;
-      createdBy: Types.ObjectId;
-    },
-  ];
   fees: {
     currency: CURRENCIES;
     rentAmount: number;

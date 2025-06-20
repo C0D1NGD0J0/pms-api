@@ -54,7 +54,7 @@ router.get(
 );
 
 router.get(
-  '/:unitId',
+  '/:puid',
   routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -64,7 +64,7 @@ router.get(
 );
 
 router.patch(
-  '/:unitId',
+  '/:puid',
   routeLimiter(),
   diskUpload(['propertyUnit.media']),
   scanFile,
@@ -79,7 +79,7 @@ router.patch(
 );
 
 router.delete(
-  '/:unitId',
+  '/:puid',
   routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -89,7 +89,7 @@ router.delete(
 );
 
 router.patch(
-  '/update_status/:unitId',
+  '/update_status/:puid',
   routeLimiter(),
   validateRequest({
     body: PropertyUnitValidations.updateUnit,
@@ -102,7 +102,7 @@ router.patch(
 );
 
 router.post(
-  '/setup_inspection/:unitId',
+  '/setup_inspection/:puid',
   routeLimiter(),
   validateRequest({
     body: PropertyUnitValidations.inspectUnit,
@@ -115,7 +115,7 @@ router.post(
 );
 
 router.patch(
-  '/upload_media/:unitId',
+  '/upload_media/:puid',
   routeLimiter(),
   validateRequest({
     body: PropertyUnitValidations.uploadUnitMedia,

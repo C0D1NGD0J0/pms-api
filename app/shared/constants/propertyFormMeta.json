@@ -12,7 +12,12 @@
     "propertyStatuses": ["available", "occupied", "maintenance", "construction", "inactive"],
     "occupancyStatuses": ["vacant", "occupied", "partially_occupied"],
     "documentTypes": ["deed", "tax", "insurance", "inspection", "other", "lease"],
-    "currencies": ["USD", "CAD", "EUR", "GBP", "AUD", "JPY"],
+    "currencies": [
+      { "value": "USD", "label": "USD ($)" },
+      { "value": "CAD", "label": "CAD (C$)" },
+      { "value": "EUR", "label": "EUR (€)" },
+      { "value": "GBP", "label": "GBP (£)" }
+    ],
     "specifications": {
       "totalArea": {
         "type": "number",
@@ -65,12 +70,37 @@
       { "value": "reserved", "label": "Reserved" },
       { "value": "inactive", "label": "Inactive" }
     ],
-    "unitFeatures": [
-      { "value": "cooling", "label": "AC" },
-      { "value": "heating", "label": "Heating" },
-      { "value": "washer-dryer", "label": "Washer/Dryer" },
+    "unitAmenities": [
+      { "value": "internet", "label": "Internet" },
+      { "value": "washerDryer", "label": "Washer/Dryer" },
+      { "value": "parking", "label": "Parking" },
+      { "value": "cableTV", "label": "Cable TV" },
       { "value": "dishwasher", "label": "Dishwasher" },
-      { "value": "parking", "label": "Parking" }
+      { "value": "storage", "label": "Storage" }
+    ],
+    "unitUtilities": [
+      { "value": "gas", "label": "Gas" },
+      { "value": "trash", "label": "Trash" },
+      { "value": "water", "label": "Water" },
+      { "value": "heating", "label": "Heating" },
+      { "value": "centralAC", "label": "Central AC" }
+    ],
+    "currencies": [
+      { "value": "USD", "label": "USD ($)" },
+      { "value": "CAD", "label": "CAD (C$)" },
+      { "value": "EUR", "label": "EUR (€)" },
+      { "value": "GBP", "label": "GBP (£)" }
+    ],
+    "prefixOptions": [
+      { "value": "numeric", "label": "Numeric", "example": "101, 102, 103" },
+      {
+        "value": "floor",
+        "label": "Floor Based",
+        "example": "0001 (ground), 1001, 2001"
+      },
+      { "value": "suite", "label": "Suite", "example": "Suite-101, Suite-102" },
+      { "value": "alpha", "label": "Alphabetic", "example": "A-101, B-101" },
+      { "value": "custom", "label": "Custom Prefix", "example": "Custom-001" }
     ]
   }
 }

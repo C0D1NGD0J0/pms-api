@@ -169,6 +169,7 @@ export class PropertyController {
         message: `Invalid form type: ${formType}`,
       });
     }
+
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: propertyFormMeta[formType] || {},

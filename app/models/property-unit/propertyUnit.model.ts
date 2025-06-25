@@ -74,7 +74,7 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
         min: 0,
         required: true,
       },
-      bedrooms: {
+      rooms: {
         type: Number,
         min: 0,
         default: 1,
@@ -97,13 +97,12 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
       centralAC: { type: Boolean, default: false },
     },
     amenities: {
-      internet: { type: Boolean, default: false },
-      airConditioning: { type: Boolean, default: false },
-      washerDryer: { type: Boolean, default: false },
       parking: { type: Boolean, default: false },
       cableTV: { type: Boolean, default: false },
-      dishwasher: { type: Boolean, default: false },
       storage: { type: Boolean, default: false },
+      internet: { type: Boolean, default: false },
+      dishwasher: { type: Boolean, default: false },
+      washerDryer: { type: Boolean, default: false },
     },
     description: {
       type: String,
@@ -158,6 +157,14 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
       type: Schema.Types.ObjectId,
       ref: 'Lease',
     },
+    notes: [
+      {
+        title: { type: String, required: true },
+        content: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now },
+        createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+      },
+    ],
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -182,6 +189,7 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
 
 PropertyUnitSchema.index({ propertyId: 1, unitNumber: 1 }, { unique: true });
 PropertyUnitSchema.index({ cid: 1, status: 1 });
+PropertyUnitSchema.index({ propertyId: 1, floor: 1, unitNumber: 1 }); // For sorted unit queries
 
 PropertyUnitSchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',

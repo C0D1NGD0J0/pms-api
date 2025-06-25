@@ -1,7 +1,7 @@
 import { Response } from 'express';
-import { httpStatusCodes } from '@utils/index';
 import { PropertyUnitService } from '@services/property';
 import { AppRequest } from '@interfaces/utils.interface';
+import { generateShortUID, httpStatusCodes } from '@utils/index';
 import { IPropertyFilterQuery } from '@interfaces/property.interface';
 
 interface IConstructor {
@@ -43,6 +43,27 @@ export class PropertyUnitController {
   getPropertyUnit = async (req: AppRequest, res: Response) => {
     const result = await this.propertyUnitService.getPropertyUnit(req.context);
     res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getJobStatus = async (req: AppRequest, res: Response) => {
+    const { jobId } = req.params;
+    const result = await this.propertyUnitService.getJobStatus(jobId);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getUserJobs = async (req: AppRequest, res: Response) => {
+    const userId = req.context.currentuser?.sub;
+    if (!userId) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'Unauthorized',
+      });
+    }
+    const result = await this.propertyUnitService.getUserJobs(userId);
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: result,
+    });
   };
 
   updateUnit = async (req: AppRequest, res: Response) => {

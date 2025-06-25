@@ -9,12 +9,12 @@ const router: Router = express.Router({ mergeParams: true });
 router.use(isAuthenticated);
 
 router.post(
-  '/add_unit',
+  '/',
   routeLimiter(),
   diskUpload(['propertyUnit.media']),
   scanFile,
   validateRequest({
-    body: PropertyUnitValidations.createUnit,
+    body: PropertyUnitValidations.createUnits,
   }),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -24,7 +24,7 @@ router.post(
 );
 
 router.get(
-  '/get_property_units',
+  '/',
   routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -34,7 +34,27 @@ router.get(
 );
 
 router.get(
-  '/get_property_unit/:unitId',
+  '/jobs/:jobId/status',
+  routeLimiter(),
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.getJobStatus(req, res);
+  })
+);
+
+router.get(
+  '/jobs/user/active',
+  routeLimiter(),
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.getUserJobs(req, res);
+  })
+);
+
+router.get(
+  '/:puid',
   routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -44,7 +64,7 @@ router.get(
 );
 
 router.patch(
-  '/update_property_unit/:unitId',
+  '/:puid',
   routeLimiter(),
   diskUpload(['propertyUnit.media']),
   scanFile,
@@ -59,7 +79,7 @@ router.patch(
 );
 
 router.delete(
-  '/delete_property_unit/:unitId',
+  '/:puid',
   routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -69,7 +89,7 @@ router.delete(
 );
 
 router.patch(
-  '/update_property_unit_status/:unitId',
+  '/update_status/:puid',
   routeLimiter(),
   validateRequest({
     body: PropertyUnitValidations.updateUnit,
@@ -82,7 +102,7 @@ router.patch(
 );
 
 router.post(
-  '/setup_inspection/:unitId',
+  '/setup_inspection/:puid',
   routeLimiter(),
   validateRequest({
     body: PropertyUnitValidations.inspectUnit,
@@ -95,7 +115,7 @@ router.post(
 );
 
 router.patch(
-  '/upload_unit_media/:unitId',
+  '/upload_media/:puid',
   routeLimiter(),
   validateRequest({
     body: PropertyUnitValidations.uploadUnitMedia,

@@ -53,19 +53,20 @@ export enum RequestSource {
 }
 
 export interface IRequestContext {
+  userAgent: {
+    browser?: string;
+    version?: string;
+    os?: string;
+    raw?: string;
+    isMobile: boolean;
+    isBot: boolean;
+  };
   request: {
     path: string;
     method: string;
     params: Record<string, any>;
     url: string;
     query: Record<string, any>;
-  };
-  userAgent: {
-    browser?: string;
-    version?: string;
-    os?: string;
-    isMobile: boolean;
-    isBot: boolean;
   };
   timing: {
     startTime: number;
@@ -75,9 +76,7 @@ export interface IRequestContext {
   currentuser: ICurrentUser;
   service: { env: string };
   source: RequestSource;
-  requestUrl: string;
   requestId: string;
-  duration: number;
   timestamp: Date;
   ip?: string;
 }
@@ -212,7 +211,7 @@ export type CsvProcessReturnData = {
 export type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
 export type ListResultWithPagination<T> = Promise<{
-  data: T;
+  items: T;
   pagination?: PaginateResult;
 }>;
 

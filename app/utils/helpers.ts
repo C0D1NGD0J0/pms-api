@@ -2,6 +2,7 @@ import color from 'colors';
 import crypto from 'crypto';
 import bunyan from 'bunyan';
 import * as nanoid from 'nanoid';
+import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
 import { Country, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
@@ -295,12 +296,11 @@ export const extractMulterFiles = (
  * @param length - The desired length of the shortened UID (default: 9)
  * @returns The shortened UID string
  */
-export function generateShortUID(length: number = 9): string {
-  const uuid = nanoid.nanoid(length);
-  if (uuid.length <= 9) {
-    return uuid.toUpperCase();
+export function generateShortUID(length = 12): string {
+  if (length) {
+    return nanoid.nanoid(length).toUpperCase();
   }
-  return uuid;
+  return uuidv4();
 }
 
 /**
@@ -466,7 +466,6 @@ export const parseJsonFields = (req: Request) => {
         return tryParse(trimmed);
       }
 
-      if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
       if (trimmed.toLowerCase() === 'true') return true;
       if (trimmed.toLowerCase() === 'false') return false;
 

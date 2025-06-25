@@ -486,7 +486,7 @@ export class PropertyService {
       };
     }
     const properties = await this.propertyDAO.getPropertiesByClientId(cid, filter, opts);
-    await this.propertyCache.saveClientProperties(cid, properties.data, {
+    await this.propertyCache.saveClientProperties(cid, properties.items, {
       filter,
       pagination: opts,
     });
@@ -494,7 +494,7 @@ export class PropertyService {
     return {
       success: true,
       data: {
-        items: properties.data,
+        items: properties.items,
         pagination: properties.pagination,
       },
     };

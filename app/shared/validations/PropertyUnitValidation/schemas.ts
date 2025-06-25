@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { container } from '@di/setup';
-import { PropertyDAO } from '@dao/index';
+import { isValidObjectId, Types } from 'mongoose';
+import { UnitNumberingService } from '@services/index';
+import { PropertyUnitDAO, PropertyDAO } from '@dao/index';
 import {
   PropertyUnitStatusEnum,
   PropertyUnitTypeEnum,
@@ -9,40 +11,79 @@ import {
   DocumentTypeEnum,
 } from '@interfaces/propertyUnit.interface';
 
-const isValidProperty = async (propertyId: string) => {
+const unitNumberingService = new UnitNumberingService();
+
+export const isValidResource = async (resourceName: 'property' | 'propertyUnit', filter: any) => {
   const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
   try {
-    const property = await propertyDAO.findById(propertyId);
-    return !!property;
+    if (resourceName === 'property') {
+      if (!filter.pid && !filter.id) {
+        return false;
+      }
+      if (filter.id && isValidObjectId(filter.id)) {
+        const property = await propertyDAO.findFirst({ _id: filter.id, deletedAt: null });
+        return !!property;
+      }
+      if (filter.pid) {
+        const property = await propertyDAO.findFirst({ pid: filter.pid, deletedAt: null });
+        return !!property;
+      }
+    } else if (resourceName === 'propertyUnit') {
+      const { propertyUnitDAO }: { propertyUnitDAO: PropertyUnitDAO } = container.cradle;
+      if (!filter.unitId && !filter.unitNumber) {
+        return false;
+      }
+      if (filter.unitId && isValidObjectId(filter.unitId)) {
+        const unit = await propertyUnitDAO.findFirst({ _id: filter.unitId, deletedAt: null });
+        return !!unit;
+      }
+      if (filter.propertyId) {
+        const unit = await propertyUnitDAO.findFirst({
+          propertyId: filter.propertyId,
+          deletedAt: null,
+        });
+        return !!unit;
+      }
+    }
+    return false;
   } catch (error) {
     console.error('Error checking property existence', error);
     return false;
   }
 };
 
-const isUniqueUnitNumber = async (unitNumber: string, propertyId: string, unitId?: string) => {
-  const { unitDAO }: { unitDAO: any } = container.cradle;
+const isUniqueUnitNumber = async (pid: string, unitNumber: string, unitId?: string) => {
+  const {
+    propertyUnitDAO,
+    propertyDAO,
+  }: { propertyUnitDAO: PropertyUnitDAO; propertyDAO: PropertyDAO } = container.cradle;
   try {
     const query: any = {
       unitNumber,
-      propertyId,
+      propertyId: '',
       deletedAt: null,
     };
 
-    // Exclude current unit when updating
+    const property = await propertyDAO.findFirst({ pid });
+    if (!property) {
+      return false;
+    }
+
     if (unitId) {
       query._id = { $ne: unitId };
     }
-
-    const existingUnit = await unitDAO.findFirst(query);
-    return !existingUnit;
+    query.propertyId = property.id;
+    const existingUnit = await propertyUnitDAO.findFirst(query);
+    if (!existingUnit) {
+      return true;
+    }
+    return false;
   } catch (error) {
     console.error('Error checking unit number uniqueness', error);
     return false;
   }
 };
 
-// Convert enum objects to Zod enums
 const UnitTypeZodEnum = z.enum(Object.values(PropertyUnitTypeEnum) as [string, ...string[]]);
 const UnitStatusZodEnum = z.enum(Object.values(PropertyUnitStatusEnum) as [string, ...string[]]);
 const DocumentTypeZodEnum = z.enum(Object.values(DocumentTypeEnum) as [string, ...string[]]);
@@ -51,47 +92,36 @@ const InspectionStatusZodEnum = z.enum(
   Object.values(InspectionStatusEnum) as [string, ...string[]]
 );
 
-// Unit Specifications Schema
 const SpecificationsSchema = z.object({
   totalArea: z.number().positive('Total area must be a positive number'),
-  bedrooms: z.number().int().min(0, 'Bedrooms must be a non-negative integer').default(1),
+  room: z.number().int().min(0, 'room must be a non-negative integer').default(1),
   bathrooms: z.number().min(0, 'Bathrooms must be a non-negative number').default(1),
   maxOccupants: z.number().int().min(1, 'Maximum occupants must be at least 1').optional(),
 });
 
-// Unit Fees Schema
 const FeesSchema = z.object({
   currency: z.enum(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY']).default('USD'),
   rentAmount: z.number().min(0, 'Rent amount must be a non-negative number'),
   securityDeposit: z.number().min(0, 'Security deposit must be a non-negative number').default(0),
 });
 
-// Unit Utilities Schema
 const UtilitiesSchema = z.object({
   water: z.boolean().default(false),
-  gas: z.boolean().default(false),
-  electricity: z.boolean().default(false),
-  internet: z.boolean().default(false),
   trash: z.boolean().default(false),
-  cableTV: z.boolean().default(false),
+  gas: z.boolean().default(false),
+  heating: z.boolean().default(false),
+  centralAC: z.boolean().default(false),
 });
 
-// Unit Amenities Schema
 const AmenitiesSchema = z.object({
-  airConditioning: z.boolean().default(false),
-  heating: z.boolean().default(false),
   washerDryer: z.boolean().default(false),
   dishwasher: z.boolean().default(false),
-  fireplace: z.boolean().default(false),
-  hardwoodFloors: z.boolean().default(false),
-  furnished: z.boolean().default(false),
-  balcony: z.boolean().default(false),
   parking: z.boolean().default(false),
   storage: z.boolean().default(false),
-  walkInCloset: z.boolean().default(false),
+  cableTv: z.boolean().default(false),
+  internet: z.boolean().default(false),
 });
 
-// Unit Photo Schema
 const UnitPhotoSchema = z.object({
   url: z.string().url('Invalid URL format for photo'),
   filename: z.string().optional(),
@@ -113,6 +143,7 @@ const UnitDocumentSchema = z.object({
   description: z.string().max(150, 'Description must be at most 150 characters').optional(),
   documentName: z.string().max(100, 'Document name must be at most 100 characters').optional(),
 });
+
 const InspectionAttachmentSchema = z.object({
   url: z.string().url('Invalid URL format for attachment'),
   filename: z.string(),
@@ -120,7 +151,7 @@ const InspectionAttachmentSchema = z.object({
   uploadedAt: z.coerce.date().default(() => new Date()),
 });
 
-const UnitInspectionSchema = z.object({
+export const UnitInspectionSchema = z.object({
   inspectionDate: z.coerce.date(),
   inspector: z.string(),
   status: InspectionStatusZodEnum,
@@ -128,79 +159,177 @@ const UnitInspectionSchema = z.object({
   attachments: z.array(InspectionAttachmentSchema).optional(),
 });
 
-export const CreateUnitSchema = z.object({
+const BaseUnitSchema = z.object({
   unitNumber: z
     .string()
     .min(1, 'Unit number must not be empty')
     .max(20, 'Unit number must be at most 20 characters'),
-  propertyId: z.string().refine(async (id) => await isValidProperty(id), {
-    message: 'Property does not exist',
-  }),
-  cid: z.string(),
-  type: UnitTypeZodEnum,
+  unitType: UnitTypeZodEnum,
   status: UnitStatusZodEnum.default('available'),
   floor: z
     .number()
     .int()
     .min(-5, 'Floor cannot be less than -5')
     .max(100, 'Floor cannot be greater than 100')
-    .default(1),
+    .default(0),
   description: z.string().max(500, 'Description must be at most 500 characters').optional(),
   isActive: z.boolean().default(true),
-
-  // Complex nested objects
   fees: FeesSchema,
   specifications: SpecificationsSchema,
   utilities: UtilitiesSchema.optional(),
   amenities: AmenitiesSchema.optional(),
-
-  // Optional fields with sub-schemas
   media: z
     .object({
       photos: z.array(UnitPhotoSchema).optional(),
     })
     .optional(),
-
   documents: z.array(UnitDocumentSchema).optional(),
   inspections: z.array(UnitInspectionSchema).optional(),
-
-  // References
+  puid: z.string(),
   currentLease: z.string().optional(),
-
-  // User tracking fields
-  createdBy: z.string(),
-  lastModifiedBy: z.string().optional(),
 });
 
-export const CreateUnitSchemaWithValidation = CreateUnitSchema.superRefine(async (data, ctx) => {
-  if (data.unitNumber && data.propertyId) {
-    const isUnique = await isUniqueUnitNumber(data.unitNumber, data.propertyId);
-    if (!isUnique) {
+export const CreateUnitSchema = BaseUnitSchema.extend({
+  pid: z.string().refine(async (pid) => await isValidResource('property', { pid }), {
+    message: 'Property does not exist',
+  }),
+  cid: z.string(),
+}).superRefine(async (data, ctx) => {
+  const isUnique = await isUniqueUnitNumber(data.pid, data.unitNumber);
+  if (!isUnique) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `A unit with number '${data.unitNumber}' already exists for this property`,
+      path: ['unitNumber'],
+    });
+  }
+
+  // Validate unit number against floor correlation
+  const floorValidation = unitNumberingService.validateUnitNumberFloorCorrelation(
+    data.unitNumber,
+    data.floor
+  );
+  if (!floorValidation.isValid) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: floorValidation.message,
+      path: ['unitNumber'],
+    });
+  }
+});
+
+const CreateUnitsSchema = z.object({
+  units: z
+    .array(BaseUnitSchema)
+    .min(1, 'At least one unit is required')
+    .max(20, 'Maximum 20 units allowed. For bulk operations, please use CSV upload instead.'),
+  pid: z.string().refine(async (pid) => await isValidResource('property', { pid }), {
+    message: 'Property does not exist',
+  }),
+  cid: z.string(),
+});
+
+export const CreateUnitsSchemaRefined = CreateUnitsSchema.superRefine(async (data, ctx) => {
+  if ('units' in data) {
+    const unitNumbers = data.units.map((unit) => unit.unitNumber);
+
+    // duplicates within the batch
+    const duplicates = unitNumbers.filter((num, index) => unitNumbers.indexOf(num) !== index);
+    if (duplicates.length > 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'A unit with this number already exists for this property',
-        path: ['unitNumber'],
+        message: `Duplicate unit numbers found in batch: ${duplicates.join(', ')}`,
+        path: ['units'],
       });
+    }
+
+    // Validate pattern consistency across all units
+    const unitsForValidation = data.units.map((unit) => ({
+      unitNumber: unit.unitNumber,
+      floor: unit.floor,
+      unitType: unit.unitType,
+    }));
+
+    const patternConsistency = unitNumberingService.validatePatternConsistency(unitsForValidation);
+    if (!patternConsistency.isConsistent) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Pattern inconsistency detected: ${patternConsistency.recommendation}`,
+        path: ['units'],
+      });
+    }
+
+    // Check for existing units in the property and validate floor correlation
+    for (let i = 0; i < data.units.length; i++) {
+      const unit = data.units[i];
+
+      // Check uniqueness
+      const isUnique = await isUniqueUnitNumber(data.pid, unit.unitNumber);
+      if (!isUnique) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `A unit with number '${unit.unitNumber}' already exists for this property`,
+          path: ['units', i, 'unitNumber'],
+        });
+      }
+
+      // Validate unit number against floor correlation
+      const floorValidation = unitNumberingService.validateUnitNumberFloorCorrelation(
+        unit.unitNumber,
+        unit.floor
+      );
+      if (!floorValidation.isValid) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: floorValidation.message,
+          path: ['units', i, 'unitNumber'],
+        });
+      }
     }
   }
 });
 
-export const UpdateUnitSchema = CreateUnitSchema.partial()
-  .extend({
-    uid: z.string(),
-  })
-  .superRefine(async (data, ctx) => {
-    if (data.unitNumber && data.propertyId && data.uid) {
-      const isUnique = await isUniqueUnitNumber(data.unitNumber, data.propertyId, data.uid);
-      if (!isUnique) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'A unit with this number already exists for this property',
-          path: ['unitNumber'],
-        });
-      }
-    }
-  });
+const UpdateUnitBaseSchema = BaseUnitSchema.extend({
+  id: z
+    .instanceof(Types.ObjectId)
+    .refine(async (unitId) => await isValidResource('propertyUnit', { unitId }), {
+      message: 'Invalid unit ID',
+    }),
+  propertyId: z
+    .instanceof(Types.ObjectId)
+    .refine(async (propertyId) => await isValidResource('propertyUnit', { propertyId }), {
+      message: 'Invalid property ID',
+    }),
+  pid: z.string().optional(),
+  cid: z.string(),
+  createdBy: z.string(),
+  lastModifiedBy: z.string().optional(),
+});
+
+export const UpdateUnitSchema = UpdateUnitBaseSchema.superRefine(async (data: any, ctx: any) => {
+  // Check uniqueness (excluding current unit)
+  const isUnique = await isUniqueUnitNumber(data.pid, data.unitNumber, data.id?.toString());
+  if (!isUnique) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `A unit with number '${data.unitNumber}' already exists for this property`,
+      path: ['unitNumber'],
+    });
+  }
+
+  // Validate unit number against floor correlation
+  const floorValidation = unitNumberingService.validateUnitNumberFloorCorrelation(
+    data.unitNumber,
+    data.floor
+  );
+  if (!floorValidation.isValid) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: floorValidation.message,
+      path: ['unitNumber'],
+    });
+  }
+});
 
 export const UnitFilterSchema = z.object({
   propertyId: z.string().optional(),
@@ -218,7 +347,7 @@ export const UnitFilterSchema = z.object({
       max: z.number().min(0).optional(),
     })
     .optional(),
-  bedrooms: z.union([z.number().min(0), z.literal('any')]).optional(),
+  room: z.union([z.number().min(0), z.literal('any')]).optional(),
   bathrooms: z.union([z.number().min(0), z.literal('any')]).optional(),
   floor: z.union([z.number(), z.literal('any')]).optional(),
   amenities: z.array(z.string()).optional(),
@@ -257,11 +386,21 @@ export const UnitFilterQuerySchema = z.object({
   pagination: PaginationSchema,
 });
 
+export const UploadUnitMediaSchema = z.object({
+  mediaType: z.enum(['photo', 'document']).default('photo'),
+  description: z.string().max(150, 'Description must be at most 150 characters').optional(),
+  documentType: DocumentTypeZodEnum.optional(),
+  documentName: z.string().max(100, 'Document name must be at most 100 characters').optional(),
+  isPrimary: z.boolean().default(false),
+});
+
 export const UnitExistsSchema = z
   .object({
-    propertyId: z.string().refine(async (id) => await isValidProperty(id), {
-      message: 'Property does not exist',
-    }),
+    propertyId: z
+      .string()
+      .refine(async (propertyId) => await isValidResource('propertyUnit', { propertyId }), {
+        message: 'Property does not exist',
+      }),
     unitNumber: z.string().min(1, 'Unit number must not be empty'),
   })
   .superRefine(async (data, ctx) => {
@@ -274,3 +413,45 @@ export const UnitExistsSchema = z
       });
     }
   });
+
+// Unit Number Suggestion Schema
+export const UnitNumberSuggestionSchema = z.object({
+  propertyId: z
+    .string()
+    .refine(async (propertyId) => await isValidResource('propertyUnit', { propertyId }), {
+      message: 'Property does not exist',
+    }),
+  pattern: z
+    .enum([
+      'sequential',
+      'floor_based',
+      'alpha_numeric',
+      'wing_unit',
+      'building_unit',
+      'suite',
+      'custom',
+    ])
+    .optional(),
+  customPrefix: z.string().max(10, 'Custom prefix must be at most 10 characters').optional(),
+  currentFloor: z.number().int().min(-5).max(100).default(1),
+  suggestedNumber: z.string().optional(),
+});
+
+// Pattern Validation Schema
+export const PatternValidationSchema = z.object({
+  unitNumber: z.string().min(1, 'Unit number must not be empty'),
+  floor: z.number().int().min(-5).max(100),
+});
+
+// Batch Pattern Validation Schema
+export const BatchPatternValidationSchema = z.object({
+  units: z
+    .array(
+      z.object({
+        unitNumber: z.string().min(1, 'Unit number must not be empty'),
+        floor: z.number().int().min(-5).max(100),
+        unitType: z.string(),
+      })
+    )
+    .min(1, 'At least one unit is required'),
+});

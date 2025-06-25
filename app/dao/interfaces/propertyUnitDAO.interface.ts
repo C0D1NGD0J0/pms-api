@@ -1,6 +1,9 @@
-import { PropertyUnitInspection } from '@interfaces/propertyUnit.interface';
 import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
-import { IPropertyUnitDocument, PropertyUnitStatus } from '@interfaces/propertyUnit.interface';
+import {
+  PropertyUnitInspection,
+  IPropertyUnitDocument,
+  PropertyUnitStatus,
+} from '@interfaces/propertyUnit.interface';
 
 import { IBaseDAO } from './baseDAO.interface';
 
@@ -36,9 +39,20 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
    * @param propertyId - The property ID
    * @returns A promise that resolves to an array of property unit documents
    */
-  findUnitsByProperty(
+  findUnitsByPropertyId(
     propertyId: string,
-    opts: IPaginationQuery
+    opts?: IPaginationQuery
+  ): ListResultWithPagination<IPropertyUnitDocument[]>;
+
+  /**
+   * Find units by specific status
+   * @param status - The property unit status to filter by
+   * @param propertyId - Optional property ID to filter by
+   * @returns A promise that resolves to an array of property unit documents with the specified status
+   */
+  findUnitsByStatus(
+    status: PropertyUnitStatus,
+    propertyId: string
   ): ListResultWithPagination<IPropertyUnitDocument[]>;
 
   /**
@@ -53,29 +67,18 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
   ): Promise<IPropertyUnitDocument | null>;
 
   /**
-   * Find units by specific status
-   * @param status - The property unit status to filter by
+   * Find units with available status
    * @param propertyId - Optional property ID to filter by
-   * @returns A promise that resolves to an array of property unit documents with the specified status
+   * @returns A promise that resolves to an array of available property unit documents
    */
-  findUnitsByStatus(
-    status: PropertyUnitStatus,
-    propertyId?: string
-  ): Promise<IPropertyUnitDocument[]>;
+  findAvailableUnits(propertyId: string): ListResultWithPagination<IPropertyUnitDocument[]>;
 
   /**
    * Get count of units grouped by status
    * @param propertyId - Optional property ID to filter by
    * @returns A promise that resolves to an object with counts for each status
    */
-  getUnitCountsByStatus(propertyId?: string): Promise<Record<PropertyUnitStatus, number>>;
-
-  /**
-   * Find units with available status
-   * @param propertyId - Optional property ID to filter by
-   * @returns A promise that resolves to an array of available property unit documents
-   */
-  findAvailableUnits(propertyId?: string): Promise<IPropertyUnitDocument[]>;
+  getUnitCountsByStatus(propertyId: string): Promise<Record<PropertyUnitStatus, number>>;
 
   getSuggestedStartingUnitNumber(propertyType: string): string | null;
 }

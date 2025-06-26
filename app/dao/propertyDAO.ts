@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { ClientSession, FilterQuery, Types, Model } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery, UploadResult } from '@interfaces/index';
+import { PropertyUnitStatusEnum, IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import {
   IPropertyDocument,
   OccupancyStatus,
@@ -11,13 +12,21 @@ import {
 } from '@interfaces/property.interface';
 
 import { BaseDAO } from './baseDAO';
-import { IFindOptions, IPropertyDAO } from './interfaces/index';
+import { IPropertyUnitDAO, IPropertyDAO, IFindOptions } from './interfaces/index';
 
 export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IPropertyDAO {
   protected logger: Logger;
+  private propertyUnitDAO: IPropertyUnitDAO;
 
-  constructor({ propertyModel }: { propertyModel: Model<IPropertyDocument> }) {
+  constructor({
+    propertyModel,
+    propertyUnitDAO,
+  }: {
+    propertyModel: Model<IPropertyDocument>;
+    propertyUnitDAO: IPropertyUnitDAO;
+  }) {
     super(propertyModel);
+    this.propertyUnitDAO = propertyUnitDAO;
     this.logger = createLogger('PropertyDAO');
   }
 
@@ -420,34 +429,33 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
    * @param clientId - The client ID
    * @returns A promise that resolves to an array of property documents
    */
-  async searchProperties(query: string, clientId: string, paginationQuery?: IPaginationQuery) {
+  searchProperties(query: string, clientId: string): ListResultWithPagination<IPropertyDocument[]> {
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+
+    if (!query || query.trim().length === 0) {
+      // If no query, return all properties for the client
+      return this.getPropertiesByClientId(clientId);
+    }
+
+    const searchQuery = {
+      cid: clientId,
+      deletedAt: null,
+      $or: [
+        { name: { $regex: query, $options: 'i' } },
+        { pid: { $regex: query, $options: 'i' } },
+        { 'address.city': { $regex: query, $options: 'i' } },
+        { 'address.state': { $regex: query, $options: 'i' } },
+        { 'address.postCode': { $regex: query, $options: 'i' } },
+        { 'address.fullAddress': { $regex: query, $options: 'i' } },
+      ],
+    };
+
     try {
-      if (!clientId) {
-        throw new Error('Client ID is required');
-      }
-
-      if (!query || query.trim().length === 0) {
-        // If no query, return all properties for the client
-        return this.getPropertiesByClientId(clientId);
-      }
-
-      const searchQuery = {
-        cid: clientId,
-        deletedAt: null,
-        $or: [
-          { name: { $regex: query, $options: 'i' } },
-          { pid: { $regex: query, $options: 'i' } },
-          { 'address.city': { $regex: query, $options: 'i' } },
-          { 'address.state': { $regex: query, $options: 'i' } },
-          { 'address.postCode': { $regex: query, $options: 'i' } },
-          { 'address.fullAddress': { $regex: query, $options: 'i' } },
-        ],
-      };
-
-      return await this.list(searchQuery, {
-        skip: paginationQuery?.skip ?? 10,
-        limit: paginationQuery?.limit ?? 10,
-        sort: paginationQuery?.sort,
+      return this.list(searchQuery, {
+        skip: 0,
+        limit: 10,
       });
     } catch (error) {
       this.logger.error('Error in searchProperties:', error);
@@ -456,7 +464,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
   }
 
   /**
-   * Archive a property (soft delete)
+   * Archive a property (soft delete) - now checks if property can be archived first
    * @param propertyId - The property ID
    * @param userId - The ID of the user performing the action
    * @returns A promise that resolves to true if successful
@@ -465,6 +473,13 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     try {
       if (!propertyId || !userId) {
         throw new Error('Property ID and user ID are required');
+      }
+
+      const archiveCheck = await this.canArchiveProperty(propertyId);
+      if (!archiveCheck.canArchive) {
+        throw new Error(
+          `Cannot archive property with ${archiveCheck.activeUnitCount} active units (${archiveCheck.occupiedUnitCount} occupied)`
+        );
       }
 
       const updateOperation = {
@@ -478,6 +493,264 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       return !!result;
     } catch (error) {
       this.logger.error('Error in archiveProperty:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Get all units for a property
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to an array of property unit documents
+   */
+  async getPropertyUnits(
+    propertyId: string,
+    opts: IPaginationQuery
+  ): ListResultWithPagination<IPropertyUnitDocument[]> {
+    try {
+      if (!propertyId) {
+        throw new Error('Property ID is required');
+      }
+
+      return await this.propertyUnitDAO.findUnitsByPropertyId(propertyId, opts);
+    } catch (error) {
+      this.logger.error('Error in getPropertyUnits:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Get unit count by status for a property
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to counts of units by status
+   */
+  async getUnitCountsByStatus(propertyId: string): Promise<{
+    total: number;
+    available: number;
+    occupied: number;
+    reserved: number;
+    maintenance: number;
+    inactive: number;
+  }> {
+    try {
+      if (!propertyId) {
+        throw new Error('Property ID is required');
+      }
+
+      const statusCounts = await this.propertyUnitDAO.getUnitCountsByStatus(propertyId);
+
+      // Convert to the expected return format with proper typing
+      const counts = Object.values(statusCounts) as number[];
+      const result = {
+        total: counts.reduce((sum: number, count: number) => sum + count, 0),
+        available: statusCounts[PropertyUnitStatusEnum.AVAILABLE] || 0,
+        occupied: statusCounts[PropertyUnitStatusEnum.OCCUPIED] || 0,
+        reserved: statusCounts[PropertyUnitStatusEnum.RESERVED] || 0,
+        maintenance: statusCounts[PropertyUnitStatusEnum.MAINTENANCE] || 0,
+        inactive: statusCounts[PropertyUnitStatusEnum.INACTIVE] || 0,
+      };
+
+      return result;
+    } catch (error) {
+      this.logger.error('Error in getUnitCountsByStatus:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Check if a property can accommodate more units
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to whether the property can have more units
+   */
+  async canAddUnitToProperty(propertyId: string): Promise<{
+    canAdd: boolean;
+    currentCount: number;
+    maxCapacity: number;
+  }> {
+    try {
+      if (!propertyId) {
+        throw new Error('Property ID is required');
+      }
+
+      const property = await this.findById(propertyId);
+      if (!property) {
+        throw new Error('Property not found');
+      }
+
+      const units = await this.propertyUnitDAO.countDocuments({ propertyId });
+      const currentCount = units;
+      const maxCapacity = property.totalUnits || 0;
+      const canAdd = maxCapacity === 0 || currentCount < maxCapacity;
+      return {
+        canAdd,
+        currentCount,
+        maxCapacity,
+      };
+    } catch (error) {
+      this.logger.error('Error in canAddUnitToProperty:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Extended validation for unit compatibility with property type
+   * Used internally for more detailed validation than the interface method provides
+   * @param propertyId - The property ID
+   * @param unitType - Property unit type to check compatibility
+   * @returns Detailed validation result with reason if incompatible
+   */
+  async validateUnitToPropertyCompatibility(
+    propertyId: string,
+    unitType?: string
+  ): Promise<{
+    canAdd: boolean;
+    currentCount: number;
+    maxCapacity: number;
+    reason?: string;
+  }> {
+    try {
+      if (!propertyId) {
+        throw new Error('Property ID is required');
+      }
+
+      const property = await this.findById(propertyId);
+      if (!property) {
+        throw new Error('Property not found');
+      }
+
+      const units = await this.propertyUnitDAO.findUnitsByPropertyId(propertyId);
+      const currentCount = units.data.length;
+      const maxCapacity = property.totalUnits || 0;
+
+      // base capacity check
+      let canAdd = maxCapacity === 0 || currentCount < maxCapacity;
+      let reason;
+
+      // Property Type-specific Unit Validations
+      if (canAdd && unitType) {
+        canAdd = this.isUnitTypeCompatibleWithProperty(property.propertyType, unitType);
+        if (!canAdd) {
+          reason = `Unit type '${unitType}' is not compatible with property type '${property.propertyType}'`;
+        }
+      }
+
+      // check for property type specific limits
+      if (canAdd && property.propertyType === 'house' && currentCount >= 1) {
+        canAdd = false;
+        reason = 'Houses can only have one unit unless configured for multi-family';
+      }
+
+      if (canAdd && property.propertyType === 'commercial' && currentCount > 0) {
+        const commercialUnitTypeCount = units.data.filter(
+          (u) => u.unitType === 'commercial'
+        ).length;
+        // ensure commercial properties maintain a balance of unit types
+        if (commercialUnitTypeCount < currentCount * 0.5) {
+          canAdd = false;
+          reason = 'Commercial properties must maintain at least 50% commercial units';
+        }
+      }
+
+      return {
+        canAdd,
+        currentCount,
+        maxCapacity,
+        reason,
+      };
+    } catch (error) {
+      this.logger.error('Error in validateUnitToPropertyCompatibility:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Check if a unit type is compatible with a property type
+   * @param propertyType - The property type
+   * @param unitType - The unit type
+   * @returns Boolean indicating if the unit type is compatible with the property type
+   */
+  private isUnitTypeCompatibleWithProperty(propertyType: string, unitType: string): boolean {
+    const compatibilityMap: Record<string, string[]> = {
+      apartment: ['studio', '1BR', '2BR', '3BR', '4BR+', 'penthouse', 'loft'],
+      house: ['1BR', '2BR', '3BR', '4BR+'],
+      condominium: ['studio', '1BR', '2BR', '3BR', 'penthouse'],
+      townhouse: ['1BR', '2BR', '3BR', '4BR+'],
+      commercial: ['commercial', 'retail', 'office'],
+      industrial: ['commercial', 'warehouse'],
+    };
+
+    // Check if the unit type is compatible with the property type
+    const compatibleUnitTypes = compatibilityMap[propertyType] || [];
+    return compatibleUnitTypes.includes(unitType);
+  }
+
+  /**
+   * Recalculate and update property occupancy status based on its units
+   * @param propertyId - The property ID
+   * @param userId - The ID of the user triggering the update
+   * @returns A promise that resolves to the updated property
+   */
+  async syncPropertyOccupancyWithUnits(
+    propertyId: string,
+    userId: string
+  ): Promise<IPropertyDocument | null> {
+    try {
+      if (!propertyId || !userId) {
+        throw new Error('Property ID and user ID are required');
+      }
+
+      const unitCounts = await this.getUnitCountsByStatus(propertyId);
+      let occupancyStatus: OccupancyStatus = 'vacant';
+
+      if (unitCounts.total === 0) {
+        occupancyStatus = 'vacant';
+      } else if (unitCounts.occupied === unitCounts.total) {
+        occupancyStatus = 'occupied';
+      } else if (unitCounts.occupied > 0) {
+        occupancyStatus = 'partially_occupied';
+      } else {
+        occupancyStatus = 'vacant';
+      }
+
+      return await this.updatePropertyOccupancy(
+        propertyId,
+        occupancyStatus,
+        unitCounts.total,
+        userId
+      );
+    } catch (error) {
+      this.logger.error('Error in syncPropertyOccupancyWithUnits:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Check if a property can be archived (has no active units)
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to whether the property can be archived and why if not
+   */
+  async canArchiveProperty(propertyId: string): Promise<{
+    canArchive: boolean;
+    activeUnitCount?: number;
+    occupiedUnitCount?: number;
+  }> {
+    try {
+      if (!propertyId) {
+        throw new Error('Property ID is required');
+      }
+
+      const unitCounts = await this.getUnitCountsByStatus(propertyId);
+
+      // a property can be archived if it has no active or occupied units
+      const activeUnitCount = unitCounts.total - unitCounts.inactive;
+      const occupiedUnitCount = unitCounts.occupied;
+
+      return {
+        canArchive: activeUnitCount === 0,
+        activeUnitCount,
+        occupiedUnitCount,
+      };
+    } catch (error) {
+      this.logger.error('Error in canArchiveProperty:', error);
       throw this.throwErrorHandler(error);
     }
   }

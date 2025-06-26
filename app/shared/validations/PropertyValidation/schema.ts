@@ -38,7 +38,7 @@ const PropertyStatusEnum = z.enum([
 const OccupancyStatusEnum = z.enum(['vacant', 'occupied', 'partially_occupied']);
 
 const SpecificationsSchema = z.object({
-  totalArea: z.number().positive('Total area must be a positive number'),
+  totalArea: z.number().positive('Total area must be a positive number').optional(),
   lotSize: z.number().positive('Lot size must be a positive number').optional(),
   bedrooms: z.number().int().min(0, 'Bedrooms must be a non-negative integer').optional(),
   bathrooms: z.number().min(0, 'Bathrooms must be a non-negative number').optional(),
@@ -165,10 +165,17 @@ const CreatePropertySchema = z.object({
   address: z.object({
     fullAddress: z.string().min(5, 'Formatted address must be at least 5 characters'),
     street: z.string().optional(),
-    streetNumber: z.string().optional(),
+    streetNumber: z.union([
+      z.string().min(1, 'Street number cannot be empty'),
+      z.number().positive('Street number must be positive'),
+    ]),
+    coordinates: z
+      .array(z.number())
+      .length(2, 'Coordinates must be an array of two numbers')
+      .optional(),
     city: z.string().optional(),
     state: z.string().optional(),
-    postCode: z.string().optional(),
+    postCode: z.union([z.string().min(1, 'Post code cannot be empty'), z.number()]).optional(),
     country: z.string().optional(),
   }),
   utilities: UtilitiesSchema.optional(),
@@ -193,7 +200,7 @@ export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefi
 );
 
 export const UpdatePropertySchema = CreatePropertySchema.partial().omit({ cid: true }).extend({
-  id: z.string(),
+  id: z.string().optional(),
 });
 
 export const PropertySearchSchema = z.object({

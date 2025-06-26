@@ -1,3 +1,4 @@
+export * from './propertyUnitDAO.interface';
 export * from './propertyDAO.interface';
 export * from './profileDAO.interface';
 export * from './clientDAO.interface';

@@ -4,6 +4,14 @@ import { PropertyService } from '@services/property/property.service';
 import { 
   mockPropertyDAO,
   mockPropertyUnitDAO,
+  mockClientDAO,
+  mockProfileDAO,
+  mockPropertyCache,
+  mockEventEmitterService,
+  mockPropertyQueue,
+  mockUploadQueue,
+  mockGeoCoderService,
+  mockPropertyCsvProcessor,
   resetTestContainer 
 } from '@tests/mocks/di';
 import { 
@@ -13,639 +21,431 @@ import {
 import { 
   BadRequestError,
   NotFoundError,
-  ForbiddenError,
-  UnauthorizedError 
+  ValidationRequestError
 } from '@shared/customErrors';
+
+// Mock PropertyValidationService
+jest.mock('@services/property/propertyValidation.service', () => ({
+  PropertyValidationService: {
+    validateProperty: jest.fn().mockReturnValue({ valid: true, errors: [] })
+  }
+}));
+
+jest.mock('@utils/index', () => ({
+  createLogger: jest.fn(() => ({
+    info: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    warn: jest.fn(),
+  })),
+  getRequestDuration: jest.fn(() => ({ durationInMs: 100 })),
+  generateShortUID: jest.fn(() => 'prop-123'),
+  JOB_NAME: {
+    PROPERTY_CREATED: 'property_created'
+  }
+}));
 
 describe('PropertyService - Unit Tests', () => {
   let propertyService: PropertyService;
 
   beforeAll(() => {
-    // Initialize service with mocked dependencies
     propertyService = new PropertyService({
       propertyDAO: mockPropertyDAO,
       propertyUnitDAO: mockPropertyUnitDAO,
+      clientDAO: mockClientDAO,
+      profileDAO: mockProfileDAO,
+      propertyCache: mockPropertyCache,
+      emitterService: mockEventEmitterService,
+      propertyQueue: mockPropertyQueue,
+      uploadQueue: mockUploadQueue,
+      geoCoderService: mockGeoCoderService,
+      propertyCsvProcessor: mockPropertyCsvProcessor,
     });
   });
 
   beforeEach(() => {
-    // Reset all mocks and container state
     resetTestContainer();
-  });
-
-  afterEach(() => {
     jest.clearAllMocks();
   });
 
   describe('addProperty', () => {
-    describe('Successful property creation', () => {
-      it('should create a residential property successfully', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyData = TestDataFactory.createProperty({
-          propertyType: 'RESIDENTIAL',
-          units: [
-            TestDataFactory.createPropertyUnit({ unitNumber: '101' }),
-            TestDataFactory.createPropertyUnit({ unitNumber: '102' }),
-          ],
-        });
+    it('should create property successfully', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'client-123' },
+          url: '/api/properties'
+        },
+        currentuser: TestDataFactory.createUser({ sub: 'user-123' }),
+        requestId: 'req-123'
+      };
 
-        const createdProperty = {
-          ...propertyData,
-          _id: 'property-123',
-          ownerId: context.currentuser._id,
-        };
-
-        mockPropertyDAO.create.mockResolvedValue(createdProperty);
-
-        // Act
-        const result = await propertyService.addProperty(context, propertyData);
-
-        // Assert
-        expect(result).toEqual(createdProperty);
-        expect(mockPropertyDAO.create).toHaveBeenCalledWith(
-          expect.objectContaining({
-            ...propertyData,
-            ownerId: context.currentuser._id,
-          })
-        );
+      const propertyData = TestDataFactory.createProperty({
+        name: 'Test Property',
+        address: '123 Main St',
+        propertyType: 'RESIDENTIAL'
       });
 
-      it('should create a commercial property successfully', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyData = TestDataFactory.createProperty({
-          propertyType: 'COMMERCIAL',
-          totalSquareFeet: 5000,
-          amenities: ['parking', 'conference_room'],
-        });
+      const mockClient = TestDataFactory.createClient({ _id: 'client-123' });
+      const mockCreatedProperty = { ...propertyData, _id: 'property-123' };
 
-        const createdProperty = {
-          ...propertyData,
-          _id: 'property-456',
-          ownerId: context.currentuser._id,
-        };
-
-        mockPropertyDAO.create.mockResolvedValue(createdProperty);
-
-        // Act
-        const result = await propertyService.addProperty(context, propertyData);
-
-        // Assert
-        expect(result).toEqual(createdProperty);
-        expect(mockPropertyDAO.create).toHaveBeenCalledWith(
-          expect.objectContaining({
-            propertyType: 'COMMERCIAL',
-            totalSquareFeet: 5000,
-            amenities: ['parking', 'conference_room'],
-          })
-        );
+      mockClientDAO.findByCid.mockResolvedValue(mockClient);
+      mockGeoCoderService.parseLocation.mockResolvedValue({ 
+        success: true, 
+        data: { coordinates: [-74.006, 40.7128] } 
       });
+      mockPropertyDAO.startSession.mockResolvedValue({});
+      mockPropertyDAO.withTransaction.mockImplementation((session, callback) => callback(session));
+      mockPropertyDAO.insert.mockResolvedValue(mockCreatedProperty);
+      mockPropertyCache.invalidatePropertyLists.mockResolvedValue(true);
 
-      it('should handle property with multiple units', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const units = [
-          TestDataFactory.createPropertyUnit({ unitNumber: '101', rent: 1200 }),
-          TestDataFactory.createPropertyUnit({ unitNumber: '102', rent: 1300 }),
-          TestDataFactory.createPropertyUnit({ unitNumber: '201', rent: 1400 }),
-        ];
-        const propertyData = TestDataFactory.createProperty({ units });
+      // Act
+      const result = await propertyService.addProperty(context, propertyData);
 
-        const createdProperty = {
-          ...propertyData,
-          _id: 'property-789',
-          units: units.map(unit => ({ ...unit, _id: `unit-${unit.unitNumber}` })),
-        };
-
-        mockPropertyDAO.create.mockResolvedValue(createdProperty);
-
-        // Act
-        const result = await propertyService.addProperty(context, propertyData);
-
-        // Assert
-        expect(result.units).toHaveLength(3);
-        expect(result.units.every(unit => unit._id)).toBe(true);
-      });
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('Property created successfully');
+      expect(result.data).toEqual(mockCreatedProperty);
+      expect(mockClientDAO.findByCid).toHaveBeenCalledWith('client-123');
+      expect(mockPropertyDAO.insert).toHaveBeenCalled();
     });
 
-    describe('Property creation errors', () => {
-      it('should handle unauthorized user', async () => {
-        // Arrange
-        const context = { currentuser: null };
-        const propertyData = TestDataFactory.createProperty();
+    it('should handle validation errors', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'client-123' },
+          url: '/api/properties'
+        },
+        currentuser: TestDataFactory.createUser(),
+        requestId: 'req-123'
+      };
 
-        // Act & Assert
-        await expect(propertyService.addProperty(context, propertyData))
-          .rejects.toThrow(UnauthorizedError);
+      const invalidPropertyData = {
+        name: '', // Invalid - empty name
+        address: '',
+        propertyType: 'INVALID'
+      };
 
-        expect(mockPropertyDAO.create).not.toHaveBeenCalled();
+      // Mock validation failure
+      const { PropertyValidationService } = require('@services/property/propertyValidation.service');
+      PropertyValidationService.validateProperty.mockReturnValue({
+        valid: false,
+        errors: [{ field: 'name', message: 'Name is required' }]
       });
 
-      it('should handle invalid property data', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const invalidPropertyData = {
-          name: '', // Invalid empty name
-          address: {}, // Invalid incomplete address
-        };
+      // Act & Assert
+      await expect(propertyService.addProperty(context, invalidPropertyData))
+        .rejects.toThrow(ValidationRequestError);
+    });
 
-        mockPropertyDAO.create.mockRejectedValue(
-          new BadRequestError('Property validation failed')
-        );
+    it('should handle client not found', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'nonexistent-client' },
+          url: '/api/properties'
+        },
+        currentuser: TestDataFactory.createUser(),
+        requestId: 'req-123'
+      };
 
-        // Act & Assert
-        await expect(propertyService.addProperty(context, invalidPropertyData))
-          .rejects.toThrow(BadRequestError);
-      });
+      const propertyData = TestDataFactory.createProperty();
 
-      it('should handle database creation failure', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyData = TestDataFactory.createProperty();
+      mockClientDAO.findByCid.mockResolvedValue(null);
 
-        mockPropertyDAO.create.mockRejectedValue(
-          new Error('Database connection failed')
-        );
-
-        // Act & Assert
-        await expect(propertyService.addProperty(context, propertyData))
-          .rejects.toThrow('Database connection failed');
-      });
+      // Act & Assert
+      await expect(propertyService.addProperty(context, propertyData))
+        .rejects.toThrow(BadRequestError);
     });
   });
 
-  describe('getAllProperties', () => {
-    describe('Successful property retrieval', () => {
-      it('should get all properties for authenticated user', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const queryParams = {
-          page: 1,
-          limit: 10,
-        };
+  describe('getClientProperty', () => {
+    it('should get property successfully', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'client-123', pid: 'property-456' },
+          url: '/api/properties/property-456'
+        },
+        currentuser: TestDataFactory.createUser(),
+        requestId: 'req-123'
+      };
 
-        const properties = [
-          TestDataFactory.createProperty({ name: 'Property 1' }),
-          TestDataFactory.createProperty({ name: 'Property 2' }),
-          TestDataFactory.createProperty({ name: 'Property 3' }),
-        ];
+      const mockClient = TestDataFactory.createClient({ _id: 'client-123' });
+      const mockProperty = TestDataFactory.createProperty({ _id: 'property-456' });
+      const mockUnits = {
+        items: [TestDataFactory.createPropertyUnit()],
+        pagination: { total: 1, page: 1, limit: 10, pages: 1 }
+      };
 
-        const expectedResult = {
-          success: true,
-          data: properties,
-          pagination: {
-            page: 1,
-            limit: 10,
-            total: 3,
-            pages: 1,
-          },
-        };
+      mockClientDAO.getClientByCid.mockResolvedValue(mockClient);
+      mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+      mockPropertyDAO.getPropertyUnits.mockResolvedValue(mockUnits);
 
-        mockPropertyDAO.findByOwner.mockResolvedValue(expectedResult);
+      // Act
+      const result = await propertyService.getClientProperty(context);
 
-        // Act
-        const result = await propertyService.getAllProperties(context, queryParams);
-
-        // Assert
-        expect(result).toEqual(expectedResult);
-        expect(mockPropertyDAO.findByOwner).toHaveBeenCalledWith(
-          context.currentuser._id,
-          queryParams
-        );
-      });
-
-      it('should handle property filtering by type', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const queryParams = {
-          propertyType: 'RESIDENTIAL',
-          page: 1,
-          limit: 10,
-        };
-
-        const residentialProperties = [
-          TestDataFactory.createProperty({ 
-            propertyType: 'RESIDENTIAL',
-            name: 'Residential Property 1' 
-          }),
-        ];
-
-        mockPropertyDAO.findByOwner.mockResolvedValue({
-          success: true,
-          data: residentialProperties,
-          pagination: { page: 1, limit: 10, total: 1, pages: 1 },
-        });
-
-        // Act
-        const result = await propertyService.getAllProperties(context, queryParams);
-
-        // Assert
-        expect(result.data).toHaveLength(1);
-        expect(result.data[0].propertyType).toBe('RESIDENTIAL');
-        expect(mockPropertyDAO.findByOwner).toHaveBeenCalledWith(
-          context.currentuser._id,
-          queryParams
-        );
-      });
-
-      it('should handle empty property list', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const queryParams = { page: 1, limit: 10 };
-
-        mockPropertyDAO.findByOwner.mockResolvedValue({
-          success: true,
-          data: [],
-          pagination: { page: 1, limit: 10, total: 0, pages: 0 },
-        });
-
-        // Act
-        const result = await propertyService.getAllProperties(context, queryParams);
-
-        // Assert
-        expect(result.data).toHaveLength(0);
-        expect(result.pagination.total).toBe(0);
-      });
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.data.property).toEqual(mockProperty);
+      expect(result.data.units).toEqual(mockUnits);
     });
 
-    describe('Property retrieval errors', () => {
-      it('should handle unauthorized user', async () => {
-        // Arrange
-        const context = { currentuser: null };
-        const queryParams = { page: 1, limit: 10 };
+    it('should handle property not found', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'client-123', pid: 'nonexistent-property' },
+          url: '/api/properties/nonexistent-property'
+        },
+        currentuser: TestDataFactory.createUser(),
+        requestId: 'req-123'
+      };
 
-        // Act & Assert
-        await expect(propertyService.getAllProperties(context, queryParams))
-          .rejects.toThrow(UnauthorizedError);
+      const mockClient = TestDataFactory.createClient({ _id: 'client-123' });
 
-        expect(mockPropertyDAO.findByOwner).not.toHaveBeenCalled();
-      });
+      mockClientDAO.getClientByCid.mockResolvedValue(mockClient);
+      mockPropertyDAO.findFirst.mockResolvedValue(null);
 
-      it('should handle database query failure', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const queryParams = { page: 1, limit: 10 };
-
-        mockPropertyDAO.findByOwner.mockRejectedValue(
-          new Error('Database query failed')
-        );
-
-        // Act & Assert
-        await expect(propertyService.getAllProperties(context, queryParams))
-          .rejects.toThrow('Database query failed');
-      });
+      // Act & Assert
+      await expect(propertyService.getClientProperty(context))
+        .rejects.toThrow(NotFoundError);
     });
   });
 
-  describe('getPropertyById', () => {
-    describe('Successful property retrieval', () => {
-      it('should get property by ID for owner', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'property-123';
-        const property = TestDataFactory.createProperty({
-          _id: propertyId,
-          ownerId: context.currentuser._id,
-        });
+  describe('getClientProperties', () => {
+    it('should get properties list successfully', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'client-123' },
+          url: '/api/properties'
+        },
+        currentuser: TestDataFactory.createUser(),
+        requestId: 'req-123'
+      };
 
-        mockPropertyDAO.findById.mockResolvedValue(property);
+      const queryParams = { page: 1, limit: 10 };
+      const mockProperties = [
+        TestDataFactory.createProperty({ name: 'Property 1' }),
+        TestDataFactory.createProperty({ name: 'Property 2' })
+      ];
 
-        // Act
-        const result = await propertyService.getPropertyById(context, propertyId);
+      const mockResult = {
+        data: mockProperties,
+        pagination: { page: 1, limit: 10, total: 2, pages: 1 }
+      };
 
-        // Assert
-        expect(result).toEqual({
-          success: true,
-          data: property,
-        });
-        expect(mockPropertyDAO.findById).toHaveBeenCalledWith(propertyId);
-      });
+      mockPropertyDAO.list.mockResolvedValue(mockResult);
 
-      it('should get property with populated units', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'property-456';
-        const units = [
-          TestDataFactory.createPropertyUnit({ unitNumber: '101' }),
-          TestDataFactory.createPropertyUnit({ unitNumber: '102' }),
-        ];
-        const property = TestDataFactory.createProperty({
-          _id: propertyId,
-          ownerId: context.currentuser._id,
-          units,
-        });
+      // Act
+      const result = await propertyService.getClientProperties(context, queryParams);
 
-        mockPropertyDAO.findById.mockResolvedValue(property);
-
-        // Act
-        const result = await propertyService.getPropertyById(context, propertyId);
-
-        // Assert
-        expect(result.data.units).toHaveLength(2);
-        expect(result.data.units[0].unitNumber).toBe('101');
-        expect(result.data.units[1].unitNumber).toBe('102');
-      });
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.data.data).toHaveLength(2);
+      expect(result.data.pagination.total).toBe(2);
     });
 
-    describe('Property retrieval errors', () => {
-      it('should handle property not found', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'non-existent-property';
+    it('should handle empty properties list', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'client-123' },
+          url: '/api/properties'
+        },
+        currentuser: TestDataFactory.createUser(),
+        requestId: 'req-123'
+      };
 
-        mockPropertyDAO.findById.mockResolvedValue(null);
+      const queryParams = { page: 1, limit: 10 };
+      const mockResult = {
+        data: [],
+        pagination: { page: 1, limit: 10, total: 0, pages: 0 }
+      };
 
-        // Act & Assert
-        await expect(propertyService.getPropertyById(context, propertyId))
-          .rejects.toThrow(NotFoundError);
+      mockPropertyDAO.list.mockResolvedValue(mockResult);
 
-        expect(mockPropertyDAO.findById).toHaveBeenCalledWith(propertyId);
-      });
+      // Act
+      const result = await propertyService.getClientProperties(context, queryParams);
 
-      it('should handle unauthorized access to property', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'property-123';
-        const property = TestDataFactory.createProperty({
-          _id: propertyId,
-          ownerId: 'different-owner-id', // Different owner
-        });
-
-        mockPropertyDAO.findById.mockResolvedValue(property);
-
-        // Act & Assert
-        await expect(propertyService.getPropertyById(context, propertyId))
-          .rejects.toThrow(ForbiddenError);
-      });
-
-      it('should handle unauthenticated user', async () => {
-        // Arrange
-        const context = { currentuser: null };
-        const propertyId = 'property-123';
-
-        // Act & Assert
-        await expect(propertyService.getPropertyById(context, propertyId))
-          .rejects.toThrow(UnauthorizedError);
-
-        expect(mockPropertyDAO.findById).not.toHaveBeenCalled();
-      });
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.data.data).toHaveLength(0);
     });
   });
 
-  describe('updateProperty', () => {
-    describe('Successful property update', () => {
-      it('should update property successfully', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'property-123';
-        const updateData = {
-          name: 'Updated Property Name',
-          description: 'Updated description',
-        };
+  describe('updateClientProperty', () => {
+    it('should update property successfully', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'client-123', pid: 'property-456' },
+          url: '/api/properties/property-456'
+        },
+        currentuser: TestDataFactory.createUser(),
+        requestId: 'req-123'
+      };
 
-        const existingProperty = TestDataFactory.createProperty({
-          _id: propertyId,
-          ownerId: context.currentuser._id,
-        });
+      const updateData = { name: 'Updated Property Name' };
+      const mockClient = TestDataFactory.createClient({ _id: 'client-123' });
+      const mockProperty = TestDataFactory.createProperty({ _id: 'property-456' });
+      const mockUpdatedProperty = { ...mockProperty, ...updateData };
 
-        const updatedProperty = {
-          ...existingProperty,
-          ...updateData,
-        };
+      mockClientDAO.getClientByCid.mockResolvedValue(mockClient);
+      mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+      mockPropertyDAO.startSession.mockResolvedValue({});
+      mockPropertyDAO.withTransaction.mockImplementation((session, callback) => callback(session));
+      mockPropertyDAO.updateById.mockResolvedValue(mockUpdatedProperty);
+      mockPropertyCache.invalidateProperty.mockResolvedValue(true);
 
-        mockPropertyDAO.findById.mockResolvedValue(existingProperty);
-        mockPropertyDAO.updateById.mockResolvedValue(updatedProperty);
+      // Act
+      const result = await propertyService.updateClientProperty(context, updateData);
 
-        // Act
-        const result = await propertyService.updateProperty(context, propertyId, updateData);
-
-        // Assert
-        expect(result).toEqual({
-          success: true,
-          data: updatedProperty,
-        });
-        expect(mockPropertyDAO.updateById).toHaveBeenCalledWith(propertyId, updateData);
-      });
-
-      it('should update property units', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'property-456';
-        const updateData = {
-          units: [
-            TestDataFactory.createPropertyUnit({ unitNumber: '101', rent: 1500 }),
-            TestDataFactory.createPropertyUnit({ unitNumber: '103', rent: 1600 }),
-          ],
-        };
-
-        const existingProperty = TestDataFactory.createProperty({
-          _id: propertyId,
-          ownerId: context.currentuser._id,
-        });
-
-        mockPropertyDAO.findById.mockResolvedValue(existingProperty);
-        mockPropertyDAO.updateById.mockResolvedValue({
-          ...existingProperty,
-          ...updateData,
-        });
-
-        // Act
-        const result = await propertyService.updateProperty(context, propertyId, updateData);
-
-        // Assert
-        expect(result.success).toBe(true);
-        expect(result.data.units).toHaveLength(2);
-      });
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.data.name).toBe('Updated Property Name');
+      expect(mockPropertyDAO.updateById).toHaveBeenCalled();
     });
 
-    describe('Property update errors', () => {
-      it('should handle property not found', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'non-existent-property';
-        const updateData = { name: 'New Name' };
+    it('should handle property not found for update', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'client-123', pid: 'nonexistent-property' },
+          url: '/api/properties/nonexistent-property'
+        },
+        currentuser: TestDataFactory.createUser(),
+        requestId: 'req-123'
+      };
 
-        mockPropertyDAO.findById.mockResolvedValue(null);
+      const updateData = { name: 'Updated Name' };
+      const mockClient = TestDataFactory.createClient({ _id: 'client-123' });
 
-        // Act & Assert
-        await expect(propertyService.updateProperty(context, propertyId, updateData))
-          .rejects.toThrow(NotFoundError);
+      mockClientDAO.getClientByCid.mockResolvedValue(mockClient);
+      mockPropertyDAO.findFirst.mockResolvedValue(null);
 
-        expect(mockPropertyDAO.updateById).not.toHaveBeenCalled();
-      });
-
-      it('should handle unauthorized property update', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'property-123';
-        const updateData = { name: 'New Name' };
-
-        const property = TestDataFactory.createProperty({
-          _id: propertyId,
-          ownerId: 'different-owner-id',
-        });
-
-        mockPropertyDAO.findById.mockResolvedValue(property);
-
-        // Act & Assert
-        await expect(propertyService.updateProperty(context, propertyId, updateData))
-          .rejects.toThrow(ForbiddenError);
-
-        expect(mockPropertyDAO.updateById).not.toHaveBeenCalled();
-      });
-
-      it('should handle validation errors', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'property-123';
-        const invalidUpdateData = {
-          name: '', // Invalid empty name
-          rent: -100, // Invalid negative rent
-        };
-
-        const existingProperty = TestDataFactory.createProperty({
-          _id: propertyId,
-          ownerId: context.currentuser._id,
-        });
-
-        mockPropertyDAO.findById.mockResolvedValue(existingProperty);
-        mockPropertyDAO.updateById.mockRejectedValue(
-          new BadRequestError('Validation failed')
-        );
-
-        // Act & Assert
-        await expect(propertyService.updateProperty(context, propertyId, invalidUpdateData))
-          .rejects.toThrow(BadRequestError);
-      });
+      // Act & Assert
+      await expect(propertyService.updateClientProperty(context, updateData))
+        .rejects.toThrow(NotFoundError);
     });
   });
 
-  describe('deleteProperty', () => {
-    describe('Successful property deletion', () => {
-      it('should delete property successfully', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'property-123';
+  describe('archiveClientProperty', () => {
+    it('should archive property successfully', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'client-123', pid: 'property-456' },
+          url: '/api/properties/property-456'
+        },
+        currentuser: TestDataFactory.createUser(),
+        requestId: 'req-123'
+      };
 
-        const property = TestDataFactory.createProperty({
-          _id: propertyId,
-          ownerId: context.currentuser._id,
-        });
+      const mockClient = TestDataFactory.createClient({ _id: 'client-123' });
+      const mockProperty = TestDataFactory.createProperty({ _id: 'property-456' });
 
-        mockPropertyDAO.findById.mockResolvedValue(property);
-        mockPropertyDAO.deleteById.mockResolvedValue(true);
+      mockClientDAO.getClientByCid.mockResolvedValue(mockClient);
+      mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+      mockPropertyDAO.startSession.mockResolvedValue({});
+      mockPropertyDAO.withTransaction.mockImplementation((session, callback) => callback(session));
+      mockPropertyDAO.updateById.mockResolvedValue({ ...mockProperty, deletedAt: new Date() });
+      mockPropertyCache.invalidateProperty.mockResolvedValue(true);
 
-        // Act
-        const result = await propertyService.deleteProperty(context, propertyId);
+      // Act
+      const result = await propertyService.archiveClientProperty(context);
 
-        // Assert
-        expect(result).toEqual({
-          success: true,
-          message: 'Property deleted successfully',
-        });
-        expect(mockPropertyDAO.deleteById).toHaveBeenCalledWith(propertyId);
-      });
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.message).toBe('Property archived successfully');
     });
 
-    describe('Property deletion errors', () => {
-      it('should handle property not found', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'non-existent-property';
+    it('should handle property not found for archive', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'client-123', pid: 'nonexistent-property' },
+          url: '/api/properties/nonexistent-property'
+        },
+        currentuser: TestDataFactory.createUser(),
+        requestId: 'req-123'
+      };
 
-        mockPropertyDAO.findById.mockResolvedValue(null);
+      const mockClient = TestDataFactory.createClient({ _id: 'client-123' });
 
-        // Act & Assert
-        await expect(propertyService.deleteProperty(context, propertyId))
-          .rejects.toThrow(NotFoundError);
+      mockClientDAO.getClientByCid.mockResolvedValue(mockClient);
+      mockPropertyDAO.findFirst.mockResolvedValue(null);
 
-        expect(mockPropertyDAO.deleteById).not.toHaveBeenCalled();
+      // Act & Assert
+      await expect(propertyService.archiveClientProperty(context))
+        .rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe('validateCsv', () => {
+    it('should validate CSV successfully', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'client-123' },
+          url: '/api/properties/validate-csv'
+        },
+        currentuser: TestDataFactory.createUser(),
+        requestId: 'req-123'
+      };
+
+      const csvData = [
+        { name: 'Property 1', address: '123 Main St', propertyType: 'RESIDENTIAL' },
+        { name: 'Property 2', address: '456 Oak Ave', propertyType: 'COMMERCIAL' }
+      ];
+
+      mockPropertyCsvProcessor.validateCsv.mockResolvedValue({
+        success: true,
+        validRows: csvData,
+        invalidRows: [],
+        totalRows: 2
       });
 
-      it('should handle unauthorized property deletion', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'property-123';
+      // Act
+      const result = await propertyService.validateCsv(context, csvData);
 
-        const property = TestDataFactory.createProperty({
-          _id: propertyId,
-          ownerId: 'different-owner-id',
-        });
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.data.validRows).toHaveLength(2);
+      expect(result.data.invalidRows).toHaveLength(0);
+    });
 
-        mockPropertyDAO.findById.mockResolvedValue(property);
+    it('should handle CSV validation errors', async () => {
+      // Arrange
+      const context = {
+        request: {
+          params: { cid: 'client-123' },
+          url: '/api/properties/validate-csv'
+        },
+        currentuser: TestDataFactory.createUser(),
+        requestId: 'req-123'
+      };
 
-        // Act & Assert
-        await expect(propertyService.deleteProperty(context, propertyId))
-          .rejects.toThrow(ForbiddenError);
+      const csvData = [
+        { name: '', address: '', propertyType: 'INVALID' } // Invalid row
+      ];
 
-        expect(mockPropertyDAO.deleteById).not.toHaveBeenCalled();
+      mockPropertyCsvProcessor.validateCsv.mockResolvedValue({
+        success: false,
+        validRows: [],
+        invalidRows: [{ row: 1, errors: ['Name is required', 'Address is required'] }],
+        totalRows: 1
       });
 
-      it('should handle property with active tenants', async () => {
-        // Arrange
-        const context = {
-          currentuser: TestDataFactory.createUser(),
-        };
-        const propertyId = 'property-with-tenants';
+      // Act
+      const result = await propertyService.validateCsv(context, csvData);
 
-        const property = TestDataFactory.createProperty({
-          _id: propertyId,
-          ownerId: context.currentuser._id,
-          hasActiveTenants: true,
-        });
-
-        mockPropertyDAO.findById.mockResolvedValue(property);
-        mockPropertyDAO.deleteById.mockRejectedValue(
-          new BadRequestError('Cannot delete property with active tenants')
-        );
-
-        // Act & Assert
-        await expect(propertyService.deleteProperty(context, propertyId))
-          .rejects.toThrow(BadRequestError);
-      });
+      // Assert
+      expect(result.success).toBe(false);
+      expect(result.data.validRows).toHaveLength(0);
+      expect(result.data.invalidRows).toHaveLength(1);
     });
   });
 });

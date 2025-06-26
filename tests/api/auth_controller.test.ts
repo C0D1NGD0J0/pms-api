@@ -457,6 +457,7 @@ describe('AuthController - API Tests', () => {
       req = HttpTestHelpers.createAuthRequest(userData, {
         body: { clientId },
       });
+      req.currentuser = userData;
 
       mockAuthService.switchActiveAccount.mockResolvedValue({
         success: true,

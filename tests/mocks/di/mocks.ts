@@ -57,6 +57,7 @@ export const mockClientDAO = createDeepMock({
   insert: jest.fn(),
   findById: jest.fn(),
   findByCid: jest.fn(),
+  getClientByCid: jest.fn(),
 });
 
 export const mockProfileDAO = createDeepMock({
@@ -76,6 +77,15 @@ export const mockPropertyDAO = createDeepMock({
   updateById: jest.fn(),
   deleteById: jest.fn(),
   findAll: jest.fn(),
+  findFirst: jest.fn(),
+  getPropertyUnits: jest.fn(),
+  canAddUnitToProperty: jest.fn(),
+  syncPropertyOccupancyWithUnits: jest.fn(),
+  getClientProperty: jest.fn(),
+  insert: jest.fn(),
+  list: jest.fn(),
+  startSession: jest.fn(),
+  withTransaction: jest.fn(),
 });
 
 export const mockPropertyUnitDAO = createDeepMock({
@@ -84,6 +94,16 @@ export const mockPropertyUnitDAO = createDeepMock({
   findByProperty: jest.fn(),
   updateById: jest.fn(),
   deleteById: jest.fn(),
+  findFirst: jest.fn(),
+  insert: jest.fn(),
+  update: jest.fn(),
+  startSession: jest.fn(),
+  withTransaction: jest.fn(),
+  findUnitsByProperty: jest.fn(),
+  getPropertyUnitInfo: jest.fn(),
+  updatePropertyUnit: jest.fn(),
+  createPropertyUnit: jest.fn(),
+  getNextAvailableUnitNumber: jest.fn(),
 });
 
 // Additional service mocks
@@ -118,6 +138,24 @@ export const mockEventEmitterService = createDeepMock({
 export const mockPropertyQueue = createDeepMock({
   addCsvValidationJob: jest.fn(),
   addCsvImportJob: jest.fn(),
+});
+
+export const mockPropertyUnitQueue = createDeepMock({
+  addToQueue: jest.fn(),
+  processQueue: jest.fn(),
+});
+
+export const mockJobTracker = createDeepMock({
+  trackJob: jest.fn(),
+  getJobStatus: jest.fn(),
+  updateJobStatus: jest.fn(),
+});
+
+export const mockUnitNumberingService = createDeepMock({
+  generateUnitNumber: jest.fn(),
+  validateUnitNumber: jest.fn(),
+  validateUnitNumberUpdate: jest.fn(),
+  detectNumberingPattern: jest.fn(),
 });
 
 export const mockUploadQueue = createDeepMock({

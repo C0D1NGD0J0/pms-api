@@ -234,7 +234,7 @@ describe('PropertyController - API Tests', () => {
         expect(mockPropertyService.addPropertiesFromCsv).toHaveBeenCalledWith(
           clientId,
           csvFile.path,
-          userData
+          userData.sub
         );
       });
     });

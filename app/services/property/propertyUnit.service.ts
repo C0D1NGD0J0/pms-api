@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { JobTracker } from '@caching/jobTracker';
 import { PropertyQueue } from '@queues/property.queue';
 import { PropertyCache } from '@caching/property.cache';
+import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyUnitQueue } from '@queues/propertyUnit.queue';
 import { getRequestDuration, createLogger } from '@utils/index';
@@ -433,8 +434,28 @@ export class PropertyUnitService {
         session
       );
 
+      // Emit event for property occupancy sync if status changed
       if (updateData.status) {
-        await this.propertyDAO.syncPropertyOccupancyWithUnits(pid, currentuser.sub);
+        this.emitterService.emit(EventTypes.UNIT_STATUS_CHANGED, {
+          propertyId: property.id,
+          propertyPid: pid,
+          cid,
+          unitId,
+          userId: currentuser.sub,
+          changeType: 'status_changed',
+          previousStatus: unit.status,
+          newStatus: updateData.status,
+        });
+      } else {
+        // Emit general unit updated event
+        this.emitterService.emit(EventTypes.UNIT_UPDATED, {
+          propertyId: property.id,
+          propertyPid: pid,
+          cid,
+          unitId,
+          userId: currentuser.sub,
+          changeType: 'updated',
+        });
       }
 
       return { data: updatedUnit };
@@ -455,11 +476,34 @@ export class PropertyUnitService {
 
   async archiveUnit(cxt: IRequestContext) {
     const currentuser = cxt.currentuser!;
+    const { cid, pid, unitId } = cxt.request.params;
+
+    // Get property info for event emission
+    const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
+    if (!property) {
+      throw new BadRequestError({ message: 'Property not found.' });
+    }
+
     const updateData = {
       deletedAt: new Date(),
       lastModifiedBy: new Types.ObjectId(currentuser.sub),
     };
-    return this.updatePropertyUnit(cxt, updateData);
+
+    const result = await this.updatePropertyUnit(cxt, updateData);
+
+    // Emit unit archived event for property occupancy sync
+    if (result.success) {
+      this.emitterService.emit(EventTypes.UNIT_ARCHIVED, {
+        propertyId: property.id,
+        propertyPid: pid,
+        cid,
+        unitId,
+        userId: currentuser.sub,
+        changeType: 'archived',
+      });
+    }
+
+    return result;
   }
 
   async setupInspection(cxt: IRequestContext, inspectionData: any) {
@@ -513,6 +557,30 @@ export class PropertyUnitService {
         );
         throw new BadRequestError({
           message: 'Unable to add units to property, maximum capacity reached.',
+        });
+      }
+
+      // Additional validation: Check if adding the batch would exceed the limit
+      if (
+        canAddUnits.maxCapacity > 0 &&
+        canAddUnits.currentCount + data.units.length > canAddUnits.maxCapacity
+      ) {
+        this.log.error(
+          {
+            cid,
+            pid,
+            url: cxt.request.url,
+            userId: currentuser?.sub,
+            requestId: cxt.requestId,
+            duration: getRequestDuration(start).durationInMs,
+            currentCount: canAddUnits.currentCount,
+            maxCapacity: canAddUnits.maxCapacity,
+            unitsToAdd: data.units.length,
+          },
+          'Adding this batch would exceed maximum unit capacity.'
+        );
+        throw new BadRequestError({
+          message: `Cannot add ${data.units.length} units. Property has ${canAddUnits.currentCount}/${canAddUnits.maxCapacity} units (including archived). Adding these units would exceed the limit.`,
         });
       }
 
@@ -589,7 +657,15 @@ export class PropertyUnitService {
       }
 
       if (createdUnits.length > 0) {
-        await this.propertyDAO.syncPropertyOccupancyWithUnits(property.id, currentuser.sub);
+        // Emit batch unit creation event for property occupancy sync
+        this.emitterService.emit(EventTypes.UNIT_BATCH_CREATED, {
+          propertyId: property.id,
+          propertyPid: pid,
+          cid,
+          userId: currentuser.sub,
+          unitsCreated: createdUnits.length,
+          unitsFailed: Object.keys(errors).length,
+        });
       }
 
       return { createdUnits, errors };
@@ -605,7 +681,7 @@ export class PropertyUnitService {
         errorsArray.length > 0
           ? `${result.createdUnits.length} units created successfully, ${errorsArray.length} failed`
           : `All ${result.createdUnits.length} units created successfully`,
-      totalUnits: data.units.length,
+      maxAllowedUnits: data.units.length,
     };
   }
 
@@ -629,7 +705,7 @@ export class PropertyUnitService {
       jobId: jobId.toString(),
       message: 'Unit creation job queued successfully',
       estimatedCompletion: '2-3 minutes',
-      totalUnits: data.units.length,
+      maxAllowedUnits: data.units.length,
       processingType: 'queued',
     };
   }

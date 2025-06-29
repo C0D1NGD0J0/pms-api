@@ -29,7 +29,7 @@ export interface IProperty {
   createdBy: Types.ObjectId;
   address: AddressDetails;
   status: PropertyStatus;
-  totalUnits?: number;
+  maxAllowedUnits?: number;
   yearBuilt?: number;
   name: string;
   cid: string;
@@ -151,7 +151,7 @@ export type UnitInfo = {
   unitStats: UnitStats;
   currentUnits: number;
   canAddUnit: boolean;
-  totalUnits: number;
+  maxAllowedUnits: number;
 };
 
 /**

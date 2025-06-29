@@ -63,14 +63,6 @@ export interface IPropertyUnit {
     internet: boolean;
     storage: boolean;
   };
-  notes?: [
-    {
-      title: string;
-      content: string;
-      createdAt: Date;
-      createdBy: Types.ObjectId;
-    },
-  ];
   utilities: {
     water: boolean;
     centralAC: boolean;
@@ -84,6 +76,12 @@ export interface IPropertyUnit {
     bathrooms?: number;
     maxOccupants?: number;
   };
+  notes?: Array<{
+    title: string;
+    content: string;
+    createdAt: Date;
+    createdBy: Types.ObjectId;
+  }>;
   fees: {
     currency: CURRENCIES;
     rentAmount: number;
@@ -122,7 +120,7 @@ export interface IPropertyUnitDocument extends IPropertyUnit, Document {
     title: string;
     content: string;
     createdAt: Date;
-    createdBy: string;
+    createdBy: Types.ObjectId;
   }>;
   applyRentAdjustment: (percentage: number, userId: string) => Promise<IPropertyUnitDocument>;
   prepareForMaintenance: (reason: string, userId: string) => Promise<IPropertyUnitDocument>;

@@ -337,19 +337,29 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         throw new Error('Property ID is required');
       }
 
-      // Get current units for this property
-      const units = await this.list(
+      // Get ALL units for this property (including archived) to count toward limits
+      const allUnits = await this.list(
         {
           propertyId: new Types.ObjectId(propertyId),
-          deletedAt: null,
+          // Note: Removed deletedAt: null to include archived units in total count
         },
         { limit: 1000 } // Get all units for counting
       );
 
-      const currentUnits = units.items.length;
+      // Get only active units for status calculations
+      const activeUnits = await this.list(
+        {
+          propertyId: new Types.ObjectId(propertyId),
+          deletedAt: null,
+        },
+        { limit: 1000 }
+      );
 
-      // Count units by status
-      const unitStats = units.items.reduce(
+      // Use total count (including archived) for currentUnits to maintain consistency with canAddUnitToProperty
+      const currentUnits = allUnits.items.length;
+
+      // Count units by status (only for active/non-archived units)
+      const unitStats = activeUnits.items.reduce(
         (
           stats: {
             occupied: number;

@@ -54,7 +54,7 @@
     "cors": "^2.8.5",
     "country-state-city": "^3.2.1",
     "cross-env": "^7.0.3",
-    "csurf": "^1.2.2",
+    "csurf": "^1.10.0",
     "csv-parser": "^3.2.0",
     "dayjs": "^1.11.13",
     "dotenv": "^16.4.7",

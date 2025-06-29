@@ -247,7 +247,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
       enum: ['vacant', 'occupied', 'partially_occupied'],
       default: 'vacant',
     },
-    totalUnits: {
+    maxAllowedUnits: {
       type: Number,
       min: 0,
       max: 400,

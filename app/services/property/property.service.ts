@@ -1,20 +1,16 @@
 import Logger from 'bunyan';
 import sanitizeHtml from 'sanitize-html';
 import { FilterQuery, Types } from 'mongoose';
-import { EventTypes } from '@interfaces/index';
 import { PropertyCache } from '@caching/index';
 import { GeoCoderService } from '@services/external';
 import { PropertyCsvProcessor } from '@services/csv';
-import { createLogger, JOB_NAME } from '@utils/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
-import { PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
-import {
-  IPropertyFilterQuery,
-  IPropertyDocument,
-  NewPropertyType,
-} from '@interfaces/property.interface';
+import { PropertyTypeManager } from '@utils/PropertyTypeManager';
+import { getRequestDuration, createLogger, JOB_NAME } from '@utils/index';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -22,17 +18,27 @@ import {
   NotFoundError,
 } from '@shared/customErrors';
 import {
+  IPropertyWithUnitInfo,
+  IPropertyFilterQuery,
+  IPropertyDocument,
+  NewPropertyType,
+} from '@interfaces/property.interface';
+import {
   ExtractedMediaFile,
   ISuccessReturnData,
   IPaginationQuery,
+  IRequestContext,
   PaginateResult,
   UploadResult,
 } from '@interfaces/utils.interface';
+
+import { PropertyValidationService } from './propertyValidation.service';
 
 interface IConstructor {
   propertyCsvProcessor: PropertyCsvProcessor;
   emitterService: EventEmitterService;
   geoCoderService: GeoCoderService;
+  propertyUnitDAO: PropertyUnitDAO;
   propertyCache: PropertyCache;
   propertyQueue: PropertyQueue;
   uploadQueue: UploadQueue;
@@ -47,6 +53,7 @@ export class PropertyService {
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly propertyQueue: PropertyQueue;
   private readonly propertyCache: PropertyCache;
   private readonly geoCoderService: GeoCoderService;
@@ -57,6 +64,7 @@ export class PropertyService {
     clientDAO,
     profileDAO,
     propertyDAO,
+    propertyUnitDAO,
     uploadQueue,
     propertyCache,
     emitterService,
@@ -67,6 +75,7 @@ export class PropertyService {
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
     this.uploadQueue = uploadQueue;
     this.propertyQueue = propertyQueue;
     this.propertyCache = propertyCache;
@@ -74,13 +83,67 @@ export class PropertyService {
     this.geoCoderService = geoCoderService;
     this.log = createLogger('PropertyService');
     this.propertyCsvProcessor = propertyCsvProcessor;
+
+    // Initialize event listeners
+    this.setupEventListeners();
+  }
+
+  private setupEventListeners(): void {
+    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
+    this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
+
+    // Unit-related events for property occupancy sync
+    this.emitterService.on(EventTypes.UNIT_CREATED, this.handleUnitChanged.bind(this));
+    this.emitterService.on(EventTypes.UNIT_UPDATED, this.handleUnitChanged.bind(this));
+    this.emitterService.on(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged.bind(this));
+    this.emitterService.on(EventTypes.UNIT_UNARCHIVED, this.handleUnitChanged.bind(this));
+    this.emitterService.on(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged.bind(this));
+    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged.bind(this));
+
+    this.log.info('PropertyService event listeners initialized');
   }
 
   async addProperty(
-    cid: string,
-    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
-    currentUser: ICurrentUser
+    cxt: IRequestContext,
+    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType
   ): Promise<ISuccessReturnData> {
+    const {
+      params: { cid },
+    } = cxt.request;
+    const currentuser = cxt.currentuser!;
+    const start = process.hrtime.bigint();
+
+    this.log.info('Starting property creation process');
+
+    const validationResult = PropertyValidationService.validateProperty(propertyData);
+    if (!validationResult.valid) {
+      this.log.error(
+        {
+          cid,
+          url: cxt.request.url,
+          userId: currentuser.sub,
+          requestId: cxt.requestId,
+          errors: validationResult.errors,
+          propertyType: propertyData.propertyType,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Property validation failed'
+      );
+
+      const errorInfo: { [key: string]: string[] } = {};
+      validationResult.errors.forEach((error) => {
+        if (!errorInfo[error.field]) {
+          errorInfo[error.field] = [];
+        }
+        errorInfo[error.field].push(error.message);
+      });
+
+      throw new ValidationRequestError({
+        message: 'Property validation failed. Please correct the errors and try again.',
+        errorInfo,
+      });
+    }
+
     const session = await this.propertyDAO.startSession();
     const result = await this.propertyDAO.withTransaction(session, async (session) => {
       const client = await this.clientDAO.getClientByCid(cid);
@@ -89,14 +152,11 @@ export class PropertyService {
         throw new BadRequestError({ message: 'Unable to add property to this account.' });
       }
 
-      const { fullAddress } = propertyData;
-      if (!fullAddress) {
-        throw new BadRequestError({ message: 'Property address is required.' });
-      }
-
+      const fullAddress = propertyData.address.fullAddress;
+      // address uniqueness check
       if (fullAddress && cid) {
         const existingProperty = await this.propertyDAO.findPropertyByAddress(
-          fullAddress.toString(),
+          fullAddress,
           cid.toString()
         );
 
@@ -107,40 +167,12 @@ export class PropertyService {
         }
       }
 
-      const gCode = await this.geoCoderService.parseLocation(fullAddress);
-      if (!gCode.success) {
-        throw new InvalidRequestError({ message: 'Invalid location provided.' });
-      }
-      propertyData.computedLocation = {
-        coordinates: gCode.data?.coordinates || [0, 0],
-      };
-      propertyData.address = {
-        city: gCode.data?.city,
-        state: gCode.data?.state,
-        street: gCode.data?.street,
-        country: gCode.data?.country,
-        postCode: gCode.data?.postCode,
-        latAndlon: gCode.data?.latAndlon,
-        streetNumber: gCode.data?.streetNumber,
-        fullAddress: gCode.data?.fullAddress,
-      };
-      propertyData.createdBy = new Types.ObjectId(currentUser.sub);
+      this.propertyTypeValidation(propertyData);
+
+      propertyData.createdBy = new Types.ObjectId(currentuser.sub);
       propertyData.managedBy = propertyData.managedBy
         ? new Types.ObjectId(propertyData.managedBy)
-        : new Types.ObjectId(currentUser.sub);
-
-      // if (propertyData.scannedFiles && propertyData.documents) {
-      //   propertyData.documents = propertyData.documents.map((doc, index) => {
-      //     return {
-      //       documentType: doc.documentType,
-      //       uploadedBy: new Types.ObjectId(currentUser.sub),
-      //       description: doc.description,
-      //       uploadedAt: new Date(),
-      //       status: 'active',
-      //       documentName:
-      //     };
-      //   });
-      // }
+        : new Types.ObjectId(currentuser.sub);
 
       const property = await this.propertyDAO.createProperty(
         {
@@ -154,22 +186,95 @@ export class PropertyService {
         throw new BadRequestError({ message: 'Unable to create property.' });
       }
 
+      this.log.info(
+        {
+          propertyId: property.id,
+          propertyName: property.name,
+          propertyType: property.propertyType,
+        },
+        'Property created successfully'
+      );
+
       return { property };
     });
+
     if (propertyData.scannedFiles && propertyData.scannedFiles.length > 0) {
       this.uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
         resource: {
           fieldName: 'documents',
           resourceType: 'unknown',
           resourceName: 'property',
-          actorId: currentUser.sub,
+          actorId: currentuser.sub,
           resourceId: result.property.id,
         },
         files: propertyData.scannedFiles,
       });
     }
+
     await this.propertyCache.cacheProperty(cid, result.property.id, result.property);
-    return { success: true, data: result.property, message: 'Property created successfully' };
+    return { success: true, data: result.property, message: 'Property created successfully.' };
+  }
+
+  private propertyTypeValidation(propertyData: NewPropertyType): void {
+    const { propertyType, maxAllowedUnits = 1, specifications, fees } = propertyData;
+
+    if (!propertyType) return;
+
+    const rules = PropertyTypeManager.getRules(propertyType);
+    const errors: string[] = [];
+
+    if (rules.isMultiUnit) {
+      if (maxAllowedUnits < rules.minUnits) {
+        errors.push(`${propertyType} properties require at least ${rules.minUnits} units`);
+      }
+
+      // For multi-unit properties, bedrooms/bathrooms should be managed at unit level
+      if (specifications?.bedrooms && specifications.bedrooms > 0) {
+        this.log.warn(
+          {
+            propertyType,
+            bedrooms: specifications.bedrooms,
+          },
+          `${propertyType} property has bedrooms defined at property level`
+        );
+      }
+    }
+
+    if (propertyType === 'commercial') {
+      if (specifications?.bedrooms && specifications.bedrooms > 0) {
+        errors.push('Commercial properties should not have bedrooms defined at property level');
+      }
+
+      if (!specifications?.totalArea || specifications.totalArea < 200) {
+        errors.push('Commercial properties must have at least 200 sq ft of total area');
+      }
+    }
+
+    if (propertyType === 'industrial') {
+      if (!specifications?.lotSize) {
+        errors.push('Industrial properties must specify lot size');
+      }
+
+      if (!specifications?.totalArea || specifications.totalArea < 1000) {
+        errors.push('Industrial properties must have at least 1000 sq ft of total area');
+      }
+    }
+
+    if (propertyData.occupancyStatus === 'occupied') {
+      const rentalAmount =
+        typeof fees?.rentalAmount === 'string' ? parseFloat(fees.rentalAmount) : fees?.rentalAmount;
+
+      if (!rentalAmount || rentalAmount <= 0) {
+        errors.push('Occupied properties must have a valid rental amount');
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new ValidationRequestError({
+        message: 'Property type business rule validation failed',
+        errorInfo: { propertyType: errors },
+      });
+    }
   }
 
   async addPropertiesFromCsv(
@@ -390,7 +495,7 @@ export class PropertyService {
       };
     }
     const properties = await this.propertyDAO.getPropertiesByClientId(cid, filter, opts);
-    await this.propertyCache.saveClientProperties(cid, properties.data, {
+    await this.propertyCache.saveClientProperties(cid, properties.items, {
       filter,
       pagination: opts,
     });
@@ -398,7 +503,7 @@ export class PropertyService {
     return {
       success: true,
       data: {
-        items: properties.data,
+        items: properties.items,
         pagination: properties.pagination,
       },
     };
@@ -408,7 +513,7 @@ export class PropertyService {
     cid: string,
     pid: string,
     _currentUser: ICurrentUser
-  ): Promise<ISuccessReturnData> {
+  ): Promise<ISuccessReturnData<IPropertyWithUnitInfo>> {
     if (!cid || !pid) {
       throw new BadRequestError({ message: 'Client ID and Property ID are required.' });
     }
@@ -427,8 +532,15 @@ export class PropertyService {
     if (!property) {
       throw new NotFoundError({ message: 'Unable to find property.' });
     }
+    const unitInfo = await this.getUnitInfoForProperty(property);
 
-    return { success: true, data: property };
+    return {
+      success: true,
+      data: {
+        ...property.toJSON(),
+        unitInfo,
+      },
+    };
   }
 
   async updateClientProperty(
@@ -440,17 +552,16 @@ export class PropertyService {
     updateData: Partial<IPropertyDocument>
   ): Promise<ISuccessReturnData> {
     const { cid, pid } = ctx;
-    const validationErrors: { [x: string]: string[] } = {};
 
     if (!cid || !pid) {
       this.log.error('Client ID and Property ID are required');
-      throw new BadRequestError({ message: '.' });
+      throw new BadRequestError({ message: 'Client ID and Property ID are required.' });
     }
 
     const client = await this.clientDAO.getClientByCid(cid);
     if (!client) {
       this.log.error(`Client with cid ${cid} not found`);
-      throw new InvalidRequestError();
+      throw new InvalidRequestError({ message: 'Client not found.' });
     }
 
     const property = await this.propertyDAO.findFirst({
@@ -462,6 +573,35 @@ export class PropertyService {
       throw new NotFoundError({ message: 'Unable to find property.' });
     }
 
+    if (
+      updateData.propertyType ||
+      updateData.specifications ||
+      updateData.financialDetails ||
+      updateData.fees
+    ) {
+      const dataToValidate = {
+        ...property,
+        ...updateData,
+        fullAddress: property.address?.fullAddress || 'existing-address',
+      } as NewPropertyType;
+
+      const validationResult = PropertyValidationService.validateProperty(dataToValidate, true);
+      if (!validationResult.valid) {
+        const errorInfo: { [key: string]: string[] } = {};
+        validationResult.errors.forEach((error) => {
+          if (!errorInfo[error.field]) {
+            errorInfo[error.field] = [];
+          }
+          errorInfo[error.field].push(error.message);
+        });
+
+        throw new ValidationRequestError({
+          message: 'Update validation failed. Please correct the errors and try again.',
+          errorInfo,
+        });
+      }
+    }
+
     if (property.description?.text !== updateData.description?.text) {
       updateData.description = {
         text: sanitizeHtml(updateData.description?.text || ''),
@@ -469,32 +609,6 @@ export class PropertyService {
       };
     }
 
-    if (updateData.propertyType) {
-      validationErrors['propertyType'] = [];
-      switch (updateData.propertyType) {
-        case 'condominium':
-        case 'apartment':
-          if (updateData.totalUnits !== undefined && updateData.totalUnits < 1) {
-            validationErrors['propertyType'].push(
-              'Apartments and condominiums must have at least 1 unit'
-            );
-          }
-          break;
-
-        case 'commercial':
-        case 'industrial':
-          if (
-            updateData.specifications &&
-            updateData.specifications.bedrooms !== undefined &&
-            updateData.specifications.bedrooms > 0
-          ) {
-            validationErrors['propertyType'].push(
-              'Commercial properties typically do not have bedrooms'
-            );
-          }
-          break;
-      }
-    }
     updateData.lastModifiedBy = new Types.ObjectId(ctx.currentuser.sub);
     if (updateData.financialDetails) {
       if (updateData.financialDetails.purchaseDate) {
@@ -511,33 +625,7 @@ export class PropertyService {
     }
 
     if (updateData.occupancyStatus) {
-      if (updateData.occupancyStatus === 'occupied' && property.occupancyStatus !== 'occupied') {
-        if (
-          !property.fees?.rentalAmount &&
-          (!updateData.fees || updateData.fees.rentalAmount === undefined)
-        ) {
-          validationErrors['occupancyStatus'].push('Occupied properties must have a rental amount');
-        }
-      }
-
-      if (
-        updateData.occupancyStatus === 'partially_occupied' &&
-        property.totalUnits &&
-        property.totalUnits <= 1 &&
-        (!updateData.totalUnits || updateData.totalUnits <= 1)
-      ) {
-        validationErrors['occupancyStatus'].push(
-          'Single-unit properties cannot be partially occupied'
-        );
-      }
-    }
-
-    if (Object.values(validationErrors).length > 0) {
-      this.log.error('Validation errors occurred', { validationErrors });
-      throw new ValidationRequestError({
-        message: 'Unable to process request due to validation errors',
-        errorInfo: validationErrors,
-      });
+      this.validateOccupancyStatusChange(property, updateData);
     }
 
     const updatedProperty = await this.propertyDAO.update(
@@ -555,7 +643,40 @@ export class PropertyService {
       throw new BadRequestError({ message: 'Unable to update property.' });
     }
 
+    await this.propertyCache.invalidateProperty(cid, property.id);
     return { success: true, data: updatedProperty, message: 'Property updated successfully' };
+  }
+
+  private validateOccupancyStatusChange(
+    existingProperty: IPropertyDocument,
+    updateData: Partial<IPropertyDocument>
+  ): void {
+    const errors: string[] = [];
+
+    if (
+      updateData.occupancyStatus === 'occupied' &&
+      existingProperty.occupancyStatus !== 'occupied'
+    ) {
+      // Check if rental amount is set
+      const hasRentalAmount = existingProperty.fees?.rentalAmount || updateData.fees?.rentalAmount;
+      if (!hasRentalAmount) {
+        errors.push('Occupied properties must have a rental amount');
+      }
+    }
+
+    if (updateData.occupancyStatus === 'partially_occupied') {
+      const maxAllowedUnits = updateData.maxAllowedUnits || existingProperty.maxAllowedUnits || 1;
+      if (maxAllowedUnits <= 1) {
+        errors.push('Single-unit properties cannot be partially occupied');
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new ValidationRequestError({
+        message: 'Occupancy status change validation failed',
+        errorInfo: { occupancyStatus: errors },
+      });
+    }
   }
 
   async archiveClientProperty(
@@ -593,5 +714,325 @@ export class PropertyService {
     await this.propertyCache.invalidatePropertyLists(cid);
 
     return { success: true, data: null, message: 'Property archived successfully' };
+  }
+
+  async markDocumentsAsFailed(propertyId: string, errorMessage: string): Promise<void> {
+    try {
+      const property = await this.propertyDAO.findById(propertyId);
+      if (!property || !property.documents) return;
+
+      const updateOperations: any = {};
+      const now = new Date();
+
+      property.documents.forEach((doc, index) => {
+        const isPending = doc.status === 'pending';
+
+        if (isPending) {
+          updateOperations[`documents.${index}.status`] = 'failed';
+          updateOperations[`documents.${index}.errorMessage`] = errorMessage;
+          updateOperations[`documents.${index}.processingCompleted`] = now;
+        }
+      });
+
+      if (Object.keys(updateOperations).length > 0) {
+        await this.propertyDAO.update(
+          { _id: new Types.ObjectId(propertyId) },
+          { $set: updateOperations }
+        );
+
+        this.log.warn(`Marked documents as failed for property ${propertyId}`, { errorMessage });
+      }
+    } catch (error) {
+      this.log.error(`Error marking documents as failed for property ${propertyId}:`, error);
+    }
+  }
+
+  private async handleUploadCompleted(payload: UploadCompletedPayload): Promise<void> {
+    const { results, resourceName, resourceId, actorId } = payload;
+
+    if (resourceName !== 'property') {
+      this.log.debug('Ignoring upload completed event for non-property resource', {
+        resourceName,
+      });
+      return;
+    }
+
+    try {
+      await this.updatePropertyDocuments(resourceId, results, actorId);
+
+      this.log.info(
+        {
+          propertyId: resourceId,
+        },
+        'Successfully processed upload completed event'
+      );
+    } catch (error) {
+      this.log.error(
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          propertyId: resourceId,
+        },
+        'Error processing upload completed event'
+      );
+
+      try {
+        await this.markDocumentsAsFailed(
+          resourceId,
+          `Failed to process completed upload: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
+      } catch (markFailedError) {
+        this.log.error(
+          {
+            error: markFailedError instanceof Error ? markFailedError.message : 'Unknown error',
+            propertyId: resourceId,
+          },
+          'Failed to mark documents as failed after upload processing error'
+        );
+      }
+    }
+  }
+
+  private async handleUploadFailed(payload: UploadFailedPayload): Promise<void> {
+    const { error, resourceType, resourceId } = payload;
+
+    this.log.info('Received UPLOAD_FAILED event', {
+      resourceType,
+      resourceId,
+      error: error.message,
+    });
+
+    try {
+      await this.markDocumentsAsFailed(resourceId, error.message);
+
+      this.log.info('Successfully processed upload failed event', {
+        propertyId: resourceId,
+      });
+    } catch (markFailedError) {
+      this.log.error('Error processing upload failed event', {
+        error: markFailedError instanceof Error ? markFailedError.message : 'Unknown error',
+        propertyId: resourceId,
+      });
+    }
+  }
+
+  private async handleUnitChanged(payload: any): Promise<void> {
+    try {
+      this.log.info(
+        {
+          propertyId: payload.propertyId,
+          propertyPid: payload.propertyPid,
+          cid: payload.cid,
+          changeType: payload.changeType,
+          unitId: payload.unitId,
+        },
+        'Processing unit change event for property occupancy sync'
+      );
+
+      // Sync property occupancy status based on current unit data
+      await this.propertyDAO.syncPropertyOccupancyWithUnitsEnhanced(
+        payload.propertyId,
+        payload.userId
+      );
+
+      // Invalidate property cache to ensure fresh data on next request
+      await this.propertyCache.invalidateProperty(payload.cid, payload.propertyPid);
+      await this.propertyCache.invalidatePropertyLists(payload.cid);
+
+      this.log.info(
+        {
+          propertyId: payload.propertyId,
+          propertyPid: payload.propertyPid,
+          changeType: payload.changeType,
+        },
+        'Successfully synced property occupancy after unit change'
+      );
+    } catch (error) {
+      this.log.error(
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          propertyId: payload.propertyId,
+          propertyPid: payload.propertyPid,
+          changeType: payload.changeType,
+        },
+        'Failed to sync property occupancy after unit change'
+      );
+    }
+  }
+
+  private async handleUnitBatchChanged(payload: any): Promise<void> {
+    try {
+      this.log.info(
+        {
+          propertyId: payload.propertyId,
+          propertyPid: payload.propertyPid,
+          cid: payload.cid,
+          unitsCreated: payload.unitsCreated,
+          unitsFailed: payload.unitsFailed,
+        },
+        'Processing unit batch change event for property occupancy sync'
+      );
+
+      // Only sync if at least one unit was created successfully
+      if (payload.unitsCreated > 0) {
+        await this.propertyDAO.syncPropertyOccupancyWithUnitsEnhanced(
+          payload.propertyId,
+          payload.userId
+        );
+        await this.propertyCache.invalidateProperty(payload.cid, payload.propertyPid);
+        await this.propertyCache.invalidatePropertyLists(payload.cid);
+
+        this.log.info(
+          {
+            propertyId: payload.propertyId,
+            propertyPid: payload.propertyPid,
+            unitsCreated: payload.unitsCreated,
+          },
+          'Successfully synced property occupancy after batch unit creation'
+        );
+      } else {
+        this.log.info(
+          {
+            propertyId: payload.propertyId,
+            propertyPid: payload.propertyPid,
+            unitsFailed: payload.unitsFailed,
+          },
+          'Skipping property occupancy sync - no units were created successfully'
+        );
+      }
+    } catch (error) {
+      this.log.error(
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          propertyId: payload.propertyId,
+          propertyPid: payload.propertyPid,
+          unitsCreated: payload.unitsCreated,
+        },
+        'Failed to sync property occupancy after batch unit creation'
+      );
+    }
+  }
+
+  async getUnitInfoForProperty(property: IPropertyDocument): Promise<{
+    canAddUnit: boolean;
+    maxAllowedUnits: number;
+    currentUnits: number;
+    availableSpaces: number;
+    lastUnitNumber?: string;
+    suggestedNextUnitNumber?: string;
+    unitStats: {
+      occupied: number;
+      vacant: number;
+      maintenance: number;
+      available: number;
+      reserved: number;
+      inactive: number;
+    };
+  }> {
+    const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
+    const maxAllowedUnits = property.maxAllowedUnits || 1;
+
+    if (isMultiUnit) {
+      const unitData = await this.propertyUnitDAO.getPropertyUnitInfo(property.id);
+      const canAddUnitResult = await this.propertyDAO.canAddUnitToProperty(property.id);
+      const availableSpaces = Math.max(0, maxAllowedUnits - unitData.currentUnits);
+
+      let lastUnitNumber: string | undefined;
+      let suggestedNextUnitNumber: string | undefined;
+
+      if (unitData.currentUnits > 0) {
+        try {
+          const existingUnitNumbers = await this.propertyUnitDAO.getExistingUnitNumbers(
+            property.id
+          );
+
+          if (existingUnitNumbers.length > 0) {
+            // Find the highest numerical unit number
+            const numericUnits = existingUnitNumbers
+              .map((num) => {
+                const match = num.match(/(\d+)/);
+                return match ? parseInt(match[1], 10) : 0;
+              })
+              .filter((num) => num > 0);
+
+            if (numericUnits.length > 0) {
+              const highestNumber = Math.max(...numericUnits);
+              lastUnitNumber = highestNumber.toString();
+
+              // get suggested next unit number
+              suggestedNextUnitNumber = await this.propertyUnitDAO.getNextAvailableUnitNumber(
+                property.id,
+                'sequential'
+              );
+            } else {
+              // No numeric patterns found, get the last unit alphabetically
+              lastUnitNumber = existingUnitNumbers.sort().pop();
+              suggestedNextUnitNumber = await this.propertyUnitDAO.getNextAvailableUnitNumber(
+                property.id,
+                'custom'
+              );
+            }
+          }
+        } catch (error) {
+          this.log.warn(`Error getting unit numbers for property ${property.id}:`, error);
+          // continue without unit numbering info
+        }
+      } else {
+        suggestedNextUnitNumber = this.propertyUnitDAO.getSuggestedStartingUnitNumber(
+          property.propertyType
+        );
+      }
+
+      return {
+        canAddUnit: canAddUnitResult.canAdd,
+        maxAllowedUnits,
+        currentUnits: unitData.currentUnits,
+        availableSpaces,
+        lastUnitNumber,
+        suggestedNextUnitNumber,
+        unitStats: unitData.unitStats,
+      };
+    } else {
+      // Single-unit property: derive stats from property status
+      const unitStats = {
+        occupied: 0,
+        vacant: 0,
+        maintenance: 0,
+        available: 0,
+        reserved: 0,
+        inactive: 0,
+      };
+
+      // map property occupancy status to unit stats
+      switch (property.occupancyStatus) {
+        case 'partially_occupied':
+          unitStats.occupied = 1;
+          break;
+        case 'occupied':
+          unitStats.occupied = 1;
+          break;
+        case 'vacant':
+          unitStats.available = 1;
+          break;
+        default:
+          unitStats.available = 1;
+          break;
+      }
+
+      // For single-unit properties, suggest unit numbers if they want to convert to multi-unit
+      const suggestedNextUnitNumber =
+        property.propertyType === 'house' || property.propertyType === 'townhouse'
+          ? '2' // If converting house to duplex, start with unit 2
+          : this.propertyUnitDAO.getSuggestedStartingUnitNumber(property.propertyType);
+
+      return {
+        canAddUnit: false, // Single-unit properties typically can't add more units
+        maxAllowedUnits: 1,
+        currentUnits: 1, // Single-unit property always has 1 unit (itself)
+        availableSpaces: 0, // No space to add more units
+        lastUnitNumber: '1', // The property itself can be considered unit 1
+        suggestedNextUnitNumber,
+        unitStats,
+      };
+    }
   }
 }

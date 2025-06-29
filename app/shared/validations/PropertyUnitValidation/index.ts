@@ -1,0 +1,21 @@
+import {
+  BatchPatternValidationSchema,
+  UnitNumberSuggestionSchema,
+  CreateUnitsSchemaRefined,
+  PatternValidationSchema,
+  UploadUnitMediaSchema,
+  UnitInspectionSchema,
+  CreateUnitSchema,
+  UpdateUnitSchema,
+} from './schemas';
+
+export class PropertyUnitValidations {
+  static batchPatternValidation = BatchPatternValidationSchema;
+  static createUnit = CreateUnitSchema;
+  static createUnits = CreateUnitsSchemaRefined;
+  static inspectUnit = UnitInspectionSchema;
+  static patternValidation = PatternValidationSchema;
+  static unitNumberSuggestion = UnitNumberSuggestionSchema;
+  static updateUnit = UpdateUnitSchema;
+  static uploadUnitMedia = UploadUnitMediaSchema;
+}

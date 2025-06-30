@@ -1,13 +1,12 @@
 import { Job } from 'bull';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
+import { EventEmitterService } from '@services/index';
 import { DiskStorage, S3Service } from '@services/fileUpload';
-import { EventEmitterService, PropertyService } from '@services/index';
-import { UploadJobData, ResourceInfo, UploadResult, EventTypes } from '@interfaces/index';
+import { UploadJobData, EventTypes } from '@interfaces/index';
 
 interface IConstructor {
   emitterService: EventEmitterService;
-  propertyService: PropertyService;
   s3Service: S3Service;
 }
 
@@ -36,13 +35,54 @@ export class UploadWorker {
     }
 
     try {
+      job.progress(20);
+      this.log.info(`Starting S3 upload for ${files.length} files`, {
+        resourceName: resource.resourceName,
+        resourceId: resource.resourceId,
+      });
+
       const result = await this.awsS3Service.uploadFiles(files, resource);
-      await this.updateResourceWithFileInfo(result, resource);
+
+      job.progress(70);
+      this.log.info('S3 upload completed, emitting UPLOAD_COMPLETED event');
+
+      this.emitterService.emit(EventTypes.UPLOAD_COMPLETED, {
+        results: result,
+        actorId: resource.actorId,
+        resourceType: resource.resourceType || 'document',
+        resourceName: resource.resourceName,
+        resourceId: resource.resourceId,
+      });
+
+      job.progress(90);
+
       const filesNames = result.map((file) => file.filename);
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, filesNames);
-      Promise.resolve('Image uploaded successfully');
+
+      job.progress(100);
+      this.log.info('Document upload process completed successfully');
+
+      Promise.resolve('Documents uploaded successfully');
     } catch (error: any) {
-      this.log.error(`Error uploading image: ${error.message}`);
+      this.log.error(
+        {
+          resourceName: resource.resourceName,
+          resourceId: resource.resourceId,
+          error: error.stack,
+        },
+        `Error uploading documents: ${error.message}`
+      );
+
+      this.emitterService.emit(EventTypes.UPLOAD_FAILED, {
+        error: {
+          message: error.message,
+          code: error.code,
+          stack: error.stack,
+        },
+        resourceType: resource.resourceType || 'document',
+        resourceId: resource.resourceId,
+      });
+
       return Promise.reject(new Error(error.message));
     }
   };
@@ -69,21 +109,4 @@ export class UploadWorker {
     }
     this.log.info('Deleting remote asset');
   };
-
-  private async updateResourceWithFileInfo(
-    uploadResults: UploadResult[],
-    resource: ResourceInfo
-  ): Promise<void> {
-    switch (resource.resourceName) {
-      case 'property':
-        // await this.propertyService.updatePropertyDocuments(
-        //   resource.resourceId,
-        //   uploadResults,
-        //   resource.actorId
-        // );
-        break;
-      default:
-        this.log.warn(`Unknown resource type: ${resource.resourceName}`);
-    }
-  }
 }

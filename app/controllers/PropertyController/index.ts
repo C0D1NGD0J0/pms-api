@@ -1,9 +1,8 @@
-import sanitizeHtml from 'sanitize-html';
-import { Response, Request } from 'express';
+import { Response } from 'express';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyService } from '@services/index';
-import { ExtractedMediaFile } from '@interfaces/utils.interface';
 import propertyFormMeta from '@shared/constants/propertyFormMeta.json';
+import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
 import { IPropertyFilterQuery, PropertyType } from '@interfaces/property.interface';
 
 interface IConstructor {
@@ -16,22 +15,12 @@ export class PropertyController {
     this.propertyService = propertyService;
   }
 
-  create = async (req: Request, res: Response) => {
-    const { cid } = req.params;
-    const { currentuser } = req.context;
-
-    const newPropertyData = {
-      ...req.body,
-      description: {
-        text: sanitizeHtml(req.body.description?.text || ''),
-        html: sanitizeHtml(req.body.description?.html || ''),
-      },
-    };
-    const newProperty = await this.propertyService.addProperty(cid, newPropertyData, currentuser);
+  create = async (req: AppRequest, res: Response) => {
+    const newProperty = await this.propertyService.addProperty(req.context, req.body);
     res.status(httpStatusCodes.OK).json({ success: true, data: newProperty });
   };
 
-  validateCsv = async (req: Request, res: Response) => {
+  validateCsv = async (req: AppRequest, res: Response) => {
     const { cid } = req.params;
     const { currentuser } = req.context;
 
@@ -46,7 +35,7 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  createPropertiesFromCsv = async (req: Request, res: Response) => {
+  createPropertiesFromCsv = async (req: AppRequest, res: Response) => {
     const { cid } = req.params;
     const { currentuser } = req.context;
     if (!req.body.scannedFiles) {
@@ -64,7 +53,7 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  getClientProperties = async (req: Request, res: Response) => {
+  getClientProperties = async (req: AppRequest, res: Response) => {
     const { page, limit, sort, sortBy } = req.query;
     const { cid } = req.params;
 
@@ -111,11 +100,11 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(data);
   };
 
-  getPropertyUnits = async (req: Request, res: Response) => {
+  getPropertyUnits = async (req: AppRequest, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  getProperty = async (req: Request, res: Response) => {
+  getProperty = async (req: AppRequest, res: Response) => {
     const { cid, pid } = req.params;
     const { currentuser } = req.context;
 
@@ -123,7 +112,7 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(data);
   };
 
-  updateClientProperty = async (req: Request, res: Response) => {
+  updateClientProperty = async (req: AppRequest, res: Response) => {
     const { cid, pid } = req.params;
     const { currentuser } = req.context;
     const ctx = {
@@ -136,7 +125,7 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json({ ...result });
   };
 
-  archiveProperty = async (req: Request, res: Response) => {
+  archiveProperty = async (req: AppRequest, res: Response) => {
     const { cid, pid } = req.params;
     const { currentuser } = req.context;
 
@@ -144,38 +133,46 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(data);
   };
 
-  verifyOccupancyStatus = async (req: Request, res: Response) => {
+  verifyOccupancyStatus = async (req: AppRequest, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  search = async (req: Request, res: Response) => {
+  search = async (req: AppRequest, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  addMediaToProperty = async (req: Request, res: Response) => {
+  addMediaToProperty = async (req: AppRequest, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  deleteMediaFromProperty = async (req: Request, res: Response) => {
+  deleteMediaFromProperty = async (req: AppRequest, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  checkAvailability = async (req: Request, res: Response) => {
+  checkAvailability = async (req: AppRequest, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  getNearbyProperties = async (req: Request, res: Response) => {
+  getNearbyProperties = async (req: AppRequest, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  restorArchivedProperty = async (req: Request, res: Response) => {
+  restorArchivedProperty = async (req: AppRequest, res: Response) => {
     res.status(httpStatusCodes.OK).json({ success: true });
   };
 
-  getPropertyFormMetadata = async (req: Request, res: Response) => {
+  getPropertyFormMetadata = async (req: AppRequest, res: Response) => {
+    const formType = req.query.formType as 'propertyForm' | 'unitForm';
+    if (formType && !propertyFormMeta[formType]) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: `Invalid form type: ${formType}`,
+      });
+    }
+
     res.status(httpStatusCodes.OK).json({
       success: true,
-      data: propertyFormMeta,
+      data: propertyFormMeta[formType] || {},
     });
   };
 }

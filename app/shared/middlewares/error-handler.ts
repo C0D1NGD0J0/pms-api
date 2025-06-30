@@ -9,7 +9,7 @@ import { handleMongoError, CustomError } from '@shared/customErrors';
 const logger = createLogger('ErrorHandler_Middleware');
 
 export const errorHandlerMiddleware = async (
-  err: { statusCode?: number; errors: unknown[] } & Error,
+  err: { statusCode?: number; errors: unknown[]; errorInfo?: Record<string, string[]> } & Error,
   req: Request,
   res: Response,
   next: NextFunction
@@ -30,6 +30,7 @@ export const errorHandlerMiddleware = async (
     message,
     statusCode,
     ...(err.errors?.length ? { errors: err.errors } : {}),
+    ...(err.errorInfo ? { errorInfo: err.errorInfo } : {}),
   };
 
   if (envVariables.SERVER.ENV === 'development') {

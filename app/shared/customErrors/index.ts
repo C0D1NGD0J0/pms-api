@@ -7,14 +7,14 @@ import { httpStatusCodes } from '@utils/index';
 export class CustomError extends Error {
   public readonly statusCode: number;
   public readonly isOperational: boolean;
-  public readonly errorInfo?: Record<string, string>[];
+  public readonly errorInfo?: Record<string, string[]>;
   public readonly originalError?: Error;
 
   constructor(options: {
     message: string;
     statusCode: number;
     isOperational?: boolean;
-    errorInfo?: Record<string, string>[];
+    errorInfo?: Record<string, string[]>;
     originalError?: Error;
   }) {
     super(options.message);
@@ -30,32 +30,13 @@ export class CustomError extends Error {
 }
 
 /**
- * Error for validation failures
- */
-export class ValidationRequestError extends CustomError {
-  constructor(options?: {
-    message: string;
-    errorInfo?: Record<string, string>[] | { [key: string]: string[] };
-    statusCode?: number;
-    originalError?: Error;
-  }) {
-    super({
-      message: options?.message || 'Validation Request.',
-      statusCode: options?.statusCode || httpStatusCodes.UNPROCESSABLE,
-      errorInfo: options?.errorInfo,
-      originalError: options?.originalError,
-    });
-  }
-}
-
-/**
  * Error for corrupted file uploads
  */
 export class CorruptedFileRequestError extends CustomError {
   constructor(options?: {
     message?: string;
     statusCode?: number;
-    errorInfo?: Record<string, string>[];
+    errorInfo?: Record<string, string[]>;
     originalError?: Error;
   }) {
     super({
@@ -74,11 +55,30 @@ export class InvalidRequestError extends CustomError {
   constructor(options?: {
     message: string;
     statusCode?: number;
-    errorInfo?: Record<string, string>[];
+    errorInfo?: Record<string, string[]>;
     originalError?: Error;
   }) {
     super({
       message: options?.message || 'Unable to process request.',
+      statusCode: options?.statusCode || httpStatusCodes.UNPROCESSABLE,
+      errorInfo: options?.errorInfo,
+      originalError: options?.originalError,
+    });
+  }
+}
+
+/**
+ * Error for validation failures
+ */
+export class ValidationRequestError extends CustomError {
+  constructor(options?: {
+    message: string;
+    errorInfo?: Record<string, string[]>;
+    statusCode?: number;
+    originalError?: Error;
+  }) {
+    super({
+      message: options?.message || 'Validation Request.',
       statusCode: options?.statusCode || httpStatusCodes.UNPROCESSABLE,
       errorInfo: options?.errorInfo,
       originalError: options?.originalError,
@@ -93,7 +93,7 @@ export class BadRequestError extends CustomError {
   constructor(options?: {
     message: string;
     statusCode?: number;
-    errorInfo?: Record<string, string>[];
+    errorInfo?: Record<string, string[]>;
     originalError?: Error;
   }) {
     super({

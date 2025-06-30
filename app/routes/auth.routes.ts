@@ -101,8 +101,7 @@ router.delete(
 );
 
 router.post(
-  '/:cid/refresh_token',
-  isAuthenticated,
+  '/refresh_token',
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.refreshToken(req, res);

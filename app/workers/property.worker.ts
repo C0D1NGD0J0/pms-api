@@ -81,25 +81,27 @@ export class PropertyWorker {
         });
       }
 
-      const properties: any[] = [];
+      let totalInserted = 0;
       const session = await this.propertyDAO.startSession();
       const propertiesResult = await this.propertyDAO.withTransaction(session, async (session) => {
-        const batchSize = 20;
-        let batchCounter = 0;
+        const batchSize = 50;
 
         for (let i = 0; i < csvResult.validProperties.length; i += batchSize) {
           const batch = csvResult.validProperties.slice(i, i + batchSize);
           const batchProperties = await this.propertyDAO.insertMany(batch, session);
-          properties.push(...batchProperties);
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          batchCounter++;
+          totalInserted += batchProperties.length;
+          const progress = 50 + Math.floor((i / csvResult.validProperties.length) * 40);
+          job.progress(progress);
+          if (global.gc) {
+            global.gc();
+          }
         }
 
-        return { properties };
+        return { totalInserted };
       });
 
       const returnResult = {
-        data: propertiesResult.properties,
+        data: [],
         errors: null,
         message: csvResult.errors?.length
           ? 'Properties imported with some errors'
@@ -113,7 +115,7 @@ export class PropertyWorker {
         success: true,
         processId: job.id,
         data: {
-          totalInserted: returnResult.data.length,
+          totalInserted: propertiesResult.totalInserted,
           validRecord: csvResult.validProperties.length,
         },
         finishedAt: new Date(),

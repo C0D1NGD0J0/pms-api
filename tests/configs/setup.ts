@@ -19,6 +19,18 @@ const initializeTestApp = () => {
 
   // Register routes
   const BASE_PATH = '/api/v1';
+  
+  // Health check route
+  app.use(`${BASE_PATH}/healthcheck`, (req, res) => {
+    const healthCheck = {
+      uptime: process.uptime(),
+      message: 'OK',
+      timestamp: Date.now(),
+      database: 'Connected', // Always return connected in test environment
+    };
+    res.status(200).json(healthCheck);
+  });
+  
   app.use(`${BASE_PATH}/auth`, routes.authRoutes);
   app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
 

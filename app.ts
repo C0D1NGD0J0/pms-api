@@ -18,8 +18,8 @@ import express, { Application, urlencoded, Response, Request } from 'express';
 import {
   errorHandlerMiddleware,
   scopedMiddleware,
-  requestLogger,
   contextBuilder,
+  requestLogger,
 } from '@shared/middlewares';
 
 export interface IAppSetup {

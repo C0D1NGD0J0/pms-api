@@ -80,14 +80,14 @@ export interface IPropertyDAO {
    * Update property occupancy status
    * @param propertyId - The property ID
    * @param status - The new occupancy status
-   * @param totalUnits - The new occupancy rate percentage
+   * @param maxAllowedUnits - The new occupancy rate percentage
    * @param userId - The ID of the user performing the update
    * @returns A promise that resolves to the updated property document
    */
   updatePropertyOccupancy(
     propertyId: string,
     status: OccupancyStatus,
-    totalUnits: number,
+    maxAllowedUnits: number,
     userId: string
   ): Promise<IPropertyDocument | null>;
 

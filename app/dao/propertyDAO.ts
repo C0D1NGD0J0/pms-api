@@ -140,14 +140,14 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
    * Update property occupancy status
    * @param propertyId - The property ID
    * @param status - The new occupancy status
-   * @param totalUnits - The new occupancy rate percentage
+   * @param maxAllowedUnits - The new occupancy rate percentage
    * @param userId - The ID of the user performing the update
    * @returns A promise that resolves to the updated property document
    */
   async updatePropertyOccupancy(
     propertyId: string,
     status: OccupancyStatus,
-    totalUnits: number,
+    maxAllowedUnits: number,
     userId: string
   ): Promise<IPropertyDocument | null> {
     try {
@@ -155,14 +155,14 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property ID and status are required');
       }
 
-      if (totalUnits < 0 || totalUnits > 200) {
+      if (maxAllowedUnits < 0 || maxAllowedUnits > 200) {
         throw new Error('Occupancy rate must be between 0 and 200');
       }
 
       const updateOperation = {
         $set: {
           occupancyStatus: status,
-          totalUnits: totalUnits,
+          maxAllowedUnits: maxAllowedUnits,
           lastModifiedBy: new Types.ObjectId(userId),
           updatedAt: new Date(),
         },
@@ -338,7 +338,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       };
 
       const result = await this.list(query);
-      return result.data;
+      return result.items;
     } catch (error) {
       this.logger.error('Error in findPropertiesNearby:', error);
       throw this.throwErrorHandler(error);
@@ -576,9 +576,12 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property not found');
       }
 
+      // Count ALL units (active + archived) against the maxAllowedUnits limit
+      // This prevents users from exceeding limits by archiving/unarchiving units
+      // Note: This is consistent with PropertyUnitDAO.getPropertyUnitInfo() which also counts all units
       const units = await this.propertyUnitDAO.countDocuments({ propertyId });
       const currentCount = units;
-      const maxCapacity = property.totalUnits || 0;
+      const maxCapacity = property.maxAllowedUnits || 0;
       const canAdd = maxCapacity === 0 || currentCount < maxCapacity;
       return {
         canAdd,
@@ -618,8 +621,8 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       }
 
       const units = await this.propertyUnitDAO.findUnitsByPropertyId(propertyId);
-      const currentCount = units.data.length;
-      const maxCapacity = property.totalUnits || 0;
+      const currentCount = units.items.length;
+      const maxCapacity = property.maxAllowedUnits || 0;
 
       // base capacity check
       let canAdd = maxCapacity === 0 || currentCount < maxCapacity;
@@ -640,8 +643,8 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       }
 
       if (canAdd && property.propertyType === 'commercial' && currentCount > 0) {
-        const commercialUnitTypeCount = units.data.filter(
-          (u) => u.unitType === 'commercial'
+        const commercialUnitTypeCount = units.items.filter(
+          (u: IPropertyUnitDocument) => u.unitType === 'commercial'
         ).length;
         // ensure commercial properties maintain a balance of unit types
         if (commercialUnitTypeCount < currentCount * 0.5) {
@@ -719,6 +722,80 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       );
     } catch (error) {
       this.logger.error('Error in syncPropertyOccupancyWithUnits:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Enhanced sync that considers available spaces when determining occupancy status
+   * @param propertyId - The property ID
+   * @param userId - The ID of the user triggering the update
+   * @returns A promise that resolves to the updated property
+   */
+  async syncPropertyOccupancyWithUnitsEnhanced(
+    propertyId: string,
+    userId: string
+  ): Promise<IPropertyDocument | null> {
+    try {
+      if (!propertyId || !userId) {
+        throw new Error('Property ID and user ID are required');
+      }
+
+      const property = await this.findById(propertyId);
+      if (!property) {
+        throw new Error('Property not found');
+      }
+
+      const unitCounts = await this.getUnitCountsByStatus(propertyId);
+      const unitInfo = await this.propertyUnitDAO.getPropertyUnitInfo(propertyId);
+
+      // Calculate available spaces considering total units vs max allowed
+      const maxAllowedUnits = property.maxAllowedUnits || 0;
+      const availableSpaces = Math.max(0, maxAllowedUnits - unitInfo.currentUnits);
+
+      let occupancyStatus: OccupancyStatus = 'vacant';
+
+      if (unitCounts.total === 0) {
+        // No units exist
+        occupancyStatus = 'vacant';
+      } else if (availableSpaces === 0) {
+        // Property is at maximum capacity (no available spaces)
+        if (unitCounts.occupied > 0) {
+          occupancyStatus = 'occupied'; // At capacity with occupied units
+        } else {
+          occupancyStatus = 'occupied'; // At capacity (could be maintenance, reserved, etc.)
+        }
+      } else if (unitCounts.occupied === unitCounts.total) {
+        // All existing units are occupied (but could add more units)
+        occupancyStatus = 'occupied';
+      } else if (unitCounts.occupied > 0) {
+        // Some units occupied, some not
+        occupancyStatus = 'partially_occupied';
+      } else {
+        // No units occupied
+        occupancyStatus = 'vacant';
+      }
+
+      this.logger.info(
+        {
+          propertyId,
+          totalUnits: unitCounts.total,
+          occupiedUnits: unitCounts.occupied,
+          maxAllowedUnits,
+          availableSpaces,
+          newOccupancyStatus: occupancyStatus,
+        },
+        'Enhanced property occupancy sync completed'
+      );
+
+      return await this.updatePropertyOccupancy(
+        propertyId,
+        occupancyStatus,
+        unitCounts.total,
+        userId
+      );
+    } catch (error) {
+      this.logger.error('Error in syncPropertyOccupancyWithUnitsEnhanced:', error);
       throw this.throwErrorHandler(error);
     }
   }

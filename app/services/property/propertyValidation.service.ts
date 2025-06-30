@@ -234,7 +234,7 @@ export class PropertyValidationService {
     isUpdate: boolean = false
   ): ValidationResult {
     const errors: ValidationError[] = [];
-    const { propertyType, totalUnits = 1 } = propertyData;
+    const { propertyType, maxAllowedUnits = 1 } = propertyData;
 
     if (!isUpdate) {
       if (!propertyData.name || propertyData.name.trim().length < 3) {
@@ -277,11 +277,11 @@ export class PropertyValidationService {
     }
 
     if (propertyType) {
-      if (!isUpdate || propertyData.totalUnits !== undefined) {
-        const unitValidation = PropertyTypeManager.validateUnitCount(propertyType, totalUnits);
+      if (!isUpdate || propertyData.maxAllowedUnits !== undefined) {
+        const unitValidation = PropertyTypeManager.validateUnitCount(propertyType, maxAllowedUnits);
         if (!unitValidation.valid) {
           errors.push({
-            field: 'totalUnits',
+            field: 'maxAllowedUnits',
             message: unitValidation.message!,
             code: 'INVALID_UNIT_COUNT',
           });
@@ -508,7 +508,7 @@ export class PropertyValidationService {
     errors: ValidationError[],
     isUpdate: boolean = false
   ): void {
-    const { propertyType, occupancyStatus, totalUnits = 1, fees } = propertyData;
+    const { propertyType, occupancyStatus, maxAllowedUnits = 1, fees } = propertyData;
 
     if (occupancyStatus === 'occupied') {
       const rentalAmount =
@@ -525,8 +525,8 @@ export class PropertyValidationService {
 
     if (
       occupancyStatus === 'partially_occupied' &&
-      (!isUpdate || propertyData.totalUnits !== undefined) &&
-      totalUnits <= 1
+      (!isUpdate || propertyData.maxAllowedUnits !== undefined) &&
+      maxAllowedUnits <= 1
     ) {
       errors.push({
         field: 'occupancyStatus',
@@ -550,12 +550,12 @@ export class PropertyValidationService {
     if (
       propertyType &&
       PropertyTypeManager.supportsMultipleUnits(propertyType) &&
-      (!isUpdate || propertyData.totalUnits !== undefined)
+      (!isUpdate || propertyData.maxAllowedUnits !== undefined)
     ) {
       const minUnits = PropertyTypeManager.getMinUnits(propertyType);
-      if (totalUnits < minUnits) {
+      if (maxAllowedUnits < minUnits) {
         errors.push({
-          field: 'totalUnits',
+          field: 'maxAllowedUnits',
           message: `${propertyType} properties typically require at least ${minUnits} units`,
           code: 'BUSINESS_RULE_WARNING',
         });

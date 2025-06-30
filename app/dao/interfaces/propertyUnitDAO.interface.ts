@@ -9,6 +9,23 @@ import { IBaseDAO } from './baseDAO.interface';
 
 export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
   /**
+   * Get comprehensive unit information for a property
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to unit information and statistics
+   */
+  getPropertyUnitInfo(propertyId: string): Promise<{
+    currentUnits: number;
+    unitStats: {
+      occupied: number;
+      vacant: number;
+      maintenance: number;
+      available: number;
+      reserved: number;
+      inactive: number;
+    };
+  }>;
+
+  /**
    * Add a new inspection record to a unit
    * @param unitId - The property unit ID
    * @param inspectionData - The inspection data

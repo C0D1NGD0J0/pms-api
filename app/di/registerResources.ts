@@ -120,6 +120,7 @@ export const initQueues = (container: AwilixContainer) => {
   container.resolve('propertyWorker');
   container.resolve('propertyUnitWorker');
   container.resolve('uploadWorker');
+  // PropertyService automatically initializes unit event listeners in its constructor
 };
 
 export const registerResources = {

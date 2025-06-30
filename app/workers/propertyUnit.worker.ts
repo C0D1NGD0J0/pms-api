@@ -56,6 +56,20 @@ export class PropertyUnitWorker {
         return;
       }
 
+      // Additional validation: Check if adding the batch would exceed the limit
+      if (
+        canAddUnits.maxCapacity > 0 &&
+        canAddUnits.currentCount + units.length > canAddUnits.maxCapacity
+      ) {
+        done(
+          new Error(
+            `Cannot add ${units.length} units. Property has ${canAddUnits.currentCount}/${canAddUnits.maxCapacity} units (including archived). Adding these units would exceed the limit.`
+          ),
+          null
+        );
+        return;
+      }
+
       job.progress(30);
 
       // Validate pattern consistency across all units
@@ -103,7 +117,7 @@ export class PropertyUnitWorker {
             const newUnitData = {
               ...unit,
               cid,
-              propertyId: pid,
+              propertyId: new Types.ObjectId(property.id),
               createdBy: new Types.ObjectId(userId),
               lastModifiedBy: new Types.ObjectId(userId),
             };
@@ -126,7 +140,7 @@ export class PropertyUnitWorker {
 
         // Update property occupancy
         if (createdUnits.length > 0) {
-          await this.propertyDAO.syncPropertyOccupancyWithUnits(pid, userId);
+          await this.propertyDAO.syncPropertyOccupancyWithUnits(property.id, userId);
         }
 
         return { createdUnits, errors };
@@ -139,7 +153,7 @@ export class PropertyUnitWorker {
         propertyId: pid,
         clientId: cid,
         unitsCreated: result.createdUnits.length,
-        totalUnits: units.length,
+        maxAllowedUnits: units.length,
       });
 
       job.progress(100);

@@ -100,18 +100,6 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   ): Promise<IProfileDocument | null>;
 
   /**
-   * Updates login type for a profile.
-   *
-   * @param profileId - The ID of the profile to update
-   * @param loginType - The login type preference ('otp' or 'password')
-   * @returns A promise that resolves to the updated profile or null if profile not found
-   */
-  updateLoginType(
-    profileId: string,
-    loginType: 'otp' | 'password'
-  ): Promise<IProfileDocument | null>;
-
-  /**
    * Finds profiles matching the search criteria.
    *
    * @param searchTerm - Term to search for in displayName, firstName, lastName, etc.
@@ -122,6 +110,18 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
     searchTerm: string,
     opts?: IFindOptions
   ): ListResultWithPagination<IProfileDocument[]>;
+
+  /**
+   * Updates login type for a profile.
+   *
+   * @param profileId - The ID of the profile to update
+   * @param loginType - The login type preference ('otp' or 'password')
+   * @returns A promise that resolves to the updated profile or null if profile not found
+   */
+  updateLoginType(
+    profileId: string,
+    loginType: 'otp' | 'password'
+  ): Promise<IProfileDocument | null>;
 
   /**
    * Updates theme settings for a profile.

@@ -1,7 +1,7 @@
 import { Response } from 'express';
+import { httpStatusCodes } from '@utils/index';
 import { PropertyUnitService } from '@services/property';
 import { AppRequest } from '@interfaces/utils.interface';
-import { generateShortUID, httpStatusCodes } from '@utils/index';
 import { IPropertyFilterQuery } from '@interfaces/property.interface';
 
 interface IConstructor {
@@ -102,6 +102,16 @@ export class PropertyUnitController {
 
   deleteDocumentFromUnit = async (req: AppRequest, res: Response) => {
     const result = await this.propertyUnitService.deleteDocumentFromUnit(req.context);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  addInspection = async (req: AppRequest, res: Response) => {
+    const result = await this.propertyUnitService.setupInspection(req.context, req.body);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getUnit = async (req: AppRequest, res: Response) => {
+    const result = await this.propertyUnitService.getPropertyUnit(req.context);
     res.status(httpStatusCodes.OK).json(result);
   };
 }

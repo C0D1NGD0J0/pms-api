@@ -7,6 +7,7 @@ import {
   UnitInspectionSchema,
   CreateUnitSchema,
   UpdateUnitSchema,
+  ValidateUnitId,
 } from './schemas';
 
 export class PropertyUnitValidations {
@@ -17,5 +18,6 @@ export class PropertyUnitValidations {
   static patternValidation = PatternValidationSchema;
   static unitNumberSuggestion = UnitNumberSuggestionSchema;
   static updateUnit = UpdateUnitSchema;
+  static validatePuid = ValidateUnitId;
   static uploadUnitMedia = UploadUnitMediaSchema;
 }

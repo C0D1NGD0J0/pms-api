@@ -10,7 +10,7 @@ export class EventEmitterService {
   private listenerCounts = new Map<EventTypes, number>();
   private readonly MAX_LISTENERS_PER_EVENT = 10;
   private memoryLeakDetectionInterval?: NodeJS.Timer;
-  private handlerMappings = new Map<Function, Function>();
+  private handlerMappings = new Map<(...args: any[]) => void, (...args: any[]) => void>();
 
   constructor({ eventsRegistry }: { eventsRegistry: EventsRegistryCache }) {
     this.emitter = new EventEmitter();

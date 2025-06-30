@@ -1,36 +1,32 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/helpers';
-import { UnitController } from '@controllers/UnitController';
+import { validateRequest } from '@shared/validations';
+import { PropertyUnitController } from '@controllers/PropertyUnitController';
+import { PropertyUnitValidations } from '@shared/validations/PropertyUnitValidation';
 import { isAuthenticated, routeLimiter, diskUpload, scanFile } from '@shared/middlewares';
 
 // mergeParams: true ensures this router has access to params from parent router
 const router: Router = express.Router({ mergeParams: true });
-
-// All routes require authentication
 router.use(isAuthenticated);
 
 // Get all units for a property
 router.get(
   '/',
   routeLimiter(),
-// Removed commented-out validation middleware for clarity.
   asyncWrapper((req, res) => {
-    const unitController = req.container.resolve<UnitController>('unitController');
+    const unitController = req.container.resolve<PropertyUnitController>('propertyUnitController');
     return unitController.getPropertyUnits(req, res);
   })
 );
 
-// Get a specific unit
 router.get(
-  '/:unitId',
-  /* Unable to use validation here until we properly fix the UnitValidation schemas
+  '/:puid',
   validateRequest({
-    params: UnitValidation.schemas.unitExists,
+    params: PropertyUnitValidations.validatePuid,
   }),
-  */
   asyncWrapper((req, res) => {
-    const unitController = req.container.resolve<UnitController>('unitController');
-    return unitController.getUnit(req, res);
+    const unitController = req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return unitController.getPropertyUnit(req, res);
   })
 );
 
@@ -39,55 +35,56 @@ router.post(
   '/',
   diskUpload(['unit.media']),
   scanFile,
-  /* Unable to use validation here until we properly fix the UnitValidation schemas
   validateRequest({
-    body: UnitValidation.schemas.createUnit,
+    body: PropertyUnitValidations.createUnit,
   }),
-  */
   asyncWrapper((req, res) => {
-    const unitController = req.container.resolve<UnitController>('unitController');
-    return unitController.createUnit(req, res);
+    const unitController = req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return unitController.addUnit(req, res);
   })
 );
 
-// Update a unit
 router.patch(
-  '/:unitId',
-  /* Unable to use validation here until we properly fix the UnitValidation schemas
+  '/:puid',
   validateRequest({
-    params: UnitValidation.schemas.unitExists,
-    body: UnitValidation.schemas.updateUnit,
+    params: PropertyUnitValidations.validatePuid,
+    body: PropertyUnitValidations.updateUnit,
   }),
-  */
   asyncWrapper((req, res) => {
-    const unitController = req.container.resolve<UnitController>('unitController');
+    const unitController = req.container.resolve<PropertyUnitController>('propertyUnitController');
     return unitController.updateUnit(req, res);
   })
 );
 
-// Update unit status
 router.patch(
-  '/:unitId/status',
+  '/:puid/status',
+  validateRequest({
+    params: PropertyUnitValidations.validatePuid,
+    body: PropertyUnitValidations.updateUnit,
+  }),
   asyncWrapper((req, res) => {
-    const unitController = req.container.resolve<UnitController>('unitController');
+    const unitController = req.container.resolve<PropertyUnitController>('propertyUnitController');
     return unitController.updateUnitStatus(req, res);
   })
 );
 
 // Add inspection to unit
 router.post(
-  '/:unitId/inspections',
+  '/:puid/inspections',
   asyncWrapper((req, res) => {
-    const unitController = req.container.resolve<UnitController>('unitController');
-    return unitController.addInspection(req, res);
+    const unitController = req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return unitController.setupInpection(req, res);
   })
 );
 
 // Archive a unit
 router.delete(
-  '/:unitId',
+  '/:puid',
+  validateRequest({
+    params: PropertyUnitValidations.validatePuid,
+  }),
   asyncWrapper((req, res) => {
-    const unitController = req.container.resolve<UnitController>('unitController');
+    const unitController = req.container.resolve<PropertyUnitController>('propertyUnitController');
     return unitController.archiveUnit(req, res);
   })
 );

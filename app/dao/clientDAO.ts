@@ -7,7 +7,7 @@ import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/c
 
 import { BaseDAO } from './baseDAO';
 import { IClientDAO } from './interfaces/clientDAO.interface';
-import { IFindOptions, dynamic } from './interfaces/baseDAO.interface';
+import { IFindOptions } from './interfaces/baseDAO.interface';
 
 export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   protected logger: Logger;

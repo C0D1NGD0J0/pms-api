@@ -148,7 +148,7 @@ export function setAuthCookies(
 
   if (data.refreshToken) {
     opts = {
-      path: '/api/v1/auth/refresh', // Only accessible on the refresh endpoint
+      path: '/api/v1/auth/refresh_token', // Only accessible on the refresh endpoint
       httpOnly: true,
       sameSite: 'strict' as const,
       secure: envVariables.SERVER.ENV !== 'development',

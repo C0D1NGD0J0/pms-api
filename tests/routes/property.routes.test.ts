@@ -1,12 +1,10 @@
-import request from 'supertest';
 import express from 'express';
+import request from 'supertest';
 import propertyRoutes from '@routes/property.routes';
-import { PropertyController } from '@controllers/PropertyController';
 import { validateRequest } from '@shared/validations';
-import { isAuthenticated, routeLimiter, diskUpload, scanFile } from '@shared/middlewares';
-import { asyncWrapper } from '@utils/helpers';
+import { PropertyController } from '@controllers/PropertyController';
 import { PropertyTestFactory } from '@tests/utils/propertyTestHelpers';
-import { AuthTestFactory } from '@tests/utils/authTestHelpers';
+import { isAuthenticated, routeLimiter, diskUpload, scanFile } from '@shared/middlewares';
 
 jest.mock('@controllers/PropertyController');
 jest.mock('@shared/validations');
@@ -19,8 +17,8 @@ jest.mock('@utils/helpers', () => ({
     BAD_REQUEST: 400,
     UNAUTHORIZED: 401,
     NOT_FOUND: 404,
-    FORBIDDEN: 403
-  }
+    FORBIDDEN: 403,
+  },
 }));
 
 describe('Property Routes - Integration Tests', () => {
@@ -49,13 +47,13 @@ describe('Property Routes - Integration Tests', () => {
       search: jest.fn(),
       checkAvailability: jest.fn(),
       getNearbyProperties: jest.fn(),
-      restorArchivedProperty: jest.fn()
+      restorArchivedProperty: jest.fn(),
     } as any;
 
     // Mock container resolution
     app.use((req, res, next) => {
       req.container = {
-        resolve: jest.fn().mockReturnValue(mockPropertyController)
+        resolve: jest.fn().mockReturnValue(mockPropertyController),
       } as any;
       next();
     });
@@ -82,17 +80,15 @@ describe('Property Routes - Integration Tests', () => {
         data: {
           propertyTypes: ['house', 'apartment', 'condo'],
           amenities: ['pool', 'gym', 'parking'],
-          formFields: []
-        }
+          formFields: [],
+        },
       };
 
       mockPropertyController.getPropertyFormMetadata.mockImplementation((req, res) => {
         res.status(200).json(expectedResponse);
       });
 
-      const response = await request(app)
-        .get('/properties/property_form_metadata')
-        .expect(200);
+      const response = await request(app).get('/properties/property_form_metadata').expect(200);
 
       expect(response.body).toEqual(expectedResponse);
       expect(mockPropertyController.getPropertyFormMetadata).toHaveBeenCalledTimes(1);
@@ -104,13 +100,11 @@ describe('Property Routes - Integration Tests', () => {
       (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => {
         res.status(401).json({
           success: false,
-          message: 'Authentication required'
+          message: 'Authentication required',
         });
       });
 
-      await request(app)
-        .get('/properties/property_form_metadata')
-        .expect(401);
+      await request(app).get('/properties/property_form_metadata').expect(401);
 
       expect(mockPropertyController.getPropertyFormMetadata).not.toHaveBeenCalled();
     });
@@ -123,7 +117,7 @@ describe('Property Routes - Integration Tests', () => {
       const expectedResponse = {
         success: true,
         data: { ...propertyData, _id: 'property123' },
-        message: 'Property created successfully'
+        message: 'Property created successfully',
       };
 
       mockPropertyController.create.mockImplementation((req, res) => {
@@ -139,7 +133,7 @@ describe('Property Routes - Integration Tests', () => {
       expect(mockPropertyController.create).toHaveBeenCalledTimes(1);
       expect(validateRequest).toHaveBeenCalledWith({
         params: expect.any(Object), // PropertyValidations.validateCid
-        body: expect.any(Object) // PropertyValidations.create
+        body: expect.any(Object), // PropertyValidations.create
       });
       expect(diskUpload).toHaveBeenCalledWith(['document.photos']);
       expect(scanFile).toHaveBeenCalled();
@@ -147,37 +141,31 @@ describe('Property Routes - Integration Tests', () => {
 
     it('should handle validation errors', async () => {
       const cid = 'client123';
-      
+
       (validateRequest as jest.Mock).mockImplementation(() => (req, res, next) => {
         res.status(400).json({
           success: false,
           message: 'Validation failed',
-          errors: ['Property name is required']
+          errors: ['Property name is required'],
         });
       });
 
-      await request(app)
-        .post(`/properties/${cid}/add_property`)
-        .send({})
-        .expect(400);
+      await request(app).post(`/properties/${cid}/add_property`).send({}).expect(400);
 
       expect(mockPropertyController.create).not.toHaveBeenCalled();
     });
 
     it('should handle file upload errors', async () => {
       const cid = 'client123';
-      
+
       (diskUpload as jest.Mock).mockImplementation(() => (req, res, next) => {
         res.status(400).json({
           success: false,
-          message: 'File upload failed'
+          message: 'File upload failed',
         });
       });
 
-      await request(app)
-        .post(`/properties/${cid}/add_property`)
-        .send({})
-        .expect(400);
+      await request(app).post(`/properties/${cid}/add_property`).send({}).expect(400);
 
       expect(mockPropertyController.create).not.toHaveBeenCalled();
     });
@@ -191,18 +179,16 @@ describe('Property Routes - Integration Tests', () => {
         data: {
           valid: true,
           rowCount: 10,
-          preview: []
+          preview: [],
         },
-        message: 'CSV validation successful'
+        message: 'CSV validation successful',
       };
 
       mockPropertyController.validateCsv.mockImplementation((req, res) => {
         res.status(200).json(expectedResponse);
       });
 
-      const response = await request(app)
-        .post(`/properties/${cid}/validate_csv`)
-        .expect(200);
+      const response = await request(app).post(`/properties/${cid}/validate_csv`).expect(200);
 
       expect(response.body).toEqual(expectedResponse);
       expect(mockPropertyController.validateCsv).toHaveBeenCalledTimes(1);
@@ -217,13 +203,11 @@ describe('Property Routes - Integration Tests', () => {
         res.status(400).json({
           success: false,
           message: 'Invalid CSV format',
-          errors: ['Missing required columns']
+          errors: ['Missing required columns'],
         });
       });
 
-      const response = await request(app)
-        .post(`/properties/${cid}/validate_csv`)
-        .expect(400);
+      const response = await request(app).post(`/properties/${cid}/validate_csv`).expect(400);
 
       expect(response.body.success).toBe(false);
     });
@@ -237,9 +221,9 @@ describe('Property Routes - Integration Tests', () => {
         data: {
           imported: 8,
           failed: 2,
-          jobId: 'job123'
+          jobId: 'job123',
         },
-        message: 'CSV import started'
+        message: 'CSV import started',
       };
 
       mockPropertyController.createPropertiesFromCsv.mockImplementation((req, res) => {
@@ -262,7 +246,7 @@ describe('Property Routes - Integration Tests', () => {
       mockPropertyController.createPropertiesFromCsv.mockImplementation((req, res) => {
         res.status(400).json({
           success: false,
-          message: 'CSV import failed'
+          message: 'CSV import failed',
         });
       });
 
@@ -279,12 +263,12 @@ describe('Property Routes - Integration Tests', () => {
       const cid = 'client123';
       const properties = [
         PropertyTestFactory.createPropertyData(),
-        PropertyTestFactory.createPropertyData()
+        PropertyTestFactory.createPropertyData(),
       ];
       const expectedResponse = {
         success: true,
         data: properties,
-        pagination: { page: 1, limit: 10, total: 2 }
+        pagination: { page: 1, limit: 10, total: 2 },
       };
 
       mockPropertyController.getClientProperties.mockImplementation((req, res) => {
@@ -299,7 +283,7 @@ describe('Property Routes - Integration Tests', () => {
       expect(response.body).toEqual(expectedResponse);
       expect(mockPropertyController.getClientProperties).toHaveBeenCalledTimes(1);
       expect(validateRequest).toHaveBeenCalledWith({
-        params: expect.any(Object) // PropertyValidations.validateCid
+        params: expect.any(Object), // PropertyValidations.validateCid
       });
       expect(routeLimiter).toHaveBeenCalled();
     });
@@ -311,13 +295,11 @@ describe('Property Routes - Integration Tests', () => {
         res.status(200).json({
           success: true,
           data: [],
-          pagination: { page: 1, limit: 10, total: 0 }
+          pagination: { page: 1, limit: 10, total: 0 },
         });
       });
 
-      const response = await request(app)
-        .get(`/properties/${cid}/client_properties`)
-        .expect(200);
+      const response = await request(app).get(`/properties/${cid}/client_properties`).expect(200);
 
       expect(response.body.data).toEqual([]);
     });
@@ -330,7 +312,7 @@ describe('Property Routes - Integration Tests', () => {
       const property = PropertyTestFactory.createPropertyData();
       const expectedResponse = {
         success: true,
-        data: property
+        data: property,
       };
 
       mockPropertyController.getProperty.mockImplementation((req, res) => {
@@ -344,7 +326,7 @@ describe('Property Routes - Integration Tests', () => {
       expect(response.body).toEqual(expectedResponse);
       expect(mockPropertyController.getProperty).toHaveBeenCalledTimes(1);
       expect(validateRequest).toHaveBeenCalledWith({
-        params: expect.any(Object) // PropertyValidations.validatePropertyAndClientIds
+        params: expect.any(Object), // PropertyValidations.validatePropertyAndClientIds
       });
     });
 
@@ -355,7 +337,7 @@ describe('Property Routes - Integration Tests', () => {
       mockPropertyController.getProperty.mockImplementation((req, res) => {
         res.status(404).json({
           success: false,
-          message: 'Property not found'
+          message: 'Property not found',
         });
       });
 
@@ -373,12 +355,12 @@ describe('Property Routes - Integration Tests', () => {
       const pid = 'property123';
       const updateData = {
         name: 'Updated Property Name',
-        description: { text: 'Updated description' }
+        description: { text: 'Updated description' },
       };
       const expectedResponse = {
         success: true,
         data: { ...updateData, _id: pid },
-        message: 'Property updated successfully'
+        message: 'Property updated successfully',
       };
 
       mockPropertyController.updateClientProperty.mockImplementation((req, res) => {
@@ -394,7 +376,7 @@ describe('Property Routes - Integration Tests', () => {
       expect(mockPropertyController.updateClientProperty).toHaveBeenCalledTimes(1);
       expect(validateRequest).toHaveBeenCalledWith({
         params: expect.any(Object), // PropertyValidations.validatePropertyAndClientIds
-        body: expect.any(Object) // PropertyValidations.updateProperty
+        body: expect.any(Object), // PropertyValidations.updateProperty
       });
     });
 
@@ -406,14 +388,11 @@ describe('Property Routes - Integration Tests', () => {
         res.status(400).json({
           success: false,
           message: 'Validation failed',
-          errors: ['Invalid property data']
+          errors: ['Invalid property data'],
         });
       });
 
-      await request(app)
-        .patch(`/properties/${cid}/client_properties/${pid}`)
-        .send({})
-        .expect(400);
+      await request(app).patch(`/properties/${cid}/client_properties/${pid}`).send({}).expect(400);
 
       expect(mockPropertyController.updateClientProperty).not.toHaveBeenCalled();
     });
@@ -426,9 +405,9 @@ describe('Property Routes - Integration Tests', () => {
       const expectedResponse = {
         success: true,
         data: {
-          mediaAdded: ['photo1.jpg', 'photo2.jpg']
+          mediaAdded: ['photo1.jpg', 'photo2.jpg'],
         },
-        message: 'Media added successfully'
+        message: 'Media added successfully',
       };
 
       mockPropertyController.addMediaToProperty.mockImplementation((req, res) => {
@@ -450,7 +429,7 @@ describe('Property Routes - Integration Tests', () => {
       mockPropertyController.addMediaToProperty.mockImplementation((req, res) => {
         res.status(400).json({
           success: false,
-          message: 'Failed to upload media'
+          message: 'Failed to upload media',
         });
       });
 
@@ -468,7 +447,7 @@ describe('Property Routes - Integration Tests', () => {
       const pid = 'property123';
       const expectedResponse = {
         success: true,
-        message: 'Media removed successfully'
+        message: 'Media removed successfully',
       };
 
       mockPropertyController.deleteMediaFromProperty.mockImplementation((req, res) => {
@@ -490,7 +469,7 @@ describe('Property Routes - Integration Tests', () => {
       mockPropertyController.deleteMediaFromProperty.mockImplementation((req, res) => {
         res.status(404).json({
           success: false,
-          message: 'Media not found'
+          message: 'Media not found',
         });
       });
 
@@ -508,7 +487,7 @@ describe('Property Routes - Integration Tests', () => {
       const pid = 'property123';
       const expectedResponse = {
         success: true,
-        message: 'Property archived successfully'
+        message: 'Property archived successfully',
       };
 
       mockPropertyController.archiveProperty.mockImplementation((req, res) => {
@@ -523,7 +502,7 @@ describe('Property Routes - Integration Tests', () => {
       expect(response.body).toEqual(expectedResponse);
       expect(mockPropertyController.archiveProperty).toHaveBeenCalledTimes(1);
       expect(validateRequest).toHaveBeenCalledWith({
-        query: expect.any(Object) // PropertyValidations.validatePropertyAndClientIds
+        query: expect.any(Object), // PropertyValidations.validatePropertyAndClientIds
       });
     });
 
@@ -534,7 +513,7 @@ describe('Property Routes - Integration Tests', () => {
       mockPropertyController.archiveProperty.mockImplementation((req, res) => {
         res.status(400).json({
           success: false,
-          message: 'Cannot archive property with active leases'
+          message: 'Cannot archive property with active leases',
         });
       });
 
@@ -550,7 +529,7 @@ describe('Property Routes - Integration Tests', () => {
   describe('Middleware integration', () => {
     it('should apply authentication to all routes', async () => {
       const cid = 'client123';
-      
+
       // Test several routes to ensure authentication is applied
       await request(app).get('/properties/property_form_metadata');
       await request(app).get(`/properties/${cid}/client_properties`);
@@ -570,7 +549,7 @@ describe('Property Routes - Integration Tests', () => {
 
     it('should apply file upload middleware to appropriate routes', async () => {
       const cid = 'client123';
-      
+
       await request(app).post(`/properties/${cid}/add_property`);
       await request(app).post(`/properties/${cid}/validate_csv`);
       await request(app).post(`/properties/${cid}/import_properties_csv`);
@@ -584,20 +563,18 @@ describe('Property Routes - Integration Tests', () => {
       (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => {
         res.status(401).json({
           success: false,
-          message: 'Token expired'
+          message: 'Token expired',
         });
       });
 
-      await request(app)
-        .get('/properties/property_form_metadata')
-        .expect(401);
+      await request(app).get('/properties/property_form_metadata').expect(401);
     });
   });
 
   describe('Container resolution', () => {
     it('should resolve PropertyController from container', async () => {
       const mockResolve = jest.fn().mockReturnValue(mockPropertyController);
-      
+
       app.use((req, res, next) => {
         req.container = { resolve: mockResolve } as any;
         next();
@@ -613,14 +590,12 @@ describe('Property Routes - Integration Tests', () => {
         req.container = {
           resolve: jest.fn().mockImplementation(() => {
             throw new Error('Controller not found');
-          })
+          }),
         } as any;
         next();
       });
 
-      await request(app)
-        .get('/properties/property_form_metadata')
-        .expect(500);
+      await request(app).get('/properties/property_form_metadata').expect(500);
     });
   });
 
@@ -632,16 +607,14 @@ describe('Property Routes - Integration Tests', () => {
         if (req.params.cid === invalidCid) {
           res.status(400).json({
             success: false,
-            message: 'Invalid client ID format'
+            message: 'Invalid client ID format',
           });
         } else {
           next();
         }
       });
 
-      await request(app)
-        .get(`/properties/${invalidCid}/client_properties`)
-        .expect(400);
+      await request(app).get(`/properties/${invalidCid}/client_properties`).expect(400);
 
       expect(mockPropertyController.getClientProperties).not.toHaveBeenCalled();
     });
@@ -654,16 +627,14 @@ describe('Property Routes - Integration Tests', () => {
         if (req.params.pid === invalidPid) {
           res.status(400).json({
             success: false,
-            message: 'Invalid property ID format'
+            message: 'Invalid property ID format',
           });
         } else {
           next();
         }
       });
 
-      await request(app)
-        .get(`/properties/${cid}/client_properties/${invalidPid}`)
-        .expect(400);
+      await request(app).get(`/properties/${cid}/client_properties/${invalidPid}`).expect(400);
 
       expect(mockPropertyController.getProperty).not.toHaveBeenCalled();
     });
@@ -675,9 +646,7 @@ describe('Property Routes - Integration Tests', () => {
         throw new Error('Database connection failed');
       });
 
-      await request(app)
-        .get('/properties/property_form_metadata')
-        .expect(500);
+      await request(app).get('/properties/property_form_metadata').expect(500);
     });
 
     it('should handle malformed request bodies', async () => {
@@ -690,7 +659,7 @@ describe('Property Routes - Integration Tests', () => {
         .expect(400);
 
       expect(response.body).toMatchObject({
-        error: expect.any(String)
+        error: expect.any(String),
       });
     });
 
@@ -700,13 +669,11 @@ describe('Property Routes - Integration Tests', () => {
       (diskUpload as jest.Mock).mockImplementation(() => (req, res, next) => {
         res.status(413).json({
           success: false,
-          message: 'File too large'
+          message: 'File too large',
         });
       });
 
-      await request(app)
-        .post(`/properties/${cid}/add_property`)
-        .expect(413);
+      await request(app).post(`/properties/${cid}/add_property`).expect(413);
     });
   });
 
@@ -719,15 +686,15 @@ describe('Property Routes - Integration Tests', () => {
 
       // Verify the route pattern exists (would be handled by propertyUnit.routes)
       const routePath = `/properties/${cid}/client_properties/${pid}/units`;
-      
+
       // Since we're testing route mounting, we just verify the base structure
       expect(propertyRoutes.stack).toBeDefined();
-      
+
       // Find the nested route handler
-      const nestedRoute = propertyRoutes.stack.find(layer => 
+      const nestedRoute = propertyRoutes.stack.find((layer) =>
         layer.regexp.toString().includes('units')
       );
-      
+
       expect(nestedRoute).toBeDefined();
     });
   });

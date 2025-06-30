@@ -1,10 +1,10 @@
-import request from 'supertest';
 import express from 'express';
+import request from 'supertest';
+import { asyncWrapper } from '@utils/index';
 import authRoutes from '@routes/auth.routes';
-import { AuthController } from '@controllers/AuthController';
 import { validateRequest } from '@shared/validations';
 import { isAuthenticated } from '@shared/middlewares';
-import { asyncWrapper } from '@utils/index';
+import { AuthController } from '@controllers/AuthController';
 import { AuthTestFactory } from '@tests/utils/authTestHelpers';
 
 jest.mock('@controllers/AuthController');
@@ -17,8 +17,8 @@ jest.mock('@utils/index', () => ({
     CREATED: 201,
     BAD_REQUEST: 400,
     UNAUTHORIZED: 401,
-    NOT_FOUND: 404
-  }
+    NOT_FOUND: 404,
+  },
 }));
 
 describe('Auth Routes - Integration Tests', () => {
@@ -41,20 +41,20 @@ describe('Auth Routes - Integration Tests', () => {
       forgotPassword: jest.fn(),
       resetPassword: jest.fn(),
       logout: jest.fn(),
-      refreshToken: jest.fn()
+      refreshToken: jest.fn(),
     } as any;
 
     // Mock container resolution
     app.use((req, res, next) => {
       req.container = {
-        resolve: jest.fn().mockReturnValue(mockAuthController)
+        resolve: jest.fn().mockReturnValue(mockAuthController),
       } as any;
       next();
     });
 
     // Mock validation middleware
     (validateRequest as jest.Mock).mockImplementation(() => (req, res, next) => next());
-    
+
     // Mock authentication middleware
     (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => next());
 
@@ -72,22 +72,19 @@ describe('Auth Routes - Integration Tests', () => {
       const expectedResponse = {
         success: true,
         message: 'User created successfully',
-        data: { userId: 'user123' }
+        data: { userId: 'user123' },
       };
 
       mockAuthController.signup.mockImplementation((req, res) => {
         res.status(201).json(expectedResponse);
       });
 
-      const response = await request(app)
-        .post('/auth/signup')
-        .send(signupData)
-        .expect(201);
+      const response = await request(app).post('/auth/signup').send(signupData).expect(201);
 
       expect(response.body).toEqual(expectedResponse);
       expect(mockAuthController.signup).toHaveBeenCalledTimes(1);
       expect(validateRequest).toHaveBeenCalledWith({
-        body: expect.any(Object) // AuthValidations.signup
+        body: expect.any(Object), // AuthValidations.signup
       });
     });
 
@@ -96,14 +93,11 @@ describe('Auth Routes - Integration Tests', () => {
         res.status(400).json({
           success: false,
           message: 'Validation failed',
-          errors: ['Email is required']
+          errors: ['Email is required'],
         });
       });
 
-      await request(app)
-        .post('/auth/signup')
-        .send({})
-        .expect(400);
+      await request(app).post('/auth/signup').send({}).expect(400);
 
       expect(mockAuthController.signup).not.toHaveBeenCalled();
     });
@@ -114,14 +108,11 @@ describe('Auth Routes - Integration Tests', () => {
       mockAuthController.signup.mockImplementation((req, res) => {
         res.status(400).json({
           success: false,
-          message: 'Email already exists'
+          message: 'Email already exists',
         });
       });
 
-      const response = await request(app)
-        .post('/auth/signup')
-        .send(signupData)
-        .expect(400);
+      const response = await request(app).post('/auth/signup').send(signupData).expect(400);
 
       expect(response.body.success).toBe(false);
       expect(response.body.message).toBe('Email already exists');
@@ -136,23 +127,20 @@ describe('Auth Routes - Integration Tests', () => {
         message: 'Login successful',
         data: {
           user: AuthTestFactory.createCurrentUserInfo(),
-          tokens: AuthTestFactory.createJwtTokens()
-        }
+          tokens: AuthTestFactory.createJwtTokens(),
+        },
       };
 
       mockAuthController.login.mockImplementation((req, res) => {
         res.status(200).json(expectedResponse);
       });
 
-      const response = await request(app)
-        .post('/auth/login')
-        .send(loginData)
-        .expect(200);
+      const response = await request(app).post('/auth/login').send(loginData).expect(200);
 
       expect(response.body).toEqual(expectedResponse);
       expect(mockAuthController.login).toHaveBeenCalledTimes(1);
       expect(validateRequest).toHaveBeenCalledWith({
-        body: expect.any(Object) // AuthValidations.login
+        body: expect.any(Object), // AuthValidations.login
       });
     });
 
@@ -162,14 +150,11 @@ describe('Auth Routes - Integration Tests', () => {
       mockAuthController.login.mockImplementation((req, res) => {
         res.status(401).json({
           success: false,
-          message: 'Invalid credentials'
+          message: 'Invalid credentials',
         });
       });
 
-      const response = await request(app)
-        .post('/auth/login')
-        .send(loginData)
-        .expect(401);
+      const response = await request(app).post('/auth/login').send(loginData).expect(401);
 
       expect(response.body.success).toBe(false);
       expect(response.body.message).toBe('Invalid credentials');
@@ -181,16 +166,14 @@ describe('Auth Routes - Integration Tests', () => {
       const cid = 'client123';
       const expectedResponse = {
         success: true,
-        data: AuthTestFactory.createCurrentUserInfo()
+        data: AuthTestFactory.createCurrentUserInfo(),
       };
 
       mockAuthController.getCurrentUser.mockImplementation((req, res) => {
         res.status(200).json(expectedResponse);
       });
 
-      const response = await request(app)
-        .get(`/auth/${cid}/me`)
-        .expect(200);
+      const response = await request(app).get(`/auth/${cid}/me`).expect(200);
 
       expect(response.body).toEqual(expectedResponse);
       expect(mockAuthController.getCurrentUser).toHaveBeenCalledTimes(1);
@@ -201,15 +184,13 @@ describe('Auth Routes - Integration Tests', () => {
       (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => {
         res.status(401).json({
           success: false,
-          message: 'Authentication required'
+          message: 'Authentication required',
         });
       });
 
       const cid = 'client123';
 
-      await request(app)
-        .get(`/auth/${cid}/me`)
-        .expect(401);
+      await request(app).get(`/auth/${cid}/me`).expect(401);
 
       expect(mockAuthController.getCurrentUser).not.toHaveBeenCalled();
     });
@@ -221,7 +202,7 @@ describe('Auth Routes - Integration Tests', () => {
       const activationToken = 'activation_token_123';
       const expectedResponse = {
         success: true,
-        message: 'Account activated successfully'
+        message: 'Account activated successfully',
       };
 
       mockAuthController.accountActivation.mockImplementation((req, res) => {
@@ -236,7 +217,7 @@ describe('Auth Routes - Integration Tests', () => {
       expect(response.body).toEqual(expectedResponse);
       expect(mockAuthController.accountActivation).toHaveBeenCalledTimes(1);
       expect(validateRequest).toHaveBeenCalledWith({
-        query: expect.any(Object) // AuthValidations.activationToken
+        query: expect.any(Object), // AuthValidations.activationToken
       });
     });
 
@@ -246,7 +227,7 @@ describe('Auth Routes - Integration Tests', () => {
       mockAuthController.accountActivation.mockImplementation((req, res) => {
         res.status(400).json({
           success: false,
-          message: 'Invalid or expired activation token'
+          message: 'Invalid or expired activation token',
         });
       });
 
@@ -264,7 +245,7 @@ describe('Auth Routes - Integration Tests', () => {
       const emailData = { email: 'user@example.com' };
       const expectedResponse = {
         success: true,
-        message: 'Activation link sent successfully'
+        message: 'Activation link sent successfully',
       };
 
       mockAuthController.sendActivationLink.mockImplementation((req, res) => {
@@ -279,7 +260,7 @@ describe('Auth Routes - Integration Tests', () => {
       expect(response.body).toEqual(expectedResponse);
       expect(mockAuthController.sendActivationLink).toHaveBeenCalledTimes(1);
       expect(validateRequest).toHaveBeenCalledWith({
-        body: expect.any(Object) // AuthValidations.resendActivation
+        body: expect.any(Object), // AuthValidations.resendActivation
       });
     });
 
@@ -289,7 +270,7 @@ describe('Auth Routes - Integration Tests', () => {
       mockAuthController.sendActivationLink.mockImplementation((req, res) => {
         res.status(404).json({
           success: false,
-          message: 'User not found'
+          message: 'User not found',
         });
       });
 
@@ -308,7 +289,7 @@ describe('Auth Routes - Integration Tests', () => {
       const expectedResponse = {
         success: true,
         message: 'Client account switched successfully',
-        data: { activeCid: 'new_client_123' }
+        data: { activeCid: 'new_client_123' },
       };
 
       mockAuthController.switchClientAccount.mockImplementation((req, res) => {
@@ -330,7 +311,7 @@ describe('Auth Routes - Integration Tests', () => {
       mockAuthController.switchClientAccount.mockImplementation((req, res) => {
         res.status(400).json({
           success: false,
-          message: 'Invalid client account'
+          message: 'Invalid client account',
         });
       });
 
@@ -348,22 +329,19 @@ describe('Auth Routes - Integration Tests', () => {
       const emailData = { email: 'user@example.com' };
       const expectedResponse = {
         success: true,
-        message: 'Password reset link sent successfully'
+        message: 'Password reset link sent successfully',
       };
 
       mockAuthController.forgotPassword.mockImplementation((req, res) => {
         res.status(200).json(expectedResponse);
       });
 
-      const response = await request(app)
-        .put('/auth/forgot_password')
-        .send(emailData)
-        .expect(200);
+      const response = await request(app).put('/auth/forgot_password').send(emailData).expect(200);
 
       expect(response.body).toEqual(expectedResponse);
       expect(mockAuthController.forgotPassword).toHaveBeenCalledTimes(1);
       expect(validateRequest).toHaveBeenCalledWith({
-        body: expect.any(Object) // AuthValidations.emailValidation
+        body: expect.any(Object), // AuthValidations.emailValidation
       });
     });
 
@@ -373,14 +351,11 @@ describe('Auth Routes - Integration Tests', () => {
       mockAuthController.forgotPassword.mockImplementation((req, res) => {
         res.status(404).json({
           success: false,
-          message: 'User not found'
+          message: 'User not found',
         });
       });
 
-      const response = await request(app)
-        .put('/auth/forgot_password')
-        .send(emailData)
-        .expect(404);
+      const response = await request(app).put('/auth/forgot_password').send(emailData).expect(404);
 
       expect(response.body.success).toBe(false);
     });
@@ -391,26 +366,23 @@ describe('Auth Routes - Integration Tests', () => {
       const resetData = {
         token: 'reset_token_123',
         password: 'NewPassword123!',
-        confirmPassword: 'NewPassword123!'
+        confirmPassword: 'NewPassword123!',
       };
       const expectedResponse = {
         success: true,
-        message: 'Password reset successfully'
+        message: 'Password reset successfully',
       };
 
       mockAuthController.resetPassword.mockImplementation((req, res) => {
         res.status(200).json(expectedResponse);
       });
 
-      const response = await request(app)
-        .post('/auth/reset_password')
-        .send(resetData)
-        .expect(200);
+      const response = await request(app).post('/auth/reset_password').send(resetData).expect(200);
 
       expect(response.body).toEqual(expectedResponse);
       expect(mockAuthController.resetPassword).toHaveBeenCalledTimes(1);
       expect(validateRequest).toHaveBeenCalledWith({
-        body: expect.any(Object) // AuthValidations.resetPassword
+        body: expect.any(Object), // AuthValidations.resetPassword
       });
     });
 
@@ -418,20 +390,17 @@ describe('Auth Routes - Integration Tests', () => {
       const resetData = {
         token: 'invalid_token',
         password: 'NewPassword123!',
-        confirmPassword: 'NewPassword123!'
+        confirmPassword: 'NewPassword123!',
       };
 
       mockAuthController.resetPassword.mockImplementation((req, res) => {
         res.status(400).json({
           success: false,
-          message: 'Invalid or expired reset token'
+          message: 'Invalid or expired reset token',
         });
       });
 
-      const response = await request(app)
-        .post('/auth/reset_password')
-        .send(resetData)
-        .expect(400);
+      const response = await request(app).post('/auth/reset_password').send(resetData).expect(400);
 
       expect(response.body.success).toBe(false);
     });
@@ -442,16 +411,14 @@ describe('Auth Routes - Integration Tests', () => {
       const cid = 'client123';
       const expectedResponse = {
         success: true,
-        message: 'Logout successful'
+        message: 'Logout successful',
       };
 
       mockAuthController.logout.mockImplementation((req, res) => {
         res.status(200).json(expectedResponse);
       });
 
-      const response = await request(app)
-        .delete(`/auth/${cid}/logout`)
-        .expect(200);
+      const response = await request(app).delete(`/auth/${cid}/logout`).expect(200);
 
       expect(response.body).toEqual(expectedResponse);
       expect(mockAuthController.logout).toHaveBeenCalledTimes(1);
@@ -462,15 +429,13 @@ describe('Auth Routes - Integration Tests', () => {
       (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => {
         res.status(401).json({
           success: false,
-          message: 'Authentication required'
+          message: 'Authentication required',
         });
       });
 
       const cid = 'client123';
 
-      await request(app)
-        .delete(`/auth/${cid}/logout`)
-        .expect(401);
+      await request(app).delete(`/auth/${cid}/logout`).expect(401);
 
       expect(mockAuthController.logout).not.toHaveBeenCalled();
     });
@@ -483,17 +448,15 @@ describe('Auth Routes - Integration Tests', () => {
         success: true,
         message: 'Token refreshed successfully',
         data: {
-          tokens: AuthTestFactory.createJwtTokens()
-        }
+          tokens: AuthTestFactory.createJwtTokens(),
+        },
       };
 
       mockAuthController.refreshToken.mockImplementation((req, res) => {
         res.status(200).json(expectedResponse);
       });
 
-      const response = await request(app)
-        .post(`/auth/${cid}/refresh_token`)
-        .expect(200);
+      const response = await request(app).post(`/auth/${cid}/refresh_token`).expect(200);
 
       expect(response.body).toEqual(expectedResponse);
       expect(mockAuthController.refreshToken).toHaveBeenCalledTimes(1);
@@ -504,15 +467,13 @@ describe('Auth Routes - Integration Tests', () => {
       (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => {
         res.status(401).json({
           success: false,
-          message: 'Authentication required'
+          message: 'Authentication required',
         });
       });
 
       const cid = 'client123';
 
-      await request(app)
-        .post(`/auth/${cid}/refresh_token`)
-        .expect(401);
+      await request(app).post(`/auth/${cid}/refresh_token`).expect(401);
 
       expect(mockAuthController.refreshToken).not.toHaveBeenCalled();
     });
@@ -523,13 +484,11 @@ describe('Auth Routes - Integration Tests', () => {
       mockAuthController.refreshToken.mockImplementation((req, res) => {
         res.status(401).json({
           success: false,
-          message: 'Invalid refresh token'
+          message: 'Invalid refresh token',
         });
       });
 
-      const response = await request(app)
-        .post(`/auth/${cid}/refresh_token`)
-        .expect(401);
+      const response = await request(app).post(`/auth/${cid}/refresh_token`).expect(401);
 
       expect(response.body.success).toBe(false);
       expect(response.body.message).toBe('Invalid refresh token');
@@ -551,7 +510,7 @@ describe('Auth Routes - Integration Tests', () => {
 
     it('should apply authentication middleware to protected routes', async () => {
       const cid = 'client123';
-      
+
       // Test protected routes
       await request(app).get(`/auth/${cid}/me`);
       await request(app).delete(`/auth/${cid}/logout`);
@@ -570,7 +529,7 @@ describe('Auth Routes - Integration Tests', () => {
   describe('Container resolution', () => {
     it('should resolve AuthController from container for all routes', async () => {
       const mockResolve = jest.fn().mockReturnValue(mockAuthController);
-      
+
       app.use((req, res, next) => {
         req.container = { resolve: mockResolve } as any;
         next();
@@ -589,15 +548,12 @@ describe('Auth Routes - Integration Tests', () => {
         req.container = {
           resolve: jest.fn().mockImplementation(() => {
             throw new Error('Container resolution failed');
-          })
+          }),
         } as any;
         next();
       });
 
-      await request(app)
-        .post('/auth/signup')
-        .send(AuthTestFactory.createSignupData())
-        .expect(500);
+      await request(app).post('/auth/signup').send(AuthTestFactory.createSignupData()).expect(500);
     });
   });
 
@@ -607,10 +563,7 @@ describe('Auth Routes - Integration Tests', () => {
         throw new Error('Database connection failed');
       });
 
-      await request(app)
-        .post('/auth/signup')
-        .send(AuthTestFactory.createSignupData())
-        .expect(500);
+      await request(app).post('/auth/signup').send(AuthTestFactory.createSignupData()).expect(500);
     });
 
     it('should handle malformed JSON requests', async () => {
@@ -621,7 +574,7 @@ describe('Auth Routes - Integration Tests', () => {
         .expect(400);
 
       expect(response.body).toMatchObject({
-        error: expect.any(String)
+        error: expect.any(String),
       });
     });
   });

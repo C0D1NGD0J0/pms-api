@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
-import { createMockRequest, createMockResponse } from './mockHelpers';
+
+import { createMockResponse, createMockRequest } from './mockHelpers';
 
 /**
  * Test data factories for consistent test data generation
@@ -14,17 +15,17 @@ export const TestDataFactory = {
     phoneNumber: '+12345678901',
     location: 'New York',
     isActive: true,
-    isEmailVerified: false,
     ...overrides,
   }),
 
   createClient: (overrides: any = {}) => ({
     _id: uuidv4(),
-    csub: uuidv4(),
+    cid: uuidv4(),
     displayName: 'Test Client',
     accountType: {
       planId: 'basic',
       planName: 'Basic Plan',
+      isCorporate: false,
       isEnterpriseAccount: false,
     },
     ...overrides,
@@ -47,9 +48,12 @@ export const TestDataFactory = {
     displayName: 'testuser',
     phoneNumber: '+12345678901',
     location: 'New York',
+    lang: 'en',
+    timeZone: 'America/New_York',
     accountType: {
       planId: 'basic',
       planName: 'Basic Plan',
+      isCorporate: false,
       isEnterpriseAccount: false,
     },
     ...overrides,
@@ -75,30 +79,44 @@ export const TestDataFactory = {
 
   createProperty: (overrides: any = {}) => ({
     _id: uuidv4(),
+    pid: uuidv4(),
+    cid: uuidv4(),
     name: 'Test Property',
     address: {
       street: '123 Test St',
       city: 'Test City',
       state: 'TS',
-      zipCode: '12345',
+      postCode: '12345',
       country: 'Test Country',
+      fullAddress: '123 Test St, Test City, TS 12345',
     },
-    propertyType: 'RESIDENTIAL',
-    units: [],
-    ownerId: uuidv4(),
+    propertyType: 'house',
+    status: 'available',
+    managedBy: uuidv4(),
+    createdBy: uuidv4(),
     ...overrides,
   }),
 
   createPropertyUnit: (overrides: any = {}) => ({
     _id: uuidv4(),
+    puid: uuidv4(),
     unitNumber: '101',
     propertyId: uuidv4(),
-    rent: 1200,
-    deposit: 1200,
-    bedrooms: 2,
-    bathrooms: 1,
-    squareFeet: 800,
-    isAvailable: true,
+    cid: uuidv4(),
+    unitType: 'apartment',
+    status: 'available',
+    fees: {
+      currency: 'USD',
+      rentAmount: 1200,
+      securityDeposit: 1200,
+    },
+    specifications: {
+      totalArea: 800,
+      rooms: 2,
+      bathrooms: 1,
+      maxOccupants: 4,
+    },
+    createdBy: uuidv4(),
     ...overrides,
   }),
 
@@ -228,7 +246,7 @@ export const AssertionHelpers = {
  */
 export const TestSuiteHelpers = {
   setupMockResponse: () => createMockResponse(),
-  
+
   setupMockRequest: (overrides: any = {}) => createMockRequest(overrides),
 
   expectAsyncError: async (asyncFn: () => Promise<any>, expectedError?: any) => {

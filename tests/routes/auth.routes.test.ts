@@ -1,4 +1,14 @@
-import express from 'express';
+// Mock the models module FIRST to prevent real database calls in validation schemas
+jest.mock('@models/index', () => ({
+  User: {
+    findOne: jest.fn().mockResolvedValue(null), // Always return null to simulate no existing user
+  },
+  Client: {},
+  Profile: {},
+  Property: {},
+  PropertyUnit: {},
+}));
+
 import request from 'supertest';
 import { asyncWrapper } from '@utils/index';
 import authRoutes from '@routes/auth.routes';
@@ -6,12 +16,33 @@ import { validateRequest } from '@shared/validations';
 import { isAuthenticated } from '@shared/middlewares';
 import { AuthController } from '@controllers/AuthController';
 import { AuthTestFactory } from '@tests/utils/authTestHelpers';
+import express, { NextFunction, Response, Request } from 'express';
+import { mockModels } from '@tests/mocks/dao/commonMocks';
+
+// Apply model mocks to prevent real database calls
+mockModels();
 
 jest.mock('@controllers/AuthController');
-jest.mock('@shared/validations');
+jest.mock('@shared/validations', () => ({
+  validateRequest: jest.fn(() => (req: any, res: any, next: any) => next()),
+}));
 jest.mock('@shared/middlewares');
+jest.mock('@di/index', () => ({
+  container: {
+    createScope: jest.fn(() => ({
+      resolve: jest.fn(),
+    })),
+  },
+}));
 jest.mock('@utils/index', () => ({
   asyncWrapper: jest.fn((handler) => handler),
+  createLogger: jest.fn(() => ({
+    info: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+    trace: jest.fn(),
+  })),
   httpStatusCodes: {
     OK: 200,
     CREATED: 201,
@@ -45,18 +76,28 @@ describe('Auth Routes - Integration Tests', () => {
     } as any;
 
     // Mock container resolution
-    app.use((req, res, next) => {
+    app.use((req: Request, res: Response, next: NextFunction) => {
       req.container = {
         resolve: jest.fn().mockReturnValue(mockAuthController),
+        cradle: {
+          tokenService: {
+            verifyToken: jest.fn(),
+            extractTokenFromRequest: jest.fn(),
+          },
+        },
       } as any;
       next();
     });
 
     // Mock validation middleware
-    (validateRequest as jest.Mock).mockImplementation(() => (req, res, next) => next());
+    (validateRequest as jest.Mock).mockImplementation(
+      () => (req: Request, res: Response, next: NextFunction) => next()
+    );
 
     // Mock authentication middleware
-    (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => next());
+    (isAuthenticated as jest.Mock).mockImplementation(
+      (req: Request, res: Response, next: NextFunction) => next()
+    );
 
     // Use auth routes
     app.use('/auth', authRoutes);
@@ -89,13 +130,15 @@ describe('Auth Routes - Integration Tests', () => {
     });
 
     it('should handle signup validation errors', async () => {
-      (validateRequest as jest.Mock).mockImplementation(() => (req, res, next) => {
-        res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: ['Email is required'],
-        });
-      });
+      (validateRequest as jest.Mock).mockImplementation(
+        () => (req: Request, res: Response, next: NextFunction) => {
+          res.status(400).json({
+            success: false,
+            message: 'Validation failed',
+            errors: ['Email is required'],
+          });
+        }
+      );
 
       await request(app).post('/auth/signup').send({}).expect(400);
 
@@ -181,12 +224,14 @@ describe('Auth Routes - Integration Tests', () => {
     });
 
     it('should require authentication', async () => {
-      (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => {
-        res.status(401).json({
-          success: false,
-          message: 'Authentication required',
-        });
-      });
+      (isAuthenticated as jest.Mock).mockImplementation(
+        (req: Request, res: Response, next: NextFunction) => {
+          res.status(401).json({
+            success: false,
+            message: 'Authentication required',
+          });
+        }
+      );
 
       const cid = 'client123';
 
@@ -426,12 +471,14 @@ describe('Auth Routes - Integration Tests', () => {
     });
 
     it('should require authentication for logout', async () => {
-      (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => {
-        res.status(401).json({
-          success: false,
-          message: 'Authentication required',
-        });
-      });
+      (isAuthenticated as jest.Mock).mockImplementation(
+        (req: Request, res: Response, next: NextFunction) => {
+          res.status(401).json({
+            success: false,
+            message: 'Authentication required',
+          });
+        }
+      );
 
       const cid = 'client123';
 
@@ -464,12 +511,14 @@ describe('Auth Routes - Integration Tests', () => {
     });
 
     it('should require authentication for token refresh', async () => {
-      (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => {
-        res.status(401).json({
-          success: false,
-          message: 'Authentication required',
-        });
-      });
+      (isAuthenticated as jest.Mock).mockImplementation(
+        (req: Request, res: Response, next: NextFunction) => {
+          res.status(401).json({
+            success: false,
+            message: 'Authentication required',
+          });
+        }
+      );
 
       const cid = 'client123';
 
@@ -530,7 +579,7 @@ describe('Auth Routes - Integration Tests', () => {
     it('should resolve AuthController from container for all routes', async () => {
       const mockResolve = jest.fn().mockReturnValue(mockAuthController);
 
-      app.use((req, res, next) => {
+      app.use((req: Request, res: Response, next: NextFunction) => {
         req.container = { resolve: mockResolve } as any;
         next();
       });
@@ -544,7 +593,7 @@ describe('Auth Routes - Integration Tests', () => {
     });
 
     it('should handle container resolution errors', async () => {
-      app.use((req, res, next) => {
+      app.use((req: Request, res: Response, next: NextFunction) => {
         req.container = {
           resolve: jest.fn().mockImplementation(() => {
             throw new Error('Container resolution failed');

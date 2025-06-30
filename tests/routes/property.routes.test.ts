@@ -1,16 +1,34 @@
-import express from 'express';
 import request from 'supertest';
 import propertyRoutes from '@routes/property.routes';
 import { validateRequest } from '@shared/validations';
+import { mockModels } from '@tests/mocks/dao/commonMocks';
+import express, { NextFunction, Response, Request } from 'express';
 import { PropertyController } from '@controllers/PropertyController';
 import { PropertyTestFactory } from '@tests/utils/propertyTestHelpers';
 import { isAuthenticated, routeLimiter, diskUpload, scanFile } from '@shared/middlewares';
 
+// Apply model mocks to prevent real database calls
+mockModels();
+
 jest.mock('@controllers/PropertyController');
 jest.mock('@shared/validations');
 jest.mock('@shared/middlewares');
-jest.mock('@utils/helpers', () => ({
+jest.mock('@di/index', () => ({
+  container: {
+    createScope: jest.fn(() => ({
+      resolve: jest.fn(),
+    })),
+  },
+}));
+jest.mock('@utils/index', () => ({
   asyncWrapper: jest.fn((handler) => handler),
+  createLogger: jest.fn(() => ({
+    info: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+    trace: jest.fn(),
+  })),
   httpStatusCodes: {
     OK: 200,
     CREATED: 201,
@@ -51,19 +69,35 @@ describe('Property Routes - Integration Tests', () => {
     } as any;
 
     // Mock container resolution
-    app.use((req, res, next) => {
+    app.use((req: Request, res: Response, next: NextFunction) => {
       req.container = {
         resolve: jest.fn().mockReturnValue(mockPropertyController),
+        cradle: {
+          tokenService: {
+            verifyToken: jest.fn(),
+            extractTokenFromRequest: jest.fn(),
+          },
+        },
       } as any;
       next();
     });
 
     // Mock middleware functions
-    (validateRequest as jest.Mock).mockImplementation(() => (req, res, next) => next());
-    (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => next());
-    (routeLimiter as jest.Mock).mockImplementation(() => (req, res, next) => next());
-    (diskUpload as jest.Mock).mockImplementation(() => (req, res, next) => next());
-    (scanFile as jest.Mock).mockImplementation((req, res, next) => next());
+    (validateRequest as jest.Mock).mockImplementation(
+      () => (req: Request, res: Response, next: NextFunction) => next()
+    );
+    (isAuthenticated as jest.Mock).mockImplementation(
+      (req: Request, res: Response, next: NextFunction) => next()
+    );
+    (routeLimiter as jest.Mock).mockImplementation(
+      () => (req: Request, res: Response, next: NextFunction) => next()
+    );
+    (diskUpload as jest.Mock).mockImplementation(
+      () => (req: Request, res: Response, next: NextFunction) => next()
+    );
+    (scanFile as jest.Mock).mockImplementation((req: Request, res: Response, next: NextFunction) =>
+      next()
+    );
 
     // Use property routes
     app.use('/properties', propertyRoutes);
@@ -84,8 +118,8 @@ describe('Property Routes - Integration Tests', () => {
         },
       };
 
-      mockPropertyController.getPropertyFormMetadata.mockImplementation((req, res) => {
-        res.status(200).json(expectedResponse);
+      mockPropertyController.getPropertyFormMetadata.mockImplementation(async (req, res) => {
+        return res.status(200).json(expectedResponse);
       });
 
       const response = await request(app).get('/properties/property_form_metadata').expect(200);
@@ -97,12 +131,14 @@ describe('Property Routes - Integration Tests', () => {
     });
 
     it('should require authentication', async () => {
-      (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => {
-        res.status(401).json({
-          success: false,
-          message: 'Authentication required',
-        });
-      });
+      (isAuthenticated as jest.Mock).mockImplementation(
+        (req: Request, res: Response, next: NextFunction) => {
+          res.status(401).json({
+            success: false,
+            message: 'Authentication required',
+          });
+        }
+      );
 
       await request(app).get('/properties/property_form_metadata').expect(401);
 
@@ -120,8 +156,8 @@ describe('Property Routes - Integration Tests', () => {
         message: 'Property created successfully',
       };
 
-      mockPropertyController.create.mockImplementation((req, res) => {
-        res.status(201).json(expectedResponse);
+      mockPropertyController.create.mockImplementation(async (req, res) => {
+        return res.status(201).json(expectedResponse);
       });
 
       const response = await request(app)
@@ -142,13 +178,15 @@ describe('Property Routes - Integration Tests', () => {
     it('should handle validation errors', async () => {
       const cid = 'client123';
 
-      (validateRequest as jest.Mock).mockImplementation(() => (req, res, next) => {
-        res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: ['Property name is required'],
-        });
-      });
+      (validateRequest as jest.Mock).mockImplementation(
+        () => (req: Request, res: Response, next: NextFunction) => {
+          res.status(400).json({
+            success: false,
+            message: 'Validation failed',
+            errors: ['Property name is required'],
+          });
+        }
+      );
 
       await request(app).post(`/properties/${cid}/add_property`).send({}).expect(400);
 
@@ -158,12 +196,14 @@ describe('Property Routes - Integration Tests', () => {
     it('should handle file upload errors', async () => {
       const cid = 'client123';
 
-      (diskUpload as jest.Mock).mockImplementation(() => (req, res, next) => {
-        res.status(400).json({
-          success: false,
-          message: 'File upload failed',
-        });
-      });
+      (diskUpload as jest.Mock).mockImplementation(
+        () => (req: Request, res: Response, next: NextFunction) => {
+          res.status(400).json({
+            success: false,
+            message: 'File upload failed',
+          });
+        }
+      );
 
       await request(app).post(`/properties/${cid}/add_property`).send({}).expect(400);
 
@@ -184,8 +224,8 @@ describe('Property Routes - Integration Tests', () => {
         message: 'CSV validation successful',
       };
 
-      mockPropertyController.validateCsv.mockImplementation((req, res) => {
-        res.status(200).json(expectedResponse);
+      mockPropertyController.validateCsv.mockImplementation(async (req, res) => {
+        return res.status(200).json(expectedResponse);
       });
 
       const response = await request(app).post(`/properties/${cid}/validate_csv`).expect(200);
@@ -199,8 +239,8 @@ describe('Property Routes - Integration Tests', () => {
     it('should handle invalid CSV format', async () => {
       const cid = 'client123';
 
-      mockPropertyController.validateCsv.mockImplementation((req, res) => {
-        res.status(400).json({
+      mockPropertyController.validateCsv.mockImplementation(async (req, res) => {
+        return res.status(400).json({
           success: false,
           message: 'Invalid CSV format',
           errors: ['Missing required columns'],
@@ -226,8 +266,8 @@ describe('Property Routes - Integration Tests', () => {
         message: 'CSV import started',
       };
 
-      mockPropertyController.createPropertiesFromCsv.mockImplementation((req, res) => {
-        res.status(202).json(expectedResponse);
+      mockPropertyController.createPropertiesFromCsv.mockImplementation(async (req, res) => {
+        return res.status(202).json(expectedResponse);
       });
 
       const response = await request(app)
@@ -243,8 +283,8 @@ describe('Property Routes - Integration Tests', () => {
     it('should handle CSV import errors', async () => {
       const cid = 'client123';
 
-      mockPropertyController.createPropertiesFromCsv.mockImplementation((req, res) => {
-        res.status(400).json({
+      mockPropertyController.createPropertiesFromCsv.mockImplementation(async (req, res) => {
+        return res.status(400).json({
           success: false,
           message: 'CSV import failed',
         });
@@ -271,8 +311,8 @@ describe('Property Routes - Integration Tests', () => {
         pagination: { page: 1, limit: 10, total: 2 },
       };
 
-      mockPropertyController.getClientProperties.mockImplementation((req, res) => {
-        res.status(200).json(expectedResponse);
+      mockPropertyController.getClientProperties.mockImplementation(async (req, res) => {
+        return res.status(200).json(expectedResponse);
       });
 
       const response = await request(app)
@@ -291,8 +331,8 @@ describe('Property Routes - Integration Tests', () => {
     it('should handle no properties found', async () => {
       const cid = 'client123';
 
-      mockPropertyController.getClientProperties.mockImplementation((req, res) => {
-        res.status(200).json({
+      mockPropertyController.getClientProperties.mockImplementation(async (req, res) => {
+        return res.status(200).json({
           success: true,
           data: [],
           pagination: { page: 1, limit: 10, total: 0 },
@@ -315,8 +355,8 @@ describe('Property Routes - Integration Tests', () => {
         data: property,
       };
 
-      mockPropertyController.getProperty.mockImplementation((req, res) => {
-        res.status(200).json(expectedResponse);
+      mockPropertyController.getProperty.mockImplementation(async (req, res) => {
+        return res.status(200).json(expectedResponse);
       });
 
       const response = await request(app)
@@ -334,8 +374,8 @@ describe('Property Routes - Integration Tests', () => {
       const cid = 'client123';
       const pid = 'nonexistent';
 
-      mockPropertyController.getProperty.mockImplementation((req, res) => {
-        res.status(404).json({
+      mockPropertyController.getProperty.mockImplementation(async (req, res) => {
+        return res.status(404).json({
           success: false,
           message: 'Property not found',
         });
@@ -363,8 +403,8 @@ describe('Property Routes - Integration Tests', () => {
         message: 'Property updated successfully',
       };
 
-      mockPropertyController.updateClientProperty.mockImplementation((req, res) => {
-        res.status(200).json(expectedResponse);
+      mockPropertyController.updateClientProperty.mockImplementation(async (req, res) => {
+        return res.status(200).json(expectedResponse);
       });
 
       const response = await request(app)
@@ -384,13 +424,15 @@ describe('Property Routes - Integration Tests', () => {
       const cid = 'client123';
       const pid = 'property123';
 
-      (validateRequest as jest.Mock).mockImplementation(() => (req, res, next) => {
-        res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: ['Invalid property data'],
-        });
-      });
+      (validateRequest as jest.Mock).mockImplementation(
+        () => (req: Request, res: Response, next: NextFunction) => {
+          res.status(400).json({
+            success: false,
+            message: 'Validation failed',
+            errors: ['Invalid property data'],
+          });
+        }
+      );
 
       await request(app).patch(`/properties/${cid}/client_properties/${pid}`).send({}).expect(400);
 
@@ -410,8 +452,8 @@ describe('Property Routes - Integration Tests', () => {
         message: 'Media added successfully',
       };
 
-      mockPropertyController.addMediaToProperty.mockImplementation((req, res) => {
-        res.status(200).json(expectedResponse);
+      mockPropertyController.addMediaToProperty.mockImplementation(async (req, res) => {
+        return res.status(200).json(expectedResponse);
       });
 
       const response = await request(app)
@@ -426,8 +468,8 @@ describe('Property Routes - Integration Tests', () => {
       const cid = 'client123';
       const pid = 'property123';
 
-      mockPropertyController.addMediaToProperty.mockImplementation((req, res) => {
-        res.status(400).json({
+      mockPropertyController.addMediaToProperty.mockImplementation(async (req, res) => {
+        return res.status(400).json({
           success: false,
           message: 'Failed to upload media',
         });
@@ -450,8 +492,8 @@ describe('Property Routes - Integration Tests', () => {
         message: 'Media removed successfully',
       };
 
-      mockPropertyController.deleteMediaFromProperty.mockImplementation((req, res) => {
-        res.status(200).json(expectedResponse);
+      mockPropertyController.deleteMediaFromProperty.mockImplementation(async (req, res) => {
+        return res.status(200).json(expectedResponse);
       });
 
       const response = await request(app)
@@ -466,8 +508,8 @@ describe('Property Routes - Integration Tests', () => {
       const cid = 'client123';
       const pid = 'property123';
 
-      mockPropertyController.deleteMediaFromProperty.mockImplementation((req, res) => {
-        res.status(404).json({
+      mockPropertyController.deleteMediaFromProperty.mockImplementation(async (req, res) => {
+        return res.status(404).json({
           success: false,
           message: 'Media not found',
         });
@@ -490,8 +532,8 @@ describe('Property Routes - Integration Tests', () => {
         message: 'Property archived successfully',
       };
 
-      mockPropertyController.archiveProperty.mockImplementation((req, res) => {
-        res.status(200).json(expectedResponse);
+      mockPropertyController.archiveProperty.mockImplementation(async (req, res) => {
+        return res.status(200).json(expectedResponse);
       });
 
       const response = await request(app)
@@ -510,8 +552,8 @@ describe('Property Routes - Integration Tests', () => {
       const cid = 'client123';
       const pid = 'property123';
 
-      mockPropertyController.archiveProperty.mockImplementation((req, res) => {
-        res.status(400).json({
+      mockPropertyController.archiveProperty.mockImplementation(async (req, res) => {
+        return res.status(400).json({
           success: false,
           message: 'Cannot archive property with active leases',
         });
@@ -560,12 +602,14 @@ describe('Property Routes - Integration Tests', () => {
     });
 
     it('should handle middleware errors', async () => {
-      (isAuthenticated as jest.Mock).mockImplementation((req, res, next) => {
-        res.status(401).json({
-          success: false,
-          message: 'Token expired',
-        });
-      });
+      (isAuthenticated as jest.Mock).mockImplementation(
+        (req: Request, res: Response, next: NextFunction) => {
+          res.status(401).json({
+            success: false,
+            message: 'Token expired',
+          });
+        }
+      );
 
       await request(app).get('/properties/property_form_metadata').expect(401);
     });
@@ -575,7 +619,7 @@ describe('Property Routes - Integration Tests', () => {
     it('should resolve PropertyController from container', async () => {
       const mockResolve = jest.fn().mockReturnValue(mockPropertyController);
 
-      app.use((req, res, next) => {
+      app.use((req: Request, res: Response, next: NextFunction) => {
         req.container = { resolve: mockResolve } as any;
         next();
       });
@@ -586,7 +630,7 @@ describe('Property Routes - Integration Tests', () => {
     });
 
     it('should handle container resolution failures', async () => {
-      app.use((req, res, next) => {
+      app.use((req: Request, res: Response, next: NextFunction) => {
         req.container = {
           resolve: jest.fn().mockImplementation(() => {
             throw new Error('Controller not found');
@@ -603,16 +647,18 @@ describe('Property Routes - Integration Tests', () => {
     it('should validate client ID parameter', async () => {
       const invalidCid = 'invalid-client-id';
 
-      (validateRequest as jest.Mock).mockImplementation(() => (req, res, next) => {
-        if (req.params.cid === invalidCid) {
-          res.status(400).json({
-            success: false,
-            message: 'Invalid client ID format',
-          });
-        } else {
-          next();
+      (validateRequest as jest.Mock).mockImplementation(
+        () => (req: Request, res: Response, next: NextFunction) => {
+          if (req.params.cid === invalidCid) {
+            res.status(400).json({
+              success: false,
+              message: 'Invalid client ID format',
+            });
+          } else {
+            next();
+          }
         }
-      });
+      );
 
       await request(app).get(`/properties/${invalidCid}/client_properties`).expect(400);
 
@@ -623,16 +669,18 @@ describe('Property Routes - Integration Tests', () => {
       const cid = 'client123';
       const invalidPid = 'invalid-property-id';
 
-      (validateRequest as jest.Mock).mockImplementation(() => (req, res, next) => {
-        if (req.params.pid === invalidPid) {
-          res.status(400).json({
-            success: false,
-            message: 'Invalid property ID format',
-          });
-        } else {
-          next();
+      (validateRequest as jest.Mock).mockImplementation(
+        () => (req: Request, res: Response, next: NextFunction) => {
+          if (req.params.pid === invalidPid) {
+            res.status(400).json({
+              success: false,
+              message: 'Invalid property ID format',
+            });
+          } else {
+            next();
+          }
         }
-      });
+      );
 
       await request(app).get(`/properties/${cid}/client_properties/${invalidPid}`).expect(400);
 
@@ -666,12 +714,14 @@ describe('Property Routes - Integration Tests', () => {
     it('should handle large file uploads', async () => {
       const cid = 'client123';
 
-      (diskUpload as jest.Mock).mockImplementation(() => (req, res, next) => {
-        res.status(413).json({
-          success: false,
-          message: 'File too large',
-        });
-      });
+      (diskUpload as jest.Mock).mockImplementation(
+        () => (req: Request, res: Response, next: NextFunction) => {
+          res.status(413).json({
+            success: false,
+            message: 'File too large',
+          });
+        }
+      );
 
       await request(app).post(`/properties/${cid}/add_property`).expect(413);
     });

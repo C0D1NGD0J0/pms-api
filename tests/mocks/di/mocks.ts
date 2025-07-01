@@ -3,8 +3,8 @@ import { jest } from '@jest/globals';
 import { EmailWorker } from '@workers/index';
 import { AuthController } from '@controllers/index';
 import { Profile, Client, User } from '@models/index';
+import { createDeepMock } from '@tests/utils/mockHelpers';
 import { DatabaseService, RedisService } from '@database/index';
-import { createServiceMock, createDeepMock } from '@tests/utils/mockHelpers';
 
 // Mock Controllers
 jest.mock('@controllers/index', () => ({
@@ -12,16 +12,31 @@ jest.mock('@controllers/index', () => ({
   AuthController: jest.fn(),
 }));
 
-export const mockAuthService = createServiceMock();
+export const mockAuthService = createDeepMock({
+  signup: jest.fn(),
+  login: jest.fn(),
+  accountActivation: jest.fn(),
+  sendActivationLink: jest.fn(),
+  forgotPassword: jest.fn(),
+  resetPassword: jest.fn(),
+  switchActiveAccount: jest.fn(),
+  getCurrentUser: jest.fn(),
+  logout: jest.fn(),
+  refreshToken: jest.fn(),
+  getTokenUser: jest.fn(),
+  verifyClientAccess: jest.fn(),
+});
 
 export const mockPropertyService = createDeepMock({
   addProperty: jest.fn(),
-  getAllProperties: jest.fn(),
-  getPropertyById: jest.fn(),
-  updateProperty: jest.fn(),
-  deleteProperty: jest.fn(),
+  getClientProperties: jest.fn(),
+  getClientProperty: jest.fn(),
+  updateClientProperty: jest.fn(),
+  archiveClientProperty: jest.fn(),
   validateCsv: jest.fn(),
   addPropertiesFromCsv: jest.fn(),
+  updatePropertyDocuments: jest.fn(),
+  getUnitInfoForProperty: jest.fn(),
 });
 
 export const mockAuthTokenService = createDeepMock({
@@ -36,6 +51,7 @@ export const mockAuthCache = createDeepMock({
   getRefreshToken: jest.fn(),
   getCurrentUser: jest.fn(),
   deleteRefreshToken: jest.fn(),
+  invalidateUserSession: jest.fn(),
 });
 
 // Mock DAOs
@@ -51,6 +67,8 @@ export const mockUserDAO = createDeepMock({
   resetPassword: jest.fn(),
   verifyCredentials: jest.fn(),
   updateById: jest.fn(),
+  isEmailUnique: jest.fn(),
+  associateUserWithClient: jest.fn(),
 });
 
 export const mockClientDAO = createDeepMock({
@@ -72,16 +90,22 @@ export const mockEmailQueue = createDeepMock({
 
 export const mockPropertyDAO = createDeepMock({
   create: jest.fn(),
+  createProperty: jest.fn(),
   findById: jest.fn(),
   findByOwner: jest.fn(),
   updateById: jest.fn(),
   deleteById: jest.fn(),
   findAll: jest.fn(),
   findFirst: jest.fn(),
+  findPropertyByAddress: jest.fn(),
   getPropertyUnits: jest.fn(),
+  getPropertiesByClientId: jest.fn(),
   canAddUnitToProperty: jest.fn(),
   syncPropertyOccupancyWithUnits: jest.fn(),
-  getClientProperty: jest.fn(),
+  syncPropertyOccupancyWithUnitsEnhanced: jest.fn(),
+  archiveProperty: jest.fn(),
+  updatePropertyDocument: jest.fn(),
+  update: jest.fn(),
   insert: jest.fn(),
   list: jest.fn(),
   startSession: jest.fn(),
@@ -104,6 +128,8 @@ export const mockPropertyUnitDAO = createDeepMock({
   updatePropertyUnit: jest.fn(),
   createPropertyUnit: jest.fn(),
   getNextAvailableUnitNumber: jest.fn(),
+  getExistingUnitNumbers: jest.fn(),
+  getSuggestedStartingUnitNumber: jest.fn(),
 });
 
 // Additional service mocks
@@ -165,8 +191,10 @@ export const mockUploadQueue = createDeepMock({
 export const mockPropertyCache = createDeepMock({
   cacheProperty: jest.fn(),
   getClientProperties: jest.fn(),
+  saveClientProperties: jest.fn(),
   invalidateProperty: jest.fn(),
   invalidatePropertyLists: jest.fn(),
+  invalidateUserSession: jest.fn(),
 });
 
 export const mockAuthController = jest.mocked(AuthController);

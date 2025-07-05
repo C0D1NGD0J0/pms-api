@@ -22,7 +22,7 @@ export const propertyTypeRules: PropertyTypeRules = {
       documents: [],
       unit: [],
     },
-    requiredFields: ['name', 'propertyType', 'address', 'totalUnits'],
+    requiredFields: ['name', 'propertyType', 'address', 'maxAllowedUnits'],
     validationRules: {
       minTotalArea: 500,
       maxUnits: 500,
@@ -45,7 +45,7 @@ export const propertyTypeRules: PropertyTypeRules = {
       documents: [],
       unit: [],
     },
-    requiredFields: ['name', 'propertyType', 'address', 'totalUnits'],
+    requiredFields: ['name', 'propertyType', 'address', 'maxAllowedUnits'],
     validationRules: {
       minTotalArea: 200,
       maxUnits: 100,
@@ -68,7 +68,7 @@ export const propertyTypeRules: PropertyTypeRules = {
       documents: [],
       unit: [],
     },
-    requiredFields: ['name', 'propertyType', 'address', 'totalUnits'],
+    requiredFields: ['name', 'propertyType', 'address', 'maxAllowedUnits'],
     validationRules: {
       minTotalArea: 1000,
       maxUnits: 1000,
@@ -188,10 +188,10 @@ export class PropertyTypeManager {
     // Property type specific validation
     const rules = propertyTypeRules[propertyType] || propertyTypeRules.house;
 
-    // Multi-unit properties require totalUnits
+    // Multi-unit properties require maxAllowedUnits
     if (rules.isMultiUnit) {
-      if (!propertyData.totalUnits || propertyData.totalUnits <= 0) {
-        missingFields.push('totalUnits');
+      if (!propertyData.maxAllowedUnits || propertyData.maxAllowedUnits <= 0) {
+        missingFields.push('maxAllowedUnits');
       }
     }
 
@@ -251,8 +251,8 @@ export class PropertyTypeManager {
     const rules = propertyTypeRules[propertyType] || propertyTypeRules.house;
 
     // Validate total units
-    if (propertyData.totalUnits !== undefined) {
-      const unitValidation = this.validateUnitCount(propertyType, propertyData.totalUnits);
+    if (propertyData.maxAllowedUnits !== undefined) {
+      const unitValidation = this.validateUnitCount(propertyType, propertyData.maxAllowedUnits);
       if (!unitValidation.valid && unitValidation.message) {
         errors.push(unitValidation.message);
       }
@@ -269,7 +269,7 @@ export class PropertyTypeManager {
       }
 
       // Multi-unit properties should not have bedrooms/bathrooms at property level
-      if (rules.isMultiUnit && propertyData.totalUnits && propertyData.totalUnits > 1) {
+      if (rules.isMultiUnit && propertyData.maxAllowedUnits && propertyData.maxAllowedUnits > 1) {
         if (propertyData.specifications.bedrooms && propertyData.specifications.bedrooms > 0) {
           errors.push('Multi-unit properties should manage bedrooms at the unit level');
         }
@@ -330,7 +330,7 @@ export class PropertyTypeManager {
     propertyData: Partial<IProperty>
   ): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
-    const totalUnits = propertyData.totalUnits || 1;
+    const maxAllowedUnits = propertyData.maxAllowedUnits || 1;
 
     // Validate occupied properties have rental amount
     if (propertyData.occupancyStatus === 'occupied') {
@@ -342,7 +342,7 @@ export class PropertyTypeManager {
 
     // Validate partially occupied properties are multi-unit
     if (propertyData.occupancyStatus === 'partially_occupied') {
-      if (totalUnits <= 1) {
+      if (maxAllowedUnits <= 1) {
         errors.push('Single-unit properties cannot be partially occupied');
       }
     }
@@ -414,16 +414,16 @@ export class PropertyTypeManager {
    * Determines if a property should validate bedroom/bathroom at property level
    *
    * @param propertyType The type of property
-   * @param totalUnits The number of units in the property
+   * @param maxAllowedUnits The number of units in the property
    * @returns Whether bedroom/bathroom fields should be validated
    */
-  static shouldValidateBedBath(propertyType: string, totalUnits: number): boolean {
+  static shouldValidateBedBath(propertyType: string, maxAllowedUnits: number): boolean {
     const rules = propertyTypeRules[propertyType] || propertyTypeRules.house;
 
     // Don't validate bed/bath at property level for:
     // 1. Multi-unit property types (like apartments)
     // 2. Single-family homes that have been converted to multiple units
-    if ((rules.isMultiUnit || totalUnits > 1) && !rules.validateBedBath) {
+    if ((rules.isMultiUnit || maxAllowedUnits > 1) && !rules.validateBedBath) {
       return false;
     }
 
@@ -525,23 +525,23 @@ export class PropertyTypeManager {
    * Validates unit count for a property type
    *
    * @param propertyType The type of property
-   * @param totalUnits The number of units to validate
+   * @param maxAllowedUnits The number of units to validate
    * @returns Object with validation result and message
    */
   static validateUnitCount(
     propertyType: string,
-    totalUnits: number
+    maxAllowedUnits: number
   ): { valid: boolean; message?: string } {
     const rules = propertyTypeRules[propertyType] || propertyTypeRules.house;
 
-    if (totalUnits <= 0) {
+    if (maxAllowedUnits <= 0) {
       return {
         valid: false,
         message: 'Total units must be greater than 0',
       };
     }
 
-    if (totalUnits < rules.minUnits) {
+    if (maxAllowedUnits < rules.minUnits) {
       return {
         valid: false,
         message: `${propertyType} properties must have at least ${rules.minUnits} unit(s)`,
@@ -549,7 +549,7 @@ export class PropertyTypeManager {
     }
 
     const validationRules = this.getValidationRules(propertyType);
-    if (validationRules?.maxUnits && totalUnits > validationRules.maxUnits) {
+    if (validationRules?.maxUnits && maxAllowedUnits > validationRules.maxUnits) {
       return {
         valid: false,
         message: `${propertyType} properties cannot exceed ${validationRules.maxUnits} units`,
@@ -584,7 +584,7 @@ export class PropertyTypeManager {
     const rules = propertyTypeRules[propertyType] || propertyTypeRules.house;
 
     // Check if multi-unit property has appropriate unit count
-    if (rules.isMultiUnit && (!propertyData.totalUnits || propertyData.totalUnits <= 1)) {
+    if (rules.isMultiUnit && (!propertyData.maxAllowedUnits || propertyData.maxAllowedUnits <= 1)) {
       return {
         isCompatible: false,
         message: `${propertyType} properties are multi-unit and must have more than 1 unit`,
@@ -596,8 +596,8 @@ export class PropertyTypeManager {
     if (
       !rules.isMultiUnit &&
       maxUnitsAllowed &&
-      propertyData.totalUnits &&
-      propertyData.totalUnits > maxUnitsAllowed
+      propertyData.maxAllowedUnits &&
+      propertyData.maxAllowedUnits > maxUnitsAllowed
     ) {
       return {
         isCompatible: false,
@@ -632,8 +632,8 @@ export class PropertyTypeManager {
     }
 
     if (newData.occupancyStatus === 'partially_occupied') {
-      const totalUnits = newData.totalUnits || existingData.totalUnits || 1;
-      if (totalUnits <= 1) {
+      const maxAllowedUnits = newData.maxAllowedUnits || existingData.maxAllowedUnits || 1;
+      if (maxAllowedUnits <= 1) {
         errors.push('Single-unit properties cannot be partially occupied');
       }
     }

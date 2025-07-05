@@ -10,16 +10,15 @@ import {
 
 // CLIENT
 export interface IClient {
+  accountAdmin: Types.ObjectId | PopulatedAccountAdmin;
   identification?: IdentificationType;
   subscription: Types.ObjectId | null;
   companyProfile?: ICompanyProfile;
   lastModifiedBy: Types.ObjectId;
-  accountAdmin: Types.ObjectId;
   settings: IClientSettings;
   accountType: IAccountType;
   displayName: string;
 }
-
 export interface ICompanyProfile {
   contactInfo?: IContactInfoType;
   registrationNumber?: string;
@@ -30,6 +29,7 @@ export interface ICompanyProfile {
   industry?: string;
   website?: string;
 }
+
 export interface IClientDocument extends Document, IClient {
   verifiedBy: string | Types.ObjectId;
   isVerified: boolean;
@@ -40,7 +40,6 @@ export interface IClientDocument extends Document, IClient {
   cid: string;
   id: string;
 }
-
 export interface IClientSettings {
   notificationPreferences: {
     email: boolean;
@@ -50,6 +49,14 @@ export interface IClientSettings {
   timeZone: string;
   lang: string;
 }
+
+export type PopulatedAccountAdmin = {
+  _id: Types.ObjectId;
+  email: string;
+  firstName: string;
+  lastName: string;
+  avatar?: string;
+};
 
 export interface IClientUserConnections {
   roles: IUserRoleType[];
@@ -61,3 +68,8 @@ export interface IClientUserConnections {
 export type IPopulatedClientDocument = {
   admin: IUserDocument | Types.ObjectId;
 } & Omit<IClientDocument, 'admin'>;
+
+export interface IClientStats {
+  totalProperties: number;
+  totalUsers: number;
+}

@@ -27,6 +27,7 @@ export class AuthController {
       {
         accessToken: result.data.accessToken,
         refreshToken: result.data.refreshToken,
+        rememberMe: result.data.rememberMe,
       },
       res
     );
@@ -101,22 +102,61 @@ export class AuthController {
 
   logout = async (req: Request, res: Response) => {
     let token = req.cookies?.[JWT_KEY_NAMES.ACCESS_TOKEN];
+    if (!token) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'Access token not found',
+      });
+    }
+
     token = token.split(' ')[1];
     const result = await this.authService.logout(token);
 
     res.clearCookie(JWT_KEY_NAMES.ACCESS_TOKEN, { path: '/' });
-    res.clearCookie(JWT_KEY_NAMES.REFRESH_TOKEN, { path: '/api/v1/auth/refresh' });
+    res.clearCookie(JWT_KEY_NAMES.REFRESH_TOKEN, { path: '/api/v1/auth/refresh_token' });
     res.status(httpStatusCodes.OK).json(result);
   };
 
   refreshToken = async (req: Request, res: Response) => {
-    const token = req.cookies?.[JWT_KEY_NAMES.REFRESH_TOKEN];
-    const result = await this.authService.refreshToken(token);
-    console.log(result, '----result');
-    // res = setAuthCookies(
-    //   { accessToken: result.data.accessToken, refreshToken: result.data.refreshToken },
-    //   res
-    // );
-    res.status(httpStatusCodes.OK).json(result);
+    let refreshToken = req.cookies?.[JWT_KEY_NAMES.REFRESH_TOKEN];
+
+    if (!refreshToken) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'Refresh token not found',
+      });
+    }
+
+    // Remove Bearer prefix if present
+    if (refreshToken.startsWith('Bearer ')) {
+      refreshToken = refreshToken.split(' ')[1];
+    }
+
+    // Extract user ID from the refresh token
+    const decoded = this.authService['tokenService'].decodeJwt(refreshToken);
+    if (!decoded.success || !decoded.data?.data?.sub) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'Invalid refresh token',
+      });
+    }
+
+    const userId = decoded.data.data.sub;
+    const result = await this.authService.refreshToken({ refreshToken, userId });
+
+    // Set new tokens as cookies
+    res = setAuthCookies(
+      {
+        accessToken: result.data.accessToken,
+        refreshToken: result.data.refreshToken,
+        rememberMe: result.data.rememberMe,
+      },
+      res
+    );
+
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: result.message,
+    });
   };
 }

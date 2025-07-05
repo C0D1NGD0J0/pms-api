@@ -17,6 +17,9 @@ const isUniqueEmail = async (value: string) => {
     return true;
   } catch (error) {
     console.error('Error checking email uniqueness', error);
+    if (error instanceof Error && error.message.includes('buffering timed out')) {
+      throw new Error('Database connection timeout. Please try again.');
+    }
     return false;
   }
 };
@@ -175,11 +178,16 @@ export const AccountActivationSchema = z.object({
     })
     .refine(
       async (token: string) => {
-        const user = await User.findOne({ activationToken: token });
-        if (!user || dayjs().isAfter(dayjs(user.activationTokenExpiresAt))) {
+        try {
+          const user = await User.findOne({ activationToken: token });
+          if (!user || dayjs().isAfter(dayjs(user.activationTokenExpiresAt))) {
+            return false;
+          }
+          return true;
+        } catch (error) {
+          console.error('Error validating activation token', error);
           return false;
         }
-        return true;
       },
       {
         message: 'Token is invalid or has expired',
@@ -193,11 +201,16 @@ export const ForgotPasswordSchema = z.object({
     .email({ message: 'Invalid email format.' })
     .refine(
       async (email) => {
-        const user = await User.findOne({ email });
-        if (!user) {
+        try {
+          const user = await User.findOne({ email });
+          if (!user) {
+            return false;
+          }
+          return true;
+        } catch (error) {
+          console.error('Error validating forgot password email', error);
           return false;
         }
-        return true;
       },
       {
         message: 'Invalid email address provided.',
@@ -211,11 +224,16 @@ export const ResendActivationSchema = z.object({
     .email({ message: 'Invalid email format.' })
     .refine(
       async (email) => {
-        const user = await User.findOne({ email, isActive: false });
-        if (!user) {
+        try {
+          const user = await User.findOne({ email, isActive: false });
+          if (!user) {
+            return false;
+          }
+          return true;
+        } catch (error) {
+          console.error('Error validating resend activation email', error);
           return false;
         }
-        return true;
       },
       {
         message: 'Invalid email address provided.',
@@ -226,14 +244,19 @@ export const ResendActivationSchema = z.object({
 export const ResetPasswordSchema = z.object({
   token: z.string({ message: 'Invalid url, token missing.' }).refine(
     async (token) => {
-      const user = await User.findOne({
-        passwordResetToken: token,
-        passwordResetTokenExpiresAt: { $gt: new Date() },
-      });
-      if (!user) {
+      try {
+        const user = await User.findOne({
+          passwordResetToken: token,
+          passwordResetTokenExpiresAt: { $gt: new Date() },
+        });
+        if (!user) {
+          return false;
+        }
+        return true;
+      } catch (error) {
+        console.error('Error validating password reset token', error);
         return false;
       }
-      return true;
     },
     {
       message: 'Password reset token is invalid or has expired',

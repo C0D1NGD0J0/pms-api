@@ -10,7 +10,12 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyTypeManager } from '@utils/PropertyTypeManager';
 import { getRequestDuration, createLogger, JOB_NAME } from '@utils/index';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
-import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
+import {
+  UploadCompletedPayload,
+  UploadFailedPayload,
+  IDisposable,
+  EventTypes,
+} from '@interfaces/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -47,7 +52,7 @@ interface IConstructor {
   clientDAO: ClientDAO;
 }
 
-export class PropertyService {
+export class PropertyService implements IDisposable {
   private readonly log: Logger;
   private uploadQueue: UploadQueue;
   private readonly clientDAO: ClientDAO;
@@ -91,6 +96,15 @@ export class PropertyService {
   private setupEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
+
+    // Unit-related events for property occupancy sync
+    this.emitterService.on(EventTypes.UNIT_CREATED, this.handleUnitChanged.bind(this));
+    this.emitterService.on(EventTypes.UNIT_UPDATED, this.handleUnitChanged.bind(this));
+    this.emitterService.on(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged.bind(this));
+    this.emitterService.on(EventTypes.UNIT_UNARCHIVED, this.handleUnitChanged.bind(this));
+    this.emitterService.on(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged.bind(this));
+    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged.bind(this));
+
     this.log.info('PropertyService event listeners initialized');
   }
 
@@ -207,7 +221,7 @@ export class PropertyService {
   }
 
   private propertyTypeValidation(propertyData: NewPropertyType): void {
-    const { propertyType, totalUnits = 1, specifications, fees } = propertyData;
+    const { propertyType, maxAllowedUnits = 1, specifications, fees } = propertyData;
 
     if (!propertyType) return;
 
@@ -215,7 +229,7 @@ export class PropertyService {
     const errors: string[] = [];
 
     if (rules.isMultiUnit) {
-      if (totalUnits < rules.minUnits) {
+      if (maxAllowedUnits < rules.minUnits) {
         errors.push(`${propertyType} properties require at least ${rules.minUnits} units`);
       }
 
@@ -486,7 +500,7 @@ export class PropertyService {
       };
     }
     const properties = await this.propertyDAO.getPropertiesByClientId(cid, filter, opts);
-    await this.propertyCache.saveClientProperties(cid, properties.data, {
+    await this.propertyCache.saveClientProperties(cid, properties.items, {
       filter,
       pagination: opts,
     });
@@ -494,7 +508,7 @@ export class PropertyService {
     return {
       success: true,
       data: {
-        items: properties.data,
+        items: properties.items,
         pagination: properties.pagination,
       },
     };
@@ -656,8 +670,8 @@ export class PropertyService {
     }
 
     if (updateData.occupancyStatus === 'partially_occupied') {
-      const totalUnits = updateData.totalUnits || existingProperty.totalUnits || 1;
-      if (totalUnits <= 1) {
+      const maxAllowedUnits = updateData.maxAllowedUnits || existingProperty.maxAllowedUnits || 1;
+      if (maxAllowedUnits <= 1) {
         errors.push('Single-unit properties cannot be partially occupied');
       }
     }
@@ -806,9 +820,106 @@ export class PropertyService {
     }
   }
 
+  private async handleUnitChanged(payload: any): Promise<void> {
+    try {
+      this.log.info(
+        {
+          propertyId: payload.propertyId,
+          propertyPid: payload.propertyPid,
+          cid: payload.cid,
+          changeType: payload.changeType,
+          unitId: payload.unitId,
+        },
+        'Processing unit change event for property occupancy sync'
+      );
+
+      // Sync property occupancy status based on current unit data
+      await this.propertyDAO.syncPropertyOccupancyWithUnitsEnhanced(
+        payload.propertyId,
+        payload.userId
+      );
+
+      // Invalidate property cache to ensure fresh data on next request
+      await this.propertyCache.invalidateProperty(payload.cid, payload.propertyPid);
+      await this.propertyCache.invalidatePropertyLists(payload.cid);
+
+      this.log.info(
+        {
+          propertyId: payload.propertyId,
+          propertyPid: payload.propertyPid,
+          changeType: payload.changeType,
+        },
+        'Successfully synced property occupancy after unit change'
+      );
+    } catch (error) {
+      this.log.error(
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          propertyId: payload.propertyId,
+          propertyPid: payload.propertyPid,
+          changeType: payload.changeType,
+        },
+        'Failed to sync property occupancy after unit change'
+      );
+    }
+  }
+
+  private async handleUnitBatchChanged(payload: any): Promise<void> {
+    try {
+      this.log.info(
+        {
+          propertyId: payload.propertyId,
+          propertyPid: payload.propertyPid,
+          cid: payload.cid,
+          unitsCreated: payload.unitsCreated,
+          unitsFailed: payload.unitsFailed,
+        },
+        'Processing unit batch change event for property occupancy sync'
+      );
+
+      // Only sync if at least one unit was created successfully
+      if (payload.unitsCreated > 0) {
+        await this.propertyDAO.syncPropertyOccupancyWithUnitsEnhanced(
+          payload.propertyId,
+          payload.userId
+        );
+        await this.propertyCache.invalidateProperty(payload.cid, payload.propertyPid);
+        await this.propertyCache.invalidatePropertyLists(payload.cid);
+
+        this.log.info(
+          {
+            propertyId: payload.propertyId,
+            propertyPid: payload.propertyPid,
+            unitsCreated: payload.unitsCreated,
+          },
+          'Successfully synced property occupancy after batch unit creation'
+        );
+      } else {
+        this.log.info(
+          {
+            propertyId: payload.propertyId,
+            propertyPid: payload.propertyPid,
+            unitsFailed: payload.unitsFailed,
+          },
+          'Skipping property occupancy sync - no units were created successfully'
+        );
+      }
+    } catch (error) {
+      this.log.error(
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          propertyId: payload.propertyId,
+          propertyPid: payload.propertyPid,
+          unitsCreated: payload.unitsCreated,
+        },
+        'Failed to sync property occupancy after batch unit creation'
+      );
+    }
+  }
+
   async getUnitInfoForProperty(property: IPropertyDocument): Promise<{
     canAddUnit: boolean;
-    totalUnits: number;
+    maxAllowedUnits: number;
     currentUnits: number;
     availableSpaces: number;
     lastUnitNumber?: string;
@@ -823,12 +934,12 @@ export class PropertyService {
     };
   }> {
     const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
-    const totalUnits = property.totalUnits || 1;
+    const maxAllowedUnits = property.maxAllowedUnits || 1;
 
     if (isMultiUnit) {
       const unitData = await this.propertyUnitDAO.getPropertyUnitInfo(property.id);
       const canAddUnitResult = await this.propertyDAO.canAddUnitToProperty(property.id);
-      const availableSpaces = Math.max(0, totalUnits - unitData.currentUnits);
+      const availableSpaces = Math.max(0, maxAllowedUnits - unitData.currentUnits);
 
       let lastUnitNumber: string | undefined;
       let suggestedNextUnitNumber: string | undefined;
@@ -878,7 +989,7 @@ export class PropertyService {
 
       return {
         canAddUnit: canAddUnitResult.canAdd,
-        totalUnits,
+        maxAllowedUnits,
         currentUnits: unitData.currentUnits,
         availableSpaces,
         lastUnitNumber,
@@ -919,14 +1030,29 @@ export class PropertyService {
           : this.propertyUnitDAO.getSuggestedStartingUnitNumber(property.propertyType);
 
       return {
-        canAddUnit: false, // Single-unit properties typically can't add more units
-        totalUnits: 1,
-        currentUnits: 1, // Single-unit property always has 1 unit (itself)
-        availableSpaces: 0, // No space to add more units
-        lastUnitNumber: '1', // The property itself can be considered unit 1
+        canAddUnit: false,
+        maxAllowedUnits: 1,
+        currentUnits: 1,
+        availableSpaces: 0,
         suggestedNextUnitNumber,
         unitStats,
       };
     }
+  }
+
+  async destroy(): Promise<void> {
+    this.log.info('Cleaning up PropertyService...');
+
+    // Remove all event listeners
+    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
+    this.emitterService.off(EventTypes.UPLOAD_FAILED, this.handleUploadFailed);
+    this.emitterService.off(EventTypes.UNIT_CREATED, this.handleUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_UPDATED, this.handleUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_UNARCHIVED, this.handleUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged);
+
+    this.log.info('PropertyService event listeners removed');
   }
 }

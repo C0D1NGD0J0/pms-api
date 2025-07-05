@@ -7,17 +7,25 @@ import { DatabaseService, RedisService } from '@database/index';
 import { LanguageService } from '@shared/languages/language.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { PropertyUnit, Property, Profile, Client, User } from '@models/index';
-import { EventsRegistryCache, PropertyCache, AuthCache } from '@caching/index';
+import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
-import { PropertyUnitController, PropertyController, AuthController } from '@controllers/index';
+import { EventsRegistryCache, PropertyCache, JobTracker, AuthCache } from '@caching/index';
+import {
+  PropertyUnitController,
+  PropertyController,
+  ClientController,
+  AuthController,
+} from '@controllers/index';
 import {
   DocumentProcessingWorker,
+  PropertyUnitWorker,
   PropertyWorker,
   UploadWorker,
   EmailWorker,
 } from '@workers/index';
 import {
   DocumentProcessingQueue,
+  PropertyUnitQueue,
   EventBusQueue,
   PropertyQueue,
   UploadQueue,
@@ -29,11 +37,13 @@ import {
   PropertyUnitService,
   AuthTokenService,
   PropertyService,
+  ClientService,
   AuthService,
 } from '@services/index';
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
+  clientController: asClass(ClientController).scoped(),
   propertyController: asClass(PropertyController).scoped(),
   propertyUnitController: asClass(PropertyUnitController).scoped(),
 };
@@ -48,6 +58,7 @@ const ModelResources = {
 
 const ServiceResources = {
   authService: asClass(AuthService).singleton(),
+  clientService: asClass(ClientService).singleton(),
   mailerService: asClass(MailService).singleton(),
   tokenService: asClass(AuthTokenService).singleton(),
   langService: asClass(LanguageService).singleton(),
@@ -55,6 +66,7 @@ const ServiceResources = {
   emitterService: asClass(EventEmitterService).singleton(),
   propertyUnitService: asClass(PropertyUnitService).singleton(),
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
+  unitNumberingService: asClass(UnitNumberingService).singleton(),
 };
 
 const DAOResources = {
@@ -67,6 +79,7 @@ const DAOResources = {
 
 const CacheResources = {
   authCache: asClass(AuthCache).singleton(),
+  jobTracker: asClass(JobTracker).singleton(),
   propertyCache: asClass(PropertyCache).singleton(),
   eventsRegistry: asClass(EventsRegistryCache).singleton(),
 };
@@ -75,6 +88,7 @@ const WorkerResources = {
   documentProcessingWorker: asClass(DocumentProcessingWorker).singleton(),
   emailWorker: asClass(EmailWorker).singleton(),
   propertyWorker: asClass(PropertyWorker).singleton(),
+  propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
   uploadWorker: asClass(UploadWorker).singleton(),
 };
 
@@ -83,6 +97,7 @@ const QueuesResources = {
   emailQueue: asClass(EmailQueue).singleton(),
   eventBusQueue: asClass(EventBusQueue).singleton(),
   propertyQueue: asClass(PropertyQueue).singleton(),
+  propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
   uploadQueue: asClass(UploadQueue).singleton(),
 };
 
@@ -107,12 +122,15 @@ export const initQueues = (container: AwilixContainer) => {
   container.resolve('emailQueue');
   container.resolve('eventBusQueue');
   container.resolve('propertyQueue');
+  container.resolve('propertyUnitQueue');
   container.resolve('uploadQueue');
   container.resolve('clamScanner');
   container.resolve('documentProcessingWorker');
   container.resolve('emailWorker');
   container.resolve('propertyWorker');
+  container.resolve('propertyUnitWorker');
   container.resolve('uploadWorker');
+  // PropertyService automatically initializes unit event listeners in its constructor
 };
 
 export const registerResources = {

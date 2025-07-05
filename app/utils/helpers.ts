@@ -2,6 +2,7 @@ import color from 'colors';
 import crypto from 'crypto';
 import bunyan from 'bunyan';
 import * as nanoid from 'nanoid';
+import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
 import { Country, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
@@ -147,7 +148,7 @@ export function setAuthCookies(
 
   if (data.refreshToken) {
     opts = {
-      path: '/api/v1/auth/refresh', // Only accessible on the refresh endpoint
+      path: '/api/v1/auth/refresh_token', // Only accessible on the refresh endpoint
       httpOnly: true,
       sameSite: 'strict' as const,
       secure: envVariables.SERVER.ENV !== 'development',
@@ -295,12 +296,11 @@ export const extractMulterFiles = (
  * @param length - The desired length of the shortened UID (default: 9)
  * @returns The shortened UID string
  */
-export function generateShortUID(length: number = 9): string {
-  const uuid = nanoid.nanoid(length);
-  if (uuid.length <= 9) {
-    return uuid.toUpperCase();
+export function generateShortUID(length = 12): string {
+  if (length) {
+    return nanoid.nanoid(length).toUpperCase();
   }
-  return uuid;
+  return uuidv4();
 }
 
 /**
@@ -333,6 +333,24 @@ export const paginateResult = (count: number, skip = 0, limit = 10): PaginateRes
   return result;
 };
 
+// Cache for city and country data to prevent memory leaks
+let cachedCities: any[] | null = null;
+let cachedCountries: any[] | null = null;
+
+const getCachedCities = (): any[] => {
+  if (!cachedCities) {
+    cachedCities = City.getAllCities();
+  }
+  return cachedCities;
+};
+
+const getCachedCountries = (): any[] => {
+  if (!cachedCountries) {
+    cachedCountries = Country.getAllCountries();
+  }
+  return cachedCountries;
+};
+
 /**
  * Validates if the provided name is a valid city or country
  * @param location The city or country name to validate
@@ -343,10 +361,10 @@ export const isValidLocation = (location: string): boolean => {
 
   const normalizedLocation = location.trim().toLowerCase();
 
-  const isCity = City.getAllCities().some((city) => city.name.toLowerCase() === normalizedLocation);
+  const isCity = getCachedCities().some((city) => city.name.toLowerCase() === normalizedLocation);
   if (isCity) return true;
 
-  const isCountry = Country.getAllCountries().some(
+  const isCountry = getCachedCountries().some(
     (country) => country.name.toLowerCase() === normalizedLocation
   );
   return isCountry;
@@ -362,7 +380,7 @@ export const getLocationDetails = (location: string): string | null => {
 
   const normalizedLocation = location.trim().toLowerCase();
 
-  const matchingCity = City.getAllCities().find(
+  const matchingCity = getCachedCities().find(
     (city) => city.name.toLowerCase() === normalizedLocation
   );
 
@@ -370,7 +388,7 @@ export const getLocationDetails = (location: string): string | null => {
     const country = Country.getCountryByCode(matchingCity.countryCode);
     return `${matchingCity.name}, ${country?.name}`;
   }
-  const matchingCountry = Country.getAllCountries().find(
+  const matchingCountry = getCachedCountries().find(
     (country) => country.name.toLowerCase() === normalizedLocation
   );
 
@@ -466,7 +484,6 @@ export const parseJsonFields = (req: Request) => {
         return tryParse(trimmed);
       }
 
-      if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
       if (trimmed.toLowerCase() === 'true') return true;
       if (trimmed.toLowerCase() === 'false') return false;
 

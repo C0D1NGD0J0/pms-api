@@ -130,7 +130,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       const pagination = paginateResult(count, options?.skip, options?.limit);
 
       return {
-        data: result,
+        items: result,
         ...(pagination ? { pagination } : null),
       };
     } catch (error) {
@@ -201,13 +201,22 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
   async updateById(
     id: string,
     updateOperation: UpdateQuery<T>,
-    opts?: Record<string, any>
+    opts?: Record<string, any>,
+    session?: ClientSession
   ): Promise<T | null> {
     try {
       const options = { new: true, ...opts };
-      return await this.model
-        .findOneAndUpdate({ _id: new Types.ObjectId(id) }, updateOperation, options)
-        .exec();
+      let query = this.model.findOneAndUpdate(
+        { _id: new Types.ObjectId(id) },
+        updateOperation,
+        options
+      );
+
+      if (session) {
+        query = query.session(session);
+      }
+
+      return await query.exec();
     } catch (error) {
       throw this.throwErrorHandler(error);
     }

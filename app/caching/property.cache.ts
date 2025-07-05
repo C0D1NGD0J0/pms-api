@@ -17,7 +17,10 @@ export class PropertyCache extends BaseCache {
   constructor(cacheName = 'PropertyCache') {
     super(cacheName);
     this.initializeClient().then(() => {
-      console.info('PropertyCache connected to Redis');
+      // Only log in non-test environments to avoid Jest warnings
+      if (process.env.NODE_ENV !== 'test') {
+        console.info('PropertyCache connected to Redis');
+      }
     });
 
     this.PROPERTY_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;

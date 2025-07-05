@@ -5,21 +5,24 @@ import { EventPayloadMap, EventTypes } from '@interfaces/events.interface';
 
 export class EventEmitterService {
   private emitter: EventEmitter;
-  private log = createLogger('EventEmitterService');
+  private log: any;
   private eventsRegistry: EventsRegistryCache;
   private listenerCounts = new Map<EventTypes, number>();
   private readonly MAX_LISTENERS_PER_EVENT = 10;
+  private memoryLeakDetectionInterval?: NodeJS.Timer;
+  private handlerMappings = new Map<(...args: any[]) => void, (...args: any[]) => void>();
 
   constructor({ eventsRegistry }: { eventsRegistry: EventsRegistryCache }) {
     this.emitter = new EventEmitter();
     this.emitter.setMaxListeners(this.MAX_LISTENERS_PER_EVENT);
     this.eventsRegistry = eventsRegistry;
+    this.log = createLogger('EventEmitterService');
     this.setupMemoryLeakDetection();
   }
 
   private setupMemoryLeakDetection(): void {
     // monitor for potential memory leaks
-    setInterval(() => {
+    this.memoryLeakDetectionInterval = setInterval(() => {
       const eventNames = this.emitter.eventNames();
       eventNames.forEach((eventName) => {
         const listenerCount = this.emitter.listenerCount(eventName as string);
@@ -61,6 +64,9 @@ export class EventEmitterService {
       }
     };
 
+    // Store mapping for removal later
+    this.handlerMappings.set(handler, safeHandler);
+
     this.emitter.on(eventType, safeHandler);
     this.listenerCounts.set(eventType, currentCount + 1);
 
@@ -90,7 +96,15 @@ export class EventEmitterService {
   }
 
   off<T extends EventTypes>(eventType: T, handler: (payload: EventPayloadMap[T]) => void): this {
-    this.emitter.off(eventType, handler);
+    // Get the wrapped handler
+    const wrappedHandler = this.handlerMappings.get(handler);
+    if (wrappedHandler) {
+      this.emitter.off(eventType, wrappedHandler);
+      this.handlerMappings.delete(handler);
+    } else {
+      // Fallback to removing the original handler (in case it wasn't wrapped)
+      this.emitter.off(eventType, handler);
+    }
 
     // update listener count
     const count = this.listenerCounts.get(eventType) || 0;
@@ -147,5 +161,12 @@ export class EventEmitterService {
   destroy(): void {
     this.removeAllListeners();
     this.listenerCounts.clear();
+    this.handlerMappings.clear();
+    
+    // Clear the memory leak detection interval
+    if (this.memoryLeakDetectionInterval) {
+      clearInterval(this.memoryLeakDetectionInterval);
+      this.memoryLeakDetectionInterval = undefined;
+    }
   }
 }

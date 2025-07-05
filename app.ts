@@ -18,8 +18,8 @@ import express, { Application, urlencoded, Response, Request } from 'express';
 import {
   errorHandlerMiddleware,
   scopedMiddleware,
-  requestLogger,
   contextBuilder,
+  requestLogger,
 } from '@shared/middlewares';
 
 export interface IAppSetup {
@@ -89,7 +89,7 @@ export class App implements IAppSetup {
     });
     app.use(`${BASE_PATH}/queues`, serverAdapter.getRouter());
     app.use(`${BASE_PATH}/auth`, routes.authRoutes);
-    // app.use(`${BASE_PATH}/users`, routes.userRoutes);
+    app.use(`${BASE_PATH}/clients`, routes.clientRoutes);
     // app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
     // app.use(`${BASE_PATH}/vendors`, routes.vendorRoutes);
     // app.use(`${BASE_PATH}/invites`, routes.inviteRoutes);

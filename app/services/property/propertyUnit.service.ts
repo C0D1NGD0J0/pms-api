@@ -1,33 +1,50 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { JobTracker } from '@caching/jobTracker';
 import { PropertyQueue } from '@queues/property.queue';
-import { BadRequestError } from '@shared/customErrors';
 import { PropertyCache } from '@caching/property.cache';
-import { IUnit } from '@interfaces/propertyUnit.interface';
+import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { PropertyUnitQueue } from '@queues/propertyUnit.queue';
 import { getRequestDuration, createLogger } from '@utils/index';
-import { IPropertyFilterQuery } from '@interfaces/property.interface';
+import { IPropertyUnit } from '@interfaces/propertyUnit.interface';
+import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
 import { IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
+import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
 
 interface IConstructor {
+  unitNumberingService: UnitNumberingService;
+  propertyUnitQueue: PropertyUnitQueue;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   propertyCache: PropertyCache;
   propertyQueue: PropertyQueue;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
+  jobTracker: JobTracker;
   clientDAO: ClientDAO;
 }
+
+interface BatchUnitData {
+  units: IPropertyUnit[];
+  pid: string;
+  cid: string;
+}
+
 export class PropertyUnitService {
   private readonly log: Logger;
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyQueue: PropertyQueue;
+  private readonly propertyUnitQueue: PropertyUnitQueue;
   private readonly propertyCache: PropertyCache;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly jobTracker: JobTracker;
+  private readonly unitNumberingService: UnitNumberingService;
 
   constructor({
     clientDAO,
@@ -35,9 +52,13 @@ export class PropertyUnitService {
     propertyDAO,
     propertyUnitDAO,
     propertyQueue,
+    propertyUnitQueue,
     propertyCache,
     emitterService,
+    jobTracker,
+    unitNumberingService,
   }: IConstructor) {
+    this.jobTracker = jobTracker;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
@@ -45,13 +66,16 @@ export class PropertyUnitService {
     this.propertyQueue = propertyQueue;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
+    this.propertyUnitQueue = propertyUnitQueue;
+    this.unitNumberingService = unitNumberingService;
     this.log = createLogger('PropertyUnitService');
   }
 
-  async addPropertyUnit(cxt: IRequestContext, data: IUnit) {
+  async addPropertyUnit(cxt: IRequestContext, data: BatchUnitData) {
     const currentuser = cxt.currentuser!;
     const { cid, pid } = cxt.request.params;
     const start = process.hrtime.bigint();
+
     if (!pid || !cid) {
       this.log.error(
         {
@@ -66,6 +90,7 @@ export class PropertyUnitService {
       );
       throw new BadRequestError({ message: 'Unable to add unit to property.' });
     }
+
     const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
     if (!property) {
       this.log.error(
@@ -82,47 +107,43 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: 'Unable to add unit to property, property not found.' });
     }
 
-    const session = await this.propertyUnitDAO.startSession();
-    const result = await this.propertyUnitDAO.withTransaction(session, async (session) => {
-      const canAddUnit = await this.propertyDAO.canAddUnitToProperty(property.id);
-      if (!canAddUnit.canAdd) {
-        this.log.error(
-          {
-            cid,
-            pid,
-            url: cxt.request.url,
-            userId: currentuser?.sub,
-            requestId: cxt.requestId,
-            duration: getRequestDuration(start).durationInMs,
-          },
-          'Property has reached maximum unit capacity.'
-        );
-        throw new BadRequestError({
-          message: 'Unable to add unit to property, maximum capacity reached.',
-        });
-      }
+    if (data.units.length <= 5) {
+      return this.createUnitsDirectly(cxt, data, property);
+    } else {
+      return this.createUnitsViaQueue(cxt, data, currentuser.sub);
+    }
+  }
 
-      const newUnitData = {
-        ...data,
-        cid,
-        propertyId: pid,
-        createdBy: new Types.ObjectId(currentuser.sub),
-        lastModifiedBy: new Types.ObjectId(currentuser.sub),
-      };
+  async getJobStatus(jobId: string) {
+    return this.propertyUnitQueue.getJobStatus(jobId);
+  }
 
-      const unit = await this.propertyUnitDAO.insert(newUnitData, session);
-      await this.propertyDAO.syncPropertyOccupancyWithUnits(pid, currentuser.sub);
+  async getUserJobs(userId: string) {
+    const result = await this.jobTracker.getUserJobs(userId);
 
-      return {
-        data: unit,
-      };
-    });
-    await this.propertyCache.invalidateProperty(cid, pid);
-    return {
-      success: true,
-      data: result.data,
-      message: 'Unit added successfully',
-    };
+    if (!result.success) {
+      return [];
+    }
+
+    const enhancedJobs = await Promise.all(
+      result.data.map(async (job) => {
+        const queueStatus = await this.propertyUnitQueue.getJobStatus(job.jobId);
+        return {
+          ...job,
+          ...queueStatus,
+        };
+      })
+    );
+
+    const completedJobIds = enhancedJobs
+      .filter((job: any) => job.state === 'completed' || job.state === 'failed')
+      .map((job: any) => job.jobId);
+
+    if (completedJobIds.length > 0) {
+      await this.jobTracker.removeCompletedJobs(userId, completedJobIds);
+    }
+
+    return enhancedJobs.filter((job: any) => job.state !== 'completed' && job.state !== 'failed');
   }
 
   async getPropertyUnit(cxt: IRequestContext) {
@@ -234,7 +255,6 @@ export class PropertyUnitService {
     };
 
     const units = await this.propertyDAO.getPropertyUnits(property.id, opts);
-
     return {
       data: units,
       success: true,
@@ -242,7 +262,7 @@ export class PropertyUnitService {
     };
   }
 
-  async updatePropertyUnit(cxt: IRequestContext, updateData: Partial<IUnit>) {
+  async updatePropertyUnit(cxt: IRequestContext, updateData: Partial<IPropertyUnit>) {
     const currentuser = cxt.currentuser!;
     const start = process.hrtime.bigint();
     const { cid, pid, unitId } = cxt.request.params;
@@ -321,16 +341,51 @@ export class PropertyUnitService {
     }
 
     const validationErrors: { [key: string]: string[] } = {};
+    let unitNumberSuggestion: string | undefined;
+
+    if (updateData.unitNumber || updateData.floor) {
+      const newUnitNumber = updateData.unitNumber || unit.unitNumber;
+      const newFloor = updateData.floor || unit.floor || 1;
+
+      const existingUnits = await this.propertyDAO.getPropertyUnits(property.id, {
+        limit: 1000,
+        skip: 0,
+        page: 1,
+      });
+      const unitFormValues = existingUnits.items.map((u: any) => ({
+        unitNumber: u.unitNumber,
+        unitType: u.unitType,
+        floor: u.floor || 1,
+      }));
+
+      const validation = this.unitNumberingService.validateUnitNumberUpdate(
+        newUnitNumber,
+        newFloor,
+        unitFormValues,
+        unitId
+      );
+
+      if (!validation.isValid) {
+        if (!validationErrors['unitNumber']) validationErrors['unitNumber'] = [];
+        validationErrors['unitNumber'].push(validation.message);
+        if (validation.suggestion) {
+          unitNumberSuggestion = validation.suggestion;
+        }
+      }
+    }
 
     if (updateData.fees) {
       if (updateData.fees.rentAmount !== undefined) {
         if (isNaN(updateData.fees.rentAmount) || updateData.fees.rentAmount < 0) {
+          if (!validationErrors['fees.rentAmount']) validationErrors['fees.rentAmount'] = [];
           validationErrors['fees.rentAmount'].push('Rental amount must be a non-negative number');
         }
       }
 
       if (updateData.fees.securityDeposit !== undefined) {
         if (isNaN(updateData.fees.securityDeposit) || updateData.fees.securityDeposit < 0) {
+          if (!validationErrors['fees.securityDeposit'])
+            validationErrors['fees.securityDeposit'] = [];
           validationErrors['fees.securityDeposit'].push(
             'Security deposit must be a non-negative number'
           );
@@ -340,6 +395,7 @@ export class PropertyUnitService {
 
     if (updateData.status) {
       if (updateData.status === 'occupied' && property.status !== 'available') {
+        if (!validationErrors['status']) validationErrors['status'] = [];
         validationErrors['status'].push(
           `Cannot set unit as occupied when property is ${property.status}`
         );
@@ -350,8 +406,21 @@ export class PropertyUnitService {
         !unit.fees?.rentAmount &&
         (!updateData.fees || updateData.fees.rentAmount === undefined)
       ) {
+        if (!validationErrors['status']) validationErrors['status'] = [];
         validationErrors['status'].push('Occupied units must have a rental amount');
       }
+    }
+
+    if (Object.keys(validationErrors).length > 0) {
+      // add suggestion to error message if available
+      if (unitNumberSuggestion && validationErrors['unitNumber']) {
+        validationErrors['unitNumber'].push(`Suggested unit number: ${unitNumberSuggestion}`);
+      }
+
+      throw new ValidationRequestError({
+        message: 'Validation failed',
+        errorInfo: validationErrors,
+      });
     }
 
     const session = await this.propertyUnitDAO.startSession();
@@ -365,8 +434,28 @@ export class PropertyUnitService {
         session
       );
 
+      // Emit event for property occupancy sync if status changed
       if (updateData.status) {
-        await this.propertyDAO.syncPropertyOccupancyWithUnits(pid, currentuser.sub);
+        this.emitterService.emit(EventTypes.UNIT_STATUS_CHANGED, {
+          propertyId: property.id,
+          propertyPid: pid,
+          cid,
+          unitId,
+          userId: currentuser.sub,
+          changeType: 'status_changed',
+          previousStatus: unit.status,
+          newStatus: updateData.status,
+        });
+      } else {
+        // Emit general unit updated event
+        this.emitterService.emit(EventTypes.UNIT_UPDATED, {
+          propertyId: property.id,
+          propertyPid: pid,
+          cid,
+          unitId,
+          userId: currentuser.sub,
+          changeType: 'updated',
+        });
       }
 
       return { data: updatedUnit };
@@ -378,6 +467,246 @@ export class PropertyUnitService {
       success: true,
       data: result.data,
       message: 'Unit updated successfully',
+    };
+  }
+
+  async updateUnitStatus(cxt: IRequestContext, updateData: any) {
+    return this.updatePropertyUnit(cxt, updateData);
+  }
+
+  async archiveUnit(cxt: IRequestContext) {
+    const currentuser = cxt.currentuser!;
+    const { cid, pid, unitId } = cxt.request.params;
+
+    // Get property info for event emission
+    const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
+    if (!property) {
+      throw new BadRequestError({ message: 'Property not found.' });
+    }
+
+    const updateData = {
+      deletedAt: new Date(),
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    };
+
+    const result = await this.updatePropertyUnit(cxt, updateData);
+
+    // Emit unit archived event for property occupancy sync
+    if (result.success) {
+      this.emitterService.emit(EventTypes.UNIT_ARCHIVED, {
+        propertyId: property.id,
+        propertyPid: pid,
+        cid,
+        unitId,
+        userId: currentuser.sub,
+        changeType: 'archived',
+      });
+    }
+
+    return result;
+  }
+
+  async setupInspection(cxt: IRequestContext, inspectionData: any) {
+    const currentuser = cxt.currentuser!;
+    const updateData = {
+      inspections: [inspectionData],
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    };
+    return this.updatePropertyUnit(cxt, updateData);
+  }
+
+  async addDocumentToUnit(cxt: IRequestContext, documentData: any) {
+    const currentuser = cxt.currentuser!;
+    const updateData = {
+      documents: [documentData],
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    };
+    return this.updatePropertyUnit(cxt, updateData);
+  }
+
+  async deleteDocumentFromUnit(_cxt: IRequestContext) {
+    return {
+      success: true,
+      message: 'Document deletion functionality needs to be implemented',
+    };
+  }
+
+  private async createUnitsDirectly(
+    cxt: IRequestContext,
+    data: BatchUnitData,
+    property: IPropertyDocument
+  ) {
+    const currentuser = cxt.currentuser!;
+    const { cid, pid } = cxt.request.params;
+    const start = process.hrtime.bigint();
+
+    const session = await this.propertyUnitDAO.startSession();
+    const result = await this.propertyUnitDAO.withTransaction(session, async (session) => {
+      const canAddUnits = await this.propertyDAO.canAddUnitToProperty(property.id);
+      if (!canAddUnits.canAdd) {
+        this.log.error(
+          {
+            cid,
+            pid,
+            url: cxt.request.url,
+            userId: currentuser?.sub,
+            requestId: cxt.requestId,
+            duration: getRequestDuration(start).durationInMs,
+          },
+          'Property has reached maximum unit capacity.'
+        );
+        throw new BadRequestError({
+          message: 'Unable to add units to property, maximum capacity reached.',
+        });
+      }
+
+      // Additional validation: Check if adding the batch would exceed the limit
+      if (
+        canAddUnits.maxCapacity > 0 &&
+        canAddUnits.currentCount + data.units.length > canAddUnits.maxCapacity
+      ) {
+        this.log.error(
+          {
+            cid,
+            pid,
+            url: cxt.request.url,
+            userId: currentuser?.sub,
+            requestId: cxt.requestId,
+            duration: getRequestDuration(start).durationInMs,
+            currentCount: canAddUnits.currentCount,
+            maxCapacity: canAddUnits.maxCapacity,
+            unitsToAdd: data.units.length,
+          },
+          'Adding this batch would exceed maximum unit capacity.'
+        );
+        throw new BadRequestError({
+          message: `Cannot add ${data.units.length} units. Property has ${canAddUnits.currentCount}/${canAddUnits.maxCapacity} units (including archived). Adding these units would exceed the limit.`,
+        });
+      }
+
+      // Get existing units for validation
+      const existingUnits = await this.propertyDAO.getPropertyUnits(property.id, {
+        limit: 1000,
+        skip: 0,
+        page: 1,
+      });
+      const unitFormValues = existingUnits.items.map((u: any) => ({
+        unitNumber: u.unitNumber,
+        unitType: u.unitType,
+        floor: u.floor || 1,
+      }));
+
+      const createdUnits = [];
+      const errors: any = {};
+
+      for (let i = 0; i < data.units.length; i++) {
+        const unit = data.units[i];
+        try {
+          const validation = this.unitNumberingService.validateUnitNumberUpdate(
+            unit.unitNumber,
+            unit.floor || 1,
+            unitFormValues
+          );
+
+          if (!validation.isValid) {
+            const errorMessage = validation.suggestion
+              ? `${validation.message}. Suggested: ${validation.suggestion}`
+              : validation.message;
+
+            errors[`unit-${unit.unitNumber}`] = {
+              unitNumber: unit.unitNumber,
+              error: errorMessage,
+            };
+            continue;
+          }
+
+          const newUnitData = {
+            ...unit,
+            cid,
+            propertyId: new Types.ObjectId(property.id),
+            createdBy: new Types.ObjectId(currentuser.sub),
+            lastModifiedBy: new Types.ObjectId(currentuser.sub),
+          };
+
+          const createdUnit = await this.propertyUnitDAO.insert(newUnitData, session);
+          createdUnits.push(createdUnit);
+
+          unitFormValues.push({
+            unitNumber: unit.unitNumber,
+            unitType: unit.unitType,
+            floor: unit.floor || 1,
+          });
+        } catch (error: any) {
+          errors[`unit-${unit.unitNumber}`] = {
+            unitNumber: unit.unitNumber,
+            error: error.message || 'Failed to create unit',
+          };
+        }
+      }
+
+      if (Object.keys(errors).length > 0) {
+        this.log.error('Some units could not be created.', {
+          cid,
+          pid,
+          error: errors,
+          url: cxt.request.url,
+          userId: currentuser?.sub,
+          requestId: cxt.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        });
+      }
+
+      if (createdUnits.length > 0) {
+        // Emit batch unit creation event for property occupancy sync
+        this.emitterService.emit(EventTypes.UNIT_BATCH_CREATED, {
+          propertyId: property.id,
+          propertyPid: pid,
+          cid,
+          userId: currentuser.sub,
+          unitsCreated: createdUnits.length,
+          unitsFailed: Object.keys(errors).length,
+        });
+      }
+
+      return { createdUnits, errors };
+    });
+
+    await this.propertyCache.invalidateProperty(cid, pid);
+    const errorsArray = Object.keys(result.errors);
+    return {
+      success: true,
+      data: result.createdUnits,
+      errors: result.errors,
+      message:
+        errorsArray.length > 0
+          ? `${result.createdUnits.length} units created successfully, ${errorsArray.length} failed`
+          : `All ${result.createdUnits.length} units created successfully`,
+      maxAllowedUnits: data.units.length,
+    };
+  }
+
+  private async createUnitsViaQueue(cxt: IRequestContext, data: BatchUnitData, userId: string) {
+    const jobId = await this.propertyUnitQueue.addUnitBatchCreationJob({
+      units: data.units,
+      pid: data.pid,
+      cid: data.cid,
+      userId: userId,
+      requestId: cxt.requestId,
+    });
+
+    await this.jobTracker.trackJob(userId, jobId.toString(), 'unit_batch_creation', {
+      pid: data.pid,
+      cid: data.cid,
+      unitCount: data.units.length,
+    });
+
+    return {
+      success: true,
+      jobId: jobId.toString(),
+      message: 'Unit creation job queued successfully',
+      estimatedCompletion: '2-3 minutes',
+      maxAllowedUnits: data.units.length,
+      processingType: 'queued',
     };
   }
 }

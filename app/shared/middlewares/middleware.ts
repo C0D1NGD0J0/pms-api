@@ -23,6 +23,20 @@ interface DIServices {
 export const scopedMiddleware = (req: Request, res: Response, next: NextFunction) => {
   const scope = container.createScope();
   req.container = scope;
+
+  // clean up on request finish
+  res.on('finish', () => {
+    if (req.container && typeof req.container.dispose === 'function') {
+      req.container.dispose();
+    }
+  });
+  // cleanup on error
+  res.on('error', () => {
+    if (req.container && typeof req.container.dispose === 'function') {
+      req.container.dispose();
+    }
+  });
+
   next();
 };
 
@@ -56,7 +70,8 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
     if (currentUserResp.success && !req.context.currentuser) {
       req.context.currentuser = currentUserResp.data as ICurrentUser;
     }
-    next();
+    // contextbuilder is called here so params and query are available in the context
+    contextBuilder(req, res, next);
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
       if (req.originalUrl === '/api/v1/auth/refresh_token') {
@@ -86,8 +101,8 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
   if (!files) {
     return next();
   }
-  const _files = extractMulterFiles(files, req.context?.currentuser?.sub);
-  if (!req.context?.currentuser) {
+  const _files = extractMulterFiles(files, req.context.currentuser?.sub);
+  if (!req.context.currentuser) {
     return next(new UnauthorizedError({ message: 'Unauthorized action.' }));
   }
   try {
@@ -308,9 +323,7 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
       timestamp: new Date(),
       requestId: generateShortUID(12),
       source,
-      ipAddress: req.ip || req.socket.remoteAddress || '',
-      requestUrl: req.originalUrl,
-      duration: 0,
+      ip: req.ip || req.socket.remoteAddress || '',
       userAgent: {
         raw: (req.headers['user-agent'] as string) || '',
         browser: uaResult.browser.name,
@@ -319,7 +332,6 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
         isMobile: /mobile|android|iphone/i.test((req.headers['user-agent'] as string) || ''),
         isBot: /bot|crawler|spider|scraper/i.test((req.headers['user-agent'] as string) || ''),
       },
-      currentuser: null,
       request: {
         path: req.path,
         method: req.method,
@@ -327,6 +339,7 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
         url: req.originalUrl,
         query: req.query as Record<string, any>,
       },
+      currentuser: req.context?.currentuser || null,
       timing: {
         startTime: Date.now(),
       },

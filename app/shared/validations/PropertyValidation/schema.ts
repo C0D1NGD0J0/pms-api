@@ -158,7 +158,7 @@ const CreatePropertySchema = z.object({
   description: DescriptionSchema,
   cid: z.string(),
   occupancyStatus: OccupancyStatusEnum.default('vacant'),
-  totalUnits: z.number().int().min(0).max(250).default(0),
+  maxAllowedUnits: z.number().int().min(0).max(250).default(0),
   specifications: SpecificationsSchema,
   financialDetails: FinancialDetailsSchema.optional(),
   fees: FeesSchema,
@@ -259,7 +259,7 @@ export const UpdateOccupancySchema = z.object({
     }
   ),
   occupancyStatus: OccupancyStatusEnum,
-  totalUnits: z.number().min(0).max(500),
+  maxAllowedUnits: z.number().min(0).max(500),
 });
 
 const PropertyClientRelationship = z.object({
@@ -298,7 +298,7 @@ export const PropertyCsvSchema = z.object({
   propertyType: PropertyTypeEnum,
   status: PropertyStatusEnum.optional().default('available'),
   occupancyStatus: OccupancyStatusEnum.optional().default('vacant'),
-  totalUnits: z.coerce.number().min(0).max(500).optional(),
+  maxAllowedUnits: z.coerce.number().min(0).max(500).optional(),
   yearBuilt: z.coerce
     .number()
     .int()

@@ -5,7 +5,7 @@ import { PropertyController } from '@controllers/index';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
 import { isAuthenticated, routeLimiter, diskUpload, scanFile } from '@shared/middlewares';
 
-import propertyUnitRoutes from './property-unit.routes';
+import propertyUnitRoutes from './propertyUnit.routes';
 
 const router: Router = express.Router();
 
@@ -74,7 +74,7 @@ router.get(
 );
 
 router.get(
-  '/:cid/client_property/:pid',
+  '/:cid/client_properties/:pid',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -85,7 +85,7 @@ router.get(
 );
 
 router.patch(
-  '/:cid/client_property/:pid',
+  '/:cid/client_properties/:pid',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
     body: PropertyValidations.updateProperty,
@@ -97,7 +97,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cid/client_property/:pid/add_media',
+  '/:cid/client_properties/:pid/add_media',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -108,7 +108,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cid/client_property/:pid/remove_media',
+  '/:cid/client_properties/:pid/remove_media',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -130,6 +130,6 @@ router.delete(
 );
 
 // Mount unit routes for properties
-router.use('/:cid/property/:pid/property-units', propertyUnitRoutes);
+router.use('/:cid/client_properties/:pid/units', propertyUnitRoutes);
 
 export default router;

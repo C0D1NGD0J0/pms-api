@@ -25,9 +25,12 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
    * @param propertyId - The property ID
    * @returns A promise that resolves to an array of property unit documents
    */
-  async findUnitsByProperty(
+  async findUnitsByPropertyId(
     propertyId: string,
-    opts: IPaginationQuery
+    opts: IPaginationQuery = {
+      page: 1,
+      limit: 1000,
+    }
   ): ListResultWithPagination<IPropertyUnitDocument[]> {
     try {
       if (!propertyId) {
@@ -39,8 +42,25 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         deletedAt: null,
       };
 
-      const result = await this.list(query, opts);
-      return result.data;
+      // sort data by floor (asc) and unitNumber (asc)
+      let sortOption: Record<string, 1 | -1> = { floor: 1, unitNumber: 1 };
+
+      // if user provided custom sorting, preserve it as secondary criteria
+      if (opts.sort && typeof opts.sort === 'object') {
+        sortOption = { ...sortOption, ...opts.sort };
+      } else if (opts.sortBy && opts.sort) {
+        const sortDirection: 1 | -1 = opts.sort === 'desc' ? -1 : 1;
+        // Apply user sorting first, then default sorting as fallback
+        sortOption = { [opts.sortBy]: sortDirection, floor: 1, unitNumber: 1 };
+      }
+
+      const updatedOpts = {
+        ...opts,
+        sort: sortOption,
+      };
+
+      const result = await this.list(query, updatedOpts);
+      return result;
     } catch (error) {
       this.logger.error('Error in findUnitsByProperty:', error);
       throw this.throwErrorHandler(error);
@@ -80,7 +100,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
    * @param propertyId - Optional property ID to filter by
    * @returns A promise that resolves to an array of available property unit documents
    */
-  async findAvailableUnits(propertyId?: string): Promise<IPropertyUnitDocument[]> {
+  async findAvailableUnits(propertyId?: string): ListResultWithPagination<IPropertyUnitDocument[]> {
     try {
       const query: FilterQuery<IPropertyUnitDocument> = {
         status: PropertyUnitStatusEnum.AVAILABLE,
@@ -92,8 +112,11 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         query.propertyId = new Types.ObjectId(propertyId);
       }
 
-      const result = await this.list(query);
-      return result.data;
+      const result = await this.list(query, {
+        limit: 1000,
+        sort: { floor: 1, unitNumber: 1 },
+      });
+      return result;
     } catch (error) {
       this.logger.error('Error in findAvailableUnits:', error);
       throw this.throwErrorHandler(error);
@@ -109,7 +132,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
   async findUnitsByStatus(
     status: PropertyUnitStatus,
     propertyId?: string
-  ): Promise<IPropertyUnitDocument[]> {
+  ): ListResultWithPagination<IPropertyUnitDocument[]> {
     try {
       if (!status) {
         throw new Error('Status is required');
@@ -125,8 +148,11 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         query.propertyId = new Types.ObjectId(propertyId);
       }
 
-      const result = await this.list(query);
-      return result.data;
+      const result = await this.list(query, {
+        limit: 1000,
+        sort: { floor: 1, unitNumber: 1 },
+      });
+      return result;
     } catch (error) {
       this.logger.error('Error in findUnitsByStatus:', error);
       throw this.throwErrorHandler(error);
@@ -138,7 +164,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
    * @param propertyId - Optional property ID to filter by
    * @returns A promise that resolves to an object with counts for each status
    */
-  async getUnitCountsByStatus(propertyId?: string): Promise<Record<PropertyUnitStatus, number>> {
+  async getUnitCountsByStatus(propertyId: string): Promise<Record<PropertyUnitStatus, number>> {
     try {
       const match: FilterQuery<IPropertyUnitDocument> = {
         isActive: true,
@@ -311,19 +337,29 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         throw new Error('Property ID is required');
       }
 
-      // Get current units for this property
-      const units = await this.list(
+      // Get ALL units for this property (including archived) to count toward limits
+      const allUnits = await this.list(
         {
           propertyId: new Types.ObjectId(propertyId),
-          deletedAt: null,
+          // Note: Removed deletedAt: null to include archived units in total count
         },
         { limit: 1000 } // Get all units for counting
       );
 
-      const currentUnits = units.data.length;
+      // Get only active units for status calculations
+      const activeUnits = await this.list(
+        {
+          propertyId: new Types.ObjectId(propertyId),
+          deletedAt: null,
+        },
+        { limit: 1000 }
+      );
 
-      // Count units by status
-      const unitStats = units.data.reduce(
+      // Use total count (including archived) for currentUnits to maintain consistency with canAddUnitToProperty
+      const currentUnits = allUnits.items.length;
+
+      // Count units by status (only for active/non-archived units)
+      const unitStats = activeUnits.items.reduce(
         (
           stats: {
             occupied: number;
@@ -390,7 +426,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         { limit: 1000, projection: 'unitNumber' }
       );
 
-      return units.data.map((unit: any) => unit.unitNumber).filter(Boolean);
+      return units.items.map((unit: any) => unit.unitNumber).filter(Boolean);
     } catch (error) {
       this.logger.error(`Error getting existing unit numbers for property ${propertyId}:`, error);
       throw this.throwErrorHandler(error);

@@ -51,37 +51,6 @@ export enum DocumentStatusEnum {
 }
 
 /**
- * Property Unit Document Interface (extends Mongoose Document)
- */
-export interface IPropertyUnitDocument extends IPropertyUnit, Document {
-  calculateRentAdjustment: (percentage: number) => {
-    oldAmount: number;
-    newAmount: number;
-    difference: number;
-    percentageApplied: number;
-  };
-  notes?: Array<{
-    title: string;
-    content: string;
-    createdAt: Date;
-    createdBy: string;
-  }>;
-  applyRentAdjustment: (percentage: number, userId: string) => Promise<IPropertyUnitDocument>;
-  prepareForMaintenance: (reason: string, userId: string) => Promise<IPropertyUnitDocument>;
-  markUnitAsOccupied: (leaseId: string, userId: string) => Promise<IPropertyUnitDocument>;
-  addInspection: (inspectionData: any, userId: string) => Promise<IPropertyUnitDocument>;
-  makeUnitAvailable: (userId: string) => Promise<IPropertyUnitDocument>;
-  markUnitAsVacant: (userId: string) => Promise<IPropertyUnitDocument>;
-  softDelete: (userId: string) => Promise<IPropertyUnitDocument>;
-  lastInspectionDate?: Date;
-  _id: Types.ObjectId;
-  deletedAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-  id: string;
-}
-
-/**
  * Core Property Unit Interface
  */
 export interface IPropertyUnit {
@@ -103,10 +72,16 @@ export interface IPropertyUnit {
   };
   specifications: {
     totalArea: number;
-    bedrooms?: number;
+    room?: number;
     bathrooms?: number;
     maxOccupants?: number;
   };
+  notes?: Array<{
+    title: string;
+    content: string;
+    createdAt: Date;
+    createdBy: Types.ObjectId;
+  }>;
   fees: {
     currency: CURRENCIES;
     rentAmount: number;
@@ -129,6 +104,37 @@ export interface IPropertyUnit {
   floor?: number;
   puid: string;
   cid: string;
+}
+
+/**
+ * Property Unit Document Interface (extends Mongoose Document)
+ */
+export interface IPropertyUnitDocument extends IPropertyUnit, Document {
+  calculateRentAdjustment: (percentage: number) => {
+    oldAmount: number;
+    newAmount: number;
+    difference: number;
+    percentageApplied: number;
+  };
+  notes?: Array<{
+    title: string;
+    content: string;
+    createdAt: Date;
+    createdBy: Types.ObjectId;
+  }>;
+  applyRentAdjustment: (percentage: number, userId: string) => Promise<IPropertyUnitDocument>;
+  prepareForMaintenance: (reason: string, userId: string) => Promise<IPropertyUnitDocument>;
+  markUnitAsOccupied: (leaseId: string, userId: string) => Promise<IPropertyUnitDocument>;
+  addInspection: (inspectionData: any, userId: string) => Promise<IPropertyUnitDocument>;
+  makeUnitAvailable: (userId: string) => Promise<IPropertyUnitDocument>;
+  markUnitAsVacant: (userId: string) => Promise<IPropertyUnitDocument>;
+  softDelete: (userId: string) => Promise<IPropertyUnitDocument>;
+  lastInspectionDate?: Date;
+  _id: Types.ObjectId;
+  deletedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  id: string;
 }
 
 /**

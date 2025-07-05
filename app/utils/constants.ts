@@ -40,6 +40,7 @@ export const QUEUE_NAMES = {
   MEDIA_QUEUE: 'mediaQueue',
   EMAIL_QUEUE: 'emailQueue',
   PROPERTY_QUEUE: 'propertyQueue',
+  PROPERTY_UNIT_QUEUE: 'propertyUnitQueue',
   EVENT_BUS_QUEUE: 'eventBusQueue',
   ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
   PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
@@ -57,6 +58,7 @@ export const JOB_NAME = {
   ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
   DOCUMENT_UPDATE_JOB: 'documentUpdateJob',
   DOCUMENT_FAILURE_JOB: 'documentFailureJob',
+  UNIT_BATCH_CREATION_JOB: 'unitBatchCreation',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {

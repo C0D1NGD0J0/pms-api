@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { t } from '@shared/languages';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyService } from '@services/index';
-import propertyFormMeta from '@shared/constants/propertyFormMeta.json';
+import propertyFormMeta from '@shared/constants/fromStaticData.json';
 import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
 import { IPropertyFilterQuery, PropertyType } from '@interfaces/property.interface';
 
@@ -163,16 +163,17 @@ export class PropertyController {
   };
 
   getPropertyFormMetadata = async (req: AppRequest, res: Response) => {
-    const formType = req.query.formType as 'propertyForm' | 'unitForm';
-    if (formType && !propertyFormMeta[formType]) {
-      return res.status(httpStatusCodes.BAD_REQUEST).json({
-        success: false,
-        message: t('property.errors.invalidFormType', { formType }),
-      });
-    }
+    // const formType = req.query.formType as 'propertyForm' | 'unitForm';
+    // if (formType && !propertyFormMeta[formType]) {
+    //   return res.status(httpStatusCodes.BAD_REQUEST).json({
+    //     success: false,
+    //     message: `Invalid form type: ${formType}`,
+    //   });
+    // }
+
     res.status(httpStatusCodes.OK).json({
       success: true,
-      data: propertyFormMeta[formType] || {},
+      data: propertyFormMeta,
     });
   };
 }

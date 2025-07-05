@@ -9,7 +9,12 @@ import { PropertyUnit, Property, Profile, Client, User } from '@models/index';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { EventsRegistryCache, PropertyCache, JobTracker, AuthCache } from '@caching/index';
-import { PropertyUnitController, PropertyController, AuthController } from '@controllers/index';
+import {
+  PropertyUnitController,
+  PropertyController,
+  ClientController,
+  AuthController,
+} from '@controllers/index';
 import {
   DocumentProcessingWorker,
   PropertyUnitWorker,
@@ -31,11 +36,13 @@ import {
   PropertyUnitService,
   AuthTokenService,
   PropertyService,
+  ClientService,
   AuthService,
 } from '@services/index';
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
+  clientController: asClass(ClientController).scoped(),
   propertyController: asClass(PropertyController).scoped(),
   propertyUnitController: asClass(PropertyUnitController).scoped(),
 };
@@ -50,6 +57,7 @@ const ModelResources = {
 
 const ServiceResources = {
   authService: asClass(AuthService).singleton(),
+  clientService: asClass(ClientService).singleton(),
   mailerService: asClass(MailService).singleton(),
   tokenService: asClass(AuthTokenService).singleton(),
   propertyService: asClass(PropertyService).singleton(),

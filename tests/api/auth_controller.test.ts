@@ -3,15 +3,12 @@
 import { Request, Response } from 'express';
 import { AuthController } from '@controllers/AuthController';
 import { httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
-import { 
-  mockAuthService, 
-  resetTestContainer 
-} from '@tests/mocks/di';
-import { 
+import { mockAuthService, resetTestContainer } from '@tests/mocks/di';
+import {
   AssertionHelpers,
-  HttpTestHelpers, 
+  HttpTestHelpers,
   TestDataFactory,
-  TestSuiteHelpers 
+  TestSuiteHelpers,
 } from '@tests/utils/testHelpers';
 
 describe('AuthController - API Tests', () => {
@@ -29,7 +26,7 @@ describe('AuthController - API Tests', () => {
   beforeEach(() => {
     // Reset all mocks and container state
     resetTestContainer();
-    
+
     // Setup fresh request and response objects
     req = TestSuiteHelpers.setupMockRequest();
     res = TestSuiteHelpers.setupMockResponse();
@@ -115,9 +112,8 @@ describe('AuthController - API Tests', () => {
         mockAuthService.signup.mockRejectedValue(error);
 
         // Act & Assert
-        await expect(authController.signup(req as Request, res as Response))
-          .rejects.toEqual(error);
-        
+        await expect(authController.signup(req as Request, res as Response)).rejects.toEqual(error);
+
         AssertionHelpers.expectServiceCalledWith(mockAuthService, 'signup', [invalidData]);
       });
 
@@ -134,8 +130,7 @@ describe('AuthController - API Tests', () => {
         mockAuthService.signup.mockRejectedValue(error);
 
         // Act & Assert
-        await expect(authController.signup(req as Request, res as Response))
-          .rejects.toEqual(error);
+        await expect(authController.signup(req as Request, res as Response)).rejects.toEqual(error);
       });
     });
   });
@@ -210,8 +205,7 @@ describe('AuthController - API Tests', () => {
         mockAuthService.login.mockRejectedValue(error);
 
         // Act & Assert
-        await expect(authController.login(req as Request, res as Response))
-          .rejects.toEqual(error);
+        await expect(authController.login(req as Request, res as Response)).rejects.toEqual(error);
       });
 
       it('should handle account not activated error', async () => {
@@ -227,8 +221,7 @@ describe('AuthController - API Tests', () => {
         mockAuthService.login.mockRejectedValue(error);
 
         // Act & Assert
-        await expect(authController.login(req as Request, res as Response))
-          .rejects.toEqual(error);
+        await expect(authController.login(req as Request, res as Response)).rejects.toEqual(error);
       });
     });
   });
@@ -254,7 +247,9 @@ describe('AuthController - API Tests', () => {
           message: 'Account activated successfully.',
           data: null,
         });
-        AssertionHelpers.expectServiceCalledWith(mockAuthService, 'accountActivation', [activationToken]);
+        AssertionHelpers.expectServiceCalledWith(mockAuthService, 'accountActivation', [
+          activationToken,
+        ]);
       });
     });
 
@@ -272,8 +267,9 @@ describe('AuthController - API Tests', () => {
         mockAuthService.accountActivation.mockRejectedValue(error);
 
         // Act & Assert
-        await expect(authController.accountActivation(req as Request, res as Response))
-          .rejects.toEqual(error);
+        await expect(
+          authController.accountActivation(req as Request, res as Response)
+        ).rejects.toEqual(error);
       });
 
       it('should handle missing token', async () => {
@@ -288,8 +284,9 @@ describe('AuthController - API Tests', () => {
         mockAuthService.accountActivation.mockRejectedValue(error);
 
         // Act & Assert
-        await expect(authController.accountActivation(req as Request, res as Response))
-          .rejects.toEqual(error);
+        await expect(
+          authController.accountActivation(req as Request, res as Response)
+        ).rejects.toEqual(error);
       });
     });
   });
@@ -330,8 +327,9 @@ describe('AuthController - API Tests', () => {
       mockAuthService.sendActivationLink.mockRejectedValue(error);
 
       // Act & Assert
-      await expect(authController.sendActivationLink(req as Request, res as Response))
-        .rejects.toEqual(error);
+      await expect(
+        authController.sendActivationLink(req as Request, res as Response)
+      ).rejects.toEqual(error);
     });
   });
 
@@ -441,9 +439,15 @@ describe('AuthController - API Tests', () => {
       // Arrange
       req.cookies = {};
 
+      const error = {
+        statusCode: httpStatusCodes.BAD_REQUEST,
+        message: 'No authentication token provided',
+      };
+
+      mockAuthService.logout.mockRejectedValue(error);
+
       // Act & Assert
-      await expect(authController.logout(req as Request, res as Response))
-        .rejects.toThrow();
+      await expect(authController.logout(req as Request, res as Response)).rejects.toEqual(error);
     });
   });
 
@@ -453,7 +457,7 @@ describe('AuthController - API Tests', () => {
       const userData = TestDataFactory.createUser();
       const clientId = 'client-123';
       const tokens = TestDataFactory.createTokens();
-      
+
       req = HttpTestHelpers.createAuthRequest(userData, {
         body: { clientId },
       });
@@ -475,7 +479,10 @@ describe('AuthController - API Tests', () => {
         msg: 'Account switched successfully.',
         activeAccount: tokens.activeAccount,
       });
-      AssertionHelpers.expectServiceCalledWith(mockAuthService, 'switchActiveAccount', [userData.sub, clientId]);
+      AssertionHelpers.expectServiceCalledWith(mockAuthService, 'switchActiveAccount', [
+        userData.sub,
+        clientId,
+      ]);
     });
 
     it('should handle unauthorized switch attempt', async () => {

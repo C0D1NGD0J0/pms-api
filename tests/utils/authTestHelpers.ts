@@ -1,9 +1,9 @@
 import dayjs from 'dayjs';
 import { Types } from 'mongoose';
 import { faker } from '@faker-js/faker';
+import { MailType } from '@interfaces/utils.interface';
 import { generateShortUID, hashGenerator } from '@utils/index';
 import { ICurrentUser, ISignupData, IUserRole } from '@interfaces/user.interface';
-import { IRequestContext, TokenType, MailType } from '@interfaces/utils.interface';
 
 /**
  * Auth-specific test data factories
@@ -43,14 +43,11 @@ export class AuthTestFactory {
       companyProfile: {
         legalEntityName: faker.company.name(),
         tradingName: faker.company.name(),
-        businessType: 'Corporation',
         registrationNumber: faker.finance.accountNumber(8),
-        yearEstablished: faker.number.int({ min: 2000, max: 2023 }),
         industry: faker.commerce.department(),
         website: faker.internet.url(),
         contactInfo: {
           email: faker.internet.email(),
-          address: faker.location.streetAddress(),
           phoneNumber: faker.phone.number(),
           contactPerson: faker.person.fullName(),
         },
@@ -119,7 +116,7 @@ export class AuthTestFactory {
         {
           cid: secondaryClientId,
           isConnected: true,
-          roles: [IUserRole.USER],
+          roles: [IUserRole.STAFF],
           displayName: 'Secondary Account',
         },
       ],
@@ -171,9 +168,21 @@ export class AuthTestFactory {
       sub: new Types.ObjectId().toString(),
       email: faker.internet.email(),
       fullname: faker.person.fullName(),
-      profilePictureUrl: faker.image.avatar(),
-      roles: ['admin'],
+      displayName: faker.internet.username(),
+      avatarUrl: faker.image.avatar(),
+      isActive: true,
       permissions: ['read', 'write', 'delete'],
+      preferences: {
+        theme: 'light',
+        lang: 'en',
+        timezone: 'America/New_York',
+      },
+      client: {
+        csub: generateShortUID(),
+        displayname: faker.company.name(),
+        role: 'admin',
+      },
+      clients: [],
       ...overrides,
     };
   }

@@ -35,7 +35,25 @@ export class DatabaseService implements IDatabaseService {
     }
 
     if (env === 'test') {
-      return false;
+      try {
+        if (!this.mongoMemoryServer) {
+          this.mongoMemoryServer = await MongoMemoryServer.create();
+        }
+        const uri = this.mongoMemoryServer.getUri();
+        await mongoose.connect(uri, {
+          maxPoolSize: 10,
+          minPoolSize: 2,
+          socketTimeoutMS: 30000,
+          connectTimeoutMS: 10000,
+          serverSelectionTimeoutMS: 10000,
+        });
+        this.connected = true;
+        this.log.info('Connected to test database (in-memory)');
+        return true;
+      } catch (err) {
+        this.log.error('Test Database Connection Error: ', err);
+        return false;
+      }
     }
 
     try {
@@ -48,7 +66,7 @@ export class DatabaseService implements IDatabaseService {
         socketTimeoutMS: 45000,
         connectTimeoutMS: 10000,
         family: 4,
-        serverSelectionTimeoutMS: 5000,
+        serverSelectionTimeoutMS: 15000,
       });
       this.redisService.connect();
 
@@ -68,13 +86,20 @@ export class DatabaseService implements IDatabaseService {
 
   async disconnect(env: Environments = envVariables.SERVER.ENV as Environments): Promise<boolean> {
     try {
-      if (env === 'test') return false;
-
       if (!this.isConnected()) {
         this.log.info('Database is already disconnected');
         return true;
       }
+
       await mongoose.connection.close();
+      
+      if (env === 'test' && this.mongoMemoryServer) {
+        await this.mongoMemoryServer.stop();
+        this.mongoMemoryServer = null;
+        this.log.info('Stopped test database (in-memory)');
+      }
+      
+      this.connected = false;
       this.log.info(`Disconnected from ${env} database`);
       return true;
     } catch (err) {

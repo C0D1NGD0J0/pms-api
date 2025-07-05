@@ -10,7 +10,12 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyTypeManager } from '@utils/PropertyTypeManager';
 import { getRequestDuration, createLogger, JOB_NAME } from '@utils/index';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
-import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
+import {
+  UploadCompletedPayload,
+  UploadFailedPayload,
+  IDisposable,
+  EventTypes,
+} from '@interfaces/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -47,7 +52,7 @@ interface IConstructor {
   clientDAO: ClientDAO;
 }
 
-export class PropertyService {
+export class PropertyService implements IDisposable {
   private readonly log: Logger;
   private uploadQueue: UploadQueue;
   private readonly clientDAO: ClientDAO;
@@ -1025,14 +1030,29 @@ export class PropertyService {
           : this.propertyUnitDAO.getSuggestedStartingUnitNumber(property.propertyType);
 
       return {
-        canAddUnit: false, // Single-unit properties typically can't add more units
+        canAddUnit: false,
         maxAllowedUnits: 1,
-        currentUnits: 1, // Single-unit property always has 1 unit (itself)
-        availableSpaces: 0, // No space to add more units
-        lastUnitNumber: '1', // The property itself can be considered unit 1
+        currentUnits: 1,
+        availableSpaces: 0,
         suggestedNextUnitNumber,
         unitStats,
       };
     }
+  }
+
+  async destroy(): Promise<void> {
+    this.log.info('Cleaning up PropertyService...');
+
+    // Remove all event listeners
+    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
+    this.emitterService.off(EventTypes.UPLOAD_FAILED, this.handleUploadFailed);
+    this.emitterService.off(EventTypes.UNIT_CREATED, this.handleUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_UPDATED, this.handleUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_UNARCHIVED, this.handleUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged);
+
+    this.log.info('PropertyService event listeners removed');
   }
 }

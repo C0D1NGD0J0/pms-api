@@ -1,13 +1,9 @@
-import { faker } from '@faker-js/faker';
 import { Types } from 'mongoose';
+import { faker } from '@faker-js/faker';
 import { generateShortUID } from '@utils/index';
-import { 
-  IPropertyDocument, 
-  PropertyType, 
-  OccupancyStatus 
-} from '@interfaces/property.interface';
-import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import { IRequestContext } from '@interfaces/utils.interface';
+import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
+import { IPropertyDocument, OccupancyStatus, PropertyType } from '@interfaces/property.interface';
 
 /**
  * Enhanced property-specific test data factories
@@ -18,7 +14,7 @@ export class PropertyTestFactory {
       name: faker.company.name() + ' Property',
       description: {
         text: faker.lorem.paragraph(),
-        html: `<p>${faker.lorem.paragraph()}</p>`
+        html: `<p>${faker.lorem.paragraph()}</p>`,
       },
       address: {
         street: faker.location.streetAddress(),
@@ -28,13 +24,24 @@ export class PropertyTestFactory {
         country: 'United States',
         fullAddress: '',
         coordinates: {
-          latitude: parseFloat(faker.location.latitude()),
-          longitude: parseFloat(faker.location.longitude())
-        }
+          latitude: faker.location.latitude(),
+          longitude: faker.location.longitude(),
+        },
       },
-      propertyType: faker.helpers.arrayElement(['house', 'apartment', 'condo', 'townhouse', 'duplex', 'commercial', 'industrial']) as PropertyType,
-      totalUnits: faker.number.int({ min: 1, max: 50 }),
-      occupancyStatus: faker.helpers.arrayElement(['vacant', 'occupied', 'partially_occupied']) as OccupancyStatus,
+      propertyType: faker.helpers.arrayElement([
+        'house',
+        'apartment',
+        'condo',
+        'townhouse',
+        'duplex',
+        'commercial',
+        'industrial',
+      ]) as PropertyType,
+      occupancyStatus: faker.helpers.arrayElement([
+        'vacant',
+        'occupied',
+        'partially_occupied',
+      ]) as OccupancyStatus,
       status: faker.helpers.arrayElement(['active', 'inactive', 'pending']),
       specifications: {
         totalArea: faker.number.int({ min: 500, max: 5000 }),
@@ -43,29 +50,30 @@ export class PropertyTestFactory {
         bedrooms: faker.number.int({ min: 0, max: 5 }),
         bathrooms: faker.number.float({ min: 1, max: 4, fractionDigits: 1 }),
         parkingSpaces: faker.number.int({ min: 0, max: 4 }),
-        amenities: faker.helpers.arrayElements([
-          'pool', 'gym', 'laundry', 'parking', 'elevator', 'balcony', 'garden'
-        ], { min: 0, max: 4 })
+        amenities: faker.helpers.arrayElements(
+          ['pool', 'gym', 'laundry', 'parking', 'elevator', 'balcony', 'garden'],
+          { min: 0, max: 4 }
+        ),
       },
       financialDetails: {
         purchasePrice: faker.number.int({ min: 100000, max: 1000000 }),
         marketValue: faker.number.int({ min: 100000, max: 1000000 }),
         purchaseDate: faker.date.past({ years: 10 }),
         lastAssessmentDate: faker.date.recent({ days: 365 }),
-        assessedValue: faker.number.int({ min: 100000, max: 1000000 })
+        assessedValue: faker.number.int({ min: 100000, max: 1000000 }),
       },
       fees: {
         rentalAmount: faker.number.int({ min: 800, max: 5000 }),
         securityDeposit: faker.number.int({ min: 800, max: 5000 }),
         applicationFee: faker.number.int({ min: 25, max: 100 }),
         lateFee: faker.number.int({ min: 25, max: 100 }),
-        petFee: faker.number.int({ min: 0, max: 500 })
+        petFee: faker.number.int({ min: 0, max: 500 }),
       },
       documents: [],
       createdAt: new Date(),
       updatedAt: new Date(),
       deletedAt: null,
-      ...overrides
+      ...overrides,
     };
 
     // Generate full address
@@ -82,29 +90,35 @@ export class PropertyTestFactory {
         bedrooms: faker.number.int({ min: 0, max: 4 }),
         bathrooms: faker.number.float({ min: 1, max: 3, fractionDigits: 1 }),
         totalArea: faker.number.int({ min: 400, max: 2000 }),
-        amenities: faker.helpers.arrayElements([
-          'balcony', 'dishwasher', 'washer_dryer', 'fireplace', 'walk_in_closet'
-        ], { min: 0, max: 3 })
+        amenities: faker.helpers.arrayElements(
+          ['balcony', 'dishwasher', 'washer_dryer', 'fireplace', 'walk_in_closet'],
+          { min: 0, max: 3 }
+        ),
       },
       fees: {
-        rent: faker.number.int({ min: 800, max: 3000 }),
-        deposit: faker.number.int({ min: 800, max: 3000 }),
-        petDeposit: faker.number.int({ min: 0, max: 500 })
+        rentAmount: faker.number.int({ min: 800, max: 3000 }),
+        securityDeposit: faker.number.int({ min: 800, max: 3000 }),
       },
-      status: faker.helpers.arrayElement(['available', 'occupied', 'maintenance', 'reserved', 'inactive']),
+      status: faker.helpers.arrayElement([
+        'available',
+        'occupied',
+        'maintenance',
+        'reserved',
+        'inactive',
+      ]),
       occupancyStatus: faker.helpers.arrayElement(['vacant', 'occupied']),
       currentTenant: null,
       leaseInfo: null,
       createdAt: new Date(),
       updatedAt: new Date(),
-      ...overrides
+      ...overrides,
     };
   }
 
   static createRequestContext(overrides: Partial<IRequestContext> = {}): IRequestContext {
     const userId = new Types.ObjectId().toString();
     const cid = generateShortUID();
-    
+
     return {
       requestId: generateShortUID(),
       currentuser: {
@@ -114,7 +128,7 @@ export class PropertyTestFactory {
         profilePictureUrl: faker.image.avatar(),
         roles: ['admin'],
         permissions: ['read', 'write', 'delete'],
-        ...overrides.currentuser
+        ...overrides.currentuser,
       },
       request: {
         url: '/api/properties',
@@ -124,12 +138,12 @@ export class PropertyTestFactory {
         body: {},
         headers: {
           'user-agent': 'jest-test',
-          'content-type': 'application/json'
+          'content-type': 'application/json',
         },
         ip: '127.0.0.1',
-        ...overrides.request
+        ...overrides.request,
       },
-      ...overrides
+      ...overrides,
     };
   }
 
@@ -137,7 +151,7 @@ export class PropertyTestFactory {
     return {
       csvFilePath: '/tmp/test-properties.csv',
       cid: generateShortUID(),
-      userId: new Types.ObjectId().toString()
+      userId: new Types.ObjectId().toString(),
     };
   }
 
@@ -148,7 +162,7 @@ export class PropertyTestFactory {
       filename: faker.system.fileName(),
       path: `/uploads/${faker.system.fileName()}`,
       size: faker.number.int({ min: 1000, max: 5000000 }),
-      mimetype: 'image/jpeg'
+      mimetype: 'image/jpeg',
     };
   }
 
@@ -158,7 +172,7 @@ export class PropertyTestFactory {
         page: 1,
         limit: 10,
         sort: 'desc',
-        sortBy: 'createdAt'
+        sortBy: 'createdAt',
       },
       filters: {
         propertyType: faker.helpers.arrayElements(['house', 'apartment', 'condo']),
@@ -166,24 +180,24 @@ export class PropertyTestFactory {
         occupancyStatus: faker.helpers.arrayElement(['vacant', 'occupied', 'partially_occupied']),
         priceRange: {
           min: faker.number.int({ min: 100000, max: 300000 }),
-          max: faker.number.int({ min: 300000, max: 1000000 })
+          max: faker.number.int({ min: 300000, max: 1000000 }),
         },
         areaRange: {
           min: faker.number.int({ min: 500, max: 1000 }),
-          max: faker.number.int({ min: 1000, max: 5000 })
+          max: faker.number.int({ min: 1000, max: 5000 }),
         },
         location: {
           city: faker.location.city(),
           state: faker.location.state(),
-          postCode: faker.location.zipCode()
+          postCode: faker.location.zipCode(),
         },
         searchTerm: faker.company.name(),
         dateRange: {
           field: 'createdAt',
           start: faker.date.past({ years: 1 }),
-          end: new Date()
-        }
-      }
+          end: new Date(),
+        },
+      },
     };
   }
 }
@@ -228,12 +242,12 @@ export class PropertyAssertions {
     if (property.propertyType === 'commercial') {
       expect(property.specifications.totalArea).toBeGreaterThanOrEqual(200);
     }
-    
+
     if (property.propertyType === 'industrial') {
       expect(property.specifications.lotSize).toBeDefined();
       expect(property.specifications.totalArea).toBeGreaterThanOrEqual(1000);
     }
-    
+
     if (property.occupancyStatus === 'occupied') {
       expect(property.fees.rentalAmount).toBeGreaterThan(0);
     }
@@ -241,18 +255,18 @@ export class PropertyAssertions {
 
   static expectCacheOperations(mockCache: any, operation: string, key?: string) {
     switch (operation) {
-      case 'get':
-        expect(mockCache.getClientProperties).toHaveBeenCalled();
-        break;
-      case 'set':
-        expect(mockCache.saveClientProperties).toHaveBeenCalled();
-        break;
       case 'invalidate':
         if (key) {
           expect(mockCache.invalidateProperty).toHaveBeenCalledWith(expect.any(String), key);
         } else {
           expect(mockCache.invalidatePropertyLists).toHaveBeenCalled();
         }
+        break;
+      case 'get':
+        expect(mockCache.getClientProperties).toHaveBeenCalled();
+        break;
+      case 'set':
+        expect(mockCache.saveClientProperties).toHaveBeenCalled();
         break;
     }
   }
@@ -265,9 +279,7 @@ export class PropertyAssertions {
         );
         break;
       case 'csv-import':
-        expect(mockQueue.addCsvImportJob).toHaveBeenCalledWith(
-          expect.objectContaining(data || {})
-        );
+        expect(mockQueue.addCsvImportJob).toHaveBeenCalledWith(expect.objectContaining(data || {}));
         break;
       case 'upload':
         expect(mockQueue.addToUploadQueue).toHaveBeenCalledWith(
@@ -289,32 +301,30 @@ export class PropertyTestScenarios {
         name: 'Single family house',
         data: PropertyTestFactory.createPropertyData({
           propertyType: 'house',
-          totalUnits: 1,
-          specifications: { bedrooms: 3, bathrooms: 2, totalArea: 1500 }
-        })
+          specifications: { bedrooms: 3, bathrooms: 2, totalArea: 1500 },
+        }),
       },
       {
         name: 'Multi-unit apartment building',
         data: PropertyTestFactory.createPropertyData({
           propertyType: 'apartment',
-          totalUnits: 24,
-          specifications: { totalArea: 12000 }
-        })
+          specifications: { totalArea: 12000 },
+        }),
       },
       {
         name: 'Commercial property',
         data: PropertyTestFactory.createPropertyData({
           propertyType: 'commercial',
-          specifications: { totalArea: 2500, bedrooms: 0 }
-        })
+          specifications: { totalArea: 2500, bedrooms: 0 },
+        }),
       },
       {
         name: 'Industrial property',
         data: PropertyTestFactory.createPropertyData({
           propertyType: 'industrial',
-          specifications: { totalArea: 5000, lotSize: 2000 }
-        })
-      }
+          specifications: { totalArea: 5000, lotSize: 2000 },
+        }),
+      },
     ];
   }
 
@@ -323,37 +333,37 @@ export class PropertyTestScenarios {
       {
         name: 'Missing required name',
         data: PropertyTestFactory.createPropertyData({ name: '' }),
-        expectedError: 'validation'
+        expectedError: 'validation',
       },
       {
         name: 'Invalid property type',
         data: PropertyTestFactory.createPropertyData({ propertyType: 'invalid' as any }),
-        expectedError: 'validation'
+        expectedError: 'validation',
       },
       {
         name: 'Commercial with bedrooms',
         data: PropertyTestFactory.createPropertyData({
           propertyType: 'commercial',
-          specifications: { bedrooms: 3, totalArea: 150 }
+          specifications: { bedrooms: 3, totalArea: 150 },
         }),
-        expectedError: 'business rule'
+        expectedError: 'business rule',
       },
       {
         name: 'Industrial without lot size',
         data: PropertyTestFactory.createPropertyData({
           propertyType: 'industrial',
-          specifications: { totalArea: 500 }
+          specifications: { totalArea: 500 },
         }),
-        expectedError: 'business rule'
+        expectedError: 'business rule',
       },
       {
         name: 'Occupied property without rent',
         data: PropertyTestFactory.createPropertyData({
           occupancyStatus: 'occupied',
-          fees: { rentalAmount: 0 }
+          fees: { rentalAmount: 0 },
         }),
-        expectedError: 'business rule'
-      }
+        expectedError: 'business rule',
+      },
     ];
   }
 
@@ -363,34 +373,34 @@ export class PropertyTestScenarios {
         name: 'Update basic information',
         updateData: {
           name: 'Updated Property Name',
-          description: { text: 'Updated description' }
-        }
+          description: { text: 'Updated description' },
+        },
       },
       {
         name: 'Update financial details',
         updateData: {
           financialDetails: {
             marketValue: 500000,
-            lastAssessmentDate: new Date()
-          }
-        }
+            lastAssessmentDate: new Date(),
+          },
+        },
       },
       {
         name: 'Update specifications',
         updateData: {
           specifications: {
             totalArea: 2000,
-            amenities: ['pool', 'gym']
-          }
-        }
+            amenities: ['pool', 'gym'],
+          },
+        },
       },
       {
         name: 'Change occupancy status',
         updateData: {
           occupancyStatus: 'vacant',
-          fees: { rentalAmount: 1500 }
-        }
-      }
+          fees: { rentalAmount: 1500 },
+        },
+      },
     ];
   }
 }

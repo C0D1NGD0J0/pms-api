@@ -27,9 +27,9 @@ export interface IProperty {
   propertyType: PropertyType;
   managedBy?: Types.ObjectId;
   createdBy: Types.ObjectId;
+  maxAllowedUnits?: number;
   address: AddressDetails;
   status: PropertyStatus;
-  maxAllowedUnits?: number;
   yearBuilt?: number;
   name: string;
   cid: string;
@@ -129,19 +129,6 @@ export type CommunityAmenities = {
 };
 
 /**
- * Property Document Interface (extends Mongoose Document)
- */
-export interface IPropertyDocument extends IProperty, Document {
-  lastModifiedBy?: Types.ObjectId;
-  _id: Types.ObjectId;
-  deletedAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-  pid: string;
-  id: string;
-}
-
-/**
  * Unit Information Type
  */
 export type UnitInfo = {
@@ -153,6 +140,19 @@ export type UnitInfo = {
   canAddUnit: boolean;
   maxAllowedUnits: number;
 };
+
+/**
+ * Property Document Interface (extends Mongoose Document)
+ */
+export interface IPropertyDocument extends IProperty, Document {
+  lastModifiedBy?: Types.ObjectId;
+  _id: Types.ObjectId;
+  deletedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  pid: string;
+  id: string;
+}
 
 /**
  * Address Details Type

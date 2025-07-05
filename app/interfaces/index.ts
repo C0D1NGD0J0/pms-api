@@ -2,6 +2,7 @@ export * from './propertyUnit.interface';
 export * from './unit-patterns.types';
 export * from './property.interface';
 export * from './profile.interface';
+export * from './service.interface';
 export * from './client.interface';
 export * from './events.interface';
 export * from './utils.interface';

@@ -80,9 +80,10 @@ class Server {
     this.app.initConfig();
     await this.startServers(this.expApp);
     this.initialized = true;
-    if (envVariables.SERVER.ENV !== 'production') {
-      this.scheduleMemoryCheck();
-    }
+    // Disabled memory monitoring to prevent memory leaks
+    // if (envVariables.SERVER.ENV !== 'production') {
+    //   this.scheduleMemoryCheck();
+    // }
   };
 
   public static getInstance(): Server {
@@ -207,6 +208,7 @@ class Server {
 
       // close database connection
       await this.dbService.disconnect();
+      await this.cleanupDIContainer();
 
       if (exitCode !== 0) {
         this.log.info(`Exiting with code ${exitCode}`);
@@ -215,6 +217,65 @@ class Server {
     } catch (error) {
       this.log.error('Error during shutdown:', error);
       process.exit(1);
+    }
+  }
+
+  private async cleanupDIContainer(): Promise<void> {
+    this.log.info('Cleaning up DI container and services...');
+
+    try {
+      const servicesWithCleanup = [
+        'emitterService',
+        'propertyService',
+        'redisService',
+        'propertyUnitService',
+        'authService',
+        'clientService',
+      ];
+
+      // clean up services that have destroy/cleanup methods
+      for (const serviceName of servicesWithCleanup) {
+        try {
+          if (container.hasRegistration(serviceName)) {
+            const service = container.resolve(serviceName);
+            if (service && typeof service.destroy === 'function') {
+              await service.destroy();
+              this.log.info(`Cleaned up ${serviceName}`);
+            }
+          }
+        } catch (error) {
+          this.log.warn(`Failed to cleanup ${serviceName}:`, error);
+        }
+      }
+
+      // Clean up queues
+      const queueNames = [
+        'documentProcessingQueue',
+        'emailQueue',
+        'eventBusQueue',
+        'propertyQueue',
+        'propertyUnitQueue',
+        'uploadQueue',
+      ];
+
+      for (const queueName of queueNames) {
+        try {
+          if (container.hasRegistration(queueName)) {
+            const queue = container.resolve(queueName);
+            if (queue && typeof queue.shutdown === 'function') {
+              await queue.shutdown();
+              this.log.info(`Shutdown ${queueName}`);
+            }
+          }
+        } catch (error) {
+          this.log.warn(`Failed to shutdown ${queueName}:`, error);
+        }
+      }
+
+      container.dispose();
+      this.log.info('DI container disposed');
+    } catch (error) {
+      this.log.error('Error during DI container cleanup:', error);
     }
   }
 
@@ -251,49 +312,6 @@ class Server {
     });
   }
 }
-
-// function captureHeapSnapshot() {
-//   const memoryUsage = process.memoryUsage();
-//   const mbUsed = Math.round(memoryUsage.heapUsed / 1024 / 1024);
-
-//   if (mbUsed > 1500) {
-//     const heapdumpDir = path.join(process.cwd(), 'heapdump');
-
-//     try {
-//       if (!fs.existsSync(heapdumpDir)) {
-//         fs.mkdirSync(heapdumpDir, { recursive: true });
-//         console.log(`Created heapdump directory at ${heapdumpDir}`);
-//       }
-
-//       const snapshotPath = path.join(heapdumpDir, `heapdump-${Date.now()}.heapsnapshot`);
-
-//       heapdump.writeSnapshot(snapshotPath, (err, filename) => {
-//         if (err) {
-//           console.error('Failed to create heap snapshot', err);
-//         } else {
-//           console.log(`Heap snapshot written to ${filename}`);
-//         }
-//       });
-//     } catch (error) {
-//       console.error('Error in heap snapshot capture:', error);
-//     }
-//   }
-// }
-
-// function monitorMemory() {
-//   const memoryUsage = process.memoryUsage();
-//   const mbUsed = Math.round(memoryUsage.heapUsed / 1024 / 1024);
-//   const mbTotal = Math.round(memoryUsage.heapTotal / 1024 / 1024);
-//   const now = Date.now();
-//   if (mbUsed > 1500 && now - lastSnapshotTime > SNAPSHOT_COOLDOWN) {
-//     captureHeapSnapshot();
-//     lastSnapshotTime = now;
-//     console.log(`Memory: ${mbUsed}MB / ${mbTotal}MB`);
-//   }
-// }
-
-// const testfn = setInterval(monitorMemory, 30000); // every minute
-// process.on('beforeExit', () => clearInterval(testfn));
 
 export const getServerInstance = () => {
   const server = Server.getInstance();

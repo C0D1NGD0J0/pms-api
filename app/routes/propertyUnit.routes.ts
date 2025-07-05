@@ -69,6 +69,7 @@ router.patch(
   diskUpload(['propertyUnit.media']),
   scanFile,
   validateRequest({
+    params: PropertyUnitValidations.validatePuid,
     body: PropertyUnitValidations.updateUnit,
   }),
   asyncWrapper((req, res) => {

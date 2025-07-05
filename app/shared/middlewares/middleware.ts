@@ -22,6 +22,20 @@ interface DIServices {
 export const scopedMiddleware = (req: Request, res: Response, next: NextFunction) => {
   const scope = container.createScope();
   req.container = scope;
+
+  // clean up on request finish
+  res.on('finish', () => {
+    if (req.container && typeof req.container.dispose === 'function') {
+      req.container.dispose();
+    }
+  });
+  // cleanup on error
+  res.on('error', () => {
+    if (req.container && typeof req.container.dispose === 'function') {
+      req.container.dispose();
+    }
+  });
+
   next();
 };
 

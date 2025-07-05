@@ -8,45 +8,7 @@ import { ClientValidations } from '@shared/validations/ClientValidation';
 const router = Router();
 
 router.get(
-  '/:cid/profile',
-  isAuthenticated,
-  validateRequest({
-    params: ClientValidations.clientIdParam,
-  }),
-  asyncWrapper((req, res) => {
-    const clientController = req.container.resolve<ClientController>('clientController');
-    return clientController.getClientProfile(req, res);
-  })
-);
-
-router.patch(
-  '/:cid/profile',
-  isAuthenticated,
-  validateRequest({
-    params: ClientValidations.clientIdParam,
-    body: ClientValidations.updateProfile,
-  }),
-  asyncWrapper((req, res) => {
-    const clientController = req.container.resolve<ClientController>('clientController');
-    return clientController.updateClientProfile(req, res);
-  })
-);
-
-router.patch(
-  '/:cid/settings',
-  isAuthenticated,
-  validateRequest({
-    params: ClientValidations.clientIdParam,
-    body: ClientValidations.updateSettings,
-  }),
-  asyncWrapper((req, res) => {
-    const clientController = req.container.resolve<ClientController>('clientController');
-    return clientController.updateClientSettings(req, res);
-  })
-);
-
-router.get(
-  '/:cid',
+  '/:cid/client_details',
   isAuthenticated,
   validateRequest({
     params: ClientValidations.clientIdParam,
@@ -58,28 +20,15 @@ router.get(
 );
 
 router.patch(
-  '/:cid/identification',
+  '/:cid/client_details',
   isAuthenticated,
   validateRequest({
     params: ClientValidations.clientIdParam,
-    body: ClientValidations.updateIdentification,
+    body: ClientValidations.updateClientDetails,
   }),
   asyncWrapper((req, res) => {
     const clientController = req.container.resolve<ClientController>('clientController');
-    return clientController.updateClientIdentification(req, res);
-  })
-);
-
-router.patch(
-  '/:cid/subscription',
-  isAuthenticated,
-  validateRequest({
-    params: ClientValidations.clientIdParam,
-    body: ClientValidations.updateSubscription,
-  }),
-  asyncWrapper((req, res) => {
-    const clientController = req.container.resolve<ClientController>('clientController');
-    return clientController.updateClientSubscription(req, res);
+    return clientController.updateClientProfile(req, res);
   })
 );
 

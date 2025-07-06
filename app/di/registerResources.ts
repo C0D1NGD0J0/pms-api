@@ -4,6 +4,7 @@ import { GeoCoderService } from '@services/external';
 import { ClamScannerService } from '@shared/config/index';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
+import { LanguageService } from '@shared/languages/language.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { PropertyUnit, Property, Profile, Client, User } from '@models/index';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
@@ -60,6 +61,7 @@ const ServiceResources = {
   clientService: asClass(ClientService).singleton(),
   mailerService: asClass(MailService).singleton(),
   tokenService: asClass(AuthTokenService).singleton(),
+  languageService: asClass(LanguageService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
   emitterService: asClass(EventEmitterService).singleton(),
   propertyUnitService: asClass(PropertyUnitService).singleton(),
@@ -128,7 +130,6 @@ export const initQueues = (container: AwilixContainer) => {
   container.resolve('propertyWorker');
   container.resolve('propertyUnitWorker');
   container.resolve('uploadWorker');
-  // PropertyService automatically initializes unit event listeners in its constructor
 };
 
 export const registerResources = {

@@ -60,6 +60,7 @@ router.put(
 
 router.patch(
   '/switch_client_account',
+  isAuthenticated,
   validateRequest({
     body: AuthValidations.resendActivation,
   }),

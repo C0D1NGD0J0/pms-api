@@ -38,6 +38,7 @@ import {
 } from '@interfaces/utils.interface';
 
 import { PropertyValidationService } from './propertyValidation.service';
+import { t } from '@shared/languages';
 
 interface IConstructor {
   propertyCsvProcessor: PropertyCsvProcessor;
@@ -105,7 +106,7 @@ export class PropertyService implements IDisposable {
     this.emitterService.on(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged.bind(this));
     this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged.bind(this));
 
-    this.log.info('PropertyService event listeners initialized');
+    this.log.info(t('property.logging.eventListenersInitialized'));
   }
 
   async addProperty(
@@ -118,7 +119,7 @@ export class PropertyService implements IDisposable {
     const currentuser = cxt.currentuser!;
     const start = process.hrtime.bigint();
 
-    this.log.info('Starting property creation process');
+    this.log.info(t('property.logging.startingCreation'));
 
     const validationResult = PropertyValidationService.validateProperty(propertyData);
     if (!validationResult.valid) {
@@ -144,7 +145,7 @@ export class PropertyService implements IDisposable {
       });
 
       throw new ValidationRequestError({
-        message: 'Property validation failed. Please correct the errors and try again.',
+        message: t('property.errors.validationFailed'),
         errorInfo,
       });
     }
@@ -154,7 +155,7 @@ export class PropertyService implements IDisposable {
       const client = await this.clientDAO.getClientByCid(cid);
       if (!client) {
         this.log.error(`Client with cid ${cid} not found`);
-        throw new BadRequestError({ message: 'Unable to add property to this account.' });
+        throw new BadRequestError({ message: t('property.errors.unableToAdd') });
       }
 
       const fullAddress = propertyData.address.fullAddress;
@@ -167,7 +168,7 @@ export class PropertyService implements IDisposable {
 
         if (existingProperty) {
           throw new InvalidRequestError({
-            message: 'A property with this address already exists for this client',
+            message: t('property.errors.duplicateAddress'),
           });
         }
       }
@@ -188,7 +189,7 @@ export class PropertyService implements IDisposable {
       );
 
       if (!property) {
-        throw new BadRequestError({ message: 'Unable to create property.' });
+        throw new BadRequestError({ message: t('property.errors.unableToCreate') });
       }
 
       this.log.info(
@@ -217,7 +218,7 @@ export class PropertyService implements IDisposable {
     }
 
     await this.propertyCache.cacheProperty(cid, result.property.id, result.property);
-    return { success: true, data: result.property, message: 'Property created successfully.' };
+    return { success: true, data: result.property, message: t('property.success.created') };
   }
 
   private propertyTypeValidation(propertyData: NewPropertyType): void {
@@ -276,7 +277,7 @@ export class PropertyService implements IDisposable {
 
     if (errors.length > 0) {
       throw new ValidationRequestError({
-        message: 'Property type business rule validation failed',
+        message: t('property.errors.businessRuleValidationFailed'),
         errorInfo: { propertyType: errors },
       });
     }
@@ -288,7 +289,7 @@ export class PropertyService implements IDisposable {
     actorId: string
   ): Promise<ISuccessReturnData> {
     if (!csvFilePath || !cid) {
-      throw new BadRequestError({ message: 'No CSV file path provided' });
+      throw new BadRequestError({ message: t('property.errors.noCsvFile') });
     }
     const client = await this.clientDAO.getClientByCid(cid);
     if (!client) {
@@ -306,7 +307,7 @@ export class PropertyService implements IDisposable {
     return {
       success: true,
       data: { processId: job.id },
-      message: 'CSV import job started',
+      message: t('property.success.csvImportStarted'),
     };
   }
 
@@ -316,15 +317,15 @@ export class PropertyService implements IDisposable {
     userid: string
   ): Promise<ISuccessReturnData> {
     if (!propertyId) {
-      throw new BadRequestError({ message: 'Property ID is required.' });
+      throw new BadRequestError({ message: t('property.errors.propertyIdRequired') });
     }
 
     if (!uploadResult || uploadResult.length === 0) {
-      throw new BadRequestError({ message: 'Upload result is required.' });
+      throw new BadRequestError({ message: t('property.errors.uploadResultRequired') });
     }
     const property = await this.propertyDAO.findById(propertyId);
     if (!property) {
-      throw new BadRequestError({ message: 'Unable to find client property.' });
+      throw new BadRequestError({ message: t('property.errors.unableToFind') });
     }
 
     const updatedProperty = await this.propertyDAO.updatePropertyDocument(
@@ -346,18 +347,18 @@ export class PropertyService implements IDisposable {
     currentUser: ICurrentUser
   ): Promise<ISuccessReturnData> {
     if (!csvFile) {
-      throw new BadRequestError({ message: 'No CSV file uploaded' });
+      throw new BadRequestError({ message: t('property.errors.noCsvUploaded') });
     }
 
     const client = await this.clientDAO.getClientByCid(cid);
     if (!client) {
       this.log.error(`Client with cid ${cid} not found`);
-      throw new BadRequestError({ message: 'Unable to validate csv for this account.' });
+      throw new BadRequestError({ message: t('property.errors.unableToValidateCsv') });
     }
 
     if (csvFile.fileSize > 10 * 1024 * 1024) {
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
-      throw new BadRequestError({ message: 'File size too large for processing.' });
+      throw new BadRequestError({ message: t('property.errors.fileTooLarge') });
     }
 
     const jobData = {
@@ -369,7 +370,7 @@ export class PropertyService implements IDisposable {
     return {
       success: true,
       data: { processId: job.id },
-      message: 'CSV validation process started.',
+      message: t('property.success.csvValidationStarted'),
     };
   }
 
@@ -383,7 +384,7 @@ export class PropertyService implements IDisposable {
     }>
   > {
     if (!cid) {
-      throw new BadRequestError({ message: 'Client ID is required.' });
+      throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
     }
 
     const client = await this.clientDAO.getClientByCid(cid);
@@ -520,7 +521,7 @@ export class PropertyService implements IDisposable {
     _currentUser: ICurrentUser
   ): Promise<ISuccessReturnData<IPropertyWithUnitInfo>> {
     if (!cid || !pid) {
-      throw new BadRequestError({ message: 'Client ID and Property ID are required.' });
+      throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
     }
 
     const client = await this.clientDAO.getClientByCid(cid);
@@ -535,7 +536,7 @@ export class PropertyService implements IDisposable {
       deletedAt: null,
     });
     if (!property) {
-      throw new NotFoundError({ message: 'Unable to find property.' });
+      throw new NotFoundError({ message: t('property.errors.notFound') });
     }
     const unitInfo = await this.getUnitInfoForProperty(property);
 
@@ -560,13 +561,13 @@ export class PropertyService implements IDisposable {
 
     if (!cid || !pid) {
       this.log.error('Client ID and Property ID are required');
-      throw new BadRequestError({ message: 'Client ID and Property ID are required.' });
+      throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
     }
 
     const client = await this.clientDAO.getClientByCid(cid);
     if (!client) {
       this.log.error(`Client with cid ${cid} not found`);
-      throw new InvalidRequestError({ message: 'Client not found.' });
+      throw new InvalidRequestError({ message: t('property.errors.clientNotFound') });
     }
 
     const property = await this.propertyDAO.findFirst({
@@ -575,7 +576,7 @@ export class PropertyService implements IDisposable {
       deletedAt: null,
     });
     if (!property) {
-      throw new NotFoundError({ message: 'Unable to find property.' });
+      throw new NotFoundError({ message: t('property.errors.notFound') });
     }
 
     if (
@@ -601,7 +602,7 @@ export class PropertyService implements IDisposable {
         });
 
         throw new ValidationRequestError({
-          message: 'Update validation failed. Please correct the errors and try again.',
+          message: t('property.errors.updateValidationFailed'),
           errorInfo,
         });
       }
@@ -678,7 +679,7 @@ export class PropertyService implements IDisposable {
 
     if (errors.length > 0) {
       throw new ValidationRequestError({
-        message: 'Occupancy status change validation failed',
+        message: t('property.errors.occupancyValidationFailed'),
         errorInfo: { occupancyStatus: errors },
       });
     }
@@ -691,13 +692,13 @@ export class PropertyService implements IDisposable {
   ): Promise<ISuccessReturnData> {
     if (!cid || !pid) {
       this.log.error('Client ID and Property ID are required');
-      throw new BadRequestError({ message: 'Client ID and Property ID are required' });
+      throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
     }
 
     const client = await this.clientDAO.getClientByCid(cid);
     if (!client) {
       this.log.error(`Client with cid ${cid} not found`);
-      throw new BadRequestError({ message: 'Unable to archive property.' });
+      throw new BadRequestError({ message: t('property.errors.unableToArchive') });
     }
 
     const property = await this.propertyDAO.findFirst({
@@ -706,19 +707,19 @@ export class PropertyService implements IDisposable {
       deletedAt: null,
     });
     if (!property) {
-      throw new NotFoundError({ message: 'Unable to find property.' });
+      throw new NotFoundError({ message: t('property.errors.notFound') });
     }
 
     const archivedProperty = await this.propertyDAO.archiveProperty(property.id, currentUser.sub);
 
     if (!archivedProperty) {
-      throw new BadRequestError({ message: 'Unable to archive property.' });
+      throw new BadRequestError({ message: t('property.errors.unableToArchive') });
     }
 
     await this.propertyCache.invalidateProperty(cid, property.id);
     await this.propertyCache.invalidatePropertyLists(cid);
 
-    return { success: true, data: null, message: 'Property archived successfully' };
+    return { success: true, data: null, message: t('property.success.archived') };
   }
 
   async markDocumentsAsFailed(propertyId: string, errorMessage: string): Promise<void> {
@@ -756,7 +757,7 @@ export class PropertyService implements IDisposable {
     const { results, resourceName, resourceId, actorId } = payload;
 
     if (resourceName !== 'property') {
-      this.log.debug('Ignoring upload completed event for non-property resource', {
+      this.log.debug(t('property.logging.ignoringUploadEvent'), {
         resourceName,
       });
       return;
@@ -788,7 +789,7 @@ export class PropertyService implements IDisposable {
       } catch (markFailedError) {
         this.log.error(
           {
-            error: markFailedError instanceof Error ? markFailedError.message : 'Unknown error',
+            error: markFailedError instanceof Error ? markFailedError.message : t('property.errors.unknownError'),
             propertyId: resourceId,
           },
           'Failed to mark documents as failed after upload processing error'
@@ -800,7 +801,7 @@ export class PropertyService implements IDisposable {
   private async handleUploadFailed(payload: UploadFailedPayload): Promise<void> {
     const { error, resourceType, resourceId } = payload;
 
-    this.log.info('Received UPLOAD_FAILED event', {
+    this.log.info(t('property.logging.receivedUploadFailedEvent'), {
       resourceType,
       resourceId,
       error: error.message,
@@ -809,12 +810,12 @@ export class PropertyService implements IDisposable {
     try {
       await this.markDocumentsAsFailed(resourceId, error.message);
 
-      this.log.info('Successfully processed upload failed event', {
+      this.log.info(t('property.logging.processedUploadFailedEvent'), {
         propertyId: resourceId,
       });
     } catch (markFailedError) {
-      this.log.error('Error processing upload failed event', {
-        error: markFailedError instanceof Error ? markFailedError.message : 'Unknown error',
+      this.log.error(t('property.logging.errorProcessingUploadFailed'), {
+        error: markFailedError instanceof Error ? markFailedError.message : t('property.errors.unknownError'),
         propertyId: resourceId,
       });
     }
@@ -1041,7 +1042,7 @@ export class PropertyService implements IDisposable {
   }
 
   async destroy(): Promise<void> {
-    this.log.info('Cleaning up PropertyService...');
+    this.log.info(t('property.logging.cleaningUp'));
 
     // Remove all event listeners
     this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
@@ -1053,6 +1054,6 @@ export class PropertyService implements IDisposable {
     this.emitterService.off(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged);
     this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged);
 
-    this.log.info('PropertyService event listeners removed');
+    this.log.info(t('property.logging.eventListenersRemoved'));
   }
 }

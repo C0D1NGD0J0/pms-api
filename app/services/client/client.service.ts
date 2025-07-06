@@ -4,6 +4,7 @@ import { getRequestDuration, createLogger } from '@utils/index';
 import { BadRequestError, NotFoundError } from '@shared/customErrors/index';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { PopulatedAccountAdmin, IClientDocument, IClientStats } from '@interfaces/client.interface';
+import { t } from '@shared/languages';
 
 interface IConstructor {
   propertyDAO: PropertyDAO;
@@ -43,9 +44,9 @@ export class ClientService {
           data: JSON.stringify(updateData),
           duration: getRequestDuration(start).durationInMs,
         },
-        'Client not found'
+        t('client.errors.notFound')
       );
-      throw new NotFoundError({ message: 'Client not found' });
+      throw new NotFoundError({ message: t('client.errors.notFound') });
     }
 
     // Validation errors collection
@@ -74,18 +75,18 @@ export class ClientService {
             newIdType: updateData.identification.idType,
             userId: currentuser.sub,
           },
-          'Client identification type changed - requires re-verification'
+          t('client.logging.idTypeChanged')
         );
       }
 
       if (updateData.identification.idType && !updateData.identification.idNumber) {
-        validationErrors.push('ID number is required when updating identification type');
+        validationErrors.push(t('client.validation.idNumberRequired'));
       }
       if (updateData.identification.idType && !updateData.identification.authority) {
-        validationErrors.push('Issuing authority is required when updating identification type');
+        validationErrors.push(t('client.validation.authorityRequired'));
       }
       if (updateData.identification.idNumber && !updateData.identification.idType) {
-        validationErrors.push('ID type is required when updating identification number');
+        validationErrors.push(t('client.validation.idTypeRequired'));
       }
     }
 
@@ -94,7 +95,7 @@ export class ClientService {
         updateData.companyProfile.companyEmail &&
         !isValidEmail(updateData.companyProfile.companyEmail)
       ) {
-        validationErrors.push('Invalid company email format');
+        validationErrors.push(t('client.validation.invalidEmailFormat'));
       }
 
       if (
@@ -113,7 +114,7 @@ export class ClientService {
 
     if (updateData.displayName) {
       if (updateData.displayName.trim().length === 0) {
-        validationErrors.push('Display name cannot be empty');
+        validationErrors.push(t('client.validation.displayNameEmpty'));
       }
       if (updateData.displayName !== client.displayName) {
         requiresReVerification = true;
@@ -133,7 +134,7 @@ export class ClientService {
         changedFields: JSON.stringify(changedFields),
         requiresReVerification,
       },
-      'Client update validation completed'
+      t('client.logging.validationCompleted')
     );
 
     if (validationErrors.length > 0) {
@@ -146,10 +147,10 @@ export class ClientService {
           validationErrors,
           duration: getRequestDuration(start).durationInMs,
         },
-        'Client update validation failed'
+        t('client.logging.validationFailed')
       );
       throw new BadRequestError({
-        message: 'Validation failed',
+        message: t('client.errors.validationFailed'),
         errorInfo: { validationErrors },
       });
     }
@@ -183,9 +184,9 @@ export class ClientService {
             data: JSON.stringify(updateData),
             duration: getRequestDuration(start).durationInMs,
           },
-          'Unable to update client'
+          t('client.logging.updateFailed')
         );
-        throw new BadRequestError({ message: 'Failed to update client profile' });
+        throw new BadRequestError({ message: t('client.errors.updateFailed') });
       }
 
       return { updatedClient };
@@ -194,7 +195,7 @@ export class ClientService {
     return {
       success: true,
       data: result.updatedClient,
-      message: 'Client details updated successfully',
+      message: t('client.success.updated'),
     };
   }
 
@@ -213,9 +214,9 @@ export class ClientService {
           requestId: cxt.requestId,
           duration: getRequestDuration(start).durationInMs,
         },
-        'Missing required parameters'
+        t('client.logging.missingParameters')
       );
-      throw new BadRequestError({ message: 'Unable to fetch client details.' });
+      throw new BadRequestError({ message: t('client.errors.fetchFailed') });
     }
 
     const [client, usersResult, propertiesResult] = await Promise.all([
@@ -245,9 +246,9 @@ export class ClientService {
           requestId: cxt.requestId,
           duration: getRequestDuration(start).durationInMs,
         },
-        'Client details not found'
+        t('client.logging.detailsNotFound')
       );
-      throw new NotFoundError({ message: 'Client details not found.' });
+      throw new NotFoundError({ message: t('client.errors.detailsNotFound') });
     }
 
     const clientWithStats = client.toObject() as { clientStats: IClientStats } & IClientDocument;
@@ -268,7 +269,7 @@ export class ClientService {
     return {
       data: clientWithStats,
       success: true,
-      message: 'Client details retrieved successfully',
+      message: t('client.success.retrieved'),
     };
   }
 }

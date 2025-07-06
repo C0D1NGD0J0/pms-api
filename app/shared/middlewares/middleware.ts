@@ -8,6 +8,7 @@ import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
 import { NextFunction, Response, Request } from 'express';
 import { ICurrentUser, EventTypes } from '@interfaces/index';
+import { LanguageService } from '@shared/languages/language.service';
 import { InvalidRequestError, UnauthorizedError } from '@shared/customErrors';
 import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
 import { RateLimitOptions, RequestSource, TokenType } from '@interfaces/utils.interface';
@@ -246,6 +247,75 @@ export const requestLogger =
     next();
   };
 
+/**
+ * Middleware to detect and set language based on request headers or query params
+ */
+export const detectLanguage = (req: Request, _res: Response, next: NextFunction) => {
+  const { languageService }: { languageService: LanguageService } = req.container.cradle;
+
+  const language =
+    (req.query.lang as string) ||
+    req.headers['accept-language']?.split(',')[0]?.split('-')[0] ||
+    'en';
+
+  const supportedLanguages = languageService.getAvailableLanguages();
+  const selectedLanguage = supportedLanguages.includes(language) ? language : 'en';
+
+  await languageService.setLanguage(selectedLanguage);
+
+  req.context.langSetting = {
+    lang: selectedLanguage,
+    t: (key: string, params?: Record<string, string | number>) => {
+      return languageService.t(key, params);
+    },
+  };
+
+  next();
+};
+
+/**
+ * set language from user preferences (after authentication)
+ * order of choice: user.preferences.lang > client.settings.lang > profile.lang > request.lang > default
+ * Automatically skips if no authenticated user (for public routes)
+ */
+export const setUserLanguage = async (req: Request, _res: Response, next: NextFunction) => {
+  try {
+    const { languageService }: { languageService: LanguageService } = req.container.cradle;
+    const currentUser = req.context?.currentuser;
+
+    if (!currentUser) {
+      return next();
+    }
+
+    let userLanguage = req.context?.langSetting?.lang || 'en';
+
+    if (currentUser.preferences?.lang) {
+      userLanguage = currentUser.preferences.lang;
+    } else if ((currentUser as any).clientSettings?.lang) {
+      userLanguage = (currentUser as any).clientSettings.lang;
+    } else if ((currentUser as any).profile?.lang) {
+      userLanguage = (currentUser as any).profile.lang;
+    }
+
+    const supportedLanguages = languageService.getAvailableLanguages();
+    const selectedLanguage = supportedLanguages.includes(userLanguage) ? userLanguage : 'en';
+
+    await languageService.setLanguage(selectedLanguage);
+
+    req.context.langSetting = {
+      lang: selectedLanguage,
+      t: (key: string, params?: Record<string, string | number>) => {
+        return languageService.t(key, params);
+      },
+    };
+
+    next();
+  } catch (error) {
+    console.error('Error in setUserLanguage middleware:', error);
+    next();
+  }
+};
+
 export const contextBuilder = (req: Request, res: Response, next: NextFunction) => {
   try {
     const sourceHeader = req.header('X-Request-Source') || RequestSource.UNKNOWN;
@@ -265,8 +335,8 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
         browser: uaResult.browser.name,
         version: uaResult.browser.version,
         os: uaResult.os.name,
-        isBot: false,
         isMobile: /mobile|android|iphone/i.test((req.headers['user-agent'] as string) || ''),
+        isBot: /bot|crawler|spider|scraper/i.test((req.headers['user-agent'] as string) || ''),
       },
       request: {
         path: req.path,
@@ -278,6 +348,10 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
       currentuser: req.context?.currentuser || null,
       timing: {
         startTime: Date.now(),
+      },
+      langSetting: req.context?.langSetting || {
+        lang: 'en',
+        t: undefined,
       },
       service: {
         env: process.env.NODE_ENV || 'development',

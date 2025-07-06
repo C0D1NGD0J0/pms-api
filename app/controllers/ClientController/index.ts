@@ -1,5 +1,6 @@
 import Logger from 'bunyan';
 import { Response } from 'express';
+import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
@@ -26,7 +27,7 @@ export class ClientController {
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: updatedClient,
-      message: 'Client profile updated successfully',
+      message: t('client.success.profileUpdated'),
     });
   };
 
@@ -38,7 +39,7 @@ export class ClientController {
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: client,
-      message: 'Client details retrieved',
+      message: t('client.success.detailsRetrieved'),
     });
   };
 }

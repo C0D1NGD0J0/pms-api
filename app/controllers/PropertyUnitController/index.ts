@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { t } from '@shared/languages';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyUnitService } from '@services/property';
 import { AppRequest } from '@interfaces/utils.interface';
@@ -56,7 +57,7 @@ export class PropertyUnitController {
     if (!userId) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: 'Unauthorized',
+        message: t('auth.errors.unauthorized'),
       });
     }
     const result = await this.propertyUnitService.getUserJobs(userId);
@@ -90,7 +91,7 @@ export class PropertyUnitController {
     if (!req.body.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
-        message: 'No document file uploaded',
+        message: t('propertyUnit.errors.noDocumentFileUploaded'),
       });
     }
     const result = await this.propertyUnitService.addDocumentToUnit(

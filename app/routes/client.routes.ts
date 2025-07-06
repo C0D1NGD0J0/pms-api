@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
-import { isAuthenticated } from '@shared/middlewares';
 import { validateRequest } from '@shared/validations';
+import { isAuthenticated } from '@shared/middlewares';
 import { ClientController } from '@controllers/ClientController';
 import { ClientValidations } from '@shared/validations/ClientValidation';
 

@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
@@ -70,7 +71,7 @@ export class AuthService {
 
     if (!refreshToken || !userId) {
       this.log.error('RefreshToken or userId missing');
-      throw new UnauthorizedError({ message: 'Invalid refresh token' });
+      throw new UnauthorizedError({ message: t('auth.errors.invalidRefreshToken') });
     }
 
     const storedRefreshToken = await this.authCache.getRefreshToken(userId);
@@ -86,7 +87,7 @@ export class AuthService {
 
     if (!decoded.success || !decoded.data?.sub) {
       this.log.error('RefreshToken validation failed');
-      throw new UnauthorizedError({ message: 'token expired.' });
+      throw new UnauthorizedError({ message: t('auth.errors.tokenExpired') });
     }
 
     const tokens = this.tokenService.createJwtTokens({
@@ -101,20 +102,20 @@ export class AuthService {
       decoded.data.rememberMe
     );
     if (!saved.success) {
-      throw new UnauthorizedError({ message: 'Invalid refresh token' });
+      throw new UnauthorizedError({ message: t('auth.errors.invalidRefreshToken') });
     }
 
     return {
       success: true,
       data: tokens,
-      message: 'Token refreshed successfully',
+      message: t('auth.success.tokenRefreshed'),
     };
   }
 
   async getTokenUser(token: string): Promise<ISuccessReturnData> {
     if (!token) {
       this.log.error('Token missing in validateToken');
-      throw new UnauthorizedError({ message: 'Authentication required' });
+      throw new UnauthorizedError({ message: t('auth.errors.authenticationRequired') });
     }
 
     const decoded = await this.tokenService.verifyJwtToken(
@@ -124,7 +125,7 @@ export class AuthService {
 
     if (!decoded.success || !decoded.data?.sub) {
       this.log.error('Token validation failed');
-      throw new UnauthorizedError({ message: 'Invalid authentication token' });
+      throw new UnauthorizedError({ message: t('auth.errors.invalidAuthToken') });
     }
 
     const user = await this.userDAO.getUserById(decoded.data.sub);
@@ -135,13 +136,13 @@ export class AuthService {
 
     if (!user.isActive) {
       this.log.error('User account inactive');
-      throw new UnauthorizedError({ message: 'Account verification pending' });
+      throw new UnauthorizedError({ message: t('auth.errors.accountVerificationPending') });
     }
 
     return {
       data: null,
       success: true,
-      message: 'Token validated successfully',
+      message: t('auth.success.tokenValidated'),
     };
   }
 
@@ -149,22 +150,22 @@ export class AuthService {
     const user = await this.userDAO.getUserById(userId);
 
     if (!user) {
-      throw new ForbiddenError({ message: 'User not found' });
+      throw new ForbiddenError({ message: t('auth.errors.userNotFound') });
     }
     const client = await this.clientDAO.getClientByCid(clientId);
     if (!client) {
-      throw new ForbiddenError({ message: 'Client not found' });
+      throw new ForbiddenError({ message: t('auth.errors.clientNotFound') });
     }
 
     const clientAccount = user.cids.find((c) => c.cid === clientId);
     if (!clientAccount) {
-      throw new ForbiddenError({ message: 'User does not have access to this client' });
+      throw new ForbiddenError({ message: t('auth.errors.noAccessToClient') });
     }
 
     return {
       success: true,
       data: null,
-      message: 'User has access to client',
+      message: t('auth.success.userHasAccess'),
     };
   }
 
@@ -197,7 +198,7 @@ export class AuthService {
       );
 
       if (!user) {
-        throw new InvalidRequestError({ message: 'User not created' });
+        throw new InvalidRequestError({ message: t('auth.errors.userNotCreated') });
       }
 
       if (signupData.accountType.isCorporate) {
@@ -241,7 +242,7 @@ export class AuthService {
       return {
         emailData: {
           to: user.email,
-          subject: 'Activate your account',
+          subject: t('email.registration.subject'),
           emailType: MailType.ACCOUNT_ACTIVATION,
           data: {
             fullname: profile.fullname,
@@ -255,7 +256,7 @@ export class AuthService {
     return {
       data: null,
       success: true,
-      message: `Account activation email has been sent to ${result.emailData.to}`,
+      message: t('auth.success.activationEmailSent', { email: result.emailData.to }),
     };
   }
 
@@ -271,21 +272,21 @@ export class AuthService {
     const { email, password, rememberMe } = data;
     if (!email || !password) {
       this.log.error('Email and password are required. | Login');
-      throw new BadRequestError({ message: 'Email and password are required.' });
+      throw new BadRequestError({ message: t('auth.errors.emailPasswordRequired') });
     }
 
     let user = await this.userDAO.getActiveUserByEmail(email);
     if (!user) {
-      throw new NotFoundError({ message: 'Invalid email/password combination.' });
+      throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
     }
 
     if (!user.isActive) {
-      throw new InvalidRequestError({ message: 'Account verification pending.' });
+      throw new InvalidRequestError({ message: t('auth.errors.accountVerificationPending') });
     }
 
     user = await this.userDAO.verifyCredentials(email, password);
     if (!user) {
-      throw new NotFoundError({ message: 'Invalid email/password combination.' });
+      throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
     }
 
     const activeAccount = user.cids.find((c) => c.cid === user.activeCid)!;
@@ -310,7 +311,7 @@ export class AuthService {
           },
           accounts: [],
         },
-        message: 'Login successful.',
+        message: t('auth.success.loginSuccessful'),
       };
     }
 
@@ -329,20 +330,20 @@ export class AuthService {
         },
         accounts: otherAccounts,
       },
-      message: 'Login successful.',
+      message: t('auth.success.loginSuccessful'),
     };
   }
 
   async getCurrentUser(userId: string): Promise<ISuccessReturnData> {
     if (!userId) {
       this.log.error('User ID is required. | GetCurrentUser');
-      throw new BadRequestError({ message: 'User ID is required.' });
+      throw new BadRequestError({ message: t('auth.errors.userIdRequired') });
     }
 
     const currentuser = await this.profileDAO.generateCurrentUserInfo(userId);
     if (!currentuser) {
       this.log.error('User not found. | GetCurrentUser');
-      throw new UnauthorizedError({ message: 'Unauthorized.' });
+      throw new UnauthorizedError({ message: t('auth.errors.unauthorized') });
     }
 
     const cachedResp = await this.authCache.saveCurrentUser(currentuser);
@@ -370,17 +371,17 @@ export class AuthService {
     }>
   > {
     if (!userId || !newCid) {
-      throw new BadRequestError({ message: 'User ID and account CID are required.' });
+      throw new BadRequestError({ message: t('auth.errors.userIdAndCidRequired') });
     }
 
     const user = await this.userDAO.getUserById(userId);
     if (!user) {
-      throw new NotFoundError({ message: 'User not found.' });
+      throw new NotFoundError({ message: t('auth.errors.userNotFound') });
     }
 
     const accountExists = user.cids.find((c) => c.cid === newCid);
     if (!accountExists) {
-      throw new NotFoundError({ message: 'Unable to select account.' });
+      throw new NotFoundError({ message: t('auth.errors.unableToSelectAccount') });
     }
 
     await this.userDAO.updateById(userId, { $set: { activeCid: newCid } });
@@ -404,40 +405,40 @@ export class AuthService {
           displayName: activeAccount.displayName,
         },
       },
-      message: 'Success.',
+      message: t('auth.success.accountSelected'),
     };
   }
 
   async accountActivation(token: string): Promise<ISuccessReturnData> {
     if (!token) {
-      this.log.error('Activation token missing.');
-      throw new BadRequestError({ message: 'Activation token missing.' });
+      this.log.error(t('auth.errors.activationTokenMissing'));
+      throw new BadRequestError({ message: t('auth.errors.activationTokenMissing') });
     }
 
     const activated = await this.userDAO.activateAccount(token.trim());
     if (!activated) {
-      const msg = 'Invalid or expired activation token.';
+      const msg = t('auth.errors.invalidActivationToken');
       throw new NotFoundError({ message: msg });
     }
 
-    return { success: true, data: null, message: 'Account activated successfully.' };
+    return { success: true, data: null, message: t('auth.success.accountActivated') };
   }
 
   async sendActivationLink(email: string): Promise<ISuccessReturnData> {
     if (!email) {
-      throw new BadRequestError({ message: 'Email is required to resend activation link.' });
+      throw new BadRequestError({ message: t('auth.errors.emailRequired') });
     }
 
     await this.userDAO.createActivationToken('', email)!;
     const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
 
     if (!user) {
-      throw new NotFoundError({ message: `Activation link has been sent to ${email}.` });
+      throw new NotFoundError({ message: t('auth.success.activationLinkSent', { email }) });
     }
 
     const emailData = {
       to: user.email,
-      subject: 'Activate your account',
+      subject: t('email.registration.subject'),
       emailType: MailType.ACCOUNT_ACTIVATION,
       data: {
         fullname: user.profile?.fullname,
@@ -448,24 +449,24 @@ export class AuthService {
     return {
       success: true,
       data: emailData,
-      message: `Account activation link has been sent to ${emailData.to}`,
+      message: t('auth.success.activationEmailSent', { email: emailData.to }),
     };
   }
 
   async forgotPassword(email: string): Promise<ISuccessReturnData> {
     if (!email) {
       this.log.error('User email is required. | ForgotPassword');
-      throw new BadRequestError({ message: 'User email is required.' });
+      throw new BadRequestError({ message: t('auth.errors.userEmailRequired') });
     }
 
     await this.userDAO.createPasswordResetToken(email);
     const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
     if (!user) {
-      throw new NotFoundError({ message: 'No record found with email provided.' });
+      throw new NotFoundError({ message: t('auth.errors.noRecordFound') });
     }
 
     const emailData = {
-      subject: 'Account Password Reset',
+      subject: t('email.forgotPassword.subject'),
       to: user.email,
       data: {
         fullname: user.profile?.fullname,
@@ -478,24 +479,24 @@ export class AuthService {
     return {
       data: null,
       success: true,
-      message: `Password reset email has been sent to ${user.email}`,
+      message: t('auth.success.passwordResetEmailSent', { email: user.email }),
     };
   }
 
   async resetPassword(email: string, token: string): Promise<ISuccessReturnData> {
     if (!email && !token) {
       this.log.error('User email and token are required. | ResetPassword');
-      throw new BadRequestError({ message: 'Invalid email/token is provided.' });
+      throw new BadRequestError({ message: t('auth.errors.invalidEmailToken') });
     }
 
     await this.userDAO.resetPassword(email, token);
     const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
     if (!user) {
-      throw new NotFoundError({ message: 'No record found with email provided.' });
+      throw new NotFoundError({ message: t('auth.errors.noRecordFound') });
     }
 
     const emailData = {
-      subject: 'Account Password Reset',
+      subject: t('email.forgotPassword.subject'),
       to: user.email,
       data: {
         fullname: user.profile?.fullname,
@@ -507,7 +508,7 @@ export class AuthService {
     return {
       data: null,
       success: true,
-      message: `Password reset email has been sent to ${user.email}`,
+      message: t('auth.success.passwordResetEmailSent', { email: user.email }),
     };
   }
 
@@ -520,10 +521,10 @@ export class AuthService {
       accessToken
     );
     if (!payload.success || !payload.data?.sub) {
-      throw new ForbiddenError({ message: 'Invalid auth token.' });
+      throw new ForbiddenError({ message: t('auth.errors.invalidAuthTokenLogout') });
     }
 
     await this.authCache.invalidateUserSession(payload.data.sub as string);
-    return { success: true, data: null, message: 'Logout successful.' };
+    return { success: true, data: null, message: t('auth.success.logoutSuccessful') };
   }
 }

@@ -16,6 +16,29 @@ export enum MailType {
   ACCOUNT_UPDATE = 'ACCOUNT_UPDATE',
 }
 
+export enum PermissionAction {
+  ASSIGN_ROLES = 'assign_roles',
+  MANAGE_USERS = 'manage_users',
+  SETTINGS = 'settings',
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  INVITE = 'invite',
+  REMOVE = 'remove',
+  READ = 'read',
+  LIST = 'list',
+}
+
+export enum PermissionResource {
+  MAINTENANCE = 'maintenance',
+  PROPERTY = 'property',
+  PAYMENT = 'payment',
+  CLIENT = 'client',
+  REPORT = 'report',
+  LEASE = 'lease',
+  USER = 'user',
+}
+
 export enum IdentificationEnumType {
   CORPORATION_LICENSE = 'corporation-license',
   DRIVERS_LICENSE = 'drivers-license',
@@ -35,6 +58,13 @@ export enum CURRENCIES {
   NGN = 'NGN',
 }
 
+export enum PermissionScope {
+  AVAILABLE = 'available',
+  ASSIGNED = 'assigned',
+  MINE = 'mine',
+  ANY = 'any',
+}
+
 /**
  * File types that are supported for extraction
  */
@@ -51,7 +81,6 @@ export enum RequestSource {
   WEB = 'web',
   API = 'api',
 }
-
 export interface IRequestContext {
   userAgent: {
     browser?: string;
@@ -67,6 +96,12 @@ export interface IRequestContext {
     params: Record<string, any>;
     url: string;
     query: Record<string, any>;
+  };
+  permission?: {
+    resource: string;
+    action: string;
+    granted: boolean;
+    attributes: string[];
   };
   langSetting: {
     lang: string;
@@ -117,6 +152,7 @@ export interface IAWSFileUploadResponse {
   etag: string;
   key: string;
 }
+
 export interface ResourceInfo {
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
   resourceName: 'property' | 'profile'; //name of the resource
@@ -153,6 +189,36 @@ export interface UploadResult {
   url: string;
 }
 
+export interface IPermissionConfig {
+  resources: Record<
+    string,
+    {
+      actions: string[];
+      scopes: string[];
+      description: string;
+    }
+  >;
+  scopes: Record<
+    string,
+    {
+      description: string;
+    }
+  >;
+  roles: Record<string, Record<string, string[]>>;
+}
+export interface IPermissionCheck {
+  context?: {
+    clientId: string;
+    userId: string;
+    resourceOwnerId?: string;
+    assignedUsers?: string[];
+  };
+  resource: string;
+  action: string;
+  scope?: string;
+  role: string;
+}
+
 export interface PaginateResult {
   hasMoreResource: boolean;
   currentPage: number;
@@ -187,6 +253,7 @@ export interface IPaginationQuery {
   page?: number;
   skip?: number;
 }
+
 export type MulterFile =
   | Express.Multer.File[]
   | {
@@ -205,6 +272,12 @@ export interface IEmailOptions<T> {
   subject: string;
   to: string;
   data: T;
+}
+
+export interface IPermissionResult {
+  attributes?: string[];
+  granted: boolean;
+  reason?: string;
 }
 
 export type CsvProcessReturnData = {

@@ -23,17 +23,15 @@ export class I18nextConfig {
     await i18next.use(Backend).init({
       lng: 'en', // default language
       fallbackLng: 'en',
-      supportedLngs: ['en', 'fr'],
+      supportedLngs: ['en', 'fr', 'en-nig'],
 
-      // Backend configuration for file loading
       backend: {
         loadPath: path.join(__dirname, 'locales/{{lng}}.json'),
         addPath: path.join(__dirname, 'locales/{{lng}}.missing.json'),
       },
 
-      // Interpolation settings
       interpolation: {
-        escapeValue: false, // React already escapes values
+        escapeValue: false,
         format: (value, format) => {
           if (format === 'uppercase') return value.toUpperCase();
           if (format === 'lowercase') return value.toLowerCase();
@@ -41,14 +39,10 @@ export class I18nextConfig {
         },
       },
 
-      // Development settings
-      debug: process.env.NODE_ENV === 'development',
+      debug: false,
       saveMissing: process.env.NODE_ENV === 'development',
 
-      // Resource settings
       load: 'languageOnly', // Load 'en' instead of 'en-US'
-
-      // Parsing settings
       parseMissingKeyHandler: (key: string) => {
         console.warn(`Missing translation key: ${key}`);
         return key;
@@ -75,10 +69,14 @@ export class I18nextConfig {
   }
 
   getAvailableLanguages(): string[] {
-    return i18next.options.supportedLngs?.filter((lng) => lng !== 'cimode') || ['en'];
+    const supportedLngs = i18next.options.supportedLngs;
+    if (Array.isArray(supportedLngs)) {
+      return supportedLngs.filter((lng) => lng !== 'cimode');
+    }
+    return ['en'];
   }
 
   t(key: string, options?: any): string {
-    return i18next.t(key, options);
+    return i18next.t(key, options) as string;
   }
 }

@@ -1,5 +1,6 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { JobTracker } from '@caching/jobTracker';
 import { PropertyQueue } from '@queues/property.queue';
 import { PropertyCache } from '@caching/property.cache';
@@ -88,7 +89,7 @@ export class PropertyUnitService {
         },
         'Property ID or Client ID is missing, unable to add unit.'
       );
-      throw new BadRequestError({ message: 'Unable to add unit to property.' });
+      throw new BadRequestError({ message: t('propertyUnit.errors.unableToAdd') });
     }
 
     const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
@@ -104,7 +105,7 @@ export class PropertyUnitService {
         },
         'Property not found, unable to add unit.'
       );
-      throw new BadRequestError({ message: 'Unable to add unit to property, property not found.' });
+      throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
     }
 
     if (data.units.length <= 5) {
@@ -163,7 +164,7 @@ export class PropertyUnitService {
         },
         'Property ID or Client ID or Unit ID is missing, unable to get unit.'
       );
-      throw new BadRequestError({ message: 'Unable to get property unit details.' });
+      throw new BadRequestError({ message: t('propertyUnit.errors.unableToGetDetails') });
     }
 
     const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
@@ -181,7 +182,7 @@ export class PropertyUnitService {
         'Property not found, unable to get unit.'
       );
       throw new BadRequestError({
-        message: 'Unable to get unit from property, property not found.',
+        message: t('propertyUnit.errors.propertyNotFoundForUnit'),
       });
     }
 
@@ -199,13 +200,13 @@ export class PropertyUnitService {
         },
         'Unit not found in property.'
       );
-      throw new BadRequestError({ message: 'Unable to get unit from property, unit not found.' });
+      throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
     }
 
     return {
       data: unit,
       success: true,
-      message: 'Unit retrieved successfully.',
+      message: t('propertyUnit.success.retrieved'),
     };
   }
 
@@ -225,7 +226,7 @@ export class PropertyUnitService {
         },
         'Property ID or Client ID is missing, unable to get units.'
       );
-      throw new BadRequestError({ message: 'Unable to get property units.' });
+      throw new BadRequestError({ message: t('propertyUnit.errors.unableToGetUnits') });
     }
 
     const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
@@ -242,7 +243,7 @@ export class PropertyUnitService {
         'Property not found, unable to get units.'
       );
       throw new BadRequestError({
-        message: 'Unable to get units from property, property not found.',
+        message: t('propertyUnit.errors.propertyNotFoundForUnits'),
       });
     }
 
@@ -258,7 +259,7 @@ export class PropertyUnitService {
     return {
       data: units,
       success: true,
-      message: 'Units retrieved successfully.',
+      message: t('propertyUnit.success.unitsRetrieved'),
     };
   }
 
@@ -280,7 +281,7 @@ export class PropertyUnitService {
         },
         'Missing required parameters'
       );
-      throw new BadRequestError({ message: 'Unable to update property unit.' });
+      throw new BadRequestError({ message: t('propertyUnit.errors.unableToUpdate') });
     }
 
     const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
@@ -297,7 +298,7 @@ export class PropertyUnitService {
         },
         'Property not found'
       );
-      throw new BadRequestError({ message: 'Property not found.' });
+      throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
     }
 
     const unit = await this.propertyUnitDAO.findFirst({
@@ -319,7 +320,7 @@ export class PropertyUnitService {
         },
         'Unit not found'
       );
-      throw new BadRequestError({ message: 'Unit not found.' });
+      throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
     }
 
     if (property.status === 'inactive' || property.deletedAt) {
@@ -418,7 +419,7 @@ export class PropertyUnitService {
       }
 
       throw new ValidationRequestError({
-        message: 'Validation failed',
+        message: t('propertyUnit.errors.validationFailed'),
         errorInfo: validationErrors,
       });
     }
@@ -466,7 +467,7 @@ export class PropertyUnitService {
     return {
       success: true,
       data: result.data,
-      message: 'Unit updated successfully',
+      message: t('propertyUnit.success.updated'),
     };
   }
 
@@ -481,7 +482,7 @@ export class PropertyUnitService {
     // Get property info for event emission
     const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
     if (!property) {
-      throw new BadRequestError({ message: 'Property not found.' });
+      throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
     }
 
     const updateData = {
@@ -527,7 +528,7 @@ export class PropertyUnitService {
   async deleteDocumentFromUnit(_cxt: IRequestContext) {
     return {
       success: true,
-      message: 'Document deletion functionality needs to be implemented',
+      message: t('propertyUnit.errors.documentDeletionNotImplemented'),
     };
   }
 
@@ -556,7 +557,7 @@ export class PropertyUnitService {
           'Property has reached maximum unit capacity.'
         );
         throw new BadRequestError({
-          message: 'Unable to add units to property, maximum capacity reached.',
+          message: t('propertyUnit.errors.maxCapacityReached'),
         });
       }
 
@@ -703,7 +704,7 @@ export class PropertyUnitService {
     return {
       success: true,
       jobId: jobId.toString(),
-      message: 'Unit creation job queued successfully',
+      message: t('propertyUnit.success.jobQueued'),
       estimatedCompletion: '2-3 minutes',
       maxAllowedUnits: data.units.length,
       processingType: 'queued',

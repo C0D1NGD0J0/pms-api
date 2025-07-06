@@ -68,13 +68,14 @@ export interface IRequestContext {
     url: string;
     query: Record<string, any>;
   };
+  langSetting: {
+    lang: string;
+    t?: (key: string, options?: Record<string, any>) => string;
+  };
   timing: {
     startTime: number;
     endTime?: number;
     duration?: number;
-  };
-  langSetting?: {
-    lang: string;
   };
   currentuser?: ICurrentUser | null;
   service: { env: string };

@@ -24,8 +24,11 @@ export class LanguageService implements ILanguageService {
    */
   t(key: LanguageKey, params?: LanguageParams): string {
     if (!this.initialized) {
-      console.warn('LanguageService not initialized. Call initialize() first.');
-      return key;
+      // Auto-initialize on first use
+      this.initialize().catch((error) => {
+        console.error('Failed to auto-initialize language service:', error);
+      });
+      return key; // Return key as fallback until initialized
     }
 
     try {
@@ -42,8 +45,7 @@ export class LanguageService implements ILanguageService {
    */
   async setLanguage(language: string): Promise<void> {
     if (!this.initialized) {
-      console.warn('LanguageService not initialized. Call initialize() first.');
-      return;
+      await this.initialize();
     }
 
     try {

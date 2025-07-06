@@ -105,7 +105,7 @@ export class AuthController {
     if (!token) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: 'Access token not found',
+        message: t('auth.errors.accessTokenNotFound'),
       });
     }
 
@@ -123,7 +123,7 @@ export class AuthController {
     if (!refreshToken) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: 'Refresh token not found',
+        message: t('auth.errors.refreshTokenNotFound'),
       });
     }
 
@@ -137,7 +137,7 @@ export class AuthController {
     if (!decoded.success || !decoded.data?.data?.sub) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: 'Invalid refresh token',
+        message: t('auth.errors.invalidRefreshToken'),
       });
     }
 

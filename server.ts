@@ -6,10 +6,7 @@ declare global {
     }
   }
 }
-// import fs from 'fs';
 import http from 'http';
-// import path from 'path';
-// import heapdump from 'heapdump';
 import { asValue } from 'awilix';
 import { createClient } from 'redis';
 import { container } from '@di/index';
@@ -32,8 +29,6 @@ if (envVariables.SERVER.ENV !== 'production') {
 interface IConstructor {
   dbService: DatabaseService;
 }
-// let lastSnapshotTime = 0;
-// const SNAPSHOT_COOLDOWN = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 class Server {
   private app: IAppSetup;
@@ -80,10 +75,6 @@ class Server {
     this.app.initConfig();
     await this.startServers(this.expApp);
     this.initialized = true;
-    // Disabled memory monitoring to prevent memory leaks
-    // if (envVariables.SERVER.ENV !== 'production') {
-    //   this.scheduleMemoryCheck();
-    // }
   };
 
   public static getInstance(): Server {

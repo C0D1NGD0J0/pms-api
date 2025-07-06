@@ -20,6 +20,8 @@ import {
   scopedMiddleware,
   contextBuilder,
   requestLogger,
+  detectLanguage,
+  setUserLanguage,
 } from '@shared/middlewares';
 
 export interface IAppSetup {
@@ -78,6 +80,8 @@ export class App implements IAppSetup {
   private routes(app: Application) {
     const BASE_PATH = '/api/v1';
     app.use(contextBuilder);
+    app.use(detectLanguage); // Language detection after context is built
+    app.use(setUserLanguage); // User language detection after basic language setup
     app.use(`${BASE_PATH}/healthcheck`, (req, res) => {
       const healthCheck = {
         uptime: process.uptime(),

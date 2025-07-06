@@ -22,7 +22,10 @@
       "userEmailRequired": "Email utilisateur requis.",
       "noRecordFound": "Aucun enregistrement trouvé avec l'email fourni.",
       "invalidEmailToken": "Email/jeton invalide fourni.",
-      "invalidAuthTokenLogout": "Jeton d'authentification invalide."
+      "invalidAuthTokenLogout": "Jeton d'authentification invalide.",
+      "accessTokenNotFound": "Jeton d'accès introuvable",
+      "refreshTokenNotFound": "Jeton de rafraîchissement introuvable",
+      "invalidTokenType": "Type de jeton invalide"
     },
     "success": {
       "tokenRefreshed": "Jeton rafraîchi avec succès",
@@ -35,6 +38,25 @@
       "activationLinkSent": "Lien d'activation envoyé à {{email}}.",
       "passwordResetEmailSent": "Email de réinitialisation de mot de passe envoyé à {{email}}",
       "logoutSuccessful": "Déconnexion réussie."
+    }
+  },
+  "client": {
+    "errors": {
+      "clientNotFound": "Client introuvable",
+      "idNumberRequired": "Numéro d'identification requis lors de la mise à jour du type d'identification",
+      "issuingAuthorityRequired": "Autorité d'émission requise lors de la mise à jour du type d'identification",
+      "idTypeRequired": "Type d'identification requis lors de la mise à jour du numéro d'identification",
+      "invalidCompanyEmail": "Format d'email de l'entreprise invalide",
+      "displayNameEmpty": "Le nom d'affichage ne peut pas être vide",
+      "validationFailed": "La validation a échoué",
+      "updateFailed": "Échec de la mise à jour du profil client",
+      "unableToFetch": "Impossible de récupérer les détails du client.",
+      "detailsNotFound": "Détails du client introuvables."
+    },
+    "success": {
+      "profileUpdated": "Profil client mis à jour avec succès",
+      "detailsUpdated": "Détails du client mis à jour avec succès",
+      "detailsRetrieved": "Détails du client récupérés avec succès"
     }
   },
   "property": {
@@ -65,7 +87,9 @@
       "occupiedPropertiesMustHaveRental": "Les propriétés occupées doivent avoir un montant de loyer",
       "singleUnitCannotBePartiallyOccupied": "Les propriétés à unité unique ne peuvent pas être partiellement occupées",
       "occupancyStatusValidationFailed": "La validation du changement de statut d'occupation a échoué",
-      "unableToArchiveProperty": "Impossible d'archiver la propriété."
+      "unableToArchiveProperty": "Impossible d'archiver la propriété.",
+      "csvFilePathMissing": "Chemin de fichier CSV manquant",
+      "csvValidationFailed": "Impossible de valider le csv pour ce compte."
     },
     "success": {
       "propertyCreated": "Propriété créée avec succès.",
@@ -79,7 +103,34 @@
     "errors": {
       "noDocumentFileUploaded": "Aucun fichier de document téléchargé",
       "unableToAddUnit": "Impossible d'ajouter une unité à la propriété.",
-      "propertyNotFound": "Impossible d'ajouter une unité à la propriété, propriété introuvable."
+      "propertyNotFound": "Impossible d'ajouter une unité à la propriété, propriété introuvable.",
+      "unableToGetDetails": "Impossible d'obtenir les détails de l'unité de propriété.",
+      "unableToGetUnitFromProperty": "Impossible d'obtenir l'unité de la propriété, propriété introuvable.",
+      "unitNotFound": "Impossible d'obtenir l'unité de la propriété, unité introuvable.",
+      "unableToGetUnits": "Impossible d'obtenir les unités de propriété.",
+      "unableToGetUnitsFromProperty": "Impossible d'obtenir les unités de la propriété, propriété introuvable.",
+      "unableToUpdateUnit": "Impossible de mettre à jour l'unité de propriété.",
+      "cannotUpdateDueToStatus": "Impossible de mettre à jour l'unité, en raison du statut de propriété {{status}}.",
+      "rentalAmountMustBeNonNegative": "Le montant du loyer doit être un nombre non négatif",
+      "securityDepositMustBeNonNegative": "Le dépôt de garantie doit être un nombre non négatif",
+      "cannotSetOccupiedWhenProperty": "Impossible de définir l'unité comme occupée lorsque la propriété est {{status}}",
+      "occupiedUnitsMustHaveRental": "Les unités occupées doivent avoir un montant de loyer",
+      "validationFailed": "La validation a échoué",
+      "documentDeletionNotImplemented": "La fonctionnalité de suppression de document doit être implémentée",
+      "maxCapacityReached": "Impossible d'ajouter des unités à la propriété, capacité maximale atteinte.",
+      "exceedsLimit": "Impossible d'ajouter {{count}} unités. La propriété a {{current}}/{{max}} unités (y compris archivées). L'ajout de ces unités dépasserait la limite.",
+      "duplicateUnitNumbers": "Numéros d'unité en double trouvés dans le lot: {{unitNumbers}}",
+      "patternInconsistency": "Incohérence de modèle détectée: {{recommendation}}",
+      "unitNumberAlreadyExists": "Une unité avec le numéro '{{unitNumber}}' existe déjà pour cette propriété",
+      "unitSuggestion": "Numéro d'unité suggéré: {{suggestion}}"
+    },
+    "success": {
+      "unitRetrieved": "Unité récupérée avec succès.",
+      "unitsRetrieved": "Unités récupérées avec succès.",
+      "unitUpdated": "Unité mise à jour avec succès",
+      "unitCreationQueued": "Tâche de création d'unité mise en file d'attente avec succès",
+      "unitsCreated": "{{created}} unités créées avec succès, {{failed}} ont échoué",
+      "allUnitsCreated": "Toutes les {{count}} unités créées avec succès"
     }
   },
   "validation": {
@@ -118,7 +169,29 @@
       "passwordMinLengthDetailed": "Le mot de passe doit contenir au moins 6 caractères.",
       "passwordMaxLength": "Le mot de passe ne doit pas dépasser 15 caractères.",
       "emailFieldBlank": "Le champ email ne peut pas être vide.",
-      "invalidPasswordValue": "Valeur de mot de passe invalide fournie."
+      "invalidPasswordValue": "Valeur de mot de passe invalide fournie.",
+      "databaseTimeout": "Délai de connexion à la base de données dépassé. Veuillez réessayer.",
+      "companyNameRequiredForBusiness": "Le nom de l'entreprise est requis pour les comptes professionnels",
+      "legalEntityNameRequiredForBusiness": "Le nom de l'entité légale est requis pour les comptes professionnels"
+    },
+    "client": {
+      "clientIdMinLength": "L'ID client doit contenir au moins 8 caractères",
+      "invalidTimezone": "Fuseau horaire invalide",
+      "invalidLanguageCode": "Format de code de langue invalide",
+      "legalEntityNameRequired": "Le nom de l'entité légale est requis",
+      "tradingNameRequired": "Le nom commercial est requis",
+      "invalidEmailFormat": "Format d'email invalide",
+      "invalidWebsiteUrl": "URL de site web invalide",
+      "invalidPhoneFormat": "Format de numéro de téléphone invalide",
+      "invalidIssueDateFormat": "Format de date d'émission invalide",
+      "invalidExpiryDateFormat": "Format de date d'expiration invalide",
+      "idNumberRequired": "Numéro d'identification requis",
+      "issuingStateRequired": "État d'émission requis",
+      "displayNameRequired": "Nom d'affichage requis",
+      "displayNameCannotBeEmpty": "Le nom d'affichage ne peut pas être vide",
+      "atLeastOneFieldRequired": "Au moins un champ doit être fourni pour la mise à jour",
+      "idTypeAndNumberRequired": "Lors de la mise à jour de l'identification, le type d'ID et le numéro d'ID sont requis",
+      "invalidCompanyEmail": "Format d'email de l'entreprise invalide"
     },
     "property": {
       "totalAreaPositive": "La superficie totale doit être un nombre positif",
@@ -136,7 +209,60 @@
       "taxAmountNonNegative": "Le montant de la taxe doit être un nombre non négatif",
       "rentalAmountNonNegative": "Le montant du loyer doit être un nombre non négatif",
       "managementFeesNonNegative": "Les frais de gestion doivent être un nombre non négatif",
-      "securityDepositNonNegative": "Le dépôt de garantie doit être un nombre non négatif"
+      "securityDepositNonNegative": "Le dépôt de garantie doit être un nombre non négatif",
+      "invalidDocumentUrl": "Format d'URL invalide pour le document",
+      "invalidUploadedDate": "Format de date invalide pour la date de téléchargement",
+      "descriptionMaxLength": "La description doit contenir au maximum 150 caractères",
+      "documentNameMaxLength": "Le nom du document doit contenir au maximum 100 caractères",
+      "descriptionTextMaxLength": "Le texte de description doit contenir au maximum 2000 caractères",
+      "descriptionHtmlMaxLength": "Le HTML de description doit contenir au maximum 2000 caractères",
+      "propertyNameMinLength": "Le nom de la propriété doit contenir au moins 3 caractères",
+      "propertyNameMaxLength": "Le nom de la propriété doit contenir au maximum 100 caractères",
+      "yearBuiltMinimum": "L'année de construction doit être au moins 1800",
+      "yearBuiltMaximum": "L'année de construction doit être au maximum {{year}}",
+      "addressMinLength": "L'adresse doit contenir au moins 5 caractères",
+      "formattedAddressMinLength": "L'adresse formatée doit contenir au moins 5 caractères",
+      "streetNumberRequired": "Le numéro de rue ne peut pas être vide",
+      "streetNumberPositive": "Le numéro de rue doit être positif",
+      "coordinatesFormat": "Les coordonnées doivent être un tableau de deux nombres",
+      "postCodeRequired": "Le code postal ne peut pas être vide",
+      "duplicateAddressExists": "Une propriété avec cette adresse existe déjà pour ce client.",
+      "invalidParamsDetected": "Paramètres invalides détectés dans la demande.",
+      "propertyNotFound": "Propriété introuvable",
+      "clientIdRequired": "ID client requis",
+      "propertyIdRequired": "ID propriété requis",
+      "propertyNotFoundForClient": "Propriété introuvable pour l'ID client donné.",
+      "addressTooLong": "L'adresse est trop longue",
+      "addressShouldContainStreet": "L'adresse doit contenir le numéro et le nom de la rue"
+    },
+    "propertyUnit": {
+      "invalidUnitId": "ID d'unité invalide",
+      "totalAreaPositive": "La superficie totale doit être un nombre positif",
+      "roomsNonNegative": "Les pièces doivent être un entier non négatif",
+      "bathroomsNonNegative": "Les salles de bain doivent être un nombre non négatif",
+      "maxOccupantsMinOne": "Le nombre maximum d'occupants doit être au moins 1",
+      "rentNonNegative": "Le montant du loyer doit être un nombre non négatif",
+      "securityDepositNonNegative": "Le dépôt de garantie doit être un nombre non négatif",
+      "invalidPhotoUrl": "Format d'URL invalide pour la photo",
+      "invalidDocumentUrl": "Format d'URL invalide pour le document",
+      "invalidExternalUrl": "Format d'URL externe invalide",
+      "descriptionMaxLength": "La description doit contenir au maximum 150 caractères",
+      "documentNameMaxLength": "Le nom du document doit contenir au maximum 100 caractères",
+      "invalidAttachmentUrl": "Format d'URL invalide pour la pièce jointe",
+      "unitNumberRequired": "Le numéro d'unité ne doit pas être vide",
+      "unitNumberMaxLength": "Le numéro d'unité doit contenir au maximum 20 caractères",
+      "floorMinimum": "L'étage ne peut pas être inférieur à -5",
+      "floorMaximum": "L'étage ne peut pas être supérieur à 100",
+      "unitDescriptionMaxLength": "La description doit contenir au maximum 500 caractères",
+      "propertyNotExist": "La propriété n'existe pas",
+      "unitNumberExists": "Une unité avec le numéro '{{unitNumber}}' existe déjà pour cette propriété",
+      "atLeastOneUnitRequired": "Au moins une unité est requise",
+      "maxUnitsAllowed": "Maximum 20 unités autorisées. Pour les opérations en lot, veuillez utiliser le téléchargement CSV à la place.",
+      "duplicateUnitNumbers": "Numéros d'unité en double trouvés dans le lot: {{unitNumbers}}",
+      "patternInconsistency": "Incohérence de modèle détectée: {{recommendation}}",
+      "invalidPropertyId": "ID de propriété invalide",
+      "customPrefixMaxLength": "Le préfixe personnalisé doit contenir au maximum 10 caractères",
+      "unitNotExist": "L'unité n'existe pas pour cette propriété"
     }
   },
   "fileUpload": {
@@ -195,6 +321,56 @@
     "errors": {
       "unexpectedError": "Une erreur inattendue s'est produite",
       "internalServerError": "Erreur interne du serveur"
+    }
+  },
+  "unitNumbering": {
+    "suggestions": {
+      "suggestedPattern": "Utilisation du numéro suggéré avec le modèle {{pattern}}",
+      "startingNewPattern": "Démarrage d'un nouveau modèle {{pattern}}",
+      "followingAlphabetic": "Suivi du modèle alphabétique pour l'étage {{floor}}",
+      "followingBuildingUnit": "Suivi du modèle bâtiment-unité pour le bâtiment {{building}}",
+      "followingFloorBased": "Suivi du modèle de numérotation basé sur l'étage",
+      "followingSequential": "Suivi du modèle de numérotation séquentielle",
+      "followingWingUnit": "Suivi du modèle aile-unité pour l'aile {{wing}}",
+      "followingCustom": "Suivi du modèle personnalisé avec le préfixe \"{{prefix}}\"",
+      "followingSuite": "Suivi du modèle de numérotation de suite"
+    },
+    "errors": {
+      "unitNumberSuggestsWrongFloor": "Le numéro d'unité \"{{unitNumber}}\" suggère l'étage {{expectedFloor}} ({{patternName}}), mais l'étage {{floor}} est sélectionné.",
+      "noUnitsToValidate": "Aucune unité à valider",
+      "mixedPatternsDetected": "Modèles mixtes détectés: {{patterns}}. Envisagez de standardiser à un modèle.",
+      "unitNumberAlreadyExists": "Le numéro d'unité \"{{unitNumber}}\" existe déjà"
+    },
+    "success": {
+      "allUnitsFollowPattern": "Toutes les unités suivent le modèle {{pattern}}",
+      "unitNumberValid": "Le numéro d'unité est valide"
+    }
+  },
+  "propertyValidation": {
+    "errors": {
+      "fieldRequired": "{{fieldName}} est requis",
+      "fieldMustBeNumber": "{{fieldName}} doit être un nombre valide",
+      "fieldMinimum": "{{fieldName}} doit être au moins {{min}}",
+      "fieldMaximum": "{{fieldName}} ne peut pas dépasser {{max}}",
+      "fieldCannotBeNegative": "{{fieldName}} ne peut pas être négatif",
+      "fieldMustBeValidDate": "{{fieldName}} doit être une date valide",
+      "fieldCannotBeFuture": "{{fieldName}} ne peut pas être dans le futur",
+      "fieldCannotBeBefore": "{{fieldName}} ne peut pas être avant {{date}}",
+      "fieldCannotBeAfter": "{{fieldName}} ne peut pas être après {{date}}",
+      "fieldRequiredForPropertyType": "{{fieldName}} est requis pour les propriétés {{propertyType}}",
+      "fieldMustBeWholeNumber": "{{fieldName}} doit être un nombre entier",
+      "propertyNameMinLength": "Le nom de la propriété doit contenir au moins 3 caractères",
+      "propertyAddressMinLength": "L'adresse de la propriété doit contenir au moins 5 caractères",
+      "bedroomsUnitLevel": "Les propriétés {{propertyType}} doivent gérer les chambres au niveau de l'unité",
+      "bathroomsUnitLevel": "Les propriétés {{propertyType}} doivent gérer les salles de bain au niveau de l'unité",
+      "totalAreaRequiredForType": "La superficie totale est requise pour les propriétés {{propertyType}}",
+      "lotSizeRequiredForType": "La taille du lot est requise pour les propriétés {{propertyType}}",
+      "occupiedMustHaveRental": "Les propriétés occupées doivent avoir un montant de loyer supérieur à 0",
+      "singleUnitCannotBePartiallyOccupied": "Les propriétés à unité unique ne peuvent pas être partiellement occupées",
+      "commercialShouldNotHaveBedrooms": "Les propriétés commerciales ne devraient généralement pas avoir de chambres",
+      "propertyTypeMinUnits": "Les propriétés {{propertyType}} nécessitent généralement au moins {{minUnits}} unités",
+      "fieldMinLengthRequired": "{{fieldName}} doit contenir au moins {{minLength}} caractères",
+      "fieldMaxLengthExceeded": "{{fieldName}} ne peut pas dépasser {{maxLength}} caractères"
     }
   }
 }

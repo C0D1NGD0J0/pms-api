@@ -22,7 +22,10 @@
       "userEmailRequired": "User email is required.",
       "noRecordFound": "No record found with email provided.",
       "invalidEmailToken": "Invalid email/token is provided.",
-      "invalidAuthTokenLogout": "Invalid auth token."
+      "invalidAuthTokenLogout": "Invalid auth token.",
+      "accessTokenNotFound": "Access token not found",
+      "refreshTokenNotFound": "Refresh token not found",
+      "invalidTokenType": "Invalid token type"
     },
     "success": {
       "tokenRefreshed": "Token refreshed successfully",
@@ -35,6 +38,25 @@
       "activationLinkSent": "Activation link has been sent to {{email}}.",
       "passwordResetEmailSent": "Password reset email has been sent to {{email}}",
       "logoutSuccessful": "Logout successful."
+    }
+  },
+  "client": {
+    "errors": {
+      "clientNotFound": "Client not found",
+      "idNumberRequired": "ID number is required when updating identification type",
+      "issuingAuthorityRequired": "Issuing authority is required when updating identification type",
+      "idTypeRequired": "ID type is required when updating identification number",
+      "invalidCompanyEmail": "Invalid company email format",
+      "displayNameEmpty": "Display name cannot be empty",
+      "validationFailed": "Validation failed",
+      "updateFailed": "Failed to update client profile",
+      "unableToFetch": "Unable to fetch client details.",
+      "detailsNotFound": "Client details not found."
+    },
+    "success": {
+      "profileUpdated": "Client profile updated successfully",
+      "detailsUpdated": "Client details updated successfully",
+      "detailsRetrieved": "Client details retrieved successfully"
     }
   },
   "property": {
@@ -65,7 +87,9 @@
       "occupiedPropertiesMustHaveRental": "Occupied properties must have a rental amount",
       "singleUnitCannotBePartiallyOccupied": "Single-unit properties cannot be partially occupied",
       "occupancyStatusValidationFailed": "Occupancy status change validation failed",
-      "unableToArchiveProperty": "Unable to archive property."
+      "unableToArchiveProperty": "Unable to archive property.",
+      "csvFilePathMissing": "CSV file path missing",
+      "csvValidationFailed": "Unable to validate csv for this account."
     },
     "success": {
       "propertyCreated": "Property created successfully.",
@@ -79,7 +103,34 @@
     "errors": {
       "noDocumentFileUploaded": "No document file uploaded",
       "unableToAddUnit": "Unable to add unit to property.",
-      "propertyNotFound": "Unable to add unit to property, property not found."
+      "propertyNotFound": "Unable to add unit to property, property not found.",
+      "unableToGetDetails": "Unable to get property unit details.",
+      "unableToGetUnitFromProperty": "Unable to get unit from property, property not found.",
+      "unitNotFound": "Unable to get unit from property, unit not found.",
+      "unableToGetUnits": "Unable to get property units.",
+      "unableToGetUnitsFromProperty": "Unable to get units from property, property not found.",
+      "unableToUpdateUnit": "Unable to update property unit.",
+      "cannotUpdateDueToStatus": "Cannot update unit, due to property status of {{status}}.",
+      "rentalAmountMustBeNonNegative": "Rental amount must be a non-negative number",
+      "securityDepositMustBeNonNegative": "Security deposit must be a non-negative number",
+      "cannotSetOccupiedWhenProperty": "Cannot set unit as occupied when property is {{status}}",
+      "occupiedUnitsMustHaveRental": "Occupied units must have a rental amount",
+      "validationFailed": "Validation failed",
+      "documentDeletionNotImplemented": "Document deletion functionality needs to be implemented",
+      "maxCapacityReached": "Unable to add units to property, maximum capacity reached.",
+      "exceedsLimit": "Cannot add {{count}} units. Property has {{current}}/{{max}} units (including archived). Adding these units would exceed the limit.",
+      "duplicateUnitNumbers": "Duplicate unit numbers found in batch: {{unitNumbers}}",
+      "patternInconsistency": "Pattern inconsistency detected: {{recommendation}}",
+      "unitNumberAlreadyExists": "A unit with number '{{unitNumber}}' already exists for this property",
+      "unitSuggestion": "Suggested unit number: {{suggestion}}"
+    },
+    "success": {
+      "unitRetrieved": "Unit retrieved successfully.",
+      "unitsRetrieved": "Units retrieved successfully.",
+      "unitUpdated": "Unit updated successfully",
+      "unitCreationQueued": "Unit creation job queued successfully",
+      "unitsCreated": "{{created}} units created successfully, {{failed}} failed",
+      "allUnitsCreated": "All {{count}} units created successfully"
     }
   },
   "validation": {
@@ -118,7 +169,29 @@
       "passwordMinLengthDetailed": "Password must be at least 6 characters long.",
       "passwordMaxLength": "Password must be no longer than 15 characters.",
       "emailFieldBlank": "Email field can't be blank.",
-      "invalidPasswordValue": "Invalid password value provided."
+      "invalidPasswordValue": "Invalid password value provided.",
+      "databaseTimeout": "Database connection timeout. Please try again.",
+      "companyNameRequiredForBusiness": "Company name is required for business accounts",
+      "legalEntityNameRequiredForBusiness": "Legal entity name is required for business accounts"
+    },
+    "client": {
+      "clientIdMinLength": "Client ID must be at least 8 characters",
+      "invalidTimezone": "Invalid timezone",
+      "invalidLanguageCode": "Invalid language code format",
+      "legalEntityNameRequired": "Legal entity name is required",
+      "tradingNameRequired": "Trading name is required",
+      "invalidEmailFormat": "Invalid email format",
+      "invalidWebsiteUrl": "Invalid website URL",
+      "invalidPhoneFormat": "Invalid phone number format",
+      "invalidIssueDateFormat": "Invalid issue date format",
+      "invalidExpiryDateFormat": "Invalid expiry date format",
+      "idNumberRequired": "ID number is required",
+      "issuingStateRequired": "Issuing state is required",
+      "displayNameRequired": "Display name is required",
+      "displayNameCannotBeEmpty": "Display name cannot be empty",
+      "atLeastOneFieldRequired": "At least one field must be provided for update",
+      "idTypeAndNumberRequired": "When updating identification, both idType and idNumber are required",
+      "invalidCompanyEmail": "Invalid company email format"
     },
     "property": {
       "totalAreaPositive": "Total area must be a positive number",
@@ -136,7 +209,60 @@
       "taxAmountNonNegative": "Tax amount must be a non-negative number",
       "rentalAmountNonNegative": "Rental amount must be a non-negative number",
       "managementFeesNonNegative": "Management fees must be a non-negative number",
-      "securityDepositNonNegative": "Security deposit must be a non-negative number"
+      "securityDepositNonNegative": "Security deposit must be a non-negative number",
+      "invalidDocumentUrl": "Invalid URL format for document",
+      "invalidUploadedDate": "Invalid date format for uploaded date",
+      "descriptionMaxLength": "Description must be at most 150 characters",
+      "documentNameMaxLength": "Document name must be at most 100 characters",
+      "descriptionTextMaxLength": "Description text must be at most 2000 characters",
+      "descriptionHtmlMaxLength": "Description HTML must be at most 2000 characters",
+      "propertyNameMinLength": "Property name must be at least 3 characters",
+      "propertyNameMaxLength": "Property name must be at most 100 characters",
+      "yearBuiltMinimum": "Year built must be at least 1800",
+      "yearBuiltMaximum": "Year built must be at most {{year}}",
+      "addressMinLength": "Address must be at least 5 characters",
+      "formattedAddressMinLength": "Formatted address must be at least 5 characters",
+      "streetNumberRequired": "Street number cannot be empty",
+      "streetNumberPositive": "Street number must be positive",
+      "coordinatesFormat": "Coordinates must be an array of two numbers",
+      "postCodeRequired": "Post code cannot be empty",
+      "duplicateAddressExists": "A property with this address already exists for this client.",
+      "invalidParamsDetected": "Invalid params detected in the request.",
+      "propertyNotFound": "Property not found",
+      "clientIdRequired": "Client ID is required",
+      "propertyIdRequired": "Property ID is required",
+      "propertyNotFoundForClient": "Property not found for the given client ID.",
+      "addressTooLong": "Address is too long",
+      "addressShouldContainStreet": "Address should contain street number and name"
+    },
+    "propertyUnit": {
+      "invalidUnitId": "Invalid unit ID",
+      "totalAreaPositive": "Total area must be a positive number",
+      "roomsNonNegative": "room must be a non-negative integer",
+      "bathroomsNonNegative": "Bathrooms must be a non-negative number",
+      "maxOccupantsMinOne": "Maximum occupants must be at least 1",
+      "rentNonNegative": "Rent amount must be a non-negative number",
+      "securityDepositNonNegative": "Security deposit must be a non-negative number",
+      "invalidPhotoUrl": "Invalid URL format for photo",
+      "invalidDocumentUrl": "Invalid URL format for document",
+      "invalidExternalUrl": "Invalid external URL format",
+      "descriptionMaxLength": "Description must be at most 150 characters",
+      "documentNameMaxLength": "Document name must be at most 100 characters",
+      "invalidAttachmentUrl": "Invalid URL format for attachment",
+      "unitNumberRequired": "Unit number must not be empty",
+      "unitNumberMaxLength": "Unit number must be at most 20 characters",
+      "floorMinimum": "Floor cannot be less than -5",
+      "floorMaximum": "Floor cannot be greater than 100",
+      "unitDescriptionMaxLength": "Description must be at most 500 characters",
+      "propertyNotExist": "Property does not exist",
+      "unitNumberExists": "A unit with number '{{unitNumber}}' already exists for this property",
+      "atLeastOneUnitRequired": "At least one unit is required",
+      "maxUnitsAllowed": "Maximum 20 units allowed. For bulk operations, please use CSV upload instead.",
+      "duplicateUnitNumbers": "Duplicate unit numbers found in batch: {{unitNumbers}}",
+      "patternInconsistency": "Pattern inconsistency detected: {{recommendation}}",
+      "invalidPropertyId": "Invalid property ID",
+      "customPrefixMaxLength": "Custom prefix must be at most 10 characters",
+      "unitNotExist": "Unit does not exist for this property"
     }
   },
   "fileUpload": {
@@ -161,6 +287,29 @@
       "userNotAssociated": "User {{email}} is not associated with this client",
       "userRoleNotPermitted": "User role not permitted for this action.",
       "managerEmailValidationError": "Error validating manager email: {{error}}"
+    }
+  },
+  "unitNumbering": {
+    "suggestions": {
+      "suggestedPattern": "Using suggested number with {{pattern}} pattern",
+      "startingNewPattern": "Starting new {{pattern}} pattern",
+      "followingAlphabetic": "Following alphabetic pattern for floor {{floor}}",
+      "followingBuildingUnit": "Following building-unit pattern for building {{building}}",
+      "followingFloorBased": "Following floor-based numbering pattern",
+      "followingSequential": "Following sequential numbering pattern",
+      "followingWingUnit": "Following wing-unit pattern for wing {{wing}}",
+      "followingCustom": "Following custom pattern with prefix \"{{prefix}}\"",
+      "followingSuite": "Following suite numbering pattern"
+    },
+    "errors": {
+      "unitNumberSuggestsWrongFloor": "Unit number \"{{unitNumber}}\" suggests Floor {{expectedFloor}} ({{patternName}}), but Floor {{floor}} is selected.",
+      "noUnitsToValidate": "No units to validate",
+      "mixedPatternsDetected": "Mixed patterns detected: {{patterns}}. Consider standardizing to one pattern.",
+      "unitNumberAlreadyExists": "Unit number \"{{unitNumber}}\" already exists"
+    },
+    "success": {
+      "allUnitsFollowPattern": "All units follow {{pattern}} pattern",
+      "unitNumberValid": "Unit number is valid"
     }
   },
   "email": {
@@ -195,6 +344,33 @@
     "errors": {
       "unexpectedError": "An unexpected error occurred",
       "internalServerError": "Internal Server Error"
+    }
+  },
+  "propertyValidation": {
+    "errors": {
+      "fieldRequired": "{{fieldName}} is required",
+      "fieldMustBeNumber": "{{fieldName}} must be a valid number",
+      "fieldMinimum": "{{fieldName}} must be at least {{min}}",
+      "fieldMaximum": "{{fieldName}} cannot exceed {{max}}",
+      "fieldCannotBeNegative": "{{fieldName}} cannot be negative",
+      "fieldMustBeValidDate": "{{fieldName}} must be a valid date",
+      "fieldCannotBeFuture": "{{fieldName}} cannot be in the future",
+      "fieldCannotBeBefore": "{{fieldName}} cannot be before {{date}}",
+      "fieldCannotBeAfter": "{{fieldName}} cannot be after {{date}}",
+      "fieldRequiredForPropertyType": "{{fieldName}} is required for {{propertyType}} properties",
+      "fieldMustBeWholeNumber": "{{fieldName}} must be a whole number",
+      "propertyNameMinLength": "Property name must be at least 3 characters",
+      "propertyAddressMinLength": "Property address must be at least 5 characters",
+      "bedroomsUnitLevel": "{{propertyType}} properties should manage bedrooms at the unit level",
+      "bathroomsUnitLevel": "{{propertyType}} properties should manage bathrooms at the unit level",
+      "totalAreaRequiredForType": "Total area is required for {{propertyType}} properties",
+      "lotSizeRequiredForType": "Lot size is required for {{propertyType}} properties",
+      "occupiedMustHaveRental": "Occupied properties must have a rental amount greater than 0",
+      "singleUnitCannotBePartiallyOccupied": "Single-unit properties cannot be partially occupied",
+      "commercialShouldNotHaveBedrooms": "Commercial properties typically should not have bedrooms",
+      "propertyTypeMinUnits": "{{propertyType}} properties typically require at least {{minUnits}} units",
+      "fieldMinLengthRequired": "{{fieldName}} must be at least {{minLength}} characters",
+      "fieldMaxLengthExceeded": "{{fieldName}} cannot exceed {{maxLength}} characters"
     }
   }
 }

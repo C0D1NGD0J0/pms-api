@@ -253,22 +253,21 @@ export const requestLogger =
 export const detectLanguage = (req: Request, _res: Response, next: NextFunction) => {
   const { languageService }: { languageService: LanguageService } = req.container.cradle;
 
-  // Priority order: query param > header > default
   const language =
     (req.query.lang as string) ||
     req.headers['accept-language']?.split(',')[0]?.split('-')[0] ||
     'en';
 
-  // Validate language is supported
   const supportedLanguages = languageService.getAvailableLanguages();
   const selectedLanguage = supportedLanguages.includes(language) ? language : 'en';
 
-  // Set language for this request
   languageService.setLanguage(selectedLanguage);
 
-  // Add language info to context object
   req.context.langSetting = {
     lang: selectedLanguage,
+    t: (key: string, params?: Record<string, string | number>) => {
+      return languageService.t(key, params);
+    },
   };
 
   next();
@@ -277,21 +276,25 @@ export const detectLanguage = (req: Request, _res: Response, next: NextFunction)
 /**
  * set language from user preferences (after authentication)
  * order of choice: user.preferences.lang > client.settings.lang > profile.lang > request.lang > default
+ * Automatically skips if no authenticated user (for public routes)
  */
 export const setUserLanguage = async (req: Request, _res: Response, next: NextFunction) => {
   try {
     const { languageService }: { languageService: LanguageService } = req.container.cradle;
     const currentUser = req.context?.currentuser;
+
+    if (!currentUser) {
+      return next();
+    }
+
     let userLanguage = req.context?.langSetting?.lang || 'en';
 
-    if (currentUser) {
-      if (currentUser.preferences?.lang) {
-        userLanguage = currentUser.preferences.lang;
-      } else if ((currentUser as any).clientSettings?.lang) {
-        userLanguage = (currentUser as any).clientSettings.lang;
-      } else if ((currentUser as any).profile?.lang) {
-        userLanguage = (currentUser as any).profile.lang;
-      }
+    if (currentUser.preferences?.lang) {
+      userLanguage = currentUser.preferences.lang;
+    } else if ((currentUser as any).clientSettings?.lang) {
+      userLanguage = (currentUser as any).clientSettings.lang;
+    } else if ((currentUser as any).profile?.lang) {
+      userLanguage = (currentUser as any).profile.lang;
     }
 
     const supportedLanguages = languageService.getAvailableLanguages();
@@ -301,6 +304,9 @@ export const setUserLanguage = async (req: Request, _res: Response, next: NextFu
 
     req.context.langSetting = {
       lang: selectedLanguage,
+      t: (key: string, params?: Record<string, string | number>) => {
+        return languageService.t(key, params);
+      },
     };
 
     next();
@@ -342,6 +348,10 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
       currentuser: req.context?.currentuser || null,
       timing: {
         startTime: Date.now(),
+      },
+      langSetting: req.context?.langSetting || {
+        lang: 'en',
+        t: undefined,
       },
       service: {
         env: process.env.NODE_ENV || 'development',

@@ -261,7 +261,7 @@ export const detectLanguage = (req: Request, _res: Response, next: NextFunction)
   const supportedLanguages = languageService.getAvailableLanguages();
   const selectedLanguage = supportedLanguages.includes(language) ? language : 'en';
 
-  languageService.setLanguage(selectedLanguage);
+  await languageService.setLanguage(selectedLanguage);
 
   req.context.langSetting = {
     lang: selectedLanguage,

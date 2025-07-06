@@ -182,7 +182,7 @@ export class PropertyUnitService {
         'Property not found, unable to get unit.'
       );
       throw new BadRequestError({
-        message: t('propertyUnit.errors.propertyNotFoundForUnit'),
+        message: t('propertyUnit.errors.propertyNotFound'),
       });
     }
 

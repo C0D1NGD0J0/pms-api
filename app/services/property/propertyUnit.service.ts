@@ -206,7 +206,7 @@ export class PropertyUnitService {
     return {
       data: unit,
       success: true,
-      message: t('propertyUnit.success.retrieved'),
+      message: t('propertyUnit.success.unitRetrieved'),
     };
   }
 

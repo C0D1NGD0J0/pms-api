@@ -89,7 +89,7 @@ export class PropertyUnitService {
         },
         'Property ID or Client ID is missing, unable to add unit.'
       );
-      throw new BadRequestError({ message: t('propertyUnit.errors.unableToAdd') });
+      throw new BadRequestError({ message: t('propertyUnit.errors.unableToAddUnit') });
     }
 
     const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });

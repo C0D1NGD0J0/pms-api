@@ -3,6 +3,9 @@
   "version": "0.0.1",
   "description": "Property maangment system that helps landlord streamline rental payment, property maintenance etc...",
   "main": "server.js",
+  "engines": {
+    "node": ">=22.0.0 <23.0.0"
+  },
   "scripts": {
     "prettier:check": "prettier --check './app/**/*.{ts,json,js}'",
     "prettier:write": "prettier --write './app/**/*.{ts,json,js}'",

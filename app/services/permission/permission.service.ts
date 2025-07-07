@@ -82,8 +82,11 @@ export class PermissionService {
                 grant.readAny(resource);
                 break;
               default:
-                grant.execute(action).on(resource);
-                this.log.warn(`Unknown action: ${action}, using execute(action).on(resource) for ${resource}`);
+                // Skip unknown actions - they'll be handled by business logic fallback
+                this.log.warn(
+                  `Skipping unknown action: ${action} for ${resource} - will use business logic fallback`
+                );
+                break;
             }
           } else if (possession === 'own') {
             switch (action) {

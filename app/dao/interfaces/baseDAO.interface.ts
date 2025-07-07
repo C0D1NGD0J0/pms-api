@@ -27,7 +27,10 @@ export interface IBaseDAO<T extends Document> {
    */
   list(
     filter: FilterQuery<T>,
-    opts?: { projection?: string | Record<string, any>; populate?: string | Array<string | PopulateOptions> | PopulateOptions } & IPaginationQuery
+    opts?: {
+      projection?: string | Record<string, any>;
+      populate?: string | Array<string | PopulateOptions> | PopulateOptions;
+    } & IPaginationQuery
   ): ListResultWithPagination<T[]>;
 
   updateMany(

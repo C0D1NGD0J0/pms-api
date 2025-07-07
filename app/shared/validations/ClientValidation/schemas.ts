@@ -88,7 +88,7 @@ export const UserIdParamSchema = z.object({
   uid: z.string().trim().min(8, 'User ID must be at least 8 characters'),
 });
 
-// Role management parameter validation  
+// Role management parameter validation
 export const RoleParamSchema = z.object({
   cid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
   uid: z.string().trim().min(8, 'User ID must be at least 8 characters'),
@@ -98,7 +98,9 @@ export const RoleParamSchema = z.object({
 // Role assignment body validation
 export const AssignRoleSchema = z.object({
   role: z.enum(['admin', 'manager', 'tenant', 'staff', 'vendor'], {
-    errorMap: () => ({ message: 'Invalid role. Must be one of: admin, manager, tenant, staff, vendor' })
+    errorMap: () => ({
+      message: 'Invalid role. Must be one of: admin, manager, tenant, staff, vendor',
+    }),
   }),
 });
 

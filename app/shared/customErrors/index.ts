@@ -236,7 +236,7 @@ export function handleMongoError(err: MongooseError | Error): CustomError {
       } else {
         errorMessage = error.message || 'Unknown validation error';
       }
-      
+
       if (!messages[error.path]) {
         messages[error.path] = [];
       }

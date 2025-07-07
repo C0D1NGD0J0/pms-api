@@ -175,7 +175,7 @@ export class EventEmitterService {
       this.removeAllListeners();
       this.listenerCounts.clear();
       this.handlerMappings.clear();
-      
+
       // Clear the memory leak detection interval
       if (this.memoryLeakDetectionInterval) {
         clearInterval(this.memoryLeakDetectionInterval);
@@ -186,7 +186,7 @@ export class EventEmitterService {
       process.removeAllListeners('SIGINT');
       process.removeAllListeners('SIGTERM');
       process.removeAllListeners('exit');
-      
+
       this.log.info('EventEmitter service destroyed successfully');
     } catch (error) {
       this.log.error('Error during EventEmitter cleanup:', error);

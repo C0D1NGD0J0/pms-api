@@ -92,9 +92,9 @@ export class BaseCSVProcessorService {
             } else {
               results.push(...batch);
             }
-            
+
             batch = []; // Clear batch
-            
+
             // Force garbage collection every batch
             if (global.gc) {
               global.gc();
@@ -136,14 +136,14 @@ export class BaseCSVProcessorService {
           // Only run postProcess if we accumulated results (no processBatch)
           if (options.postProcess && results.length > 0 && !options.processBatch) {
             const chunkSize = 500; // Reduced from 5000
-            
+
             for (let i = 0; i < results.length; i += chunkSize) {
               const chunk = results.slice(i, i + chunkSize);
               const processed = await options.postProcess(chunk, options.context);
-              
+
               // Replace chunk in place to avoid memory growth
               results.splice(i, chunk.length, ...processed.validItems);
-              
+
               // GC after each chunk
               if (global.gc) {
                 global.gc();

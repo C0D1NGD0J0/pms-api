@@ -17,8 +17,7 @@ const initializeDI = () => {
 
   initQueues(container);
   logger.info('DI container initialized...');
-  
-  
+
   EventListenerSetup.registerQueueListeners(container);
   return container;
 };

@@ -92,13 +92,13 @@ export class DatabaseService implements IDatabaseService {
       }
 
       await mongoose.connection.close();
-      
+
       if (env === 'test' && this.mongoMemoryServer) {
         await this.mongoMemoryServer.stop();
         this.mongoMemoryServer = null;
         this.log.info('Stopped test database (in-memory)');
       }
-      
+
       this.connected = false;
       this.log.info(`Disconnected from ${env} database`);
       return true;

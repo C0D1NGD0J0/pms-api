@@ -37,14 +37,14 @@ export class BaseQueue<T extends JobData = JobData> {
 
   constructor(queueName: string) {
     this.log = createLogger(queueName);
-    
+
     if (!sharedRedisService) {
       sharedRedisService = RedisService.getSharedInstance();
     }
-    
+
     const redisUrl = sharedRedisService.getRedisUrl();
     this.queue = new Queue(queueName, redisUrl, DEFAULT_QUEUE_OPTIONS);
-    
+
     if (!deadLetterQueue) {
       const dlqName = `${queueName}-DLQ`;
       deadLetterQueue = new Queue(dlqName, redisUrl, DEFAULT_QUEUE_OPTIONS);
@@ -171,7 +171,7 @@ export class BaseQueue<T extends JobData = JobData> {
       if (this.dlq) {
         this.dlq.removeAllListeners();
       }
-      
+
       await this.queue.close();
       if (this.dlq) {
         await this.dlq.close();

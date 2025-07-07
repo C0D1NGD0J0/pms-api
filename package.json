@@ -22,11 +22,6 @@
     "test:api": "cross-env NODE_ENV=test jest --testPathPattern=\"tests/api/${npm_config_path:-}\"",
     "test:routes": "cross-env NODE_ENV=test jest --config jest.config.routes.ts"
   },
-  "husky": {
-    "hooks": {
-      "pre-commit": "npm run prettier:check && npm run eslint:fix && git add -A ."
-    }
-  },
   "keywords": [
     "property-management-system",
     "nodejs",

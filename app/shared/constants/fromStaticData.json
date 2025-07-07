@@ -244,72 +244,58 @@
       {
         "value": "UTC",
         "label": "UTC (Coordinated Universal Time)"
-
       },
       {
         "value": "America/New_York",
         "label": "Eastern Time (ET)"
-
       },
       {
         "value": "America/Chicago",
         "label": "Central Time (CT)"
-
       },
       {
         "value": "America/Denver",
         "label": "Mountain Time (MT)"
-
       },
       {
         "value": "America/Los_Angeles",
         "label": "Pacific Time (PT)"
-
       },
       {
         "value": "Europe/London",
         "label": "London (GMT)"
-
       },
       {
         "value": "Europe/Paris",
         "label": "Paris (CET)"
-
       },
       {
         "value": "Asia/Tokyo",
         "label": "Tokyo (JST)"
-
       },
       {
         "value": "Africa/Lagos",
         "label": "West Africa Time (WAT)"
-
       },
       {
         "value": "Africa/Nairobi",
         "label": "East Africa Time (EAT)"
-
       },
       {
         "value": "Asia/Kolkata",
         "label": "India Standard Time (IST)"
-
       },
       {
         "value": "Asia/Shanghai",
         "label": "China Standard Time (CST)"
-
       },
       {
         "value": "Australia/Sydney",
         "label": "Australian Eastern Time (AEST)"
-
       },
       {
         "value": "Pacific/Auckland",
         "label": "New Zealand Time (NZST)"
-
       }
     ]
   }

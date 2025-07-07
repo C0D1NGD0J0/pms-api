@@ -1,0 +1,27 @@
+echo "🚀 Running pre-push checks..."
+
+# Final lint check before push
+echo "🔍 Running final lint check..."
+if ! npm run lint; then
+  echo "❌ Lint errors found! Push aborted."
+  echo "💡 Please run 'npm run lint:fix' to fix issues and commit again."
+  exit 1
+fi
+
+# Check TypeScript compilation
+echo "🔧 Checking TypeScript compilation..."
+if ! npm run build; then
+  echo "❌ TypeScript compilation failed! Push aborted."
+  echo "💡 Please fix TypeScript errors before pushing."
+  exit 1
+fi
+
+# Run tests to ensure nothing is broken
+echo "🧪 Running tests..."
+if ! npm run test; then
+  echo "❌ Tests failed! Push aborted."
+  echo "💡 Please fix failing tests before pushing."
+  exit 1
+fi
+
+echo "✅ All pre-push checks passed! 🎉"

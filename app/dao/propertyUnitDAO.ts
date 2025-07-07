@@ -43,7 +43,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
       };
 
       // sort data by floor (asc) and unitNumber (asc)
-      let sortOption: Record<string, 1 | -1> = { floor: 1, unitNumber: 1 };
+      let sortOption: Record<string, 1 | -1 | { $meta: 'textScore' }> = { floor: 1, unitNumber: 1 };
 
       // if user provided custom sorting, preserve it as secondary criteria
       if (opts.sort && typeof opts.sort === 'object') {

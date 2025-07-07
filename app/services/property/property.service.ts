@@ -789,7 +789,10 @@ export class PropertyService implements IDisposable {
       } catch (markFailedError) {
         this.log.error(
           {
-            error: markFailedError instanceof Error ? markFailedError.message : t('property.errors.unknownError'),
+            error:
+              markFailedError instanceof Error
+                ? markFailedError.message
+                : t('property.errors.unknownError'),
             propertyId: resourceId,
           },
           'Failed to mark documents as failed after upload processing error'
@@ -815,7 +818,10 @@ export class PropertyService implements IDisposable {
       });
     } catch (markFailedError) {
       this.log.error(t('property.logging.errorProcessingUploadFailed'), {
-        error: markFailedError instanceof Error ? markFailedError.message : t('property.errors.unknownError'),
+        error:
+          markFailedError instanceof Error
+            ? markFailedError.message
+            : t('property.errors.unknownError'),
         propertyId: resourceId,
       });
     }

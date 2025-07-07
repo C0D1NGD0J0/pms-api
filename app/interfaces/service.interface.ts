@@ -22,4 +22,4 @@ export interface IHealthCheckable {
 /**
  * Combined interface for well-behaved services
  */
-export interface IService extends IDisposable, IHealthCheckable {}
+export interface IService extends IHealthCheckable, IDisposable {}

@@ -1,4 +1,5 @@
 import Logger from 'bunyan';
+import { t } from '@shared/languages';
 import sanitizeHtml from 'sanitize-html';
 import { FilterQuery, Types } from 'mongoose';
 import { PropertyCache } from '@caching/index';
@@ -38,7 +39,6 @@ import {
 } from '@interfaces/utils.interface';
 
 import { PropertyValidationService } from './propertyValidation.service';
-import { t } from '@shared/languages';
 
 interface IConstructor {
   propertyCsvProcessor: PropertyCsvProcessor;

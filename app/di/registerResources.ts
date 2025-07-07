@@ -35,6 +35,7 @@ import {
   PropertyCsvProcessor,
   EventEmitterService,
   PropertyUnitService,
+  PermissionService,
   AuthTokenService,
   PropertyService,
   ClientService,
@@ -67,6 +68,7 @@ const ServiceResources = {
   propertyUnitService: asClass(PropertyUnitService).singleton(),
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
   unitNumberingService: asClass(UnitNumberingService).singleton(),
+  permissionService: asClass(PermissionService).singleton(),
 };
 
 const DAOResources = {

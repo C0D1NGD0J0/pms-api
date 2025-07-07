@@ -1,0 +1,93 @@
+{
+  "roles": {
+    "admin": {
+      "$extend": ["manager"],
+      "user": ["remove:any", "assign_roles:any"],
+      "client": ["read:mine", "settings:any", "manage_users:any"]
+    },
+    "manager": {
+      "$extend": ["staff"],
+      "property": ["create:mine", "delete:mine"],
+      "maintenance": ["create:mine", "delete:mine"],
+      "lease": ["create:mine", "delete:mine"]
+    },
+    "staff": {
+      "$extend": ["tenant"],
+      "property": ["read:any", "update:assigned"],
+      "user": ["list:any"],
+      "maintenance": ["create:assigned", "read:any", "update:assigned", "list:any"],
+      "lease": ["read:any", "update:assigned", "list:any"],
+      "payment": ["read:any", "list:any"],
+      "report": ["read:any", "create:assigned"]
+    },
+    "tenant": {
+      "property": ["read:available"],
+      "user": ["read:mine", "update:mine"],
+      "client": ["read:mine"],
+      "maintenance": ["create:mine", "read:mine", "update:mine", "list:mine"],
+      "lease": ["read:mine", "update:mine"],
+      "payment": ["read:mine", "create:mine", "list:mine"],
+      "report": ["read:mine"]
+    },
+    "vendor": {
+      "property": ["read:assigned"],
+      "user": ["read:mine", "update:mine"],
+      "client": ["read:mine"],
+      "maintenance": ["read:assigned", "update:assigned", "list:assigned"],
+      "lease": ["read:assigned"],
+      "payment": ["read:assigned"],
+      "report": ["read:assigned"]
+    }
+  },
+  "resources": {
+    "property": {
+      "actions": ["create", "read", "update", "delete", "list"],
+      "scopes": ["any", "mine", "assigned", "available"],
+      "description": "Property management operations"
+    },
+    "user": {
+      "actions": ["invite", "read", "update", "remove", "list", "assign_roles"],
+      "scopes": ["any", "mine"],
+      "description": "User management operations"
+    },
+    "client": {
+      "actions": ["read", "update", "settings", "manage_users"],
+      "scopes": ["any", "mine"],
+      "description": "Company account operations"
+    },
+    "maintenance": {
+      "actions": ["create", "read", "update", "delete", "list"],
+      "scopes": ["any", "mine", "assigned"],
+      "description": "Maintenance request operations"
+    },
+    "lease": {
+      "actions": ["create", "read", "update", "delete", "list"],
+      "scopes": ["any", "mine", "assigned"],
+      "description": "Lease agreement operations"
+    },
+    "payment": {
+      "actions": ["create", "read", "update", "delete", "list"],
+      "scopes": ["any", "mine", "assigned"],
+      "description": "Payment and billing operations"
+    },
+    "report": {
+      "actions": ["create", "read", "update", "delete", "list"],
+      "scopes": ["any", "mine", "assigned"],
+      "description": "Report generation operations"
+    }
+  },
+  "scopes": {
+    "any": {
+      "description": "Can perform action on any resource within their company"
+    },
+    "mine": {
+      "description": "Can perform action only on resources they own/created"
+    },
+    "assigned": {
+      "description": "Can perform action only on resources assigned to them"
+    },
+    "available": {
+      "description": "Can view publicly available resources (read-only)"
+    }
+  }
+}

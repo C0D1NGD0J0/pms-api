@@ -3,7 +3,14 @@ import { asyncWrapper } from '@utils/helpers';
 import { validateRequest } from '@shared/validations';
 import { PropertyController } from '@controllers/index';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
-import { isAuthenticated, routeLimiter, diskUpload, scanFile } from '@shared/middlewares';
+import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
+import {
+  requirePermission,
+  isAuthenticated,
+  routeLimiter,
+  diskUpload,
+  scanFile,
+} from '@shared/middlewares';
 
 import propertyUnitRoutes from './propertyUnit.routes';
 
@@ -22,6 +29,7 @@ router.get(
 
 router.post(
   '/:cid/add_property',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   routeLimiter(),
   diskUpload(['document.photos']),
   scanFile,
@@ -37,6 +45,7 @@ router.post(
 
 router.post(
   '/:cid/validate_csv',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
@@ -50,6 +59,7 @@ router.post(
 
 router.post(
   '/:cid/import_properties_csv',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({

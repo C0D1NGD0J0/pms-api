@@ -42,4 +42,43 @@ export class ClientController {
       message: t('client.success.detailsRetrieved'),
     });
   };
+
+  assignUserRole = async (req: AppRequest, res: Response) => {
+    const { uid } = req.params;
+    const { role } = req.body;
+    const result = await this.clientService.assignUserRole(req.context, uid, role);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  removeUserRole = async (req: AppRequest, res: Response) => {
+    const { uid, role } = req.params;
+    const result = await this.clientService.removeUserRole(req.context, uid, role as any);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getUserRoles = async (req: AppRequest, res: Response) => {
+    const { uid } = req.params;
+    const result = await this.clientService.getUserRoles(req.context, uid);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  disconnectUser = async (req: AppRequest, res: Response) => {
+    const { uid } = req.params;
+    const result = await this.clientService.disconnectUser(req.context, uid);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  reconnectUser = async (req: AppRequest, res: Response) => {
+    const { uid } = req.params;
+    const result = await this.clientService.reconnectUser(req.context, uid);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getClientUsers = async (req: AppRequest, res: Response) => {
+    this.log.info('Getting client users with roles and connections');
+
+    const result = await this.clientService.getClientUsers(req.context);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

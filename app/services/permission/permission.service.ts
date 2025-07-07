@@ -82,8 +82,8 @@ export class PermissionService {
                 grant.readAny(resource);
                 break;
               default:
-                grant.createAny(resource);
-                this.log.warn(`Unknown action: ${action}, using createAny for ${resource}`);
+                grant.execute(action).on(resource);
+                this.log.warn(`Unknown action: ${action}, using execute(action).on(resource) for ${resource}`);
             }
           } else if (possession === 'own') {
             switch (action) {

@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { faker } from '@faker-js/faker';
 import { generateShortUID } from '@utils/index';
-import { IRequestContext } from '@interfaces/utils.interface';
+import { IRequestContext, CURRENCIES } from '@interfaces/utils.interface';
 import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import { IPropertyDocument, OccupancyStatus, PropertyType } from '@interfaces/property.interface';
 
@@ -125,8 +125,6 @@ export class PropertyTestFactory {
         sub: userId,
         email: faker.internet.email(),
         fullname: faker.person.fullName(),
-        profilePictureUrl: faker.image.avatar(),
-        roles: ['admin'],
         permissions: ['read', 'write', 'delete'],
         ...overrides.currentuser,
       },
@@ -135,11 +133,6 @@ export class PropertyTestFactory {
         method: 'GET',
         params: { cid },
         query: {},
-        body: {},
-        headers: {
-          'user-agent': 'jest-test',
-          'content-type': 'application/json',
-        },
         ip: '127.0.0.1',
         ...overrides.request,
       },
@@ -199,6 +192,120 @@ export class PropertyTestFactory {
         },
       },
     };
+  }
+}
+
+/**
+ * Property test scenarios for comprehensive testing
+ */
+export class PropertyTestScenarios {
+  static getValidPropertyCreationScenarios() {
+    return [
+      {
+        name: 'Single family house',
+        data: PropertyTestFactory.createPropertyData({
+          propertyType: 'house',
+          specifications: { bedrooms: 3, bathrooms: 2, totalArea: 1500 },
+        }),
+      },
+      {
+        name: 'Multi-unit apartment building',
+        data: PropertyTestFactory.createPropertyData({
+          propertyType: 'apartment',
+          specifications: { totalArea: 12000 },
+        }),
+      },
+      {
+        name: 'Commercial property',
+        data: PropertyTestFactory.createPropertyData({
+          propertyType: 'commercial',
+          specifications: { totalArea: 2500, bedrooms: 0 },
+        }),
+      },
+      {
+        name: 'Industrial property',
+        data: PropertyTestFactory.createPropertyData({
+          propertyType: 'industrial',
+          specifications: { totalArea: 5000, lotSize: 2000 },
+        }),
+      },
+    ];
+  }
+
+  static getInvalidPropertyCreationScenarios() {
+    return [
+      {
+        name: 'Missing required name',
+        data: PropertyTestFactory.createPropertyData({ name: '' }),
+        expectedError: 'validation',
+      },
+      {
+        name: 'Invalid property type',
+        data: PropertyTestFactory.createPropertyData({ propertyType: 'invalid' as any }),
+        expectedError: 'validation',
+      },
+      {
+        name: 'Commercial with bedrooms',
+        data: PropertyTestFactory.createPropertyData({
+          propertyType: 'commercial',
+          specifications: { bedrooms: 3, totalArea: 150 },
+        }),
+        expectedError: 'business rule',
+      },
+      {
+        name: 'Industrial without lot size',
+        data: PropertyTestFactory.createPropertyData({
+          propertyType: 'industrial',
+          specifications: { totalArea: 500 },
+        }),
+        expectedError: 'business rule',
+      },
+      {
+        name: 'Occupied property without rent',
+        data: PropertyTestFactory.createPropertyData({
+          occupancyStatus: 'occupied',
+          fees: { rentalAmount: 0, taxAmount: 0, currency: 'USD' as CURRENCIES, managementFees: 0 },
+        }),
+        expectedError: 'business rule',
+      },
+    ];
+  }
+
+  static getPropertyUpdateScenarios() {
+    return [
+      {
+        name: 'Update basic information',
+        updateData: {
+          name: 'Updated Property Name',
+          description: { text: 'Updated description' },
+        },
+      },
+      {
+        name: 'Update financial details',
+        updateData: {
+          financialDetails: {
+            marketValue: 500000,
+            lastAssessmentDate: new Date(),
+          },
+        },
+      },
+      {
+        name: 'Update specifications',
+        updateData: {
+          specifications: {
+            totalArea: 2000,
+            amenities: ['pool', 'gym'],
+          },
+        },
+      },
+      {
+        name: 'Change occupancy status',
+        updateData: {
+          occupancyStatus: 'vacant',
+          fees: { rentalAmount: 1500 },
+        },
+      },
+    ];
   }
 }
 
@@ -288,119 +395,5 @@ export class PropertyAssertions {
         );
         break;
     }
-  }
-}
-
-/**
- * Property test scenarios for comprehensive testing
- */
-export class PropertyTestScenarios {
-  static getValidPropertyCreationScenarios() {
-    return [
-      {
-        name: 'Single family house',
-        data: PropertyTestFactory.createPropertyData({
-          propertyType: 'house',
-          specifications: { bedrooms: 3, bathrooms: 2, totalArea: 1500 },
-        }),
-      },
-      {
-        name: 'Multi-unit apartment building',
-        data: PropertyTestFactory.createPropertyData({
-          propertyType: 'apartment',
-          specifications: { totalArea: 12000 },
-        }),
-      },
-      {
-        name: 'Commercial property',
-        data: PropertyTestFactory.createPropertyData({
-          propertyType: 'commercial',
-          specifications: { totalArea: 2500, bedrooms: 0 },
-        }),
-      },
-      {
-        name: 'Industrial property',
-        data: PropertyTestFactory.createPropertyData({
-          propertyType: 'industrial',
-          specifications: { totalArea: 5000, lotSize: 2000 },
-        }),
-      },
-    ];
-  }
-
-  static getInvalidPropertyCreationScenarios() {
-    return [
-      {
-        name: 'Missing required name',
-        data: PropertyTestFactory.createPropertyData({ name: '' }),
-        expectedError: 'validation',
-      },
-      {
-        name: 'Invalid property type',
-        data: PropertyTestFactory.createPropertyData({ propertyType: 'invalid' as any }),
-        expectedError: 'validation',
-      },
-      {
-        name: 'Commercial with bedrooms',
-        data: PropertyTestFactory.createPropertyData({
-          propertyType: 'commercial',
-          specifications: { bedrooms: 3, totalArea: 150 },
-        }),
-        expectedError: 'business rule',
-      },
-      {
-        name: 'Industrial without lot size',
-        data: PropertyTestFactory.createPropertyData({
-          propertyType: 'industrial',
-          specifications: { totalArea: 500 },
-        }),
-        expectedError: 'business rule',
-      },
-      {
-        name: 'Occupied property without rent',
-        data: PropertyTestFactory.createPropertyData({
-          occupancyStatus: 'occupied',
-          fees: { rentalAmount: 0 },
-        }),
-        expectedError: 'business rule',
-      },
-    ];
-  }
-
-  static getPropertyUpdateScenarios() {
-    return [
-      {
-        name: 'Update basic information',
-        updateData: {
-          name: 'Updated Property Name',
-          description: { text: 'Updated description' },
-        },
-      },
-      {
-        name: 'Update financial details',
-        updateData: {
-          financialDetails: {
-            marketValue: 500000,
-            lastAssessmentDate: new Date(),
-          },
-        },
-      },
-      {
-        name: 'Update specifications',
-        updateData: {
-          specifications: {
-            totalArea: 2000,
-            amenities: ['pool', 'gym'],
-          },
-        },
-      },
-      {
-        name: 'Change occupancy status',
-        updateData: {
-          occupancyStatus: 'vacant',
-          fees: { rentalAmount: 1500 },
-        },
-      },
-    ];
   }
 }

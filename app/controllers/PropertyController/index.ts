@@ -25,6 +25,13 @@ export class PropertyController {
     const { cid } = req.params;
     const { currentuser } = req.context;
 
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+
     if (!req.body.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
@@ -39,6 +46,12 @@ export class PropertyController {
   createPropertiesFromCsv = async (req: AppRequest, res: Response) => {
     const { cid } = req.params;
     const { currentuser } = req.context;
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
     if (!req.body.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
@@ -109,6 +122,13 @@ export class PropertyController {
     const { cid, pid } = req.params;
     const { currentuser } = req.context;
 
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+
     const data = await this.propertyService.getClientProperty(cid, pid, currentuser);
     res.status(httpStatusCodes.OK).json(data);
   };
@@ -116,6 +136,12 @@ export class PropertyController {
   updateClientProperty = async (req: AppRequest, res: Response) => {
     const { cid, pid } = req.params;
     const { currentuser } = req.context;
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
     const ctx = {
       cid,
       pid,
@@ -129,6 +155,13 @@ export class PropertyController {
   archiveProperty = async (req: AppRequest, res: Response) => {
     const { cid, pid } = req.params;
     const { currentuser } = req.context;
+
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
 
     const data = await this.propertyService.archiveClientProperty(cid, pid, currentuser);
     res.status(httpStatusCodes.OK).json(data);

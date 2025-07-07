@@ -22,11 +22,11 @@ export const createMockRequest = (overrides: Partial<Request> = {}): Partial<Req
  */
 export const createMockResponse = (): Partial<Response> => {
   const response: Partial<Response> = {
-    status: jest.fn().mockReturnThis(),
-    json: jest.fn().mockReturnThis(),
-    send: jest.fn().mockReturnThis(),
-    clearCookie: jest.fn().mockReturnThis(),
-    cookie: jest.fn().mockReturnThis(),
+    status: jest.fn().mockReturnThis() as any,
+    json: jest.fn().mockReturnThis() as any,
+    send: jest.fn().mockReturnThis() as any,
+    clearCookie: jest.fn().mockReturnThis() as any,
+    cookie: jest.fn().mockReturnThis() as any,
   };
   return response;
 };
@@ -69,11 +69,11 @@ export const createDeepMock = <T extends Record<string, any>>(
   
   for (const key in obj) {
     if (typeof obj[key] === 'function') {
-      mock[key] = jest.fn();
+      (mock as any)[key] = jest.fn();
     } else if (typeof obj[key] === 'object' && obj[key] !== null) {
       mock[key] = createDeepMock(obj[key]);
     } else {
-      mock[key] = obj[key];
+      (mock as any)[key] = obj[key];
     }
   }
   

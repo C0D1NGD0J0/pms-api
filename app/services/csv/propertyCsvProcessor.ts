@@ -137,7 +137,7 @@ export class PropertyCsvProcessor {
 
     const documents = this.extractDocumentsFromRow(row, context);
     return {
-      address: null,
+      address: {},
       name: row.name?.trim(),
       fullAddress: row.fullAddress?.trim(),
       propertyType: row.propertyType,

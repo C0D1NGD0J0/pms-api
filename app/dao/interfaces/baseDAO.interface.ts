@@ -27,7 +27,7 @@ export interface IBaseDAO<T extends Document> {
    */
   list(
     filter: FilterQuery<T>,
-    opts?: { projection: string; populate: string } & IPaginationQuery
+    opts?: { projection?: string | Record<string, any>; populate?: string | Array<string | PopulateOptions> | PopulateOptions } & IPaginationQuery
   ): ListResultWithPagination<T[]>;
 
   updateMany(
@@ -158,8 +158,8 @@ export interface IFindOptions {
   projection?: Record<string, any> | string;
   select?: Record<string, number> | string;
   sortBy?: string;
-  limit: number;
-  skip: number;
+  limit?: number;
+  skip?: number;
 }
 
 export interface dynamic<T = unknown> {

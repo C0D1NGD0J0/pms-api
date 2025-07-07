@@ -226,14 +226,21 @@ export function handleMongoError(err: MongooseError | Error): CustomError {
       _message: string;
       errors: Record<string, { message: string; name: string; path: string }>;
     };
-    const messages = Object.values(validationErr.errors).map((error) => {
+    const messages: Record<string, string[]> = {};
+    Object.values(validationErr.errors).forEach((error) => {
+      let errorMessage: string;
       if (error.name === 'CastError') {
-        return { [error.path]: error.message.replace('Error, ', '') };
+        errorMessage = error.message.replace('Error, ', '');
+      } else if (error.name === 'ValidatorError') {
+        errorMessage = error.message.replace('Path', '').trim();
+      } else {
+        errorMessage = error.message || 'Unknown validation error';
       }
-      if (error.name === 'ValidatorError') {
-        return { [error.path]: error.message.replace('Path', '').trim() };
+      
+      if (!messages[error.path]) {
+        messages[error.path] = [];
       }
-      return { [error.path]: error.message || 'Unknown validation error' };
+      messages[error.path].push(errorMessage);
     });
 
     return new ValidationRequestError({

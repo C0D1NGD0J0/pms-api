@@ -5,15 +5,15 @@ import {
   InspectionStatusEnum,
   DocumentStatusEnum,
   DocumentTypeEnum,
-  UnitStatusEnum,
-  IUnitDocument,
-  UnitTypeEnum,
+  PropertyUnitStatusEnum as UnitStatusEnum,
+  IPropertyUnitDocument as IUnitDocument,
+  PropertyUnitTypeEnum as UnitTypeEnum,
 } from '@interfaces/propertyUnit.interface';
 const logger = createLogger('UnitModel');
 
 const UnitSchema = new Schema<IUnitDocument>(
   {
-    uid: {
+    puid: {
       type: String,
       required: true,
       unique: true,
@@ -50,7 +50,7 @@ const UnitSchema = new Schema<IUnitDocument>(
       default: UnitStatusEnum.AVAILABLE,
       index: true,
     },
-    type: {
+    unitType: {
       type: String,
       enum: Object.values(UnitTypeEnum),
       required: true,

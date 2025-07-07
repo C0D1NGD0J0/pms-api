@@ -275,6 +275,65 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
   }
 
   /**
+   * Perform an aggregation operation with cursor support for large datasets.
+   *
+   * @param pipeline - An array of aggregation stages to be executed.
+   * @param opts - Optional settings for the aggregation operation.
+   * @returns A cursor for streaming results
+   */
+  aggregateCursor(pipeline: PipelineStage[], opts?: AggregateOptions) {
+    try {
+      return this.model.aggregate(pipeline, opts).cursor();
+    } catch (error: any) {
+      this.logger.error(error.message);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Process aggregation results in batches to prevent memory issues.
+   *
+   * @param pipeline - An array of aggregation stages to be executed.
+   * @param batchSize - Number of documents to process at once (default: 1000)
+   * @param processFunc - Function to process each batch of documents
+   * @param opts - Optional settings for the aggregation operation.
+   */
+  async aggregateInBatches<R = T[]>(
+    pipeline: PipelineStage[],
+    processFunc: (batch: T[]) => Promise<R>,
+    batchSize: number = 1000,
+    opts?: AggregateOptions
+  ): Promise<R[]> {
+    const cursor = this.aggregateCursor(pipeline, opts);
+    const results: R[] = [];
+    let batch: T[] = [];
+
+    try {
+      for await (const doc of cursor) {
+        batch.push(doc);
+        
+        if (batch.length >= batchSize) {
+          const result = await processFunc(batch);
+          results.push(result);
+          batch = [];
+        }
+      }
+
+      if (batch.length > 0) {
+        const result = await processFunc(batch);
+        results.push(result);
+      }
+
+      return results;
+    } catch (error: any) {
+      this.logger.error(error.message);
+      throw this.throwErrorHandler(error);
+    } finally {
+      await cursor.close();
+    }
+  }
+
+  /**
    * Insert a new document into the collection.
    *
    * @param data - The data for the new document.

@@ -235,6 +235,15 @@ class Server {
         }
       }
 
+      // Cleanup shared Redis instance
+      try {
+        const { RedisService } = await import('@database/redis-setup');
+        await RedisService.shutdownSharedInstance();
+        this.log.info('Shared Redis instance shutdown');
+      } catch (error) {
+        this.log.warn('Failed to shutdown shared Redis instance:', error);
+      }
+
       container.dispose();
       this.log.info('DI container disposed');
     } catch (error) {

@@ -4,6 +4,7 @@ import { AccessControl } from 'accesscontrol';
 import permissionConfig from '@shared/permissions/permissions.json';
 import { IUserRoleType, ICurrentUser } from '@interfaces/user.interface';
 import {
+  PermissionResource,
   IPermissionConfig,
   IPermissionResult,
   IPermissionCheck,
@@ -113,14 +114,9 @@ export class PermissionService {
     });
   }
 
-  /**
-   * Check if a user has permission to perform an action on a resource
-   */
   async checkPermission(permissionCheck: IPermissionCheck): Promise<IPermissionResult> {
     try {
       const { role, resource, action, scope, context } = permissionCheck;
-
-      // Use AccessControl for standard scopes (any, mine/own)
       try {
         const query = this.accessControl.can(role);
         let permission;
@@ -182,6 +178,11 @@ export class PermissionService {
         return this.evaluateBusinessSpecificPermission(role, resource, action, scope, context);
       }
 
+      // Fallback for MINE scope - check permission config directly if AccessControl fails
+      if (scope === PermissionScope.MINE) {
+        return this.evaluateBusinessSpecificPermission(role, resource, action, scope, context);
+      }
+
       return {
         granted: false,
         reason: 'Permission denied',
@@ -196,7 +197,7 @@ export class PermissionService {
   }
 
   /**
-   * Handle business-specific permission scopes (assigned, available)
+   * Handle business-specific permission scopes (assigned, available, mine)
    */
   private evaluateBusinessSpecificPermission(
     role: string,
@@ -205,32 +206,59 @@ export class PermissionService {
     scope: string,
     context?: IPermissionCheck['context']
   ): IPermissionResult {
-    // Get user's role permissions for the resource from our config
-    const roleConfig = this.permissionConfig.roles[role];
-    if (!roleConfig) {
-      return { granted: false, reason: 'Role not found' };
-    }
-
-    const rolePermissions = roleConfig[resource] || [];
     const requiredPermission = `${action}:${scope}`;
 
-    if (rolePermissions.includes(requiredPermission)) {
-      // Additional validation for assigned scope
+    if (this.hasPermissionWithInheritance(role, resource, requiredPermission)) {
       if (scope === PermissionScope.ASSIGNED && context) {
-        // This would be implemented based on business logic
-        // For now, we'll assume it's valid if the permission exists
-        return { granted: true, reason: 'Business-specific permission granted' };
+        // todo add some business logic to validate assigned permissions
+        return { granted: true, reason: 'Business-specific permission granted (with inheritance)' };
       }
 
-      return { granted: true, reason: 'Business-specific permission granted' };
+      return { granted: true, reason: 'Business-specific permission granted (with inheritance)' };
     }
 
     return { granted: false, reason: 'Business-specific permission denied' };
   }
 
-  /**
-   * Check permission for current user - primarily role-based within client context
-   */
+  private hasPermissionWithInheritance(
+    role: string,
+    resource: string,
+    permission: string
+  ): boolean {
+    const visited = new Set<string>();
+
+    const checkRole = (currentRole: string): boolean => {
+      if (visited.has(currentRole)) {
+        return false; // Avoid circular dependencies
+      }
+      visited.add(currentRole);
+
+      const roleConfig = this.permissionConfig.roles[currentRole];
+      if (!roleConfig) {
+        return false;
+      }
+
+      // Check direct permissions
+      const rolePermissions = roleConfig[resource] || [];
+      if (rolePermissions.includes(permission)) {
+        return true;
+      }
+
+      // Check inherited permissions
+      if (roleConfig.$extend) {
+        for (const inheritedRole of roleConfig.$extend) {
+          if (checkRole(inheritedRole)) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    };
+
+    return checkRole(role);
+  }
+
   async checkUserPermission(
     currentUser: ICurrentUser,
     resource: string,
@@ -240,16 +268,17 @@ export class PermissionService {
     const userRole = currentUser.client.role;
     const userId = currentUser.sub;
     const clientId = currentUser.client.csub;
-
     // Determine scope based on context and resource type
     let scope = PermissionScope.ANY;
-
-    // Special case: USER resource where ownership matters (users editing their own profile)
-    if (resource === 'USER' && resourceData && resourceData._id) {
+    // USER resource where ownership matters (users editing their own profile)
+    if (resource === PermissionResource.USER && resourceData && resourceData._id) {
       scope = resourceData._id.toString() === userId ? PermissionScope.MINE : PermissionScope.ANY;
     }
+    // CLIENT resource - always use MINE scope  since users can only access their own client
+    if (resource === PermissionResource.CLIENT) {
+      scope = PermissionScope.MINE;
+    }
 
-    // Use AccessControl-integrated permission checking
     return this.checkPermission({
       role: userRole,
       resource,
@@ -262,12 +291,8 @@ export class PermissionService {
     });
   }
 
-  /**
-   * Get all permissions for a role (using AccessControl)
-   */
   getRolePermissions(role: IUserRoleType): Record<string, string[]> {
     try {
-      // Use AccessControl to get granted permissions for the role
       const grants = this.accessControl.getGrants();
       const roleGrants = grants[role] || {};
 
@@ -285,7 +310,6 @@ export class PermissionService {
         });
       });
 
-      // Also include business-specific permissions from config
       const roleConfig = this.permissionConfig.roles[role];
       if (roleConfig) {
         Object.entries(roleConfig).forEach(([resource, perms]) => {
@@ -309,46 +333,27 @@ export class PermissionService {
     }
   }
 
-  /**
-   * Get all available resources
-   */
   getAvailableResources(): string[] {
     return Object.keys(this.permissionConfig.resources);
   }
 
-  /**
-   * Get all available actions for a resource
-   */
   getResourceActions(resource: string): string[] {
     return this.permissionConfig.resources[resource]?.actions || [];
   }
 
-  /**
-   * Get all available scopes
-   */
   getAvailableScopes(): string[] {
     return Object.keys(this.permissionConfig.scopes);
   }
 
-  /**
-   * Validate if a permission string is valid
-   */
   isValidPermission(permission: string): boolean {
     const [action, scope] = permission.split(':');
-
     if (!action) return false;
-
-    // Check if scope is valid (if provided)
     if (scope && !this.getAvailableScopes().includes(scope)) {
       return false;
     }
-
     return true;
   }
 
-  /**
-   * Get permission configuration
-   */
   getPermissionConfig(): IPermissionConfig {
     return this.permissionConfig;
   }
@@ -361,12 +366,10 @@ export class PermissionService {
       const rolePermissions = this.getRolePermissions(currentUser.client.role);
       const permissions: string[] = [];
 
-      // Flatten all permissions for the user's role
+      // flatten all permissions for the user's role
       Object.values(rolePermissions).forEach((resourcePermissions) => {
         permissions.push(...resourcePermissions);
       });
-
-      // Update the user's permissions array
       currentUser.permissions = [...new Set(permissions)]; // Remove duplicates
 
       return currentUser;

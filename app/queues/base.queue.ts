@@ -3,6 +3,7 @@ import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
 import { createBullBoard } from '@bull-board/api';
 import { ExpressAdapter } from '@bull-board/express';
+import { RedisService } from '@database/redis-setup';
 import { BullAdapter } from '@bull-board/api/bullAdapter';
 import Queue, { QueueOptions as BullQueueOptions, JobOptions as BullJobOptions } from 'bull';
 
@@ -27,6 +28,7 @@ export type JobData = any;
 export let serverAdapter: ExpressAdapter;
 const bullMQAdapters: BullAdapter[] = [];
 let deadLetterQueue: Queue.Queue | null;
+let sharedRedisService: RedisService | null = null;
 
 export class BaseQueue<T extends JobData = JobData> {
   protected log: Logger;
@@ -35,10 +37,17 @@ export class BaseQueue<T extends JobData = JobData> {
 
   constructor(queueName: string) {
     this.log = createLogger(queueName);
-    this.queue = new Queue(queueName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
+    
+    if (!sharedRedisService) {
+      sharedRedisService = RedisService.getSharedInstance();
+    }
+    
+    const redisUrl = sharedRedisService.getRedisUrl();
+    this.queue = new Queue(queueName, redisUrl, DEFAULT_QUEUE_OPTIONS);
+    
     if (!deadLetterQueue) {
       const dlqName = `${queueName}-DLQ`;
-      deadLetterQueue = new Queue(dlqName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
+      deadLetterQueue = new Queue(dlqName, redisUrl, DEFAULT_QUEUE_OPTIONS);
     }
     this.dlq = deadLetterQueue;
     this.addQueueToBullBoard(this.queue, this.dlq);
@@ -158,6 +167,11 @@ export class BaseQueue<T extends JobData = JobData> {
    */
   async shutdown(): Promise<void> {
     try {
+      this.queue.removeAllListeners();
+      if (this.dlq) {
+        this.dlq.removeAllListeners();
+      }
+      
       await this.queue.close();
       if (this.dlq) {
         await this.dlq.close();

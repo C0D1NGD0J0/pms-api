@@ -175,20 +175,6 @@ export type ExtractedMediaFile = {
   uploadedBy: string;
 };
 
-export interface UploadResult {
-  mediatype?: 'image' | 'video' | 'document';
-  documentName?: string;
-  resourceName?: string;
-  resourceId: string;
-  fieldName: string;
-  actorId?: string;
-  filename: string;
-  publicId: string;
-  size?: number;
-  key?: string;
-  url: string;
-}
-
 export interface IPermissionConfig {
   resources: Record<
     string,
@@ -205,6 +191,20 @@ export interface IPermissionConfig {
     }
   >;
   roles: Record<string, Record<string, string[]>>;
+}
+
+export interface UploadResult {
+  mediatype?: 'image' | 'video' | 'document';
+  documentName?: string;
+  resourceName?: string;
+  resourceId: string;
+  fieldName: string;
+  actorId?: string;
+  filename: string;
+  publicId: string;
+  size?: number;
+  key?: string;
+  url: string;
 }
 export interface IPermissionCheck {
   context?: {

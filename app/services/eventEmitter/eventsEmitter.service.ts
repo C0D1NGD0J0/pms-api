@@ -18,6 +18,7 @@ export class EventEmitterService {
     this.eventsRegistry = eventsRegistry;
     this.log = createLogger('EventEmitterService');
     this.setupMemoryLeakDetection();
+    this.setupProcessExitHandlers();
   }
 
   private setupMemoryLeakDetection(): void {
@@ -33,6 +34,17 @@ export class EventEmitterService {
         }
       });
     }, 60000); // every minute
+  }
+
+  private setupProcessExitHandlers(): void {
+    const cleanup = () => {
+      this.log.info('Process exit detected, cleaning up EventEmitter...');
+      this.destroy();
+    };
+
+    process.once('SIGINT', cleanup);
+    process.once('SIGTERM', cleanup);
+    process.once('exit', cleanup);
   }
 
   emit<T extends EventTypes>(eventType: T, payload: EventPayloadMap[T]): boolean {
@@ -159,14 +171,25 @@ export class EventEmitterService {
   }
 
   destroy(): void {
-    this.removeAllListeners();
-    this.listenerCounts.clear();
-    this.handlerMappings.clear();
-    
-    // Clear the memory leak detection interval
-    if (this.memoryLeakDetectionInterval) {
-      clearInterval(this.memoryLeakDetectionInterval);
-      this.memoryLeakDetectionInterval = undefined;
+    try {
+      this.removeAllListeners();
+      this.listenerCounts.clear();
+      this.handlerMappings.clear();
+      
+      // Clear the memory leak detection interval
+      if (this.memoryLeakDetectionInterval) {
+        clearInterval(this.memoryLeakDetectionInterval);
+        this.memoryLeakDetectionInterval = undefined;
+      }
+
+      // Remove process exit handlers to prevent multiple cleanup calls
+      process.removeAllListeners('SIGINT');
+      process.removeAllListeners('SIGTERM');
+      process.removeAllListeners('exit');
+      
+      this.log.info('EventEmitter service destroyed successfully');
+    } catch (error) {
+      this.log.error('Error during EventEmitter cleanup:', error);
     }
   }
 }

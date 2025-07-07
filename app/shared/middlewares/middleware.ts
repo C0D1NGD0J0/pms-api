@@ -1,5 +1,6 @@
 import bunyan from 'bunyan';
 import { container } from '@di/index';
+import { t } from '@shared/languages';
 import { UAParser } from 'ua-parser-js';
 import ProfileDAO from '@dao/profileDAO';
 import slowDown from 'express-slow-down';
@@ -7,21 +8,20 @@ import rateLimit from 'express-rate-limit';
 import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
 import { NextFunction, Response, Request } from 'express';
-import { ICurrentUser, EventTypes, PermissionResource, PermissionAction } from '@interfaces/index';
 import { LanguageService } from '@shared/languages/language.service';
-import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
 import { PermissionService } from '@services/permission/permission.service';
-import { InvalidRequestError, UnauthorizedError, ForbiddenError } from '@shared/customErrors';
+import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
 import { RateLimitOptions, RequestSource, TokenType } from '@interfaces/utils.interface';
+import { InvalidRequestError, UnauthorizedError, ForbiddenError } from '@shared/customErrors';
+import { PermissionResource, PermissionAction, ICurrentUser, EventTypes } from '@interfaces/index';
 import { extractMulterFiles, generateShortUID, httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
-import { t } from '@shared/languages';
 
 interface DIServices {
+  permissionService: PermissionService;
   emitterService: EventEmitterService;
   tokenService: AuthTokenService;
   profileDAO: ProfileDAO;
   authCache: AuthCache;
-  permissionService: PermissionService;
 }
 
 interface PermissionCheck {
@@ -415,7 +415,7 @@ const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUs
 };
 
 /**
- * Middleware to check if user has specific permission
+ * check if user has specific permission
  * Includes client context validation for client-specific resources
  */
 export const requirePermission = (
@@ -466,7 +466,7 @@ export const requirePermission = (
 };
 
 /**
- * Middleware to check if user has any of the specified permissions (OR logic)
+ * this check if user has any of the specified permissions (OR logic)
  */
 export const requireAnyPermission = (permissions: PermissionCheck[]) => {
   return async (req: Request, _res: Response, next: NextFunction) => {
@@ -498,7 +498,7 @@ export const requireAnyPermission = (permissions: PermissionCheck[]) => {
 };
 
 /**
- * Middleware to check if user has all specified permissions (AND logic)
+ * this check if user has all specified permissions (AND logic)
  */
 export const requireAllPermissions = (permissions: PermissionCheck[]) => {
   return async (req: Request, _res: Response, next: NextFunction) => {
@@ -536,7 +536,7 @@ export const requireAllPermissions = (permissions: PermissionCheck[]) => {
 };
 
 /**
- * Middleware to check if user can manage other users (admin or manager with appropriate permissions)
+ * this check if user can manage other users (admin or manager with appropriate permissions)
  */
 export const requireUserManagement = () => {
   return requireAnyPermission([

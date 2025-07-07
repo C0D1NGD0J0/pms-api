@@ -3,7 +3,7 @@
     "admin": {
       "$extend": ["manager"],
       "user": ["remove:any", "assign_roles:any"],
-      "client": ["read:any", "settings:any", "manage_users:any"]
+      "client": ["read:mine", "settings:any", "manage_users:any"]
     },
     "manager": {
       "$extend": ["staff"],

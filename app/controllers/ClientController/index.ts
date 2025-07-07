@@ -17,7 +17,6 @@ export class ClientController {
 
   updateClientProfile = async (req: AppRequest, res: Response) => {
     const { cid } = req.params;
-    const { currentuser } = req.context;
     const updateData = req.body;
 
     this.log.info(`Updating client profile for cid: ${cid}`);

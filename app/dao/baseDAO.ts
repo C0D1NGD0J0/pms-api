@@ -6,6 +6,7 @@ import { IPaginationQuery } from '@interfaces/utils.interface';
 import {
   UpdateWriteOpResult,
   AggregateOptions,
+  PopulateOptions,
   PipelineStage,
   MongooseError,
   ClientSession,
@@ -109,7 +110,10 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    */
   async list(
     filter: FilterQuery<T>,
-    options?: { projection?: string; populate?: string } & IPaginationQuery,
+    options?: {
+      projection?: string | Record<string, any>;
+      populate?: string | Array<string | PopulateOptions> | PopulateOptions;
+    } & IPaginationQuery,
     useLean = false
   ) {
     try {
@@ -124,7 +128,17 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       if (options?.skip) query = query.skip(options.skip);
       if (options?.limit) query = query.limit(options.limit);
       if (options?.projection) query = query.select(options.projection);
-      if (options?.populate) query = query.populate(options.populate as any);
+
+      if (options?.populate) {
+        if (Array.isArray(options.populate)) {
+          options.populate.forEach((option) => {
+            query = query.populate(option);
+          });
+        } else {
+          query = query.populate(options.populate);
+        }
+      }
+
       const count = await this.model.countDocuments(filter).exec();
       const result = await query.exec();
       const pagination = paginateResult(count, options?.skip, options?.limit);
@@ -311,7 +325,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     try {
       for await (const doc of cursor) {
         batch.push(doc);
-        
+
         if (batch.length >= batchSize) {
           const result = await processFunc(batch);
           results.push(result);

@@ -2,12 +2,12 @@ import { Schema, model } from 'mongoose';
 import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
 import {
-  InspectionStatusEnum,
-  DocumentStatusEnum,
-  DocumentTypeEnum,
   PropertyUnitStatusEnum as UnitStatusEnum,
   IPropertyUnitDocument as IUnitDocument,
   PropertyUnitTypeEnum as UnitTypeEnum,
+  InspectionStatusEnum,
+  DocumentStatusEnum,
+  DocumentTypeEnum,
 } from '@interfaces/propertyUnit.interface';
 const logger = createLogger('UnitModel');
 

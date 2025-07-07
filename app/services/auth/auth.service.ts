@@ -139,6 +139,12 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.accountVerificationPending') });
     }
 
+    const activeConnection = user.cids.find((c) => c.cid === decoded.data.csub);
+    if (!activeConnection || !activeConnection.isConnected) {
+      this.log.error('User connection inactive');
+      throw new UnauthorizedError({ message: t('auth.errors.connectionInactive') });
+    }
+
     return {
       data: null,
       success: true,
@@ -289,7 +295,21 @@ export class AuthService {
       throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
     }
 
-    const activeAccount = user.cids.find((c) => c.cid === user.activeCid)!;
+    const connectedClients = user.cids.filter((c) => c.isConnected);
+
+    if (connectedClients.length === 0) {
+      throw new UnauthorizedError({ message: t('auth.errors.allConnectionsDisabled') });
+    }
+
+    let activeAccount = connectedClients.find((c) => c.cid === user.activeCid);
+
+    if (!activeAccount) {
+      activeAccount = connectedClients[0];
+      await this.userDAO.updateById(user._id.toString(), {
+        $set: { activeCid: activeAccount.cid },
+      });
+    }
+
     const tokens = this.tokenService.createJwtTokens({
       sub: user._id.toString(),
       rememberMe,
@@ -298,7 +318,8 @@ export class AuthService {
     await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, rememberMe);
     const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
     currentuser && (await this.authCache.saveCurrentUser(currentuser));
-    if (user.cids.length === 1) {
+
+    if (connectedClients.length === 1) {
       return {
         success: true,
         data: {
@@ -315,7 +336,7 @@ export class AuthService {
       };
     }
 
-    const otherAccounts = user.cids
+    const otherAccounts = connectedClients
       .filter((c) => c.cid !== activeAccount.cid)
       .map((c) => ({ csub: c.cid, displayName: c.displayName }));
     return {
@@ -384,8 +405,13 @@ export class AuthService {
       throw new NotFoundError({ message: t('auth.errors.unableToSelectAccount') });
     }
 
+    // Validate that the new account is connected
+    if (!accountExists.isConnected) {
+      throw new UnauthorizedError({ message: t('auth.errors.connectionInactive') });
+    }
+
     await this.userDAO.updateById(userId, { $set: { activeCid: newCid } });
-    const activeAccount = user.cids.find((c) => c.cid === user.activeCid)!;
+    const activeAccount = user.cids.find((c) => c.cid === newCid)!;
     const tokens = this.tokenService.createJwtTokens({
       sub: user._id.toString(),
       rememberMe: false,

@@ -1,10 +1,11 @@
 import Logger from 'bunyan';
+import { t } from '@shared/languages';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { getRequestDuration, createLogger } from '@utils/index';
-import { BadRequestError, NotFoundError } from '@shared/customErrors/index';
+import { IUserRoleType, IUserRole } from '@interfaces/user.interface';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
+import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { PopulatedAccountAdmin, IClientDocument, IClientStats } from '@interfaces/client.interface';
-import { t } from '@shared/languages';
 
 interface IConstructor {
   propertyDAO: PropertyDAO;
@@ -270,6 +271,249 @@ export class ClientService {
       data: clientWithStats,
       success: true,
       message: t('client.success.retrieved'),
+    };
+  }
+
+  async assignUserRole(
+    cxt: IRequestContext,
+    targetUserId: string,
+    role: IUserRoleType
+  ): Promise<ISuccessReturnData> {
+    const currentuser = cxt.currentuser!;
+    const clientId = currentuser.client.csub;
+
+    if (!Object.values(IUserRole).includes(role as IUserRole)) {
+      throw new BadRequestError({ message: t('client.errors.invalidRole') });
+    }
+
+    const user = await this.userDAO.getUserById(targetUserId);
+    if (!user) {
+      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+    }
+
+    const clientConnection = user.cids.find((c) => c.cid === clientId);
+    if (!clientConnection) {
+      throw new NotFoundError({ message: t('client.errors.userNotInClient') });
+    }
+
+    if (clientConnection.roles.includes(role as IUserRole)) {
+      throw new BadRequestError({ message: t('client.errors.userAlreadyHasRole', { role }) });
+    }
+
+    await this.userDAO.updateById(
+      targetUserId,
+      {
+        $addToSet: { 'cids.$[elem].roles': role },
+      },
+      {
+        arrayFilters: [{ 'elem.cid': clientId }],
+      }
+    );
+
+    this.log.info(
+      {
+        adminId: currentuser.sub,
+        targetUserId,
+        clientId,
+        role,
+        action: 'assignRole',
+      },
+      t('client.logging.roleAssigned')
+    );
+
+    return {
+      success: true,
+      data: null,
+      message: t('client.success.roleAssigned', { role }),
+    };
+  }
+
+  async removeUserRole(
+    cxt: IRequestContext,
+    targetUserId: string,
+    role: IUserRoleType
+  ): Promise<ISuccessReturnData> {
+    const currentuser = cxt.currentuser!;
+    const clientId = currentuser.client.csub;
+
+    // prevent user from removing admin role if last admin
+    if (role === 'admin') {
+      const adminUsers = await this.userDAO.getUsersByClientId(clientId, {
+        'cids.roles': 'admin',
+        'cids.isConnected': true,
+      });
+
+      if (adminUsers.items.length <= 1) {
+        throw new ForbiddenError({ message: t('client.errors.cannotRemoveLastAdmin') });
+      }
+    }
+
+    await this.userDAO.updateById(
+      targetUserId,
+      {
+        $pull: { 'cids.$[elem].roles': role },
+      },
+      {
+        arrayFilters: [{ 'elem.cid': clientId }],
+      }
+    );
+
+    this.log.info(
+      {
+        adminId: currentuser.sub,
+        targetUserId,
+        clientId,
+        role,
+        action: 'removeRole',
+      },
+      t('client.logging.roleRemoved')
+    );
+
+    return {
+      success: true,
+      data: null,
+      message: t('client.success.roleRemoved', { role }),
+    };
+  }
+
+  async getUserRoles(
+    cxt: IRequestContext,
+    targetUserId: string
+  ): Promise<ISuccessReturnData<{ roles: IUserRoleType[] }>> {
+    const currentuser = cxt.currentuser!;
+    const clientId = currentuser.client.csub;
+
+    const user = await this.userDAO.getUserById(targetUserId);
+    if (!user) {
+      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+    }
+
+    const clientConnection = user.cids.find((c) => c.cid === clientId);
+    if (!clientConnection) {
+      throw new NotFoundError({ message: t('client.errors.userNotInClient') });
+    }
+
+    return {
+      success: true,
+      data: { roles: clientConnection.roles },
+      message: t('client.success.rolesRetrieved'),
+    };
+  }
+
+  async disconnectUser(cxt: IRequestContext, targetUserId: string): Promise<ISuccessReturnData> {
+    const currentuser = cxt.currentuser!;
+    const clientId = currentuser.client.csub;
+
+    // Prevent disconnecting last admin
+    const user = await this.userDAO.getUserById(targetUserId);
+    if (!user) {
+      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+    }
+
+    const clientConnection = user.cids.find((c) => c.cid === clientId);
+    if (!clientConnection) {
+      throw new NotFoundError({ message: t('client.errors.userNotInClient') });
+    }
+
+    if (clientConnection.roles.includes(IUserRole.ADMIN)) {
+      const connectedAdmins = await this.userDAO.getUsersByClientId(clientId, {
+        'cids.roles': 'admin',
+        'cids.isConnected': true,
+      });
+
+      if (connectedAdmins.items.length <= 1) {
+        throw new ForbiddenError({ message: t('client.errors.cannotDisconnectLastAdmin') });
+      }
+    }
+
+    await this.userDAO.updateById(
+      targetUserId,
+      {
+        $set: { 'cids.$[elem].isConnected': false },
+      },
+      {
+        arrayFilters: [{ 'elem.cid': clientId }],
+      }
+    );
+
+    this.log.info(
+      {
+        adminId: currentuser.sub,
+        targetUserId,
+        clientId,
+        action: 'disconnectUser',
+      },
+      t('client.logging.userDisconnected')
+    );
+
+    return {
+      success: true,
+      data: null,
+      message: t('client.success.userDisconnected'),
+    };
+  }
+
+  async reconnectUser(cxt: IRequestContext, targetUserId: string): Promise<ISuccessReturnData> {
+    const currentuser = cxt.currentuser!;
+    const clientId = currentuser.client.csub;
+
+    await this.userDAO.updateById(
+      targetUserId,
+      {
+        $set: { 'cids.$[elem].isConnected': true },
+      },
+      {
+        arrayFilters: [{ 'elem.cid': clientId }],
+      }
+    );
+
+    this.log.info(
+      {
+        adminId: currentuser.sub,
+        targetUserId,
+        clientId,
+        action: 'reconnectUser',
+      },
+      t('client.logging.userReconnected')
+    );
+
+    return {
+      success: true,
+      data: null,
+      message: t('client.success.userReconnected'),
+    };
+  }
+
+  async getClientUsers(cxt: IRequestContext): Promise<ISuccessReturnData<{ users: any[] }>> {
+    const currentuser = cxt.currentuser!;
+    const clientId = currentuser.client.csub;
+
+    const usersResult = await this.userDAO.getUsersByClientId(
+      clientId,
+      {},
+      {
+        limit: 100,
+        skip: 0,
+        populate: 'profile',
+      }
+    );
+
+    const users = usersResult.items.map((user) => {
+      const clientConnection = user.cids.find((c) => c.cid === clientId);
+      return {
+        id: user._id.toString(),
+        email: user.email,
+        displayName: clientConnection?.displayName || '',
+        roles: clientConnection?.roles || [],
+        isConnected: clientConnection?.isConnected || false,
+        profile: user.profile,
+      };
+    });
+
+    return {
+      success: true,
+      data: { users },
+      message: t('client.success.usersRetrieved'),
     };
   }
 }

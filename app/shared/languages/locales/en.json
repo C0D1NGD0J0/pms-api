@@ -25,7 +25,14 @@
       "invalidAuthTokenLogout": "Invalid auth token.",
       "accessTokenNotFound": "Access token not found",
       "refreshTokenNotFound": "Refresh token not found",
-      "invalidTokenType": "Invalid token type"
+      "invalidTokenType": "Invalid token type",
+      "allConnectionsDisabled": "All user connections are disabled",
+      "connectionInactive": "User connection is inactive",
+      "insufficientPermissions": "Insufficient permissions to perform this action",
+      "permissionCheckFailed": "Permission check failed",
+      "connectionCheckFailed": "Connection check failed",
+      "adminRequired": "Admin privileges required",
+      "authorizationFailed": "Authorization failed"
     },
     "success": {
       "tokenRefreshed": "Token refreshed successfully",
@@ -40,6 +47,28 @@
       "logoutSuccessful": "Logout successful."
     }
   },
+  "connection": {
+    "errors": {
+      "userIdAndClientIdRequired": "User ID and client ID are required",
+      "userIdRequired": "User ID is required",
+      "userIdsRequired": "User IDs are required",
+      "connectionNotFound": "Connection not found",
+      "cannotDisconnectFromOtherClient": "Cannot disconnect users from other clients",
+      "cannotReconnectToOtherClient": "Cannot reconnect users to other clients",
+      "cannotDisconnectLastConnection": "Cannot disconnect the last active connection",
+      "cannotUpdateOtherClientConnections": "Cannot update connections for other clients",
+      "cannotCheckOtherClientConnections": "Cannot check connections for other clients",
+      "updatesRequired": "Updates are required for bulk operation"
+    },
+    "success": {
+      "disconnected": "User disconnected successfully",
+      "reconnected": "User reconnected successfully",
+      "connectionsRetrieved": "Connections retrieved successfully",
+      "bulkUpdateCompleted": "Bulk connection update completed successfully",
+      "connectionStatusRetrieved": "Connection status retrieved successfully",
+      "statsRetrieved": "Connection statistics retrieved successfully"
+    }
+  },
   "client": {
     "errors": {
       "clientNotFound": "Client not found",
@@ -51,12 +80,24 @@
       "validationFailed": "Validation failed",
       "updateFailed": "Failed to update client profile",
       "unableToFetch": "Unable to fetch client details.",
-      "detailsNotFound": "Client details not found."
+      "detailsNotFound": "Client details not found.",
+      "invalidRole": "Invalid role specified",
+      "userNotFound": "User not found",
+      "userNotInClient": "User is not connected to this client",
+      "userAlreadyHasRole": "User already has the role {{role}}",
+      "cannotRemoveLastAdmin": "Cannot remove admin role from the last administrator",
+      "cannotDisconnectLastAdmin": "Cannot disconnect the last administrator"
     },
     "success": {
       "profileUpdated": "Client profile updated successfully",
       "detailsUpdated": "Client details updated successfully",
-      "detailsRetrieved": "Client details retrieved successfully"
+      "detailsRetrieved": "Client details retrieved successfully",
+      "roleAssigned": "Role {{role}} assigned successfully",
+      "roleRemoved": "Role {{role}} removed successfully",
+      "rolesRetrieved": "User roles retrieved successfully",
+      "userDisconnected": "User disconnected successfully",
+      "userReconnected": "User reconnected successfully",
+      "usersRetrieved": "Client users retrieved successfully"
     }
   },
   "property": {

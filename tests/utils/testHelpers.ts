@@ -130,6 +130,36 @@ export const TestDataFactory = {
     updatedAt: new Date(),
     ...overrides,
   }),
+
+  createCurrentUser: (overrides: any = {}) => ({
+    sub: uuidv4(),
+    email: 'test@example.com',
+    fullname: 'Test User',
+    displayName: 'testuser',
+    isActive: true,
+    avatarUrl: 'https://example.com/avatar.jpg',
+    client: {
+      csub: uuidv4(),
+      displayname: 'Test Client',
+      role: 'admin',
+    },
+    clients: [
+      {
+        cid: uuidv4(),
+        isConnected: true,
+        role: 'admin',
+        displayName: 'Test Client',
+        joinedAt: new Date(),
+      },
+    ],
+    permissions: [],
+    preferences: {
+      theme: 'light',
+      lang: 'en',
+      timezone: 'UTC',
+    },
+    ...overrides,
+  }),
 };
 
 /**

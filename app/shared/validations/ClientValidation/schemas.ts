@@ -82,6 +82,26 @@ export const ClientDisplayNameSchema = z.object({
   displayName: z.string().trim().min(1, 'Display name is required'),
 });
 
+// User management parameter validation
+export const UserIdParamSchema = z.object({
+  cid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
+  uid: z.string().trim().min(8, 'User ID must be at least 8 characters'),
+});
+
+// Role management parameter validation  
+export const RoleParamSchema = z.object({
+  cid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
+  uid: z.string().trim().min(8, 'User ID must be at least 8 characters'),
+  role: z.string().trim().min(1, 'Role is required'),
+});
+
+// Role assignment body validation
+export const AssignRoleSchema = z.object({
+  role: z.enum(['admin', 'manager', 'tenant', 'staff', 'vendor'], {
+    errorMap: () => ({ message: 'Invalid role. Must be one of: admin, manager, tenant, staff, vendor' })
+  }),
+});
+
 // Comprehensive client details update validation
 export const UpdateClientDetailsSchema = z
   .object({

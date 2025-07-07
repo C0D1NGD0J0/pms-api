@@ -188,6 +188,18 @@ export const mockUploadQueue = createDeepMock({
   addToUploadQueue: jest.fn(),
 });
 
+export const mockPermissionService = createDeepMock({
+  checkPermission: jest.fn(),
+  checkUserPermission: jest.fn(),
+  getRolePermissions: jest.fn(),
+  getAvailableResources: jest.fn(),
+  getResourceActions: jest.fn(),
+  getAvailableScopes: jest.fn(),
+  isValidPermission: jest.fn(),
+  getPermissionConfig: jest.fn(),
+  populateUserPermissions: jest.fn(),
+});
+
 export const mockPropertyCache = createDeepMock({
   cacheProperty: jest.fn(),
   getClientProperties: jest.fn(),
@@ -219,6 +231,7 @@ const MockServiceResources = {
   authService: asValue(mockAuthService),
   authTokenService: asValue(mockAuthTokenService),
   authCache: asValue(mockAuthCache),
+  permissionService: asValue(mockPermissionService),
 };
 
 // DAO Resources

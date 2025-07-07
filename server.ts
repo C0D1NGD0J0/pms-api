@@ -1,11 +1,5 @@
 /* eslint-disable @typescript-eslint/no-namespace */
-declare global {
-  namespace NodeJS {
-    interface Global {
-      gc(): void;
-    }
-  }
-}
+
 import http from 'http';
 import { asValue } from 'awilix';
 import { createClient } from 'redis';
@@ -19,13 +13,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { DatabaseService, Environments } from '@database/index';
 
 (global as any).rootDir = __dirname;
-if (envVariables.SERVER.ENV !== 'production') {
-  if (typeof (global as any).gc === 'function') {
-    (global as any).gc();
-  } else {
-    console.log('GC not available - make sure you run with --expose-gc flag');
-  }
-}
+
 interface IConstructor {
   dbService: DatabaseService;
 }
@@ -47,22 +35,6 @@ class Server {
     this.dbService = dbService;
     this.app = new App(this.expApp, this.dbService);
     this.setupProcessErrorHandlers();
-  }
-
-  private scheduleMemoryCheck(): void {
-    // Was getting memory leaks in the app, so added a memory check
-    // to trigger garbage collection if memory usage exceeds a certain threshold
-    const memoryCheckInterval = setInterval(() => {
-      const memUsage = process.memoryUsage();
-      const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-
-      // if memory exceeds threshold, trigger GC
-      if (heapUsedMB > 1500 && typeof (global as any).gc === 'function') {
-        this.log.info('High memory usage detected, running garbage collection');
-        (global as any).gc();
-      }
-    }, 60000); // check every minute
-    process.on('beforeExit', () => clearInterval(memoryCheckInterval));
   }
 
   start = async (): Promise<void> => {

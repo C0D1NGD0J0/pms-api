@@ -7,18 +7,26 @@ import rateLimit from 'express-rate-limit';
 import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
 import { NextFunction, Response, Request } from 'express';
-import { ICurrentUser, EventTypes } from '@interfaces/index';
+import { ICurrentUser, EventTypes, PermissionResource, PermissionAction } from '@interfaces/index';
 import { LanguageService } from '@shared/languages/language.service';
-import { InvalidRequestError, UnauthorizedError } from '@shared/customErrors';
 import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
+import { PermissionService } from '@services/permission/permission.service';
+import { InvalidRequestError, UnauthorizedError, ForbiddenError } from '@shared/customErrors';
 import { RateLimitOptions, RequestSource, TokenType } from '@interfaces/utils.interface';
 import { extractMulterFiles, generateShortUID, httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
+import { t } from '@shared/languages';
 
 interface DIServices {
   emitterService: EventEmitterService;
   tokenService: AuthTokenService;
   profileDAO: ProfileDAO;
   authCache: AuthCache;
+  permissionService: PermissionService;
+}
+
+interface PermissionCheck {
+  resource: PermissionResource | string;
+  action: PermissionAction | string;
 }
 export const scopedMiddleware = (req: Request, res: Response, next: NextFunction) => {
   const scope = container.createScope();
@@ -42,7 +50,8 @@ export const scopedMiddleware = (req: Request, res: Response, next: NextFunction
 
 export const isAuthenticated = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { tokenService, profileDAO, authCache }: DIServices = req.container.cradle;
+    const { tokenService, profileDAO, authCache, permissionService }: DIServices =
+      req.container.cradle;
     const token = tokenService.extractTokenFromRequest(req);
 
     if (!token) {
@@ -70,6 +79,25 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
     if (currentUserResp.success && !req.context.currentuser) {
       req.context.currentuser = currentUserResp.data as ICurrentUser;
     }
+
+    // Validate connection status
+    if (req.context.currentuser) {
+      const activeConnection = req.context.currentuser.clients.find(
+        (c) => c.cid === req.context.currentuser!.client.csub
+      );
+
+      if (!activeConnection || !activeConnection.isConnected) {
+        return next(new UnauthorizedError({ message: 'User connection inactive' }));
+      }
+
+      // Populate user permissions using PermissionService
+      if (permissionService) {
+        req.context.currentuser = await permissionService.populateUserPermissions(
+          req.context.currentuser
+        );
+      }
+    }
+
     // contextbuilder is called here so params and query are available in the context
     contextBuilder(req, res, next);
   } catch (error) {
@@ -250,7 +278,7 @@ export const requestLogger =
 /**
  * Middleware to detect and set language based on request headers or query params
  */
-export const detectLanguage = (req: Request, _res: Response, next: NextFunction) => {
+export const detectLanguage = async (req: Request, _res: Response, next: NextFunction) => {
   const { languageService }: { languageService: LanguageService } = req.container.cradle;
 
   const language =
@@ -362,4 +390,157 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
     console.error('Error in context middleware:', error);
     next(error);
   }
+};
+
+/**
+ * Common validation helper - checks user auth and connection status
+ * Returns validated user or throws error
+ */
+const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUser | null => {
+  const { currentuser } = req.context;
+
+  if (!currentuser) {
+    next(new UnauthorizedError({ message: t('auth.errors.unauthorized') }));
+    return null;
+  }
+
+  // Check if user's connection to active client is still active
+  const activeConnection = currentuser.clients.find((c) => c.cid === currentuser.client.csub);
+  if (!activeConnection?.isConnected) {
+    next(new UnauthorizedError({ message: t('auth.errors.connectionInactive') }));
+    return null;
+  }
+
+  return currentuser;
+};
+
+/**
+ * Middleware to check if user has specific permission
+ * Includes client context validation for client-specific resources
+ */
+export const requirePermission = (
+  resource: PermissionResource | string,
+  action: PermissionAction | string
+) => {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const currentuser = validateUserAndConnection(req, next);
+      if (!currentuser) return;
+
+      // Check client context for client-specific resources
+      const clientId = req.params.clientId || req.params.cid;
+      if (clientId && currentuser.client.csub !== clientId) {
+        return next(new ForbiddenError({ message: t('auth.errors.clientAccessDenied') }));
+      }
+
+      // For CLIENT resource actions, ensure user has appropriate role
+      if (resource === PermissionResource.CLIENT) {
+        const restrictedRoles = ['tenant', 'vendor'];
+        if (restrictedRoles.includes(currentuser.client.role)) {
+          return next(new ForbiddenError({ message: t('auth.errors.insufficientRole') }));
+        }
+      }
+
+      const { permissionService }: { permissionService: PermissionService } = req.container.cradle;
+
+      const hasPermission = await permissionService.checkUserPermission(
+        currentuser,
+        resource as string,
+        action as string
+      );
+
+      if (!hasPermission.granted) {
+        return next(
+          new ForbiddenError({
+            message: t('auth.errors.insufficientPermissions', { resource, action }),
+          })
+        );
+      }
+
+      next();
+    } catch (error) {
+      console.error('Error in requirePermission middleware:', error);
+      return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
+    }
+  };
+};
+
+/**
+ * Middleware to check if user has any of the specified permissions (OR logic)
+ */
+export const requireAnyPermission = (permissions: PermissionCheck[]) => {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const currentuser = validateUserAndConnection(req, next);
+      if (!currentuser) return; // Error already handled
+
+      const { permissionService }: { permissionService: PermissionService } = req.container.cradle;
+
+      // Check if user has any of the specified permissions
+      for (const permission of permissions) {
+        const result = await permissionService.checkUserPermission(
+          currentuser,
+          permission.resource as string,
+          permission.action as string
+        );
+        if (result.granted) {
+          return next(); // Found a valid permission, allow access
+        }
+      }
+
+      // No valid permissions found
+      return next(new ForbiddenError({ message: t('auth.errors.insufficientPermissions') }));
+    } catch (error) {
+      console.error('Error in requireAnyPermission middleware:', error);
+      return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
+    }
+  };
+};
+
+/**
+ * Middleware to check if user has all specified permissions (AND logic)
+ */
+export const requireAllPermissions = (permissions: PermissionCheck[]) => {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const currentuser = validateUserAndConnection(req, next);
+      if (!currentuser) return; // Error already handled
+
+      const { permissionService }: { permissionService: PermissionService } = req.container.cradle;
+
+      // Check that user has ALL specified permissions
+      for (const permission of permissions) {
+        const result = await permissionService.checkUserPermission(
+          currentuser,
+          permission.resource as string,
+          permission.action as string
+        );
+        if (!result.granted) {
+          return next(
+            new ForbiddenError({
+              message: t('auth.errors.insufficientPermissions', {
+                resource: permission.resource,
+                action: permission.action,
+              }),
+            })
+          );
+        }
+      }
+
+      next();
+    } catch (error) {
+      console.error('Error in requireAllPermissions middleware:', error);
+      return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
+    }
+  };
+};
+
+/**
+ * Middleware to check if user can manage other users (admin or manager with appropriate permissions)
+ */
+export const requireUserManagement = () => {
+  return requireAnyPermission([
+    { resource: PermissionResource.USER, action: PermissionAction.ASSIGN_ROLES },
+    { resource: PermissionResource.CLIENT, action: PermissionAction.MANAGE_USERS },
+  ]);
 };

@@ -25,7 +25,9 @@
       "invalidAuthTokenLogout": "Jeton d'authentification invalide.",
       "accessTokenNotFound": "Jeton d'accès introuvable",
       "refreshTokenNotFound": "Jeton de rafraîchissement introuvable",
-      "invalidTokenType": "Type de jeton invalide"
+      "invalidTokenType": "Type de jeton invalide",
+      "allConnectionsDisabled": "Toutes les connexions utilisateur sont désactivées",
+      "connectionInactive": "La connexion utilisateur est inactive"
     },
     "success": {
       "tokenRefreshed": "Jeton rafraîchi avec succès",
@@ -38,6 +40,28 @@
       "activationLinkSent": "Lien d'activation envoyé à {{email}}.",
       "passwordResetEmailSent": "Email de réinitialisation de mot de passe envoyé à {{email}}",
       "logoutSuccessful": "Déconnexion réussie."
+    }
+  },
+  "connection": {
+    "errors": {
+      "userIdAndClientIdRequired": "ID utilisateur et ID client requis",
+      "userIdRequired": "ID utilisateur requis",
+      "userIdsRequired": "IDs utilisateurs requis",
+      "connectionNotFound": "Connexion introuvable",
+      "cannotDisconnectFromOtherClient": "Impossible de déconnecter les utilisateurs d'autres clients",
+      "cannotReconnectToOtherClient": "Impossible de reconnecter les utilisateurs à d'autres clients",
+      "cannotDisconnectLastConnection": "Impossible de déconnecter la dernière connexion active",
+      "cannotUpdateOtherClientConnections": "Impossible de mettre à jour les connexions pour d'autres clients",
+      "cannotCheckOtherClientConnections": "Impossible de vérifier les connexions pour d'autres clients",
+      "updatesRequired": "Des mises à jour sont requises pour l'opération groupée"
+    },
+    "success": {
+      "disconnected": "Utilisateur déconnecté avec succès",
+      "reconnected": "Utilisateur reconnecté avec succès",
+      "connectionsRetrieved": "Connexions récupérées avec succès",
+      "bulkUpdateCompleted": "Mise à jour groupée des connexions terminée avec succès",
+      "connectionStatusRetrieved": "Statut de connexion récupéré avec succès",
+      "statsRetrieved": "Statistiques de connexion récupérées avec succès"
     }
   },
   "client": {

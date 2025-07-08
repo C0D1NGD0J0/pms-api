@@ -90,10 +90,10 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
   /**
    * Find an invitation by its invitation ID
    */
-  async findByInvitationId(invitationId: string): Promise<IInvitationDocument | null> {
+  async findByIuid(iuid: string): Promise<IInvitationDocument | null> {
     try {
       return await this.findFirst(
-        { invitationId },
+        { iuid },
         {
           populate: [
             { path: 'invitedBy', select: 'email' },

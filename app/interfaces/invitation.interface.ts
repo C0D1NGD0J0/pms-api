@@ -20,13 +20,13 @@ export interface IInvitation {
   invitedBy: Types.ObjectId;
   invitationToken: string;
   revokeReason?: string;
-  invitationId: string;
   inviteeEmail: string;
   acceptedAt?: Date;
   clientId: string;
   revokedAt?: Date;
   role: IUserRole;
   expiresAt: Date;
+  iuid: string;
 }
 
 export interface IInvitationDocument extends IInvitation, Document {
@@ -104,5 +104,5 @@ export interface IInvitationValidation {
 
 export interface IResendInvitationData {
   customMessage?: string;
-  invitationId: string;
+  iuid: string;
 }

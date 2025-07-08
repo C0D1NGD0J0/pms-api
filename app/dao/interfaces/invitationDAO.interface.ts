@@ -111,13 +111,6 @@ export interface IInvitationDAO extends IBaseDAO<IInvitationDocument> {
   findPendingInvitation(email: string, clientId: string): Promise<IInvitationDocument | null>;
 
   /**
-   * Find an invitation by its invitation ID
-   * @param invitationId - The invitation ID
-   * @returns Promise that resolves to the invitation or null
-   */
-  findByInvitationId(invitationId: string): Promise<IInvitationDocument | null>;
-
-  /**
    * Get invitations by invitee email across all clients
    * @param email - The invitee email
    * @returns Promise that resolves to invitations for the email
@@ -137,6 +130,13 @@ export interface IInvitationDAO extends IBaseDAO<IInvitationDocument> {
    * @returns Promise that resolves to invitation statistics
    */
   getInvitationStats(clientId: string): Promise<IInvitationStats>;
+
+  /**
+   * Find an invitation by its invitation ID
+   * @param iuid - The invitation ID
+   * @returns Promise that resolves to the invitation or null
+   */
+  findByIuid(iuid: string): Promise<IInvitationDocument | null>;
 
   /**
    * Mark expired invitations as expired

@@ -132,3 +132,4 @@ dist
 .clinic
 random.ts
 .claude/
+.build/

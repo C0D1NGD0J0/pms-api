@@ -3,13 +3,15 @@
     "admin": {
       "$extend": ["manager"],
       "user": ["remove:any", "assign_roles:any"],
-      "client": ["read:mine", "settings:any", "manage_users:any"]
+      "client": ["read:mine", "settings:any", "manage_users:any"],
+      "invitation": ["send:any", "revoke:any", "resend:any", "list:any", "read:any", "stats:any"]
     },
     "manager": {
       "$extend": ["staff"],
       "property": ["create:mine", "delete:mine"],
       "maintenance": ["create:mine", "delete:mine"],
-      "lease": ["create:mine", "delete:mine"]
+      "lease": ["create:mine", "delete:mine"],
+      "invitation": ["send:any", "revoke:any", "resend:any", "list:any", "read:any", "stats:any"]
     },
     "staff": {
       "$extend": ["tenant"],
@@ -49,6 +51,11 @@
       "actions": ["invite", "read", "update", "remove", "list", "assign_roles"],
       "scopes": ["any", "mine"],
       "description": "User management operations"
+    },
+    "invitation": {
+      "actions": ["send", "revoke", "resend", "list", "read", "stats"],
+      "scopes": ["any", "mine"],
+      "description": "Invitation management operations"
     },
     "client": {
       "actions": ["read", "update", "settings", "manage_users"],

@@ -86,6 +86,9 @@ export class MailService {
     let template: EmailTemplate;
 
     switch (type) {
+      case MailType.INVITATION_REMINDER:
+        template = await this.buildTemplate('reminder', emailData, 'invitation');
+        break;
       case MailType.ACCOUNT_ACTIVATION:
         template = await this.buildTemplate('registration', emailData);
         break;
@@ -98,6 +101,9 @@ export class MailService {
       case MailType.ACCOUNT_UPDATE:
         template = await this.buildTemplate('accountUpdate', emailData);
         break;
+      case MailType.INVITATION:
+        template = await this.buildTemplate('invitation', emailData);
+        break;
       default:
         throw new Error(`Unsupported mail type: ${type}`);
     }
@@ -109,10 +115,16 @@ export class MailService {
    * Build email template from EJS files
    * @param filename Base filename for template
    * @param data Template data
+   * @param subdir Optional subdirectory for template
    * @returns Rendered email template
    */
-  private async buildTemplate(filename: string, data: EmailTemplateData): Promise<EmailTemplate> {
-    const templatePath = (type: string) => `${filename}/${filename}${type}.ejs`;
+  private async buildTemplate(
+    filename: string,
+    data: EmailTemplateData,
+    subdir?: string
+  ): Promise<EmailTemplate> {
+    const basePath = subdir ? `${subdir}/${filename}` : filename;
+    const templatePath = (type: string) => `${basePath}/${filename}${type}.ejs`;
 
     const renderSafely = async (path: string): Promise<string> => {
       try {
@@ -178,6 +190,8 @@ export class MailService {
     const subjectMap: Record<MailType | 'default', string> = {
       [MailType.ACCOUNT_ACTIVATION]: 'Activate Your Account',
       [MailType.FORGOT_PASSWORD]: 'Reset Your Password',
+      [MailType.INVITATION]: "You've Been Invited to Join Our Team",
+      [MailType.INVITATION_REMINDER]: 'Reminder: Your Invitation is Still Active',
       default: defaultText,
       [MailType.SUBSCRIPTION_UPDATE]: defaultText,
       [MailType.SUBSCRIPTION_CANCEL]: defaultText,

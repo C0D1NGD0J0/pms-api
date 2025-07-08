@@ -1,9 +1,8 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { AuthController } from '@controllers/index';
-import { validateRequest } from '@shared/validations';
 import { isAuthenticated } from '@shared/middlewares';
-import { AuthValidations } from '@shared/validations/AuthValidation';
+import { validateRequest, AuthValidations } from '@shared/validations';
 
 const router: Router = express.Router();
 

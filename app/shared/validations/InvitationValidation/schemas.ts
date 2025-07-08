@@ -133,3 +133,48 @@ export const invitationTokenSchema = z.object({
 export const iuidSchema = z.object({
   iuid: z.string().min(10, 'Invalid invitation ID').max(255, 'Invalid invitation ID'),
 });
+
+// CSV invitation schema for bulk import
+export const invitationCsvSchema = z.object({
+  inviteeEmail: z
+    .string()
+    .email('Please provide a valid email address')
+    .max(255, 'Email must be less than 255 characters'),
+
+  role: z.nativeEnum(IUserRole, {
+    errorMap: () => ({ message: 'Please provide a valid role' }),
+  }),
+
+  firstName: z
+    .string()
+    .min(2, 'First name must be at least 2 characters')
+    .max(50, 'First name must be less than 50 characters')
+    .regex(/^[a-zA-Z\s\-']+$/, 'First name contains invalid characters'),
+
+  lastName: z
+    .string()
+    .min(2, 'Last name must be at least 2 characters')
+    .max(50, 'Last name must be less than 50 characters')
+    .regex(/^[a-zA-Z\s\-']+$/, 'Last name contains invalid characters'),
+
+  phoneNumber: z
+    .string()
+    .regex(/^\+?[\d\s\-()]+$/, 'Please provide a valid phone number')
+    .min(10, 'Phone number must be at least 10 digits')
+    .max(20, 'Phone number must be less than 20 characters')
+    .optional(),
+
+  inviteMessage: z
+    .string()
+    .max(500, 'Invitation message must be less than 500 characters')
+    .optional(),
+
+  expectedStartDate: z
+    .string()
+    .datetime('Please provide a valid date')
+    .transform((str) => new Date(str))
+    .optional(),
+
+  // Client ID will be added by the processor
+  cid: z.string().optional(),
+});

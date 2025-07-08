@@ -1,9 +1,13 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
-import { validateRequest } from '@shared/validations';
-import { isAuthenticated } from '@shared/middlewares';
 import { InvitationController } from '@controllers/index';
-import { InvitationValidations } from '@shared/validations/InvitationValidation';
+import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
+import { requirePermission, isAuthenticated, diskUpload, scanFile } from '@shared/middlewares';
+import {
+  InvitationValidations,
+  UtilsValidations,
+  validateRequest,
+} from '@shared/validations/index';
 
 const router = Router();
 
@@ -42,15 +46,15 @@ router.post(
 // Note: Authentication middleware will be applied at the app level or route group level
 
 /**
- * @route POST /api/v1/invites/clients/:cid/send
+ * @route POST /api/v1/invites/:cid/send
  * @desc Send an invitation to join a client
  * @access Private (Admin/Manager only)
  */
 router.post(
-  '/clients/:cid/send',
+  '/:cid/send',
   isAuthenticated,
   validateRequest({
-    params: InvitationValidations.cid,
+    params: UtilsValidations.cid,
     body: InvitationValidations.sendInvitation,
   }),
   asyncWrapper((req, res) => {
@@ -68,7 +72,7 @@ router.get(
   '/clients/:cid',
   isAuthenticated,
   validateRequest({
-    params: InvitationValidations.cid,
+    params: UtilsValidations.cid,
     query: InvitationValidations.getInvitations,
   }),
   asyncWrapper((req, res) => {
@@ -84,7 +88,7 @@ router.get(
  */
 router.get(
   '/clients/:cid/stats',
-  validateRequest({ params: InvitationValidations.cid }),
+  validateRequest({ params: UtilsValidations.cid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.getInvitationStats(req, res);
@@ -146,10 +150,50 @@ router.post(
  */
 router.get(
   '/by-email/:email',
-  validateRequest({ params: InvitationValidations.email }),
+  validateRequest({ params: UtilsValidations.isUniqueEmail }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.getInvitationsByEmail(req, res);
+  })
+);
+
+/**
+ * @route POST /api/v1/invites/:cid/validate_csv
+ * @desc Validate a CSV file for bulk invitation import
+ * @access Private (Admin/Manager only)
+ */
+router.post(
+  '/:cid/validate_csv',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.INVITE),
+  diskUpload(['csv_file']),
+  scanFile,
+  validateRequest({
+    params: UtilsValidations.cid,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<InvitationController>('invitationController');
+    return controller.validateInvitationCsv(req, res);
+  })
+);
+
+/**
+ * @route POST /api/v1/invites/:cid/import_invitations_csv
+ * @desc Import invitations from a CSV file
+ * @access Private (Admin/Manager only)
+ */
+router.post(
+  '/:cid/import_invitations_csv',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.INVITE),
+  diskUpload(['csv_file']),
+  scanFile,
+  validateRequest({
+    params: UtilsValidations.cid,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<InvitationController>('invitationController');
+    return controller.importInvitationsFromCsv(req, res);
   })
 );
 

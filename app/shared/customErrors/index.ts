@@ -200,6 +200,19 @@ export class MongoDatabaseError extends CustomError {
 }
 
 /**
+ * Error representing a 409 Conflict
+ */
+export class ConflictError extends CustomError {
+  constructor(options?: { message?: string; statusCode?: number; originalError?: Error }) {
+    super({
+      message: options?.message || 'Conflict.',
+      statusCode: options?.statusCode || 409,
+      originalError: options?.originalError,
+    });
+  }
+}
+
+/**
  * Utility function to handle and convert Mongoose errors
  */
 export function handleMongoError(err: MongooseError | Error): CustomError {

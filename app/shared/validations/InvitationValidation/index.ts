@@ -5,6 +5,7 @@ import {
   resendInvitationSchema,
   invitationTokenSchema,
   sendInvitationSchema,
+  invitationCsvSchema,
   iuidSchema,
 } from './schemas';
 
@@ -15,5 +16,6 @@ export class InvitationValidations {
   static resendInvitation = resendInvitationSchema;
   static getInvitations = getInvitationsQuerySchema;
   static invitationToken = invitationTokenSchema;
+  static invitationCsv = invitationCsvSchema;
   static iuid = iuidSchema;
 }

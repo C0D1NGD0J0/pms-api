@@ -1,6 +1,6 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/helpers';
-import { validateRequest } from '@shared/validations';
+import { validateRequest } from '@shared/validations/setup';
 import { PropertyUnitController } from '@controllers/PropertyUnitController';
 import { PropertyUnitValidations } from '@shared/validations/PropertyUnitValidation';
 import { isAuthenticated, routeLimiter, diskUpload, scanFile } from '@shared/middlewares';

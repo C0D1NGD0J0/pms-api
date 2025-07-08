@@ -1,7 +1,7 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/helpers';
-import { validateRequest } from '@shared/validations';
 import { PropertyController } from '@controllers/index';
+import { validateRequest } from '@shared/validations/setup';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {

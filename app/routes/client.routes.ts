@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
-import { validateRequest } from '@shared/validations';
 import { ClientController } from '@controllers/ClientController';
-import { ClientValidations } from '@shared/validations/ClientValidation';
+import { ClientValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import { requireUserManagement, requirePermission, isAuthenticated } from '@shared/middlewares';
 

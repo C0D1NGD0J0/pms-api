@@ -94,9 +94,9 @@ export class App implements IAppSetup {
     app.use(`${BASE_PATH}/queues`, serverAdapter.getRouter());
     app.use(`${BASE_PATH}/auth`, routes.authRoutes);
     app.use(`${BASE_PATH}/clients`, routes.clientRoutes);
+    app.use(`${BASE_PATH}/invites`, routes.invitationRoutes);
     // app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
     // app.use(`${BASE_PATH}/vendors`, routes.vendorRoutes);
-    // app.use(`${BASE_PATH}/invites`, routes.inviteRoutes);
     // app.use(`${BASE_PATH}/tenants`, routes.tenantsRoutes);
     // app.use(`${BASE_PATH}/employees`, routes.employeeRoutes);
     app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);

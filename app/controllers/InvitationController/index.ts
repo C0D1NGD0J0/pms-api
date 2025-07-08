@@ -20,7 +20,7 @@ export class InvitationController {
 
   sendInvitation = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
-    const { clientId } = req.params;
+    const { cid } = req.params;
     const invitationData = req.body;
 
     if (!currentuser) {
@@ -32,7 +32,7 @@ export class InvitationController {
 
     const result = await this.invitationService.sendInvitation(
       currentuser.sub,
-      clientId,
+      cid,
       invitationData
     );
 
@@ -40,7 +40,7 @@ export class InvitationController {
       success: result.success,
       message: result.message,
       data: {
-        invitationId: result.data.invitation.invitationId,
+        iuid: result.data.invitation.iuid,
         inviteeEmail: result.data.invitation.inviteeEmail,
         role: result.data.invitation.role,
         status: result.data.invitation.status,
@@ -57,7 +57,7 @@ export class InvitationController {
       success: result.success,
       message: result.message,
       data: {
-        invitationId: result.data.invitationId,
+        iuid: result.data.iuid,
         inviteeEmail: result.data.inviteeEmail,
         inviteeFullName: result.data.inviteeFullName,
         role: result.data.role,
@@ -113,7 +113,7 @@ export class InvitationController {
 
   revokeInvitation = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
-    const { invitationId } = req.params;
+    const { iuid } = req.params;
     const { reason } = req.body;
 
     if (!currentuser) {
@@ -123,17 +123,13 @@ export class InvitationController {
       });
     }
 
-    const result = await this.invitationService.revokeInvitation(
-      invitationId,
-      currentuser.sub,
-      reason
-    );
+    const result = await this.invitationService.revokeInvitation(iuid, currentuser.sub, reason);
 
     res.status(httpStatusCodes.OK).json({
       success: result.success,
       message: result.message,
       data: {
-        invitationId: result.data.invitationId,
+        iuid: result.data.iuid,
         status: result.data.status,
         revokedAt: result.data.revokedAt,
         revokeReason: result.data.revokeReason,
@@ -143,7 +139,7 @@ export class InvitationController {
 
   resendInvitation = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
-    const { invitationId } = req.params;
+    const { iuid } = req.params;
     const { customMessage } = req.body;
 
     if (!currentuser) {
@@ -154,7 +150,7 @@ export class InvitationController {
     }
 
     const result = await this.invitationService.resendInvitation(
-      { invitationId, customMessage },
+      { iuid, customMessage },
       currentuser.sub
     );
 
@@ -162,7 +158,7 @@ export class InvitationController {
       success: result.success,
       message: result.message,
       data: {
-        invitationId: result.data.invitation.invitationId,
+        iuid: result.data.invitation.iuid,
         remindersSent: result.data.invitation.metadata.remindersSent,
         lastReminderSent: result.data.invitation.metadata.lastReminderSent,
       },
@@ -171,7 +167,7 @@ export class InvitationController {
 
   getInvitations = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
-    const { clientId } = req.params;
+    const { cid } = req.params;
     const { status, role, page, limit, sortBy, sortOrder } = req.query;
 
     if (!currentuser) {
@@ -182,7 +178,7 @@ export class InvitationController {
     }
 
     const query = {
-      clientId,
+      clientId: cid,
       status: status as any,
       role: role as any,
       page: page ? parseInt(page as string) : undefined,
@@ -203,7 +199,7 @@ export class InvitationController {
 
   getInvitationStats = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
-    const { clientId } = req.params;
+    const { cid } = req.params;
 
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
@@ -212,7 +208,7 @@ export class InvitationController {
       });
     }
 
-    const result = await this.invitationService.getInvitationStats(clientId, currentuser.sub);
+    const result = await this.invitationService.getInvitationStats(cid, currentuser.sub);
 
     res.status(httpStatusCodes.OK).json({
       success: result.success,
@@ -223,7 +219,7 @@ export class InvitationController {
 
   getInvitationById = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
-    const { invitationId } = req.params;
+    const { iuid } = req.params;
 
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
@@ -232,17 +228,22 @@ export class InvitationController {
       });
     }
 
-    // First validate that the invitation exists and user has access
-    // We'll implement this by getting the invitation and checking permissions
-    const result = await this.invitationService.validateInvitation(invitationId);
+    // Get the invitation by iuid
+    const invitation = await this.invitationService.getInvitationByIuid(iuid);
+    if (!invitation) {
+      return res.status(httpStatusCodes.NOT_FOUND).json({
+        success: false,
+        message: t('invitation.errors.notFound'),
+      });
+    }
 
     // Check if user has access to the client
-    await this.invitationService.getInvitationStats(result.data.clientId, currentuser.sub);
+    await this.invitationService.getInvitationStats(invitation.clientId, currentuser.sub);
 
     res.status(httpStatusCodes.OK).json({
-      success: result.success,
-      message: result.message,
-      data: result.data,
+      success: true,
+      message: t('invitation.success.retrieved'),
+      data: invitation,
     });
   };
 

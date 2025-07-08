@@ -6,16 +6,17 @@ import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { LanguageService } from '@shared/languages/language.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
-import { PropertyUnit, Property, Profile, Client, User } from '@models/index';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
-import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { PropertyUnit, Invitation, Property, Profile, Client, User } from '@models/index';
 import { EventsRegistryCache, PropertyCache, JobTracker, AuthCache } from '@caching/index';
 import {
-  PropertyUnitController,
-  PropertyController,
-  ClientController,
-  AuthController,
-} from '@controllers/index';
+  PropertyUnitDAO,
+  InvitationDAO,
+  PropertyDAO,
+  ProfileDAO,
+  ClientDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   DocumentProcessingWorker,
   PropertyUnitWorker,
@@ -32,10 +33,18 @@ import {
   EmailQueue,
 } from '@queues/index';
 import {
+  PropertyUnitController,
+  InvitationController,
+  PropertyController,
+  ClientController,
+  AuthController,
+} from '@controllers/index';
+import {
   PropertyCsvProcessor,
   EventEmitterService,
   PropertyUnitService,
   PermissionService,
+  InvitationService,
   AuthTokenService,
   PropertyService,
   ClientService,
@@ -47,6 +56,7 @@ const ControllerResources = {
   clientController: asClass(ClientController).scoped(),
   propertyController: asClass(PropertyController).scoped(),
   propertyUnitController: asClass(PropertyUnitController).scoped(),
+  invitationController: asClass(InvitationController).scoped(),
 };
 
 const ModelResources = {
@@ -55,6 +65,7 @@ const ModelResources = {
   profileModel: asValue(Profile),
   propertyModel: asValue(Property),
   propertyUnitModel: asValue(PropertyUnit),
+  invitationModel: asValue(Invitation),
 };
 
 const ServiceResources = {
@@ -69,6 +80,7 @@ const ServiceResources = {
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   permissionService: asClass(PermissionService).singleton(),
+  invitationService: asClass(InvitationService).singleton(),
 };
 
 const DAOResources = {
@@ -77,6 +89,7 @@ const DAOResources = {
   profileDAO: asClass(ProfileDAO).singleton(),
   propertyDAO: asClass(PropertyDAO).singleton(),
   propertyUnitDAO: asClass(PropertyUnitDAO).singleton(),
+  invitationDAO: asClass(InvitationDAO).singleton(),
 };
 
 const CacheResources = {

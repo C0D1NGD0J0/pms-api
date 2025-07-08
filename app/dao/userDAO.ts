@@ -428,4 +428,114 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       throw this.throwErrorHandler(error);
     }
   }
+
+  /**
+   * Create a new user from an invitation acceptance
+   */
+  async createUserFromInvitation(
+    invitationData: any,
+    userData: any,
+    session?: any
+  ): Promise<IUserDocument> {
+    try {
+      const userId = new Types.ObjectId();
+
+      const user = await this.insert(
+        {
+          _id: userId,
+          uid: hashGenerator({}),
+          email: invitationData.inviteeEmail,
+          password: userData.password,
+          isActive: true, // Auto-activate invited users
+          activeCid: invitationData.clientId,
+          cids: [
+            {
+              cid: invitationData.clientId,
+              isConnected: true,
+              roles: [invitationData.role],
+              displayName:
+                invitationData.personalInfo.firstName + ' ' + invitationData.personalInfo.lastName,
+            },
+          ],
+        },
+        session
+      );
+
+      return user;
+    } catch (error) {
+      this.logger.error('Error creating user from invitation:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Add an existing user to a client with the specified role
+   */
+  async addUserToClient(
+    userId: string,
+    clientId: string,
+    role: IUserRoleType,
+    displayName: string,
+    session?: any
+  ): Promise<IUserDocument | null> {
+    try {
+      // Check if user already has access to this client
+      const user = await this.getUserById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const existingConnection = user.cids.find((c) => c.cid === clientId);
+      if (existingConnection) {
+        return await this.updateById(
+          userId,
+          {
+            $set: {
+              'cids.$.isConnected': true,
+              'cids.$.roles': [role],
+              'cids.$.displayName': displayName,
+            },
+          },
+          { session }
+        );
+      } else {
+        return await this.updateById(
+          userId,
+          {
+            $push: {
+              cids: {
+                cid: clientId,
+                isConnected: true,
+                roles: [role],
+                displayName,
+              },
+            },
+          },
+          { session }
+        );
+      }
+    } catch (error) {
+      this.logger.error('Error adding user to client:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Check if a user already exists with the given email and has access to the client
+   */
+  async getUserWithClientAccess(email: string, clientId: string): Promise<IUserDocument | null> {
+    try {
+      const user = await this.findFirst({
+        email: email.toLowerCase(),
+        deletedAt: null,
+        'cids.cid': clientId,
+        'cids.isConnected': true,
+      });
+
+      return user;
+    } catch (error) {
+      this.logger.error('Error checking user client access:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
 }

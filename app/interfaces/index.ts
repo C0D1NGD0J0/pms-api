@@ -1,4 +1,5 @@
 export * from './propertyUnit.interface';
+export * from './invitation.interface';
 export * from './unit-patterns.types';
 export * from './property.interface';
 export * from './profile.interface';

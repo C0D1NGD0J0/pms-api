@@ -52,24 +52,6 @@ export const isValidResource = async (resourceName: 'property' | 'propertyUnit',
   }
 };
 
-const validatepuid = async (type: 'id' | 'puid', value: string) => {
-  const { propertyUnitDAO }: { propertyUnitDAO: PropertyUnitDAO } = container.cradle;
-  try {
-    if (type === 'id' && isValidObjectId(value)) {
-      const unit = await propertyUnitDAO.findFirst({ _id: value, deletedAt: null });
-      return !!unit;
-    }
-    if (type === 'puid' && value.length) {
-      const unit = await propertyUnitDAO.findFirst({ puid: value, deletedAt: null });
-      return !!unit;
-    }
-    return false;
-  } catch (error) {
-    console.error('Error checking property existence', error);
-    return false;
-  }
-};
-
 const isUniqueUnitNumber = async (pid: string, unitNumber: string, unitId?: string) => {
   const {
     propertyUnitDAO,
@@ -101,12 +83,6 @@ const isUniqueUnitNumber = async (pid: string, unitNumber: string, unitId?: stri
     return false;
   }
 };
-
-export const ValidateUnitId = z.object({
-  puid: z.string().refine(async (puid) => await validatepuid('puid', puid), {
-    message: 'Invalid unit ID',
-  }),
-});
 
 const UnitTypeZodEnum = z.enum(Object.values(PropertyUnitTypeEnum) as [string, ...string[]]);
 const UnitStatusZodEnum = z.enum(Object.values(PropertyUnitStatusEnum) as [string, ...string[]]);

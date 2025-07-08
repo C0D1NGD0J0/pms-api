@@ -221,32 +221,6 @@ export const PropertySearchSchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).optional(),
 });
 
-export const ValidateIdSchema = z.object({
-  id: z.string().refine(
-    async (id) => {
-      const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
-      const property = await propertyDAO.findById(id);
-      return !!property;
-    },
-    {
-      message: 'Invalid params detected in the request.',
-    }
-  ),
-});
-
-export const ValidateCidSchema = z.object({
-  cid: z.string().refine(
-    async (id) => {
-      const { clientDAO }: { clientDAO: ClientDAO } = container.cradle;
-      const client = await clientDAO.findFirst({ cid: id });
-      return !!client;
-    },
-    {
-      message: 'Invalid params detected in the request.',
-    }
-  ),
-});
-
 export const UpdateOccupancySchema = z.object({
   pid: z.string().refine(
     async (pid) => {

@@ -34,6 +34,8 @@ export const MAIL_TYPES = {
   FORGOT_PASSWORD: 'forgotPassword',
   PASSWORD_RESET: 'passwordReset',
   ACCOUNT_UPDATE: 'accountUpdate',
+  INVITATION: 'invitation',
+  INVITATION_REMINDER: 'invitationReminder',
 };
 
 export const QUEUE_NAMES = {
@@ -59,6 +61,8 @@ export const JOB_NAME = {
   DOCUMENT_UPDATE_JOB: 'documentUpdateJob',
   DOCUMENT_FAILURE_JOB: 'documentFailureJob',
   UNIT_BATCH_CREATION_JOB: 'unitBatchCreation',
+  INVITATION_JOB: 'invitationJob',
+  INVITATION_REMINDER_JOB: 'invitationReminderJob',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {

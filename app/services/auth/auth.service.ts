@@ -553,4 +553,104 @@ export class AuthService {
     await this.authCache.invalidateUserSession(payload.data.sub as string);
     return { success: true, data: null, message: t('auth.success.logoutSuccessful') };
   }
+
+  /**
+   * Complete user registration from invitation acceptance
+   * This method handles the signup process for users who were invited to join a client
+   */
+  async inviteUserSignup(
+    _invitationToken: string,
+    _userData: {
+      password: string;
+      location?: string;
+      timeZone?: string;
+      lang?: string;
+    }
+  ): Promise<
+    ISuccessReturnData<{
+      accessToken: string;
+      refreshToken: string;
+      user: any;
+    }>
+  > {
+    const session = await this.userDAO.startSession();
+
+    try {
+      const result = await this.userDAO.withTransaction(session, async (_session) => {
+        // This will be handled by the InvitationService.acceptInvitation method
+        // We're keeping this method here for API consistency but it will delegate
+        // to the invitation service in the controller layer
+        throw new Error('This method should be called through InvitationService.acceptInvitation');
+      });
+
+      return result;
+    } catch (error) {
+      this.log.error('Error in invite user signup:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Login for users who just completed invitation signup
+   * This is a simplified login that skips some checks since the user was just created
+   */
+  async loginAfterInvitationSignup(
+    userId: string,
+    clientId: string
+  ): Promise<
+    ISuccessReturnData<{
+      accessToken: string;
+      refreshToken: string;
+      activeAccount: { csub: string; displayName: string };
+      accounts: { csub: string; displayName: string }[] | null;
+    }>
+  > {
+    try {
+      const user = await this.userDAO.getUserById(userId);
+      if (!user) {
+        throw new NotFoundError({ message: t('auth.errors.userNotFound') });
+      }
+
+      const activeConnection = user.cids.find((c) => c.cid === clientId);
+      if (!activeConnection) {
+        throw new UnauthorizedError({ message: t('auth.errors.noAccessToClient') });
+      }
+
+      // Generate tokens
+      const tokens = this.tokenService.createJwtTokens({
+        sub: user._id.toString(),
+        rememberMe: false,
+        csub: activeConnection.cid,
+      });
+
+      // Cache tokens and user info
+      await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, false);
+
+      const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
+      currentuser && (await this.authCache.saveCurrentUser(currentuser));
+
+      // Get all connected clients for account switching
+      const connectedClients = user.cids.filter((c) => c.isConnected);
+      const otherAccounts = connectedClients
+        .filter((c) => c.cid !== activeConnection.cid)
+        .map((c) => ({ csub: c.cid, displayName: c.displayName }));
+
+      return {
+        success: true,
+        data: {
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          activeAccount: {
+            csub: activeConnection.cid,
+            displayName: activeConnection.displayName,
+          },
+          accounts: otherAccounts.length > 0 ? otherAccounts : null,
+        },
+        message: t('auth.success.loginSuccessful'),
+      };
+    } catch (error) {
+      this.log.error('Error in login after invitation signup:', error);
+      throw error;
+    }
+  }
 }

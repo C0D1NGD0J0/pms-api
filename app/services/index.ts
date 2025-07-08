@@ -1,6 +1,7 @@
 export * from './eventEmitter';
 export * from './fileUpload';
 export * from './permission';
+export * from './invitation';
 export * from './external';
 export * from './property';
 export * from './client';

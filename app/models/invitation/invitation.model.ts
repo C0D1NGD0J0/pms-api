@@ -8,7 +8,7 @@ const logger = createLogger('InvitationModel');
 
 const InvitationSchema = new Schema<IInvitationDocument>(
   {
-    invitationId: {
+    iuid: {
       type: String,
       required: true,
       unique: true,
@@ -166,7 +166,7 @@ InvitationSchema.pre('save', async function (this: IInvitationDocument, next) {
     // auto-expire invitations
     if (this.status === 'pending' && this.expiresAt <= new Date()) {
       this.status = 'expired';
-      logger.info(`Auto-expired invitation ${this.invitationId}`);
+      logger.info(`Auto-expired invitation ${this.iuid}`);
     }
 
     next();

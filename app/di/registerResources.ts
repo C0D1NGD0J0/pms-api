@@ -18,21 +18,6 @@ import {
   UserDAO,
 } from '@dao/index';
 import {
-  DocumentProcessingWorker,
-  PropertyUnitWorker,
-  PropertyWorker,
-  UploadWorker,
-  EmailWorker,
-} from '@workers/index';
-import {
-  DocumentProcessingQueue,
-  PropertyUnitQueue,
-  EventBusQueue,
-  PropertyQueue,
-  UploadQueue,
-  EmailQueue,
-} from '@queues/index';
-import {
   PropertyUnitController,
   InvitationController,
   PropertyController,
@@ -40,6 +25,24 @@ import {
   AuthController,
 } from '@controllers/index';
 import {
+  DocumentProcessingWorker,
+  PropertyUnitWorker,
+  InvitationWorker,
+  PropertyWorker,
+  UploadWorker,
+  EmailWorker,
+} from '@workers/index';
+import {
+  DocumentProcessingQueue,
+  PropertyUnitQueue,
+  InvitationQueue,
+  EventBusQueue,
+  PropertyQueue,
+  UploadQueue,
+  EmailQueue,
+} from '@queues/index';
+import {
+  InvitationCsvProcessor,
   PropertyCsvProcessor,
   EventEmitterService,
   PropertyUnitService,
@@ -78,6 +81,7 @@ const ServiceResources = {
   emitterService: asClass(EventEmitterService).singleton(),
   propertyUnitService: asClass(PropertyUnitService).singleton(),
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
+  invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   permissionService: asClass(PermissionService).singleton(),
   invitationService: asClass(InvitationService).singleton(),
@@ -105,6 +109,7 @@ const WorkerResources = {
   propertyWorker: asClass(PropertyWorker).singleton(),
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
   uploadWorker: asClass(UploadWorker).singleton(),
+  invitationWorker: asClass(InvitationWorker).singleton(),
 };
 
 const QueuesResources = {
@@ -114,6 +119,7 @@ const QueuesResources = {
   propertyQueue: asClass(PropertyQueue).singleton(),
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
   uploadQueue: asClass(UploadQueue).singleton(),
+  invitationQueue: asClass(InvitationQueue).singleton(),
 };
 
 const UtilsResources = {
@@ -139,12 +145,14 @@ export const initQueues = (container: AwilixContainer) => {
   container.resolve('propertyQueue');
   container.resolve('propertyUnitQueue');
   container.resolve('uploadQueue');
+  container.resolve('invitationQueue');
   container.resolve('clamScanner');
   container.resolve('documentProcessingWorker');
   container.resolve('emailWorker');
   container.resolve('propertyWorker');
   container.resolve('propertyUnitWorker');
   container.resolve('uploadWorker');
+  container.resolve('invitationWorker');
 };
 
 export const registerResources = {

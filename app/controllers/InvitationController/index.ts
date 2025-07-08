@@ -1,8 +1,8 @@
 import { t } from '@shared/languages';
 import { Response, Request } from 'express';
-import { AppRequest } from '@interfaces/utils.interface';
 import { httpStatusCodes, setAuthCookies } from '@utils/index';
 import { InvitationService, AuthService } from '@services/index';
+import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
 
 interface IConstructor {
   invitationService: InvitationService;
@@ -278,5 +278,55 @@ export class InvitationController {
       message: 'Feature coming soon',
       data: [],
     });
+  };
+
+  validateInvitationCsv = async (req: AppRequest, res: Response) => {
+    const { cid } = req.params;
+    const { currentuser } = req.context;
+
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: t('auth.errors.unauthorized'),
+      });
+    }
+
+    if (!req.body.scannedFiles) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: t('invitation.errors.noCsvFileUploaded'),
+      });
+    }
+
+    const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
+    const result = await this.invitationService.validateInvitationCsv(cid, csvFile, currentuser);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  importInvitationsFromCsv = async (req: AppRequest, res: Response) => {
+    const { cid } = req.params;
+    const { currentuser } = req.context;
+
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: t('auth.errors.unauthorized'),
+      });
+    }
+
+    if (!req.body.scannedFiles) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: t('invitation.errors.noCsvFileUploaded'),
+      });
+    }
+
+    const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
+    const result = await this.invitationService.importInvitationsFromCsv(
+      cid,
+      csvFile.path,
+      currentuser.sub
+    );
+    res.status(httpStatusCodes.OK).json(result);
   };
 }

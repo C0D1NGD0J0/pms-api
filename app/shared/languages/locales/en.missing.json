@@ -9,5 +9,10 @@
     "success": {
       "retrieved": "client.success.retrieved"
     }
+  },
+  "invitation": {
+    "success": {
+      "csvValidationStarted": "invitation.success.csvValidationStarted"
+    }
   }
 }

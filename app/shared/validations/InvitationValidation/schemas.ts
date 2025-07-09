@@ -134,7 +134,6 @@ export const iuidSchema = z.object({
   iuid: z.string().min(10, 'Invalid invitation ID').max(255, 'Invalid invitation ID'),
 });
 
-// CSV invitation schema for bulk import
 export const invitationCsvSchema = z.object({
   inviteeEmail: z
     .string()
@@ -171,10 +170,29 @@ export const invitationCsvSchema = z.object({
 
   expectedStartDate: z
     .string()
-    .datetime('Please provide a valid date')
-    .transform((str) => new Date(str))
+    .transform((str) => {
+      if (!str || str.trim() === '') {
+        return undefined;
+      }
+
+      const trimmed = str.trim();
+      let parsedDate: Date;
+
+      if (/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?/.test(trimmed)) {
+        parsedDate = new Date(trimmed);
+      } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+        parsedDate = new Date(trimmed);
+      } else {
+        parsedDate = new Date(trimmed);
+      }
+
+      if (isNaN(parsedDate.getTime())) {
+        throw new Error('Please provide a valid date (formats: YYYY-MM-DD, MM/DD/YYYY)');
+      }
+
+      return parsedDate;
+    })
     .optional(),
 
-  // Client ID will be added by the processor
   cid: z.string().optional(),
 });

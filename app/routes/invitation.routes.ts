@@ -42,16 +42,13 @@ router.post(
   })
 );
 
-// Protected routes (authentication required)
-// Note: Authentication middleware will be applied at the app level or route group level
-
 /**
  * @route POST /api/v1/invites/:cid/send
  * @desc Send an invitation to join a client
  * @access Private (Admin/Manager only)
  */
 router.post(
-  '/:cid/send',
+  '/:cid/send_invite',
   isAuthenticated,
   validateRequest({
     params: UtilsValidations.cid,
@@ -165,7 +162,7 @@ router.get(
 router.post(
   '/:cid/validate_csv',
   isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.INVITE),
+  requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
@@ -185,7 +182,7 @@ router.post(
 router.post(
   '/:cid/import_invitations_csv',
   isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.INVITE),
+  requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({

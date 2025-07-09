@@ -58,7 +58,6 @@ const InvitationSchema = new Schema<IInvitationDocument>(
     expiresAt: {
       type: Date,
       required: true,
-      index: true,
       default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
     },
     personalInfo: {

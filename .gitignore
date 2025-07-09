@@ -133,3 +133,5 @@ dist
 random.ts
 .claude/
 .build/
+./docs
+docs/

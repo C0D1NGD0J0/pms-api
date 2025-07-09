@@ -100,7 +100,7 @@ export class RedisService {
       }
 
       const port = await this.redisMemoryServer.getPort();
-      const url = `redis://127.0.0.1:${port}`;
+      const url = `redis://129.0.0.1:${port}`;
       this.redisTestUrl = url;
       this.log.info(`Redis memory server initialized at ${url}`);
 

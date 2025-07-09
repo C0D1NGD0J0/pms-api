@@ -25,7 +25,7 @@ export class DatabaseService implements IDatabaseService {
   }
 
   isConnected(): boolean {
-    console.log('Checking database connection status...', envVariables);
+    console.log(this.connected, 'Checking database connection status...', mongoose.connection);
     return this.connected && mongoose.connection.readyState === 1;
   }
 

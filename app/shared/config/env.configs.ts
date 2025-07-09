@@ -144,7 +144,15 @@ class EnvVariables {
       PROVIDER_KEY: process.env.GEOCODER_PROVIDER_KEY || '',
     };
     this.PLATFORM_FEE_PERCENTAGE = Number(process.env.PLATFORM_FEE_PERCENTAGE);
-    this.validateSecretValue();
+
+    console.log('🔍 Starting environment validation...');
+    try {
+      this.validateSecretValue();
+      console.log('✅ Environment validation passed');
+    } catch (error) {
+      console.error('❌ Environment validation failed:', error.message);
+      throw error;
+    }
   }
 
   private validateSecretValue(): void {
@@ -153,9 +161,15 @@ class EnvVariables {
         const fullKey = parentKey ? `${parentKey}.${key}` : key;
         if (typeof value === 'object' && value !== null) {
           validateObject(value, fullKey);
-        } else if (value === undefined || value === '') {
-          console.warn(`Environment variable ${fullKey} is not set!`);
-          throw new Error(`Environment variable ${fullKey} not found!`);
+        } else if (
+          value === undefined ||
+          value === '' ||
+          (typeof value === 'number' && isNaN(value))
+        ) {
+          console.warn(`❌ Environment variable ${fullKey} is not set or invalid!`);
+          console.warn(`   Expected type: ${typeof value === 'number' ? 'number' : 'string'}`);
+          console.warn(`   Current value: ${value}`);
+          throw new Error(`Environment variable ${fullKey} not found or invalid!`);
         }
       }
     };

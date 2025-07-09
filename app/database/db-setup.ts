@@ -57,9 +57,13 @@ export class DatabaseService implements IDatabaseService {
     }
 
     try {
+      console.log('🔍 Starting database connection process...');
       mongoose.set('strictQuery', true);
+
       const url = this.getDatabaseUrl(env);
-      console.log('======= status...');
+      console.log(`🔌 Attempting to connect to ${env} database...`);
+      console.log(`📍 Database URL: ${url.replace(/\/\/.*:.*@/, '//*****:*****@')}`); // Hide credentials
+
       await mongoose.connect(url, {
         family: 4,
         minPoolSize: 5,
@@ -68,20 +72,26 @@ export class DatabaseService implements IDatabaseService {
         connectTimeoutMS: 10000,
         serverSelectionTimeoutMS: 15000,
       });
-      console.log('=======Checking database connection status...');
+
+      console.log('✅ MongoDB connection established successfully');
+
+      // Set up Redis connection
       this.redisService.connect();
-      console.log(url, '======= database connection');
+
+      // Set up disconnect handler
       mongoose.connection.on('disconnected', () => {
         this.connected = false;
         this.log.error('MongoDB disconnected....');
       });
+
       this.connected = true;
-      console.log('======= database connectiosdsdsn======', this.connected);
+      console.log('✅ Database service fully initialized');
       this.log.info(`Connected to ${env} database`);
       return true;
     } catch (err) {
+      console.error('❌ Database connection failed:', err);
       this.log.error(`Database Connection Error for ${env}: `, err);
-      // process.exit(1);
+      this.connected = false;
       throw err;
     }
   }

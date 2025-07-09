@@ -84,13 +84,24 @@ export class App implements IAppSetup {
     app.use(detectLanguage);
     app.use(setUserLanguage);
     app.use(`${BASE_PATH}/healthcheck`, (req, res) => {
-      const healthCheck = {
-        uptime: process.uptime(),
-        message: 'OK',
-        timestamp: Date.now(),
-        database: this.db.isConnected() ? 'Connected' : 'Disconnected',
-      };
-      res.status(200).json(healthCheck);
+      try {
+        const healthCheck = {
+          uptime: process.uptime(),
+          message: 'OK',
+          timestamp: Date.now(),
+          database: this.db.isConnected() ? 'Connected' : 'Disconnected',
+        };
+        res.status(200).json(healthCheck);
+      } catch (error) {
+        console.error('❌ Health check error:', error);
+        res.status(500).json({
+          uptime: process.uptime(),
+          message: 'Health check failed',
+          timestamp: Date.now(),
+          database: 'Unknown',
+          error: error.message,
+        });
+      }
     });
     app.use(`${BASE_PATH}/queues`, serverAdapter.getRouter());
     app.use(`${BASE_PATH}/auth`, routes.authRoutes);

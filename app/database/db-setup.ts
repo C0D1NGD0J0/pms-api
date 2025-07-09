@@ -57,13 +57,10 @@ export class DatabaseService implements IDatabaseService {
     }
 
     try {
-      console.log('🔍 Starting database connection process...');
       mongoose.set('strictQuery', true);
 
       const url = this.getDatabaseUrl(env);
-      console.log(`🔌 Attempting to connect to ${env} database...`);
-      console.log(`📍 Database URL: ${url.replace(/\/\/.*:.*@/, '//*****:*****@')}`); // Hide credentials
-
+      console.log(`🔗 Connecting to ${env} database at ${url}...`);
       await mongoose.connect(url, {
         family: 4,
         minPoolSize: 5,
@@ -72,8 +69,6 @@ export class DatabaseService implements IDatabaseService {
         connectTimeoutMS: 10000,
         serverSelectionTimeoutMS: 15000,
       });
-
-      console.log('✅ MongoDB connection established successfully');
 
       // Set up Redis connection
       this.redisService.connect();

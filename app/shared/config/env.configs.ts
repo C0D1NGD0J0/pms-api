@@ -167,8 +167,6 @@ class EnvVariables {
           (typeof value === 'number' && isNaN(value))
         ) {
           console.warn(`❌ Environment variable ${fullKey} is not set or invalid!`);
-          console.warn(`   Expected type: ${typeof value === 'number' ? 'number' : 'string'}`);
-          console.warn(`   Current value: ${value}`);
           throw new Error(`Environment variable ${fullKey} not found or invalid!`);
         }
       }

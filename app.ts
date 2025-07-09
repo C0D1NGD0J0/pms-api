@@ -10,6 +10,7 @@ import compression from 'compression';
 import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
 import { serverAdapter } from '@queues/index';
+import { envVariables } from '@shared/config';
 import sanitizer from 'perfect-express-sanitizer';
 import { DatabaseService } from '@database/index';
 import mongoSanitize from 'express-mongo-sanitize';
@@ -23,7 +24,6 @@ import {
   detectLanguage,
   requestLogger,
 } from '@shared/middlewares';
-import { envVariables } from '@shared/config';
 
 export interface IAppSetup {
   initConfig(): void;

@@ -154,6 +154,7 @@ class EnvVariables {
         if (typeof value === 'object' && value !== null) {
           validateObject(value, fullKey);
         } else if (value === undefined || value === '') {
+          console.warn(`Environment variable ${fullKey} is not set!`);
           throw new Error(`Environment variable ${fullKey} not found!`);
         }
       }

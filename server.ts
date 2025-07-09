@@ -80,13 +80,8 @@ class Server {
       return undefined;
     }
 
-    console.log('=== HTTP SERVER STARTUP DEBUG ===');
-    console.log('Environment:', this.SERVER_ENV);
-    console.log('Port:', this.PORT);
-    console.log('Port type:', typeof this.PORT);
-
     httpServer.listen(this.PORT, '0.0.0.0', () => {
-      console.log(`🚀 Server started successfully on port ${this.PORT}`);
+      console.log(require.main === module, `🚀 Server started successfully on port ${this.PORT}`);
       this.log.info('Server initialized...');
     });
 

@@ -49,7 +49,7 @@ const config: JestConfigWithTsJest = {
     '@dao/(.*)': '<rootDir>/app/dao/$1',
     '@shared/(.*)': '<rootDir>/app/shared/$1',
     '@services/(.*)': '<rootDir>/app/services/$1',
-    '@tests/(.*)': '<rootDir>/tests/$1',
+    // '@tests/(.*)': '<rootDir>/tests/$1',
     '@root/(.*)': '<rootDir>/$1',
     '@/(.*)': '<rootDir>/app/$1',
   },

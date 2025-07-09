@@ -25,7 +25,6 @@ export class DatabaseService implements IDatabaseService {
   }
 
   isConnected(): boolean {
-    console.log('=======Checking database connection status...');
     return this.connected && mongoose.connection.readyState === 1;
   }
 
@@ -60,7 +59,7 @@ export class DatabaseService implements IDatabaseService {
     try {
       mongoose.set('strictQuery', true);
       const url = this.getDatabaseUrl(env);
-
+      console.log('======= status...');
       await mongoose.connect(url, {
         family: 4,
         minPoolSize: 5,
@@ -69,6 +68,7 @@ export class DatabaseService implements IDatabaseService {
         connectTimeoutMS: 10000,
         serverSelectionTimeoutMS: 15000,
       });
+      console.log('=======Checking database connection status...');
       this.redisService.connect();
       console.log(url, '======= database connection');
       mongoose.connection.on('disconnected', () => {
@@ -76,7 +76,7 @@ export class DatabaseService implements IDatabaseService {
         this.log.error('MongoDB disconnected....');
       });
       this.connected = true;
-      console.log('======= database connection======', this.connected);
+      console.log('======= database connectiosdsdsn======', this.connected);
       this.log.info(`Connected to ${env} database`);
       return true;
     } catch (err) {

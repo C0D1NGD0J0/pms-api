@@ -81,7 +81,7 @@ class Server {
     }
 
     httpServer.listen(this.PORT, '0.0.0.0', () => {
-      console.log(require.main === module, `🚀 Server started successfully on port ${this.PORT}`);
+      console.log(`🚀 Server started successfully on port ${this.PORT}`);
       this.log.info('Server initialized...');
     });
 

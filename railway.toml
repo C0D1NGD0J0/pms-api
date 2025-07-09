@@ -1,6 +1,5 @@
 [build]
-builder = "nixpacks"
-buildCommand = "npm install --production && npm install typescript tsc-alias --no-save && npm run build"
+builder = "dockerfile"
 
 [deploy]
 startCommand = "npm start"
@@ -9,3 +8,4 @@ restartPolicyMaxRetries = 3
 
 [env]
 NODE_ENV = "production"
+SKIP_REDIS_BINARY_DOWNLOAD = "true"

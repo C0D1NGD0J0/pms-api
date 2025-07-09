@@ -105,7 +105,9 @@ export function createLogger(name: string) {
   };
 
   const stream =
-    process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev'
+    process.env.NODE_ENV === 'development' ||
+    process.env.NODE_ENV === 'dev' ||
+    process.env.ENABLE_CONSOLE_LOGS
       ? customStream
       : nullStream;
 

@@ -23,6 +23,7 @@ import {
   detectLanguage,
   requestLogger,
 } from '@shared/middlewares';
+import { envVariables } from '@shared/config';
 
 export interface IAppSetup {
   initConfig(): void;
@@ -60,7 +61,7 @@ export class App implements IAppSetup {
         credentials: true,
         optionsSuccessStatus: 200,
         methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-        origin: 'http://localhost:3000',
+        origin: envVariables.FRONTEND.URL || 'http://localhost:3000',
       })
     );
     app.use(mongoSanitize());

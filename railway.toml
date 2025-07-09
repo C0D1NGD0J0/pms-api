@@ -5,6 +5,8 @@ builder = "dockerfile"
 startCommand = "npm start"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
+healthcheckPath = "/api/v1/healthcheck"
+healthcheckTimeout = 300
 
 [env]
 NODE_ENV = "production"

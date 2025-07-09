@@ -23,6 +23,4 @@ RUN npm run build
 # Remove build dependencies
 RUN npm uninstall typescript tsc-alias
 
-EXPOSE 3000
-
 CMD ["npm", "start"]

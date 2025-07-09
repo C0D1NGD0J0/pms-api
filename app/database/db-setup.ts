@@ -60,7 +60,7 @@ export class DatabaseService implements IDatabaseService {
     try {
       mongoose.set('strictQuery', true);
       const url = this.getDatabaseUrl(env);
-      console.log('======= database connection status', url);
+
       await mongoose.connect(url, {
         family: 4,
         minPoolSize: 5,
@@ -70,12 +70,13 @@ export class DatabaseService implements IDatabaseService {
         serverSelectionTimeoutMS: 15000,
       });
       this.redisService.connect();
-
+      console.log(url, '======= database connection');
       mongoose.connection.on('disconnected', () => {
         this.connected = false;
         this.log.error('MongoDB disconnected....');
       });
       this.connected = true;
+      console.log('======= database connection======', this.connected);
       this.log.info(`Connected to ${env} database`);
       return true;
     } catch (err) {

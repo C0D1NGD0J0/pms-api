@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm ci --production && npm run build"
+buildCommand = "npm install --production && npm install typescript tsc-alias --no-save && npm run build"
 
 [deploy]
 startCommand = "npm start"

@@ -71,9 +71,9 @@ export class ClamScannerService {
           err.message?.includes('socket')
         ) {
           this.log.error(
-            `ClamAV Error: Could not connect to clamd daemon at socket  ${this.options}`
+            `ClamAV Error: Could not connect to clamd daemon at socket  ${JSON.stringify(this.options)}`
           );
-          throw new Error(`ClamAV daemon connection failed at  ${this.options}`);
+          throw new Error(`ClamAV daemon connection failed at  ${JSON.stringify(this.options)}`);
         } else {
           this.log.error('ClamAV initialization failed:', err);
           throw new Error(`ClamAV scanner failed to initialize: ${err.message}`);

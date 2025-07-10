@@ -55,6 +55,11 @@ class EnvVariables {
     ENV: string;
     CLAMDSCAN_SOCKET: string;
   };
+  public CLAMAV: {
+    HOST: string;
+    PORT: number;
+    SOCKET: string;
+  };
   public AUTH_COOKIE: {
     NAME: string;
   };
@@ -146,6 +151,11 @@ class EnvVariables {
     this.GEOCODER = {
       PROVIDER: process.env.GEOCODER_PROVIDER || '',
       PROVIDER_KEY: process.env.GEOCODER_PROVIDER_KEY || '',
+    };
+    this.CLAMAV = {
+      HOST: process.env.CLAMAV_HOST || 'localhost',
+      PORT: Number(process.env.CLAMAV_PORT) || 3310,
+      SOCKET: process.env.CLAMDSCAN_SOCKET || '/tmp/clamd.sock',
     };
     this.PLATFORM_FEE_PERCENTAGE = Number(process.env.PLATFORM_FEE_PERCENTAGE);
 

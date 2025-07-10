@@ -19,19 +19,35 @@ export class ClamScannerService {
   constructor() {
     this.log = createLogger('ClamAVScannerService');
 
-    this.options = {
-      removeInfected: false,
-      quarantineInfected: false,
-      scanLog: 'logs/clamav_scan.log',
-      debugMode: false,
-      scanRecursively: true,
+    // Environment-specific configurations
+    const devConfig = {
       clamdscan: {
-        socket: envVariables.SERVER.CLAMDSCAN_SOCKET,
+        socket: envVariables.CLAMAV.SOCKET,
         timeout: 120000,
         path: '/usr/local/bin/clamdscan',
       },
       preference: 'clamdscan',
+    };
+
+    const prodConfig = {
+      clamdscan: {
+        host: envVariables.CLAMAV.HOST,
+        port: envVariables.CLAMAV.PORT,
+        timeout: 120000,
+      },
+      preference: 'clamdscan',
+    };
+
+    const envConfig = envVariables.SERVER.ENV !== 'dev' ? prodConfig : devConfig;
+
+    this.options = {
+      removeInfected: false,
+      quarantineInfected: false,
+      scanLog: 'logs/clamav_scan.log',
+      debugMode: envVariables.SERVER.ENV === 'dev',
+      scanRecursively: true,
       maxFileSize: 26214400, // 25MB
+      ...envConfig,
     };
 
     new NodeClam()

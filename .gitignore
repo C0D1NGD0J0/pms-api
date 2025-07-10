@@ -135,3 +135,4 @@ random.ts
 .build/
 ./docs
 docs/
+*.md

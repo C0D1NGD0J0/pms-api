@@ -21,15 +21,15 @@ export class ClamScannerService {
     this.log = createLogger('ClamAVScannerService');
 
     // Temporary fallback for production due to Railway ClamAV service issues
-    // if (envVariables.SERVER.ENV === 'production') {
-    //   this.log.warn(
-    //     'ClamAV scanning disabled in production due to Railway service issues. Files will be processed without virus scanning.'
-    //   );
-    //   this.isProductionFallback = true;
-    //   this.isInitialized = true; // Mark as initialized to allow file processing
-    //   this.options = {}; // Initialize options for production fallback
-    //   return;
-    // }
+    if (envVariables.SERVER.ENV === 'production') {
+      this.log.warn(
+        'ClamAV scanning disabled in production due to Railway service issues. Files will be processed without virus scanning.'
+      );
+      this.isProductionFallback = true;
+      this.isInitialized = true; // Mark as initialized to allow file processing
+      this.options = {}; // Initialize options for production fallback
+      return;
+    }
 
     this.isProductionFallback = false;
 

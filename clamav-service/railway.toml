@@ -1,0 +1,11 @@
+[build]
+dockerImage = "clamav/clamav:latest"
+
+[deploy]
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+healthcheckTimeout = 300
+
+[env]
+CLAMAV_NO_CLAMD = "false"
+CLAMAV_NO_FRESHCLAM = "false"

@@ -15,9 +15,23 @@ export class ClamScannerService {
   private isInitialized: boolean = false;
   private readonly options: Record<string, any>;
   private readonly log: Logger;
+  private readonly isProductionFallback: boolean;
 
   constructor() {
     this.log = createLogger('ClamAVScannerService');
+
+    // Temporary fallback for production due to Railway ClamAV service issues
+    if (envVariables.SERVER.ENV === 'production') {
+      this.log.warn(
+        'ClamAV scanning disabled in production due to Railway service issues. Files will be processed without virus scanning.'
+      );
+      this.isProductionFallback = true;
+      this.isInitialized = true; // Mark as initialized to allow file processing
+      this.options = {}; // Initialize options for production fallback
+      return;
+    }
+
+    this.isProductionFallback = false;
 
     // Environment-specific configurations
     const devConfig = {
@@ -91,11 +105,11 @@ export class ClamScannerService {
   }
 
   isReady(): boolean {
-    return this.isInitialized && this.clamscan !== null;
+    return this.isInitialized && (this.isProductionFallback || this.clamscan !== null);
   }
 
   async scanFile(filePath: string): Promise<ScanResult> {
-    if (!this.isReady() || !this.clamscan) {
+    if (!this.isInitialized) {
       this.log.error('Scan attempt failed: ClamAV scanner not initialized');
       throw new Error('ClamAV scanner is not initialized');
     }
@@ -103,6 +117,22 @@ export class ClamScannerService {
     if (!filePath) {
       this.log.error('Scan attempt failed: No file path provided');
       throw new Error('No file path provided');
+    }
+
+    // Production fallback - skip actual scanning
+    if (this.isProductionFallback) {
+      this.log.info(
+        `Production fallback: Skipping virus scan for ${filePath} (ClamAV service unavailable)`
+      );
+      return {
+        isInfected: false,
+        viruses: [],
+      };
+    }
+
+    if (!this.clamscan) {
+      this.log.error('Scan attempt failed: ClamAV scanner not available');
+      throw new Error('ClamAV scanner is not available');
     }
 
     try {

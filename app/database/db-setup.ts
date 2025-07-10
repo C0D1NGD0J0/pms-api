@@ -60,7 +60,6 @@ export class DatabaseService implements IDatabaseService {
       mongoose.set('strictQuery', true);
 
       const url = this.getDatabaseUrl(env);
-      console.log(`🔗 Connecting to ${env} database at ${url}...`);
       await mongoose.connect(url, {
         family: 4,
         minPoolSize: 5,
@@ -80,12 +79,10 @@ export class DatabaseService implements IDatabaseService {
       });
 
       this.connected = true;
-      console.log('✅ Database service fully initialized');
-      this.log.info(`Connected to ${env} database`);
+      this.log.info(`🔗 Connected to ${env} database`);
       return true;
     } catch (err) {
-      console.error('❌ Database connection failed:', err);
-      this.log.error(`Database Connection Error for ${env}: `, err);
+      this.log.error(`❌ Database Connection Error for ${env}: `, err);
       this.connected = false;
       throw err;
     }

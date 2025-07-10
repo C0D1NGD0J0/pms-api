@@ -39,9 +39,11 @@ class EnvVariables {
     BUCKET_NAME: string;
   };
   public REDIS: {
+    URL: string;
     PORT: number;
     HOST: string;
-    URL: string;
+    USERNAME?: string;
+    PASSWORD?: string;
   };
   public DATABASE: {
     PROD_URL: string;
@@ -90,6 +92,8 @@ class EnvVariables {
       PORT: Number(process.env.REDIS_PORT) || 6379,
       HOST: process.env.REDIS_HOST || '',
       URL: process.env.REDIS_URL || '',
+      PASSWORD: process.env.REDIS_PASSWORD || '',
+      USERNAME: process.env.REDIS_USERNAME || '',
     };
     this.AWS = {
       REGION: process.env.AWS_REGION || '',

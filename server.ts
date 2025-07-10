@@ -81,12 +81,10 @@ class Server {
     }
 
     httpServer.listen(this.PORT, '0.0.0.0', () => {
-      console.log(`🚀 Server started successfully on port ${this.PORT}`);
       this.log.info('Server initialized...');
     });
 
     httpServer.on('error', (error: any) => {
-      console.error('❌ HTTP Server Error:', error);
       this.log.error('HTTP Server Error:', error);
     });
   }

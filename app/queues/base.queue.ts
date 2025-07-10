@@ -21,6 +21,13 @@ export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions = {
     lockDuration: 3600000, // 1hr
     stalledInterval: 100000,
   },
+  redis: {
+    host: envVariables.REDIS.HOST,
+    port: envVariables.REDIS.PORT,
+    username: envVariables.REDIS.USERNAME,
+    password: envVariables.REDIS.PASSWORD,
+    family: 0,
+  },
 };
 
 export type JobData = any;

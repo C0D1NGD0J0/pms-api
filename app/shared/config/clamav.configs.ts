@@ -38,13 +38,17 @@ export class ClamScannerService {
       preference: 'clamdscan',
     };
 
-    const envConfig = envVariables.SERVER.ENV !== 'dev' ? prodConfig : devConfig;
+    const envConfig = envVariables.SERVER.ENV === 'production' ? prodConfig : devConfig;
+
+    this.log.info(
+      `ClamAV Environment: ${envVariables.SERVER.ENV}, using ${envVariables.SERVER.ENV === 'production' ? 'TCP' : 'socket'} connection`
+    );
 
     this.options = {
       removeInfected: false,
       quarantineInfected: false,
       scanLog: 'logs/clamav_scan.log',
-      debugMode: envVariables.SERVER.ENV === 'dev',
+      debugMode: envVariables.SERVER.ENV !== 'production',
       scanRecursively: true,
       maxFileSize: 26214400, // 25MB
       ...envConfig,
@@ -70,10 +74,15 @@ export class ClamScannerService {
           err.code === 'ENOENT' ||
           err.message?.includes('socket')
         ) {
+          const connectionInfo =
+            envVariables.SERVER.ENV === 'production'
+              ? `${envVariables.CLAMAV.HOST}:${envVariables.CLAMAV.PORT}`
+              : `socket ${envVariables.CLAMAV.SOCKET}`;
+
           this.log.error(
-            `ClamAV Error: Could not connect to clamd daemon at socket  ${JSON.stringify(this.options)}`
+            `ClamAV Error: Could not connect to clamd daemon at ${connectionInfo}. Error: ${err.message}`
           );
-          throw new Error(`ClamAV daemon connection failed at  ${JSON.stringify(this.options)}`);
+          throw new Error(`ClamAV daemon connection failed at ${connectionInfo}: ${err.message}`);
         } else {
           this.log.error('ClamAV initialization failed:', err);
           throw new Error(`ClamAV scanner failed to initialize: ${err.message}`);

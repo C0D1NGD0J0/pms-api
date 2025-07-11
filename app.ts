@@ -10,6 +10,7 @@ import compression from 'compression';
 import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
 import { serverAdapter } from '@queues/index';
+import { envVariables } from '@shared/config';
 import sanitizer from 'perfect-express-sanitizer';
 import { DatabaseService } from '@database/index';
 import mongoSanitize from 'express-mongo-sanitize';
@@ -60,7 +61,7 @@ export class App implements IAppSetup {
         credentials: true,
         optionsSuccessStatus: 200,
         methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-        origin: 'http://localhost:3000',
+        origin: envVariables.FRONTEND.URL || 'http://localhost:3000',
       })
     );
     app.use(mongoSanitize());
@@ -83,13 +84,24 @@ export class App implements IAppSetup {
     app.use(detectLanguage);
     app.use(setUserLanguage);
     app.use(`${BASE_PATH}/healthcheck`, (req, res) => {
-      const healthCheck = {
-        uptime: process.uptime(),
-        message: 'OK',
-        timestamp: Date.now(),
-        database: this.db.isConnected() ? 'Connected' : 'Disconnected',
-      };
-      res.status(200).json(healthCheck);
+      try {
+        const healthCheck = {
+          uptime: process.uptime(),
+          message: 'OK',
+          timestamp: Date.now(),
+          database: this.db.isConnected() ? 'Connected' : 'Disconnected',
+        };
+        res.status(200).json(healthCheck);
+      } catch (error) {
+        console.error('❌ Health check error:', error);
+        res.status(500).json({
+          uptime: process.uptime(),
+          message: 'Health check failed',
+          timestamp: Date.now(),
+          database: 'Unknown',
+          error: error.message,
+        });
+      }
     });
     app.use(`${BASE_PATH}/queues`, serverAdapter.getRouter());
     app.use(`${BASE_PATH}/auth`, routes.authRoutes);

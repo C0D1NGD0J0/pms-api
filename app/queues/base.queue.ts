@@ -11,8 +11,8 @@ export const DEFAULT_JOB_OPTIONS: BullJobOptions = {
   attempts: 2,
   timeout: 60000,
   backoff: { type: 'fixed', delay: 10000 },
-  removeOnComplete: 100, // Reduced from 1000 to 100
-  removeOnFail: 500, // Reduced from 5000 to 500
+  removeOnComplete: 100,
+  removeOnFail: 500,
 };
 
 export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions = {
@@ -20,6 +20,13 @@ export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions = {
     maxStalledCount: 1800000,
     lockDuration: 3600000, // 1hr
     stalledInterval: 100000,
+  },
+  redis: {
+    host: envVariables.REDIS.HOST,
+    port: envVariables.REDIS.PORT,
+    username: envVariables.REDIS.USERNAME,
+    password: envVariables.REDIS.PASSWORD,
+    family: 0,
   },
 };
 

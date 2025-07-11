@@ -58,28 +58,32 @@ export class DatabaseService implements IDatabaseService {
 
     try {
       mongoose.set('strictQuery', true);
-      const url = this.getDatabaseUrl(env);
 
+      const url = this.getDatabaseUrl(env);
       await mongoose.connect(url, {
-        maxPoolSize: 20,
+        family: 4,
         minPoolSize: 5,
+        maxPoolSize: 20,
         socketTimeoutMS: 45000,
         connectTimeoutMS: 10000,
-        family: 4,
         serverSelectionTimeoutMS: 15000,
       });
+
+      // Set up Redis connection
       this.redisService.connect();
 
+      // Set up disconnect handler
       mongoose.connection.on('disconnected', () => {
         this.connected = false;
         this.log.error('MongoDB disconnected....');
       });
+
       this.connected = true;
-      this.log.info(`Connected to ${env} database`);
+      this.log.info(`🔗 Connected to ${env} database`);
       return true;
     } catch (err) {
-      this.log.error(`Database Connection Error for ${env}: `, err);
-      // process.exit(1);
+      this.log.error(`❌ Database Connection Error for ${env}: `, err);
+      this.connected = false;
       throw err;
     }
   }

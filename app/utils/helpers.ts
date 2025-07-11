@@ -91,7 +91,7 @@ export function createLogger(name: string) {
             output = color.grey.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
         }
 
-        if (envVariables.SERVER.ENV !== 'production') {
+        if (envVariables.SERVER.ENV !== 'production' || Boolean(process.env.ENABLE_CONSOLE_LOGS)) {
           console.log(output);
         }
       } catch (err) {
@@ -105,7 +105,9 @@ export function createLogger(name: string) {
   };
 
   const stream =
-    process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev'
+    process.env.NODE_ENV === 'development' ||
+    process.env.NODE_ENV === 'dev' ||
+    Boolean(process.env.ENABLE_CONSOLE_LOGS)
       ? customStream
       : nullStream;
 

@@ -31,6 +31,7 @@ export class RedisService {
         connectTimeout: 10000,
         keepAlive: 30000,
       },
+      url: envVariables.REDIS.URL,
       commandsQueueMaxLength: 100,
     });
 

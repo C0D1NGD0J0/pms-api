@@ -39,9 +39,11 @@ class EnvVariables {
     BUCKET_NAME: string;
   };
   public REDIS: {
+    URL: string;
     PORT: number;
     HOST: string;
-    URL: string;
+    USERNAME?: string;
+    PASSWORD?: string;
   };
   public DATABASE: {
     PROD_URL: string;
@@ -52,6 +54,11 @@ class EnvVariables {
     PORT: number;
     ENV: string;
     CLAMDSCAN_SOCKET: string;
+  };
+  public CLAMAV: {
+    HOST: string;
+    PORT: number;
+    SOCKET: string;
   };
   public AUTH_COOKIE: {
     NAME: string;
@@ -90,6 +97,8 @@ class EnvVariables {
       PORT: Number(process.env.REDIS_PORT) || 6379,
       HOST: process.env.REDIS_HOST || '',
       URL: process.env.REDIS_URL || '',
+      PASSWORD: process.env.REDIS_PASSWORD || '',
+      USERNAME: process.env.REDIS_USERNAME || '',
     };
     this.AWS = {
       REGION: process.env.AWS_REGION || '',
@@ -143,8 +152,21 @@ class EnvVariables {
       PROVIDER: process.env.GEOCODER_PROVIDER || '',
       PROVIDER_KEY: process.env.GEOCODER_PROVIDER_KEY || '',
     };
+    this.CLAMAV = {
+      HOST: process.env.CLAMAV_HOST || 'localhost',
+      PORT: Number(process.env.CLAMAV_PORT) || 3310,
+      SOCKET: process.env.CLAMDSCAN_SOCKET || '/tmp/clamd.sock',
+    };
     this.PLATFORM_FEE_PERCENTAGE = Number(process.env.PLATFORM_FEE_PERCENTAGE);
-    this.validateSecretValue();
+
+    console.log('🔍 Starting environment validation...');
+    try {
+      this.validateSecretValue();
+      console.log('✅ Environment validation passed');
+    } catch (error) {
+      console.error('❌ Environment validation failed:', error.message);
+      throw error;
+    }
   }
 
   private validateSecretValue(): void {
@@ -153,8 +175,13 @@ class EnvVariables {
         const fullKey = parentKey ? `${parentKey}.${key}` : key;
         if (typeof value === 'object' && value !== null) {
           validateObject(value, fullKey);
-        } else if (value === undefined || value === '') {
-          throw new Error(`Environment variable ${fullKey} not found!`);
+        } else if (
+          value === undefined ||
+          value === '' ||
+          (typeof value === 'number' && isNaN(value))
+        ) {
+          console.warn(`❌ Environment variable ${fullKey} is not set or invalid!`);
+          throw new Error(`Environment variable ${fullKey} not found or invalid!`);
         }
       }
     };

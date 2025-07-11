@@ -15,23 +15,44 @@ export class ClamScannerService {
   private isInitialized: boolean = false;
   private readonly options: Record<string, any>;
   private readonly log: Logger;
+  private readonly isProductionFallback: boolean;
 
   constructor() {
     this.log = createLogger('ClamAVScannerService');
+    this.isProductionFallback = false;
+
+    const devConfig = {
+      clamdscan: {
+        socket: envVariables.CLAMAV.SOCKET,
+        timeout: 120000,
+        path: '/usr/local/bin/clamdscan',
+      },
+      preference: 'clamdscan',
+    };
+
+    const prodConfig = {
+      clamdscan: {
+        host: envVariables.CLAMAV.HOST,
+        port: envVariables.CLAMAV.PORT,
+        timeout: 120000,
+      },
+      preference: 'clamdscan',
+    };
+
+    const envConfig = envVariables.SERVER.ENV === 'production' ? prodConfig : devConfig;
+
+    this.log.info(
+      `ClamAV Environment: ${envVariables.SERVER.ENV}, using ${envVariables.SERVER.ENV === 'production' ? 'TCP' : 'socket'} connection`
+    );
 
     this.options = {
       removeInfected: false,
       quarantineInfected: false,
       scanLog: 'logs/clamav_scan.log',
-      debugMode: false,
+      debugMode: envVariables.SERVER.ENV !== 'production',
       scanRecursively: true,
-      clamdscan: {
-        socket: envVariables.SERVER.CLAMDSCAN_SOCKET,
-        timeout: 120000,
-        path: '/usr/local/bin/clamdscan',
-      },
-      preference: 'clamdscan',
       maxFileSize: 26214400, // 25MB
+      ...envConfig,
     };
 
     new NodeClam()
@@ -54,10 +75,15 @@ export class ClamScannerService {
           err.code === 'ENOENT' ||
           err.message?.includes('socket')
         ) {
+          const connectionInfo =
+            envVariables.SERVER.ENV === 'production'
+              ? `${envVariables.CLAMAV.HOST}:${envVariables.CLAMAV.PORT}`
+              : `socket ${envVariables.CLAMAV.SOCKET}`;
+
           this.log.error(
-            `ClamAV Error: Could not connect to clamd daemon at socket  ${this.options}`
+            `ClamAV Error: Could not connect to clamd daemon at ${connectionInfo}. Error: ${err.message}`
           );
-          throw new Error(`ClamAV daemon connection failed at  ${this.options}`);
+          throw new Error(`ClamAV daemon connection failed at ${connectionInfo}: ${err.message}`);
         } else {
           this.log.error('ClamAV initialization failed:', err);
           throw new Error(`ClamAV scanner failed to initialize: ${err.message}`);
@@ -66,11 +92,11 @@ export class ClamScannerService {
   }
 
   isReady(): boolean {
-    return this.isInitialized && this.clamscan !== null;
+    return this.isInitialized && (this.isProductionFallback || this.clamscan !== null);
   }
 
   async scanFile(filePath: string): Promise<ScanResult> {
-    if (!this.isReady() || !this.clamscan) {
+    if (!this.isInitialized) {
       this.log.error('Scan attempt failed: ClamAV scanner not initialized');
       throw new Error('ClamAV scanner is not initialized');
     }
@@ -78,6 +104,22 @@ export class ClamScannerService {
     if (!filePath) {
       this.log.error('Scan attempt failed: No file path provided');
       throw new Error('No file path provided');
+    }
+
+    // Production fallback - skip actual scanning
+    if (this.isProductionFallback) {
+      this.log.info(
+        `Production fallback: Skipping virus scan for ${filePath} (ClamAV service unavailable)`
+      );
+      return {
+        isInfected: false,
+        viruses: [],
+      };
+    }
+
+    if (!this.clamscan) {
+      this.log.error('Scan attempt failed: ClamAV scanner not available');
+      throw new Error('ClamAV scanner is not available');
     }
 
     try {

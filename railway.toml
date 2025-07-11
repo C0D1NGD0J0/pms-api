@@ -1,0 +1,13 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+startCommand = "npm start"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+healthcheckPath = "/api/v1/healthcheck"
+healthcheckTimeout = 300
+
+[env]
+NODE_ENV = "production"
+SKIP_REDIS_BINARY_DOWNLOAD = "true"

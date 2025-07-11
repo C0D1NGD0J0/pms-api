@@ -49,7 +49,6 @@ export class ClamScannerService {
       removeInfected: false,
       quarantineInfected: false,
       scanLog: 'logs/clamav_scan.log',
-      debugMode: envVariables.SERVER.ENV !== 'production',
       scanRecursively: true,
       maxFileSize: 26214400, // 25MB
       ...envConfig,

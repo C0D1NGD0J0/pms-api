@@ -24,8 +24,9 @@ export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions = {
   redis: {
     host: envVariables.REDIS.HOST,
     port: envVariables.REDIS.PORT,
-    username: envVariables.REDIS.USERNAME,
-    password: envVariables.REDIS.PASSWORD,
+    ...(envVariables.SERVER.ENV === 'production'
+      ? { username: envVariables.REDIS.USERNAME, password: envVariables.REDIS.PASSWORD }
+      : {}),
     family: 0,
   },
 };

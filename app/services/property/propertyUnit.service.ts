@@ -115,38 +115,6 @@ export class PropertyUnitService {
     }
   }
 
-  async getJobStatus(jobId: string) {
-    return this.propertyUnitQueue.getJobStatus(jobId);
-  }
-
-  async getUserJobs(userId: string) {
-    const result = await this.jobTracker.getUserJobs(userId);
-
-    if (!result.success) {
-      return [];
-    }
-
-    const enhancedJobs = await Promise.all(
-      result.data.map(async (job) => {
-        const queueStatus = await this.propertyUnitQueue.getJobStatus(job.jobId);
-        return {
-          ...job,
-          ...queueStatus,
-        };
-      })
-    );
-
-    const completedJobIds = enhancedJobs
-      .filter((job: any) => job.state === 'completed' || job.state === 'failed')
-      .map((job: any) => job.jobId);
-
-    if (completedJobIds.length > 0) {
-      await this.jobTracker.removeCompletedJobs(userId, completedJobIds);
-    }
-
-    return enhancedJobs.filter((job: any) => job.state !== 'completed' && job.state !== 'failed');
-  }
-
   async getPropertyUnit(cxt: IRequestContext) {
     const { request, currentuser } = cxt;
     const { cid, pid, unitId } = request.params;
@@ -695,7 +663,7 @@ export class PropertyUnitService {
       requestId: cxt.requestId,
     });
 
-    await this.jobTracker.trackJob(userId, jobId.toString(), 'unit_batch_creation', {
+    await this.jobTracker.trackJob(userId, data.cid, jobId.toString(), 'unit_batch_creation', {
       pid: data.pid,
       cid: data.cid,
       unitCount: data.units.length,

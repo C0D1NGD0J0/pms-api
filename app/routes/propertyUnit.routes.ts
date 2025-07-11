@@ -34,26 +34,6 @@ router.get(
 );
 
 router.get(
-  '/jobs/:jobId/status',
-  routeLimiter(),
-  asyncWrapper((req, res) => {
-    const propertyUnitController =
-      req.container.resolve<PropertyUnitController>('propertyUnitController');
-    return propertyUnitController.getJobStatus(req, res);
-  })
-);
-
-router.get(
-  '/jobs/user/active',
-  routeLimiter(),
-  asyncWrapper((req, res) => {
-    const propertyUnitController =
-      req.container.resolve<PropertyUnitController>('propertyUnitController');
-    return propertyUnitController.getUserJobs(req, res);
-  })
-);
-
-router.get(
   '/:puid',
   routeLimiter(),
   asyncWrapper((req, res) => {

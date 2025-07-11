@@ -445,7 +445,7 @@ export const requirePermission = (
 
       const hasPermission = await permissionService.checkUserPermission(
         currentuser,
-        resource as string,
+        resource as PermissionResource,
         action as string
       );
 
@@ -480,7 +480,7 @@ export const requireAnyPermission = (permissions: PermissionCheck[]) => {
       for (const permission of permissions) {
         const result = await permissionService.checkUserPermission(
           currentuser,
-          permission.resource as string,
+          permission.resource as PermissionResource,
           permission.action as string
         );
         if (result.granted) {
@@ -512,7 +512,7 @@ export const requireAllPermissions = (permissions: PermissionCheck[]) => {
       for (const permission of permissions) {
         const result = await permissionService.checkUserPermission(
           currentuser,
-          permission.resource as string,
+          permission.resource as PermissionResource,
           permission.action as string
         );
         if (!result.granted) {

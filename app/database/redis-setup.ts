@@ -9,9 +9,11 @@ export class RedisService {
   private redisMemoryServer: RedisMemoryServer | null = null;
   private connectionPromise: Promise<ISuccessReturnData> | null = null;
   private redisTestUrl: string = '';
+  private isShuttingDown = false;
   client: RedisClientType;
   log: Logger;
   private static sharedInstance: RedisService | null = null;
+  private static isShuttingDownSharedInstance = false;
 
   constructor(cacheName: string) {
     this.log = createLogger(cacheName);
@@ -153,10 +155,18 @@ export class RedisService {
   }
 
   static async shutdownSharedInstance(): Promise<void> {
+    if (RedisService.isShuttingDownSharedInstance) {
+      return;
+    }
+
+    RedisService.isShuttingDownSharedInstance = true;
+
     if (RedisService.sharedInstance) {
       await RedisService.sharedInstance.disconnect();
       RedisService.sharedInstance = null;
     }
+
+    RedisService.isShuttingDownSharedInstance = false;
   }
 
   getRedisUrl(): string {

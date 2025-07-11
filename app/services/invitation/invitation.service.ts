@@ -58,16 +58,12 @@ export class InvitationService {
     this.log = createLogger('InvitationService');
   }
 
-  /**
-   * Send an invitation to join a client
-   */
   async sendInvitation(
     inviterUserId: string,
     clientId: string,
     invitationData: IInvitationData
   ): Promise<ISuccessReturnData<ISendInvitationResult>> {
     try {
-      // Validate inviter has permission to invite users
       await this.validateInviterPermissions(inviterUserId, clientId);
 
       const client = await this.clientDAO.getClientByCid(clientId);
@@ -140,9 +136,6 @@ export class InvitationService {
     }
   }
 
-  /**
-   * Validate an invitation token
-   */
   async validateInvitation(token: string): Promise<ISuccessReturnData<IInvitationDocument>> {
     try {
       if (!token) {
@@ -169,9 +162,6 @@ export class InvitationService {
     }
   }
 
-  /**
-   * Accept an invitation and create/update user account
-   */
   async acceptInvitation(
     invitationData: IInvitationAcceptance
   ): Promise<ISuccessReturnData<{ user: any; invitation: IInvitationDocument }>> {
@@ -248,9 +238,6 @@ export class InvitationService {
     }
   }
 
-  /**
-   * Get invitation by iuid
-   */
   async getInvitationByIuid(iuid: string): Promise<IInvitationDocument | null> {
     try {
       return await this.invitationDAO.findByIuid(iuid);
@@ -260,9 +247,6 @@ export class InvitationService {
     }
   }
 
-  /**
-   * Revoke an invitation
-   */
   async revokeInvitation(
     iuid: string,
     revokerUserId: string,
@@ -300,9 +284,6 @@ export class InvitationService {
     }
   }
 
-  /**
-   * Resend an invitation
-   */
   async resendInvitation(
     data: IResendInvitationData,
     resenderUserId: string
@@ -313,7 +294,6 @@ export class InvitationService {
         throw new NotFoundError({ message: t('invitation.errors.notFound') });
       }
 
-      // Validate resender has permission
       await this.validateInviterPermissions(resenderUserId, invitation.clientId);
 
       if (invitation.status !== 'pending') {
@@ -367,15 +347,11 @@ export class InvitationService {
     }
   }
 
-  /**
-   * Get invitations for a client with filtering and pagination
-   */
   async getInvitations(
     query: IInvitationListQuery,
     requestorUserId: string
   ): Promise<ISuccessReturnData<any>> {
     try {
-      // Validate requestor has permission to view invitations
       await this.validateInviterPermissions(requestorUserId, query.clientId);
 
       const result = await this.invitationDAO.getInvitationsByClient(query);
@@ -391,15 +367,11 @@ export class InvitationService {
     }
   }
 
-  /**
-   * Get invitation statistics for a client
-   */
   async getInvitationStats(
     clientId: string,
     requestorUserId: string
   ): Promise<ISuccessReturnData<IInvitationStats>> {
     try {
-      // Validate requestor has permission
       await this.validateInviterPermissions(requestorUserId, clientId);
 
       const stats = await this.invitationDAO.getInvitationStats(clientId);
@@ -415,9 +387,6 @@ export class InvitationService {
     }
   }
 
-  /**
-   * Expire old invitations (for background job)
-   */
   async expireInvitations(): Promise<number> {
     try {
       const expiredCount = await this.invitationDAO.expireInvitations();
@@ -429,10 +398,6 @@ export class InvitationService {
     }
   }
 
-  /**
-   * Validate that a user has permission to invite users for a client
-   * Only admins and managers can send invitations
-   */
   private async validateInviterPermissions(userId: string, clientId: string): Promise<void> {
     const user = await this.userDAO.getUserById(userId);
     if (!user) {
@@ -456,9 +421,6 @@ export class InvitationService {
     }
   }
 
-  /**
-   * Validate a CSV file for invitation import
-   */
   async validateInvitationCsv(
     cid: string,
     csvFile: ExtractedMediaFile,

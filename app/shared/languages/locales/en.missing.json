@@ -12,7 +12,13 @@
   },
   "invitation": {
     "success": {
-      "csvValidationStarted": "invitation.success.csvValidationStarted"
+      "csvValidationStarted": "invitation.success.csvValidationStarted",
+      "csvImportStarted": "invitation.success.csvImportStarted"
+    }
+  },
+  "email": {
+    "invitation": {
+      "subject": "email.invitation.subject"
     }
   }
 }

@@ -8,9 +8,9 @@
     },
     "manager": {
       "$extend": ["staff"],
+      "lease": ["create:mine", "delete:mine"],
       "property": ["create:mine", "delete:mine"],
       "maintenance": ["create:mine", "delete:mine"],
-      "lease": ["create:mine", "delete:mine"],
       "invitation": ["send:any", "revoke:any", "resend:any", "list:any", "read:any", "stats:any"]
     },
     "staff": {

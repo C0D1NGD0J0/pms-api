@@ -22,7 +22,9 @@ class Server {
   private app: IAppSetup;
   private expApp: Application;
   private initialized = false;
+  private shuttingDown = false;
   private static instance: Server;
+  private static processHandlersRegistered = false;
   private dbService: DatabaseService;
   private PORT = envVariables.SERVER.PORT;
   private httpServer: http.Server | null = null;
@@ -53,7 +55,7 @@ class Server {
     if (!Server.instance) {
       const { dbService } = container.cradle;
       Server.instance = new Server({ dbService });
-      this.instance.initialized = true;
+      Server.instance.initialized = true;
     }
     return Server.instance;
   }
@@ -66,9 +68,9 @@ class Server {
 
   private async startServers(app: Application): Promise<void> {
     try {
-      const httpServer: http.Server = new http.Server(app);
-      this.initHTTPServer(httpServer);
-      const io = await this.setupSocketIO(httpServer);
+      this.httpServer = new http.Server(app);
+      this.initHTTPServer(this.httpServer);
+      const io = await this.setupSocketIO(this.httpServer);
       io && this.socketConnections(io);
     } catch (error: any) {
       this.log.error('Error: ', error.message);
@@ -135,6 +137,12 @@ class Server {
   }
 
   async shutdown(exitCode = 0): Promise<void> {
+    if (this.shuttingDown) {
+      this.log.info('Shutdown already in progress, skipping...');
+      return;
+    }
+
+    this.shuttingDown = true;
     this.log.info('Server shutting down...');
 
     try {
@@ -220,6 +228,7 @@ class Server {
         'documentProcessingQueue',
         'emailQueue',
         'eventBusQueue',
+        'invitationQueue',
         'propertyQueue',
         'propertyUnitQueue',
         'uploadQueue',
@@ -256,6 +265,12 @@ class Server {
   }
 
   private setupProcessErrorHandlers(): void {
+    if (Server.processHandlersRegistered) {
+      return;
+    }
+
+    Server.processHandlersRegistered = true;
+
     process.on('unhandledRejection', (reason, promise) => {
       this.log.error('Unhandled Rejection at:', promise, 'reason:', reason);
       // Don't shut down for unhandled rejections in production

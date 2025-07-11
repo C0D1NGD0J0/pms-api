@@ -37,11 +37,13 @@ export let serverAdapter: ExpressAdapter;
 const bullMQAdapters: BullAdapter[] = [];
 let deadLetterQueue: Queue.Queue | null;
 let sharedRedisService: RedisService | null = null;
+const queueShutdownRegistry = new Set<string>();
 
 export class BaseQueue<T extends JobData = JobData> {
   protected log: Logger;
   protected dlq: Queue.Queue;
   protected queue: Queue.Queue;
+  protected isShuttingDown = false;
 
   constructor(queueName: string) {
     this.log = createLogger(queueName);
@@ -174,6 +176,14 @@ export class BaseQueue<T extends JobData = JobData> {
    * Gracefully shut down the queue
    */
   async shutdown(): Promise<void> {
+    if (this.isShuttingDown || queueShutdownRegistry.has(this.queue.name)) {
+      this.log.info(`Queue ${this.queue.name} is already shutting down, skipping...`);
+      return;
+    }
+
+    this.isShuttingDown = true;
+    queueShutdownRegistry.add(this.queue.name);
+
     try {
       this.queue.removeAllListeners();
       if (this.dlq) {

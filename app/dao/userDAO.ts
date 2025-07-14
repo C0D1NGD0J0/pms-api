@@ -190,17 +190,17 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       const user = await this.getUserById(userId);
       if (!user) return false;
 
-      const existingAssociation = user.cids.find((c) => c.cid === clientId);
+      const existingAssociation = user.cuids.find((c) => c.cuid === clientId);
       if (existingAssociation) {
         if (existingAssociation.roles.includes(role) || !existingAssociation.isConnected) {
           await this.update(
-            { _id: userId, 'cids.cid': clientId },
+            { _id: userId, 'cuids.cuid': clientId },
             {
               $set: {
-                'cids.$.isConnected': true,
+                'cuids.$.isConnected': true,
               },
               $addToSet: {
-                'cids.$.roles': role,
+                'cuids.$.roles': role,
               },
             }
           );
@@ -211,8 +211,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       // create new association
       const result = await this.updateById(userId, {
         $push: {
-          cids: {
-            cid: clientId,
+          cuids: {
+            cuid: clientId,
             isConnected: true,
           },
         },
@@ -244,8 +244,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       const query = {
         ...filter,
-        'cids.cid': clientId,
-        'cids.isConnected': true,
+        'cuids.cuid': clientId,
+        'cuids.isConnected': true,
         deletedAt: null,
       };
 
@@ -269,8 +269,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         {
           $match: {
             $and: [
-              { 'cids.cid': clientId },
-              { 'cids.isConnected': true },
+              { 'cuids.cuid': clientId },
+              { 'cuids.isConnected': true },
               { deletedAt: null },
               {
                 $or: [
@@ -328,7 +328,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       const result = await this.update(
         { _id: new Types.ObjectId(userId) },
-        { $pull: { cids: { cid: clientId } } }
+        { $pull: { cuids: { cuid: clientId } } }
       );
 
       return !!result;
@@ -346,13 +346,13 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    */
   async getUserClientAssociations(userId: string): Promise<any[]> {
     try {
-      const user = await this.getUserById(userId, { projection: { cids: 1 } });
+      const user = await this.getUserById(userId, { projection: { cuids: 1 } });
 
-      if (!user || !user.cids) {
+      if (!user || !user.cuids) {
         return [];
       }
 
-      return user.cids;
+      return user.cuids;
     } catch (error) {
       this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
@@ -446,11 +446,11 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           uid: hashGenerator({}),
           email: invitationData.inviteeEmail,
           password: userData.password,
-          isActive: true, // Auto-activate invited users
-          activeCid: invitationData.clientId,
-          cids: [
+          isActive: true,
+          activecuid: invitationData.clientId,
+          cuids: [
             {
-              cid: invitationData.clientId,
+              cuid: invitationData.cuid,
               isConnected: true,
               roles: [invitationData.role],
               displayName:
@@ -485,15 +485,15 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         throw new Error('User not found');
       }
 
-      const existingConnection = user.cids.find((c) => c.cid === clientId);
+      const existingConnection = user.cuids.find((c) => c.cuid === clientId);
       if (existingConnection) {
         return await this.updateById(
           userId,
           {
             $set: {
-              'cids.$.isConnected': true,
-              'cids.$.roles': [role],
-              'cids.$.displayName': displayName,
+              'cuids.$.isConnected': true,
+              'cuids.$.roles': [role],
+              'cuids.$.displayName': displayName,
             },
           },
           { session }
@@ -503,8 +503,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           userId,
           {
             $push: {
-              cids: {
-                cid: clientId,
+              cuids: {
+                cuid: clientId,
                 isConnected: true,
                 roles: [role],
                 displayName,
@@ -523,13 +523,13 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   /**
    * Check if a user already exists with the given email and has access to the client
    */
-  async getUserWithClientAccess(email: string, clientId: string): Promise<IUserDocument | null> {
+  async getUserWithClientAccess(email: string, cuid: string): Promise<IUserDocument | null> {
     try {
       const user = await this.findFirst({
         email: email.toLowerCase(),
         deletedAt: null,
-        'cids.cid': clientId,
-        'cids.isConnected': true,
+        'cuids.cuid': cuid,
+        'cuids.isConnected': true,
       });
 
       return user;

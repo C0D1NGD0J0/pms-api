@@ -144,7 +144,7 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
    * Uses MongoDB aggregation to join user data with their profile data and formats it into a CurrentUser object.
    *
    * @param userId - The unique identifier for the user.
-   * @param activeCid - The active client/company ID (optional).
+   * @param activecuid - The active client/company ID (optional).
    * @returns A promise that resolves to a ICurrentUser object or null if no user is found.
    */
   generateCurrentUserInfo(userId: string): Promise<ICurrentUser | null>;

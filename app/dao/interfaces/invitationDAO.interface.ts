@@ -27,13 +27,32 @@ export interface IInvitationDAO extends IBaseDAO<IInvitationDocument> {
   /**
    * Update invitation status
    * @param invitationId - The invitation ID
+   * @param clientId - The client ID for security scoping
    * @param status - The new status
    * @param session - Optional MongoDB session for transactions
    * @returns Promise that resolves to the updated invitation or null
    */
   updateInvitationStatus(
     invitationId: string,
-    status: 'pending' | 'accepted' | 'expired' | 'revoked',
+    clientId: string,
+    status: 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent',
+    session?: ClientSession
+  ): Promise<IInvitationDocument | null>;
+
+  /**
+   * Revoke an invitation
+   * @param invitationId - The invitation ID
+   * @param clientId - The client ID for security scoping
+   * @param revokedBy - The user ID who is revoking the invitation
+   * @param reason - Optional reason for revocation
+   * @param session - Optional MongoDB session for transactions
+   * @returns Promise that resolves to the updated invitation or null
+   */
+  revokeInvitation(
+    invitationId: string,
+    clientId: string,
+    revokedBy: string,
+    reason?: string,
     session?: ClientSession
   ): Promise<IInvitationDocument | null>;
 
@@ -53,17 +72,15 @@ export interface IInvitationDAO extends IBaseDAO<IInvitationDocument> {
   ): Promise<IInvitationDocument>;
 
   /**
-   * Revoke an invitation
+   * Update reminder count for an invitation
    * @param invitationId - The invitation ID
-   * @param revokedBy - The user ID who is revoking the invitation
-   * @param reason - Optional reason for revocation
+   * @param clientId - The client ID for security scoping
    * @param session - Optional MongoDB session for transactions
    * @returns Promise that resolves to the updated invitation or null
    */
-  revokeInvitation(
+  incrementReminderCount(
     invitationId: string,
-    revokedBy: string,
-    reason?: string,
+    clientId: string,
     session?: ClientSession
   ): Promise<IInvitationDocument | null>;
 
@@ -92,17 +109,6 @@ export interface IInvitationDAO extends IBaseDAO<IInvitationDocument> {
   ): Promise<IInvitationDocument[]>;
 
   /**
-   * Update reminder count for an invitation
-   * @param invitationId - The invitation ID
-   * @param session - Optional MongoDB session for transactions
-   * @returns Promise that resolves to the updated invitation or null
-   */
-  incrementReminderCount(
-    invitationId: string,
-    session?: ClientSession
-  ): Promise<IInvitationDocument | null>;
-
-  /**
    * Find pending invitation for an email and client
    * @param email - The invitee email
    * @param clientId - The client ID
@@ -112,10 +118,19 @@ export interface IInvitationDAO extends IBaseDAO<IInvitationDocument> {
 
   /**
    * Get invitations by invitee email across all clients
+   * @param clientId - The client ID for security scoping
    * @param email - The invitee email
    * @returns Promise that resolves to invitations for the email
    */
-  getInvitationsByEmail(email: string): Promise<IInvitationDocument[]>;
+  getInvitationsByEmail(clientId: string, email: string): Promise<IInvitationDocument[]>;
+
+  /**
+   * Find an invitation by its invitation ID
+   * @param iuid - The invitation ID
+   * @param clientId - The client ID for security scoping
+   * @returns Promise that resolves to the invitation or null
+   */
+  findByIuid(iuid: string, clientId: string): Promise<IInvitationDocument | null>;
 
   /**
    * Find an invitation by its token
@@ -130,13 +145,6 @@ export interface IInvitationDAO extends IBaseDAO<IInvitationDocument> {
    * @returns Promise that resolves to invitation statistics
    */
   getInvitationStats(clientId: string): Promise<IInvitationStats>;
-
-  /**
-   * Find an invitation by its invitation ID
-   * @param iuid - The invitation ID
-   * @returns Promise that resolves to the invitation or null
-   */
-  findByIuid(iuid: string): Promise<IInvitationDocument | null>;
 
   /**
    * Mark expired invitations as expired

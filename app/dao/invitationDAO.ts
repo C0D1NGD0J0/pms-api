@@ -21,6 +21,7 @@ interface IInvitationAggregationResult {
   pending: number;
   revoked: number;
   total: number;
+  sent: number;
   _id: null;
 }
 
@@ -46,7 +47,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         {
           invitedBy: new Types.ObjectId(invitedBy),
           inviteeEmail: invitationData.inviteeEmail.toLowerCase(),
-          clientId,
+          clientId: new Types.ObjectId(clientId),
           role: invitationData.role,
           invitationToken,
           expiresAt,
@@ -90,10 +91,10 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
   /**
    * Find an invitation by its invitation ID
    */
-  async findByIuid(iuid: string): Promise<IInvitationDocument | null> {
+  async findByIuid(iuid: string, clientId: string): Promise<IInvitationDocument | null> {
     try {
       return await this.findFirst(
-        { iuid },
+        { iuid, clientId },
         {
           populate: [
             { path: 'invitedBy', select: 'email' },
@@ -109,6 +110,28 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
   }
 
   /**
+   * Find an invitation by its invitation ID (unsecured - for internal use only)
+   * @internal This method should only be used internally when clientId validation happens at service layer
+   */
+  async findByIuidUnsecured(iuid: string): Promise<IInvitationDocument | null> {
+    try {
+      return await this.findFirst(
+        { iuid },
+        {
+          populate: [
+            { path: 'invitedBy', select: 'email' },
+            { path: 'acceptedBy', select: 'email' },
+            { path: 'revokedBy', select: 'email' },
+          ],
+        }
+      );
+    } catch (error) {
+      this.logger.error('Error finding invitation by ID (unsecured):', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
    * Find pending invitation for an email and client
    */
   async findPendingInvitation(
@@ -119,7 +142,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
       return await this.findFirst({
         inviteeEmail: email.toLowerCase(),
         clientId,
-        status: 'pending',
+        status: { $in: ['pending', 'sent'] },
         expiresAt: { $gt: new Date() },
       });
     } catch (error) {
@@ -200,11 +223,12 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
    */
   async updateInvitationStatus(
     invitationId: string,
-    status: 'pending' | 'accepted' | 'expired' | 'revoked',
+    clientId: string,
+    status: 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent',
     session?: ClientSession
   ): Promise<IInvitationDocument | null> {
     try {
-      return await this.update({ invitationId }, { $set: { status } }, { session });
+      return await this.update({ id: invitationId, clientId }, { $set: { status } }, { session });
     } catch (error) {
       this.logger.error('Error updating invitation status:', error);
       throw this.throwErrorHandler(error);
@@ -216,6 +240,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
    */
   async revokeInvitation(
     invitationId: string,
+    clientId: string,
     revokedBy: string,
     reason?: string,
     session?: ClientSession
@@ -233,7 +258,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         updateData.$set.revokeReason = reason;
       }
 
-      return await this.update({ invitationId }, updateData, { session });
+      return await this.update({ id: invitationId, clientId }, updateData, { session });
     } catch (error) {
       this.logger.error('Error revoking invitation:', error);
       throw this.throwErrorHandler(error);
@@ -273,7 +298,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     try {
       const result = await this.updateMany(
         {
-          status: 'pending',
+          status: { $in: ['pending', 'sent'] },
           expiresAt: { $lte: new Date() },
         },
         { $set: { status: 'expired' } }
@@ -312,6 +337,9 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
             revoked: {
               $sum: { $cond: [{ $eq: ['$status', 'revoked'] }, 1, 0] },
             },
+            sent: {
+              $sum: { $cond: [{ $eq: ['$status', 'sent'] }, 1, 0] },
+            },
           },
         },
         {
@@ -340,6 +368,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
           accepted: 0,
           expired: 0,
           revoked: 0,
+          sent: 0,
           byRole: {} as any,
         };
       }
@@ -359,6 +388,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         accepted: stats.accepted || 0,
         expired: stats.expired || 0,
         revoked: stats.revoked || 0,
+        sent: stats.sent || 0,
         byRole,
       };
     } catch (error) {
@@ -372,11 +402,12 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
    */
   async incrementReminderCount(
     invitationId: string,
+    clientId: string,
     session?: ClientSession
   ): Promise<IInvitationDocument | null> {
     try {
       return await this.update(
-        { invitationId },
+        { id: invitationId, clientId },
         {
           $inc: { 'metadata.remindersSent': 1 },
           $set: { 'metadata.lastReminderSent': new Date() },
@@ -400,7 +431,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
       const cutoffDate = new Date(Date.now() - daysSinceCreated * 24 * 60 * 60 * 1000);
 
       const filter = {
-        status: 'pending',
+        status: { $in: ['pending', 'sent'] },
         expiresAt: { $gt: new Date() },
         createdAt: { $lte: cutoffDate },
         'metadata.remindersSent': { $lt: maxReminders },
@@ -420,10 +451,10 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
   /**
    * Get invitations by invitee email across all clients
    */
-  async getInvitationsByEmail(email: string): Promise<IInvitationDocument[]> {
+  async getInvitationsByEmail(clientId: string, email: string): Promise<IInvitationDocument[]> {
     try {
       const result = await this.list(
-        { inviteeEmail: email.toLowerCase() },
+        { inviteeEmail: email.toLowerCase(), clientId },
         {
           sort: { createdAt: -1 },
           populate: [

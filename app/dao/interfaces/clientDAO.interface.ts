@@ -94,14 +94,14 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
   ): ListResultWithPagination<IClientDocument[]>;
 
   /**
-   * Retrieves a client by its unique client ID (cid).
+   * Retrieves a client by its unique client ID (cuid).
    *
-   * @param cid - The unique client identifier
+   * @param cuid - The unique client identifier
    * @param opts - Optional parameters for the query (projection, population, etc.)
    * @returns A promise that resolves to the client document or null if not found
    * @throws Error if an error occurs during the query
    */
-  getClientByCid(cid: string, opts?: IFindOptions): Promise<IClientDocument | null>;
+  getClientBycuid(cuid: string, opts?: IFindOptions): Promise<IClientDocument | null>;
 
   /**
    * Creates a new client in the database.
@@ -114,8 +114,8 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
   /**
    * Checks if a client with the specified client ID exists.
    *
-   * @param cid - The unique client identifier to check
+   * @param cuid - The unique client identifier to check
    * @returns A promise that resolves to true if the client exists, false otherwise
    */
-  doesClientExist(cid: string): Promise<boolean>;
+  doesClientExist(cuid: string): Promise<boolean>;
 }

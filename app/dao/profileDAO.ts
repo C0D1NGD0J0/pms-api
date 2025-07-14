@@ -291,17 +291,17 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         {
           $lookup: {
             from: 'clients',
-            let: { cidList: '$userData.cids.cid' },
+            let: { cuidList: '$userData.cuids.cuid' },
             pipeline: [
               {
                 $match: {
-                  $expr: { $in: ['$cid', '$$cidList'] },
+                  $expr: { $in: ['$cuid', '$$cuidList'] },
                 },
               },
               {
                 $project: {
                   _id: 0,
-                  csub: '$cid',
+                  csub: '$cuid',
                   displayname: '$displayName',
                   isVerified: 1,
                 },
@@ -341,9 +341,9 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                     $arrayElemAt: [
                       {
                         $filter: {
-                          input: '$userData.cids',
+                          input: '$userData.cuids',
                           as: 'client',
-                          cond: { $eq: ['$$client.cid', '$userData.activeCid'] },
+                          cond: { $eq: ['$$client.cuid', '$userData.activecuid'] },
                         },
                       },
                       0,
@@ -351,7 +351,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   },
                 },
                 in: {
-                  csub: '$$activeClient.cid',
+                  csub: '$$activeClient.cuid',
                   displayname: '$$activeClient.displayName',
                   role: { $arrayElemAt: ['$$activeClient.roles', 0] },
                 },
@@ -361,10 +361,10 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
             // all client connections
             clients: {
               $map: {
-                input: '$userData.cids',
+                input: '$userData.cuids',
                 as: 'conn',
                 in: {
-                  cid: '$$conn.cid',
+                  cuid: '$$conn.cuid',
                   displayName: '$$conn.displayName',
                   roles: '$$conn.roles',
                   isConnected: '$$conn.isConnected',

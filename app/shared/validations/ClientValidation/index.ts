@@ -1,4 +1,4 @@
-import { ValidateCidSchema } from '../UtilsValidation';
+import { ValidatecuidSchema } from '../UtilsValidation';
 import {
   ClientIdentificationSchema,
   UpdateClientDetailsSchema,
@@ -12,7 +12,7 @@ import {
 } from './schemas';
 
 export class ClientValidations {
-  static clientIdParam = ValidateCidSchema;
+  static clientIdParam = ValidatecuidSchema;
   static userIdParam = UserIdParamSchema;
   static roleParam = RoleParamSchema;
   static assignRole = AssignRoleSchema;

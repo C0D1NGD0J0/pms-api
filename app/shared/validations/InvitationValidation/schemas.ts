@@ -194,5 +194,31 @@ export const invitationCsvSchema = z.object({
     })
     .optional(),
 
-  cid: z.string().optional(),
+  cuid: z.string().optional(),
+});
+
+export const processPendingQuerySchema = z.object({
+  timeline: z
+    .enum(['24h', '48h', '72h', '7d'], {
+      errorMap: () => ({ message: 'Timeline must be one of: 24h, 48h, 72h, 7d' }),
+    })
+    .optional(),
+
+  role: z
+    .nativeEnum(IUserRole, {
+      errorMap: () => ({ message: 'Invalid role value' }),
+    })
+    .optional(),
+
+  limit: z
+    .string()
+    .regex(/^\d+$/, 'Limit must be a positive number')
+    .transform((str) => parseInt(str, 10))
+    .refine((num) => num > 0 && num <= 100, 'Limit must be between 1 and 100')
+    .optional(),
+
+  dry_run: z
+    .string()
+    .transform((str) => str.toLowerCase() === 'true')
+    .optional(),
 });

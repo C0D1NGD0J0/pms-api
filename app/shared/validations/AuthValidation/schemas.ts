@@ -125,7 +125,7 @@ export const UserSignupSchema = z
   });
 
 export const InviteUserSignupSchema = z.object({
-  cid: z.string(),
+  cuid: z.string(),
   firstName: z.string().min(2, 'First name must be at least 2 characters'),
   lastName: z.string().min(2, 'Last name must be at least 2 characters'),
   email: z.string().email('Invalid email address'),
@@ -281,7 +281,7 @@ export const LoginSchema = z.object({
 });
 
 export const TenantSchema = z.object({
-  cid: z.string(),
+  cuid: z.string(),
   user: z.string(),
   managedBy: z.string(),
   activationCode: z.string().optional(),

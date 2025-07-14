@@ -3,11 +3,11 @@ import { container } from '@di/setup';
 import { isValidObjectId } from 'mongoose';
 import { PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 
-export const ValidateCidSchema = z.object({
-  cid: z.string().refine(
+export const ValidatecuidSchema = z.object({
+  cuid: z.string().refine(
     async (id) => {
       const { clientDAO }: { clientDAO: ClientDAO } = container.cradle;
-      const client = await clientDAO.findFirst({ cid: id });
+      const client = await clientDAO.findFirst({ cuid: id });
       return !!client;
     },
     {
@@ -71,7 +71,7 @@ export const ValidateUnitPuid = z.object({
 });
 
 export const UtilsValidations = {
-  cid: ValidateCidSchema,
+  cuid: ValidatecuidSchema,
   unitPuid: ValidateUnitPuid,
   isUniqueEmail: ValidateEmailSchema,
   propertyId: ValidatePropertyIdSchema,

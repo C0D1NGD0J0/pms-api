@@ -1,5 +1,6 @@
 import {
   getInvitationsQuerySchema,
+  processPendingQuerySchema,
   acceptInvitationSchema,
   revokeInvitationSchema,
   resendInvitationSchema,
@@ -18,4 +19,5 @@ export class InvitationValidations {
   static invitationToken = invitationTokenSchema;
   static invitationCsv = invitationCsvSchema;
   static iuid = iuidSchema;
+  static processPending = processPendingQuerySchema;
 }

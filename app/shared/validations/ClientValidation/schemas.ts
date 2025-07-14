@@ -73,12 +73,12 @@ export const ClientDisplayNameSchema = z.object({
 });
 
 export const UserIdParamSchema = z.object({
-  cid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
+  cuid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
   uid: z.string().trim().min(8, 'User ID must be at least 8 characters'),
 });
 
 export const RoleParamSchema = z.object({
-  cid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
+  cuid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
   uid: z.string().trim().min(8, 'User ID must be at least 8 characters'),
   role: z.string().trim().min(1, 'Role is required'),
 });

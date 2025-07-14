@@ -1,4 +1,4 @@
-import { ValidateCidSchema } from '../UtilsValidation';
+import { ValidatecuidSchema } from '../UtilsValidation';
 import {
   CreatePropertySchemaWithValidation,
   PropertyClientRelationshipSchema,
@@ -12,7 +12,7 @@ import {
 export class PropertyValidations {
   static search = PropertySearchSchema;
   static propertyCsv = PropertyCsvSchema;
-  static validateCid = ValidateCidSchema;
+  static validatecuid = ValidatecuidSchema;
   static updateProperty = UpdatePropertySchema;
   static updateOccupancy = UpdateOccupancySchema;
   static validateAddress = AddressValidationSchema;

@@ -4,6 +4,7 @@ import {
   UnitNumberSuggestionSchema,
   CreateUnitsSchemaRefined,
   PatternValidationSchema,
+  PropertyUnitCsvSchema,
   UploadUnitMediaSchema,
   UnitInspectionSchema,
   CreateUnitSchema,
@@ -14,6 +15,7 @@ export class PropertyUnitValidations {
   static batchPatternValidation = BatchPatternValidationSchema;
   static createUnit = CreateUnitSchema;
   static createUnits = CreateUnitsSchemaRefined;
+  static csvSchema = PropertyUnitCsvSchema;
   static inspectUnit = UnitInspectionSchema;
   static patternValidation = PatternValidationSchema;
   static unitNumberSuggestion = UnitNumberSuggestionSchema;

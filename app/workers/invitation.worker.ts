@@ -57,8 +57,8 @@ export class InvitationWorker {
     try {
       job.progress(30);
       const result = await this.invitationCsvProcessor.validateCsv(csvFilePath, {
-        cuid: clientInfo.cuid,
         userId,
+        cuid: clientInfo.cuid,
       });
       job.progress(100);
 
@@ -91,8 +91,8 @@ export class InvitationWorker {
 
     try {
       const csvResult = await this.invitationCsvProcessor.validateCsv(csvFilePath, {
-        cuid: clientInfo.cuid,
         userId,
+        cuid: clientInfo.cuid,
       });
       job.progress(30);
 
@@ -132,6 +132,11 @@ export class InvitationWorker {
         processed++;
         const progress = 30 + Math.floor((processed / csvResult.validInvitations.length) * 60);
         job.progress(progress);
+
+        // Add delay to avoid rate limiting (2 seconds between emails)
+        if (processed < csvResult.validInvitations.length) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
       }
 
       job.progress(100);
@@ -155,7 +160,7 @@ export class InvitationWorker {
       });
 
       this.log.info(
-        `Done processing invitation CSV import job ${job.id} for client ${cuid}. Success: ${successCount}, Failed: ${failedCount}`
+        `Done processing invitation CSV import job ${job.id} for client ${clientInfo.cuid}. Success: ${successCount}, Failed: ${failedCount}`
       );
     } catch (error) {
       this.log.error(`Error processing invitation CSV import job ${job.id}:`, error);

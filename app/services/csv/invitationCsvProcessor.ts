@@ -92,10 +92,18 @@ export class InvitationCsvProcessor {
         };
       }
 
+      const client = await this.clientDAO.getClientBycuid(context.cuid);
+      if (!client) {
+        return {
+          isValid: false,
+          errors: [{ field: 'cuid', error: `Client with ID ${context.cuid} not found` }],
+        };
+      }
+
       // Check if there's already a pending invitation for this email and client
       const existingInvitation = await this.invitationDAO.findPendingInvitation(
         row.inviteeEmail,
-        context.cuid
+        client.id
       );
 
       if (existingInvitation) {

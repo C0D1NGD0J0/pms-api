@@ -141,35 +141,11 @@ export class InvitationService {
     }
   }
 
-  async validateInvitation(token: string): Promise<ISuccessReturnData<IInvitationDocument>> {
-    try {
-      if (!token) {
-        throw new BadRequestError({ message: t('invitation.errors.tokenRequired') });
-      }
-
-      const invitation = await this.invitationDAO.findByToken(token);
-      if (!invitation) {
-        throw new NotFoundError({ message: t('invitation.errors.notFound') });
-      }
-
-      if (!invitation.isValid()) {
-        throw new BadRequestError({ message: t('invitation.errors.expired') });
-      }
-
-      return {
-        success: true,
-        data: invitation,
-        message: t('invitation.success.validated'),
-      };
-    } catch (error) {
-      this.log.error('Error validating invitation:', error);
-      throw error;
-    }
-  }
-
   async acceptInvitation(
+    cxt: IRequestContext,
     invitationData: IInvitationAcceptance
   ): Promise<ISuccessReturnData<{ user: any; invitation: IInvitationDocument }>> {
+    // const { token } = cxt.request.params;
     const session = await this.invitationDAO.startSession();
 
     try {
@@ -185,7 +161,7 @@ export class InvitationService {
         if (existingUser) {
           user = await this.userDAO.addUserToClient(
             existingUser._id.toString(),
-            invitation.clientId,
+            invitation.clientId.toString(),
             invitation.role,
             invitation.inviteeFullName,
             session
@@ -216,7 +192,6 @@ export class InvitationService {
           );
         }
 
-        // Accept the invitation
         if (!user) {
           throw new BadRequestError({ message: 'Failed to create or find user' });
         }
@@ -269,7 +244,7 @@ export class InvitationService {
       }
 
       // Validate revoker has permission
-      await this.validateInviterPermissions(revokerUserId, invitation.clientId);
+      await this.validateInviterPermissions(revokerUserId, invitation.clientId.toString());
 
       if (!['pending', 'sent'].includes(invitation.status)) {
         throw new BadRequestError({ message: t('invitation.errors.cannotRevoke') });
@@ -277,7 +252,7 @@ export class InvitationService {
 
       const revokedInvitation = await this.invitationDAO.revokeInvitation(
         iuid,
-        invitation.clientId,
+        invitation.clientId.toString(),
         revokerUserId,
         reason
       );
@@ -305,7 +280,7 @@ export class InvitationService {
         throw new NotFoundError({ message: t('invitation.errors.notFound') });
       }
 
-      await this.validateInviterPermissions(resenderUserId, invitation.clientId);
+      await this.validateInviterPermissions(resenderUserId, invitation.clientId.toString());
 
       if (invitation.status !== 'pending') {
         throw new BadRequestError({ message: t('invitation.errors.cannotResend') });
@@ -317,7 +292,7 @@ export class InvitationService {
 
       // Get client and resender information
       const [client, resender] = await Promise.all([
-        this.clientDAO.getClientBycuid(invitation.clientId),
+        this.clientDAO.getClientBycuid(invitation.clientId.toString()),
         this.userDAO.getUserById(resenderUserId, { populate: 'profile' }),
       ]);
 
@@ -340,7 +315,7 @@ export class InvitationService {
       };
 
       // Update reminder count
-      await this.invitationDAO.incrementReminderCount(data.iuid, invitation.clientId);
+      await this.invitationDAO.incrementReminderCount(data.iuid, invitation.clientId.toString());
 
       // Queue email with invitation ID for status tracking
       this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
@@ -464,9 +439,9 @@ export class InvitationService {
       }
 
       const jobData = {
-        cuid,
         userId: currentUser.sub,
         csvFilePath: csvFile.path,
+        clientInfo: { cuid, displayName: client.displayName, id: client.id },
       };
 
       const job = await this.invitationQueue.addCsvValidationJob(jobData);

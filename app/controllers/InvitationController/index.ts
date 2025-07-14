@@ -1,5 +1,5 @@
+import { Response } from 'express';
 import { t } from '@shared/languages';
-import { Response, Request } from 'express';
 import { httpStatusCodes, setAuthCookies } from '@utils/index';
 import { InvitationService, AuthService } from '@services/index';
 import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
@@ -49,42 +49,13 @@ export class InvitationController {
     });
   };
 
-  validateInvitation = async (req: Request, res: Response) => {
-    const { token } = req.params;
-    const result = await this.invitationService.validateInvitation(token);
-
-    res.status(httpStatusCodes.OK).json({
-      success: result.success,
-      message: result.message,
-      data: {
-        iuid: result.data.iuid,
-        inviteeEmail: result.data.inviteeEmail,
-        inviteeFullName: result.data.inviteeFullName,
-        role: result.data.role,
-        status: result.data.status,
-        expiresAt: result.data.expiresAt,
-        clientId: result.data.clientId,
-        personalInfo: result.data.personalInfo,
-        metadata: result.data.metadata,
-      },
-    });
-  };
-
-  acceptInvitation = async (req: Request, res: Response) => {
-    const { token } = req.params;
-    const userData = req.body;
-
-    const acceptanceData = {
-      invitationToken: token,
-      userData,
-    };
-
-    const result = await this.invitationService.acceptInvitation(acceptanceData);
+  acceptInvitation = async (req: AppRequest, res: Response) => {
+    const result = await this.invitationService.acceptInvitation(req.context, req.body);
 
     // auto-login the user after successful invitation acceptance
     const loginResult = await this.authService.loginAfterInvitationSignup(
       result.data.user._id.toString(),
-      result.data.invitation.clientId
+      result.data.invitation.clientId.toString()
     );
 
     res = setAuthCookies(

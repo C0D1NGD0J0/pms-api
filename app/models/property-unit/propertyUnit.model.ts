@@ -16,7 +16,7 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
       unique: true,
       index: true,
       immutable: true,
-      default: () => generateShortUID(12),
+      default: () => generateShortUID(),
     },
     propertyId: {
       type: Schema.Types.ObjectId,

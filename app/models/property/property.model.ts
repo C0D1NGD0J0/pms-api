@@ -13,7 +13,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
       unique: true,
       index: true,
       immutable: true,
-      default: () => generateShortUID(12),
+      default: () => generateShortUID(),
     },
     cuid: {
       index: true,

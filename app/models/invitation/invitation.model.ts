@@ -14,7 +14,7 @@ const InvitationSchema = new Schema<IInvitationDocument>(
       unique: true,
       index: true,
       immutable: true,
-      default: () => generateShortUID(16),
+      default: () => generateShortUID(),
     },
     invitedBy: {
       type: Schema.Types.ObjectId,

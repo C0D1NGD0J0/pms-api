@@ -14,7 +14,7 @@
       "emailPasswordRequired": "Email and password dey needed.",
       "invalidCredentials": "Your email/password no correct.",
       "userIdRequired": "User ID dey needed.",
-      "userIdAndCidRequired": "User ID and account CID dey needed.",
+      "userIdAndcuidRequired": "User ID and account cuid dey needed.",
       "unableToSelectAccount": "We no fit select dis account.",
       "activationTokenMissing": "Activation token no dey.",
       "invalidActivationToken": "Dis activation token no correct or don expire.",
@@ -278,7 +278,7 @@
   },
   "csv": {
     "errors": {
-      "clientNotFound": "Client with ID {{cid}} no dey found",
+      "clientNotFound": "Client with ID {{cuid}} no dey found",
       "invalidManagerEmail": "Manager email no correct",
       "invalidAddress": "Address no correct: {{address}}",
       "geocodingError": "Error during geocoding: {{error}}",

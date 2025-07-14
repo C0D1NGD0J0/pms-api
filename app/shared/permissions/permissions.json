@@ -2,6 +2,7 @@
   "roles": {
     "admin": {
       "$extend": ["manager"],
+      "property": ["create:any", "read:any", "update:any", "delete:any"],
       "user": ["remove:any", "assign_roles:any"],
       "client": ["read:mine", "settings:any", "manage_users:any"],
       "invitation": ["send:any", "revoke:any", "resend:any", "list:any", "read:any", "stats:any"]

@@ -45,7 +45,7 @@ class Server {
       return;
     }
 
-    this.dbService.connect();
+    await this.dbService.connect();
     this.app.initConfig();
     await this.startServers(this.expApp);
     this.initialized = true;
@@ -181,9 +181,11 @@ class Server {
         });
       }
 
-      // close database connection
-      await this.dbService.disconnect();
+      // cleanup queues and services first
       await this.cleanupDIContainer();
+
+      // close database connection last
+      await this.dbService.disconnect();
 
       if (exitCode !== 0) {
         this.log.info(`Exiting with code ${exitCode}`);
@@ -233,14 +235,14 @@ class Server {
         'propertyUnitQueue',
         'uploadQueue',
       ];
-
+      let queueCount = 0;
       for (const queueName of queueNames) {
         try {
           if (container.hasRegistration(queueName)) {
             const queue = container.resolve(queueName);
             if (queue && typeof queue.shutdown === 'function') {
               await queue.shutdown();
-              this.log.info(`Shutdown ${queueName}`);
+              queueCount += 1;
             }
           }
         } catch (error) {
@@ -248,16 +250,8 @@ class Server {
         }
       }
 
-      // Cleanup shared Redis instance
-      try {
-        const { RedisService } = await import('@database/redis-setup');
-        await RedisService.shutdownSharedInstance();
-        this.log.info('Shared Redis instance shutdown');
-      } catch (error) {
-        this.log.warn('Failed to shutdown shared Redis instance:', error);
-      }
-
       container.dispose();
+      this.log.info(`Shutdown ${queueCount}`);
       this.log.info('DI container disposed');
     } catch (error) {
       this.log.error('Error during DI container cleanup:', error);
@@ -287,7 +281,6 @@ class Server {
     process.on('warning', (warning) => {
       if (warning.name === 'HeapSizeLimit' || warning.name === 'MemoryLimitError') {
         console.warn('----WARNIGN----', warning);
-        // captureHeapSnapshot();
       }
     });
 

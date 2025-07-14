@@ -13,12 +13,27 @@
   "invitation": {
     "success": {
       "csvValidationStarted": "invitation.success.csvValidationStarted",
-      "csvImportStarted": "invitation.success.csvImportStarted"
+      "csvImportStarted": "invitation.success.csvImportStarted",
+      "dryRunCompleted": "invitation.success.dryRunCompleted"
     }
   },
   "email": {
     "invitation": {
       "subject": "email.invitation.subject"
+    },
+    "registration": {
+      "subject": "email.registration.subject"
+    }
+  },
+  "auth": {
+    "errors": {
+      "clientAccessDenied": "auth.errors.clientAccessDenied"
+    }
+  },
+  "propertyUnit": {
+    "success": {
+      "csvValidated": "propertyUnit.success.csvValidated",
+      "csvImported": "propertyUnit.success.csvImported"
     }
   }
 }

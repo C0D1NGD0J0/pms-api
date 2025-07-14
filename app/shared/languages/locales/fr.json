@@ -14,7 +14,7 @@
       "emailPasswordRequired": "Email et mot de passe sont requis.",
       "invalidCredentials": "Combinaison email/mot de passe invalide.",
       "userIdRequired": "ID utilisateur requis.",
-      "userIdAndCidRequired": "ID utilisateur et CID de compte requis.",
+      "userIdAndcuidRequired": "ID utilisateur et cuid de compte requis.",
       "unableToSelectAccount": "Impossible de sélectionner le compte.",
       "activationTokenMissing": "Jeton d'activation manquant.",
       "invalidActivationToken": "Jeton d'activation invalide ou expiré.",
@@ -302,7 +302,7 @@
   },
   "csv": {
     "errors": {
-      "clientNotFound": "Client avec ID {{cid}} introuvable",
+      "clientNotFound": "Client avec ID {{cuid}} introuvable",
       "invalidManagerEmail": "Email du gestionnaire invalide",
       "invalidAddress": "Adresse invalide: {{address}}",
       "geocodingError": "Erreur lors du géocodage: {{error}}",

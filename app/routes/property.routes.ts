@@ -28,13 +28,13 @@ router.get(
 );
 
 router.post(
-  '/:cid/add_property',
+  '/:cuid/add_property',
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   routeLimiter(),
   diskUpload(['document.photos']),
   scanFile,
   validateRequest({
-    params: PropertyValidations.validateCid,
+    params: PropertyValidations.validatecuid,
     body: PropertyValidations.create,
   }),
   asyncWrapper((req, res) => {
@@ -44,12 +44,12 @@ router.post(
 );
 
 router.post(
-  '/:cid/validate_csv',
+  '/:cuid/validate_csv',
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
-    params: PropertyValidations.validateCid,
+    params: PropertyValidations.validatecuid,
   }),
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
@@ -58,12 +58,12 @@ router.post(
 );
 
 router.post(
-  '/:cid/import_properties_csv',
+  '/:cuid/import_properties_csv',
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
-    params: PropertyValidations.validateCid,
+    params: PropertyValidations.validatecuid,
   }),
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
@@ -72,10 +72,10 @@ router.post(
 );
 
 router.get(
-  '/:cid/client_properties',
+  '/:cuid/client_properties',
   routeLimiter(),
   validateRequest({
-    params: PropertyValidations.validateCid,
+    params: PropertyValidations.validatecuid,
   }),
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
@@ -84,7 +84,7 @@ router.get(
 );
 
 router.get(
-  '/:cid/client_properties/:pid',
+  '/:cuid/client_properties/:pid',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -95,7 +95,7 @@ router.get(
 );
 
 router.patch(
-  '/:cid/client_properties/:pid',
+  '/:cuid/client_properties/:pid',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
     body: PropertyValidations.updateProperty,
@@ -107,7 +107,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cid/client_properties/:pid/add_media',
+  '/:cuid/client_properties/:pid/add_media',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -118,7 +118,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cid/client_properties/:pid/remove_media',
+  '/:cuid/client_properties/:pid/remove_media',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -129,7 +129,7 @@ router.patch(
 );
 
 router.delete(
-  '/:cid/delete_properties/:pid',
+  '/:cuid/delete_properties/:pid',
   validateRequest({
     query: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -140,6 +140,6 @@ router.delete(
 );
 
 // Mount unit routes for properties
-router.use('/:cid/client_properties/:pid/units', propertyUnitRoutes);
+router.use('/:cuid/client_properties/:pid/units', propertyUnitRoutes);
 
 export default router;

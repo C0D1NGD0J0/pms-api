@@ -43,15 +43,15 @@ router.post(
 );
 
 /**
- * @route POST /api/v1/invites/:cid/send
+ * @route POST /api/v1/invites/:cuid/send
  * @desc Send an invitation to join a client
  * @access Private (Admin/Manager only)
  */
 router.post(
-  '/:cid/send_invite',
+  '/:cuid/send_invite',
   isAuthenticated,
   validateRequest({
-    params: UtilsValidations.cid,
+    params: UtilsValidations.cuid,
     body: InvitationValidations.sendInvitation,
   }),
   asyncWrapper((req, res) => {
@@ -61,15 +61,15 @@ router.post(
 );
 
 /**
- * @route GET /api/v1/invites/clients/:cid
+ * @route GET /api/v1/invites/clients/:cuid
  * @desc Get invitations for a client with filtering and pagination
  * @access Private (Admin/Manager only)
  */
 router.get(
-  '/clients/:cid',
+  '/clients/:cuid',
   isAuthenticated,
   validateRequest({
-    params: UtilsValidations.cid,
+    params: UtilsValidations.cuid,
     query: InvitationValidations.getInvitations,
   }),
   asyncWrapper((req, res) => {
@@ -79,13 +79,13 @@ router.get(
 );
 
 /**
- * @route GET /api/v1/invites/clients/:cid/stats
+ * @route GET /api/v1/invites/clients/:cuid/stats
  * @desc Get invitation statistics for a client
  * @access Private (Admin/Manager only)
  */
 router.get(
-  '/clients/:cid/stats',
-  validateRequest({ params: UtilsValidations.cid }),
+  '/clients/:cuid/stats',
+  validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.getInvitationStats(req, res);
@@ -155,18 +155,18 @@ router.get(
 );
 
 /**
- * @route POST /api/v1/invites/:cid/validate_csv
+ * @route POST /api/v1/invites/:cuid/validate_csv
  * @desc Validate a CSV file for bulk invitation import
  * @access Private (Admin/Manager only)
  */
 router.post(
-  '/:cid/validate_csv',
+  '/:cuid/validate_csv',
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
-    params: UtilsValidations.cid,
+    params: UtilsValidations.cuid,
   }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
@@ -175,22 +175,41 @@ router.post(
 );
 
 /**
- * @route POST /api/v1/invites/:cid/import_invitations_csv
+ * @route POST /api/v1/invites/:cuid/import_invitations_csv
  * @desc Import invitations from a CSV file
  * @access Private (Admin/Manager only)
  */
 router.post(
-  '/:cid/import_invitations_csv',
+  '/:cuid/import_invitations_csv',
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
-    params: UtilsValidations.cid,
+    params: UtilsValidations.cuid,
   }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.importInvitationsFromCsv(req, res);
+  })
+);
+
+/**
+ * @route POST /api/v1/invites/:cuid/process-pending
+ * @desc Process pending invitations for a client with optional filters
+ * @access Private (Admin/Manager only)
+ */
+router.patch(
+  '/:cuid/process-pending',
+  isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
+  validateRequest({
+    params: UtilsValidations.cuid,
+    query: InvitationValidations.processPending,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<InvitationController>('invitationController');
+    return controller.processPendingInvitations(req, res);
   })
 );
 

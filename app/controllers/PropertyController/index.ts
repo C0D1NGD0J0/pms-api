@@ -22,7 +22,7 @@ export class PropertyController {
   };
 
   validateCsv = async (req: AppRequest, res: Response) => {
-    const { cid } = req.params;
+    const { cuid } = req.params;
     const { currentuser } = req.context;
 
     if (!currentuser) {
@@ -39,12 +39,12 @@ export class PropertyController {
       });
     }
     const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
-    const result = await this.propertyService.validateCsv(cid, csvFile, currentuser);
+    const result = await this.propertyService.validateCsv(cuid, csvFile, currentuser);
     res.status(httpStatusCodes.OK).json(result);
   };
 
   createPropertiesFromCsv = async (req: AppRequest, res: Response) => {
-    const { cid } = req.params;
+    const { cuid } = req.params;
     const { currentuser } = req.context;
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
@@ -60,7 +60,7 @@ export class PropertyController {
     }
     const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
     const result = await this.propertyService.addPropertiesFromCsv(
-      cid,
+      cuid,
       csvFile.path,
       currentuser.sub
     );
@@ -69,7 +69,7 @@ export class PropertyController {
 
   getClientProperties = async (req: AppRequest, res: Response) => {
     const { page, limit, sort, sortBy } = req.query;
-    const { cid } = req.params;
+    const { cuid } = req.params;
 
     const queryParams: IPropertyFilterQuery = {
       pagination: {
@@ -110,7 +110,7 @@ export class PropertyController {
         queryParams.filters.searchTerm = req.query.searchTerm as string;
       }
     }
-    const data = await this.propertyService.getClientProperties(cid, queryParams);
+    const data = await this.propertyService.getClientProperties(cuid, queryParams);
     res.status(httpStatusCodes.OK).json(data);
   };
 
@@ -119,7 +119,7 @@ export class PropertyController {
   };
 
   getProperty = async (req: AppRequest, res: Response) => {
-    const { cid, pid } = req.params;
+    const { cuid, pid } = req.params;
     const { currentuser } = req.context;
 
     if (!currentuser) {
@@ -129,12 +129,12 @@ export class PropertyController {
       });
     }
 
-    const data = await this.propertyService.getClientProperty(cid, pid, currentuser);
+    const data = await this.propertyService.getClientProperty(cuid, pid, currentuser);
     res.status(httpStatusCodes.OK).json(data);
   };
 
   updateClientProperty = async (req: AppRequest, res: Response) => {
-    const { cid, pid } = req.params;
+    const { cuid, pid } = req.params;
     const { currentuser } = req.context;
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
@@ -143,7 +143,7 @@ export class PropertyController {
       });
     }
     const ctx = {
-      cid,
+      cuid,
       pid,
       currentuser,
     };
@@ -153,7 +153,7 @@ export class PropertyController {
   };
 
   archiveProperty = async (req: AppRequest, res: Response) => {
-    const { cid, pid } = req.params;
+    const { cuid, pid } = req.params;
     const { currentuser } = req.context;
 
     if (!currentuser) {
@@ -163,7 +163,7 @@ export class PropertyController {
       });
     }
 
-    const data = await this.propertyService.archiveClientProperty(cid, pid, currentuser);
+    const data = await this.propertyService.archiveClientProperty(cuid, pid, currentuser);
     res.status(httpStatusCodes.OK).json(data);
   };
 

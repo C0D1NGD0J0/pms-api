@@ -110,4 +110,28 @@ router.patch(
   })
 );
 
+router.post(
+  '/validate_csv',
+  routeLimiter(),
+  diskUpload(['csv_file']),
+  scanFile,
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.validateUnitsCsv(req, res);
+  })
+);
+
+router.post(
+  '/import_csv',
+  routeLimiter(),
+  diskUpload(['csv_file']),
+  scanFile,
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.importUnitsFromCsv(req, res);
+  })
+);
+
 export default router;

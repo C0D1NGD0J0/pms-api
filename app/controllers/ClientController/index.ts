@@ -16,10 +16,10 @@ export class ClientController {
   }
 
   updateClientProfile = async (req: AppRequest, res: Response) => {
-    const { cid } = req.params;
+    const { cuid } = req.params;
     const updateData = req.body;
 
-    this.log.info(`Updating client profile for cid: ${cid}`);
+    this.log.info(`Updating client profile for cuid: ${cuid}`);
 
     const updatedClient = await this.clientService.updateClientDetails(req.context, updateData);
 
@@ -31,7 +31,7 @@ export class ClientController {
   };
 
   getClient = async (req: AppRequest, res: Response) => {
-    this.log.info('Getting complete client information for cid');
+    this.log.info('Getting complete client information for cuid');
 
     const client = await this.clientService.getClientDetails(req.context);
 

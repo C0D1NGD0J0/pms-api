@@ -20,7 +20,7 @@ export class InvitationController {
 
   sendInvitation = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
-    const { cid } = req.params;
+    const { cuid } = req.params;
     const invitationData = req.body;
 
     if (!currentuser) {
@@ -32,7 +32,7 @@ export class InvitationController {
 
     const result = await this.invitationService.sendInvitation(
       currentuser.sub,
-      cid,
+      cuid,
       invitationData
     );
 
@@ -167,7 +167,7 @@ export class InvitationController {
 
   getInvitations = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
-    const { cid } = req.params;
+    const { cuid } = req.params;
     const { status, role, page, limit, sortBy, sortOrder } = req.query;
 
     if (!currentuser) {
@@ -178,7 +178,7 @@ export class InvitationController {
     }
 
     const query = {
-      clientId: cid,
+      clientId: cuid,
       status: status as any,
       role: role as any,
       page: page ? parseInt(page as string) : undefined,
@@ -199,7 +199,7 @@ export class InvitationController {
 
   getInvitationStats = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
-    const { cid } = req.params;
+    const { cuid } = req.params;
 
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
@@ -208,7 +208,7 @@ export class InvitationController {
       });
     }
 
-    const result = await this.invitationService.getInvitationStats(cid, currentuser.sub);
+    const result = await this.invitationService.getInvitationStats(cuid, currentuser.sub);
 
     res.status(httpStatusCodes.OK).json({
       success: result.success,
@@ -237,9 +237,6 @@ export class InvitationController {
       });
     }
 
-    // Check if user has access to the client
-    await this.invitationService.getInvitationStats(invitation.clientId, currentuser.sub);
-
     res.status(httpStatusCodes.OK).json({
       success: true,
       message: t('invitation.success.retrieved'),
@@ -258,9 +255,7 @@ export class InvitationController {
       });
     }
 
-    // Only allow users to view their own invitations or if they're admin
-    const user = await this.authService.getCurrentUser(currentuser.sub);
-    if (user.data.email !== email) {
+    if (currentuser.email !== email) {
       // Check if user is an admin in any client - simplified check
       const hasAdminRole = currentuser.client.role === 'admin';
       if (!hasAdminRole) {
@@ -281,7 +276,7 @@ export class InvitationController {
   };
 
   validateInvitationCsv = async (req: AppRequest, res: Response) => {
-    const { cid } = req.params;
+    const { cuid } = req.params;
     const { currentuser } = req.context;
 
     if (!currentuser) {
@@ -299,21 +294,11 @@ export class InvitationController {
     }
 
     const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
-    const result = await this.invitationService.validateInvitationCsv(cid, csvFile, currentuser);
+    const result = await this.invitationService.validateInvitationCsv(cuid, csvFile, currentuser);
     res.status(httpStatusCodes.OK).json(result);
   };
 
   importInvitationsFromCsv = async (req: AppRequest, res: Response) => {
-    const { cid } = req.params;
-    const { currentuser } = req.context;
-
-    if (!currentuser) {
-      return res.status(httpStatusCodes.UNAUTHORIZED).json({
-        success: false,
-        message: t('auth.errors.unauthorized'),
-      });
-    }
-
     if (!req.body.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
@@ -322,11 +307,33 @@ export class InvitationController {
     }
 
     const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
-    const result = await this.invitationService.importInvitationsFromCsv(
-      cid,
-      csvFile.path,
-      currentuser.sub
-    );
+    const result = await this.invitationService.importInvitationsFromCsv(req.context, csvFile.path);
     res.status(httpStatusCodes.OK).json(result);
+  };
+
+  processPendingInvitations = async (req: AppRequest, res: Response) => {
+    const { currentuser } = req.context;
+    const { cuid } = req.params;
+    const { timeline, role, limit, dry_run } = req.query;
+
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: t('auth.errors.unauthorized'),
+      });
+    }
+
+    const result = await this.invitationService.processPendingInvitations(cuid, currentuser.sub, {
+      timeline: timeline as string,
+      role: role as string,
+      limit: limit ? parseInt(limit as string) : undefined,
+      dryRun: dry_run === 'true' || dry_run === '1',
+    });
+
+    res.status(httpStatusCodes.OK).json({
+      success: result.success,
+      message: result.message,
+      data: result.data,
+    });
   };
 }

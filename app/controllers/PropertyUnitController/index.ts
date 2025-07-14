@@ -2,8 +2,8 @@ import { Response } from 'express';
 import { t } from '@shared/languages';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyUnitService } from '@services/property';
-import { AppRequest } from '@interfaces/utils.interface';
 import { IPropertyFilterQuery } from '@interfaces/property.interface';
+import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
 
 interface IConstructor {
   propertyUnitService: PropertyUnitService;
@@ -92,6 +92,32 @@ export class PropertyUnitController {
 
   getUnit = async (req: AppRequest, res: Response) => {
     const result = await this.propertyUnitService.getPropertyUnit(req.context);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  validateUnitsCsv = async (req: AppRequest, res: Response) => {
+    if (!req.body.scannedFiles || !req.body.scannedFiles.length) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: t('propertyUnit.errors.noCsvFileUploaded'),
+      });
+    }
+
+    const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
+    const result = await this.propertyUnitService.validateUnitsCsv(req.context, csvFile);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  importUnitsFromCsv = async (req: AppRequest, res: Response) => {
+    if (!req.body.scannedFiles || !req.body.scannedFiles.length) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: t('propertyUnit.errors.noCsvFileUploaded'),
+      });
+    }
+
+    const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
+    const result = await this.propertyUnitService.importUnitsFromCsv(req.context, csvFile);
     res.status(httpStatusCodes.OK).json(result);
   };
 }

@@ -15,6 +15,9 @@
       "csvValidationStarted": "invitation.success.csvValidationStarted",
       "csvImportStarted": "invitation.success.csvImportStarted",
       "dryRunCompleted": "invitation.success.dryRunCompleted"
+    },
+    "errors": {
+      "noCsvFileUploaded": "invitation.errors.noCsvFileUploaded"
     }
   },
   "email": {

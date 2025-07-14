@@ -1,0 +1,28 @@
+You've Been Invited to Join <%= companyName %>
+
+Hello <%= inviteeName %>,
+
+You've been invited by <%= inviterName %> to join <%= companyName %> as a <%= role %>.
+
+<% if (customMessage) { %>
+Personal message from <%= inviterName %>:
+"<%= customMessage %>"
+
+<% } %>
+To accept this invitation and get started, please visit this link:
+<%= invitationUrl %>
+
+This invitation will expire on <%= new Date(expiresAt).toLocaleDateString() %> at <%= new Date(expiresAt).toLocaleTimeString() %>.
+
+What's Next?
+- Click the invitation link above
+- Create your account or sign in if you already have one
+- Complete your profile setup
+- Start collaborating with the <%= companyName %> team
+
+If you have any questions about this invitation, please contact <%= inviterName %> or the <%= companyName %> team directly.
+
+If you didn't expect this invitation, you can safely ignore this email.
+
+Best regards,
+The <%= companyName %> Team

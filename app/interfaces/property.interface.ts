@@ -32,7 +32,7 @@ export interface IProperty {
   status: PropertyStatus;
   yearBuilt?: number;
   name: string;
-  cid: string;
+  cuid: string;
 }
 
 /**
@@ -206,6 +206,16 @@ export type FinancialDetails = {
 };
 
 /**
+ * CSV Job Data Type
+ */
+export type CsvJobData = {
+  csvFilePath: string;
+  userId: string;
+  jobId?: string;
+  clientInfo: { cuid: string; displayName: string; id: string };
+};
+
+/**
  * Property Utilities Type
  */
 export type PropertyUtilities = {
@@ -239,16 +249,6 @@ export type PropertyType =
   | 'townhouse'
   | 'commercial'
   | 'industrial';
-
-/**
- * CSV Job Data Type
- */
-export type CsvJobData = {
-  csvFilePath: string;
-  userId: string;
-  jobId?: string;
-  cid: string;
-};
 
 /**
  * Property Status Types

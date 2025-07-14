@@ -221,9 +221,9 @@ export interface UploadResult {
   resourceName?: string;
   resourceId: string;
   fieldName: string;
+  publicuid: string;
   actorId?: string;
   filename: string;
-  publicId: string;
   size?: number;
   key?: string;
   url: string;

@@ -15,7 +15,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
       immutable: true,
       default: () => generateShortUID(12),
     },
-    cid: {
+    cuid: {
       index: true,
       type: String,
       required: true,
@@ -276,7 +276,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
 );
 
 PropertySchema.index(
-  { cid: 1, address: 1 },
+  { cuid: 1, address: 1 },
   {
     unique: true,
     partialFilterExpression: { deletedAt: null }, // only non-deleted properties
@@ -321,7 +321,7 @@ PropertySchema.pre('validate', async function (next) {
       const PropertyModel = model<IPropertyDocument>('Property');
 
       const query = {
-        cid: this.cid,
+        cuid: this.cuid,
         _id: { $ne: this._id },
         deletedAt: null,
       };

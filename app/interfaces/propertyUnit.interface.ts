@@ -103,7 +103,7 @@ export interface IPropertyUnit {
   isActive: boolean;
   floor?: number;
   puid: string;
-  cid: string;
+  cuid: string;
 }
 
 /**

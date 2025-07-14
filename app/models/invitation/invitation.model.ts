@@ -31,10 +31,10 @@ const InvitationSchema = new Schema<IInvitationDocument>(
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email address'],
     },
     clientId: {
-      type: String,
-      required: [true, 'Client ID is required'],
       index: true,
-      immutable: true,
+      ref: 'Client',
+      type: Schema.Types.ObjectId,
+      required: [true, 'Client ID is required'],
     },
     role: {
       type: String,
@@ -45,7 +45,7 @@ const InvitationSchema = new Schema<IInvitationDocument>(
     status: {
       type: String,
       required: true,
-      enum: ['pending', 'accepted', 'expired', 'revoked'],
+      enum: ['pending', 'accepted', 'expired', 'revoked', 'sent'],
       default: 'pending',
       index: true,
     },

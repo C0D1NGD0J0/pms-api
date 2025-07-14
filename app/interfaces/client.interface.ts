@@ -37,7 +37,7 @@ export interface IClientDocument extends Document, IClient {
   deletedAt: Date;
   createdAt: Date;
   updatedAt: Date;
-  cid: string;
+  cuid: string;
   id: string;
 }
 export interface IClientSettings {
@@ -62,7 +62,7 @@ export interface IClientUserConnections {
   roles: IUserRoleType[];
   isConnected: boolean;
   displayName: string;
-  cid: string;
+  cuid: string;
 }
 
 export type IPopulatedClientDocument = {

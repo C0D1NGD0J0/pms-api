@@ -53,7 +53,7 @@ export interface UnitChangedPayload {
   newStatus?: string; // For status changes
   unitId?: string; // Unit ID (for updates/status changes)
   userId: string; // User who made the change
-  cid: string; // Client ID
+  cuid: string; // Client ID
 }
 
 export interface IEventBus {
@@ -80,7 +80,7 @@ export interface UnitBatchChangedPayload {
   unitsFailed: number; // Number of units that failed to create
   propertyId: string; // MongoDB ObjectId as string
   userId: string; // User who made the change
-  cid: string; // Client ID
+  cuid: string; // Client ID
 }
 
 export interface SystemErrorPayload {

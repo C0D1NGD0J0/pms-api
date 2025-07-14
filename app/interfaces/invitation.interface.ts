@@ -14,15 +14,15 @@ export interface IInvitation {
     lastName: string;
     phoneNumber?: string;
   };
-  status: 'pending' | 'accepted' | 'expired' | 'revoked';
+  status: 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent';
   acceptedBy?: Types.ObjectId;
   revokedBy?: Types.ObjectId;
   invitedBy: Types.ObjectId;
+  clientId: Types.ObjectId;
   invitationToken: string;
   revokeReason?: string;
   inviteeEmail: string;
   acceptedAt?: Date;
-  clientId: string;
   revokedAt?: Date;
   role: IUserRole;
   expiresAt: Date;
@@ -43,7 +43,7 @@ export interface IInvitationDocument extends IInvitation, Document {
 }
 
 export interface IInvitationListQuery {
-  status?: 'pending' | 'accepted' | 'expired' | 'revoked';
+  status?: 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent';
   sortBy?: 'createdAt' | 'expiresAt' | 'inviteeEmail';
   sortOrder?: 'asc' | 'desc';
   clientId: string;
@@ -76,15 +76,17 @@ export interface IInvitationAcceptance {
     headline?: string;
   };
   invitationToken: string;
+  cuid: string;
 }
 
 export interface IInvitationStats {
   byRole: Record<IUserRole, number>;
   accepted: number;
-  pending: number;
   expired: number;
+  pending: number;
   revoked: number;
   total: number;
+  sent: number;
 }
 
 export interface ISendInvitationResult {

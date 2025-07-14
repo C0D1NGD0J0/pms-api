@@ -142,11 +142,15 @@ export class DiskStorage {
     for (const filename of filenames) {
       try {
         const filePath = path.join(this.storagePath, filename);
-        await fs.promises.access(filePath, fs.constants.F_OK);
         await fs.promises.unlink(filePath);
-      } catch (err) {
-        this.log.warn(`Failed to delete file ${filename}:`, err);
-        allSuccessful = false;
+      } catch (err: any) {
+        if (err.code === 'ENOENT') {
+          // file doesn't exist
+          this.log.debug(`File ${filename} doesn't exist, skipping deletion`);
+        } else {
+          this.log.warn(`Failed to delete file ${filename}:`, err);
+          allSuccessful = false;
+        }
       }
     }
 

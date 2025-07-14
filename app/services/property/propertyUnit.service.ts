@@ -1,19 +1,19 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
-import { JobTracker } from '@caching/jobTracker';
 import { PropertyQueue } from '@queues/property.queue';
 import { PropertyCache } from '@caching/property.cache';
+import { PropertyUnitCsvProcessor } from '@services/csv';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyUnitQueue } from '@queues/propertyUnit.queue';
 import { getRequestDuration, createLogger } from '@utils/index';
 import { IPropertyUnit } from '@interfaces/propertyUnit.interface';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
-import { IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
+import { ExtractedMediaFile, IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
 
 interface IConstructor {
   unitNumberingService: UnitNumberingService;
@@ -24,14 +24,13 @@ interface IConstructor {
   propertyQueue: PropertyQueue;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
-  jobTracker: JobTracker;
   clientDAO: ClientDAO;
 }
 
 interface BatchUnitData {
   units: IPropertyUnit[];
+  cuid: string;
   pid: string;
-  cid: string;
 }
 
 export class PropertyUnitService {
@@ -44,7 +43,6 @@ export class PropertyUnitService {
   private readonly propertyCache: PropertyCache;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
-  private readonly jobTracker: JobTracker;
   private readonly unitNumberingService: UnitNumberingService;
 
   constructor({
@@ -56,10 +54,8 @@ export class PropertyUnitService {
     propertyUnitQueue,
     propertyCache,
     emitterService,
-    jobTracker,
     unitNumberingService,
   }: IConstructor) {
-    this.jobTracker = jobTracker;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
@@ -74,13 +70,13 @@ export class PropertyUnitService {
 
   async addPropertyUnit(cxt: IRequestContext, data: BatchUnitData) {
     const currentuser = cxt.currentuser!;
-    const { cid, pid } = cxt.request.params;
+    const { cuid, pid } = cxt.request.params;
     const start = process.hrtime.bigint();
 
-    if (!pid || !cid) {
+    if (!pid || !cuid) {
       this.log.error(
         {
-          cid,
+          cuid,
           pid,
           url: cxt.request.url,
           userId: currentuser?.sub,
@@ -92,11 +88,11 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('propertyUnit.errors.unableToAddUnit') });
     }
 
-    const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
     if (!property) {
       this.log.error(
         {
-          cid,
+          cuid,
           pid,
           url: cxt.request.url,
           userId: currentuser?.sub,
@@ -117,12 +113,12 @@ export class PropertyUnitService {
 
   async getPropertyUnit(cxt: IRequestContext) {
     const { request, currentuser } = cxt;
-    const { cid, pid, unitId } = request.params;
+    const { cuid, pid, unitId } = request.params;
     const start = process.hrtime.bigint();
-    if (!pid || !cid || !unitId) {
+    if (!pid || !cuid || !unitId) {
       this.log.error(
         {
-          cid,
+          cuid,
           pid,
           unitId,
           url: request.url,
@@ -135,11 +131,11 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('propertyUnit.errors.unableToGetDetails') });
     }
 
-    const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
     if (!property) {
       this.log.error(
         {
-          cid,
+          cuid,
           pid,
           unitId,
           url: request.url,
@@ -158,7 +154,7 @@ export class PropertyUnitService {
     if (!unit) {
       this.log.error(
         {
-          cid,
+          cuid,
           pid,
           unitId,
           url: request.url,
@@ -180,12 +176,12 @@ export class PropertyUnitService {
 
   async getPropertyUnits(cxt: IRequestContext, pagination: IPropertyFilterQuery['pagination']) {
     const { request, currentuser } = cxt;
-    const { cid, pid } = request.params;
+    const { cuid, pid } = request.params;
     const start = process.hrtime.bigint();
-    if (!pid || !cid) {
+    if (!pid || !cuid) {
       this.log.error(
         {
-          cid,
+          cuid,
           pid,
           url: request.url,
           userId: currentuser?.sub,
@@ -197,11 +193,11 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('propertyUnit.errors.unableToGetUnits') });
     }
 
-    const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
     if (!property) {
       this.log.error(
         {
-          cid,
+          cuid,
           pid,
           url: request.url,
           userId: currentuser?.sub,
@@ -234,12 +230,12 @@ export class PropertyUnitService {
   async updatePropertyUnit(cxt: IRequestContext, updateData: Partial<IPropertyUnit>) {
     const currentuser = cxt.currentuser!;
     const start = process.hrtime.bigint();
-    const { cid, pid, unitId } = cxt.request.params;
+    const { cuid, pid, unitId } = cxt.request.params;
 
-    if (!pid || !cid || !unitId) {
+    if (!pid || !cuid || !unitId) {
       this.log.error(
         {
-          cid,
+          cuid,
           pid,
           unitId,
           url: cxt.request.url,
@@ -252,11 +248,11 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('propertyUnit.errors.unableToUpdate') });
     }
 
-    const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
     if (!property) {
       this.log.error(
         {
-          cid,
+          cuid,
           pid,
           unitId,
           url: cxt.request.url,
@@ -278,7 +274,7 @@ export class PropertyUnitService {
     if (!unit) {
       this.log.error(
         {
-          cid,
+          cuid,
           pid,
           unitId,
           url: cxt.request.url,
@@ -294,7 +290,7 @@ export class PropertyUnitService {
     if (property.status === 'inactive' || property.deletedAt) {
       this.log.error(
         {
-          cid,
+          cuid,
           pid,
           unitId,
           url: cxt.request.url,
@@ -408,7 +404,7 @@ export class PropertyUnitService {
         this.emitterService.emit(EventTypes.UNIT_STATUS_CHANGED, {
           propertyId: property.id,
           propertyPid: pid,
-          cid,
+          cuid,
           unitId,
           userId: currentuser.sub,
           changeType: 'status_changed',
@@ -420,7 +416,7 @@ export class PropertyUnitService {
         this.emitterService.emit(EventTypes.UNIT_UPDATED, {
           propertyId: property.id,
           propertyPid: pid,
-          cid,
+          cuid,
           unitId,
           userId: currentuser.sub,
           changeType: 'updated',
@@ -429,8 +425,8 @@ export class PropertyUnitService {
 
       return { data: updatedUnit };
     });
-    await this.propertyCache.invalidateProperty(cid, pid);
-    await this.propertyCache.invalidatePropertyLists(cid);
+    await this.propertyCache.invalidateProperty(cuid, pid);
+    await this.propertyCache.invalidatePropertyLists(cuid);
 
     return {
       success: true,
@@ -445,10 +441,10 @@ export class PropertyUnitService {
 
   async archiveUnit(cxt: IRequestContext) {
     const currentuser = cxt.currentuser!;
-    const { cid, pid, unitId } = cxt.request.params;
+    const { cuid, pid, unitId } = cxt.request.params;
 
     // Get property info for event emission
-    const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
     if (!property) {
       throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
     }
@@ -465,7 +461,7 @@ export class PropertyUnitService {
       this.emitterService.emit(EventTypes.UNIT_ARCHIVED, {
         propertyId: property.id,
         propertyPid: pid,
-        cid,
+        cuid,
         unitId,
         userId: currentuser.sub,
         changeType: 'archived',
@@ -506,7 +502,7 @@ export class PropertyUnitService {
     property: IPropertyDocument
   ) {
     const currentuser = cxt.currentuser!;
-    const { cid, pid } = cxt.request.params;
+    const { cuid, pid } = cxt.request.params;
     const start = process.hrtime.bigint();
 
     const session = await this.propertyUnitDAO.startSession();
@@ -515,7 +511,7 @@ export class PropertyUnitService {
       if (!canAddUnits.canAdd) {
         this.log.error(
           {
-            cid,
+            cuid,
             pid,
             url: cxt.request.url,
             userId: currentuser?.sub,
@@ -529,14 +525,14 @@ export class PropertyUnitService {
         });
       }
 
-      // Additional validation: Check if adding the batch would exceed the limit
+      // checks to see if adding the batch would exceed the limit
       if (
         canAddUnits.maxCapacity > 0 &&
         canAddUnits.currentCount + data.units.length > canAddUnits.maxCapacity
       ) {
         this.log.error(
           {
-            cid,
+            cuid,
             pid,
             url: cxt.request.url,
             userId: currentuser?.sub,
@@ -553,7 +549,6 @@ export class PropertyUnitService {
         });
       }
 
-      // Get existing units for validation
       const existingUnits = await this.propertyDAO.getPropertyUnits(property.id, {
         limit: 1000,
         skip: 0,
@@ -591,7 +586,7 @@ export class PropertyUnitService {
 
           const newUnitData = {
             ...unit,
-            cid,
+            cuid,
             propertyId: new Types.ObjectId(property.id),
             createdBy: new Types.ObjectId(currentuser.sub),
             lastModifiedBy: new Types.ObjectId(currentuser.sub),
@@ -615,7 +610,7 @@ export class PropertyUnitService {
 
       if (Object.keys(errors).length > 0) {
         this.log.error('Some units could not be created.', {
-          cid,
+          cuid,
           pid,
           error: errors,
           url: cxt.request.url,
@@ -630,7 +625,7 @@ export class PropertyUnitService {
         this.emitterService.emit(EventTypes.UNIT_BATCH_CREATED, {
           propertyId: property.id,
           propertyPid: pid,
-          cid,
+          cuid,
           userId: currentuser.sub,
           unitsCreated: createdUnits.length,
           unitsFailed: Object.keys(errors).length,
@@ -640,7 +635,7 @@ export class PropertyUnitService {
       return { createdUnits, errors };
     });
 
-    await this.propertyCache.invalidateProperty(cid, pid);
+    await this.propertyCache.invalidateProperty(cuid, pid);
     const errorsArray = Object.keys(result.errors);
     return {
       success: true,
@@ -658,24 +653,150 @@ export class PropertyUnitService {
     const jobId = await this.propertyUnitQueue.addUnitBatchCreationJob({
       units: data.units,
       pid: data.pid,
-      cid: data.cid,
+      cuid: data.cuid,
       userId: userId,
       requestId: cxt.requestId,
     });
 
-    await this.jobTracker.trackJob(userId, data.cid, jobId.toString(), 'unit_batch_creation', {
-      pid: data.pid,
-      cid: data.cid,
-      unitCount: data.units.length,
-    });
-
     return {
       success: true,
-      jobId: jobId.toString(),
+      data: { jobId: jobId.toString() },
       message: t('propertyUnit.success.jobQueued'),
-      estimatedCompletion: '2-3 minutes',
-      maxAllowedUnits: data.units.length,
-      processingType: 'queued',
     };
+  }
+
+  async validateUnitsCsv(cxt: IRequestContext, csvFile: ExtractedMediaFile) {
+    const currentuser = cxt.currentuser!;
+    const { cuid, pid } = cxt.request.params;
+    const start = process.hrtime.bigint();
+
+    if (!csvFile) {
+      throw new BadRequestError({ message: t('propertyUnit.errors.noCsvUploaded') });
+    }
+
+    if (csvFile.fileSize > 10 * 1024 * 1024) {
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+      throw new BadRequestError({ message: t('propertyUnit.errors.fileTooLarge') });
+    }
+
+    // Validate property exists
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    if (!property) {
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+      throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
+    }
+
+    const csvProcessor = new PropertyUnitCsvProcessor();
+
+    try {
+      const validationResult = await csvProcessor.validateCsv(csvFile.path, {
+        userId: currentuser.sub,
+        cuid,
+        pid: property.id,
+      });
+
+      // Clean up the file after processing
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+
+      return {
+        success: true,
+        data: {
+          validUnits: validationResult.validUnits.length,
+          totalRows: validationResult.totalRows,
+          errors: validationResult.errors,
+        },
+        message: t('propertyUnit.success.csvValidated'),
+      };
+    } catch (error: any) {
+      this.log.error('CSV validation failed', {
+        cuid,
+        pid,
+        error: error.message,
+        url: cxt.request.url,
+        userId: currentuser?.sub,
+        requestId: cxt.requestId,
+        duration: getRequestDuration(start).durationInMs,
+      });
+
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+      throw new BadRequestError({
+        message: error.message || t('propertyUnit.errors.csvValidationFailed'),
+      });
+    }
+  }
+
+  async importUnitsFromCsv(cxt: IRequestContext, csvFile: ExtractedMediaFile) {
+    const currentuser = cxt.currentuser!;
+    const { cuid, pid } = cxt.request.params;
+    const start = process.hrtime.bigint();
+
+    if (!csvFile) {
+      throw new BadRequestError({ message: t('propertyUnit.errors.noCsvUploaded') });
+    }
+
+    if (csvFile.fileSize > 10 * 1024 * 1024) {
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+      throw new BadRequestError({ message: t('propertyUnit.errors.fileTooLarge') });
+    }
+
+    // Validate property exists
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    if (!property) {
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+      throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
+    }
+
+    const csvProcessor = new PropertyUnitCsvProcessor();
+
+    try {
+      const validationResult = await csvProcessor.validateCsv(csvFile.path, {
+        userId: currentuser.sub,
+        cuid,
+        pid: property.id,
+      });
+
+      if (validationResult.errors && validationResult.errors.length > 0) {
+        this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+        return {
+          success: false,
+          message: t('propertyUnit.errors.csvValidationFailed'),
+          errors: validationResult.errors,
+        };
+      }
+
+      // Create units using the existing batch creation logic
+      const batchData: BatchUnitData = {
+        units: validationResult.validUnits,
+        cuid,
+        pid,
+      };
+
+      const result = await this.createUnitsDirectly(cxt, batchData, property);
+
+      // Clean up the file after processing
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+
+      return {
+        success: true,
+        data: result.data,
+        errors: result.errors,
+        message: t('propertyUnit.success.csvImported'),
+      };
+    } catch (error: any) {
+      this.log.error('CSV import failed', {
+        cuid,
+        pid,
+        error: error.message,
+        url: cxt.request.url,
+        userId: currentuser?.sub,
+        requestId: cxt.requestId,
+        duration: getRequestDuration(start).durationInMs,
+      });
+
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+      throw new BadRequestError({
+        message: error.message || t('propertyUnit.errors.csvImportFailed'),
+      });
+    }
   }
 }

@@ -5,7 +5,11 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { InvitationQueue, EmailQueue } from '@queues/index';
 import { createLogger, MAIL_TYPES, JOB_NAME } from '@utils/index';
 import { InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
-import { ISuccessReturnData, ExtractedMediaFile } from '@interfaces/utils.interface';
+import {
+  ISuccessReturnData,
+  ExtractedMediaFile,
+  IRequestContext,
+} from '@interfaces/utils.interface';
 import {
   UnauthorizedError,
   BadRequestError,
@@ -60,20 +64,20 @@ export class InvitationService {
 
   async sendInvitation(
     inviterUserId: string,
-    clientId: string,
+    cuid: string,
     invitationData: IInvitationData
   ): Promise<ISuccessReturnData<ISendInvitationResult>> {
     try {
-      await this.validateInviterPermissions(inviterUserId, clientId);
+      await this.validateInviterPermissions(inviterUserId, cuid);
 
-      const client = await this.clientDAO.getClientByCid(clientId);
+      const client = await this.clientDAO.getClientBycuid(cuid);
       if (!client) {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
       const existingInvitation = await this.invitationDAO.findPendingInvitation(
         invitationData.inviteeEmail,
-        clientId
+        client.id
       );
 
       if (existingInvitation) {
@@ -84,7 +88,7 @@ export class InvitationService {
 
       const existingUser = await this.userDAO.getUserWithClientAccess(
         invitationData.inviteeEmail,
-        clientId
+        client.cuid
       );
 
       if (existingUser) {
@@ -96,7 +100,7 @@ export class InvitationService {
       const invitation = await this.invitationDAO.createInvitation(
         invitationData,
         inviterUserId,
-        clientId
+        client.id
       );
 
       const inviter = await this.userDAO.getUserById(inviterUserId, {
@@ -114,16 +118,17 @@ export class InvitationService {
           inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
           companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
           role: invitationData.role,
-          invitationUrl: `${envVariables.FRONTEND.URL}/${clientId}/invitation?token=${invitation.invitationToken}`,
+          invitationUrl: `${envVariables.FRONTEND.URL}/${cuid}/invitation?token=${invitation.invitationToken}`,
           expiresAt: invitation.expiresAt,
           customMessage: invitationData.metadata?.inviteMessage,
         },
       };
+      this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
+        ...emailData,
+        invitationId: invitation._id.toString(),
+      } as any);
 
-      // Queue email
-      this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
-
-      this.log.info(`Invitation sent to ${invitationData.inviteeEmail} for client ${clientId}`);
+      this.log.info(`Invitation sent to ${invitationData.inviteeEmail} for client ${cuid}`);
 
       return {
         success: true,
@@ -238,9 +243,14 @@ export class InvitationService {
     }
   }
 
-  async getInvitationByIuid(iuid: string): Promise<IInvitationDocument | null> {
+  async getInvitationByIuid(iuid: string): Promise<ISuccessReturnData<IInvitationDocument | null>> {
     try {
-      return await this.invitationDAO.findByIuid(iuid);
+      const invitation = await this.invitationDAO.findByIuidUnsecured(iuid);
+      return {
+        success: true,
+        data: invitation,
+        message: invitation ? t('invitation.success.retrieved') : t('invitation.info.notFound'),
+      };
     } catch (error) {
       this.log.error('Error getting invitation by iuid:', error);
       throw error;
@@ -253,7 +263,7 @@ export class InvitationService {
     reason?: string
   ): Promise<ISuccessReturnData<IInvitationDocument>> {
     try {
-      const invitation = await this.invitationDAO.findByIuid(iuid);
+      const invitation = await this.invitationDAO.findByIuidUnsecured(iuid);
       if (!invitation) {
         throw new NotFoundError({ message: t('invitation.errors.notFound') });
       }
@@ -261,12 +271,13 @@ export class InvitationService {
       // Validate revoker has permission
       await this.validateInviterPermissions(revokerUserId, invitation.clientId);
 
-      if (invitation.status !== 'pending') {
+      if (!['pending', 'sent'].includes(invitation.status)) {
         throw new BadRequestError({ message: t('invitation.errors.cannotRevoke') });
       }
 
       const revokedInvitation = await this.invitationDAO.revokeInvitation(
         iuid,
+        invitation.clientId,
         revokerUserId,
         reason
       );
@@ -289,7 +300,7 @@ export class InvitationService {
     resenderUserId: string
   ): Promise<ISuccessReturnData<ISendInvitationResult>> {
     try {
-      const invitation = await this.invitationDAO.findByIuid(data.iuid);
+      const invitation = await this.invitationDAO.findByIuidUnsecured(data.iuid);
       if (!invitation) {
         throw new NotFoundError({ message: t('invitation.errors.notFound') });
       }
@@ -306,7 +317,7 @@ export class InvitationService {
 
       // Get client and resender information
       const [client, resender] = await Promise.all([
-        this.clientDAO.getClientByCid(invitation.clientId),
+        this.clientDAO.getClientBycuid(invitation.clientId),
         this.userDAO.getUserById(resenderUserId, { populate: 'profile' }),
       ]);
 
@@ -329,10 +340,13 @@ export class InvitationService {
       };
 
       // Update reminder count
-      await this.invitationDAO.incrementReminderCount(data.iuid);
+      await this.invitationDAO.incrementReminderCount(data.iuid, invitation.clientId);
 
-      // Queue email
-      this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
+      // Queue email with invitation ID for status tracking
+      this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
+        ...emailData,
+        invitationId: invitation._id.toString(),
+      } as any);
 
       this.log.info(`Invitation reminder sent for ${invitation.inviteeEmail}`);
 
@@ -387,24 +401,28 @@ export class InvitationService {
     }
   }
 
-  async expireInvitations(): Promise<number> {
+  async expireInvitations(): Promise<ISuccessReturnData<{ expiredCount: number }>> {
     try {
       const expiredCount = await this.invitationDAO.expireInvitations();
       this.log.info(`Expired ${expiredCount} invitations`);
-      return expiredCount;
+      return {
+        success: true,
+        data: { expiredCount },
+        message: t('invitation.success.expired', { count: expiredCount }),
+      };
     } catch (error) {
       this.log.error('Error expiring invitations:', error);
       throw error;
     }
   }
 
-  private async validateInviterPermissions(userId: string, clientId: string): Promise<void> {
+  private async validateInviterPermissions(userId: string, cuid: string): Promise<void> {
     const user = await this.userDAO.getUserById(userId);
     if (!user) {
       throw new UnauthorizedError({ message: t('auth.errors.userNotFound') });
     }
 
-    const clientConnection = user.cids.find((c) => c.cid === clientId && c.isConnected);
+    const clientConnection = user.cuids.find((c) => c.cuid === cuid && c.isConnected);
     if (!clientConnection) {
       throw new ForbiddenError({ message: t('auth.errors.noAccessToClient') });
     }
@@ -422,7 +440,7 @@ export class InvitationService {
   }
 
   async validateInvitationCsv(
-    cid: string,
+    cuid: string,
     csvFile: ExtractedMediaFile,
     currentUser: ICurrentUser
   ): Promise<ISuccessReturnData> {
@@ -431,14 +449,14 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.noCsvFileUploaded') });
       }
 
-      const client = await this.clientDAO.getClientByCid(cid);
+      const client = await this.clientDAO.getClientBycuid(cuid);
       if (!client) {
-        this.log.error(`Client with cid ${cid} not found`);
+        this.log.error(`Client with cuid ${cuid} not found`);
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
       // Validate user has permission to invite users for this client
-      await this.validateInviterPermissions(currentUser.sub, cid);
+      await this.validateInviterPermissions(currentUser.sub, cuid);
 
       // Check file size (10MB limit)
       if (csvFile.fileSize > 10 * 1024 * 1024) {
@@ -446,7 +464,7 @@ export class InvitationService {
       }
 
       const jobData = {
-        cid,
+        cuid,
         userId: currentUser.sub,
         csvFilePath: csvFile.path,
       };
@@ -464,32 +482,30 @@ export class InvitationService {
     }
   }
 
-  /**
-   * Import invitations from a CSV file
-   */
   async importInvitationsFromCsv(
-    cid: string,
-    csvFilePath: string,
-    userId: string
+    cxt: IRequestContext,
+    csvFilePath: string
   ): Promise<ISuccessReturnData> {
+    const { cuid } = cxt.request.params;
+    const userId = cxt.currentuser!.sub;
+
     try {
-      if (!csvFilePath || !cid) {
+      if (!csvFilePath || !cuid) {
         throw new BadRequestError({ message: t('invitation.errors.noCsvFileUploaded') });
       }
 
-      const client = await this.clientDAO.getClientByCid(cid);
+      const client = await this.clientDAO.getClientBycuid(cuid);
       if (!client) {
-        this.log.error(`Client with cid ${cid} not found`);
+        this.log.error(`Client with cuid ${cuid} not found`);
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
-      // Validate user has permission to invite users for this client
-      await this.validateInviterPermissions(userId, cid);
+      await this.validateInviterPermissions(userId, cuid);
 
       const jobData = {
-        cid,
         userId,
         csvFilePath,
+        clientInfo: { cuid, displayName: client.displayName, id: client.id },
       };
 
       const job = await this.invitationQueue.addCsvImportJob(jobData);
@@ -501,6 +517,145 @@ export class InvitationService {
       };
     } catch (error) {
       this.log.error('Error importing invitations from CSV:', error);
+      throw error;
+    }
+  }
+
+  async processPendingInvitations(
+    clientId: string,
+    processorUserId: string,
+    filters: {
+      timeline?: string;
+      role?: string;
+      limit?: number;
+      dryRun?: boolean;
+    }
+  ): Promise<ISuccessReturnData<any>> {
+    try {
+      await this.validateInviterPermissions(processorUserId, clientId);
+
+      // Build query filters
+      const query: IInvitationListQuery = {
+        clientId,
+        status: 'pending',
+        limit: filters.limit || 50,
+      };
+
+      // Add role filter if specified
+      if (filters.role) {
+        query.role = filters.role as any;
+      }
+
+      // Add timeline filter if specified
+      let timelineFilter: Date | undefined;
+      if (filters.timeline) {
+        const now = new Date();
+        switch (filters.timeline) {
+          case '24h':
+            timelineFilter = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            break;
+          case '48h':
+            timelineFilter = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+            break;
+          case '72h':
+            timelineFilter = new Date(now.getTime() - 72 * 60 * 60 * 1000);
+            break;
+          case '7d':
+            timelineFilter = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            break;
+        }
+      }
+
+      // Get pending invitations
+      const pendingInvitations = await this.invitationDAO.getInvitationsByClient(query);
+
+      // Filter by timeline if specified
+      let invitationsToProcess = pendingInvitations.items;
+      if (timelineFilter) {
+        invitationsToProcess = invitationsToProcess.filter(
+          (invitation) => new Date(invitation.createdAt) >= timelineFilter!
+        );
+      }
+
+      // If dry run, return what would be processed
+      if (filters.dryRun) {
+        return {
+          success: true,
+          message: t('invitation.success.dryRunCompleted'),
+          data: {
+            totalFound: invitationsToProcess.length,
+            invitations: invitationsToProcess.map((inv) => ({
+              iuid: inv.iuid,
+              inviteeEmail: inv.inviteeEmail,
+              role: inv.role,
+              createdAt: inv.createdAt,
+              inviteeFullName: inv.inviteeFullName,
+            })),
+            filters: {
+              timeline: filters.timeline,
+              role: filters.role,
+              limit: filters.limit,
+            },
+          },
+        };
+      }
+
+      // Process invitations
+      let processed = 0;
+      let failed = 0;
+      const errors: Array<{ iuid: string; email: string; error: string }> = [];
+
+      this.log.info(
+        `Processing ${invitationsToProcess.length} pending invitations for client ${clientId}`
+      );
+
+      for (const invitation of invitationsToProcess) {
+        try {
+          // Use existing resend logic
+          await this.resendInvitation(
+            {
+              iuid: invitation.iuid,
+            },
+            processorUserId
+          );
+          processed++;
+        } catch (error: any) {
+          failed++;
+          errors.push({
+            iuid: invitation.iuid,
+            email: invitation.inviteeEmail,
+            error: error.message || 'Unknown error',
+          });
+          this.log.error(
+            `Failed to process invitation ${invitation.iuid} for ${invitation.inviteeEmail}:`,
+            error
+          );
+        }
+      }
+
+      const message =
+        processed > 0
+          ? t('invitation.success.pendingProcessed', {
+              processed,
+              total: invitationsToProcess.length,
+            })
+          : t('invitation.info.noPendingFound');
+
+      return {
+        success: true,
+        message,
+        data: {
+          processed,
+          failed,
+          skipped: 0,
+          totalFound: invitationsToProcess.length,
+          timeline: filters.timeline,
+          role: filters.role,
+          errors: errors.length > 0 ? errors : undefined,
+        },
+      };
+    } catch (error) {
+      this.log.error('Error processing pending invitations:', error);
       throw error;
     }
   }

@@ -4,11 +4,12 @@ import { DoneCallback, Job } from 'bull';
 import { EmailQueue } from '@queues/index';
 import { envVariables } from '@shared/config';
 import { CsvJobData } from '@interfaces/index';
+import { createLogger, JOB_NAME } from '@utils/index';
 import { InvitationCsvProcessor } from '@services/csv';
+import { MailType } from '@interfaces/utils.interface';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InvitationDAO, ClientDAO, UserDAO } from '@dao/index';
-import { createLogger, MAIL_TYPES, JOB_NAME } from '@utils/index';
 import { IInvitationData } from '@interfaces/invitation.interface';
 
 interface IConstructor {
@@ -48,13 +49,15 @@ export class InvitationWorker {
 
   processCsvValidation = async (job: Job<CsvJobData>, done: DoneCallback) => {
     job.progress(10);
-    const { csvFilePath, cid, userId } = job.data;
-    this.log.info(`Processing invitation CSV validation job ${job.id} for client ${cid}`);
+    const { csvFilePath, clientInfo, userId } = job.data;
+    this.log.info(
+      `Processing invitation CSV validation job ${job.id} for client ${clientInfo.cuid}`
+    );
 
     try {
       job.progress(30);
       const result = await this.invitationCsvProcessor.validateCsv(csvFilePath, {
-        cid,
+        cuid: clientInfo.cuid,
         userId,
       });
       job.progress(100);
@@ -70,7 +73,9 @@ export class InvitationWorker {
         totalRows: result.totalRows,
         finishedAt: result.finishedAt,
       });
-      this.log.info(`Done processing invitation CSV validation job ${job.id} for client ${cid}`);
+      this.log.info(
+        `Done processing invitation CSV validation job ${job.id} for client ${clientInfo.cuid}`
+      );
     } catch (error) {
       this.log.error(`Error processing invitation CSV validation job ${job.id}:`, error);
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
@@ -79,14 +84,14 @@ export class InvitationWorker {
   };
 
   processCsvImport = async (job: Job<CsvJobData>, done: DoneCallback) => {
-    const { csvFilePath, cid, userId } = job.data;
+    const { csvFilePath, clientInfo, userId } = job.data;
 
     job.progress(10);
-    this.log.info(`Processing invitation CSV import job ${job.id} for client ${cid}`);
+    this.log.info(`Processing invitation CSV import job ${job.id} for client ${clientInfo.cuid}`);
 
     try {
       const csvResult = await this.invitationCsvProcessor.validateCsv(csvFilePath, {
-        cid,
+        cuid: clientInfo.cuid,
         userId,
       });
       job.progress(30);
@@ -109,7 +114,7 @@ export class InvitationWorker {
 
       for (const invitationData of csvResult.validInvitations) {
         try {
-          const result = await this.sendSingleInvitation(userId, cid, invitationData);
+          const result = await this.sendSingleInvitation(userId, clientInfo, invitationData);
           results.push({
             email: invitationData.inviteeEmail,
             success: true,
@@ -150,7 +155,7 @@ export class InvitationWorker {
       });
 
       this.log.info(
-        `Done processing invitation CSV import job ${job.id} for client ${cid}. Success: ${successCount}, Failed: ${failedCount}`
+        `Done processing invitation CSV import job ${job.id} for client ${cuid}. Success: ${successCount}, Failed: ${failedCount}`
       );
     } catch (error) {
       this.log.error(`Error processing invitation CSV import job ${job.id}:`, error);
@@ -164,43 +169,39 @@ export class InvitationWorker {
    */
   private async sendSingleInvitation(
     inviterUserId: string,
-    clientId: string,
+    clientInfo: { cuid: string; displayName: string; id: string },
     invitationData: IInvitationData
   ) {
-    // Check for existing pending invitation
+    if (!clientInfo.cuid || !clientInfo.id) {
+      throw new Error('Client not found');
+    }
+
+    // Cceck for existing pending invitation
     const existingInvitation = await this.invitationDAO.findPendingInvitation(
       invitationData.inviteeEmail,
-      clientId
+      clientInfo.id
     );
 
     if (existingInvitation) {
       throw new Error('A pending invitation already exists for this email');
     }
 
-    // Check if user already has access
+    // check if user already has access
     const existingUser = await this.userDAO.getUserWithClientAccess(
       invitationData.inviteeEmail,
-      clientId
+      clientInfo.cuid
     );
 
     if (existingUser) {
       throw new Error('User already has access to this client');
     }
 
-    // Get client info
-    const client = await this.clientDAO.getClientByCid(clientId);
-    if (!client) {
-      throw new Error('Client not found');
-    }
-
-    // Create invitation
     const invitation = await this.invitationDAO.createInvitation(
       invitationData,
       inviterUserId,
-      clientId
+      clientInfo.id
     );
 
-    // Get inviter info
     const inviter = await this.userDAO.getUserById(inviterUserId, {
       populate: 'profile',
     });
@@ -209,22 +210,21 @@ export class InvitationWorker {
     const emailData = {
       to: invitationData.inviteeEmail,
       subject: t('email.invitation.subject', {
-        companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
+        companyName: clientInfo.displayName || 'Company',
       }),
-      emailType: MAIL_TYPES.ACCOUNT_ACTIVATION,
+      emailType: MailType.INVITATION,
       data: {
         inviteeName: `${invitationData.personalInfo.firstName} ${invitationData.personalInfo.lastName}`,
         inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
-        companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
+        companyName: clientInfo.displayName || 'Company',
         role: invitationData.role,
-        invitationUrl: `${envVariables.FRONTEND.URL}/${clientId}/invitation?token=${invitation.invitationToken}`,
+        invitationUrl: `${envVariables.FRONTEND.URL}/${clientInfo.cuid}/invitation?token=${invitation.invitationToken}`,
         expiresAt: invitation.expiresAt,
+        invitationId: invitation._id.toString(),
         customMessage: invitationData.metadata?.inviteMessage,
       },
     };
-
-    // Queue email
-    this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
+    this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, emailData);
 
     return invitation;
   }

@@ -16,12 +16,12 @@ export class InvitationQueue extends BaseQueue {
     this.invitationWorker = invitationWorker;
     this.processQueueJobs(
       JOB_NAME.INVITATION_CSV_VALIDATION_JOB,
-      2,
+      5,
       this.invitationWorker.processCsvValidation
     );
     this.processQueueJobs(
       JOB_NAME.INVITATION_CSV_IMPORT_JOB,
-      1,
+      5,
       this.invitationWorker.processCsvImport
     );
   }

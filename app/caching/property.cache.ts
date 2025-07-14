@@ -39,17 +39,17 @@ export class PropertyCache extends BaseCache {
 
   /**
    * cache a property object with tenant isolation
-   * @param cid - client identifier
+   * @param cuid - client identifier
    * @param propertyId - property identifier
    * @param propertyData - pProperty data object
    */
   async cacheProperty(
-    cid: string,
+    cuid: string,
     propertyId: string,
     propertyData: any
   ): Promise<ISuccessReturnData> {
     try {
-      if (!cid || !propertyId || !propertyData) {
+      if (!cuid || !propertyId || !propertyData) {
         return {
           data: null,
           success: false,
@@ -57,7 +57,7 @@ export class PropertyCache extends BaseCache {
         };
       }
 
-      const propertyKey = `${this.KEY_PREFIXES.CLIENT_PROPERTY}:${cid}:${propertyId}`;
+      const propertyKey = `${this.KEY_PREFIXES.CLIENT_PROPERTY}:${cuid}:${propertyId}`;
       const propertyResult = await this.setItem(
         propertyKey,
         JSON.stringify(propertyData),
@@ -65,7 +65,7 @@ export class PropertyCache extends BaseCache {
       );
 
       // Also add to client's property set for easy lookup/invalidation
-      const clientKey = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}`;
+      const clientKey = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cuid}`;
       await this.client.sAdd(clientKey, propertyId);
 
       return propertyResult;
@@ -81,12 +81,12 @@ export class PropertyCache extends BaseCache {
 
   /**
    * Get cached property by ID with tenant validation
-   * @param cid - Client/tenant identifier
+   * @param cuid - Client/tenant identifier
    * @param propertyId - Property identifier
    */
-  async getProperty(cid: string, propertyId: string): Promise<ISuccessReturnData<any | null>> {
+  async getProperty(cuid: string, propertyId: string): Promise<ISuccessReturnData<any | null>> {
     try {
-      if (!cid || !propertyId) {
+      if (!cuid || !propertyId) {
         return {
           success: false,
           data: null,
@@ -94,7 +94,7 @@ export class PropertyCache extends BaseCache {
         };
       }
 
-      const key = `${this.KEY_PREFIXES.CLIENT_PROPERTY}:${cid}:${propertyId}`;
+      const key = `${this.KEY_PREFIXES.CLIENT_PROPERTY}:${cuid}:${propertyId}`;
       const result = await this.getItem(key);
       return result;
     } catch (error) {
@@ -109,14 +109,14 @@ export class PropertyCache extends BaseCache {
 
   /**
    * Cache a list of properties with pagination
-   * @param cid - Client/tenant identifier
+   * @param cuid - Client/tenant identifier
    * @param listKey - Unique key identifying this list (e.g., "all", "vacant", "commercial")
    * @param page - Page number
    * @param limit - Items per page
    * @param propertyList - Array of property data
    */
   async saveClientProperties(
-    cid: string,
+    cuid: string,
     propertyList: IProperty[],
     opts: {
       pagination: IPaginationQuery;
@@ -124,7 +124,7 @@ export class PropertyCache extends BaseCache {
     }
   ): Promise<ISuccessReturnData> {
     try {
-      if (!cid || !propertyList) {
+      if (!cuid || !propertyList) {
         return {
           data: null,
           success: false,
@@ -132,7 +132,7 @@ export class PropertyCache extends BaseCache {
         };
       }
       const listKey = this.generateListKeyFromPagination(opts.pagination);
-      const key = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}:${listKey}`;
+      const key = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cuid}:${listKey}`;
 
       await this.deleteItems([key]);
       const multi = this.client.multi();
@@ -148,7 +148,7 @@ export class PropertyCache extends BaseCache {
           total: propertyList.length,
           lastUpdated: Date.now(),
           listKey,
-          cid,
+          cuid,
         },
         this.LIST_CACHE_TTL
       );
@@ -172,17 +172,17 @@ export class PropertyCache extends BaseCache {
 
   /**
    * Get cached property list with tenant isolation
-   * @param cid - Client/tenant identifier
+   * @param cuid - Client/tenant identifier
    * @param pagination - Pagination object
    * @returns - List of properties and pagination info
    * @throws - Error if client ID or pagination is invalid
    */
   async getClientProperties(
-    cid: string,
+    cuid: string,
     pagination: IPaginationQuery
   ): Promise<ISuccessReturnData<any>> {
     try {
-      if (!cid || !pagination) {
+      if (!cuid || !pagination) {
         return {
           success: false,
           data: null,
@@ -190,7 +190,7 @@ export class PropertyCache extends BaseCache {
         };
       }
       const listKey = this.generateListKeyFromPagination(pagination);
-      const key = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}:${listKey}`;
+      const key = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cuid}:${listKey}`;
       const listResult = await this.getListRange(key, 0, -1);
       if (!listResult.success || !listResult.data || listResult.data.length === 0) {
         return {
@@ -228,12 +228,12 @@ export class PropertyCache extends BaseCache {
 
   /**
    * Invalidate a property in the cache
-   * @param cid - Client/tenant identifier
+   * @param cuid - Client/tenant identifier
    * @param propertyId - Property identifier
    */
-  async invalidateProperty(cid: string, propertyId: string): Promise<ISuccessReturnData> {
+  async invalidateProperty(cuid: string, propertyId: string): Promise<ISuccessReturnData> {
     try {
-      if (!cid || !propertyId) {
+      if (!cuid || !propertyId) {
         return {
           data: null,
           success: false,
@@ -241,7 +241,7 @@ export class PropertyCache extends BaseCache {
         };
       }
 
-      const key = `${this.KEY_PREFIXES.CLIENT_PROPERTY}:${cid}:${propertyId}`;
+      const key = `${this.KEY_PREFIXES.CLIENT_PROPERTY}:${cuid}:${propertyId}`;
       await this.deleteItems([key]);
       return { data: null, success: true };
     } catch (error) {
@@ -256,11 +256,11 @@ export class PropertyCache extends BaseCache {
 
   /**
    * Invalidate all properties for a tenant
-   * @param cid - Client/tenant identifier
+   * @param cuid - Client/tenant identifier
    */
-  async invalidateClientProperties(cid: string): Promise<ISuccessReturnData> {
+  async invalidateClientProperties(cuid: string): Promise<ISuccessReturnData> {
     try {
-      if (!cid) {
+      if (!cuid) {
         return {
           data: null,
           success: false,
@@ -268,15 +268,17 @@ export class PropertyCache extends BaseCache {
         };
       }
 
-      const clientKey = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}`;
+      const clientKey = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cuid}`;
       const propertyIds = await this.client.sMembers(clientKey);
 
       if (propertyIds.length > 0) {
-        const keys = propertyIds.map((pid) => `${this.KEY_PREFIXES.CLIENT_PROPERTY}:${cid}:${pid}`);
+        const keys = propertyIds.map(
+          (pid) => `${this.KEY_PREFIXES.CLIENT_PROPERTY}:${cuid}:${pid}`
+        );
         await this.deleteItems(keys);
       }
 
-      const listPattern = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}:*`;
+      const listPattern = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cuid}:*`;
       const listKeys = await this.client.keys(listPattern);
 
       const allKeys = [...listKeys];
@@ -300,12 +302,12 @@ export class PropertyCache extends BaseCache {
 
   /**
    * Invalidate property lists matching a pattern with tenant isolation
-   * @param cid - Client/tenant identifier
+   * @param cuid - Client/tenant identifier
    * @param listKey - Optional list key to target specific lists
    */
-  async invalidatePropertyLists(cid: string, listKey?: string): Promise<ISuccessReturnData> {
+  async invalidatePropertyLists(cuid: string, listKey?: string): Promise<ISuccessReturnData> {
     try {
-      if (!cid) {
+      if (!cuid) {
         return {
           data: null,
           success: false,
@@ -315,8 +317,8 @@ export class PropertyCache extends BaseCache {
 
       // Pattern to match all property lists or a specific list type for this tenant
       const pattern = listKey
-        ? `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}:${listKey}:*`
-        : `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cid}:*`;
+        ? `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cuid}:${listKey}:*`
+        : `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cuid}:*`;
 
       const keys = await this.client.keys(pattern);
       if (keys.length > 0) {

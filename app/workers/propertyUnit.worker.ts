@@ -37,14 +37,12 @@ export class PropertyUnitWorker {
 
   processUnitBatchCreation = async (job: Job<UnitBatchJobData>, done: DoneCallback) => {
     job.progress(10);
-    const { units, pid, cid, userId } = job.data;
+    const { units, pid, cuid, userId } = job.data;
     this.log.info(`Processing unit batch creation job ${job.id} for property ${pid}`);
 
     try {
       job.progress(20);
-
-      // Validate property exists and can accommodate units
-      const property = await this.propertyDAO.findFirst({ pid, cid, deletedAt: null });
+      const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
       if (!property) {
         done(new Error('Property not found'), null);
         return;
@@ -72,7 +70,6 @@ export class PropertyUnitWorker {
 
       job.progress(30);
 
-      // Validate pattern consistency across all units
       const unitsForValidation = units.map((unit: any) => ({
         unitNumber: unit.unitNumber,
         floor: unit.floor,
@@ -116,7 +113,7 @@ export class PropertyUnitWorker {
             // Create unit data
             const newUnitData = {
               ...unit,
-              cid,
+              cuid,
               propertyId: new Types.ObjectId(property.id),
               createdBy: new Types.ObjectId(userId),
               lastModifiedBy: new Types.ObjectId(userId),
@@ -151,7 +148,7 @@ export class PropertyUnitWorker {
       // Emit property update event
       this.emitterService.emit(EventTypes.PROPERTY_CREATED, {
         propertyId: pid,
-        clientId: cid,
+        clientId: cuid,
         unitsCreated: result.createdUnits.length,
         maxAllowedUnits: units.length,
       });

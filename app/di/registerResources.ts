@@ -6,9 +6,9 @@ import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { LanguageService } from '@shared/languages/language.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
+import { EventsRegistryCache, PropertyCache, AuthCache } from '@caching/index';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { PropertyUnit, Invitation, Property, Profile, Client, User } from '@models/index';
-import { EventsRegistryCache, PropertyCache, JobTracker, AuthCache } from '@caching/index';
 import {
   PropertyUnitDAO,
   InvitationDAO,
@@ -98,7 +98,6 @@ const DAOResources = {
 
 const CacheResources = {
   authCache: asClass(AuthCache).singleton(),
-  jobTracker: asClass(JobTracker).singleton(),
   propertyCache: asClass(PropertyCache).singleton(),
   eventsRegistry: asClass(EventsRegistryCache).singleton(),
 };

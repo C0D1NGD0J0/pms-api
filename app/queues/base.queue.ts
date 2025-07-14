@@ -3,16 +3,16 @@ import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
 import { createBullBoard } from '@bull-board/api';
 import { ExpressAdapter } from '@bull-board/express';
-import { RedisService } from '@database/redis-setup';
 import { BullAdapter } from '@bull-board/api/bullAdapter';
 import Queue, { QueueOptions as BullQueueOptions, JobOptions as BullJobOptions } from 'bull';
 
 export const DEFAULT_JOB_OPTIONS: BullJobOptions = {
-  attempts: 2,
+  attempts: 3,
   timeout: 60000,
   backoff: { type: 'fixed', delay: 10000 },
   removeOnComplete: 100,
   removeOnFail: 500,
+  delay: 2000, // 2 second delay between jobs to respect rate limits
 };
 
 export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions = {
@@ -36,28 +36,19 @@ export type JobData = any;
 export let serverAdapter: ExpressAdapter;
 const bullMQAdapters: BullAdapter[] = [];
 let deadLetterQueue: Queue.Queue | null;
-let sharedRedisService: RedisService | null = null;
-const queueShutdownRegistry = new Set<string>();
 
 export class BaseQueue<T extends JobData = JobData> {
   protected log: Logger;
   protected dlq: Queue.Queue;
   protected queue: Queue.Queue;
-  protected isShuttingDown = false;
 
   constructor(queueName: string) {
     this.log = createLogger(queueName);
-
-    if (!sharedRedisService) {
-      sharedRedisService = RedisService.getSharedInstance();
-    }
-
-    const redisUrl = sharedRedisService.getRedisUrl();
-    this.queue = new Queue(queueName, redisUrl, DEFAULT_QUEUE_OPTIONS);
+    this.queue = new Queue(queueName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
 
     if (!deadLetterQueue) {
       const dlqName = `${queueName}-DLQ`;
-      deadLetterQueue = new Queue(dlqName, redisUrl, DEFAULT_QUEUE_OPTIONS);
+      deadLetterQueue = new Queue(dlqName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
     }
     this.dlq = deadLetterQueue;
     this.addQueueToBullBoard(this.queue, this.dlq);
@@ -176,15 +167,25 @@ export class BaseQueue<T extends JobData = JobData> {
    * Gracefully shut down the queue
    */
   async shutdown(): Promise<void> {
-    if (this.isShuttingDown || queueShutdownRegistry.has(this.queue.name)) {
-      this.log.info(`Queue ${this.queue.name} is already shutting down, skipping...`);
-      return;
-    }
-
-    this.isShuttingDown = true;
-    queueShutdownRegistry.add(this.queue.name);
-
     try {
+      this.log.info(`Shutting down queue ${this.queue.name}...`);
+
+      // Pause queue to prevent new jobs
+      await this.queue.pause();
+
+      // Wait for active jobs to complete (with timeout)
+      const maxWaitTime = 30000; // 30 seconds
+      const startTime = Date.now();
+
+      while (Date.now() - startTime < maxWaitTime) {
+        const activeJobs = await this.queue.getActive();
+        if (activeJobs.length === 0) {
+          break;
+        }
+        this.log.info(`Waiting for ${activeJobs.length} active jobs to complete...`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
       this.queue.removeAllListeners();
       if (this.dlq) {
         this.dlq.removeAllListeners();

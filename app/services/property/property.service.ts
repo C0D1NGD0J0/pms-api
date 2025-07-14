@@ -114,7 +114,7 @@ export class PropertyService implements IDisposable {
     propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType
   ): Promise<ISuccessReturnData> {
     const {
-      params: { cid },
+      params: { cuid },
     } = cxt.request;
     const currentuser = cxt.currentuser!;
     const start = process.hrtime.bigint();
@@ -125,7 +125,7 @@ export class PropertyService implements IDisposable {
     if (!validationResult.valid) {
       this.log.error(
         {
-          cid,
+          cuid,
           url: cxt.request.url,
           userId: currentuser.sub,
           requestId: cxt.requestId,
@@ -152,18 +152,18 @@ export class PropertyService implements IDisposable {
 
     const session = await this.propertyDAO.startSession();
     const result = await this.propertyDAO.withTransaction(session, async (session) => {
-      const client = await this.clientDAO.getClientByCid(cid);
+      const client = await this.clientDAO.getClientBycuid(cuid);
       if (!client) {
-        this.log.error(`Client with cid ${cid} not found`);
+        this.log.error(`Client with cuid ${cuid} not found`);
         throw new BadRequestError({ message: t('property.errors.unableToAdd') });
       }
 
       const fullAddress = propertyData.address.fullAddress;
       // address uniqueness check
-      if (fullAddress && cid) {
+      if (fullAddress && cuid) {
         const existingProperty = await this.propertyDAO.findPropertyByAddress(
           fullAddress,
-          cid.toString()
+          cuid.toString()
         );
 
         if (existingProperty) {
@@ -183,7 +183,7 @@ export class PropertyService implements IDisposable {
       const property = await this.propertyDAO.createProperty(
         {
           ...propertyData,
-          cid,
+          cuid,
         },
         session
       );
@@ -217,7 +217,7 @@ export class PropertyService implements IDisposable {
       });
     }
 
-    await this.propertyCache.cacheProperty(cid, result.property.id, result.property);
+    await this.propertyCache.cacheProperty(cuid, result.property.id, result.property);
     return { success: true, data: result.property, message: t('property.success.created') };
   }
 
@@ -284,23 +284,23 @@ export class PropertyService implements IDisposable {
   }
 
   async addPropertiesFromCsv(
-    cid: string,
+    cuid: string,
     csvFilePath: string,
     actorId: string
   ): Promise<ISuccessReturnData> {
-    if (!csvFilePath || !cid) {
+    if (!csvFilePath || !cuid) {
       throw new BadRequestError({ message: t('property.errors.noCsvFile') });
     }
-    const client = await this.clientDAO.getClientByCid(cid);
+    const client = await this.clientDAO.getClientBycuid(cuid);
     if (!client) {
-      this.log.error(`Client with cid ${cid} not found`);
+      this.log.error(`Client with cuid ${cuid} not found`);
       throw new BadRequestError({ message: 'Unable to add property to this account.' });
     }
 
     const jobData = {
       csvFilePath,
-      cid,
       userId: actorId,
+      clientInfo: { cuid, displayName: client.displayName, id: client.id },
     };
 
     const job = await this.propertyQueue.addCsvImportJob(jobData);
@@ -342,7 +342,7 @@ export class PropertyService implements IDisposable {
   }
 
   async validateCsv(
-    cid: string,
+    cuid: string,
     csvFile: ExtractedMediaFile,
     currentUser: ICurrentUser
   ): Promise<ISuccessReturnData> {
@@ -350,9 +350,9 @@ export class PropertyService implements IDisposable {
       throw new BadRequestError({ message: t('property.errors.noCsvUploaded') });
     }
 
-    const client = await this.clientDAO.getClientByCid(cid);
+    const client = await this.clientDAO.getClientBycuid(cuid);
     if (!client) {
-      this.log.error(`Client with cid ${cid} not found`);
+      this.log.error(`Client with cuid ${cuid} not found`);
       throw new BadRequestError({ message: t('property.errors.unableToValidateCsv') });
     }
 
@@ -362,9 +362,9 @@ export class PropertyService implements IDisposable {
     }
 
     const jobData = {
-      cid,
       userId: currentUser.sub,
       csvFilePath: csvFile.path,
+      clientInfo: { cuid, displayName: client.displayName, id: client.id },
     };
     const job = await this.propertyQueue.addCsvValidationJob(jobData);
     return {
@@ -375,7 +375,7 @@ export class PropertyService implements IDisposable {
   }
 
   async getClientProperties(
-    cid: string,
+    cuid: string,
     queryParams: IPropertyFilterQuery
   ): Promise<
     ISuccessReturnData<{
@@ -383,19 +383,19 @@ export class PropertyService implements IDisposable {
       pagination: PaginateResult | undefined;
     }>
   > {
-    if (!cid) {
+    if (!cuid) {
       throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
     }
 
-    const client = await this.clientDAO.getClientByCid(cid);
+    const client = await this.clientDAO.getClientBycuid(cuid);
     if (!client) {
-      this.log.error(`Client with cid ${cid} not found`);
+      this.log.error(`Client with cuid ${cuid} not found`);
       throw new BadRequestError({ message: 'Unable to get properties for this account.' });
     }
 
     const { pagination, filters } = queryParams;
     const filter: FilterQuery<IPropertyDocument> = {
-      cid,
+      cuid,
       deletedAt: null,
     };
 
@@ -490,7 +490,7 @@ export class PropertyService implements IDisposable {
       limit: Math.max(1, Math.min(pagination.limit || 10, 100)),
       skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
     };
-    const cachedResult = await this.propertyCache.getClientProperties(cid, opts);
+    const cachedResult = await this.propertyCache.getClientProperties(cuid, opts);
     if (cachedResult.success && cachedResult.data) {
       return {
         success: true,
@@ -500,8 +500,8 @@ export class PropertyService implements IDisposable {
         },
       };
     }
-    const properties = await this.propertyDAO.getPropertiesByClientId(cid, filter, opts);
-    await this.propertyCache.saveClientProperties(cid, properties.items, {
+    const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
+    await this.propertyCache.saveClientProperties(cuid, properties.items, {
       filter,
       pagination: opts,
     });
@@ -516,23 +516,23 @@ export class PropertyService implements IDisposable {
   }
 
   async getClientProperty(
-    cid: string,
+    cuid: string,
     pid: string,
     _currentUser: ICurrentUser
   ): Promise<ISuccessReturnData<IPropertyWithUnitInfo>> {
-    if (!cid || !pid) {
+    if (!cuid || !pid) {
       throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
     }
 
-    const client = await this.clientDAO.getClientByCid(cid);
+    const client = await this.clientDAO.getClientBycuid(cuid);
     if (!client) {
-      this.log.error(`Client with cid ${cid} not found`);
+      this.log.error(`Client with cuid ${cuid} not found`);
       throw new BadRequestError({ message: 'Unable to get properties for this account.' });
     }
 
     const property = await this.propertyDAO.findFirst({
       pid,
-      cid,
+      cuid,
       deletedAt: null,
     });
     if (!property) {
@@ -551,28 +551,28 @@ export class PropertyService implements IDisposable {
 
   async updateClientProperty(
     ctx: {
-      cid: string;
+      cuid: string;
       pid: string;
       currentuser: ICurrentUser;
     },
     updateData: Partial<IPropertyDocument>
   ): Promise<ISuccessReturnData> {
-    const { cid, pid } = ctx;
+    const { cuid, pid } = ctx;
 
-    if (!cid || !pid) {
+    if (!cuid || !pid) {
       this.log.error('Client ID and Property ID are required');
       throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
     }
 
-    const client = await this.clientDAO.getClientByCid(cid);
+    const client = await this.clientDAO.getClientBycuid(cuid);
     if (!client) {
-      this.log.error(`Client with cid ${cid} not found`);
+      this.log.error(`Client with cuid ${cuid} not found`);
       throw new InvalidRequestError({ message: t('property.errors.clientNotFound') });
     }
 
     const property = await this.propertyDAO.findFirst({
       pid,
-      cid,
+      cuid,
       deletedAt: null,
     });
     if (!property) {
@@ -636,7 +636,7 @@ export class PropertyService implements IDisposable {
 
     const updatedProperty = await this.propertyDAO.update(
       {
-        cid,
+        cuid,
         pid,
         deletedAt: null,
       },
@@ -649,7 +649,7 @@ export class PropertyService implements IDisposable {
       throw new BadRequestError({ message: 'Unable to update property.' });
     }
 
-    await this.propertyCache.invalidateProperty(cid, property.id);
+    await this.propertyCache.invalidateProperty(cuid, property.id);
     return { success: true, data: updatedProperty, message: 'Property updated successfully' };
   }
 
@@ -686,24 +686,24 @@ export class PropertyService implements IDisposable {
   }
 
   async archiveClientProperty(
-    cid: string,
+    cuid: string,
     pid: string,
     currentUser: ICurrentUser
   ): Promise<ISuccessReturnData> {
-    if (!cid || !pid) {
+    if (!cuid || !pid) {
       this.log.error('Client ID and Property ID are required');
       throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
     }
 
-    const client = await this.clientDAO.getClientByCid(cid);
+    const client = await this.clientDAO.getClientBycuid(cuid);
     if (!client) {
-      this.log.error(`Client with cid ${cid} not found`);
+      this.log.error(`Client with cuid ${cuid} not found`);
       throw new BadRequestError({ message: t('property.errors.unableToArchive') });
     }
 
     const property = await this.propertyDAO.findFirst({
       pid,
-      cid,
+      cuid,
       deletedAt: null,
     });
     if (!property) {
@@ -716,8 +716,8 @@ export class PropertyService implements IDisposable {
       throw new BadRequestError({ message: t('property.errors.unableToArchive') });
     }
 
-    await this.propertyCache.invalidateProperty(cid, property.id);
-    await this.propertyCache.invalidatePropertyLists(cid);
+    await this.propertyCache.invalidateProperty(cuid, property.id);
+    await this.propertyCache.invalidatePropertyLists(cuid);
 
     return { success: true, data: null, message: t('property.success.archived') };
   }
@@ -833,7 +833,7 @@ export class PropertyService implements IDisposable {
         {
           propertyId: payload.propertyId,
           propertyPid: payload.propertyPid,
-          cid: payload.cid,
+          cuid: payload.cuid,
           changeType: payload.changeType,
           unitId: payload.unitId,
         },
@@ -847,8 +847,8 @@ export class PropertyService implements IDisposable {
       );
 
       // Invalidate property cache to ensure fresh data on next request
-      await this.propertyCache.invalidateProperty(payload.cid, payload.propertyPid);
-      await this.propertyCache.invalidatePropertyLists(payload.cid);
+      await this.propertyCache.invalidateProperty(payload.cuid, payload.propertyPid);
+      await this.propertyCache.invalidatePropertyLists(payload.cuid);
 
       this.log.info(
         {
@@ -877,7 +877,7 @@ export class PropertyService implements IDisposable {
         {
           propertyId: payload.propertyId,
           propertyPid: payload.propertyPid,
-          cid: payload.cid,
+          cuid: payload.cuid,
           unitsCreated: payload.unitsCreated,
           unitsFailed: payload.unitsFailed,
         },
@@ -890,8 +890,8 @@ export class PropertyService implements IDisposable {
           payload.propertyId,
           payload.userId
         );
-        await this.propertyCache.invalidateProperty(payload.cid, payload.propertyPid);
-        await this.propertyCache.invalidatePropertyLists(payload.cid);
+        await this.propertyCache.invalidateProperty(payload.cuid, payload.propertyPid);
+        await this.propertyCache.invalidatePropertyLists(payload.cuid);
 
         this.log.info(
           {

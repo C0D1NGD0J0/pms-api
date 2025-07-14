@@ -14,7 +14,7 @@ interface IConstructor {
 
 interface InvitationProcessingContext {
   userId: ICurrentUser['sub'];
-  cid: string;
+  cuid: string;
 }
 
 export class InvitationCsvProcessor {
@@ -37,9 +37,9 @@ export class InvitationCsvProcessor {
     finishedAt: Date;
     errors: null | IInvalidCsvProperty[];
   }> {
-    const client = await this.clientDAO.getClientByCid(context.cid);
+    const client = await this.clientDAO.getClientBycuid(context.cuid);
     if (!client) {
-      throw new Error(`Client with ID ${context.cid} not found`);
+      throw new Error(`Client with ID ${context.cuid} not found`);
     }
 
     const result = await BaseCSVProcessorService.processCsvFile<
@@ -62,11 +62,12 @@ export class InvitationCsvProcessor {
 
   private validateInvitationRow = async (
     row: any,
-    context: InvitationProcessingContext
+    context: InvitationProcessingContext,
+    _rowNumber: number
   ): Promise<ICsvValidationResult> => {
     const rowWithContext = {
       ...row,
-      cid: context.cid,
+      cuid: context.cuid,
     };
 
     const validationResult =
@@ -76,7 +77,7 @@ export class InvitationCsvProcessor {
       // Check if user already exists and has access to this client
       const existingUser = await this.userDAO.getUserWithClientAccess(
         row.inviteeEmail,
-        context.cid
+        context.cuid
       );
 
       if (existingUser) {
@@ -94,7 +95,7 @@ export class InvitationCsvProcessor {
       // Check if there's already a pending invitation for this email and client
       const existingInvitation = await this.invitationDAO.findPendingInvitation(
         row.inviteeEmail,
-        context.cid
+        context.cuid
       );
 
       if (existingInvitation) {

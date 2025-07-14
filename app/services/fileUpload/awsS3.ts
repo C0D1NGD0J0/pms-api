@@ -66,7 +66,7 @@ export class S3Service {
           resourceId: context.resourceId,
           resourceName: context.resourceName,
           url: result.Location!,
-          publicId: result.Key!,
+          publicuid: result.Key!,
           fieldName: file.fieldName.split('.')[0] || file.fieldName,
           filename: file.originalname || file.filename,
           size: file.size,

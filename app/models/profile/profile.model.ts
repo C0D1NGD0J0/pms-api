@@ -145,6 +145,67 @@ const ProfileSchema = new Schema<IProfileDocument>(
     },
     timeZone: { type: String, default: 'UTC' },
     lang: { type: String, default: 'en' },
+    clientRoleInfo: [
+      {
+        cuid: { type: String, required: true, trim: true },
+        employeeInfo: {
+          jobTitle: { type: String, trim: true },
+          department: { type: String, trim: true },
+          reportsTo: { type: String, trim: true },
+          employeeId: { type: String, trim: true, unique: true, sparse: true },
+          startDate: { type: Date },
+          permissions: [{ type: String }],
+        },
+        vendorInfo: {
+          companyName: { type: String, trim: true },
+          businessType: { type: String, trim: true },
+          registrationNumber: { type: String, trim: true },
+          taxId: { type: String, trim: true },
+          yearsInBusiness: { type: Number, min: 0 },
+          contactPerson: {
+            name: { type: String, trim: true },
+            jobTitle: { type: String, trim: true },
+            department: { type: String, trim: true },
+            email: { type: String, trim: true },
+            phone: { type: String, trim: true },
+          },
+          servicesOffered: {
+            plumbing: { type: Boolean },
+            electrical: { type: Boolean },
+            hvac: { type: Boolean },
+            cleaning: { type: Boolean },
+            landscaping: { type: Boolean },
+            painting: { type: Boolean },
+            carpentry: { type: Boolean },
+            roofing: { type: Boolean },
+            security: { type: Boolean },
+            pestControl: { type: Boolean },
+            applianceRepair: { type: Boolean },
+            maintenance: { type: Boolean },
+            other: { type: Boolean },
+          },
+          serviceAreas: {
+            downtown: { type: Boolean },
+            uptown: { type: Boolean },
+            suburbs: { type: Boolean },
+            industrial: { type: Boolean },
+            commercial: { type: Boolean },
+            residential: { type: Boolean },
+            citywide: { type: Boolean },
+            regional: { type: Boolean },
+            statewide: { type: Boolean },
+            national: { type: Boolean },
+          },
+          insuranceInfo: {
+            provider: { type: String, trim: true },
+            policyNumber: { type: String, trim: true },
+            expirationDate: { type: Date },
+            coverageAmount: { type: Number, min: 0 },
+          },
+        },
+        _id: false,
+      },
+    ],
   },
   {
     timestamps: true,
@@ -168,7 +229,7 @@ ProfileSchema.methods.getGravatarUrl = function (email: string): string {
   return `https://gravatar.com/avatar/${hash}?s=200`;
 };
 
-// Data protection - automatically set retention date based on policy
+// automatically set retention date based on policy
 ProfileSchema.pre('save', function (this: IProfileDocument, next) {
   if (this.isModified('settings.dataRetentionPolicy')) {
     const today = new Date();

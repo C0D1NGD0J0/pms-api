@@ -106,6 +106,7 @@ export class App implements IAppSetup {
     app.use(`${BASE_PATH}/queues`, serverAdapter.getRouter());
     app.use(`${BASE_PATH}/auth`, routes.authRoutes);
     app.use(`${BASE_PATH}/clients`, routes.clientRoutes);
+    app.use(`${BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
     app.use(`${BASE_PATH}/invites`, routes.invitationRoutes);
     // app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
     // app.use(`${BASE_PATH}/vendors`, routes.vendorRoutes);

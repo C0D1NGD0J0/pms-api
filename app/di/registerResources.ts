@@ -7,6 +7,7 @@ import { DatabaseService, RedisService } from '@database/index';
 import { LanguageService } from '@shared/languages/language.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { EventsRegistryCache, PropertyCache, AuthCache } from '@caching/index';
+import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { PropertyUnit, Invitation, Property, Profile, Client, User } from '@models/index';
 import {
@@ -57,6 +58,7 @@ import {
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
   clientController: asClass(ClientController).scoped(),
+  emailTemplateController: asClass(EmailTemplateController).scoped(),
   propertyController: asClass(PropertyController).scoped(),
   propertyUnitController: asClass(PropertyUnitController).scoped(),
   invitationController: asClass(InvitationController).scoped(),

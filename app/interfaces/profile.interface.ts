@@ -24,17 +24,26 @@ export interface VendorInfo {
     roofing?: boolean;
     security?: boolean;
   };
+  address?: {
+    city?: string;
+    computedLocation: {
+      coordinates: [number, number]; // [longitude, latitude]
+      type: 'Point';
+    };
+    country?: string;
+    fullAddress: string;
+    postCode?: string;
+    state?: string;
+    street?: string;
+    streetNumber?: string;
+    unitNumber?: string;
+  };
   serviceAreas?: {
-    citywide?: boolean;
-    commercial?: boolean;
-    downtown?: boolean;
-    industrial?: boolean;
-    national?: boolean;
-    regional?: boolean;
-    residential?: boolean;
-    statewide?: boolean;
-    suburbs?: boolean;
-    uptown?: boolean;
+    baseLocation?: {
+      address: string;
+      coordinates: [number, number]; // [longitude, latitude]
+    };
+    maxDistance: 10 | 15 | 25 | 50; // km
   };
   insuranceInfo?: {
     coverageAmount?: number;

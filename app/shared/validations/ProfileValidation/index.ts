@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-// Employee info validation
 const employeeInfoSchema = z.object({
   jobTitle: z.string().min(2).max(100).optional(),
   department: z.string().min(2).max(50).optional(),
@@ -10,8 +9,32 @@ const employeeInfoSchema = z.object({
   permissions: z.array(z.string()).optional(),
 });
 
-// Vendor info validation
 const vendorInfoSchema = z.object({
+  address: z
+    .object({
+      city: z.string().min(1).max(100).optional(),
+      computedLocation: z.object({
+        coordinates: z
+          .array(z.number())
+          .length(2)
+          .refine(
+            (coords) =>
+              coords[0] >= -180 && coords[0] <= 180 && coords[1] >= -90 && coords[1] <= 90,
+            {
+              message: 'Coordinates must be [longitude, latitude] with valid ranges',
+            }
+          ),
+        type: z.literal('Point'),
+      }),
+      country: z.string().min(1).max(100).optional(),
+      fullAddress: z.string().min(1).max(255),
+      postCode: z.string().min(1).max(20).optional(),
+      state: z.string().min(1).max(100).optional(),
+      street: z.string().min(1).max(255).optional(),
+      streetNumber: z.string().min(1).max(20).optional(),
+      unitNumber: z.string().min(1).max(20).optional(),
+    })
+    .optional(),
   companyName: z.string().min(2).max(100).optional(),
   businessType: z.string().min(2).max(50).optional(),
   registrationNumber: z.string().min(3).max(50).optional(),
@@ -45,16 +68,24 @@ const vendorInfoSchema = z.object({
     .optional(),
   serviceAreas: z
     .object({
-      downtown: z.boolean().optional(),
-      uptown: z.boolean().optional(),
-      suburbs: z.boolean().optional(),
-      industrial: z.boolean().optional(),
-      commercial: z.boolean().optional(),
-      residential: z.boolean().optional(),
-      citywide: z.boolean().optional(),
-      regional: z.boolean().optional(),
-      statewide: z.boolean().optional(),
-      national: z.boolean().optional(),
+      maxDistance: z.number().refine((value) => [10, 15, 25, 50].includes(value), {
+        message: 'Max distance must be one of: 10, 15, 25, or 50 km',
+      }),
+      baseLocation: z
+        .object({
+          address: z.string().min(1).max(255),
+          coordinates: z
+            .array(z.number())
+            .length(2)
+            .refine(
+              (coords) =>
+                coords[0] >= -180 && coords[0] <= 180 && coords[1] >= -90 && coords[1] <= 90,
+              {
+                message: 'Coordinates must be [longitude, latitude] with valid ranges',
+              }
+            ),
+        })
+        .optional(),
     })
     .optional(),
   insuranceInfo: z

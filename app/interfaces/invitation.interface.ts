@@ -14,7 +14,7 @@ export interface IInvitation {
     lastName: string;
     phoneNumber?: string;
   };
-  status: 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent';
+  status: 'draft' | 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent';
   acceptedBy?: Types.ObjectId;
   revokedBy?: Types.ObjectId;
   invitedBy: Types.ObjectId;
@@ -42,16 +42,6 @@ export interface IInvitationDocument extends IInvitation, Document {
   updatedAt: Date;
 }
 
-export interface IInvitationListQuery {
-  status?: 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent';
-  sortBy?: 'createdAt' | 'expiresAt' | 'inviteeEmail';
-  sortOrder?: 'asc' | 'desc';
-  clientId: string;
-  role?: IUserRole;
-  limit?: number;
-  page?: number;
-}
-
 export interface IInvitationData {
   personalInfo: {
     firstName: string;
@@ -62,8 +52,19 @@ export interface IInvitationData {
     inviteMessage?: string;
     expectedStartDate?: Date;
   };
+  status?: 'draft' | 'pending';
   inviteeEmail: string;
   role: IUserRole;
+}
+
+export interface IInvitationListQuery {
+  status?: 'draft' | 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent';
+  sortBy?: 'createdAt' | 'expiresAt' | 'inviteeEmail';
+  sortOrder?: 'asc' | 'desc';
+  clientId: string;
+  role?: IUserRole;
+  limit?: number;
+  page?: number;
 }
 
 export interface IInvitationAcceptance {

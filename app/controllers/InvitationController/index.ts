@@ -49,6 +49,51 @@ export class InvitationController {
     });
   };
 
+  validateInvitation = async (req: AppRequest, res: Response) => {
+    const { token } = req.params;
+
+    try {
+      const result = await this.invitationService.validateInvitationByToken(token);
+
+      res.status(httpStatusCodes.OK).json({
+        success: result.success,
+        message: result.message,
+        data: {
+          invitation: {
+            iuid: result.data.invitation.iuid,
+            inviteeEmail: result.data.invitation.inviteeEmail,
+            inviteeFullName: result.data.invitation.inviteeFullName,
+            role: result.data.invitation.role,
+            expiresAt: result.data.invitation.expiresAt,
+            status: result.data.invitation.status,
+          },
+          client: result.data.client,
+          isValid: result.data.isValid,
+        },
+      });
+    } catch (error) {
+      // Handle specific error types
+      if (error instanceof Error) {
+        const statusCode =
+          error.name === 'NotFoundError'
+            ? httpStatusCodes.NOT_FOUND
+            : error.name === 'BadRequestError'
+              ? httpStatusCodes.BAD_REQUEST
+              : httpStatusCodes.INTERNAL_SERVER_ERROR;
+
+        res.status(statusCode).json({
+          success: false,
+          message: error.message,
+        });
+      } else {
+        res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
+          success: false,
+          message: t('invitation.errors.validationFailed'),
+        });
+      }
+    }
+  };
+
   acceptInvitation = async (req: AppRequest, res: Response) => {
     const result = await this.invitationService.acceptInvitation(req.context, req.body);
 

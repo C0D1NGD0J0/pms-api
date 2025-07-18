@@ -103,40 +103,53 @@ export class InvitationService {
         client.id
       );
 
-      const inviter = await this.userDAO.getUserById(inviterUserId, {
-        populate: 'profile',
-      });
+      const isDraft = invitationData.status === 'draft';
+      let emailData: any = null;
 
-      const emailData = {
-        to: invitationData.inviteeEmail,
-        subject: t('email.invitation.subject', {
-          companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
-        }),
-        emailType: MAIL_TYPES.ACCOUNT_ACTIVATION,
-        data: {
-          inviteeName: `${invitationData.personalInfo.firstName} ${invitationData.personalInfo.lastName}`,
-          inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
-          companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
-          role: invitationData.role,
-          invitationUrl: `${envVariables.FRONTEND.URL}/${cuid}/invitation?token=${invitation.invitationToken}`,
-          expiresAt: invitation.expiresAt,
-          customMessage: invitationData.metadata?.inviteMessage,
-        },
-      };
-      this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
-        ...emailData,
-        invitationId: invitation._id.toString(),
-      } as any);
+      // Only send email and queue if not a draft
+      if (!isDraft) {
+        const inviter = await this.userDAO.getUserById(inviterUserId, {
+          populate: 'profile',
+        });
 
-      this.log.info(`Invitation sent to ${invitationData.inviteeEmail} for client ${cuid}`);
+        emailData = {
+          to: invitationData.inviteeEmail,
+          subject: t('email.invitation.subject', {
+            companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
+          }),
+          emailType: MAIL_TYPES.ACCOUNT_ACTIVATION,
+          data: {
+            inviteeName: `${invitationData.personalInfo.firstName} ${invitationData.personalInfo.lastName}`,
+            inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
+            companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
+            role: invitationData.role,
+            invitationUrl: `${envVariables.FRONTEND.URL}/${cuid}/invitation?token=${invitation.invitationToken}`,
+            expiresAt: invitation.expiresAt,
+            customMessage: invitationData.metadata?.inviteMessage,
+          },
+        };
+
+        this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
+          ...emailData,
+          invitationId: invitation._id.toString(),
+        } as any);
+
+        this.log.info(`Invitation sent to ${invitationData.inviteeEmail} for client ${cuid}`);
+      } else {
+        this.log.info(
+          `Draft invitation created for ${invitationData.inviteeEmail} for client ${cuid}`
+        );
+      }
 
       return {
         success: true,
         data: { invitation, emailData },
-        message: t('invitation.success.sent', { email: invitationData.inviteeEmail }),
+        message: isDraft
+          ? t('invitation.success.draftCreated', { email: invitationData.inviteeEmail })
+          : t('invitation.success.sent', { email: invitationData.inviteeEmail }),
       };
     } catch (error) {
-      this.log.error('Error sending invitation:', error);
+      this.log.error('Error processing invitation:', error);
       throw error;
     }
   }
@@ -232,6 +245,54 @@ export class InvitationService {
     }
   }
 
+  async validateInvitationByToken(token: string): Promise<
+    ISuccessReturnData<{
+      invitation: IInvitationDocument;
+      isValid: boolean;
+      client: any;
+    }>
+  > {
+    try {
+      const invitation = await this.invitationDAO.findByToken(token);
+
+      if (!invitation) {
+        throw new NotFoundError({ message: t('invitation.errors.notFound') });
+      }
+
+      const isValid = invitation.isValid();
+
+      if (!isValid) {
+        throw new BadRequestError({ message: t('invitation.errors.invalidOrExpired') });
+      }
+
+      // Get client information
+      const client = await this.clientDAO.getClientBycuid(invitation.clientId.toString());
+
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      this.log.info(`Invitation token validated for ${invitation.inviteeEmail}`);
+
+      return {
+        success: true,
+        data: {
+          invitation,
+          isValid,
+          client: {
+            cuid: client.cuid,
+            displayName: client.displayName,
+            companyName: client.companyProfile?.legalEntityName,
+          },
+        },
+        message: t('invitation.success.tokenValid'),
+      };
+    } catch (error) {
+      this.log.error('Error validating invitation token:', error);
+      throw error;
+    }
+  }
+
   async revokeInvitation(
     iuid: string,
     revokerUserId: string,
@@ -246,7 +307,7 @@ export class InvitationService {
       // Validate revoker has permission
       await this.validateInviterPermissions(revokerUserId, invitation.clientId.toString());
 
-      if (!['pending', 'sent'].includes(invitation.status)) {
+      if (!['pending', 'draft', 'sent'].includes(invitation.status)) {
         throw new BadRequestError({ message: t('invitation.errors.cannotRevoke') });
       }
 

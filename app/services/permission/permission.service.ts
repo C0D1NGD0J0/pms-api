@@ -103,8 +103,12 @@ export class PermissionService {
                 grant.readOwn(resource);
                 break;
               default:
-                grant.createOwn(resource);
-                this.log.warn(`Unknown action: ${action}, using createOwn for ${resource}`);
+                // Custom actions (send, revoke, settings, etc.) are not handled by AccessControl
+                // They will be processed by business logic in evaluateBusinessSpecificPermission
+                this.log.debug(
+                  `Custom action '${action}' for '${resource}' will be handled by business logic`
+                );
+                break;
             }
           }
         } catch (error) {
@@ -139,7 +143,12 @@ export class PermissionService {
               permission = query.readAny(resource);
               break;
             default:
-              // For custom actions, fall back to business logic
+              // Custom actions (send, revoke, settings, etc.) are not standard CRUD operations
+              // Set permission to null to ensure fallback to business logic
+              permission = null;
+              this.log.debug(
+                `Custom action '${action}' with scope 'any' for '${resource}' - using business logic`
+              );
               break;
           }
         } else if (scope === PermissionScope.MINE) {
@@ -157,7 +166,12 @@ export class PermissionService {
               permission = query.readOwn(resource);
               break;
             default:
-              // For custom actions, fall back to business logic
+              // Custom actions (send, revoke, settings, etc.) are not standard CRUD operations
+              // Set permission to null to ensure fallback to business logic
+              permission = null;
+              this.log.debug(
+                `Custom action '${action}' with scope 'mine' for '${resource}' - using business logic`
+              );
               break;
           }
         }

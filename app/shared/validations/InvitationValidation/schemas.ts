@@ -46,6 +46,13 @@ export const invitationDataSchema = z.object({
         .optional(),
     })
     .optional(),
+
+  status: z
+    .enum(['draft', 'pending'], {
+      errorMap: () => ({ message: 'Status must be either draft or pending' }),
+    })
+    .optional()
+    .default('pending'),
 });
 
 export const sendInvitationSchema = invitationDataSchema;
@@ -88,7 +95,7 @@ export const resendInvitationSchema = z.object({
 
 export const getInvitationsQuerySchema = z.object({
   status: z
-    .enum(['pending', 'accepted', 'expired', 'revoked'], {
+    .enum(['draft', 'pending', 'accepted', 'expired', 'revoked', 'sent'], {
       errorMap: () => ({ message: 'Invalid status value' }),
     })
     .optional(),

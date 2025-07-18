@@ -1,5 +1,6 @@
 import { BaseIO } from '@sockets/index';
 import { MailService } from '@mailer/index';
+import { QueueFactory } from '@services/queue';
 import { GeoCoderService } from '@services/external';
 import { ClamScannerService } from '@shared/config/index';
 import { DiskStorage, S3Service } from '@services/fileUpload';
@@ -133,6 +134,9 @@ const UtilsResources = {
   clamScanner: asClass(ClamScannerService).singleton(),
   diskStorage: asClass(DiskStorage).singleton(),
   propertyCsvService: asClass(PropertyCsvProcessor).singleton(),
+  queueFactory: asFunction(() => {
+    return QueueFactory.getInstance();
+  }).singleton(),
 };
 
 const SocketIOResources = {
@@ -140,20 +144,23 @@ const SocketIOResources = {
 };
 
 export const initQueues = (container: AwilixContainer) => {
-  container.resolve('documentProcessingQueue');
-  container.resolve('emailQueue');
-  container.resolve('eventBusQueue');
-  container.resolve('propertyQueue');
-  container.resolve('propertyUnitQueue');
-  container.resolve('uploadQueue');
-  container.resolve('invitationQueue');
   container.resolve('clamScanner');
-  container.resolve('documentProcessingWorker');
-  container.resolve('emailWorker');
-  container.resolve('propertyWorker');
-  container.resolve('propertyUnitWorker');
-  container.resolve('uploadWorker');
-  container.resolve('invitationWorker');
+
+  if (process.env.NODE_ENV === 'development' || process.env.FORCE_INIT_QUEUES === 'true') {
+    container.resolve('documentProcessingQueue');
+    container.resolve('emailQueue');
+    container.resolve('eventBusQueue');
+    container.resolve('propertyQueue');
+    container.resolve('propertyUnitQueue');
+    container.resolve('uploadQueue');
+    container.resolve('invitationQueue');
+    container.resolve('documentProcessingWorker');
+    container.resolve('emailWorker');
+    container.resolve('propertyWorker');
+    container.resolve('propertyUnitWorker');
+    container.resolve('uploadWorker');
+    container.resolve('invitationWorker');
+  }
 };
 
 export const registerResources = {

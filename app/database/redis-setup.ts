@@ -27,11 +27,18 @@ export class RedisService {
           }
           return Math.min(retries * 100, 3000);
         },
-        connectTimeout: 10000,
-        keepAlive: 30000,
+        connectTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 10000,
+        keepAlive: envVariables.SERVER.ENV === 'production' ? 60000 : 30000,
       },
       url: envVariables.REDIS.URL,
       commandsQueueMaxLength: 100,
+      ...(envVariables.SERVER.ENV === 'production'
+        ? {
+            lazyConnect: true,
+            maxRetriesPerRequest: 3,
+            retryDelayOnFailover: 1000,
+          }
+        : {}),
     });
 
     this.client.on('error', (err: Error) => {

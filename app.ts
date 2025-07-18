@@ -103,7 +103,9 @@ export class App implements IAppSetup {
         });
       }
     });
-    app.use(`${BASE_PATH}/queues`, serverAdapter.getRouter());
+    if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
+      app.use(`${BASE_PATH}/queues`, serverAdapter.getRouter());
+    }
     app.use(`${BASE_PATH}/auth`, routes.authRoutes);
     app.use(`${BASE_PATH}/clients`, routes.clientRoutes);
     app.use(`${BASE_PATH}/email-templates`, routes.emailTemplateRoutes);

@@ -142,6 +142,7 @@ export class InvitationCsvProcessor {
     return {
       inviteeEmail: row.inviteeEmail?.trim().toLowerCase(),
       role: row.role,
+      status: 'pending',
       personalInfo: {
         firstName: row.firstName?.trim(),
         lastName: row.lastName?.trim(),

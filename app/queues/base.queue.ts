@@ -37,6 +37,14 @@ export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions = {
         }
       : {}),
   },
+  redis: {
+    host: envVariables.REDIS.HOST,
+    port: envVariables.REDIS.PORT,
+    ...(envVariables.SERVER.ENV === 'production'
+      ? { username: envVariables.REDIS.USERNAME, password: envVariables.REDIS.PASSWORD }
+      : {}),
+    family: 0,
+  },
 };
 
 export type JobData = any;

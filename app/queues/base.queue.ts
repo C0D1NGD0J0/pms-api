@@ -61,6 +61,8 @@ export class BaseQueue<T extends JobData = JobData> {
     this.dlq = deadLetterQueue;
     this.addQueueToBullBoard(this.queue, this.dlq);
     this.initializeQueueEvents();
+    this.autoResumeQueue();
+
     deadLetterQueue = null;
   }
 
@@ -235,6 +237,19 @@ export class BaseQueue<T extends JobData = JobData> {
    */
   async resumeQueue(): Promise<void> {
     return this.queue.resume();
+  }
+
+  private async autoResumeQueue(): Promise<void> {
+    try {
+      const isPaused = await this.queue.isPaused();
+
+      if (isPaused) {
+        await this.queue.resume();
+        this.log.info(`⚠️ Resumed previously paused queue: ${this.queue.name}`);
+      }
+    } catch (error) {
+      this.log.warn({ error }, `Failed to auto-resume queue ${this.queue.name}: ${error.message}`);
+    }
   }
 
   /**

@@ -21,7 +21,17 @@ export class InvitationController {
   sendInvitation = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
     const { cuid } = req.params;
-    const invitationData = req.body;
+    const invitationData = {
+      personalInfo: req.body.personalInfo || {},
+      metadata: {
+        ...req.body.metadata,
+        employeeInfo: req.body.metadata?.employeeInfo || {},
+        vendrorInfo: req.body.metadata?.vendorInfo || {},
+      },
+      role: req.body.role,
+      status: req.body.status || 'pending',
+      inviteeEmail: req.body.inviteeEmail,
+    };
 
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({

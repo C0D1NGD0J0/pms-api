@@ -45,6 +45,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
 
       const invitation = await this.insert(
         {
+          ...invitationData,
           invitedBy: new Types.ObjectId(invitedBy),
           inviteeEmail: invitationData.inviteeEmail.toLowerCase(),
           clientId: new Types.ObjectId(clientId),

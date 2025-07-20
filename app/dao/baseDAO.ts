@@ -31,30 +31,12 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * Handle and log errors, then throw a formatted error.
    *
    * @param error - The error to handle.
-   * @returns A formatted error object.
+   * @throws CustomError - Throws the properly formatted CustomError instance.
    */
-  throwErrorHandler(error: Error | MongooseError | any): {
-    errors: Record<string, string[]> | null;
-    errorType: string;
-    success: boolean;
-    message: string;
-    stack?: string;
-    statusCode: number;
-  } {
+  throwErrorHandler(error: Error | MongooseError | any): never {
     const result = handleMongoError(error);
     this.logger.error('uuu', error);
-    return {
-      success: false,
-      errorType: result?.name || 'UnknownError',
-      message: result?.message || 'Unknown db error occurred',
-      errors: result.errorInfo || null,
-      statusCode: result.statusCode,
-      ...(envVariables.SERVER.ENV === 'production'
-        ? {}
-        : {
-            stack: result?.stack || error.stack,
-          }),
-    };
+    throw result;
   }
 
   /**

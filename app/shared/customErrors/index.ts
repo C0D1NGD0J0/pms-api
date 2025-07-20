@@ -216,6 +216,10 @@ export class ConflictError extends CustomError {
  * Utility function to handle and convert Mongoose errors
  */
 export function handleMongoError(err: MongooseError | Error): CustomError {
+  if (err instanceof CustomError) {
+    return err;
+  }
+
   // CastError - invalid ObjectId
   if (err.name === 'CastError') {
     const castErr = err as unknown as { value: string };

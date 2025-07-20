@@ -1,4 +1,5 @@
 import { Schema, model, Types } from 'mongoose';
+import { ConflictError } from '@shared/customErrors';
 import { IUserRole } from '@interfaces/user.interface';
 import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
@@ -45,7 +46,7 @@ const InvitationSchema = new Schema<IInvitationDocument>(
     status: {
       type: String,
       required: true,
-      enum: ['pending', 'accepted', 'expired', 'revoked', 'sent'],
+      enum: ['draft', 'pending', 'accepted', 'expired', 'revoked', 'sent'],
       default: 'pending',
       index: true,
     },
@@ -94,6 +95,14 @@ const InvitationSchema = new Schema<IInvitationDocument>(
       },
       expectedStartDate: {
         type: Date,
+      },
+      employeeInfo: {
+        type: Schema.Types.Mixed,
+        default: undefined,
+      },
+      vendorInfo: {
+        type: Schema.Types.Mixed,
+        default: undefined,
       },
       remindersSent: {
         type: Number,
@@ -146,24 +155,26 @@ InvitationSchema.virtual('inviteeFullName').get(function (this: IInvitationDocum
 
 InvitationSchema.pre('save', async function (this: IInvitationDocument, next) {
   try {
-    // prevent duplicate pending invitations for same email and client
-    if (this.isNew && this.status === 'pending') {
+    if (this.isNew && ['pending', 'draft', 'sent'].includes(this.status)) {
       const InvitationModel = model<IInvitationDocument>('Invitation');
 
       const existingInvitation = await InvitationModel.findOne({
         inviteeEmail: this.inviteeEmail,
         clientId: this.clientId,
-        status: 'pending',
+        status: { $in: ['draft', 'pending', 'sent'] },
         expiresAt: { $gt: new Date() },
       });
 
       if (existingInvitation) {
-        return next(new Error('A pending invitation already exists for this email and client'));
+        return next(
+          new ConflictError({
+            message: 'An active invitation already exists for this email and client',
+          })
+        );
       }
     }
 
-    // auto-expire invitations
-    if (this.status === 'pending' && this.expiresAt <= new Date()) {
+    if (['pending', 'sent'].includes(this.status) && this.expiresAt <= new Date()) {
       this.status = 'expired';
       logger.info(`Auto-expired invitation ${this.iuid}`);
     }
@@ -176,7 +187,7 @@ InvitationSchema.pre('save', async function (this: IInvitationDocument, next) {
 });
 
 InvitationSchema.methods.isValid = function (this: IInvitationDocument): boolean {
-  return this.status === 'pending' && this.expiresAt > new Date();
+  return (this.status === 'pending' || this.status === 'draft') && this.expiresAt > new Date();
 };
 
 InvitationSchema.methods.expire = function (

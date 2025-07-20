@@ -160,6 +160,9 @@ export const initQueues = (container: AwilixContainer) => {
     container.resolve('propertyUnitWorker');
     container.resolve('uploadWorker');
     container.resolve('invitationWorker');
+    console.log('✅ All queues and workers initialized successfully');
+  } else {
+    console.log('⏸️  Queue initialization skipped (test environment)');
   }
 };
 

@@ -1,5 +1,6 @@
 import { Job } from 'bull';
 
+import { MailType } from './utils.interface';
 import { UploadResult } from './utils.interface';
 
 export enum EventTypes {
@@ -15,27 +16,27 @@ export enum EventTypes {
   PROPERTY_DELETED = 'property:deleted',
   UPLOAD_COMPLETED = 'upload:completed',
   UNIT_UNARCHIVED = 'unit:unarchived',
-  // Unit-related events for property occupancy sync
   UNIT_ARCHIVED = 'unit:archived',
   UPLOAD_FAILED = 'upload:failed',
+  EMAIL_FAILED = 'email:failed',
   SYSTEM_ERROR = 'system:error',
   UNIT_CREATED = 'unit:created',
   UNIT_UPDATED = 'unit:updated',
   UPLOAD_ASSET = 'upload:asset',
+  EMAIL_SENT = 'email:sent',
 }
 
 export type EventPayloadMap = {
+  [EventTypes.DELETE_ASSET_COMPLETED]: DeleteAssetCompletedPayload;
+  [EventTypes.DELETE_ASSET_FAILED]: DeleteAssetFailedPayload;
+  [EventTypes.DELETE_LOCAL_ASSET]: DeleteLocalAssetPayload;
+  [EventTypes.DELETE_REMOTE_ASSET]: DeleteRemoteAssetPayload;
+  [EventTypes.EMAIL_FAILED]: EmailFailedPayload;
+  [EventTypes.EMAIL_SENT]: EmailSentPayload;
   [EventTypes.PROPERTY_CREATED]: any;
   [EventTypes.PROPERTY_DELETED]: any;
   [EventTypes.PROPERTY_DOCUMENTS_UPDATE]: PropertyUpdatedPayload;
   [EventTypes.PROPERTY_UPDATE_FAILED]: any;
-  [EventTypes.UPLOAD_ASSET]: any;
-  [EventTypes.UPLOAD_COMPLETED]: UploadCompletedPayload;
-  [EventTypes.UPLOAD_FAILED]: UploadFailedPayload;
-  [EventTypes.DELETE_LOCAL_ASSET]: DeleteLocalAssetPayload;
-  [EventTypes.DELETE_REMOTE_ASSET]: DeleteRemoteAssetPayload;
-  [EventTypes.DELETE_ASSET_COMPLETED]: DeleteAssetCompletedPayload;
-  [EventTypes.DELETE_ASSET_FAILED]: DeleteAssetFailedPayload;
   [EventTypes.SYSTEM_ERROR]: SystemErrorPayload;
   [EventTypes.UNIT_ARCHIVED]: UnitChangedPayload;
   [EventTypes.UNIT_BATCH_CREATED]: UnitBatchChangedPayload;
@@ -43,6 +44,9 @@ export type EventPayloadMap = {
   [EventTypes.UNIT_STATUS_CHANGED]: UnitChangedPayload;
   [EventTypes.UNIT_UNARCHIVED]: UnitChangedPayload;
   [EventTypes.UNIT_UPDATED]: UnitChangedPayload;
+  [EventTypes.UPLOAD_ASSET]: any;
+  [EventTypes.UPLOAD_COMPLETED]: UploadCompletedPayload;
+  [EventTypes.UPLOAD_FAILED]: UploadFailedPayload;
 };
 
 export interface UnitChangedPayload {
@@ -95,6 +99,17 @@ export interface SystemErrorPayload {
   context?: any;
 }
 
+export interface EmailFailedPayload {
+  error: {
+    message: string;
+    code?: string;
+  };
+  jobData: Record<string, any>;
+  emailType: MailType;
+  subject: string;
+  to: string;
+}
+
 export interface UploadFailedPayload {
   error: {
     message: string;
@@ -111,11 +126,6 @@ export interface UploadCompletedPayload {
   resourceName: string;
   resourceId: string;
   actorId: string;
-}
-
-export interface DeleteAssetCompletedPayload {
-  deletedKeys: string[];
-  failedKeys?: string[]; // Optional: keys that failed to delete
 }
 
 export interface PropertyUpdatedPayload {
@@ -137,10 +147,22 @@ export interface EventPayload<T = unknown> {
   payload: T;
 }
 
+// Generic email event payloads
+export interface EmailSentPayload {
+  jobData: Record<string, any>;
+  emailType: MailType;
+  sentAt: Date;
+}
+
 export interface DeleteAssetFailedPayload {
   failedKeys: string[];
   userId?: string;
   reason: string;
+}
+
+export interface DeleteAssetCompletedPayload {
+  deletedKeys: string[];
+  failedKeys?: string[];
 }
 
 export type DeleteRemoteAssetPayload = AssetIdentifiersPayload;

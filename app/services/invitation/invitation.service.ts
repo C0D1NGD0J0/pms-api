@@ -1,10 +1,13 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
+import { createLogger, JOB_NAME } from '@utils/index';
+import { MailType } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { InvitationQueue, EmailQueue } from '@queues/index';
-import { createLogger, MAIL_TYPES, JOB_NAME } from '@utils/index';
+import { EventEmitterService } from '@services/eventEmitter';
 import { InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { EmailFailedPayload, EmailSentPayload, EventTypes } from '@interfaces/events.interface';
 import {
   ISuccessReturnData,
   ExtractedMediaFile,
@@ -28,6 +31,7 @@ import {
 } from '@interfaces/invitation.interface';
 
 interface IConstructor {
+  emitterService: EventEmitterService;
   invitationQueue: InvitationQueue;
   invitationDAO: InvitationDAO;
   emailQueue: EmailQueue;
@@ -44,6 +48,7 @@ export class InvitationService {
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
   private readonly invitationQueue: InvitationQueue;
+  private readonly emitterService: EventEmitterService;
 
   constructor({
     invitationDAO,
@@ -52,14 +57,17 @@ export class InvitationService {
     profileDAO,
     clientDAO,
     invitationQueue,
+    emitterService,
   }: IConstructor) {
-    this.invitationDAO = invitationDAO;
-    this.emailQueue = emailQueue;
     this.userDAO = userDAO;
-    this.profileDAO = profileDAO;
     this.clientDAO = clientDAO;
+    this.emailQueue = emailQueue;
+    this.profileDAO = profileDAO;
+    this.invitationDAO = invitationDAO;
+    this.emitterService = emitterService;
     this.invitationQueue = invitationQueue;
     this.log = createLogger('InvitationService');
+    this.setupEventListeners();
   }
 
   async sendInvitation(
@@ -106,7 +114,6 @@ export class InvitationService {
       const isDraft = invitationData.status === 'draft';
       let emailData: any = null;
 
-      // Only send email and queue if not a draft
       if (!isDraft) {
         const inviter = await this.userDAO.getUserById(inviterUserId, {
           populate: 'profile',
@@ -117,7 +124,7 @@ export class InvitationService {
           subject: t('email.invitation.subject', {
             companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
           }),
-          emailType: MAIL_TYPES.ACCOUNT_ACTIVATION,
+          emailType: MailType.INVITATION,
           data: {
             inviteeName: `${invitationData.personalInfo.firstName} ${invitationData.personalInfo.lastName}`,
             inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
@@ -363,7 +370,7 @@ export class InvitationService {
         subject: t('email.invitation.reminderSubject', {
           companyName: client?.displayName || 'Company',
         }),
-        emailType: MAIL_TYPES.ACCOUNT_UPDATE,
+        emailType: MailType.INVITATION_REMINDER,
         data: {
           inviteeName: invitation.inviteeFullName,
           resenderName: resender?.profile?.fullname || resender?.email || 'Team Member',
@@ -494,7 +501,7 @@ export class InvitationService {
       // Validate user has permission to invite users for this client
       await this.validateInviterPermissions(currentUser.sub, cuid);
 
-      // Check file size (10MB limit)
+      // check file size (10MB limit)
       if (csvFile.fileSize > 10 * 1024 * 1024) {
         throw new BadRequestError({ message: t('invitation.errors.fileTooLarge') });
       }
@@ -570,19 +577,16 @@ export class InvitationService {
     try {
       await this.validateInviterPermissions(processorUserId, clientId);
 
-      // Build query filters
       const query: IInvitationListQuery = {
         clientId,
         status: 'pending',
         limit: filters.limit || 50,
       };
 
-      // Add role filter if specified
       if (filters.role) {
         query.role = filters.role as any;
       }
 
-      // Add timeline filter if specified
       let timelineFilter: Date | undefined;
       if (filters.timeline) {
         const now = new Date();
@@ -602,10 +606,8 @@ export class InvitationService {
         }
       }
 
-      // Get pending invitations
       const pendingInvitations = await this.invitationDAO.getInvitationsByClient(query);
 
-      // Filter by timeline if specified
       let invitationsToProcess = pendingInvitations.items;
       if (timelineFilter) {
         invitationsToProcess = invitationsToProcess.filter(
@@ -636,7 +638,6 @@ export class InvitationService {
         };
       }
 
-      // Process invitations
       let processed = 0;
       let failed = 0;
       const errors: Array<{ iuid: string; email: string; error: string }> = [];
@@ -647,7 +648,6 @@ export class InvitationService {
 
       for (const invitation of invitationsToProcess) {
         try {
-          // Use existing resend logic
           await this.resendInvitation(
             {
               iuid: invitation.iuid,
@@ -694,5 +694,52 @@ export class InvitationService {
       this.log.error('Error processing pending invitations:', error);
       throw error;
     }
+  }
+
+  private setupEventListeners(): void {
+    this.emitterService.on(EventTypes.EMAIL_SENT, this.handleEmailSent.bind(this));
+    this.emitterService.on(EventTypes.EMAIL_FAILED, this.handleEmailFailed.bind(this));
+  }
+
+  private async handleEmailSent(payload: EmailSentPayload): Promise<void> {
+    if (
+      payload.emailType === MailType.INVITATION ||
+      payload.emailType === MailType.INVITATION_REMINDER
+    ) {
+      const invitationId = payload.jobData?.invitationId;
+      const clientId = payload.jobData?.data?.clientId;
+
+      if (invitationId && clientId) {
+        try {
+          await this.invitationDAO.updateInvitationStatus(invitationId, clientId, 'sent');
+          this.log.info(`Updated invitation ${invitationId} status to 'sent'`);
+        } catch (error) {
+          this.log.error(`Failed to update invitation ${invitationId} status:`, error);
+        }
+      }
+    }
+  }
+
+  private async handleEmailFailed(payload: EmailFailedPayload): Promise<void> {
+    if (
+      payload.emailType === MailType.INVITATION ||
+      payload.emailType === MailType.INVITATION_REMINDER
+    ) {
+      const invitationId = payload.jobData?.invitationId;
+
+      if (invitationId) {
+        try {
+          //todo: add additional error tracking here
+          this.log.error(`Email failed for invitation ${invitationId}: ${payload.error.message}`);
+        } catch (error) {
+          this.log.error(`Failed to handle email failure for invitation ${invitationId}:`, error);
+        }
+      }
+    }
+  }
+
+  destroy(): void {
+    this.emitterService.off(EventTypes.EMAIL_SENT, this.handleEmailSent);
+    this.emitterService.off(EventTypes.EMAIL_FAILED, this.handleEmailFailed);
   }
 }

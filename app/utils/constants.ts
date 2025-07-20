@@ -26,18 +26,6 @@ export const EMAIL_TEMPLATES = {
   ACCOUNT_ACTIVATION: 'account-activation',
 };
 
-export const MAIL_TYPES = {
-  SUBSCRIPTION_UPDATE: 'subscriptionUpdate',
-  SUBSCRIPTION_CANCEL: 'subscriptionCancel',
-  ACCOUNT_ACTIVATION: 'accountActivation',
-  TENANT_REGISTRATION: 'tenantRegistration',
-  FORGOT_PASSWORD: 'forgotPassword',
-  PASSWORD_RESET: 'passwordReset',
-  ACCOUNT_UPDATE: 'accountUpdate',
-  INVITATION: 'invitation',
-  INVITATION_REMINDER: 'invitationReminder',
-};
-
 export const QUEUE_NAMES = {
   MEDIA_QUEUE: 'mediaQueue',
   EMAIL_QUEUE: 'emailQueue',

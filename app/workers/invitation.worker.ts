@@ -211,7 +211,6 @@ export class InvitationWorker {
       populate: 'profile',
     });
 
-    // Prepare email data
     const emailData = {
       to: invitationData.inviteeEmail,
       subject: t('email.invitation.subject', {

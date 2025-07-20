@@ -1,11 +1,14 @@
 import { Document, Types } from 'mongoose';
 
 import { IUserRole } from './user.interface';
+import { EmployeeInfo, VendorInfo } from './profile.interface';
 
 export interface IInvitation {
   metadata: {
     inviteMessage?: string;
     expectedStartDate?: Date;
+    employeeInfo?: EmployeeInfo;
+    vendorInfo?: VendorInfo;
     remindersSent: number;
     lastReminderSent?: Date;
   };
@@ -43,16 +46,18 @@ export interface IInvitationDocument extends IInvitation, Document {
 }
 
 export interface IInvitationData {
+  metadata?: {
+    inviteMessage?: string;
+    expectedStartDate?: Date;
+    employeeInfo?: EmployeeInfo;
+    vendorInfo?: VendorInfo;
+  };
   personalInfo: {
     firstName: string;
     lastName: string;
     phoneNumber?: string;
   };
-  metadata?: {
-    inviteMessage?: string;
-    expectedStartDate?: Date;
-  };
-  status?: 'draft' | 'pending';
+  status: 'draft' | 'pending';
   inviteeEmail: string;
   role: IUserRole;
 }

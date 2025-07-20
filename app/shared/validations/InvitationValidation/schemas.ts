@@ -1,6 +1,107 @@
 import { z } from 'zod';
 import { IUserRole } from '@interfaces/user.interface';
 
+const employeeInfoSchema = z
+  .object({
+    permissions: z.array(z.string()).optional(),
+    department: z.string().max(100, 'Department must be less than 100 characters').optional(),
+    employeeId: z.string().max(50, 'Employee ID must be less than 50 characters').optional(),
+    reportsTo: z.string().max(100, 'Reports to must be less than 100 characters').optional(),
+    jobTitle: z.string().max(100, 'Job title must be less than 100 characters').optional(),
+    startDate: z
+      .string()
+      .datetime('Please provide a valid start date')
+      .transform((str) => new Date(str))
+      .optional(),
+  })
+  .optional();
+
+const vendorInfoSchema = z
+  .object({
+    servicesOffered: z
+      .object({
+        applianceRepair: z.boolean().optional(),
+        carpentry: z.boolean().optional(),
+        cleaning: z.boolean().optional(),
+        electrical: z.boolean().optional(),
+        hvac: z.boolean().optional(),
+        landscaping: z.boolean().optional(),
+        maintenance: z.boolean().optional(),
+        other: z.boolean().optional(),
+        painting: z.boolean().optional(),
+        pestControl: z.boolean().optional(),
+        plumbing: z.boolean().optional(),
+        roofing: z.boolean().optional(),
+        security: z.boolean().optional(),
+      })
+      .optional(),
+    address: z
+      .object({
+        city: z.string().max(100, 'City must be less than 100 characters').optional(),
+        country: z.string().max(100, 'Country must be less than 100 characters').optional(),
+        fullAddress: z.string().max(500, 'Full address must be less than 500 characters'),
+        postCode: z.string().max(20, 'Post code must be less than 20 characters').optional(),
+        state: z.string().max(100, 'State must be less than 100 characters').optional(),
+        street: z.string().max(200, 'Street must be less than 200 characters').optional(),
+        streetNumber: z
+          .string()
+          .max(20, 'Street number must be less than 20 characters')
+          .optional(),
+        unitNumber: z.string().max(20, 'Unit number must be less than 20 characters').optional(),
+      })
+      .optional(),
+    serviceAreas: z
+      .object({
+        baseLocation: z
+          .object({
+            address: z.string().max(500, 'Base location address must be less than 500 characters'),
+            coordinates: z.tuple([z.number(), z.number()]),
+          })
+          .optional(),
+        maxDistance: z.union([z.literal(10), z.literal(15), z.literal(25), z.literal(50)], {
+          errorMap: () => ({ message: 'Max distance must be 10, 15, 25, or 50 km' }),
+        }),
+      })
+      .optional(),
+    insuranceInfo: z
+      .object({
+        coverageAmount: z.number().positive('Coverage amount must be positive').optional(),
+        expirationDate: z
+          .string()
+          .datetime('Please provide a valid expiration date')
+          .transform((str) => new Date(str))
+          .optional(),
+        policyNumber: z
+          .string()
+          .max(100, 'Policy number must be less than 100 characters')
+          .optional(),
+        provider: z.string().max(100, 'Provider must be less than 100 characters').optional(),
+      })
+      .optional(),
+    contactPerson: z
+      .object({
+        department: z.string().max(100, 'Department must be less than 100 characters').optional(),
+        email: z.string().email('Please provide a valid email address').optional(),
+        jobTitle: z.string().max(100, 'Job title must be less than 100 characters'),
+        name: z.string().max(100, 'Name must be less than 100 characters'),
+        phone: z.string().max(20, 'Phone must be less than 20 characters').optional(),
+      })
+      .optional(),
+    registrationNumber: z
+      .string()
+      .max(100, 'Registration number must be less than 100 characters')
+      .optional(),
+    yearsInBusiness: z
+      .number()
+      .min(0, 'Years in business must be non-negative')
+      .max(150, 'Years in business must be realistic')
+      .optional(),
+    businessType: z.string().max(100, 'Business type must be less than 100 characters').optional(),
+    companyName: z.string().max(200, 'Company name must be less than 200 characters').optional(),
+    taxId: z.string().max(50, 'Tax ID must be less than 50 characters').optional(),
+  })
+  .optional();
+
 export const invitationDataSchema = z.object({
   inviteeEmail: z
     .string()
@@ -44,6 +145,9 @@ export const invitationDataSchema = z.object({
         .datetime('Please provide a valid date')
         .transform((str) => new Date(str))
         .optional(),
+
+      employeeInfo: employeeInfoSchema,
+      vendorInfo: vendorInfoSchema,
     })
     .optional(),
 
@@ -51,7 +155,6 @@ export const invitationDataSchema = z.object({
     .enum(['draft', 'pending'], {
       errorMap: () => ({ message: 'Status must be either draft or pending' }),
     })
-    .optional()
     .default('pending'),
 });
 

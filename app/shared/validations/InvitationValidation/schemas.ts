@@ -272,7 +272,11 @@ export const invitationCsvSchema = z.object({
     .min(10, 'Phone number must be at least 10 digits')
     .max(20, 'Phone number must be less than 20 characters')
     .optional(),
-
+  status: z
+    .enum(['draft', 'pending'], {
+      errorMap: () => ({ message: 'Status must be either draft or pending' }),
+    })
+    .default('pending'),
   inviteMessage: z
     .string()
     .max(500, 'Invitation message must be less than 500 characters')

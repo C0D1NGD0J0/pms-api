@@ -5,9 +5,9 @@ import { PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 
 export const ValidatecuidSchema = z.object({
   cuid: z.string().refine(
-    async (id) => {
+    async (cuid) => {
       const { clientDAO }: { clientDAO: ClientDAO } = container.cradle;
-      const client = await clientDAO.findFirst({ cuid: id });
+      const client = await clientDAO.findFirst({ cuid });
       return !!client;
     },
     {

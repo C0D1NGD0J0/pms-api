@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { isAuthenticated } from '@shared/middlewares';
-import { validateRequest } from '@shared/validations/index';
+import { UtilsValidations, validateRequest } from '@shared/validations/index';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { EmailTemplateValidations } from '@shared/validations/EmailTemplateValidation';
 
@@ -12,9 +12,11 @@ const router = Router();
  * @desc    Get list of all available email templates
  * @access  Private
  */
+
 router.get(
-  '/',
+  '/:cuid/',
   isAuthenticated,
+  validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<EmailTemplateController>('emailTemplateController');
     return controller.getTemplateList(req, res);

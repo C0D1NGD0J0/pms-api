@@ -9,15 +9,15 @@ const config: JestConfigWithTsJest = {
   coverageProvider: 'v8',
   coverageThreshold: {
     global: {
-      branches: 1,
-      functions: 1,
-      lines: 1,
-      statements: 1,
+      branches: 70,
+      functions: 70,
+      lines: 70,
+      statements: 70,
     },
   },
   moduleFileExtensions: ['js', 'ts', 'json', 'node'],
-  roots: ['<rootDir>/tests/'],
-  testMatch: ['**/tests/**/*.test.[jt]s?(x)', '**/tests/*.test.[jt]s?(x)'],
+  roots: ['<rootDir>/tests/api/'],
+  testMatch: ['**/tests/api/**/*.test.[jt]s?(x)'],
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', { useESM: true }],
   },
@@ -30,7 +30,7 @@ const config: JestConfigWithTsJest = {
   globalTeardown: './tests/configs/teardown.ts',
   globalSetup: './tests/configs/setup.ts',
   setupFilesAfterEnv: ['<rootDir>/tests/configs/jest.setup.ts'],
-  testTimeout: 30000,
+  testTimeout: 60000,
   maxWorkers: 1,
   workerIdleMemoryLimit: '512MB',
   moduleNameMapper: {

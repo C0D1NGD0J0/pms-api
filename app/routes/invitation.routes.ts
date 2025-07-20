@@ -61,12 +61,12 @@ router.post(
 );
 
 /**
- * @route GET /api/v1/invites/clients/:cuid
+ * @route GET /api/v1/invites/:cuid
  * @desc Get invitations for a client with filtering and pagination
  * @access Private (Admin/Manager only)
  */
 router.get(
-  '/clients/:cuid',
+  '/:cuid',
   isAuthenticated,
   validateRequest({
     params: UtilsValidations.cuid,
@@ -84,7 +84,7 @@ router.get(
  * @access Private (Admin/Manager only)
  */
 router.get(
-  '/clients/:cuid/stats',
+  '/:cuid/stats',
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');

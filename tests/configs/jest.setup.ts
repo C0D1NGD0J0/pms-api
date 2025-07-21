@@ -1,4 +1,4 @@
-import 'jest-extended';
+// import 'jest-extended'; // TODO: Install jest-extended if needed
 
 jest.setTimeout(30000);
 
@@ -83,12 +83,10 @@ expect.extend({
   },
 });
 
-declare global {
-  namespace jest {
-    interface Matchers<R> {
-      toBeValidObjectId(): R;
-      toBeValidEmail(): R;
-      toBeValidJWT(): R;
-    }
+declare module '@jest/expect' {
+  interface Matchers<R> {
+    toBeValidObjectId(): R;
+    toBeValidEmail(): R;
+    toBeValidJWT(): R;
   }
 }

@@ -101,9 +101,22 @@ export class MailService {
       case MailType.ACCOUNT_UPDATE:
         template = await this.buildTemplate('accountUpdate', emailData);
         break;
-      case MailType.INVITATION:
-        template = await this.buildTemplate('invitation', emailData);
+      case MailType.INVITATION: {
+        // Select template based on user role
+        const role = emailData.data?.role;
+        let templateName = 'invitation'; // fallback to generic template
+
+        if (role === 'vendor') {
+          templateName = 'invitation-vendor';
+        } else if (role === 'tenant') {
+          templateName = 'invitation-tenant';
+        } else {
+          templateName = 'invitation-staff';
+        }
+
+        template = await this.buildTemplate(templateName, emailData);
         break;
+      }
       default:
         throw new Error(`Unsupported mail type: ${type}`);
     }

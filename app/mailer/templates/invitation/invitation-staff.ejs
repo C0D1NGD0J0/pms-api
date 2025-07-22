@@ -1,10 +1,16 @@
 <table width="100%">
   <tr>
     <td class="content">
-      <h2>You've Been Invited to Join <%= companyName %></h2>
-      <p>Hello <%= inviteeName %>,</p>
+      <h2>You're Invited to Join Our Team</h2>
+      <p>Hi <%= inviteeName %>,</p>
       <p>
-        You've been invited by <%= inviterName %> to join <strong><%= companyName %></strong> as a <%= role %>.
+        <%= inviterName %> from <strong><%= companyName %></strong> would like to invite you to join our property management team.
+      </p>
+      <p>
+        We think you'd be a great addition to our team and are excited about the possibility of working together.
+      </p>
+      <p>
+        You'll have access to our full property management platform and be able to collaborate with our experienced team members.
       </p>
 
       <% if (customMessage) { %>
@@ -16,8 +22,10 @@
       <% } %>
 
       <p>
-        To accept this invitation and get started, please click the button below to create your account
-        or join the team if you already have an account.
+        Ready to get started? Click below to set up your account.
+      </p>
+      <p>
+        Once you complete your profile, you'll have full access to our platform and can start collaborating with the team.
       </p>
     </td>
   </tr>
@@ -33,23 +41,6 @@
         This invitation will expire on <%= new Date(expiresAt).toLocaleDateString() %> at <%= new Date(expiresAt).toLocaleTimeString() %>.
         <br />
         If you didn't expect this invitation, you can safely ignore this email.
-      </p>
-    </td>
-  </tr>
-
-  <tr>
-    <td class="content">
-      <h3>What's Next?</h3>
-      <ul style="color: #555; line-height: 1.6;">
-        <li>Click the invitation link above</li>
-        <li>Create your account or sign in if you already have one</li>
-        <li>Complete your profile setup</li>
-        <li>Start collaborating with the <%= companyName %> team</li>
-      </ul>
-
-      <p style="margin-top: 20px;">
-        If you have any questions about this invitation, please contact
-        <%= inviterName %> or the <%= companyName %> team directly.
       </p>
     </td>
   </tr>

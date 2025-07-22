@@ -29,12 +29,30 @@ router.get(
  * @access  Private
  */
 router.get(
-  '/:templateType',
+  '/:cuid/:templateType',
   isAuthenticated,
   validateRequest({ params: EmailTemplateValidations.templateType }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<EmailTemplateController>('emailTemplateController');
     return controller.getTemplateMetadata(req, res);
+  })
+);
+
+/**
+ * @route   POST /api/email-templates/:templateType/render
+ * @desc    Render template with provided data and return fully rendered HTML
+ * @access  Private
+ */
+router.post(
+  '/:cuid/:templateType/render',
+  isAuthenticated,
+  validateRequest({
+    params: EmailTemplateValidations.templateType,
+    body: EmailTemplateValidations.renderTemplate,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<EmailTemplateController>('emailTemplateController');
+    return controller.renderTemplate(req, res);
   })
 );
 

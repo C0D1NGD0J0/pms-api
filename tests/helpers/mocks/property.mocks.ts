@@ -3,8 +3,10 @@ import { ClientSession } from 'mongoose';
 // Property DAO Mock
 export const createMockPropertyDAO = () => ({
   findFirst: jest.fn(),
+  findById: jest.fn(),
   list: jest.fn(),
   insert: jest.fn(),
+  update: jest.fn(),
   updateById: jest.fn(),
   deleteById: jest.fn(),
   startSession: jest.fn(),
@@ -15,6 +17,14 @@ export const createMockPropertyDAO = () => ({
   ),
   getPropertyById: jest.fn(),
   getPropertiesByClient: jest.fn(),
+  getPropertiesByClientId: jest.fn(),
+  findPropertyByAddress: jest.fn(),
+  createProperty: jest.fn(),
+  updatePropertyDocument: jest.fn(),
+  archiveProperty: jest.fn(),
+  canAddUnitToProperty: jest.fn(),
+  getPropertyUnits: jest.fn(),
+  syncPropertyOccupancyWithUnitsEnhanced: jest.fn(),
 });
 
 // Property Unit DAO Mock
@@ -22,6 +32,7 @@ export const createMockPropertyUnitDAO = () => ({
   findFirst: jest.fn(),
   list: jest.fn(),
   insert: jest.fn(),
+  update: jest.fn(),
   updateById: jest.fn(),
   deleteById: jest.fn(),
   startSession: jest.fn(),
@@ -32,6 +43,10 @@ export const createMockPropertyUnitDAO = () => ({
   ),
   getUnitById: jest.fn(),
   getUnitsByProperty: jest.fn(),
+  getPropertyUnitInfo: jest.fn(),
+  getExistingUnitNumbers: jest.fn(),
+  getNextAvailableUnitNumber: jest.fn(),
+  getSuggestedStartingUnitNumber: jest.fn(),
 });
 
 // GeoCoderService Mock

@@ -1,10 +1,15 @@
 import { z } from 'zod';
-import { container } from '@di/setup';
 import { PropertyDAO, ClientDAO } from '@dao/index';
 import { BaseCSVProcessorService } from '@services/csv/base';
 
+const getContainer = async () => {
+  const { container } = await import('@di/setup');
+  return container;
+};
+
 const isUniqueAddress = async (address: string, clientId: string) => {
-  const { propertyDAO }: { propertyDAO: PropertyDAO; clientDAO: ClientDAO } = container.cradle;
+  const { propertyDAO }: { propertyDAO: PropertyDAO; clientDAO: ClientDAO } = (await getContainer())
+    .cradle;
   try {
     const existingProperty = await propertyDAO.findFirst({
       'address.fullAddress': address,
@@ -253,7 +258,7 @@ export const PropertySearchSchema = z.object({
 export const UpdateOccupancySchema = z.object({
   pid: z.string().refine(
     async (pid) => {
-      const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
+      const { propertyDAO }: { propertyDAO: PropertyDAO } = (await getContainer()).cradle;
       const property = await propertyDAO.findFirst({ pid });
       return !!property;
     },
@@ -272,7 +277,7 @@ const PropertyClientRelationship = z.object({
 
 export const PropertyClientRelationshipSchema = PropertyClientRelationship.superRefine(
   async (data, ctx) => {
-    const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
+    const { propertyDAO }: { propertyDAO: PropertyDAO } = (await getContainer()).cradle;
     const property = await propertyDAO.findFirst({
       pid: data.pid,
       cuid: data.cuid,

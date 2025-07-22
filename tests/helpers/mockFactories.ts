@@ -189,6 +189,10 @@ export const createMockProperty = (overrides: any = {}) => ({
   updatedAt: new Date(),
   lastModifiedBy: new Types.ObjectId(),
   id: new Types.ObjectId().toString(),
+  toJSON: function() { 
+    const { toJSON, ...rest } = this; 
+    return rest; 
+  },
   ...overrides
 });
 

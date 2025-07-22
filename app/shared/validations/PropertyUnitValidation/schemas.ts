@@ -1,7 +1,11 @@
 import { z } from 'zod';
-import { container } from '@di/setup';
 import { isValidObjectId, Types } from 'mongoose';
 import { PropertyUnitDAO, PropertyDAO } from '@dao/index';
+
+const getContainer = async () => {
+  const { container } = await import('@di/setup');
+  return container;
+};
 import {
   PropertyUnitStatusEnum,
   PropertyUnitTypeEnum,
@@ -11,7 +15,7 @@ import {
 } from '@interfaces/propertyUnit.interface';
 
 export const isValidResource = async (resourceName: 'property' | 'propertyUnit', filter: any) => {
-  const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
+  const { propertyDAO }: { propertyDAO: PropertyDAO } = (await getContainer()).cradle;
   try {
     if (resourceName === 'property') {
       if (!filter.pid && !filter.id) {
@@ -26,7 +30,8 @@ export const isValidResource = async (resourceName: 'property' | 'propertyUnit',
         return !!property;
       }
     } else if (resourceName === 'propertyUnit') {
-      const { propertyUnitDAO }: { propertyUnitDAO: PropertyUnitDAO } = container.cradle;
+      const { propertyUnitDAO }: { propertyUnitDAO: PropertyUnitDAO } = (await getContainer())
+        .cradle;
       if (!filter.unitId && !filter.unitNumber) {
         return false;
       }
@@ -53,7 +58,7 @@ const isUniqueUnitNumber = async (pid: string, unitNumber: string, unitId?: stri
   const {
     propertyUnitDAO,
     propertyDAO,
-  }: { propertyUnitDAO: PropertyUnitDAO; propertyDAO: PropertyDAO } = container.cradle;
+  }: { propertyUnitDAO: PropertyUnitDAO; propertyDAO: PropertyDAO } = (await getContainer()).cradle;
   try {
     const query: any = {
       unitNumber,

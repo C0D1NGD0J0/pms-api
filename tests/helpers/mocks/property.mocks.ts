@@ -34,21 +34,102 @@ export const createMockPropertyUnitDAO = () => ({
   getUnitsByProperty: jest.fn(),
 });
 
-// Property Service Mock (when implemented)
-export const createMockPropertyService = () => ({
-  createProperty: jest.fn(),
-  updateProperty: jest.fn(),
-  deleteProperty: jest.fn(),
-  getPropertyById: jest.fn(),
-  getPropertiesByClient: jest.fn(),
-  uploadPropertyImages: jest.fn(),
+// GeoCoderService Mock
+export const createMockGeoCoderService = () => ({
+  getCoordinates: jest.fn(),
+  reverseGeocode: jest.fn(),
+  validateAddress: jest.fn(),
 });
 
-// Property Unit Service Mock (when implemented)
+// EventEmitterService Mock
+export const createMockEventEmitterService = () => ({
+  on: jest.fn(),
+  off: jest.fn(),
+  emit: jest.fn(),
+  once: jest.fn(),
+  removeListener: jest.fn(),
+  removeAllListeners: jest.fn(),
+});
+
+// PropertyCache Mock
+export const createMockPropertyCache = () => ({
+  cacheProperty: jest.fn(),
+  getProperty: jest.fn(),
+  invalidateProperty: jest.fn(),
+  getClientProperties: jest.fn(),
+  saveClientProperties: jest.fn(),
+  invalidatePropertyLists: jest.fn(),
+  clearAll: jest.fn(),
+});
+
+// UnitNumberingService Mock
+export const createMockUnitNumberingService = () => ({
+  validateUnitNumberUpdate: jest.fn(),
+  suggestUnitNumber: jest.fn(),
+  generateSequentialNumber: jest.fn(),
+  parseUnitNumber: jest.fn(),
+});
+
+// PropertyCsvProcessor Mock
+export const createMockPropertyCsvProcessor = () => ({
+  validateCsv: jest.fn(),
+  processCsv: jest.fn(),
+  parseCsv: jest.fn(),
+});
+
+// PropertyUnitCsvProcessor Mock
+export const createMockPropertyUnitCsvProcessor = () => ({
+  validateCsv: jest.fn(),
+  processCsv: jest.fn(),
+  parseCsv: jest.fn(),
+});
+
+// Property Queue Mocks
+export const createMockPropertyQueue = () => ({
+  addCsvImportJob: jest.fn(),
+  addCsvValidationJob: jest.fn(),
+  process: jest.fn(),
+  close: jest.fn(),
+});
+
+export const createMockPropertyUnitQueue = () => ({
+  addUnitBatchCreationJob: jest.fn(),
+  process: jest.fn(),
+  close: jest.fn(),
+});
+
+export const createMockUploadQueue = () => ({
+  addToUploadQueue: jest.fn(),
+  process: jest.fn(),
+  close: jest.fn(),
+});
+
+// Property Service Mock
+export const createMockPropertyService = () => ({
+  addProperty: jest.fn(),
+  addPropertiesFromCsv: jest.fn(),
+  updatePropertyDocuments: jest.fn(),
+  validateCsv: jest.fn(),
+  getClientProperties: jest.fn(),
+  getClientProperty: jest.fn(),
+  updateClientProperty: jest.fn(),
+  archiveClientProperty: jest.fn(),
+  markDocumentsAsFailed: jest.fn(),
+  getUnitInfoForProperty: jest.fn(),
+  destroy: jest.fn(),
+});
+
+// Property Unit Service Mock
 export const createMockPropertyUnitService = () => ({
-  createUnit: jest.fn(),
-  updateUnit: jest.fn(),
-  deleteUnit: jest.fn(),
-  getUnitById: jest.fn(),
-  getUnitsByProperty: jest.fn(),
+  addPropertyUnit: jest.fn(),
+  getPropertyUnit: jest.fn(),
+  getPropertyUnits: jest.fn(),
+  updatePropertyUnit: jest.fn(),
+  updateUnitStatus: jest.fn(),
+  archiveUnit: jest.fn(),
+  setupInspection: jest.fn(),
+  addDocumentToUnit: jest.fn(),
+  deleteDocumentFromUnit: jest.fn(),
+  validateUnitsCsv: jest.fn(),
+  importUnitsFromCsv: jest.fn(),
 });

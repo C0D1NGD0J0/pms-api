@@ -109,34 +109,202 @@ export const createMockClient = (overrides: any = {}) => ({
 
 export const createMockProperty = (overrides: any = {}) => ({
   _id: new Types.ObjectId(),
+  pid: faker.string.uuid(),
   name: faker.location.streetAddress(),
   address: {
     street: faker.location.streetAddress(),
     city: faker.location.city(),
     state: faker.location.state(),
-    zipCode: faker.location.zipCode(),
-    country: faker.location.country()
+    postCode: faker.location.zipCode(),
+    country: faker.location.country(),
+    fullAddress: faker.location.streetAddress() + ', ' + faker.location.city() + ', ' + faker.location.state()
   },
   cuid: faker.string.uuid(),
-  isActive: true,
+  propertyType: faker.helpers.arrayElement(['apartment', 'house', 'condominium', 'townhouse', 'commercial', 'industrial'] as const),
+  status: faker.helpers.arrayElement(['available', 'occupied', 'maintenance', 'construction', 'inactive'] as const),
+  occupancyStatus: faker.helpers.arrayElement(['vacant', 'occupied', 'partially_occupied'] as const),
+  maxAllowedUnits: faker.number.int({ min: 1, max: 50 }),
+  yearBuilt: faker.number.int({ min: 1900, max: 2024 }),
+  createdBy: new Types.ObjectId(),
+  managedBy: new Types.ObjectId(),
+  specifications: {
+    totalArea: faker.number.int({ min: 500, max: 5000 }),
+    bedrooms: faker.number.int({ min: 1, max: 5 }),
+    bathrooms: faker.number.float({ min: 1, max: 4 }),
+    floors: faker.number.int({ min: 1, max: 3 }),
+    garageSpaces: faker.number.int({ min: 0, max: 3 }),
+    maxOccupants: faker.number.int({ min: 1, max: 10 }),
+    lotSize: faker.number.int({ min: 1000, max: 10000 })
+  },
+  financialDetails: {
+    purchasePrice: faker.number.int({ min: 100000, max: 2000000 }),
+    marketValue: faker.number.int({ min: 100000, max: 2000000 }),
+    propertyTax: faker.number.int({ min: 5000, max: 50000 }),
+    purchaseDate: faker.date.past(),
+    lastAssessmentDate: faker.date.recent()
+  },
+  fees: {
+    rentalAmount: faker.number.int({ min: 800, max: 5000 }),
+    managementFees: faker.number.int({ min: 50, max: 500 }),
+    taxAmount: faker.number.int({ min: 100, max: 1000 }),
+    currency: 'USD' as const
+  },
+  utilities: {
+    electricity: true,
+    water: true,
+    gas: faker.datatype.boolean(),
+    internet: faker.datatype.boolean(),
+    cableTV: faker.datatype.boolean(),
+    trash: true
+  },
+  interiorAmenities: {
+    airConditioning: faker.datatype.boolean(),
+    heating: true,
+    washerDryer: faker.datatype.boolean(),
+    dishwasher: faker.datatype.boolean(),
+    fridge: faker.datatype.boolean(),
+    furnished: faker.datatype.boolean(),
+    storageSpace: faker.datatype.boolean()
+  },
+  communityAmenities: {
+    parking: faker.datatype.boolean(),
+    elevator: faker.datatype.boolean(),
+    fitnessCenter: faker.datatype.boolean(),
+    swimmingPool: faker.datatype.boolean(),
+    laundryFacility: faker.datatype.boolean(),
+    securitySystem: faker.datatype.boolean(),
+    petFriendly: faker.datatype.boolean(),
+    doorman: faker.datatype.boolean()
+  },
+  description: {
+    text: faker.lorem.paragraphs(2),
+    html: `<p>${faker.lorem.paragraphs(2)}</p>`
+  },
+  documents: [],
+  computedLocation: {
+    coordinates: [faker.location.longitude(), faker.location.latitude()]
+  },
+  deletedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
+  lastModifiedBy: new Types.ObjectId(),
+  id: new Types.ObjectId().toString(),
   ...overrides
 });
 
 export const createMockPropertyUnit = (overrides: any = {}) => ({
   _id: new Types.ObjectId(),
+  puid: faker.string.uuid(),
+  cuid: faker.string.uuid(),
   propertyId: new Types.ObjectId(),
   unitNumber: faker.number.int({ min: 1, max: 999 }).toString(),
-  type: 'apartment',
-  bedrooms: faker.number.int({ min: 1, max: 4 }),
-  bathrooms: faker.number.int({ min: 1, max: 3 }),
-  squareFeet: faker.number.int({ min: 500, max: 2000 }),
-  rent: faker.number.int({ min: 800, max: 3000 }),
+  unitType: faker.helpers.arrayElement(['residential', 'commercial', 'storage', 'other'] as const),
+  status: faker.helpers.arrayElement(['available', 'occupied', 'reserved', 'maintenance', 'inactive'] as const),
+  floor: faker.number.int({ min: 1, max: 20 }),
+  description: faker.lorem.sentence(),
   isActive: true,
-  cuid: faker.string.uuid(),
+  createdBy: new Types.ObjectId(),
+  lastModifiedBy: new Types.ObjectId(),
+  currentLease: null,
+  specifications: {
+    totalArea: faker.number.int({ min: 300, max: 2000 }),
+    bedrooms: faker.number.int({ min: 0, max: 4 }),
+    bathrooms: faker.number.float({ min: 1, max: 3 }),
+    maxOccupants: faker.number.int({ min: 1, max: 8 })
+  },
+  fees: {
+    rentAmount: faker.number.int({ min: 800, max: 5000 }),
+    securityDeposit: faker.number.int({ min: 500, max: 3000 }),
+    currency: 'USD' as const
+  },
+  utilities: {
+    water: faker.datatype.boolean(),
+    gas: faker.datatype.boolean(),
+    heating: faker.datatype.boolean(),
+    centralAC: faker.datatype.boolean(),
+    trash: faker.datatype.boolean()
+  },
+  amenities: {
+    airConditioning: faker.datatype.boolean(),
+    washerDryer: faker.datatype.boolean(),
+    dishwasher: faker.datatype.boolean(),
+    parking: faker.datatype.boolean(),
+    cableTV: faker.datatype.boolean(),
+    internet: faker.datatype.boolean(),
+    storage: faker.datatype.boolean()
+  },
+  notes: [],
+  documents: [],
+  inspections: [],
+  media: {
+    photos: []
+  },
+  lastInspectionDate: faker.date.recent(),
+  deletedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
+  id: new Types.ObjectId().toString(),
+  // Mock methods
+  calculateRentAdjustment: jest.fn(),
+  applyRentAdjustment: jest.fn(),
+  prepareForMaintenance: jest.fn(),
+  markUnitAsOccupied: jest.fn(),
+  addInspection: jest.fn(),
+  makeUnitAvailable: jest.fn(),
+  markUnitAsVacant: jest.fn(),
+  softDelete: jest.fn(),
+  ...overrides
+});
+
+export const createMockNewProperty = (overrides: any = {}) => ({
+  name: faker.location.streetAddress(),
+  fullAddress: faker.location.streetAddress() + ', ' + faker.location.city() + ', ' + faker.location.state(),
+  propertyType: faker.helpers.arrayElement(['apartment', 'house', 'condominium', 'townhouse', 'commercial', 'industrial'] as const),
+  status: faker.helpers.arrayElement(['available', 'occupied', 'maintenance', 'construction', 'inactive'] as const),
+  occupancyStatus: faker.helpers.arrayElement(['vacant', 'occupied', 'partially_occupied'] as const),
+  maxAllowedUnits: faker.number.int({ min: 1, max: 50 }),
+  yearBuilt: faker.number.int({ min: 1900, max: 2024 }),
+  createdBy: new Types.ObjectId(),
+  managedBy: new Types.ObjectId(),
+  address: {
+    street: faker.location.streetAddress(),
+    city: faker.location.city(),
+    state: faker.location.state(),
+    postCode: faker.location.zipCode(),
+    country: faker.location.country(),
+    fullAddress: faker.location.streetAddress() + ', ' + faker.location.city() + ', ' + faker.location.state()
+  },
+  specifications: {
+    totalArea: faker.number.int({ min: 500, max: 5000 }),
+    bedrooms: faker.number.int({ min: 1, max: 5 }),
+    bathrooms: faker.number.float({ min: 1, max: 4 }),
+    floors: faker.number.int({ min: 1, max: 3 }),
+    garageSpaces: faker.number.int({ min: 0, max: 3 }),
+    maxOccupants: faker.number.int({ min: 1, max: 10 }),
+    lotSize: faker.number.int({ min: 1000, max: 10000 })
+  },
+  financialDetails: {
+    purchasePrice: faker.number.int({ min: 100000, max: 2000000 }),
+    marketValue: faker.number.int({ min: 100000, max: 2000000 }),
+    propertyTax: faker.number.int({ min: 5000, max: 50000 }),
+    purchaseDate: faker.date.past(),
+    lastAssessmentDate: faker.date.recent()
+  },
+  fees: {
+    rentalAmount: faker.number.int({ min: 800, max: 5000 }),
+    managementFees: faker.number.int({ min: 50, max: 500 }),
+    taxAmount: faker.number.int({ min: 100, max: 1000 }),
+    currency: 'USD' as const
+  },
+  utilities: {
+    electricity: true,
+    water: true,
+    gas: faker.datatype.boolean(),
+    internet: faker.datatype.boolean(),
+    cableTV: faker.datatype.boolean(),
+    trash: true
+  },
+  cuid: faker.string.uuid(),
   ...overrides
 });
 

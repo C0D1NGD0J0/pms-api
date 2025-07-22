@@ -19,7 +19,7 @@ const config: JestConfigWithTsJest = {
   roots: ['<rootDir>/tests/'],
   testMatch: ['**/tests/**/*.test.[jt]s?(x)', '**/tests/*.test.[jt]s?(x)'],
   transform: {
-    '^.+\\.(ts|tsx)$': ['ts-jest', { useESM: true }],
+    '^.+\\.(ts|tsx)$': 'ts-jest',
   },
   testEnvironmentOptions: {
     node: true,

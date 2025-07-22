@@ -24,6 +24,7 @@ export const createMockPropertyDAO = () => ({
   archiveProperty: jest.fn(),
   canAddUnitToProperty: jest.fn(),
   getPropertyUnits: jest.fn(),
+  countDocuments: jest.fn(),
   syncPropertyOccupancyWithUnitsEnhanced: jest.fn(),
 });
 
@@ -147,4 +148,29 @@ export const createMockPropertyUnitService = () => ({
   deleteDocumentFromUnit: jest.fn(),
   validateUnitsCsv: jest.fn(),
   importUnitsFromCsv: jest.fn(),
+});
+
+// Property Validation Service Mock
+export const createMockPropertyValidationService = () => ({
+  validateCurrency: jest.fn().mockReturnValue([]),
+  validateDate: jest.fn().mockReturnValue([]),
+  validateNumericField: jest.fn().mockReturnValue([]),
+  validateProperty: jest.fn().mockReturnValue({ valid: true, errors: [] }),
+  validateFieldByType: jest.fn().mockReturnValue([])
+});
+
+// Validation Result Mock
+export const createMockValidationResult = (overrides = {}) => ({
+  valid: true,
+  errors: [],
+  ...overrides
+});
+
+// Property Validation Rules Mock
+export const createMockPropertyValidationRules = (overrides = {}) => ({
+  minTotalArea: 500,
+  maxUnits: 100,
+  allowBedrooms: true,
+  allowBathrooms: true,
+  ...overrides
 });

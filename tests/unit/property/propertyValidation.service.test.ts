@@ -166,7 +166,9 @@ describe('PropertyValidationService', () => {
       // Arrange
       const validPropertyData = createMockNewProperty({
         name: 'Test Property',
-        fullAddress: '123 Main St, City, State',
+        address: {
+          fullAddress: '123 Main St, City, State',
+        },
         propertyType: 'house',
         maxAllowedUnits: 1,
         specifications: {

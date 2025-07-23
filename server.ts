@@ -251,7 +251,7 @@ class Server {
       }
 
       container.dispose();
-      this.log.info(`Shutdown ${queueCount}`);
+      this.log.info(`Shutdown ${queueCount} queues`);
       this.log.info('DI container disposed');
     } catch (error) {
       this.log.error('Error during DI container cleanup:', error);

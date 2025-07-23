@@ -181,7 +181,7 @@ export class InvitationWorker {
       throw new Error('Client not found');
     }
 
-    // Cceck for existing pending invitation
+    // Check for existing pending invitation
     const existingInvitation = await this.invitationDAO.findPendingInvitation(
       invitationData.inviteeEmail,
       clientInfo.id

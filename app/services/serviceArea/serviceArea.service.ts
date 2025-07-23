@@ -277,7 +277,7 @@ export class ServiceAreaService {
         'clientRoleInfo.vendorInfo.serviceAreas.maxDistance': 1,
       });
 
-      console.log('Geospatial indexes created successfully');
+      this.logger.info('Geospatial indexes created successfully');
     } catch (error) {
       console.error('Error creating geospatial indexes:', error);
     }

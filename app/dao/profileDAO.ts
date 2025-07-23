@@ -291,17 +291,17 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         {
           $lookup: {
             from: 'clients',
-            let: { cidList: '$userData.cids.cid' },
+            let: { cuidList: '$userData.cuids.cuid' },
             pipeline: [
               {
                 $match: {
-                  $expr: { $in: ['$cid', '$$cidList'] },
+                  $expr: { $in: ['$cuid', '$$cuidList'] },
                 },
               },
               {
                 $project: {
                   _id: 0,
-                  csub: '$cid',
+                  csub: '$cuid',
                   displayname: '$displayName',
                   isVerified: 1,
                 },
@@ -341,9 +341,9 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                     $arrayElemAt: [
                       {
                         $filter: {
-                          input: '$userData.cids',
+                          input: '$userData.cuids',
                           as: 'client',
-                          cond: { $eq: ['$$client.cid', '$userData.activeCid'] },
+                          cond: { $eq: ['$$client.cuid', '$userData.activecuid'] },
                         },
                       },
                       0,
@@ -351,7 +351,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   },
                 },
                 in: {
-                  csub: '$$activeClient.cid',
+                  csub: '$$activeClient.cuid',
                   displayname: '$$activeClient.displayName',
                   role: { $arrayElemAt: ['$$activeClient.roles', 0] },
                 },
@@ -361,10 +361,10 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
             // all client connections
             clients: {
               $map: {
-                input: '$userData.cids',
+                input: '$userData.cuids',
                 as: 'conn',
                 in: {
-                  cid: '$$conn.cid',
+                  cuid: '$$conn.cuid',
                   displayName: '$$conn.displayName',
                   roles: '$$conn.roles',
                   isConnected: '$$conn.isConnected',
@@ -403,6 +403,174 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
       return currentUser;
     } catch (error) {
       this.logger.error(`Error generating current user info for ${userId}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async updateEmployeeInfo(
+    profileId: string,
+    cuid: string,
+    employeeInfo: Record<string, any>
+  ): Promise<IProfileDocument | null> {
+    try {
+      if (!employeeInfo || typeof employeeInfo !== 'object') {
+        throw new Error('Employee info must be a valid object');
+      }
+
+      const updateFields: Record<string, any> = {};
+
+      for (const [key, value] of Object.entries(employeeInfo)) {
+        updateFields[`clientRoleInfo.$[client].employeeInfo.${key}`] = value;
+      }
+
+      return await this.updateById(
+        profileId,
+        { $set: updateFields },
+        { arrayFilters: [{ 'client.cuid': cuid }] }
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error updating employee info for profile ${profileId}, client ${cuid}:`,
+        error
+      );
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update vendor-specific information for a profile and client
+   */
+  async updateVendorInfo(
+    profileId: string,
+    cuid: string,
+    vendorInfo: Record<string, any>
+  ): Promise<IProfileDocument | null> {
+    try {
+      if (!vendorInfo || typeof vendorInfo !== 'object') {
+        throw new Error('Vendor info must be a valid object');
+      }
+
+      const updateFields: Record<string, any> = {};
+
+      for (const [key, value] of Object.entries(vendorInfo)) {
+        if (key === 'contactPerson' && typeof value === 'object') {
+          for (const [subKey, subValue] of Object.entries(value)) {
+            updateFields[`clientRoleInfo.$[client].vendorInfo.contactPerson.${subKey}`] = subValue;
+          }
+        } else if (key === 'insuranceInfo' && typeof value === 'object') {
+          for (const [subKey, subValue] of Object.entries(value)) {
+            updateFields[`clientRoleInfo.$[client].vendorInfo.insuranceInfo.${subKey}`] = subValue;
+          }
+        } else {
+          updateFields[`clientRoleInfo.$[client].vendorInfo.${key}`] = value;
+        }
+      }
+
+      return await this.updateById(
+        profileId,
+        { $set: updateFields },
+        { arrayFilters: [{ 'client.cuid': cuid }] }
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error updating vendor info for profile ${profileId}, client ${cuid}:`,
+        error
+      );
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Clear role-specific information for a specific client
+   */
+  async clearRoleSpecificInfo(
+    profileId: string,
+    cuid: string,
+    roleType: 'employee' | 'vendor'
+  ): Promise<IProfileDocument | null> {
+    try {
+      const unsetFields =
+        roleType === 'employee'
+          ? { 'clientRoleInfo.$[client].employeeInfo': '' }
+          : { 'clientRoleInfo.$[client].vendorInfo': '' };
+
+      return await this.updateById(
+        profileId,
+        { $unset: unsetFields },
+        { arrayFilters: [{ 'client.cuid': cuid }] }
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error clearing ${roleType} info for profile ${profileId}, client ${cuid}:`,
+        error
+      );
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Get role-specific information for a profile and client
+   */
+  async getRoleSpecificInfo(
+    profileId: string,
+    cuid: string
+  ): Promise<{ employeeInfo?: any; vendorInfo?: any } | null> {
+    try {
+      const profile = await this.findById(profileId);
+
+      if (!profile) {
+        return null;
+      }
+
+      const clientRoleInfo = profile.clientRoleInfo?.find((info) => info.cuid === cuid);
+
+      if (!clientRoleInfo) {
+        return null;
+      }
+
+      const result: any = {};
+
+      if (clientRoleInfo.employeeInfo) {
+        result.employeeInfo = clientRoleInfo.employeeInfo;
+      }
+
+      if (clientRoleInfo.vendorInfo) {
+        result.vendorInfo = clientRoleInfo.vendorInfo;
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Error getting role-specific info for profile ${profileId}, client ${cuid}:`,
+        error
+      );
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Ensure client role info exists for a profile
+   */
+  async ensureClientRoleInfo(profileId: string, cuid: string): Promise<void> {
+    try {
+      const profile = await this.findById(profileId);
+
+      if (!profile) {
+        throw new Error('Profile not found');
+      }
+
+      const hasClientRoleInfo = profile.clientRoleInfo?.some((info) => info.cuid === cuid);
+
+      if (!hasClientRoleInfo) {
+        await this.updateById(profileId, {
+          $push: { clientRoleInfo: { cuid } },
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error ensuring client role info for profile ${profileId}, client ${cuid}:`,
+        error
+      );
       throw this.throwErrorHandler(error);
     }
   }

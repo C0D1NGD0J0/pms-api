@@ -32,13 +32,13 @@ export class ClientService {
   ): Promise<ISuccessReturnData<IClientDocument>> {
     const currentuser = cxt.currentuser!;
     const start = process.hrtime.bigint();
-    const { cid } = cxt.request.params;
+    const { cuid } = cxt.request.params;
 
-    const client = await this.clientDAO.getClientByCid(cid);
+    const client = await this.clientDAO.getClientBycuid(cuid);
     if (!client) {
       this.log.error(
         {
-          cid,
+          cuid,
           url: cxt.request.url,
           userId: currentuser?.sub,
           requestId: cxt.requestId,
@@ -71,7 +71,7 @@ export class ClientService {
         requiresReVerification = true;
         this.log.info(
           {
-            cid,
+            cuid,
             oldIdType: client.identification.idType,
             newIdType: updateData.identification.idType,
             userId: currentuser.sub,
@@ -129,7 +129,7 @@ export class ClientService {
     const changedFields = Object.keys(updateData);
     this.log.info(
       {
-        cid,
+        cuid,
         userId: currentuser.sub,
         requestId: cxt.requestId,
         changedFields: JSON.stringify(changedFields),
@@ -141,7 +141,7 @@ export class ClientService {
     if (validationErrors.length > 0) {
       this.log.error(
         {
-          cid,
+          cuid,
           url: cxt.request.url,
           userId: currentuser?.sub,
           requestId: cxt.requestId,
@@ -162,7 +162,7 @@ export class ClientService {
       delete updateData.accountAdmin;
       delete updateData.accountType;
       delete updateData.isVerified;
-      delete updateData.cid;
+      delete updateData.cuid;
 
       const updatedClient = await this.clientDAO.updateById(
         client._id.toString(),
@@ -178,7 +178,7 @@ export class ClientService {
       if (!updatedClient) {
         this.log.error(
           {
-            cid,
+            cuid,
             url: cxt.request.url,
             userId: currentuser?.sub,
             requestId: cxt.requestId,
@@ -205,11 +205,11 @@ export class ClientService {
   ): Promise<ISuccessReturnData<{ clientStats: IClientStats } & IClientDocument>> {
     const currentuser = cxt.currentuser!;
     const start = process.hrtime.bigint();
-    const { cid } = cxt.request.params;
-    if (!cid) {
+    const { cuid } = cxt.request.params;
+    if (!cuid) {
       this.log.error(
         {
-          cid,
+          cuid,
           url: cxt.request.url,
           userId: currentuser?.sub,
           requestId: cxt.requestId,
@@ -221,7 +221,7 @@ export class ClientService {
     }
 
     const [client, usersResult, propertiesResult] = await Promise.all([
-      this.clientDAO.getClientByCid(cid, {
+      this.clientDAO.getClientBycuid(cuid, {
         populate: {
           path: 'accountAdmin',
           select: 'email',
@@ -234,14 +234,14 @@ export class ClientService {
         limit: 1,
         skip: 0,
       }),
-      this.userDAO.getUsersByClientId(cid, {}, { limit: 1000, skip: 0 }),
-      this.propertyDAO.countDocuments({ cid, deletedAt: null }),
+      this.userDAO.getUsersByClientId(cuid, {}, { limit: 1000, skip: 0 }),
+      this.propertyDAO.countDocuments({ cuid, deletedAt: null }),
     ]);
 
     if (!client) {
       this.log.error(
         {
-          cid,
+          cuid,
           url: cxt.request.url,
           userId: currentuser?.sub,
           requestId: cxt.requestId,
@@ -291,7 +291,7 @@ export class ClientService {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
 
-    const clientConnection = user.cids.find((c) => c.cid === clientId);
+    const clientConnection = user.cuids.find((c) => c.cuid === clientId);
     if (!clientConnection) {
       throw new NotFoundError({ message: t('client.errors.userNotInClient') });
     }
@@ -303,10 +303,10 @@ export class ClientService {
     await this.userDAO.updateById(
       targetUserId,
       {
-        $addToSet: { 'cids.$[elem].roles': role },
+        $addToSet: { 'cuids.$[elem].roles': role },
       },
       {
-        arrayFilters: [{ 'elem.cid': clientId }],
+        arrayFilters: [{ 'elem.cuid': clientId }],
       }
     );
 
@@ -339,8 +339,8 @@ export class ClientService {
     // prevent user from removing admin role if last admin
     if (role === 'admin') {
       const adminUsers = await this.userDAO.getUsersByClientId(clientId, {
-        'cids.roles': 'admin',
-        'cids.isConnected': true,
+        'cuids.roles': 'admin',
+        'cuids.isConnected': true,
       });
 
       if (adminUsers.items.length <= 1) {
@@ -351,10 +351,10 @@ export class ClientService {
     await this.userDAO.updateById(
       targetUserId,
       {
-        $pull: { 'cids.$[elem].roles': role },
+        $pull: { 'cuids.$[elem].roles': role },
       },
       {
-        arrayFilters: [{ 'elem.cid': clientId }],
+        arrayFilters: [{ 'elem.cuid': clientId }],
       }
     );
 
@@ -388,7 +388,7 @@ export class ClientService {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
 
-    const clientConnection = user.cids.find((c) => c.cid === clientId);
+    const clientConnection = user.cuids.find((c) => c.cuid === clientId);
     if (!clientConnection) {
       throw new NotFoundError({ message: t('client.errors.userNotInClient') });
     }
@@ -410,15 +410,15 @@ export class ClientService {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
 
-    const clientConnection = user.cids.find((c) => c.cid === clientId);
+    const clientConnection = user.cuids.find((c) => c.cuid === clientId);
     if (!clientConnection) {
       throw new NotFoundError({ message: t('client.errors.userNotInClient') });
     }
 
     if (clientConnection.roles.includes(IUserRole.ADMIN)) {
       const connectedAdmins = await this.userDAO.getUsersByClientId(clientId, {
-        'cids.roles': 'admin',
-        'cids.isConnected': true,
+        'cuids.roles': 'admin',
+        'cuids.isConnected': true,
       });
 
       if (connectedAdmins.items.length <= 1) {
@@ -429,10 +429,10 @@ export class ClientService {
     await this.userDAO.updateById(
       targetUserId,
       {
-        $set: { 'cids.$[elem].isConnected': false },
+        $set: { 'cuids.$[elem].isConnected': false },
       },
       {
-        arrayFilters: [{ 'elem.cid': clientId }],
+        arrayFilters: [{ 'elem.cuid': clientId }],
       }
     );
 
@@ -460,10 +460,10 @@ export class ClientService {
     await this.userDAO.updateById(
       targetUserId,
       {
-        $set: { 'cids.$[elem].isConnected': true },
+        $set: { 'cuids.$[elem].isConnected': true },
       },
       {
-        arrayFilters: [{ 'elem.cid': clientId }],
+        arrayFilters: [{ 'elem.cuid': clientId }],
       }
     );
 
@@ -499,7 +499,7 @@ export class ClientService {
     );
 
     const users = usersResult.items.map((user) => {
-      const clientConnection = user.cids.find((c) => c.cid === clientId);
+      const clientConnection = user.cuids.find((c) => c.cuid === clientId);
       return {
         id: user._id.toString(),
         email: user.email,

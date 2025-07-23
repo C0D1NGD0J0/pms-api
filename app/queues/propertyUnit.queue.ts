@@ -7,7 +7,7 @@ export interface UnitBatchJobData {
   requestId: string;
   userId: string;
   units: any[];
-  cid: string;
+  cuid: string;
   pid: string;
 }
 

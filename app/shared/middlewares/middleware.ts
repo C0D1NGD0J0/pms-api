@@ -83,7 +83,7 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
     // Validate connection status
     if (req.context.currentuser) {
       const activeConnection = req.context.currentuser.clients.find(
-        (c) => c.cid === req.context.currentuser!.client.csub
+        (c) => c.cuid === req.context.currentuser!.client.csub
       );
 
       if (!activeConnection || !activeConnection.isConnected) {
@@ -405,7 +405,7 @@ const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUs
   }
 
   // Check if user's connection to active client is still active
-  const activeConnection = currentuser.clients.find((c) => c.cid === currentuser.client.csub);
+  const activeConnection = currentuser.clients.find((c) => c.cuid === currentuser.client.csub);
   if (!activeConnection?.isConnected) {
     next(new UnauthorizedError({ message: t('auth.errors.connectionInactive') }));
     return null;
@@ -428,7 +428,7 @@ export const requirePermission = (
       if (!currentuser) return;
 
       // Check client context for client-specific resources
-      const clientId = req.params.clientId || req.params.cid;
+      const clientId = req.params.clientId || req.params.cuid;
       if (clientId && currentuser.client.csub !== clientId) {
         return next(new ForbiddenError({ message: t('auth.errors.clientAccessDenied') }));
       }
@@ -445,7 +445,7 @@ export const requirePermission = (
 
       const hasPermission = await permissionService.checkUserPermission(
         currentuser,
-        resource as string,
+        resource as PermissionResource,
         action as string
       );
 
@@ -480,7 +480,7 @@ export const requireAnyPermission = (permissions: PermissionCheck[]) => {
       for (const permission of permissions) {
         const result = await permissionService.checkUserPermission(
           currentuser,
-          permission.resource as string,
+          permission.resource as PermissionResource,
           permission.action as string
         );
         if (result.granted) {
@@ -512,7 +512,7 @@ export const requireAllPermissions = (permissions: PermissionCheck[]) => {
       for (const permission of permissions) {
         const result = await permissionService.checkUserPermission(
           currentuser,
-          permission.resource as string,
+          permission.resource as PermissionResource,
           permission.action as string
         );
         if (!result.granted) {

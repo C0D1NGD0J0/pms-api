@@ -1,15 +1,14 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
-import { validateRequest } from '@shared/validations';
 import { ClientController } from '@controllers/ClientController';
-import { ClientValidations } from '@shared/validations/ClientValidation';
+import { ClientValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import { requireUserManagement, requirePermission, isAuthenticated } from '@shared/middlewares';
 
 const router = Router();
 
 router.get(
-  '/:cid/client_details',
+  '/:cuid/client_details',
   isAuthenticated,
   requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
   validateRequest({
@@ -22,7 +21,7 @@ router.get(
 );
 
 router.patch(
-  '/:cid/client_details',
+  '/:cuid/client_details',
   isAuthenticated,
   requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
   validateRequest({
@@ -36,7 +35,7 @@ router.patch(
 );
 
 router.get(
-  '/:cid/users',
+  '/:cuid/users',
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
@@ -49,7 +48,7 @@ router.get(
 );
 
 router.get(
-  '/:cid/users/:uid/roles',
+  '/:cuid/users/:uid/roles',
   isAuthenticated,
   requireUserManagement(),
   validateRequest({
@@ -62,7 +61,7 @@ router.get(
 );
 
 router.post(
-  '/:cid/users/:uid/roles',
+  '/:cuid/users/:uid/roles',
   isAuthenticated,
   requireUserManagement(),
   validateRequest({
@@ -76,7 +75,7 @@ router.post(
 );
 
 router.delete(
-  '/:cid/users/:uid/roles/:role',
+  '/:cuid/users/:uid/roles/:role',
   isAuthenticated,
   requireUserManagement(),
   validateRequest({
@@ -91,7 +90,7 @@ router.delete(
 // Admin Connection Management Routes
 
 router.post(
-  '/:cid/users/:uid/disconnect',
+  '/:cuid/users/:uid/disconnect',
   isAuthenticated,
   requireUserManagement(),
   validateRequest({
@@ -104,7 +103,7 @@ router.post(
 );
 
 router.post(
-  '/:cid/users/:uid/reconnect',
+  '/:cuid/users/:uid/reconnect',
   isAuthenticated,
   requireUserManagement(),
   validateRequest({

@@ -1,9 +1,8 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { AuthController } from '@controllers/index';
-import { validateRequest } from '@shared/validations';
 import { isAuthenticated } from '@shared/middlewares';
-import { AuthValidations } from '@shared/validations/AuthValidation';
+import { validateRequest, AuthValidations } from '@shared/validations';
 
 const router: Router = express.Router();
 
@@ -28,7 +27,7 @@ router.post(
 );
 
 router.get(
-  '/:cid/me',
+  '/:cuid/me',
   isAuthenticated,
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -37,7 +36,7 @@ router.get(
 );
 
 router.put(
-  '/:cid/account_activation',
+  '/:cuid/account_activation',
   validateRequest({
     query: AuthValidations.activationToken,
   }),
@@ -93,7 +92,7 @@ router.post(
 );
 
 router.delete(
-  '/:cid/logout',
+  '/:cuid/logout',
   isAuthenticated,
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');

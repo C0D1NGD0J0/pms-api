@@ -139,7 +139,7 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.accountVerificationPending') });
     }
 
-    const activeConnection = user.cids.find((c) => c.cid === decoded.data.csub);
+    const activeConnection = user.cuids.find((c) => c.cuid === decoded.data.csub);
     if (!activeConnection || !activeConnection.isConnected) {
       this.log.error('User connection inactive');
       throw new UnauthorizedError({ message: t('auth.errors.connectionInactive') });
@@ -158,12 +158,12 @@ export class AuthService {
     if (!user) {
       throw new ForbiddenError({ message: t('auth.errors.userNotFound') });
     }
-    const client = await this.clientDAO.getClientByCid(clientId);
+    const client = await this.clientDAO.getClientBycuid(clientId);
     if (!client) {
       throw new ForbiddenError({ message: t('auth.errors.clientNotFound') });
     }
 
-    const clientAccount = user.cids.find((c) => c.cid === clientId);
+    const clientAccount = user.cuids.find((c) => c.cuid === clientId);
     if (!clientAccount) {
       throw new ForbiddenError({ message: t('auth.errors.noAccessToClient') });
     }
@@ -185,15 +185,15 @@ export class AuthService {
         {
           uid: generateShortUID(),
           _id: _userId,
-          activeCid: clientId,
+          activecuid: clientId,
           isActive: false,
           email: signupData.email,
           password: signupData.password,
           activationToken: hashGenerator({ _usenano: true }),
           activationTokenExpiresAt: dayjs().add(2, 'hour').toDate(),
-          cids: [
+          cuids: [
             {
-              cid: clientId,
+              cuid: clientId,
               isConnected: true,
               roles: [IUserRole.ADMIN],
               displayName: signupData.displayName,
@@ -218,7 +218,7 @@ export class AuthService {
       }
       const client = await this.clientDAO.insert(
         {
-          cid: clientId,
+          cuid: clientId,
           accountAdmin: _userId,
           displayName: signupData.displayName,
           accountType: signupData.accountType,
@@ -252,7 +252,7 @@ export class AuthService {
           emailType: MailType.ACCOUNT_ACTIVATION,
           data: {
             fullname: profile.fullname,
-            activationUrl: `${process.env.FRONTEND_URL}/${client.cid}/account_activation?t=${user.activationToken}`,
+            activationUrl: `${process.env.FRONTEND_URL}/${client.cuid}/account_activation?t=${user.activationToken}`,
           },
         },
       };
@@ -295,25 +295,25 @@ export class AuthService {
       throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
     }
 
-    const connectedClients = user.cids.filter((c) => c.isConnected);
+    const connectedClients = user.cuids.filter((c) => c.isConnected);
 
     if (connectedClients.length === 0) {
       throw new UnauthorizedError({ message: t('auth.errors.allConnectionsDisabled') });
     }
 
-    let activeAccount = connectedClients.find((c) => c.cid === user.activeCid);
+    let activeAccount = connectedClients.find((c) => c.cuid === user.activecuid);
 
     if (!activeAccount) {
       activeAccount = connectedClients[0];
       await this.userDAO.updateById(user._id.toString(), {
-        $set: { activeCid: activeAccount.cid },
+        $set: { activecuid: activeAccount.cuid },
       });
     }
 
     const tokens = this.tokenService.createJwtTokens({
       sub: user._id.toString(),
       rememberMe,
-      csub: activeAccount.cid,
+      csub: activeAccount.cuid,
     });
     await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, rememberMe);
     const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
@@ -327,7 +327,7 @@ export class AuthService {
           refreshToken: tokens.refreshToken,
           accessToken: tokens.accessToken,
           activeAccount: {
-            csub: activeAccount.cid,
+            csub: activeAccount.cuid,
             displayName: activeAccount.displayName,
           },
           accounts: [],
@@ -337,8 +337,8 @@ export class AuthService {
     }
 
     const otherAccounts = connectedClients
-      .filter((c) => c.cid !== activeAccount.cid)
-      .map((c) => ({ csub: c.cid, displayName: c.displayName }));
+      .filter((c) => c.cuid !== activeAccount.cuid)
+      .map((c) => ({ csub: c.cuid, displayName: c.displayName }));
     return {
       success: true,
       data: {
@@ -346,7 +346,7 @@ export class AuthService {
         refreshToken: tokens.refreshToken,
         accessToken: tokens.accessToken,
         activeAccount: {
-          csub: activeAccount.cid,
+          csub: activeAccount.cuid,
           displayName: activeAccount.displayName,
         },
         accounts: otherAccounts,
@@ -383,7 +383,7 @@ export class AuthService {
 
   async switchActiveAccount(
     userId: string,
-    newCid: string
+    newcuid: string
   ): Promise<
     ISuccessReturnData<{
       accessToken: string;
@@ -391,8 +391,8 @@ export class AuthService {
       activeAccount: { csub: string; displayName: string };
     }>
   > {
-    if (!userId || !newCid) {
-      throw new BadRequestError({ message: t('auth.errors.userIdAndCidRequired') });
+    if (!userId || !newcuid) {
+      throw new BadRequestError({ message: t('auth.errors.userIdAndcuidRequired') });
     }
 
     const user = await this.userDAO.getUserById(userId);
@@ -400,7 +400,7 @@ export class AuthService {
       throw new NotFoundError({ message: t('auth.errors.userNotFound') });
     }
 
-    const accountExists = user.cids.find((c) => c.cid === newCid);
+    const accountExists = user.cuids.find((c) => c.cuid === newcuid);
     if (!accountExists) {
       throw new NotFoundError({ message: t('auth.errors.unableToSelectAccount') });
     }
@@ -410,12 +410,12 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.connectionInactive') });
     }
 
-    await this.userDAO.updateById(userId, { $set: { activeCid: newCid } });
-    const activeAccount = user.cids.find((c) => c.cid === newCid)!;
+    await this.userDAO.updateById(userId, { $set: { activecuid: newcuid } });
+    const activeAccount = user.cuids.find((c) => c.cuid === newcuid)!;
     const tokens = this.tokenService.createJwtTokens({
       sub: user._id.toString(),
       rememberMe: false,
-      csub: activeAccount.cid,
+      csub: activeAccount.cuid,
     });
     await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, false);
 
@@ -427,7 +427,7 @@ export class AuthService {
         refreshToken: tokens.refreshToken,
         accessToken: tokens.accessToken,
         activeAccount: {
-          csub: activeAccount.cid,
+          csub: activeAccount.cuid,
           displayName: activeAccount.displayName,
         },
       },
@@ -468,7 +468,7 @@ export class AuthService {
       emailType: MailType.ACCOUNT_ACTIVATION,
       data: {
         fullname: user.profile?.fullname,
-        activationUrl: `${envVariables.FRONTEND.URL}/${user.activeCid}/account_activation/?t=${user.activationToken}`,
+        activationUrl: `${envVariables.FRONTEND.URL}/${user.activecuid}/account_activation/?t=${user.activationToken}`,
       },
     };
     this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
@@ -552,5 +552,105 @@ export class AuthService {
 
     await this.authCache.invalidateUserSession(payload.data.sub as string);
     return { success: true, data: null, message: t('auth.success.logoutSuccessful') };
+  }
+
+  /**
+   * Complete user registration from invitation acceptance
+   * This method handles the signup process for users who were invited to join a client
+   */
+  async inviteUserSignup(
+    _invitationToken: string,
+    _userData: {
+      password: string;
+      location?: string;
+      timeZone?: string;
+      lang?: string;
+    }
+  ): Promise<
+    ISuccessReturnData<{
+      accessToken: string;
+      refreshToken: string;
+      user: any;
+    }>
+  > {
+    const session = await this.userDAO.startSession();
+
+    try {
+      const result = await this.userDAO.withTransaction(session, async (_session) => {
+        // This will be handled by the InvitationService.acceptInvitation method
+        // We're keeping this method here for API consistency but it will delegate
+        // to the invitation service in the controller layer
+        throw new Error('This method should be called through InvitationService.acceptInvitation');
+      });
+
+      return result;
+    } catch (error) {
+      this.log.error('Error in invite user signup:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Login for users who just completed invitation signup
+   * This is a simplified login that skips some checks since the user was just created
+   */
+  async loginAfterInvitationSignup(
+    userId: string,
+    clientId: string
+  ): Promise<
+    ISuccessReturnData<{
+      accessToken: string;
+      refreshToken: string;
+      activeAccount: { csub: string; displayName: string };
+      accounts: { csub: string; displayName: string }[] | null;
+    }>
+  > {
+    try {
+      const user = await this.userDAO.getUserById(userId);
+      if (!user) {
+        throw new NotFoundError({ message: t('auth.errors.userNotFound') });
+      }
+
+      const activeConnection = user.cuids.find((c) => c.cuid === clientId);
+      if (!activeConnection) {
+        throw new UnauthorizedError({ message: t('auth.errors.noAccessToClient') });
+      }
+
+      // Generate tokens
+      const tokens = this.tokenService.createJwtTokens({
+        sub: user._id.toString(),
+        rememberMe: false,
+        csub: activeConnection.cuid,
+      });
+
+      // Cache tokens and user info
+      await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, false);
+
+      const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
+      currentuser && (await this.authCache.saveCurrentUser(currentuser));
+
+      // Get all connected clients for account switching
+      const connectedClients = user.cuids.filter((c) => c.isConnected);
+      const otherAccounts = connectedClients
+        .filter((c) => c.cuid !== activeConnection.cuid)
+        .map((c) => ({ csub: c.cuid, displayName: c.displayName }));
+
+      return {
+        success: true,
+        data: {
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          activeAccount: {
+            csub: activeConnection.cuid,
+            displayName: activeConnection.displayName,
+          },
+          accounts: otherAccounts.length > 0 ? otherAccounts : null,
+        },
+        message: t('auth.success.loginSuccessful'),
+      };
+    } catch (error) {
+      this.log.error('Error in login after invitation signup:', error);
+      throw error;
+    }
   }
 }

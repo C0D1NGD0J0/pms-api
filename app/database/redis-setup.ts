@@ -11,7 +11,6 @@ export class RedisService {
   private redisTestUrl: string = '';
   client: RedisClientType;
   log: Logger;
-  private static sharedInstance: RedisService | null = null;
 
   constructor(cacheName: string) {
     this.log = createLogger(cacheName);
@@ -28,11 +27,18 @@ export class RedisService {
           }
           return Math.min(retries * 100, 3000);
         },
-        connectTimeout: 10000,
-        keepAlive: 30000,
+        connectTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 10000,
+        keepAlive: envVariables.SERVER.ENV === 'production' ? 60000 : 30000,
       },
       url: envVariables.REDIS.URL,
       commandsQueueMaxLength: 100,
+      ...(envVariables.SERVER.ENV === 'production'
+        ? {
+            lazyConnect: true,
+            maxRetriesPerRequest: 3,
+            retryDelayOnFailover: 1000,
+          }
+        : {}),
     });
 
     this.client.on('error', (err: Error) => {
@@ -142,20 +148,6 @@ export class RedisService {
       return { success: true, data: null };
     } catch (error) {
       return this.handleError(error, 'connect');
-    }
-  }
-
-  static getSharedInstance(): RedisService {
-    if (!RedisService.sharedInstance) {
-      RedisService.sharedInstance = new RedisService('SharedRedis');
-    }
-    return RedisService.sharedInstance;
-  }
-
-  static async shutdownSharedInstance(): Promise<void> {
-    if (RedisService.sharedInstance) {
-      await RedisService.sharedInstance.disconnect();
-      RedisService.sharedInstance = null;
     }
   }
 

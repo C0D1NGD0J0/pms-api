@@ -21,12 +21,12 @@ export enum IUserRole {
 
 export interface IUserDocument extends Document, IUser {
   validatePassword: (pwd1: string) => Promise<boolean>;
-  cids: IClientUserConnections[];
+  cuids: IClientUserConnections[];
   profile?: IProfileDocument; //virtual property
   deletedAt: Date | null;
   _id: Types.ObjectId;
+  activecuid: string; // active cuid
   isActive: boolean;
-  activeCid: string; // active cid
   fullname?: string; //virtual property
   createdAt: Date;
   updatedAt: Date;
@@ -67,7 +67,7 @@ export interface IInviteUserSignup {
   password: string;
   lastName: string;
   email: string;
-  cid: string;
+  cuid: string;
 }
 
 // TENANT INTERFACE
@@ -81,7 +81,7 @@ export interface ITenant extends IUser {
   rentalHistory?: string[];
   user: Types.ObjectId;
   activatedAt: Date;
-  cid: string;
+  cuid: string;
 }
 export type IdentificationType = {
   idType: 'passport' | 'national-id' | 'drivers-license' | 'corporation-license';

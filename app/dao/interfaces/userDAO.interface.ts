@@ -9,6 +9,24 @@ import { IFindOptions, IBaseDAO, dynamic } from './baseDAO.interface';
  */
 export interface IUserDAO extends IBaseDAO<IUserDocument> {
   /**
+   * Add an existing user to a client with the specified role.
+   *
+   * @param userId - The ID of the user
+   * @param clientId - The client ID to add user to
+   * @param role - The role to assign
+   * @param displayName - The display name for this client association
+   * @param session - Optional MongoDB session for transactions
+   * @returns A promise that resolves to the updated user
+   */
+  addUserToClient(
+    userId: string,
+    clientId: string,
+    role: IUserRoleType,
+    displayName: string,
+    session?: any
+  ): Promise<IUserDocument | null>;
+
+  /**
    * Get users associated with a specific client.
    *
    * @param clientId - The ID of the client.
@@ -35,6 +53,20 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
     clientId: string,
     role: IUserRoleType
   ): Promise<boolean>;
+
+  /**
+   * Create a new user from an invitation acceptance.
+   *
+   * @param invitationData - The invitation data
+   * @param userData - The user signup data
+   * @param session - Optional MongoDB session for transactions
+   * @returns A promise that resolves to the created user
+   */
+  createUserFromInvitation(
+    invitationData: any,
+    userData: any,
+    session?: any
+  ): Promise<IUserDocument>;
 
   /**
    * Generate and save an activation token for a user.
@@ -78,6 +110,15 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
   getUserById(id: Types.ObjectId | string, opts?: IFindOptions): Promise<IUserDocument | null>;
 
   /**
+   * Check if a user already exists with the given email and has access to the client.
+   *
+   * @param email - The email to check
+   * @param clientId - The client ID to check access for
+   * @returns A promise that resolves to the user if they exist and have access, null otherwise
+   */
+  getUserWithClientAccess(email: string, clientId: string): Promise<IUserDocument | null>;
+
+  /**
    * Get a user by email address.
    *
    * @param email - The email address of the user.
@@ -107,6 +148,14 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
   getUserWithProfileByEmailOrId(emailOrId: string): Promise<IUserDocument | null>;
 
   /**
+   * Get the currently authenticated user by their ID with complete profile information.
+   *
+   * @param userId - The ID of the currently authenticated user.
+   * @returns A promise that resolves to the found user document or null if no user is found.
+   */
+  // getCurrentUser(userId: string): Promise<unknown | null>;
+
+  /**
    * Get all client associations for a user.
    *
    * @param userId - The ID of the user.
@@ -131,14 +180,6 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
    * @returns A promise that resolves to an array of matching user documents.
    */
   searchUsers(query: string, clientId: string): Promise<IUserDocument[]>;
-
-  /**
-   * Get the currently authenticated user by their ID with complete profile information.
-   *
-   * @param userId - The ID of the currently authenticated user.
-   * @returns A promise that resolves to the found user document or null if no user is found.
-   */
-  // getCurrentUser(userId: string): Promise<unknown | null>;
 
   /**
    * Generate and save a password reset token for a user.

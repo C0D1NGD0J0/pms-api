@@ -20,9 +20,9 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   /**
    * @inheritdoc
    */
-  async getClientByCid(cid: string, opts?: IFindOptions): Promise<IClientDocument | null> {
+  async getClientBycuid(cuid: string, opts?: IFindOptions): Promise<IClientDocument | null> {
     try {
-      const query = { cid };
+      const query = { cuid };
       return await this.findFirst(query, opts);
     } catch (error) {
       this.logger.error(error);
@@ -56,8 +56,8 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
    */
   async createClient(clientData: Partial<IClientDocument>): Promise<IClientDocument> {
     try {
-      if (!clientData.cid) {
-        clientData.cid = generateShortUID();
+      if (!clientData.cuid) {
+        clientData.cuid = generateShortUID();
       }
 
       return await this.insert(clientData);
@@ -166,9 +166,9 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   /**
    * @inheritdoc
    */
-  async doesClientExist(cid: string): Promise<boolean> {
+  async doesClientExist(cuid: string): Promise<boolean> {
     try {
-      const count = await this.countDocuments({ cid });
+      const count = await this.countDocuments({ cuid });
       return count > 0;
     } catch (error) {
       this.logger.error(error);
@@ -187,7 +187,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
       // Create a search filter that looks for the term in various fields
       const filter = {
         $or: [
-          { cid: { $regex: searchTerm, $options: 'i' } },
+          { cuid: { $regex: searchTerm, $options: 'i' } },
           { 'companyInfo.legalEntityName': { $regex: searchTerm, $options: 'i' } },
           { 'companyInfo.tradingName': { $regex: searchTerm, $options: 'i' } },
           { 'companyInfo.contactInfo.email': { $regex: searchTerm, $options: 'i' } },

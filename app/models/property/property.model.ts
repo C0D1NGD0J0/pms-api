@@ -13,9 +13,9 @@ const PropertySchema = new Schema<IPropertyDocument>(
       unique: true,
       index: true,
       immutable: true,
-      default: () => generateShortUID(12),
+      default: () => generateShortUID(),
     },
-    cid: {
+    cuid: {
       index: true,
       type: String,
       required: true,
@@ -54,7 +54,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
         validator: function (v: number) {
           return !isNaN(v) && v >= 1800 && v <= new Date().getFullYear() + 10;
         },
-        message: (props) => `${props.value} is not a valid year!`,
+        message: (props: any) => `${props.value} is not a valid year!`,
       },
     },
     financialDetails: {
@@ -276,7 +276,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
 );
 
 PropertySchema.index(
-  { cid: 1, address: 1 },
+  { cuid: 1, address: 1 },
   {
     unique: true,
     partialFilterExpression: { deletedAt: null }, // only non-deleted properties
@@ -321,7 +321,7 @@ PropertySchema.pre('validate', async function (next) {
       const PropertyModel = model<IPropertyDocument>('Property');
 
       const query = {
-        cid: this.cid,
+        cuid: this.cuid,
         _id: { $ne: this._id },
         deletedAt: null,
       };

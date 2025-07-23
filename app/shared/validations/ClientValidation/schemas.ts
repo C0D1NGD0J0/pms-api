@@ -1,11 +1,5 @@
 import { z } from 'zod';
 
-// Client ID parameter validation
-export const ClientIdParamSchema = z.object({
-  cid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
-});
-
-// Client settings validation
 export const ClientSettingsSchema = z.object({
   notificationPreferences: z
     .object({
@@ -35,7 +29,6 @@ export const ClientSettingsSchema = z.object({
     .optional(),
 });
 
-// Company profile validation
 export const CompanyProfileSchema = z.object({
   legalEntityName: z.string().trim().min(1, 'Legal entity name is required').optional(),
   tradingName: z.string().trim().min(1, 'Trading name is required').optional(),
@@ -61,7 +54,6 @@ export const CompanyProfileSchema = z.object({
     .optional(),
 });
 
-// Client identification validation
 export const ClientIdentificationSchema = z.object({
   idType: z.enum(['passport', 'driverLicense', 'nationalId', 'other']),
   issueDate: z.string().datetime('Invalid issue date format'),
@@ -72,30 +64,25 @@ export const ClientIdentificationSchema = z.object({
   dataProcessingConsent: z.boolean().default(false),
 });
 
-// Client subscription validation
 export const ClientSubscriptionSchema = z.object({
   subscriptionId: z.string().trim().nullable(),
 });
 
-// Display name validation
 export const ClientDisplayNameSchema = z.object({
   displayName: z.string().trim().min(1, 'Display name is required'),
 });
 
-// User management parameter validation
 export const UserIdParamSchema = z.object({
-  cid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
+  cuid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
   uid: z.string().trim().min(8, 'User ID must be at least 8 characters'),
 });
 
-// Role management parameter validation
 export const RoleParamSchema = z.object({
-  cid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
+  cuid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
   uid: z.string().trim().min(8, 'User ID must be at least 8 characters'),
   role: z.string().trim().min(1, 'Role is required'),
 });
 
-// Role assignment body validation
 export const AssignRoleSchema = z.object({
   role: z.enum(['admin', 'manager', 'tenant', 'staff', 'vendor'], {
     errorMap: () => ({
@@ -104,7 +91,6 @@ export const AssignRoleSchema = z.object({
   }),
 });
 
-// Comprehensive client details update validation
 export const UpdateClientDetailsSchema = z
   .object({
     identification: ClientIdentificationSchema.partial().optional(),
@@ -117,7 +103,6 @@ export const UpdateClientDetailsSchema = z
   })
   .refine(
     (data) => {
-      // If identification is provided, ensure required fields are present when updating idType
       if (data.identification?.idType && !data.identification?.idNumber) {
         return false;
       }
@@ -133,7 +118,6 @@ export const UpdateClientDetailsSchema = z
   )
   .refine(
     (data) => {
-      // Validate email format in company profile if provided
       if (data.companyProfile?.companyEmail) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return emailRegex.test(data.companyProfile.companyEmail);

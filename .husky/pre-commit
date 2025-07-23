@@ -1,38 +1,10 @@
 echo "🔍 Running pre-commit checks..."
 
-# Run linting first to check for errors
-echo "📋 Checking for lint errors..."
-if ! npm run lint; then
-  echo "⚠️  Lint errors found. Attempting to auto-fix..."
-
-  # Try to auto-fix lint errors
-  npm run lint:fix
-
-  # Format code with prettier
-  echo "🎨 Formatting code with Prettier..."
-  npm run prettier:write
-
-  # Stage any files that were fixed
-  echo "📦 Staging fixed files..."
-  git add .
-
-  # Run lint again to check if issues are resolved
-  echo "🔍 Re-checking for remaining lint errors..."
-  if ! npm run lint; then
-    echo "❌ Lint errors remain after auto-fix. Please fix manually before committing."
-    exit 1
-  fi
-
-  echo "✅ All lint issues auto-fixed successfully!"
-else
-  echo "✅ No lint errors found!"
-
-  # Still run prettier to ensure consistent formatting
-  echo "🎨 Running Prettier to ensure consistent formatting..."
-  npm run prettier:write
-
-  # Stage any formatting changes
-  git add .
+# Run lint-staged to process only staged files
+echo "📋 Linting and formatting staged files..."
+if ! npx lint-staged; then
+  echo "❌ Pre-commit checks failed. Please fix the issues and try again."
+  exit 1
 fi
 
 echo "✅ Pre-commit checks passed!"

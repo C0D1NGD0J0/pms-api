@@ -26,16 +26,6 @@ export const EMAIL_TEMPLATES = {
   ACCOUNT_ACTIVATION: 'account-activation',
 };
 
-export const MAIL_TYPES = {
-  SUBSCRIPTION_UPDATE: 'subscriptionUpdate',
-  SUBSCRIPTION_CANCEL: 'subscriptionCancel',
-  ACCOUNT_ACTIVATION: 'accountActivation',
-  TENANT_REGISTRATION: 'tenantRegistration',
-  FORGOT_PASSWORD: 'forgotPassword',
-  PASSWORD_RESET: 'passwordReset',
-  ACCOUNT_UPDATE: 'accountUpdate',
-};
-
 export const QUEUE_NAMES = {
   MEDIA_QUEUE: 'mediaQueue',
   EMAIL_QUEUE: 'emailQueue',
@@ -45,6 +35,7 @@ export const QUEUE_NAMES = {
   ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
   PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
   DOCUMENT_PROCESSING_QUEUE: 'documentProcessingQueue',
+  INVITATION_QUEUE: 'invitationQueue',
 };
 
 export const JOB_NAME = {
@@ -59,6 +50,10 @@ export const JOB_NAME = {
   DOCUMENT_UPDATE_JOB: 'documentUpdateJob',
   DOCUMENT_FAILURE_JOB: 'documentFailureJob',
   UNIT_BATCH_CREATION_JOB: 'unitBatchCreation',
+  INVITATION_JOB: 'invitationJob',
+  INVITATION_REMINDER_JOB: 'invitationReminderJob',
+  INVITATION_CSV_VALIDATION_JOB: 'invitation_csv_validation',
+  INVITATION_CSV_IMPORT_JOB: 'invitation_csv_import',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {

@@ -1,0 +1,56 @@
+<table width="100%">
+  <tr>
+    <td class="content">
+      <h2>You've Been Invited to Join <%= companyName %></h2>
+      <p>Hello <%= inviteeName %>,</p>
+      <p>
+        You've been invited by <%= inviterName %> to join <strong><%= companyName %></strong> as a <%= role %>.
+      </p>
+      
+      <% if (customMessage) { %>
+      <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #007bff; margin: 20px 0;">
+        <p style="margin: 0; font-style: italic;">
+          "<%= customMessage %>"
+        </p>
+      </div>
+      <% } %>
+      
+      <p>
+        To accept this invitation and get started, please click the button below to create your account
+        or join the team if you already have an account.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content cta">
+      <a href="<%= invitationUrl %>" class="btn">Accept Invitation</a>
+      <p style="font-size: 14px; color: #666; margin-top: 15px">
+        If the button doesn't work, copy and paste this link in your browser:<br />
+        <%= invitationUrl %>
+      </p>
+      <p style="font-size: 12px; color: #999">
+        This invitation will expire on <%= new Date(expiresAt).toLocaleDateString() %> at <%= new Date(expiresAt).toLocaleTimeString() %>.
+        <br />
+        If you didn't expect this invitation, you can safely ignore this email.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <h3>What's Next?</h3>
+      <ul style="color: #555; line-height: 1.6;">
+        <li>Click the invitation link above</li>
+        <li>Create your account or sign in if you already have one</li>
+        <li>Complete your profile setup</li>
+        <li>Start collaborating with the <%= companyName %> team</li>
+      </ul>
+      
+      <p style="margin-top: 20px;">
+        If you have any questions about this invitation, please contact 
+        <%= inviterName %> or the <%= companyName %> team directly.
+      </p>
+    </td>
+  </tr>
+</table>

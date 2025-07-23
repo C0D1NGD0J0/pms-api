@@ -55,7 +55,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Client ID is required');
       }
 
-      const query: FilterQuery<IPropertyDocument> = { cid: clientId, deletedAt: null };
+      const query: FilterQuery<IPropertyDocument> = { cuid: clientId, deletedAt: null };
 
       if (filters.propertyType && filters.propertyType.length > 0) {
         query.propertyType = { $in: filters.propertyType };
@@ -327,7 +327,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
 
       // geospatial query
       const query = {
-        cid: clientId,
+        cuid: clientId,
         deletedAt: null,
         'computedLocation.type': 'Point',
         'computedLocation.coordinates': {
@@ -365,7 +365,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       const normalizedAddress = address.trim().toLowerCase();
       const query = {
         'address.fullAddress': { $regex: new RegExp(`^${normalizedAddress}$`, 'i') },
-        cid: clientId,
+        cuid: clientId,
         deletedAt: null,
       };
 
@@ -440,7 +440,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
 
     const searchQuery = {
-      cid: clientId,
+      cuid: clientId,
       deletedAt: null,
       $or: [
         { name: { $regex: query, $options: 'i' } },

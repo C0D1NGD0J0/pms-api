@@ -9,11 +9,13 @@ import { IInvalidCsvProperty } from './csv.interface';
 export enum MailType {
   SUBSCRIPTION_UPDATE = 'SUBSCRIPTION_UPDATE',
   SUBSCRIPTION_CANCEL = 'SUBSCRIPTION_CANCEL',
+  INVITATION_REMINDER = 'INVITATION_REMINDER',
   ACCOUNT_ACTIVATION = 'ACCOUNT_ACTIVATION',
   USER_REGISTRATION = 'USER_REGISTRATION',
   FORGOT_PASSWORD = 'FORGOT_PASSWORD',
   PASSWORD_RESET = 'PASSWORD_RESET',
   ACCOUNT_UPDATE = 'ACCOUNT_UPDATE',
+  INVITATION = 'INVITATION',
 }
 
 export enum PermissionAction {
@@ -21,16 +23,21 @@ export enum PermissionAction {
   MANAGE_USERS = 'manage_users',
   SETTINGS = 'settings',
   CREATE = 'create',
-  UPDATE = 'update',
   DELETE = 'delete',
   INVITE = 'invite',
   REMOVE = 'remove',
-  READ = 'read',
+  RESEND = 'resend',
+  REVOKE = 'revoke',
+  UPDATE = 'update',
+  STATS = 'stats',
   LIST = 'list',
+  READ = 'read',
+  SEND = 'send',
 }
 
 export enum PermissionResource {
   MAINTENANCE = 'maintenance',
+  INVITATION = 'invitation',
   PROPERTY = 'property',
   PAYMENT = 'payment',
   CLIENT = 'client',
@@ -161,6 +168,21 @@ export interface ResourceInfo {
   actorId: string; //user who uploaded the file
 }
 
+export interface IPermissionCheck {
+  context?: {
+    clientId: string;
+    userId: string;
+    resourceId?: string;
+    resourceOwnerId?: string;
+    assignedUsers?: string[];
+    userClientId?: string;
+  };
+  resource: PermissionResource;
+  action: string;
+  scope?: string;
+  role: string;
+}
+
 export type ExtractedMediaFile = {
   originalFileName: string;
   fieldName: string;
@@ -199,24 +221,12 @@ export interface UploadResult {
   resourceName?: string;
   resourceId: string;
   fieldName: string;
+  publicuid: string;
   actorId?: string;
   filename: string;
-  publicId: string;
   size?: number;
   key?: string;
   url: string;
-}
-export interface IPermissionCheck {
-  context?: {
-    clientId: string;
-    userId: string;
-    resourceOwnerId?: string;
-    assignedUsers?: string[];
-  };
-  resource: string;
-  action: string;
-  scope?: string;
-  role: string;
 }
 
 export interface PaginateResult {

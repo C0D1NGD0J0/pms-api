@@ -6,7 +6,7 @@ import { IdentificationEnumType, IClientDocument } from '@interfaces/index';
 
 const ClientSchema = new Schema<IClientDocument>(
   {
-    cid: {
+    cuid: {
       type: String,
       required: true,
       unique: true,

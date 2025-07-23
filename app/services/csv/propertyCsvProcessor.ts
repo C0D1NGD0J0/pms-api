@@ -26,7 +26,7 @@ interface IConstructor {
 interface PropertyProcessingContext {
   userId: ICurrentUser['sub'];
   propertyId?: string;
-  cid: string;
+  cuid: string;
 }
 
 type TempPropertiesArray = Array<NewPropertyType | IProperty>;
@@ -53,9 +53,9 @@ export class PropertyCsvProcessor {
     finishedAt: Date;
     errors: null | IInvalidCsvProperty[];
   }> {
-    const client = await this.clientDAO.getClientByCid(context.cid);
+    const client = await this.clientDAO.getClientBycuid(context.cuid);
     if (!client) {
-      throw new Error(`Client with ID ${context.cid} not found`);
+      throw new Error(`Client with ID ${context.cuid} not found`);
     }
 
     const result = await BaseCSVProcessorService.processCsvFile<
@@ -82,7 +82,7 @@ export class PropertyCsvProcessor {
   ): Promise<ICsvValidationResult> => {
     const rowWithContext = {
       ...row,
-      cid: context.cid,
+      cuid: context.cuid,
     };
     const validationResult = await PropertyValidations.propertyCsv.safeParseAsync(rowWithContext);
     if (validationResult.success) {
@@ -90,7 +90,7 @@ export class PropertyCsvProcessor {
       if (row.managedBy && row.managedBy.includes('@')) {
         const managerValidation = await this.validateAndResolveManagedBy(
           row.managedBy,
-          context.cid
+          context.cuid
         );
 
         if (!managerValidation.valid) {
@@ -129,7 +129,7 @@ export class PropertyCsvProcessor {
   ): Promise<NewPropertyType> => {
     let managedBy;
     if (row.managedBy && row.managedBy.includes('@')) {
-      const managerResolution = await this.validateAndResolveManagedBy(row.managedBy, context.cid);
+      const managerResolution = await this.validateAndResolveManagedBy(row.managedBy, context.cuid);
       if (managerResolution.valid && managerResolution.userId) {
         managedBy = new ObjectId(managerResolution.userId);
       }
@@ -222,7 +222,7 @@ export class PropertyCsvProcessor {
       }),
 
       managedBy,
-      cid: context.cid,
+      cuid: context.cuid,
       createdBy: new ObjectId(context.userId),
     };
   };
@@ -313,7 +313,7 @@ export class PropertyCsvProcessor {
 
   private async validateAndResolveManagedBy(
     email: string,
-    cid: string
+    cuid: string
   ): Promise<{
     valid: boolean;
     userId?: string;
@@ -330,8 +330,8 @@ export class PropertyCsvProcessor {
         return { valid: false, error: `No user found with email: ${email}` };
       }
 
-      const clientAssociations = user.cids;
-      const clientAssociation = clientAssociations.find((c) => c.cid === cid && c.isConnected);
+      const clientAssociations = user.cuids;
+      const clientAssociation = clientAssociations.find((c) => c.cuid === cuid && c.isConnected);
 
       if (!clientAssociation) {
         return {

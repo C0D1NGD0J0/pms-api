@@ -19,7 +19,7 @@ const UnitSchema = new Schema<IUnitDocument>(
       unique: true,
       index: true,
       immutable: true,
-      default: () => generateShortUID(12),
+      default: () => generateShortUID(),
     },
     propertyId: {
       type: Schema.Types.ObjectId,
@@ -27,7 +27,7 @@ const UnitSchema = new Schema<IUnitDocument>(
       required: true,
       index: true,
     },
-    cid: {
+    cuid: {
       type: String,
       required: true,
       index: true,
@@ -209,7 +209,7 @@ const UnitSchema = new Schema<IUnitDocument>(
 );
 
 UnitSchema.index({ propertyId: 1, unitNumber: 1 }, { unique: true });
-UnitSchema.index({ cid: 1, status: 1 });
+UnitSchema.index({ cuid: 1, status: 1 });
 
 UnitSchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',

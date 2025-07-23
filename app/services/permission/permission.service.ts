@@ -103,8 +103,12 @@ export class PermissionService {
                 grant.readOwn(resource);
                 break;
               default:
-                grant.createOwn(resource);
-                this.log.warn(`Unknown action: ${action}, using createOwn for ${resource}`);
+                // Custom actions (send, revoke, settings, etc.) are not handled by AccessControl
+                // They will be processed by business logic in evaluateBusinessSpecificPermission
+                this.log.debug(
+                  `Custom action '${action}' for '${resource}' will be handled by business logic`
+                );
+                break;
             }
           }
         } catch (error) {
@@ -139,7 +143,12 @@ export class PermissionService {
               permission = query.readAny(resource);
               break;
             default:
-              // For custom actions, fall back to business logic
+              // Custom actions (send, revoke, settings, etc.) are not standard CRUD operations
+              // Set permission to null to ensure fallback to business logic
+              permission = null;
+              this.log.debug(
+                `Custom action '${action}' with scope 'any' for '${resource}' - using business logic`
+              );
               break;
           }
         } else if (scope === PermissionScope.MINE) {
@@ -157,7 +166,12 @@ export class PermissionService {
               permission = query.readOwn(resource);
               break;
             default:
-              // For custom actions, fall back to business logic
+              // Custom actions (send, revoke, settings, etc.) are not standard CRUD operations
+              // Set permission to null to ensure fallback to business logic
+              permission = null;
+              this.log.debug(
+                `Custom action '${action}' with scope 'mine' for '${resource}' - using business logic`
+              );
               break;
           }
         }
@@ -176,20 +190,15 @@ export class PermissionService {
         );
       }
 
-      // Handle business-specific scopes (assigned, available) with custom logic
-      if (scope === PermissionScope.ASSIGNED || scope === PermissionScope.AVAILABLE) {
-        return this.evaluateBusinessSpecificPermission(role, resource, action, scope, context);
-      }
-
-      // Fallback for MINE scope - check permission config directly if AccessControl fails
-      if (scope === PermissionScope.MINE) {
-        return this.evaluateBusinessSpecificPermission(role, resource, action, scope, context);
-      }
-
-      return {
-        granted: false,
-        reason: 'Permission denied',
-      };
+      // Always fall back to business logic when AccessControl doesn't grant permission
+      // This handles custom actions like "send", "revoke", etc. that aren't standard CRUD operations
+      return this.evaluateBusinessSpecificPermission(
+        role,
+        resource.toString(),
+        action,
+        scope || PermissionScope.ANY,
+        context
+      );
     } catch (error) {
       this.log.error('Error checking permission:', error);
       return {
@@ -264,13 +273,14 @@ export class PermissionService {
 
   async checkUserPermission(
     currentUser: ICurrentUser,
-    resource: string,
+    resource: PermissionResource,
     action: string,
     resourceData?: any
   ): Promise<IPermissionResult> {
     const userRole = currentUser.client.role;
     const userId = currentUser.sub;
     const clientId = currentUser.client.csub;
+
     // Determine scope based on context and resource type
     let scope = PermissionScope.ANY;
     // USER resource where ownership matters (users editing their own profile)
@@ -282,7 +292,7 @@ export class PermissionService {
       scope = PermissionScope.MINE;
     }
 
-    return this.checkPermission({
+    const permissionCheckData = {
       role: userRole,
       resource,
       action,
@@ -291,7 +301,10 @@ export class PermissionService {
         clientId,
         userId,
       },
-    });
+    };
+
+    const result = await this.checkPermission(permissionCheckData);
+    return result;
   }
 
   getRolePermissions(role: IUserRoleType): Record<string, string[]> {

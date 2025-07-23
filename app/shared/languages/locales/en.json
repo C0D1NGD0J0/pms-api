@@ -14,7 +14,7 @@
       "emailPasswordRequired": "Email and password are required.",
       "invalidCredentials": "Invalid email/password combination.",
       "userIdRequired": "User ID is required.",
-      "userIdAndCidRequired": "User ID and account CID are required.",
+      "userIdAndcuidRequired": "User ID and account cuid are required.",
       "unableToSelectAccount": "Unable to select account.",
       "activationTokenMissing": "Activation token missing.",
       "invalidActivationToken": "Invalid or expired activation token.",
@@ -319,7 +319,7 @@
   },
   "csv": {
     "errors": {
-      "clientNotFound": "Client with ID {{cid}} not found",
+      "clientNotFound": "Client with ID {{cuid}} not found",
       "invalidManagerEmail": "Invalid manager email",
       "invalidAddress": "Invalid address: {{address}}",
       "geocodingError": "Error during geocoding: {{error}}",
@@ -412,6 +412,27 @@
       "propertyTypeMinUnits": "{{propertyType}} properties typically require at least {{minUnits}} units",
       "fieldMinLengthRequired": "{{fieldName}} must be at least {{minLength}} characters",
       "fieldMaxLengthExceeded": "{{fieldName}} cannot exceed {{maxLength}} characters"
+    }
+  },
+  "invitation": {
+    "success": {
+      "csvImportStarted": "CSV import started successfully",
+      "csvValidationStarted": "CSV validation started",
+      "dryRunCompleted": "Dry run completed",
+      "pendingProcessed": "Processed {{processed}} of {{total}} pending invitations"
+    },
+    "info": {
+      "noPendingFound": "No pending invitations found"
+    },
+    "errors": {
+      "notFound": "Invitation not found",
+      "cannotResend": "Cannot resend this invitation",
+      "expired": "Invitation has expired"
+    }
+  },
+  "email": {
+    "invitation": {
+      "subject": "You've been invited to join {{companyName}}"
     }
   }
 }

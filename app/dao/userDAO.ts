@@ -190,17 +190,17 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       const user = await this.getUserById(userId);
       if (!user) return false;
 
-      const existingAssociation = user.cids.find((c) => c.cid === clientId);
+      const existingAssociation = user.cuids.find((c) => c.cuid === clientId);
       if (existingAssociation) {
         if (existingAssociation.roles.includes(role) || !existingAssociation.isConnected) {
           await this.update(
-            { _id: userId, 'cids.cid': clientId },
+            { _id: userId, 'cuids.cuid': clientId },
             {
               $set: {
-                'cids.$.isConnected': true,
+                'cuids.$.isConnected': true,
               },
               $addToSet: {
-                'cids.$.roles': role,
+                'cuids.$.roles': role,
               },
             }
           );
@@ -211,8 +211,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       // create new association
       const result = await this.updateById(userId, {
         $push: {
-          cids: {
-            cid: clientId,
+          cuids: {
+            cuid: clientId,
             isConnected: true,
           },
         },
@@ -244,8 +244,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       const query = {
         ...filter,
-        'cids.cid': clientId,
-        'cids.isConnected': true,
+        'cuids.cuid': clientId,
+        'cuids.isConnected': true,
         deletedAt: null,
       };
 
@@ -269,8 +269,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         {
           $match: {
             $and: [
-              { 'cids.cid': clientId },
-              { 'cids.isConnected': true },
+              { 'cuids.cuid': clientId },
+              { 'cuids.isConnected': true },
               { deletedAt: null },
               {
                 $or: [
@@ -328,7 +328,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       const result = await this.update(
         { _id: new Types.ObjectId(userId) },
-        { $pull: { cids: { cid: clientId } } }
+        { $pull: { cuids: { cuid: clientId } } }
       );
 
       return !!result;
@@ -346,13 +346,13 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    */
   async getUserClientAssociations(userId: string): Promise<any[]> {
     try {
-      const user = await this.getUserById(userId, { projection: { cids: 1 } });
+      const user = await this.getUserById(userId, { projection: { cuids: 1 } });
 
-      if (!user || !user.cids) {
+      if (!user || !user.cuids) {
         return [];
       }
 
-      return user.cids;
+      return user.cuids;
     } catch (error) {
       this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
@@ -425,6 +425,116 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       return await this.findFirst(query, { populate: 'profile' });
     } catch (error) {
       this.logger.error(error.message || error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Create a new user from an invitation acceptance
+   */
+  async createUserFromInvitation(
+    invitationData: any,
+    userData: any,
+    session?: any
+  ): Promise<IUserDocument> {
+    try {
+      const userId = new Types.ObjectId();
+
+      const user = await this.insert(
+        {
+          _id: userId,
+          uid: hashGenerator({}),
+          email: invitationData.inviteeEmail,
+          password: userData.password,
+          isActive: true,
+          activecuid: invitationData.clientId,
+          cuids: [
+            {
+              cuid: invitationData.cuid,
+              isConnected: true,
+              roles: [invitationData.role],
+              displayName:
+                invitationData.personalInfo.firstName + ' ' + invitationData.personalInfo.lastName,
+            },
+          ],
+        },
+        session
+      );
+
+      return user;
+    } catch (error) {
+      this.logger.error('Error creating user from invitation:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Add an existing user to a client with the specified role
+   */
+  async addUserToClient(
+    userId: string,
+    clientId: string,
+    role: IUserRoleType,
+    displayName: string,
+    session?: any
+  ): Promise<IUserDocument | null> {
+    try {
+      // Check if user already has access to this client
+      const user = await this.getUserById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const existingConnection = user.cuids.find((c) => c.cuid === clientId);
+      if (existingConnection) {
+        return await this.updateById(
+          userId,
+          {
+            $set: {
+              'cuids.$.isConnected': true,
+              'cuids.$.roles': [role],
+              'cuids.$.displayName': displayName,
+            },
+          },
+          { session }
+        );
+      } else {
+        return await this.updateById(
+          userId,
+          {
+            $push: {
+              cuids: {
+                cuid: clientId,
+                isConnected: true,
+                roles: [role],
+                displayName,
+              },
+            },
+          },
+          { session }
+        );
+      }
+    } catch (error) {
+      this.logger.error('Error adding user to client:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Check if a user already exists with the given email and has access to the client
+   */
+  async getUserWithClientAccess(email: string, cuid: string): Promise<IUserDocument | null> {
+    try {
+      const user = await this.findFirst({
+        email: email.toLowerCase(),
+        deletedAt: null,
+        'cuids.cuid': cuid,
+        'cuids.isConnected': true,
+      });
+
+      return user;
+    } catch (error) {
+      this.logger.error('Error checking user client access:', error);
       throw this.throwErrorHandler(error);
     }
   }

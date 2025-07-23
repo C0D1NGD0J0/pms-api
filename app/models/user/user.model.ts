@@ -20,11 +20,11 @@ const UserSchema = new Schema<IUserDocument>(
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please add a valid email'],
     },
 
-    cids: [
+    cuids: [
       {
         roles: [{ type: String, required: true }],
         displayName: { type: String, required: true },
-        cid: { type: String, required: true, index: true },
+        cuid: { type: String, required: true, index: true },
         isConnected: { type: Boolean, required: true, default: false },
         _id: false,
       },
@@ -32,7 +32,7 @@ const UserSchema = new Schema<IUserDocument>(
     activationToken: { type: String, default: '' },
     isActive: { type: Boolean, default: false },
     passwordResetToken: { type: String, default: '' },
-    activeCid: { type: String, required: true, index: true },
+    activecuid: { type: String, required: true, index: true },
     uid: { type: String, required: true, index: true },
     deletedAt: { type: Date, default: null, select: false },
     activationTokenExpiresAt: { type: Date, default: null },

@@ -8,7 +8,7 @@ const isUniqueAddress = async (address: string, clientId: string) => {
   try {
     const existingProperty = await propertyDAO.findFirst({
       'address.fullAddress': address,
-      cid: clientId,
+      cuid: clientId,
       deletedAt: null,
     });
     return !existingProperty;
@@ -48,29 +48,57 @@ const SpecificationsSchema = z.object({
 });
 
 const FinancialDetailsSchema = z.object({
-  purchasePrice: z.number().positive('Purchase price must be a positive number').optional(),
-  purchaseDate: z.coerce
-    .date({
-      errorMap: (issue, { defaultError }) => ({
-        message:
-          issue.code === z.ZodIssueCode.invalid_date
-            ? 'Invalid date format for purchase date'
-            : defaultError,
-      }),
+  purchasePrice: z
+    .union([z.number(), z.string(), z.null()])
+    .optional()
+    .transform((val) => {
+      if (val === null || val === undefined || val === '') return undefined;
+      const num = typeof val === 'string' ? parseFloat(val) : val;
+      return isNaN(num) ? 0 : num;
+    }),
+  purchaseDate: z
+    .union([z.string(), z.date(), z.null()])
+    .optional()
+    .transform((val) => {
+      if (val === null || val === undefined || val === '') return undefined;
+      if (val instanceof Date) return val;
+      const date = new Date(val);
+      return isNaN(date.getTime()) ? undefined : date;
     })
-    .optional(),
-  marketValue: z.number().positive('Market value must be a positive number').optional(),
-  propertyTax: z.number().min(0, 'Property tax must be a non-negative number').optional(),
-  lastAssessmentDate: z.coerce
-    .date({
-      errorMap: (issue, { defaultError }) => ({
-        message:
-          issue.code === z.ZodIssueCode.invalid_date
-            ? 'Invalid date format for last-assesment date'
-            : defaultError,
-      }),
+    .refine((val) => val === undefined || val instanceof Date, {
+      message: 'Invalid date format for purchase date',
+    }),
+  marketValue: z
+    .union([z.number(), z.string(), z.null()])
+    .optional()
+    .transform((val) => {
+      if (val === null || val === undefined || val === '') return undefined;
+      const num = typeof val === 'string' ? parseFloat(val) : val;
+      return isNaN(num) ? 0 : num;
+    }),
+  propertyTax: z
+    .union([z.number(), z.string(), z.null()])
+    .optional()
+    .transform((val) => {
+      if (val === null || val === undefined || val === '') return undefined;
+      const num = typeof val === 'string' ? parseFloat(val) : val;
+      return isNaN(num) ? undefined : num;
     })
-    .optional(),
+    .refine((val) => val === undefined || val >= 0, {
+      message: 'Property tax must be a non-negative number',
+    }),
+  lastAssessmentDate: z
+    .union([z.string(), z.date(), z.null()])
+    .optional()
+    .transform((val) => {
+      if (val === null || val === undefined || val === '') return undefined;
+      if (val instanceof Date) return val;
+      const date = new Date(val);
+      return isNaN(date.getTime()) ? undefined : date;
+    })
+    .refine((val) => val === undefined || val instanceof Date, {
+      message: 'Invalid date format for last-assesment date',
+    }),
 });
 
 const FeesSchema = z.object({
@@ -156,7 +184,7 @@ const CreatePropertySchema = z.object({
     .optional(),
   fullAddress: z.string().min(5, 'Address must be at least 5 characters'),
   description: DescriptionSchema,
-  cid: z.string(),
+  cuid: z.string(),
   occupancyStatus: OccupancyStatusEnum.default('vacant'),
   maxAllowedUnits: z.number().int().min(0).max(250).default(0),
   specifications: SpecificationsSchema,
@@ -186,8 +214,8 @@ const CreatePropertySchema = z.object({
 
 export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefine(
   async (data, ctx) => {
-    if (data.fullAddress && data.cid) {
-      const isUnique = await isUniqueAddress(data.fullAddress, data.cid);
+    if (data.fullAddress && data.cuid) {
+      const isUnique = await isUniqueAddress(data.fullAddress, data.cuid);
       if (!isUnique) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -199,7 +227,7 @@ export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefi
   }
 );
 
-export const UpdatePropertySchema = CreatePropertySchema.partial().omit({ cid: true }).extend({
+export const UpdatePropertySchema = CreatePropertySchema.partial().omit({ cuid: true }).extend({
   id: z.string().optional(),
 });
 
@@ -221,32 +249,6 @@ export const PropertySearchSchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).optional(),
 });
 
-export const ValidateIdSchema = z.object({
-  id: z.string().refine(
-    async (id) => {
-      const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
-      const property = await propertyDAO.findById(id);
-      return !!property;
-    },
-    {
-      message: 'Invalid params detected in the request.',
-    }
-  ),
-});
-
-export const ValidateCidSchema = z.object({
-  cid: z.string().refine(
-    async (id) => {
-      const { clientDAO }: { clientDAO: ClientDAO } = container.cradle;
-      const client = await clientDAO.findFirst({ cid: id });
-      return !!client;
-    },
-    {
-      message: 'Invalid params detected in the request.',
-    }
-  ),
-});
-
 export const UpdateOccupancySchema = z.object({
   pid: z.string().refine(
     async (pid) => {
@@ -263,7 +265,7 @@ export const UpdateOccupancySchema = z.object({
 });
 
 const PropertyClientRelationship = z.object({
-  cid: z.string().trim().min(8, 'Client ID is required'),
+  cuid: z.string().trim().min(8, 'Client ID is required'),
   pid: z.string().trim().min(8, 'Property ID is required'),
 });
 
@@ -272,7 +274,7 @@ export const PropertyClientRelationshipSchema = PropertyClientRelationship.super
     const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
     const property = await propertyDAO.findFirst({
       pid: data.pid,
-      cid: data.cid,
+      cuid: data.cuid,
       deletedAt: null,
     });
 

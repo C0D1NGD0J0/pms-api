@@ -31,13 +31,17 @@ export class PropertyWorker {
 
   processCsvValidation = async (job: Job<CsvJobData>, done: DoneCallback) => {
     job.progress(10);
-    const { csvFilePath, cid, userId } = job.data;
-    this.log.info(`Processing CSV validation job ${job.id} for client ${cid}`);
+    const {
+      csvFilePath,
+      clientInfo: { cuid },
+      userId,
+    } = job.data;
+    this.log.info(`Processing CSV validation job ${job.id} for client ${cuid}`);
 
     try {
       job.progress(30);
       const result = await this.propertyCsvProcessor.validateCsv(csvFilePath, {
-        cid,
+        cuid,
         userId,
       });
       job.progress(100);
@@ -48,7 +52,7 @@ export class PropertyWorker {
         errors: result.errors,
         success: true,
       });
-      this.log.info(`Done processing CSV validation job ${job.id} for client ${cid}`);
+      this.log.info(`Done processing CSV validation job ${job.id} for client ${cuid}`);
     } catch (error) {
       this.log.error(`Error processing CSV validation job ${job.id}:`, error);
       done(error, null);
@@ -56,14 +60,18 @@ export class PropertyWorker {
   };
 
   processCsvImport = async (job: Job<CsvJobData>, done: DoneCallback) => {
-    const { csvFilePath, cid, userId } = job.data;
+    const {
+      csvFilePath,
+      clientInfo: { cuid },
+      userId,
+    } = job.data;
 
     job.progress(10);
-    this.log.info(`Processing CSV import job ${job.id} for client ${cid}`);
+    this.log.info(`Processing CSV import job ${job.id} for client ${cuid}`);
 
     try {
       const csvResult = await this.propertyCsvProcessor.validateCsv(csvFilePath, {
-        cid,
+        cuid,
         userId,
       });
       job.progress(50);

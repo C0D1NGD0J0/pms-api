@@ -22,7 +22,9 @@ class Server {
   private app: IAppSetup;
   private expApp: Application;
   private initialized = false;
+  private shuttingDown = false;
   private static instance: Server;
+  private static processHandlersRegistered = false;
   private dbService: DatabaseService;
   private PORT = envVariables.SERVER.PORT;
   private httpServer: http.Server | null = null;
@@ -43,7 +45,7 @@ class Server {
       return;
     }
 
-    this.dbService.connect();
+    await this.dbService.connect();
     this.app.initConfig();
     await this.startServers(this.expApp);
     this.initialized = true;
@@ -53,7 +55,7 @@ class Server {
     if (!Server.instance) {
       const { dbService } = container.cradle;
       Server.instance = new Server({ dbService });
-      this.instance.initialized = true;
+      Server.instance.initialized = true;
     }
     return Server.instance;
   }
@@ -66,9 +68,9 @@ class Server {
 
   private async startServers(app: Application): Promise<void> {
     try {
-      const httpServer: http.Server = new http.Server(app);
-      this.initHTTPServer(httpServer);
-      const io = await this.setupSocketIO(httpServer);
+      this.httpServer = new http.Server(app);
+      this.initHTTPServer(this.httpServer);
+      const io = await this.setupSocketIO(this.httpServer);
       io && this.socketConnections(io);
     } catch (error: any) {
       this.log.error('Error: ', error.message);
@@ -135,6 +137,12 @@ class Server {
   }
 
   async shutdown(exitCode = 0): Promise<void> {
+    if (this.shuttingDown) {
+      this.log.info('Shutdown already in progress, skipping...');
+      return;
+    }
+
+    this.shuttingDown = true;
     this.log.info('Server shutting down...');
 
     try {
@@ -173,9 +181,11 @@ class Server {
         });
       }
 
-      // close database connection
-      await this.dbService.disconnect();
+      // cleanup queues and services first
       await this.cleanupDIContainer();
+
+      // close database connection last
+      await this.dbService.disconnect();
 
       if (exitCode !== 0) {
         this.log.info(`Exiting with code ${exitCode}`);
@@ -220,18 +230,19 @@ class Server {
         'documentProcessingQueue',
         'emailQueue',
         'eventBusQueue',
+        'invitationQueue',
         'propertyQueue',
         'propertyUnitQueue',
         'uploadQueue',
       ];
-
+      let queueCount = 0;
       for (const queueName of queueNames) {
         try {
           if (container.hasRegistration(queueName)) {
             const queue = container.resolve(queueName);
             if (queue && typeof queue.shutdown === 'function') {
               await queue.shutdown();
-              this.log.info(`Shutdown ${queueName}`);
+              queueCount += 1;
             }
           }
         } catch (error) {
@@ -239,16 +250,8 @@ class Server {
         }
       }
 
-      // Cleanup shared Redis instance
-      try {
-        const { RedisService } = await import('@database/redis-setup');
-        await RedisService.shutdownSharedInstance();
-        this.log.info('Shared Redis instance shutdown');
-      } catch (error) {
-        this.log.warn('Failed to shutdown shared Redis instance:', error);
-      }
-
       container.dispose();
+      this.log.info(`Shutdown ${queueCount} queues`);
       this.log.info('DI container disposed');
     } catch (error) {
       this.log.error('Error during DI container cleanup:', error);
@@ -256,6 +259,12 @@ class Server {
   }
 
   private setupProcessErrorHandlers(): void {
+    if (Server.processHandlersRegistered) {
+      return;
+    }
+
+    Server.processHandlersRegistered = true;
+
     process.on('unhandledRejection', (reason, promise) => {
       this.log.error('Unhandled Rejection at:', promise, 'reason:', reason);
       // Don't shut down for unhandled rejections in production
@@ -272,7 +281,6 @@ class Server {
     process.on('warning', (warning) => {
       if (warning.name === 'HeapSizeLimit' || warning.name === 'MemoryLimitError') {
         console.warn('----WARNIGN----', warning);
-        // captureHeapSnapshot();
       }
     });
 

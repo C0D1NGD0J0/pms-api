@@ -1,6 +1,6 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/helpers';
-import { validateRequest } from '@shared/validations';
+import { validateRequest } from '@shared/validations/setup';
 import { PropertyUnitController } from '@controllers/PropertyUnitController';
 import { PropertyUnitValidations } from '@shared/validations/PropertyUnitValidation';
 import { isAuthenticated, routeLimiter, diskUpload, scanFile } from '@shared/middlewares';
@@ -30,26 +30,6 @@ router.get(
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');
     return propertyUnitController.getPropertyUnits(req, res);
-  })
-);
-
-router.get(
-  '/jobs/:jobId/status',
-  routeLimiter(),
-  asyncWrapper((req, res) => {
-    const propertyUnitController =
-      req.container.resolve<PropertyUnitController>('propertyUnitController');
-    return propertyUnitController.getJobStatus(req, res);
-  })
-);
-
-router.get(
-  '/jobs/user/active',
-  routeLimiter(),
-  asyncWrapper((req, res) => {
-    const propertyUnitController =
-      req.container.resolve<PropertyUnitController>('propertyUnitController');
-    return propertyUnitController.getUserJobs(req, res);
   })
 );
 
@@ -127,6 +107,30 @@ router.patch(
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');
     return propertyUnitController.addDocumentToUnit(req, res);
+  })
+);
+
+router.post(
+  '/validate_csv',
+  routeLimiter(),
+  diskUpload(['csv_file']),
+  scanFile,
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.validateUnitsCsv(req, res);
+  })
+);
+
+router.post(
+  '/import_csv',
+  routeLimiter(),
+  diskUpload(['csv_file']),
+  scanFile,
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.importUnitsFromCsv(req, res);
   })
 );
 

@@ -17,6 +17,11 @@ export type ICsvProcessingError = {
   rowNumber: number;
 };
 
+export interface IInvalidCsvInvitation {
+  errors: { field: string; error: string }[];
+  rowNumber: number;
+}
+
 export interface IInvalidCsvProperty {
   errors: { field: string; error: string }[];
   rowNumber: number;

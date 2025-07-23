@@ -3,23 +3,23 @@ import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
 import { createBullBoard } from '@bull-board/api';
 import { ExpressAdapter } from '@bull-board/express';
-import { RedisService } from '@database/redis-setup';
 import { BullAdapter } from '@bull-board/api/bullAdapter';
 import Queue, { QueueOptions as BullQueueOptions, JobOptions as BullJobOptions } from 'bull';
 
 export const DEFAULT_JOB_OPTIONS: BullJobOptions = {
-  attempts: 2,
+  attempts: 3,
   timeout: 60000,
   backoff: { type: 'fixed', delay: 10000 },
   removeOnComplete: 100,
   removeOnFail: 500,
+  delay: 5000,
 };
 
 export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions = {
   settings: {
     maxStalledCount: 1800000,
     lockDuration: 3600000, // 1hr
-    stalledInterval: 100000,
+    stalledInterval: 300000,
   },
   redis: {
     host: envVariables.REDIS.HOST,
@@ -28,6 +28,14 @@ export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions = {
       ? { username: envVariables.REDIS.USERNAME, password: envVariables.REDIS.PASSWORD }
       : {}),
     family: 0,
+    ...(envVariables.SERVER.ENV === 'production'
+      ? {
+          connectTimeout: 30000,
+          lazyConnect: true,
+          keepAlive: 60000,
+          maxRetriesPerRequest: 3,
+        }
+      : {}),
   },
 };
 
@@ -36,7 +44,6 @@ export type JobData = any;
 export let serverAdapter: ExpressAdapter;
 const bullMQAdapters: BullAdapter[] = [];
 let deadLetterQueue: Queue.Queue | null;
-let sharedRedisService: RedisService | null = null;
 
 export class BaseQueue<T extends JobData = JobData> {
   protected log: Logger;
@@ -45,21 +52,17 @@ export class BaseQueue<T extends JobData = JobData> {
 
   constructor(queueName: string) {
     this.log = createLogger(queueName);
-
-    if (!sharedRedisService) {
-      sharedRedisService = RedisService.getSharedInstance();
-    }
-
-    const redisUrl = sharedRedisService.getRedisUrl();
-    this.queue = new Queue(queueName, redisUrl, DEFAULT_QUEUE_OPTIONS);
+    this.queue = new Queue(queueName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
 
     if (!deadLetterQueue) {
       const dlqName = `${queueName}-DLQ`;
-      deadLetterQueue = new Queue(dlqName, redisUrl, DEFAULT_QUEUE_OPTIONS);
+      deadLetterQueue = new Queue(dlqName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
     }
     this.dlq = deadLetterQueue;
     this.addQueueToBullBoard(this.queue, this.dlq);
     this.initializeQueueEvents();
+    this.autoResumeQueue();
+
     deadLetterQueue = null;
   }
 
@@ -175,6 +178,24 @@ export class BaseQueue<T extends JobData = JobData> {
    */
   async shutdown(): Promise<void> {
     try {
+      this.log.info(`Shutting down queue ${this.queue.name}...`);
+
+      // Pause queue to prevent new jobs
+      await this.queue.pause();
+
+      // Wait for active jobs to complete (with timeout)
+      const maxWaitTime = 30000; // 30 seconds
+      const startTime = Date.now();
+
+      while (Date.now() - startTime < maxWaitTime) {
+        const activeJobs = await this.queue.getActive();
+        if (activeJobs.length === 0) {
+          break;
+        }
+        this.log.info(`Waiting for ${activeJobs.length} active jobs to complete...`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
       this.queue.removeAllListeners();
       if (this.dlq) {
         this.dlq.removeAllListeners();
@@ -216,6 +237,19 @@ export class BaseQueue<T extends JobData = JobData> {
    */
   async resumeQueue(): Promise<void> {
     return this.queue.resume();
+  }
+
+  private async autoResumeQueue(): Promise<void> {
+    try {
+      const isPaused = await this.queue.isPaused();
+
+      if (isPaused) {
+        await this.queue.resume();
+        this.log.info(`⚠️ Resumed previously paused queue: ${this.queue.name}`);
+      }
+    } catch (error) {
+      this.log.warn({ error }, `Failed to auto-resume queue ${this.queue.name}: ${error.message}`);
+    }
   }
 
   /**

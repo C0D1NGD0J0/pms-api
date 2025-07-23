@@ -54,7 +54,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
         validator: function (v: number) {
           return !isNaN(v) && v >= 1800 && v <= new Date().getFullYear() + 10;
         },
-        message: (props) => `${props.value} is not a valid year!`,
+        message: (props: any) => `${props.value} is not a valid year!`,
       },
     },
     financialDetails: {

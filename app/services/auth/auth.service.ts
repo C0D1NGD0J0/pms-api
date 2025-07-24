@@ -158,7 +158,7 @@ export class AuthService {
     if (!user) {
       throw new ForbiddenError({ message: t('auth.errors.userNotFound') });
     }
-    const client = await this.clientDAO.getClientBycuid(clientId);
+    const client = await this.clientDAO.getClientByCuid(clientId);
     if (!client) {
       throw new ForbiddenError({ message: t('auth.errors.clientNotFound') });
     }

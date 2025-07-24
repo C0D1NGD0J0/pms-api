@@ -34,7 +34,7 @@ export class ClientService {
     const start = process.hrtime.bigint();
     const { cuid } = cxt.request.params;
 
-    const client = await this.clientDAO.getClientBycuid(cuid);
+    const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(
         {
@@ -221,7 +221,7 @@ export class ClientService {
     }
 
     const [client, usersResult, propertiesResult] = await Promise.all([
-      this.clientDAO.getClientBycuid(cuid, {
+      this.clientDAO.getClientByCuid(cuid, {
         populate: {
           path: 'accountAdmin',
           select: 'email',

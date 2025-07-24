@@ -78,7 +78,7 @@ export class InvitationService {
     try {
       await this.validateInviterPermissions(inviterUserId, cuid);
 
-      const client = await this.clientDAO.getClientBycuid(cuid);
+      const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
@@ -273,7 +273,7 @@ export class InvitationService {
       }
 
       // Get client information
-      const client = await this.clientDAO.getClientBycuid(invitation.clientId.toString());
+      const client = await this.clientDAO.getClientByCuid(invitation.clientId.toString());
 
       if (!client) {
         throw new NotFoundError({ message: t('client.errors.notFound') });
@@ -360,7 +360,7 @@ export class InvitationService {
 
       // Get client and resender information
       const [client, resender] = await Promise.all([
-        this.clientDAO.getClientBycuid(invitation.clientId.toString()),
+        this.clientDAO.getClientByCuid(invitation.clientId.toString()),
         this.userDAO.getUserById(resenderUserId, { populate: 'profile' }),
       ]);
 
@@ -405,11 +405,13 @@ export class InvitationService {
   }
 
   async getInvitations(
-    query: IInvitationListQuery,
-    requestorUserId: string
+    cxt: IRequestContext,
+    query: IInvitationListQuery
   ): Promise<ISuccessReturnData<any>> {
     try {
-      await this.validateInviterPermissions(requestorUserId, query.clientId);
+      const { cuid } = cxt.request.params;
+      const currentuser = cxt.currentuser!;
+      await this.validateInviterPermissions(currentuser.sub, cuid);
 
       const result = await this.invitationDAO.getInvitationsByClient(query);
 
@@ -492,13 +494,12 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.noCsvFileUploaded') });
       }
 
-      const client = await this.clientDAO.getClientBycuid(cuid);
+      const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         this.log.error(`Client with cuid ${cuid} not found`);
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
-      // Validate user has permission to invite users for this client
       await this.validateInviterPermissions(currentUser.sub, cuid);
 
       // check file size (10MB limit)
@@ -537,7 +538,7 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.noCsvFileUploaded') });
       }
 
-      const client = await this.clientDAO.getClientBycuid(cuid);
+      const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         this.log.error(`Client with cuid ${cuid} not found`);
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
@@ -565,7 +566,7 @@ export class InvitationService {
   }
 
   async processPendingInvitations(
-    clientId: string,
+    cuid: string,
     processorUserId: string,
     filters: {
       timeline?: string;
@@ -575,10 +576,10 @@ export class InvitationService {
     }
   ): Promise<ISuccessReturnData<any>> {
     try {
-      await this.validateInviterPermissions(processorUserId, clientId);
+      await this.validateInviterPermissions(processorUserId, cuid);
 
       const query: IInvitationListQuery = {
-        clientId,
+        cuid,
         status: 'pending',
         limit: filters.limit || 50,
       };
@@ -643,7 +644,7 @@ export class InvitationService {
       const errors: Array<{ iuid: string; email: string; error: string }> = [];
 
       this.log.info(
-        `Processing ${invitationsToProcess.length} pending invitations for client ${clientId}`
+        `Processing ${invitationsToProcess.length} pending invitations for client ${cuid}`
       );
 
       for (const invitation of invitationsToProcess) {

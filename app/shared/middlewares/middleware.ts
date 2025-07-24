@@ -114,43 +114,88 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
 
 export const diskUpload =
   (fieldNames: string[]) => async (req: Request, res: Response, next: NextFunction) => {
+    console.log('🔍 [DEBUG] diskUpload middleware - Expected field names:', fieldNames);
+    console.log(
+      '🔍 [DEBUG] diskUpload middleware - Request content-type:',
+      req.get('content-type')
+    );
+    console.log('🔍 [DEBUG] diskUpload middleware - Request method:', req.method);
+
     const { diskStorage }: { diskStorage: DiskStorage } = req.container.cradle;
-    diskStorage.uploadMiddleware(fieldNames)(req, res, next);
+
+    // Wrap the upload middleware to add logging
+    const uploadMiddleware = diskStorage.uploadMiddleware(fieldNames);
+    uploadMiddleware(req, res, (err: any) => {
+      if (err) {
+        console.error('❌ [ERROR] diskUpload middleware failed:', err);
+        console.error('❌ [ERROR] Error type:', err.constructor.name);
+        console.error('❌ [ERROR] Error message:', err.message);
+      } else {
+        console.log('✅ [SUCCESS] diskUpload middleware completed');
+        console.log(
+          '🔍 [DEBUG] req.files after upload:',
+          req.files ? Object.keys(req.files) : 'undefined'
+        );
+        console.log('🔍 [DEBUG] req.files content:', req.files);
+      }
+      next(err);
+    });
   };
 
 export const scanFile = async (req: Request, res: Response, next: NextFunction) => {
+  console.log('🔍 [DEBUG] scanFile middleware started');
+  console.log('🔍 [DEBUG] scanFile - req.files:', req.files ? Object.keys(req.files) : 'undefined');
+  console.log('🔍 [DEBUG] scanFile - req.files content:', req.files);
+
   const {
     emitterService,
     clamScanner,
   }: { emitterService: EventEmitterService; clamScanner: ClamScannerService } =
     req.container.cradle;
-  console.log('Scanning files...', clamScanner.isReady());
+
+  console.log('🔍 [DEBUG] ClamScanner ready status:', clamScanner.isReady());
+
   const files = req.files;
   if (!files) {
+    console.log('❌ [DEBUG] scanFile - No files found, skipping scan');
     return next();
   }
+
+  console.log('🔍 [DEBUG] scanFile - About to extract multer files');
   const _files = extractMulterFiles(files, req.context.currentuser?.sub);
+  console.log('🔍 [DEBUG] scanFile - Extracted files count:', _files.length);
+  console.log(
+    '🔍 [DEBUG] scanFile - Extracted files:',
+    _files.map((f) => ({ filename: f.filename, path: f.path }))
+  );
+
   if (!req.context.currentuser) {
+    console.error('❌ [ERROR] scanFile - No current user found');
     return next(new UnauthorizedError({ message: 'Unauthorized action.' }));
   }
+
   try {
     const foundViruses: { fileName: string; viruses: string[]; createdAt: string }[] = [];
     const validFiles = [];
 
     for (const file of _files) {
+      console.log('🔍 [DEBUG] scanFile - Scanning file:', file.filename);
       const { isInfected, viruses } = await clamScanner.scanFile(file.path);
       if (isInfected) {
+        console.log('❌ [WARNING] scanFile - Infected file found:', file.filename);
         foundViruses.push({
           viruses,
           fileName: file.filename,
           createdAt: new Date().toISOString(),
         });
       } else {
+        console.log('✅ [SUCCESS] scanFile - File clean:', file.filename);
         validFiles.push(file);
       }
     }
+
     if (foundViruses.length > 0) {
-      console.log('Deleting infected files:', foundViruses);
+      console.log('❌ [ERROR] scanFile - Infected files found, deleting:', foundViruses);
       emitterService.emit(
         EventTypes.DELETE_LOCAL_ASSET,
         foundViruses.map((file) => file.fileName)
@@ -159,13 +204,19 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
     }
 
     if (validFiles.length) {
-      // this way we work with the files in the upload dir only that as been scanned and not req.files
+      console.log(
+        '✅ [SUCCESS] scanFile - Setting scannedFiles in req.body, count:',
+        validFiles.length
+      );
       req.body.scannedFiles = validFiles;
+    } else {
+      console.log('❌ [WARNING] scanFile - No valid files after scanning');
     }
 
+    console.log('✅ [SUCCESS] scanFile middleware completed');
     return next();
   } catch (error) {
-    console.error('Error during virus scan:', error);
+    console.error('❌ [ERROR] scanFile - Error during virus scan:', error);
     // delete files from disk when an error occurs regardless if its valid or infected file(memory saver)
     if (req.files) {
       const filesToDelete = extractMulterFiles(req.files).map((file) => file.filename);

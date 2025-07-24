@@ -53,7 +53,7 @@ export class PropertyCsvProcessor {
     finishedAt: Date;
     errors: null | IInvalidCsvProperty[];
   }> {
-    const client = await this.clientDAO.getClientBycuid(context.cuid);
+    const client = await this.clientDAO.getClientByCuid(context.cuid);
     if (!client) {
       throw new Error(`Client with ID ${context.cuid} not found`);
     }

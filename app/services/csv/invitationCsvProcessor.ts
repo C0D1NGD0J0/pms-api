@@ -21,6 +21,7 @@ export class InvitationCsvProcessor {
   private readonly invitationDAO: InvitationDAO;
   private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
+  private transformedDataCache = new Map<number, IInvitationData>();
 
   constructor({ invitationDAO, clientDAO, userDAO }: IConstructor) {
     this.invitationDAO = invitationDAO;
@@ -37,7 +38,7 @@ export class InvitationCsvProcessor {
     finishedAt: Date;
     errors: null | IInvalidCsvProperty[];
   }> {
-    const client = await this.clientDAO.getClientBycuid(context.cuid);
+    const client = await this.clientDAO.getClientByCuid(context.cuid);
     if (!client) {
       throw new Error(`Client with ID ${context.cuid} not found`);
     }
@@ -63,7 +64,7 @@ export class InvitationCsvProcessor {
   private validateInvitationRow = async (
     row: any,
     context: InvitationProcessingContext,
-    _rowNumber: number
+    rowNumber: number
   ): Promise<ICsvValidationResult> => {
     const rowWithContext = {
       ...row,
@@ -74,9 +75,14 @@ export class InvitationCsvProcessor {
       await InvitationValidations.invitationCsv.safeParseAsync(rowWithContext);
 
     if (validationResult.success) {
+      const transformedData = validationResult.data;
+
+      // Cache the transformed data for use in the transform step
+      this.transformedDataCache.set(rowNumber, transformedData);
+
       // Check if user already exists and has access to this client
       const existingUser = await this.userDAO.getUserWithClientAccess(
-        row.inviteeEmail,
+        transformedData.inviteeEmail,
         context.cuid
       );
 
@@ -92,7 +98,7 @@ export class InvitationCsvProcessor {
         };
       }
 
-      const client = await this.clientDAO.getClientBycuid(context.cuid);
+      const client = await this.clientDAO.getClientByCuid(context.cuid);
       if (!client) {
         return {
           isValid: false,
@@ -102,7 +108,7 @@ export class InvitationCsvProcessor {
 
       // Check if there's already a pending invitation for this email and client
       const existingInvitation = await this.invitationDAO.findPendingInvitation(
-        row.inviteeEmail,
+        transformedData.inviteeEmail,
         client.id
       );
 
@@ -137,22 +143,19 @@ export class InvitationCsvProcessor {
 
   private transformInvitationRow = async (
     row: any,
-    _context: InvitationProcessingContext
+    _context: InvitationProcessingContext,
+    rowNumber: number
   ): Promise<IInvitationData> => {
-    return {
-      inviteeEmail: row.inviteeEmail?.trim().toLowerCase(),
-      role: row.role,
-      status: row.status,
-      personalInfo: {
-        firstName: row.firstName?.trim(),
-        lastName: row.lastName?.trim(),
-        phoneNumber: row.phoneNumber?.trim() || undefined,
-      },
-      metadata: {
-        inviteMessage: row.inviteMessage?.trim() || undefined,
-        expectedStartDate: row.expectedStartDate || undefined,
-      },
-    };
+    // Get the transformed data from cache (set during validation)
+    const transformedData = this.transformedDataCache.get(rowNumber);
+    if (!transformedData) {
+      throw new Error(`No transformed data found for row ${rowNumber}`);
+    }
+
+    // Clean up the cache for memory efficiency
+    this.transformedDataCache.delete(rowNumber);
+
+    return transformedData;
   };
 
   private postProcessInvitations = async (

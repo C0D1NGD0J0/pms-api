@@ -204,7 +204,7 @@ export class InvitationController {
     }
 
     const query = {
-      clientId: cuid,
+      cuid,
       status: status as any,
       role: role as any,
       page: page ? parseInt(page as string) : undefined,
@@ -213,7 +213,7 @@ export class InvitationController {
       sortOrder: sortOrder as any,
     };
 
-    const result = await this.invitationService.getInvitations(query, currentuser.sub);
+    const result = await this.invitationService.getInvitations(req.context, query);
 
     res.status(httpStatusCodes.OK).json({
       success: result.success,

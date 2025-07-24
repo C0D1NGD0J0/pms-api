@@ -1,6 +1,7 @@
 import { Invitation } from '@models/index';
 import { hashGenerator } from '@utils/index';
 import { ClientSession, FilterQuery, Types } from 'mongoose';
+import { ListResultWithPagination } from '@interfaces/index';
 import {
   IInvitationListQuery,
   IInvitationDocument,
@@ -155,26 +156,18 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
   /**
    * Get invitations for a client with filtering options
    */
-  async getInvitationsByClient(query: IInvitationListQuery): Promise<{
-    items: IInvitationDocument[];
-    pagination?: {
-      total: number;
-      page: number;
-      pages: number;
-      limit: number;
-    };
-  }> {
+  async getInvitationsByClient(
+    query: IInvitationListQuery
+  ): ListResultWithPagination<IInvitationDocument[]> {
     try {
       const filter: FilterQuery<IInvitationDocument> = {
-        clientId: query.clientId,
+        cuid: query.cuid,
       };
 
-      // Add status filter if provided
       if (query.status) {
         filter.status = query.status;
       }
 
-      // Add role filter if provided
       if (query.role) {
         filter.role = query.role;
       }
@@ -183,7 +176,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
       const limit = query.limit || 20;
       const skip = (page - 1) * limit;
 
-      // Build sort object
+      // build sort object
       const sortBy = query.sortBy || 'createdAt';
       const sortOrder = query.sortOrder === 'asc' ? 1 : -1;
       const sort = { [sortBy]: sortOrder } as Record<string, 1 | -1>;
@@ -200,18 +193,9 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
       };
 
       const result = await this.list(filter, options);
-
-      // Transform the result to match interface expectations
       return {
         items: result.items,
-        pagination: result.pagination
-          ? {
-              total: result.pagination.total,
-              page: page,
-              pages: Math.ceil(result.pagination.total / limit),
-              limit: limit,
-            }
-          : undefined,
+        pagination: result.pagination,
       };
     } catch (error) {
       this.logger.error('Error getting invitations by client:', error);

@@ -2,7 +2,11 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { InvitationDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IInvitationData } from '@interfaces/invitation.interface';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
-import { ICsvValidationResult, IInvalidCsvProperty } from '@interfaces/csv.interface';
+import {
+  ICsvHeaderValidationResult,
+  ICsvValidationResult,
+  IInvalidCsvProperty,
+} from '@interfaces/csv.interface';
 
 import { BaseCSVProcessorService } from './base';
 
@@ -38,27 +42,37 @@ export class InvitationCsvProcessor {
     finishedAt: Date;
     errors: null | IInvalidCsvProperty[];
   }> {
+    // Clear any existing cache data from previous uploads
+    this.transformedDataCache.clear();
+
     const client = await this.clientDAO.getClientByCuid(context.cuid);
     if (!client) {
       throw new Error(`Client with ID ${context.cuid} not found`);
     }
 
-    const result = await BaseCSVProcessorService.processCsvFile<
-      IInvitationData,
-      InvitationProcessingContext
-    >(filePath, {
-      context,
-      validateRow: this.validateInvitationRow,
-      transformRow: this.transformInvitationRow,
-      postProcess: this.postProcessInvitations,
-    });
+    try {
+      const result = await BaseCSVProcessorService.processCsvFile<
+        IInvitationData,
+        InvitationProcessingContext
+      >(filePath, {
+        context,
+        headerTransformer: this.createInvitationHeaderTransformer(),
+        validateHeaders: this.validateRequiredHeaders.bind(this),
+        validateRow: this.validateInvitationRow,
+        transformRow: this.transformInvitationRow,
+        postProcess: this.postProcessInvitations,
+      });
 
-    return {
-      validInvitations: result.validItems,
-      totalRows: result.totalRows,
-      finishedAt: new Date(),
-      errors: result.errors,
-    };
+      return {
+        validInvitations: result.validItems,
+        totalRows: result.totalRows,
+        finishedAt: new Date(),
+        errors: result.errors,
+      };
+    } finally {
+      // Ensure cache is always cleared after processing, regardless of success or failure
+      this.transformedDataCache.clear();
+    }
   }
 
   private validateInvitationRow = async (
@@ -69,6 +83,7 @@ export class InvitationCsvProcessor {
     const rowWithContext = {
       ...row,
       cuid: context.cuid,
+      role: row.role?.toString().toLowerCase(),
     };
 
     const validationResult =
@@ -80,13 +95,15 @@ export class InvitationCsvProcessor {
       // Cache the transformed data for use in the transform step
       this.transformedDataCache.set(rowNumber, transformedData);
 
-      // Check if user already exists and has access to this client
+      // check if user already exists and has access to this client
       const existingUser = await this.userDAO.getUserWithClientAccess(
         transformedData.inviteeEmail,
         context.cuid
       );
 
       if (existingUser) {
+        // clean up cache since validation failed
+        this.transformedDataCache.delete(rowNumber);
         return {
           isValid: false,
           errors: [
@@ -100,6 +117,8 @@ export class InvitationCsvProcessor {
 
       const client = await this.clientDAO.getClientByCuid(context.cuid);
       if (!client) {
+        // Clean up cache since validation failed
+        this.transformedDataCache.delete(rowNumber);
         return {
           isValid: false,
           errors: [{ field: 'cuid', error: `Client with ID ${context.cuid} not found` }],
@@ -113,6 +132,8 @@ export class InvitationCsvProcessor {
       );
 
       if (existingInvitation) {
+        // Clean up cache since validation failed
+        this.transformedDataCache.delete(rowNumber);
         return {
           isValid: false,
           errors: [
@@ -142,14 +163,19 @@ export class InvitationCsvProcessor {
   };
 
   private transformInvitationRow = async (
-    row: any,
+    _row: any,
     _context: InvitationProcessingContext,
     rowNumber: number
   ): Promise<IInvitationData> => {
     // Get the transformed data from cache (set during validation)
     const transformedData = this.transformedDataCache.get(rowNumber);
     if (!transformedData) {
-      throw new Error(`No transformed data found for row ${rowNumber}`);
+      // This should never happen with the fixed flow, but provide a descriptive error
+      const cacheKeys = Array.from(this.transformedDataCache.keys());
+      throw new Error(
+        `No transformed data found for row ${rowNumber}. Available cache keys: [${cacheKeys.join(', ')}]. ` +
+          'This indicates a validation/transform flow synchronization issue.'
+      );
     }
 
     // Clean up the cache for memory efficiency
@@ -157,6 +183,44 @@ export class InvitationCsvProcessor {
 
     return transformedData;
   };
+
+  private getRequiredCsvHeaders(): string[] {
+    return ['inviteeEmail', 'role', 'firstName', 'lastName'];
+  }
+
+  private createInvitationHeaderTransformer() {
+    const requiredHeaders = this.getRequiredCsvHeaders();
+
+    return ({ header }: { header: string }) => {
+      const normalizedHeader = header.toLowerCase().trim();
+      const matchingRequired = requiredHeaders.find(
+        (required) => required.toLowerCase() === normalizedHeader
+      );
+
+      if (matchingRequired) {
+        return matchingRequired;
+      }
+
+      return null; // return null for headers that are not required
+    };
+  }
+
+  private validateRequiredHeaders(headers: string[]): ICsvHeaderValidationResult {
+    const requiredHeaders = this.getRequiredCsvHeaders();
+    const foundHeaders = headers.filter((header) => requiredHeaders.includes(header));
+    const missingHeaders = requiredHeaders.filter((required) => !headers.includes(required));
+
+    const isValid = missingHeaders.length === 0;
+
+    return {
+      isValid,
+      missingHeaders,
+      foundHeaders,
+      errorMessage: isValid
+        ? undefined
+        : `Invalid CSV format. Missing required columns: ${missingHeaders.join(', ')}. Expected headers: ${requiredHeaders.join(', ')}`,
+    };
+  }
 
   private postProcessInvitations = async (
     invitations: IInvitationData[],

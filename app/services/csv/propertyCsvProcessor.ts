@@ -6,7 +6,11 @@ import { CURRENCIES } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
-import { ICsvValidationResult, IInvalidCsvProperty } from '@interfaces/csv.interface';
+import {
+  ICsvHeaderValidationResult,
+  ICsvValidationResult,
+  IInvalidCsvProperty,
+} from '@interfaces/csv.interface';
 import {
   OccupancyStatus,
   NewPropertyType,
@@ -63,6 +67,8 @@ export class PropertyCsvProcessor {
       PropertyProcessingContext
     >(filePath, {
       context,
+      headerTransformer: this.createPropertyHeaderTransformer(),
+      validateHeaders: this.validateRequiredHeaders.bind(this),
       validateRow: this.validatePropertyRow,
       transformRow: this.transformPropertyRow,
       postProcess: this.postProcessProperties,
@@ -284,6 +290,111 @@ export class PropertyCsvProcessor {
     }
 
     return { validProperties, invalidProperties };
+  }
+
+  private getRequiredCsvHeaders(): string[] {
+    // Dynamically extract required headers from NewProperty interface mapping
+    // These correspond to the minimum required fields for CSV import
+    return [
+      'name', // from NewProperty.name (required)
+      'fullAddress', // from NewProperty.fullAddress (required)
+      'propertyType', // from NewProperty.propertyType (required)
+    ];
+  }
+
+  private createPropertyHeaderTransformer() {
+    // Get all possible headers from the transform method analysis
+    const allowedHeaders = [
+      // Required headers
+      'name',
+      'fullAddress',
+      'propertyType',
+      // Optional basic fields
+      'status',
+      'occupancyStatus',
+      'maxAllowedUnits',
+      'yearBuilt',
+      'managedBy',
+      // Description fields
+      'description_text',
+      'description_html',
+      // Specification fields
+      'specifications_totalArea',
+      'specifications_bedrooms',
+      'specifications_bathrooms',
+      'specifications_floors',
+      'specifications_garageSpaces',
+      'specifications_maxOccupants',
+      'specifications_lotSize',
+      // Fee fields
+      'fees_taxamount',
+      'fees_rentalamount',
+      'fees_managementfees',
+      'fees_currency',
+      // Utility fields
+      'utilities_water',
+      'utilities_gas',
+      'utilities_electricity',
+      'utilities_internet',
+      'utilities_trash',
+      'utilities_cabletv',
+      // Interior amenity fields
+      'interiorAmenities_airConditioning',
+      'interiorAmenities_heating',
+      'interiorAmenities_washerDryer',
+      'interiorAmenities_dishwasher',
+      'interiorAmenities_fridge',
+      'interiorAmenities_furnished',
+      'interiorAmenities_storageSpace',
+      // Community amenity fields
+      'communityAmenities_petFriendly',
+      'communityAmenities_swimmingPool',
+      'communityAmenities_fitnessCenter',
+      'communityAmenities_elevator',
+      'communityAmenities_parking',
+      'communityAmenities_securitySystem',
+      'communityAmenities_laundryFacility',
+      'communityAmenities_doorman',
+    ];
+
+    return ({ header }: { header: string }) => {
+      const normalizedHeader = header.toLowerCase().trim();
+
+      // Check if this header matches any of our allowed headers (case insensitive)
+      const matchingHeader = allowedHeaders.find(
+        (allowed) => allowed.toLowerCase() === normalizedHeader
+      );
+
+      if (matchingHeader) {
+        // Return the standardized header name
+        return matchingHeader;
+      }
+
+      // Check for dynamic document headers (document_1_url, document_2_type, etc.)
+      if (normalizedHeader.match(/^document_\d+_(url|type|description)$/)) {
+        return header.toLowerCase().trim(); // Keep document headers as-is
+      }
+
+      // Return null to ignore this column - csv-parser will skip it
+      return null;
+    };
+  }
+
+  private validateRequiredHeaders(headers: string[]): ICsvHeaderValidationResult {
+    const requiredHeaders = this.getRequiredCsvHeaders();
+    const foundHeaders = headers.filter((header) => requiredHeaders.includes(header));
+    const missingHeaders = requiredHeaders.filter((required) => !headers.includes(required));
+
+    const isValid = missingHeaders.length === 0;
+
+    return {
+      isValid,
+      missingHeaders,
+      foundHeaders,
+      errorMessage: isValid
+        ? undefined
+        : `Invalid CSV format. Missing required columns: ${missingHeaders.join(', ')}. Expected headers: ${requiredHeaders.join(', ')}`,
+    };
   }
 
   private hasAnyInteriorAmenity(data: any): boolean {

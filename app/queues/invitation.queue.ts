@@ -27,7 +27,14 @@ export class InvitationQueue extends BaseQueue {
   }
 
   async addCsvValidationJob(data: CsvJobData) {
-    const jobId = await this.addJobToQueue(JOB_NAME.INVITATION_CSV_VALIDATION_JOB, data);
+    const jobId = await this.addJobToQueue(JOB_NAME.INVITATION_CSV_VALIDATION_JOB, data, {
+      attempts: 1, // No retries for CSV validation
+      timeout: 60000,
+      backoff: { type: 'fixed', delay: 10000 },
+      removeOnComplete: 100,
+      removeOnFail: 500,
+      delay: 5000,
+    });
     return jobId;
   }
 

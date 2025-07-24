@@ -18,6 +18,7 @@ import {
 import { JWT_KEY_NAMES } from './constants';
 
 interface LogRecord {
+  [key: string]: any;
   level: number;
   name?: string;
   streams: any;
@@ -67,28 +68,44 @@ export function createLogger(name: string) {
   const customStream = {
     write: (record: unknown) => {
       try {
-        let output: string;
         const logRecord = record as LogRecord;
+        const serviceName = logRecord?.name || 'UNKNOWN';
+        const message = logRecord?.msg || '';
+
+        // Extract metadata by excluding known Bunyan fields
+        const excludeFields = ['name', 'hostname', 'pid', 'level', 'msg', 'time', 'v', 'streams'];
+        const metadata = Object.keys(logRecord)
+          .filter((key) => !excludeFields.includes(key))
+          .reduce((obj, key) => {
+            obj[key] = logRecord[key];
+            return obj;
+          }, {} as any);
+
+        // Build structured output with metadata
+        let output = `${serviceName}: ${message}`;
+        if (Object.keys(metadata).length > 0) {
+          output += ` ${JSON.stringify(metadata)}`;
+        }
 
         switch (logRecord.level) {
           case LOG_LEVELS.TRACE:
-            output = color.white.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.green.bold(output);
             break;
           case LOG_LEVELS.ERROR:
           case LOG_LEVELS.FATAL:
-            output = color.red.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.red.bold(output);
             break;
           case LOG_LEVELS.DEBUG:
-            output = color.cyan(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.cyan(output);
             break;
           case LOG_LEVELS.WARN:
-            output = color.yellow.italic(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.yellow.italic(output);
             break;
           case LOG_LEVELS.INFO:
-            output = color.grey(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.grey(output);
             break;
           default:
-            output = color.grey.bold(`${logRecord?.name || 'UNKNOWN'}: ${logRecord?.msg}`);
+            output = color.grey.bold(output);
         }
 
         if (envVariables.SERVER.ENV !== 'production' || Boolean(process.env.ENABLE_CONSOLE_LOGS)) {

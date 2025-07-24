@@ -133,7 +133,7 @@ export class InvitationWorker {
         const progress = 30 + Math.floor((processed / csvResult.validInvitations.length) * 60);
         job.progress(progress);
 
-        // Add delay to avoid rate limiting (2 seconds between emails)
+        // delay to avoid rate limiting (2 seconds between emails)
         if (processed < csvResult.validInvitations.length) {
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }

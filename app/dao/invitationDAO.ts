@@ -224,7 +224,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
    * Revoke an invitation
    */
   async revokeInvitation(
-    invitationId: string,
+    iuid: string,
     clientId: string,
     revokedBy: string,
     reason?: string,
@@ -243,7 +243,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         updateData.$set.revokeReason = reason;
       }
 
-      return await this.update({ id: invitationId, clientId }, updateData, { session });
+      return await this.update({ iuid, clientId }, updateData, { session });
     } catch (error) {
       this.logger.error('Error revoking invitation:', error);
       throw this.throwErrorHandler(error);

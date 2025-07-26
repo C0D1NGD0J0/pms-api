@@ -75,7 +75,7 @@ export class InvitationService {
     cuid: string,
     invitationData: IInvitationData
   ): Promise<ISuccessReturnData<ISendInvitationResult>> {
-    await this.validateInviterPermissions(inviterUserId, cuid);
+    // Permission validation is handled by requirePermission middleware at route level
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
@@ -300,37 +300,27 @@ export class InvitationService {
     revokerUserId: string,
     reason?: string
   ): Promise<ISuccessReturnData<IInvitationDocument>> {
-    try {
-      const invitation = await this.invitationDAO.findByIuidUnsecured(iuid);
-      if (!invitation) {
-        throw new NotFoundError({ message: t('invitation.errors.notFound') });
-      }
-
-      // Validate revoker has permission
-      await this.validateInviterPermissions(revokerUserId, invitation.clientId.toString());
-
-      if (!['pending', 'draft', 'sent'].includes(invitation.status)) {
-        throw new BadRequestError({ message: t('invitation.errors.cannotRevoke') });
-      }
-
-      const revokedInvitation = await this.invitationDAO.revokeInvitation(
-        iuid,
-        invitation.clientId.toString(),
-        revokerUserId,
-        reason
-      );
-
-      this.log.info(`Invitation ${iuid} revoked by ${revokerUserId}`);
-
-      return {
-        success: true,
-        data: revokedInvitation!,
-        message: t('invitation.success.revoked'),
-      };
-    } catch (error) {
-      this.log.error('Error revoking invitation:', error);
-      throw error;
+    const invitation = await this.invitationDAO.findByIuidUnsecured(iuid);
+    if (!invitation) {
+      throw new NotFoundError({ message: t('invitation.errors.notFound') });
     }
+
+    if (!['pending', 'draft', 'sent'].includes(invitation.status)) {
+      throw new BadRequestError({ message: t('invitation.errors.cannotRevoke') });
+    }
+
+    const revokedInvitation = await this.invitationDAO.revokeInvitation(
+      iuid,
+      invitation.clientId.toString(),
+      revokerUserId,
+      reason
+    );
+
+    return {
+      success: true,
+      data: revokedInvitation!,
+      message: t('invitation.success.revoked'),
+    };
   }
 
   async resendInvitation(
@@ -343,7 +333,7 @@ export class InvitationService {
         throw new NotFoundError({ message: t('invitation.errors.notFound') });
       }
 
-      await this.validateInviterPermissions(resenderUserId, invitation.clientId.toString());
+      // Permission validation is handled by requirePermission middleware at route level
 
       if (invitation.status !== 'pending') {
         throw new BadRequestError({ message: t('invitation.errors.cannotResend') });
@@ -403,9 +393,7 @@ export class InvitationService {
     cxt: IRequestContext,
     query: IInvitationListQuery
   ): Promise<ISuccessReturnData<any>> {
-    const { cuid } = cxt.request.params;
-    const currentuser = cxt.currentuser!;
-    await this.validateInviterPermissions(currentuser.sub, cuid);
+    // Permission validation is handled by requirePermission middleware at route level
 
     const result = await this.invitationDAO.getInvitationsByClient(query);
 
@@ -418,10 +406,10 @@ export class InvitationService {
 
   async getInvitationStats(
     clientId: string,
-    requestorUserId: string
+    _requestorUserId: string
   ): Promise<ISuccessReturnData<IInvitationStats>> {
     try {
-      await this.validateInviterPermissions(requestorUserId, clientId);
+      // Permission validation is handled by requirePermission middleware at route level
 
       const stats = await this.invitationDAO.getInvitationStats(clientId);
 
@@ -490,7 +478,7 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
-      await this.validateInviterPermissions(currentUser.sub, cuid);
+      // Permission validation is handled by requirePermission middleware at route level
 
       // check file size (10MB limit)
       if (csvFile.fileSize > 10 * 1024 * 1024) {
@@ -534,7 +522,7 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
-      await this.validateInviterPermissions(userId, cuid);
+      // Permission validation is handled by requirePermission middleware at route level
 
       const jobData = {
         userId,
@@ -566,7 +554,7 @@ export class InvitationService {
     }
   ): Promise<ISuccessReturnData<any>> {
     try {
-      await this.validateInviterPermissions(processorUserId, cuid);
+      // Permission validation is handled by requirePermission middleware at route level
 
       const query: IInvitationListQuery = {
         cuid,

@@ -69,6 +69,7 @@ router.post(
 router.get(
   '/clients/:cuid',
   isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.LIST),
   validateRequest({
     params: UtilsValidations.cuid,
     query: InvitationValidations.getInvitations,
@@ -87,6 +88,7 @@ router.get(
 router.get(
   '/clients/:cuid/stats',
   isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.STATS),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
@@ -102,6 +104,7 @@ router.get(
 router.get(
   '/:iuid',
   isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.READ),
   validateRequest({ params: InvitationValidations.iuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');

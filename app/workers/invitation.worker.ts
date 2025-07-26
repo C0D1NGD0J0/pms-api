@@ -114,14 +114,27 @@ export class InvitationWorker {
 
       for (const invitationData of csvResult.validInvitations) {
         try {
-          const result = await this.sendSingleInvitation(userId, clientInfo, invitationData);
-          results.push({
-            email: invitationData.inviteeEmail,
-            success: true,
-            invitationId: result.iuid,
-          });
+          let result;
+
+          if (invitationData.status === 'draft') {
+            result = await this.createDraftInvitation(userId, clientInfo, invitationData);
+            results.push({
+              email: invitationData.inviteeEmail,
+              success: true,
+              invitationId: result.iuid,
+              status: 'draft',
+            });
+          } else {
+            result = await this.sendSingleInvitation(userId, clientInfo, invitationData);
+            results.push({
+              email: invitationData.inviteeEmail,
+              success: true,
+              invitationId: result.iuid,
+              status: 'sent',
+            });
+          }
         } catch (error) {
-          this.log.error(`Error sending invitation to ${invitationData.inviteeEmail}:`, error);
+          this.log.error(`Error processing invitation to ${invitationData.inviteeEmail}:`, error);
           results.push({
             email: invitationData.inviteeEmail,
             success: false,
@@ -133,7 +146,7 @@ export class InvitationWorker {
         const progress = 30 + Math.floor((processed / csvResult.validInvitations.length) * 60);
         job.progress(progress);
 
-        // Add delay to avoid rate limiting (2 seconds between emails)
+        // delay to avoid rate limiting (2 seconds between emails)
         if (processed < csvResult.validInvitations.length) {
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }
@@ -229,6 +242,45 @@ export class InvitationWorker {
       },
     };
     this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, emailData);
+
+    return invitation;
+  }
+
+  private async createDraftInvitation(
+    inviterUserId: string,
+    clientInfo: { cuid: string; displayName: string; id: string },
+    invitationData: IInvitationData
+  ) {
+    if (!clientInfo.cuid || !clientInfo.id) {
+      throw new Error('Client not found');
+    }
+
+    // Check for existing pending invitation
+    const existingInvitation = await this.invitationDAO.findPendingInvitation(
+      invitationData.inviteeEmail,
+      clientInfo.id
+    );
+
+    if (existingInvitation) {
+      throw new Error('A pending invitation already exists for this email');
+    }
+
+    // check if user already has access
+    const existingUser = await this.userDAO.getUserWithClientAccess(
+      invitationData.inviteeEmail,
+      clientInfo.cuid
+    );
+
+    if (existingUser) {
+      throw new Error('User already has access to this client');
+    }
+
+    // Create invitation with draft status - NO EMAIL SENDING
+    const invitation = await this.invitationDAO.createInvitation(
+      invitationData,
+      inviterUserId,
+      clientInfo.id
+    );
 
     return invitation;
   }

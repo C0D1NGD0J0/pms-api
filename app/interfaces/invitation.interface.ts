@@ -66,10 +66,10 @@ export interface IInvitationListQuery {
   status?: 'draft' | 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent';
   sortBy?: 'createdAt' | 'expiresAt' | 'inviteeEmail';
   sortOrder?: 'asc' | 'desc';
-  clientId: string;
   role?: IUserRole;
   limit?: number;
   page?: number;
+  cuid: string;
 }
 
 export interface IInvitationAcceptance {

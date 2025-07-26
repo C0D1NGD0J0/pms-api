@@ -23,7 +23,7 @@ export class PermissionService {
       this.permissionConfig = permissionConfig as IPermissionConfig;
       this.accessControl = new AccessControl();
       this.initializePermissions();
-      this.log.info('PermissionService initialized successfully');
+      this.log.debug('PermissionService initialized successfully');
     } catch (error) {
       this.log.error('Failed to initialize PermissionService:', error);
       throw error;
@@ -51,7 +51,7 @@ export class PermissionService {
       }
     });
 
-    this.log.info('AccessControl permissions initialized successfully');
+    this.log.debug('AccessControl permissions initialized successfully');
   }
 
   private processRolePermissions(roleName: string, roleConfig: any): void {
@@ -83,9 +83,9 @@ export class PermissionService {
                 break;
               default:
                 // Skip unknown actions - they'll be handled by business logic fallback
-                this.log.warn(
-                  `Skipping unknown action: ${action} for ${resource} - will use business logic fallback`
-                );
+                // this.log.debug(
+                //   `Skipping unknown action: ${action} for ${resource} - will use business logic fallback`
+                // );
                 break;
             }
           } else if (possession === 'own') {
@@ -220,16 +220,35 @@ export class PermissionService {
   ): IPermissionResult {
     const requiredPermission = `${action}:${scope}`;
 
-    if (this.hasPermissionWithInheritance(role, resource, requiredPermission)) {
-      if (scope === PermissionScope.ASSIGNED && context) {
-        // todo add some business logic to validate assigned permissions
-        return { granted: true, reason: 'Business-specific permission granted (with inheritance)' };
-      }
-
-      return { granted: true, reason: 'Business-specific permission granted (with inheritance)' };
+    // First check if the role has this specific permission
+    if (!this.hasPermissionWithInheritance(role, resource, requiredPermission)) {
+      return {
+        granted: false,
+        reason: `Role '${role}' does not have permission '${requiredPermission}' on resource '${resource}'`,
+      };
     }
 
-    return { granted: false, reason: 'Business-specific permission denied' };
+    // Permission exists, now validate scope-specific business rules
+    switch (scope) {
+      case PermissionScope.AVAILABLE:
+        return this.validateAvailableScope(action);
+
+      case PermissionScope.ASSIGNED:
+        return this.validateAssignedScope(role, resource, action, context);
+
+      case PermissionScope.MINE:
+        return this.validateMineScope(context);
+
+      case PermissionScope.ANY:
+        return this.validateAnyScope(context);
+
+      default:
+        this.log.warn(`Unknown permission scope: ${scope}`);
+        return {
+          granted: false,
+          reason: `Unsupported permission scope: ${scope}`,
+        };
+    }
   }
 
   private hasPermissionWithInheritance(
@@ -279,7 +298,7 @@ export class PermissionService {
   ): Promise<IPermissionResult> {
     const userRole = currentUser.client.role;
     const userId = currentUser.sub;
-    const clientId = currentUser.client.csub;
+    const clientId = currentUser.client.cuid;
 
     // Determine scope based on context and resource type
     let scope = PermissionScope.ANY;
@@ -368,6 +387,261 @@ export class PermissionService {
       return false;
     }
     return true;
+  }
+
+  /**
+   * Validate assigned scope permissions with resource-specific logic
+   */
+  private validateAssignedScope(
+    role: string,
+    resource: string,
+    action: string,
+    context?: IPermissionCheck['context']
+  ): IPermissionResult {
+    if (!context?.userId) {
+      return {
+        granted: false,
+        reason: 'User context required for assigned scope validation',
+      };
+    }
+
+    // Resource-specific assignment validation
+    switch (resource) {
+      case PermissionResource.MAINTENANCE:
+        return this.validateMaintenanceAssignment(role, action, context);
+
+      case PermissionResource.PROPERTY:
+        return this.validatePropertyAssignment(role, action, context);
+
+      case PermissionResource.PAYMENT:
+        return this.validatePaymentAssignment(role, action, context);
+
+      case PermissionResource.LEASE:
+        return this.validateLeaseAssignment(role, action, context);
+
+      default:
+        // For resources without specific assignment logic, allow if permission exists
+        return {
+          granted: true,
+          reason: `Assigned scope permission granted for ${resource}`,
+        };
+    }
+  }
+
+  /**
+   * Validate available scope permissions (typically read-only)
+   */
+  private validateAvailableScope(action: string): IPermissionResult {
+    if (!['read', 'list'].includes(action)) {
+      return {
+        granted: false,
+        reason: 'Available scope only supports read/list actions',
+      };
+    }
+    return {
+      granted: true,
+      reason: 'Available scope read permission granted',
+    };
+  }
+
+  /**
+   * Validate mine scope permissions (user owns the resource)
+   */
+  private validateMineScope(context?: IPermissionCheck['context']): IPermissionResult {
+    if (!context?.userId) {
+      return {
+        granted: false,
+        reason: 'User context required for ownership validation',
+      };
+    }
+    return {
+      granted: true,
+      reason: 'Mine scope permission granted',
+    };
+  }
+
+  /**
+   * Validate any scope permissions (client-wide access)
+   */
+  private validateAnyScope(context?: IPermissionCheck['context']): IPermissionResult {
+    if (!context?.clientId) {
+      return {
+        granted: false,
+        reason: 'Client context required for any scope validation',
+      };
+    }
+    return {
+      granted: true,
+      reason: 'Any scope permission granted',
+    };
+  }
+
+  /**
+   * Validate property assignment for different roles
+   */
+  private validatePropertyAssignment(
+    role: string,
+    action: string,
+    context: IPermissionCheck['context']
+  ): IPermissionResult {
+    if (!context) {
+      return { granted: false, reason: 'Context required for assignment validation' };
+    }
+    const { userId, resourceOwnerId, assignedUsers } = context;
+
+    switch (role) {
+      case 'manager':
+        // Managers can access properties they created or manage
+        if (resourceOwnerId === userId || assignedUsers?.includes(userId)) {
+          return { granted: true, reason: 'Manager has access to managed property' };
+        }
+        break;
+
+      case 'vendor':
+        // Vendors can access properties with active maintenance assignments
+        if (assignedUsers?.includes(userId)) {
+          return { granted: true, reason: 'Vendor has maintenance assignments for property' };
+        }
+        break;
+
+      case 'staff':
+        // Staff can access properties assigned to them
+        if (assignedUsers?.includes(userId)) {
+          return { granted: true, reason: 'Staff has access to assigned property' };
+        }
+        break;
+    }
+
+    return {
+      granted: false,
+      reason: `${role} does not have assigned access to this property`,
+    };
+  }
+
+  /**
+   * Validate maintenance assignment for different roles
+   */
+  private validateMaintenanceAssignment(
+    role: string,
+    action: string,
+    context: IPermissionCheck['context']
+  ): IPermissionResult {
+    if (!context) {
+      return { granted: false, reason: 'Context required for assignment validation' };
+    }
+    const { userId, resourceOwnerId, assignedUsers } = context;
+
+    switch (role) {
+      case 'manager':
+        // Managers can access maintenance for properties they manage
+        if (resourceOwnerId === userId || assignedUsers?.includes(userId)) {
+          return { granted: true, reason: 'Manager has access to property maintenance' };
+        }
+        break;
+
+      case 'vendor':
+        // Vendors can access maintenance requests assigned to them
+        if (assignedUsers?.includes(userId)) {
+          return { granted: true, reason: `${role} assigned to maintenance request` };
+        }
+        break;
+
+      case 'staff':
+        // Staff can access maintenance requests assigned to them
+        if (assignedUsers?.includes(userId)) {
+          return { granted: true, reason: `${role} assigned to maintenance request` };
+        }
+        break;
+    }
+
+    return {
+      granted: false,
+      reason: `${role} does not have assigned access to this maintenance request`,
+    };
+  }
+
+  /**
+   * Validate lease assignment for different roles
+   */
+  private validateLeaseAssignment(
+    role: string,
+    action: string,
+    context: IPermissionCheck['context']
+  ): IPermissionResult {
+    if (!context) {
+      return { granted: false, reason: 'Context required for assignment validation' };
+    }
+    const { userId, resourceOwnerId, assignedUsers } = context;
+
+    switch (role) {
+      case 'manager':
+        // Managers can access leases for properties they manage or leases they created
+        if (resourceOwnerId === userId || assignedUsers?.includes(userId)) {
+          return { granted: true, reason: 'Manager has access to managed lease' };
+        }
+        break;
+
+      case 'tenant':
+        // Tenants can access their own leases
+        if (resourceOwnerId === userId) {
+          return { granted: true, reason: 'Tenant accessing own lease' };
+        }
+        break;
+
+      case 'staff':
+        // Staff can access leases for properties assigned to them
+        if (assignedUsers?.includes(userId)) {
+          return { granted: true, reason: 'Staff has access to assigned lease' };
+        }
+        break;
+    }
+
+    return {
+      granted: false,
+      reason: `${role} does not have assigned access to this lease`,
+    };
+  }
+
+  /**
+   * Validate payment assignment for different roles
+   */
+  private validatePaymentAssignment(
+    role: string,
+    action: string,
+    context: IPermissionCheck['context']
+  ): IPermissionResult {
+    if (!context) {
+      return { granted: false, reason: 'Context required for assignment validation' };
+    }
+    const { userId, resourceOwnerId, assignedUsers } = context;
+
+    switch (role) {
+      case 'manager':
+        // Managers can access payments for leases/properties they manage
+        if (assignedUsers?.includes(userId)) {
+          return { granted: true, reason: 'Manager has access to managed property payments' };
+        }
+        break;
+
+      case 'tenant':
+        // Tenants can access their own payments
+        if (resourceOwnerId === userId) {
+          return { granted: true, reason: 'Tenant accessing own payments' };
+        }
+        break;
+
+      case 'staff':
+        // Staff can access payments for assigned properties
+        if (assignedUsers?.includes(userId)) {
+          return { granted: true, reason: 'Staff has access to assigned property payments' };
+        }
+        break;
+    }
+
+    return {
+      granted: false,
+      reason: `${role} does not have assigned access to this payment`,
+    };
   }
 
   getPermissionConfig(): IPermissionConfig {

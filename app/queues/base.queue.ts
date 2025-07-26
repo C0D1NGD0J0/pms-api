@@ -150,9 +150,10 @@ export class BaseQueue<T extends JobData = JobData> {
   /**
    * Add a job to the queue with type safety
    */
-  async addJobToQueue(name: string, data: T): Promise<Queue.Job<T>> {
+  async addJobToQueue(name: string, data: T, options?: BullJobOptions): Promise<Queue.Job<T>> {
     try {
-      return await this.queue.add(name, data, DEFAULT_JOB_OPTIONS);
+      const jobOptions = options || DEFAULT_JOB_OPTIONS;
+      return await this.queue.add(name, data, jobOptions);
     } catch (error) {
       this.log.error(
         { jobName: name, queueName: this.queue.name, error: error },

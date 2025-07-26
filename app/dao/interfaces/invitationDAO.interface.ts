@@ -1,4 +1,5 @@
 import { ClientSession } from 'mongoose';
+import { ListResultWithPagination } from '@interfaces/index';
 import {
   IInvitationListQuery,
   IInvitationDocument,
@@ -9,21 +10,6 @@ import {
 import { IBaseDAO } from './baseDAO.interface';
 
 export interface IInvitationDAO extends IBaseDAO<IInvitationDocument> {
-  /**
-   * Get invitations for a client with filtering options
-   * @param query - Query parameters for filtering and pagination
-   * @returns Promise that resolves to filtered invitations with pagination
-   */
-  getInvitationsByClient(query: IInvitationListQuery): Promise<{
-    items: IInvitationDocument[];
-    pagination?: {
-      total: number;
-      page: number;
-      pages: number;
-      limit: number;
-    };
-  }>;
-
   /**
    * Update invitation status
    * @param invitationId - The invitation ID
@@ -107,6 +93,15 @@ export interface IInvitationDAO extends IBaseDAO<IInvitationDocument> {
     daysSinceCreated: number,
     maxReminders: number
   ): Promise<IInvitationDocument[]>;
+
+  /**
+   * Get invitations for a client with filtering options
+   * @param query - Query parameters for filtering and pagination
+   * @returns Promise that resolves to filtered invitations with pagination
+   */
+  getInvitationsByClient(
+    query: IInvitationListQuery
+  ): ListResultWithPagination<IInvitationDocument[]>;
 
   /**
    * Find pending invitation for an email and client

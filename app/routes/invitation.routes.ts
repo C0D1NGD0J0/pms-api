@@ -50,6 +50,7 @@ router.post(
 router.post(
   '/:cuid/send_invite',
   isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   validateRequest({
     params: UtilsValidations.cuid,
     body: InvitationValidations.sendInvitation,
@@ -68,6 +69,7 @@ router.post(
 router.get(
   '/clients/:cuid',
   isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.LIST),
   validateRequest({
     params: UtilsValidations.cuid,
     query: InvitationValidations.getInvitations,
@@ -85,6 +87,8 @@ router.get(
  */
 router.get(
   '/clients/:cuid/stats',
+  isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.STATS),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
@@ -99,6 +103,8 @@ router.get(
  */
 router.get(
   '/:iuid',
+  isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.READ),
   validateRequest({ params: InvitationValidations.iuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
@@ -107,12 +113,14 @@ router.get(
 );
 
 /**
- * @route DELETE /api/v1/invites/:iuid/revoke
+ * @route PATCH /api/v1/invites/:iuid/revoke
  * @desc Revoke a pending invitation
  * @access Private (Admin/Manager only)
  */
-router.delete(
-  '/:iuid/revoke',
+router.patch(
+  '/:cuid/revoke/:iuid',
+  isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.REVOKE),
   validateRequest({
     params: InvitationValidations.iuid,
     body: InvitationValidations.revokeInvitation,
@@ -124,12 +132,14 @@ router.delete(
 );
 
 /**
- * @route POST /api/v1/invites/:iuid/resend
+ * @route PATCH /api/v1/invites/:iuid/resend
  * @desc Resend an invitation reminder
  * @access Private (Admin/Manager only)
  */
-router.post(
-  '/:iuid/resend',
+router.patch(
+  '/:cuid/resend/:iuid',
+  isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.RESEND),
   validateRequest({
     params: InvitationValidations.iuid,
     body: InvitationValidations.resendInvitation,
@@ -147,6 +157,7 @@ router.post(
  */
 router.get(
   '/by-email/:email',
+  isAuthenticated,
   validateRequest({ params: UtilsValidations.isUniqueEmail }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');

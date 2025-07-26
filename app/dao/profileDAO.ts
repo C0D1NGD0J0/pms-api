@@ -301,7 +301,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               {
                 $project: {
                   _id: 0,
-                  csub: '$cuid',
+                  cuid: '$cuid',
                   displayname: '$displayName',
                   isVerified: 1,
                 },
@@ -351,7 +351,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   },
                 },
                 in: {
-                  csub: '$$activeClient.cuid',
+                  cuid: '$$activeClient.cuid',
                   displayname: '$$activeClient.displayName',
                   role: { $arrayElemAt: ['$$activeClient.roles', 0] },
                 },

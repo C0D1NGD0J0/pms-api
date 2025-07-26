@@ -93,7 +93,7 @@ export class AuthService {
     const tokens = this.tokenService.createJwtTokens({
       sub: userId,
       rememberMe: decoded.data.rememberMe,
-      csub: decoded.data.csub,
+      cuid: decoded.data.cuid,
     });
 
     const saved = await this.authCache.saveRefreshToken(
@@ -139,7 +139,7 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.accountVerificationPending') });
     }
 
-    const activeConnection = user.cuids.find((c) => c.cuid === decoded.data.csub);
+    const activeConnection = user.cuids.find((c) => c.cuid === decoded.data.cuid);
     if (!activeConnection || !activeConnection.isConnected) {
       this.log.error('User connection inactive');
       throw new UnauthorizedError({ message: t('auth.errors.connectionInactive') });
@@ -271,8 +271,8 @@ export class AuthService {
       accessToken: string;
       rememberMe: boolean;
       refreshToken: string;
-      activeAccount: { csub: string; displayName: string };
-      accounts: { csub: string; displayName: string }[] | null;
+      activeAccount: { cuid: string; displayName: string };
+      accounts: { cuid: string; displayName: string }[] | null;
     }>
   > {
     const { email, password, rememberMe } = data;
@@ -313,7 +313,7 @@ export class AuthService {
     const tokens = this.tokenService.createJwtTokens({
       sub: user._id.toString(),
       rememberMe,
-      csub: activeAccount.cuid,
+      cuid: activeAccount.cuid,
     });
     await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, rememberMe);
     const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
@@ -327,7 +327,7 @@ export class AuthService {
           refreshToken: tokens.refreshToken,
           accessToken: tokens.accessToken,
           activeAccount: {
-            csub: activeAccount.cuid,
+            cuid: activeAccount.cuid,
             displayName: activeAccount.displayName,
           },
           accounts: [],
@@ -338,7 +338,7 @@ export class AuthService {
 
     const otherAccounts = connectedClients
       .filter((c) => c.cuid !== activeAccount.cuid)
-      .map((c) => ({ csub: c.cuid, displayName: c.displayName }));
+      .map((c) => ({ cuid: c.cuid, displayName: c.displayName }));
     return {
       success: true,
       data: {
@@ -346,7 +346,7 @@ export class AuthService {
         refreshToken: tokens.refreshToken,
         accessToken: tokens.accessToken,
         activeAccount: {
-          csub: activeAccount.cuid,
+          cuid: activeAccount.cuid,
           displayName: activeAccount.displayName,
         },
         accounts: otherAccounts,
@@ -388,7 +388,7 @@ export class AuthService {
     ISuccessReturnData<{
       accessToken: string;
       refreshToken: string;
-      activeAccount: { csub: string; displayName: string };
+      activeAccount: { cuid: string; displayName: string };
     }>
   > {
     if (!userId || !newcuid) {
@@ -415,7 +415,7 @@ export class AuthService {
     const tokens = this.tokenService.createJwtTokens({
       sub: user._id.toString(),
       rememberMe: false,
-      csub: activeAccount.cuid,
+      cuid: activeAccount.cuid,
     });
     await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, false);
 
@@ -427,7 +427,7 @@ export class AuthService {
         refreshToken: tokens.refreshToken,
         accessToken: tokens.accessToken,
         activeAccount: {
-          csub: activeAccount.cuid,
+          cuid: activeAccount.cuid,
           displayName: activeAccount.displayName,
         },
       },
@@ -601,8 +601,8 @@ export class AuthService {
     ISuccessReturnData<{
       accessToken: string;
       refreshToken: string;
-      activeAccount: { csub: string; displayName: string };
-      accounts: { csub: string; displayName: string }[] | null;
+      activeAccount: { cuid: string; displayName: string };
+      accounts: { cuid: string; displayName: string }[] | null;
     }>
   > {
     try {
@@ -620,7 +620,7 @@ export class AuthService {
       const tokens = this.tokenService.createJwtTokens({
         sub: user._id.toString(),
         rememberMe: false,
-        csub: activeConnection.cuid,
+        cuid: activeConnection.cuid,
       });
 
       // Cache tokens and user info
@@ -633,7 +633,7 @@ export class AuthService {
       const connectedClients = user.cuids.filter((c) => c.isConnected);
       const otherAccounts = connectedClients
         .filter((c) => c.cuid !== activeConnection.cuid)
-        .map((c) => ({ csub: c.cuid, displayName: c.displayName }));
+        .map((c) => ({ cuid: c.cuid, displayName: c.displayName }));
 
       return {
         success: true,
@@ -641,7 +641,7 @@ export class AuthService {
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
           activeAccount: {
-            csub: activeConnection.cuid,
+            cuid: activeConnection.cuid,
             displayName: activeConnection.displayName,
           },
           accounts: otherAccounts.length > 0 ? otherAccounts : null,

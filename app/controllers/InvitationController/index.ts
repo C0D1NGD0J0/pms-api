@@ -194,7 +194,7 @@ export class InvitationController {
   getInvitations = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
     const { cuid } = req.params;
-    const { status, role, page, limit, sortBy, sortOrder } = req.query;
+    const { status, role, page, limit, sort, sortBy } = req.query;
 
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
@@ -210,7 +210,7 @@ export class InvitationController {
       page: page ? parseInt(page as string) : undefined,
       limit: limit ? parseInt(limit as string) : undefined,
       sortBy: sortBy as any,
-      sortOrder: sortOrder as any,
+      sortOrder: sort as any,
     };
 
     const result = await this.invitationService.getInvitations(req.context, query);

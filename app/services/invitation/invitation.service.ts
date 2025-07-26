@@ -75,90 +75,85 @@ export class InvitationService {
     cuid: string,
     invitationData: IInvitationData
   ): Promise<ISuccessReturnData<ISendInvitationResult>> {
-    try {
-      await this.validateInviterPermissions(inviterUserId, cuid);
+    await this.validateInviterPermissions(inviterUserId, cuid);
 
-      const client = await this.clientDAO.getClientByCuid(cuid);
-      if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
-      }
-
-      const existingInvitation = await this.invitationDAO.findPendingInvitation(
-        invitationData.inviteeEmail,
-        client.id
-      );
-
-      if (existingInvitation) {
-        throw new ConflictError({
-          message: t('invitation.errors.pendingInvitationExists'),
-        });
-      }
-
-      const existingUser = await this.userDAO.getUserWithClientAccess(
-        invitationData.inviteeEmail,
-        client.cuid
-      );
-
-      if (existingUser) {
-        throw new ConflictError({
-          message: t('invitation.errors.userAlreadyHasAccess'),
-        });
-      }
-
-      const invitation = await this.invitationDAO.createInvitation(
-        invitationData,
-        inviterUserId,
-        client.id
-      );
-
-      const isDraft = invitationData.status === 'draft';
-      let emailData: any = null;
-
-      if (!isDraft) {
-        const inviter = await this.userDAO.getUserById(inviterUserId, {
-          populate: 'profile',
-        });
-
-        emailData = {
-          to: invitationData.inviteeEmail,
-          subject: t('email.invitation.subject', {
-            companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
-          }),
-          emailType: MailType.INVITATION,
-          data: {
-            inviteeName: `${invitationData.personalInfo.firstName} ${invitationData.personalInfo.lastName}`,
-            inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
-            companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
-            role: invitationData.role,
-            invitationUrl: `${envVariables.FRONTEND.URL}/${cuid}/invitation?token=${invitation.invitationToken}`,
-            expiresAt: invitation.expiresAt,
-            customMessage: invitationData.metadata?.inviteMessage,
-          },
-        };
-
-        this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
-          ...emailData,
-          invitationId: invitation._id.toString(),
-        } as any);
-
-        this.log.info(`Invitation sent to ${invitationData.inviteeEmail} for client ${cuid}`);
-      } else {
-        this.log.info(
-          `Draft invitation created for ${invitationData.inviteeEmail} for client ${cuid}`
-        );
-      }
-
-      return {
-        success: true,
-        data: { invitation, emailData },
-        message: isDraft
-          ? t('invitation.success.draftCreated', { email: invitationData.inviteeEmail })
-          : t('invitation.success.sent', { email: invitationData.inviteeEmail }),
-      };
-    } catch (error) {
-      this.log.error('Error processing invitation:', error);
-      throw error;
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      throw new NotFoundError({ message: t('client.errors.notFound') });
     }
+
+    const existingInvitation = await this.invitationDAO.findPendingInvitation(
+      invitationData.inviteeEmail,
+      client.id
+    );
+
+    if (existingInvitation) {
+      throw new ConflictError({
+        message: t('invitation.errors.pendingInvitationExists'),
+      });
+    }
+
+    const existingUser = await this.userDAO.getUserWithClientAccess(
+      invitationData.inviteeEmail,
+      client.cuid
+    );
+
+    if (existingUser) {
+      throw new ConflictError({
+        message: t('invitation.errors.userAlreadyHasAccess'),
+      });
+    }
+
+    const invitation = await this.invitationDAO.createInvitation(
+      invitationData,
+      inviterUserId,
+      client.id
+    );
+
+    const isDraft = invitationData.status === 'draft';
+    let emailData: any = null;
+
+    if (!isDraft) {
+      const inviter = await this.userDAO.getUserById(inviterUserId, {
+        populate: 'profile',
+      });
+
+      emailData = {
+        to: invitationData.inviteeEmail,
+        subject: t('email.invitation.subject', {
+          companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
+        }),
+        emailType: MailType.INVITATION,
+        data: {
+          inviteeName: `${invitationData.personalInfo.firstName} ${invitationData.personalInfo.lastName}`,
+          inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
+          companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
+          role: invitationData.role,
+          invitationUrl: `${envVariables.FRONTEND.URL}/${cuid}/invitation?token=${invitation.invitationToken}`,
+          expiresAt: invitation.expiresAt,
+          customMessage: invitationData.metadata?.inviteMessage,
+        },
+      };
+
+      this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
+        ...emailData,
+        invitationId: invitation._id.toString(),
+      } as any);
+
+      this.log.info(`Invitation sent to ${invitationData.inviteeEmail} for client ${cuid}`);
+    } else {
+      this.log.info(
+        `Draft invitation created for ${invitationData.inviteeEmail} for client ${cuid}`
+      );
+    }
+
+    return {
+      success: true,
+      data: { invitation, emailData },
+      message: isDraft
+        ? t('invitation.success.draftCreated', { email: invitationData.inviteeEmail })
+        : t('invitation.success.sent', { email: invitationData.inviteeEmail }),
+    };
   }
 
   async acceptInvitation(
@@ -408,22 +403,17 @@ export class InvitationService {
     cxt: IRequestContext,
     query: IInvitationListQuery
   ): Promise<ISuccessReturnData<any>> {
-    try {
-      const { cuid } = cxt.request.params;
-      const currentuser = cxt.currentuser!;
-      await this.validateInviterPermissions(currentuser.sub, cuid);
+    const { cuid } = cxt.request.params;
+    const currentuser = cxt.currentuser!;
+    await this.validateInviterPermissions(currentuser.sub, cuid);
 
-      const result = await this.invitationDAO.getInvitationsByClient(query);
+    const result = await this.invitationDAO.getInvitationsByClient(query);
 
-      return {
-        success: true,
-        data: result,
-        message: t('invitation.success.listed'),
-      };
-    } catch (error) {
-      this.log.error('Error getting invitations:', error);
-      throw error;
-    }
+    return {
+      success: true,
+      data: result,
+      message: t('invitation.success.listed'),
+    };
   }
 
   async getInvitationStats(

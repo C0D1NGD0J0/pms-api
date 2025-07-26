@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { InvitationDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IInvitationData } from '@interfaces/invitation.interface';
@@ -20,6 +21,10 @@ interface InvitationProcessingContext {
   userId: ICurrentUser['sub'];
   cuid: string;
 }
+
+// Extract the input type (before transformation) from the CSV schema
+// This gives us the flattened CSV field names, not the nested output structure
+type InvitationCsvInputType = z.input<typeof InvitationValidations.invitationCsv>;
 
 export class InvitationCsvProcessor {
   private readonly invitationDAO: InvitationDAO;
@@ -185,7 +190,58 @@ export class InvitationCsvProcessor {
   };
 
   private getRequiredCsvHeaders(): string[] {
-    return ['inviteeEmail', 'role', 'firstName', 'lastName'];
+    return this.getKeysFromInvitationType();
+  }
+
+  private getKeysFromInvitationType(): string[] {
+    // Extract keys from the CSV input schema (flattened fields before transformation)
+    const allKeys = this.extractKeysFromCsvSchema();
+
+    // Filter out internal fields that shouldn't be user-facing
+    return allKeys.filter((key) => key !== 'cuid');
+  }
+
+  private extractKeysFromCsvSchema(): string[] {
+    try {
+      const schema = InvitationValidations.invitationCsv;
+
+      // Get the inner schema (before transformation) if it's wrapped in ZodEffects
+      const innerSchema = schema._def?.schema || schema;
+
+      if (innerSchema.shape) {
+        // Extract field names from the schema shape - these are the CSV column names
+        return Object.keys(innerSchema.shape);
+      }
+
+      throw new Error('Cannot extract schema shape');
+    } catch (error) {
+      // Type-safe fallback using the input type
+      const knownKeys: (keyof InvitationCsvInputType)[] = [
+        'inviteeEmail',
+        'role',
+        'status',
+        'firstName',
+        'lastName',
+        'phoneNumber',
+        'inviteMessage',
+        'expectedStartDate',
+        'employeeInfo_department',
+        'employeeInfo_jobTitle',
+        'employeeInfo_employeeId',
+        'employeeInfo_reportsTo',
+        'employeeInfo_startDate',
+        'vendorInfo_companyName',
+        'vendorInfo_businessType',
+        'vendorInfo_taxId',
+        'vendorInfo_registrationNumber',
+        'vendorInfo_yearsInBusiness',
+        'vendorInfo_contactPerson_name',
+        'vendorInfo_contactPerson_jobTitle',
+        'vendorInfo_contactPerson_email',
+        'vendorInfo_contactPerson_phone',
+      ];
+      return knownKeys as string[];
+    }
   }
 
   private createInvitationHeaderTransformer() {
@@ -206,19 +262,24 @@ export class InvitationCsvProcessor {
   }
 
   private validateRequiredHeaders(headers: string[]): ICsvHeaderValidationResult {
-    const requiredHeaders = this.getRequiredCsvHeaders();
-    const foundHeaders = headers.filter((header) => requiredHeaders.includes(header));
-    const missingHeaders = requiredHeaders.filter((required) => !headers.includes(required));
+    // Only these fields are truly required for invitation processing
+    const actuallyRequiredHeaders = ['inviteeEmail', 'role', 'firstName', 'lastName', 'status'];
+    const allValidHeaders = this.getRequiredCsvHeaders();
 
-    const isValid = missingHeaders.length === 0;
+    const foundHeaders = headers.filter((header) => allValidHeaders.includes(header));
+    const missingRequiredHeaders = actuallyRequiredHeaders.filter(
+      (required) => !headers.includes(required)
+    );
+
+    const isValid = missingRequiredHeaders.length === 0;
 
     return {
       isValid,
-      missingHeaders,
+      missingHeaders: missingRequiredHeaders,
       foundHeaders,
       errorMessage: isValid
         ? undefined
-        : `Invalid CSV format. Missing required columns: ${missingHeaders.join(', ')}. Expected headers: ${requiredHeaders.join(', ')}`,
+        : `Invalid CSV format. Missing required columns: ${missingRequiredHeaders.join(', ')}. Available optional columns: ${allValidHeaders.filter((h) => !actuallyRequiredHeaders.includes(h)).join(', ')}`,
     };
   }
 

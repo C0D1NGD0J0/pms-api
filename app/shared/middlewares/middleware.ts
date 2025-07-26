@@ -83,7 +83,7 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
     // Validate connection status
     if (req.context.currentuser) {
       const activeConnection = req.context.currentuser.clients.find(
-        (c) => c.cuid === req.context.currentuser!.client.csub
+        (c) => c.cuid === req.context.currentuser!.client.cuid
       );
 
       if (!activeConnection || !activeConnection.isConnected) {
@@ -273,12 +273,12 @@ export const requestLogger =
         );
       } else if (res.statusCode >= 300) {
         logger.warn(
-          responseObject,
+          // responseObject,
           `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
         );
       } else if (res.statusCode >= 200) {
         logger.trace(
-          responseObject,
+          // responseObject,
           `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
         );
       } else {
@@ -422,7 +422,7 @@ const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUs
   }
 
   // Check if user's connection to active client is still active
-  const activeConnection = currentuser.clients.find((c) => c.cuid === currentuser.client.csub);
+  const activeConnection = currentuser.clients.find((c) => c.cuid === currentuser.client.cuid);
   if (!activeConnection?.isConnected) {
     next(new UnauthorizedError({ message: t('auth.errors.connectionInactive') }));
     return null;
@@ -446,7 +446,7 @@ export const requirePermission = (
 
       // Check client context for client-specific resources
       const clientId = req.params.clientId || req.params.cuid;
-      if (clientId && currentuser.client.csub !== clientId) {
+      if (clientId && currentuser.client.cuid !== clientId) {
         return next(new ForbiddenError({ message: t('auth.errors.clientAccessDenied') }));
       }
 

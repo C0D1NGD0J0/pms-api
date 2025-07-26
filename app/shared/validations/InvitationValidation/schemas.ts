@@ -224,12 +224,12 @@ export const getInvitationsQuerySchema = z.object({
     .optional(),
 
   sortBy: z
-    .enum(['createdAt', 'expiresAt', 'inviteeEmail'], {
+    .enum(['createdAt', 'inviteeEmail', 'status'], {
       errorMap: () => ({ message: 'Invalid sortBy value' }),
     })
     .optional(),
 
-  sortOrder: z
+  sort: z
     .enum(['asc', 'desc'], {
       errorMap: () => ({ message: 'Invalid sortOrder value' }),
     })

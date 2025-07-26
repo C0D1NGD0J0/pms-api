@@ -23,7 +23,7 @@ export class PermissionService {
       this.permissionConfig = permissionConfig as IPermissionConfig;
       this.accessControl = new AccessControl();
       this.initializePermissions();
-      this.log.info('PermissionService initialized successfully');
+      this.log.debug('PermissionService initialized successfully');
     } catch (error) {
       this.log.error('Failed to initialize PermissionService:', error);
       throw error;
@@ -51,7 +51,7 @@ export class PermissionService {
       }
     });
 
-    this.log.info('AccessControl permissions initialized successfully');
+    this.log.debug('AccessControl permissions initialized successfully');
   }
 
   private processRolePermissions(roleName: string, roleConfig: any): void {
@@ -83,9 +83,9 @@ export class PermissionService {
                 break;
               default:
                 // Skip unknown actions - they'll be handled by business logic fallback
-                this.log.warn(
-                  `Skipping unknown action: ${action} for ${resource} - will use business logic fallback`
-                );
+                // this.log.debug(
+                //   `Skipping unknown action: ${action} for ${resource} - will use business logic fallback`
+                // );
                 break;
             }
           } else if (possession === 'own') {
@@ -279,7 +279,7 @@ export class PermissionService {
   ): Promise<IPermissionResult> {
     const userRole = currentUser.client.role;
     const userId = currentUser.sub;
-    const clientId = currentUser.client.csub;
+    const clientId = currentUser.client.cuid;
 
     // Determine scope based on context and resource type
     let scope = PermissionScope.ANY;

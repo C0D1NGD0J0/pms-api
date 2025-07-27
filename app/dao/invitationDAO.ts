@@ -204,6 +204,37 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
   }
 
   /**
+   * Update invitation details
+   */
+  async updateInvitation(
+    iuid: string,
+    clientId: string,
+    invitationData: IInvitationData,
+    session?: ClientSession
+  ): Promise<IInvitationDocument | null> {
+    try {
+      const updateData = {
+        $set: {
+          inviteeEmail: invitationData.inviteeEmail.toLowerCase(),
+          role: invitationData.role,
+          status: invitationData.status,
+          personalInfo: invitationData.personalInfo,
+          metadata: {
+            ...invitationData.metadata,
+            remindersSent: 0, // Reset reminder count on update
+            lastReminderSent: undefined,
+          },
+        },
+      };
+
+      return await this.update({ iuid, clientId }, updateData, { session });
+    } catch (error) {
+      this.logger.error('Error updating invitation:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
    * Update invitation status
    */
   async updateInvitationStatus(

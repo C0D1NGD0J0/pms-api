@@ -82,6 +82,19 @@ export class InvitationService {
       throw new NotFoundError({ message: t('client.errors.notFound') });
     }
 
+    // Get inviter user to check for self-invite prevention
+    const inviterUser = await this.userDAO.getUserById(inviterUserId);
+    if (!inviterUser) {
+      throw new UnauthorizedError({ message: t('auth.errors.userNotFound') });
+    }
+
+    // Prevent self-inviting
+    if (inviterUser.email.toLowerCase() === invitationData.inviteeEmail.toLowerCase()) {
+      throw new BadRequestError({
+        message: t('invitation.errors.cannotInviteYourself'),
+      });
+    }
+
     const existingInvitation = await this.invitationDAO.findPendingInvitation(
       invitationData.inviteeEmail,
       client.id
@@ -154,6 +167,98 @@ export class InvitationService {
         ? t('invitation.success.draftCreated', { email: invitationData.inviteeEmail })
         : t('invitation.success.sent', { email: invitationData.inviteeEmail }),
     };
+  }
+
+  async updateInvitation(
+    context: IRequestContext,
+    invitationData: IInvitationData,
+    currentuser: ICurrentUser
+  ): Promise<ISuccessReturnData<ISendInvitationResult>> {
+    const { cuid, iuid } = context.request.params;
+    const updaterUserId = currentuser.sub;
+    if (!cuid || !iuid) {
+      throw new BadRequestError({ message: t('invitation.errors.missingParams') });
+    }
+
+    try {
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      // Get the existing invitation
+      const existingInvitation = await this.invitationDAO.findByIuid(iuid, client.id);
+      if (!existingInvitation) {
+        throw new NotFoundError({ message: t('invitation.errors.notFound') });
+      }
+
+      // Only allow updating draft invitations
+      if (existingInvitation.status !== 'draft') {
+        throw new BadRequestError({
+          message: t('invitation.errors.canOnlyEditDraft'),
+        });
+      }
+
+      // Get updater user to check for self-invite prevention
+      const updaterUser = await this.userDAO.getUserById(updaterUserId);
+      if (!updaterUser) {
+        throw new UnauthorizedError({ message: t('auth.errors.userNotFound') });
+      }
+
+      // Prevent self-inviting (if email is being changed)
+      if (updaterUser.email.toLowerCase() === invitationData.inviteeEmail.toLowerCase()) {
+        throw new BadRequestError({
+          message: t('invitation.errors.cannotInviteYourself'),
+        });
+      }
+
+      // If email is being changed, check for conflicts
+      if (existingInvitation.inviteeEmail !== invitationData.inviteeEmail.toLowerCase()) {
+        const conflictingInvitation = await this.invitationDAO.findPendingInvitation(
+          invitationData.inviteeEmail,
+          client.id
+        );
+
+        if (conflictingInvitation && conflictingInvitation.iuid !== iuid) {
+          throw new ConflictError({
+            message: t('invitation.errors.pendingInvitationExists'),
+          });
+        }
+
+        const existingUser = await this.userDAO.getUserWithClientAccess(
+          invitationData.inviteeEmail,
+          client.cuid
+        );
+
+        if (existingUser) {
+          throw new ConflictError({
+            message: t('invitation.errors.userAlreadyHasAccess'),
+          });
+        }
+      }
+
+      // Update the invitation
+      const updatedInvitation = await this.invitationDAO.updateInvitation(
+        iuid,
+        client.id,
+        invitationData
+      );
+
+      if (!updatedInvitation) {
+        throw new BadRequestError({ message: t('invitation.errors.updateFailed') });
+      }
+
+      this.log.info(`Invitation ${iuid} updated for client ${cuid}`);
+
+      return {
+        success: true,
+        data: { invitation: updatedInvitation, emailData: null },
+        message: t('invitation.success.updated', { email: invitationData.inviteeEmail }),
+      };
+    } catch (error) {
+      this.log.error('Error updating invitation:', error);
+      throw error;
+    }
   }
 
   async acceptInvitation(

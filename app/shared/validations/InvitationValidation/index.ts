@@ -2,8 +2,9 @@ import {
   getInvitationsQuerySchema,
   processPendingQuerySchema,
   acceptInvitationSchema,
-  revokeInvitationSchema,
   resendInvitationSchema,
+  revokeInvitationSchema,
+  updateInvitationSchema,
   invitationTokenSchema,
   sendInvitationSchema,
   invitationCsvSchema,
@@ -11,13 +12,14 @@ import {
 } from './schemas';
 
 export class InvitationValidations {
-  static sendInvitation = sendInvitationSchema;
   static acceptInvitation = acceptInvitationSchema;
-  static revokeInvitation = revokeInvitationSchema;
-  static resendInvitation = resendInvitationSchema;
   static getInvitations = getInvitationsQuerySchema;
-  static invitationToken = invitationTokenSchema;
   static invitationCsv = invitationCsvSchema;
+  static invitationToken = invitationTokenSchema;
   static iuid = iuidSchema;
   static processPending = processPendingQuerySchema;
+  static resendInvitation = resendInvitationSchema;
+  static revokeInvitation = revokeInvitationSchema;
+  static sendInvitation = sendInvitationSchema;
+  static updateInvitation = updateInvitationSchema;
 }

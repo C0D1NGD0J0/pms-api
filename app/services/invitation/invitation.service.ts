@@ -75,8 +75,6 @@ export class InvitationService {
     cuid: string,
     invitationData: IInvitationData
   ): Promise<ISuccessReturnData<ISendInvitationResult>> {
-    // Permission validation is handled by requirePermission middleware at route level
-
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       throw new NotFoundError({ message: t('client.errors.notFound') });
@@ -438,9 +436,7 @@ export class InvitationService {
         throw new NotFoundError({ message: t('invitation.errors.notFound') });
       }
 
-      // Permission validation is handled by requirePermission middleware at route level
-
-      if (invitation.status !== 'pending') {
+      if (!['pending', 'revoked'].includes(invitation.status)) {
         throw new BadRequestError({ message: t('invitation.errors.cannotResend') });
       }
 
@@ -448,7 +444,6 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.expired') });
       }
 
-      // Get client and resender information
       const [client, resender] = await Promise.all([
         this.clientDAO.getClientByCuid(invitation.clientId.toString()),
         this.userDAO.getUserById(resenderUserId, { populate: 'profile' }),
@@ -463,7 +458,7 @@ export class InvitationService {
         emailType: MailType.INVITATION_REMINDER,
         data: {
           inviteeName: invitation.inviteeFullName,
-          resenderName: resender?.profile?.fullname || resender?.email || 'Team Member',
+          resenderName: resender?.profile?.fullname || 'Team Member',
           companyName: client?.displayName || 'Company',
           role: invitation.role,
           invitationUrl: `${envVariables.FRONTEND.URL}/${invitation.clientId}/invitation?token=${invitation.invitationToken}`,
@@ -472,21 +467,36 @@ export class InvitationService {
         },
       };
 
-      // Update reminder count
-      await this.invitationDAO.incrementReminderCount(data.iuid, invitation.clientId.toString());
+      if (invitation.status === 'revoked') {
+        await this.invitationDAO.updateInvitationStatus(
+          invitation._id.toString(),
+          invitation.clientId.toString(),
+          'pending'
+        );
+        this.log.info(`Reactivated revoked invitation ${data.iuid} for ${invitation.inviteeEmail}`);
+      } else {
+        await this.invitationDAO.incrementReminderCount(data.iuid, invitation.clientId.toString());
+      }
 
-      // Queue email with invitation ID for status tracking
       this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
         ...emailData,
         invitationId: invitation._id.toString(),
       } as any);
 
-      this.log.info(`Invitation reminder sent for ${invitation.inviteeEmail}`);
+      const isReactivation = invitation.status === 'revoked';
+      this.log.info(
+        `Invitation ${isReactivation ? 'reactivated and sent' : 'reminder sent'} for ${invitation.inviteeEmail}`
+      );
+
+      const updatedInvitation = await this.invitationDAO.findByIuidUnsecured(data.iuid);
 
       return {
         success: true,
-        data: { invitation, emailData },
-        message: t('invitation.success.resent', { email: invitation.inviteeEmail }),
+        data: { invitation: updatedInvitation || invitation, emailData },
+        message:
+          invitation.status === 'revoked'
+            ? t('invitation.success.reactivated', { email: invitation.inviteeEmail })
+            : t('invitation.success.resent', { email: invitation.inviteeEmail }),
       };
     } catch (error) {
       this.log.error('Error resending invitation:', error);
@@ -498,8 +508,6 @@ export class InvitationService {
     cxt: IRequestContext,
     query: IInvitationListQuery
   ): Promise<ISuccessReturnData<any>> {
-    // Permission validation is handled by requirePermission middleware at route level
-
     const result = await this.invitationDAO.getInvitationsByClient(query);
 
     return {
@@ -514,8 +522,6 @@ export class InvitationService {
     _requestorUserId: string
   ): Promise<ISuccessReturnData<IInvitationStats>> {
     try {
-      // Permission validation is handled by requirePermission middleware at route level
-
       const stats = await this.invitationDAO.getInvitationStats(clientId);
 
       return {
@@ -583,8 +589,6 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
-      // Permission validation is handled by requirePermission middleware at route level
-
       // check file size (10MB limit)
       if (csvFile.fileSize > 10 * 1024 * 1024) {
         throw new BadRequestError({ message: t('invitation.errors.fileTooLarge') });
@@ -627,8 +631,6 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
-      // Permission validation is handled by requirePermission middleware at route level
-
       const jobData = {
         userId,
         csvFilePath,
@@ -659,8 +661,6 @@ export class InvitationService {
     }
   ): Promise<ISuccessReturnData<any>> {
     try {
-      // Permission validation is handled by requirePermission middleware at route level
-
       const query: IInvitationListQuery = {
         cuid,
         status: 'pending',

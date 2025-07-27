@@ -132,6 +132,25 @@ router.patch(
 );
 
 /**
+ * @route PATCH /api/v1/invites/:cuid/update/:iuid
+ * @desc Update invitation details (only draft invitations)
+ * @access Private (Admin/Manager only)
+ */
+router.patch(
+  '/:cuid/update_invite/:iuid',
+  isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.UPDATE),
+  validateRequest({
+    params: InvitationValidations.iuid,
+    body: InvitationValidations.updateInvitation,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<InvitationController>('invitationController');
+    return controller.updateInvitation(req, res);
+  })
+);
+
+/**
  * @route PATCH /api/v1/invites/:iuid/resend
  * @desc Resend an invitation reminder
  * @access Private (Admin/Manager only)

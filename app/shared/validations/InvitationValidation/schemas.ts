@@ -160,6 +160,8 @@ export const invitationDataSchema = z.object({
 
 export const sendInvitationSchema = invitationDataSchema;
 
+export const updateInvitationSchema = invitationDataSchema;
+
 export const acceptInvitationSchema = z.object({
   password: z
     .string()

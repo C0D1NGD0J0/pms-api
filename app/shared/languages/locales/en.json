@@ -32,7 +32,8 @@
       "permissionCheckFailed": "Permission check failed",
       "connectionCheckFailed": "Connection check failed",
       "adminRequired": "Admin privileges required",
-      "authorizationFailed": "Authorization failed"
+      "authorizationFailed": "Authorization failed",
+      "clientAccessDenied": "Access denied. You do not have permission to access this client account"
     },
     "success": {
       "tokenRefreshed": "Token refreshed successfully",
@@ -97,10 +98,15 @@
       "rolesRetrieved": "User roles retrieved successfully",
       "userDisconnected": "User disconnected successfully",
       "userReconnected": "User reconnected successfully",
-      "usersRetrieved": "Client users retrieved successfully"
+      "usersRetrieved": "Client users retrieved successfully",
+      "retrieved": "Client details retrieved successfully"
     }
   },
   "property": {
+    "logging": {
+      "cleaningUp": "Cleaning up property resources and event listeners",
+      "eventListenersRemoved": "Property event listeners removed successfully"
+    },
     "errors": {
       "noCsvFileUploaded": "No CSV file uploaded",
       "invalidFormType": "Invalid form type: {{formType}}",
@@ -171,7 +177,9 @@
       "unitUpdated": "Unit updated successfully",
       "unitCreationQueued": "Unit creation job queued successfully",
       "unitsCreated": "{{created}} units created successfully, {{failed}} failed",
-      "allUnitsCreated": "All {{count}} units created successfully"
+      "allUnitsCreated": "All {{count}} units created successfully",
+      "csvValidated": "Property units CSV file validated successfully",
+      "csvImported": "Property units imported successfully from CSV file"
     }
   },
   "validation": {
@@ -379,6 +387,10 @@
       "greeting": "Hello {{fullname}},",
       "message": "Your password has successfully been updated.for your account.",
       "warningText": "If you didn't initiate this equest please contact customer care urgently."
+    },
+    "invitation": {
+      "subject": "You've been invited to join {{companyName}}",
+      "reminderSubject": "Reminder: You've been invited to join {{companyName}}"
     }
   },
   "system": {
@@ -416,6 +428,18 @@
   },
   "invitation": {
     "success": {
+      "sent": "Invitation sent to {{email}}",
+      "resent": "Invitation reminder sent to {{email}}",
+      "reactivated": "Invitation reactivated and sent to {{email}}",
+      "revoked": "Invitation revoked successfully",
+      "accepted": "Invitation accepted successfully",
+      "retrieved": "Invitation retrieved successfully",
+      "listed": "Invitations listed successfully",
+      "updated": "Invitation updated for {{email}}",
+      "draftCreated": "Draft invitation created for {{email}}",
+      "tokenValid": "Invitation token is valid",
+      "statsRetrieved": "Invitation statistics retrieved successfully",
+      "expired": "{{count}} invitations expired",
       "csvImportStarted": "CSV import started successfully",
       "csvValidationStarted": "CSV validation started",
       "dryRunCompleted": "Dry run completed",
@@ -427,12 +451,9 @@
     "errors": {
       "notFound": "Invitation not found",
       "cannotResend": "Cannot resend this invitation",
-      "expired": "Invitation has expired"
-    }
-  },
-  "email": {
-    "invitation": {
-      "subject": "You've been invited to join {{companyName}}"
+      "expired": "Invitation has expired",
+      "noCsvFileUploaded": "No CSV file uploaded. Please select a file to continue.",
+      "pendingInvitationExists": "An active invitation already exists for this email address"
     }
   }
 }

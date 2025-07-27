@@ -100,7 +100,7 @@ export interface ISendInvitationResult {
     to: string;
     subject: string;
     data: any;
-  };
+  } | null;
   invitation: IInvitationDocument;
 }
 

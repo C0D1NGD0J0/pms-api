@@ -40,7 +40,7 @@ export interface ICurrentUser {
     lang?: string;
     timezone?: string;
   };
-  client: { csub: string; displayname: string; role: IUserRoleType };
+  client: { cuid: string; displayname: string; role: IUserRoleType };
   clients: IClientUserConnections[];
   fullname: string | null;
   permissions: string[];

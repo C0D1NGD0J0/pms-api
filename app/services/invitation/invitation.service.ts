@@ -75,88 +75,186 @@ export class InvitationService {
     cuid: string,
     invitationData: IInvitationData
   ): Promise<ISuccessReturnData<ISendInvitationResult>> {
-    try {
-      await this.validateInviterPermissions(inviterUserId, cuid);
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      throw new NotFoundError({ message: t('client.errors.notFound') });
+    }
 
-      const client = await this.clientDAO.getClientBycuid(cuid);
+    // Get inviter user to check for self-invite prevention
+    const inviterUser = await this.userDAO.getUserById(inviterUserId);
+    if (!inviterUser) {
+      throw new UnauthorizedError({ message: t('auth.errors.userNotFound') });
+    }
+
+    // Prevent self-inviting
+    if (inviterUser.email.toLowerCase() === invitationData.inviteeEmail.toLowerCase()) {
+      throw new BadRequestError({
+        message: t('invitation.errors.cannotInviteYourself'),
+      });
+    }
+
+    const existingInvitation = await this.invitationDAO.findPendingInvitation(
+      invitationData.inviteeEmail,
+      client.id
+    );
+
+    if (existingInvitation) {
+      throw new ConflictError({
+        message: t('invitation.errors.pendingInvitationExists'),
+      });
+    }
+
+    const existingUser = await this.userDAO.getUserWithClientAccess(
+      invitationData.inviteeEmail,
+      client.cuid
+    );
+
+    if (existingUser) {
+      throw new ConflictError({
+        message: t('invitation.errors.userAlreadyHasAccess'),
+      });
+    }
+
+    const invitation = await this.invitationDAO.createInvitation(
+      invitationData,
+      inviterUserId,
+      client.id
+    );
+
+    const isDraft = invitationData.status === 'draft';
+    let emailData: any = null;
+
+    if (!isDraft) {
+      const inviter = await this.userDAO.getUserById(inviterUserId, {
+        populate: 'profile',
+      });
+
+      emailData = {
+        to: invitationData.inviteeEmail,
+        subject: t('email.invitation.subject', {
+          companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
+        }),
+        emailType: MailType.INVITATION,
+        data: {
+          inviteeName: `${invitationData.personalInfo.firstName} ${invitationData.personalInfo.lastName}`,
+          inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
+          companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
+          role: invitationData.role,
+          invitationUrl: `${envVariables.FRONTEND.URL}/${cuid}/invitation?token=${invitation.invitationToken}`,
+          expiresAt: invitation.expiresAt,
+          customMessage: invitationData.metadata?.inviteMessage,
+        },
+      };
+
+      this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
+        ...emailData,
+        invitationId: invitation._id.toString(),
+      } as any);
+
+      this.log.info(`Invitation sent to ${invitationData.inviteeEmail} for client ${cuid}`);
+    } else {
+      this.log.info(
+        `Draft invitation created for ${invitationData.inviteeEmail} for client ${cuid}`
+      );
+    }
+
+    return {
+      success: true,
+      data: { invitation, emailData },
+      message: isDraft
+        ? t('invitation.success.draftCreated', { email: invitationData.inviteeEmail })
+        : t('invitation.success.sent', { email: invitationData.inviteeEmail }),
+    };
+  }
+
+  async updateInvitation(
+    context: IRequestContext,
+    invitationData: IInvitationData,
+    currentuser: ICurrentUser
+  ): Promise<ISuccessReturnData<ISendInvitationResult>> {
+    const { cuid, iuid } = context.request.params;
+    const updaterUserId = currentuser.sub;
+    if (!cuid || !iuid) {
+      throw new BadRequestError({ message: t('invitation.errors.missingParams') });
+    }
+
+    try {
+      const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
-      const existingInvitation = await this.invitationDAO.findPendingInvitation(
-        invitationData.inviteeEmail,
-        client.id
-      );
+      // Get the existing invitation
+      const existingInvitation = await this.invitationDAO.findByIuid(iuid, client.id);
+      if (!existingInvitation) {
+        throw new NotFoundError({ message: t('invitation.errors.notFound') });
+      }
 
-      if (existingInvitation) {
-        throw new ConflictError({
-          message: t('invitation.errors.pendingInvitationExists'),
+      // Only allow updating draft invitations
+      if (existingInvitation.status !== 'draft') {
+        throw new BadRequestError({
+          message: t('invitation.errors.canOnlyEditDraft'),
         });
       }
 
-      const existingUser = await this.userDAO.getUserWithClientAccess(
-        invitationData.inviteeEmail,
-        client.cuid
-      );
+      // Get updater user to check for self-invite prevention
+      const updaterUser = await this.userDAO.getUserById(updaterUserId);
+      if (!updaterUser) {
+        throw new UnauthorizedError({ message: t('auth.errors.userNotFound') });
+      }
 
-      if (existingUser) {
-        throw new ConflictError({
-          message: t('invitation.errors.userAlreadyHasAccess'),
+      // Prevent self-inviting (if email is being changed)
+      if (updaterUser.email.toLowerCase() === invitationData.inviteeEmail.toLowerCase()) {
+        throw new BadRequestError({
+          message: t('invitation.errors.cannotInviteYourself'),
         });
       }
 
-      const invitation = await this.invitationDAO.createInvitation(
-        invitationData,
-        inviterUserId,
-        client.id
-      );
-
-      const isDraft = invitationData.status === 'draft';
-      let emailData: any = null;
-
-      if (!isDraft) {
-        const inviter = await this.userDAO.getUserById(inviterUserId, {
-          populate: 'profile',
-        });
-
-        emailData = {
-          to: invitationData.inviteeEmail,
-          subject: t('email.invitation.subject', {
-            companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
-          }),
-          emailType: MailType.INVITATION,
-          data: {
-            inviteeName: `${invitationData.personalInfo.firstName} ${invitationData.personalInfo.lastName}`,
-            inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
-            companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
-            role: invitationData.role,
-            invitationUrl: `${envVariables.FRONTEND.URL}/${cuid}/invitation?token=${invitation.invitationToken}`,
-            expiresAt: invitation.expiresAt,
-            customMessage: invitationData.metadata?.inviteMessage,
-          },
-        };
-
-        this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
-          ...emailData,
-          invitationId: invitation._id.toString(),
-        } as any);
-
-        this.log.info(`Invitation sent to ${invitationData.inviteeEmail} for client ${cuid}`);
-      } else {
-        this.log.info(
-          `Draft invitation created for ${invitationData.inviteeEmail} for client ${cuid}`
+      // If email is being changed, check for conflicts
+      if (existingInvitation.inviteeEmail !== invitationData.inviteeEmail.toLowerCase()) {
+        const conflictingInvitation = await this.invitationDAO.findPendingInvitation(
+          invitationData.inviteeEmail,
+          client.id
         );
+
+        if (conflictingInvitation && conflictingInvitation.iuid !== iuid) {
+          throw new ConflictError({
+            message: t('invitation.errors.pendingInvitationExists'),
+          });
+        }
+
+        const existingUser = await this.userDAO.getUserWithClientAccess(
+          invitationData.inviteeEmail,
+          client.cuid
+        );
+
+        if (existingUser) {
+          throw new ConflictError({
+            message: t('invitation.errors.userAlreadyHasAccess'),
+          });
+        }
       }
+
+      // Update the invitation
+      const updatedInvitation = await this.invitationDAO.updateInvitation(
+        iuid,
+        client.id,
+        invitationData
+      );
+
+      if (!updatedInvitation) {
+        throw new BadRequestError({ message: t('invitation.errors.updateFailed') });
+      }
+
+      this.log.info(`Invitation ${iuid} updated for client ${cuid}`);
 
       return {
         success: true,
-        data: { invitation, emailData },
-        message: isDraft
-          ? t('invitation.success.draftCreated', { email: invitationData.inviteeEmail })
-          : t('invitation.success.sent', { email: invitationData.inviteeEmail }),
+        data: { invitation: updatedInvitation, emailData: null },
+        message: t('invitation.success.updated', { email: invitationData.inviteeEmail }),
       };
     } catch (error) {
-      this.log.error('Error processing invitation:', error);
+      this.log.error('Error updating invitation:', error);
       throw error;
     }
   }
@@ -273,7 +371,7 @@ export class InvitationService {
       }
 
       // Get client information
-      const client = await this.clientDAO.getClientBycuid(invitation.clientId.toString());
+      const client = await this.clientDAO.getClientByCuid(invitation.clientId.toString());
 
       if (!client) {
         throw new NotFoundError({ message: t('client.errors.notFound') });
@@ -305,37 +403,27 @@ export class InvitationService {
     revokerUserId: string,
     reason?: string
   ): Promise<ISuccessReturnData<IInvitationDocument>> {
-    try {
-      const invitation = await this.invitationDAO.findByIuidUnsecured(iuid);
-      if (!invitation) {
-        throw new NotFoundError({ message: t('invitation.errors.notFound') });
-      }
-
-      // Validate revoker has permission
-      await this.validateInviterPermissions(revokerUserId, invitation.clientId.toString());
-
-      if (!['pending', 'draft', 'sent'].includes(invitation.status)) {
-        throw new BadRequestError({ message: t('invitation.errors.cannotRevoke') });
-      }
-
-      const revokedInvitation = await this.invitationDAO.revokeInvitation(
-        iuid,
-        invitation.clientId.toString(),
-        revokerUserId,
-        reason
-      );
-
-      this.log.info(`Invitation ${iuid} revoked by ${revokerUserId}`);
-
-      return {
-        success: true,
-        data: revokedInvitation!,
-        message: t('invitation.success.revoked'),
-      };
-    } catch (error) {
-      this.log.error('Error revoking invitation:', error);
-      throw error;
+    const invitation = await this.invitationDAO.findByIuidUnsecured(iuid);
+    if (!invitation) {
+      throw new NotFoundError({ message: t('invitation.errors.notFound') });
     }
+
+    if (!['pending', 'draft', 'sent'].includes(invitation.status)) {
+      throw new BadRequestError({ message: t('invitation.errors.cannotRevoke') });
+    }
+
+    const revokedInvitation = await this.invitationDAO.revokeInvitation(
+      iuid,
+      invitation.clientId.toString(),
+      revokerUserId,
+      reason
+    );
+
+    return {
+      success: true,
+      data: revokedInvitation!,
+      message: t('invitation.success.revoked'),
+    };
   }
 
   async resendInvitation(
@@ -348,9 +436,7 @@ export class InvitationService {
         throw new NotFoundError({ message: t('invitation.errors.notFound') });
       }
 
-      await this.validateInviterPermissions(resenderUserId, invitation.clientId.toString());
-
-      if (invitation.status !== 'pending') {
+      if (!['pending', 'revoked'].includes(invitation.status)) {
         throw new BadRequestError({ message: t('invitation.errors.cannotResend') });
       }
 
@@ -358,9 +444,8 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.expired') });
       }
 
-      // Get client and resender information
       const [client, resender] = await Promise.all([
-        this.clientDAO.getClientBycuid(invitation.clientId.toString()),
+        this.clientDAO.getClientByCuid(invitation.clientId.toString()),
         this.userDAO.getUserById(resenderUserId, { populate: 'profile' }),
       ]);
 
@@ -373,7 +458,7 @@ export class InvitationService {
         emailType: MailType.INVITATION_REMINDER,
         data: {
           inviteeName: invitation.inviteeFullName,
-          resenderName: resender?.profile?.fullname || resender?.email || 'Team Member',
+          resenderName: resender?.profile?.fullname || 'Team Member',
           companyName: client?.displayName || 'Company',
           role: invitation.role,
           invitationUrl: `${envVariables.FRONTEND.URL}/${invitation.clientId}/invitation?token=${invitation.invitationToken}`,
@@ -382,21 +467,36 @@ export class InvitationService {
         },
       };
 
-      // Update reminder count
-      await this.invitationDAO.incrementReminderCount(data.iuid, invitation.clientId.toString());
+      if (invitation.status === 'revoked') {
+        await this.invitationDAO.updateInvitationStatus(
+          invitation._id.toString(),
+          invitation.clientId.toString(),
+          'pending'
+        );
+        this.log.info(`Reactivated revoked invitation ${data.iuid} for ${invitation.inviteeEmail}`);
+      } else {
+        await this.invitationDAO.incrementReminderCount(data.iuid, invitation.clientId.toString());
+      }
 
-      // Queue email with invitation ID for status tracking
       this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
         ...emailData,
         invitationId: invitation._id.toString(),
       } as any);
 
-      this.log.info(`Invitation reminder sent for ${invitation.inviteeEmail}`);
+      const isReactivation = invitation.status === 'revoked';
+      this.log.info(
+        `Invitation ${isReactivation ? 'reactivated and sent' : 'reminder sent'} for ${invitation.inviteeEmail}`
+      );
+
+      const updatedInvitation = await this.invitationDAO.findByIuidUnsecured(data.iuid);
 
       return {
         success: true,
-        data: { invitation, emailData },
-        message: t('invitation.success.resent', { email: invitation.inviteeEmail }),
+        data: { invitation: updatedInvitation || invitation, emailData },
+        message:
+          invitation.status === 'revoked'
+            ? t('invitation.success.reactivated', { email: invitation.inviteeEmail })
+            : t('invitation.success.resent', { email: invitation.inviteeEmail }),
       };
     } catch (error) {
       this.log.error('Error resending invitation:', error);
@@ -405,32 +505,23 @@ export class InvitationService {
   }
 
   async getInvitations(
-    query: IInvitationListQuery,
-    requestorUserId: string
+    cxt: IRequestContext,
+    query: IInvitationListQuery
   ): Promise<ISuccessReturnData<any>> {
-    try {
-      await this.validateInviterPermissions(requestorUserId, query.clientId);
+    const result = await this.invitationDAO.getInvitationsByClient(query);
 
-      const result = await this.invitationDAO.getInvitationsByClient(query);
-
-      return {
-        success: true,
-        data: result,
-        message: t('invitation.success.listed'),
-      };
-    } catch (error) {
-      this.log.error('Error getting invitations:', error);
-      throw error;
-    }
+    return {
+      success: true,
+      data: result,
+      message: t('invitation.success.listed'),
+    };
   }
 
   async getInvitationStats(
     clientId: string,
-    requestorUserId: string
+    _requestorUserId: string
   ): Promise<ISuccessReturnData<IInvitationStats>> {
     try {
-      await this.validateInviterPermissions(requestorUserId, clientId);
-
       const stats = await this.invitationDAO.getInvitationStats(clientId);
 
       return {
@@ -492,14 +583,11 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.noCsvFileUploaded') });
       }
 
-      const client = await this.clientDAO.getClientBycuid(cuid);
+      const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         this.log.error(`Client with cuid ${cuid} not found`);
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
-
-      // Validate user has permission to invite users for this client
-      await this.validateInviterPermissions(currentUser.sub, cuid);
 
       // check file size (10MB limit)
       if (csvFile.fileSize > 10 * 1024 * 1024) {
@@ -537,13 +625,11 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.noCsvFileUploaded') });
       }
 
-      const client = await this.clientDAO.getClientBycuid(cuid);
+      const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         this.log.error(`Client with cuid ${cuid} not found`);
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
-
-      await this.validateInviterPermissions(userId, cuid);
 
       const jobData = {
         userId,
@@ -565,7 +651,7 @@ export class InvitationService {
   }
 
   async processPendingInvitations(
-    clientId: string,
+    cuid: string,
     processorUserId: string,
     filters: {
       timeline?: string;
@@ -575,10 +661,8 @@ export class InvitationService {
     }
   ): Promise<ISuccessReturnData<any>> {
     try {
-      await this.validateInviterPermissions(processorUserId, clientId);
-
       const query: IInvitationListQuery = {
-        clientId,
+        cuid,
         status: 'pending',
         limit: filters.limit || 50,
       };
@@ -643,7 +727,7 @@ export class InvitationService {
       const errors: Array<{ iuid: string; email: string; error: string }> = [];
 
       this.log.info(
-        `Processing ${invitationsToProcess.length} pending invitations for client ${clientId}`
+        `Processing ${invitationsToProcess.length} pending invitations for client ${cuid}`
       );
 
       for (const invitation of invitationsToProcess) {

@@ -25,7 +25,8 @@
       "invalidAuthTokenLogout": "Auth token no correct.",
       "accessTokenNotFound": "Access token no dey found",
       "refreshTokenNotFound": "Refresh token no dey found",
-      "invalidTokenType": "Token type no correct"
+      "invalidTokenType": "Token type no correct",
+      "clientAccessDenied": "Access denied. You no get permission to access dis client account"
     },
     "success": {
       "tokenRefreshed": "Token don refresh successfully",
@@ -56,10 +57,15 @@
     "success": {
       "profileUpdated": "Client profile don update successfully",
       "detailsUpdated": "Client details don update successfully",
-      "detailsRetrieved": "Client details don retrieve successfully"
+      "detailsRetrieved": "Client details don retrieve successfully",
+      "retrieved": "Client details don retrieve successfully"
     }
   },
   "property": {
+    "logging": {
+      "cleaningUp": "Dey clean property resources and event listeners",
+      "eventListenersRemoved": "Property event listeners don remove successfully"
+    },
     "errors": {
       "noCsvFileUploaded": "No CSV file upload",
       "invalidFormType": "Form type no correct: {{formType}}",
@@ -130,7 +136,9 @@
       "unitUpdated": "Unit don update successfully",
       "unitCreationQueued": "Unit creation job don queue successfully",
       "unitsCreated": "{{created}} units don create successfully, {{failed}} fail",
-      "allUnitsCreated": "All {{count}} units don create successfully"
+      "allUnitsCreated": "All {{count}} units don create successfully",
+      "csvValidated": "Property units CSV file don validate successfully",
+      "csvImported": "Property units don import successfully from CSV file"
     }
   },
   "validation": {
@@ -338,6 +346,40 @@
       "greeting": "Hello {{fullname}},",
       "message": "Your password don successfully update for your account.",
       "warningText": "If you no initiate dis request please contact customer care urgently."
+    },
+    "invitation": {
+      "subject": "Dem don invite you to join {{companyName}}",
+      "reminderSubject": "Reminder: Dem don invite you to join {{companyName}}"
+    }
+  },
+  "invitation": {
+    "success": {
+      "sent": "Invitation don send to {{email}}",
+      "resent": "Invitation reminder don send to {{email}}",
+      "reactivated": "Invitation don reactivate and send to {{email}}",
+      "revoked": "Invitation don revoke successfully",
+      "accepted": "Invitation don accept successfully",
+      "retrieved": "Invitation don retrieve successfully",
+      "listed": "Invitations don list successfully",
+      "updated": "Invitation don update for {{email}}",
+      "draftCreated": "Draft invitation don create for {{email}}",
+      "tokenValid": "Invitation token dey valid",
+      "statsRetrieved": "Invitation statistics don retrieve successfully",
+      "expired": "{{count}} invitations don expire",
+      "csvImportStarted": "CSV import don start successfully",
+      "csvValidationStarted": "CSV validation don start",
+      "dryRunCompleted": "Dry run don complete",
+      "pendingProcessed": "Process {{processed}} of {{total}} pending invitations"
+    },
+    "info": {
+      "noPendingFound": "No pending invitations dey found"
+    },
+    "errors": {
+      "notFound": "Invitation no dey found",
+      "cannotResend": "We no fit resend dis invitation",
+      "expired": "Invitation don expire",
+      "noCsvFileUploaded": "No CSV file upload. Please select file to continue.",
+      "pendingInvitationExists": "Active invitation already dey for dis email address"
     }
   },
   "system": {

@@ -71,8 +71,8 @@ export class App implements IAppSetup {
     if (process.env.NODE_ENV !== 'production') {
       app.use(requestLogger(this.log));
     }
-    app.use(express.json({ limit: '50mb' }));
-    app.use(urlencoded({ extended: true, limit: '50mb' }));
+    app.use(express.json({ limit: '250mb' }));
+    app.use(urlencoded({ extended: true, limit: '250mb' }));
     app.use(cookieParser());
     app.use(compression());
     app.use(scopedMiddleware);
@@ -119,7 +119,6 @@ export class App implements IAppSetup {
     // app.use(`${BASE_PATH}/subscriptions`, routes.subscriptionsRoutes);
     // app.use(`${BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
     app.all('*', (req: Request, res: Response) => {
-      // catch-all for non-existing routes
       res.status(httpStatusCodes.NOT_FOUND).json({ message: 'Invalid endpoint.' });
     });
   }

@@ -20,7 +20,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   /**
    * @inheritdoc
    */
-  async getClientBycuid(cuid: string, opts?: IFindOptions): Promise<IClientDocument | null> {
+  async getClientByCuid(cuid: string, opts?: IFindOptions): Promise<IClientDocument | null> {
     try {
       const query = { cuid };
       return await this.findFirst(query, opts);

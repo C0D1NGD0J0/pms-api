@@ -34,7 +34,7 @@ export class ClientService {
     const start = process.hrtime.bigint();
     const { cuid } = cxt.request.params;
 
-    const client = await this.clientDAO.getClientBycuid(cuid);
+    const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(
         {
@@ -221,7 +221,7 @@ export class ClientService {
     }
 
     const [client, usersResult, propertiesResult] = await Promise.all([
-      this.clientDAO.getClientBycuid(cuid, {
+      this.clientDAO.getClientByCuid(cuid, {
         populate: {
           path: 'accountAdmin',
           select: 'email',
@@ -280,7 +280,7 @@ export class ClientService {
     role: IUserRoleType
   ): Promise<ISuccessReturnData> {
     const currentuser = cxt.currentuser!;
-    const clientId = currentuser.client.csub;
+    const clientId = currentuser.client.cuid;
 
     if (!Object.values(IUserRole).includes(role as IUserRole)) {
       throw new BadRequestError({ message: t('client.errors.invalidRole') });
@@ -334,7 +334,7 @@ export class ClientService {
     role: IUserRoleType
   ): Promise<ISuccessReturnData> {
     const currentuser = cxt.currentuser!;
-    const clientId = currentuser.client.csub;
+    const clientId = currentuser.client.cuid;
 
     // prevent user from removing admin role if last admin
     if (role === 'admin') {
@@ -381,7 +381,7 @@ export class ClientService {
     targetUserId: string
   ): Promise<ISuccessReturnData<{ roles: IUserRoleType[] }>> {
     const currentuser = cxt.currentuser!;
-    const clientId = currentuser.client.csub;
+    const clientId = currentuser.client.cuid;
 
     const user = await this.userDAO.getUserById(targetUserId);
     if (!user) {
@@ -402,7 +402,7 @@ export class ClientService {
 
   async disconnectUser(cxt: IRequestContext, targetUserId: string): Promise<ISuccessReturnData> {
     const currentuser = cxt.currentuser!;
-    const clientId = currentuser.client.csub;
+    const clientId = currentuser.client.cuid;
 
     // Prevent disconnecting last admin
     const user = await this.userDAO.getUserById(targetUserId);
@@ -455,7 +455,7 @@ export class ClientService {
 
   async reconnectUser(cxt: IRequestContext, targetUserId: string): Promise<ISuccessReturnData> {
     const currentuser = cxt.currentuser!;
-    const clientId = currentuser.client.csub;
+    const clientId = currentuser.client.cuid;
 
     await this.userDAO.updateById(
       targetUserId,
@@ -486,7 +486,7 @@ export class ClientService {
 
   async getClientUsers(cxt: IRequestContext): Promise<ISuccessReturnData<{ users: any[] }>> {
     const currentuser = cxt.currentuser!;
-    const clientId = currentuser.client.csub;
+    const clientId = currentuser.client.cuid;
 
     const usersResult = await this.userDAO.getUsersByClientId(
       clientId,

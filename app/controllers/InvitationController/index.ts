@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { t } from '@shared/languages';
+import { UnauthorizedError } from '@shared/customErrors';
 import { httpStatusCodes, setAuthCookies } from '@utils/index';
 import { InvitationService, AuthService } from '@services/index';
 import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
@@ -57,6 +58,23 @@ export class InvitationController {
         expiresAt: result.data.invitation.expiresAt,
       },
     });
+  };
+
+  updateInvitation = async (req: AppRequest, res: Response) => {
+    const { currentuser } = req.context;
+
+    if (!currentuser) {
+      return new UnauthorizedError({
+        message: t('auth.errors.unauthorized'),
+      });
+    }
+
+    const result = await this.invitationService.updateInvitation(
+      req.context,
+      req.body,
+      currentuser
+    );
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   validateInvitation = async (req: AppRequest, res: Response) => {
@@ -194,7 +212,7 @@ export class InvitationController {
   getInvitations = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
     const { cuid } = req.params;
-    const { status, role, page, limit, sortBy, sortOrder } = req.query;
+    const { status, role, page, limit, sort, sortBy } = req.query;
 
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
@@ -204,16 +222,16 @@ export class InvitationController {
     }
 
     const query = {
-      clientId: cuid,
+      cuid,
       status: status as any,
       role: role as any,
       page: page ? parseInt(page as string) : undefined,
       limit: limit ? parseInt(limit as string) : undefined,
       sortBy: sortBy as any,
-      sortOrder: sortOrder as any,
+      sortOrder: sort as any,
     };
 
-    const result = await this.invitationService.getInvitations(query, currentuser.sub);
+    const result = await this.invitationService.getInvitations(req.context, query);
 
     res.status(httpStatusCodes.OK).json({
       success: result.success,

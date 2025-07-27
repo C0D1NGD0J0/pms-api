@@ -83,7 +83,7 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
     // Validate connection status
     if (req.context.currentuser) {
       const activeConnection = req.context.currentuser.clients.find(
-        (c) => c.cuid === req.context.currentuser!.client.csub
+        (c) => c.cuid === req.context.currentuser!.client.cuid
       );
 
       if (!activeConnection || !activeConnection.isConnected) {
@@ -114,8 +114,23 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
 
 export const diskUpload =
   (fieldNames: string[]) => async (req: Request, res: Response, next: NextFunction) => {
+    console.log('🔍 [DEBUG] diskUpload middleware - Expected field names:', fieldNames);
+    console.log(
+      '🔍 [DEBUG] diskUpload middleware - Request content-type:',
+      req.get('content-type')
+    );
+    console.log('🔍 [DEBUG] diskUpload middleware - Request method:', req.method);
+
     const { diskStorage }: { diskStorage: DiskStorage } = req.container.cradle;
-    diskStorage.uploadMiddleware(fieldNames)(req, res, next);
+
+    // Wrap the upload middleware to add logging
+    const uploadMiddleware = diskStorage.uploadMiddleware(fieldNames);
+    uploadMiddleware(req, res, (err: any) => {
+      if (err) {
+        console.error('❌ [ERROR] diskUpload middleware failed:', err);
+      }
+      next(err);
+    });
   };
 
 export const scanFile = async (req: Request, res: Response, next: NextFunction) => {
@@ -124,15 +139,19 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
     clamScanner,
   }: { emitterService: EventEmitterService; clamScanner: ClamScannerService } =
     req.container.cradle;
-  console.log('Scanning files...', clamScanner.isReady());
+
+  console.log('🔍 [DEBUG] ClamScanner ready status:', clamScanner.isReady());
+
   const files = req.files;
   if (!files) {
     return next();
   }
+
   const _files = extractMulterFiles(files, req.context.currentuser?.sub);
   if (!req.context.currentuser) {
     return next(new UnauthorizedError({ message: 'Unauthorized action.' }));
   }
+
   try {
     const foundViruses: { fileName: string; viruses: string[]; createdAt: string }[] = [];
     const validFiles = [];
@@ -149,8 +168,8 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
         validFiles.push(file);
       }
     }
+
     if (foundViruses.length > 0) {
-      console.log('Deleting infected files:', foundViruses);
       emitterService.emit(
         EventTypes.DELETE_LOCAL_ASSET,
         foundViruses.map((file) => file.fileName)
@@ -159,13 +178,11 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
     }
 
     if (validFiles.length) {
-      // this way we work with the files in the upload dir only that as been scanned and not req.files
       req.body.scannedFiles = validFiles;
     }
 
     return next();
   } catch (error) {
-    console.error('Error during virus scan:', error);
     // delete files from disk when an error occurs regardless if its valid or infected file(memory saver)
     if (req.files) {
       const filesToDelete = extractMulterFiles(req.files).map((file) => file.filename);
@@ -256,12 +273,12 @@ export const requestLogger =
         );
       } else if (res.statusCode >= 300) {
         logger.warn(
-          responseObject,
+          // responseObject,
           `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
         );
       } else if (res.statusCode >= 200) {
         logger.trace(
-          responseObject,
+          // responseObject,
           `${req.method} --> ${req.originalUrl} --> ${res.statusCode} --> ${duration}ms`
         );
       } else {
@@ -405,7 +422,7 @@ const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUs
   }
 
   // Check if user's connection to active client is still active
-  const activeConnection = currentuser.clients.find((c) => c.cuid === currentuser.client.csub);
+  const activeConnection = currentuser.clients.find((c) => c.cuid === currentuser.client.cuid);
   if (!activeConnection?.isConnected) {
     next(new UnauthorizedError({ message: t('auth.errors.connectionInactive') }));
     return null;
@@ -429,7 +446,7 @@ export const requirePermission = (
 
       // Check client context for client-specific resources
       const clientId = req.params.clientId || req.params.cuid;
-      if (clientId && currentuser.client.csub !== clientId) {
+      if (clientId && currentuser.client.cuid !== clientId) {
         return next(new ForbiddenError({ message: t('auth.errors.clientAccessDenied') }));
       }
 

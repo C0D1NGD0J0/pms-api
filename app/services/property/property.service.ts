@@ -152,7 +152,7 @@ export class PropertyService implements IDisposable {
 
     const session = await this.propertyDAO.startSession();
     const result = await this.propertyDAO.withTransaction(session, async (session) => {
-      const client = await this.clientDAO.getClientBycuid(cuid);
+      const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         this.log.error(`Client with cuid ${cuid} not found`);
         throw new BadRequestError({ message: t('property.errors.unableToAdd') });
@@ -291,7 +291,7 @@ export class PropertyService implements IDisposable {
     if (!csvFilePath || !cuid) {
       throw new BadRequestError({ message: t('property.errors.noCsvFile') });
     }
-    const client = await this.clientDAO.getClientBycuid(cuid);
+    const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
       throw new BadRequestError({ message: 'Unable to add property to this account.' });
@@ -350,7 +350,7 @@ export class PropertyService implements IDisposable {
       throw new BadRequestError({ message: t('property.errors.noCsvUploaded') });
     }
 
-    const client = await this.clientDAO.getClientBycuid(cuid);
+    const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
       throw new BadRequestError({ message: t('property.errors.unableToValidateCsv') });
@@ -387,7 +387,7 @@ export class PropertyService implements IDisposable {
       throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
     }
 
-    const client = await this.clientDAO.getClientBycuid(cuid);
+    const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
       throw new BadRequestError({ message: 'Unable to get properties for this account.' });
@@ -524,7 +524,7 @@ export class PropertyService implements IDisposable {
       throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
     }
 
-    const client = await this.clientDAO.getClientBycuid(cuid);
+    const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
       throw new BadRequestError({ message: 'Unable to get properties for this account.' });
@@ -564,7 +564,7 @@ export class PropertyService implements IDisposable {
       throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
     }
 
-    const client = await this.clientDAO.getClientBycuid(cuid);
+    const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
       throw new InvalidRequestError({ message: t('property.errors.clientNotFound') });
@@ -695,7 +695,7 @@ export class PropertyService implements IDisposable {
       throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
     }
 
-    const client = await this.clientDAO.getClientBycuid(cuid);
+    const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
       throw new BadRequestError({ message: t('property.errors.unableToArchive') });

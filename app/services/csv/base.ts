@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import fs from 'fs';
 import csvParser from 'csv-parser';
-import { createLogger } from '@utils/helpers';
+import { getRequestDuration, createLogger } from '@utils/helpers';
 import { ICsvProcessorOptions, ICsvProcessingError } from '@interfaces/csv.interface';
 
 export class BaseCSVProcessorService {
@@ -26,7 +26,7 @@ export class BaseCSVProcessorService {
       const completion = this.setupCompletionHandlers(state, options, resolve, reject);
       const stream = this.createCsvStream(filePath, options);
 
-      this.attachStreamHandlers(stream, state, options, completion);
+      this.attachStreamHandlers(stream, state, options, completion, reject);
     });
   }
 
@@ -147,11 +147,25 @@ export class BaseCSVProcessorService {
     stream: any,
     state: any,
     options: ICsvProcessorOptions<T, C>,
-    completion: { checkCompletion: () => void }
+    completion: { checkCompletion: () => void },
+    reject: (reason?: any) => void
   ) {
+    const start = process.hrtime.bigint();
     stream.on('headers', (headers: string[]) => {
       state.headers = headers;
       state.expectedColumnCount = headers.length;
+
+      if (options.validateHeaders) {
+        const validationResult = options.validateHeaders(headers);
+        if (!validationResult.isValid) {
+          stream.destroy();
+          stream.emit(
+            'error',
+            new Error(validationResult.errorMessage || 'Header validation failed')
+          );
+          return;
+        }
+      }
     });
 
     stream.on('data', async (row: any) => {
@@ -164,7 +178,15 @@ export class BaseCSVProcessorService {
     });
 
     stream.on('error', (error: Error) => {
-      this.log.error('Error reading CSV stream:', error);
+      this.log.error(
+        {
+          message: error.message,
+          service: 'CsvProcessorService',
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Error reading CSV stream:'
+      );
+      reject(error);
     });
   }
 
@@ -176,24 +198,35 @@ export class BaseCSVProcessorService {
     completion: { checkCompletion: () => void }
   ) {
     state.pendingOperations++;
+    const currentRowNumber = state.rowNumber;
 
     try {
       stream.pause();
 
       await this.validateRowColumns(row, state);
 
-      if (!(await this.validateRowData(row, state, options, completion))) {
+      const isValid = await this.validateRowData(row, state, options, completion);
+
+      if (!isValid) {
+        // validation failed - row already added to invalidItems, increment and continue
+        state.rowNumber++;
+        stream.resume();
         return;
       }
 
+      // transform using the current row number (before incrementing)
       const transformedRow = await this.transformRow(row, state, options);
-      await this.addToBatch(transformedRow, state, options);
 
+      // increment row number after successful processing
       state.rowNumber++;
+      await this.addToBatch(transformedRow, state, options);
       state.pendingOperations--;
       stream.resume();
       completion.checkCompletion();
     } catch (error: any) {
+      if (state.rowNumber === currentRowNumber) {
+        state.rowNumber++;
+      }
       this.handleRowError(error, state, completion);
       stream.resume();
     }
@@ -225,7 +258,6 @@ export class BaseCSVProcessorService {
     const { isValid, errors } = await options.validateRow(row, options.context, state.rowNumber);
     if (!isValid) {
       state.invalidItems.push({ rowNumber: state.rowNumber, errors });
-      state.rowNumber++;
       state.pendingOperations--;
       completion.checkCompletion();
       return false;

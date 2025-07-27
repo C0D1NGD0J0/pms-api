@@ -59,7 +59,6 @@ const FinancialDetailsSchema = z.object({
     .transform((val) => {
       if (val === null || val === undefined || val === '') return undefined;
       const num = typeof val === 'string' ? parseFloat(val) : val;
-      console.log(num, isNaN(num));
       return isNaN(num) ? 0 : num;
     }),
   purchaseDate: z

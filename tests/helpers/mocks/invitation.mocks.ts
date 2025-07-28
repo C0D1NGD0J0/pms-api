@@ -195,6 +195,7 @@ export const createMockInvitationDAO = () => ({
   }),
   getInvitationsByEmail: jest.fn().mockResolvedValue([createMockInvitation()]),
   getInvitationStats: jest.fn().mockResolvedValue(createMockInvitationStats()),
+  updateInvitation: jest.fn().mockResolvedValue(createMockInvitation()),
   updateInvitationStatus: jest.fn().mockResolvedValue(createMockInvitation()),
   revokeInvitation: jest.fn().mockResolvedValue(createMockInvitation()),
   acceptInvitation: jest.fn().mockResolvedValue(createMockInvitation()),
@@ -226,7 +227,9 @@ export const createMockClientDAO = () => ({
     ),
 
   getClientBycuid: jest.fn().mockResolvedValue(createMockClient()),
+  getClientByCuid: jest.fn().mockResolvedValue(createMockClient()),
   getClientById: jest.fn().mockResolvedValue(createMockClient()),
+  findById: jest.fn().mockResolvedValue(createMockClient()),
 });
 
 /**
@@ -249,6 +252,8 @@ export const createMockUserDAO = () => ({
 
   getUserById: jest.fn().mockResolvedValue(createMockUser()),
   getUserByUId: jest.fn().mockResolvedValue(createMockUser()),
+  getActiveUserByEmail: jest.fn().mockResolvedValue(null),
+  getUserWithClientAccess: jest.fn().mockResolvedValue(null),
 
   createUserFromInvitation: jest.fn().mockResolvedValue(createMockUser()),
   addUserToClient: jest.fn().mockResolvedValue(createMockUser()),
@@ -469,7 +474,7 @@ export const createMockEmailFailedPayload = (
 export const createMockInvitationListQuery = (
   overrides: Partial<IInvitationListQuery> = {}
 ): IInvitationListQuery => ({
-  clientId: faker.string.uuid(),
+  cuid: faker.string.uuid(),
   status: faker.helpers.arrayElement([
     'draft',
     'pending',
@@ -502,7 +507,7 @@ export const createMockExtractedMediaFile = (
   path: faker.system.filePath(),
   url: faker.internet.url(),
   key: faker.string.alphanumeric(32),
-  status: faker.helpers.arrayElement(['pending', 'active', 'inactive', 'deleted']),
+  status: faker.helpers.arrayElement(['pending', 'active', 'inactive', 'deleted']) as any,
   filename: faker.system.fileName(),
   fileSize: faker.number.int({ min: 1000, max: 10 * 1024 * 1024 }),
   uploadedAt: faker.date.recent(),

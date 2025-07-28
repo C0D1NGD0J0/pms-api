@@ -1,17 +1,14 @@
 import { Types } from 'mongoose';
 import { AuthService } from '@services/auth/auth.service';
+import { UnauthorizedError, NotFoundError } from '@shared/customErrors';
 import {
-  UnauthorizedError,
-  NotFoundError,
-} from '@shared/customErrors';
-import { 
   createMockAuthCache,
   createMockAuthTokenService,
   createMockClientDAO,
   createMockCurrentUser,
   createMockEmailQueue,
   createMockProfileDAO,
-  createMockSignupData, 
+  createMockSignupData,
   createMockUser,
   createMockUserDAO,
 } from '@tests/helpers';
@@ -55,7 +52,7 @@ describe('AuthService', () => {
         refreshToken: 'mock-refresh-token',
         userId: new Types.ObjectId().toString(),
       };
-      
+
       mockAuthCache.getRefreshToken.mockResolvedValue({ success: true });
       mockTokenService.verifyJwtToken.mockResolvedValue({
         success: true,
@@ -93,7 +90,7 @@ describe('AuthService', () => {
         password: 'password123',
         rememberMe: false,
       };
-      
+
       const mockUser = createMockUser({
         isActive: true,
         cuids: [
@@ -201,7 +198,7 @@ describe('AuthService', () => {
 
       // Assert
       expect(result.success).toBe(true);
-      expect(result.data.activeAccount.csub).toBe(newCuid);
+      expect(result.data.activeAccount.cuid).toBe(newCuid);
     });
   });
 
@@ -376,7 +373,7 @@ describe('AuthService', () => {
 
       // Assert
       expect(result.success).toBe(true);
-      expect(result.data.activeAccount.csub).toBe(clientId);
+      expect(result.data.activeAccount.cuid).toBe(clientId);
     });
   });
 });

@@ -50,7 +50,7 @@ export const createMockCurrentUser = (overrides: Partial<ICurrentUser> = {}): IC
     timezone: 'UTC',
   },
   client: {
-    csub: faker.string.uuid(),
+    cuid: faker.string.uuid(),
     displayname: faker.company.name(),
     role: 'admin',
   },
@@ -391,7 +391,7 @@ export const createMockInvitation = (overrides: any = {}) => ({
   createdAt: faker.date.recent(),
   updatedAt: faker.date.recent(),
   get inviteeFullName(): string {
-    return `${this.personalInfo.firstName} ${this.personalInfo.lastName}`;
+    return `${this.personalInfo?.firstName} ${this.personalInfo?.lastName}`;
   },
   // Instance methods
   isValid: jest.fn().mockReturnValue(true),

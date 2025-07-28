@@ -83,7 +83,7 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
     // Validate connection status
     if (req.context.currentuser) {
       const activeConnection = req.context.currentuser.clients.find(
-        (c) => c.cuid === req.context.currentuser!.client.cuid
+        (c: any) => c.cuid === req.context.currentuser!.client.cuid
       );
 
       if (!activeConnection || !activeConnection.isConnected) {
@@ -422,7 +422,7 @@ const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUs
   }
 
   // Check if user's connection to active client is still active
-  const activeConnection = currentuser.clients.find((c) => c.cuid === currentuser.client.cuid);
+  const activeConnection = currentuser.clients.find((c: any) => c.cuid === currentuser.client.cuid);
   if (!activeConnection?.isConnected) {
     next(new UnauthorizedError({ message: t('auth.errors.connectionInactive') }));
     return null;

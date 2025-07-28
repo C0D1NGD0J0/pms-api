@@ -277,6 +277,12 @@ export interface AppRequest extends Request {
   rawBody: Buffer;
 }
 
+export type AsyncRequestHandler = (
+  req: AppRequest,
+  res: Response,
+  next: NextFunction
+) => Promise<any>;
+
 export interface IEmailOptions<T> {
   emailType: string;
   subject: string;
@@ -294,8 +300,6 @@ export type CsvProcessReturnData = {
   data: IProperty[];
   errors?: IInvalidCsvProperty[] | null;
 };
-
-export type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
 export type ListResultWithPagination<T> = Promise<{
   items: T;

@@ -80,13 +80,11 @@ export class InvitationService {
       throw new NotFoundError({ message: t('client.errors.notFound') });
     }
 
-    // Get inviter user to check for self-invite prevention
     const inviterUser = await this.userDAO.getUserById(inviterUserId);
     if (!inviterUser) {
       throw new UnauthorizedError({ message: t('auth.errors.userNotFound') });
     }
 
-    // Prevent self-inviting
     if (inviterUser.email.toLowerCase() === invitationData.inviteeEmail.toLowerCase()) {
       throw new BadRequestError({
         message: t('invitation.errors.cannotInviteYourself'),
@@ -136,13 +134,13 @@ export class InvitationService {
         }),
         emailType: MailType.INVITATION,
         data: {
-          inviteeName: `${invitationData.personalInfo.firstName} ${invitationData.personalInfo.lastName}`,
-          inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
-          companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
           role: invitationData.role,
-          invitationUrl: `${envVariables.FRONTEND.URL}/${cuid}/invitation?token=${invitation.invitationToken}`,
           expiresAt: invitation.expiresAt,
           customMessage: invitationData.metadata?.inviteMessage,
+          inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
+          companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
+          inviteeName: `${invitationData.personalInfo.firstName} ${invitationData.personalInfo.lastName}`,
+          invitationUrl: `${envVariables.FRONTEND.URL}/invite/${cuid}/?token=${invitation.invitationToken}`,
         },
       };
 
@@ -184,33 +182,28 @@ export class InvitationService {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
-      // Get the existing invitation
       const existingInvitation = await this.invitationDAO.findByIuid(iuid, client.id);
       if (!existingInvitation) {
         throw new NotFoundError({ message: t('invitation.errors.notFound') });
       }
 
-      // Only allow updating draft invitations
       if (existingInvitation.status !== 'draft') {
         throw new BadRequestError({
           message: t('invitation.errors.canOnlyEditDraft'),
         });
       }
 
-      // Get updater user to check for self-invite prevention
       const updaterUser = await this.userDAO.getUserById(updaterUserId);
       if (!updaterUser) {
         throw new UnauthorizedError({ message: t('auth.errors.userNotFound') });
       }
 
-      // Prevent self-inviting (if email is being changed)
       if (updaterUser.email.toLowerCase() === invitationData.inviteeEmail.toLowerCase()) {
         throw new BadRequestError({
           message: t('invitation.errors.cannotInviteYourself'),
         });
       }
 
-      // If email is being changed, check for conflicts
       if (existingInvitation.inviteeEmail !== invitationData.inviteeEmail.toLowerCase()) {
         const conflictingInvitation = await this.invitationDAO.findPendingInvitation(
           invitationData.inviteeEmail,
@@ -235,7 +228,6 @@ export class InvitationService {
         }
       }
 
-      // Update the invitation
       const updatedInvitation = await this.invitationDAO.updateInvitation(
         iuid,
         client.id,
@@ -263,7 +255,6 @@ export class InvitationService {
     cxt: IRequestContext,
     invitationData: IInvitationAcceptance
   ): Promise<ISuccessReturnData<{ user: any; invitation: IInvitationDocument }>> {
-    // const { token } = cxt.request.params;
     const session = await this.invitationDAO.startSession();
 
     try {
@@ -370,7 +361,6 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.invalidOrExpired') });
       }
 
-      // Get client information
       const client = await this.clientDAO.getClientByCuid(invitation.clientId.toString());
 
       if (!client) {
@@ -449,7 +439,6 @@ export class InvitationService {
         this.userDAO.getUserById(resenderUserId, { populate: 'profile' }),
       ]);
 
-      // Prepare email data
       const emailData = {
         to: invitation.inviteeEmail,
         subject: t('email.invitation.reminderSubject', {
@@ -561,7 +550,6 @@ export class InvitationService {
       throw new ForbiddenError({ message: t('auth.errors.noAccessToClient') });
     }
 
-    // Check if user has admin or manager role for this client
     const hasPermission = clientConnection.roles.some((role) =>
       ['manager', 'admin'].includes(role)
     );
@@ -589,7 +577,6 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
-      // check file size (10MB limit)
       if (csvFile.fileSize > 10 * 1024 * 1024) {
         throw new BadRequestError({ message: t('invitation.errors.fileTooLarge') });
       }
@@ -699,7 +686,6 @@ export class InvitationService {
         );
       }
 
-      // If dry run, return what would be processed
       if (filters.dryRun) {
         return {
           success: true,
@@ -813,7 +799,6 @@ export class InvitationService {
 
       if (invitationId) {
         try {
-          //todo: add additional error tracking here
           this.log.error(`Email failed for invitation ${invitationId}: ${payload.error.message}`);
         } catch (error) {
           this.log.error(`Failed to handle email failure for invitation ${invitationId}:`, error);

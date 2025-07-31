@@ -88,6 +88,35 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   ): Promise<IProfileDocument | null>;
 
   /**
+   * Clears role-specific information for a specific client.
+   *
+   * @param profileId - The ID of the profile to update
+   * @param cuid - The client ID
+   * @param roleType - The type of role information to clear ('employee' or 'vendor')
+   * @returns A promise that resolves to the updated profile or null if profile not found
+   */
+  clearRoleSpecificInfo(
+    profileId: string,
+    cuid: string,
+    roleType: 'employee' | 'vendor'
+  ): Promise<IProfileDocument | null>;
+
+  /**
+   * Updates client-specific employee information.
+   * This information is stored in the clientRoleInfo array.
+   *
+   * @param profileId - The ID of the profile to update
+   * @param cuid - The client ID
+   * @param employeeInfo - Object containing client-specific employee information fields
+   * @returns A promise that resolves to the updated profile or null if profile not found
+   */
+  updateEmployeeInfo(
+    profileId: string,
+    cuid: string,
+    employeeInfo: Record<string, any>
+  ): Promise<IProfileDocument | null>;
+
+  /**
    * Updates locale settings (timezone and language) for a profile.
    *
    * @param profileId - The ID of the profile to update
@@ -97,6 +126,59 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   updateLocaleSettings(
     profileId: string,
     settings: { timeZone?: string; lang?: string }
+  ): Promise<IProfileDocument | null>;
+
+  /**
+   * Updates client-specific vendor information.
+   * This information is stored in the clientRoleInfo array.
+   *
+   * @param profileId - The ID of the profile to update
+   * @param cuid - The client ID
+   * @param vendorInfo - Object containing client-specific vendor information fields
+   * @returns A promise that resolves to the updated profile or null if profile not found
+   */
+  updateVendorInfo(
+    profileId: string,
+    cuid: string,
+    vendorInfo: Record<string, any>
+  ): Promise<IProfileDocument | null>;
+
+  /**
+   * Updates common employee information that applies across all clients.
+   * This information is stored at the profile level.
+   *
+   * @param profileId - The ID of the profile to update
+   * @param employeeInfo - Object containing common employee information fields
+   * @returns A promise that resolves to the updated profile or null if profile not found
+   */
+  updateCommonEmployeeInfo(
+    profileId: string,
+    employeeInfo: Record<string, any>
+  ): Promise<IProfileDocument | null>;
+
+  /**
+   * Gets role-specific information for a profile and client.
+   *
+   * @param profileId - The ID of the profile
+   * @param cuid - The client ID
+   * @returns A promise that resolves to an object containing employeeInfo and/or vendorInfo, or null if not found
+   */
+  getRoleSpecificInfo(
+    profileId: string,
+    cuid: string
+  ): Promise<{ employeeInfo?: any; vendorInfo?: any } | null>;
+
+  /**
+   * Updates common vendor information that applies across all clients.
+   * This information is stored at the profile level.
+   *
+   * @param profileId - The ID of the profile to update
+   * @param vendorInfo - Object containing common vendor information fields
+   * @returns A promise that resolves to the updated profile or null if profile not found
+   */
+  updateCommonVendorInfo(
+    profileId: string,
+    vendorInfo: Record<string, any>
   ): Promise<IProfileDocument | null>;
 
   /**
@@ -139,6 +221,7 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
    * @returns A promise that resolves to the found profile or null if not found
    */
   getProfileByUserId(userId: string | Types.ObjectId): Promise<IProfileDocument | null>;
+
   /**
    * Retrieves the currently authenticated user along with their profile information.
    * Uses MongoDB aggregation to join user data with their profile data and formats it into a CurrentUser object.
@@ -148,4 +231,14 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
    * @returns A promise that resolves to a ICurrentUser object or null if no user is found.
    */
   generateCurrentUserInfo(userId: string): Promise<ICurrentUser | null>;
+
+  /**
+   * Ensures that a client role info entry exists for a profile.
+   * If it doesn't exist, it creates an entry with the provided client ID.
+   *
+   * @param profileId - The ID of the profile to update
+   * @param cuid - The client ID
+   * @returns A promise that resolves when the operation is complete
+   */
+  ensureClientRoleInfo(profileId: string, cuid: string): Promise<void>;
 }

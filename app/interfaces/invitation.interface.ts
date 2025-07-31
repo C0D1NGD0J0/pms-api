@@ -1,14 +1,20 @@
 import { Document, Types } from 'mongoose';
 
-import { IUserRole } from './user.interface';
-import { EmployeeInfo, VendorInfo } from './profile.interface';
+import { IUserDocument, IUserRole } from './user.interface';
+import {
+  ClientEmployeeInfo,
+  ClientVendorInfo,
+  EmployeeInfo,
+  VendorInfo,
+} from './profile.interface';
 
 export interface IInvitation {
   metadata: {
     inviteMessage?: string;
     expectedStartDate?: Date;
-    employeeInfo?: EmployeeInfo;
-    vendorInfo?: VendorInfo;
+    // Support both old and new interfaces for backward compatibility
+    employeeInfo?: EmployeeInfo | ClientEmployeeInfo;
+    vendorInfo?: VendorInfo | ClientVendorInfo;
     remindersSent: number;
     lastReminderSent?: Date;
   };
@@ -32,25 +38,12 @@ export interface IInvitation {
   iuid: string;
 }
 
-export interface IInvitationDocument extends IInvitation, Document {
-  revoke(revokedBy: string, reason?: string): Promise<IInvitationDocument>;
-  accept(acceptedBy: string): Promise<IInvitationDocument>;
-  expire(): Promise<IInvitationDocument>;
-  inviteeFullName: string; // virtual property
-
-  _id: Types.ObjectId;
-  // Instance methods
-  isValid(): boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export interface IInvitationData {
   metadata?: {
     inviteMessage?: string;
     expectedStartDate?: Date;
-    employeeInfo?: EmployeeInfo;
-    vendorInfo?: VendorInfo;
+    employeeInfo?: EmployeeInfo | ClientEmployeeInfo;
+    vendorInfo?: VendorInfo | ClientVendorInfo;
   };
   personalInfo: {
     firstName: string;
@@ -62,6 +55,18 @@ export interface IInvitationData {
   role: IUserRole;
 }
 
+export interface IInvitationDocument extends IInvitation, Document {
+  revoke(revokedBy: string, reason?: string): Promise<IInvitationDocument>;
+  accept(acceptedBy: string): Promise<IInvitationDocument>;
+  expire(): Promise<IInvitationDocument>;
+  inviteeFullName: string; // virtual property
+
+  _id: Types.ObjectId;
+  isValid(): boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface IInvitationListQuery {
   status?: 'draft' | 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent';
   sortBy?: 'createdAt' | 'expiresAt' | 'inviteeEmail';
@@ -71,6 +76,12 @@ export interface IInvitationListQuery {
   page?: number;
   cuid: string;
 }
+
+export type IInvitationDocumentPopulated = {
+  invitedBy: Partial<IUserDocument>;
+  acceptedBy?: Partial<IUserDocument>;
+  revokedBy?: Partial<IUserDocument>;
+} & Omit<IInvitationDocument, 'invitedBy' | 'acceptedBy' | 'revokedBy'>;
 
 export interface IInvitationAcceptance {
   userData: {

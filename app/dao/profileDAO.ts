@@ -407,6 +407,34 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
+  /**
+   * Update common employee information that applies across all clients
+   */
+  async updateCommonEmployeeInfo(
+    profileId: string,
+    employeeInfo: Record<string, any>
+  ): Promise<IProfileDocument | null> {
+    try {
+      if (!employeeInfo || typeof employeeInfo !== 'object') {
+        throw new Error('Employee info must be a valid object');
+      }
+
+      const updateFields: Record<string, any> = {};
+
+      for (const [key, value] of Object.entries(employeeInfo)) {
+        updateFields[`employeeInfo.${key}`] = value;
+      }
+
+      return await this.updateById(profileId, { $set: updateFields });
+    } catch (error) {
+      this.logger.error(`Error updating common employee info for profile ${profileId}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update client-specific employee information
+   */
   async updateEmployeeInfo(
     profileId: string,
     cuid: string,
@@ -438,7 +466,50 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   }
 
   /**
-   * Update vendor-specific information for a profile and client
+   * Update common vendor information that applies across all clients
+   */
+  async updateCommonVendorInfo(
+    profileId: string,
+    vendorInfo: Record<string, any>
+  ): Promise<IProfileDocument | null> {
+    try {
+      if (!vendorInfo || typeof vendorInfo !== 'object') {
+        throw new Error('Vendor info must be a valid object');
+      }
+
+      const updateFields: Record<string, any> = {};
+
+      for (const [key, value] of Object.entries(vendorInfo)) {
+        if (key === 'contactPerson' && typeof value === 'object') {
+          for (const [subKey, subValue] of Object.entries(value)) {
+            updateFields[`vendorInfo.contactPerson.${subKey}`] = subValue;
+          }
+        } else if (key === 'insuranceInfo' && typeof value === 'object') {
+          for (const [subKey, subValue] of Object.entries(value)) {
+            updateFields[`vendorInfo.insuranceInfo.${subKey}`] = subValue;
+          }
+        } else if (key === 'servicesOffered' && typeof value === 'object') {
+          for (const [subKey, subValue] of Object.entries(value)) {
+            updateFields[`vendorInfo.servicesOffered.${subKey}`] = subValue;
+          }
+        } else if (key === 'address' && typeof value === 'object') {
+          for (const [subKey, subValue] of Object.entries(value)) {
+            updateFields[`vendorInfo.address.${subKey}`] = subValue;
+          }
+        } else {
+          updateFields[`vendorInfo.${key}`] = value;
+        }
+      }
+
+      return await this.updateById(profileId, { $set: updateFields });
+    } catch (error) {
+      this.logger.error(`Error updating common vendor info for profile ${profileId}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update client-specific vendor information for a profile and client
    */
   async updateVendorInfo(
     profileId: string,
@@ -457,9 +528,9 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
           for (const [subKey, subValue] of Object.entries(value)) {
             updateFields[`clientRoleInfo.$[client].vendorInfo.contactPerson.${subKey}`] = subValue;
           }
-        } else if (key === 'insuranceInfo' && typeof value === 'object') {
+        } else if (key === 'serviceAreas' && typeof value === 'object') {
           for (const [subKey, subValue] of Object.entries(value)) {
-            updateFields[`clientRoleInfo.$[client].vendorInfo.insuranceInfo.${subKey}`] = subValue;
+            updateFields[`clientRoleInfo.$[client].vendorInfo.serviceAreas.${subKey}`] = subValue;
           }
         } else {
           updateFields[`clientRoleInfo.$[client].vendorInfo.${key}`] = value;

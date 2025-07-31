@@ -6,7 +6,13 @@ import { IUserRoleType } from '@interfaces/user.interface';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
-import { IProfileDocument, EmployeeInfo, VendorInfo } from '@interfaces/profile.interface';
+import {
+  ClientEmployeeInfo,
+  IProfileDocument,
+  ClientVendorInfo,
+  EmployeeInfo,
+  VendorInfo,
+} from '@interfaces/profile.interface';
 
 interface IConstructor {
   profileDAO: ProfileDAO;
@@ -31,7 +37,6 @@ export class ProfileService {
     userRole: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      // Validate input
       const validation = ProfileValidations.updateEmployeeInfo.safeParse(employeeInfo);
       if (!validation.success) {
         throw new BadRequestError({
@@ -39,17 +44,14 @@ export class ProfileService {
         });
       }
 
-      // Check if user has appropriate role
       if (!['manager', 'staff', 'admin'].includes(userRole)) {
         throw new ForbiddenError({
           message: t('auth.errors.insufficientPermissions'),
         });
       }
 
-      // Ensure client role info exists
       await this.profileDAO.ensureClientRoleInfo(profileId, cuid);
 
-      // Update employee info
       const result = await this.profileDAO.updateEmployeeInfo(profileId, cuid, validation.data);
 
       if (!result) {
@@ -81,7 +83,6 @@ export class ProfileService {
     userRole: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      // Validate input
       const validation = ProfileValidations.updateVendorInfo.safeParse(vendorInfo);
       if (!validation.success) {
         throw new BadRequestError({
@@ -89,17 +90,14 @@ export class ProfileService {
         });
       }
 
-      // Check if user has vendor role
       if (userRole !== 'vendor') {
         throw new ForbiddenError({
           message: t('auth.errors.insufficientPermissions'),
         });
       }
 
-      // Ensure client role info exists
       await this.profileDAO.ensureClientRoleInfo(profileId, cuid);
 
-      // Update vendor info
       const result = await this.profileDAO.updateVendorInfo(profileId, cuid, validation.data);
 
       if (!result) {
@@ -122,13 +120,104 @@ export class ProfileService {
   }
 
   /**
+   * Update common employee information that applies across all clients
+   */
+  async updateCommonEmployeeInfo(
+    profileId: string,
+    employeeInfo: any,
+    userRole: IUserRoleType
+  ): Promise<ISuccessReturnData<IProfileDocument>> {
+    try {
+      const validation = ProfileValidations.updateEmployeeInfo.safeParse(employeeInfo);
+      if (!validation.success) {
+        throw new BadRequestError({
+          message: `Validation failed: ${validation.error.issues.map((i) => i.message).join(', ')}`,
+        });
+      }
+
+      if (!['manager', 'staff', 'admin'].includes(userRole)) {
+        throw new ForbiddenError({
+          message: t('auth.errors.insufficientPermissions'),
+        });
+      }
+
+      const result = await this.profileDAO.updateCommonEmployeeInfo(profileId, validation.data);
+
+      if (!result) {
+        throw new NotFoundError({
+          message: t('profile.errors.notFound'),
+        });
+      }
+
+      this.logger.info(`Common employee info updated for profile ${profileId}`);
+
+      return {
+        success: true,
+        data: result,
+        message: t('profile.success.commonEmployeeInfoUpdated'),
+      };
+    } catch (error) {
+      this.logger.error(`Error updating common employee info for profile ${profileId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update common vendor information that applies across all clients
+   */
+  async updateCommonVendorInfo(
+    profileId: string,
+    vendorInfo: any,
+    userRole: IUserRoleType
+  ): Promise<ISuccessReturnData<IProfileDocument>> {
+    try {
+      const validation = ProfileValidations.updateVendorInfo.safeParse(vendorInfo);
+      if (!validation.success) {
+        throw new BadRequestError({
+          message: `Validation failed: ${validation.error.issues.map((i) => i.message).join(', ')}`,
+        });
+      }
+
+      if (userRole !== 'vendor') {
+        throw new ForbiddenError({
+          message: t('auth.errors.insufficientPermissions'),
+        });
+      }
+
+      const result = await this.profileDAO.updateCommonVendorInfo(profileId, validation.data);
+
+      if (!result) {
+        throw new NotFoundError({
+          message: t('profile.errors.notFound'),
+        });
+      }
+
+      this.logger.info(`Common vendor info updated for profile ${profileId}`);
+
+      return {
+        success: true,
+        data: result,
+        message: t('profile.success.commonVendorInfoUpdated'),
+      };
+    } catch (error) {
+      this.logger.error(`Error updating common vendor info for profile ${profileId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Get role-specific information for a profile and client
    */
   async getRoleSpecificInfo(
     profileId: string,
     cuid: string,
     requestingUserRole: IUserRoleType
-  ): Promise<ISuccessReturnData<{ employeeInfo?: EmployeeInfo; vendorInfo?: VendorInfo }>> {
+  ): Promise<
+    ISuccessReturnData<{
+      employeeInfo?: EmployeeInfo | ClientEmployeeInfo;
+      vendorInfo?: VendorInfo | ClientVendorInfo;
+    }>
+  > {
     try {
       const result = await this.profileDAO.getRoleSpecificInfo(profileId, cuid);
 
@@ -138,15 +227,12 @@ export class ProfileService {
         });
       }
 
-      // Filter based on requesting user's role
       const filteredResult: any = {};
 
-      // Staff, admin, manager can see employee info
       if (result.employeeInfo && ['manager', 'staff', 'admin'].includes(requestingUserRole)) {
         filteredResult.employeeInfo = result.employeeInfo;
       }
 
-      // Vendors can see vendor info
       if (result.vendorInfo && requestingUserRole === 'vendor') {
         filteredResult.vendorInfo = result.vendorInfo;
       }
@@ -172,7 +258,6 @@ export class ProfileService {
     requestingUserRole: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      // Check permissions
       if (!['manager', 'admin'].includes(requestingUserRole)) {
         throw new ForbiddenError({
           message: t('auth.errors.insufficientPermissions'),
@@ -209,24 +294,37 @@ export class ProfileService {
     role: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      // Ensure client role info exists
       await this.profileDAO.ensureClientRoleInfo(profileId, cuid);
 
       let result: IProfileDocument | null = null;
 
-      // Initialize role-specific structure based on invitation role
       if (role === 'vendor') {
-        // Initialize empty vendor structure
+        await this.profileDAO.updateCommonVendorInfo(profileId, {});
+        this.logger.info(`Initialized common vendor info for profile ${profileId}`);
+
         result = await this.profileDAO.updateVendorInfo(profileId, cuid, {});
-        this.logger.info(`Initialized vendor info for profile ${profileId}, client ${cuid}`);
+        this.logger.info(
+          `Initialized client-specific vendor info for profile ${profileId}, client ${cuid}`
+        );
       } else if (['manager', 'staff', 'admin'].includes(role)) {
-        // Initialize empty employee structure
+        await this.profileDAO.updateCommonEmployeeInfo(profileId, {});
+        this.logger.info(`Initialized common employee info for profile ${profileId}`);
+
         result = await this.profileDAO.updateEmployeeInfo(profileId, cuid, {});
-        this.logger.info(`Initialized employee info for profile ${profileId}, client ${cuid}`);
+        this.logger.info(
+          `Initialized client-specific employee info for profile ${profileId}, client ${cuid}`
+        );
+      } else {
+        const profile = await this.profileDAO.findById(profileId);
+        if (!profile) {
+          throw new NotFoundError({
+            message: t('profile.errors.notFound'),
+          });
+        }
+        result = profile;
       }
 
       if (!result) {
-        // If no role-specific initialization is needed, just ensure the client entry exists
         const profile = await this.profileDAO.findById(profileId);
         if (!profile) {
           throw new NotFoundError({
@@ -253,11 +351,15 @@ export class ProfileService {
   async updateProfileWithRoleInfo(
     profileId: string,
     cuid: string,
-    profileData: { employeeInfo?: any; vendorInfo?: any },
+    profileData: {
+      employeeInfo?: any;
+      vendorInfo?: any;
+      commonEmployeeInfo?: any;
+      commonVendorInfo?: any;
+    },
     userRole: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      // Validate the combined data
       const validation = ProfileValidations.profileUpdate.safeParse(profileData);
       if (!validation.success) {
         throw new BadRequestError({
@@ -267,7 +369,6 @@ export class ProfileService {
 
       let result: IProfileDocument | null = null;
 
-      // Update employee info if provided
       if (profileData.employeeInfo) {
         const employeeResult = await this.updateEmployeeInfo(
           profileId,
@@ -278,7 +379,6 @@ export class ProfileService {
         result = employeeResult.data;
       }
 
-      // Update vendor info if provided
       if (profileData.vendorInfo) {
         const vendorResult = await this.updateVendorInfo(
           profileId,
@@ -287,6 +387,24 @@ export class ProfileService {
           userRole
         );
         result = vendorResult.data;
+      }
+
+      if (profileData.commonEmployeeInfo) {
+        const commonEmployeeResult = await this.updateCommonEmployeeInfo(
+          profileId,
+          profileData.commonEmployeeInfo,
+          userRole
+        );
+        result = commonEmployeeResult.data;
+      }
+
+      if (profileData.commonVendorInfo) {
+        const commonVendorResult = await this.updateCommonVendorInfo(
+          profileId,
+          profileData.commonVendorInfo,
+          userRole
+        );
+        result = commonVendorResult.data;
       }
 
       if (!result) {

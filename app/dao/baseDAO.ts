@@ -368,7 +368,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    */
   async findById(id: string | Types.ObjectId): Promise<T | null> {
     try {
-      const result = await this.model.findById(id).exec();
+      const result = await this.model.findById(new Types.ObjectId(id)).exec();
       return result;
     } catch (error: unknown) {
       throw this.throwErrorHandler(error);

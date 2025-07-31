@@ -76,7 +76,7 @@ UserSchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',
 });
 
-UserSchema.virtual('fullName').get(function () {
+UserSchema.virtual('fullname').get(function () {
   if (this.profile && this.profile.personalInfo) {
     return `${this.profile.personalInfo.firstName} ${this.profile.personalInfo.lastName}`;
   }

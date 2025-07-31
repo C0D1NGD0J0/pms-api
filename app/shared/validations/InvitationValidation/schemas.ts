@@ -239,7 +239,7 @@ export const getInvitationsQuerySchema = z.object({
 });
 
 export const invitationTokenSchema = z.object({
-  token: z.string().min(10, 'Invalid invitation token').max(255, 'Invalid invitation token'),
+  token: z.string().min(64, 'Invalid invitation token').max(64, 'Invalid invitation token'),
 });
 
 export const iuidSchema = z.object({

@@ -2,23 +2,30 @@ import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { InvitationController } from '@controllers/index';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
-import { requirePermission, isAuthenticated, diskUpload, scanFile } from '@shared/middlewares';
 import {
   InvitationValidations,
   UtilsValidations,
   validateRequest,
 } from '@shared/validations/index';
+import {
+  requirePermission,
+  isAuthenticated,
+  routeLimiter,
+  diskUpload,
+  scanFile,
+} from '@shared/middlewares';
 
 const router = Router();
 
 /**
- * @route GET /api/v1/invites/:token/validate
+ * @route GET /api/v1/invites/:cuid/validate_token?token=token
  * @desc Validate an invitation token (public endpoint)
  * @access Public
  */
 router.get(
-  '/:token/validate',
-  validateRequest({ params: InvitationValidations.invitationToken }),
+  '/:cuid/validate_token',
+  routeLimiter(),
+  validateRequest({ params: UtilsValidations.cuid, query: InvitationValidations.invitationToken }),
   asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.validateInvitation(req, res);
@@ -26,14 +33,15 @@ router.get(
 );
 
 /**
- * @route POST /api/v1/invites/:token/accept
+ * @route POST /api/v1/invites/:cuid/accept
  * @desc Accept an invitation and complete user registration (public endpoint)
  * @access Public
  */
 router.post(
-  '/:token/accept',
+  '/:cuid/accept',
+  routeLimiter(),
   validateRequest({
-    params: InvitationValidations.invitationToken,
+    params: UtilsValidations.cuid,
     body: InvitationValidations.acceptInvitation,
   }),
   asyncWrapper((req: AppRequest, res) => {
@@ -50,6 +58,7 @@ router.post(
 router.post(
   '/:cuid/send_invite',
   isAuthenticated,
+  routeLimiter(),
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   validateRequest({
     params: UtilsValidations.cuid,
@@ -69,6 +78,7 @@ router.post(
 router.get(
   '/clients/:cuid',
   isAuthenticated,
+  routeLimiter(),
   requirePermission(PermissionResource.INVITATION, PermissionAction.LIST),
   validateRequest({
     params: UtilsValidations.cuid,

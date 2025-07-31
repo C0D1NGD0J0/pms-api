@@ -1,0 +1,13 @@
+{
+  "client": {
+    "errors": {
+      "notFound": "client.errors.notFound"
+    }
+  },
+  "invitation": {
+    "errors": {
+      "invalidClient": "invitation.errors.invalidClient",
+      "invalidOrExpired": "invitation.errors.invalidOrExpired"
+    }
+  }
+}

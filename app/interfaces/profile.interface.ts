@@ -1,93 +1,18 @@
 import { Document, Types } from 'mongoose';
 
-import { IdentificationType } from './user.interface';
+import { IdentificationType, IUserRoleType } from './user.interface';
+
+export enum EmployeeDepartment {
+  MAINTENANCE = 'maintenance', // Maintenance and repairs
+  OPERATIONS = 'operations', // Day-to-day property operations
+  ACCOUNTING = 'accounting', // Financial operations and rent collection
+  MANAGEMENT = 'management', // Executive and general management
+}
 
 enum DataRetentionPolicy {
   STANDARD = 'standard',
   EXTENDED = 'extended',
   MINIMAL = 'minimal',
-}
-
-export interface Profile {
-  // Common vendor data (stored once)
-  vendorInfo?: {
-    servicesOffered?: {
-      applianceRepair?: boolean;
-      carpentry?: boolean;
-      cleaning?: boolean;
-      electrical?: boolean;
-      hvac?: boolean;
-      landscaping?: boolean;
-      maintenance?: boolean;
-      other?: boolean;
-      painting?: boolean;
-      pestControl?: boolean;
-      plumbing?: boolean;
-      roofing?: boolean;
-      security?: boolean;
-    };
-    address?: {
-      city?: string;
-      computedLocation: {
-        coordinates: [number, number]; // [longitude, latitude]
-        type: 'Point';
-      };
-      country?: string;
-      fullAddress: string;
-      postCode?: string;
-      state?: string;
-      street?: string;
-      streetNumber?: string;
-      unitNumber?: string;
-    };
-    insuranceInfo?: {
-      coverageAmount?: number;
-      expirationDate?: Date;
-      policyNumber?: string;
-      provider?: string;
-    };
-    registrationNumber?: string;
-    yearsInBusiness?: number;
-    businessType?: string;
-    companyName?: string;
-    taxId?: string;
-  };
-  personalInfo: {
-    avatar?: {
-      filename: string;
-      key: string;
-      url: string;
-    };
-    bio?: string;
-    displayName: string;
-    dob?: Date;
-    firstName: string;
-    headline?: string;
-    lastName: string;
-    location: string;
-    phoneNumber?: string;
-  };
-  settings: {
-    gdprSettings: GDPRSettings;
-    loginType: 'otp' | 'password';
-    notifications: NotificationSettings;
-    theme: 'light' | 'dark';
-  };
-
-  // Common employee data (stored once)
-  employeeInfo?: {
-    department?: string;
-    jobTitle?: string;
-    specializations?: string[];
-  };
-
-  identification?: IdentificationType;
-
-  // Client-specific relationship data
-  clientRoleInfo?: ClientRoleInfo[];
-  user: Types.ObjectId;
-  timeZone: string;
-  lang: string;
 }
 
 export interface VendorInfo {
@@ -147,24 +72,37 @@ export interface VendorInfo {
   taxId?: string;
 }
 
-// Client-specific vendor information (varies by client)
-export interface ClientVendorInfo {
-  serviceAreas?: {
-    baseLocation?: {
-      address: string;
-      coordinates: [number, number]; // [longitude, latitude]
+export interface Profile {
+  personalInfo: {
+    avatar?: {
+      filename: string;
+      key: string;
+      url: string;
     };
-    maxDistance: 10 | 15 | 25 | 50; // km
+    bio?: string;
+    displayName: string;
+    dob?: Date;
+    firstName: string;
+    headline?: string;
+    lastName: string;
+    location: string;
+    phoneNumber?: string;
   };
-  contactPerson?: {
-    department?: string;
-    email?: string;
-    jobTitle: string;
-    name: string;
-    phone?: string;
+  settings: {
+    gdprSettings: GDPRSettings;
+    loginType: 'otp' | 'password';
+    notifications: NotificationSettings;
+    theme: 'light' | 'dark';
   };
-  clientSpecificRates?: any;
-  preferredStatus?: boolean;
+
+  identification?: IdentificationType;
+  clientRoleInfo?: ClientRoleInfo[];
+
+  employeeInfo?: EmployeeInfo;
+  vendorInfo?: VendorInfo;
+  user: Types.ObjectId;
+  timeZone: string;
+  lang: string;
 }
 
 export type IProfileDocument = {
@@ -179,11 +117,14 @@ export type IProfileDocument = {
 } & Document &
   Profile;
 
-export interface ClientRoleInfo {
-  role: 'vendor' | 'employee' | 'manager' | 'admin' | 'tenant' | 'staff' | 'landlord';
-  employeeInfo?: ClientEmployeeInfo;
-  vendorInfo?: ClientVendorInfo;
-  cuid: string;
+export interface EmployeeInfo {
+  department?: EmployeeDepartment;
+  clientSpecificSettings?: any;
+  permissions?: string[];
+  employeeId?: string;
+  reportsTo?: string;
+  jobTitle?: string;
+  startDate?: Date;
 }
 
 export interface GDPRSettings {
@@ -193,27 +134,18 @@ export interface GDPRSettings {
   retentionExpiryDate: Date;
 }
 
-// Keep original interfaces for backward compatibility during migration
-export interface EmployeeInfo {
-  permissions?: string[];
-  department?: string;
-  employeeId?: string;
-  reportsTo?: string;
-  jobTitle?: string;
-  startDate?: Date;
-}
-
-// Client-specific employee information (varies by client)
-export interface ClientEmployeeInfo {
-  clientSpecificSettings?: any;
-  permissions?: string[];
-  employeeId?: string;
-  reportsTo?: string;
-  startDate?: Date;
+export interface ClientRoleInfo {
+  linkedVendorId?: string;
+  isConnected: boolean;
+  role: IUserRoleType;
+  cuid: string;
 }
 
 export interface NotificationSettings {
   announcements: boolean;
   comments: boolean;
   messages: boolean;
+}
+export interface ClientVendorInfo {
+  linkedVendorId?: Types.ObjectId;
 }

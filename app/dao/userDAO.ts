@@ -257,6 +257,40 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   }
 
   /**
+   * Get users with a specific role for a client
+   *
+   * @param cuid - The client CUID
+   * @param role - The role to filter by
+   * @param opts - Additional options for the query
+   * @returns A promise that resolves to an array of user documents with the specified role
+   */
+  async getUsersByClientIdAndRole(
+    cuid: string,
+    role: IUserRoleType,
+    opts?: IFindOptions
+  ): ListResultWithPagination<IUserDocument[]> {
+    try {
+      const query = {
+        'cuids.cuid': cuid,
+        'cuids.roles': role,
+        'cuids.isConnected': true,
+        deletedAt: null,
+        isActive: true,
+      };
+
+      const options = {
+        ...opts,
+        populate: [{ path: 'profile', select: 'personalInfo vendorInfo clientRoleInfo' }],
+      };
+
+      return await this.list(query, options);
+    } catch (error) {
+      this.logger.error(`Error getting users by role ${role} for client ${cuid}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
    * Search for users by name, email, or other criteria.
    *
    * @param query - The search query string.

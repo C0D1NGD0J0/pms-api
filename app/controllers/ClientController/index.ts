@@ -80,4 +80,14 @@ export class ClientController {
 
     res.status(httpStatusCodes.OK).json(result);
   };
+
+  /**
+   * Get users by specific role for a client
+   */
+  getUsersByRole = async (req: AppRequest, res: Response) => {
+    const { role } = req.params;
+    const result = await this.clientService.getUsersByRole(req.context, role as any);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

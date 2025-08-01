@@ -4,15 +4,9 @@ import { createLogger } from '@utils/index';
 import { ProfileDAO } from '@dao/profileDAO';
 import { IUserRoleType } from '@interfaces/user.interface';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
+import { IProfileDocument } from '@interfaces/profile.interface';
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
-import {
-  ClientEmployeeInfo,
-  IProfileDocument,
-  ClientVendorInfo,
-  EmployeeInfo,
-  VendorInfo,
-} from '@interfaces/profile.interface';
 
 interface IConstructor {
   profileDAO: ProfileDAO;
@@ -214,8 +208,12 @@ export class ProfileService {
     requestingUserRole: IUserRoleType
   ): Promise<
     ISuccessReturnData<{
-      employeeInfo?: EmployeeInfo | ClientEmployeeInfo;
-      vendorInfo?: VendorInfo | ClientVendorInfo;
+      role?: string;
+      linkedVendorId?: string;
+      isConnected?: boolean;
+      isPrimaryVendor?: boolean;
+      vendorInfo?: any;
+      employeeInfo?: any;
     }>
   > {
     try {
@@ -227,14 +225,23 @@ export class ProfileService {
         });
       }
 
-      const filteredResult: any = {};
+      const filteredResult: any = {
+        role: result.role,
+        isConnected: result.isConnected,
+        isPrimaryVendor: result.isPrimaryVendor,
+      };
+
+      if (result.linkedVendorId) {
+        filteredResult.linkedVendorId = result.linkedVendorId;
+      }
+
+      // Include relevant info based on role and permissions
+      if (result.vendorInfo && requestingUserRole === 'vendor') {
+        filteredResult.vendorInfo = result.vendorInfo;
+      }
 
       if (result.employeeInfo && ['manager', 'staff', 'admin'].includes(requestingUserRole)) {
         filteredResult.employeeInfo = result.employeeInfo;
-      }
-
-      if (result.vendorInfo && requestingUserRole === 'vendor') {
-        filteredResult.vendorInfo = result.vendorInfo;
       }
 
       return {
@@ -291,29 +298,31 @@ export class ProfileService {
   async initializeRoleInfo(
     profileId: string,
     cuid: string,
-    role: IUserRoleType
+    role: IUserRoleType,
+    linkedVendorId?: string
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      await this.profileDAO.ensureClientRoleInfo(profileId, cuid);
+      await this.profileDAO.ensureClientRoleInfo(profileId, cuid, role);
 
       let result: IProfileDocument | null = null;
 
       if (role === 'vendor') {
-        await this.profileDAO.updateCommonVendorInfo(profileId, {});
-        this.logger.info(`Initialized common vendor info for profile ${profileId}`);
-
-        result = await this.profileDAO.updateVendorInfo(profileId, cuid, {});
-        this.logger.info(
-          `Initialized client-specific vendor info for profile ${profileId}, client ${cuid}`
-        );
+        // Initialize vendor information based on whether it's linked to an existing vendor
+        if (linkedVendorId) {
+          // For linked vendors, only set the linkedVendorId in clientRoleInfo
+          result = await this.profileDAO.updateVendorInfo(profileId, cuid, { linkedVendorId });
+          this.logger.info(
+            `Initialized linked vendor info for profile ${profileId}, client ${cuid}, linked to ${linkedVendorId}`
+          );
+        } else {
+          // For primary vendors, initialize the common vendor info
+          result = await this.profileDAO.updateCommonVendorInfo(profileId, {});
+          this.logger.info(`Initialized vendor info for profile ${profileId} as primary vendor`);
+        }
       } else if (['manager', 'staff', 'admin'].includes(role)) {
-        await this.profileDAO.updateCommonEmployeeInfo(profileId, {});
-        this.logger.info(`Initialized common employee info for profile ${profileId}`);
-
-        result = await this.profileDAO.updateEmployeeInfo(profileId, cuid, {});
-        this.logger.info(
-          `Initialized client-specific employee info for profile ${profileId}, client ${cuid}`
-        );
+        // For employees, initialize the common employee info
+        result = await this.profileDAO.updateCommonEmployeeInfo(profileId, {});
+        this.logger.info(`Initialized employee info for profile ${profileId}`);
       } else {
         const profile = await this.profileDAO.findById(profileId);
         if (!profile) {

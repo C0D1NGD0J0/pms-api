@@ -328,11 +328,51 @@ export class InvitationService {
         return { user, invitation };
       });
 
+      // Initialize role info for the new user
+      // Initialize role info with the proper role and connection status
       await this.profileService.initializeRoleInfo(
         result.user._id.toString(),
         result.invitation.clientId.toString(),
-        result.invitation.role
+        result.invitation.role,
+        true, // isConnected
+        result.invitation.linkedVendorId?.toString() // Pass linkedVendorId if present
       );
+
+      // If this invitation is linked to an existing vendor, just ensure the linking is set up
+      if (result.invitation.linkedVendorId && result.invitation.role === 'vendor') {
+        try {
+          // Get the new user's profile
+          const newUserProfile = await this.profileDAO.getProfileByUserId(result.user._id);
+
+          if (newUserProfile) {
+            // Ensure the linkedVendorId is set in the clientRoleInfo for this client
+            const clientRoleInfo = newUserProfile.clientRoleInfo?.find(
+              (info) => info.cuid === result.invitation.clientId.toString()
+            );
+
+            if (!clientRoleInfo?.linkedVendorId) {
+              // Update the linkedVendorId if not already set
+              await this.profileDAO.updateById(
+                newUserProfile._id.toString(),
+                {
+                  $set: {
+                    'clientRoleInfo.$[elem].linkedVendorId':
+                      result.invitation.linkedVendorId.toString(),
+                  },
+                },
+                { arrayFilters: [{ 'elem.cuid': result.invitation.clientId.toString() }] }
+              );
+            }
+
+            this.log.info(
+              `Vendor link established from primary vendor ${result.invitation.linkedVendorId} to new user ${result.user._id}`
+            );
+          }
+        } catch (error) {
+          // Log error but don't fail the invitation acceptance process
+          this.log.error(`Error establishing vendor link: ${error.message}`, error);
+        }
+      }
 
       this.log.info(
         `Invitation accepted for ${result.invitation.inviteeEmail}, role: ${result.invitation.role}`

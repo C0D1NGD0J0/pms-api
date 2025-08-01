@@ -1,20 +1,14 @@
 import { Document, Types } from 'mongoose';
 
 import { IUserDocument, IUserRole } from './user.interface';
-import {
-  ClientEmployeeInfo,
-  ClientVendorInfo,
-  EmployeeInfo,
-  VendorInfo,
-} from './profile.interface';
+import { EmployeeInfo, VendorInfo } from './profile.interface';
 
 export interface IInvitation {
   metadata: {
     inviteMessage?: string;
     expectedStartDate?: Date;
-    // Support both old and new interfaces for backward compatibility
-    employeeInfo?: EmployeeInfo | ClientEmployeeInfo;
-    vendorInfo?: VendorInfo | ClientVendorInfo;
+    employeeInfo?: EmployeeInfo;
+    vendorInfo?: VendorInfo;
     remindersSent: number;
     lastReminderSent?: Date;
   };
@@ -24,6 +18,7 @@ export interface IInvitation {
     phoneNumber?: string;
   };
   status: 'draft' | 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent';
+  linkedVendorId?: Types.ObjectId;
   acceptedBy?: Types.ObjectId;
   revokedBy?: Types.ObjectId;
   invitedBy: Types.ObjectId;
@@ -42,8 +37,8 @@ export interface IInvitationData {
   metadata?: {
     inviteMessage?: string;
     expectedStartDate?: Date;
-    employeeInfo?: EmployeeInfo | ClientEmployeeInfo;
-    vendorInfo?: VendorInfo | ClientVendorInfo;
+    employeeInfo?: EmployeeInfo;
+    vendorInfo?: VendorInfo;
   };
   personalInfo: {
     firstName: string;
@@ -51,6 +46,7 @@ export interface IInvitationData {
     phoneNumber?: string;
   };
   status: 'draft' | 'pending';
+  linkedVendorId?: string; // ID of an existing vendor user to link this invitation to
   inviteeEmail: string;
   role: IUserRole;
 }
@@ -77,12 +73,6 @@ export interface IInvitationListQuery {
   cuid: string;
 }
 
-export type IInvitationDocumentPopulated = {
-  invitedBy: Partial<IUserDocument>;
-  acceptedBy?: Partial<IUserDocument>;
-  revokedBy?: Partial<IUserDocument>;
-} & Omit<IInvitationDocument, 'invitedBy' | 'acceptedBy' | 'revokedBy'>;
-
 export interface IInvitationAcceptance {
   userData: {
     password: string;
@@ -95,6 +85,12 @@ export interface IInvitationAcceptance {
   invitationToken: string;
   cuid: string;
 }
+
+export type IInvitationDocumentPopulated = {
+  invitedBy: Partial<IUserDocument>;
+  acceptedBy?: Partial<IUserDocument>;
+  revokedBy?: Partial<IUserDocument>;
+} & Omit<IInvitationDocument, 'invitedBy' | 'acceptedBy' | 'revokedBy'>;
 
 export interface IInvitationStats {
   byRole: Record<IUserRole, number>;

@@ -45,23 +45,26 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
       const invitationToken = hashGenerator({ _usenano: true });
       const expiresAt = dayjs().add(1, 'day').toDate();
 
-      const invitation = await this.insert(
-        {
-          ...invitationData,
-          invitedBy: new Types.ObjectId(invitedBy),
-          inviteeEmail: invitationData.inviteeEmail.toLowerCase(),
-          clientId: new Types.ObjectId(clientId),
-          role: invitationData.role,
-          invitationToken,
-          expiresAt,
-          personalInfo: invitationData.personalInfo,
-          metadata: {
-            ...invitationData.metadata,
-            remindersSent: 0,
-          },
+      const invitationToInsert: any = {
+        ...invitationData,
+        invitedBy: new Types.ObjectId(invitedBy),
+        inviteeEmail: invitationData.inviteeEmail.toLowerCase(),
+        clientId: new Types.ObjectId(clientId),
+        role: invitationData.role,
+        invitationToken,
+        expiresAt,
+        personalInfo: invitationData.personalInfo,
+        metadata: {
+          ...invitationData.metadata,
+          remindersSent: 0,
         },
-        session
-      );
+      };
+
+      if (invitationData.linkedVendorId) {
+        invitationToInsert.linkedVendorId = new Types.ObjectId(invitationData.linkedVendorId);
+      }
+
+      const invitation = await this.insert(invitationToInsert, session);
 
       return invitation;
     } catch (error) {
@@ -217,7 +220,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     session?: ClientSession
   ): Promise<IInvitationDocument | null> {
     try {
-      const updateData = {
+      const updateData: any = {
         $set: {
           inviteeEmail: invitationData.inviteeEmail.toLowerCase(),
           role: invitationData.role,
@@ -225,11 +228,18 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
           personalInfo: invitationData.personalInfo,
           metadata: {
             ...invitationData.metadata,
-            remindersSent: 0, // Reset reminder count on update
+            remindersSent: 0,
             lastReminderSent: undefined,
           },
         },
       };
+
+      if (invitationData.linkedVendorId) {
+        updateData.$set.linkedVendorId = new Types.ObjectId(invitationData.linkedVendorId);
+      } else {
+        // If linkedVendorId is explicitly set to null or undefined, remove the field
+        updateData.$unset = { linkedVendorId: 1 };
+      }
 
       return await this.update({ iuid, clientId }, updateData, { session });
     } catch (error) {

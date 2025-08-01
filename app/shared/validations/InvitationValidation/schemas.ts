@@ -112,6 +112,20 @@ export const invitationDataSchema = z.object({
     errorMap: () => ({ message: 'Please provide a valid role' }),
   }),
 
+  linkedVendorId: z
+    .string()
+    .min(24, 'Vendor ID must be a valid MongoDB ObjectId')
+    .max(24, 'Vendor ID must be a valid MongoDB ObjectId')
+    .optional()
+    .refine(
+      (val) => {
+        if (!val) return true;
+        // Check if valid MongoDB ObjectId (24 hex chars)
+        return /^[0-9a-fA-F]{24}$/.test(val);
+      },
+      { message: 'Vendor ID must be a valid MongoDB ObjectId' }
+    ),
+
   personalInfo: z.object({
     firstName: z
       .string()

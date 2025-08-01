@@ -132,6 +132,12 @@ const InvitationSchema = new Schema<IInvitationDocument>(
       trim: true,
       maxlength: 200,
     },
+    linkedVendorId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+      default: null,
+    },
   },
   {
     timestamps: true,

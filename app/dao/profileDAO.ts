@@ -349,30 +349,18 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                       0,
                     ],
                   },
-                  activeClientRoleInfo: {
-                    $arrayElemAt: [
-                      {
-                        $filter: {
-                          input: '$clientRoleInfo',
-                          as: 'roleInfo',
-                          cond: { $eq: ['$$roleInfo.cuid', '$userData.activecuid'] },
-                        },
-                      },
-                      0,
-                    ],
-                  },
                 },
                 in: {
                   cuid: '$$activeClient.cuid',
                   displayname: '$$activeClient.displayName',
                   role: { $arrayElemAt: ['$$activeClient.roles', 0] },
-                  linkedVendorId: '$$activeClientRoleInfo.linkedVendorId',
+                  linkedVendorId: '$$activeClient.linkedVendorId',
                   isPrimaryVendor: {
                     $cond: {
                       if: {
                         $and: [
-                          { $eq: [{ $arrayElemAt: ['$$activeClient.roles', 0] }, 'vendor'] },
-                          { $not: '$$activeClientRoleInfo.linkedVendorId' },
+                          { $in: ['vendor', '$$activeClient.roles'] },
+                          { $not: '$$activeClient.linkedVendorId' },
                         ],
                       },
                       then: true,
@@ -560,8 +548,8 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   }
 
   /**
-   * Update vendor information for a profile and client
-   * Now distinguishes between primary vendor account and linked vendor accounts
+   * Update common vendor information
+   * This only updates the top-level vendorInfo on the profile
    */
   async updateVendorInfo(
     profileId: string,
@@ -573,34 +561,19 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         throw new Error('Vendor info must be a valid object');
       }
 
-      // Get the profile to check if it's a primary or linked vendor
+      if ('linkedVendorId' in vendorInfo) {
+        this.logger.info(
+          `LinkedVendorId should be set at service layer, not in ProfileDAO: ${profileId}`
+        );
+        delete vendorInfo.linkedVendorId;
+      }
+
       const profile = await this.findById(profileId);
       if (!profile) {
         throw new Error('Profile not found');
       }
 
-      const clientRole = profile.clientRoleInfo?.find((info) => info.cuid === cuid);
-      const isPrimaryVendor = !clientRole?.linkedVendorId;
-
-      // Special case for linkedVendorId which remains at the top level of clientRoleInfo
-      if (vendorInfo.linkedVendorId) {
-        // Only update the linkedVendorId in clientRoleInfo
-        return await this.updateById(
-          profileId,
-          { $set: { 'clientRoleInfo.$[client].linkedVendorId': vendorInfo.linkedVendorId } },
-          { arrayFilters: [{ 'client.cuid': cuid }] }
-        );
-      }
-
-      // For primary vendors, we update the top-level vendorInfo
-      if (isPrimaryVendor) {
-        return await this.updateCommonVendorInfo(profileId, vendorInfo);
-      } else {
-        // For linked vendors, we don't update the vendorInfo
-        // Instead, return the profile without changes
-        this.logger.info(`Linked vendor account (${profileId}) cannot update vendor info directly`);
-        return profile;
-      }
+      return await this.updateCommonVendorInfo(profileId, vendorInfo);
     } catch (error) {
       this.logger.error(
         `Error updating vendor info for profile ${profileId}, client ${cuid}:`,
@@ -610,18 +583,21 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
+  /**
+   * Clear role-specific information
+   * This is now just a placeholder since role info is managed in UserDAO
+   */
   async clearRoleSpecificInfo(
     profileId: string,
     cuid: string,
     roleType: 'employee' | 'vendor'
   ): Promise<IProfileDocument | null> {
     try {
-      // Since clientSettings is removed, we only remove linkedVendorId if it exists
-      return await this.updateById(
-        profileId,
-        { $unset: { 'clientRoleInfo.$[client].linkedVendorId': '' } },
-        { arrayFilters: [{ 'client.cuid': cuid }] }
-      );
+      const profile = await this.findById(profileId);
+      if (!profile) {
+        throw new Error('Profile not found');
+      }
+      return profile;
     } catch (error) {
       this.logger.error(
         `Error clearing ${roleType} info for profile ${profileId}, client ${cuid}:`,
@@ -632,18 +608,13 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   }
 
   /**
-   * Get role-specific information for a profile and client
+   * Get profile information only, without role data
+   * Role data should be fetched and combined at the service layer
    */
-  async getRoleSpecificInfo(
-    profileId: string,
-    cuid: string
-  ): Promise<{
-    role?: string;
-    linkedVendorId?: string;
-    isConnected?: boolean;
-    isPrimaryVendor?: boolean;
+  async getProfileInfo(profileId: string): Promise<{
     vendorInfo?: any;
     employeeInfo?: any;
+    userId?: string;
   } | null> {
     try {
       const profile = await this.findById(profileId);
@@ -652,73 +623,39 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         return null;
       }
 
-      const clientRoleInfo = profile.clientRoleInfo?.find((info) => info.cuid === cuid);
-
-      if (!clientRoleInfo) {
-        return null;
-      }
-
       const result: any = {
-        role: clientRoleInfo.role,
-        isConnected: clientRoleInfo.isConnected,
+        userId: profile.user.toString(),
       };
 
-      if (clientRoleInfo.linkedVendorId) {
-        result.linkedVendorId = clientRoleInfo.linkedVendorId;
-        result.isPrimaryVendor = false;
-      } else if (clientRoleInfo.role === 'vendor') {
-        // If this is a vendor without linkedVendorId, it's a primary vendor
-        result.isPrimaryVendor = true;
-      }
-
-      // Include relevant info based on role
-      if (clientRoleInfo.role === 'vendor' && profile.vendorInfo) {
+      if (profile.vendorInfo) {
         result.vendorInfo = profile.vendorInfo;
       }
 
-      if (['manager', 'admin', 'staff'].includes(clientRoleInfo.role) && profile.employeeInfo) {
+      if (profile.employeeInfo) {
         result.employeeInfo = profile.employeeInfo;
       }
 
       return result;
     } catch (error) {
-      this.logger.error(
-        `Error getting role-specific info for profile ${profileId}, client ${cuid}:`,
-        error
-      );
+      this.logger.error(`Error getting profile info for profile ${profileId}:`, error);
       throw this.throwErrorHandler(error);
     }
   }
 
   /**
-   * Ensure client role info exists for a profile
+   * Get profile's user ID
    */
-  async ensureClientRoleInfo(profileId: string, cuid: string, role?: string): Promise<void> {
+  async getProfileUserId(profileId: string): Promise<string | null> {
     try {
       const profile = await this.findById(profileId);
 
       if (!profile) {
-        throw new Error('Profile not found');
+        return null;
       }
 
-      const hasClientRoleInfo = profile.clientRoleInfo?.some((info) => info.cuid === cuid);
-
-      if (!hasClientRoleInfo) {
-        await this.updateById(profileId, {
-          $push: {
-            clientRoleInfo: {
-              cuid,
-              role: role || 'vendor', // Default to vendor if role not provided
-              isConnected: true,
-            },
-          },
-        });
-      }
+      return profile.user.toString();
     } catch (error) {
-      this.logger.error(
-        `Error ensuring client role info for profile ${profileId}, client ${cuid}:`,
-        error
-      );
+      this.logger.error(`Error getting user ID for profile ${profileId}:`, error);
       throw this.throwErrorHandler(error);
     }
   }

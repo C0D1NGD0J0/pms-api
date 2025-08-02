@@ -1,7 +1,7 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
-import { ProfileDAO } from '@dao/profileDAO';
+import { ProfileDAO, UserDAO } from '@dao/index';
 import { IUserRoleType } from '@interfaces/user.interface';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
 import { IProfileDocument } from '@interfaces/profile.interface';
@@ -10,14 +10,17 @@ import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customEr
 
 interface IConstructor {
   profileDAO: ProfileDAO;
+  userDAO: UserDAO;
 }
 
 export class ProfileService {
   private readonly profileDAO: ProfileDAO;
+  private readonly userDAO: UserDAO;
   private readonly logger: Logger;
 
-  constructor({ profileDAO }: IConstructor) {
+  constructor({ profileDAO, userDAO }: IConstructor) {
     this.profileDAO = profileDAO;
+    this.userDAO = userDAO;
     this.logger = createLogger('ProfileService');
   }
 
@@ -44,7 +47,7 @@ export class ProfileService {
         });
       }
 
-      await this.profileDAO.ensureClientRoleInfo(profileId, cuid);
+      await this.ensureClientRoleInfo(profileId, cuid);
 
       const result = await this.profileDAO.updateEmployeeInfo(profileId, cuid, validation.data);
 
@@ -90,7 +93,7 @@ export class ProfileService {
         });
       }
 
-      await this.profileDAO.ensureClientRoleInfo(profileId, cuid);
+      await this.ensureClientRoleInfo(profileId, cuid);
 
       const result = await this.profileDAO.updateVendorInfo(profileId, cuid, validation.data);
 
@@ -217,7 +220,7 @@ export class ProfileService {
     }>
   > {
     try {
-      const result = await this.profileDAO.getRoleSpecificInfo(profileId, cuid);
+      const result = await this.getClientRoleInfo(profileId, cuid);
 
       if (!result) {
         throw new NotFoundError({
@@ -293,32 +296,167 @@ export class ProfileService {
   }
 
   /**
+   * Helper method to ensure a client role exists for a user
+   * Now implemented using UserDAO directly
+   */
+  private async ensureClientRoleInfo(
+    profileId: string,
+    cuid: string,
+    role?: string
+  ): Promise<void> {
+    try {
+      // Get the profile's user ID
+      const userId = await this.profileDAO.getProfileUserId(profileId);
+      if (!userId) {
+        throw new Error('Profile not found');
+      }
+
+      // Get the user
+      const user = await this.userDAO.getUserById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Check if the client connection already exists
+      const hasClientConnection = user.cuids.some((c) => c.cuid === cuid);
+
+      if (!hasClientConnection) {
+        // Add the client connection to the user's cuids array
+        await this.userDAO.updateById(userId, {
+          $push: {
+            cuids: {
+              cuid,
+              roles: [role || ('vendor' as IUserRoleType)], // Default to vendor if role not provided
+              isConnected: true,
+              displayName: user.email.split('@')[0], // Simple default display name
+            },
+          },
+        });
+      }
+    } catch (error) {
+      this.logger.error(`Error ensuring client role info: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper method to get role-specific information for a profile and client
+   * Now implemented using both ProfileDAO and UserDAO
+   */
+  private async getClientRoleInfo(
+    profileId: string,
+    cuid: string
+  ): Promise<{
+    role?: string;
+    linkedVendorId?: string;
+    isConnected?: boolean;
+    isPrimaryVendor?: boolean;
+    vendorInfo?: any;
+    employeeInfo?: any;
+  } | null> {
+    try {
+      // Get the profile info
+      const profileInfo = await this.profileDAO.getProfileInfo(profileId);
+      if (!profileInfo) {
+        return null;
+      }
+
+      // Get the user if userId exists
+      const userId = profileInfo.userId;
+      if (!userId) {
+        return null;
+      }
+
+      const user = await this.userDAO.getUserById(userId);
+      if (!user) {
+        return null;
+      }
+
+      // Find the client connection in user's cuids array
+      const clientConnection = user.cuids.find((c) => c.cuid === cuid);
+      if (!clientConnection) {
+        return null;
+      }
+
+      const result: any = {
+        role: clientConnection.roles[0], // Taking first role as primary
+        isConnected: clientConnection.isConnected,
+      };
+
+      if (clientConnection.linkedVendorId) {
+        result.linkedVendorId = clientConnection.linkedVendorId;
+        result.isPrimaryVendor = false;
+      } else if (clientConnection.roles.includes('vendor' as IUserRoleType)) {
+        // If this is a vendor without linkedVendorId, it's a primary vendor
+        result.isPrimaryVendor = true;
+      }
+
+      // Include relevant info based on role
+      if (clientConnection.roles.includes('vendor' as IUserRoleType) && profileInfo.vendorInfo) {
+        result.vendorInfo = profileInfo.vendorInfo;
+      }
+
+      if (
+        ['manager', 'admin', 'staff'].some((role) =>
+          clientConnection.roles.includes(role as IUserRoleType)
+        ) &&
+        profileInfo.employeeInfo
+      ) {
+        result.employeeInfo = profileInfo.employeeInfo;
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.error(`Error getting role-specific info: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Initialize role-specific information for new users during invitation acceptance
    */
   async initializeRoleInfo(
     profileId: string,
     cuid: string,
     role: IUserRoleType,
+    isConnected: boolean = true,
     linkedVendorId?: string
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      await this.profileDAO.ensureClientRoleInfo(profileId, cuid, role);
+      // Ensure the client role info exists only once
+      await this.ensureClientRoleInfo(profileId, cuid, role);
+
+      // Get the profile's user ID
+      const userId = await this.profileDAO.getProfileUserId(profileId);
+      if (!userId) {
+        throw new Error('Profile not found');
+      }
+
+      // If there's a linkedVendorId, set it in the user's cuids array
+      if (linkedVendorId && role === 'vendor') {
+        await this.userDAO.updateById(
+          userId,
+          {
+            $set: {
+              'cuids.$[elem].linkedVendorId': linkedVendorId,
+              'cuids.$[elem].isConnected': isConnected,
+            },
+          },
+          {
+            arrayFilters: [{ 'elem.cuid': cuid }],
+          }
+        );
+        this.logger.info(
+          `Initialized linked vendor info for profile ${profileId}, client ${cuid}, linked to ${linkedVendorId}`
+        );
+      }
 
       let result: IProfileDocument | null = null;
 
       if (role === 'vendor') {
-        // Initialize vendor information based on whether it's linked to an existing vendor
-        if (linkedVendorId) {
-          // For linked vendors, only set the linkedVendorId in clientRoleInfo
-          result = await this.profileDAO.updateVendorInfo(profileId, cuid, { linkedVendorId });
-          this.logger.info(
-            `Initialized linked vendor info for profile ${profileId}, client ${cuid}, linked to ${linkedVendorId}`
-          );
-        } else {
-          // For primary vendors, initialize the common vendor info
-          result = await this.profileDAO.updateCommonVendorInfo(profileId, {});
-          this.logger.info(`Initialized vendor info for profile ${profileId} as primary vendor`);
-        }
+        // For primary vendors, initialize the common vendor info
+        result = await this.profileDAO.updateCommonVendorInfo(profileId, {});
+        this.logger.info(`Initialized vendor info for profile ${profileId}`);
       } else if (['manager', 'staff', 'admin'].includes(role)) {
         // For employees, initialize the common employee info
         result = await this.profileDAO.updateCommonEmployeeInfo(profileId, {});

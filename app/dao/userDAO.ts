@@ -280,7 +280,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       const options = {
         ...opts,
-        populate: [{ path: 'profile', select: 'personalInfo vendorInfo clientRoleInfo' }],
+        populate: [{ path: 'profile', select: 'personalInfo vendorInfo' }],
       };
 
       return await this.list(query, options);
@@ -469,10 +469,25 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   async createUserFromInvitation(
     invitationData: any,
     userData: any,
+    linkedVendorId?: string,
     session?: any
   ): Promise<IUserDocument> {
     try {
       const userId = new Types.ObjectId();
+
+      // Base cuids entry
+      const cuidEntry: any = {
+        cuid: invitationData.cuid,
+        isConnected: true,
+        roles: [invitationData.role],
+        displayName:
+          invitationData.personalInfo.firstName + ' ' + invitationData.personalInfo.lastName,
+      };
+
+      // Add linkedVendorId if provided
+      if (linkedVendorId) {
+        cuidEntry.linkedVendorId = linkedVendorId;
+      }
 
       const user = await this.insert(
         {
@@ -482,15 +497,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           password: userData.password,
           isActive: true,
           activecuid: invitationData.clientId,
-          cuids: [
-            {
-              cuid: invitationData.cuid,
-              isConnected: true,
-              roles: [invitationData.role],
-              displayName:
-                invitationData.personalInfo.firstName + ' ' + invitationData.personalInfo.lastName,
-            },
-          ],
+          cuids: [cuidEntry],
         },
         session
       );
@@ -510,7 +517,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     clientId: string,
     role: IUserRoleType,
     displayName: string,
-    session?: any
+    session?: any,
+    linkedVendorId?: string
   ): Promise<IUserDocument | null> {
     try {
       // Check if user already has access to this client
@@ -521,28 +529,37 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       const existingConnection = user.cuids.find((c) => c.cuid === clientId);
       if (existingConnection) {
-        return await this.updateById(
-          userId,
-          {
-            $set: {
-              'cuids.$.isConnected': true,
-              'cuids.$.roles': [role],
-              'cuids.$.displayName': displayName,
-            },
-          },
-          { session }
-        );
+        const updateObj: any = {
+          'cuids.$.isConnected': true,
+          'cuids.$.roles': [role],
+          'cuids.$.displayName': displayName,
+        };
+
+        // Add linkedVendorId if provided
+        if (linkedVendorId && role === 'vendor') {
+          updateObj['cuids.$.linkedVendorId'] = linkedVendorId;
+        }
+
+        return await this.updateById(userId, { $set: updateObj }, { session });
       } else {
+        // Create cuid entry
+        const cuidEntry: any = {
+          cuid: clientId,
+          isConnected: true,
+          roles: [role],
+          displayName,
+        };
+
+        // Add linkedVendorId if provided
+        if (linkedVendorId && role === 'vendor') {
+          cuidEntry.linkedVendorId = linkedVendorId;
+        }
+
         return await this.updateById(
           userId,
           {
             $push: {
-              cuids: {
-                cuid: clientId,
-                isConnected: true,
-                roles: [role],
-                displayName,
-              },
+              cuids: cuidEntry,
             },
           },
           { session }

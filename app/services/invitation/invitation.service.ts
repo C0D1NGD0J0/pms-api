@@ -282,37 +282,76 @@ export class InvitationService {
 
         let user;
         if (existingUser) {
+          // For existing users, also check if we need to add linkedVendorId
+          const linkedVendorId =
+            invitation.linkedVendorId && invitation.role === 'vendor'
+              ? invitation.linkedVendorId.toString()
+              : undefined;
+
           user = await this.userDAO.addUserToClient(
             existingUser._id.toString(),
             invitation.clientId.toString(),
             invitation.role,
             invitation.inviteeFullName,
-            session
+            session,
+            linkedVendorId
           );
         } else {
+          // Check if we need to pass linkedVendorId
+          const linkedVendorId =
+            invitation.linkedVendorId && invitation.role === 'vendor'
+              ? invitation.linkedVendorId.toString()
+              : undefined;
+
           user = await this.userDAO.createUserFromInvitation(
             invitation,
             invitationData.userData,
+            linkedVendorId,
             session
           );
 
-          await this.profileDAO.createUserProfile(
-            user._id,
-            {
-              user: user._id,
-              puid: user.uid,
-              personalInfo: {
-                firstName: invitation.personalInfo.firstName,
-                lastName: invitation.personalInfo.lastName,
-                displayName: invitation.inviteeFullName,
-                phoneNumber: invitation.personalInfo.phoneNumber || '',
-                location: invitationData.userData.location || 'Unknown',
-              },
-              lang: invitationData.userData.lang || 'en',
-              timeZone: invitationData.userData.timeZone || 'UTC',
+          // Create the profile with basic info and policies
+          const profileData = {
+            user: user._id,
+            puid: user.uid,
+            personalInfo: {
+              firstName: invitation.personalInfo.firstName,
+              lastName: invitation.personalInfo.lastName,
+              displayName: invitation.inviteeFullName,
+              phoneNumber: invitation.personalInfo.phoneNumber || '',
+              location: invitationData.userData.location || 'Unknown',
             },
-            session
-          );
+            lang: invitationData.userData.lang || 'en',
+            timeZone: invitationData.userData.timeZone || 'UTC',
+            // Add policies from invitation data if provided
+            policies: invitationData.userData.policies
+              ? {
+                  tos: {
+                    accepted: invitationData.userData.policies.tos.accepted,
+                    acceptedOn: invitationData.userData.policies.tos.accepted ? new Date() : null,
+                  },
+                  privacy: {
+                    accepted: invitationData.userData.policies.privacy.accepted,
+                    acceptedOn: invitationData.userData.policies.privacy.accepted
+                      ? new Date()
+                      : null,
+                  },
+                  marketing: {
+                    accepted: invitationData.userData.policies.marketing.accepted,
+                    acceptedOn: invitationData.userData.policies.marketing.accepted
+                      ? new Date()
+                      : null,
+                  },
+                }
+              : {
+                  // Default policies if not provided
+                  tos: { accepted: false, acceptedOn: null },
+                  privacy: { accepted: false, acceptedOn: null },
+                  marketing: { accepted: false, acceptedOn: null },
+                },
+          };
+
+          await this.profileDAO.createUserProfile(user._id, profileData, session);
         }
 
         if (!user) {
@@ -338,40 +377,12 @@ export class InvitationService {
         result.invitation.linkedVendorId?.toString() // Pass linkedVendorId if present
       );
 
-      // If this invitation is linked to an existing vendor, just ensure the linking is set up
+      // Note: We now handle linkedVendorId during user creation
+      // The log message is still useful for tracking
       if (result.invitation.linkedVendorId && result.invitation.role === 'vendor') {
-        try {
-          // Get the new user's profile
-          const newUserProfile = await this.profileDAO.getProfileByUserId(result.user._id);
-
-          if (newUserProfile) {
-            // Ensure the linkedVendorId is set in the clientRoleInfo for this client
-            const clientRoleInfo = newUserProfile.clientRoleInfo?.find(
-              (info) => info.cuid === result.invitation.clientId.toString()
-            );
-
-            if (!clientRoleInfo?.linkedVendorId) {
-              // Update the linkedVendorId if not already set
-              await this.profileDAO.updateById(
-                newUserProfile._id.toString(),
-                {
-                  $set: {
-                    'clientRoleInfo.$[elem].linkedVendorId':
-                      result.invitation.linkedVendorId.toString(),
-                  },
-                },
-                { arrayFilters: [{ 'elem.cuid': result.invitation.clientId.toString() }] }
-              );
-            }
-
-            this.log.info(
-              `Vendor link established from primary vendor ${result.invitation.linkedVendorId} to new user ${result.user._id}`
-            );
-          }
-        } catch (error) {
-          // Log error but don't fail the invitation acceptance process
-          this.log.error(`Error establishing vendor link: ${error.message}`, error);
-        }
+        this.log.info(
+          `Vendor link established from primary vendor ${result.invitation.linkedVendorId} to new user ${result.user._id}`
+        );
       }
 
       this.log.info(

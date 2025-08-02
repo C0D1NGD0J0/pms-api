@@ -1,4 +1,3 @@
-// app/dao/interfaces/profileDAO.interface.ts
 import { ClientSession, Types } from 'mongoose';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { ListResultWithPagination, ICurrentUser } from '@interfaces/index';
@@ -24,25 +23,6 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
       issuingState: string;
     }
   ): Promise<IProfileDocument | null>;
-
-  /**
-   * Gets role-specific information for a profile and client.
-   *
-   * @param profileId - The ID of the profile
-   * @param cuid - The client ID
-   * @returns A promise that resolves to an object containing role-specific info, or null if not found
-   */
-  getRoleSpecificInfo(
-    profileId: string,
-    cuid: string
-  ): Promise<{
-    role?: string;
-    linkedVendorId?: string;
-    isConnected?: boolean;
-    isPrimaryVendor?: boolean;
-    vendorInfo?: any;
-    employeeInfo?: any;
-  } | null>;
 
   /**
    * Updates notification preferences for a profile.
@@ -178,6 +158,19 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   ): Promise<IProfileDocument | null>;
 
   /**
+   * Gets profile information only, without role data.
+   * Role data should be fetched and combined at the service layer.
+   *
+   * @param profileId - The ID of the profile
+   * @returns A promise that resolves to an object containing profile info, or null if not found
+   */
+  getProfileInfo(profileId: string): Promise<{
+    vendorInfo?: any;
+    employeeInfo?: any;
+    userId?: string;
+  } | null>;
+
+  /**
    * Updates common vendor information that applies across all clients.
    * This information is stored at the profile level.
    *
@@ -232,17 +225,6 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   getProfileByUserId(userId: string | Types.ObjectId): Promise<IProfileDocument | null>;
 
   /**
-   * Ensures that a client role info entry exists for a profile.
-   * If it doesn't exist, it creates an entry with the provided client ID and role.
-   *
-   * @param profileId - The ID of the profile to update
-   * @param cuid - The client ID
-   * @param role - Optional role to assign
-   * @returns A promise that resolves when the operation is complete
-   */
-  ensureClientRoleInfo(profileId: string, cuid: string, role?: string): Promise<void>;
-
-  /**
    * Retrieves the currently authenticated user along with their profile information.
    * Uses MongoDB aggregation to join user data with their profile data and formats it into a CurrentUser object.
    *
@@ -251,4 +233,12 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
    * @returns A promise that resolves to a ICurrentUser object or null if no user is found.
    */
   generateCurrentUserInfo(userId: string): Promise<ICurrentUser | null>;
+
+  /**
+   * Gets the user ID associated with a profile.
+   *
+   * @param profileId - The ID of the profile
+   * @returns A promise that resolves to the user ID or null if profile not found
+   */
+  getProfileUserId(profileId: string): Promise<string | null>;
 }

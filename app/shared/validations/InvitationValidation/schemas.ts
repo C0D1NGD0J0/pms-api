@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { container } from '@di/index';
+import { InvitationDAO } from '@dao/invitationDAO';
 import { IUserRole } from '@interfaces/user.interface';
 
 const employeeInfoSchema = z
@@ -172,9 +174,66 @@ export const invitationDataSchema = z.object({
     .default('pending'),
 });
 
+export const validateTokenAndCuidSchema = z
+  .object({
+    params: z.object({
+      cuid: z.string().min(16).max(32),
+      token: z.string().min(64).max(64),
+    }),
+  })
+  .superRefine(async (data, ctx) => {
+    if (!data.params.token || !data.params.cuid) {
+      return;
+    }
+
+    const { invitationDAO }: { invitationDAO: InvitationDAO } = container.cradle;
+    const invitation = await invitationDAO.findByToken(data.params.token);
+    console.log('validateTokenAndCuidSchema', invitation);
+    if (!invitation) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Invalid invitation token',
+        path: ['token'],
+      });
+      return;
+    }
+
+    // if (data.params.cuid) {
+    //   const populatedClient = invitation.clientId as any;
+    //   const clientCuid =
+    //     populatedClient && typeof populatedClient === 'object' && 'cuid' in populatedClient
+    //       ? populatedClient.cuid
+    //       : null;
+
+    //   if (!clientCuid || clientCuid !== data.cuid) {
+    //     ctx.addIssue({
+    //       code: z.ZodIssueCode.custom,
+    //       message: 'Invitation does not belong to this client',
+    //       path: ['cuid'],
+    //     });
+    //   }
+    // }
+  });
+
 export const sendInvitationSchema = invitationDataSchema;
 
 export const updateInvitationSchema = invitationDataSchema;
+
+// Policies validation schema
+const policiesSchema = z.object({
+  tos: z.object({
+    accepted: z.boolean(),
+    acceptedOn: z.date().optional().nullable(),
+  }),
+  privacy: z.object({
+    accepted: z.boolean(),
+    acceptedOn: z.date().optional().nullable(),
+  }),
+  marketing: z.object({
+    accepted: z.boolean(),
+    acceptedOn: z.date().optional().nullable(),
+  }),
+});
 
 export const acceptInvitationSchema = z.object({
   password: z
@@ -202,6 +261,8 @@ export const acceptInvitationSchema = z.object({
   bio: z.string().max(700, 'Bio must be less than 700 characters').optional(),
 
   headline: z.string().max(50, 'Headline must be less than 50 characters').optional(),
+
+  policies: policiesSchema.optional(),
 });
 
 export const revokeInvitationSchema = z.object({

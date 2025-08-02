@@ -1,6 +1,6 @@
 import { Document, Types } from 'mongoose';
 
-import { IdentificationType, IUserRoleType } from './user.interface';
+import { IdentificationType } from './user.interface';
 
 export enum EmployeeDepartment {
   MAINTENANCE = 'maintenance', // Maintenance and repairs
@@ -88,6 +88,21 @@ export interface Profile {
     location: string;
     phoneNumber?: string;
   };
+  policies: {
+    tos: {
+      acceptedOn: Date | null;
+      accepted: boolean;
+    };
+    privacy: {
+      acceptedOn: Date | null;
+      accepted: boolean;
+    };
+    marketing: {
+      acceptedOn: Date | null;
+      accepted: boolean;
+    };
+  };
+
   settings: {
     gdprSettings: GDPRSettings;
     loginType: 'otp' | 'password';
@@ -96,8 +111,6 @@ export interface Profile {
   };
 
   identification?: IdentificationType;
-  clientRoleInfo?: ClientRoleInfo[];
-
   employeeInfo?: EmployeeInfo;
   vendorInfo?: VendorInfo;
   user: Types.ObjectId;
@@ -134,12 +147,7 @@ export interface GDPRSettings {
   retentionExpiryDate: Date;
 }
 
-export interface ClientRoleInfo {
-  linkedVendorId?: string;
-  isConnected: boolean;
-  role: IUserRoleType;
-  cuid: string;
-}
+// ClientRoleInfo interface removed as it's now part of the User model's cuids array
 
 export interface NotificationSettings {
   announcements: boolean;

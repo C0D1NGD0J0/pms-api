@@ -216,16 +216,20 @@ const ProfileSchema = new Schema<IProfileDocument>(
       permissions: [{ type: String }],
       clientSpecificSettings: { type: Schema.Types.Mixed },
     },
-
-    clientRoleInfo: [
-      {
-        cuid: { type: String, required: true, trim: true },
-        role: { type: String, required: true },
-        isConnected: { type: Boolean, default: false },
-        linkedVendorId: { type: String, trim: true },
-        _id: false,
+    policies: {
+      tos: {
+        acceptedOn: { type: Date, default: null },
+        accepted: { type: Boolean, default: false },
       },
-    ],
+      privacy: {
+        acceptedOn: { type: Date, default: null },
+        accepted: { type: Boolean, default: false },
+      },
+      marketing: {
+        acceptedOn: { type: Date, default: null },
+        accepted: { type: Boolean, default: false },
+      },
+    },
   },
   {
     timestamps: true,
@@ -249,45 +253,7 @@ ProfileSchema.methods.getGravatarUrl = function (email: string): string {
   return `https://gravatar.com/avatar/${hash}?s=200`;
 };
 
-/**
- * Helper method to check if this profile is a primary vendor for a specific client
- * A primary vendor is one that has the vendor role but no linkedVendorId
- */
-ProfileSchema.methods.isPrimaryVendor = function (cuid: string): boolean {
-  if (!this.clientRoleInfo || !this.clientRoleInfo.length) {
-    return false;
-  }
-
-  const clientRole = this.clientRoleInfo.find((info: any) => info.cuid === cuid);
-  if (!clientRole) {
-    return false;
-  }
-
-  return clientRole.role === 'vendor' && !clientRole.linkedVendorId;
-};
-
-/**
- * Helper method to get a client role info object for a specific client
- */
-ProfileSchema.methods.getClientRoleInfo = function (cuid: string): any | null {
-  if (!this.clientRoleInfo || !this.clientRoleInfo.length) {
-    return null;
-  }
-
-  return this.clientRoleInfo.find((info: any) => info.cuid === cuid) || null;
-};
-
-/**
- * Helper method to determine if this profile has any primary vendor role
- * across any clients
- */
-ProfileSchema.methods.hasAnyPrimaryVendorRole = function (): boolean {
-  if (!this.clientRoleInfo || !this.clientRoleInfo.length) {
-    return false;
-  }
-
-  return this.clientRoleInfo.some((info: any) => info.role === 'vendor' && !info.linkedVendorId);
-};
+// These methods have been removed since clientRoleInfo is now in the User model
 
 // automatically set retention date based on policy
 ProfileSchema.pre('save', function (this: IProfileDocument, next) {

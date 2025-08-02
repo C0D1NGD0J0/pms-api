@@ -33,6 +33,33 @@ export interface IInvitation {
   iuid: string;
 }
 
+export interface IInvitationAcceptance {
+  userData: {
+    password: string;
+    location?: string;
+    timeZone?: string;
+    lang?: string;
+    bio?: string;
+    headline?: string;
+    policies?: {
+      tos: {
+        accepted: boolean;
+        acceptedOn?: Date | null;
+      };
+      privacy: {
+        accepted: boolean;
+        acceptedOn?: Date | null;
+      };
+      marketing: {
+        accepted: boolean;
+        acceptedOn?: Date | null;
+      };
+    };
+  };
+  invitationToken: string;
+  cuid: string;
+}
+
 export interface IInvitationData {
   metadata?: {
     inviteMessage?: string;
@@ -70,19 +97,6 @@ export interface IInvitationListQuery {
   role?: IUserRole;
   limit?: number;
   page?: number;
-  cuid: string;
-}
-
-export interface IInvitationAcceptance {
-  userData: {
-    password: string;
-    location?: string;
-    timeZone?: string;
-    lang?: string;
-    bio?: string;
-    headline?: string;
-  };
-  invitationToken: string;
   cuid: string;
 }
 

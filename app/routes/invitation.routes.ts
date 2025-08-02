@@ -33,15 +33,15 @@ router.get(
 );
 
 /**
- * @route POST /api/v1/invites/:cuid/accept
+ * @route POST /api/v1/invites/:cuid/accept_invite/:token
  * @desc Accept an invitation and complete user registration (public endpoint)
  * @access Public
  */
 router.post(
-  '/:cuid/accept',
+  '/:cuid/accept_invite/:token',
   routeLimiter(),
   validateRequest({
-    params: UtilsValidations.cuid,
+    params: InvitationValidations.validateTokenAndCuid,
     body: InvitationValidations.acceptInvitation,
   }),
   asyncWrapper((req: AppRequest, res) => {

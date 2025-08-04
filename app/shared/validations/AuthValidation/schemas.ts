@@ -44,7 +44,14 @@ export const UserSignupSchema = z
         },
         { message: 'Email already in use.' }
       ),
-    password: z.string().min(6, 'Password must be at least 6 characters'),
+    password: z
+      .string()
+      .min(6, 'Password must be at least 6 characters')
+      .max(15, 'Password must be less than 15 characters')
+      .regex(
+        /^(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?&]/,
+        'Password must contain at least one uppercase letter, and one number'
+      ),
     location: z
       .string()
       .max(35, 'Location(city) must be at most 35 characters')

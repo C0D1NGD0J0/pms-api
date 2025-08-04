@@ -2,9 +2,9 @@ import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { User } from '@models/index';
 import { hashGenerator, createLogger } from '@utils/index';
-import { ListResultWithPagination } from '@interfaces/index';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
 import { IUserRoleType, IUserDocument } from '@interfaces/user.interface';
+import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
 
 import { BaseDAO } from './baseDAO';
 import { IUserDAO } from './interfaces/userDAO.interface';
@@ -467,7 +467,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * Create a new user from an invitation acceptance
    */
   async createUserFromInvitation(
-    invitationData: any,
+    cuid: string,
+    invitationData: IInvitationDocument,
     userData: any,
     linkedVendorId?: string,
     session?: any
@@ -475,16 +476,14 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       const userId = new Types.ObjectId();
 
-      // Base cuids entry
       const cuidEntry: any = {
-        cuid: invitationData.cuid,
+        cuid,
         isConnected: true,
         roles: [invitationData.role],
         displayName:
           invitationData.personalInfo.firstName + ' ' + invitationData.personalInfo.lastName,
       };
 
-      // Add linkedVendorId if provided
       if (linkedVendorId) {
         cuidEntry.linkedVendorId = linkedVendorId;
       }
@@ -496,7 +495,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           email: invitationData.inviteeEmail,
           password: userData.password,
           isActive: true,
-          activecuid: invitationData.clientId,
+          activecuid: cuid,
           cuids: [cuidEntry],
         },
         session

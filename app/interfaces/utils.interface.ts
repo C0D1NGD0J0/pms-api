@@ -264,6 +264,14 @@ export interface UploadedFile {
   path: string;
 }
 
+export interface IEmailOptions<T> {
+  client?: { cuid: string; id: string };
+  emailType: string;
+  subject: string;
+  to: string;
+  data: T;
+}
+
 export type MulterFile =
   | Express.Multer.File[]
   | {
@@ -282,13 +290,6 @@ export type AsyncRequestHandler = (
   res: Response,
   next: NextFunction
 ) => Promise<any>;
-
-export interface IEmailOptions<T> {
-  emailType: string;
-  subject: string;
-  to: string;
-  data: T;
-}
 
 export interface IPermissionResult {
   attributes?: string[];

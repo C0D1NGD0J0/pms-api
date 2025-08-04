@@ -93,10 +93,6 @@ export interface Profile {
       acceptedOn: Date | null;
       accepted: boolean;
     };
-    privacy: {
-      acceptedOn: Date | null;
-      accepted: boolean;
-    };
     marketing: {
       acceptedOn: Date | null;
       accepted: boolean;

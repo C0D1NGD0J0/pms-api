@@ -60,25 +60,6 @@ export interface IUserDocument extends Document, IUser {
   id: string;
 }
 
-export interface IInviteUserSignup {
-  emergencyContact?: {
-    name: string;
-    email?: string;
-    phoneNumber: string;
-    relationship: IUserRelationshipsEnum;
-  };
-  userType: IUserRoleType;
-  userId?: Types.ObjectId;
-  phoneNumber?: string;
-  firstName: string;
-  location?: string;
-  password: string;
-  lastName: string;
-  email: string;
-  cuid: string;
-}
-
-// TENANT INTERFACE
 export interface ITenant extends IUser {
   activationCode: string | undefined;
   maintenanceRequests?: string[]; // refactor once models have been added
@@ -112,6 +93,7 @@ export type ISignupData = {
   timeZone?: string;
   companyProfile?: ICompanyProfile;
   accountType: IAccountType;
+  termsAccepted: boolean;
 };
 
 // USER INTERFACE

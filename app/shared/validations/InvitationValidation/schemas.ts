@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { container } from '@di/index';
+import { ClientDAO } from '@dao/index';
 import { InvitationDAO } from '@dao/invitationDAO';
 import { IUserRole } from '@interfaces/user.interface';
 
@@ -176,50 +177,54 @@ export const invitationDataSchema = z.object({
 
 export const validateTokenAndCuidSchema = z
   .object({
-    params: z.object({
-      cuid: z.string().min(16).max(32),
-      token: z.string().min(64).max(64),
-    }),
+    cuid: z.string().min(12).max(32, 'Invalid cuid format'),
+    token: z.string().min(64).max(64, 'Invalid token format'),
   })
   .superRefine(async (data, ctx) => {
-    if (!data.params.token || !data.params.cuid) {
-      return;
+    if (!data.cuid || !data.token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Missing invitation token.cuid',
+        path: ['cuid'],
+      });
+
+      if (!data.token) {
+        return ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Missing invitation token.token',
+          path: ['token'],
+        });
+      }
     }
 
-    const { invitationDAO }: { invitationDAO: InvitationDAO } = container.cradle;
-    const invitation = await invitationDAO.findByToken(data.params.token);
-    console.log('validateTokenAndCuidSchema', invitation);
+    const { invitationDAO, clientDAO }: { invitationDAO: InvitationDAO; clientDAO: ClientDAO } =
+      container.cradle;
+    const invitation = await invitationDAO.findByToken(data.token as string);
     if (!invitation) {
-      ctx.addIssue({
+      return ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Invalid invitation token',
         path: ['token'],
       });
-      return;
     }
 
-    // if (data.params.cuid) {
-    //   const populatedClient = invitation.clientId as any;
-    //   const clientCuid =
-    //     populatedClient && typeof populatedClient === 'object' && 'cuid' in populatedClient
-    //       ? populatedClient.cuid
-    //       : null;
+    if (data.cuid) {
+      const client = await clientDAO.getClientByCuid(data.cuid);
 
-    //   if (!clientCuid || clientCuid !== data.cuid) {
-    //     ctx.addIssue({
-    //       code: z.ZodIssueCode.custom,
-    //       message: 'Invitation does not belong to this client',
-    //       path: ['cuid'],
-    //     });
-    //   }
-    // }
+      if (!client || client.cuid !== data.cuid) {
+        return ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Invitation does not belong to this client',
+          path: ['cuid'],
+        });
+      }
+    }
   });
 
 export const sendInvitationSchema = invitationDataSchema;
 
 export const updateInvitationSchema = invitationDataSchema;
 
-// Policies validation schema
 const policiesSchema = z.object({
   tos: z.object({
     accepted: z.boolean(),
@@ -238,11 +243,11 @@ const policiesSchema = z.object({
 export const acceptInvitationSchema = z.object({
   password: z
     .string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(128, 'Password must be less than 128 characters')
+    .min(6, 'Password must be at least 6 characters')
+    .max(15, 'Password must be less than 15 characters')
     .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
-      'Password must contain at least one lowercase letter, one uppercase letter, one number, and one special character'
+      /^(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?&]/,
+      'Password must contain at least one uppercase letter, and one number'
     ),
 
   location: z

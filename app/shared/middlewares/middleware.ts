@@ -114,16 +114,8 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
 
 export const diskUpload =
   (fieldNames: string[]) => async (req: Request, res: Response, next: NextFunction) => {
-    console.log('🔍 [DEBUG] diskUpload middleware - Expected field names:', fieldNames);
-    console.log(
-      '🔍 [DEBUG] diskUpload middleware - Request content-type:',
-      req.get('content-type')
-    );
-    console.log('🔍 [DEBUG] diskUpload middleware - Request method:', req.method);
-
     const { diskStorage }: { diskStorage: DiskStorage } = req.container.cradle;
 
-    // Wrap the upload middleware to add logging
     const uploadMiddleware = diskStorage.uploadMiddleware(fieldNames);
     uploadMiddleware(req, res, (err: any) => {
       if (err) {
@@ -139,8 +131,6 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
     clamScanner,
   }: { emitterService: EventEmitterService; clamScanner: ClamScannerService } =
     req.container.cradle;
-
-  console.log('🔍 [DEBUG] ClamScanner ready status:', clamScanner.isReady());
 
   const files = req.files;
   if (!files) {

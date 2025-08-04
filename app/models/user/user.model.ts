@@ -57,7 +57,6 @@ UserSchema.pre('save', async function (this: IUserDocument, next) {
 
 UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function (next) {
   const update = this.getUpdate() as UpdateQuery<IUser>;
-  // Check if password is being updated
   if (update.password) {
     const salt = await bcrypt.genSalt(10);
     update.password = await bcrypt.hash(update.password, salt);

@@ -27,7 +27,7 @@ router.get(
  * @access  Private
  */
 router.get(
-  '/:templateType',
+  '/:cuid/:templateType',
   isAuthenticated,
   validateRequest({ params: EmailTemplateValidations.templateType }),
   asyncWrapper((req, res) => {

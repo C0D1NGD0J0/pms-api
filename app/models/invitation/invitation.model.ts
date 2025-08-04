@@ -146,7 +146,6 @@ const InvitationSchema = new Schema<IInvitationDocument>(
   }
 );
 
-// Compound index for efficient queries
 InvitationSchema.index({ clientId: 1, status: 1 });
 InvitationSchema.index({ inviteeEmail: 1, clientId: 1 });
 InvitationSchema.index({ expiresAt: 1 });
@@ -193,7 +192,7 @@ InvitationSchema.pre('save', async function (this: IInvitationDocument, next) {
 });
 
 InvitationSchema.methods.isValid = function (this: IInvitationDocument): boolean {
-  return (this.status === 'pending' || this.status === 'draft') && this.expiresAt > new Date();
+  return ['pending', 'draft', 'sent'].includes(this.status) && this.expiresAt > new Date();
 };
 
 InvitationSchema.methods.expire = function (

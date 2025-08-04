@@ -87,7 +87,10 @@ export class InvitationController {
   };
 
   acceptInvitation = async (req: AppRequest, res: Response) => {
-    const result = await this.invitationService.acceptInvitation(req.context, req.body);
+    const { cuid } = req.params;
+    const data = req.body;
+
+    const result = await this.invitationService.acceptInvitation(cuid, data);
     const loginResult = await this.authService.loginAfterInvitationSignup(
       result.data.user._id.toString(),
       result.data.invitation.clientId.toString()

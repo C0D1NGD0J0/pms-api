@@ -179,8 +179,17 @@ const ProfileSchema = new Schema<IProfileDocument>(
           },
           coordinates: {
             type: [Number],
+            default: [0, 0],
             validate: {
-              validator: function (v: number[]) {
+              validator: function (this: any, v: number[]) {
+                // Only validate if fullAddress exists and coordinates are provided
+                const addressDoc = this.parent();
+                if (!addressDoc || !addressDoc.fullAddress) {
+                  return true; // Skip validation if no fullAddress
+                }
+                if (!v || v.length === 0) {
+                  return true; // Allow empty array when no fullAddress
+                }
                 return v.length === 2 && v[0] >= -180 && v[0] <= 180 && v[1] >= -90 && v[1] <= 90;
               },
               message: 'Coordinates must be [longitude, latitude] with valid ranges',

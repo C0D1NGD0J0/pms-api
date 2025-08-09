@@ -21,11 +21,10 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
    */
   addUserToClient(
     userId: string,
-    clientId: string,
     role: IUserRoleType,
-    displayName: string,
-    session?: any,
-    linkedVendorId?: string
+    client: { cuid: string; displayName?: string; id: string },
+    linkedVendorId?: string,
+    session?: any
   ): Promise<IUserDocument | null>;
 
   /**

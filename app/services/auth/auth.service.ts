@@ -596,7 +596,7 @@ export class AuthService {
    */
   async loginAfterInvitationSignup(
     userId: string,
-    clientId: string
+    cuid: string
   ): Promise<
     ISuccessReturnData<{
       accessToken: string;
@@ -611,12 +611,11 @@ export class AuthService {
         throw new NotFoundError({ message: t('auth.errors.userNotFound') });
       }
 
-      const activeConnection = user.cuids.find((c) => c.cuid === clientId);
+      const activeConnection = user.cuids.find((c) => c.cuid === cuid);
       if (!activeConnection) {
         throw new UnauthorizedError({ message: t('auth.errors.noAccessToClient') });
       }
 
-      // Generate tokens
       const tokens = this.tokenService.createJwtTokens({
         sub: user._id.toString(),
         rememberMe: false,
@@ -644,7 +643,15 @@ export class AuthService {
             cuid: activeConnection.cuid,
             displayName: activeConnection.displayName,
           },
-          accounts: otherAccounts.length > 0 ? otherAccounts : null,
+          accounts:
+            otherAccounts.length > 0
+              ? otherAccounts
+              : [
+                  {
+                    cuid: activeConnection.cuid,
+                    displayName: activeConnection.displayName,
+                  },
+                ],
         },
         message: t('auth.success.loginSuccessful'),
       };

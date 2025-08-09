@@ -467,7 +467,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * Create a new user from an invitation acceptance
    */
   async createUserFromInvitation(
-    cuid: string,
+    client: { cuid: string; displayName?: string },
     invitationData: IInvitationDocument,
     userData: any,
     linkedVendorId?: string,
@@ -477,26 +477,22 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       const userId = new Types.ObjectId();
 
       const cuidEntry: any = {
-        cuid,
+        cuid: client.cuid,
         isConnected: true,
         roles: [invitationData.role],
-        displayName:
-          invitationData.personalInfo.firstName + ' ' + invitationData.personalInfo.lastName,
+        displayName: client.displayName,
+        linkedVendorId: invitationData.role === 'vendor' ? linkedVendorId : null,
       };
-
-      if (linkedVendorId) {
-        cuidEntry.linkedVendorId = linkedVendorId;
-      }
 
       const user = await this.insert(
         {
           _id: userId,
-          uid: hashGenerator({}),
-          email: invitationData.inviteeEmail,
-          password: userData.password,
           isActive: true,
-          activecuid: cuid,
           cuids: [cuidEntry],
+          uid: hashGenerator({}),
+          activecuid: client.cuid,
+          password: userData.password,
+          email: invitationData.inviteeEmail,
         },
         session
       );
@@ -513,46 +509,45 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    */
   async addUserToClient(
     userId: string,
-    clientId: string,
     role: IUserRoleType,
-    displayName: string,
-    session?: any,
-    linkedVendorId?: string
+    client: { cuid: string; displayName?: string; id: string },
+    linkedVendorId?: string,
+    session?: any
   ): Promise<IUserDocument | null> {
     try {
-      // Check if user already has access to this client
       const user = await this.getUserById(userId);
       if (!user) {
         throw new Error('User not found');
       }
 
-      const existingConnection = user.cuids.find((c) => c.cuid === clientId);
+      const existingConnection = user.cuids.find((c) => c.cuid === client.cuid);
+
       if (existingConnection) {
         const updateObj: any = {
           'cuids.$.isConnected': true,
-          'cuids.$.roles': [role],
-          'cuids.$.displayName': displayName,
+          'cuids.$.displayName': client.displayName,
+          'cuids.$.linkedVendorId': role === 'vendor' ? linkedVendorId : null,
         };
 
-        // Add linkedVendorId if provided
-        if (linkedVendorId && role === 'vendor') {
-          updateObj['cuids.$.linkedVendorId'] = linkedVendorId;
-        }
+        const updateOperation = existingConnection.roles.includes(role)
+          ? { $set: updateObj }
+          : { $set: updateObj, $addToSet: { 'cuids.$.roles': role } }; // Add new role
 
-        return await this.updateById(userId, { $set: updateObj }, { session });
+        return await this.update(
+          { _id: new Types.ObjectId(userId), 'cuids.cuid': client.cuid },
+          updateOperation,
+          {},
+          session
+        );
       } else {
-        // Create cuid entry
+        // new cuid entry
         const cuidEntry: any = {
-          cuid: clientId,
+          cuid: client.cuid,
           isConnected: true,
           roles: [role],
-          displayName,
+          displayName: client.displayName || '',
+          linkedVendorId: role === 'vendor' ? linkedVendorId : null,
         };
-
-        // Add linkedVendorId if provided
-        if (linkedVendorId && role === 'vendor') {
-          cuidEntry.linkedVendorId = linkedVendorId;
-        }
 
         return await this.updateById(
           userId,

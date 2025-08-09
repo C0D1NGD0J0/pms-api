@@ -93,7 +93,7 @@ export class InvitationController {
     const result = await this.invitationService.acceptInvitation(cuid, data);
     const loginResult = await this.authService.loginAfterInvitationSignup(
       result.data.user._id.toString(),
-      result.data.invitation.clientId.toString()
+      cuid
     );
 
     res = setAuthCookies(
@@ -109,13 +109,8 @@ export class InvitationController {
       success: true,
       message: result.message,
       data: {
-        user: {
-          id: result.data.user._id,
-          email: result.data.user.email,
-          isActive: result.data.user.isActive,
-        },
-        activeAccount: loginResult.data.activeAccount,
         accounts: loginResult.data.accounts,
+        activeAccount: loginResult.data.activeAccount,
       },
     });
   };

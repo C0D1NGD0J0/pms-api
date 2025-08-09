@@ -312,6 +312,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
           $set: {
             status: 'accepted',
             acceptedAt: new Date(),
+            invitationToken: undefined,
             acceptedBy: new Types.ObjectId(acceptedBy),
           },
         },

@@ -178,7 +178,7 @@ export const invitationDataSchema = z.object({
 export const validateTokenAndCuidSchema = z
   .object({
     cuid: z.string().min(12).max(32, 'Invalid cuid format'),
-    token: z.string().min(64).max(64, 'Invalid token format'),
+    token: z.string().min(4).max(64, 'Invalid token format'),
   })
   .superRefine(async (data, ctx) => {
     if (!data.cuid || !data.token) {
@@ -319,7 +319,7 @@ export const getInvitationsQuerySchema = z.object({
 });
 
 export const invitationTokenSchema = z.object({
-  token: z.string().min(64, 'Invalid invitation token').max(64, 'Invalid invitation token'),
+  token: z.string().min(4, 'Invalid invitation token').max(64, 'Invalid invitation token'),
 });
 
 export const iuidSchema = z.object({

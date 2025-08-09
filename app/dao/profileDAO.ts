@@ -1,5 +1,6 @@
-// app/dao/profileDAO.ts
 import Logger from 'bunyan';
+import { t } from '@shared/languages';
+import { BadRequestError } from '@shared/customErrors';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { ListResultWithPagination, ICurrentUser } from '@interfaces/index';
@@ -197,22 +198,11 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     try {
       const objectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
 
-      // Ensure we have the required fields
       const data = {
         ...profileData,
         user: objectId,
         puid: profileData.puid || generateShortUID(),
       };
-
-      // If personalInfo isn't provided, create a minimal structure
-      if (!data.personalInfo) {
-        data.personalInfo = {
-          firstName: '',
-          lastName: '',
-          displayName: '',
-          location: profileData?.personalInfo?.location || '',
-        } as any;
-      }
 
       return await this.insert(data as Partial<IProfileDocument>, session);
     } catch (error) {
@@ -513,7 +503,9 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   ): Promise<IProfileDocument | null> {
     try {
       if (!vendorInfo || typeof vendorInfo !== 'object') {
-        throw new Error('Vendor info must be a valid object');
+        throw new BadRequestError({
+          message: t('profile.errors.invalidParameters'),
+        });
       }
 
       const updateFields: Record<string, any> = {};
@@ -645,9 +637,9 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   /**
    * Get profile's user ID
    */
-  async getProfileUserId(profileId: string): Promise<string | null> {
+  async getProfileUserId(userId: string): Promise<string | null> {
     try {
-      const profile = await this.findById(profileId);
+      const profile = await this.findFirst({ user: userId });
 
       if (!profile) {
         return null;
@@ -655,7 +647,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
 
       return profile.user.toString();
     } catch (error) {
-      this.logger.error(`Error getting user ID for profile ${profileId}:`, error);
+      this.logger.error(`Error getting profile for user ID ${userId}:`, error);
       throw this.throwErrorHandler(error);
     }
   }

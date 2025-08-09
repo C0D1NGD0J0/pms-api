@@ -229,11 +229,18 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
   async update(
     filter: FilterQuery<T>,
     updateOperation: UpdateQuery<T>,
-    opts?: Record<string, any>
+    opts?: Record<string, any>,
+    session?: ClientSession
   ): Promise<T | null> {
     try {
       const options = { new: true, ...opts, upsert: false };
-      return await this.model.findOneAndUpdate(filter, updateOperation, options).exec();
+      let query = this.model.findOneAndUpdate(filter, updateOperation, options);
+
+      if (session) {
+        query = query.session(session);
+      }
+
+      return await query.exec();
     } catch (error) {
       throw this.throwErrorHandler(error);
     }
@@ -480,20 +487,41 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       }
 
       return await session.withTransaction(async () => {
-        return await operations(session);
+        try {
+          return await operations(session);
+        } catch (operationError) {
+          // Ensure the transaction is aborted on error
+          if (session.inTransaction()) {
+            await session.abortTransaction();
+          }
+          throw operationError;
+        }
       });
-    } catch (error) {
+    } catch (error: any) {
       if (
         error.codeName === 'IllegalOperation' &&
         error.message?.includes('Transaction numbers are only allowed')
       ) {
-        this.logger.error('Transactions not supported, executing without transaction');
         return await operations(); // Try again without transaction
       }
+
+      // Handle specific MongoDB transaction errors
+      if (error.hasErrorLabel && error.hasErrorLabel('TransientTransactionError')) {
+        // this.logger.warn('Transient transaction error, operation may be retried');
+      }
+
+      if (error.hasErrorLabel && error.hasErrorLabel('UnknownTransactionCommitResult')) {
+        // this.logger.warn('Unknown transaction commit result');
+      }
+
       throw error;
     } finally {
       if (session && !session.hasEnded) {
-        await session.endSession();
+        try {
+          await session.endSession();
+        } catch (sessionError) {
+          this.logger.error('Error ending session:', sessionError);
+        }
       }
     }
   }

@@ -281,6 +281,10 @@ export class InvitationService {
       }
 
       const existingUser = await this.userDAO.getActiveUserByEmail(invitation.inviteeEmail);
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
 
       let user;
       const linkedVendorId =
@@ -290,15 +294,18 @@ export class InvitationService {
       if (existingUser) {
         user = await this.userDAO.addUserToClient(
           existingUser._id.toString(),
-          invitation.clientId.toString(),
           invitation.role,
-          invitation.inviteeFullName,
-          session,
-          linkedVendorId
+          {
+            id: client.id.toString(),
+            cuid,
+            displayName: client.displayName || client.companyProfile?.legalEntityName,
+          },
+          linkedVendorId,
+          session
         );
       } else {
         user = await this.userDAO.createUserFromInvitation(
-          cuid,
+          { cuid, displayName: client.displayName || client.companyProfile?.legalEntityName },
           invitation,
           invitationData,
           linkedVendorId,
@@ -345,12 +352,10 @@ export class InvitationService {
       return { user, invitation };
     });
 
-    // setup role info with the proper role and connection status
     await this.profileService.initializeRoleInfo(
       result.user._id.toString(),
-      result.invitation.clientId.toString(),
+      cuid,
       result.invitation.role,
-      true,
       result.invitation.linkedVendorId?.toString()
     );
 

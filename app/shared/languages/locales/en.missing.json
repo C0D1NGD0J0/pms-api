@@ -9,5 +9,10 @@
       "invalidClient": "invitation.errors.invalidClient",
       "invalidOrExpired": "invitation.errors.invalidOrExpired"
     }
+  },
+  "profile": {
+    "success": {
+      "roleInitialized": "profile.success.roleInitialized"
+    }
   }
 }

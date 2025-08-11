@@ -249,7 +249,7 @@ export function isValidPhoneNumber(phoneNumber: string): boolean {
  */
 export function asyncWrapper(fn: AsyncRequestHandler) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    Promise.resolve(fn(req, res, next)).catch((err) => {
+    Promise.resolve(fn(req as any, res, next)).catch((err) => {
       return next(err);
     });
   };

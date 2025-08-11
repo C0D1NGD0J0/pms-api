@@ -83,7 +83,7 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
     // Validate connection status
     if (req.context.currentuser) {
       const activeConnection = req.context.currentuser.clients.find(
-        (c) => c.cuid === req.context.currentuser!.client.cuid
+        (c: any) => c.cuid === req.context.currentuser!.client.cuid
       );
 
       if (!activeConnection || !activeConnection.isConnected) {
@@ -114,16 +114,8 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
 
 export const diskUpload =
   (fieldNames: string[]) => async (req: Request, res: Response, next: NextFunction) => {
-    console.log('🔍 [DEBUG] diskUpload middleware - Expected field names:', fieldNames);
-    console.log(
-      '🔍 [DEBUG] diskUpload middleware - Request content-type:',
-      req.get('content-type')
-    );
-    console.log('🔍 [DEBUG] diskUpload middleware - Request method:', req.method);
-
     const { diskStorage }: { diskStorage: DiskStorage } = req.container.cradle;
 
-    // Wrap the upload middleware to add logging
     const uploadMiddleware = diskStorage.uploadMiddleware(fieldNames);
     uploadMiddleware(req, res, (err: any) => {
       if (err) {
@@ -139,8 +131,6 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
     clamScanner,
   }: { emitterService: EventEmitterService; clamScanner: ClamScannerService } =
     req.container.cradle;
-
-  console.log('🔍 [DEBUG] ClamScanner ready status:', clamScanner.isReady());
 
   const files = req.files;
   if (!files) {
@@ -422,7 +412,7 @@ const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUs
   }
 
   // Check if user's connection to active client is still active
-  const activeConnection = currentuser.clients.find((c) => c.cuid === currentuser.client.cuid);
+  const activeConnection = currentuser.clients.find((c: any) => c.cuid === currentuser.client.cuid);
   if (!activeConnection?.isConnected) {
     next(new UnauthorizedError({ message: t('auth.errors.connectionInactive') }));
     return null;

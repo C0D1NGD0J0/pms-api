@@ -16,13 +16,14 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
    * @param role - The role to assign
    * @param displayName - The display name for this client association
    * @param session - Optional MongoDB session for transactions
+   * @param linkedVendorId - Optional ID of vendor to link this user to (for vendor employees)
    * @returns A promise that resolves to the updated user
    */
   addUserToClient(
     userId: string,
-    clientId: string,
     role: IUserRoleType,
-    displayName: string,
+    client: { cuid: string; displayName?: string; id: string },
+    linkedVendorId?: string,
     session?: any
   ): Promise<IUserDocument | null>;
 
@@ -41,6 +42,22 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
   ): ListResultWithPagination<IUserDocument[]>;
 
   /**
+   * Create a new user from an invitation acceptance.
+   *
+   * @param invitationData - The invitation data
+   * @param userData - The user signup data
+   * @param linkedVendorId - Optional ID of vendor to link this user to (for vendor employees)
+   * @param session - Optional MongoDB session for transactions
+   * @returns A promise that resolves to the created user
+   */
+  createUserFromInvitation(
+    invitationData: any,
+    userData: any,
+    linkedVendorId?: string,
+    session?: any
+  ): Promise<IUserDocument>;
+
+  /**
    * Associate a user with a client (multi-tenant functionality).
    *
    * @param userId - The ID of the user.
@@ -53,20 +70,6 @@ export interface IUserDAO extends IBaseDAO<IUserDocument> {
     clientId: string,
     role: IUserRoleType
   ): Promise<boolean>;
-
-  /**
-   * Create a new user from an invitation acceptance.
-   *
-   * @param invitationData - The invitation data
-   * @param userData - The user signup data
-   * @param session - Optional MongoDB session for transactions
-   * @returns A promise that resolves to the created user
-   */
-  createUserFromInvitation(
-    invitationData: any,
-    userData: any,
-    session?: any
-  ): Promise<IUserDocument>;
 
   /**
    * Generate and save an activation token for a user.

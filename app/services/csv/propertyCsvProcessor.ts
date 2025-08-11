@@ -7,16 +7,16 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
 import {
-  ICsvHeaderValidationResult,
-  ICsvValidationResult,
-  IInvalidCsvProperty,
-} from '@interfaces/csv.interface';
-import {
   OccupancyStatus,
   NewPropertyType,
   PropertyStatus,
   IProperty,
 } from '@interfaces/property.interface';
+import {
+  ICsvHeaderValidationResult,
+  ICsvValidationResult,
+  IInvalidCsvProperty,
+} from '@interfaces/csv.interface';
 
 import { BaseCSVProcessorService } from './base';
 

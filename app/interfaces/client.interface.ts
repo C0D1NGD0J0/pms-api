@@ -50,6 +50,14 @@ export interface IClientSettings {
   lang: string;
 }
 
+export interface IClientUserConnections {
+  linkedVendorId?: string;
+  roles: IUserRoleType[];
+  isConnected: boolean;
+  displayName: string;
+  cuid: string;
+}
+
 export type PopulatedAccountAdmin = {
   _id: Types.ObjectId;
   email: string;
@@ -57,13 +65,6 @@ export type PopulatedAccountAdmin = {
   lastName: string;
   avatar?: string;
 };
-
-export interface IClientUserConnections {
-  roles: IUserRoleType[];
-  isConnected: boolean;
-  displayName: string;
-  cuid: string;
-}
 
 export type IPopulatedClientDocument = {
   admin: IUserDocument | Types.ObjectId;

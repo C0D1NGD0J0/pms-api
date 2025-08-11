@@ -79,7 +79,6 @@ export const UserIdParamSchema = z.object({
 
 export const RoleParamSchema = z.object({
   cuid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
-  uid: z.string().trim().min(8, 'User ID must be at least 8 characters'),
   role: z.string().trim().min(1, 'Role is required'),
 });
 

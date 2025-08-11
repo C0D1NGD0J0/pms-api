@@ -264,6 +264,14 @@ export interface UploadedFile {
   path: string;
 }
 
+export interface IEmailOptions<T> {
+  client?: { cuid: string; id: string };
+  emailType: string;
+  subject: string;
+  to: string;
+  data: T;
+}
+
 export type MulterFile =
   | Express.Multer.File[]
   | {
@@ -277,12 +285,11 @@ export interface AppRequest extends Request {
   rawBody: Buffer;
 }
 
-export interface IEmailOptions<T> {
-  emailType: string;
-  subject: string;
-  to: string;
-  data: T;
-}
+export type AsyncRequestHandler = (
+  req: AppRequest,
+  res: Response,
+  next: NextFunction
+) => Promise<any>;
 
 export interface IPermissionResult {
   attributes?: string[];
@@ -294,8 +301,6 @@ export type CsvProcessReturnData = {
   data: IProperty[];
   errors?: IInvalidCsvProperty[] | null;
 };
-
-export type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
 export type ListResultWithPagination<T> = Promise<{
   items: T;

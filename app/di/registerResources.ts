@@ -52,6 +52,7 @@ import {
   InvitationService,
   AuthTokenService,
   PropertyService,
+  ProfileService,
   ClientService,
   AuthService,
 } from '@services/index';
@@ -81,6 +82,7 @@ const ServiceResources = {
   tokenService: asClass(AuthTokenService).singleton(),
   languageService: asClass(LanguageService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
+  profileService: asClass(ProfileService).singleton(),
   emitterService: asClass(EventEmitterService).singleton(),
   propertyUnitService: asClass(PropertyUnitService).singleton(),
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),

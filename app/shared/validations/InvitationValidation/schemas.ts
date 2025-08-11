@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { container } from '@di/index';
+import { ClientDAO } from '@dao/index';
+import { InvitationDAO } from '@dao/invitationDAO';
 import { IUserRole } from '@interfaces/user.interface';
 
 const employeeInfoSchema = z
@@ -112,6 +115,20 @@ export const invitationDataSchema = z.object({
     errorMap: () => ({ message: 'Please provide a valid role' }),
   }),
 
+  linkedVendorId: z
+    .string()
+    .min(24, 'Vendor ID must be a valid MongoDB ObjectId')
+    .max(24, 'Vendor ID must be a valid MongoDB ObjectId')
+    .optional()
+    .refine(
+      (val) => {
+        if (!val) return true;
+        // Check if valid MongoDB ObjectId (24 hex chars)
+        return /^[0-9a-fA-F]{24}$/.test(val);
+      },
+      { message: 'Vendor ID must be a valid MongoDB ObjectId' }
+    ),
+
   personalInfo: z.object({
     firstName: z
       .string()
@@ -158,18 +175,79 @@ export const invitationDataSchema = z.object({
     .default('pending'),
 });
 
+export const validateTokenAndCuidSchema = z
+  .object({
+    cuid: z.string().min(12).max(32, 'Invalid cuid format'),
+    token: z.string().min(4).max(64, 'Invalid token format'),
+  })
+  .superRefine(async (data, ctx) => {
+    if (!data.cuid || !data.token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Missing invitation token.cuid',
+        path: ['cuid'],
+      });
+
+      if (!data.token) {
+        return ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Missing invitation token.token',
+          path: ['token'],
+        });
+      }
+    }
+
+    const { invitationDAO, clientDAO }: { invitationDAO: InvitationDAO; clientDAO: ClientDAO } =
+      container.cradle;
+    const invitation = await invitationDAO.findByToken(data.token as string);
+    if (!invitation) {
+      return ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Invalid invitation token',
+        path: ['token'],
+      });
+    }
+
+    if (data.cuid) {
+      const client = await clientDAO.getClientByCuid(data.cuid);
+
+      if (!client || client.cuid !== data.cuid) {
+        return ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Invitation does not belong to this client',
+          path: ['cuid'],
+        });
+      }
+    }
+  });
+
 export const sendInvitationSchema = invitationDataSchema;
 
 export const updateInvitationSchema = invitationDataSchema;
 
+const policiesSchema = z.object({
+  tos: z.object({
+    accepted: z.boolean(),
+    acceptedOn: z.date().optional().nullable(),
+  }),
+  privacy: z.object({
+    accepted: z.boolean(),
+    acceptedOn: z.date().optional().nullable(),
+  }),
+  marketing: z.object({
+    accepted: z.boolean(),
+    acceptedOn: z.date().optional().nullable(),
+  }),
+});
+
 export const acceptInvitationSchema = z.object({
   password: z
     .string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(128, 'Password must be less than 128 characters')
+    .min(6, 'Password must be at least 6 characters')
+    .max(15, 'Password must be less than 15 characters')
     .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
-      'Password must contain at least one lowercase letter, one uppercase letter, one number, and one special character'
+      /^(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?&]/,
+      'Password must contain at least one uppercase letter, and one number'
     ),
 
   location: z
@@ -188,6 +266,8 @@ export const acceptInvitationSchema = z.object({
   bio: z.string().max(700, 'Bio must be less than 700 characters').optional(),
 
   headline: z.string().max(50, 'Headline must be less than 50 characters').optional(),
+
+  policies: policiesSchema.optional(),
 });
 
 export const revokeInvitationSchema = z.object({
@@ -239,7 +319,7 @@ export const getInvitationsQuerySchema = z.object({
 });
 
 export const invitationTokenSchema = z.object({
-  token: z.string().min(10, 'Invalid invitation token').max(255, 'Invalid invitation token'),
+  token: z.string().min(4, 'Invalid invitation token').max(64, 'Invalid invitation token'),
 });
 
 export const iuidSchema = z.object({

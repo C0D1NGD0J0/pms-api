@@ -3,6 +3,7 @@ import { container } from '@di/index';
 import { ClientDAO } from '@dao/index';
 import { InvitationDAO } from '@dao/invitationDAO';
 import { IUserRole } from '@interfaces/user.interface';
+import { EmployeeDepartment } from '@interfaces/profile.interface';
 
 const employeeInfoSchema = z
   .object({
@@ -395,7 +396,27 @@ export const invitationCsvSchema = z
 
     employeeInfo_department: z
       .string()
-      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .transform((str) => {
+        if (!str || str.trim() === '') {
+          return undefined;
+        }
+        const trimmed = str.trim().toLowerCase();
+        // Map string values to enum values
+        const departmentMap: Record<string, EmployeeDepartment> = {
+          maintenance: EmployeeDepartment.MAINTENANCE,
+          operations: EmployeeDepartment.OPERATIONS,
+          accounting: EmployeeDepartment.ACCOUNTING,
+          management: EmployeeDepartment.MANAGEMENT,
+        };
+
+        const department = departmentMap[trimmed];
+        if (!department) {
+          throw new Error(
+            `Invalid department. Must be one of: ${Object.keys(departmentMap).join(', ')}`
+          );
+        }
+        return department;
+      })
       .optional(),
     employeeInfo_jobTitle: z
       .string()

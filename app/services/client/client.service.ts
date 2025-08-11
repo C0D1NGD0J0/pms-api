@@ -535,13 +535,13 @@ export class ClientService {
         vendorInfo = user.profile.vendorInfo || {};
 
         // Check if this is a linked vendor account
-        if (user.profile.clientRoleInfo && user.profile.clientRoleInfo.length > 0) {
-          const clientRoleInfo = user.profile.clientRoleInfo.find((info) => info.cuid === clientId);
-          if (clientRoleInfo?.linkedVendorId) {
+        if (user.cuids && user.cuids.length > 0) {
+          const clientConnection = user.cuids.find((connection) => connection.cuid === clientId);
+          if (clientConnection?.linkedVendorId) {
             vendorInfo = {
               ...vendorInfo,
               isLinkedAccount: true,
-              linkedVendorId: clientRoleInfo.linkedVendorId,
+              linkedVendorId: clientConnection.linkedVendorId,
             };
           } else {
             vendorInfo = {

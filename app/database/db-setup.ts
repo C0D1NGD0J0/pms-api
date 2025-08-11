@@ -60,13 +60,18 @@ export class DatabaseService implements IDatabaseService {
       mongoose.set('strictQuery', true);
 
       const url = this.getDatabaseUrl(env);
+      this.log.info(`Attempting to connect to ${env} database...`);
+
       await mongoose.connect(url, {
         family: 4,
-        minPoolSize: 5,
-        maxPoolSize: 20,
+        minPoolSize: env === 'production' ? 5 : 2,
+        maxPoolSize: env === 'production' ? 20 : 10,
         socketTimeoutMS: 45000,
-        connectTimeoutMS: 10000,
-        serverSelectionTimeoutMS: 15000,
+        connectTimeoutMS: env === 'production' ? 30000 : 10000,
+        serverSelectionTimeoutMS: env === 'production' ? 30000 : 15000,
+        retryWrites: true,
+        retryReads: true,
+        ...(env === 'production' && url.includes('ssl=true') ? { ssl: true } : {}),
       });
 
       // Set up Redis connection

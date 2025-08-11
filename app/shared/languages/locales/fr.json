@@ -27,7 +27,13 @@
       "refreshTokenNotFound": "Jeton de rafraîchissement introuvable",
       "invalidTokenType": "Type de jeton invalide",
       "allConnectionsDisabled": "Toutes les connexions utilisateur sont désactivées",
-      "connectionInactive": "La connexion utilisateur est inactive"
+      "connectionInactive": "La connexion utilisateur est inactive",
+      "insufficientPermissions": "Permissions insuffisantes pour effectuer cette action",
+      "permissionCheckFailed": "Vérification des permissions échouée",
+      "connectionCheckFailed": "Vérification de la connexion échouée",
+      "adminRequired": "Privilèges administrateur requis",
+      "authorizationFailed": "Autorisation échouée",
+      "clientAccessDenied": "Accès refusé. Vous n'avez pas la permission d'accéder à ce compte client"
     },
     "success": {
       "tokenRefreshed": "Jeton rafraîchi avec succès",
@@ -80,10 +86,15 @@
     "success": {
       "profileUpdated": "Profil client mis à jour avec succès",
       "detailsUpdated": "Détails du client mis à jour avec succès",
-      "detailsRetrieved": "Détails du client récupérés avec succès"
+      "detailsRetrieved": "Détails du client récupérés avec succès",
+      "retrieved": "Détails du client récupérés avec succès"
     }
   },
   "property": {
+    "logging": {
+      "cleaningUp": "Nettoyage des ressources de propriété et des écouteurs d'événements",
+      "eventListenersRemoved": "Écouteurs d'événements de propriété supprimés avec succès"
+    },
     "errors": {
       "noCsvFileUploaded": "Aucun fichier CSV téléchargé",
       "invalidFormType": "Type de formulaire invalide: {{formType}}",
@@ -154,7 +165,9 @@
       "unitUpdated": "Unité mise à jour avec succès",
       "unitCreationQueued": "Tâche de création d'unité mise en file d'attente avec succès",
       "unitsCreated": "{{created}} unités créées avec succès, {{failed}} ont échoué",
-      "allUnitsCreated": "Toutes les {{count}} unités créées avec succès"
+      "allUnitsCreated": "Toutes les {{count}} unités créées avec succès",
+      "csvValidated": "Fichier CSV des unités de propriété validé avec succès",
+      "csvImported": "Unités de propriété importées avec succès depuis le fichier CSV"
     }
   },
   "validation": {
@@ -339,6 +352,40 @@
       "greeting": "Bonjour {{fullname}},",
       "message": "Votre mot de passe a été mis à jour avec succès pour votre compte.",
       "warningText": "Si vous n'avez pas initié cette demande, veuillez contacter le service client de toute urgence."
+    },
+    "invitation": {
+      "subject": "Vous avez été invité à rejoindre {{companyName}}",
+      "reminderSubject": "Rappel: Vous avez été invité à rejoindre {{companyName}}"
+    }
+  },
+  "invitation": {
+    "success": {
+      "sent": "Invitation envoyée à {{email}}",
+      "resent": "Rappel d'invitation envoyé à {{email}}",
+      "reactivated": "Invitation réactivée et envoyée à {{email}}",
+      "revoked": "Invitation révoquée avec succès",
+      "accepted": "Invitation acceptée avec succès",
+      "retrieved": "Invitation récupérée avec succès",
+      "listed": "Invitations listées avec succès",
+      "updated": "Invitation mise à jour pour {{email}}",
+      "draftCreated": "Brouillon d'invitation créé pour {{email}}",
+      "tokenValid": "Jeton d'invitation valide",
+      "statsRetrieved": "Statistiques d'invitation récupérées avec succès",
+      "expired": "{{count}} invitations expirées",
+      "csvImportStarted": "Import CSV démarré avec succès",
+      "csvValidationStarted": "Validation CSV démarrée",
+      "dryRunCompleted": "Exécution de test terminée",
+      "pendingProcessed": "{{processed}} invitations sur {{total}} en attente traitées"
+    },
+    "info": {
+      "noPendingFound": "Aucune invitation en attente trouvée"
+    },
+    "errors": {
+      "notFound": "Invitation introuvable",
+      "cannotResend": "Impossible de renvoyer cette invitation",
+      "expired": "L'invitation a expiré",
+      "noCsvFileUploaded": "Aucun fichier CSV téléchargé. Veuillez sélectionner un fichier pour continuer.",
+      "pendingInvitationExists": "Une invitation active existe déjà pour cette adresse email"
     }
   },
   "system": {

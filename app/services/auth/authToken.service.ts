@@ -24,7 +24,7 @@ export class AuthTokenService {
     this.extendedRefreshTokenExpiry = envVariables.JWT.EXTENDED_REFRESH_TOKEN_EXPIRY;
   }
 
-  createJwtTokens(payload: { sub: string; rememberMe: boolean; csub: string }): {
+  createJwtTokens(payload: { sub: string; rememberMe: boolean; cuid: string }): {
     accessToken: string;
     refreshToken: string;
     rememberMe: boolean;
@@ -54,7 +54,7 @@ export class AuthTokenService {
     data: {
       rememberMe: boolean;
       sub: string;
-      csub: string;
+      cuid: string;
       iat: number;
       exp: number;
     };
@@ -72,7 +72,7 @@ export class AuthTokenService {
         data: {
           rememberMe: decoded.data.rememberMe || false,
           sub: decoded.data.sub,
-          csub: decoded.data.csub,
+          cuid: decoded.data.cuid,
           iat: decoded.iat as number,
           exp: decoded.exp as number,
         },

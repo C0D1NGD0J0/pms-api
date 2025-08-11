@@ -25,6 +25,7 @@ const UserSchema = new Schema<IUserDocument>(
         roles: [{ type: String, required: true }],
         displayName: { type: String, required: true },
         cuid: { type: String, required: true, index: true },
+        linkedVendorId: { type: String, trim: true, default: null }, // Optional, for if the user is linked to a vendor
         isConnected: { type: Boolean, required: true, default: false },
         _id: false,
       },
@@ -56,7 +57,6 @@ UserSchema.pre('save', async function (this: IUserDocument, next) {
 
 UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function (next) {
   const update = this.getUpdate() as UpdateQuery<IUser>;
-  // Check if password is being updated
   if (update.password) {
     const salt = await bcrypt.genSalt(10);
     update.password = await bcrypt.hash(update.password, salt);
@@ -76,7 +76,7 @@ UserSchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',
 });
 
-UserSchema.virtual('fullName').get(function () {
+UserSchema.virtual('fullname').get(function () {
   if (this.profile && this.profile.personalInfo) {
     return `${this.profile.personalInfo.firstName} ${this.profile.personalInfo.lastName}`;
   }

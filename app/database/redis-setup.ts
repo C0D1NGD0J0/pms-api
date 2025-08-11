@@ -19,9 +19,11 @@ export class RedisService {
       this.redisMemoryServer = new RedisMemoryServer();
     }
 
-    this.client = createClient({
+    // Parse Redis URL for Railway compatibility
+    const redisUrl = envVariables.REDIS.URL;
+    const clientConfig: any = {
       socket: {
-        reconnectStrategy: (retries) => {
+        reconnectStrategy: (retries: number) => {
           if (retries > 5) {
             return new Error('Too many reconnect attempts');
           }
@@ -30,7 +32,6 @@ export class RedisService {
         connectTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 10000,
         keepAlive: envVariables.SERVER.ENV === 'production' ? 60000 : 30000,
       },
-      url: envVariables.REDIS.URL,
       commandsQueueMaxLength: 100,
       ...(envVariables.SERVER.ENV === 'production'
         ? {
@@ -39,10 +40,37 @@ export class RedisService {
             retryDelayOnFailover: 1000,
           }
         : {}),
-    });
+    };
+
+    // Handle Railway Redis URL format
+    if (redisUrl) {
+      if (redisUrl.startsWith('rediss://')) {
+        // Railway often uses SSL Redis connections
+        clientConfig.url = redisUrl;
+        clientConfig.socket.tls = true;
+        clientConfig.socket.rejectUnauthorized = false; // Railway's SSL certificates
+      } else {
+        clientConfig.url = redisUrl;
+      }
+    }
+
+    this.client = createClient(clientConfig);
 
     this.client.on('error', (err: Error) => {
+      this.log.error({ err, redisUrl: envVariables.REDIS.URL }, 'Redis client error');
       console.error('Redis client error', err);
+    });
+
+    this.client.on('connect', () => {
+      this.log.info({ redisUrl: this.getRedisUrl() }, 'Redis client connected');
+    });
+
+    this.client.on('ready', () => {
+      this.log.info('Redis client ready');
+    });
+
+    this.client.on('reconnecting', () => {
+      this.log.info('Redis client reconnecting');
     });
   }
 

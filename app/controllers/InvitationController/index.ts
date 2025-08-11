@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { t } from '@shared/languages';
+import { UnauthorizedError } from '@shared/customErrors';
 import { httpStatusCodes, setAuthCookies } from '@utils/index';
 import { InvitationService, AuthService } from '@services/index';
 import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
@@ -59,58 +60,40 @@ export class InvitationController {
     });
   };
 
-  validateInvitation = async (req: AppRequest, res: Response) => {
-    const { token } = req.params;
+  updateInvitation = async (req: AppRequest, res: Response) => {
+    const { currentuser } = req.context;
 
-    try {
-      const result = await this.invitationService.validateInvitationByToken(token);
-
-      res.status(httpStatusCodes.OK).json({
-        success: result.success,
-        message: result.message,
-        data: {
-          invitation: {
-            iuid: result.data.invitation.iuid,
-            inviteeEmail: result.data.invitation.inviteeEmail,
-            inviteeFullName: result.data.invitation.inviteeFullName,
-            role: result.data.invitation.role,
-            expiresAt: result.data.invitation.expiresAt,
-            status: result.data.invitation.status,
-          },
-          client: result.data.client,
-          isValid: result.data.isValid,
-        },
+    if (!currentuser) {
+      return new UnauthorizedError({
+        message: t('auth.errors.unauthorized'),
       });
-    } catch (error) {
-      // Handle specific error types
-      if (error instanceof Error) {
-        const statusCode =
-          error.name === 'NotFoundError'
-            ? httpStatusCodes.NOT_FOUND
-            : error.name === 'BadRequestError'
-              ? httpStatusCodes.BAD_REQUEST
-              : httpStatusCodes.INTERNAL_SERVER_ERROR;
-
-        res.status(statusCode).json({
-          success: false,
-          message: error.message,
-        });
-      } else {
-        res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
-          success: false,
-          message: t('invitation.errors.validationFailed'),
-        });
-      }
     }
+
+    const result = await this.invitationService.updateInvitation(
+      req.context,
+      req.body,
+      currentuser
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  validateInvitation = async (req: AppRequest, res: Response) => {
+    const { token } = req.query;
+    const { cuid } = req.params;
+
+    const result = await this.invitationService.validateInvitationByToken(cuid, token as string);
+
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   acceptInvitation = async (req: AppRequest, res: Response) => {
-    const result = await this.invitationService.acceptInvitation(req.context, req.body);
+    const { cuid } = req.params;
+    const data = req.body;
 
-    // auto-login the user after successful invitation acceptance
+    const result = await this.invitationService.acceptInvitation(cuid, data);
     const loginResult = await this.authService.loginAfterInvitationSignup(
       result.data.user._id.toString(),
-      result.data.invitation.clientId.toString()
+      cuid
     );
 
     res = setAuthCookies(
@@ -126,15 +109,19 @@ export class InvitationController {
       success: true,
       message: result.message,
       data: {
-        user: {
-          id: result.data.user._id,
-          email: result.data.user.email,
-          isActive: result.data.user.isActive,
-        },
-        activeAccount: loginResult.data.activeAccount,
         accounts: loginResult.data.accounts,
+        activeAccount: loginResult.data.activeAccount,
       },
     });
+  };
+
+  declineInvitation = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const { token } = req.params;
+    const { reason } = req.body;
+
+    const result = await this.invitationService.declineInvitation(cuid, { token, reason });
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   revokeInvitation = async (req: AppRequest, res: Response) => {
@@ -194,7 +181,7 @@ export class InvitationController {
   getInvitations = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
     const { cuid } = req.params;
-    const { status, role, page, limit, sortBy, sortOrder } = req.query;
+    const { status, role, page, limit, sort, sortBy } = req.query;
 
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
@@ -204,16 +191,16 @@ export class InvitationController {
     }
 
     const query = {
-      clientId: cuid,
+      cuid,
       status: status as any,
       role: role as any,
       page: page ? parseInt(page as string) : undefined,
       limit: limit ? parseInt(limit as string) : undefined,
       sortBy: sortBy as any,
-      sortOrder: sortOrder as any,
+      sortOrder: sort as any,
     };
 
-    const result = await this.invitationService.getInvitations(query, currentuser.sub);
+    const result = await this.invitationService.getInvitations(req.context, query);
 
     res.status(httpStatusCodes.OK).json({
       success: result.success,

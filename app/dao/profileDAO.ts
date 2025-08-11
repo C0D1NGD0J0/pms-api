@@ -1,5 +1,6 @@
-// app/dao/profileDAO.ts
 import Logger from 'bunyan';
+import { t } from '@shared/languages';
+import { BadRequestError } from '@shared/customErrors';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { ListResultWithPagination, ICurrentUser } from '@interfaces/index';
@@ -197,22 +198,11 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     try {
       const objectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
 
-      // Ensure we have the required fields
       const data = {
         ...profileData,
         user: objectId,
         puid: profileData.puid || generateShortUID(),
       };
-
-      // If personalInfo isn't provided, create a minimal structure
-      if (!data.personalInfo) {
-        data.personalInfo = {
-          firstName: '',
-          lastName: '',
-          displayName: '',
-          location: profileData?.personalInfo?.location || '',
-        } as any;
-      }
 
       return await this.insert(data as Partial<IProfileDocument>, session);
     } catch (error) {
@@ -301,7 +291,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               {
                 $project: {
                   _id: 0,
-                  csub: '$cuid',
+                  cuid: '$cuid',
                   displayname: '$displayName',
                   isVerified: 1,
                 },
@@ -351,10 +341,40 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   },
                 },
                 in: {
-                  csub: '$$activeClient.cuid',
+                  cuid: '$$activeClient.cuid',
                   displayname: '$$activeClient.displayName',
                   role: { $arrayElemAt: ['$$activeClient.roles', 0] },
+                  linkedVendorId: '$$activeClient.linkedVendorId',
+                  isPrimaryVendor: {
+                    $cond: {
+                      if: {
+                        $and: [
+                          { $in: ['vendor', '$$activeClient.roles'] },
+                          { $not: '$$activeClient.linkedVendorId' },
+                        ],
+                      },
+                      then: true,
+                      else: false,
+                    },
+                  },
                 },
+              },
+            },
+
+            // common profile information if applicable
+            vendorInfo: {
+              $cond: {
+                if: '$vendorInfo',
+                then: '$vendorInfo',
+                else: '$$REMOVE',
+              },
+            },
+
+            employeeInfo: {
+              $cond: {
+                if: '$employeeInfo',
+                then: '$employeeInfo',
+                else: '$$REMOVE',
               },
             },
 
@@ -407,6 +427,35 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
+  /**
+   * Update common employee information that applies across all clients
+   */
+  async updateCommonEmployeeInfo(
+    profileId: string,
+    employeeInfo: Record<string, any>
+  ): Promise<IProfileDocument | null> {
+    try {
+      if (!employeeInfo || typeof employeeInfo !== 'object') {
+        throw new Error('Employee info must be a valid object');
+      }
+
+      const updateFields: Record<string, any> = {};
+
+      for (const [key, value] of Object.entries(employeeInfo)) {
+        updateFields[`employeeInfo.${key}`] = value;
+      }
+
+      return await this.updateById(profileId, { $set: updateFields });
+    } catch (error) {
+      this.logger.error(`Error updating common employee info for profile ${profileId}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update employee information
+   * Now directly updates the top-level employeeInfo field
+   */
   async updateEmployeeInfo(
     profileId: string,
     cuid: string,
@@ -419,15 +468,23 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
 
       const updateFields: Record<string, any> = {};
 
+      // Since clientSettings is removed, we update the top-level employeeInfo
       for (const [key, value] of Object.entries(employeeInfo)) {
-        updateFields[`clientRoleInfo.$[client].employeeInfo.${key}`] = value;
+        if (
+          [
+            'permissions',
+            'department',
+            'employeeId',
+            'reportsTo',
+            'startDate',
+            'jobTitle',
+          ].includes(key)
+        ) {
+          updateFields[`employeeInfo.${key}`] = value;
+        }
       }
 
-      return await this.updateById(
-        profileId,
-        { $set: updateFields },
-        { arrayFilters: [{ 'client.cuid': cuid }] }
-      );
+      return await this.updateById(profileId, { $set: updateFields });
     } catch (error) {
       this.logger.error(
         `Error updating employee info for profile ${profileId}, client ${cuid}:`,
@@ -438,7 +495,53 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   }
 
   /**
-   * Update vendor-specific information for a profile and client
+   * Update common vendor information that applies across all clients
+   */
+  async updateCommonVendorInfo(
+    profileId: string,
+    vendorInfo: Record<string, any>
+  ): Promise<IProfileDocument | null> {
+    try {
+      if (!vendorInfo || typeof vendorInfo !== 'object') {
+        throw new BadRequestError({
+          message: t('profile.errors.invalidParameters'),
+        });
+      }
+
+      const updateFields: Record<string, any> = {};
+
+      for (const [key, value] of Object.entries(vendorInfo)) {
+        if (key === 'contactPerson' && typeof value === 'object') {
+          for (const [subKey, subValue] of Object.entries(value)) {
+            updateFields[`vendorInfo.contactPerson.${subKey}`] = subValue;
+          }
+        } else if (key === 'insuranceInfo' && typeof value === 'object') {
+          for (const [subKey, subValue] of Object.entries(value)) {
+            updateFields[`vendorInfo.insuranceInfo.${subKey}`] = subValue;
+          }
+        } else if (key === 'servicesOffered' && typeof value === 'object') {
+          for (const [subKey, subValue] of Object.entries(value)) {
+            updateFields[`vendorInfo.servicesOffered.${subKey}`] = subValue;
+          }
+        } else if (key === 'address' && typeof value === 'object') {
+          for (const [subKey, subValue] of Object.entries(value)) {
+            updateFields[`vendorInfo.address.${subKey}`] = subValue;
+          }
+        } else {
+          updateFields[`vendorInfo.${key}`] = value;
+        }
+      }
+
+      return await this.updateById(profileId, { $set: updateFields });
+    } catch (error) {
+      this.logger.error(`Error updating common vendor info for profile ${profileId}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update common vendor information
+   * This only updates the top-level vendorInfo on the profile
    */
   async updateVendorInfo(
     profileId: string,
@@ -450,27 +553,19 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         throw new Error('Vendor info must be a valid object');
       }
 
-      const updateFields: Record<string, any> = {};
-
-      for (const [key, value] of Object.entries(vendorInfo)) {
-        if (key === 'contactPerson' && typeof value === 'object') {
-          for (const [subKey, subValue] of Object.entries(value)) {
-            updateFields[`clientRoleInfo.$[client].vendorInfo.contactPerson.${subKey}`] = subValue;
-          }
-        } else if (key === 'insuranceInfo' && typeof value === 'object') {
-          for (const [subKey, subValue] of Object.entries(value)) {
-            updateFields[`clientRoleInfo.$[client].vendorInfo.insuranceInfo.${subKey}`] = subValue;
-          }
-        } else {
-          updateFields[`clientRoleInfo.$[client].vendorInfo.${key}`] = value;
-        }
+      if ('linkedVendorId' in vendorInfo) {
+        this.logger.info(
+          `LinkedVendorId should be set at service layer, not in ProfileDAO: ${profileId}`
+        );
+        delete vendorInfo.linkedVendorId;
       }
 
-      return await this.updateById(
-        profileId,
-        { $set: updateFields },
-        { arrayFilters: [{ 'client.cuid': cuid }] }
-      );
+      const profile = await this.findById(profileId);
+      if (!profile) {
+        throw new Error('Profile not found');
+      }
+
+      return await this.updateCommonVendorInfo(profileId, vendorInfo);
     } catch (error) {
       this.logger.error(
         `Error updating vendor info for profile ${profileId}, client ${cuid}:`,
@@ -481,7 +576,8 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   }
 
   /**
-   * Clear role-specific information for a specific client
+   * Clear role-specific information
+   * This is now just a placeholder since role info is managed in UserDAO
    */
   async clearRoleSpecificInfo(
     profileId: string,
@@ -489,16 +585,11 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     roleType: 'employee' | 'vendor'
   ): Promise<IProfileDocument | null> {
     try {
-      const unsetFields =
-        roleType === 'employee'
-          ? { 'clientRoleInfo.$[client].employeeInfo': '' }
-          : { 'clientRoleInfo.$[client].vendorInfo': '' };
-
-      return await this.updateById(
-        profileId,
-        { $unset: unsetFields },
-        { arrayFilters: [{ 'client.cuid': cuid }] }
-      );
+      const profile = await this.findById(profileId);
+      if (!profile) {
+        throw new Error('Profile not found');
+      }
+      return profile;
     } catch (error) {
       this.logger.error(
         `Error clearing ${roleType} info for profile ${profileId}, client ${cuid}:`,
@@ -509,12 +600,14 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   }
 
   /**
-   * Get role-specific information for a profile and client
+   * Get profile information only, without role data
+   * Role data should be fetched and combined at the service layer
    */
-  async getRoleSpecificInfo(
-    profileId: string,
-    cuid: string
-  ): Promise<{ employeeInfo?: any; vendorInfo?: any } | null> {
+  async getProfileInfo(profileId: string): Promise<{
+    vendorInfo?: any;
+    employeeInfo?: any;
+    userId?: string;
+  } | null> {
     try {
       const profile = await this.findById(profileId);
 
@@ -522,55 +615,39 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         return null;
       }
 
-      const clientRoleInfo = profile.clientRoleInfo?.find((info) => info.cuid === cuid);
+      const result: any = {
+        userId: profile.user.toString(),
+      };
 
-      if (!clientRoleInfo) {
-        return null;
+      if (profile.vendorInfo) {
+        result.vendorInfo = profile.vendorInfo;
       }
 
-      const result: any = {};
-
-      if (clientRoleInfo.employeeInfo) {
-        result.employeeInfo = clientRoleInfo.employeeInfo;
-      }
-
-      if (clientRoleInfo.vendorInfo) {
-        result.vendorInfo = clientRoleInfo.vendorInfo;
+      if (profile.employeeInfo) {
+        result.employeeInfo = profile.employeeInfo;
       }
 
       return result;
     } catch (error) {
-      this.logger.error(
-        `Error getting role-specific info for profile ${profileId}, client ${cuid}:`,
-        error
-      );
+      this.logger.error(`Error getting profile info for profile ${profileId}:`, error);
       throw this.throwErrorHandler(error);
     }
   }
 
   /**
-   * Ensure client role info exists for a profile
+   * Get profile's user ID
    */
-  async ensureClientRoleInfo(profileId: string, cuid: string): Promise<void> {
+  async getProfileUserId(userId: string): Promise<string | null> {
     try {
-      const profile = await this.findById(profileId);
+      const profile = await this.findFirst({ user: userId });
 
       if (!profile) {
-        throw new Error('Profile not found');
+        return null;
       }
 
-      const hasClientRoleInfo = profile.clientRoleInfo?.some((info) => info.cuid === cuid);
-
-      if (!hasClientRoleInfo) {
-        await this.updateById(profileId, {
-          $push: { clientRoleInfo: { cuid } },
-        });
-      }
+      return profile.user.toString();
     } catch (error) {
-      this.logger.error(
-        `Error ensuring client role info for profile ${profileId}, client ${cuid}:`,
-        error
-      );
+      this.logger.error(`Error getting profile for user ID ${userId}:`, error);
       throw this.throwErrorHandler(error);
     }
   }

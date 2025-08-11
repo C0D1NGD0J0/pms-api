@@ -1,45 +1,21 @@
 {
-  "property": {
-    "logging": {
-      "cleaningUp": "property.logging.cleaningUp",
-      "eventListenersRemoved": "property.logging.eventListenersRemoved"
-    }
-  },
   "client": {
-    "success": {
-      "retrieved": "client.success.retrieved"
+    "errors": {
+      "notFound": "client.errors.notFound"
     }
   },
   "invitation": {
-    "success": {
-      "csvValidationStarted": "invitation.success.csvValidationStarted",
-      "csvImportStarted": "invitation.success.csvImportStarted",
-      "dryRunCompleted": "invitation.success.dryRunCompleted",
-      "sent": "invitation.success.sent",
-      "draftCreated": "invitation.success.draftCreated"
-    },
     "errors": {
-      "noCsvFileUploaded": "invitation.errors.noCsvFileUploaded",
-      "pendingInvitationExists": "invitation.errors.pendingInvitationExists"
-    }
-  },
-  "email": {
-    "invitation": {
-      "subject": "email.invitation.subject"
+      "invalidClient": "invitation.errors.invalidClient",
+      "invalidOrExpired": "invitation.errors.invalidOrExpired"
     },
-    "registration": {
-      "subject": "email.registration.subject"
-    }
-  },
-  "auth": {
-    "errors": {
-      "clientAccessDenied": "auth.errors.clientAccessDenied"
-    }
-  },
-  "propertyUnit": {
     "success": {
-      "csvValidated": "propertyUnit.success.csvValidated",
-      "csvImported": "propertyUnit.success.csvImported"
+      "declined": "invitation.success.declined"
+    }
+  },
+  "profile": {
+    "success": {
+      "roleInitialized": "profile.success.roleInitialized"
     }
   }
 }

@@ -1,6 +1,8 @@
+import dayjs from 'dayjs';
 import { Invitation } from '@models/index';
 import { hashGenerator } from '@utils/index';
 import { ClientSession, FilterQuery, Types } from 'mongoose';
+import { ListResultWithPagination } from '@interfaces/index';
 import {
   IInvitationListQuery,
   IInvitationDocument,
@@ -41,25 +43,28 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
   ): Promise<IInvitationDocument> {
     try {
       const invitationToken = hashGenerator({ _usenano: true });
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      const expiresAt = dayjs().add(1, 'day').toDate();
 
-      const invitation = await this.insert(
-        {
-          ...invitationData,
-          invitedBy: new Types.ObjectId(invitedBy),
-          inviteeEmail: invitationData.inviteeEmail.toLowerCase(),
-          clientId: new Types.ObjectId(clientId),
-          role: invitationData.role,
-          invitationToken,
-          expiresAt,
-          personalInfo: invitationData.personalInfo,
-          metadata: {
-            ...invitationData.metadata,
-            remindersSent: 0,
-          },
+      const invitationToInsert: any = {
+        ...invitationData,
+        invitedBy: new Types.ObjectId(invitedBy),
+        inviteeEmail: invitationData.inviteeEmail.toLowerCase(),
+        clientId: new Types.ObjectId(clientId),
+        role: invitationData.role,
+        invitationToken,
+        expiresAt,
+        personalInfo: invitationData.personalInfo,
+        metadata: {
+          ...invitationData.metadata,
+          remindersSent: 0,
         },
-        session
-      );
+      };
+
+      if (invitationData.linkedVendorId) {
+        invitationToInsert.linkedVendorId = new Types.ObjectId(invitationData.linkedVendorId);
+      }
+
+      const invitation = await this.insert(invitationToInsert, session);
 
       return invitation;
     } catch (error) {
@@ -77,9 +82,12 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         { invitationToken: token },
         {
           populate: [
-            { path: 'invitedBy', select: 'email' },
-            { path: 'acceptedBy', select: 'email' },
-            { path: 'revokedBy', select: 'email' },
+            {
+              path: 'invitedBy',
+              select: 'email',
+              populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+            },
+            { path: 'revokedBy', select: 'email fullname' },
           ],
         }
       );
@@ -98,9 +106,9 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         { iuid, clientId },
         {
           populate: [
-            { path: 'invitedBy', select: 'email' },
-            { path: 'acceptedBy', select: 'email' },
-            { path: 'revokedBy', select: 'email' },
+            { path: 'invitedBy', select: 'email fullname' },
+            { path: 'acceptedBy', select: 'email fullname' },
+            { path: 'revokedBy', select: 'email fullname' },
           ],
         }
       );
@@ -120,9 +128,9 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         { iuid },
         {
           populate: [
-            { path: 'invitedBy', select: 'email' },
-            { path: 'acceptedBy', select: 'email' },
-            { path: 'revokedBy', select: 'email' },
+            { path: 'invitedBy', select: 'email fullname' },
+            { path: 'acceptedBy', select: 'email fullname' },
+            { path: 'revokedBy', select: 'email fullname' },
           ],
         }
       );
@@ -155,26 +163,18 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
   /**
    * Get invitations for a client with filtering options
    */
-  async getInvitationsByClient(query: IInvitationListQuery): Promise<{
-    items: IInvitationDocument[];
-    pagination?: {
-      total: number;
-      page: number;
-      pages: number;
-      limit: number;
-    };
-  }> {
+  async getInvitationsByClient(
+    query: IInvitationListQuery
+  ): ListResultWithPagination<IInvitationDocument[]> {
     try {
       const filter: FilterQuery<IInvitationDocument> = {
-        clientId: query.clientId,
+        cuid: query.cuid,
       };
 
-      // Add status filter if provided
       if (query.status) {
         filter.status = query.status;
       }
 
-      // Add role filter if provided
       if (query.role) {
         filter.role = query.role;
       }
@@ -183,7 +183,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
       const limit = query.limit || 20;
       const skip = (page - 1) * limit;
 
-      // Build sort object
+      // build sort object
       const sortBy = query.sortBy || 'createdAt';
       const sortOrder = query.sortOrder === 'asc' ? 1 : -1;
       const sort = { [sortBy]: sortOrder } as Record<string, 1 | -1>;
@@ -193,28 +193,57 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         limit,
         sort,
         populate: [
-          { path: 'invitedBy', select: 'email' },
-          { path: 'acceptedBy', select: 'email' },
-          { path: 'revokedBy', select: 'email' },
+          { path: 'invitedBy', select: 'email fullname' },
+          { path: 'acceptedBy', select: 'email fullname' },
+          { path: 'revokedBy', select: 'email fullname' },
         ],
       };
 
       const result = await this.list(filter, options);
-
-      // Transform the result to match interface expectations
       return {
         items: result.items,
-        pagination: result.pagination
-          ? {
-              total: result.pagination.total,
-              page: page,
-              pages: Math.ceil(result.pagination.total / limit),
-              limit: limit,
-            }
-          : undefined,
+        pagination: result.pagination,
       };
     } catch (error) {
       this.logger.error('Error getting invitations by client:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update invitation details
+   */
+  async updateInvitation(
+    iuid: string,
+    clientId: string,
+    invitationData: IInvitationData,
+    session?: ClientSession
+  ): Promise<IInvitationDocument | null> {
+    try {
+      const updateData: any = {
+        $set: {
+          inviteeEmail: invitationData.inviteeEmail.toLowerCase(),
+          role: invitationData.role,
+          status: invitationData.status,
+          personalInfo: invitationData.personalInfo,
+          metadata: {
+            ...invitationData.metadata,
+            remindersSent: 0,
+            lastReminderSent: undefined,
+          },
+        },
+      };
+
+      if (invitationData.linkedVendorId) {
+        updateData.$set.linkedVendorId = new Types.ObjectId(invitationData.linkedVendorId);
+      } else {
+        // If linkedVendorId is explicitly set to null or undefined, remove the field
+        updateData.$unset = { linkedVendorId: 1 };
+      }
+
+      return await this.update({ iuid, clientId }, updateData, { session });
+    } catch (error) {
+      this.logger.error('Error updating invitation:', error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -225,11 +254,13 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
   async updateInvitationStatus(
     invitationId: string,
     clientId: string,
-    status: 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent',
-    session?: ClientSession
+    status: 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent'
   ): Promise<IInvitationDocument | null> {
     try {
-      return await this.update({ id: invitationId, clientId }, { $set: { status } }, { session });
+      return await this.update(
+        { _id: new Types.ObjectId(invitationId), clientId: new Types.ObjectId(clientId) },
+        { $set: { status } }
+      );
     } catch (error) {
       this.logger.error('Error updating invitation status:', error);
       throw this.throwErrorHandler(error);
@@ -240,7 +271,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
    * Revoke an invitation
    */
   async revokeInvitation(
-    invitationId: string,
+    iuid: string,
     clientId: string,
     revokedBy: string,
     reason?: string,
@@ -259,9 +290,41 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         updateData.$set.revokeReason = reason;
       }
 
-      return await this.update({ id: invitationId, clientId }, updateData, { session });
+      return await this.update({ iuid, clientId }, updateData, { session });
     } catch (error) {
       this.logger.error('Error revoking invitation:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Decline an invitation
+   */
+  async declineInvitation(
+    iuid: string,
+    clientId: string,
+    reason?: string,
+    session?: ClientSession
+  ): Promise<IInvitationDocument | null> {
+    try {
+      const updateData: any = {
+        $set: {
+          status: 'declined',
+          declineReason: reason || '',
+          declinedAt: new Date(),
+        },
+        $unset: {
+          invitationToken: 1,
+        },
+      };
+
+      if (reason) {
+        updateData.$set.declineReason = reason;
+      }
+
+      return await this.update({ iuid, clientId }, updateData, { session });
+    } catch (error) {
+      this.logger.error('Error declining invitation:', error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -282,6 +345,9 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
             status: 'accepted',
             acceptedAt: new Date(),
             acceptedBy: new Types.ObjectId(acceptedBy),
+          },
+          $unset: {
+            invitationToken: 1,
           },
         },
         { session }
@@ -439,7 +505,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
       };
 
       const result = await this.list(filter, {
-        populate: [{ path: 'invitedBy', select: 'email' }],
+        populate: [{ path: 'invitedBy', select: 'email fullname' }],
       });
 
       return result.items;
@@ -459,9 +525,9 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         {
           sort: { createdAt: -1 },
           populate: [
-            { path: 'invitedBy', select: 'email' },
-            { path: 'acceptedBy', select: 'email' },
-            { path: 'revokedBy', select: 'email' },
+            { path: 'invitedBy', select: 'email fullname' },
+            { path: 'acceptedBy', select: 'email fullname' },
+            { path: 'revokedBy', select: 'email fullname' },
           ],
         }
       );

@@ -1,5 +1,9 @@
 import { z } from 'zod';
+import { container } from '@di/index';
+import { ClientDAO } from '@dao/index';
+import { InvitationDAO } from '@dao/invitationDAO';
 import { IUserRole } from '@interfaces/user.interface';
+import { EmployeeDepartment } from '@interfaces/profile.interface';
 
 const employeeInfoSchema = z
   .object({
@@ -112,6 +116,20 @@ export const invitationDataSchema = z.object({
     errorMap: () => ({ message: 'Please provide a valid role' }),
   }),
 
+  linkedVendorId: z
+    .string()
+    .min(24, 'Vendor ID must be a valid MongoDB ObjectId')
+    .max(24, 'Vendor ID must be a valid MongoDB ObjectId')
+    .optional()
+    .refine(
+      (val) => {
+        if (!val) return true;
+        // Check if valid MongoDB ObjectId (24 hex chars)
+        return /^[0-9a-fA-F]{24}$/.test(val);
+      },
+      { message: 'Vendor ID must be a valid MongoDB ObjectId' }
+    ),
+
   personalInfo: z.object({
     firstName: z
       .string()
@@ -158,42 +176,121 @@ export const invitationDataSchema = z.object({
     .default('pending'),
 });
 
+export const validateTokenAndCuidSchema = z
+  .object({
+    cuid: z.string().min(12).max(32, 'Invalid cuid format'),
+    token: z.string().min(4).max(64, 'Invalid token format'),
+  })
+  .superRefine(async (data, ctx) => {
+    if (!data.cuid || !data.token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Missing invitation token.cuid',
+        path: ['cuid'],
+      });
+
+      if (!data.token) {
+        return ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Missing invitation token.token',
+          path: ['token'],
+        });
+      }
+    }
+
+    const { invitationDAO, clientDAO }: { invitationDAO: InvitationDAO; clientDAO: ClientDAO } =
+      container.cradle;
+    const invitation = await invitationDAO.findByToken(data.token as string);
+    if (!invitation) {
+      return ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Invalid invitation token',
+        path: ['token'],
+      });
+    }
+
+    if (data.cuid) {
+      const client = await clientDAO.getClientByCuid(data.cuid);
+
+      if (!client || client.cuid !== data.cuid) {
+        return ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Invitation does not belong to this client',
+          path: ['cuid'],
+        });
+      }
+    }
+  });
+
 export const sendInvitationSchema = invitationDataSchema;
 
-export const acceptInvitationSchema = z.object({
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(128, 'Password must be less than 128 characters')
-    .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
-      'Password must contain at least one lowercase letter, one uppercase letter, one number, and one special character'
-    ),
+export const updateInvitationSchema = invitationDataSchema;
 
-  location: z
-    .string()
-    .min(2, 'Location must be at least 2 characters')
-    .max(100, 'Location must be less than 100 characters')
-    .optional(),
-
-  timeZone: z.string().min(3, 'Invalid timezone').max(50, 'Invalid timezone').optional(),
-
-  lang: z
-    .string()
-    .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Invalid language code')
-    .optional(),
-
-  bio: z.string().max(700, 'Bio must be less than 700 characters').optional(),
-
-  headline: z.string().max(50, 'Headline must be less than 50 characters').optional(),
+const policiesSchema = z.object({
+  tos: z.object({
+    accepted: z.boolean(),
+    acceptedOn: z.date().optional().nullable(),
+  }),
+  privacy: z.object({
+    accepted: z.boolean(),
+    acceptedOn: z.date().optional().nullable(),
+  }),
+  marketing: z.object({
+    accepted: z.boolean(),
+    acceptedOn: z.date().optional().nullable(),
+  }),
 });
 
-export const revokeInvitationSchema = z.object({
-  reason: z.string().max(200, 'Reason must be less than 200 characters').optional(),
-});
+export const acceptInvitationSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, 'Password must be at least 8 characters')
+      .max(15, 'Password must be less than 15 characters')
+      .regex(
+        /^(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?&]/,
+        'Password must contain at least one uppercase letter, and one number'
+      ),
+    confirmPassword: z.string().min(8, 'Confirm password must be at least 8 characters'),
+    location: z
+      .string()
+      .min(2, 'Location must be at least 2 characters')
+      .max(100, 'Location must be less than 100 characters')
+      .optional(),
+
+    timeZone: z.string().min(3, 'Invalid timezone').max(50, 'Invalid timezone').optional(),
+
+    lang: z
+      .string()
+      .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Invalid language code')
+      .optional(),
+
+    bio: z.string().max(700, 'Bio must be less than 700 characters').optional(),
+
+    headline: z.string().max(50, 'Headline must be less than 50 characters').optional(),
+
+    policies: policiesSchema.optional(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+  })
+  .refine(
+    (data) => {
+      // If marketing is accepted, tos and privacy must be accepted
+      if (data.policies?.marketing?.accepted) {
+        return data.policies.tos.accepted && data.policies.privacy.accepted;
+      }
+      return true;
+    },
+    { message: 'You must accept the Terms of Service and Privacy Policy to opt into marketing' }
+  );
 
 export const resendInvitationSchema = z.object({
   customMessage: z.string().max(500, 'Custom message must be less than 500 characters').optional(),
+});
+
+export const revokeInvitationSchema = z.object({
+  reason: z.string().max(500, 'Reason must be less than 500 characters').optional(),
 });
 
 export const getInvitationsQuerySchema = z.object({
@@ -224,12 +321,12 @@ export const getInvitationsQuerySchema = z.object({
     .optional(),
 
   sortBy: z
-    .enum(['createdAt', 'expiresAt', 'inviteeEmail'], {
+    .enum(['createdAt', 'inviteeEmail', 'status'], {
       errorMap: () => ({ message: 'Invalid sortBy value' }),
     })
     .optional(),
 
-  sortOrder: z
+  sort: z
     .enum(['asc', 'desc'], {
       errorMap: () => ({ message: 'Invalid sortOrder value' }),
     })
@@ -237,79 +334,251 @@ export const getInvitationsQuerySchema = z.object({
 });
 
 export const invitationTokenSchema = z.object({
-  token: z.string().min(10, 'Invalid invitation token').max(255, 'Invalid invitation token'),
+  token: z.string().min(4, 'Invalid invitation token').max(64, 'Invalid invitation token'),
 });
 
 export const iuidSchema = z.object({
   iuid: z.string().min(10, 'Invalid invitation ID').max(255, 'Invalid invitation ID'),
 });
 
-export const invitationCsvSchema = z.object({
-  inviteeEmail: z
-    .string()
-    .email('Please provide a valid email address')
-    .max(255, 'Email must be less than 255 characters'),
+export const invitationCsvSchema = z
+  .object({
+    inviteeEmail: z
+      .string()
+      .email('Please provide a valid email address')
+      .max(255, 'Email must be less than 255 characters'),
 
-  role: z.nativeEnum(IUserRole, {
-    errorMap: () => ({ message: 'Please provide a valid role' }),
-  }),
+    role: z.nativeEnum(IUserRole, {
+      errorMap: () => ({ message: 'Please provide a valid role' }),
+    }),
 
-  firstName: z
-    .string()
-    .min(2, 'First name must be at least 2 characters')
-    .max(50, 'First name must be less than 50 characters')
-    .regex(/^[a-zA-Z\s\-']+$/, 'First name contains invalid characters'),
+    firstName: z
+      .string()
+      .min(2, 'First name must be at least 2 characters')
+      .max(50, 'First name must be less than 50 characters')
+      .regex(/^[a-zA-Z\s\-']+$/, 'First name contains invalid characters'),
 
-  lastName: z
-    .string()
-    .min(2, 'Last name must be at least 2 characters')
-    .max(50, 'Last name must be less than 50 characters')
-    .regex(/^[a-zA-Z\s\-']+$/, 'Last name contains invalid characters'),
+    lastName: z
+      .string()
+      .min(2, 'Last name must be at least 2 characters')
+      .max(50, 'Last name must be less than 50 characters')
+      .regex(/^[a-zA-Z\s\-']+$/, 'Last name contains invalid characters'),
 
-  phoneNumber: z
-    .string()
-    .regex(/^\+?[\d\s\-()]+$/, 'Please provide a valid phone number')
-    .min(10, 'Phone number must be at least 10 digits')
-    .max(20, 'Phone number must be less than 20 characters')
-    .optional(),
-  status: z
-    .enum(['draft', 'pending'], {
-      errorMap: () => ({ message: 'Status must be either draft or pending' }),
-    })
-    .default('pending'),
-  inviteMessage: z
-    .string()
-    .max(500, 'Invitation message must be less than 500 characters')
-    .optional(),
+    phoneNumber: z
+      .string()
+      .regex(/^\+?[\d\s\-()]+$/, 'Please provide a valid phone number')
+      .min(10, 'Phone number must be at least 10 digits')
+      .max(20, 'Phone number must be less than 20 characters')
+      .optional(),
 
-  expectedStartDate: z
-    .string()
-    .transform((str) => {
-      if (!str || str.trim() === '') {
-        return undefined;
-      }
+    status: z
+      .enum(['draft', 'pending'], {
+        errorMap: () => ({ message: 'Status must be either draft or pending' }),
+      })
+      .default('pending'),
 
-      const trimmed = str.trim();
-      let parsedDate: Date;
+    inviteMessage: z
+      .string()
+      .max(500, 'Invitation message must be less than 500 characters')
+      .optional(),
 
-      if (/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?/.test(trimmed)) {
-        parsedDate = new Date(trimmed);
-      } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
-        parsedDate = new Date(trimmed);
-      } else {
-        parsedDate = new Date(trimmed);
-      }
+    expectedStartDate: z
+      .string()
+      .transform((str) => {
+        if (!str || str.trim() === '') {
+          return undefined;
+        }
 
-      if (isNaN(parsedDate.getTime())) {
-        throw new Error('Please provide a valid date (formats: YYYY-MM-DD, MM/DD/YYYY)');
-      }
+        const trimmed = str.trim();
+        let parsedDate: Date;
 
-      return parsedDate;
-    })
-    .optional(),
+        if (/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?/.test(trimmed)) {
+          parsedDate = new Date(trimmed);
+        } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+          parsedDate = new Date(trimmed);
+        } else {
+          parsedDate = new Date(trimmed);
+        }
 
-  cuid: z.string().optional(),
-});
+        if (isNaN(parsedDate.getTime())) {
+          throw new Error('Please provide a valid date (formats: YYYY-MM-DD, MM/DD/YYYY)');
+        }
+
+        return parsedDate;
+      })
+      .optional(),
+
+    employeeInfo_department: z
+      .string()
+      .transform((str) => {
+        if (!str || str.trim() === '') {
+          return undefined;
+        }
+        const trimmed = str.trim().toLowerCase();
+        // Map string values to enum values
+        const departmentMap: Record<string, EmployeeDepartment> = {
+          maintenance: EmployeeDepartment.MAINTENANCE,
+          operations: EmployeeDepartment.OPERATIONS,
+          accounting: EmployeeDepartment.ACCOUNTING,
+          management: EmployeeDepartment.MANAGEMENT,
+        };
+
+        const department = departmentMap[trimmed];
+        if (!department) {
+          throw new Error(
+            `Invalid department. Must be one of: ${Object.keys(departmentMap).join(', ')}`
+          );
+        }
+        return department;
+      })
+      .optional(),
+    employeeInfo_jobTitle: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    employeeInfo_employeeId: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    employeeInfo_reportsTo: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    employeeInfo_startDate: z
+      .string()
+      .transform((str) => {
+        if (!str || str.trim() === '') {
+          return undefined;
+        }
+        const date = new Date(str);
+        if (isNaN(date.getTime())) {
+          throw new Error('Please provide a valid start date');
+        }
+        return date;
+      })
+      .optional(),
+
+    // Vendor Info fields
+    vendorInfo_companyName: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    vendorInfo_businessType: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    vendorInfo_taxId: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    vendorInfo_registrationNumber: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    vendorInfo_yearsInBusiness: z
+      .string()
+      .transform((str) => {
+        if (!str || str.trim() === '') return undefined;
+        const num = parseInt(str, 10);
+        if (isNaN(num) || num < 0 || num > 150) {
+          throw new Error('Years in business must be between 0 and 150');
+        }
+        return num;
+      })
+      .optional(),
+    vendorInfo_contactPerson_name: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    vendorInfo_contactPerson_jobTitle: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    vendorInfo_contactPerson_email: z
+      .string()
+      .transform((str) => {
+        if (!str || str.trim() === '') {
+          return undefined;
+        }
+        // Validate email format
+        const emailSchema = z.string().email();
+        const result = emailSchema.safeParse(str);
+        if (!result.success) {
+          throw new Error('Please provide a valid contact person email');
+        }
+        return str;
+      })
+      .optional(),
+    vendorInfo_contactPerson_phone: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+
+    cuid: z.string().optional(),
+  })
+  .transform((data) => {
+    // Build employeeInfo if any employee fields are provided
+    const employeeInfo =
+      data.employeeInfo_department ||
+      data.employeeInfo_jobTitle ||
+      data.employeeInfo_employeeId ||
+      data.employeeInfo_reportsTo ||
+      data.employeeInfo_startDate
+        ? {
+            department: data.employeeInfo_department,
+            jobTitle: data.employeeInfo_jobTitle,
+            employeeId: data.employeeInfo_employeeId,
+            reportsTo: data.employeeInfo_reportsTo,
+            startDate: data.employeeInfo_startDate,
+          }
+        : undefined;
+
+    // Build vendorInfo if any vendor fields are provided
+    const vendorInfo =
+      data.vendorInfo_companyName ||
+      data.vendorInfo_businessType ||
+      data.vendorInfo_taxId ||
+      data.vendorInfo_registrationNumber ||
+      data.vendorInfo_yearsInBusiness ||
+      data.vendorInfo_contactPerson_name ||
+      data.vendorInfo_contactPerson_jobTitle ||
+      data.vendorInfo_contactPerson_email ||
+      data.vendorInfo_contactPerson_phone
+        ? {
+            companyName: data.vendorInfo_companyName,
+            businessType: data.vendorInfo_businessType,
+            taxId: data.vendorInfo_taxId,
+            registrationNumber: data.vendorInfo_registrationNumber,
+            yearsInBusiness: data.vendorInfo_yearsInBusiness,
+            contactPerson:
+              data.vendorInfo_contactPerson_name || data.vendorInfo_contactPerson_jobTitle
+                ? {
+                    name: data.vendorInfo_contactPerson_name || '',
+                    jobTitle: data.vendorInfo_contactPerson_jobTitle || '',
+                    email: data.vendorInfo_contactPerson_email,
+                    phone: data.vendorInfo_contactPerson_phone,
+                  }
+                : undefined,
+          }
+        : undefined;
+
+    return {
+      inviteeEmail: data.inviteeEmail,
+      role: data.role,
+      status: data.status,
+      personalInfo: {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        phoneNumber: data.phoneNumber,
+      },
+      metadata: {
+        inviteMessage: data.inviteMessage,
+        expectedStartDate: data.expectedStartDate,
+        employeeInfo,
+        vendorInfo,
+      },
+    };
+  });
 
 export const processPendingQuerySchema = z.object({
   timeline: z

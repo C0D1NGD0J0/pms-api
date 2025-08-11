@@ -101,7 +101,7 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
    * @returns A promise that resolves to the client document or null if not found
    * @throws Error if an error occurs during the query
    */
-  getClientBycuid(cuid: string, opts?: IFindOptions): Promise<IClientDocument | null>;
+  getClientByCuid(cuid: string, opts?: IFindOptions): Promise<IClientDocument | null>;
 
   /**
    * Creates a new client in the database.

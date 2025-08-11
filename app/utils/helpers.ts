@@ -17,14 +17,6 @@ import {
 
 import { JWT_KEY_NAMES } from './constants';
 
-interface LogRecord {
-  [key: string]: any;
-  level: number;
-  name?: string;
-  streams: any;
-  msg: string;
-}
-
 const loggers = new WeakMap<object, bunyan>();
 const loggerKeys = new Map<string, object>();
 /**
@@ -68,37 +60,29 @@ export function createLogger(name: string) {
   const customStream = {
     write: (record: unknown) => {
       try {
-        const logRecord = record as LogRecord;
-        const serviceName = logRecord?.name || 'UNKNOWN';
-        const message = logRecord?.msg || '';
-
-        // Extract metadata by excluding known Bunyan fields and symbols
-        const excludeFields = ['name', 'hostname', 'pid', 'level', 'msg', 'time', 'v', 'streams'];
-        const metadata = Object.keys(logRecord)
-          .filter((key) => !excludeFields.includes(key) && typeof key === 'string')
-          .reduce((obj, key) => {
-            // Skip symbol properties and functions that might cause DI resolution issues
-            const value = logRecord[key];
-            if (typeof value !== 'function' && typeof value !== 'symbol') {
-              try {
-                // Safely serialize the value
-                JSON.stringify(value);
-                obj[key] = value;
-              } catch (err) {
-                // Skip values that can't be serialized
-                obj[key] = '[Unserializable]';
-              }
-            }
-            return obj;
-          }, {} as any);
-
-        // Build structured output with metadata
-        let output = `${serviceName}: ${message}`;
-        if (Object.keys(metadata).length > 0) {
-          output += ` ${JSON.stringify(metadata)}`;
+        // Completely avoid property access by stringifying the entire record first
+        let recordString: string;
+        try {
+          recordString = JSON.stringify(record);
+        } catch {
+          // Fallback if JSON.stringify fails due to circular references or symbols
+          recordString = String(record);
         }
 
-        switch (logRecord.level) {
+        let parsedRecord: any;
+        try {
+          parsedRecord = JSON.parse(recordString);
+        } catch {
+          parsedRecord = { name: 'UNKNOWN', msg: recordString, level: 30 };
+        }
+
+        const serviceName = parsedRecord?.name || 'UNKNOWN';
+        const message = parsedRecord?.msg || '';
+        const level = parsedRecord?.level || 30;
+
+        let output = `${serviceName}: ${message}`;
+
+        switch (level) {
           case LOG_LEVELS.TRACE:
             output = color.green.bold(output);
             break;

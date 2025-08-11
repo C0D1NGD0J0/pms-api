@@ -42,16 +42,8 @@ export class RedisService {
         : {}),
     };
 
-    // Handle Railway Redis URL format
     if (redisUrl) {
-      if (redisUrl.startsWith('rediss://')) {
-        // Railway often uses SSL Redis connections
-        clientConfig.url = redisUrl;
-        clientConfig.socket.tls = true;
-        clientConfig.socket.rejectUnauthorized = false; // Railway's SSL certificates
-      } else {
-        clientConfig.url = redisUrl;
-      }
+      clientConfig.url = redisUrl;
     }
 
     this.client = createClient(clientConfig);
@@ -62,15 +54,7 @@ export class RedisService {
     });
 
     this.client.on('connect', () => {
-      this.log.info({ redisUrl: this.getRedisUrl() }, 'Redis client connected');
-    });
-
-    this.client.on('ready', () => {
-      this.log.info('Redis client ready');
-    });
-
-    this.client.on('reconnecting', () => {
-      this.log.info('Redis client reconnecting');
+      // this.log.info({ redisUrl: this.getRedisUrl() }, 'Redis client connected');
     });
   }
 

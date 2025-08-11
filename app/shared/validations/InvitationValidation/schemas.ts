@@ -289,6 +289,10 @@ export const resendInvitationSchema = z.object({
   customMessage: z.string().max(500, 'Custom message must be less than 500 characters').optional(),
 });
 
+export const revokeInvitationSchema = z.object({
+  reason: z.string().max(500, 'Reason must be less than 500 characters').optional(),
+});
+
 export const getInvitationsQuerySchema = z.object({
   status: z
     .enum(['draft', 'pending', 'accepted', 'expired', 'revoked', 'sent'], {

@@ -105,7 +105,6 @@
     "@babel/preset-env": "^7.26.9",
     "@faker-js/faker": "^9.5.1",
     "@swc/core": "^1.13.2",
-    "@swc/core-darwin-arm64": "^1.13.3",
     "@types/bcryptjs": "^2.4.6",
     "@types/bunyan": "^1.8.11",
     "@types/clamscan": "^2.4.1",

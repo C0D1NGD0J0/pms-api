@@ -463,6 +463,37 @@ export class InvitationService {
     };
   }
 
+  async declineInvitation(
+    cuid: string,
+    data: {
+      token: string;
+      reason?: string;
+    }
+  ): Promise<ISuccessReturnData<IInvitationDocument>> {
+    const invitation = await this.invitationDAO.findByToken(data.token);
+    if (!invitation) {
+      throw new NotFoundError({ message: t('invitation.errors.notFound') });
+    }
+
+    if (!['pending', 'sent'].includes(invitation.status)) {
+      throw new BadRequestError({ message: t('invitation.errors.cannotDecline') });
+    }
+
+    const declinedInvitation = await this.invitationDAO.declineInvitation(
+      invitation.iuid,
+      invitation.clientId.toString(),
+      data.reason
+    );
+    if (!declinedInvitation) {
+      throw new BadRequestError({ message: t('invitation.errors.declineFailed') });
+    }
+    return {
+      success: true,
+      data: declinedInvitation,
+      message: t('invitation.success.declined'),
+    };
+  }
+
   async resendInvitation(
     data: IResendInvitationData,
     resenderUserId: string

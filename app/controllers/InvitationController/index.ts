@@ -115,6 +115,15 @@ export class InvitationController {
     });
   };
 
+  declineInvitation = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const { token } = req.params;
+    const { reason } = req.body;
+
+    const result = await this.invitationService.declineInvitation(cuid, { token, reason });
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   revokeInvitation = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
     const { iuid } = req.params;

@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { isAuthenticated } from '@shared/middlewares';
-import { validateRequest } from '@shared/validations/index';
+// import { validateRequest } from '@shared/validations/index';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
-import { EmailTemplateValidations } from '@shared/validations/EmailTemplateValidation';
+// import { EmailTemplateValidations } from '@shared/validations/EmailTemplateValidation';
 
 const router = Router();
 
@@ -29,7 +29,7 @@ router.get(
 router.get(
   '/:cuid/:templateType',
   isAuthenticated,
-  validateRequest({ params: EmailTemplateValidations.templateType }),
+  // validateRequest({ params: EmailTemplateValidations.templateType }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<EmailTemplateController>('emailTemplateController');
     return controller.getTemplateMetadata(req, res);

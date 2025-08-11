@@ -17,7 +17,7 @@ export interface IInvitation {
     lastName: string;
     phoneNumber?: string;
   };
-  status: 'draft' | 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent';
+  status: 'draft' | 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent' | 'declined';
   linkedVendorId?: Types.ObjectId;
   acceptedBy?: Types.ObjectId;
   revokedBy?: Types.ObjectId;
@@ -31,6 +31,19 @@ export interface IInvitation {
   role: IUserRole;
   expiresAt: Date;
   iuid: string;
+}
+
+export interface IInvitationDocument extends IInvitation, Document {
+  revoke(revokedBy: string, reason?: string): Promise<IInvitationDocument>;
+  accept(acceptedBy: string): Promise<IInvitationDocument>;
+  expire(): Promise<IInvitationDocument>;
+  inviteeFullName: string; // virtual property
+  declineReason?: string; // optional field for decline reason
+  _id: Types.ObjectId;
+  isValid(): boolean;
+  declinedAt?: Date; // optional field for declined invitations
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface IInvitationData {
@@ -51,20 +64,8 @@ export interface IInvitationData {
   role: IUserRole;
 }
 
-export interface IInvitationDocument extends IInvitation, Document {
-  revoke(revokedBy: string, reason?: string): Promise<IInvitationDocument>;
-  accept(acceptedBy: string): Promise<IInvitationDocument>;
-  expire(): Promise<IInvitationDocument>;
-  inviteeFullName: string; // virtual property
-
-  _id: Types.ObjectId;
-  isValid(): boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export interface IInvitationListQuery {
-  status?: 'draft' | 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent';
+  status?: 'draft' | 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent' | 'declined';
   sortBy?: 'createdAt' | 'expiresAt' | 'inviteeEmail';
   sortOrder?: 'asc' | 'desc';
   role?: IUserRole;

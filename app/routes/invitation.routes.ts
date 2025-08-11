@@ -51,6 +51,24 @@ router.post(
 );
 
 /**
+ * @route POST /api/v1/invites/:cuid/decline_invite/:token
+ * @desc Decline an invitation (public endpoint)
+ * @access Public
+ */
+router.patch(
+  '/:cuid/decline_invite/:token',
+  routeLimiter(),
+  validateRequest({
+    params: InvitationValidations.validateTokenAndCuid,
+    body: InvitationValidations.revokeInvitation,
+  }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<InvitationController>('invitationController');
+    return controller.declineInvitation(req, res);
+  })
+);
+
+/**
  * @route POST /api/v1/invites/:cuid/send
  * @desc Send an invitation to join a client
  * @access Private (Admin/Manager only)

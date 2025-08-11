@@ -46,14 +46,16 @@ const InvitationSchema = new Schema<IInvitationDocument>(
     status: {
       type: String,
       required: true,
-      enum: ['draft', 'pending', 'accepted', 'expired', 'revoked', 'sent'],
+      enum: ['draft', 'pending', 'accepted', 'expired', 'revoked', 'sent', 'declined'],
       default: 'pending',
       index: true,
     },
     invitationToken: {
       type: String,
-      required: true,
-      unique: true,
+      required: function (this: IInvitationDocument) {
+        return this.status !== 'accepted';
+      },
+      sparse: true, // Only index non-null values
       index: true,
     },
     expiresAt: {
@@ -131,6 +133,9 @@ const InvitationSchema = new Schema<IInvitationDocument>(
       type: String,
       trim: true,
       maxlength: 200,
+    },
+    declinedAt: {
+      type: Date,
     },
     linkedVendorId: {
       type: Schema.Types.ObjectId,

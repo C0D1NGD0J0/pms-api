@@ -18,7 +18,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
         maxlength: 45,
         minlength: 2,
         trim: true,
-        unique: true,
         index: true,
       },
       firstName: {

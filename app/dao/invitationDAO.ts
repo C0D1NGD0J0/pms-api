@@ -298,6 +298,38 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
   }
 
   /**
+   * Decline an invitation
+   */
+  async declineInvitation(
+    iuid: string,
+    clientId: string,
+    reason?: string,
+    session?: ClientSession
+  ): Promise<IInvitationDocument | null> {
+    try {
+      const updateData: any = {
+        $set: {
+          status: 'declined',
+          declineReason: reason || '',
+          declinedAt: new Date(),
+        },
+        $unset: {
+          invitationToken: 1,
+        },
+      };
+
+      if (reason) {
+        updateData.$set.declineReason = reason;
+      }
+
+      return await this.update({ iuid, clientId }, updateData, { session });
+    } catch (error) {
+      this.logger.error('Error declining invitation:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
    * Accept an invitation
    */
   async acceptInvitation(
@@ -312,8 +344,10 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
           $set: {
             status: 'accepted',
             acceptedAt: new Date(),
-            invitationToken: undefined,
             acceptedBy: new Types.ObjectId(acceptedBy),
+          },
+          $unset: {
+            invitationToken: 1,
           },
         },
         { session }

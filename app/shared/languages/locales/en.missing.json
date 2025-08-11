@@ -8,6 +8,9 @@
     "errors": {
       "invalidClient": "invitation.errors.invalidClient",
       "invalidOrExpired": "invitation.errors.invalidOrExpired"
+    },
+    "success": {
+      "declined": "invitation.success.declined"
     }
   },
   "profile": {

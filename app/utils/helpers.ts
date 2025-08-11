@@ -72,12 +72,23 @@ export function createLogger(name: string) {
         const serviceName = logRecord?.name || 'UNKNOWN';
         const message = logRecord?.msg || '';
 
-        // Extract metadata by excluding known Bunyan fields
+        // Extract metadata by excluding known Bunyan fields and symbols
         const excludeFields = ['name', 'hostname', 'pid', 'level', 'msg', 'time', 'v', 'streams'];
         const metadata = Object.keys(logRecord)
-          .filter((key) => !excludeFields.includes(key))
+          .filter((key) => !excludeFields.includes(key) && typeof key === 'string')
           .reduce((obj, key) => {
-            obj[key] = logRecord[key];
+            // Skip symbol properties and functions that might cause DI resolution issues
+            const value = logRecord[key];
+            if (typeof value !== 'function' && typeof value !== 'symbol') {
+              try {
+                // Safely serialize the value
+                JSON.stringify(value);
+                obj[key] = value;
+              } catch (err) {
+                // Skip values that can't be serialized
+                obj[key] = '[Unserializable]';
+              }
+            }
             return obj;
           }, {} as any);
 

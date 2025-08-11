@@ -24,7 +24,6 @@ export const validateRequest = (schema: {
       schema.body && (await schema.body.parseAsync(req.body));
       next();
     } catch (error) {
-      console.error('Validation error:', error.errors);
       if (req.files) {
         const filesToDelete = extractMulterFiles(req.files).map((file) => file.filename);
         emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, filesToDelete);

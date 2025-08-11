@@ -241,39 +241,49 @@ const policiesSchema = z.object({
   }),
 });
 
-export const acceptInvitationSchema = z.object({
-  password: z
-    .string()
-    .min(6, 'Password must be at least 6 characters')
-    .max(15, 'Password must be less than 15 characters')
-    .regex(
-      /^(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?&]/,
-      'Password must contain at least one uppercase letter, and one number'
-    ),
+export const acceptInvitationSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, 'Password must be at least 8 characters')
+      .max(15, 'Password must be less than 15 characters')
+      .regex(
+        /^(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?&]/,
+        'Password must contain at least one uppercase letter, and one number'
+      ),
+    confirmPassword: z.string().min(8, 'Confirm password must be at least 8 characters'),
+    location: z
+      .string()
+      .min(2, 'Location must be at least 2 characters')
+      .max(100, 'Location must be less than 100 characters')
+      .optional(),
 
-  location: z
-    .string()
-    .min(2, 'Location must be at least 2 characters')
-    .max(100, 'Location must be less than 100 characters')
-    .optional(),
+    timeZone: z.string().min(3, 'Invalid timezone').max(50, 'Invalid timezone').optional(),
 
-  timeZone: z.string().min(3, 'Invalid timezone').max(50, 'Invalid timezone').optional(),
+    lang: z
+      .string()
+      .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Invalid language code')
+      .optional(),
 
-  lang: z
-    .string()
-    .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Invalid language code')
-    .optional(),
+    bio: z.string().max(700, 'Bio must be less than 700 characters').optional(),
 
-  bio: z.string().max(700, 'Bio must be less than 700 characters').optional(),
+    headline: z.string().max(50, 'Headline must be less than 50 characters').optional(),
 
-  headline: z.string().max(50, 'Headline must be less than 50 characters').optional(),
-
-  policies: policiesSchema.optional(),
-});
-
-export const revokeInvitationSchema = z.object({
-  reason: z.string().max(200, 'Reason must be less than 200 characters').optional(),
-});
+    policies: policiesSchema.optional(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+  })
+  .refine(
+    (data) => {
+      // If marketing is accepted, tos and privacy must be accepted
+      if (data.policies?.marketing?.accepted) {
+        return data.policies.tos.accepted && data.policies.privacy.accepted;
+      }
+      return true;
+    },
+    { message: 'You must accept the Terms of Service and Privacy Policy to opt into marketing' }
+  );
 
 export const resendInvitationSchema = z.object({
   customMessage: z.string().max(500, 'Custom message must be less than 500 characters').optional(),

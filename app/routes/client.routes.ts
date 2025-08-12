@@ -48,6 +48,19 @@ router.get(
 );
 
 router.get(
+  '/:cuid/users/by-role',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.LIST),
+  validateRequest({
+    params: ClientValidations.roleParam,
+  }),
+  asyncWrapper((req, res) => {
+    const clientController = req.container.resolve<ClientController>('clientController');
+    return clientController.getUsersByRole(req, res);
+  })
+);
+
+router.get(
   '/:cuid/users/:uid/roles',
   isAuthenticated,
   requireUserManagement(),

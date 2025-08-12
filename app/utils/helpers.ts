@@ -17,14 +17,6 @@ import {
 
 import { JWT_KEY_NAMES } from './constants';
 
-interface LogRecord {
-  [key: string]: any;
-  level: number;
-  name?: string;
-  streams: any;
-  msg: string;
-}
-
 const loggers = new WeakMap<object, bunyan>();
 const loggerKeys = new Map<string, object>();
 /**
@@ -68,26 +60,29 @@ export function createLogger(name: string) {
   const customStream = {
     write: (record: unknown) => {
       try {
-        const logRecord = record as LogRecord;
-        const serviceName = logRecord?.name || 'UNKNOWN';
-        const message = logRecord?.msg || '';
-
-        // Extract metadata by excluding known Bunyan fields
-        const excludeFields = ['name', 'hostname', 'pid', 'level', 'msg', 'time', 'v', 'streams'];
-        const metadata = Object.keys(logRecord)
-          .filter((key) => !excludeFields.includes(key))
-          .reduce((obj, key) => {
-            obj[key] = logRecord[key];
-            return obj;
-          }, {} as any);
-
-        // Build structured output with metadata
-        let output = `${serviceName}: ${message}`;
-        if (Object.keys(metadata).length > 0) {
-          output += ` ${JSON.stringify(metadata)}`;
+        // Completely avoid property access by stringifying the entire record first
+        let recordString: string;
+        try {
+          recordString = JSON.stringify(record);
+        } catch {
+          // Fallback if JSON.stringify fails due to circular references or symbols
+          recordString = String(record);
         }
 
-        switch (logRecord.level) {
+        let parsedRecord: any;
+        try {
+          parsedRecord = JSON.parse(recordString);
+        } catch {
+          parsedRecord = { name: 'UNKNOWN', msg: recordString, level: 30 };
+        }
+
+        const serviceName = parsedRecord?.name || 'UNKNOWN';
+        const message = parsedRecord?.msg || '';
+        const level = parsedRecord?.level || 30;
+
+        let output = `${serviceName}: ${message}`;
+
+        switch (level) {
           case LOG_LEVELS.TRACE:
             output = color.green.bold(output);
             break;
@@ -249,7 +244,7 @@ export function isValidPhoneNumber(phoneNumber: string): boolean {
  */
 export function asyncWrapper(fn: AsyncRequestHandler) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    Promise.resolve(fn(req, res, next)).catch((err) => {
+    Promise.resolve(fn(req as any, res, next)).catch((err) => {
       return next(err);
     });
   };

@@ -235,7 +235,7 @@ export class InvitationWorker {
         inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
         companyName: clientInfo.displayName || 'Company',
         role: invitationData.role,
-        invitationUrl: `${envVariables.FRONTEND.URL}/${clientInfo.cuid}/invitation?token=${invitation.invitationToken}`,
+        invitationUrl: `${envVariables.FRONTEND.URL}/invite/${clientInfo.cuid}?token=${invitation.invitationToken}`,
         expiresAt: invitation.expiresAt,
         invitationId: invitation._id.toString(),
         customMessage: invitationData.metadata?.inviteMessage,

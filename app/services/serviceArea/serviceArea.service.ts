@@ -71,14 +71,14 @@ export class ServiceAreaService {
             maxDistance: maxDistance * 1000, // Convert km to meters
             spherical: true,
             query: {
-              'clientRoleInfo.vendorInfo': { $exists: true },
-              'clientRoleInfo.vendorInfo.address.computedLocation': { $exists: true },
+              vendorInfo: { $exists: true },
+              'vendorInfo.address.computedLocation': { $exists: true },
             },
           },
         },
         {
           $match: {
-            'clientRoleInfo.vendorInfo.serviceAreas.maxDistance': { $gte: maxDistance },
+            'vendorInfo.serviceAreas.maxDistance': { $gte: maxDistance },
           },
         },
       ];
@@ -87,7 +87,7 @@ export class ServiceAreaService {
       if (options.serviceTypes && options.serviceTypes.length > 0) {
         const serviceTypeQuery: any = {};
         options.serviceTypes.forEach((serviceType) => {
-          serviceTypeQuery[`clientRoleInfo.vendorInfo.servicesOffered.${serviceType}`] = true;
+          serviceTypeQuery[`vendorInfo.servicesOffered.${serviceType}`] = true;
         });
         pipeline.push({ $match: serviceTypeQuery });
       }
@@ -133,14 +133,14 @@ export class ServiceAreaService {
     try {
       // Get vendor profile
       const vendorProfile = await this.profileModel.findById(vendorId);
-      if (!vendorProfile || !vendorProfile.clientRoleInfo?.some((role) => role.vendorInfo)) {
+      if (!vendorProfile || !vendorProfile.vendorInfo) {
         return {
           isInRange: false,
           message: 'Vendor not found',
         };
       }
 
-      const vendorInfo = vendorProfile.clientRoleInfo.find((role) => role.vendorInfo)?.vendorInfo;
+      const vendorInfo = vendorProfile.vendorInfo;
       if (!vendorInfo?.address?.computedLocation || !vendorInfo.serviceAreas?.maxDistance) {
         return {
           isInRange: false,
@@ -218,11 +218,11 @@ export class ServiceAreaService {
   } | null> {
     try {
       const vendorProfile = await this.profileModel.findById(vendorId);
-      if (!vendorProfile || !vendorProfile.clientRoleInfo?.some((role) => role.vendorInfo)) {
+      if (!vendorProfile || !vendorProfile.vendorInfo) {
         return null;
       }
 
-      const vendorInfo = vendorProfile.clientRoleInfo.find((role) => role.vendorInfo)?.vendorInfo;
+      const vendorInfo = vendorProfile.vendorInfo;
       if (!vendorInfo?.address?.computedLocation || !vendorInfo.serviceAreas?.maxDistance) {
         return null;
       }
@@ -268,13 +268,13 @@ export class ServiceAreaService {
     try {
       // Create 2dsphere index on vendor address coordinates
       await this.profileModel.collection.createIndex({
-        'clientRoleInfo.vendorInfo.address.computedLocation': '2dsphere',
+        'vendorInfo.address.computedLocation': '2dsphere',
       });
 
       // Create compound index for common queries
       await this.profileModel.collection.createIndex({
-        'clientRoleInfo.vendorInfo.address.computedLocation': '2dsphere',
-        'clientRoleInfo.vendorInfo.serviceAreas.maxDistance': 1,
+        'vendorInfo.address.computedLocation': '2dsphere',
+        'vendorInfo.serviceAreas.maxDistance': 1,
       });
 
       console.info('Geospatial indexes created successfully');

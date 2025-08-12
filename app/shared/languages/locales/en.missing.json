@@ -1,0 +1,21 @@
+{
+  "client": {
+    "errors": {
+      "notFound": "client.errors.notFound"
+    }
+  },
+  "invitation": {
+    "errors": {
+      "invalidClient": "invitation.errors.invalidClient",
+      "invalidOrExpired": "invitation.errors.invalidOrExpired"
+    },
+    "success": {
+      "declined": "invitation.success.declined"
+    }
+  },
+  "profile": {
+    "success": {
+      "roleInitialized": "profile.success.roleInitialized"
+    }
+  }
+}

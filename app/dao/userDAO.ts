@@ -2,9 +2,9 @@ import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { User } from '@models/index';
 import { hashGenerator, createLogger } from '@utils/index';
-import { ListResultWithPagination } from '@interfaces/index';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
 import { IUserRoleType, IUserDocument } from '@interfaces/user.interface';
+import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
 
 import { BaseDAO } from './baseDAO';
 import { IUserDAO } from './interfaces/userDAO.interface';
@@ -257,6 +257,40 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   }
 
   /**
+   * Get users with a specific role for a client
+   *
+   * @param cuid - The client CUID
+   * @param role - The role to filter by
+   * @param opts - Additional options for the query
+   * @returns A promise that resolves to an array of user documents with the specified role
+   */
+  async getUsersByClientIdAndRole(
+    cuid: string,
+    role: IUserRoleType,
+    opts?: IFindOptions
+  ): ListResultWithPagination<IUserDocument[]> {
+    try {
+      const query = {
+        'cuids.cuid': cuid,
+        'cuids.roles': role,
+        'cuids.isConnected': true,
+        deletedAt: null,
+        isActive: true,
+      };
+
+      const options = {
+        ...opts,
+        populate: [{ path: 'profile', select: 'personalInfo vendorInfo' }],
+      };
+
+      return await this.list(query, options);
+    } catch (error) {
+      this.logger.error(`Error getting users by role ${role} for client ${cuid}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
    * Search for users by name, email, or other criteria.
    *
    * @param query - The search query string.
@@ -433,30 +467,32 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * Create a new user from an invitation acceptance
    */
   async createUserFromInvitation(
-    invitationData: any,
+    client: { cuid: string; displayName?: string },
+    invitationData: IInvitationDocument,
     userData: any,
+    linkedVendorId?: string,
     session?: any
   ): Promise<IUserDocument> {
     try {
       const userId = new Types.ObjectId();
 
+      const cuidEntry: any = {
+        cuid: client.cuid,
+        isConnected: true,
+        roles: [invitationData.role],
+        displayName: client.displayName,
+        linkedVendorId: invitationData.role === 'vendor' ? linkedVendorId : null,
+      };
+
       const user = await this.insert(
         {
           _id: userId,
-          uid: hashGenerator({}),
-          email: invitationData.inviteeEmail,
-          password: userData.password,
           isActive: true,
-          activecuid: invitationData.clientId,
-          cuids: [
-            {
-              cuid: invitationData.cuid,
-              isConnected: true,
-              roles: [invitationData.role],
-              displayName:
-                invitationData.personalInfo.firstName + ' ' + invitationData.personalInfo.lastName,
-            },
-          ],
+          cuids: [cuidEntry],
+          uid: hashGenerator({}),
+          activecuid: client.cuid,
+          password: userData.password,
+          email: invitationData.inviteeEmail,
         },
         session
       );
@@ -473,42 +509,51 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    */
   async addUserToClient(
     userId: string,
-    clientId: string,
     role: IUserRoleType,
-    displayName: string,
+    client: { cuid: string; displayName?: string; id: string },
+    linkedVendorId?: string,
     session?: any
   ): Promise<IUserDocument | null> {
     try {
-      // Check if user already has access to this client
       const user = await this.getUserById(userId);
       if (!user) {
         throw new Error('User not found');
       }
 
-      const existingConnection = user.cuids.find((c) => c.cuid === clientId);
+      const existingConnection = user.cuids.find((c) => c.cuid === client.cuid);
+
       if (existingConnection) {
-        return await this.updateById(
-          userId,
-          {
-            $set: {
-              'cuids.$.isConnected': true,
-              'cuids.$.roles': [role],
-              'cuids.$.displayName': displayName,
-            },
-          },
-          { session }
+        const updateObj: any = {
+          'cuids.$.isConnected': true,
+          'cuids.$.displayName': client.displayName,
+          'cuids.$.linkedVendorId': role === 'vendor' ? linkedVendorId : null,
+        };
+
+        const updateOperation = existingConnection.roles.includes(role)
+          ? { $set: updateObj }
+          : { $set: updateObj, $addToSet: { 'cuids.$.roles': role } }; // Add new role
+
+        return await this.update(
+          { _id: new Types.ObjectId(userId), 'cuids.cuid': client.cuid },
+          updateOperation,
+          {},
+          session
         );
       } else {
+        // new cuid entry
+        const cuidEntry: any = {
+          cuid: client.cuid,
+          isConnected: true,
+          roles: [role],
+          displayName: client.displayName || '',
+          linkedVendorId: role === 'vendor' ? linkedVendorId : null,
+        };
+
         return await this.updateById(
           userId,
           {
             $push: {
-              cuids: {
-                cuid: clientId,
-                isConnected: true,
-                roles: [role],
-                displayName,
-              },
+              cuids: cuidEntry,
             },
           },
           { session }

@@ -19,6 +19,32 @@ export enum IUserRole {
   ADMIN = 'admin',
 }
 
+export interface ICurrentUser {
+  client: {
+    cuid: string;
+    displayname: string;
+    role: IUserRoleType;
+    linkedVendorId?: string;
+    clientSettings?: any;
+  };
+  preferences: {
+    theme?: 'light' | 'dark';
+    lang?: string;
+    timezone?: string;
+  };
+  clients: IClientUserConnections[];
+  fullname: string | null;
+  permissions: string[];
+  displayName: string;
+  gdpr?: GDPRSettings;
+  employeeInfo?: any;
+  avatarUrl: string;
+  isActive: boolean;
+  vendorInfo?: any;
+  email: string;
+  sub: string;
+}
+
 export interface IUserDocument extends Document, IUser {
   validatePassword: (pwd1: string) => Promise<boolean>;
   cuids: IClientUserConnections[];
@@ -34,43 +60,6 @@ export interface IUserDocument extends Document, IUser {
   id: string;
 }
 
-export interface ICurrentUser {
-  preferences: {
-    theme?: 'light' | 'dark';
-    lang?: string;
-    timezone?: string;
-  };
-  client: { cuid: string; displayname: string; role: IUserRoleType };
-  clients: IClientUserConnections[];
-  fullname: string | null;
-  permissions: string[];
-  displayName: string;
-  gdpr?: GDPRSettings;
-  avatarUrl: string;
-  isActive: boolean;
-  email: string;
-  sub: string;
-}
-
-export interface IInviteUserSignup {
-  emergencyContact?: {
-    name: string;
-    email?: string;
-    phoneNumber: string;
-    relationship: IUserRelationshipsEnum;
-  };
-  userType: IUserRoleType;
-  userId?: Types.ObjectId;
-  phoneNumber?: string;
-  firstName: string;
-  location?: string;
-  password: string;
-  lastName: string;
-  email: string;
-  cuid: string;
-}
-
-// TENANT INTERFACE
 export interface ITenant extends IUser {
   activationCode: string | undefined;
   maintenanceRequests?: string[]; // refactor once models have been added
@@ -104,6 +93,7 @@ export type ISignupData = {
   timeZone?: string;
   companyProfile?: ICompanyProfile;
   accountType: IAccountType;
+  termsAccepted: boolean;
 };
 
 // USER INTERFACE

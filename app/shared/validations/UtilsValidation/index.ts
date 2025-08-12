@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { isValidObjectId } from 'mongoose';
-import { PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
+import { PropertyUnitDAO, InvitationDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 
 const getContainer = async () => {
   const { container } = await import('@di/setup');
@@ -74,9 +74,49 @@ export const ValidateUnitPuid = z.object({
   }),
 });
 
+export const ValidateInvitationIuidSchema = z
+  .object({
+    iuid: z.string(),
+    cuid: z.string(),
+  })
+  .superRefine(async (data, ctx) => {
+    if (!data.iuid) {
+      return;
+    }
+
+    const { invitationDAO }: { invitationDAO: InvitationDAO } = container.cradle;
+    const invitation = await invitationDAO.findByIuidUnsecured(data.iuid);
+
+    if (!invitation) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Invalid invitation ID',
+        path: ['iuid'],
+      });
+      return;
+    }
+
+    if (data.cuid) {
+      const populatedClient = invitation.clientId as any;
+      const clientCuid =
+        populatedClient && typeof populatedClient === 'object' && 'cuid' in populatedClient
+          ? populatedClient.cuid
+          : null;
+
+      if (!clientCuid || clientCuid !== data.cuid) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Invitation does not belong to this client',
+          path: ['cuid'],
+        });
+      }
+    }
+  });
+
 export const UtilsValidations = {
   cuid: ValidatecuidSchema,
   unitPuid: ValidateUnitPuid,
   isUniqueEmail: ValidateEmailSchema,
   propertyId: ValidatePropertyIdSchema,
+  invitationuid: ValidateInvitationIuidSchema,
 };

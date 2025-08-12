@@ -50,19 +50,15 @@ export class ClientService {
       throw new NotFoundError({ message: t('client.errors.notFound') });
     }
 
-    // Validation errors collection
     const validationErrors: string[] = [];
     let requiresReVerification = false;
 
-    // Email format validation helper
     const isValidEmail = (email: string): boolean => {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       return emailRegex.test(email);
     };
 
-    // 1. Identification validation
     if (updateData.identification) {
-      // Check if ID type is changing
       if (
         updateData.identification.idType &&
         client.identification?.idType &&
@@ -158,7 +154,6 @@ export class ClientService {
 
     const session = await this.clientDAO.startSession();
     const result = await this.clientDAO.withTransaction(session, async (session) => {
-      // prevent updating certain fields
       delete updateData.accountAdmin;
       delete updateData.accountType;
       delete updateData.isVerified;
@@ -336,7 +331,6 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
-    // prevent user from removing admin role if last admin
     if (role === 'admin') {
       const adminUsers = await this.userDAO.getUsersByClientId(clientId, {
         'cuids.roles': 'admin',
@@ -404,7 +398,6 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
-    // Prevent disconnecting last admin
     const user = await this.userDAO.getUserById(targetUserId);
     if (!user) {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
@@ -514,6 +507,66 @@ export class ClientService {
       success: true,
       data: { users },
       message: t('client.success.usersRetrieved'),
+    };
+  }
+
+  async getUsersByRole(
+    cxt: IRequestContext,
+    role: IUserRoleType
+  ): Promise<ISuccessReturnData<{ users: any[] }>> {
+    const currentuser = cxt.currentuser!;
+    const clientId = cxt.request.params.cuid || currentuser.client.cuid;
+
+    if (!Object.values(IUserRole).includes(role as IUserRole)) {
+      throw new BadRequestError({ message: t('client.errors.invalidRole') });
+    }
+
+    const usersResult = await this.userDAO.getUsersByClientIdAndRole(clientId, role, {
+      limit: 100,
+      skip: 0,
+      populate: [{ path: 'profile', select: 'personalInfo vendorInfo clientRoleInfo' }],
+    });
+
+    const users = usersResult.items.map((user) => {
+      const clientConnection = user.cuids.find((c) => c.cuid === clientId);
+
+      let vendorInfo = null;
+      if (role === 'vendor' && user.profile) {
+        vendorInfo = user.profile.vendorInfo || {};
+
+        // Check if this is a linked vendor account
+        if (user.cuids && user.cuids.length > 0) {
+          const clientConnection = user.cuids.find((connection) => connection.cuid === clientId);
+          if (clientConnection?.linkedVendorId) {
+            vendorInfo = {
+              ...vendorInfo,
+              isLinkedAccount: true,
+              linkedVendorId: clientConnection.linkedVendorId,
+            };
+          } else {
+            vendorInfo = {
+              ...vendorInfo,
+              isPrimaryVendor: true,
+            };
+          }
+        }
+      }
+
+      return {
+        id: user._id.toString(),
+        email: user.email,
+        displayName: clientConnection?.displayName || '',
+        fullname:
+          user.profile?.personalInfo?.firstName + ' ' + user.profile?.personalInfo?.lastName,
+        isConnected: clientConnection?.isConnected || false,
+        vendorInfo: role === 'vendor' ? vendorInfo : undefined,
+      };
+    });
+
+    return {
+      success: true,
+      data: { users },
+      message: t('client.success.usersByRoleRetrieved', { role }),
     };
   }
 }

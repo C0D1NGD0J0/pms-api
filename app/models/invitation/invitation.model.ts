@@ -46,14 +46,16 @@ const InvitationSchema = new Schema<IInvitationDocument>(
     status: {
       type: String,
       required: true,
-      enum: ['draft', 'pending', 'accepted', 'expired', 'revoked', 'sent'],
+      enum: ['draft', 'pending', 'accepted', 'expired', 'revoked', 'sent', 'declined'],
       default: 'pending',
       index: true,
     },
     invitationToken: {
       type: String,
-      required: true,
-      unique: true,
+      required: function (this: IInvitationDocument) {
+        return this.status !== 'accepted';
+      },
+      sparse: true, // Only index non-null values
       index: true,
     },
     expiresAt: {
@@ -132,6 +134,15 @@ const InvitationSchema = new Schema<IInvitationDocument>(
       trim: true,
       maxlength: 200,
     },
+    declinedAt: {
+      type: Date,
+    },
+    linkedVendorId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -140,7 +151,6 @@ const InvitationSchema = new Schema<IInvitationDocument>(
   }
 );
 
-// Compound index for efficient queries
 InvitationSchema.index({ clientId: 1, status: 1 });
 InvitationSchema.index({ inviteeEmail: 1, clientId: 1 });
 InvitationSchema.index({ expiresAt: 1 });
@@ -187,7 +197,7 @@ InvitationSchema.pre('save', async function (this: IInvitationDocument, next) {
 });
 
 InvitationSchema.methods.isValid = function (this: IInvitationDocument): boolean {
-  return (this.status === 'pending' || this.status === 'draft') && this.expiresAt > new Date();
+  return ['pending', 'draft', 'sent'].includes(this.status) && this.expiresAt > new Date();
 };
 
 InvitationSchema.methods.expire = function (

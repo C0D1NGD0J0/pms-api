@@ -1,23 +1,30 @@
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
-import { ProfileDAO } from '@dao/profileDAO';
 import { IUserRoleType } from '@interfaces/user.interface';
+import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
+import { IProfileDocument } from '@interfaces/profile.interface';
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
-import { IProfileDocument, EmployeeInfo, VendorInfo } from '@interfaces/profile.interface';
 
 interface IConstructor {
   profileDAO: ProfileDAO;
+  clientDAO: ClientDAO;
+  userDAO: UserDAO;
 }
 
 export class ProfileService {
   private readonly profileDAO: ProfileDAO;
+  private readonly clientDAO: ClientDAO;
+  private readonly userDAO: UserDAO;
   private readonly logger: Logger;
 
-  constructor({ profileDAO }: IConstructor) {
+  constructor({ profileDAO, clientDAO, userDAO }: IConstructor) {
     this.profileDAO = profileDAO;
+    this.clientDAO = clientDAO;
+    this.userDAO = userDAO;
     this.logger = createLogger('ProfileService');
   }
 
@@ -31,7 +38,6 @@ export class ProfileService {
     userRole: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      // Validate input
       const validation = ProfileValidations.updateEmployeeInfo.safeParse(employeeInfo);
       if (!validation.success) {
         throw new BadRequestError({
@@ -39,17 +45,14 @@ export class ProfileService {
         });
       }
 
-      // Check if user has appropriate role
       if (!['manager', 'staff', 'admin'].includes(userRole)) {
         throw new ForbiddenError({
           message: t('auth.errors.insufficientPermissions'),
         });
       }
 
-      // Ensure client role info exists
-      await this.profileDAO.ensureClientRoleInfo(profileId, cuid);
+      await this.ensureClientRoleInfo(profileId, cuid);
 
-      // Update employee info
       const result = await this.profileDAO.updateEmployeeInfo(profileId, cuid, validation.data);
 
       if (!result) {
@@ -81,7 +84,6 @@ export class ProfileService {
     userRole: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      // Validate input
       const validation = ProfileValidations.updateVendorInfo.safeParse(vendorInfo);
       if (!validation.success) {
         throw new BadRequestError({
@@ -89,17 +91,14 @@ export class ProfileService {
         });
       }
 
-      // Check if user has vendor role
       if (userRole !== 'vendor') {
         throw new ForbiddenError({
           message: t('auth.errors.insufficientPermissions'),
         });
       }
 
-      // Ensure client role info exists
-      await this.profileDAO.ensureClientRoleInfo(profileId, cuid);
+      await this.ensureClientRoleInfo(profileId, cuid);
 
-      // Update vendor info
       const result = await this.profileDAO.updateVendorInfo(profileId, cuid, validation.data);
 
       if (!result) {
@@ -122,15 +121,28 @@ export class ProfileService {
   }
 
   /**
-   * Get role-specific information for a profile and client
+   * Update common employee information that applies across all clients
    */
-  async getRoleSpecificInfo(
+  async updateCommonEmployeeInfo(
     profileId: string,
-    cuid: string,
-    requestingUserRole: IUserRoleType
-  ): Promise<ISuccessReturnData<{ employeeInfo?: EmployeeInfo; vendorInfo?: VendorInfo }>> {
+    employeeInfo: any,
+    userRole: IUserRoleType
+  ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      const result = await this.profileDAO.getRoleSpecificInfo(profileId, cuid);
+      const validation = ProfileValidations.updateEmployeeInfo.safeParse(employeeInfo);
+      if (!validation.success) {
+        throw new BadRequestError({
+          message: `Validation failed: ${validation.error.issues.map((i) => i.message).join(', ')}`,
+        });
+      }
+
+      if (!['manager', 'staff', 'admin'].includes(userRole)) {
+        throw new ForbiddenError({
+          message: t('auth.errors.insufficientPermissions'),
+        });
+      }
+
+      const result = await this.profileDAO.updateCommonEmployeeInfo(profileId, validation.data);
 
       if (!result) {
         throw new NotFoundError({
@@ -138,17 +150,105 @@ export class ProfileService {
         });
       }
 
-      // Filter based on requesting user's role
-      const filteredResult: any = {};
+      this.logger.info(`Common employee info updated for profile ${profileId}`);
 
-      // Staff, admin, manager can see employee info
-      if (result.employeeInfo && ['manager', 'staff', 'admin'].includes(requestingUserRole)) {
-        filteredResult.employeeInfo = result.employeeInfo;
+      return {
+        success: true,
+        data: result,
+        message: t('profile.success.commonEmployeeInfoUpdated'),
+      };
+    } catch (error) {
+      this.logger.error(`Error updating common employee info for profile ${profileId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update common vendor information that applies across all clients
+   */
+  async updateCommonVendorInfo(
+    profileId: string,
+    vendorInfo: any,
+    userRole: IUserRoleType
+  ): Promise<ISuccessReturnData<IProfileDocument>> {
+    try {
+      const validation = ProfileValidations.updateVendorInfo.safeParse(vendorInfo);
+      if (!validation.success) {
+        throw new BadRequestError({
+          message: `Validation failed: ${validation.error.issues.map((i) => i.message).join(', ')}`,
+        });
       }
 
-      // Vendors can see vendor info
+      if (userRole !== 'vendor') {
+        throw new ForbiddenError({
+          message: t('auth.errors.insufficientPermissions'),
+        });
+      }
+
+      const result = await this.profileDAO.updateCommonVendorInfo(profileId, validation.data);
+
+      if (!result) {
+        throw new NotFoundError({
+          message: t('profile.errors.notFound'),
+        });
+      }
+
+      this.logger.info(`Common vendor info updated for profile ${profileId}`);
+
+      return {
+        success: true,
+        data: result,
+        message: t('profile.success.commonVendorInfoUpdated'),
+      };
+    } catch (error) {
+      this.logger.error(`Error updating common vendor info for profile ${profileId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get role-specific information for a profile and client
+   */
+  async getRoleSpecificInfo(
+    profileId: string,
+    cuid: string,
+    requestingUserRole: IUserRoleType
+  ): Promise<
+    ISuccessReturnData<{
+      role?: string;
+      linkedVendorId?: string;
+      isConnected?: boolean;
+      isPrimaryVendor?: boolean;
+      vendorInfo?: any;
+      employeeInfo?: any;
+    }>
+  > {
+    try {
+      const result = await this.getClientRoleInfo(profileId, cuid);
+
+      if (!result) {
+        throw new NotFoundError({
+          message: t('profile.errors.notFound'),
+        });
+      }
+
+      const filteredResult: any = {
+        role: result.role,
+        isConnected: result.isConnected,
+        isPrimaryVendor: result.isPrimaryVendor,
+      };
+
+      if (result.linkedVendorId) {
+        filteredResult.linkedVendorId = result.linkedVendorId;
+      }
+
+      // Include relevant info based on role and permissions
       if (result.vendorInfo && requestingUserRole === 'vendor') {
         filteredResult.vendorInfo = result.vendorInfo;
+      }
+
+      if (result.employeeInfo && ['manager', 'staff', 'admin'].includes(requestingUserRole)) {
+        filteredResult.employeeInfo = result.employeeInfo;
       }
 
       return {
@@ -172,7 +272,6 @@ export class ProfileService {
     requestingUserRole: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      // Check permissions
       if (!['manager', 'admin'].includes(requestingUserRole)) {
         throw new ForbiddenError({
           message: t('auth.errors.insufficientPermissions'),
@@ -201,50 +300,167 @@ export class ProfileService {
   }
 
   /**
+   * Helper method to ensure a client role exists for a user
+   * Now implemented using UserDAO directly
+   */
+  private async ensureClientRoleInfo(
+    userId: string,
+    cuid: string,
+    role?: string,
+    linkedVendorId?: string
+  ): Promise<void> {
+    try {
+      if (!userId || !cuid) {
+        throw new BadRequestError({
+          message: 'Profile not found',
+        });
+      }
+
+      const [clientInfo, userInfo] = await Promise.all([
+        this.clientDAO.getClientByCuid(cuid),
+        this.userDAO.getUserById(userId),
+      ]);
+
+      if (!userInfo || !clientInfo) {
+        throw new NotFoundError({
+          message: t('user.errors.notFound'),
+        });
+      }
+
+      const hasClientConnection = userInfo.cuids.some((c) => c.cuid === cuid);
+
+      if (!hasClientConnection) {
+        await this.userDAO.updateById(userId, {
+          $push: {
+            cuids: {
+              cuid,
+              roles: [role || ('vendor' as IUserRoleType)],
+              isConnected: true,
+              displayName: clientInfo.displayName,
+              linkedVendorId: role === 'vendor' ? linkedVendorId : null,
+            },
+          },
+        });
+      }
+    } catch (error) {
+      this.logger.error(`Error ensuring client role info: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper method to get role-specific information for a profile and client
+   * Now implemented using both ProfileDAO and UserDAO
+   */
+  private async getClientRoleInfo(
+    profileId: string,
+    cuid: string
+  ): Promise<{
+    role?: string;
+    linkedVendorId?: string;
+    isConnected?: boolean;
+    isPrimaryVendor?: boolean;
+    vendorInfo?: any;
+    employeeInfo?: any;
+  } | null> {
+    try {
+      // Get the profile info
+      const profileInfo = await this.profileDAO.getProfileInfo(profileId);
+      if (!profileInfo) {
+        return null;
+      }
+
+      // Get the user if userId exists
+      const userId = profileInfo.userId;
+      if (!userId) {
+        return null;
+      }
+
+      const user = await this.userDAO.getUserById(userId);
+      if (!user) {
+        return null;
+      }
+
+      // Find the client connection in user's cuids array
+      const clientConnection = user.cuids.find((c) => c.cuid === cuid);
+      if (!clientConnection) {
+        return null;
+      }
+
+      const result: any = {
+        role: clientConnection.roles[0], // Taking first role as primary
+        isConnected: clientConnection.isConnected,
+      };
+
+      if (clientConnection.linkedVendorId) {
+        result.linkedVendorId = clientConnection.linkedVendorId;
+        result.isPrimaryVendor = false;
+      } else if (clientConnection.roles.includes('vendor' as IUserRoleType)) {
+        // If this is a vendor without linkedVendorId, it's a primary vendor
+        result.isPrimaryVendor = true;
+      }
+
+      // Include relevant info based on role
+      if (clientConnection.roles.includes('vendor' as IUserRoleType) && profileInfo.vendorInfo) {
+        result.vendorInfo = profileInfo.vendorInfo;
+      }
+
+      if (
+        ['manager', 'admin', 'staff'].some((role) =>
+          clientConnection.roles.includes(role as IUserRoleType)
+        ) &&
+        profileInfo.employeeInfo
+      ) {
+        result.employeeInfo = profileInfo.employeeInfo;
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.error(`Error getting role-specific info: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Initialize role-specific information for new users during invitation acceptance
    */
   async initializeRoleInfo(
-    profileId: string,
+    userId: string,
     cuid: string,
-    role: IUserRoleType
+    role: IUserRoleType,
+    linkedVendorId?: string
   ): Promise<ISuccessReturnData<IProfileDocument>> {
-    try {
-      // Ensure client role info exists
-      await this.profileDAO.ensureClientRoleInfo(profileId, cuid);
-
-      let result: IProfileDocument | null = null;
-
-      // Initialize role-specific structure based on invitation role
-      if (role === 'vendor') {
-        // Initialize empty vendor structure
-        result = await this.profileDAO.updateVendorInfo(profileId, cuid, {});
-        this.logger.info(`Initialized vendor info for profile ${profileId}, client ${cuid}`);
-      } else if (['manager', 'staff', 'admin'].includes(role)) {
-        // Initialize empty employee structure
-        result = await this.profileDAO.updateEmployeeInfo(profileId, cuid, {});
-        this.logger.info(`Initialized employee info for profile ${profileId}, client ${cuid}`);
-      }
-
-      if (!result) {
-        // If no role-specific initialization is needed, just ensure the client entry exists
-        const profile = await this.profileDAO.findById(profileId);
-        if (!profile) {
-          throw new NotFoundError({
-            message: t('profile.errors.notFound'),
-          });
-        }
-        result = profile;
-      }
-
-      return {
-        success: true,
-        data: result,
-        message: t('profile.success.roleInitialized'),
-      };
-    } catch (error) {
-      this.logger.error(`Error initializing role info for profile ${profileId}:`, error);
-      throw error;
+    await this.ensureClientRoleInfo(userId, cuid, role, linkedVendorId);
+    const profile = await this.profileDAO.findFirst({ user: new Types.ObjectId(userId) });
+    if (!profile) {
+      throw new NotFoundError({
+        message: t('profile.errors.notFound'),
+      });
     }
+
+    let result: IProfileDocument | null = null;
+
+    if (role === 'vendor' && !linkedVendorId) {
+      // For primary vendors, initialize the common vendor info
+      result = await this.profileDAO.updateCommonVendorInfo(profile.id, {});
+      this.logger.info(`Initialized vendor info for profile ${profile.id}`);
+    } else if (['manager', 'staff', 'admin'].includes(role)) {
+      // For employees, initialize the common employee info
+      result = await this.profileDAO.updateCommonEmployeeInfo(profile.id, {});
+      this.logger.info(`Initialized employee info for profile ${profile.id}`);
+    } else {
+      result = profile;
+    }
+    if (!result) {
+      throw new NotFoundError({
+        message: 'Error initializing user role.',
+      });
+    }
+    return {
+      success: true,
+      data: result,
+      message: t('profile.success.roleInitialized'),
+    };
   }
 
   /**
@@ -253,11 +469,15 @@ export class ProfileService {
   async updateProfileWithRoleInfo(
     profileId: string,
     cuid: string,
-    profileData: { employeeInfo?: any; vendorInfo?: any },
+    profileData: {
+      employeeInfo?: any;
+      vendorInfo?: any;
+      commonEmployeeInfo?: any;
+      commonVendorInfo?: any;
+    },
     userRole: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      // Validate the combined data
       const validation = ProfileValidations.profileUpdate.safeParse(profileData);
       if (!validation.success) {
         throw new BadRequestError({
@@ -267,7 +487,6 @@ export class ProfileService {
 
       let result: IProfileDocument | null = null;
 
-      // Update employee info if provided
       if (profileData.employeeInfo) {
         const employeeResult = await this.updateEmployeeInfo(
           profileId,
@@ -278,7 +497,6 @@ export class ProfileService {
         result = employeeResult.data;
       }
 
-      // Update vendor info if provided
       if (profileData.vendorInfo) {
         const vendorResult = await this.updateVendorInfo(
           profileId,
@@ -287,6 +505,24 @@ export class ProfileService {
           userRole
         );
         result = vendorResult.data;
+      }
+
+      if (profileData.commonEmployeeInfo) {
+        const commonEmployeeResult = await this.updateCommonEmployeeInfo(
+          profileId,
+          profileData.commonEmployeeInfo,
+          userRole
+        );
+        result = commonEmployeeResult.data;
+      }
+
+      if (profileData.commonVendorInfo) {
+        const commonVendorResult = await this.updateCommonVendorInfo(
+          profileId,
+          profileData.commonVendorInfo,
+          userRole
+        );
+        result = commonVendorResult.data;
       }
 
       if (!result) {

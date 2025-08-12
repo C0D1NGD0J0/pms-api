@@ -1,4 +1,5 @@
 import {
+  validateTokenAndCuidSchema,
   getInvitationsQuerySchema,
   processPendingQuerySchema,
   acceptInvitationSchema,
@@ -22,4 +23,5 @@ export class InvitationValidations {
   static revokeInvitation = revokeInvitationSchema;
   static sendInvitation = sendInvitationSchema;
   static updateInvitation = updateInvitationSchema;
+  static validateTokenAndCuid = validateTokenAndCuidSchema;
 }

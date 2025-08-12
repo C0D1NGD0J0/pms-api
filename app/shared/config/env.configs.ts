@@ -96,7 +96,11 @@ class EnvVariables {
     this.REDIS = {
       PORT: Number(process.env.REDIS_PORT) || 6379,
       HOST: process.env.REDIS_HOST || '',
-      URL: process.env.REDIS_URL || '',
+      URL:
+        process.env.REDIS_URL ||
+        process.env.REDIS_PRIVATE_URL ||
+        process.env.REDIS_PUBLIC_URL ||
+        '',
       PASSWORD: process.env.REDIS_PASSWORD || '',
       USERNAME: process.env.REDIS_USERNAME || '',
     };
@@ -107,9 +111,13 @@ class EnvVariables {
       BUCKET_NAME: process.env.AWS_BUCKET_NAME || '',
     };
     this.DATABASE = {
-      PROD_URL: process.env.PROD_DB_URL || '',
+      PROD_URL:
+        process.env.PROD_DB_URL ||
+        process.env.DATABASE_URL ||
+        process.env.DATABASE_PRIVATE_URL ||
+        '',
       TEST_URL: process.env.TEST_DB_URL || '',
-      DEV_URL: process.env.DEV_DB_URL || '',
+      DEV_URL: process.env.DEV_DB_URL || process.env.DATABASE_URL || '',
     };
     this.JWT = {
       EXPIREIN: process.env.JWT_EXPIREIN || '',
@@ -170,23 +178,49 @@ class EnvVariables {
   }
 
   private validateSecretValue(): void {
-    const validateObject = (obj: any, parentKey: string = '') => {
-      for (const [key, value] of Object.entries(obj)) {
-        const fullKey = parentKey ? `${parentKey}.${key}` : key;
-        if (typeof value === 'object' && value !== null) {
-          validateObject(value, fullKey);
-        } else if (
-          value === undefined ||
-          value === '' ||
-          (typeof value === 'number' && isNaN(value))
-        ) {
-          console.warn(`❌ Environment variable ${fullKey} is not set or invalid!`);
-          throw new Error(`Environment variable ${fullKey} not found or invalid!`);
-        }
-      }
-    };
+    // Critical environment variables that must be present
+    // const criticalVars = ['SERVER.PORT', 'SERVER.ENV', 'DATABASE.PROD_URL', 'REDIS.URL'];
 
-    validateObject(this);
+    // Only validate critical variables in production
+    if (this.SERVER.ENV === 'production') {
+      const missingVars: string[] = [];
+
+      if (!this.SERVER.PORT || isNaN(this.SERVER.PORT)) {
+        missingVars.push('SERVER.PORT (PORT)');
+      }
+
+      if (!this.DATABASE.PROD_URL) {
+        missingVars.push('DATABASE.PROD_URL (DATABASE_URL or PROD_DB_URL)');
+      }
+
+      if (!this.REDIS.URL) {
+        missingVars.push('REDIS.URL (REDIS_URL, REDIS_PRIVATE_URL, or REDIS_PUBLIC_URL)');
+      }
+
+      if (missingVars.length > 0) {
+        const errorMsg = `Critical environment variables missing: ${missingVars.join(', ')}`;
+        console.error('❌ Environment validation failed:', errorMsg);
+        throw new Error(errorMsg);
+      }
+    } else {
+      // In development/test, just warn about missing variables
+      const validateObject = (obj: any, parentKey: string = '') => {
+        for (const [key, value] of Object.entries(obj)) {
+          const fullKey = parentKey ? `${parentKey}.${key}` : key;
+          if (typeof value === 'object' && value !== null) {
+            validateObject(value, fullKey);
+          } else if (
+            value === undefined ||
+            value === '' ||
+            (typeof value === 'number' && isNaN(value))
+          ) {
+            console.warn(`⚠️ Environment variable ${fullKey} is not set or invalid!`);
+          }
+        }
+      };
+
+      validateObject(this);
+    }
   }
 }
 

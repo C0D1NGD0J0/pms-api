@@ -1,44 +1,70 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { InvitationController } from '@controllers/index';
-import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
-import { requirePermission, isAuthenticated, diskUpload, scanFile } from '@shared/middlewares';
+import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import {
   InvitationValidations,
   UtilsValidations,
   validateRequest,
 } from '@shared/validations/index';
+import {
+  requirePermission,
+  isAuthenticated,
+  routeLimiter,
+  diskUpload,
+  scanFile,
+} from '@shared/middlewares';
 
 const router = Router();
 
 /**
- * @route GET /api/v1/invites/:token/validate
+ * @route GET /api/v1/invites/:cuid/validate_token?token=token
  * @desc Validate an invitation token (public endpoint)
  * @access Public
  */
 router.get(
-  '/:token/validate',
-  validateRequest({ params: InvitationValidations.invitationToken }),
-  asyncWrapper((req, res) => {
+  '/:cuid/validate_token',
+  routeLimiter(),
+  validateRequest({ params: UtilsValidations.cuid, query: InvitationValidations.invitationToken }),
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.validateInvitation(req, res);
   })
 );
 
 /**
- * @route POST /api/v1/invites/:token/accept
+ * @route POST /api/v1/invites/:cuid/accept_invite/:token
  * @desc Accept an invitation and complete user registration (public endpoint)
  * @access Public
  */
 router.post(
-  '/:token/accept',
+  '/:cuid/accept_invite/:token',
+  routeLimiter(),
   validateRequest({
-    params: InvitationValidations.invitationToken,
+    params: InvitationValidations.validateTokenAndCuid,
     body: InvitationValidations.acceptInvitation,
   }),
-  asyncWrapper((req, res) => {
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.acceptInvitation(req, res);
+  })
+);
+
+/**
+ * @route POST /api/v1/invites/:cuid/decline_invite/:token
+ * @desc Decline an invitation (public endpoint)
+ * @access Public
+ */
+router.patch(
+  '/:cuid/decline_invite/:token',
+  routeLimiter(),
+  validateRequest({
+    params: InvitationValidations.validateTokenAndCuid,
+    body: InvitationValidations.revokeInvitation,
+  }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<InvitationController>('invitationController');
+    return controller.declineInvitation(req, res);
   })
 );
 
@@ -50,12 +76,13 @@ router.post(
 router.post(
   '/:cuid/send_invite',
   isAuthenticated,
+  routeLimiter(),
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   validateRequest({
     params: UtilsValidations.cuid,
     body: InvitationValidations.sendInvitation,
   }),
-  asyncWrapper((req, res) => {
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.sendInvitation(req, res);
   })
@@ -69,12 +96,13 @@ router.post(
 router.get(
   '/clients/:cuid',
   isAuthenticated,
+  routeLimiter(),
   requirePermission(PermissionResource.INVITATION, PermissionAction.LIST),
   validateRequest({
     params: UtilsValidations.cuid,
     query: InvitationValidations.getInvitations,
   }),
-  asyncWrapper((req, res) => {
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.getInvitations(req, res);
   })
@@ -90,7 +118,7 @@ router.get(
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.STATS),
   validateRequest({ params: UtilsValidations.cuid }),
-  asyncWrapper((req, res) => {
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.getInvitationStats(req, res);
   })
@@ -106,7 +134,7 @@ router.get(
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.READ),
   validateRequest({ params: InvitationValidations.iuid }),
-  asyncWrapper((req, res) => {
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.getInvitationById(req, res);
   })
@@ -125,7 +153,7 @@ router.patch(
     params: InvitationValidations.iuid,
     body: InvitationValidations.revokeInvitation,
   }),
-  asyncWrapper((req, res) => {
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.revokeInvitation(req, res);
   })
@@ -144,7 +172,7 @@ router.patch(
     params: InvitationValidations.iuid,
     body: InvitationValidations.updateInvitation,
   }),
-  asyncWrapper((req, res) => {
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.updateInvitation(req, res);
   })
@@ -163,7 +191,7 @@ router.patch(
     params: InvitationValidations.iuid,
     body: InvitationValidations.resendInvitation,
   }),
-  asyncWrapper((req, res) => {
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.resendInvitation(req, res);
   })
@@ -178,7 +206,7 @@ router.get(
   '/by-email/:email',
   isAuthenticated,
   validateRequest({ params: UtilsValidations.isUniqueEmail }),
-  asyncWrapper((req, res) => {
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.getInvitationsByEmail(req, res);
   })
@@ -198,7 +226,7 @@ router.post(
   validateRequest({
     params: UtilsValidations.cuid,
   }),
-  asyncWrapper((req, res) => {
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.validateInvitationCsv(req, res);
   })
@@ -218,7 +246,7 @@ router.post(
   validateRequest({
     params: UtilsValidations.cuid,
   }),
-  asyncWrapper((req, res) => {
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.importInvitationsFromCsv(req, res);
   })
@@ -237,7 +265,7 @@ router.patch(
     params: UtilsValidations.cuid,
     query: InvitationValidations.processPending,
   }),
-  asyncWrapper((req, res) => {
+  asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.processPendingInvitations(req, res);
   })

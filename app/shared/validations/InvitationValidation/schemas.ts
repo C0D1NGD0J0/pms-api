@@ -1,5 +1,9 @@
 import { z } from 'zod';
+import { container } from '@di/index';
+import { ClientDAO } from '@dao/index';
+import { InvitationDAO } from '@dao/invitationDAO';
 import { IUserRole } from '@interfaces/user.interface';
+import { EmployeeDepartment } from '@interfaces/profile.interface';
 
 const employeeInfoSchema = z
   .object({
@@ -112,6 +116,20 @@ export const invitationDataSchema = z.object({
     errorMap: () => ({ message: 'Please provide a valid role' }),
   }),
 
+  linkedVendorId: z
+    .string()
+    .min(24, 'Vendor ID must be a valid MongoDB ObjectId')
+    .max(24, 'Vendor ID must be a valid MongoDB ObjectId')
+    .optional()
+    .refine(
+      (val) => {
+        if (!val) return true;
+        // Check if valid MongoDB ObjectId (24 hex chars)
+        return /^[0-9a-fA-F]{24}$/.test(val);
+      },
+      { message: 'Vendor ID must be a valid MongoDB ObjectId' }
+    ),
+
   personalInfo: z.object({
     firstName: z
       .string()
@@ -158,44 +176,121 @@ export const invitationDataSchema = z.object({
     .default('pending'),
 });
 
+export const validateTokenAndCuidSchema = z
+  .object({
+    cuid: z.string().min(12).max(32, 'Invalid cuid format'),
+    token: z.string().min(4).max(64, 'Invalid token format'),
+  })
+  .superRefine(async (data, ctx) => {
+    if (!data.cuid || !data.token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Missing invitation token.cuid',
+        path: ['cuid'],
+      });
+
+      if (!data.token) {
+        return ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Missing invitation token.token',
+          path: ['token'],
+        });
+      }
+    }
+
+    const { invitationDAO, clientDAO }: { invitationDAO: InvitationDAO; clientDAO: ClientDAO } =
+      container.cradle;
+    const invitation = await invitationDAO.findByToken(data.token as string);
+    if (!invitation) {
+      return ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Invalid invitation token',
+        path: ['token'],
+      });
+    }
+
+    if (data.cuid) {
+      const client = await clientDAO.getClientByCuid(data.cuid);
+
+      if (!client || client.cuid !== data.cuid) {
+        return ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Invitation does not belong to this client',
+          path: ['cuid'],
+        });
+      }
+    }
+  });
+
 export const sendInvitationSchema = invitationDataSchema;
 
 export const updateInvitationSchema = invitationDataSchema;
 
-export const acceptInvitationSchema = z.object({
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(128, 'Password must be less than 128 characters')
-    .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
-      'Password must contain at least one lowercase letter, one uppercase letter, one number, and one special character'
-    ),
-
-  location: z
-    .string()
-    .min(2, 'Location must be at least 2 characters')
-    .max(100, 'Location must be less than 100 characters')
-    .optional(),
-
-  timeZone: z.string().min(3, 'Invalid timezone').max(50, 'Invalid timezone').optional(),
-
-  lang: z
-    .string()
-    .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Invalid language code')
-    .optional(),
-
-  bio: z.string().max(700, 'Bio must be less than 700 characters').optional(),
-
-  headline: z.string().max(50, 'Headline must be less than 50 characters').optional(),
+const policiesSchema = z.object({
+  tos: z.object({
+    accepted: z.boolean(),
+    acceptedOn: z.date().optional().nullable(),
+  }),
+  privacy: z.object({
+    accepted: z.boolean(),
+    acceptedOn: z.date().optional().nullable(),
+  }),
+  marketing: z.object({
+    accepted: z.boolean(),
+    acceptedOn: z.date().optional().nullable(),
+  }),
 });
 
-export const revokeInvitationSchema = z.object({
-  reason: z.string().max(200, 'Reason must be less than 200 characters').optional(),
-});
+export const acceptInvitationSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, 'Password must be at least 8 characters')
+      .max(15, 'Password must be less than 15 characters')
+      .regex(
+        /^(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?&]/,
+        'Password must contain at least one uppercase letter, and one number'
+      ),
+    confirmPassword: z.string().min(8, 'Confirm password must be at least 8 characters'),
+    location: z
+      .string()
+      .min(2, 'Location must be at least 2 characters')
+      .max(100, 'Location must be less than 100 characters')
+      .optional(),
+
+    timeZone: z.string().min(3, 'Invalid timezone').max(50, 'Invalid timezone').optional(),
+
+    lang: z
+      .string()
+      .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Invalid language code')
+      .optional(),
+
+    bio: z.string().max(700, 'Bio must be less than 700 characters').optional(),
+
+    headline: z.string().max(50, 'Headline must be less than 50 characters').optional(),
+
+    policies: policiesSchema.optional(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+  })
+  .refine(
+    (data) => {
+      // If marketing is accepted, tos and privacy must be accepted
+      if (data.policies?.marketing?.accepted) {
+        return data.policies.tos.accepted && data.policies.privacy.accepted;
+      }
+      return true;
+    },
+    { message: 'You must accept the Terms of Service and Privacy Policy to opt into marketing' }
+  );
 
 export const resendInvitationSchema = z.object({
   customMessage: z.string().max(500, 'Custom message must be less than 500 characters').optional(),
+});
+
+export const revokeInvitationSchema = z.object({
+  reason: z.string().max(500, 'Reason must be less than 500 characters').optional(),
 });
 
 export const getInvitationsQuerySchema = z.object({
@@ -239,7 +334,7 @@ export const getInvitationsQuerySchema = z.object({
 });
 
 export const invitationTokenSchema = z.object({
-  token: z.string().min(10, 'Invalid invitation token').max(255, 'Invalid invitation token'),
+  token: z.string().min(4, 'Invalid invitation token').max(64, 'Invalid invitation token'),
 });
 
 export const iuidSchema = z.object({
@@ -315,7 +410,27 @@ export const invitationCsvSchema = z
 
     employeeInfo_department: z
       .string()
-      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .transform((str) => {
+        if (!str || str.trim() === '') {
+          return undefined;
+        }
+        const trimmed = str.trim().toLowerCase();
+        // Map string values to enum values
+        const departmentMap: Record<string, EmployeeDepartment> = {
+          maintenance: EmployeeDepartment.MAINTENANCE,
+          operations: EmployeeDepartment.OPERATIONS,
+          accounting: EmployeeDepartment.ACCOUNTING,
+          management: EmployeeDepartment.MANAGEMENT,
+        };
+
+        const department = departmentMap[trimmed];
+        if (!department) {
+          throw new Error(
+            `Invalid department. Must be one of: ${Object.keys(departmentMap).join(', ')}`
+          );
+        }
+        return department;
+      })
       .optional(),
     employeeInfo_jobTitle: z
       .string()

@@ -171,6 +171,7 @@ describe('PropertyValidationService', () => {
         },
         propertyType: 'house',
         maxAllowedUnits: 1,
+        occupancyStatus: 'vacant', // Ensure compatible with single-unit property
         specifications: {
           totalArea: 1500,
           bedrooms: 3,

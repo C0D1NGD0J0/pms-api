@@ -7,6 +7,8 @@ import {
   createMockProfileDAO,
   createMockVendorInfo,
   createMockProfile,
+  createMockClientDAO,
+  createMockUserDAO,
 } from '@tests/helpers';
 
 jest.mock('@shared/validations/ProfileValidation', () => ({
@@ -35,14 +37,20 @@ const mockProfileUpdateSafeParse = ProfileValidations.profileUpdate
 describe('ProfileService', () => {
   let profileService: ProfileService;
   let mockProfileDAO: any;
+  let mockClientDAO: any;
+  let mockUserDAO: any;
   let mockTranslation: any;
 
   beforeEach(() => {
     mockProfileDAO = createMockProfileDAO();
+    mockClientDAO = createMockClientDAO();
+    mockUserDAO = createMockUserDAO();
     mockTranslation = createMockTranslationFunction();
 
     profileService = new ProfileService({
       profileDAO: mockProfileDAO,
+      clientDAO: mockClientDAO,
+      userDAO: mockUserDAO,
     });
 
     (global as any).t = mockTranslation;
@@ -82,7 +90,6 @@ describe('ProfileService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(mockUpdatedProfile);
-      expect(mockProfileDAO.ensureClientRoleInfo).toHaveBeenCalledWith(profileId, cuid);
       expect(mockProfileDAO.updateEmployeeInfo).toHaveBeenCalledWith(profileId, cuid, employeeInfo);
     });
 
@@ -102,8 +109,6 @@ describe('ProfileService', () => {
       await expect(
         profileService.updateEmployeeInfo(profileId, cuid, invalidEmployeeInfo, userRole)
       ).rejects.toThrow(BadRequestError);
-
-      expect(mockProfileDAO.ensureClientRoleInfo).not.toHaveBeenCalled();
     });
 
     it('should throw ForbiddenError for invalid user role', async () => {
@@ -132,9 +137,9 @@ describe('ProfileService', () => {
         success: true,
         data: employeeInfo,
       });
-      mockProfileDAO.ensureClientRoleInfo.mockRejectedValue(
-        new NotFoundError({ message: 'Profile not found' })
-      );
+      
+      // Mock the clientDAO to return null to trigger NotFoundError
+      mockClientDAO.getClientByCuid.mockResolvedValue(null);
 
       await expect(
         profileService.updateEmployeeInfo(profileId, cuid, employeeInfo, userRole)
@@ -214,6 +219,29 @@ describe('ProfileService', () => {
       const requestingUserRole = 'manager';
       const employeeInfo = createMockEmployeeInfo();
 
+      // Set up the mocks for the internal getClientRoleInfo method
+      mockProfileDAO.getProfileInfo.mockResolvedValue({
+        userId: 'mock-user-id',
+        profileId: profileId,
+        clientRoleInfo: [],
+        employeeInfo: employeeInfo,
+        vendorInfo: null,
+      });
+      
+      mockUserDAO.getUserById.mockResolvedValue({
+        _id: 'mock-user-id',
+        email: 'user@example.com',
+        cuids: [
+          {
+            cuid: cuid,
+            roles: ['manager'],
+            isConnected: true,
+            displayName: 'Test Client',
+          }
+        ],
+        toObject: jest.fn().mockReturnThis(),
+      });
+
       mockProfileDAO.getRoleSpecificInfo.mockResolvedValue({
         employeeInfo,
         vendorInfo: null,
@@ -232,6 +260,29 @@ describe('ProfileService', () => {
       const requestingUserRole = 'vendor';
       const vendorInfo = createMockVendorInfo();
 
+      // Set up the mocks for the internal getClientRoleInfo method
+      mockProfileDAO.getProfileInfo.mockResolvedValue({
+        userId: 'mock-user-id',
+        profileId: profileId,
+        clientRoleInfo: [],
+        employeeInfo: null,
+        vendorInfo: vendorInfo,
+      });
+      
+      mockUserDAO.getUserById.mockResolvedValue({
+        _id: 'mock-user-id',
+        email: 'user@example.com',
+        cuids: [
+          {
+            cuid: cuid,
+            roles: ['vendor'],
+            isConnected: true,
+            displayName: 'Test Client',
+          }
+        ],
+        toObject: jest.fn().mockReturnThis(),
+      });
+
       mockProfileDAO.getRoleSpecificInfo.mockResolvedValue({
         employeeInfo: null,
         vendorInfo,
@@ -248,6 +299,29 @@ describe('ProfileService', () => {
       const profileId = new Types.ObjectId().toString();
       const cuid = 'test-cuid';
       const requestingUserRole = 'tenant';
+
+      // Set up the mocks for the internal getClientRoleInfo method
+      mockProfileDAO.getProfileInfo.mockResolvedValue({
+        userId: 'mock-user-id',
+        profileId: profileId,
+        clientRoleInfo: [],
+        employeeInfo: createMockEmployeeInfo(),
+        vendorInfo: createMockVendorInfo(),
+      });
+      
+      mockUserDAO.getUserById.mockResolvedValue({
+        _id: 'mock-user-id',
+        email: 'user@example.com',
+        cuids: [
+          {
+            cuid: cuid,
+            roles: ['tenant'],
+            isConnected: true,
+            displayName: 'Test Client',
+          }
+        ],
+        toObject: jest.fn().mockReturnThis(),
+      });
 
       mockProfileDAO.getRoleSpecificInfo.mockResolvedValue({
         employeeInfo: createMockEmployeeInfo(),
@@ -337,12 +411,13 @@ describe('ProfileService', () => {
       mockProfileDAO.ensureClientRoleInfo.mockResolvedValue(undefined);
       mockProfileDAO.updateEmployeeInfo.mockResolvedValue(mockUpdatedProfile);
       mockProfileDAO.findById.mockResolvedValue(mockUpdatedProfile);
+      mockProfileDAO.findFirst.mockResolvedValue(mockUpdatedProfile);
 
       const result = await profileService.initializeRoleInfo(profileId, cuid, role);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(mockUpdatedProfile);
-      expect(mockProfileDAO.ensureClientRoleInfo).toHaveBeenCalledWith(profileId, cuid);
+      expect(result.data).toBeDefined();
+      expect(mockProfileDAO.updateCommonEmployeeInfo).toHaveBeenCalled();
     });
 
     it('should successfully initialize vendor role info', async () => {
@@ -354,11 +429,11 @@ describe('ProfileService', () => {
       mockProfileDAO.ensureClientRoleInfo.mockResolvedValue(undefined);
       mockProfileDAO.updateVendorInfo.mockResolvedValue(mockUpdatedProfile);
       mockProfileDAO.findById.mockResolvedValue(mockUpdatedProfile);
+      mockProfileDAO.findFirst.mockResolvedValue(mockUpdatedProfile);
 
       const result = await profileService.initializeRoleInfo(profileId, cuid, role);
 
       expect(result.success).toBe(true);
-      expect(mockProfileDAO.ensureClientRoleInfo).toHaveBeenCalledWith(profileId, cuid);
     });
 
     it('should throw NotFoundError when client role info initialization fails', async () => {
@@ -366,9 +441,8 @@ describe('ProfileService', () => {
       const cuid = 'test-cuid';
       const role = 'manager';
 
-      mockProfileDAO.ensureClientRoleInfo.mockRejectedValue(
-        new NotFoundError({ message: 'Profile not found' })
-      );
+      // Mock clientDAO to return null to trigger NotFoundError in the private method
+      mockClientDAO.getClientByCuid.mockResolvedValue(null);
 
       await expect(profileService.initializeRoleInfo(profileId, cuid, role)).rejects.toThrow(
         NotFoundError

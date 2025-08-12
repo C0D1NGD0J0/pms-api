@@ -192,6 +192,18 @@ const mockInvitationController = {
       },
     });
   }),
+  declineInvitation: jest.fn((_req: Request, res: Response) => {
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: 'Invitation declined successfully',
+      data: {
+        iuid: faker.string.uuid(),
+        status: 'revoked',
+        revokedAt: new Date().toISOString(),
+        revokeReason: 'Declined by invitee',
+      },
+    });
+  }),
   sendInvitation: jest.fn((_req: Request, res: Response) => {
     res.status(httpStatusCodes.OK).json({
       success: true,
@@ -407,6 +419,7 @@ function createTestApp(): Application {
   // Simple route definitions without complex middleware
   app.get(`${baseUrl}/:token/validate`, mockInvitationController.validateInvitation);
   app.post(`${baseUrl}/:token/accept`, mockInvitationController.acceptInvitation);
+  app.patch(`${baseUrl}/:cuid/decline_invite/:token`, mockInvitationController.declineInvitation);
   app.post(`${baseUrl}/:cuid/send_invite`, mockInvitationController.sendInvitation);
   app.get(`${baseUrl}/clients/:cuid`, mockInvitationController.getInvitations);
   app.get(`${baseUrl}/clients/:cuid/stats`, mockInvitationController.getInvitationStats);
@@ -604,6 +617,120 @@ describe('Invitation Routes Integration Tests', () => {
         .expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body).toEqual(errorResponse);
+    });
+  });
+
+  describe('PATCH /:cuid/decline_invite/:token (public)', () => {
+    const validCuid = faker.string.uuid();
+    const validToken = faker.string.alphanumeric(32);
+    const endpoint = `${baseUrl}/${validCuid}/decline_invite/${validToken}`;
+
+    it('should decline invitation successfully', async () => {
+      const mockResponse = {
+        success: true,
+        message: 'Invitation declined successfully',
+        data: {
+          iuid: faker.string.uuid(),
+          status: 'revoked',
+          revokedAt: new Date().toISOString(),
+          revokeReason: 'Declined by invitee',
+        },
+      };
+
+      mockController.declineInvitation.mockImplementation((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.OK).json(mockResponse);
+      });
+
+      const response = await request(app)
+        .patch(endpoint)
+        .send({ reason: 'Not interested' })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body).toEqual(mockResponse);
+      expect(mockController.declineInvitation).toHaveBeenCalled();
+    });
+
+    it('should return 400 for invalid token format', async () => {
+      const invalidEndpoint = `${baseUrl}/${validCuid}/decline_invite/invalid-token`;
+      const errorResponse = {
+        success: false,
+        message: 'Invalid invitation token',
+      };
+
+      mockController.declineInvitation.mockImplementation((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json(errorResponse);
+      });
+
+      const response = await request(app)
+        .patch(invalidEndpoint)
+        .send({ reason: 'Invalid token test' })
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body).toEqual(errorResponse);
+    });
+
+    it('should return 404 for non-existent invitation', async () => {
+      const nonExistentToken = faker.string.alphanumeric(32);
+      const nonExistentEndpoint = `${baseUrl}/${validCuid}/decline_invite/${nonExistentToken}`;
+      const errorResponse = {
+        success: false,
+        message: 'Invitation not found',
+      };
+
+      mockController.declineInvitation.mockImplementation((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.NOT_FOUND).json(errorResponse);
+      });
+
+      const response = await request(app)
+        .patch(nonExistentEndpoint)
+        .send({ reason: 'Non-existent invitation' })
+        .expect(httpStatusCodes.NOT_FOUND);
+
+      expect(response.body).toEqual(errorResponse);
+    });
+
+    it('should handle already processed invitation', async () => {
+      const errorResponse = {
+        success: false,
+        message: 'Invitation has already been processed',
+      };
+
+      mockController.declineInvitation.mockImplementation((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json(errorResponse);
+      });
+
+      const response = await request(app)
+        .patch(endpoint)
+        .send({ reason: 'Already processed' })
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body).toEqual(errorResponse);
+    });
+
+    it('should handle decline with custom reason', async () => {
+      const customReason = 'Position no longer available';
+      const mockResponse = {
+        success: true,
+        message: 'Invitation declined successfully',
+        data: {
+          iuid: faker.string.uuid(),
+          status: 'revoked',
+          revokedAt: new Date().toISOString(),
+          revokeReason: customReason,
+        },
+      };
+
+      mockController.declineInvitation.mockImplementation((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.OK).json(mockResponse);
+      });
+
+      const response = await request(app)
+        .patch(endpoint)
+        .send({ reason: customReason })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body).toEqual(mockResponse);
+      expect(response.body.data.revokeReason).toBe(customReason);
     });
   });
 

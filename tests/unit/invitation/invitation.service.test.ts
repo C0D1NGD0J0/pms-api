@@ -124,7 +124,7 @@ describe('InvitationService', () => {
       });
 
       mockUserDAO.getUserById.mockResolvedValue(mockInviter);
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockInvitationDAO.findPendingInvitation.mockResolvedValue(null);
       mockUserDAO.getUserWithClientAccess.mockResolvedValue(null);
       mockInvitationDAO.createInvitation.mockResolvedValue(mockInvitation);
@@ -417,7 +417,7 @@ describe('InvitationService', () => {
       const mockClient = createMockClient({ cuid: testCuid });
       const existingInvitation = createMockInvitation({ iuid: 'invitation-123', status: 'pending', clientId: mockClient._id });
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockInvitationDAO.findByIuid.mockResolvedValue(existingInvitation);
 
       await expect(
@@ -433,7 +433,7 @@ describe('InvitationService', () => {
       const mockUpdater = createMockUser({ _id: new Types.ObjectId(testUserId), email: 'updater@example.com' });
       const existingInvitation = createMockInvitation({ iuid: 'invitation-123', status: 'draft', clientId: mockClient._id });
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockInvitationDAO.findByIuid.mockResolvedValue(existingInvitation);
       mockUserDAO.getUserById.mockResolvedValue(mockUpdater);
 
@@ -570,7 +570,7 @@ describe('InvitationService', () => {
       const mockClient = createMockClient({ cuid: testCuid, displayName: 'Test Company', id: 'client-123' });
       const mockJob = { id: 'job-123' };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockInvitationQueue.addCsvValidationJob.mockResolvedValue(mockJob);
 
       const result = await invitationService.validateInvitationCsv(testCuid, mockCsvFile, currentUser);
@@ -599,7 +599,7 @@ describe('InvitationService', () => {
       const currentUser = { sub: 'user-123' } as any;
       const mockClient = createMockClient({ cuid: testCuid });
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
 
       await expect(
         invitationService.validateInvitationCsv(testCuid, largeCsvFile, currentUser)
@@ -614,7 +614,7 @@ describe('InvitationService', () => {
       const mockClient = createMockClient({ cuid: testCuid, displayName: 'Test Company', id: 'client-123' });
       const mockJob = { id: 'import-job-123' };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockInvitationQueue.addCsvImportJob.mockResolvedValue(mockJob);
 
       const result = await invitationService.importInvitationsFromCsv(mockContext, csvFilePath);

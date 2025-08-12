@@ -80,8 +80,8 @@ const createMockCurrentUser = (overrides = {}) => ({
   gdpr: {
     dataRetentionPolicy: DataRetentionPolicy.STANDARD,
     dataProcessingConsent: true,
-    processingConsentDate: new Date(),
-    retentionExpiryDate: faker.date.future(),
+    processingConsentDate: new Date().toISOString(),
+    retentionExpiryDate: faker.date.future().toISOString(),
   },
   accounts: [] as any[],
   activeAccount: null,
@@ -480,7 +480,7 @@ describe('Auth Routes Integration Tests', () => {
     it('should get current user information successfully', async () => {
       const mockUser = createMockCurrentUser();
       const mockResponse = {
-        success: 200,
+        success: true,
         data: mockUser,
       };
 
@@ -548,7 +548,7 @@ describe('Auth Routes Integration Tests', () => {
       mockUser.activeAccount = mockUser.accounts[0];
 
       const mockResponse = {
-        success: 200,
+        success: true,
         data: mockUser,
       };
 
@@ -1154,7 +1154,7 @@ describe('Auth Routes Integration Tests', () => {
     it('should handle protected routes', async () => {
       const mockUser = createMockCurrentUser();
       const mockResponse = {
-        success: 200,
+        success: true,
         data: mockUser,
       };
 

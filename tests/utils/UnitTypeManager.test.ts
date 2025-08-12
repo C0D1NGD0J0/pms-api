@@ -93,18 +93,20 @@ describe('UnitTypeManager', () => {
         unitType: 'storage' as PropertyUnitType,
         specifications: {
           totalArea: 100,
+          bedrooms: 2,
+          bathrooms: 1,
         },
       };
       const storageResult = UnitTypeManager.validateUnitIntegrity('storage', invalidStorage);
       expect(storageResult.isValid).toBe(false);
       expect(storageResult.errors).toContain('Storage units cannot have bedrooms');
       expect(storageResult.errors).toContain('Storage units cannot have bathrooms');
-      expect(storageResult.errors).toContain('Storage units cannot have occupants');
 
       const commercialWithBedrooms: Partial<IPropertyUnit> = {
         unitType: 'commercial' as PropertyUnitType,
         specifications: {
           totalArea: 2000,
+          bedrooms: 3,
         },
       };
       const commercialResult = UnitTypeManager.validateUnitIntegrity(

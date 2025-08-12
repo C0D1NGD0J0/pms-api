@@ -207,7 +207,7 @@ describe('AuthService', () => {
     it('should successfully validate valid token', async () => {
       // Arrange
       const mockToken = 'valid-jwt-token';
-      const mockDecodedData = { sub: new Types.ObjectId().toString(), csub: 'test-cuid' };
+      const mockDecodedData = { sub: new Types.ObjectId().toString(), cuid: 'test-cuid' };
       const mockUser = createMockUser({
         isActive: true,
         cuids: [
@@ -261,7 +261,7 @@ describe('AuthService', () => {
       const mockClient = { cuid: clientId, displayName: 'Test Client' };
 
       mockUserDAO.getUserById.mockResolvedValue(mockUser);
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
 
       // Act
       const result = await authService.verifyClientAccess(userId, clientId);

@@ -30,7 +30,7 @@ export const createMockClientDAO = () => ({
   createInstance: jest.fn(),
 
   getClientById: jest.fn(),
-  getClientBycuid: jest.fn().mockResolvedValue({
+  getClientByCuid: jest.fn().mockResolvedValue({
     _id: 'mock-client-id',
     cuid: 'mock-cuid',
     displayName: 'Mock Client',

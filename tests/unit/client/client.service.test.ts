@@ -69,7 +69,7 @@ describe('ClientService', () => {
         lastModifiedBy: mockContext.currentuser.sub,
       };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockClientDAO.startSession.mockReturnValue('mock-session');
       mockClientDAO.withTransaction.mockImplementation(async (_session: any, callback: any) => {
         return await callback(_session);
@@ -99,7 +99,7 @@ describe('ClientService', () => {
       const updateData = { companyProfile: { legalEntityName: 'Test Company' } };
       const mockClient = createMockClient({ cuid: 'test-cuid' });
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockClientDAO.startSession.mockReturnValue('mock-session');
       mockClientDAO.withTransaction.mockRejectedValue(new Error('Database error'));
 
@@ -112,7 +112,7 @@ describe('ClientService', () => {
       const mockContext = createMockContext();
       const updateData = { companyProfile: { legalEntityName: 'Test Company' } };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(null);
+      mockClientDAO.getClientByCuid.mockResolvedValue(null);
 
       await expect(clientService.updateClientDetails(mockContext, updateData)).rejects.toThrow(
         NotFoundError
@@ -128,12 +128,12 @@ describe('ClientService', () => {
       };
       const mockClient = createMockClient({ cuid: 'test-cuid' });
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
 
       await expect(clientService.updateClientDetails(mockContext, updateData)).rejects.toThrow(
         BadRequestError
       );
-      expect(mockClientDAO.getClientBycuid).toHaveBeenCalledWith('test-cuid');
+      expect(mockClientDAO.getClientByCuid).toHaveBeenCalledWith('test-cuid');
     });
 
     it('should validate identification requirements', async () => {
@@ -141,8 +141,7 @@ describe('ClientService', () => {
       const updateData = {
         identification: {
           idType: 'passport' as const,
-          idNumber: 'A12345678',
-          authority: 'Passport Office',
+          // Missing idNumber and authority to trigger validation error
           issueDate: new Date('2020-01-01'),
           expiryDate: new Date('2030-01-01'),
           issuingState: 'US',
@@ -150,7 +149,7 @@ describe('ClientService', () => {
       };
       const mockClient = createMockClient({ cuid: 'test-cuid' });
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
 
       await expect(clientService.updateClientDetails(mockContext, updateData)).rejects.toThrow(
         BadRequestError
@@ -194,7 +193,7 @@ describe('ClientService', () => {
         pagination: { total: 2 },
       };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockUserDAO.getUsersByClientId.mockResolvedValue(mockUsersResult);
       mockPropertyDAO.countDocuments.mockResolvedValue(5);
 
@@ -207,7 +206,7 @@ describe('ClientService', () => {
         totalUsers: 2,
       });
       expect((result.data.accountAdmin as any).email).toBe('admin@example.com');
-      expect(mockClientDAO.getClientBycuid).toHaveBeenCalledWith('test-cuid', {
+      expect(mockClientDAO.getClientByCuid).toHaveBeenCalledWith('test-cuid', {
         populate: {
           path: 'accountAdmin',
           select: 'email',
@@ -237,7 +236,7 @@ describe('ClientService', () => {
         currentuser: createMockCurrentUser(),
       });
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(null);
+      mockClientDAO.getClientByCuid.mockResolvedValue(null);
 
       await expect(clientService.getClientDetails(mockContext)).rejects.toThrow(NotFoundError);
     });
@@ -259,7 +258,7 @@ describe('ClientService', () => {
       });
       const targetUserId = 'user-123';
       const role = 'manager';
-      const clientId = mockContext.currentuser.client.csub;
+      const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
           {
@@ -310,7 +309,7 @@ describe('ClientService', () => {
       });
       const targetUserId = 'user-123';
       const role = 'admin';
-      const clientId = mockContext.currentuser.client.csub;
+      const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [{ cuid: clientId, roles: ['admin'], isConnected: true, displayName: 'Admin User' }],
       });
@@ -351,7 +350,7 @@ describe('ClientService', () => {
         currentuser: createMockCurrentUser(),
       });
       const targetUserId = 'user-123';
-      const clientId = mockContext.currentuser.client.csub;
+      const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
           { cuid: clientId, roles: ['manager'], isConnected: true, displayName: 'Manager User' },
@@ -381,7 +380,7 @@ describe('ClientService', () => {
         currentuser: createMockCurrentUser(),
       });
       const targetUserId = 'user-123';
-      const clientId = mockContext.currentuser.client.csub;
+      const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
           {
@@ -416,7 +415,7 @@ describe('ClientService', () => {
       });
       const targetUserId = 'user-123';
       const role = 'manager';
-      const clientId = mockContext.currentuser.client.csub;
+      const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [{ cuid: clientId, roles: ['tenant'], isConnected: true, displayName: 'Test User' }],
       });
@@ -445,7 +444,7 @@ describe('ClientService', () => {
       });
       const targetUserId = 'user-123';
       const role = 'manager';
-      const clientId = mockContext.currentuser.client.csub;
+      const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
           {
@@ -495,7 +494,7 @@ describe('ClientService', () => {
         currentuser: createMockCurrentUser(),
       });
       const targetUserId = 'user-123';
-      const clientId = mockContext.currentuser.client.csub;
+      const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
           {
@@ -523,7 +522,7 @@ describe('ClientService', () => {
         currentuser: createMockCurrentUser(),
       });
       const targetUserId = 'user-123';
-      const clientId = mockContext.currentuser.client.csub;
+      const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
           {
@@ -559,7 +558,7 @@ describe('ClientService', () => {
       const mockContext = createMockRequestContext({
         currentuser: createMockCurrentUser(),
       });
-      const clientId = mockContext.currentuser.client.csub;
+      const clientId = mockContext.currentuser.client.cuid;
       const mockUsers = [
         createMockUser({
           cuids: [

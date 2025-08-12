@@ -108,7 +108,7 @@ describe('AuthTokenService', () => {
     const mockDecodedPayload = {
       data: {
         sub: 'user-id-123',
-        csub: 'client-id-456',
+        cuid: 'client-id-456',
         rememberMe: false,
       },
       iat: 1234567890,
@@ -127,7 +127,7 @@ describe('AuthTokenService', () => {
       expect(result.data).toEqual({
         rememberMe: false,
         sub: 'user-id-123',
-        csub: 'client-id-456',
+        cuid: 'client-id-456',
         iat: 1234567890,
         exp: 1234567999,
       });

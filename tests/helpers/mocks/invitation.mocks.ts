@@ -93,6 +93,33 @@ export const createMockInvitationData = (
   metadata: {
     inviteMessage: faker.lorem.sentences(2),
     expectedStartDate: faker.date.future(),
+    employeeInfo: {
+      department: faker.commerce.department(),
+      jobTitle: faker.person.jobTitle(),
+      employeeId: faker.string.alphanumeric(8),
+      reportsTo: faker.person.fullName(),
+      startDate: faker.date.future(),
+    },
+    vendorInfo: {
+      businessType: faker.company.buzzPhrase(),
+      companyName: faker.company.name(),
+      taxId: faker.string.alphanumeric(12),
+      yearsInBusiness: faker.number.int({ min: 1, max: 50 }),
+      contactPerson: {
+        name: faker.person.fullName(),
+        jobTitle: faker.person.jobTitle(),
+        email: faker.internet.email(),
+        phone: faker.phone.number(),
+      },
+      address: {
+        fullAddress: faker.location.streetAddress({ useFullAddress: true }),
+        street: faker.location.street(),
+        city: faker.location.city(),
+        state: faker.location.state(),
+        postCode: faker.location.zipCode(),
+        country: faker.location.country(),
+      },
+    },
   },
   ...overrides,
 });
@@ -106,12 +133,27 @@ export const createMockInvitationAcceptance = (
   invitationToken: faker.string.alphanumeric(32),
   cuid: faker.string.uuid(),
   userData: {
-    password: faker.internet.password(),
+    password: faker.internet.password({ length: 12 }),
+    confirmPassword: faker.internet.password({ length: 12 }),
     location: faker.location.city(),
     timeZone: faker.location.timeZone(),
     lang: 'en',
     bio: faker.lorem.paragraph(),
     headline: faker.lorem.sentence(),
+    policies: {
+      tos: {
+        accepted: true,
+        acceptedOn: faker.date.recent(),
+      },
+      privacy: {
+        accepted: true,
+        acceptedOn: faker.date.recent(),
+      },
+      marketing: {
+        accepted: faker.datatype.boolean(),
+        acceptedOn: faker.date.recent(),
+      },
+    },
   },
   ...overrides,
 });

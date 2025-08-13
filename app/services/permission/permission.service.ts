@@ -405,7 +405,24 @@ export class PermissionService {
       };
     }
 
-    // Resource-specific assignment validation
+    // If no assignedUsers is provided, we can't validate assignment
+    if (!context.assignedUsers || context.assignedUsers.length === 0) {
+      this.log.warn('Assigned scope check requested but no assignedUsers provided');
+      return {
+        granted: true, // Allow for now, but log warning
+        reason: 'Assigned scope permission granted (no assignment validation possible)',
+      };
+    }
+
+    // Check if user is in the assigned users list
+    if (context.assignedUsers.includes(context.userId)) {
+      return {
+        granted: true,
+        reason: 'User is assigned to this resource',
+      };
+    }
+
+    // Resource-specific assignment validation (fallback for complex logic)
     switch (resource) {
       case PermissionResource.MAINTENANCE:
         return this.validateMaintenanceAssignment(role, action, context);
@@ -420,10 +437,9 @@ export class PermissionService {
         return this.validateLeaseAssignment(role, action, context);
 
       default:
-        // For resources without specific assignment logic, allow if permission exists
         return {
-          granted: true,
-          reason: `Assigned scope permission granted for ${resource}`,
+          granted: false,
+          reason: `User ${context.userId} is not assigned to this ${resource}`,
         };
     }
   }
@@ -454,9 +470,27 @@ export class PermissionService {
         reason: 'User context required for ownership validation',
       };
     }
+
+    // If no resourceOwnerId is provided, we can't validate ownership
+    if (!context.resourceOwnerId) {
+      this.log.warn('Mine scope check requested but no resourceOwnerId provided');
+      return {
+        granted: true, // Allow for now, but log warning
+        reason: 'Mine scope permission granted (no ownership validation possible)',
+      };
+    }
+
+    // Check if user owns the resource
+    if (context.resourceOwnerId === context.userId) {
+      return {
+        granted: true,
+        reason: 'User owns the resource',
+      };
+    }
+
     return {
-      granted: true,
-      reason: 'Mine scope permission granted',
+      granted: false,
+      reason: `User ${context.userId} does not own resource owned by ${context.resourceOwnerId}`,
     };
   }
 
@@ -656,10 +690,26 @@ export class PermissionService {
       const rolePermissions = this.getRolePermissions(currentUser.client.role);
       const permissions: string[] = [];
 
-      // flatten all permissions for the user's role
-      Object.values(rolePermissions).forEach((resourcePermissions) => {
-        permissions.push(...resourcePermissions);
+      // Create both backend format (action:scope) and frontend format (resource:action)
+      Object.entries(rolePermissions).forEach(([resource, resourcePermissions]) => {
+        resourcePermissions.forEach((permission: string) => {
+          // Add backend format (existing)
+          permissions.push(permission);
+
+          // Add frontend format for compatibility
+          const [action, scope] = permission.split(':');
+          if (action && resource) {
+            // Add flat permission format for frontend: "property:read", "user:create", etc.
+            permissions.push(`${resource}:${action}`);
+
+            // Also add scoped format if scope exists: "property:read:any", "property:update:mine"
+            if (scope) {
+              permissions.push(`${resource}:${action}:${scope}`);
+            }
+          }
+        });
       });
+
       currentUser.permissions = [...new Set(permissions)]; // Remove duplicates
 
       return currentUser;

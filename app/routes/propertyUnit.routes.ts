@@ -1,15 +1,23 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/helpers';
 import { validateRequest } from '@shared/validations/setup';
+import { PermissionAction } from '@interfaces/utils.interface';
 import { PropertyUnitController } from '@controllers/PropertyUnitController';
 import { PropertyUnitValidations } from '@shared/validations/PropertyUnitValidation';
-import { isAuthenticated, routeLimiter, diskUpload, scanFile } from '@shared/middlewares';
+import {
+  requirePropertyPermission,
+  isAuthenticated,
+  routeLimiter,
+  diskUpload,
+  scanFile,
+} from '@shared/middlewares';
 
 const router: Router = express.Router({ mergeParams: true });
 router.use(isAuthenticated);
 
 router.post(
   '/',
+  requirePropertyPermission(PermissionAction.CREATE),
   routeLimiter(),
   diskUpload(['propertyUnit.media']),
   scanFile,
@@ -25,6 +33,7 @@ router.post(
 
 router.get(
   '/',
+  requirePropertyPermission(PermissionAction.READ),
   routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -35,6 +44,7 @@ router.get(
 
 router.get(
   '/:puid',
+  requirePropertyPermission(PermissionAction.READ),
   routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -45,6 +55,7 @@ router.get(
 
 router.patch(
   '/:puid',
+  requirePropertyPermission(PermissionAction.UPDATE),
   routeLimiter(),
   diskUpload(['propertyUnit.media']),
   scanFile,
@@ -61,6 +72,7 @@ router.patch(
 
 router.delete(
   '/:puid',
+  requirePropertyPermission(PermissionAction.DELETE),
   routeLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -71,6 +83,7 @@ router.delete(
 
 router.patch(
   '/update_status/:puid',
+  requirePropertyPermission(PermissionAction.UPDATE),
   routeLimiter(),
   validateRequest({
     body: PropertyUnitValidations.updateUnit,
@@ -84,6 +97,7 @@ router.patch(
 
 router.post(
   '/setup_inspection/:puid',
+  requirePropertyPermission(PermissionAction.UPDATE),
   routeLimiter(),
   validateRequest({
     body: PropertyUnitValidations.inspectUnit,
@@ -97,6 +111,7 @@ router.post(
 
 router.patch(
   '/upload_media/:puid',
+  requirePropertyPermission(PermissionAction.UPDATE),
   routeLimiter(),
   validateRequest({
     body: PropertyUnitValidations.uploadUnitMedia,
@@ -112,6 +127,7 @@ router.patch(
 
 router.post(
   '/validate_csv',
+  requirePropertyPermission(PermissionAction.CREATE),
   routeLimiter(),
   diskUpload(['csv_file']),
   scanFile,
@@ -124,6 +140,7 @@ router.post(
 
 router.post(
   '/import_csv',
+  requirePropertyPermission(PermissionAction.CREATE),
   routeLimiter(),
   diskUpload(['csv_file']),
   scanFile,

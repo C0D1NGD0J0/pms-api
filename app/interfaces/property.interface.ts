@@ -115,6 +115,33 @@ export type PropertyDocumentItem = {
 };
 
 /**
+ * Assignable User Interface (for property assignment)
+ */
+export interface IAssignableUser {
+  employeeInfo?: {
+    jobTitle?: string;
+    employeeId?: string;
+    department?: string;
+  };
+  role: 'admin' | 'staff' | 'manager';
+  displayName: string;
+  department?: string;
+  email: string;
+  id: string;
+}
+
+/**
+ * CSV Job Data Type
+ */
+export type CsvJobData = {
+  csvFilePath: string;
+  userId: string;
+  jobId?: string;
+  clientInfo: { cuid: string; displayName: string; id: string };
+  bulkCreateOptions?: { sendNotifications?: boolean; passwordLength?: number };
+};
+
+/**
  * Community Amenities Type
  */
 export type CommunityAmenities = {
@@ -195,6 +222,17 @@ export type PropertySpecifications = {
 };
 
 /**
+ * Assignable Users Filter Interface
+ */
+export interface IAssignableUsersFilter {
+  role?: 'admin' | 'staff' | 'manager' | 'all';
+  department?: string;
+  search?: string;
+  limit?: number;
+  page?: number;
+}
+
+/**
  * Financial Details Type
  */
 export type FinancialDetails = {
@@ -203,16 +241,6 @@ export type FinancialDetails = {
   marketValue?: number;
   propertyTax?: number;
   purchaseDate?: Date;
-};
-
-/**
- * CSV Job Data Type
- */
-export type CsvJobData = {
-  csvFilePath: string;
-  userId: string;
-  jobId?: string;
-  clientInfo: { cuid: string; displayName: string; id: string };
 };
 
 /**
@@ -275,9 +303,7 @@ export type NewProperty = {
 export type OccupancyStatus = 'vacant' | 'occupied' | 'partially_occupied';
 
 export interface IPropertyDocumentItem extends PropertyDocumentItem {}
-
 export interface ISpecifications extends PropertySpecifications {}
-
 export interface ICommunityAmenities extends CommunityAmenities {}
 /**
  * Property Type Rules Collection
@@ -299,5 +325,7 @@ export type ComputedLocation = {
 export interface IAddressDetails extends AddressDetails {}
 export interface IUtilities extends PropertyUtilities {}
 export interface IUnitStats extends UnitStats {}
+
 export interface IUnitInfo extends UnitInfo {}
+
 export type NewPropertyType = NewProperty;

@@ -583,4 +583,51 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       throw this.throwErrorHandler(error);
     }
   }
+
+  /**
+   * Create a new user with default password for bulk user creation
+   */
+  async createBulkUserWithDefaults(
+    client: { cuid: string; displayName?: string; id: string },
+    userData: {
+      email: string;
+      firstName: string;
+      lastName: string;
+      phoneNumber?: string;
+      role: IUserRoleType;
+      defaultPassword: string;
+    },
+    linkedVendorId?: string,
+    session?: any
+  ): Promise<IUserDocument> {
+    try {
+      const userId = new Types.ObjectId();
+
+      const cuidEntry: any = {
+        cuid: client.cuid,
+        isConnected: true,
+        roles: [userData.role],
+        displayName: client.displayName,
+        linkedVendorId: userData.role === 'vendor' && linkedVendorId ? linkedVendorId : null,
+      };
+
+      const user = await this.insert(
+        {
+          _id: userId,
+          isActive: true,
+          cuids: [cuidEntry],
+          uid: hashGenerator({}),
+          activecuid: client.cuid,
+          password: userData.defaultPassword,
+          email: userData.email.toLowerCase(),
+        },
+        session
+      );
+
+      return user;
+    } catch (error) {
+      this.logger.error('Error creating bulk user:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
 }

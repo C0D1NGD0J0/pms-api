@@ -214,7 +214,7 @@ router.get(
 
 /**
  * @route POST /api/v1/invites/:cuid/validate_csv
- * @desc Validate a CSV file for bulk invitation import
+ * @desc Validate a CSV file for bulk invitation import or user creation
  * @access Private (Admin/Manager only)
  */
 router.post(
@@ -225,6 +225,7 @@ router.post(
   scanFile,
   validateRequest({
     params: UtilsValidations.cuid,
+    query: InvitationValidations.bulkCreationQuery,
   }),
   asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
@@ -234,7 +235,7 @@ router.post(
 
 /**
  * @route POST /api/v1/invites/:cuid/import_invitations_csv
- * @desc Import invitations from a CSV file
+ * @desc Import invitations from a CSV file or bulk create users
  * @access Private (Admin/Manager only)
  */
 router.post(
@@ -245,6 +246,7 @@ router.post(
   scanFile,
   validateRequest({
     params: UtilsValidations.cuid,
+    query: InvitationValidations.bulkCreationQuery,
   }),
   asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');

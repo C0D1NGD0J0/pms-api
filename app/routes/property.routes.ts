@@ -27,6 +27,20 @@ router.get(
   })
 );
 
+router.get(
+  '/:cuid/assignable-users',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
+  routeLimiter(),
+  validateRequest({
+    params: PropertyValidations.validatecuid,
+    query: PropertyValidations.getAssignableUsers,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getAssignableUsers(req, res);
+  })
+);
+
 router.post(
   '/:cuid/add_property',
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),

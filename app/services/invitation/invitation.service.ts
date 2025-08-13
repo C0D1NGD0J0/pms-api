@@ -706,6 +706,50 @@ export class InvitationService {
     }
   }
 
+  async validateBulkUserCsv(
+    cuid: string,
+    csvFile: ExtractedMediaFile,
+    currentUser: ICurrentUser,
+    options: { sendNotifications?: boolean; passwordLength?: number }
+  ): Promise<ISuccessReturnData> {
+    try {
+      if (!csvFile) {
+        throw new BadRequestError({ message: t('invitation.errors.noCsvFileUploaded') });
+      }
+
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        this.log.error(`Client with cuid ${cuid} not found`);
+        throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
+      }
+
+      if (csvFile.fileSize > 10 * 1024 * 1024) {
+        throw new BadRequestError({ message: t('invitation.errors.fileTooLarge') });
+      }
+
+      const jobData = {
+        userId: currentUser.sub,
+        csvFilePath: csvFile.path,
+        clientInfo: { cuid, displayName: client.displayName, id: client.id },
+        bulkCreateOptions: {
+          sendNotifications: options.sendNotifications || false,
+          passwordLength: options.passwordLength || 12,
+        },
+      };
+
+      const job = await this.invitationQueue.addCsvBulkUserValidationJob(jobData);
+
+      return {
+        success: true,
+        data: { processId: job.id },
+        message: t('invitation.success.csvValidationStarted'),
+      };
+    } catch (error) {
+      this.log.error('Error validating bulk user CSV:', error);
+      throw error;
+    }
+  }
+
   async importInvitationsFromCsv(
     cxt: IRequestContext,
     csvFilePath: string
@@ -739,6 +783,48 @@ export class InvitationService {
       };
     } catch (error) {
       this.log.error('Error importing invitations from CSV:', error);
+      throw error;
+    }
+  }
+
+  async importBulkUsersFromCsv(
+    cxt: IRequestContext,
+    csvFilePath: string,
+    options: { sendNotifications?: boolean; passwordLength?: number }
+  ): Promise<ISuccessReturnData> {
+    const { cuid } = cxt.request.params;
+    const userId = cxt.currentuser!.sub;
+
+    try {
+      if (!csvFilePath || !cuid) {
+        throw new BadRequestError({ message: t('invitation.errors.noCsvFileUploaded') });
+      }
+
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        this.log.error(`Client with cuid ${cuid} not found`);
+        throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
+      }
+
+      const jobData = {
+        userId,
+        csvFilePath,
+        clientInfo: { cuid, displayName: client.displayName, id: client.id },
+        bulkCreateOptions: {
+          sendNotifications: options.sendNotifications || false,
+          passwordLength: options.passwordLength || 12,
+        },
+      };
+
+      const job = await this.invitationQueue.addCsvBulkUserImportJob(jobData);
+
+      return {
+        success: true,
+        data: { processId: job.id },
+        message: t('invitation.success.csvImportStarted'),
+      };
+    } catch (error) {
+      this.log.error('Error importing bulk users from CSV:', error);
       throw error;
     }
   }

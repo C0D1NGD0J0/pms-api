@@ -84,6 +84,7 @@ export const ValidateInvitationIuidSchema = z
       return;
     }
 
+    const container = await getContainer();
     const { invitationDAO }: { invitationDAO: InvitationDAO } = container.cradle;
     const invitation = await invitationDAO.findByIuidUnsecured(data.iuid);
 

@@ -457,3 +457,27 @@ export const AddressValidationSchema = z.object({
       }
     ),
 });
+
+export const GetAssignableUsersSchema = z.object({
+  role: z
+    .enum(['admin', 'staff', 'manager', 'all'], {
+      errorMap: () => ({ message: 'Role must be admin, staff, manager, or all' }),
+    })
+    .optional(),
+  department: z
+    .enum(['maintenance', 'operations', 'accounting', 'management'], {
+      errorMap: () => ({
+        message: 'Department must be maintenance, operations, accounting, or management',
+      }),
+    })
+    .optional(),
+  search: z.string().max(100, 'Search term must be less than 100 characters').optional(),
+  page: z.coerce.number().int().min(1, 'Page must be at least 1').optional().default(1),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1, 'Limit must be at least 1')
+    .max(100, 'Limit cannot exceed 100')
+    .optional()
+    .default(10),
+});

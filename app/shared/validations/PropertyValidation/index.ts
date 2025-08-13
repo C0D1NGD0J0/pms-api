@@ -2,6 +2,7 @@ import { ValidatecuidSchema } from '../UtilsValidation';
 import {
   CreatePropertySchemaWithValidation,
   PropertyClientRelationshipSchema,
+  GetAssignableUsersSchema,
   AddressValidationSchema,
   UpdateOccupancySchema,
   UpdatePropertySchema,
@@ -18,4 +19,5 @@ export class PropertyValidations {
   static validateAddress = AddressValidationSchema;
   static create = CreatePropertySchemaWithValidation;
   static validatePropertyAndClientIds = PropertyClientRelationshipSchema;
+  static getAssignableUsers = GetAssignableUsersSchema;
 }

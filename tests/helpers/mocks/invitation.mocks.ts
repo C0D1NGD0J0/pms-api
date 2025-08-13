@@ -36,7 +36,7 @@ export const createMockInvitation = (
   personalInfo: {
     firstName: faker.person.firstName(),
     lastName: faker.person.lastName(),
-    phoneNumber: faker.phone.number(),
+    phoneNumber: '+1234567890', // Valid phone number format that matches regex
   },
   role: faker.helpers.arrayElement(Object.values(IUserRole)),
   status: faker.helpers.arrayElement([
@@ -52,9 +52,9 @@ export const createMockInvitation = (
   expiresAt: faker.date.future(),
   metadata: {
     inviteMessage: faker.lorem.sentences(2),
-    expectedStartDate: faker.date.future(),
+    expectedStartDate: faker.date.future().toISOString(),
     remindersSent: faker.number.int({ min: 0, max: 3 }),
-    lastReminderSent: faker.date.recent(),
+    lastReminderSent: faker.date.recent().toISOString(),
   },
   acceptedBy: undefined,
   revokedBy: undefined,
@@ -86,19 +86,19 @@ export const createMockInvitationData = (
   personalInfo: {
     firstName: faker.person.firstName(),
     lastName: faker.person.lastName(),
-    phoneNumber: faker.phone.number(),
+    phoneNumber: '+1234567890', // Valid phone number format that matches regex
   },
   role: faker.helpers.arrayElement(Object.values(IUserRole)),
   status: faker.helpers.arrayElement(['draft', 'pending']),
   metadata: {
     inviteMessage: faker.lorem.sentences(2),
-    expectedStartDate: faker.date.future(),
+    expectedStartDate: faker.date.future().toISOString(),
     employeeInfo: {
       department: faker.commerce.department(),
       jobTitle: faker.person.jobTitle(),
       employeeId: faker.string.alphanumeric(8),
       reportsTo: faker.person.fullName(),
-      startDate: faker.date.future(),
+      startDate: faker.date.future().toISOString(),
     },
     vendorInfo: {
       businessType: faker.company.buzzPhrase(),
@@ -109,7 +109,7 @@ export const createMockInvitationData = (
         name: faker.person.fullName(),
         jobTitle: faker.person.jobTitle(),
         email: faker.internet.email(),
-        phone: faker.phone.number(),
+        phone: '+1234567890',
       },
       address: {
         fullAddress: faker.location.streetAddress({ useFullAddress: true }),
@@ -299,6 +299,15 @@ export const createMockUserDAO = () => ({
 
   createUserFromInvitation: jest.fn().mockResolvedValue(createMockUser()),
   addUserToClient: jest.fn().mockResolvedValue(createMockUser()),
+  createBulkUserWithDefaults: jest.fn().mockResolvedValue(createMockUser()),
+  startSession: jest.fn().mockImplementation(() => createMockSession()),
+  withTransaction: jest
+    .fn()
+    .mockImplementation(
+      async (session: any, callback: (session: any) => Promise<any>) => {
+        return await callback(session);
+      }
+    ),
 });
 
 /**
@@ -325,6 +334,15 @@ export const createMockProfileDAO = () => ({
   generateCurrentUserInfo: jest.fn().mockResolvedValue(createMockCurrentUser()),
 });
 
+/**
+ * Creates a mock for ProfileService with invitation-related methods
+ */
+export const createMockProfileService = () => ({
+  initializeRoleInfo: jest.fn().mockResolvedValue({ success: true }),
+  ensureClientRoleInfo: jest.fn().mockResolvedValue({ success: true }),
+  updateCommonVendorInfo: jest.fn().mockResolvedValue(createMockProfile()),
+});
+
 // Queue Mocks
 
 /**
@@ -349,6 +367,8 @@ export const createMockInvitationQueue = () => ({
 
   addCsvValidationJob: jest.fn().mockResolvedValue({ id: faker.string.uuid() }),
   addCsvImportJob: jest.fn().mockResolvedValue({ id: faker.string.uuid() }),
+  addCsvBulkUserValidationJob: jest.fn().mockResolvedValue({ id: faker.string.uuid() }),
+  addCsvBulkUserImportJob: jest.fn().mockResolvedValue({ id: faker.string.uuid() }),
 
   addJobToQueue: jest.fn().mockResolvedValue({ id: faker.string.uuid() }),
   getQueueHealth: jest.fn().mockReturnValue({ waiting: 0, active: 0, completed: 10, failed: 0 }),
@@ -452,6 +472,18 @@ export const createMockInvitationService = () => ({
     .fn()
     .mockResolvedValue(
       createSuccessResponse({ processId: faker.string.uuid() }, 'CSV import started')
+    ),
+
+  validateBulkUserCsv: jest
+    .fn()
+    .mockResolvedValue(
+      createSuccessResponse({ processId: faker.string.uuid() }, 'Bulk user CSV validation started')
+    ),
+
+  importBulkUsersFromCsv: jest
+    .fn()
+    .mockResolvedValue(
+      createSuccessResponse({ processId: faker.string.uuid() }, 'Bulk user CSV import started')
     ),
 
   processPendingInvitations: jest.fn().mockResolvedValue(

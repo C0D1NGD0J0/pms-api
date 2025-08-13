@@ -1,0 +1,47 @@
+Your Account Has Been Created
+
+Hi <%= firstName %>,
+
+Welcome to <%= companyName %>! Your account has been set up and you're ready to get started.
+
+<% if (role === 'vendor') { %>
+As a vendor partner, you'll have access to our vendor portal where you can manage service requests, submit invoices, and communicate with our team.
+<% if (vendorCompanyName) { %>
+
+Your company <%= vendorCompanyName %> is now registered in our system.
+<% } %>
+<% } else if (role === 'tenant') { %>
+As a tenant, you'll have access to your resident portal where you can submit maintenance requests, pay rent, and stay connected with your property management team.
+<% } else { %>
+As a team member with <%= role %> access, you'll be able to manage properties, work with tenants and vendors, and collaborate with your colleagues.
+<% if (department) { %>
+
+You've been assigned to the <%= department %> department<% if (jobTitle) { %> as <%= jobTitle %><% } %>.
+<% } %>
+<% } %>
+
+<% if (customMessage) { %>
+
+Personal Message:
+"<%= customMessage %>"
+<% } %>
+
+YOUR LOGIN CREDENTIALS
+======================
+Email: <%= email %>
+Temporary Password: <%= temporaryPassword %>
+
+IMPORTANT: Please change your password after your first login for security.
+
+Ready to get started? Log in to your account here:
+<%= loginUrl %>
+
+<% if (expectedStartDate) { %>
+Your expected start date is <%= new Date(expectedStartDate).toLocaleDateString() %>.
+<% } %>
+
+If you have any questions, please contact your administrator.
+Keep your login credentials secure and don't share them with anyone.
+
+---
+This email was sent by <%= companyName %>'s property management system.

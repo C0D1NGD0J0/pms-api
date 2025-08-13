@@ -34,11 +34,18 @@ export const createMockProfileDAO = () => ({
     email: 'test@example.com',
     profile: createMockProfile(),
   }),
+  getProfileInfo: jest.fn().mockResolvedValue({
+    userId: 'mock-user-id',
+    profileId: 'mock-profile-id',
+    clientRoleInfo: [],
+  }),
 
   // Role-specific methods for ProfileService
   ensureClientRoleInfo: jest.fn().mockResolvedValue(true),
   updateEmployeeInfo: jest.fn().mockResolvedValue(createMockProfile()),
   updateVendorInfo: jest.fn().mockResolvedValue(createMockProfile()),
+  updateCommonEmployeeInfo: jest.fn().mockResolvedValue(createMockProfile()),
+  updateCommonVendorInfo: jest.fn().mockResolvedValue(createMockProfile()),
   getRoleSpecificInfo: jest.fn().mockResolvedValue({
     employeeInfo: {
       department: 'Engineering',

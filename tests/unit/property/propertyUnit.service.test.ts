@@ -91,7 +91,7 @@ describe('PropertyUnitService', () => {
       const mockProperty = createMockProperty();
       const mockCreatedUnits = [createMockPropertyUnit(), createMockPropertyUnit()];
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyDAO.canAddUnitToProperty.mockResolvedValue({ canAdd: true, maxAllowed: 10, current: 3 });
       mockPropertyUnitDAO.startSession.mockReturnValue('mock-session');
@@ -126,7 +126,7 @@ describe('PropertyUnitService', () => {
       const mockProperty = createMockProperty();
       const mockJob = { id: 'job-123' };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyDAO.canAddUnitToProperty.mockResolvedValue({ canAdd: true, maxAllowed: 20, current: 3 });
       jest.spyOn(propertyUnitService as any, 'createUnitsViaQueue').mockResolvedValue({
@@ -151,7 +151,7 @@ describe('PropertyUnitService', () => {
       const mockClient = createMockClient();
       const mockProperty = createMockProperty();
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyDAO.canAddUnitToProperty.mockResolvedValue({
         canAdd: false,
@@ -185,7 +185,7 @@ describe('PropertyUnitService', () => {
       const mockProperty = createMockProperty();
       const mockUnit = createMockPropertyUnit();
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyUnitDAO.findFirst.mockResolvedValue(mockUnit);
 
@@ -210,7 +210,7 @@ describe('PropertyUnitService', () => {
       const mockClient = createMockClient();
       const mockProperty = createMockProperty();
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyUnitDAO.findFirst.mockResolvedValue(null);
 
@@ -234,7 +234,7 @@ describe('PropertyUnitService', () => {
       const mockProperty = createMockProperty();
       const mockUnits = [createMockPropertyUnit(), createMockPropertyUnit()];
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyDAO.getPropertyUnits.mockResolvedValue(mockUnits);
 
@@ -264,7 +264,7 @@ describe('PropertyUnitService', () => {
       const mockUnit = createMockPropertyUnit();
       const mockUpdatedUnit = { ...mockUnit, ...updateData };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyUnitDAO.findFirst.mockResolvedValue(mockUnit);
       mockPropertyUnitDAO.update.mockResolvedValue(mockUpdatedUnit);
@@ -292,7 +292,7 @@ describe('PropertyUnitService', () => {
       const mockProperty = createMockProperty({ status: 'active' });
       const mockUnit = createMockPropertyUnit({ unitNumber: '101' });
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyUnitDAO.findFirst.mockResolvedValue(mockUnit);
       mockPropertyDAO.getPropertyUnits.mockResolvedValue({
@@ -322,7 +322,7 @@ describe('PropertyUnitService', () => {
       const mockUnit = createMockPropertyUnit({ status: 'available' });
       const mockUpdatedUnit = { ...mockUnit, status: 'maintenance' };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyUnitDAO.findFirst.mockResolvedValue(mockUnit);
       mockPropertyUnitDAO.update.mockResolvedValue(mockUpdatedUnit);
@@ -355,7 +355,7 @@ describe('PropertyUnitService', () => {
       const mockProperty = createMockProperty({ status: 'active' });
       const mockUnit = createMockPropertyUnit();
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyUnitDAO.findFirst.mockResolvedValue(mockUnit);
       mockPropertyUnitDAO.update.mockResolvedValue({ ...mockUnit, deletedAt: new Date() });
@@ -393,7 +393,7 @@ describe('PropertyUnitService', () => {
       const mockUnit = createMockPropertyUnit();
       const mockUpdatedUnit = { ...mockUnit, inspections: [inspectionData] };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyUnitDAO.findFirst.mockResolvedValue(mockUnit);
       mockPropertyUnitDAO.update.mockResolvedValue(mockUpdatedUnit);
@@ -425,7 +425,7 @@ describe('PropertyUnitService', () => {
       const mockUnit = createMockPropertyUnit();
       const mockUpdatedUnit = { ...mockUnit, documents: [documentData] };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyUnitDAO.findFirst.mockResolvedValue(mockUnit);
       mockPropertyUnitDAO.update.mockResolvedValue(mockUpdatedUnit);
@@ -456,7 +456,7 @@ describe('PropertyUnitService', () => {
       const mockProperty = createMockProperty();
       const mockJob = { id: 'validation-job-123' };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyUnitQueue.addUnitBatchCreationJob.mockResolvedValue(mockJob);
 
@@ -482,7 +482,7 @@ describe('PropertyUnitService', () => {
       };
       const mockClient = createMockClient();
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
 
       // Act & Assert
       await expect(propertyUnitService.validateUnitsCsv(mockContext, csvFile)).rejects.toThrow(BadRequestError);
@@ -506,7 +506,7 @@ describe('PropertyUnitService', () => {
       const mockProperty = createMockProperty();
       const mockJob = { id: 'import-job-123' };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyUnitQueue.addUnitBatchCreationJob.mockResolvedValue(mockJob);
 
@@ -546,7 +546,7 @@ describe('PropertyUnitService', () => {
       };
       const unitData = { units: [{ unitNumber: '101', fees: { rentAmount: 1200, currency: 'USD' } }] };
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(null);
+      mockClientDAO.getClientByCuid.mockResolvedValue(null);
 
       // Act & Assert
       await expect(propertyUnitService.addPropertyUnit(mockContext, unitData)).rejects.toThrow(BadRequestError);
@@ -560,7 +560,7 @@ describe('PropertyUnitService', () => {
       };
       const mockClient = createMockClient();
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(null);
 
       // Act & Assert
@@ -580,7 +580,7 @@ describe('PropertyUnitService', () => {
       const mockProperty = createMockProperty({ status: 'active' });
       const mockUnit = createMockPropertyUnit();
 
-      mockClientDAO.getClientBycuid.mockResolvedValue(mockClient);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
       mockPropertyUnitDAO.findFirst.mockResolvedValue(mockUnit);
       mockPropertyDAO.getPropertyUnits.mockResolvedValue({

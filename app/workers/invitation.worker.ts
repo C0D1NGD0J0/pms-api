@@ -7,17 +7,20 @@ import { CsvJobData } from '@interfaces/index';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { InvitationCsvProcessor } from '@services/csv';
 import { MailType } from '@interfaces/utils.interface';
+import { generateDefaultPassword } from '@utils/helpers';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
-import { InvitationDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IInvitationData } from '@interfaces/invitation.interface';
+import { InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 
 interface IConstructor {
   invitationCsvProcessor: InvitationCsvProcessor;
   emitterService: EventEmitterService;
   invitationDAO: InvitationDAO;
   emailQueue: EmailQueue;
+  profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
+  profileService: any; // Add profile service
   userDAO: UserDAO;
 }
 
@@ -29,6 +32,8 @@ export class InvitationWorker {
   private readonly userDAO: UserDAO;
   private readonly clientDAO: ClientDAO;
   private readonly emailQueue: EmailQueue;
+  private readonly profileDAO: ProfileDAO;
+  private readonly profileService: any;
 
   constructor({
     emitterService,
@@ -37,6 +42,8 @@ export class InvitationWorker {
     userDAO,
     clientDAO,
     emailQueue,
+    profileDAO,
+    profileService,
   }: IConstructor) {
     this.emitterService = emitterService;
     this.invitationCsvProcessor = invitationCsvProcessor;
@@ -44,6 +51,8 @@ export class InvitationWorker {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
     this.emailQueue = emailQueue;
+    this.profileDAO = profileDAO;
+    this.profileService = profileService;
     this.log = createLogger('InvitationWorker');
   }
 
@@ -283,5 +292,298 @@ export class InvitationWorker {
     );
 
     return invitation;
+  }
+
+  processCsvBulkUserValidation = async (job: Job<CsvJobData>, done: DoneCallback) => {
+    job.progress(10);
+    const { csvFilePath, clientInfo, userId, bulkCreateOptions } = job.data;
+    this.log.info(
+      `Processing bulk user CSV validation job ${job.id} for client ${clientInfo.cuid}`
+    );
+
+    try {
+      job.progress(30);
+      const result = await this.invitationCsvProcessor.validateCsv(csvFilePath, {
+        userId,
+        cuid: clientInfo.cuid,
+      });
+      job.progress(100);
+
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+
+      done(null, {
+        processId: job.id,
+        validCount: result.validInvitations.length,
+        errorCount: result.errors ? result.errors.length : 0,
+        errors: result.errors,
+        success: true,
+        totalRows: result.totalRows,
+        finishedAt: result.finishedAt,
+        mode: 'bulk_create',
+        options: bulkCreateOptions,
+      });
+      this.log.info(
+        `Done processing bulk user CSV validation job ${job.id} for client ${clientInfo.cuid}`
+      );
+    } catch (error) {
+      this.log.error(`Error processing bulk user CSV validation job ${job.id}:`, error);
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+      done(error, null);
+    }
+  };
+
+  processCsvBulkUserImport = async (job: Job<CsvJobData>, done: DoneCallback) => {
+    const { csvFilePath, clientInfo, userId, bulkCreateOptions } = job.data;
+
+    job.progress(10);
+    this.log.info(`Processing bulk user CSV import job ${job.id} for client ${clientInfo.cuid}`);
+
+    try {
+      const csvResult = await this.invitationCsvProcessor.validateCsv(csvFilePath, {
+        userId,
+        cuid: clientInfo.cuid,
+      });
+      job.progress(30);
+
+      if (!csvResult.validInvitations.length) {
+        this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+        done(null, {
+          success: false,
+          processId: job.id,
+          data: null,
+          finishedAt: new Date(),
+          errors: csvResult.errors,
+          message: 'No valid users found in CSV',
+          mode: 'bulk_create',
+        });
+        return;
+      }
+
+      const results = [];
+      let processed = 0;
+
+      for (const userData of csvResult.validInvitations) {
+        try {
+          const result = await this.createBulkUser(
+            userId,
+            clientInfo,
+            userData,
+            bulkCreateOptions || {}
+          );
+          results.push({
+            email: userData.inviteeEmail,
+            success: true,
+            userId: result.userId,
+            generatedPassword: result.generatedPassword,
+            status: 'created',
+          });
+        } catch (error) {
+          this.log.error(`Error creating user ${userData.inviteeEmail}:`, error);
+          results.push({
+            email: userData.inviteeEmail,
+            success: false,
+            error: error.message,
+          });
+        }
+
+        processed++;
+        const progress = 30 + Math.floor((processed / csvResult.validInvitations.length) * 60);
+        job.progress(progress);
+
+        // Small delay to avoid overwhelming the system
+        if (processed < csvResult.validInvitations.length) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+
+      job.progress(100);
+
+      const successCount = results.filter((r) => r.success).length;
+      const failedCount = results.filter((r) => !r.success).length;
+
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+
+      done(null, {
+        success: true,
+        processId: job.id,
+        data: {
+          totalProcessed: results.length,
+          successCount,
+          failedCount,
+          results,
+          mode: 'bulk_create',
+          options: bulkCreateOptions,
+        },
+        finishedAt: new Date(),
+        message: `Created ${successCount} users successfully, ${failedCount} failed`,
+      });
+
+      this.log.info(
+        `Done processing bulk user CSV import job ${job.id} for client ${clientInfo.cuid}. Success: ${successCount}, Failed: ${failedCount}`
+      );
+    } catch (error) {
+      this.log.error(`Error processing bulk user CSV import job ${job.id}:`, error);
+      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+      done(error, null);
+    }
+  };
+
+  /**
+   * Create a single user with default password (bypasses invitation flow)
+   * Follows the same pattern as acceptInvitation but with generated password
+   */
+  private async createBulkUser(
+    creatorUserId: string,
+    clientInfo: { cuid: string; displayName: string; id: string },
+    userData: IInvitationData,
+    options: { sendNotifications?: boolean; passwordLength?: number }
+  ) {
+    if (!clientInfo.cuid || !clientInfo.id) {
+      throw new Error('Client not found');
+    }
+
+    // Generate secure default password
+    const generatedPassword = generateDefaultPassword(options.passwordLength || 12);
+
+    // Start transaction for atomicity
+    const session = await this.userDAO.startSession();
+    const result = await this.userDAO.withTransaction(session, async (session) => {
+      // Check if user already exists
+      const existingUser = await this.userDAO.getActiveUserByEmail(userData.inviteeEmail);
+
+      let user;
+      const linkedVendorId =
+        userData.linkedVendorId && userData.role === 'vendor'
+          ? userData.linkedVendorId.toString()
+          : undefined;
+
+      if (existingUser) {
+        // User exists, add them to this client
+        user = await this.userDAO.addUserToClient(
+          existingUser._id.toString(),
+          userData.role,
+          {
+            id: clientInfo.id.toString(),
+            cuid: clientInfo.cuid,
+            displayName: clientInfo.displayName,
+          },
+          linkedVendorId,
+          session
+        );
+      } else {
+        // Create new user with bulk method
+        user = await this.userDAO.createBulkUserWithDefaults(
+          clientInfo,
+          {
+            email: userData.inviteeEmail,
+            firstName: userData.personalInfo.firstName,
+            lastName: userData.personalInfo.lastName,
+            phoneNumber: userData.personalInfo.phoneNumber,
+            role: userData.role,
+            defaultPassword: generatedPassword,
+          },
+          linkedVendorId,
+          session
+        );
+
+        if (!user) {
+          throw new Error('Error creating user account.');
+        }
+
+        // Create user profile with rich metadata from CSV (following acceptInvitation pattern)
+        const profileData: any = {
+          user: user._id,
+          puid: user.uid,
+          personalInfo: {
+            firstName: userData.personalInfo.firstName,
+            lastName: userData.personalInfo.lastName,
+            displayName: `${userData.personalInfo.firstName} ${userData.personalInfo.lastName}`,
+            phoneNumber: userData.personalInfo.phoneNumber || '',
+            location: 'Unknown', // Default location like acceptInvitation
+          },
+          lang: 'en',
+          timeZone: 'UTC',
+          policies: {
+            tos: {
+              accepted: true, // Auto-accept for bulk created users
+              acceptedOn: new Date(),
+            },
+            marketing: {
+              accepted: false, // Conservative default - no marketing consent
+              acceptedOn: null,
+            },
+          },
+        };
+
+        // Add vendor info if this is a vendor user
+        if (userData.role === 'vendor' && userData.metadata?.vendorInfo) {
+          profileData.vendorInfo = userData.metadata.vendorInfo;
+        }
+
+        // Add employee info for staff/admin/manager users
+        if (
+          ['manager', 'staff', 'admin'].includes(userData.role) &&
+          userData.metadata?.employeeInfo
+        ) {
+          profileData.employeeInfo = userData.metadata.employeeInfo;
+        }
+
+        await this.profileDAO.createUserProfile(user._id, profileData, session);
+      }
+
+      return { user, linkedVendorId };
+    });
+
+    // Initialize role-specific info (outside transaction like acceptInvitation)
+    if (result.user) {
+      await this.profileService.initializeRoleInfo(
+        result.user._id.toString(),
+        clientInfo.cuid,
+        userData.role,
+        result.linkedVendorId
+      );
+
+      // Log vendor linking if applicable
+      if (result.linkedVendorId && userData.role === 'vendor') {
+        this.log.info(
+          `Vendor link established from primary vendor ${result.linkedVendorId} to new user ${result.user._id}`
+        );
+      }
+    }
+
+    // Send welcome email with credentials if notifications are enabled
+    if (options.sendNotifications) {
+      const emailData = {
+        to: userData.inviteeEmail,
+        subject: t('email.userCreated.subject', {
+          companyName: clientInfo.displayName || 'Company',
+        }),
+        emailType: MailType.USER_CREATED,
+        data: {
+          firstName: userData.personalInfo.firstName,
+          lastName: userData.personalInfo.lastName,
+          companyName: clientInfo.displayName || 'Company',
+          email: userData.inviteeEmail,
+          temporaryPassword: generatedPassword,
+          loginUrl: `${envVariables.FRONTEND.URL}/login`,
+          role: userData.role,
+          // Include additional metadata for personalized emails
+          customMessage: userData.metadata?.inviteMessage,
+          expectedStartDate: userData.metadata?.expectedStartDate,
+          department: userData.metadata?.employeeInfo?.department,
+          jobTitle: userData.metadata?.employeeInfo?.jobTitle,
+          vendorCompanyName: userData.metadata?.vendorInfo?.companyName,
+        },
+      };
+      this.emailQueue.addToEmailQueue(JOB_NAME.USER_CREATED_JOB, emailData);
+    }
+
+    this.log.info(`Bulk user created: ${userData.inviteeEmail} for client ${clientInfo.cuid}`);
+
+    return {
+      userId: result.user?._id?.toString() || '',
+      generatedPassword: generatedPassword,
+      user: result.user,
+    };
   }
 }

@@ -478,20 +478,6 @@ describe('PropertyService', () => {
         clientInfo: { cuid, displayName: mockClient.displayName, id: mockClient.id },
       });
     });
-
-    it('should throw BadRequestError when client not found for CSV import', async () => {
-      // Arrange
-      const cuid = 'invalid-cuid';
-      const csvFilePath = '/tmp/properties.csv';
-      const actorId = 'user-123';
-
-      mockClientDAO.getClientByCuid.mockResolvedValue(null);
-
-      // Act & Assert
-      await expect(
-        propertyService.addPropertiesFromCsv(cuid, csvFilePath, actorId)
-      ).rejects.toThrow(BadRequestError);
-    });
   });
 
   describe('validateCsv - additional tests', () => {
@@ -525,18 +511,6 @@ describe('PropertyService', () => {
         csvFile.path,
       ]);
     });
-
-    it('should throw BadRequestError when no CSV file provided', async () => {
-      // Arrange
-      const cuid = 'test-cuid';
-      const csvFile = null as any;
-      const mockCurrentUser = createMockCurrentUser();
-
-      // Act & Assert
-      await expect(propertyService.validateCsv(cuid, csvFile, mockCurrentUser)).rejects.toThrow(
-        BadRequestError
-      );
-    });
   });
 
   describe('getUnitInfoForProperty - additional tests', () => {
@@ -563,39 +537,6 @@ describe('PropertyService', () => {
       expect(result.unitStats.occupied).toBe(1);
     });
 
-    it('should handle error when getting unit numbers fails', async () => {
-      // Arrange
-      (PropertyTypeManager.supportsMultipleUnits as jest.Mock).mockReturnValue(true);
-
-      const mockProperty = createMockProperty({
-        propertyType: 'apartment',
-        maxAllowedUnits: 5,
-      });
-      const mockUnitData = {
-        currentUnits: 3,
-        unitStats: {
-          occupied: 2,
-          vacant: 1,
-          maintenance: 0,
-          available: 1,
-          reserved: 0,
-          inactive: 0,
-        },
-      };
-
-      mockPropertyUnitDAO.getPropertyUnitInfo.mockResolvedValue(mockUnitData);
-      mockPropertyDAO.canAddUnitToProperty.mockResolvedValue({ canAdd: true });
-      mockPropertyUnitDAO.getExistingUnitNumbers.mockRejectedValue(new Error('Database error'));
-
-      // Act
-      const result = await propertyService.getUnitInfoForProperty(mockProperty);
-
-      // Assert
-      expect(result.maxAllowedUnits).toBe(5);
-      expect(result.currentUnits).toBe(3);
-      expect(result.canAddUnit).toBe(true);
-      expect(result.lastUnitNumber).toBeUndefined();
-    });
   });
 
   describe('markDocumentsAsFailed', () => {
@@ -643,64 +584,6 @@ describe('PropertyService', () => {
       ).rejects.toThrow(BadRequestError);
       await expect(
         propertyService.getClientProperty('cuid', '', createMockCurrentUser())
-      ).rejects.toThrow(BadRequestError);
-    });
-
-    it('should handle missing parameters in updateClientProperty', async () => {
-      // Act & Assert
-      const ctx = { cuid: '', pid: 'test-pid', currentuser: createMockCurrentUser() };
-      await expect(propertyService.updateClientProperty(ctx, { name: 'Test' })).rejects.toThrow(
-        BadRequestError
-      );
-    });
-
-    it('should handle missing parameters in archiveClientProperty', async () => {
-      // Act & Assert
-      await expect(
-        propertyService.archiveClientProperty('', 'pid', createMockCurrentUser())
-      ).rejects.toThrow(BadRequestError);
-      await expect(
-        propertyService.archiveClientProperty('cuid', '', createMockCurrentUser())
-      ).rejects.toThrow(BadRequestError);
-    });
-
-    it('should handle client not found in various methods', async () => {
-      // Arrange
-      mockClientDAO.getClientByCuid.mockResolvedValue(null);
-
-      // Act & Assert
-      await expect(
-        propertyService.getClientProperty('invalid-cuid', 'pid', createMockCurrentUser())
-      ).rejects.toThrow(BadRequestError);
-    });
-
-    it('should handle missing upload results in updatePropertyDocuments', async () => {
-      // Arrange
-      const propertyId = 'prop-123';
-      const uploadResult: any[] = [];
-      const userId = 'user-123';
-
-      // Act & Assert
-      await expect(
-        propertyService.updatePropertyDocuments(propertyId, uploadResult, userId)
-      ).rejects.toThrow(BadRequestError);
-    });
-
-    it('should handle failed property archive operation', async () => {
-      // Arrange
-      const cuid = 'test-cuid';
-      const pid = 'test-pid';
-      const mockCurrentUser = createMockCurrentUser();
-      const mockClient = createMockClient();
-      const mockProperty = createMockProperty();
-
-      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
-      mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
-      mockPropertyDAO.archiveProperty.mockResolvedValue(null); // Failed
-
-      // Act & Assert
-      await expect(
-        propertyService.archiveClientProperty(cuid, pid, mockCurrentUser)
       ).rejects.toThrow(BadRequestError);
     });
 

@@ -11,10 +11,15 @@ import { NextFunction, Response, Request } from 'express';
 import { LanguageService } from '@shared/languages/language.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
-import { RateLimitOptions, RequestSource, TokenType } from '@interfaces/utils.interface';
 import { InvalidRequestError, UnauthorizedError, ForbiddenError } from '@shared/customErrors';
 import { PermissionResource, PermissionAction, ICurrentUser, EventTypes } from '@interfaces/index';
 import { extractMulterFiles, generateShortUID, httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
+import {
+  RateLimitOptions,
+  IPermissionCheck,
+  RequestSource,
+  TokenType,
+} from '@interfaces/utils.interface';
 
 interface DIServices {
   permissionService: PermissionService;
@@ -459,7 +464,17 @@ export const requirePermission = (
       if (!hasPermission.granted) {
         return next(
           new ForbiddenError({
-            message: t('auth.errors.insufficientPermissions', { resource, action }),
+            message: t('auth.errors.insufficientPermissions', {
+              resource,
+              action,
+              reason: hasPermission.reason,
+            }),
+            details: {
+              resource,
+              action,
+              userRole: currentuser.client.role,
+              reason: hasPermission.reason,
+            },
           })
         );
       }
@@ -550,4 +565,117 @@ export const requireUserManagement = () => {
     { resource: PermissionResource.USER, action: PermissionAction.ASSIGN_ROLES },
     { resource: PermissionResource.CLIENT, action: PermissionAction.MANAGE_USERS },
   ]);
+};
+
+/**
+ * Enhanced permission middleware with resource context validation
+ */
+export const requirePermissionWithContext = (
+  resource: PermissionResource | string,
+  action: PermissionAction | string,
+  contextExtractor?: (req: Request) => {
+    resourceId?: string;
+    ownerId?: string;
+    assignedUsers?: string[];
+  }
+) => {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const currentuser = validateUserAndConnection(req, next);
+      if (!currentuser) return;
+
+      // Check client context for client-specific resources
+      const clientId = req.params.clientId || req.params.cuid;
+      if (clientId && currentuser.client.cuid !== clientId) {
+        return next(new ForbiddenError({ message: t('auth.errors.clientAccessDenied') }));
+      }
+
+      // Extract resource context if provided
+      let context = {};
+      if (contextExtractor) {
+        try {
+          const extractedContext = contextExtractor(req);
+          context = {
+            clientId: currentuser.client.cuid,
+            userId: currentuser.sub,
+            ...extractedContext,
+          };
+        } catch (error) {
+          console.warn('Error extracting resource context:', error);
+        }
+      }
+
+      const { permissionService }: { permissionService: PermissionService } = req.container.cradle;
+
+      // Use enhanced permission check with context
+      const permissionCheck: IPermissionCheck = {
+        role: currentuser.client.role,
+        resource: resource as PermissionResource,
+        action: action as string,
+        context: {
+          clientId: currentuser.client.cuid,
+          userId: currentuser.sub,
+          ...context,
+        } as any,
+      };
+
+      const hasPermission = await permissionService.checkPermission(permissionCheck);
+
+      if (!hasPermission.granted) {
+        return next(
+          new ForbiddenError({
+            message: t('auth.errors.insufficientPermissions', {
+              resource,
+              action,
+              reason: hasPermission.reason,
+            }),
+            details: {
+              resource,
+              action,
+              userRole: currentuser.client.role,
+              reason: hasPermission.reason,
+            },
+          })
+        );
+      }
+
+      next();
+    } catch (error) {
+      console.error('Error in requirePermissionWithContext middleware:', error);
+      return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
+    }
+  };
+};
+
+/**
+ * Property-specific middleware - validates property ownership/assignment
+ */
+export const requirePropertyPermission = (action: PermissionAction | string) => {
+  return requirePermissionWithContext(PermissionResource.PROPERTY, action, (req: Request) => ({
+    resourceId: req.params.propertyId || req.params.pid,
+    // These would typically come from database lookups in real implementation
+    ownerId: req.body?.ownerId,
+    assignedUsers: req.body?.assignedUsers || [],
+  }));
+};
+
+/**
+ * Maintenance-specific middleware - validates maintenance request access
+ */
+export const requireMaintenancePermission = (action: PermissionAction | string) => {
+  return requirePermissionWithContext(PermissionResource.MAINTENANCE, action, (req: Request) => ({
+    resourceId: req.params.maintenanceId || req.params.mid,
+    ownerId: req.body?.requestedBy,
+    assignedUsers: req.body?.assignedTo ? [req.body.assignedTo] : [],
+  }));
+};
+
+/**
+ * User-specific middleware - validates user management permissions
+ */
+export const requireUserPermission = (action: PermissionAction | string) => {
+  return requirePermissionWithContext(PermissionResource.USER, action, (req: Request) => ({
+    resourceId: req.params.userId || req.params.uid,
+    ownerId: req.params.userId || req.params.uid, // For "mine" scope validation
+  }));
 };

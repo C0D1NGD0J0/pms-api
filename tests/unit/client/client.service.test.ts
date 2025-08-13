@@ -145,7 +145,7 @@ describe('ClientService', () => {
           issueDate: new Date('2020-01-01'),
           expiryDate: new Date('2030-01-01'),
           issuingState: 'US',
-        },
+        } as any, // Cast to any since we intentionally want invalid data for testing
       };
       const mockClient = createMockClient({ cuid: 'test-cuid' });
 

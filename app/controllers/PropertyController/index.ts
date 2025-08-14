@@ -219,8 +219,8 @@ export class PropertyController {
       page: req.query.page ? parseInt(req.query.page as string) : undefined,
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
     };
-
-    const result = await this.propertyService.getAssignableUsers(cuid, filters);
+    const currentuser = req.context.currentuser!;
+    const result = await this.propertyService.getAssignableUsers(cuid, currentuser, filters);
     res.status(httpStatusCodes.OK).json(result);
   };
 }

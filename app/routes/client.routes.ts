@@ -1,9 +1,15 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { ClientController } from '@controllers/ClientController';
-import { ClientValidations, validateRequest } from '@shared/validations';
+import { PropertyController } from '@controllers/PropertyController';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
-import { requireUserManagement, requirePermission, isAuthenticated } from '@shared/middlewares';
+import { PropertyValidations, ClientValidations, validateRequest } from '@shared/validations';
+import {
+  requireUserManagement,
+  requirePermission,
+  isAuthenticated,
+  routeLimiter,
+} from '@shared/middlewares';
 
 const router = Router();
 
@@ -100,8 +106,6 @@ router.delete(
   })
 );
 
-// Admin Connection Management Routes
-
 router.post(
   '/:cuid/users/:uid/disconnect',
   isAuthenticated,
@@ -125,6 +129,21 @@ router.post(
   asyncWrapper((req, res) => {
     const clientController = req.container.resolve<ClientController>('clientController');
     return clientController.reconnectUser(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/property_managers',
+  isAuthenticated,
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
+  routeLimiter(),
+  validateRequest({
+    params: PropertyValidations.validatecuid,
+    query: PropertyValidations.getAssignableUsers,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getAssignableUsers(req, res);
   })
 );
 

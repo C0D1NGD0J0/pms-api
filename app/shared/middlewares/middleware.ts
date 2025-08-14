@@ -442,6 +442,7 @@ export const requirePermission = (
       // Check client context for client-specific resources
       const clientId = req.params.clientId || req.params.cuid;
       if (clientId && currentuser.client.cuid !== clientId) {
+        console.error('Client ID mismatch: ', { clientId, userClientId: currentuser.client.cuid });
         return next(new ForbiddenError({ message: t('auth.errors.clientAccessDenied') }));
       }
 
@@ -449,6 +450,11 @@ export const requirePermission = (
       if (resource === PermissionResource.CLIENT) {
         const restrictedRoles = ['tenant', 'vendor'];
         if (restrictedRoles.includes(currentuser.client.role)) {
+          console.log('Insufficient role for CLIENT resource:', {
+            role: currentuser.client.role,
+            resource,
+            action,
+          });
           return next(new ForbiddenError({ message: t('auth.errors.insufficientRole') }));
         }
       }
@@ -462,19 +468,15 @@ export const requirePermission = (
       );
 
       if (!hasPermission.granted) {
+        console.warn('Permission denied:', {
+          userId: currentuser.sub,
+          resource,
+          action,
+          reason: hasPermission.reason,
+        });
         return next(
           new ForbiddenError({
-            message: t('auth.errors.insufficientPermissions', {
-              resource,
-              action,
-              reason: hasPermission.reason,
-            }),
-            details: {
-              resource,
-              action,
-              userRole: currentuser.client.role,
-              reason: hasPermission.reason,
-            },
+            message: t('auth.errors.insufficientPermissions'),
           })
         );
       }
@@ -624,17 +626,7 @@ export const requirePermissionWithContext = (
       if (!hasPermission.granted) {
         return next(
           new ForbiddenError({
-            message: t('auth.errors.insufficientPermissions', {
-              resource,
-              action,
-              reason: hasPermission.reason,
-            }),
-            details: {
-              resource,
-              action,
-              userRole: currentuser.client.role,
-              reason: hasPermission.reason,
-            },
+            message: t('auth.errors.insufficientPermissions'),
           })
         );
       }

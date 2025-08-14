@@ -14,7 +14,7 @@ import {
 
 import propertyUnitRoutes from './propertyUnit.routes';
 
-const router: Router = express.Router();
+export const router: Router = express.Router();
 
 router.use(isAuthenticated);
 
@@ -24,20 +24,6 @@ router.get(
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.getPropertyFormMetadata(req, res);
-  })
-);
-
-router.get(
-  '/:cuid/assignable-users',
-  requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
-  routeLimiter(),
-  validateRequest({
-    params: PropertyValidations.validatecuid,
-    query: PropertyValidations.getAssignableUsers,
-  }),
-  asyncWrapper((req, res) => {
-    const propertyController = req.container.resolve<PropertyController>('propertyController');
-    return propertyController.getAssignableUsers(req, res);
   })
 );
 

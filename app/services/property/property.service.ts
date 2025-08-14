@@ -1059,6 +1059,7 @@ export class PropertyService implements IDisposable {
    */
   async getAssignableUsers(
     cuid: string,
+    currentuser: ICurrentUser,
     filters: IAssignableUsersFilter
   ): Promise<ISuccessReturnData<{ items: IAssignableUser[]; pagination?: PaginateResult }>> {
     try {
@@ -1126,7 +1127,8 @@ export class PropertyService implements IDisposable {
       // Add projection to shape the response
       pipeline.push({
         $project: {
-          id: { $toString: '$_id' },
+          // id: { $toString: '$_id' },
+          puid: '$profile.puid',
           email: 1,
           displayName: '$profile.personalInfo.displayName',
           role: {

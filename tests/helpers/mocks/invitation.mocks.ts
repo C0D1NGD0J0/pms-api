@@ -52,9 +52,9 @@ export const createMockInvitation = (
   expiresAt: faker.date.future(),
   metadata: {
     inviteMessage: faker.lorem.sentences(2),
-    expectedStartDate: faker.date.future().toISOString(),
+    expectedStartDate: faker.date.future(),
     remindersSent: faker.number.int({ min: 0, max: 3 }),
-    lastReminderSent: faker.date.recent().toISOString(),
+    lastReminderSent: faker.date.recent(),
   },
   acceptedBy: undefined,
   revokedBy: undefined,
@@ -92,13 +92,13 @@ export const createMockInvitationData = (
   status: faker.helpers.arrayElement(['draft', 'pending']),
   metadata: {
     inviteMessage: faker.lorem.sentences(2),
-    expectedStartDate: faker.date.future().toISOString(),
+    expectedStartDate: faker.date.future(),
     employeeInfo: {
-      department: faker.commerce.department(),
+      department: 'Engineering' as any, // Cast to any as a temporary fix for EmployeeDepartment
       jobTitle: faker.person.jobTitle(),
       employeeId: faker.string.alphanumeric(8),
       reportsTo: faker.person.fullName(),
-      startDate: faker.date.future().toISOString(),
+      startDate: faker.date.future(),
     },
     vendorInfo: {
       businessType: faker.company.buzzPhrase(),
@@ -118,6 +118,10 @@ export const createMockInvitationData = (
         state: faker.location.state(),
         postCode: faker.location.zipCode(),
         country: faker.location.country(),
+        computedLocation: {
+          coordinates: [faker.location.longitude(), faker.location.latitude()],
+          type: 'Point',
+        },
       },
     },
   },
@@ -130,31 +134,16 @@ export const createMockInvitationData = (
 export const createMockInvitationAcceptance = (
   overrides: Partial<IInvitationAcceptance> = {}
 ): IInvitationAcceptance => ({
-  invitationToken: faker.string.alphanumeric(32),
   cuid: faker.string.uuid(),
-  userData: {
-    password: faker.internet.password({ length: 12 }),
-    confirmPassword: faker.internet.password({ length: 12 }),
-    location: faker.location.city(),
-    timeZone: faker.location.timeZone(),
-    lang: 'en',
-    bio: faker.lorem.paragraph(),
-    headline: faker.lorem.sentence(),
-    policies: {
-      tos: {
-        accepted: true,
-        acceptedOn: faker.date.recent(),
-      },
-      privacy: {
-        accepted: true,
-        acceptedOn: faker.date.recent(),
-      },
-      marketing: {
-        accepted: faker.datatype.boolean(),
-        acceptedOn: faker.date.recent(),
-      },
-    },
-  },
+  password: faker.internet.password({ length: 12 }),
+  confirmPassword: faker.internet.password({ length: 12 }),
+  token: faker.string.alphanumeric(32),
+  email: faker.internet.email(),
+  lang: 'en',
+  timeZone: faker.location.timeZone(),
+  location: faker.location.city(),
+  newsletterOptIn: false,
+  termsAccepted: true,
   ...overrides,
 });
 
@@ -217,8 +206,9 @@ export const createMockInvitationDAO = () => ({
   insert: jest.fn().mockResolvedValue(createMockInvitation()),
   updateById: jest.fn().mockResolvedValue({ acknowledged: true, modifiedCount: 1 }),
   deleteById: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
-  startSession: jest.fn().mockImplementation(() => createMockSession()),
-  withTransaction: jest
+  // Avoid duplicate methods by renaming or removing
+  _startSession: jest.fn().mockImplementation(() => createMockSession()),
+  _withTransaction: jest
     .fn()
     .mockImplementation(
       async (session: ClientSession, callback: (session: ClientSession) => Promise<any>) => {
@@ -300,14 +290,7 @@ export const createMockUserDAO = () => ({
   createUserFromInvitation: jest.fn().mockResolvedValue(createMockUser()),
   addUserToClient: jest.fn().mockResolvedValue(createMockUser()),
   createBulkUserWithDefaults: jest.fn().mockResolvedValue(createMockUser()),
-  startSession: jest.fn().mockImplementation(() => createMockSession()),
-  withTransaction: jest
-    .fn()
-    .mockImplementation(
-      async (session: any, callback: (session: any) => Promise<any>) => {
-        return await callback(session);
-      }
-    ),
+  // Removed duplicate startSession and withTransaction methods
 });
 
 /**

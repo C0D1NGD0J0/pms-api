@@ -2,8 +2,8 @@
 jest.setTimeout(10000);
 
 import request from 'supertest';
-import express, { Request, Response } from 'express';
 import { faker } from '@faker-js/faker';
+import express, { Response, Request } from 'express';
 
 // Create mock ObjectId generator to avoid mongoose import
 class MockObjectId {
@@ -24,11 +24,11 @@ const Types = {
 };
 // Define interfaces and constants directly to avoid imports
 enum IUserRole {
-  ADMIN = 'admin',
   MANAGER = 'manager',
-  STAFF = 'staff',
   VENDOR = 'vendor',
   TENANT = 'tenant',
+  ADMIN = 'admin',
+  STAFF = 'staff',
 }
 
 enum DataRetentionPolicy {
@@ -80,8 +80,8 @@ const createMockCurrentUser = (overrides = {}) => ({
   gdpr: {
     dataRetentionPolicy: DataRetentionPolicy.STANDARD,
     dataProcessingConsent: true,
-    processingConsentDate: new Date().toISOString(),
-    retentionExpiryDate: faker.date.future().toISOString(),
+    processingConsentDate: new Date(),
+    retentionExpiryDate: faker.date.future(),
   },
   accounts: [] as any[],
   activeAccount: null,

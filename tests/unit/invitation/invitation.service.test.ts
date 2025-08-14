@@ -1,13 +1,7 @@
 import { Types } from 'mongoose';
-import { IUserRole } from '@interfaces/user.interface';
 import { RequestSource } from '@interfaces/utils.interface';
+import { BadRequestError, ConflictError } from '@shared/customErrors';
 import { InvitationService } from '@services/invitation/invitation.service';
-import {
-  BadRequestError,
-  ForbiddenError,
-  ConflictError,
-  NotFoundError,
-} from '@shared/customErrors';
 import {
   createMockInvitationAcceptance,
   createMockEventEmitterService,
@@ -118,7 +112,9 @@ describe('InvitationService', () => {
       const mockClient = createMockClient({ cuid: testCuid });
       const mockInviter = createMockUser({
         _id: new Types.ObjectId(testUserId),
-        cuids: [{ cuid: testCuid, roles: ['admin'], isConnected: true, displayName: 'Test Client' }],
+        cuids: [
+          { cuid: testCuid, roles: ['admin'], isConnected: true, displayName: 'Test Client' },
+        ],
       });
       const mockInvitation = createMockInvitation({
         inviteeEmail: testEmail,
@@ -156,10 +152,12 @@ describe('InvitationService', () => {
       );
     });
 
-
     it('should prevent duplicate pending invitations', async () => {
       setupMocks();
-      const existingInvitation = createMockInvitation({ inviteeEmail: testEmail, status: 'pending' });
+      const existingInvitation = createMockInvitation({
+        inviteeEmail: testEmail,
+        status: 'pending',
+      });
       mockInvitationDAO.findPendingInvitation.mockResolvedValue(existingInvitation);
 
       const invitationData = createMockInvitationData({ inviteeEmail: testEmail });
@@ -168,16 +166,15 @@ describe('InvitationService', () => {
         invitationService.sendInvitation(testUserId, testCuid, invitationData)
       ).rejects.toThrow(ConflictError);
     });
-
   });
 
   describe('acceptInvitation', () => {
     it('should successfully accept invitation and create new user', async () => {
       const mockContext = createMockContext();
       const acceptanceData = createMockInvitationAcceptance({
-        invitationToken: 'valid-token',
+        token: 'valid-token',
         cuid: testCuid,
-        userData: { password: 'SecurePass123!' },
+        password: 'SecurePass123!',
       });
       const mockInvitation = createMockInvitation({
         inviteeEmail: testEmail,
@@ -195,7 +192,10 @@ describe('InvitationService', () => {
         return await callback(_session);
       });
       mockUserDAO.createUserFromInvitation.mockResolvedValue(newUser);
-      mockInvitationDAO.acceptInvitation.mockResolvedValue({ ...mockInvitation, status: 'accepted' });
+      mockInvitationDAO.acceptInvitation.mockResolvedValue({
+        ...mockInvitation,
+        status: 'accepted',
+      });
 
       const result = await invitationService.acceptInvitation(mockContext, acceptanceData);
 
@@ -206,7 +206,7 @@ describe('InvitationService', () => {
 
     it('should handle invalid invitation token', async () => {
       const mockContext = createMockContext();
-      const acceptanceData = createMockInvitationAcceptance({ invitationToken: 'invalid-token' });
+      const acceptanceData = createMockInvitationAcceptance({ token: 'invalid-token' });
 
       mockInvitationDAO.findByToken.mockResolvedValue(null);
 
@@ -230,7 +230,7 @@ describe('InvitationService', () => {
           iuid: 'test-iuid',
           inviteeEmail: testEmail,
           status: 'pending',
-          invitedBy: { _id: new Types.ObjectId() }
+          invitedBy: { _id: new Types.ObjectId() },
         }),
       });
 
@@ -244,7 +244,6 @@ describe('InvitationService', () => {
       expect(result.data.invitation).toBeDefined(); // Just check invitation exists, not full equality
       expect(mockInvitation.toJSON).toHaveBeenCalled();
     });
-
 
     it('should reject expired invitation token', async () => {
       const token = 'expired-token';
@@ -260,7 +259,9 @@ describe('InvitationService', () => {
       mockInvitationDAO.findByToken.mockResolvedValue(expiredInvitation);
       mockClientDAO.findFirst.mockResolvedValue({ ...mockClient, id: mockClient._id });
 
-      await expect(invitationService.validateInvitationByToken(testCuid, token)).rejects.toThrow(BadRequestError);
+      await expect(invitationService.validateInvitationByToken(testCuid, token)).rejects.toThrow(
+        BadRequestError
+      );
     });
   });
 
@@ -268,10 +269,21 @@ describe('InvitationService', () => {
     it('should successfully revoke pending invitation', async () => {
       const iuid = 'invitation-123';
       const mockClientId = new Types.ObjectId();
-      const mockInvitation = createMockInvitation({ iuid, status: 'pending', clientId: mockClientId });
+      const mockInvitation = createMockInvitation({
+        iuid,
+        status: 'pending',
+        clientId: mockClientId,
+      });
       const mockRevoker = createMockUser({
         _id: new Types.ObjectId(testUserId),
-        cuids: [{ cuid: mockClientId.toString(), roles: ['admin'], isConnected: true, displayName: 'Test Client' }],
+        cuids: [
+          {
+            cuid: mockClientId.toString(),
+            roles: ['admin'],
+            isConnected: true,
+            displayName: 'Test Client',
+          },
+        ],
       });
       const revokedInvitation = { ...mockInvitation, status: 'revoked' };
 
@@ -286,14 +298,15 @@ describe('InvitationService', () => {
       expect(mockInvitationDAO.revokeInvitation).toHaveBeenCalled();
     });
 
-
     it('should throw BadRequestError for invalid invitation status', async () => {
       const iuid = 'invitation-123';
       const mockInvitation = createMockInvitation({ iuid, status: 'accepted' });
 
       mockInvitationDAO.findByIuidUnsecured.mockResolvedValue(mockInvitation);
 
-      await expect(invitationService.revokeInvitation(iuid, testUserId)).rejects.toThrow(BadRequestError);
+      await expect(invitationService.revokeInvitation(iuid, testUserId)).rejects.toThrow(
+        BadRequestError
+      );
     });
   });
 
@@ -311,7 +324,14 @@ describe('InvitationService', () => {
       });
       const mockResender = createMockUser({
         _id: new Types.ObjectId(testUserId),
-        cuids: [{ cuid: mockClientId.toString(), roles: ['admin'], isConnected: true, displayName: 'Test Client' }],
+        cuids: [
+          {
+            cuid: mockClientId.toString(),
+            roles: ['admin'],
+            isConnected: true,
+            displayName: 'Test Client',
+          },
+        ],
       });
       const updatedInvitation = { ...mockInvitation, status: 'pending' }; // Draft becomes pending
 
@@ -333,21 +353,30 @@ describe('InvitationService', () => {
     it('should prevent resending draft invitations', async () => {
       const resendData = { iuid: 'draft-invitation' };
       const mockClientId = new Types.ObjectId();
-      const draftInvitation = createMockInvitation({ 
-        iuid: resendData.iuid, 
-        status: 'draft', 
+      const draftInvitation = createMockInvitation({
+        iuid: resendData.iuid,
+        status: 'draft',
         clientId: mockClientId,
-        isValid: jest.fn().mockReturnValue(false) // Make it invalid for resending
+        isValid: jest.fn().mockReturnValue(false), // Make it invalid for resending
       });
       const mockResender = createMockUser({
         _id: new Types.ObjectId(testUserId),
-        cuids: [{ cuid: mockClientId.toString(), roles: ['admin'], isConnected: true, displayName: 'Test Client' }],
+        cuids: [
+          {
+            cuid: mockClientId.toString(),
+            roles: ['admin'],
+            isConnected: true,
+            displayName: 'Test Client',
+          },
+        ],
       });
 
       mockInvitationDAO.findByIuidUnsecured.mockResolvedValue(draftInvitation);
       mockUserDAO.getUserById.mockResolvedValue(mockResender);
 
-      await expect(invitationService.resendInvitation(resendData, testUserId)).rejects.toThrow(BadRequestError);
+      await expect(invitationService.resendInvitation(resendData, testUserId)).rejects.toThrow(
+        BadRequestError
+      );
     });
   });
 
@@ -361,7 +390,10 @@ describe('InvitationService', () => {
         role: 'staff' as any,
       });
       const mockClient = createMockClient({ cuid: testCuid });
-      const mockUpdater = createMockUser({ _id: new Types.ObjectId(testUserId), email: 'updater@example.com' });
+      const mockUpdater = createMockUser({
+        _id: new Types.ObjectId(testUserId),
+        email: 'updater@example.com',
+      });
       const existingInvitation = createMockInvitation({
         iuid: 'invitation-123',
         status: 'draft',
@@ -383,7 +415,11 @@ describe('InvitationService', () => {
       mockUserDAO.getUserWithClientAccess.mockResolvedValue(null);
       mockInvitationDAO.updateInvitation.mockResolvedValue(updatedInvitation);
 
-      const result = await invitationService.updateInvitation(mockContext, updatedData, currentUser);
+      const result = await invitationService.updateInvitation(
+        mockContext,
+        updatedData,
+        currentUser
+      );
 
       expect(result.success).toBe(true);
       expect(result.data.invitation).toBeDefined();
@@ -395,7 +431,11 @@ describe('InvitationService', () => {
       const currentUser = { sub: testUserId } as any;
       const updatedData = createMockInvitationData();
       const mockClient = createMockClient({ cuid: testCuid });
-      const existingInvitation = createMockInvitation({ iuid: 'invitation-123', status: 'pending', clientId: mockClient._id });
+      const existingInvitation = createMockInvitation({
+        iuid: 'invitation-123',
+        status: 'pending',
+        clientId: mockClient._id,
+      });
 
       mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockInvitationDAO.findByIuid.mockResolvedValue(existingInvitation);
@@ -404,7 +444,6 @@ describe('InvitationService', () => {
         invitationService.updateInvitation(mockContext, updatedData, currentUser)
       ).rejects.toThrow(BadRequestError);
     });
-
   });
 
   describe('getInvitations', () => {
@@ -427,7 +466,6 @@ describe('InvitationService', () => {
       expect(result.data.items).toHaveLength(2);
       expect(mockInvitationDAO.getInvitationsByClient).toHaveBeenCalledWith(query);
     });
-
   });
 
   describe('getInvitationStats', () => {
@@ -452,7 +490,6 @@ describe('InvitationService', () => {
       expect(result.data.total).toBe(100);
       expect(mockInvitationDAO.getInvitationStats).toHaveBeenCalledWith(clientId);
     });
-
   });
 
   describe('expireInvitations', () => {
@@ -467,7 +504,6 @@ describe('InvitationService', () => {
       expect(result.message).toBe('invitation.success.expired');
       expect(mockInvitationDAO.expireInvitations).toHaveBeenCalledWith();
     });
-
   });
 
   describe('validateInvitationCsv', () => {
@@ -487,13 +523,21 @@ describe('InvitationService', () => {
 
     it('should successfully start CSV validation', async () => {
       const currentUser = { sub: 'user-123' } as any;
-      const mockClient = createMockClient({ cuid: testCuid, displayName: 'Test Company', id: 'client-123' });
+      const mockClient = createMockClient({
+        cuid: testCuid,
+        displayName: 'Test Company',
+        id: 'client-123',
+      });
       const mockJob = { id: 'job-123' };
 
       mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockInvitationQueue.addCsvValidationJob.mockResolvedValue(mockJob);
 
-      const result = await invitationService.validateInvitationCsv(testCuid, mockCsvFile, currentUser);
+      const result = await invitationService.validateInvitationCsv(
+        testCuid,
+        mockCsvFile,
+        currentUser
+      );
 
       expect(result.success).toBe(true);
       expect(result.data.processId).toBeDefined();
@@ -531,7 +575,11 @@ describe('InvitationService', () => {
     it('should successfully start CSV import', async () => {
       const mockContext = createMockContext();
       const csvFilePath = '/tmp/uploads/validated-invitations.csv';
-      const mockClient = createMockClient({ cuid: testCuid, displayName: 'Test Company', id: 'client-123' });
+      const mockClient = createMockClient({
+        cuid: testCuid,
+        displayName: 'Test Company',
+        id: 'client-123',
+      });
       const mockJob = { id: 'import-job-123' };
 
       mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
@@ -549,7 +597,6 @@ describe('InvitationService', () => {
         })
       );
     });
-
   });
 
   describe('validateBulkUserCsv', () => {
@@ -557,14 +604,23 @@ describe('InvitationService', () => {
       const currentUser = { sub: 'user-123' } as any;
       const csvFile = { path: '/test/csv/path' };
       const options = { sendNotifications: true, passwordLength: 12 };
-      const mockClient = createMockClient({ cuid: testCuid, displayName: 'Test Company', id: 'client-123' });
+      const mockClient = createMockClient({
+        cuid: testCuid,
+        displayName: 'Test Company',
+        id: 'client-123',
+      });
       const mockJob = { id: 'job-123' };
 
       mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockInvitationQueue.addCsvBulkUserValidationJob.mockResolvedValue(mockJob);
-      
-      const result = await invitationService.validateBulkUserCsv(testCuid, csvFile as any, currentUser, options);
-      
+
+      const result = await invitationService.validateBulkUserCsv(
+        testCuid,
+        csvFile as any,
+        currentUser,
+        options
+      );
+
       expect(result.success).toBe(true);
       expect(result.data.processId).toBeDefined();
       expect(mockInvitationQueue.addCsvBulkUserValidationJob).toHaveBeenCalledWith(
@@ -583,14 +639,22 @@ describe('InvitationService', () => {
       const mockContext = createMockContext();
       const csvFilePath = '/test/csv/path';
       const options = { sendNotifications: false, passwordLength: 10 };
-      const mockClient = createMockClient({ cuid: testCuid, displayName: 'Test Company', id: 'client-123' });
+      const mockClient = createMockClient({
+        cuid: testCuid,
+        displayName: 'Test Company',
+        id: 'client-123',
+      });
       const mockJob = { id: 'job-456' };
 
       mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockInvitationQueue.addCsvBulkUserImportJob.mockResolvedValue(mockJob);
-      
-      const result = await invitationService.importBulkUsersFromCsv(mockContext, csvFilePath, options);
-      
+
+      const result = await invitationService.importBulkUsersFromCsv(
+        mockContext,
+        csvFilePath,
+        options
+      );
+
       expect(result.success).toBe(true);
       expect(result.data.processId).toBeDefined();
       expect(mockInvitationQueue.addCsvBulkUserImportJob).toHaveBeenCalledWith(
@@ -635,15 +699,17 @@ describe('InvitationService', () => {
         message: 'success',
       } as any);
 
-      const result = await invitationService.processPendingInvitations(testCuid, testUserId, filters);
+      const result = await invitationService.processPendingInvitations(
+        testCuid,
+        testUserId,
+        filters
+      );
 
       expect(result.success).toBe(true);
       expect(result.data.processed).toBe(2);
       expect(result.data.failed).toBe(0);
       expect(result.data.totalFound).toBe(2);
     });
-
-
   });
 
   describe('destroy', () => {
@@ -652,8 +718,10 @@ describe('InvitationService', () => {
 
       expect(mockEventEmitterService.off).toHaveBeenCalledTimes(2);
       expect(mockEventEmitterService.off).toHaveBeenCalledWith('EMAIL_SENT', expect.any(Function));
-      expect(mockEventEmitterService.off).toHaveBeenCalledWith('EMAIL_FAILED', expect.any(Function));
+      expect(mockEventEmitterService.off).toHaveBeenCalledWith(
+        'EMAIL_FAILED',
+        expect.any(Function)
+      );
     });
-
   });
 });

@@ -1,23 +1,23 @@
-import { PropertyService } from '@services/property/property.service';
-import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { Types } from 'mongoose';
 import { PropertyTypeManager } from '@utils/PropertyTypeManager';
+import { PropertyService } from '@services/property/property.service';
+import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
-  createMockClient,
-  createMockClientDAO,
-  createMockCurrentUser,
+  createMockPropertyCsvProcessor,
   createMockEventEmitterService,
   createMockGeoCoderService,
-  createMockNewProperty,
-  createMockProfileDAO,
-  createMockProperty,
-  createMockPropertyCache,
-  createMockPropertyCsvProcessor,
-  createMockPropertyDAO,
-  createMockPropertyQueue,
   createMockPropertyUnitDAO,
   createMockRequestContext,
+  createMockPropertyCache,
+  createMockPropertyQueue,
+  createMockCurrentUser,
+  createMockNewProperty,
+  createMockPropertyDAO,
   createMockUploadQueue,
+  createMockProfileDAO,
+  createMockClientDAO,
+  createMockProperty,
+  createMockClient,
 } from '@tests/helpers';
 
 // Mock PropertyTypeManager
@@ -64,6 +64,7 @@ describe('PropertyService', () => {
   let mockPropertyQueue: any;
   let mockUploadQueue: any;
   let mockPropertyCsvProcessor: any;
+  let mockUserDAO: any;
 
   beforeEach(() => {
     mockPropertyDAO = createMockPropertyDAO();
@@ -76,6 +77,7 @@ describe('PropertyService', () => {
     mockPropertyQueue = createMockPropertyQueue();
     mockUploadQueue = createMockUploadQueue();
     mockPropertyCsvProcessor = createMockPropertyCsvProcessor();
+    mockUserDAO = { getUserById: jest.fn() }; // Create a simple mock for userDAO
 
     propertyService = new PropertyService({
       propertyDAO: mockPropertyDAO,
@@ -88,6 +90,7 @@ describe('PropertyService', () => {
       propertyQueue: mockPropertyQueue,
       uploadQueue: mockUploadQueue,
       propertyCsvProcessor: mockPropertyCsvProcessor,
+      userDAO: mockUserDAO,
     });
   });
 
@@ -536,7 +539,6 @@ describe('PropertyService', () => {
       expect(result.canAddUnit).toBe(false);
       expect(result.unitStats.occupied).toBe(1);
     });
-
   });
 
   describe('markDocumentsAsFailed', () => {

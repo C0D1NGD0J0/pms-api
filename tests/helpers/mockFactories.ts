@@ -82,6 +82,7 @@ export const createMockSignupData = (overrides: Partial<ISignupData> = {}): ISig
   location: faker.location.city(),
   lang: 'en',
   timeZone: 'UTC',
+  termsAccepted: true,
   accountType: {
     isCorporate: false,
     planName: 'basic',

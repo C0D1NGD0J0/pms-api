@@ -476,7 +476,11 @@ export const requirePermission = (
         });
         return next(
           new ForbiddenError({
-            message: t('auth.errors.insufficientPermissions'),
+            message: t('auth.errors.insufficientPermissions', {
+              resource,
+              action,
+              reason: hasPermission.reason || '',
+            }),
           })
         );
       }
@@ -626,7 +630,11 @@ export const requirePermissionWithContext = (
       if (!hasPermission.granted) {
         return next(
           new ForbiddenError({
-            message: t('auth.errors.insufficientPermissions'),
+            message: t('auth.errors.insufficientPermissions', {
+              resource,
+              action,
+              reason: hasPermission.reason || '',
+            }),
           })
         );
       }

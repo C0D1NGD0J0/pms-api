@@ -1,5 +1,5 @@
 import { ClientSession, Types } from 'mongoose';
-import { EmployeeInfo, VendorInfo } from '@interfaces/profile.interface';
+import { EmployeeDepartment, EmployeeInfo, VendorInfo } from '@interfaces/profile.interface';
 
 import { createSuccessResponse, createMockProfile } from '../mockFactories';
 
@@ -48,7 +48,7 @@ export const createMockProfileDAO = () => ({
   updateCommonVendorInfo: jest.fn().mockResolvedValue(createMockProfile()),
   getRoleSpecificInfo: jest.fn().mockResolvedValue({
     employeeInfo: {
-      department: 'Engineering',
+      department: EmployeeDepartment.MANAGEMENT, // Using enum value
       jobTitle: 'Software Developer',
       employmentType: 'full-time',
       startDate: new Date('2023-01-01'),
@@ -74,7 +74,7 @@ export const createMockProfileValidations = () => ({
     safeParse: jest.fn().mockReturnValue({
       success: true,
       data: {
-        department: 'Engineering',
+        department: EmployeeDepartment.MANAGEMENT, // Using enum value
         jobTitle: 'Software Developer',
         employmentType: 'full-time',
         startDate: new Date(),
@@ -101,7 +101,7 @@ export const createMockProfileValidations = () => ({
           lastName: 'Doe',
         },
         employeeInfo: {
-          department: 'Engineering',
+          department: EmployeeDepartment.MANAGEMENT, // Using enum value
           jobTitle: 'Developer',
         },
       },
@@ -127,7 +127,7 @@ export const createMockProfileService = () => ({
     createSuccessResponse(
       {
         employeeInfo: {
-          department: 'Engineering',
+          department: EmployeeDepartment.MANAGEMENT, // Using enum value
           jobTitle: 'Software Developer',
           employmentType: 'full-time',
         },
@@ -160,7 +160,7 @@ export const createMockProfileService = () => ({
  * Mock data factories for profile-related entities
  */
 export const createMockEmployeeInfo = (overrides: Partial<EmployeeInfo> = {}): EmployeeInfo => ({
-  department: 'Engineering',
+  department: EmployeeDepartment.MANAGEMENT, // Using enum value
   jobTitle: 'Software Developer',
   startDate: new Date('2023-01-01'),
   ...overrides,

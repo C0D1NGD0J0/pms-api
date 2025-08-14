@@ -10,7 +10,7 @@ import { PropertyQueue, UploadQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyTypeManager } from '@utils/PropertyTypeManager';
 import { getRequestDuration, createLogger, JOB_NAME } from '@utils/index';
-import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import {
   UploadCompletedPayload,
   UploadFailedPayload,
@@ -24,12 +24,6 @@ import {
   NotFoundError,
 } from '@shared/customErrors';
 import {
-  IPropertyWithUnitInfo,
-  IPropertyFilterQuery,
-  IPropertyDocument,
-  NewPropertyType,
-} from '@interfaces/property.interface';
-import {
   ExtractedMediaFile,
   ISuccessReturnData,
   IPaginationQuery,
@@ -37,6 +31,14 @@ import {
   PaginateResult,
   UploadResult,
 } from '@interfaces/utils.interface';
+import {
+  IAssignableUsersFilter,
+  IPropertyWithUnitInfo,
+  IPropertyFilterQuery,
+  IPropertyDocument,
+  IAssignableUser,
+  NewPropertyType,
+} from '@interfaces/property.interface';
 
 import { PropertyValidationService } from './propertyValidation.service';
 
@@ -51,6 +53,7 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
+  userDAO: UserDAO;
 }
 
 export class PropertyService implements IDisposable {
@@ -65,6 +68,7 @@ export class PropertyService implements IDisposable {
   private readonly geoCoderService: GeoCoderService;
   private readonly emitterService: EventEmitterService;
   private readonly propertyCsvProcessor: PropertyCsvProcessor;
+  private readonly userDAO: UserDAO;
 
   constructor({
     clientDAO,
@@ -77,6 +81,7 @@ export class PropertyService implements IDisposable {
     propertyQueue,
     geoCoderService,
     propertyCsvProcessor,
+    userDAO,
   }: IConstructor) {
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -89,6 +94,7 @@ export class PropertyService implements IDisposable {
     this.geoCoderService = geoCoderService;
     this.log = createLogger('PropertyService');
     this.propertyCsvProcessor = propertyCsvProcessor;
+    this.userDAO = userDAO;
 
     // Initialize event listeners
     this.setupEventListeners();
@@ -1044,6 +1050,163 @@ export class PropertyService implements IDisposable {
         suggestedNextUnitNumber,
         unitStats,
       };
+    }
+  }
+
+  /**
+   * Get users that can be assigned to manage properties
+   * Filters for admin, staff, and manager roles only, with optional department filtering
+   */
+  async getAssignableUsers(
+    cuid: string,
+    currentuser: ICurrentUser,
+    filters: IAssignableUsersFilter
+  ): Promise<ISuccessReturnData<{ items: IAssignableUser[]; pagination?: PaginateResult }>> {
+    try {
+      this.log.info('Fetching assignable users for client', { cuid, filters });
+
+      // Validate client exists
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      // Define management roles only (exclude vendor, tenant)
+      const managementRoles = ['admin', 'staff', 'manager'];
+      const roleFilter = filters.role && filters.role !== 'all' ? [filters.role] : managementRoles;
+
+      // Build aggregation pipeline to get users with profile data
+      const pipeline: any[] = [
+        {
+          $match: {
+            'cuids.cuid': cuid,
+            'cuids.isConnected': true,
+            'cuids.roles': { $in: roleFilter },
+            deletedAt: null,
+          },
+        },
+        {
+          $lookup: {
+            from: 'profiles',
+            localField: '_id',
+            foreignField: 'user',
+            as: 'profile',
+          },
+        },
+        {
+          $unwind: {
+            path: '$profile',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+      ];
+
+      // Add department filter if specified
+      if (filters.department) {
+        pipeline.push({
+          $match: {
+            'profile.employeeInfo.department': filters.department,
+          },
+        });
+      }
+
+      // Add search filter if specified
+      if (filters.search) {
+        pipeline.push({
+          $match: {
+            $or: [
+              { email: { $regex: filters.search, $options: 'i' } },
+              { 'profile.personalInfo.displayName': { $regex: filters.search, $options: 'i' } },
+              { 'profile.personalInfo.firstName': { $regex: filters.search, $options: 'i' } },
+              { 'profile.personalInfo.lastName': { $regex: filters.search, $options: 'i' } },
+            ],
+          },
+        });
+      }
+
+      // Add projection to shape the response
+      pipeline.push({
+        $project: {
+          // id: { $toString: '$_id' },
+          puid: '$profile.puid',
+          email: 1,
+          displayName: '$profile.personalInfo.displayName',
+          role: {
+            $arrayElemAt: [
+              {
+                $filter: {
+                  input: '$cuids',
+                  cond: { $eq: ['$$this.cuid', cuid] },
+                },
+              },
+              0,
+            ],
+          },
+          employeeInfo: {
+            jobTitle: '$profile.employeeInfo.jobTitle',
+            employeeId: '$profile.employeeInfo.employeeId',
+            department: '$profile.employeeInfo.department',
+          },
+        },
+      });
+
+      // Extract role from the cuid array
+      pipeline.push({
+        $addFields: {
+          role: { $arrayElemAt: ['$role.roles', 0] },
+          department: '$employeeInfo.department',
+        },
+      });
+
+      // Execute aggregation with pagination
+      const page = filters.page || 1;
+      const limit = filters.limit || 10;
+      const skip = (page - 1) * limit;
+
+      // Add pagination
+      const paginationPipeline = [...pipeline, { $skip: skip }, { $limit: limit }];
+
+      // Execute both count and data queries
+      const [users, totalCountResult] = await Promise.all([
+        this.userDAO.aggregate(paginationPipeline),
+        this.userDAO.aggregate([...pipeline, { $count: 'total' }]),
+      ]);
+
+      const total = (totalCountResult[0] as any)?.total || 0;
+      const totalPages = Math.ceil(total / limit);
+
+      const result = {
+        items: users as unknown as IAssignableUser[],
+        pagination: {
+          total,
+          page,
+          pages: totalPages,
+          limit,
+          hasMoreResource: page < totalPages,
+          perPage: limit,
+          totalPages,
+          currentPage: page,
+        },
+      };
+
+      this.log.info('Successfully retrieved assignable users', {
+        cuid,
+        count: users.length,
+        total,
+      });
+
+      return {
+        success: true,
+        data: result,
+        message: t('property.success.assignableUsersRetrieved'),
+      };
+    } catch (error) {
+      this.log.error('Failed to get assignable users', {
+        cuid,
+        filters,
+        error: error.message,
+      });
+      throw error;
     }
   }
 

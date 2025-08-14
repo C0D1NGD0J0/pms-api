@@ -254,7 +254,7 @@ export class ClientService {
     };
 
     clientWithStats.accountAdmin = {
-      emai: (client.accountAdmin as any)?.email || '',
+      email: (client.accountAdmin as any)?.email || '',
       id: (client.accountAdmin as any)?._id?.toString() || '',
       firstName: (client.accountAdmin as any)?.profile?.personalInfo?.firstName || '',
       lastName: (client.accountAdmin as any)?.profile?.personalInfo?.lastName || '',

@@ -1,10 +1,15 @@
 import { z } from 'zod';
-import { container } from '@di/setup';
 import { PropertyDAO, ClientDAO } from '@dao/index';
 import { BaseCSVProcessorService } from '@services/csv/base';
 
+const getContainer = async () => {
+  const { container } = await import('@di/setup');
+  return container;
+};
+
 const isUniqueAddress = async (address: string, clientId: string) => {
-  const { propertyDAO }: { propertyDAO: PropertyDAO; clientDAO: ClientDAO } = container.cradle;
+  const { propertyDAO }: { propertyDAO: PropertyDAO; clientDAO: ClientDAO } = (await getContainer())
+    .cradle;
   try {
     const existingProperty = await propertyDAO.findFirst({
       'address.fullAddress': address,
@@ -252,7 +257,7 @@ export const PropertySearchSchema = z.object({
 export const UpdateOccupancySchema = z.object({
   pid: z.string().refine(
     async (pid) => {
-      const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
+      const { propertyDAO }: { propertyDAO: PropertyDAO } = (await getContainer()).cradle;
       const property = await propertyDAO.findFirst({ pid });
       return !!property;
     },
@@ -271,7 +276,7 @@ const PropertyClientRelationship = z.object({
 
 export const PropertyClientRelationshipSchema = PropertyClientRelationship.superRefine(
   async (data, ctx) => {
-    const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
+    const { propertyDAO }: { propertyDAO: PropertyDAO } = (await getContainer()).cradle;
     const property = await propertyDAO.findFirst({
       pid: data.pid,
       cuid: data.cuid,
@@ -451,4 +456,28 @@ export const AddressValidationSchema = z.object({
         message: 'Address should contain street number and name',
       }
     ),
+});
+
+export const GetAssignableUsersSchema = z.object({
+  role: z
+    .enum(['admin', 'staff', 'manager', 'all'], {
+      errorMap: () => ({ message: 'Role must be admin, staff, manager, or all' }),
+    })
+    .optional(),
+  department: z
+    .enum(['maintenance', 'operations', 'accounting', 'management'], {
+      errorMap: () => ({
+        message: 'Department must be maintenance, operations, accounting, or management',
+      }),
+    })
+    .optional(),
+  search: z.string().max(100, 'Search term must be less than 100 characters').optional(),
+  page: z.coerce.number().int().min(1, 'Page must be at least 1').optional().default(1),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1, 'Limit must be at least 1')
+    .max(100, 'Limit cannot exceed 100')
+    .optional()
+    .default(10),
 });

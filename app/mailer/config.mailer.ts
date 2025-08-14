@@ -101,9 +101,25 @@ export class MailService {
       case MailType.ACCOUNT_UPDATE:
         template = await this.buildTemplate('accountUpdate', emailData);
         break;
-      case MailType.INVITATION:
-        template = await this.buildTemplate('invitation', emailData);
+      case MailType.USER_CREATED:
+        template = await this.buildTemplate('userCreated', emailData);
         break;
+      case MailType.INVITATION: {
+        // Select template based on user role
+        const role = emailData.data?.role;
+        let templateName = 'invitation'; // fallback to generic template
+
+        if (role === 'vendor') {
+          templateName = 'invitation-vendor';
+        } else if (role === 'tenant') {
+          templateName = 'invitation-tenant';
+        } else {
+          templateName = 'invitation-staff';
+        }
+
+        template = await this.buildTemplate(templateName, emailData);
+        break;
+      }
       default:
         throw new Error(`Unsupported mail type: ${type}`);
     }
@@ -192,6 +208,7 @@ export class MailService {
       [MailType.FORGOT_PASSWORD]: 'Reset Your Password',
       [MailType.INVITATION]: "You've Been Invited to Join Our Team",
       [MailType.INVITATION_REMINDER]: 'Reminder: Your Invitation is Still Active',
+      [MailType.USER_CREATED]: 'Your Account Has Been Created',
       default: defaultText,
       [MailType.SUBSCRIPTION_UPDATE]: defaultText,
       [MailType.SUBSCRIPTION_CANCEL]: defaultText,

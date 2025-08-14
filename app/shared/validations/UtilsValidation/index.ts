@@ -1,13 +1,17 @@
 import { z } from 'zod';
-import { container } from '@di/setup';
 import { isValidObjectId } from 'mongoose';
 import { PropertyUnitDAO, InvitationDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 
+const getContainer = async () => {
+  const { container } = await import('@di/setup');
+  return container;
+};
+
 export const ValidatecuidSchema = z.object({
   cuid: z.string().refine(
-    async (id) => {
-      const { clientDAO }: { clientDAO: ClientDAO } = container.cradle;
-      const client = await clientDAO.findFirst({ cuid: id });
+    async (cuid) => {
+      const { clientDAO }: { clientDAO: ClientDAO } = (await getContainer()).cradle;
+      const client = await clientDAO.findFirst({ cuid });
       return !!client;
     },
     {
@@ -19,7 +23,7 @@ export const ValidatecuidSchema = z.object({
 export const ValidatePropertyIdSchema = z.object({
   id: z.string().refine(
     async (id) => {
-      const { propertyDAO }: { propertyDAO: PropertyDAO } = container.cradle;
+      const { propertyDAO }: { propertyDAO: PropertyDAO } = (await getContainer()).cradle;
       const property = await propertyDAO.findById(id);
       return !!property;
     },
@@ -37,7 +41,7 @@ export const ValidateEmailSchema = z.object({
     })
     .refine(
       async (email) => {
-        const { userDAO }: { userDAO: UserDAO } = container.cradle;
+        const { userDAO }: { userDAO: UserDAO } = (await getContainer()).cradle;
         const user = await userDAO.findFirst({ email });
         return !!user;
       },
@@ -48,7 +52,7 @@ export const ValidateEmailSchema = z.object({
 });
 
 const validatepuid = async (type: 'id' | 'puid', value: string) => {
-  const { propertyUnitDAO }: { propertyUnitDAO: PropertyUnitDAO } = container.cradle;
+  const { propertyUnitDAO }: { propertyUnitDAO: PropertyUnitDAO } = (await getContainer()).cradle;
   try {
     if (type === 'id' && isValidObjectId(value)) {
       const unit = await propertyUnitDAO.findFirst({ _id: value, deletedAt: null });
@@ -80,6 +84,7 @@ export const ValidateInvitationIuidSchema = z
       return;
     }
 
+    const container = await getContainer();
     const { invitationDAO }: { invitationDAO: InvitationDAO } = container.cradle;
     const invitation = await invitationDAO.findByIuidUnsecured(data.iuid);
 

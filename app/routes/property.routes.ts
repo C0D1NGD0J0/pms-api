@@ -14,7 +14,7 @@ import {
 
 import propertyUnitRoutes from './propertyUnit.routes';
 
-const router: Router = express.Router();
+export const router: Router = express.Router();
 
 router.use(isAuthenticated);
 

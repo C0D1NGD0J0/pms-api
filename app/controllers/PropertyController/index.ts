@@ -209,4 +209,18 @@ export class PropertyController {
       data: propertyFormMeta,
     });
   };
+
+  getAssignableUsers = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const filters = {
+      role: req.query.role as 'admin' | 'staff' | 'manager' | 'all' | undefined,
+      department: req.query.department as string | undefined,
+      search: req.query.search as string | undefined,
+      page: req.query.page ? parseInt(req.query.page as string) : undefined,
+      limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+    };
+    const currentuser = req.context.currentuser!;
+    const result = await this.propertyService.getAssignableUsers(cuid, currentuser, filters);
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

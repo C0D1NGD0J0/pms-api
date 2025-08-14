@@ -1,0 +1,47 @@
+<table width="100%">
+  <tr>
+    <td class="content">
+      <h2>You're Invited to Join Our Team</h2>
+      <p>Hi <%= inviteeName %>,</p>
+      <p>
+        <%= inviterName %> from <strong><%= companyName %></strong> would like to invite you to join our property management team.
+      </p>
+      <p>
+        We think you'd be a great addition to our team and are excited about the possibility of working together.
+      </p>
+      <p>
+        You'll have access to our full property management platform and be able to collaborate with our experienced team members.
+      </p>
+
+      <% if (customMessage) { %>
+      <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #007bff; margin: 20px 0;">
+        <p style="margin: 0; font-style: italic;">
+          "<%= customMessage %>"
+        </p>
+      </div>
+      <% } %>
+
+      <p>
+        Ready to get started? Click below to set up your account.
+      </p>
+      <p>
+        Once you complete your profile, you'll have full access to our platform and can start collaborating with the team.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content cta">
+      <a href="<%= invitationUrl %>" class="btn">Accept Invitation</a>
+      <p style="font-size: 14px; color: #666; margin-top: 15px">
+        If the button doesn't work, copy and paste this link in your browser:<br />
+        <%= invitationUrl %>
+      </p>
+      <p style="font-size: 12px; color: #999">
+        This invitation will expire on <%= new Date(expiresAt).toLocaleDateString() %> at <%= new Date(expiresAt).toLocaleTimeString() %>.
+        <br />
+        If you didn't expect this invitation, you can safely ignore this email.
+      </p>
+    </td>
+  </tr>
+</table>

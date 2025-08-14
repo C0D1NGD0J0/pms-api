@@ -1,4 +1,5 @@
 import fs from 'fs';
+import ejs from 'ejs';
 import path from 'path';
 import { createLogger } from '@utils/index';
 
@@ -41,8 +42,23 @@ export class EmailTemplateService {
       const templates: TemplateListItem[] = [
         {
           templateType: 'invitation',
-          displayName: 'Team Invitation',
-          description: 'Invite users to join your organization',
+          displayName: 'General Invitation',
+          description: 'General invitation template for all roles',
+        },
+        {
+          templateType: 'invitation-vendor',
+          displayName: 'Vendor Invitation',
+          description: 'Invite vendors/service providers to join',
+        },
+        {
+          templateType: 'invitation-tenant',
+          displayName: 'Tenant Invitation',
+          description: 'Invite tenants to activate their resident account',
+        },
+        {
+          templateType: 'invitation-staff',
+          displayName: 'Staff Invitation',
+          description: 'Invite staff members to join the team',
         },
         {
           templateType: 'registration',
@@ -162,6 +178,9 @@ export class EmailTemplateService {
   private getTemplateDirectory(templateType: string): string {
     const templateDirMap: Record<string, string> = {
       invitation: 'invitation',
+      'invitation-vendor': 'invitation',
+      'invitation-tenant': 'invitation',
+      'invitation-staff': 'invitation',
       registration: 'registration',
       forgotPassword: 'forgotPassword',
       resetPassword: 'resetPassword',
@@ -239,5 +258,85 @@ export class EmailTemplateService {
     const customMessagePattern = /<%\s*if\s*\(\s*customMessage\s*\)\s*{\s*%>/;
 
     return customMessagePattern.test(htmlContent) || customMessagePattern.test(textContent);
+  }
+
+  /**
+   * Render template with provided variables and return fully rendered HTML
+   */
+  public async renderTemplate(
+    templateType: string,
+    variables: Record<string, any>
+  ): Promise<string> {
+    try {
+      // Validate template type
+      const validTemplates = await this.getTemplateList();
+      const template = validTemplates.find((t) => t.templateType === templateType);
+
+      if (!template) {
+        throw new Error(`Template type '${templateType}' not found`);
+      }
+
+      // Get template directory and layout path
+      const templateDir = this.getTemplateDirectory(templateType);
+      const layoutPath = path.join(this.layoutPath, 'html/layout.ejs');
+
+      // Prepare EJS options for includes
+      const ejsOptions = {
+        views: [templateDir, this.layoutPath],
+        filename: path.join(templateDir, `${templateType}.ejs`),
+      };
+
+      // Add layout variables
+      const templateVariables = {
+        ...variables,
+        appName: 'Property Management System',
+        year: new Date().getFullYear(),
+      };
+
+      // Read layout content
+      let layoutContent: string;
+      try {
+        layoutContent = await fs.promises.readFile(layoutPath, 'utf8');
+      } catch (error) {
+        this.log.warn({ layoutPath }, 'Layout file not found, using default layout');
+        layoutContent =
+          '<!DOCTYPE html><html><head><title>Email</title></head><body><%- content %></body></html>';
+      }
+
+      // Read template content
+      const templatePath = path.join(templateDir, `${templateType}.ejs`);
+      // Prevent path traversal: ensure templatePath is within templateDir
+      const resolvedTemplatePath = path.resolve(templatePath);
+      const resolvedTemplateDir = path.resolve(templateDir);
+      if (!resolvedTemplatePath.startsWith(resolvedTemplateDir + path.sep)) {
+        throw new Error('Invalid template path');
+      }
+      const templateContent = await fs.promises.readFile(resolvedTemplatePath, 'utf8');
+
+      // First render the template content
+      const renderedContent = await ejs.render(templateContent, templateVariables, {
+        ...ejsOptions,
+        views: [templateDir, path.join(this.layoutPath, 'html')],
+      });
+
+      // Then render the layout with the rendered content
+      const finalHtml = await ejs.render(
+        layoutContent,
+        {
+          ...templateVariables,
+          content: renderedContent,
+        },
+        {
+          views: [path.join(this.layoutPath, 'html')],
+        }
+      );
+
+      return finalHtml;
+    } catch (error) {
+      this.log.error({ error, templateType, variables }, 'Failed to render template');
+      throw new Error(
+        `Failed to render template '${templateType}': ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 }

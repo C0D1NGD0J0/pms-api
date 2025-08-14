@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
-import { isAuthenticated } from '@shared/middlewares';
+import { requirePermission, isAuthenticated } from '@shared/middlewares';
 // import { validateRequest } from '@shared/validations/index';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
+import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 // import { EmailTemplateValidations } from '@shared/validations/EmailTemplateValidation';
 
 const router = Router();
@@ -15,6 +16,7 @@ const router = Router();
 router.get(
   '/',
   isAuthenticated,
+  requirePermission(PermissionResource.CLIENT, PermissionAction.SETTINGS),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<EmailTemplateController>('emailTemplateController');
     return controller.getTemplateList(req, res);
@@ -29,6 +31,7 @@ router.get(
 router.get(
   '/:cuid/:templateType',
   isAuthenticated,
+  requirePermission(PermissionResource.CLIENT, PermissionAction.SETTINGS),
   // validateRequest({ params: EmailTemplateValidations.templateType }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<EmailTemplateController>('emailTemplateController');

@@ -143,7 +143,8 @@
       "csvImportStarted": "CSV import job started",
       "propertyUpdated": "Property updated successfully",
       "csvValidationStarted": "CSV validation process started.",
-      "propertyArchived": "Property archived successfully"
+      "propertyArchived": "Property archived successfully",
+      "assignableUsersRetrieved": "Assignable users retrieved successfully"
     }
   },
   "propertyUnit": {

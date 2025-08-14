@@ -526,3 +526,44 @@ export const getRequestDuration = (start: bigint): { durationInMs: number } => {
   const durationInMs = Number(diff) / 1000000;
   return { durationInMs };
 };
+
+/**
+ * Generates a secure random password for bulk user creation
+ * @param length - The desired length of the password (default: 12)
+ * @returns A secure random password string
+ * @throws Error if password generation fails
+ */
+export function generateDefaultPassword(length = 12): string {
+  try {
+    if (length < 8) {
+      throw new Error('Password length must be at least 8 characters');
+    }
+
+    // Define character sets for password generation
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const numbers = '0123456789';
+    const symbols = '!@#$%^&*';
+    const allChars = lowercase + uppercase + numbers + symbols;
+
+    // Ensure password has at least one character from each set
+    let password = '';
+    password += lowercase[crypto.randomInt(0, lowercase.length)];
+    password += uppercase[crypto.randomInt(0, uppercase.length)];
+    password += numbers[crypto.randomInt(0, numbers.length)];
+    password += symbols[crypto.randomInt(0, symbols.length)];
+
+    // Fill the rest of the password length with random characters
+    for (let i = 4; i < length; i++) {
+      password += allChars[crypto.randomInt(0, allChars.length)];
+    }
+
+    // Shuffle the password to avoid predictable patterns
+    return password
+      .split('')
+      .sort(() => Math.random() - 0.5)
+      .join('');
+  } catch (error) {
+    throw new Error(`Failed to generate default password: ${error.message}`);
+  }
+}

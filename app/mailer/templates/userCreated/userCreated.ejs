@@ -1,0 +1,78 @@
+<table width="100%">
+  <tr>
+    <td class="content">
+      <h2>Your Account Has Been Created</h2>
+      <p>Hi <%= firstName %>,</p>
+      <p>
+        Welcome to <strong><%= companyName %></strong>! Your account has been set up and you're ready to get started.
+      </p>
+      
+      <% if (role === 'vendor') { %>
+        <p>
+          As a vendor partner, you'll have access to our vendor portal where you can manage service requests, 
+          submit invoices, and communicate with our team.
+        </p>
+        <% if (vendorCompanyName) { %>
+        <p>
+          Your company <strong><%= vendorCompanyName %></strong> is now registered in our system.
+        </p>
+        <% } %>
+      <% } else if (role === 'tenant') { %>
+        <p>
+          As a tenant, you'll have access to your resident portal where you can submit maintenance requests, 
+          pay rent, and stay connected with your property management team.
+        </p>
+      <% } else { %>
+        <p>
+          As a team member with <strong><%= role %></strong> access, you'll be able to manage properties, 
+          work with tenants and vendors, and collaborate with your colleagues.
+        </p>
+        <% if (department) { %>
+        <p>
+          You've been assigned to the <strong><%= department %></strong> department<% if (jobTitle) { %> as <strong><%= jobTitle %></strong><% } %>.
+        </p>
+        <% } %>
+      <% } %>
+
+      <% if (customMessage) { %>
+      <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #28a745; margin: 20px 0;">
+        <p style="margin: 0; font-style: italic;">
+          "<%= customMessage %>"
+        </p>
+      </div>
+      <% } %>
+
+      <div style="background-color: #e7f3ff; padding: 20px; border-radius: 5px; margin: 20px 0;">
+        <h3 style="color: #0066cc; margin-top: 0;">Your Login Credentials</h3>
+        <p style="margin: 5px 0;"><strong>Email:</strong> <%= email %></p>
+        <p style="margin: 5px 0;"><strong>Temporary Password:</strong> <code style="background-color: #fff; padding: 3px 6px; border-radius: 3px;"><%= temporaryPassword %></code></p>
+        <p style="font-size: 14px; color: #666; margin-top: 15px;">
+          <strong>Important:</strong> Please change your password after your first login for security.
+        </p>
+      </div>
+
+      <p>
+        Ready to get started? Click below to log in to your account.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content cta">
+      <a href="<%= loginUrl %>" class="btn">Log In to Your Account</a>
+      <p style="font-size: 14px; color: #666; margin-top: 15px">
+        If the button doesn't work, copy and paste this link in your browser:<br />
+        <%= loginUrl %>
+      </p>
+      <p style="font-size: 12px; color: #999">
+        <% if (expectedStartDate) { %>
+        Your expected start date is <%= new Date(expectedStartDate).toLocaleDateString() %>.
+        <br />
+        <% } %>
+        If you have any questions, please contact your administrator.
+        <br />
+        Keep your login credentials secure and don't share them with anyone.
+      </p>
+    </td>
+  </tr>
+</table>

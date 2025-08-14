@@ -290,6 +290,7 @@ export class InvitationController {
 
   validateInvitationCsv = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
+    const { mode, send_notifications, password_length } = req.query;
     const { currentuser } = req.context;
 
     if (!currentuser) {
@@ -307,11 +308,22 @@ export class InvitationController {
     }
 
     const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
-    const result = await this.invitationService.validateInvitationCsv(cuid, csvFile, currentuser);
-    res.status(httpStatusCodes.OK).json(result);
+
+    if (mode === 'bulk_create') {
+      const result = await this.invitationService.validateBulkUserCsv(cuid, csvFile, currentuser, {
+        sendNotifications: Boolean(send_notifications),
+        passwordLength: Number(password_length) || 12,
+      });
+      res.status(httpStatusCodes.OK).json(result);
+    } else {
+      const result = await this.invitationService.validateInvitationCsv(cuid, csvFile, currentuser);
+      res.status(httpStatusCodes.OK).json(result);
+    }
   };
 
   importInvitationsFromCsv = async (req: AppRequest, res: Response) => {
+    const { mode, send_notifications, password_length } = req.query;
+
     if (!req.body.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
@@ -320,8 +332,24 @@ export class InvitationController {
     }
 
     const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
-    const result = await this.invitationService.importInvitationsFromCsv(req.context, csvFile.path);
-    res.status(httpStatusCodes.OK).json(result);
+
+    if (mode === 'bulk_create') {
+      const result = await this.invitationService.importBulkUsersFromCsv(
+        req.context,
+        csvFile.path,
+        {
+          sendNotifications: Boolean(send_notifications),
+          passwordLength: Number(password_length) || 12,
+        }
+      );
+      res.status(httpStatusCodes.OK).json(result);
+    } else {
+      const result = await this.invitationService.importInvitationsFromCsv(
+        req.context,
+        csvFile.path
+      );
+      res.status(httpStatusCodes.OK).json(result);
+    }
   };
 
   processPendingInvitations = async (req: AppRequest, res: Response) => {

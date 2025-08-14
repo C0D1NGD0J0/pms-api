@@ -1,7 +1,4 @@
 import { z } from 'zod';
-import { container } from '@di/index';
-import { ClientDAO } from '@dao/index';
-import { InvitationDAO } from '@dao/invitationDAO';
 import { IUserRole } from '@interfaces/user.interface';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 
@@ -176,51 +173,10 @@ export const invitationDataSchema = z.object({
     .default('pending'),
 });
 
-export const validateTokenAndCuidSchema = z
-  .object({
-    cuid: z.string().min(12).max(32, 'Invalid cuid format'),
-    token: z.string().min(4).max(64, 'Invalid token format'),
-  })
-  .superRefine(async (data, ctx) => {
-    if (!data.cuid || !data.token) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Missing invitation token.cuid',
-        path: ['cuid'],
-      });
-
-      if (!data.token) {
-        return ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Missing invitation token.token',
-          path: ['token'],
-        });
-      }
-    }
-
-    const { invitationDAO, clientDAO }: { invitationDAO: InvitationDAO; clientDAO: ClientDAO } =
-      container.cradle;
-    const invitation = await invitationDAO.findByToken(data.token as string);
-    if (!invitation) {
-      return ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Invalid invitation token',
-        path: ['token'],
-      });
-    }
-
-    if (data.cuid) {
-      const client = await clientDAO.getClientByCuid(data.cuid);
-
-      if (!client || client.cuid !== data.cuid) {
-        return ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Invitation does not belong to this client',
-          path: ['cuid'],
-        });
-      }
-    }
-  });
+export const validateTokenAndCuidSchema = z.object({
+  cuid: z.string().min(12).max(32, 'Invalid cuid format'),
+  token: z.string().min(4).max(64, 'Invalid token format'),
+});
 
 export const sendInvitationSchema = invitationDataSchema;
 
@@ -604,4 +560,26 @@ export const processPendingQuerySchema = z.object({
     .string()
     .transform((str) => str.toLowerCase() === 'true')
     .optional(),
+});
+
+export const bulkCreationQuerySchema = z.object({
+  mode: z
+    .enum(['invite', 'bulk_create'], {
+      errorMap: () => ({ message: 'Mode must be either invite or bulk_create' }),
+    })
+    .default('invite'),
+
+  send_notifications: z
+    .string()
+    .optional()
+    .default('false')
+    .transform((str) => str.toLowerCase() === 'true'),
+
+  password_length: z
+    .string()
+    .regex(/^\d+$/, 'Password length must be a positive number')
+    .optional()
+    .default('12')
+    .transform((str) => parseInt(str, 10))
+    .refine((num) => num >= 8 && num <= 20, 'Password length must be between 8 and 20'),
 });

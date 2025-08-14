@@ -2,8 +2,10 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { getRequestDuration, createLogger } from '@utils/index';
-import { IUserRoleType, IUserRole } from '@interfaces/user.interface';
+import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
+import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
+import { IUserRoleType, ICurrentUser, IUserRole } from '@interfaces/user.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { PopulatedAccountAdmin, IClientDocument, IClientStats } from '@interfaces/client.interface';
 
@@ -521,52 +523,138 @@ export class ClientService {
       throw new BadRequestError({ message: t('client.errors.invalidRole') });
     }
 
-    const usersResult = await this.userDAO.getUsersByClientIdAndRole(clientId, role, {
-      limit: 100,
-      skip: 0,
-      populate: [{ path: 'profile', select: 'personalInfo vendorInfo clientRoleInfo' }],
-    });
+    // Use the getFilteredUsers method with role filter
+    const result = await this.getFilteredUsers(
+      clientId,
+      currentuser,
+      { role },
+      {
+        limit: 100,
+        skip: 0,
+        populate: [{ path: 'profile', select: 'personalInfo vendorInfo clientRoleInfo' }],
+      }
+    );
 
-    const users = usersResult.items.map((user) => {
-      const clientConnection = user.cuids.find((c) => c.cuid === clientId);
-
-      let vendorInfo = null;
-      if (role === 'vendor' && user.profile) {
-        vendorInfo = user.profile.vendorInfo || {};
-
-        // Check if this is a linked vendor account
-        if (user.cuids && user.cuids.length > 0) {
-          const clientConnection = user.cuids.find((connection) => connection.cuid === clientId);
+    // Special handling for vendor type to add linkedVendorId info
+    if (role === 'vendor') {
+      result.data.users = result.data.users.map((user) => {
+        if (user.userType === 'vendor' && user.cuids) {
+          const clientConnection = user.cuids.find((c: any) => c.cuid === clientId);
           if (clientConnection?.linkedVendorId) {
-            vendorInfo = {
-              ...vendorInfo,
+            user.vendorInfo = {
+              ...user.vendorInfo,
               isLinkedAccount: true,
               linkedVendorId: clientConnection.linkedVendorId,
             };
           } else {
-            vendorInfo = {
-              ...vendorInfo,
+            user.vendorInfo = {
+              ...user.vendorInfo,
               isPrimaryVendor: true,
             };
           }
         }
-      }
-
-      return {
-        id: user._id.toString(),
-        email: user.email,
-        displayName: clientConnection?.displayName || '',
-        fullname:
-          user.profile?.personalInfo?.firstName + ' ' + user.profile?.personalInfo?.lastName,
-        isConnected: clientConnection?.isConnected || false,
-        vendorInfo: role === 'vendor' ? vendorInfo : undefined,
-      };
-    });
+        return user;
+      });
+    }
 
     return {
       success: true,
-      data: { users },
+      data: { users: result.data.users },
       message: t('client.success.usersByRoleRetrieved', { role }),
     };
+  }
+
+  /**
+   * Get users filtered by type (employee, tenant, vendor) and other criteria
+   * This method powers the unified API endpoint that supports querying users by different types
+   *
+   * @param cuid - Client ID to fetch users for
+   * @param currentUser - Current authenticated user
+   * @param filterOptions - Options to filter users by (type, role, department, status, search)
+   * @param paginationOpts - Pagination options
+   * @returns A promise that resolves to filtered users with pagination info
+   */
+  async getFilteredUsers(
+    cuid: string,
+    currentUser: ICurrentUser,
+    filterOptions: IUserFilterOptions,
+    paginationOpts: IFindOptions
+  ): Promise<ISuccessReturnData<{ users: any[]; pagination: any }>> {
+    try {
+      if (!cuid) {
+        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+      }
+
+      // Validate client exists
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      // Format role parameter
+      if (filterOptions.role && typeof filterOptions.role === 'string') {
+        filterOptions.role = [filterOptions.role as IUserRoleType];
+      }
+
+      // Get users with pagination
+      const result = await this.userDAO.getUsersByFilteredType(cuid, filterOptions, paginationOpts);
+
+      // Prepare user data for response
+      const users = result.items.map((user: any) => {
+        const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
+
+        // Basic user info
+        const userData: any = {
+          id: user._id.toString(),
+          email: user.email,
+          displayName: clientConnection?.displayName || '',
+          roles: clientConnection?.roles || [],
+          isConnected: clientConnection?.isConnected || false,
+          createdAt: user.createdAt,
+          isActive: user.isActive,
+        };
+
+        // Include profile info if available
+        if (user.profile) {
+          userData.firstName = user.profile.personalInfo?.firstName || '';
+          userData.lastName = user.profile.personalInfo?.lastName || '';
+          userData.fullName = `${userData.firstName} ${userData.lastName}`.trim();
+          userData.avatar = user.profile.personalInfo?.avatar || '';
+          userData.phoneNumber = user.profile.personalInfo?.phoneNumber || '';
+
+          // Determine user type based on roles
+          const roles = clientConnection?.roles || [];
+
+          if (roles.some((r: string) => ['manager', 'admin', 'staff'].includes(r))) {
+            userData.employeeInfo = user.profile.employeeInfo || {};
+            userData.userType = 'employee';
+          } else if (roles.includes('vendor')) {
+            userData.vendorInfo = user.profile.vendorInfo || {};
+            userData.userType = 'vendor';
+          } else if (roles.includes('tenant')) {
+            userData.tenantInfo = user.profile.tenantInfo || {};
+            userData.userType = 'tenant';
+          }
+        }
+
+        return userData;
+      });
+
+      return {
+        success: true,
+        data: {
+          users,
+          pagination: result.pagination,
+        },
+        message: t('client.success.filteredUsersRetrieved'),
+      };
+    } catch (error) {
+      this.log.error('Error getting filtered users:', {
+        cuid,
+        filterOptions,
+        error: error.message || error,
+      });
+      throw error;
+    }
   }
 }

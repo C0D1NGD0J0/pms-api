@@ -54,6 +54,20 @@ router.get(
 );
 
 router.get(
+  '/:cuid/filtered-users',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.LIST),
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+    query: ClientValidations.filteredUsersQuery,
+  }),
+  asyncWrapper((req, res) => {
+    const clientController = req.container.resolve<ClientController>('clientController');
+    return clientController.getFilteredUsers(req, res);
+  })
+);
+
+router.get(
   '/:cuid/users/by-role',
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),

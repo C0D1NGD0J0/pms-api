@@ -90,6 +90,23 @@ export const AssignRoleSchema = z.object({
   }),
 });
 
+export const FilteredUsersQuerySchema = z.object({
+  type: z.enum(['employee', 'tenant', 'vendor']).optional(),
+  role: z
+    .union([
+      z.enum(['admin', 'manager', 'tenant', 'staff', 'vendor']),
+      z.array(z.enum(['admin', 'manager', 'tenant', 'staff', 'vendor'])),
+    ])
+    .optional(),
+  department: z.string().optional(),
+  status: z.enum(['active', 'inactive']).optional(),
+  search: z.string().optional(),
+  page: z.string().regex(/^\d+$/).transform(Number).optional(),
+  limit: z.string().regex(/^\d+$/).transform(Number).optional(),
+  sortBy: z.string().optional(),
+  sort: z.enum(['asc', 'desc']).optional(),
+});
+
 export const UpdateClientDetailsSchema = z
   .object({
     identification: ClientIdentificationSchema.partial().optional(),

@@ -3,6 +3,7 @@ import {
   ClientIdentificationSchema,
   UpdateClientDetailsSchema,
   ClientSubscriptionSchema,
+  FilteredUsersQuerySchema,
   ClientDisplayNameSchema,
   ClientSettingsSchema,
   CompanyProfileSchema,
@@ -22,4 +23,5 @@ export class ClientValidations {
   static updateSubscription = ClientSubscriptionSchema;
   static updateDisplayName = ClientDisplayNameSchema;
   static updateClientDetails = UpdateClientDetailsSchema;
+  static filteredUsersQuery = FilteredUsersQuerySchema;
 }

@@ -1,14 +1,14 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { User } from '@models/index';
-import { hashGenerator, createLogger } from '@utils/index';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
 import { IUserRoleType, IUserDocument } from '@interfaces/user.interface';
+import { paginateResult, hashGenerator, createLogger } from '@utils/index';
 import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
 
 import { BaseDAO } from './baseDAO';
-import { IUserDAO } from './interfaces/userDAO.interface';
 import { IFindOptions, dynamic } from './interfaces/baseDAO.interface';
+import { IUserFilterOptions, IUserDAO } from './interfaces/userDAO.interface';
 
 export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   protected logger: Logger;
@@ -286,6 +286,125 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       return await this.list(query, options);
     } catch (error) {
       this.logger.error(`Error getting users by role ${role} for client ${cuid}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Get users filtered by type (employee, tenant, vendor) and other criteria
+   *
+   * @param cuid - The client CUID
+   * @param filterOptions - Options to filter users by (type, role, department, status, search)
+   * @param paginationOpts - Pagination and sorting options
+   * @returns A promise that resolves to an array of filtered user documents with pagination info
+   */
+  async getUsersByFilteredType(
+    cuid: string,
+    filterOptions: IUserFilterOptions,
+    paginationOpts?: IFindOptions
+  ): Promise<ListResultWithPagination<IUserDocument[]>> {
+    try {
+      const { role, department, status, search } = filterOptions;
+
+      // Base query for client users
+      const query: FilterQuery<IUserDocument> = {
+        'cuids.cuid': cuid,
+        'cuids.isConnected': true,
+        deletedAt: null,
+      };
+
+      // Handle active/inactive status
+      if (status) {
+        query.isActive = status === 'active';
+      }
+
+      // Handle role filtering
+      if (role) {
+        if (Array.isArray(role)) {
+          query['cuids.roles'] = { $in: role };
+        } else {
+          query['cuids.roles'] = role;
+        }
+      }
+
+      // Handle search term
+      if (search && search.trim()) {
+        const searchRegex = new RegExp(search.trim(), 'i');
+        query.$or = [
+          { email: searchRegex },
+          { 'profile.personalInfo.firstName': searchRegex },
+          { 'profile.personalInfo.lastName': searchRegex },
+          { 'profile.personalInfo.displayName': searchRegex },
+          { 'profile.personalInfo.phoneNumber': searchRegex },
+        ];
+      }
+
+      // Set up pipeline stages for more complex filtering
+      const pipeline: PipelineStage[] = [
+        { $match: query },
+        {
+          $lookup: {
+            from: 'profiles',
+            localField: '_id',
+            foreignField: 'user',
+            as: 'profile',
+          },
+        },
+        { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+      ];
+
+      // Add department filter if specified (requires profile lookup)
+      if (department) {
+        pipeline.push({
+          $match: {
+            'profile.employeeInfo.department': department,
+          },
+        });
+      }
+
+      // Add projection to shape the response
+      pipeline.push({
+        $project: {
+          password: 0,
+          activationToken: 0,
+          passwordResetToken: 0,
+          activationTokenExpiresAt: 0,
+          passwordResetTokenExpiresAt: 0,
+          'profile.__v': 0,
+        },
+      });
+
+      // Handle pagination
+      const limit = paginationOpts?.limit || 10;
+      const skip = paginationOpts?.skip || 0;
+      const sort = paginationOpts?.sort || 'desc';
+      const sortBy = paginationOpts?.sortBy || 'createdAt';
+
+      // Clone pipeline for count
+      const countPipeline = [...pipeline, { $count: 'total' }];
+
+      // Add sorting and pagination to the main pipeline
+      pipeline.push(
+        { $sort: { [sortBy]: sort === 'desc' ? -1 : 1 } },
+        { $skip: skip },
+        { $limit: limit }
+      );
+
+      // Execute both pipelines
+      const [users, countResult] = await Promise.all([
+        this.aggregate(pipeline),
+        this.aggregate(countPipeline),
+      ]);
+
+      const total = countResult.length > 0 ? (countResult[0] as any).total : 0;
+      const pagination = paginateResult(total, skip, limit);
+
+      return {
+        items: users,
+        pagination,
+      };
+    } catch (error) {
+      this.logger.error(`Error getting filtered users for client ${cuid}:`, error);
       throw this.throwErrorHandler(error);
     }
   }

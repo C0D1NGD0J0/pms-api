@@ -305,7 +305,13 @@ export class EmailTemplateService {
 
       // Read template content
       const templatePath = path.join(templateDir, `${templateType}.ejs`);
-      const templateContent = await fs.promises.readFile(templatePath, 'utf8');
+      // Prevent path traversal: ensure templatePath is within templateDir
+      const resolvedTemplatePath = path.resolve(templatePath);
+      const resolvedTemplateDir = path.resolve(templateDir);
+      if (!resolvedTemplatePath.startsWith(resolvedTemplateDir + path.sep)) {
+        throw new Error('Invalid template path');
+      }
+      const templateContent = await fs.promises.readFile(resolvedTemplatePath, 'utf8');
 
       // First render the template content
       const renderedContent = await ejs.render(templateContent, templateVariables, {

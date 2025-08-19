@@ -150,6 +150,10 @@ export const createMockUserDAO = () => ({
   createPasswordResetToken: jest.fn(),
   activateAccount: jest.fn(),
   isEmailUnique: jest.fn(),
+  getUsersByFilteredType: jest.fn().mockResolvedValue({
+    items: [],
+    pagination: { total: 0, perPage: 10, totalPages: 1, currentPage: 1, hasMoreResource: false },
+  }),
 });
 
 export const createMockPropertyDAO = () => ({

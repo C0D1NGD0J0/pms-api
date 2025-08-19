@@ -4,9 +4,9 @@ import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { getRequestDuration, createLogger } from '@utils/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
-import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
-import { IUserRoleType, ICurrentUser, IUserRole } from '@interfaces/user.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
+import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
+import { IUserRoleType, ICurrentUser, FilteredUser, IUserRole } from '@interfaces/user.interface';
 import { PopulatedAccountAdmin, IClientDocument, IClientStats } from '@interfaces/client.interface';
 
 interface IConstructor {
@@ -535,31 +535,9 @@ export class ClientService {
       }
     );
 
-    // Special handling for vendor type to add linkedVendorId info
-    if (role === 'vendor') {
-      result.data.users = result.data.users.map((user) => {
-        if (user.userType === 'vendor' && user.cuids) {
-          const clientConnection = user.cuids.find((c: any) => c.cuid === clientId);
-          if (clientConnection?.linkedVendorId) {
-            user.vendorInfo = {
-              ...user.vendorInfo,
-              isLinkedAccount: true,
-              linkedVendorId: clientConnection.linkedVendorId,
-            };
-          } else {
-            user.vendorInfo = {
-              ...user.vendorInfo,
-              isPrimaryVendor: true,
-            };
-          }
-        }
-        return user;
-      });
-    }
-
     return {
       success: true,
-      data: { users: result.data.users },
+      data: { users: result.data.items },
       message: t('client.success.usersByRoleRetrieved', { role }),
     };
   }
@@ -579,7 +557,7 @@ export class ClientService {
     currentUser: ICurrentUser,
     filterOptions: IUserFilterOptions,
     paginationOpts: IFindOptions
-  ): Promise<ISuccessReturnData<{ users: any[]; pagination: any }>> {
+  ): Promise<ISuccessReturnData<{ items: FilteredUser[]; pagination: PaginateResult }>> {
     try {
       if (!cuid) {
         throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
@@ -596,16 +574,16 @@ export class ClientService {
         filterOptions.role = [filterOptions.role as IUserRoleType];
       }
 
-      // Get users with pagination
       const result = await this.userDAO.getUsersByFilteredType(cuid, filterOptions, paginationOpts);
 
       // Prepare user data for response
       const users = result.items.map((user: any) => {
+        console.dir(user, { depth: null });
         const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
 
         // Basic user info
         const userData: any = {
-          id: user._id.toString(),
+          uid: user.uid,
           email: user.email,
           displayName: clientConnection?.displayName || '',
           roles: clientConnection?.roles || [],
@@ -628,12 +606,31 @@ export class ClientService {
           if (roles.some((r: string) => ['manager', 'admin', 'staff'].includes(r))) {
             userData.employeeInfo = user.profile.employeeInfo || {};
             userData.userType = 'employee';
+            delete userData.vendorInfo;
           } else if (roles.includes('vendor')) {
             userData.vendorInfo = user.profile.vendorInfo || {};
             userData.userType = 'vendor';
+
+            // Add linkedVendorId info for vendors
+            if (clientConnection?.linkedVendorId) {
+              userData.vendorInfo = {
+                ...userData.vendorInfo,
+                isLinkedAccount: true,
+                linkedVendorId: clientConnection.linkedVendorId,
+              };
+            } else {
+              userData.vendorInfo = {
+                ...userData.vendorInfo,
+                isPrimaryVendor: true,
+              };
+            }
+
+            delete userData.employeeInfo;
           } else if (roles.includes('tenant')) {
             userData.tenantInfo = user.profile.tenantInfo || {};
             userData.userType = 'tenant';
+            delete userData.vendorInfo;
+            delete userData.employeeInfo;
           }
         }
 
@@ -643,8 +640,8 @@ export class ClientService {
       return {
         success: true,
         data: {
-          users,
-          pagination: result.pagination,
+          items: users,
+          pagination: result.pagination!,
         },
         message: t('client.success.filteredUsersRetrieved'),
       };

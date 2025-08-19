@@ -99,19 +99,8 @@ export class ClientController {
    */
   getFilteredUsers = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-    const { type, role, department, status, search, page, limit, sortBy, sort } = req.query;
+    const { role, department, status, search, page, limit, sortBy, sort } = req.query;
 
-    this.log.info('Getting filtered users', {
-      cuid,
-      type,
-      role,
-      department,
-      status,
-      page,
-      limit,
-    });
-
-    // Prepare filter options
     const filterOptions: IUserFilterOptions = {
       role: role as IUserRoleType | IUserRoleType[] | undefined,
       department: department as string | undefined,
@@ -119,7 +108,6 @@ export class ClientController {
       search: search as string | undefined,
     };
 
-    // Prepare pagination options
     const paginationOpts = {
       page: page ? parseInt(page as string, 10) : 1,
       limit: limit ? parseInt(limit as string, 10) : 10,

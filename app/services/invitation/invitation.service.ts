@@ -352,11 +352,18 @@ export class InvitationService {
       return { user, invitation };
     });
 
+    // Pass invitation metadata to profile initialization
+    const metadata = {
+      employeeInfo: result.invitation.metadata?.employeeInfo,
+      vendorInfo: result.invitation.metadata?.vendorInfo,
+    };
+
     await this.profileService.initializeRoleInfo(
       result.user._id.toString(),
       cuid,
       result.invitation.role,
-      result.invitation.linkedVendorId?.toString()
+      result.invitation.linkedVendorId?.toString(),
+      metadata
     );
 
     if (result.invitation.linkedVendorId && result.invitation.role === 'vendor') {

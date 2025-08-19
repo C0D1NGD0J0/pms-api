@@ -1,7 +1,7 @@
 import { Document, Types } from 'mongoose';
 
-import { IProfileDocument, GDPRSettings } from './profile.interface';
 import { IClientUserConnections, ICompanyProfile } from './client.interface';
+import { IProfileDocument, GDPRSettings, EmployeeInfo, VendorInfo } from './profile.interface';
 
 export enum IUserRelationshipsEnum {
   parents = 'parents',
@@ -17,6 +17,57 @@ export enum IUserRole {
   TENANT = 'tenant',
   STAFF = 'staff',
   ADMIN = 'admin',
+}
+
+export interface FilteredUser {
+  // User type indicator
+  userType?: 'employee' | 'vendor' | 'tenant';
+  vendorInfo?: FilteredVendorInfo; // Extended version with additional fields
+  // Type-specific information (conditional based on userType)
+  employeeInfo?: EmployeeInfo;
+  createdAt: Date | string;
+  tenantInfo?: TenantInfo;
+  roles: IUserRoleType[];
+  isConnected: boolean;
+
+  phoneNumber?: string;
+  displayName: string;
+  // Profile information (optional, from populated profile)
+  firstName?: string;
+  isActive: boolean;
+  lastName?: string;
+
+  fullName?: string;
+
+  avatar?: string;
+  email: string;
+  // Basic user information
+  id: string;
+}
+
+export interface FilteredUser {
+  // User type indicator
+  userType?: 'employee' | 'vendor' | 'tenant';
+  vendorInfo?: FilteredVendorInfo; // Extended version with additional fields
+  employeeInfo?: EmployeeInfo;
+  createdAt: Date | string;
+  tenantInfo?: TenantInfo;
+  roles: IUserRoleType[];
+  isConnected: boolean;
+
+  phoneNumber?: string;
+  displayName: string;
+  // Profile information (optional, from populated profile)
+  firstName?: string;
+  isActive: boolean;
+  lastName?: string;
+
+  fullName?: string;
+
+  avatar?: string;
+  email: string;
+  // Basic user information
+  id: string;
 }
 
 export interface ICurrentUser {
@@ -72,6 +123,7 @@ export interface ITenant extends IUser {
   activatedAt: Date;
   cuid: string;
 }
+
 export type IdentificationType = {
   idType: 'passport' | 'national-id' | 'drivers-license' | 'corporation-license';
   idNumber: string;
@@ -80,7 +132,6 @@ export type IdentificationType = {
   expiryDate: Date | string; // or Date if you prefer Date objects
   issuingState: string;
 };
-
 export type ISignupData = {
   email: string;
   location: string;
@@ -104,6 +155,15 @@ export interface IUser {
   activationToken?: string;
   password: string;
   email: string;
+}
+
+/**
+ * Extended vendor info that includes additional fields from getUsersByRole
+ */
+export interface FilteredVendorInfo extends VendorInfo {
+  isLinkedAccount?: boolean;
+  isPrimaryVendor?: boolean;
+  linkedVendorId?: string;
 }
 
 export interface ITenantDocument extends Document, ITenant {
@@ -132,5 +192,13 @@ export interface IAccountType {
 }
 
 export type IUserRoleType = 'admin' | 'tenant' | 'manager' | 'staff' | 'landlord' | 'vendor';
+
+/**
+ * Tenant information placeholder
+ * TODO: Define based on tenant model when available
+ */
+export interface TenantInfo {
+  [key: string]: any;
+}
 
 export type IRefreshToken = IRefreshTokenDocument;

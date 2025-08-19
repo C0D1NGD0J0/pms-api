@@ -92,13 +92,13 @@ export const createMockInvitationData = (
   status: faker.helpers.arrayElement(['draft', 'pending']),
   metadata: {
     inviteMessage: faker.lorem.sentences(2),
-    expectedStartDate: faker.date.future(),
+    expectedStartDate: faker.date.future().toISOString() as any, // Cast to any for Zod validation
     employeeInfo: {
       department: 'Engineering' as any, // Cast to any as a temporary fix for EmployeeDepartment
       jobTitle: faker.person.jobTitle(),
       employeeId: faker.string.alphanumeric(8),
       reportsTo: faker.person.fullName(),
-      startDate: faker.date.future(),
+      startDate: faker.date.future().toISOString() as any, // Cast to any for Zod validation
     },
     vendorInfo: {
       businessType: faker.company.buzzPhrase(),
@@ -206,7 +206,15 @@ export const createMockInvitationDAO = () => ({
   insert: jest.fn().mockResolvedValue(createMockInvitation()),
   updateById: jest.fn().mockResolvedValue({ acknowledged: true, modifiedCount: 1 }),
   deleteById: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
-  // Avoid duplicate methods by renaming or removing
+  // Support both versions for compatibility
+  startSession: jest.fn().mockImplementation(() => createMockSession()),
+  withTransaction: jest
+    .fn()
+    .mockImplementation(
+      async (session: ClientSession, callback: (session: ClientSession) => Promise<any>) => {
+        return await callback(session);
+      }
+    ),
   _startSession: jest.fn().mockImplementation(() => createMockSession()),
   _withTransaction: jest
     .fn()

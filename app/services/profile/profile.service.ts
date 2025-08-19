@@ -428,7 +428,11 @@ export class ProfileService {
     userId: string,
     cuid: string,
     role: IUserRoleType,
-    linkedVendorId?: string
+    linkedVendorId?: string,
+    metadata?: {
+      employeeInfo?: any;
+      vendorInfo?: any;
+    }
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     await this.ensureClientRoleInfo(userId, cuid, role, linkedVendorId);
     const profile = await this.profileDAO.findFirst({ user: new Types.ObjectId(userId) });
@@ -441,13 +445,15 @@ export class ProfileService {
     let result: IProfileDocument | null = null;
 
     if (role === 'vendor' && !linkedVendorId) {
-      // For primary vendors, initialize the common vendor info
-      result = await this.profileDAO.updateCommonVendorInfo(profile.id, {});
-      this.logger.info(`Initialized vendor info for profile ${profile.id}`);
+      // For primary vendors, initialize the common vendor info with metadata if provided
+      const vendorData = metadata?.vendorInfo || {};
+      result = await this.profileDAO.updateCommonVendorInfo(profile.id, vendorData);
+      this.logger.info(`Initialized vendor info for profile ${profile.id} with metadata`);
     } else if (['manager', 'staff', 'admin'].includes(role)) {
-      // For employees, initialize the common employee info
-      result = await this.profileDAO.updateCommonEmployeeInfo(profile.id, {});
-      this.logger.info(`Initialized employee info for profile ${profile.id}`);
+      // For employees, initialize the common employee info with metadata if provided
+      const employeeData = metadata?.employeeInfo || {};
+      result = await this.profileDAO.updateCommonEmployeeInfo(profile.id, employeeData);
+      this.logger.info(`Initialized employee info for profile ${profile.id} with metadata`);
     } else {
       result = profile;
     }

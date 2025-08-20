@@ -23,7 +23,7 @@ router.get(
   }),
   asyncWrapper((req, res) => {
     const userController = req.container.resolve<UserController>('userController');
-    return userController.getClientUsers(req, res);
+    return userController.getClientUser(req, res);
   })
 );
 
@@ -36,7 +36,7 @@ router.get(
   }),
   asyncWrapper((req, res) => {
     const userController = req.container.resolve<UserController>('userController');
-    return userController.getClientUsers(req, res);
+    return userController.getFilteredUsers(req, res);
   })
 );
 

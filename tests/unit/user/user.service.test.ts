@@ -14,14 +14,25 @@ describe('UserService', () => {
   let userService: UserService;
   let mockClientDAO: any;
   let mockUserDAO: any;
+  let mockPropertyDAO: any;
+  let mockUserCache: any;
 
   beforeEach(() => {
     mockClientDAO = createMockClientDAO();
     mockUserDAO = createMockUserDAO();
+    mockPropertyDAO = {
+      getPropertiesByClientId: jest.fn().mockResolvedValue({ items: [] })
+    };
+    mockUserCache = {
+      getUserDetail: jest.fn().mockResolvedValue({ success: false }),
+      cacheUserDetail: jest.fn().mockResolvedValue({ success: true })
+    };
 
     userService = new UserService({
       clientDAO: mockClientDAO,
       userDAO: mockUserDAO,
+      propertyDAO: mockPropertyDAO,
+      userCache: mockUserCache,
     });
   });
 
@@ -29,53 +40,6 @@ describe('UserService', () => {
     jest.clearAllMocks();
   });
 
-  describe('getClientUsers', () => {
-    it('should successfully retrieve all client users', async () => {
-      const mockContext = createMockRequestContext({
-        currentuser: createMockCurrentUser(),
-      });
-      const clientId = mockContext.currentuser.client.cuid;
-      const mockUsers = [
-        createMockUser({
-          cuids: [
-            { cuid: clientId, roles: ['admin'], isConnected: true, displayName: 'Admin User' },
-          ],
-        }),
-        createMockUser({
-          cuids: [
-            { cuid: clientId, roles: ['manager'], isConnected: true, displayName: 'Manager User' },
-          ],
-        }),
-      ];
-
-      mockUserDAO.getUsersByClientId.mockResolvedValue({
-        items: mockUsers,
-        pagination: { total: 2 },
-      });
-
-      const result = await userService.getClientUsers(mockContext);
-
-      // Assert
-      expect(result.success).toBe(true);
-      expect(result.data.users).toHaveLength(2);
-      expect(result.data.users[0]).toMatchObject({
-        id: expect.any(String),
-        email: expect.any(String),
-        displayName: 'Admin User',
-        roles: ['admin'],
-        isConnected: true,
-      });
-      expect(mockUserDAO.getUsersByClientId).toHaveBeenCalledWith(
-        clientId,
-        {},
-        {
-          limit: 100,
-          skip: 0,
-          populate: 'profile',
-        }
-      );
-    });
-  });
 
   describe('getUsersByRole', () => {
     it('should successfully retrieve users by role', async () => {

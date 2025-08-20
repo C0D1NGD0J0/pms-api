@@ -94,6 +94,78 @@ router.get(
   })
 );
 
+router.get(
+  '/:cuid/properties/pending',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  validateRequest({
+    params: PropertyValidations.validatecuid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getPendingApprovals(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/properties/:pid/approve',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  validateRequest({
+    params: PropertyValidations.validatePropertyAndClientIds,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.approveProperty(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/properties/:pid/reject',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  validateRequest({
+    params: PropertyValidations.validatePropertyAndClientIds,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.rejectProperty(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/properties/bulk-approve',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  validateRequest({
+    params: PropertyValidations.validatecuid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.bulkApproveProperties(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/properties/bulk-reject',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  validateRequest({
+    params: PropertyValidations.validatecuid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.bulkRejectProperties(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/properties/my-requests',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
+  validateRequest({
+    params: PropertyValidations.validatecuid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getMyPropertyRequests(req, res);
+  })
+);
+
 router.patch(
   '/:cuid/client_properties/:pid',
   validateRequest({

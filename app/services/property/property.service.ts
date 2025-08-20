@@ -9,7 +9,6 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyTypeManager } from '@utils/PropertyTypeManager';
-import { getRequestDuration, createLogger, JOB_NAME } from '@utils/index';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import {
   UploadCompletedPayload,
@@ -32,6 +31,15 @@ import {
   UploadResult,
 } from '@interfaces/utils.interface';
 import {
+  PROPERTY_CREATION_ALLOWED_DEPARTMENTS,
+  PROPERTY_APPROVAL_ROLES,
+  PROPERTY_STAFF_ROLES,
+  getRequestDuration,
+  createLogger,
+  JOB_NAME,
+} from '@utils/index';
+import {
+  PropertyApprovalStatusEnum,
   IAssignableUsersFilter,
   IPropertyWithUnitInfo,
   IPropertyFilterQuery,
@@ -181,6 +189,53 @@ export class PropertyService implements IDisposable {
 
       this.propertyTypeValidation(propertyData);
 
+      // Check user role and determine approval status
+      const userRole = currentuser.client.role;
+      let approvalStatus: PropertyApprovalStatusEnum = PropertyApprovalStatusEnum.PENDING;
+      let approvalDetails: any = {};
+
+      if (PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+        // Admin or Manager - auto-approve
+        approvalStatus = PropertyApprovalStatusEnum.APPROVED;
+        approvalDetails = {
+          approvedBy: new Types.ObjectId(currentuser.sub),
+          approvedAt: new Date(),
+        };
+        this.log.info('Property auto-approved for admin/manager', {
+          userId: currentuser.sub,
+          role: userRole,
+        });
+      } else if (PROPERTY_STAFF_ROLES.includes(userRole)) {
+        // Staff - check department
+        const userProfile = await this.profileDAO.getProfileByUserId(currentuser.sub);
+        const userDepartment = userProfile?.employeeInfo?.department;
+
+        if (
+          !userDepartment ||
+          !PROPERTY_CREATION_ALLOWED_DEPARTMENTS.includes(userDepartment as any)
+        ) {
+          throw new InvalidRequestError({
+            message:
+              'You are not authorized to create properties. Only staff in Operations or Management departments can create properties.',
+          });
+        }
+
+        // Staff in allowed department - requires approval
+        approvalStatus = PropertyApprovalStatusEnum.PENDING;
+        approvalDetails = {
+          requestedBy: new Types.ObjectId(currentuser.sub),
+        };
+        this.log.info('Property pending approval for staff', {
+          userId: currentuser.sub,
+          department: userDepartment,
+        });
+      } else {
+        // Other roles (vendor, tenant, etc.) - not allowed
+        throw new InvalidRequestError({
+          message: 'You are not authorized to create properties.',
+        });
+      }
+
       propertyData.createdBy = new Types.ObjectId(currentuser.sub);
       propertyData.managedBy = propertyData.managedBy
         ? new Types.ObjectId(propertyData.managedBy)
@@ -190,6 +245,8 @@ export class PropertyService implements IDisposable {
         {
           ...propertyData,
           cuid,
+          approvalStatus,
+          approvalDetails,
         },
         session
       );
@@ -203,6 +260,7 @@ export class PropertyService implements IDisposable {
           propertyId: property.id,
           propertyName: property.name,
           propertyType: property.propertyType,
+          approvalStatus: property.approvalStatus,
         },
         'Property created successfully'
       );
@@ -403,9 +461,22 @@ export class PropertyService implements IDisposable {
     const filter: FilterQuery<IPropertyDocument> = {
       cuid,
       deletedAt: null,
+      $or: [
+        { approvalStatus: { $exists: false } },
+        { approvalStatus: PropertyApprovalStatusEnum.APPROVED },
+      ],
+      status: { $ne: 'inactive' },
     };
 
     if (filters) {
+      if (filters.includeUnapproved && queryParams.currentUser) {
+        const userRole = queryParams.currentUser.client.role;
+        if (PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+          // Remove the $or filter to show all properties regardless of approval status
+          delete filter.$or;
+        }
+      }
+
       if (filters.propertyType) {
         filter.propertyType = { $in: filters.propertyType };
       }
@@ -585,15 +656,75 @@ export class PropertyService implements IDisposable {
       throw new NotFoundError({ message: t('property.errors.notFound') });
     }
 
+    const userRole = ctx.currentuser.client.role;
+    let updatePayload: any = {};
+    let message = 'Property updated successfully';
+
+    // Remove pendingChanges from updateData if it exists
+    const { pendingChanges, ...cleanUpdateData } = updateData;
+
+    // Staff edits go to pendingChanges, admin/manager edits go directly to main fields
+    if (PROPERTY_STAFF_ROLES.includes(userRole)) {
+      // Staff update - store in pendingChanges
+      updatePayload = {
+        pendingChanges: {
+          ...cleanUpdateData,
+          updatedBy: new Types.ObjectId(ctx.currentuser.sub),
+          updatedAt: new Date(),
+        },
+        lastModifiedBy: new Types.ObjectId(ctx.currentuser.sub),
+      };
+
+      message = 'Property changes submitted for approval';
+
+      this.log.info('Property changes stored in pendingChanges for approval', {
+        propertyId: property.id,
+        editedBy: ctx.currentuser.sub,
+      });
+    } else if (PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+      // Admin/Manager update - apply directly
+      if (cleanUpdateData.description?.text) {
+        cleanUpdateData.description = {
+          text: sanitizeHtml(cleanUpdateData.description.text),
+          html: sanitizeHtml(cleanUpdateData.description.html || ''),
+        };
+      }
+
+      if (cleanUpdateData.financialDetails) {
+        if (cleanUpdateData.financialDetails.purchaseDate) {
+          cleanUpdateData.financialDetails.purchaseDate = new Date(
+            cleanUpdateData.financialDetails.purchaseDate
+          );
+        }
+        if (cleanUpdateData.financialDetails.lastAssessmentDate) {
+          cleanUpdateData.financialDetails.lastAssessmentDate = new Date(
+            cleanUpdateData.financialDetails.lastAssessmentDate
+          );
+        }
+      }
+
+      updatePayload = {
+        ...cleanUpdateData,
+        lastModifiedBy: new Types.ObjectId(ctx.currentuser.sub),
+      };
+
+      message = 'Property updated successfully';
+    } else {
+      throw new InvalidRequestError({
+        message: 'You are not authorized to update properties.',
+      });
+    }
+
+    // Validate the changes
     if (
-      updateData.propertyType ||
-      updateData.specifications ||
-      updateData.financialDetails ||
-      updateData.fees
+      cleanUpdateData.propertyType ||
+      cleanUpdateData.specifications ||
+      cleanUpdateData.financialDetails ||
+      cleanUpdateData.fees
     ) {
       const dataToValidate = {
-        ...property,
-        ...updateData,
+        ...property.toObject(),
+        ...cleanUpdateData,
         fullAddress: property.address?.fullAddress || 'existing-address',
       } as NewPropertyType;
 
@@ -614,30 +745,8 @@ export class PropertyService implements IDisposable {
       }
     }
 
-    if (property.description?.text !== updateData.description?.text) {
-      updateData.description = {
-        text: sanitizeHtml(updateData.description?.text || ''),
-        html: sanitizeHtml(updateData.description?.html || ''),
-      };
-    }
-
-    updateData.lastModifiedBy = new Types.ObjectId(ctx.currentuser.sub);
-    if (updateData.financialDetails) {
-      if (updateData.financialDetails.purchaseDate) {
-        updateData.financialDetails.purchaseDate = new Date(
-          updateData.financialDetails.purchaseDate
-        );
-      }
-
-      if (updateData.financialDetails.lastAssessmentDate) {
-        updateData.financialDetails.lastAssessmentDate = new Date(
-          updateData.financialDetails.lastAssessmentDate
-        );
-      }
-    }
-
-    if (updateData.occupancyStatus) {
-      this.validateOccupancyStatusChange(property, updateData);
+    if (cleanUpdateData.occupancyStatus) {
+      this.validateOccupancyStatusChange(property, cleanUpdateData);
     }
 
     const updatedProperty = await this.propertyDAO.update(
@@ -647,7 +756,7 @@ export class PropertyService implements IDisposable {
         deletedAt: null,
       },
       {
-        $set: updateData,
+        $set: updatePayload,
       }
     );
 
@@ -656,7 +765,381 @@ export class PropertyService implements IDisposable {
     }
 
     await this.propertyCache.invalidateProperty(cuid, property.id);
-    return { success: true, data: updatedProperty, message: 'Property updated successfully' };
+    return {
+      success: true,
+      data: updatedProperty,
+      message,
+    };
+  }
+
+  /**
+   * Get pending property approvals
+   * Only admin/managers can access this
+   */
+  async getPendingApprovals(
+    cuid: string,
+    currentuser: ICurrentUser,
+    pagination: IPaginationQuery
+  ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: PaginateResult }>> {
+    // Check if user has permission
+    const userRole = currentuser.client.role;
+    if (!PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+      throw new InvalidRequestError({
+        message: 'You are not authorized to view pending approvals.',
+      });
+    }
+
+    const filter: FilterQuery<IPropertyDocument> = {
+      cuid,
+      deletedAt: null,
+      approvalStatus: 'pending',
+    };
+
+    const opts: IPaginationQuery = {
+      page: pagination.page || 1,
+      limit: Math.max(1, Math.min(pagination.limit || 10, 100)),
+      sort: pagination.sort || '-createdAt',
+      sortBy: pagination.sortBy || 'createdAt',
+      skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
+    };
+
+    const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
+
+    return {
+      success: true,
+      data: {
+        items: properties.items,
+        pagination: properties.pagination,
+      },
+      message: 'Pending approvals retrieved successfully',
+    };
+  }
+
+  /**
+   * Approve a property
+   * Only admin/managers can approve
+   */
+  async approveProperty(
+    cuid: string,
+    pid: string,
+    currentuser: ICurrentUser,
+    notes?: string
+  ): Promise<ISuccessReturnData> {
+    // Check if user has permission
+    const userRole = currentuser.client.role;
+    if (!PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+      throw new InvalidRequestError({
+        message: 'You are not authorized to approve properties.',
+      });
+    }
+
+    const property = await this.propertyDAO.findFirst({
+      pid,
+      cuid,
+      deletedAt: null,
+    });
+
+    if (!property) {
+      throw new NotFoundError({ message: t('property.errors.notFound') });
+    }
+
+    if (property.approvalStatus === 'approved' && !property.pendingChanges) {
+      throw new InvalidRequestError({
+        message: 'Property is already approved and has no pending changes.',
+      });
+    }
+
+    let updateData: any = {
+      approvalStatus: 'approved',
+      approvalDetails: {
+        ...property.approvalDetails,
+        approvedBy: new Types.ObjectId(currentuser.sub),
+        approvedAt: new Date(),
+        notes: notes || property.approvalDetails?.notes,
+      },
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    };
+
+    // If there are pending changes, apply them to the main fields
+    if (property.pendingChanges) {
+      const { updatedBy, updatedAt, ...changesWithoutMetadata } = property.pendingChanges as any;
+
+      // Apply pending changes to main fields
+      updateData = {
+        ...updateData,
+        ...changesWithoutMetadata,
+        pendingChanges: null, // Clear pending changes after applying
+      };
+
+      this.log.info('Applying pending changes during approval', {
+        propertyId: property.id,
+        pendingChanges: Object.keys(changesWithoutMetadata),
+      });
+    }
+
+    const updatedProperty = await this.propertyDAO.update(
+      { pid, cuid, deletedAt: null },
+      { $set: updateData }
+    );
+
+    if (!updatedProperty) {
+      throw new BadRequestError({ message: 'Unable to approve property.' });
+    }
+
+    await this.propertyCache.invalidateProperty(cuid, property.id);
+    await this.propertyCache.invalidatePropertyLists(cuid);
+
+    this.log.info('Property approved', {
+      propertyId: property.id,
+      approvedBy: currentuser.sub,
+      hadPendingChanges: !!property.pendingChanges,
+    });
+
+    return {
+      success: true,
+      data: updatedProperty,
+      message: property.pendingChanges
+        ? 'Property changes approved and applied successfully'
+        : 'Property approved successfully',
+    };
+  }
+
+  /**
+   * Reject a property
+   * Only admin/managers can reject
+   */
+  async rejectProperty(
+    cuid: string,
+    pid: string,
+    currentuser: ICurrentUser,
+    reason: string
+  ): Promise<ISuccessReturnData> {
+    if (!reason || reason.trim().length === 0) {
+      throw new BadRequestError({ message: 'Rejection reason is required.' });
+    }
+
+    // Check if user has permission
+    const userRole = currentuser.client.role;
+    if (!PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+      throw new InvalidRequestError({
+        message: 'You are not authorized to reject properties.',
+      });
+    }
+
+    const property = await this.propertyDAO.findFirst({
+      pid,
+      cuid,
+      deletedAt: null,
+    });
+
+    if (!property) {
+      throw new NotFoundError({ message: t('property.errors.notFound') });
+    }
+
+    // Determine the appropriate status after rejection
+    const updateData: any = {
+      approvalDetails: {
+        ...property.approvalDetails,
+        rejectedBy: new Types.ObjectId(currentuser.sub),
+        rejectedAt: new Date(),
+        rejectionReason: reason.trim(),
+      },
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    };
+
+    // If property has pending changes, clear them and keep status as approved (using old data)
+    if (property.pendingChanges) {
+      updateData.pendingChanges = null; // Clear pending changes
+      // Keep approvalStatus as 'approved' since we're keeping the old approved data
+
+      this.log.info('Clearing pending changes on rejection', {
+        propertyId: property.id,
+        hadPendingChanges: true,
+      });
+    } else {
+      // If no pending changes, this is a new property being rejected
+      updateData.approvalStatus = 'rejected';
+    }
+
+    const updatedProperty = await this.propertyDAO.update(
+      { pid, cuid, deletedAt: null },
+      { $set: updateData }
+    );
+
+    if (!updatedProperty) {
+      throw new BadRequestError({ message: 'Unable to reject property.' });
+    }
+
+    await this.propertyCache.invalidateProperty(cuid, property.id);
+    await this.propertyCache.invalidatePropertyLists(cuid);
+
+    this.log.info('Property rejected', {
+      propertyId: property.id,
+      rejectedBy: currentuser.sub,
+      reason,
+      hadPendingChanges: !!property.pendingChanges,
+    });
+
+    return {
+      success: true,
+      data: updatedProperty,
+      message: property.pendingChanges
+        ? 'Property changes rejected. Original data preserved.'
+        : 'Property rejected',
+    };
+  }
+
+  /**
+   * Bulk approve properties
+   * Only admin/managers can bulk approve
+   */
+  async bulkApproveProperties(
+    cuid: string,
+    propertyIds: string[],
+    currentuser: ICurrentUser
+  ): Promise<ISuccessReturnData> {
+    // Check if user has permission
+    const userRole = currentuser.client.role;
+    if (!PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+      throw new InvalidRequestError({
+        message: 'You are not authorized to bulk approve properties.',
+      });
+    }
+
+    if (!propertyIds || propertyIds.length === 0) {
+      throw new BadRequestError({ message: 'Property IDs are required.' });
+    }
+
+    const updateData = {
+      approvalStatus: 'approved',
+      'approvalDetails.approvedBy': new Types.ObjectId(currentuser.sub),
+      'approvalDetails.approvedAt': new Date(),
+      'approvalDetails.requiresReapproval': false,
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    };
+
+    const result = await this.propertyDAO.updateMany(
+      {
+        pid: { $in: propertyIds },
+        cuid,
+        deletedAt: null,
+        approvalStatus: 'pending',
+      },
+      { $set: updateData }
+    );
+
+    await this.propertyCache.invalidatePropertyLists(cuid);
+
+    this.log.info('Properties bulk approved', {
+      count: result.modifiedCount,
+      approvedBy: currentuser.sub,
+    });
+
+    return {
+      success: true,
+      data: { approved: result.modifiedCount, total: propertyIds.length },
+      message: `${result.modifiedCount} properties approved successfully`,
+    };
+  }
+
+  /**
+   * Bulk reject properties
+   * Only admin/managers can bulk reject
+   */
+  async bulkRejectProperties(
+    cuid: string,
+    propertyIds: string[],
+    currentuser: ICurrentUser,
+    reason: string
+  ): Promise<ISuccessReturnData> {
+    if (!reason || reason.trim().length === 0) {
+      throw new BadRequestError({ message: 'Rejection reason is required.' });
+    }
+
+    // Check if user has permission
+    const userRole = currentuser.client.role;
+    if (!PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+      throw new InvalidRequestError({
+        message: 'You are not authorized to bulk reject properties.',
+      });
+    }
+
+    if (!propertyIds || propertyIds.length === 0) {
+      throw new BadRequestError({ message: 'Property IDs are required.' });
+    }
+
+    const updateData = {
+      approvalStatus: 'rejected',
+      'approvalDetails.rejectedBy': new Types.ObjectId(currentuser.sub),
+      'approvalDetails.rejectedAt': new Date(),
+      'approvalDetails.rejectionReason': reason.trim(),
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    };
+
+    const result = await this.propertyDAO.updateMany(
+      {
+        pid: { $in: propertyIds },
+        cuid,
+        deletedAt: null,
+        approvalStatus: 'pending',
+      },
+      { $set: updateData }
+    );
+
+    await this.propertyCache.invalidatePropertyLists(cuid);
+
+    this.log.info('Properties bulk rejected', {
+      count: result.modifiedCount,
+      rejectedBy: currentuser.sub,
+      reason,
+    });
+
+    return {
+      success: true,
+      data: { rejected: result.modifiedCount, total: propertyIds.length },
+      message: `${result.modifiedCount} properties rejected`,
+    };
+  }
+
+  /**
+   * Get staff's own property requests
+   */
+  async getMyPropertyRequests(
+    cuid: string,
+    currentuser: ICurrentUser,
+    filters: {
+      approvalStatus?: 'pending' | 'approved' | 'rejected';
+      pagination: IPaginationQuery;
+    }
+  ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: PaginateResult }>> {
+    const filter: FilterQuery<IPropertyDocument> = {
+      cuid,
+      deletedAt: null,
+      createdBy: new Types.ObjectId(currentuser.sub),
+    };
+
+    if (filters.approvalStatus) {
+      filter.approvalStatus = filters.approvalStatus;
+    }
+
+    const opts: IPaginationQuery = {
+      page: filters.pagination.page || 1,
+      limit: Math.max(1, Math.min(filters.pagination.limit || 10, 100)),
+      sort: filters.pagination.sort || '-createdAt',
+      sortBy: filters.pagination.sortBy || 'createdAt',
+      skip: ((filters.pagination.page || 1) - 1) * (filters.pagination.limit || 10),
+    };
+
+    const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
+
+    return {
+      success: true,
+      data: {
+        items: properties.items,
+        pagination: properties.pagination,
+      },
+      message: 'Property requests retrieved successfully',
+    };
   }
 
   private validateOccupancyStatusChange(

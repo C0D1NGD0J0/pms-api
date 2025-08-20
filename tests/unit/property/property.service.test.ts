@@ -620,4 +620,903 @@ describe('PropertyService', () => {
       expect(mockEventEmitterService.off).toHaveBeenCalledTimes(8); // Number of event listeners
     });
   });
+
+  describe('Property Approval System Tests', () => {
+    describe('addProperty with approval logic', () => {
+      it('should auto-approve property when created by admin', async () => {
+        // Arrange
+        const mockContext = createMockRequestContext({
+          request: {
+            params: { cuid: 'test-cuid' },
+            url: '/test',
+            path: '/test',
+            method: 'POST',
+            query: {},
+          },
+          currentuser: createMockCurrentUser({
+            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          }),
+        });
+        const propertyData = createMockNewProperty();
+        const mockClient = createMockClient();
+        const mockProperty = createMockProperty({ approvalStatus: 'approved' });
+
+        mockPropertyDAO.startSession.mockReturnValue('mock-session');
+        mockPropertyDAO.withTransaction.mockImplementation(async (_session: any, callback: any) => {
+          return await callback(_session);
+        });
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyDAO.findPropertyByAddress.mockResolvedValue(null);
+        mockPropertyDAO.createProperty.mockResolvedValue(mockProperty);
+        mockPropertyCache.cacheProperty.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.addProperty(mockContext, propertyData);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(mockPropertyDAO.createProperty).toHaveBeenCalledWith(
+          expect.objectContaining({
+            approvalStatus: 'approved',
+          }),
+          'mock-session'
+        );
+      });
+
+      it('should set property as pending when created by staff in allowed department', async () => {
+        // Arrange
+        const mockContext = createMockRequestContext({
+          request: {
+            params: { cuid: 'test-cuid' },
+            url: '/test',
+            path: '/test',
+            method: 'POST',
+            query: {},
+          },
+          currentuser: createMockCurrentUser({
+            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          }),
+        });
+        const propertyData = createMockNewProperty();
+        const mockClient = createMockClient();
+        const mockProperty = createMockProperty({ approvalStatus: 'pending' });
+        const mockProfile = {
+          employeeInfo: { department: 'operations' },
+        };
+
+        mockPropertyDAO.startSession.mockReturnValue('mock-session');
+        mockPropertyDAO.withTransaction.mockImplementation(async (_session: any, callback: any) => {
+          return await callback(_session);
+        });
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyDAO.findPropertyByAddress.mockResolvedValue(null);
+        mockProfileDAO.getProfileByUserId.mockResolvedValue(mockProfile);
+        mockPropertyDAO.createProperty.mockResolvedValue(mockProperty);
+        mockPropertyCache.cacheProperty.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.addProperty(mockContext, propertyData);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(mockPropertyDAO.createProperty).toHaveBeenCalledWith(
+          expect.objectContaining({
+            approvalStatus: 'pending',
+          }),
+          'mock-session'
+        );
+      });
+
+      it('should throw error when staff from non-allowed department tries to create property', async () => {
+        // Arrange
+        const mockContext = createMockRequestContext({
+          request: {
+            params: { cuid: 'test-cuid' },
+            url: '/test',
+            path: '/test',
+            method: 'POST',
+            query: {},
+          },
+          currentuser: createMockCurrentUser({
+            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          }),
+        });
+        const propertyData = createMockNewProperty();
+        const mockClient = createMockClient();
+        const mockProfile = {
+          employeeInfo: { department: 'accounting' }, // Not allowed department
+        };
+
+        mockPropertyDAO.startSession.mockReturnValue('mock-session');
+        mockPropertyDAO.withTransaction.mockImplementation(async (_session: any, callback: any) => {
+          return await callback(_session);
+        });
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyDAO.findPropertyByAddress.mockResolvedValue(null);
+        mockProfileDAO.getProfileByUserId.mockResolvedValue(mockProfile);
+
+        // Act & Assert
+        await expect(propertyService.addProperty(mockContext, propertyData)).rejects.toThrow(
+          'You are not authorized to create properties'
+        );
+      });
+    });
+
+    describe('getPendingApprovals', () => {
+      it('should retrieve pending approvals for admin', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+        });
+        const pagination = { page: 1, limit: 10 };
+        const mockPendingProperties = [
+          createMockProperty({ approvalStatus: 'pending' }),
+          createMockProperty({ approvalStatus: 'pending' }),
+        ];
+
+        mockPropertyDAO.getPropertiesByClientId.mockResolvedValue({
+          items: mockPendingProperties,
+          pagination: { page: 1, limit: 10, total: 2 },
+        });
+
+        // Act
+        const result = await propertyService.getPendingApprovals(cuid, currentuser, pagination);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.data.items).toEqual(mockPendingProperties);
+        expect(mockPropertyDAO.getPropertiesByClientId).toHaveBeenCalledWith(
+          cuid,
+          expect.objectContaining({
+            approvalStatus: 'pending',
+          }),
+          expect.any(Object)
+        );
+      });
+
+      it('should throw error when non-admin tries to get pending approvals', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+        });
+        const pagination = { page: 1, limit: 10 };
+
+        // Act & Assert
+        await expect(
+          propertyService.getPendingApprovals(cuid, currentuser, pagination)
+        ).rejects.toThrow('You are not authorized to view pending approvals');
+      });
+    });
+
+    describe('approveProperty', () => {
+      it('should successfully approve a pending property', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const pid = 'test-pid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+        });
+        const notes = 'Approved for listing';
+        const mockProperty = createMockProperty({ approvalStatus: 'pending' });
+        const mockApprovedProperty = { ...mockProperty, approvalStatus: 'approved' };
+
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue(mockApprovedProperty);
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+        mockPropertyCache.invalidatePropertyLists.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.approveProperty(cuid, pid, currentuser, notes);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(mockApprovedProperty);
+        expect(mockPropertyDAO.update).toHaveBeenCalledWith(
+          { pid, cuid, deletedAt: null },
+          expect.objectContaining({
+            $set: expect.objectContaining({
+              approvalStatus: 'approved',
+            }),
+          })
+        );
+      });
+
+      it('should throw error when property is already approved', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const pid = 'test-pid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+        });
+        const mockProperty = createMockProperty({ approvalStatus: 'approved' });
+
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+
+        // Act & Assert
+        await expect(propertyService.approveProperty(cuid, pid, currentuser)).rejects.toThrow(
+          'Property is already approved'
+        );
+      });
+
+      it('should throw error when staff tries to approve property', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const pid = 'test-pid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+        });
+
+        // Act & Assert
+        await expect(propertyService.approveProperty(cuid, pid, currentuser)).rejects.toThrow(
+          'You are not authorized to approve properties'
+        );
+      });
+    });
+
+    describe('rejectProperty', () => {
+      it('should successfully reject a property with reason', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const pid = 'test-pid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'manager', cuid: 'test-cuid', displayname: 'Manager User' },
+        });
+        const reason = 'Incomplete property information';
+        const mockProperty = createMockProperty({ approvalStatus: 'pending' });
+        const mockRejectedProperty = { ...mockProperty, approvalStatus: 'rejected' };
+
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue(mockRejectedProperty);
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+        mockPropertyCache.invalidatePropertyLists.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.rejectProperty(cuid, pid, currentuser, reason);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(mockRejectedProperty);
+        expect(mockPropertyDAO.update).toHaveBeenCalledWith(
+          { pid, cuid, deletedAt: null },
+          expect.objectContaining({
+            $set: expect.objectContaining({
+              approvalStatus: 'rejected',
+            }),
+          })
+        );
+      });
+
+      it('should throw error when rejection reason is not provided', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const pid = 'test-pid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+        });
+
+        // Act & Assert
+        await expect(propertyService.rejectProperty(cuid, pid, currentuser, '')).rejects.toThrow(
+          'Rejection reason is required'
+        );
+      });
+    });
+
+    describe('bulkApproveProperties', () => {
+      it('should successfully bulk approve multiple properties', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const propertyIds = ['pid-1', 'pid-2', 'pid-3'];
+        const currentuser = createMockCurrentUser({
+          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+        });
+
+        mockPropertyDAO.updateMany.mockResolvedValue({ modifiedCount: 3 });
+        mockPropertyCache.invalidatePropertyLists.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.bulkApproveProperties(cuid, propertyIds, currentuser);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual({ approved: 3, total: 3 });
+        expect(mockPropertyDAO.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            pid: { $in: propertyIds },
+            cuid,
+            deletedAt: null,
+            approvalStatus: 'pending',
+          }),
+          expect.any(Object)
+        );
+      });
+
+      it('should throw error when no property IDs provided', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+        });
+
+        // Act & Assert
+        await expect(propertyService.bulkApproveProperties(cuid, [], currentuser)).rejects.toThrow(
+          'Property IDs are required'
+        );
+      });
+    });
+
+    describe('bulkRejectProperties', () => {
+      it('should successfully bulk reject multiple properties', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const propertyIds = ['pid-1', 'pid-2'];
+        const currentuser = createMockCurrentUser({
+          client: { role: 'manager', cuid: 'test-cuid', displayname: 'Manager User' },
+        });
+        const reason = 'Batch rejection for incomplete data';
+
+        mockPropertyDAO.updateMany.mockResolvedValue({ modifiedCount: 2 });
+        mockPropertyCache.invalidatePropertyLists.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.bulkRejectProperties(
+          cuid,
+          propertyIds,
+          currentuser,
+          reason
+        );
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual({ rejected: 2, total: 2 });
+      });
+    });
+
+    describe('getMyPropertyRequests', () => {
+      it('should retrieve staff own property requests', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const currentuser = createMockCurrentUser({
+          sub: 'user-123',
+          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+        });
+        const filters = {
+          approvalStatus: 'pending' as const,
+          pagination: { page: 1, limit: 10 },
+        };
+        const mockProperties = [
+          createMockProperty({ approvalStatus: 'pending', createdBy: 'user-123' }),
+        ];
+
+        mockPropertyDAO.getPropertiesByClientId.mockResolvedValue({
+          items: mockProperties,
+          pagination: { page: 1, limit: 10, total: 1 },
+        });
+
+        // Act
+        const result = await propertyService.getMyPropertyRequests(cuid, currentuser, filters);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.data.items).toEqual(mockProperties);
+        expect(mockPropertyDAO.getPropertiesByClientId).toHaveBeenCalledWith(
+          cuid,
+          expect.objectContaining({
+            createdBy: expect.any(Object),
+            approvalStatus: 'pending',
+          }),
+          expect.any(Object)
+        );
+      });
+    });
+
+    describe('updateClientProperty with hybrid pending changes approach', () => {
+      it('should store staff edits in pendingChanges field', async () => {
+        // Arrange
+        const ctx = {
+          cuid: 'test-cuid',
+          pid: 'test-pid',
+          currentuser: createMockCurrentUser({
+            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          }),
+        };
+        const updateData = {
+          name: 'Updated Property Name',
+          'fees.rentalAmount': 2000,
+        };
+        const mockClient = createMockClient();
+        const mockProperty = createMockProperty({
+          approvalStatus: 'approved',
+          name: 'Original Name',
+          fees: { rentalAmount: 1500 },
+        });
+        const mockUpdatedProperty = {
+          ...mockProperty,
+          pendingChanges: {
+            ...updateData,
+            updatedBy: new Types.ObjectId(ctx.currentuser.sub),
+            updatedAt: new Date(),
+          },
+        };
+
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue(mockUpdatedProperty);
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.updateClientProperty(ctx, updateData);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.message).toBe('Property changes submitted for approval');
+        expect(mockPropertyDAO.update).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            $set: expect.objectContaining({
+              pendingChanges: expect.objectContaining({
+                name: 'Updated Property Name',
+                'fees.rentalAmount': 2000,
+                updatedBy: expect.any(Object),
+                updatedAt: expect.any(Date),
+              }),
+            }),
+          })
+        );
+      });
+
+      it('should apply admin edits directly to main fields', async () => {
+        // Arrange
+        const ctx = {
+          cuid: 'test-cuid',
+          pid: 'test-pid',
+          currentuser: createMockCurrentUser({
+            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          }),
+        };
+        const updateData = { name: 'Admin Updated Name' };
+        const mockClient = createMockClient();
+        const mockProperty = createMockProperty({ approvalStatus: 'approved' });
+        const mockUpdatedProperty = {
+          ...mockProperty,
+          ...updateData,
+        };
+
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue(mockUpdatedProperty);
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.updateClientProperty(ctx, updateData);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.message).toBe('Property updated successfully');
+        expect(mockPropertyDAO.update).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            $set: expect.objectContaining({
+              name: 'Admin Updated Name',
+            }),
+          })
+        );
+        // Ensure pendingChanges was not set
+        const updateCall = mockPropertyDAO.update.mock.calls[0][1].$set;
+        expect(updateCall.pendingChanges).toBeUndefined();
+      });
+
+      it('should throw error when non-authorized role tries to update', async () => {
+        // Arrange
+        const ctx = {
+          cuid: 'test-cuid',
+          pid: 'test-pid',
+          currentuser: createMockCurrentUser({
+            client: { role: 'tenant', cuid: 'test-cuid', displayname: 'Tenant User' },
+          }),
+        };
+        const updateData = { name: 'Attempted Update' };
+        const mockClient = createMockClient();
+        const mockProperty = createMockProperty();
+
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+
+        // Act & Assert
+        await expect(propertyService.updateClientProperty(ctx, updateData)).rejects.toThrow(
+          'You are not authorized to update properties'
+        );
+      });
+    });
+
+    describe('approveProperty with pending changes', () => {
+      it('should apply pending changes when approving property with pending changes', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const pid = 'test-pid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+        });
+        const mockProperty = createMockProperty({
+          approvalStatus: 'approved',
+          name: 'Original Name',
+          fees: { rentalAmount: 1500 },
+          pendingChanges: {
+            name: 'New Name',
+            fees: { rentalAmount: 2000 },
+            updatedBy: new Types.ObjectId(),
+            updatedAt: new Date(),
+          },
+        });
+        const mockApprovedProperty = {
+          ...mockProperty,
+          name: 'New Name',
+          fees: { rentalAmount: 2000 },
+          pendingChanges: null,
+        };
+
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue(mockApprovedProperty);
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+        mockPropertyCache.invalidatePropertyLists.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.approveProperty(cuid, pid, currentuser);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.message).toBe('Property changes approved and applied successfully');
+        expect(mockPropertyDAO.update).toHaveBeenCalledWith(
+          { pid, cuid, deletedAt: null },
+          expect.objectContaining({
+            $set: expect.objectContaining({
+              name: 'New Name',
+              fees: { rentalAmount: 2000 },
+              pendingChanges: null,
+              approvalStatus: 'approved',
+            }),
+          })
+        );
+      });
+
+      it('should approve property without pending changes normally', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const pid = 'test-pid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'manager', cuid: 'test-cuid', displayname: 'Manager User' },
+        });
+        const mockProperty = createMockProperty({
+          approvalStatus: 'pending',
+          pendingChanges: null,
+        });
+        const mockApprovedProperty = {
+          ...mockProperty,
+          approvalStatus: 'approved',
+        };
+
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue(mockApprovedProperty);
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+        mockPropertyCache.invalidatePropertyLists.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.approveProperty(cuid, pid, currentuser);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.message).toBe('Property approved successfully');
+        expect(mockPropertyDAO.update).toHaveBeenCalledWith(
+          { pid, cuid, deletedAt: null },
+          expect.objectContaining({
+            $set: expect.objectContaining({
+              approvalStatus: 'approved',
+              pendingChanges: null,
+            }),
+          })
+        );
+      });
+
+      it('should not allow approval when property is approved and has no pending changes', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const pid = 'test-pid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+        });
+        const mockProperty = createMockProperty({
+          approvalStatus: 'approved',
+          pendingChanges: null,
+        });
+
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+
+        // Act & Assert
+        await expect(propertyService.approveProperty(cuid, pid, currentuser)).rejects.toThrow(
+          'Property is already approved and has no pending changes'
+        );
+      });
+    });
+
+    describe('rejectProperty with pending changes', () => {
+      it('should clear pending changes and keep original data when rejecting', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const pid = 'test-pid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+        });
+        const reason = 'Changes not appropriate';
+        const mockProperty = createMockProperty({
+          approvalStatus: 'approved',
+          name: 'Original Name',
+          pendingChanges: {
+            name: 'Rejected Name',
+            updatedBy: new Types.ObjectId(),
+            updatedAt: new Date(),
+          },
+        });
+        const mockRejectedProperty = {
+          ...mockProperty,
+          pendingChanges: null,
+          // Note: approvalStatus stays 'approved' because we're keeping the old approved data
+        };
+
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue(mockRejectedProperty);
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+        mockPropertyCache.invalidatePropertyLists.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.rejectProperty(cuid, pid, currentuser, reason);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.message).toBe('Property changes rejected. Original data preserved.');
+        expect(mockPropertyDAO.update).toHaveBeenCalledWith(
+          { pid, cuid, deletedAt: null },
+          expect.objectContaining({
+            $set: expect.objectContaining({
+              pendingChanges: null,
+              // Should NOT set approvalStatus to rejected when there are pending changes
+            }),
+          })
+        );
+        // Verify approvalStatus was NOT changed
+        const updateCall = mockPropertyDAO.update.mock.calls[0][1].$set;
+        expect(updateCall.approvalStatus).toBeUndefined();
+      });
+
+      it('should reject new property without pending changes', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const pid = 'test-pid';
+        const currentuser = createMockCurrentUser({
+          client: { role: 'manager', cuid: 'test-cuid', displayname: 'Manager User' },
+        });
+        const reason = 'Property does not meet standards';
+        const mockProperty = createMockProperty({
+          approvalStatus: 'pending',
+          pendingChanges: null,
+        });
+        const mockRejectedProperty = {
+          ...mockProperty,
+          approvalStatus: 'rejected',
+        };
+
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue(mockRejectedProperty);
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+        mockPropertyCache.invalidatePropertyLists.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.rejectProperty(cuid, pid, currentuser, reason);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.message).toBe('Property rejected');
+        expect(mockPropertyDAO.update).toHaveBeenCalledWith(
+          { pid, cuid, deletedAt: null },
+          expect.objectContaining({
+            $set: expect.objectContaining({
+              approvalStatus: 'rejected',
+            }),
+          })
+        );
+      });
+    });
+
+    describe('Pending changes workflow integration', () => {
+      it('should handle full workflow: staff edit -> admin approve -> changes applied', async () => {
+        // Step 1: Staff makes edit (stored in pendingChanges)
+        const ctx = {
+          cuid: 'test-cuid',
+          pid: 'test-pid',
+          currentuser: createMockCurrentUser({
+            sub: 'staff-123',
+            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          }),
+        };
+        const updateData = {
+          name: 'Staff Updated Name',
+          'specifications.bedrooms': 4,
+        };
+        const mockClient = createMockClient();
+        const mockProperty = createMockProperty({
+          approvalStatus: 'approved',
+          name: 'Original Name',
+          specifications: { bedrooms: 3 },
+        });
+
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue({
+          ...mockProperty,
+          pendingChanges: {
+            ...updateData,
+            updatedBy: new Types.ObjectId(ctx.currentuser.sub),
+            updatedAt: new Date(),
+          },
+        });
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+
+        const updateResult = await propertyService.updateClientProperty(ctx, updateData);
+        expect(updateResult.message).toBe('Property changes submitted for approval');
+
+        // Step 2: Admin approves (applies pending changes)
+        const adminUser = createMockCurrentUser({
+          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+        });
+        const propertyWithPendingChanges = {
+          ...mockProperty,
+          pendingChanges: {
+            name: 'Staff Updated Name',
+            'specifications.bedrooms': 4,
+            updatedBy: new Types.ObjectId('staff-123'),
+            updatedAt: new Date(),
+          },
+        };
+
+        mockPropertyDAO.findFirst.mockResolvedValue(propertyWithPendingChanges);
+        mockPropertyDAO.update.mockResolvedValue({
+          ...propertyWithPendingChanges,
+          name: 'Staff Updated Name',
+          specifications: { bedrooms: 4 },
+          pendingChanges: null,
+        });
+        mockPropertyCache.invalidatePropertyLists.mockResolvedValue({ success: true });
+
+        const approveResult = await propertyService.approveProperty(
+          'test-cuid',
+          'test-pid',
+          adminUser
+        );
+        expect(approveResult.message).toBe('Property changes approved and applied successfully');
+        expect(approveResult.data.pendingChanges).toBeNull();
+      });
+
+      it('should handle full workflow: staff edit -> admin reject -> original preserved', async () => {
+        // Step 1: Staff makes edit
+        const ctx = {
+          cuid: 'test-cuid',
+          pid: 'test-pid',
+          currentuser: createMockCurrentUser({
+            sub: 'staff-123',
+            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          }),
+        };
+        const updateData = { name: 'Bad Update' };
+        const mockClient = createMockClient();
+        const mockProperty = createMockProperty({
+          approvalStatus: 'approved',
+          name: 'Good Original Name',
+        });
+
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue({
+          ...mockProperty,
+          pendingChanges: {
+            name: 'Bad Update',
+            updatedBy: new Types.ObjectId(ctx.currentuser.sub),
+            updatedAt: new Date(),
+          },
+        });
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+
+        await propertyService.updateClientProperty(ctx, updateData);
+
+        // Step 2: Admin rejects (clears pending changes, keeps original)
+        const adminUser = createMockCurrentUser({
+          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+        });
+        const propertyWithPendingChanges = {
+          ...mockProperty,
+          pendingChanges: {
+            name: 'Bad Update',
+            updatedBy: new Types.ObjectId('staff-123'),
+            updatedAt: new Date(),
+          },
+        };
+
+        mockPropertyDAO.findFirst.mockResolvedValue(propertyWithPendingChanges);
+        mockPropertyDAO.update.mockResolvedValue({
+          ...mockProperty,
+          pendingChanges: null,
+        });
+        mockPropertyCache.invalidatePropertyLists.mockResolvedValue({ success: true });
+
+        const rejectResult = await propertyService.rejectProperty(
+          'test-cuid',
+          'test-pid',
+          adminUser,
+          'Not appropriate'
+        );
+        expect(rejectResult.message).toBe('Property changes rejected. Original data preserved.');
+        expect(rejectResult.data.name).toBe('Good Original Name');
+        expect(rejectResult.data.pendingChanges).toBeNull();
+      });
+    });
+
+    describe('getClientProperties with approval filtering', () => {
+      it('should only return approved and active properties by default', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const mockClient = createMockClient();
+        const mockQueryParams = {
+          filters: null,
+          pagination: { page: 1, limit: 10 },
+        };
+
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyCache.getClientProperties.mockResolvedValue({ success: false });
+        mockPropertyDAO.getPropertiesByClientId.mockResolvedValue({
+          items: [],
+          pagination: { page: 1, limit: 10, total: 0 },
+        });
+
+        // Act
+        await propertyService.getClientProperties(cuid, mockQueryParams);
+
+        // Assert
+        expect(mockPropertyDAO.getPropertiesByClientId).toHaveBeenCalledWith(
+          cuid,
+          expect.objectContaining({
+            approvalStatus: 'approved',
+            status: { $ne: 'inactive' },
+          }),
+          expect.any(Object)
+        );
+      });
+
+      it('should include unapproved properties for admin when flag is set', async () => {
+        // Arrange
+        const cuid = 'test-cuid';
+        const mockClient = createMockClient();
+        const mockQueryParams = {
+          filters: { includeUnapproved: true },
+          pagination: { page: 1, limit: 10 },
+          currentUser: createMockCurrentUser({
+            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          }),
+        };
+
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyCache.getClientProperties.mockResolvedValue({ success: false });
+        mockPropertyDAO.getPropertiesByClientId.mockResolvedValue({
+          items: [],
+          pagination: { page: 1, limit: 10, total: 0 },
+        });
+
+        // Act
+        await propertyService.getClientProperties(cuid, mockQueryParams);
+
+        // Assert
+        const callArgs = mockPropertyDAO.getPropertiesByClientId.mock.calls[0][1];
+        expect(callArgs.approvalStatus).toBeUndefined();
+        expect(callArgs.status).toEqual({ $ne: 'inactive' });
+      });
+    });
+  });
 });

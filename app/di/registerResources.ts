@@ -7,9 +7,9 @@ import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { LanguageService } from '@shared/languages/language.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
-import { EventsRegistryCache, PropertyCache, AuthCache } from '@caching/index';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
+import { EventsRegistryCache, PropertyCache, AuthCache, UserCache } from '@caching/index';
 import { PropertyUnit, Invitation, Property, Profile, Client, User } from '@models/index';
 import {
   PropertyUnitDAO,
@@ -109,6 +109,7 @@ const CacheResources = {
   authCache: asClass(AuthCache).singleton(),
   propertyCache: asClass(PropertyCache).singleton(),
   eventsRegistry: asClass(EventsRegistryCache).singleton(),
+  userCache: asClass(UserCache).singleton(),
 };
 
 const WorkerResources = {

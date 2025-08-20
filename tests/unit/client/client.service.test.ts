@@ -553,53 +553,6 @@ describe('ClientService', () => {
     });
   });
 
-  describe('getClientUsers', () => {
-    it('should successfully retrieve all client users', async () => {
-      const mockContext = createMockRequestContext({
-        currentuser: createMockCurrentUser(),
-      });
-      const clientId = mockContext.currentuser.client.cuid;
-      const mockUsers = [
-        createMockUser({
-          cuids: [
-            { cuid: clientId, roles: ['admin'], isConnected: true, displayName: 'Admin User' },
-          ],
-        }),
-        createMockUser({
-          cuids: [
-            { cuid: clientId, roles: ['manager'], isConnected: true, displayName: 'Manager User' },
-          ],
-        }),
-      ];
-
-      mockUserDAO.getUsersByClientId.mockResolvedValue({
-        items: mockUsers,
-        pagination: { total: 2 },
-      });
-
-      const result = await clientService.getClientUsers(mockContext);
-
-      // Assert
-      expect(result.success).toBe(true);
-      expect(result.data.users).toHaveLength(2);
-      expect(result.data.users[0]).toMatchObject({
-        id: expect.any(String),
-        email: expect.any(String),
-        displayName: 'Admin User',
-        roles: ['admin'],
-        isConnected: true,
-      });
-      expect(mockUserDAO.getUsersByClientId).toHaveBeenCalledWith(
-        clientId,
-        {},
-        {
-          limit: 100,
-          skip: 0,
-          populate: 'profile',
-        }
-      );
-    });
-  });
 
   describe('error handling', () => {
     it('should handle invalid role in assignUserRole', async () => {

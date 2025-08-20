@@ -6,5 +6,6 @@ export * from './external';
 export * from './property';
 export * from './profile';
 export * from './client';
+export * from './user';
 export * from './auth';
 export * from './csv';

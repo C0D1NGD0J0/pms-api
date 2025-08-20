@@ -20,13 +20,6 @@ import {
   UserDAO,
 } from '@dao/index';
 import {
-  PropertyUnitController,
-  InvitationController,
-  PropertyController,
-  ClientController,
-  AuthController,
-} from '@controllers/index';
-import {
   DocumentProcessingWorker,
   PropertyUnitWorker,
   InvitationWorker,
@@ -44,6 +37,14 @@ import {
   EmailQueue,
 } from '@queues/index';
 import {
+  PropertyUnitController,
+  InvitationController,
+  PropertyController,
+  ClientController,
+  UserController,
+  AuthController,
+} from '@controllers/index';
+import {
   InvitationCsvProcessor,
   PropertyCsvProcessor,
   EventEmitterService,
@@ -54,12 +55,14 @@ import {
   PropertyService,
   ProfileService,
   ClientService,
+  UserService,
   AuthService,
 } from '@services/index';
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
   clientController: asClass(ClientController).scoped(),
+  userController: asClass(UserController).scoped(),
   emailTemplateController: asClass(EmailTemplateController).scoped(),
   propertyController: asClass(PropertyController).scoped(),
   propertyUnitController: asClass(PropertyUnitController).scoped(),
@@ -78,6 +81,7 @@ const ModelResources = {
 const ServiceResources = {
   authService: asClass(AuthService).singleton(),
   clientService: asClass(ClientService).singleton(),
+  userService: asClass(UserService).singleton(),
   mailerService: asClass(MailService).singleton(),
   tokenService: asClass(AuthTokenService).singleton(),
   languageService: asClass(LanguageService).singleton(),

@@ -2,6 +2,10 @@
   "client": {
     "errors": {
       "notFound": "client.errors.notFound"
+    },
+    "success": {
+      "userRetrieved": "client.success.userRetrieved",
+      "userStatsRetrieved": "client.success.userStatsRetrieved"
     }
   },
   "invitation": {

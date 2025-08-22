@@ -26,7 +26,7 @@ export const createMockUser = (overrides: Partial<IUserDocument> = {}): Partial<
       cuid: faker.string.uuid(),
       isConnected: true,
       roles: [IUserRole.ADMIN],
-      displayName: faker.company.name(),
+      clientDisplayName: faker.company.name(),
     },
   ],
   deletedAt: null,
@@ -39,6 +39,7 @@ export const createMockUser = (overrides: Partial<IUserDocument> = {}): Partial<
 
 export const createMockCurrentUser = (overrides: Partial<ICurrentUser> = {}): ICurrentUser => ({
   sub: new Types.ObjectId().toString(),
+  uid: faker.string.uuid(),
   email: faker.internet.email(),
   isActive: true,
   displayName: faker.person.fullName(),
@@ -59,7 +60,7 @@ export const createMockCurrentUser = (overrides: Partial<ICurrentUser> = {}): IC
       cuid: faker.string.uuid(),
       isConnected: true,
       roles: [IUserRole.ADMIN],
-      displayName: faker.company.name(),
+      clientDisplayName: faker.company.name(),
     },
   ],
   permissions: ['read', 'write', 'admin'],

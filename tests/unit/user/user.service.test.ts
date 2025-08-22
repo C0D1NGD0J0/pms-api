@@ -16,16 +16,21 @@ describe('UserService', () => {
   let mockUserDAO: any;
   let mockPropertyDAO: any;
   let mockUserCache: any;
+  let mockPermissionService: any;
 
   beforeEach(() => {
     mockClientDAO = createMockClientDAO();
     mockUserDAO = createMockUserDAO();
     mockPropertyDAO = {
-      getPropertiesByClientId: jest.fn().mockResolvedValue({ items: [] })
+      getPropertiesByClientId: jest.fn().mockResolvedValue({ items: [] }),
     };
     mockUserCache = {
       getUserDetail: jest.fn().mockResolvedValue({ success: false }),
-      cacheUserDetail: jest.fn().mockResolvedValue({ success: true })
+      cacheUserDetail: jest.fn().mockResolvedValue({ success: true }),
+    };
+    mockPermissionService = {
+      canUserAccessUser: jest.fn().mockReturnValue(true),
+      canAccessResource: jest.fn().mockReturnValue(true),
     };
 
     userService = new UserService({
@@ -33,13 +38,13 @@ describe('UserService', () => {
       userDAO: mockUserDAO,
       propertyDAO: mockPropertyDAO,
       userCache: mockUserCache,
+      permissionService: mockPermissionService,
     });
   });
 
   afterEach(() => {
     jest.clearAllMocks();
   });
-
 
   describe('getUsersByRole', () => {
     it('should successfully retrieve users by role', async () => {
@@ -56,13 +61,23 @@ describe('UserService', () => {
         createMockUser({
           uid: 'user-1',
           cuids: [
-            { cuid: clientId, roles: ['manager'], isConnected: true, displayName: 'Manager 1' },
+            {
+              cuid: clientId,
+              roles: ['manager'],
+              isConnected: true,
+              clientDisplayName: 'Manager 1',
+            },
           ],
         }),
         createMockUser({
           uid: 'user-2',
           cuids: [
-            { cuid: clientId, roles: ['manager'], isConnected: true, displayName: 'Manager 2' },
+            {
+              cuid: clientId,
+              roles: ['manager'],
+              isConnected: true,
+              clientDisplayName: 'Manager 2',
+            },
           ],
         }),
       ];
@@ -80,7 +95,7 @@ describe('UserService', () => {
       expect(result.message).toBe('client.success.usersByRoleRetrieved');
       expect(mockUserDAO.getUsersByFilteredType).toHaveBeenCalledWith(
         clientId,
-        { role },
+        { role: [role] }, // Service converts single role to array
         {
           limit: 100,
           skip: 0,
@@ -97,9 +112,9 @@ describe('UserService', () => {
         },
       });
 
-      await expect(
-        userService.getUsersByRole(mockContext, 'invalid-role' as any)
-      ).rejects.toThrow(BadRequestError);
+      await expect(userService.getUsersByRole(mockContext, 'invalid-role' as any)).rejects.toThrow(
+        BadRequestError
+      );
     });
 
     it('should use currentuser client cuid when no cuid in params', async () => {
@@ -123,7 +138,7 @@ describe('UserService', () => {
 
       expect(mockUserDAO.getUsersByFilteredType).toHaveBeenCalledWith(
         clientId,
-        { role },
+        { role: [role] }, // Service converts single role to array
         expect.any(Object)
       );
     });
@@ -145,7 +160,7 @@ describe('UserService', () => {
               cuid: 'test-client-id',
               roles: ['manager'],
               isConnected: true,
-              displayName: 'Employee Manager',
+              clientDisplayName: 'Employee Manager',
             },
           ],
           createdAt: new Date(),
@@ -180,10 +195,7 @@ describe('UserService', () => {
       expect(result.data.items[0]).toMatchObject({
         uid: 'user-1',
         email: 'employee1@test.com',
-        firstName: 'John',
-        lastName: 'Manager',
         fullName: 'John Manager',
-        userType: 'employee',
         employeeInfo: { department: 'IT' },
       });
       expect(result.data.items[0]).not.toHaveProperty('vendorInfo');
@@ -208,7 +220,7 @@ describe('UserService', () => {
               cuid: 'test-client-id',
               roles: ['vendor'],
               isConnected: true,
-              displayName: 'Vendor User',
+              clientDisplayName: 'Vendor User',
               linkedVendorId: 'vendor-company-123',
             },
           ],
@@ -244,9 +256,6 @@ describe('UserService', () => {
       expect(result.data.items[0]).toMatchObject({
         uid: 'vendor-1',
         email: 'vendor1@test.com',
-        firstName: 'Jane',
-        lastName: 'Vendor',
-        userType: 'vendor',
         vendorInfo: {
           companyName: 'Vendor Corp',
           isLinkedAccount: true,
@@ -269,7 +278,7 @@ describe('UserService', () => {
               cuid: 'test-client-id',
               roles: ['tenant'],
               isConnected: true,
-              displayName: 'Tenant User',
+              clientDisplayName: 'Tenant User',
             },
           ],
           createdAt: new Date(),
@@ -304,9 +313,6 @@ describe('UserService', () => {
       expect(result.data.items[0]).toMatchObject({
         uid: 'tenant-1',
         email: 'tenant1@test.com',
-        firstName: 'Bob',
-        lastName: 'Tenant',
-        userType: 'tenant',
         tenantInfo: { unitNumber: '101' },
       });
       expect(result.data.items[0]).not.toHaveProperty('vendorInfo');
@@ -326,7 +332,7 @@ describe('UserService', () => {
               cuid: 'test-client-id',
               roles: ['vendor'],
               isConnected: true,
-              displayName: 'Primary Vendor',
+              clientDisplayName: 'Primary Vendor',
             },
           ],
           createdAt: new Date(),
@@ -359,8 +365,8 @@ describe('UserService', () => {
       expect(result.data.items[0].vendorInfo).toMatchObject({
         companyName: 'Primary Corp',
         isPrimaryVendor: true,
+        isLinkedAccount: false, // Primary vendors have isLinkedAccount: false
       });
-      expect(result.data.items[0].vendorInfo).not.toHaveProperty('isLinkedAccount');
     });
 
     it('should convert string role to array format', async () => {
@@ -374,7 +380,12 @@ describe('UserService', () => {
         pagination: { total: 0, page: 1, limit: 10, pages: 0 },
       });
 
-      await userService.getFilteredUsers('test-client-id', currentUser, filterOptions, paginationOpts);
+      await userService.getFilteredUsers(
+        'test-client-id',
+        currentUser,
+        filterOptions,
+        paginationOpts
+      );
 
       expect(mockUserDAO.getUsersByFilteredType).toHaveBeenCalledWith(
         'test-client-id',
@@ -401,7 +412,12 @@ describe('UserService', () => {
       mockClientDAO.getClientByCuid.mockResolvedValue(null);
 
       await expect(
-        userService.getFilteredUsers('invalid-client-id', currentUser, filterOptions, paginationOpts)
+        userService.getFilteredUsers(
+          'invalid-client-id',
+          currentUser,
+          filterOptions,
+          paginationOpts
+        )
       ).rejects.toThrow(NotFoundError);
     });
 

@@ -1,19 +1,28 @@
 import Logger from 'bunyan';
-import { Types, Model } from 'mongoose';
 import { ListResultWithPagination } from '@interfaces/index';
 import { generateShortUID, createLogger } from '@utils/index';
-import { IdentificationType } from '@interfaces/user.interface';
+import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
+import { IdentificationType, IUserDocument } from '@interfaces/user.interface';
 import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/client.interface';
 
 import { BaseDAO } from './baseDAO';
 import { IClientDAO } from './interfaces/clientDAO.interface';
 import { IFindOptions } from './interfaces/baseDAO.interface';
+import { IUserFilterOptions } from './interfaces/userDAO.interface';
 
 export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   protected logger: Logger;
+  private userModel: Model<IUserDocument>;
 
-  constructor({ clientModel }: { clientModel: Model<IClientDocument> }) {
+  constructor({
+    clientModel,
+    userModel,
+  }: {
+    clientModel: Model<IClientDocument>;
+    userModel: Model<IUserDocument>;
+  }) {
     super(clientModel);
+    this.userModel = userModel;
     this.logger = createLogger('ClientDAO');
   }
 
@@ -198,6 +207,181 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
       return await this.list(filter, opts);
     } catch (error) {
       this.logger.error(error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Get user statistics for department and role distribution for a client
+   * @param cuid - Client ID
+   * @param filterOptions - Filter options (same as getUsersByFilteredType but ignoring pagination)
+   * @returns Statistics about the filtered user set for the client
+   */
+  async getClientUsersStats(
+    cuid: string,
+    filterOptions: IUserFilterOptions
+  ): Promise<{
+    departmentDistribution: any[];
+    roleDistribution: any[];
+    totalFilteredUsers: number;
+  }> {
+    try {
+      const { role, department, status, search } = filterOptions;
+
+      const query: FilterQuery<IUserDocument> = {
+        'cuids.cuid': cuid,
+        'cuids.isConnected': true,
+        deletedAt: null,
+      };
+
+      // Handle active/inactive status
+      if (status) {
+        query.isActive = status === 'active';
+      }
+
+      // Handle role filtering
+      if (role) {
+        if (Array.isArray(role)) {
+          query['cuids.roles'] = { $in: role };
+        } else {
+          query['cuids.roles'] = role;
+        }
+      }
+
+      // Handle search term
+      if (search && search.trim()) {
+        const searchRegex = new RegExp(search.trim(), 'i');
+        query.$or = [
+          { email: searchRegex },
+          { 'profile.personalInfo.firstName': searchRegex },
+          { 'profile.personalInfo.lastName': searchRegex },
+          { 'profile.personalInfo.displayName': searchRegex },
+          { 'profile.personalInfo.phoneNumber': searchRegex },
+        ];
+      }
+
+      // Base pipeline (same as getUsersByFilteredType)
+      const pipeline: PipelineStage[] = [
+        { $match: query },
+        {
+          $lookup: {
+            from: 'profiles',
+            localField: '_id',
+            foreignField: 'user',
+            as: 'profile',
+          },
+        },
+        { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+      ];
+
+      // Add department filter if specified
+      if (department) {
+        pipeline.push({
+          $match: {
+            'profile.employeeInfo.department': department,
+          },
+        });
+      }
+
+      // Create aggregation pipelines for stats
+      const departmentStatsQuery = [
+        ...pipeline,
+        {
+          $group: {
+            _id: { $ifNull: ['$profile.employeeInfo.department', 'unassigned'] },
+            count: { $sum: 1 },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            name: { $toUpper: { $substr: ['$_id', 0, 1] } },
+            department: { $substr: ['$_id', 1, { $strLenCP: '$_id' }] },
+            value: '$count',
+          },
+        },
+        {
+          $project: {
+            name: { $concat: ['$name', '$department'] },
+            value: 1,
+          },
+        },
+      ];
+
+      const roleStatsQuery = [
+        ...pipeline,
+        {
+          $unwind: '$cuids',
+        },
+        {
+          $match: {
+            'cuids.cuid': cuid,
+          },
+        },
+        {
+          $unwind: '$cuids.roles',
+        },
+        {
+          $group: {
+            _id: '$cuids.roles',
+            count: { $sum: 1 },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            name: { $toUpper: { $substr: ['$_id', 0, 1] } },
+            role: { $substr: ['$_id', 1, { $strLenCP: '$_id' }] },
+            value: '$count',
+          },
+        },
+        {
+          $project: {
+            name: { $concat: ['$name', '$role'] },
+            value: 1,
+          },
+        },
+      ];
+
+      const totalCountQuery = [...pipeline, { $count: 'total' }];
+
+      // Execute all queries in parallel using the user model
+      const [departmentStats, roleStats, totalCountResult] = await Promise.all([
+        this.userModel.aggregate(departmentStatsQuery).exec(),
+        this.userModel.aggregate(roleStatsQuery).exec(),
+        this.userModel.aggregate(totalCountQuery).exec(),
+      ]);
+
+      const totalFilteredUsers =
+        totalCountResult.length > 0 ? (totalCountResult[0] as any).total : 0;
+
+      // Calculate percentages for department distribution
+      const departmentDistribution = departmentStats
+        .map((dept: any) => ({
+          name: dept.name,
+          value: dept.value,
+          percentage:
+            totalFilteredUsers > 0 ? Math.round((dept.value / totalFilteredUsers) * 100) : 0,
+        }))
+        .sort((a: any, b: any) => b.value - a.value);
+
+      // Calculate percentages for role distribution
+      const roleDistribution = roleStats
+        .map((role: any) => ({
+          name: role.name,
+          value: role.value,
+          percentage:
+            totalFilteredUsers > 0 ? Math.round((role.value / totalFilteredUsers) * 100) : 0,
+        }))
+        .sort((a: any, b: any) => b.value - a.value);
+
+      return {
+        departmentDistribution,
+        roleDistribution,
+        totalFilteredUsers,
+      };
+    } catch (error) {
+      this.logger.error(`Error getting user stats for client ${cuid}:`, error);
       throw this.throwErrorHandler(error);
     }
   }

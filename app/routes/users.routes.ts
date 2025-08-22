@@ -4,26 +4,32 @@ import { UserController } from '@controllers/UserController';
 import { ClientController } from '@controllers/ClientController';
 import { PropertyController } from '@controllers/PropertyController';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
-import { PropertyValidations, ClientValidations, validateRequest } from '@shared/validations';
 import {
   requireUserManagement,
   requirePermission,
   isAuthenticated,
   routeLimiter,
 } from '@shared/middlewares';
+import {
+  PropertyValidations,
+  ClientValidations,
+  UtilsValidations,
+  UserValidations,
+  validateRequest,
+} from '@shared/validations';
 
 const router = Router();
 
 router.get(
-  '/:cuid/user/:uid',
+  '/:cuid/user_details/:uid',
   isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.LIST),
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
   validateRequest({
-    params: ClientValidations.userIdParam,
+    params: UserValidations.userUidParam,
   }),
   asyncWrapper((req, res) => {
     const userController = req.container.resolve<UserController>('userController');
-    return userController.getClientUser(req, res);
+    return userController.getClientUserInfo(req, res);
   })
 );
 
@@ -51,6 +57,20 @@ router.get(
   asyncWrapper((req, res) => {
     const userController = req.container.resolve<UserController>('userController');
     return userController.getFilteredUsers(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/users/stats',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.LIST),
+  validateRequest({
+    params: UtilsValidations.cuid,
+    query: ClientValidations.filteredUsersQuery,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getUserStats(req, res);
   })
 );
 

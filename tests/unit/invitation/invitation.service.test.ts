@@ -113,7 +113,7 @@ describe('InvitationService', () => {
       const mockInviter = createMockUser({
         _id: new Types.ObjectId(testUserId),
         cuids: [
-          { cuid: testCuid, roles: ['admin'], isConnected: true, displayName: 'Test Client' },
+          { cuid: testCuid, roles: ['admin'], isConnected: true, clientDisplayName: 'Test Client' },
         ],
       });
       const mockInvitation = createMockInvitation({
@@ -281,7 +281,7 @@ describe('InvitationService', () => {
             cuid: mockClientId.toString(),
             roles: ['admin'],
             isConnected: true,
-            displayName: 'Test Client',
+            clientDisplayName: 'Test Client',
           },
         ],
       });
@@ -329,7 +329,7 @@ describe('InvitationService', () => {
             cuid: mockClientId.toString(),
             roles: ['admin'],
             isConnected: true,
-            displayName: 'Test Client',
+            clientDisplayName: 'Test Client',
           },
         ],
       });
@@ -366,7 +366,7 @@ describe('InvitationService', () => {
             cuid: mockClientId.toString(),
             roles: ['admin'],
             isConnected: true,
-            displayName: 'Test Client',
+            clientDisplayName: 'Test Client',
           },
         ],
       });

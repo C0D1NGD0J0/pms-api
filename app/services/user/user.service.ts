@@ -5,11 +5,19 @@ import { UserCache } from '@caching/user.cache';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
-import { BadRequestError, NotFoundError } from '@shared/customErrors/index';
+import { PermissionService } from '@services/permission/permission.service';
+import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
-import { IUserRoleType, ICurrentUser, FilteredUser, IUserRole } from '@interfaces/user.interface';
+import {
+  FilteredUserTableData,
+  IUserRoleType,
+  ICurrentUser,
+  IUserStats,
+  IUserRole,
+} from '@interfaces/user.interface';
 
 interface IConstructor {
+  permissionService: PermissionService;
   propertyDAO: PropertyDAO;
   clientDAO: ClientDAO;
   userCache: UserCache;
@@ -22,33 +30,23 @@ export class UserService {
   private readonly userDAO: UserDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly userCache: UserCache;
+  private readonly permissionService: PermissionService;
 
-  constructor({ clientDAO, userDAO, propertyDAO, userCache }: IConstructor) {
+  constructor({ clientDAO, userDAO, propertyDAO, userCache, permissionService }: IConstructor) {
     this.log = createLogger('UserService');
     this.clientDAO = clientDAO;
     this.userDAO = userDAO;
     this.propertyDAO = propertyDAO;
     this.userCache = userCache;
+    this.permissionService = permissionService;
   }
 
-  async getClientUser(cxt: IRequestContext, uid: string): Promise<ISuccessReturnData<any>> {
+  async getClientUserInfo(cxt: IRequestContext, uid: string): Promise<ISuccessReturnData<any>> {
     const currentuser = cxt.currentuser!;
     const clientId = cxt.request.params.cuid || currentuser.client.cuid;
 
     try {
-      // Check cache first
-      const cachedData = await this.userCache.getUserDetail(clientId, uid);
-      if (cachedData.success && cachedData.data) {
-        this.log.info('User detail retrieved from cache', { clientId, uid });
-        return {
-          success: true,
-          data: cachedData.data,
-          message: t('client.success.userRetrieved'),
-        };
-      }
-
-      // Fetch user with comprehensive population
-      const user = await this.userDAO.getUserById(uid, {
+      const user = await this.userDAO.getUserByUId(uid, {
         populate: [
           {
             path: 'profile',
@@ -61,7 +59,36 @@ export class UserService {
         throw new NotFoundError({ message: t('client.errors.userNotFound') });
       }
 
-      // Find client connection
+      // user data for permission check
+      const targetUser = {
+        _id: user._id,
+        uid: user.uid,
+        activecuid: user.activecuid,
+        cuids: user.cuids,
+        profile: user.profile,
+      };
+
+      // if current user has permission to access this user's data
+      if (!this.permissionService.canUserAccessUser(currentuser, targetUser)) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'view',
+            resource: 'user',
+          }),
+        });
+      }
+
+      // Check cache after permission check
+      const cachedData = await this.userCache.getUserDetail(clientId, uid);
+      if (cachedData.success && cachedData.data) {
+        this.log.info('User detail retrieved from cache', { clientId, uid });
+        return {
+          success: true,
+          data: cachedData.data,
+          message: t('client.success.userRetrieved'),
+        };
+      }
+
       const clientConnection = user.cuids?.find((c: any) => c.cuid === clientId);
       if (!clientConnection || !clientConnection.isConnected) {
         throw new NotFoundError({ message: t('client.errors.userNotFound') });
@@ -134,7 +161,7 @@ export class UserService {
     currentUser: ICurrentUser,
     filterOptions: IUserFilterOptions,
     paginationOpts: IFindOptions
-  ): Promise<ISuccessReturnData<{ items: FilteredUser[]; pagination: PaginateResult }>> {
+  ): Promise<ISuccessReturnData<{ items: FilteredUserTableData[]; pagination: PaginateResult }>> {
     try {
       if (!cuid) {
         throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
@@ -151,67 +178,60 @@ export class UserService {
         filterOptions.role = [filterOptions.role as IUserRoleType];
       }
 
+      // Fetch filtered users only (stats are now fetched separately)
       const result = await this.userDAO.getUsersByFilteredType(cuid, filterOptions, paginationOpts);
 
-      // Prepare user data for response
-      const users = result.items.map((user: any) => {
-        console.dir(user, { depth: null });
+      // Prepare lightweight user data for table display
+      const users: FilteredUserTableData[] = result.items.map((user: any) => {
         const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
+        const firstName = user.profile?.personalInfo?.firstName || '';
+        const lastName = user.profile?.personalInfo?.lastName || '';
+        const fullName = `${firstName} ${lastName}`.trim();
 
-        // Basic user info
-        const userData: any = {
+        // Return only fields needed for table display
+        const tableUserData: FilteredUserTableData = {
           uid: user.uid,
           email: user.email,
-          displayName: clientConnection?.displayName || '',
-          roles: clientConnection?.roles || [],
-          isConnected: clientConnection?.isConnected || false,
-          createdAt: user.createdAt,
+          displayName: clientConnection?.clientDisplayName || fullName || user.email,
+          fullName: fullName || undefined,
+          phoneNumber: user.profile?.personalInfo?.phoneNumber || undefined,
           isActive: user.isActive,
+          isConnected: clientConnection?.isConnected || false,
         };
 
-        // Include profile info if available
-        if (user.profile) {
-          userData.firstName = user.profile.personalInfo?.firstName || '';
-          userData.lastName = user.profile.personalInfo?.lastName || '';
-          userData.fullName = `${userData.firstName} ${userData.lastName}`.trim();
-          userData.avatar = user.profile.personalInfo?.avatar || '';
-          userData.phoneNumber = user.profile.personalInfo?.phoneNumber || '';
+        // Add type-specific info based on user roles
+        const roles = clientConnection?.roles || [];
 
-          // Determine user type based on roles
-          const roles = clientConnection?.roles || [];
-
-          if (roles.some((r: string) => ['manager', 'admin', 'staff'].includes(r))) {
-            userData.employeeInfo = user.profile.employeeInfo || {};
-            userData.userType = 'employee';
-            delete userData.vendorInfo;
-          } else if (roles.includes('vendor')) {
-            userData.vendorInfo = user.profile.vendorInfo || {};
-            userData.userType = 'vendor';
-
-            // Add linkedVendorId info for vendors
-            if (clientConnection?.linkedVendorId) {
-              userData.vendorInfo = {
-                ...userData.vendorInfo,
-                isLinkedAccount: true,
-                linkedVendorId: clientConnection.linkedVendorId,
-              };
-            } else {
-              userData.vendorInfo = {
-                ...userData.vendorInfo,
-                isPrimaryVendor: true,
-              };
-            }
-
-            delete userData.employeeInfo;
-          } else if (roles.includes('tenant')) {
-            userData.tenantInfo = user.profile.tenantInfo || {};
-            userData.userType = 'tenant';
-            delete userData.vendorInfo;
-            delete userData.employeeInfo;
-          }
+        // Add minimal employee info if user is an employee
+        if (roles.some((r: string) => ['manager', 'admin', 'staff'].includes(r))) {
+          tableUserData.employeeInfo = {
+            jobTitle: user.profile?.employeeInfo?.jobTitle || undefined,
+            department: user.profile?.employeeInfo?.department || undefined,
+            startDate: user.profile?.employeeInfo?.startDate || undefined,
+          };
         }
 
-        return userData;
+        // Add minimal vendor info if user is a vendor
+        if (roles.includes('vendor')) {
+          tableUserData.vendorInfo = {
+            companyName: user.profile?.vendorInfo?.companyName || undefined,
+            businessType: user.profile?.vendorInfo?.businessType || undefined,
+            isLinkedAccount: !!clientConnection?.linkedVendorId,
+            linkedVendorId: clientConnection?.linkedVendorId || undefined,
+            isPrimaryVendor: !clientConnection?.linkedVendorId,
+          };
+        }
+
+        // Add minimal tenant info if user is a tenant
+        if (roles.includes('tenant')) {
+          tableUserData.tenantInfo = {
+            unitNumber: user.profile?.tenantInfo?.unitNumber || undefined,
+            leaseStatus: user.profile?.tenantInfo?.leaseStatus || undefined,
+            rentStatus: user.profile?.tenantInfo?.rentStatus || undefined,
+          };
+        }
+
+        return tableUserData;
       });
 
       return {
@@ -233,8 +253,55 @@ export class UserService {
   }
 
   /**
-   * Build comprehensive user detail data for the frontend
+   * Get user statistics for a client (for charts)
+   * @param cuid - Client ID
+   * @param currentUser - Current user context
+   * @param filterOptions - Filter options
+   * @returns User statistics for charts
    */
+  async getUserStats(
+    cuid: string,
+    currentUser: ICurrentUser,
+    filterOptions: IUserFilterOptions
+  ): Promise<ISuccessReturnData<IUserStats>> {
+    try {
+      if (!cuid) {
+        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+      }
+
+      // Validate client exists
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      // Format role parameter
+      if (filterOptions.role && typeof filterOptions.role === 'string') {
+        filterOptions.role = [filterOptions.role as IUserRoleType];
+      }
+
+      // Get stats from clientDAO
+      const stats = await this.clientDAO.getClientUsersStats(cuid, filterOptions);
+      console.log(stats, '---sd----');
+      return {
+        success: true,
+        data: {
+          departmentDistribution: stats.departmentDistribution,
+          roleDistribution: stats.roleDistribution,
+          totalFilteredUsers: stats.totalFilteredUsers,
+        },
+        message: t('client.success.userStatsRetrieved'),
+      };
+    } catch (error) {
+      this.log.error('Error getting user stats:', {
+        cuid,
+        filterOptions,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
   private async buildUserDetailData(
     user: any,
     clientConnection: any,
@@ -242,39 +309,26 @@ export class UserService {
   ): Promise<any> {
     const profile = user.profile || {};
     const personalInfo = profile.personalInfo || {};
-    const employeeInfo = profile.employeeInfo || {};
-    // const vendorInfo = profile.vendorInfo || {};
     const contactInfo = profile.contactInfo || {};
-
-    // Calculate tenure
-    const hireDate = employeeInfo.hireDate || user.createdAt;
-    const tenure = this.calculateTenure(hireDate);
 
     // Determine user type and role info
     const roles = clientConnection.roles || [];
-    const primaryRole = this.determinePrimaryRole(roles);
     const userType = this.determineUserType(roles);
 
-    // Get minimal property data if user is property manager
-    let properties = [];
-    if (roles.includes('manager') || roles.includes('property_manager')) {
-      properties = await this.getUserProperties(user._id, clientId);
-    }
-
-    // Build the comprehensive response
-    return {
-      // Basic user info
+    // Build base response structure
+    const response: any = {
+      // Basic user info (common for all user types)
       user: {
         uid: user.uid,
         email: user.email,
-        displayName: clientConnection.displayName || '',
+        displayName: clientConnection.clientDisplayName || '',
         roles: roles,
         isActive: user.isActive,
         createdAt: user.createdAt,
         userType: userType,
       },
 
-      // Profile information
+      // Common profile information
       profile: {
         firstName: personalInfo.firstName || '',
         lastName: personalInfo.lastName || '',
@@ -282,49 +336,102 @@ export class UserService {
         avatar: personalInfo.avatar || '',
         phoneNumber: personalInfo.phoneNumber || contactInfo.phoneNumber || '',
         email: user.email,
-
-        // Employment details
-        employeeId: employeeInfo.employeeId || '',
-        hireDate: hireDate,
-        tenure: tenure,
-        employmentType: employeeInfo.employmentType || 'Full-Time',
-        department: employeeInfo.department || 'Operations',
-        position: primaryRole,
-
-        // Manager info (placeholder)
-        directManager: employeeInfo.directManager || 'Sarah Wilson',
-
-        // Skills and expertise (placeholder)
-        skills: employeeInfo.skills || [
-          'Property Management',
-          'Tenant Relations',
-          'Maintenance Coordination',
-          'Financial Reporting',
-        ],
-
-        // About section (placeholder)
         about:
-          employeeInfo.about ||
-          `${personalInfo.firstName || 'Employee'} is a dedicated team member with expertise in property management and customer service.`,
-
-        // Contact information
+          personalInfo.bio ||
+          `${personalInfo.firstName || 'User'} is a valued member of our community.`,
         contact: {
           phone: personalInfo.phoneNumber || contactInfo.phoneNumber || '',
           email: user.email,
-          officeAddress: contactInfo.officeAddress || '123 Main Street, Suite 100',
-          officeCity: contactInfo.officeCity || 'New York, NY 10001',
-          workHours: contactInfo.workHours || 'Mon-Fri: 8AM-5PM',
-        },
-
-        // Emergency contact (placeholder)
-        emergencyContact: employeeInfo.emergencyContact || {
-          name: 'Emergency Contact',
-          relationship: 'Spouse',
-          phone: '+1 (555) 123-4568',
         },
       },
 
-      // Performance statistics (placeholders)
+      // Common fields
+      status: user.isActive ? 'Active' : 'Inactive',
+      properties: [],
+      tasks: [],
+      documents: [],
+    };
+
+    // Add type-specific information based on userType
+    switch (userType) {
+      case 'employee':
+        response.employeeInfo = await this.buildEmployeeInfo(
+          user,
+          profile,
+          clientConnection,
+          clientId
+        );
+        // Get properties for managers
+        if (roles.includes('manager') || roles.includes('property_manager')) {
+          response.properties = await this.getUserProperties(user._id, clientId);
+        }
+        break;
+
+      case 'vendor':
+        response.vendorInfo = await this.buildVendorInfo(user, profile, clientConnection);
+        break;
+
+      case 'tenant':
+        response.tenantInfo = await this.buildTenantInfo();
+        break;
+    }
+
+    return response;
+  }
+
+  private async buildEmployeeInfo(
+    user: any,
+    profile: any,
+    clientConnection: any,
+    clientId: string
+  ): Promise<any> {
+    const employeeInfo = profile.employeeInfo || {};
+    const contactInfo = profile.contactInfo || {};
+    const roles = clientConnection.roles || [];
+
+    // Calculate tenure
+    const hireDate = employeeInfo.startDate || user.createdAt;
+    const tenure = this.calculateTenure(hireDate);
+
+    // Get minimal property data if user is property manager
+    let properties = [];
+    if (roles.includes('manager') || roles.includes('property_manager')) {
+      properties = await this.getUserProperties(user._id, clientId);
+    }
+
+    return {
+      // Employment details
+      employeeId: employeeInfo.employeeId || '',
+      hireDate: hireDate,
+      tenure: tenure,
+      employmentType: employeeInfo.employmentType || 'Full-Time',
+      department: employeeInfo.department || 'operations',
+      position: this.determinePrimaryRole(roles),
+      directManager: employeeInfo.reportsTo || 'Sarah Wilson',
+
+      // Skills and expertise
+      skills: employeeInfo.skills || [
+        'Property Management',
+        'Tenant Relations',
+        'Maintenance Coordination',
+        'Financial Reporting',
+      ],
+
+      // Office information
+      officeInfo: {
+        address: contactInfo.officeAddress || '123 Main Street, Suite 100',
+        city: contactInfo.officeCity || 'New York, NY 10001',
+        workHours: contactInfo.workHours || 'Mon-Fri: 8AM-5PM',
+      },
+
+      // Emergency contact
+      emergencyContact: employeeInfo.emergencyContact || {
+        name: 'Emergency Contact',
+        relationship: 'Spouse',
+        phone: '+1 (555) 123-4568',
+      },
+
+      // Performance statistics
       stats: {
         propertiesManaged: properties.length,
         unitsManaged: properties.reduce((sum: number, p: any) => sum + (p.units || 0), 0),
@@ -334,14 +441,8 @@ export class UserService {
         activeTasks: 8,
       },
 
-      // Minimal property data for table display
-      properties: properties,
-
-      // Placeholders for unimplemented features
-      tasks: [], // Active tasks/tickets
-      documents: [], // Certifications and documents
+      // Performance metrics
       performance: {
-        // Performance metrics
         taskCompletionRate: '98%',
         tenantSatisfaction: '4.8/5',
         avgOccupancyRate: '92%',
@@ -350,15 +451,125 @@ export class UserService {
 
       // Employment tags/badges
       tags: this.generateEmployeeTags(employeeInfo, roles),
-
-      // Status
-      status: user.isActive ? 'Active' : 'Inactive',
     };
   }
 
-  /**
-   * Calculate tenure from hire date
-   */
+  private async buildVendorInfo(user: any, profile: any, clientConnection: any): Promise<any> {
+    const vendorInfo = profile.vendorInfo || {};
+    const _personalInfo = profile.personalInfo || {};
+
+    return {
+      // Company information
+      companyName: vendorInfo.companyName || _personalInfo.displayName || '',
+      businessType: vendorInfo.businessType || 'General Contractor',
+      yearsInBusiness: vendorInfo.yearsInBusiness || 0,
+      registrationNumber: vendorInfo.registrationNumber || '',
+      taxId: vendorInfo.taxId || '',
+
+      // Services
+      servicesOffered: vendorInfo.servicesOffered || {},
+
+      // Service areas
+      serviceAreas: vendorInfo.serviceAreas || {
+        baseLocation: vendorInfo.address?.fullAddress || '',
+        maxDistance: 25,
+      },
+
+      // Insurance
+      insuranceInfo: vendorInfo.insuranceInfo || {
+        provider: '',
+        policyNumber: '',
+        expirationDate: null,
+        coverageAmount: 0,
+      },
+
+      // Contact person
+      contactPerson: vendorInfo.contactPerson || {
+        name: _personalInfo.displayName || '',
+        jobTitle: 'Owner',
+        email: user.email,
+        phone: _personalInfo.phoneNumber || '',
+      },
+
+      // Vendor statistics (placeholder)
+      stats: {
+        completedJobs: 0,
+        activeJobs: 0,
+        rating: '0',
+        responseTime: '24h',
+        onTimeRate: '0%',
+      },
+
+      // Vendor tags
+      tags: this.generateVendorTags(vendorInfo, clientConnection),
+
+      // Linked vendor info if applicable
+      isLinkedAccount: !!clientConnection.linkedVendorId,
+      linkedVendorId: clientConnection.linkedVendorId || null,
+      isPrimaryVendor: !clientConnection.linkedVendorId,
+    };
+  }
+
+  private async buildTenantInfo(): Promise<any> {
+    // Placeholder implementation for tenant info
+    // This should be expanded when tenant model is fully implemented
+    return {
+      leaseInfo: {
+        status: 'Active',
+        startDate: new Date(),
+        endDate: null,
+        monthlyRent: 0,
+      },
+      unit: {
+        propertyName: '',
+        unitNumber: '',
+        address: '',
+      },
+      rentStatus: 'Current',
+      paymentHistory: [],
+      maintenanceRequests: [],
+      documents: [],
+    };
+  }
+
+  private generateVendorTags(vendorInfo: any, clientConnection: any): string[] {
+    const tags = [];
+
+    // Business type
+    if (vendorInfo.businessType) {
+      tags.push(vendorInfo.businessType);
+    }
+
+    // Insurance status
+    if (vendorInfo.insuranceInfo?.expirationDate) {
+      const expirationDate = new Date(vendorInfo.insuranceInfo.expirationDate);
+      if (expirationDate > new Date()) {
+        tags.push('Insured');
+      }
+    }
+
+    // Years in business
+    if (vendorInfo.yearsInBusiness > 5) {
+      tags.push('Established');
+    }
+
+    // Linked account
+    if (clientConnection.linkedVendorId) {
+      tags.push('Sub-contractor');
+    } else {
+      tags.push('Primary Vendor');
+    }
+
+    // Service specialties
+    const services = vendorInfo.servicesOffered || {};
+    const activeServices = Object.keys(services).filter((key) => services[key]);
+    if (activeServices.length > 0) {
+      tags.push(`${activeServices.length} Services`);
+    }
+
+    return tags;
+  }
+
   private calculateTenure(hireDate: Date): string {
     const now = new Date();
     const hire = new Date(hireDate);
@@ -376,9 +587,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Determine primary role for display
-   */
   private determinePrimaryRole(roles: string[]): string {
     const roleHierarchy = {
       super_admin: 'Super Administrator',
@@ -399,9 +607,6 @@ export class UserService {
     return 'Staff Member';
   }
 
-  /**
-   * Determine user type (employee, vendor, tenant)
-   */
   private determineUserType(roles: string[]): string {
     if (
       roles.some((r: string) =>
@@ -417,9 +622,6 @@ export class UserService {
     return 'employee';
   }
 
-  /**
-   * Get minimal property data for properties managed by user
-   */
   private async getUserProperties(userId: string, clientId: string): Promise<any[]> {
     try {
       // Query properties managed by this user with minimal fields
@@ -450,9 +652,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Format property location for display
-   */
   private formatPropertyLocation(location: any): string {
     if (!location) return 'Location not specified';
 
@@ -464,9 +663,6 @@ export class UserService {
     return parts.length > 0 ? parts.join(', ') : 'Location not specified';
   }
 
-  /**
-   * Format date for display
-   */
   private formatDate(date: Date): string {
     if (!date) return '';
     return new Date(date).toLocaleDateString('en-US', {
@@ -475,9 +671,6 @@ export class UserService {
     });
   }
 
-  /**
-   * Generate employee tags/badges
-   */
   private generateEmployeeTags(employeeInfo: any, roles: string[]): string[] {
     const tags = [];
 

@@ -94,7 +94,12 @@ describe('AuthService', () => {
       const mockUser = createMockUser({
         isActive: true,
         cuids: [
-          { cuid: 'test-cuid', isConnected: true, displayName: 'Test Client', roles: ['admin'] },
+          {
+            cuid: 'test-cuid',
+            isConnected: true,
+            clientDisplayName: 'Test Client',
+            roles: ['admin'],
+          },
         ],
         activecuid: 'test-cuid',
       });
@@ -178,8 +183,13 @@ describe('AuthService', () => {
       const newCuid = 'new-cuid';
       const mockUser = createMockUser({
         cuids: [
-          { cuid: 'old-cuid', isConnected: true, displayName: 'Old Client', roles: ['admin'] },
-          { cuid: newCuid, isConnected: true, displayName: 'New Client', roles: ['tenant'] },
+          {
+            cuid: 'old-cuid',
+            isConnected: true,
+            clientDisplayName: 'Old Client',
+            roles: ['admin'],
+          },
+          { cuid: newCuid, isConnected: true, clientDisplayName: 'New Client', roles: ['tenant'] },
         ],
       });
 
@@ -211,7 +221,12 @@ describe('AuthService', () => {
       const mockUser = createMockUser({
         isActive: true,
         cuids: [
-          { cuid: 'test-cuid', isConnected: true, displayName: 'Test Client', roles: ['admin'] },
+          {
+            cuid: 'test-cuid',
+            isConnected: true,
+            clientDisplayName: 'Test Client',
+            roles: ['admin'],
+          },
         ],
       });
 
@@ -255,7 +270,7 @@ describe('AuthService', () => {
       const clientId = 'test-cuid';
       const mockUser = createMockUser({
         cuids: [
-          { cuid: clientId, isConnected: true, displayName: 'Test Client', roles: ['admin'] },
+          { cuid: clientId, isConnected: true, clientDisplayName: 'Test Client', roles: ['admin'] },
         ],
       });
       const mockClient = { cuid: clientId, displayName: 'Test Client' };
@@ -355,7 +370,12 @@ describe('AuthService', () => {
       const clientId = 'test-cuid';
       const mockUser = createMockUser({
         cuids: [
-          { cuid: clientId, isConnected: true, displayName: 'Test Client', roles: ['tenant'] },
+          {
+            cuid: clientId,
+            isConnected: true,
+            clientDisplayName: 'Test Client',
+            roles: ['tenant'],
+          },
         ],
       });
 

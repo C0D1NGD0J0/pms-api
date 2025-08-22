@@ -16,9 +16,9 @@ export class UserController {
     this.userService = userService;
   }
 
-  getClientUser = async (req: AppRequest, res: Response) => {
+  getClientUserInfo = async (req: AppRequest, res: Response) => {
     const { uid } = req.params;
-    const result = await this.userService.getClientUser(req.context, uid);
+    const result = await this.userService.getClientUserInfo(req.context, uid);
 
     res.status(httpStatusCodes.OK).json(result);
   };
@@ -32,13 +32,12 @@ export class UserController {
 
   getFilteredUsers = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-    const { role, department, status, search, page, limit, sortBy, sort } = req.query;
+    const { role, department, status, page, limit, sortBy, sort } = req.query;
 
     const filterOptions: IUserFilterOptions = {
       role: role as IUserRoleType | IUserRoleType[] | undefined,
       department: department as string | undefined,
       status: status as 'active' | 'inactive' | undefined,
-      search: search as string | undefined,
     };
 
     const paginationOpts = {
@@ -57,6 +56,21 @@ export class UserController {
       filterOptions,
       paginationOpts
     );
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  /**
+   * Get user statistics for a client (for charts)
+   * @param req - Express Request object
+   * @param res - Express Response object
+   */
+  getUserStats = async (req: AppRequest, res: Response): Promise<void> => {
+    const { cuid } = req.params;
+
+    const result = await this.userService.getUserStats(cuid, req.context.currentuser!, {
+      ...req.query,
+    });
 
     res.status(httpStatusCodes.OK).json(result);
   };

@@ -18,7 +18,7 @@
     "staff": {
       "$extend": ["tenant"],
       "property": ["read:any", "update:assigned"],
-      "user": ["list:any"],
+      "user": ["list:any", "read:any"],
       "maintenance": ["create:assigned", "read:any", "update:assigned", "list:any"],
       "lease": ["read:any", "update:assigned", "list:any"],
       "payment": ["read:any", "list:any"],

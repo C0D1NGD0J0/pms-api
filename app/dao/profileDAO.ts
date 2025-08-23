@@ -362,23 +362,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               },
             },
 
-            // common profile information if applicable
-            vendorInfo: {
-              $cond: {
-                if: '$vendorInfo',
-                then: '$vendorInfo',
-                else: '$$REMOVE',
-              },
-            },
-
-            employeeInfo: {
-              $cond: {
-                if: '$employeeInfo',
-                then: '$employeeInfo',
-                else: '$$REMOVE',
-              },
-            },
-
             // all client connections
             clients: {
               $map: {
@@ -408,7 +391,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
             },
 
             // permissions array to be filled later
-            permissions: [],
+            // permissions: [],
           },
         },
       ];

@@ -1,7 +1,8 @@
 {
   "client": {
     "errors": {
-      "notFound": "client.errors.notFound"
+      "notFound": "client.errors.notFound",
+      "insufficientPermissions": "client.errors.insufficientPermissions"
     },
     "success": {
       "userRetrieved": "client.success.userRetrieved",

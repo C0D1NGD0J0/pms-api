@@ -69,35 +69,34 @@ export class UserAccessStrategy extends ResourceAccessStrategy {
           return user.sub === target._id?.toString();
         },
         staff: (user, target) => {
+          (void user, target);
           // Staff can read themselves
-          return user.sub === target._id?.toString();
+          // return user.sub === target._id?.toString();
+          return true;
         },
         default: (user, target) => {
-          // Default: users can only read themselves
           return user.sub === target._id?.toString();
         },
       },
       [PermissionAction.UPDATE]: {
-        admin: () => true, // Admins can update all users
+        admin: () => true,
         manager: (user, target) => {
-          // Managers can update themselves and users who report to them
           return (
             user.sub === target._id?.toString() ||
             target.profile?.employeeInfo?.reportsTo?.toString() === user.sub
           );
         },
         default: (user, target) => {
-          // Default: users can only update themselves
           return user.sub === target._id?.toString();
         },
       },
       [PermissionAction.DELETE]: {
-        admin: () => true, // Only admins can delete users
+        admin: () => true,
         default: () => false,
       },
       [PermissionAction.CREATE]: {
         admin: () => true,
-        manager: () => true, // Managers can create users
+        manager: () => true,
         default: () => false,
       },
       [PermissionAction.LIST]: {

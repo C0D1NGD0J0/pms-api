@@ -282,7 +282,7 @@ export class UserService {
 
       // Get stats from clientDAO
       const stats = await this.clientDAO.getClientUsersStats(cuid, filterOptions);
-      console.log(stats, '---sd----');
+
       return {
         success: true,
         data: {

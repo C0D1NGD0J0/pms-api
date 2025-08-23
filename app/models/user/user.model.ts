@@ -48,7 +48,6 @@ const UserSchema = new Schema<IUserDocument>(
 
 UserSchema.pre('save', async function (this: IUserDocument, next) {
   if (this.isModified('password')) {
-    // Hashing Password
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
   }

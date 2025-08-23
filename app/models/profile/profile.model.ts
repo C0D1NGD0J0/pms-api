@@ -219,7 +219,11 @@ const ProfileSchema = new Schema<IProfileDocument>(
       department: { type: String, trim: true },
       jobTitle: { type: String, trim: true },
       employeeId: { type: String, trim: true, sparse: true, select: false },
-      reportsTo: { type: String, trim: true },
+      reportsTo: {
+        required: true,
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+      },
       startDate: { type: Date },
       permissions: [{ type: String }],
       clientSpecificSettings: { type: Schema.Types.Mixed },

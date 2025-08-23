@@ -2,39 +2,12 @@ import { Document, Types } from 'mongoose';
 
 import { IPaginationQuery, CURRENCIES } from './utils.interface';
 
-/**
- * Core Property Interface
- */
-export interface IProperty {
-  fees: {
-    taxAmount: number;
-    currency: CURRENCIES;
-    rentalAmount: number | string;
-    managementFees: number | string;
-  };
-  description?: {
-    html?: string;
-    text?: string;
-  };
-  communityAmenities?: CommunityAmenities;
-  specifications: PropertySpecifications;
-  interiorAmenities?: InteriorAmenities;
-  computedLocation?: ComputedLocation;
-  financialDetails?: FinancialDetails;
-  documents?: PropertyDocumentItem[];
-  occupancyStatus: OccupancyStatus;
-  utilities: PropertyUtilities;
-  propertyType: PropertyType;
-  managedBy?: Types.ObjectId;
-  createdBy: Types.ObjectId;
-  maxAllowedUnits?: number;
-  address: AddressDetails;
-  status: PropertyStatus;
-  yearBuilt?: number;
-  name: string;
-  cuid: string;
+export enum PropertyApprovalStatusEnum {
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  PENDING = 'pending',
+  DRAFT = 'draft',
 }
-
 /**
  * Property Filter Query Interface
  */
@@ -67,8 +40,44 @@ export interface IPropertyFilterQuery {
       start?: Date | string;
       end?: Date | string;
     };
+    includeUnapproved?: boolean; // For admin/managers to see pending properties
+    approvalStatus?: PropertyApprovalStatus; // Filter by specific approval status
   } | null;
   pagination: IPaginationQuery;
+  currentUser?: any; // Optional current user context for permission checking
+}
+
+export interface IProperty {
+  fees: {
+    taxAmount: number;
+    currency: CURRENCIES;
+    rentalAmount: number | string;
+    managementFees: number | string;
+  };
+  description?: {
+    html?: string;
+    text?: string;
+  };
+  approvalDetails?: PropertyApprovalDetails;
+  communityAmenities?: CommunityAmenities;
+  approvalStatus?: PropertyApprovalStatus;
+  pendingChanges?: IPendingChanges | null;
+  specifications: PropertySpecifications;
+  interiorAmenities?: InteriorAmenities;
+  computedLocation?: ComputedLocation;
+  financialDetails?: FinancialDetails;
+  documents?: PropertyDocumentItem[];
+  occupancyStatus: OccupancyStatus;
+  utilities: PropertyUtilities;
+  propertyType: PropertyType;
+  managedBy?: Types.ObjectId;
+  createdBy: Types.ObjectId;
+  maxAllowedUnits?: number;
+  address: AddressDetails;
+  status: PropertyStatus;
+  yearBuilt?: number;
+  name: string;
+  cuid: string;
 }
 
 /**
@@ -221,6 +230,14 @@ export type PropertySpecifications = {
   floors?: number;
 };
 
+export interface PropertyApprovalDetails {
+  requestedBy?: Types.ObjectId;
+  rejectionReason?: string[];
+  actor?: Types.ObjectId;
+  updatedAt?: Date;
+  notes?: string[];
+}
+
 /**
  * Assignable Users Filter Interface
  */
@@ -267,6 +284,11 @@ export type UnitStats = {
   vacant: number;
 };
 
+export type IPendingChanges = Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>> & {
+  updatedBy: Types.ObjectId;
+  updatedAt: Date;
+};
+
 /**
  * Property Type Classifications
  */
@@ -289,6 +311,11 @@ export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'constru
 export interface IPropertyWithUnitInfo extends Partial<IPropertyDocument> {
   unitInfo: UnitInfo;
 }
+
+/**
+ * Property Approval Status Types
+ */
+export type PropertyApprovalStatus = 'pending' | 'approved' | 'rejected' | 'draft';
 
 /**
  * New Property Type (for creation)

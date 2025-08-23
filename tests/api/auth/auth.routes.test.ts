@@ -53,6 +53,7 @@ const httpStatusCodes = {
 // Create inline mock user factory to avoid external imports
 const createMockCurrentUser = (overrides = {}) => ({
   sub: new Types.ObjectId().toString(),
+  uid: faker.string.uuid(),
   email: faker.internet.email(),
   isActive: true,
   displayName: faker.person.fullName(),
@@ -73,7 +74,7 @@ const createMockCurrentUser = (overrides = {}) => ({
       cuid: faker.string.uuid(),
       isConnected: true,
       roles: [IUserRole.ADMIN],
-      displayName: faker.company.name(),
+      clientDisplayName: faker.company.name(),
     },
   ],
   permissions: ['read', 'write', 'admin'],
@@ -104,7 +105,7 @@ function createTestApp(controller: any) {
             cuid: 'test-cuid',
             isConnected: true,
             roles: ['admin'],
-            displayName: 'Test Client',
+            clientDisplayName: 'Test Client',
           },
         ],
       }),

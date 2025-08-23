@@ -7,9 +7,9 @@ import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { LanguageService } from '@shared/languages/language.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
-import { EventsRegistryCache, PropertyCache, AuthCache } from '@caching/index';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
+import { EventsRegistryCache, PropertyCache, AuthCache, UserCache } from '@caching/index';
 import { PropertyUnit, Invitation, Property, Profile, Client, User } from '@models/index';
 import {
   PropertyUnitDAO,
@@ -19,13 +19,6 @@ import {
   ClientDAO,
   UserDAO,
 } from '@dao/index';
-import {
-  PropertyUnitController,
-  InvitationController,
-  PropertyController,
-  ClientController,
-  AuthController,
-} from '@controllers/index';
 import {
   DocumentProcessingWorker,
   PropertyUnitWorker,
@@ -44,6 +37,14 @@ import {
   EmailQueue,
 } from '@queues/index';
 import {
+  PropertyUnitController,
+  InvitationController,
+  PropertyController,
+  ClientController,
+  UserController,
+  AuthController,
+} from '@controllers/index';
+import {
   InvitationCsvProcessor,
   PropertyCsvProcessor,
   EventEmitterService,
@@ -54,12 +55,14 @@ import {
   PropertyService,
   ProfileService,
   ClientService,
+  UserService,
   AuthService,
 } from '@services/index';
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
   clientController: asClass(ClientController).scoped(),
+  userController: asClass(UserController).scoped(),
   emailTemplateController: asClass(EmailTemplateController).scoped(),
   propertyController: asClass(PropertyController).scoped(),
   propertyUnitController: asClass(PropertyUnitController).scoped(),
@@ -78,6 +81,7 @@ const ModelResources = {
 const ServiceResources = {
   authService: asClass(AuthService).singleton(),
   clientService: asClass(ClientService).singleton(),
+  userService: asClass(UserService).singleton(),
   mailerService: asClass(MailService).singleton(),
   tokenService: asClass(AuthTokenService).singleton(),
   languageService: asClass(LanguageService).singleton(),
@@ -105,6 +109,7 @@ const CacheResources = {
   authCache: asClass(AuthCache).singleton(),
   propertyCache: asClass(PropertyCache).singleton(),
   eventsRegistry: asClass(EventsRegistryCache).singleton(),
+  userCache: asClass(UserCache).singleton(),
 };
 
 const WorkerResources = {

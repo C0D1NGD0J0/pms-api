@@ -265,7 +265,7 @@ describe('ClientService', () => {
             cuid: clientId,
             roles: ['admin', 'manager'],
             isConnected: true,
-            displayName: 'Test User',
+            clientDisplayName: 'Test User',
           },
         ],
       });
@@ -273,12 +273,12 @@ describe('ClientService', () => {
         items: [
           createMockUser({
             cuids: [
-              { cuid: clientId, roles: ['admin'], isConnected: true, displayName: 'Admin 1' },
+              { cuid: clientId, roles: ['admin'], isConnected: true, clientDisplayName: 'Admin 1' },
             ],
           }),
           createMockUser({
             cuids: [
-              { cuid: clientId, roles: ['admin'], isConnected: true, displayName: 'Admin 2' },
+              { cuid: clientId, roles: ['admin'], isConnected: true, clientDisplayName: 'Admin 2' },
             ],
           }),
         ],
@@ -311,7 +311,9 @@ describe('ClientService', () => {
       const role = 'admin';
       const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
-        cuids: [{ cuid: clientId, roles: ['admin'], isConnected: true, displayName: 'Admin User' }],
+        cuids: [
+          { cuid: clientId, roles: ['admin'], isConnected: true, clientDisplayName: 'Admin User' },
+        ],
       });
       const mockAdminUsers = {
         items: [mockUser], // Only one admin
@@ -353,7 +355,12 @@ describe('ClientService', () => {
       const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
-          { cuid: clientId, roles: ['manager'], isConnected: true, displayName: 'Manager User' },
+          {
+            cuid: clientId,
+            roles: ['manager'],
+            isConnected: true,
+            clientDisplayName: 'Manager User',
+          },
         ],
       });
 
@@ -387,7 +394,7 @@ describe('ClientService', () => {
             cuid: clientId,
             roles: ['admin'],
             isConnected: true,
-            displayName: 'testDisplayName',
+            clientDisplayName: 'testDisplayName',
           },
         ],
       });
@@ -417,7 +424,9 @@ describe('ClientService', () => {
       const role = 'manager';
       const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
-        cuids: [{ cuid: clientId, roles: ['tenant'], isConnected: true, displayName: 'Test User' }],
+        cuids: [
+          { cuid: clientId, roles: ['tenant'], isConnected: true, clientDisplayName: 'Test User' },
+        ],
       });
 
       mockUserDAO.getUserById.mockResolvedValue(mockUser);
@@ -451,7 +460,7 @@ describe('ClientService', () => {
             cuid: clientId,
             roles: ['manager'],
             isConnected: true,
-            displayName: 'testDisplayName',
+            clientDisplayName: 'testDisplayName',
           },
         ],
       });
@@ -475,7 +484,7 @@ describe('ClientService', () => {
             cuid: 'different-client-id',
             roles: [IUserRole.MANAGER],
             isConnected: true,
-            displayName: 'testDisplayName2',
+            clientDisplayName: 'testDisplayName2',
           },
         ],
       });
@@ -501,7 +510,7 @@ describe('ClientService', () => {
             cuid: clientId,
             roles: ['admin', 'manager'],
             isConnected: true,
-            displayName: 'testDisplayName233',
+            clientDisplayName: 'testDisplayName233',
           },
         ],
       });
@@ -529,7 +538,7 @@ describe('ClientService', () => {
             cuid: clientId,
             roles: ['manager'],
             isConnected: false,
-            displayName: 'testDisplayName2334',
+            clientDisplayName: 'testDisplayName2334',
           },
         ],
       });
@@ -548,54 +557,6 @@ describe('ClientService', () => {
         },
         {
           arrayFilters: [{ 'elem.cuid': clientId }],
-        }
-      );
-    });
-  });
-
-  describe('getClientUsers', () => {
-    it('should successfully retrieve all client users', async () => {
-      const mockContext = createMockRequestContext({
-        currentuser: createMockCurrentUser(),
-      });
-      const clientId = mockContext.currentuser.client.cuid;
-      const mockUsers = [
-        createMockUser({
-          cuids: [
-            { cuid: clientId, roles: ['admin'], isConnected: true, displayName: 'Admin User' },
-          ],
-        }),
-        createMockUser({
-          cuids: [
-            { cuid: clientId, roles: ['manager'], isConnected: true, displayName: 'Manager User' },
-          ],
-        }),
-      ];
-
-      mockUserDAO.getUsersByClientId.mockResolvedValue({
-        items: mockUsers,
-        pagination: { total: 2 },
-      });
-
-      const result = await clientService.getClientUsers(mockContext);
-
-      // Assert
-      expect(result.success).toBe(true);
-      expect(result.data.users).toHaveLength(2);
-      expect(result.data.users[0]).toMatchObject({
-        id: expect.any(String),
-        email: expect.any(String),
-        displayName: 'Admin User',
-        roles: ['admin'],
-        isConnected: true,
-      });
-      expect(mockUserDAO.getUsersByClientId).toHaveBeenCalledWith(
-        clientId,
-        {},
-        {
-          limit: 100,
-          skip: 0,
-          populate: 'profile',
         }
       );
     });

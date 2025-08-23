@@ -40,6 +40,14 @@ export interface IClientDocument extends Document, IClient {
   cuid: string;
   id: string;
 }
+export interface IClientUserConnections {
+  clientDisplayName: string;
+  linkedVendorId?: string;
+  roles: IUserRoleType[];
+  isConnected: boolean;
+  cuid: string;
+}
+
 export interface IClientSettings {
   notificationPreferences: {
     email: boolean;
@@ -48,14 +56,6 @@ export interface IClientSettings {
   };
   timeZone: string;
   lang: string;
-}
-
-export interface IClientUserConnections {
-  linkedVendorId?: string;
-  roles: IUserRoleType[];
-  isConnected: boolean;
-  displayName: string;
-  cuid: string;
 }
 
 export type PopulatedAccountAdmin = {

@@ -292,7 +292,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                 $project: {
                   _id: 0,
                   cuid: '$cuid',
-                  displayname: '$displayName',
+                  clientDisplayName: '$displayName',
                   isVerified: 1,
                 },
               },
@@ -305,9 +305,10 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         {
           $project: {
             _id: 0,
-            sub: { $toString: '$userData._id' },
+            uid: '$userData.uid',
             email: '$userData.email',
             isActive: '$userData.isActive',
+            sub: { $toString: '$userData._id' },
             displayName: '$personalInfo.displayName',
             fullname: {
               $concat: ['$personalInfo.firstName', ' ', '$personalInfo.lastName'],
@@ -342,7 +343,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                 },
                 in: {
                   cuid: '$$activeClient.cuid',
-                  displayname: '$$activeClient.displayName',
+                  clientDisplayName: '$$activeClient.clientDisplayName',
                   role: { $arrayElemAt: ['$$activeClient.roles', 0] },
                   linkedVendorId: '$$activeClient.linkedVendorId',
                   isPrimaryVendor: {
@@ -361,23 +362,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               },
             },
 
-            // common profile information if applicable
-            vendorInfo: {
-              $cond: {
-                if: '$vendorInfo',
-                then: '$vendorInfo',
-                else: '$$REMOVE',
-              },
-            },
-
-            employeeInfo: {
-              $cond: {
-                if: '$employeeInfo',
-                then: '$employeeInfo',
-                else: '$$REMOVE',
-              },
-            },
-
             // all client connections
             clients: {
               $map: {
@@ -385,7 +369,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                 as: 'conn',
                 in: {
                   cuid: '$$conn.cuid',
-                  displayName: '$$conn.displayName',
+                  clientDisplayName: '$$conn.displayName',
                   roles: '$$conn.roles',
                   isConnected: '$$conn.isConnected',
                 },
@@ -407,7 +391,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
             },
 
             // permissions array to be filled later
-            permissions: [],
+            // permissions: [],
           },
         },
       ];

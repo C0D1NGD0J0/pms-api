@@ -4,11 +4,27 @@ import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/c
 
 import { IBaseDAO } from './baseDAO.interface';
 import { IFindOptions } from './baseDAO.interface';
+import { IUserFilterOptions } from './userDAO.interface';
 
 /**
  * Data Access Object interface for Client operations.
  */
 export interface IClientDAO extends IBaseDAO<IClientDocument> {
+  /**
+   * Get user statistics for department and role distribution for a client
+   * @param cuid - Client ID
+   * @param filterOptions - Filter options (same as getUsersByFilteredType but ignoring pagination)
+   * @returns Statistics about the filtered user set for the client
+   */
+  getClientUsersStats(
+    cuid: string,
+    filterOptions: IUserFilterOptions
+  ): Promise<{
+    departmentDistribution: any[];
+    roleDistribution: any[];
+    totalFilteredUsers: number;
+  }>;
+
   /**
    * Updates a client's identification information.
    *

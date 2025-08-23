@@ -262,6 +262,19 @@ const PropertySchema = new Schema<IPropertyDocument>(
       type: Schema.Types.ObjectId,
       ref: 'User',
     },
+    approvalStatus: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected', 'draft'],
+      default: 'pending',
+      index: true,
+    },
+    approvalDetails: {
+      requestedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      updatedAt: { type: Date },
+      actor: { type: Schema.Types.ObjectId, ref: 'User' },
+      rejectionReason: [{ type: String, maxlength: 500 }],
+      notes: [{ type: String, maxlength: 500 }],
+    },
     deletedAt: {
       type: Date,
       default: null,

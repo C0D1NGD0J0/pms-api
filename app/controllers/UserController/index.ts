@@ -52,7 +52,6 @@ export class UserController {
 
     const result = await this.userService.getFilteredUsers(
       cuid as string,
-      req.context.currentuser!,
       filterOptions,
       paginationOpts
     );
@@ -68,7 +67,7 @@ export class UserController {
   getUserStats = async (req: AppRequest, res: Response): Promise<void> => {
     const { cuid } = req.params;
 
-    const result = await this.userService.getUserStats(cuid, req.context.currentuser!, {
+    const result = await this.userService.getUserStats(cuid, {
       ...req.query,
     });
 

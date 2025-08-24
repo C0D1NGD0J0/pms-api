@@ -11,7 +11,6 @@ import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces
 import {
   FilteredUserTableData,
   IUserRoleType,
-  ICurrentUser,
   IUserStats,
   IUserRole,
 } from '@interfaces/user.interface';
@@ -130,7 +129,6 @@ export class UserService {
     // Use the getFilteredUsers method with role filter
     const result = await this.getFilteredUsers(
       clientId,
-      currentuser,
       { role },
       {
         limit: 100,
@@ -158,7 +156,6 @@ export class UserService {
    */
   async getFilteredUsers(
     cuid: string,
-    currentUser: ICurrentUser,
     filterOptions: IUserFilterOptions,
     paginationOpts: IFindOptions
   ): Promise<ISuccessReturnData<{ items: FilteredUserTableData[]; pagination: PaginateResult }>> {
@@ -167,28 +164,22 @@ export class UserService {
         throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
       }
 
-      // Validate client exists
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
-      // Format role parameter
       if (filterOptions.role && typeof filterOptions.role === 'string') {
         filterOptions.role = [filterOptions.role as IUserRoleType];
       }
 
-      // Fetch filtered users only (stats are now fetched separately)
       const result = await this.userDAO.getUsersByFilteredType(cuid, filterOptions, paginationOpts);
-
-      // Prepare lightweight user data for table display
       const users: FilteredUserTableData[] = result.items.map((user: any) => {
         const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
         const firstName = user.profile?.personalInfo?.firstName || '';
         const lastName = user.profile?.personalInfo?.lastName || '';
         const fullName = `${firstName} ${lastName}`.trim();
 
-        // Return only fields needed for table display
         const tableUserData: FilteredUserTableData = {
           uid: user.uid,
           email: user.email,
@@ -199,7 +190,6 @@ export class UserService {
           isConnected: clientConnection?.isConnected || false,
         };
 
-        // Add type-specific info based on user roles
         const roles = clientConnection?.roles || [];
 
         // Add minimal employee info if user is an employee
@@ -213,9 +203,23 @@ export class UserService {
 
         // Add minimal vendor info if user is a vendor
         if (roles.includes('vendor')) {
+          const vendorProfile = user.profile?.vendorInfo || {};
+          const personalInfo = user.profile?.personalInfo || {};
+
           tableUserData.vendorInfo = {
-            companyName: user.profile?.vendorInfo?.companyName || undefined,
-            businessType: user.profile?.vendorInfo?.businessType || undefined,
+            companyName: vendorProfile.companyName || personalInfo.displayName || undefined,
+            businessType: vendorProfile.businessType || 'General Contractor',
+            serviceType: vendorProfile.businessType || 'General Contractor',
+            contactPerson:
+              vendorProfile.contactPerson?.name ||
+              personalInfo.displayName ||
+              fullName ||
+              undefined,
+            rating: vendorProfile?.stats?.rating ? parseFloat(vendorProfile.stats.rating) : 0,
+            reviewCount: vendorProfile?.reviewCount || 0,
+            completedJobs: vendorProfile?.stats?.completedJobs || 0,
+            averageResponseTime: vendorProfile?.stats?.responseTime || '24h',
+            averageServiceCost: vendorProfile?.averageServiceCost || 0,
             isLinkedAccount: !!clientConnection?.linkedVendorId,
             linkedVendorId: clientConnection?.linkedVendorId || undefined,
             isPrimaryVendor: !clientConnection?.linkedVendorId,
@@ -261,7 +265,6 @@ export class UserService {
    */
   async getUserStats(
     cuid: string,
-    currentUser: ICurrentUser,
     filterOptions: IUserFilterOptions
   ): Promise<ISuccessReturnData<IUserStats>> {
     try {
@@ -269,18 +272,15 @@ export class UserService {
         throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
       }
 
-      // Validate client exists
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
-      // Format role parameter
       if (filterOptions.role && typeof filterOptions.role === 'string') {
         filterOptions.role = [filterOptions.role as IUserRoleType];
       }
 
-      // Get stats from clientDAO
       const stats = await this.clientDAO.getClientUsersStats(cuid, filterOptions);
 
       return {
@@ -368,7 +368,7 @@ export class UserService {
         break;
 
       case 'vendor':
-        response.vendorInfo = await this.buildVendorInfo(user, profile, clientConnection);
+        response.vendorInfo = await this.buildVendorInfo(user, profile, clientConnection, clientId);
         break;
 
       case 'tenant':
@@ -454,9 +454,38 @@ export class UserService {
     };
   }
 
-  private async buildVendorInfo(user: any, profile: any, clientConnection: any): Promise<any> {
+  private async buildVendorInfo(
+    user: any,
+    profile: any,
+    clientConnection: any,
+    cuid: string
+  ): Promise<any> {
     const vendorInfo = profile.vendorInfo || {};
     const _personalInfo = profile.personalInfo || {};
+
+    // Get linked users if this is a primary vendor
+    let linkedUsers: any[] = [];
+    if (!clientConnection.linkedVendorId) {
+      try {
+        const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(user.uid, cuid);
+        linkedUsers = linkedUsersResult.items.map((linkedUser: any) => {
+          const personalInfo = linkedUser.profile?.personalInfo || {};
+          return {
+            uid: linkedUser.uid,
+            displayName:
+              personalInfo.displayName ||
+              `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim() ||
+              linkedUser.email,
+            email: linkedUser.email,
+            isActive: linkedUser.isActive,
+            phoneNumber: personalInfo.phoneNumber || undefined,
+          };
+        });
+      } catch (error) {
+        this.log.error('Error fetching linked vendor users:', error);
+        linkedUsers = [];
+      }
+    }
 
     return {
       // Company information
@@ -507,6 +536,9 @@ export class UserService {
       isLinkedAccount: !!clientConnection.linkedVendorId,
       linkedVendorId: clientConnection.linkedVendorId || null,
       isPrimaryVendor: !clientConnection.linkedVendorId,
+
+      // Linked users (only for primary vendors)
+      linkedUsers: linkedUsers.length > 0 ? linkedUsers : undefined,
     };
   }
 

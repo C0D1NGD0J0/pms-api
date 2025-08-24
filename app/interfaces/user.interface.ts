@@ -38,6 +38,13 @@ export interface IVendorDetailInfo {
     maintenance?: boolean;
     other?: boolean;
   };
+  linkedUsers?: Array<{
+    uid: string;
+    displayName: string;
+    email: string;
+    isActive: boolean;
+    phoneNumber?: string;
+  }>;
   stats: {
     completedJobs: number;
     activeJobs: number;
@@ -249,6 +256,24 @@ export interface ITenant extends IUser {
 }
 
 /**
+ * Minimal vendor info for table display
+ */
+export interface FilteredUserVendorInfo {
+  averageResponseTime?: string;
+  averageServiceCost?: number;
+  isLinkedAccount?: boolean;
+  isPrimaryVendor?: boolean;
+  linkedVendorId?: string;
+  contactPerson?: string;
+  completedJobs?: number;
+  businessType?: string;
+  companyName?: string;
+  reviewCount?: number;
+  serviceType?: string;
+  rating?: number;
+}
+
+/**
  * Tenant detail information for getClientUserInfo response
  */
 export interface ITenantDetailInfo {
@@ -310,6 +335,22 @@ export type ISignupData = {
   termsAccepted: boolean;
 };
 
+/**
+ * Lightweight user data for table display only
+ * Contains only the fields needed for table rendering
+ */
+export interface FilteredUserTableData {
+  employeeInfo?: FilteredUserEmployeeInfo;
+  vendorInfo?: FilteredUserVendorInfo;
+  tenantInfo?: FilteredUserTenantInfo;
+  phoneNumber?: string;
+  displayName: string;
+  fullName?: string;
+  isActive: boolean;
+  email: string;
+  uid: string;
+}
+
 // USER INTERFACE
 export interface IUser {
   passwordResetTokenExpiresAt: Date | number | null;
@@ -318,17 +359,6 @@ export interface IUser {
   activationToken?: string;
   password: string;
   email: string;
-}
-
-/**
- * Minimal vendor info for table display
- */
-export interface FilteredUserVendorInfo {
-  isLinkedAccount?: boolean;
-  isPrimaryVendor?: boolean;
-  linkedVendorId?: string;
-  businessType?: string;
-  companyName?: string;
 }
 
 /**

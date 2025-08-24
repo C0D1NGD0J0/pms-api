@@ -148,7 +148,6 @@ describe('UserService', () => {
     const mockClient = createMockClient({ cuid: 'test-client-id' });
 
     it('should successfully retrieve filtered users with employee type', async () => {
-      const currentUser = createMockCurrentUser();
       const filterOptions = { role: [IUserRole.MANAGER], status: 'active' as const };
       const paginationOpts = { limit: 10, skip: 0 };
       const mockUsers = [
@@ -185,7 +184,6 @@ describe('UserService', () => {
 
       const result = await userService.getFilteredUsers(
         'test-client-id',
-        currentUser,
         filterOptions,
         paginationOpts
       );
@@ -208,7 +206,6 @@ describe('UserService', () => {
     });
 
     it('should successfully retrieve filtered users with vendor type', async () => {
-      const currentUser = createMockCurrentUser();
       const filterOptions = { role: [IUserRole.VENDOR] };
       const paginationOpts = { limit: 10, skip: 0 };
       const mockUsers = [
@@ -232,8 +229,20 @@ describe('UserService', () => {
               lastName: 'Vendor',
               avatar: '',
               phoneNumber: '',
+              displayName: 'Jane Vendor',
             },
-            vendorInfo: { companyName: 'Vendor Corp' },
+            vendorInfo: { 
+              companyName: 'Vendor Corp',
+              businessType: 'Plumbing',
+              contactPerson: { name: 'Jane Vendor' },
+              stats: { 
+                rating: '4.5',
+                completedJobs: 25,
+                responseTime: '2h'
+              },
+              reviewCount: 15,
+              averageServiceCost: 250
+            },
           },
         },
       ];
@@ -246,7 +255,6 @@ describe('UserService', () => {
 
       const result = await userService.getFilteredUsers(
         'test-client-id',
-        currentUser,
         filterOptions,
         paginationOpts
       );
@@ -256,17 +264,26 @@ describe('UserService', () => {
       expect(result.data.items[0]).toMatchObject({
         uid: 'vendor-1',
         email: 'vendor1@test.com',
+        fullName: 'Jane Vendor',
         vendorInfo: {
           companyName: 'Vendor Corp',
+          businessType: 'Plumbing',
+          serviceType: 'Plumbing',
+          contactPerson: 'Jane Vendor',
+          rating: 4.5,
+          reviewCount: 15,
+          completedJobs: 25,
+          averageResponseTime: '2h',
+          averageServiceCost: 250,
           isLinkedAccount: true,
           linkedVendorId: 'vendor-company-123',
+          isPrimaryVendor: false,
         },
       });
       expect(result.data.items[0]).not.toHaveProperty('employeeInfo');
     });
 
     it('should successfully retrieve filtered users with tenant type', async () => {
-      const currentUser = createMockCurrentUser();
       const filterOptions = { role: [IUserRole.TENANT] };
       const paginationOpts = { limit: 10, skip: 0 };
       const mockUsers = [
@@ -303,7 +320,6 @@ describe('UserService', () => {
 
       const result = await userService.getFilteredUsers(
         'test-client-id',
-        currentUser,
         filterOptions,
         paginationOpts
       );
@@ -320,7 +336,6 @@ describe('UserService', () => {
     });
 
     it('should handle vendor without linkedVendorId (primary vendor)', async () => {
-      const currentUser = createMockCurrentUser();
       const filterOptions = { role: [IUserRole.VENDOR] };
       const paginationOpts = { limit: 10, skip: 0 };
       const mockUsers = [
@@ -343,8 +358,19 @@ describe('UserService', () => {
               lastName: 'Vendor',
               avatar: '',
               phoneNumber: '',
+              displayName: 'Primary Vendor',
             },
-            vendorInfo: { companyName: 'Primary Corp' },
+            vendorInfo: { 
+              companyName: 'Primary Corp',
+              businessType: 'General Contractor',
+              stats: { 
+                rating: '4.2',
+                completedJobs: 18,
+                responseTime: '4h'
+              },
+              reviewCount: 12,
+              averageServiceCost: 300
+            },
           },
         },
       ];
@@ -357,20 +383,26 @@ describe('UserService', () => {
 
       const result = await userService.getFilteredUsers(
         'test-client-id',
-        currentUser,
         filterOptions,
         paginationOpts
       );
 
       expect(result.data.items[0].vendorInfo).toMatchObject({
         companyName: 'Primary Corp',
+        businessType: 'General Contractor',
+        serviceType: 'General Contractor',
+        contactPerson: 'Primary Vendor',
+        rating: 4.2,
+        reviewCount: 12,
+        completedJobs: 18,
+        averageResponseTime: '4h',
+        averageServiceCost: 300,
         isPrimaryVendor: true,
-        isLinkedAccount: false, // Primary vendors have isLinkedAccount: false
+        isLinkedAccount: false,
       });
     });
 
     it('should convert string role to array format', async () => {
-      const currentUser = createMockCurrentUser();
       const filterOptions = { role: IUserRole.MANAGER as any };
       const paginationOpts = { limit: 10, skip: 0 };
 
@@ -382,7 +414,6 @@ describe('UserService', () => {
 
       await userService.getFilteredUsers(
         'test-client-id',
-        currentUser,
         filterOptions,
         paginationOpts
       );
@@ -395,17 +426,15 @@ describe('UserService', () => {
     });
 
     it('should throw BadRequestError when cuid is missing', async () => {
-      const currentUser = createMockCurrentUser();
       const filterOptions = {};
       const paginationOpts = { limit: 10, skip: 0 };
 
       await expect(
-        userService.getFilteredUsers('', currentUser, filterOptions, paginationOpts)
+        userService.getFilteredUsers('', filterOptions, paginationOpts)
       ).rejects.toThrow(BadRequestError);
     });
 
     it('should throw NotFoundError when client not found', async () => {
-      const currentUser = createMockCurrentUser();
       const filterOptions = {};
       const paginationOpts = { limit: 10, skip: 0 };
 
@@ -414,7 +443,6 @@ describe('UserService', () => {
       await expect(
         userService.getFilteredUsers(
           'invalid-client-id',
-          currentUser,
           filterOptions,
           paginationOpts
         )
@@ -422,7 +450,6 @@ describe('UserService', () => {
     });
 
     it('should handle errors and rethrow them', async () => {
-      const currentUser = createMockCurrentUser();
       const filterOptions = {};
       const paginationOpts = { limit: 10, skip: 0 };
       const mockError = new Error('Database connection failed');
@@ -430,7 +457,7 @@ describe('UserService', () => {
       mockClientDAO.getClientByCuid.mockRejectedValue(mockError);
 
       await expect(
-        userService.getFilteredUsers('test-client-id', currentUser, filterOptions, paginationOpts)
+        userService.getFilteredUsers('test-client-id', filterOptions, paginationOpts)
       ).rejects.toThrow('Database connection failed');
     });
   });

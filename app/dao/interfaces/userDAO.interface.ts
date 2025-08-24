@@ -43,6 +43,11 @@ export interface IUserDAO {
     filter?: FilterQuery<IUserDocument>,
     opts?: IFindOptions
   ): ListResultWithPagination<IUserDocument[]>;
+  getLinkedVendorUsers(
+    primaryVendorId: string,
+    cuid: string,
+    opts?: IFindOptions
+  ): Promise<ListResultWithPagination<IUserDocument[]>>;
   getUsersByClientIdAndRole(
     cuid: string,
     role: IUserRoleType,

@@ -304,7 +304,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     paginationOpts?: IFindOptions
   ): Promise<ListResultWithPagination<IUserDocument[]>> {
     try {
-      const { role, department, status, search } = filterOptions;
+      const { role, department, status } = filterOptions;
 
       // Base query for client users
       const query: FilterQuery<IUserDocument> = {
@@ -313,33 +313,18 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         deletedAt: null,
       };
 
-      // Handle active/inactive status
       if (status) {
         query.isActive = status === 'active';
       }
 
-      // Handle role filtering
       if (role) {
-        if (Array.isArray(role)) {
-          query['cuids.roles'] = { $in: role };
-        } else {
-          query['cuids.roles'] = role;
+        const roles = Array.isArray(role) ? role : [role];
+        query['cuids.roles'] = Array.isArray(role) ? { $in: role } : role;
+        if (roles.includes('vendor')) {
+          query['cuids.linkedVendorId'] = { $exists: true, $eq: null };
         }
       }
 
-      // Handle search term
-      if (search && search.trim()) {
-        const searchRegex = new RegExp(search.trim(), 'i');
-        query.$or = [
-          { email: searchRegex },
-          { 'profile.personalInfo.firstName': searchRegex },
-          { 'profile.personalInfo.lastName': searchRegex },
-          { 'profile.personalInfo.displayName': searchRegex },
-          { 'profile.personalInfo.phoneNumber': searchRegex },
-        ];
-      }
-
-      // Set up pipeline stages for more complex filtering
       const pipeline: PipelineStage[] = [
         { $match: query },
         {
@@ -353,7 +338,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
       ];
 
-      // Add department filter if specified (requires profile lookup)
       if (department) {
         pipeline.push({
           $match: {
@@ -362,7 +346,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         });
       }
 
-      // Add projection to shape the response
       pipeline.push({
         $project: {
           password: 0,
@@ -380,10 +363,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       const sort = paginationOpts?.sort || 'desc';
       const sortBy = paginationOpts?.sortBy || 'createdAt';
 
-      // Clone pipeline for count
       const countPipeline = [...pipeline, { $count: 'total' }];
 
-      // Add sorting and pagination to the main pipeline
       pipeline.push(
         { $sort: { [sortBy]: sort === 'desc' ? -1 : 1 } },
         { $skip: skip },
@@ -746,6 +727,36 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       return user;
     } catch (error) {
       this.logger.error('Error creating bulk user:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Get all users linked to a primary vendor
+   * @param primaryVendorId - The ID of the primary vendor
+   * @param cuid - Client ID
+   * @param opts - Query options
+   * @returns Promise resolving to linked vendor users
+   */
+  async getLinkedVendorUsers(
+    primaryVendorId: string,
+    cuid: string,
+    opts?: IFindOptions
+  ): Promise<ListResultWithPagination<IUserDocument[]>> {
+    try {
+      const query: FilterQuery<IUserDocument> = {
+        'cuids.cuid': cuid,
+        'cuids.linkedVendorId': primaryVendorId,
+        'cuids.isConnected': true,
+        deletedAt: null,
+      };
+
+      return await this.list(query, {
+        ...opts,
+        populate: [{ path: 'profile', select: 'personalInfo' }],
+      });
+    } catch (error) {
+      this.logger.error(`Error getting linked vendor users for vendor ${primaryVendorId}:`, error);
       throw this.throwErrorHandler(error);
     }
   }

@@ -226,7 +226,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     totalFilteredUsers: number;
   }> {
     try {
-      const { role, department, status, search } = filterOptions;
+      const { role, department, status } = filterOptions;
 
       const query: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
@@ -246,18 +246,6 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
         } else {
           query['cuids.roles'] = role;
         }
-      }
-
-      // Handle search term
-      if (search && search.trim()) {
-        const searchRegex = new RegExp(search.trim(), 'i');
-        query.$or = [
-          { email: searchRegex },
-          { 'profile.personalInfo.firstName': searchRegex },
-          { 'profile.personalInfo.lastName': searchRegex },
-          { 'profile.personalInfo.displayName': searchRegex },
-          { 'profile.personalInfo.phoneNumber': searchRegex },
-        ];
       }
 
       // Base pipeline (same as getUsersByFilteredType)
@@ -283,12 +271,20 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
         });
       }
 
+      // Determine if this is a vendor-specific query
+      const isVendorQuery =
+        role &&
+        ((Array.isArray(role) && role.includes('vendor')) ||
+          (typeof role === 'string' && role === 'vendor'));
+
       // Create aggregation pipelines for stats
       const departmentStatsQuery = [
         ...pipeline,
         {
           $group: {
-            _id: { $ifNull: ['$profile.employeeInfo.department', 'unassigned'] },
+            _id: isVendorQuery
+              ? { $ifNull: ['$profile.vendorInfo.businessType', 'unassigned'] }
+              : { $ifNull: ['$profile.employeeInfo.department', 'unassigned'] },
             count: { $sum: 1 },
           },
         },
@@ -296,13 +292,13 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
           $project: {
             _id: 0,
             name: { $toUpper: { $substr: ['$_id', 0, 1] } },
-            department: { $substr: ['$_id', 1, { $strLenCP: '$_id' }] },
+            category: { $substr: ['$_id', 1, { $strLenCP: '$_id' }] },
             value: '$count',
           },
         },
         {
           $project: {
-            name: { $concat: ['$name', '$department'] },
+            name: { $concat: ['$name', '$category'] },
             value: 1,
           },
         },
@@ -355,7 +351,8 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
       const totalFilteredUsers =
         totalCountResult.length > 0 ? (totalCountResult[0] as any).total : 0;
 
-      // Calculate percentages for department distribution
+      // Calculate percentages for department/service type distribution
+      // Note: When filtering by vendor role, this contains service type distribution
       const departmentDistribution = departmentStats
         .map((dept: any) => ({
           name: dept.name,

@@ -15,64 +15,6 @@ enum DataRetentionPolicy {
   MINIMAL = 'minimal',
 }
 
-export interface VendorInfo {
-  servicesOffered?: {
-    applianceRepair?: boolean;
-    carpentry?: boolean;
-    cleaning?: boolean;
-    electrical?: boolean;
-    hvac?: boolean;
-    landscaping?: boolean;
-    maintenance?: boolean;
-    other?: boolean;
-    painting?: boolean;
-    pestControl?: boolean;
-    plumbing?: boolean;
-    roofing?: boolean;
-    security?: boolean;
-  };
-  address?: {
-    city?: string;
-    computedLocation: {
-      coordinates: [number, number]; // [longitude, latitude]
-      type: 'Point';
-    };
-    country?: string;
-    fullAddress: string;
-    postCode?: string;
-    state?: string;
-    street?: string;
-    streetNumber?: string;
-    unitNumber?: string;
-  };
-  serviceAreas?: {
-    baseLocation?: {
-      address: string;
-      coordinates: [number, number]; // [longitude, latitude]
-    };
-    maxDistance: 10 | 15 | 25 | 50; // km
-  };
-  insuranceInfo?: {
-    coverageAmount?: number;
-    expirationDate?: Date;
-    policyNumber?: string;
-    provider?: string;
-  };
-  contactPerson?: {
-    department?: string;
-    email?: string;
-    jobTitle: string;
-    name: string;
-    phone?: string;
-  };
-  registrationNumber?: string;
-  isLinkedAccount: boolean;
-  yearsInBusiness?: number;
-  businessType?: string;
-  companyName?: string;
-  taxId?: string;
-}
-
 export interface Profile {
   personalInfo: {
     avatar?: {
@@ -113,6 +55,12 @@ export interface Profile {
   user: Types.ObjectId;
   timeZone: string;
   lang: string;
+}
+
+export interface VendorInfo {
+  vendorId?: Types.ObjectId; // Reference to the vendor collection
+  isLinkedAccount: boolean;
+  linkedVendorId?: string; // Reference to primary vendor (stays as string to match user model)
 }
 
 export type IProfileDocument = {

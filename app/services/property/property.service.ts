@@ -364,7 +364,7 @@ export class PropertyService implements IDisposable {
     const jobData = {
       csvFilePath,
       userId: actorId,
-      clientInfo: { cuid, displayName: client.displayName, id: client.id },
+      clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
     };
 
     const job = await this.propertyQueue.addCsvImportJob(jobData);
@@ -428,7 +428,7 @@ export class PropertyService implements IDisposable {
     const jobData = {
       userId: currentUser.sub,
       csvFilePath: csvFile.path,
-      clientInfo: { cuid, displayName: client.displayName, id: client.id },
+      clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
     };
     const job = await this.propertyQueue.addCsvValidationJob(jobData);
     return {

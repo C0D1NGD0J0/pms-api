@@ -1,7 +1,7 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
+import { createLogger } from '@utils/index';
 import { UserCache } from '@caching/user.cache';
-import { EMPLOYEE_ROLE, createLogger } from '@utils/index';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
@@ -9,20 +9,19 @@ import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
 import {
+  IVendorTeamMembersResponse,
   IUserPopulatedDocument,
   FilteredUserTableData,
+  IUserDetailResponse,
+  IEmployeeDetailInfo,
+  IVendorDetailInfo,
+  ITenantDetailInfo,
+  IVendorTeamMember,
   IUserRoleType,
+  IUserProperty,
   IUserStats,
   IUserRole,
 } from '@interfaces/user.interface';
-import {
-  IVendorTeamMembersResponse,
-  IUserDetailResponse,
-  IEmployeeInfo,
-  IUserProperty,
-  IVendorInfo,
-  ITenantInfo,
-} from '@interfaces/userDetail.interface';
 
 interface IConstructor {
   permissionService: PermissionService;
@@ -88,15 +87,15 @@ export class UserService {
       }
 
       // Check cache after permission check
-      // const cachedData = await this.userCache.getUserDetail(clientId, uid);
-      // if (cachedData.success && cachedData.data) {
-      //   this.log.info('User detail retrieved from cache', { clientId, uid });
-      //   return {
-      //     success: true,
-      //     data: cachedData.data,
-      //     message: t('client.success.userRetrieved'),
-      //   };
-      // }
+      const cachedData = await this.userCache.getUserDetail(clientId, uid);
+      if (cachedData.success && cachedData.data) {
+        this.log.info('User detail retrieved from cache', { clientId, uid });
+        return {
+          success: true,
+          data: cachedData.data,
+          message: t('client.success.userRetrieved'),
+        };
+      }
 
       const clientConnection = user.cuids?.find((c: any) => c.cuid === clientId);
       if (!clientConnection || !clientConnection.isConnected) {
@@ -106,8 +105,8 @@ export class UserService {
       const userDetail = await this.buildUserDetailData(user, clientConnection, clientId);
 
       // Cache the result for 2 hours
-      // await this.userCache.cacheUserDetail(clientId, uid, userDetail);
-      // this.log.info('User detail cached', { clientId, uid });
+      await this.userCache.cacheUserDetail(clientId, uid, userDetail);
+      this.log.info('User detail cached', { clientId, uid });
 
       return {
         success: true,
@@ -383,7 +382,7 @@ export class UserService {
       }
 
       // Format the response
-      const formattedMembers = teamMembers.map((member: any) => {
+      const formattedMembers: IVendorTeamMember[] = teamMembers.map((member: any) => {
         const personalInfo = member.profile?.personalInfo || {};
         const contactInfo = member.profile?.contactInfo || {};
         const memberConnection = member.cuids?.find((c: any) => c.cuid === cuid);
@@ -406,9 +405,24 @@ export class UserService {
         };
       });
 
+      // Get vendor info for context
+      const vendorProfile = (vendor as any).profile || {};
+      const vendorInfo = {
+        vendorId: vendor.uid,
+        companyName:
+          vendorProfile.vendorInfo?.companyName ||
+          vendorProfile.personalInfo?.displayName ||
+          vendor.email,
+        primaryContact:
+          vendorProfile.personalInfo?.displayName ||
+          `${vendorProfile.personalInfo?.firstName || ''} ${vendorProfile.personalInfo?.lastName || ''}`.trim() ||
+          vendor.email,
+      };
+
       return {
         success: true,
         data: {
+          vendor: vendorInfo,
           teamMembers: formattedMembers,
           pagination: linkedUsersResult.pagination,
           summary: {
@@ -508,7 +522,17 @@ export class UserService {
     };
 
     switch (userType) {
-      case IUserRole.VENDOR:
+      case 'employee':
+        response.employeeInfo = await this.buildEmployeeInfo(
+          user,
+          profile,
+          clientConnection,
+          clientId
+        );
+        response.properties = await this.getUserProperties(user._id.toString(), clientId);
+        break;
+
+      case 'vendor':
         response.vendorInfo = await this.buildVendorInfo(
           user._id.toString(),
           profile,
@@ -517,18 +541,8 @@ export class UserService {
         );
         break;
 
-      case IUserRole.TENANT:
+      case 'tenant':
         response.tenantInfo = await this.buildTenantInfo();
-        break;
-
-      case EMPLOYEE_ROLE:
-        response.employeeInfo = await this.buildEmployeeInfo(
-          user,
-          profile,
-          clientConnection,
-          clientId
-        );
-        response.properties = await this.getUserProperties(user._id.toString(), clientId);
         break;
     }
 
@@ -540,7 +554,7 @@ export class UserService {
     profile: any,
     clientConnection: any,
     clientId: string
-  ): Promise<IEmployeeInfo> {
+  ): Promise<IEmployeeDetailInfo> {
     const employeeInfo = profile.employeeInfo || {};
     const contactInfo = profile.contactInfo || {};
     const roles = clientConnection.roles || [];
@@ -615,7 +629,7 @@ export class UserService {
     profile: any,
     clientConnection: any,
     cuid: string
-  ): Promise<IVendorInfo> {
+  ): Promise<IVendorDetailInfo> {
     const vendorInfo = profile.vendorInfo || {};
     const _personalInfo = profile.personalInfo || {};
 
@@ -698,7 +712,7 @@ export class UserService {
     };
   }
 
-  private async buildTenantInfo(): Promise<ITenantInfo> {
+  private async buildTenantInfo(): Promise<ITenantDetailInfo> {
     // Placeholder implementation for tenant info
     // This should be expanded when tenant model is fully implemented
     return {
@@ -797,16 +811,22 @@ export class UserService {
 
   private determineUserType(roles: string[]): 'employee' | 'vendor' | 'tenant' {
     // Employee roles include both enum values and additional string values
-    const employeeRoles = [IUserRole.STAFF, IUserRole.ADMIN, IUserRole.MANAGER];
+    const employeeRoles = [
+      IUserRole.STAFF,
+      IUserRole.ADMIN,
+      IUserRole.MANAGER,
+      'super_admin',
+      'property_manager',
+    ];
 
-    if (roles.some((r: string) => employeeRoles.includes(r as IUserRole))) {
-      return EMPLOYEE_ROLE;
+    if (roles.some((r: string) => employeeRoles.includes(r as any))) {
+      return 'employee';
     } else if (roles.includes(IUserRole.VENDOR)) {
       return 'vendor';
     } else if (roles.includes(IUserRole.TENANT)) {
       return 'tenant';
     }
-    return EMPLOYEE_ROLE;
+    return 'employee';
   }
 
   private formatPropertyLocation(location: any): string {

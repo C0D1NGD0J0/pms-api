@@ -25,6 +25,20 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   ): Promise<IProfileDocument | null>;
 
   /**
+   * Updates vendor reference information (vendorId, linkedVendorId, isLinkedAccount).
+   * Note: Vendor business data is now stored in the vendor collection.
+   * This method only updates vendor reference fields in the profile.
+   *
+   * @param profileId - The ID of the profile to update
+   * @param vendorReference - Object containing vendor reference fields
+   * @returns A promise that resolves to the updated profile or null if profile not found
+   */
+  updateVendorReference(
+    profileId: string,
+    vendorReference: { vendorId?: string; linkedVendorId?: string; isLinkedAccount?: boolean }
+  ): Promise<IProfileDocument | null>;
+
+  /**
    * Updates notification preferences for a profile.
    *
    * @param profileId - The ID of the profile to update
@@ -169,19 +183,6 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
     employeeInfo?: any;
     userId?: string;
   } | null>;
-
-  /**
-   * Updates common vendor information that applies across all clients.
-   * This information is stored at the profile level.
-   *
-   * @param profileId - The ID of the profile to update
-   * @param vendorInfo - Object containing common vendor information fields
-   * @returns A promise that resolves to the updated profile or null if profile not found
-   */
-  updateCommonVendorInfo(
-    profileId: string,
-    vendorInfo: Record<string, any>
-  ): Promise<IProfileDocument | null>;
 
   /**
    * Finds profiles matching the search criteria.

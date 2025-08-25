@@ -9,13 +9,11 @@ const VendorSchema = new Schema<IVendorDocument>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true,
-      index: true,
     },
     companyName: {
       required: true,
       type: String,
       trim: true,
-      index: true,
     },
     businessType: {
       required: true,

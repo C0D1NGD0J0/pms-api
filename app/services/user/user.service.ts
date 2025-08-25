@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { UserCache } from '@caching/user.cache';
+import { VendorService } from '@services/index';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
@@ -25,6 +26,7 @@ import {
 
 interface IConstructor {
   permissionService: PermissionService;
+  vendorService: VendorService;
   propertyDAO: PropertyDAO;
   clientDAO: ClientDAO;
   userCache: UserCache;
@@ -38,14 +40,23 @@ export class UserService {
   private readonly propertyDAO: PropertyDAO;
   private readonly userCache: UserCache;
   private readonly permissionService: PermissionService;
+  private readonly vendorService: VendorService;
 
-  constructor({ clientDAO, userDAO, propertyDAO, userCache, permissionService }: IConstructor) {
+  constructor({
+    clientDAO,
+    userDAO,
+    propertyDAO,
+    userCache,
+    permissionService,
+    vendorService,
+  }: IConstructor) {
     this.log = createLogger('UserService');
     this.clientDAO = clientDAO;
     this.userDAO = userDAO;
     this.propertyDAO = propertyDAO;
     this.userCache = userCache;
     this.permissionService = permissionService;
+    this.vendorService = vendorService;
   }
 
   async getClientUserInfo(
@@ -211,23 +222,21 @@ export class UserService {
 
         // Add minimal vendor info if user is a vendor
         if (roles.includes('vendor')) {
-          const vendorProfile = user.profile?.vendorInfo || {};
           const personalInfo = user.profile?.personalInfo || {};
+          // const vendorInfo = user.profile?.vendorInfo || {};
 
+          // Note: This method needs to be optimized to fetch vendor data in batch
+          // For now, using basic vendor info from profile reference
           tableUserData.vendorInfo = {
-            companyName: vendorProfile.companyName || personalInfo.displayName || undefined,
-            businessType: vendorProfile.businessType || 'General Contractor',
-            serviceType: vendorProfile.businessType || 'General Contractor',
-            contactPerson:
-              vendorProfile.contactPerson?.name ||
-              personalInfo.displayName ||
-              fullName ||
-              undefined,
-            rating: vendorProfile?.stats?.rating ? parseFloat(vendorProfile.stats.rating) : 0,
-            reviewCount: vendorProfile?.reviewCount || 0,
-            completedJobs: vendorProfile?.stats?.completedJobs || 0,
-            averageResponseTime: vendorProfile?.stats?.responseTime || '24h',
-            averageServiceCost: vendorProfile?.averageServiceCost || 0,
+            companyName: personalInfo.displayName || undefined,
+            businessType: 'General Contractor',
+            serviceType: 'General Contractor',
+            contactPerson: personalInfo.displayName || fullName || undefined,
+            rating: 0,
+            reviewCount: 0,
+            completedJobs: 0,
+            averageResponseTime: '24h',
+            averageServiceCost: 0,
             isLinkedAccount: !!clientConnection?.linkedVendorId,
             linkedVendorId: clientConnection?.linkedVendorId || undefined,
             isPrimaryVendor: !clientConnection?.linkedVendorId,
@@ -405,15 +414,15 @@ export class UserService {
         };
       });
 
-      // Get vendor info for context
+      // Get vendor entity and profile info for context
+      const vendorEntity = await this.vendorService.getVendorByUserId(vendor._id.toString());
       const vendorProfile = (vendor as any).profile || {};
       const vendorInfo = {
         vendorId: vendor.uid,
         companyName:
-          vendorProfile.vendorInfo?.companyName ||
-          vendorProfile.personalInfo?.displayName ||
-          vendor.email,
+          vendorEntity?.companyName || vendorProfile.personalInfo?.displayName || vendor.email,
         primaryContact:
+          vendorEntity?.contactPerson?.name ||
           vendorProfile.personalInfo?.displayName ||
           `${vendorProfile.personalInfo?.firstName || ''} ${vendorProfile.personalInfo?.lastName || ''}`.trim() ||
           vendor.email,
@@ -630,8 +639,11 @@ export class UserService {
     clientConnection: any,
     cuid: string
   ): Promise<IVendorDetailInfo> {
-    const vendorInfo = profile.vendorInfo || {};
     const _personalInfo = profile.personalInfo || {};
+
+    // Get vendor entity from vendor collection
+    const vendor = await this.vendorService.getVendorByUserId(userid);
+    const vendorInfo = vendor || {};
 
     // Get linked users if this is a primary vendor
     let linkedUsers: any[] = [];

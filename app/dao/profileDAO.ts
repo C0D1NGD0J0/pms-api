@@ -479,53 +479,43 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   }
 
   /**
-   * Update common vendor information that applies across all clients
+   * Update vendor reference information (vendorId, linkedVendorId, isLinkedAccount)
    */
-  async updateCommonVendorInfo(
+  async updateVendorReference(
     profileId: string,
-    vendorInfo: Record<string, any>
+    vendorReference: { vendorId?: string; linkedVendorId?: string; isLinkedAccount?: boolean }
   ): Promise<IProfileDocument | null> {
     try {
-      if (!vendorInfo || typeof vendorInfo !== 'object') {
+      if (!vendorReference || typeof vendorReference !== 'object') {
         throw new BadRequestError({
           message: t('profile.errors.invalidParameters'),
         });
       }
-
       const updateFields: Record<string, any> = {};
 
-      for (const [key, value] of Object.entries(vendorInfo)) {
-        if (key === 'contactPerson' && typeof value === 'object') {
-          for (const [subKey, subValue] of Object.entries(value)) {
-            updateFields[`vendorInfo.contactPerson.${subKey}`] = subValue;
-          }
-        } else if (key === 'insuranceInfo' && typeof value === 'object') {
-          for (const [subKey, subValue] of Object.entries(value)) {
-            updateFields[`vendorInfo.insuranceInfo.${subKey}`] = subValue;
-          }
-        } else if (key === 'servicesOffered' && typeof value === 'object') {
-          for (const [subKey, subValue] of Object.entries(value)) {
-            updateFields[`vendorInfo.servicesOffered.${subKey}`] = subValue;
-          }
-        } else if (key === 'address' && typeof value === 'object') {
-          for (const [subKey, subValue] of Object.entries(value)) {
-            updateFields[`vendorInfo.address.${subKey}`] = subValue;
-          }
-        } else {
+      // Only allow updating vendor reference fields
+      const allowedFields = ['vendorId', 'linkedVendorId', 'isLinkedAccount'];
+      for (const [key, value] of Object.entries(vendorReference)) {
+        if (allowedFields.includes(key)) {
           updateFields[`vendorInfo.${key}`] = value;
         }
       }
 
+      if (Object.keys(updateFields).length === 0) {
+        this.logger.warn(`No valid vendor reference fields to update for profile ${profileId}`);
+        return await this.findById(profileId);
+      }
+
       return await this.updateById(profileId, { $set: updateFields });
     } catch (error) {
-      this.logger.error(`Error updating common vendor info for profile ${profileId}:`, error);
+      this.logger.error(`Error updating vendor reference for profile ${profileId}:`, error);
       throw this.throwErrorHandler(error);
     }
   }
 
   /**
-   * Update common vendor information
-   * This only updates the top-level vendorInfo on the profile
+   * @deprecated Use VendorService to update vendor business information
+   * This method now only handles vendor reference updates in the profile
    */
   async updateVendorInfo(
     profileId: string,
@@ -537,19 +527,23 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         throw new Error('Vendor info must be a valid object');
       }
 
-      if ('linkedVendorId' in vendorInfo) {
-        this.logger.info(
-          `LinkedVendorId should be set at service layer, not in ProfileDAO: ${profileId}`
-        );
-        delete vendorInfo.linkedVendorId;
-      }
+      this.logger.warn(
+        `updateVendorInfo is deprecated. Use VendorService for business data updates. Profile: ${profileId}`
+      );
 
       const profile = await this.findById(profileId);
       if (!profile) {
         throw new Error('Profile not found');
       }
 
-      return await this.updateCommonVendorInfo(profileId, vendorInfo);
+      // Only update vendor reference fields, ignore business data
+      const vendorReference = {
+        vendorId: vendorInfo.vendorId,
+        linkedVendorId: vendorInfo.linkedVendorId,
+        isLinkedAccount: vendorInfo.isLinkedAccount,
+      };
+
+      return await this.updateVendorReference(profileId, vendorReference);
     } catch (error) {
       this.logger.error(
         `Error updating vendor info for profile ${profileId}, client ${cuid}:`,

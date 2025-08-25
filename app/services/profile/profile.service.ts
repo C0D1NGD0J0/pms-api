@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
+import { VendorService } from '@services/index';
 import { IUserRoleType } from '@interfaces/user.interface';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
@@ -10,6 +11,7 @@ import { ProfileValidations } from '@shared/validations/ProfileValidation';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 
 interface IConstructor {
+  vendorService: VendorService;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
@@ -19,12 +21,14 @@ export class ProfileService {
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
+  private readonly vendorService: VendorService;
   private readonly logger: Logger;
 
-  constructor({ profileDAO, clientDAO, userDAO }: IConstructor) {
+  constructor({ profileDAO, clientDAO, userDAO, vendorService }: IConstructor) {
     this.profileDAO = profileDAO;
     this.clientDAO = clientDAO;
     this.userDAO = userDAO;
+    this.vendorService = vendorService;
     this.logger = createLogger('ProfileService');
   }
 
@@ -84,34 +88,39 @@ export class ProfileService {
     userRole: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      const validation = ProfileValidations.updateVendorInfo.safeParse(vendorInfo);
-      if (!validation.success) {
-        throw new BadRequestError({
-          message: `Validation failed: ${validation.error.issues.map((i) => i.message).join(', ')}`,
-        });
-      }
-
       if (userRole !== 'vendor') {
         throw new ForbiddenError({
           message: t('auth.errors.insufficientPermissions'),
         });
       }
 
-      await this.ensureClientRoleInfo(profileId, cuid);
-
-      const result = await this.profileDAO.updateVendorInfo(profileId, cuid, validation.data);
-
-      if (!result) {
+      // Get the profile to find the associated user
+      const profile = await this.profileDAO.getProfileById(profileId);
+      if (!profile) {
         throw new NotFoundError({
           message: t('profile.errors.notFound'),
         });
       }
 
+      // Get the vendor entity for this user
+      const vendor = await this.vendorService.getVendorByUserId(profile.user.toString());
+      if (!vendor) {
+        throw new NotFoundError({
+          message: 'Vendor entity not found',
+        });
+      }
+
+      // Update the vendor entity with new information
+      await this.vendorService.updateVendorInfo(vendor._id.toString(), vendorInfo);
+
+      // Update profile vendorInfo to maintain reference (if needed)
+      await this.ensureClientRoleInfo(profileId, cuid);
+
       this.logger.info(`Vendor info updated for profile ${profileId}, client ${cuid}`);
 
       return {
         success: true,
-        data: result,
+        data: profile,
         message: t('profile.success.vendorInfoUpdated'),
       };
     } catch (error) {
@@ -172,32 +181,36 @@ export class ProfileService {
     userRole: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      const validation = ProfileValidations.updateVendorInfo.safeParse(vendorInfo);
-      if (!validation.success) {
-        throw new BadRequestError({
-          message: `Validation failed: ${validation.error.issues.map((i) => i.message).join(', ')}`,
-        });
-      }
-
       if (userRole !== 'vendor') {
         throw new ForbiddenError({
           message: t('auth.errors.insufficientPermissions'),
         });
       }
 
-      const result = await this.profileDAO.updateCommonVendorInfo(profileId, validation.data);
-
-      if (!result) {
+      // Get the profile to find the associated user
+      const profile = await this.profileDAO.getProfileById(profileId);
+      if (!profile) {
         throw new NotFoundError({
           message: t('profile.errors.notFound'),
         });
       }
 
+      // Get the vendor entity for this user
+      const vendor = await this.vendorService.getVendorByUserId(profile.user.toString());
+      if (!vendor) {
+        throw new NotFoundError({
+          message: 'Vendor entity not found',
+        });
+      }
+
+      // Update the vendor entity with new common information
+      await this.vendorService.updateVendorInfo(vendor._id.toString(), vendorInfo);
+
       this.logger.info(`Common vendor info updated for profile ${profileId}`);
 
       return {
         success: true,
-        data: result,
+        data: profile,
         message: t('profile.success.commonVendorInfoUpdated'),
       };
     } catch (error) {

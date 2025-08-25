@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
+import { VendorService } from '@services/index';
 import { ProfileService } from '@services/profile';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { MailType } from '@interfaces/utils.interface';
@@ -36,6 +37,7 @@ interface IConstructor {
   emitterService: EventEmitterService;
   invitationQueue: InvitationQueue;
   profileService: ProfileService;
+  vendorService: VendorService;
   invitationDAO: InvitationDAO;
   emailQueue: EmailQueue;
   profileDAO: ProfileDAO;
@@ -53,6 +55,7 @@ export class InvitationService {
   private readonly invitationQueue: InvitationQueue;
   private readonly emitterService: EventEmitterService;
   private readonly profileService: ProfileService;
+  private readonly vendorService: VendorService;
 
   constructor({
     invitationDAO,
@@ -63,6 +66,7 @@ export class InvitationService {
     invitationQueue,
     emitterService,
     profileService,
+    vendorService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -72,6 +76,7 @@ export class InvitationService {
     this.emitterService = emitterService;
     this.invitationQueue = invitationQueue;
     this.profileService = profileService;
+    this.vendorService = vendorService;
     this.log = createLogger('InvitationService');
     this.setupEventListeners();
   }

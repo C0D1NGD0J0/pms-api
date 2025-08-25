@@ -7,6 +7,7 @@ import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
 import { AuthTokenService } from '@services/index';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { IActiveAccountInfo } from '@interfaces/client.interface';
 import { ISignupData, IUserRole } from '@interfaces/user.interface';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
 import {
@@ -271,8 +272,8 @@ export class AuthService {
       accessToken: string;
       rememberMe: boolean;
       refreshToken: string;
-      activeAccount: { cuid: string; clientDisplayName: string };
-      accounts: { cuid: string; clientDisplayName: string }[] | null;
+      activeAccount: IActiveAccountInfo;
+      accounts: IActiveAccountInfo[] | null;
     }>
   > {
     const { email, password, rememberMe } = data;
@@ -388,7 +389,7 @@ export class AuthService {
     ISuccessReturnData<{
       accessToken: string;
       refreshToken: string;
-      activeAccount: { cuid: string; clientDisplayName: string };
+      activeAccount: IActiveAccountInfo;
     }>
   > {
     if (!userId || !newcuid) {
@@ -561,8 +562,8 @@ export class AuthService {
     ISuccessReturnData<{
       accessToken: string;
       refreshToken: string;
-      activeAccount: { cuid: string; clientDisplayName: string };
-      accounts: { cuid: string; clientDisplayName: string }[] | null;
+      activeAccount: IActiveAccountInfo;
+      accounts: IActiveAccountInfo[] | null;
     }>
   > {
     try {

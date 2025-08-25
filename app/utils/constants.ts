@@ -19,6 +19,7 @@ export const JWT_KEY_NAMES = {
 };
 
 export const SLUGIFY_CONFIG = { lower: true, strict: true, replacement: '_', trim: true };
+export const EMPLOYEE_ROLE = 'employee';
 
 export const EMAIL_TEMPLATES = {
   PASSWORD_RESET: 'password-reset',

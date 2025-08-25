@@ -143,8 +143,12 @@ export const invitationDataSchema = z.object({
     phoneNumber: z
       .string()
       .regex(/^\+?[\d\s\-()]+$/, 'Please provide a valid phone number')
-      .min(10, 'Phone number must be at least 10 digits')
       .max(20, 'Phone number must be less than 20 characters')
+      .refine((val) => {
+        if (!val) return true; // optional field
+        const digitsOnly = val.replace(/\D/g, '');
+        return digitsOnly.length >= 10;
+      }, 'Phone number must contain at least 10 digits')
       .optional(),
   }),
 
@@ -308,6 +312,22 @@ export const invitationCsvSchema = z
       errorMap: () => ({ message: 'Please provide a valid role' }),
     }),
 
+    linkedVendorId: z
+      .string()
+      .transform((str) => {
+        // Handle empty strings
+        if (!str || str.trim() === '') {
+          return undefined;
+        }
+        const trimmed = str.trim();
+        // Check if valid MongoDB ObjectId (24 hex chars)
+        if (!/^[0-9a-fA-F]{24}$/.test(trimmed)) {
+          throw new Error('linkedVendorId must be a valid MongoDB ObjectId (24 hex characters)');
+        }
+        return trimmed;
+      })
+      .optional(),
+
     firstName: z
       .string()
       .min(2, 'First name must be at least 2 characters')
@@ -323,8 +343,12 @@ export const invitationCsvSchema = z
     phoneNumber: z
       .string()
       .regex(/^\+?[\d\s\-()]+$/, 'Please provide a valid phone number')
-      .min(10, 'Phone number must be at least 10 digits')
       .max(20, 'Phone number must be less than 20 characters')
+      .refine((val) => {
+        if (!val) return true; // optional field
+        const digitsOnly = val.replace(/\D/g, '');
+        return digitsOnly.length >= 10;
+      }, 'Phone number must contain at least 10 digits')
       .optional(),
 
     status: z
@@ -457,12 +481,13 @@ export const invitationCsvSchema = z
           return undefined;
         }
         // Validate email format
+        const trimmed = str.trim();
         const emailSchema = z.string().email();
-        const result = emailSchema.safeParse(str);
+        const result = emailSchema.safeParse(trimmed);
         if (!result.success) {
           throw new Error('Please provide a valid contact person email');
         }
-        return str;
+        return trimmed;
       })
       .optional(),
     vendorInfo_contactPerson_phone: z
@@ -522,6 +547,7 @@ export const invitationCsvSchema = z
       inviteeEmail: data.inviteeEmail,
       role: data.role,
       status: data.status,
+      linkedVendorId: data.linkedVendorId,
       personalInfo: {
         firstName: data.firstName,
         lastName: data.lastName,

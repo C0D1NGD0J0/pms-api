@@ -319,9 +319,20 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       if (role) {
         const roles = Array.isArray(role) ? role : [role];
-        query['cuids.roles'] = Array.isArray(role) ? { $in: role } : role;
+
+        // For vendor filtering, we need to use $elemMatch to check within the specific cuid
         if (roles.includes('vendor')) {
-          query['cuids.linkedVendorId'] = { $exists: true, $eq: null };
+          // Only get users who are vendors for this client AND don't have a linkedVendorId
+          query['cuids'] = {
+            $elemMatch: {
+              cuid: cuid,
+              roles: Array.isArray(role) ? { $in: role } : 'vendor',
+              $or: [{ linkedVendorId: { $exists: false } }, { linkedVendorId: null }],
+            },
+          };
+        } else {
+          // For non-vendor roles, use the standard query
+          query['cuids.roles'] = Array.isArray(role) ? { $in: role } : role;
         }
       }
 
@@ -371,7 +382,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         { $limit: limit }
       );
 
-      // Execute both pipelines
       const [users, countResult] = await Promise.all([
         this.aggregate(pipeline),
         this.aggregate(countPipeline),
@@ -580,7 +590,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         cuid: client.cuid,
         isConnected: true,
         roles: [invitationData.role],
-        displayName: client.displayName,
+        clientDisplayName: client.displayName,
         linkedVendorId: invitationData.role === 'vendor' ? linkedVendorId : null,
       };
 
@@ -610,7 +620,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   async addUserToClient(
     userId: string,
     role: IUserRoleType,
-    client: { cuid: string; displayName?: string; id: string },
+    client: { cuid: string; clientDisplayName?: string; id: string },
     linkedVendorId?: string,
     session?: any
   ): Promise<IUserDocument | null> {
@@ -625,7 +635,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       if (existingConnection) {
         const updateObj: any = {
           'cuids.$.isConnected': true,
-          'cuids.$.displayName': client.displayName,
+          'cuids.$.clientDisplayName': client.clientDisplayName,
           'cuids.$.linkedVendorId': role === 'vendor' ? linkedVendorId : null,
         };
 
@@ -645,7 +655,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           cuid: client.cuid,
           isConnected: true,
           roles: [role],
-          displayName: client.displayName || '',
+          clientDisplayName: client.clientDisplayName || '',
           linkedVendorId: role === 'vendor' ? linkedVendorId : null,
         };
 
@@ -688,7 +698,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * Create a new user with default password for bulk user creation
    */
   async createBulkUserWithDefaults(
-    client: { cuid: string; displayName?: string; id: string },
+    client: { cuid: string; clientDisplayName?: string; id: string },
     userData: {
       email: string;
       firstName: string;
@@ -707,7 +717,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         cuid: client.cuid,
         isConnected: true,
         roles: [userData.role],
-        displayName: client.displayName,
+        clientDisplayName: client.clientDisplayName || '',
         linkedVendorId: userData.role === 'vendor' && linkedVendorId ? linkedVendorId : null,
       };
 
@@ -746,17 +756,155 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       const query: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
-        'cuids.linkedVendorId': primaryVendorId,
+        'cuids.linkedVendorId': new Types.ObjectId(primaryVendorId),
         'cuids.isConnected': true,
         deletedAt: null,
       };
 
       return await this.list(query, {
         ...opts,
-        populate: [{ path: 'profile', select: 'personalInfo' }],
+        // populate: [{ path: 'profile', select: 'personalInfo' }],
       });
     } catch (error) {
       this.logger.error(`Error getting linked vendor users for vendor ${primaryVendorId}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Rebuild missing profiles for users
+   * This method identifies users without profiles and creates minimal profiles for them
+   * @param cuid - Optional client ID to limit the rebuild scope
+   * @returns Promise resolving to rebuild statistics
+   */
+  async rebuildMissingProfiles(
+    cuid?: string,
+    profileDAO?: any
+  ): Promise<{
+    totalUsers: number;
+    totalProfiles: number;
+    missingProfiles: number;
+    fixedProfiles: number;
+    failedProfiles: number;
+    errors: Array<{ userId: string; email: string; error: string }>;
+  }> {
+    try {
+      // Get all users (optionally filtered by client)
+      const userQuery: FilterQuery<IUserDocument> = { deletedAt: null };
+      if (cuid) {
+        userQuery['cuids.cuid'] = cuid;
+      }
+
+      const users = await this.list(userQuery, { limit: 10000 });
+      const userIds = users.items.map((u: IUserDocument) => u._id);
+
+      // Get all profiles for these users
+      const profiles = await profileDAO.list({ user: { $in: userIds } }, { limit: 10000 });
+      const profileUserIds = new Set(profiles.items.map((p: any) => p.user.toString()));
+
+      // Find users without profiles
+      const usersWithoutProfiles = users.items.filter(
+        (u: IUserDocument) => !profileUserIds.has(u._id.toString())
+      );
+
+      const stats = {
+        totalUsers: users.items.length,
+        totalProfiles: profiles.items.length,
+        missingProfiles: usersWithoutProfiles.length,
+        fixedProfiles: 0,
+        failedProfiles: 0,
+        errors: [] as Array<{ userId: string; email: string; error: string }>,
+      };
+
+      // Create missing profiles
+      for (const user of usersWithoutProfiles) {
+        try {
+          // Determine if this is a linked vendor account
+          const primaryCuid = user.cuids.find((c: any) => c.cuid === user.activecuid);
+          const isLinkedVendor =
+            primaryCuid?.linkedVendorId && primaryCuid.roles.includes('vendor' as any);
+
+          const profileData: any = {
+            user: user._id,
+            puid: user.uid,
+            personalInfo: {
+              firstName: 'Unknown',
+              lastName: 'User',
+              displayName: user.email.split('@')[0],
+              phoneNumber: '',
+              location: 'Unknown',
+            },
+            lang: 'en',
+            timeZone: 'UTC',
+            policies: {
+              tos: {
+                accepted: false,
+                acceptedOn: null,
+              },
+              marketing: {
+                accepted: false,
+                acceptedOn: null,
+              },
+            },
+          };
+
+          // Add vendor info for vendor users
+          if (primaryCuid?.roles.includes('vendor' as any)) {
+            if (isLinkedVendor) {
+              // Linked vendor - minimal info
+              profileData.vendorInfo = {
+                isLinkedAccount: true,
+                companyName: null,
+                businessType: null,
+                taxId: null,
+                registrationNumber: null,
+                yearsInBusiness: 0,
+                servicesOffered: {},
+                contactPerson: {
+                  name: user.email.split('@')[0],
+                  jobTitle: 'Associate',
+                  email: user.email,
+                  phone: '',
+                },
+              };
+            } else {
+              // Primary vendor - needs full info (placeholder)
+              profileData.vendorInfo = {
+                isLinkedAccount: false,
+                companyName: 'Unknown Company',
+                businessType: 'Unknown',
+                taxId: null,
+                registrationNumber: null,
+                yearsInBusiness: 0,
+                servicesOffered: {},
+                contactPerson: {
+                  name: user.email.split('@')[0],
+                  jobTitle: 'Manager',
+                  email: user.email,
+                  phone: '',
+                },
+              };
+            }
+          }
+
+          await profileDAO.createUserProfile(user._id, profileData);
+          stats.fixedProfiles++;
+          this.logger.info(`Created missing profile for user ${user.email}`);
+        } catch (error) {
+          stats.failedProfiles++;
+          stats.errors.push({
+            userId: user._id.toString(),
+            email: user.email,
+            error: error.message || 'Unknown error',
+          });
+          this.logger.error(`Failed to create profile for user ${user.email}:`, error);
+        }
+      }
+
+      this.logger.info('Profile rebuild complete:', stats);
+      return stats;
+    } catch (error) {
+      this.logger.error('Error in rebuildMissingProfiles:', error);
       throw this.throwErrorHandler(error);
     }
   }

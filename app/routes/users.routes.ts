@@ -142,4 +142,17 @@ router.get(
   })
 );
 
+router.get(
+  '/:cuid/vendor_members/:uid',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getVendorTeamMembers(req, res);
+  })
+);
+
 export default router;

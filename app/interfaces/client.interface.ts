@@ -70,6 +70,16 @@ export type IPopulatedClientDocument = {
   admin: IUserDocument | Types.ObjectId;
 } & Omit<IClientDocument, 'admin'>;
 
+// Simplified client info for passing around client context
+export interface IClientInfo {
+  clientDisplayName: string;
+  cuid: string;
+  id?: string;
+}
+
+// Type for active account info (used in auth responses)
+export type IActiveAccountInfo = Pick<IClientUserConnections, 'cuid' | 'clientDisplayName'>;
+
 export interface IClientStats {
   totalProperties: number;
   totalUsers: number;

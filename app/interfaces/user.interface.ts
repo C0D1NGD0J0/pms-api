@@ -374,8 +374,8 @@ export interface IUserStats {
  * Extended vendor info that includes additional fields from getUsersByRole
  */
 export interface FilteredVendorInfo extends VendorInfo {
-  isLinkedAccount?: boolean;
   isPrimaryVendor?: boolean;
+  isLinkedAccount: boolean;
   linkedVendorId?: string;
 }
 
@@ -432,6 +432,10 @@ export interface StatsDistribution {
 }
 
 export type IUserRoleType = 'admin' | 'tenant' | 'manager' | 'staff' | 'landlord' | 'vendor';
+
+export type IUserPopulatedDocument = {
+  profile: IProfileDocument;
+} & IUserDocument;
 
 /**
  * Tenant information placeholder

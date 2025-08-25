@@ -1,7 +1,7 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
-import { createLogger } from '@utils/index';
 import { UserCache } from '@caching/user.cache';
+import { EMPLOYEE_ROLE, createLogger } from '@utils/index';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
@@ -9,11 +9,20 @@ import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
 import {
+  IUserPopulatedDocument,
   FilteredUserTableData,
   IUserRoleType,
   IUserStats,
   IUserRole,
 } from '@interfaces/user.interface';
+import {
+  IVendorTeamMembersResponse,
+  IUserDetailResponse,
+  IEmployeeInfo,
+  IUserProperty,
+  IVendorInfo,
+  ITenantInfo,
+} from '@interfaces/userDetail.interface';
 
 interface IConstructor {
   permissionService: PermissionService;
@@ -40,25 +49,27 @@ export class UserService {
     this.permissionService = permissionService;
   }
 
-  async getClientUserInfo(cxt: IRequestContext, uid: string): Promise<ISuccessReturnData<any>> {
+  async getClientUserInfo(
+    cxt: IRequestContext,
+    uid: string
+  ): Promise<ISuccessReturnData<IUserDetailResponse>> {
     const currentuser = cxt.currentuser!;
     const clientId = cxt.request.params.cuid || currentuser.client.cuid;
 
     try {
-      const user = await this.userDAO.getUserByUId(uid, {
+      const user = (await this.userDAO.getUserByUId(uid, {
         populate: [
           {
             path: 'profile',
             select: 'personalInfo employeeInfo vendorInfo contactInfo preferences',
           },
         ],
-      });
+      })) as IUserPopulatedDocument | null;
 
       if (!user) {
         throw new NotFoundError({ message: t('client.errors.userNotFound') });
       }
 
-      // user data for permission check
       const targetUser = {
         _id: user._id,
         uid: user.uid,
@@ -67,7 +78,6 @@ export class UserService {
         profile: user.profile,
       };
 
-      // if current user has permission to access this user's data
       if (!this.permissionService.canUserAccessUser(currentuser, targetUser)) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
@@ -78,27 +88,26 @@ export class UserService {
       }
 
       // Check cache after permission check
-      const cachedData = await this.userCache.getUserDetail(clientId, uid);
-      if (cachedData.success && cachedData.data) {
-        this.log.info('User detail retrieved from cache', { clientId, uid });
-        return {
-          success: true,
-          data: cachedData.data,
-          message: t('client.success.userRetrieved'),
-        };
-      }
+      // const cachedData = await this.userCache.getUserDetail(clientId, uid);
+      // if (cachedData.success && cachedData.data) {
+      //   this.log.info('User detail retrieved from cache', { clientId, uid });
+      //   return {
+      //     success: true,
+      //     data: cachedData.data,
+      //     message: t('client.success.userRetrieved'),
+      //   };
+      // }
 
       const clientConnection = user.cuids?.find((c: any) => c.cuid === clientId);
       if (!clientConnection || !clientConnection.isConnected) {
         throw new NotFoundError({ message: t('client.errors.userNotFound') });
       }
 
-      // Build comprehensive user detail data
       const userDetail = await this.buildUserDetailData(user, clientConnection, clientId);
 
       // Cache the result for 2 hours
-      await this.userCache.cacheUserDetail(clientId, uid, userDetail);
-      this.log.info('User detail cached', { clientId, uid });
+      // await this.userCache.cacheUserDetail(clientId, uid, userDetail);
+      // this.log.info('User detail cached', { clientId, uid });
 
       return {
         success: true,
@@ -302,30 +311,176 @@ export class UserService {
     }
   }
 
+  /**
+   * Get vendor team members (linked accounts)
+   * @param cxt - Request context
+   * @param cuid - Client ID
+   * @param vendorId - Vendor ID (user ID of the primary vendor)
+   * @param status - Filter by active/inactive status
+   * @param paginationOpts - Pagination options
+   * @returns Vendor team members with pagination
+   */
+  async getVendorTeamMembers(
+    cxt: IRequestContext,
+    cuid: string,
+    vendorId: string,
+    status?: 'active' | 'inactive',
+    paginationOpts?: any
+  ): Promise<ISuccessReturnData<IVendorTeamMembersResponse>> {
+    const currentuser = cxt.currentuser!;
+
+    try {
+      if (!cuid) {
+        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+      }
+
+      // Verify the vendor exists and is a primary vendor
+      const vendor = await this.userDAO.getUserByUId(vendorId, {
+        populate: [{ path: 'profile', select: 'personalInfo vendorInfo' }],
+      });
+
+      if (!vendor) {
+        throw new NotFoundError({ message: t('vendor.errors.notFound') });
+      }
+
+      // Check if the vendor is associated with this client
+      const vendorConnection = vendor.cuids?.find((c: any) => c.cuid === cuid);
+      if (!vendorConnection || !vendorConnection.isConnected) {
+        throw new NotFoundError({ message: t('vendor.errors.notAssociatedWithClient') });
+      }
+
+      // Check if the vendor is a primary vendor (not a linked account)
+      if (vendorConnection.linkedVendorId) {
+        throw new BadRequestError({ message: t('vendor.errors.notPrimaryVendor') });
+      }
+
+      // Check permissions
+      if (!this.permissionService.canUserAccessUser(currentuser, vendor)) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'view',
+            resource: 'vendor team',
+          }),
+        });
+      }
+
+      // Fetch linked vendor users
+      const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(
+        vendor._id.toString(),
+        cuid,
+        {
+          ...paginationOpts,
+          populate: [{ path: 'profile', select: 'personalInfo contactInfo' }],
+        }
+      );
+
+      // Filter by status if provided
+      let teamMembers = linkedUsersResult.items;
+      if (status !== undefined) {
+        teamMembers = teamMembers.filter((user: any) =>
+          status === 'active' ? user.isActive : !user.isActive
+        );
+      }
+
+      // Format the response
+      const formattedMembers = teamMembers.map((member: any) => {
+        const personalInfo = member.profile?.personalInfo || {};
+        const contactInfo = member.profile?.contactInfo || {};
+        const memberConnection = member.cuids?.find((c: any) => c.cuid === cuid);
+
+        return {
+          uid: member.uid,
+          email: member.email,
+          displayName:
+            memberConnection?.clientDisplayName ||
+            `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim() ||
+            member.email,
+          firstName: personalInfo.firstName || '',
+          lastName: personalInfo.lastName || '',
+          phoneNumber: personalInfo.phoneNumber || contactInfo.phoneNumber || '',
+          isActive: member.isActive,
+          role: 'Team Member',
+          joinedDate: member.createdAt,
+          lastLogin: member.lastLogin || null,
+          permissions: memberConnection?.permissions || [],
+        };
+      });
+
+      return {
+        success: true,
+        data: {
+          teamMembers: formattedMembers,
+          pagination: linkedUsersResult.pagination,
+          summary: {
+            totalMembers: linkedUsersResult.pagination?.total || 0,
+            activeMembers: formattedMembers.filter((m: any) => m.isActive).length,
+            inactiveMembers: formattedMembers.filter((m: any) => !m.isActive).length,
+          },
+        },
+        message: t('vendor.success.teamMembersRetrieved'),
+      };
+    } catch (error) {
+      this.log.error('Error getting vendor team members:', {
+        cuid,
+        vendorId,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
+  async getUserProperties(userId: string, clientId: string): Promise<IUserProperty[]> {
+    try {
+      // Query properties managed by this user with minimal fields
+      const result = await this.propertyDAO.getPropertiesByClientId(
+        clientId,
+        {
+          managedBy: userId,
+          deletedAt: null,
+        },
+        {
+          limit: 20, // Limit to reasonable number
+        }
+      );
+
+      const properties = result.items || [];
+
+      return properties.map((property: any) => ({
+        name: property.name || '',
+        location: this.formatPropertyLocation(property.location),
+        units: property.totalUnits || 0,
+        occupancy: `${property.occupancyRate || 0}%`,
+        since: this.formatDate(property.createdAt),
+      }));
+    } catch (error) {
+      this.log.error('Error getting user properties:', error);
+      return [];
+    }
+  }
+
   private async buildUserDetailData(
-    user: any,
+    user: { profile: { contactInfo?: any } } & IUserPopulatedDocument,
     clientConnection: any,
     clientId: string
-  ): Promise<any> {
+  ): Promise<IUserDetailResponse> {
     const profile = user.profile || {};
     const personalInfo = profile.personalInfo || {};
     const contactInfo = profile.contactInfo || {};
 
-    // Determine user type and role info
     const roles = clientConnection.roles || [];
     const userType = this.determineUserType(roles);
 
-    // Build base response structure
+    // base response structure
     const response: any = {
-      // Basic user info (common for all user types)
+      // basic user info
       user: {
+        roles: roles,
         uid: user.uid,
         email: user.email,
-        displayName: clientConnection.clientDisplayName || '',
-        roles: roles,
+        userType: userType,
         isActive: user.isActive,
         createdAt: user.createdAt,
-        userType: userType,
+        displayName: clientConnection.clientDisplayName || '',
       },
 
       // Common profile information
@@ -352,27 +507,28 @@ export class UserService {
       documents: [],
     };
 
-    // Add type-specific information based on userType
     switch (userType) {
-      case 'employee':
+      case IUserRole.VENDOR:
+        response.vendorInfo = await this.buildVendorInfo(
+          user._id.toString(),
+          profile,
+          clientConnection,
+          clientId
+        );
+        break;
+
+      case IUserRole.TENANT:
+        response.tenantInfo = await this.buildTenantInfo();
+        break;
+
+      case EMPLOYEE_ROLE:
         response.employeeInfo = await this.buildEmployeeInfo(
           user,
           profile,
           clientConnection,
           clientId
         );
-        // Get properties for managers
-        if (roles.includes('manager') || roles.includes('property_manager')) {
-          response.properties = await this.getUserProperties(user._id, clientId);
-        }
-        break;
-
-      case 'vendor':
-        response.vendorInfo = await this.buildVendorInfo(user, profile, clientConnection, clientId);
-        break;
-
-      case 'tenant':
-        response.tenantInfo = await this.buildTenantInfo();
+        response.properties = await this.getUserProperties(user._id.toString(), clientId);
         break;
     }
 
@@ -384,7 +540,7 @@ export class UserService {
     profile: any,
     clientConnection: any,
     clientId: string
-  ): Promise<any> {
+  ): Promise<IEmployeeInfo> {
     const employeeInfo = profile.employeeInfo || {};
     const contactInfo = profile.contactInfo || {};
     const roles = clientConnection.roles || [];
@@ -394,7 +550,7 @@ export class UserService {
     const tenure = this.calculateTenure(hireDate);
 
     // Get minimal property data if user is property manager
-    let properties = [];
+    let properties: IUserProperty[] = [];
     if (roles.includes('manager') || roles.includes('property_manager')) {
       properties = await this.getUserProperties(user._id, clientId);
     }
@@ -455,11 +611,11 @@ export class UserService {
   }
 
   private async buildVendorInfo(
-    user: any,
+    userid: string,
     profile: any,
     clientConnection: any,
     cuid: string
-  ): Promise<any> {
+  ): Promise<IVendorInfo> {
     const vendorInfo = profile.vendorInfo || {};
     const _personalInfo = profile.personalInfo || {};
 
@@ -467,7 +623,7 @@ export class UserService {
     let linkedUsers: any[] = [];
     if (!clientConnection.linkedVendorId) {
       try {
-        const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(user.uid, cuid);
+        const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(userid, cuid);
         linkedUsers = linkedUsersResult.items.map((linkedUser: any) => {
           const personalInfo = linkedUser.profile?.personalInfo || {};
           return {
@@ -516,7 +672,7 @@ export class UserService {
       contactPerson: vendorInfo.contactPerson || {
         name: _personalInfo.displayName || '',
         jobTitle: 'Owner',
-        email: user.email,
+        email: _personalInfo.email || '',
         phone: _personalInfo.phoneNumber || '',
       },
 
@@ -542,7 +698,7 @@ export class UserService {
     };
   }
 
-  private async buildTenantInfo(): Promise<any> {
+  private async buildTenantInfo(): Promise<ITenantInfo> {
     // Placeholder implementation for tenant info
     // This should be expanded when tenant model is fully implemented
     return {
@@ -639,49 +795,18 @@ export class UserService {
     return 'Staff Member';
   }
 
-  private determineUserType(roles: string[]): string {
-    if (
-      roles.some((r: string) =>
-        ['property_manager', 'super_admin', 'manager', 'admin', 'staff'].includes(r)
-      )
-    ) {
-      return 'employee';
-    } else if (roles.includes('vendor')) {
+  private determineUserType(roles: string[]): 'employee' | 'vendor' | 'tenant' {
+    // Employee roles include both enum values and additional string values
+    const employeeRoles = [IUserRole.STAFF, IUserRole.ADMIN, IUserRole.MANAGER];
+
+    if (roles.some((r: string) => employeeRoles.includes(r as IUserRole))) {
+      return EMPLOYEE_ROLE;
+    } else if (roles.includes(IUserRole.VENDOR)) {
       return 'vendor';
-    } else if (roles.includes('tenant')) {
+    } else if (roles.includes(IUserRole.TENANT)) {
       return 'tenant';
     }
-    return 'employee';
-  }
-
-  private async getUserProperties(userId: string, clientId: string): Promise<any[]> {
-    try {
-      // Query properties managed by this user with minimal fields
-      const result = await this.propertyDAO.getPropertiesByClientId(
-        clientId,
-        {
-          managedBy: userId,
-          deletedAt: null,
-        },
-        {
-          limit: 20, // Limit to reasonable number
-        }
-      );
-
-      const properties = result.items || [];
-
-      return properties.map((property: any) => ({
-        name: property.name || '',
-        location: this.formatPropertyLocation(property.location),
-        units: property.totalUnits || 0,
-        occupancy: `${property.occupancyRate || 0}%`,
-        since: this.formatDate(property.createdAt),
-      }));
-    } catch (error) {
-      this.log.error('Error getting user properties:', error);
-      // Return empty array on error - don't fail the whole request
-      return [];
-    }
+    return EMPLOYEE_ROLE;
   }
 
   private formatPropertyLocation(location: any): string {

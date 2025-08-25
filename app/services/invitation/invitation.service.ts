@@ -298,7 +298,7 @@ export class InvitationService {
           {
             id: client.id.toString(),
             cuid,
-            displayName: client.displayName || client.companyProfile?.legalEntityName,
+            clientDisplayName: client.displayName || client.companyProfile?.legalEntityName,
           },
           linkedVendorId,
           session
@@ -697,7 +697,7 @@ export class InvitationService {
       const jobData = {
         userId: currentUser.sub,
         csvFilePath: csvFile.path,
-        clientInfo: { cuid, displayName: client.displayName, id: client.id },
+        clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
       };
 
       const job = await this.invitationQueue.addCsvValidationJob(jobData);
@@ -737,7 +737,7 @@ export class InvitationService {
       const jobData = {
         userId: currentUser.sub,
         csvFilePath: csvFile.path,
-        clientInfo: { cuid, displayName: client.displayName, id: client.id },
+        clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
         bulkCreateOptions: {
           sendNotifications: options.sendNotifications || false,
           passwordLength: options.passwordLength || 12,
@@ -778,7 +778,7 @@ export class InvitationService {
       const jobData = {
         userId,
         csvFilePath,
-        clientInfo: { cuid, displayName: client.displayName, id: client.id },
+        clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
       };
 
       const job = await this.invitationQueue.addCsvImportJob(jobData);
@@ -816,7 +816,7 @@ export class InvitationService {
       const jobData = {
         userId,
         csvFilePath,
-        clientInfo: { cuid, displayName: client.displayName, id: client.id },
+        clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
         bulkCreateOptions: {
           sendNotifications: options.sendNotifications || false,
           passwordLength: options.passwordLength || 12,

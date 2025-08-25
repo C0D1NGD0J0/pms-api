@@ -66,6 +66,7 @@ export interface VendorInfo {
     phone?: string;
   };
   registrationNumber?: string;
+  isLinkedAccount: boolean;
   yearsInBusiness?: number;
   businessType?: string;
   companyName?: string;

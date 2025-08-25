@@ -1,5 +1,6 @@
 import { Document, Types } from 'mongoose';
 
+import { IClientInfo } from './client.interface';
 import { IPaginationQuery, CURRENCIES } from './utils.interface';
 
 export enum PropertyApprovalStatusEnum {
@@ -140,17 +141,6 @@ export interface IAssignableUser {
 }
 
 /**
- * CSV Job Data Type
- */
-export type CsvJobData = {
-  csvFilePath: string;
-  userId: string;
-  jobId?: string;
-  clientInfo: { cuid: string; displayName: string; id: string };
-  bulkCreateOptions?: { sendNotifications?: boolean; passwordLength?: number };
-};
-
-/**
  * Community Amenities Type
  */
 export type CommunityAmenities = {
@@ -215,6 +205,17 @@ export type InteriorAmenities = {
   furnished: boolean;
   heating: boolean;
   fridge: boolean;
+};
+
+/**
+ * CSV Job Data Type
+ */
+export type CsvJobData = {
+  csvFilePath: string;
+  userId: string;
+  jobId?: string;
+  clientInfo: IClientInfo;
+  bulkCreateOptions?: { sendNotifications?: boolean; passwordLength?: number };
 };
 
 /**

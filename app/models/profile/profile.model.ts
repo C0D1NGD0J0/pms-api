@@ -146,6 +146,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
     lang: { type: String, default: 'en' },
 
     vendorInfo: {
+      isLinkedAccount: { type: Boolean, default: false },
       servicesOffered: {
         plumbing: { type: Boolean },
         electrical: { type: Boolean },
@@ -220,7 +221,18 @@ const ProfileSchema = new Schema<IProfileDocument>(
       jobTitle: { type: String, trim: true },
       employeeId: { type: String, trim: true, sparse: true, select: false },
       reportsTo: {
-        required: true,
+        required: function (this: IProfileDocument) {
+          // Not required for vendor linked accounts
+          if (this.vendorInfo?.isLinkedAccount === true) {
+            return false;
+          }
+          // Not required if employeeInfo doesn't exist or is being set
+          if (!this.employeeInfo || Object.keys(this.employeeInfo).length === 0) {
+            return false;
+          }
+          // Only required for actual employees (when employeeInfo is present and not a vendor)
+          return !!(this.employeeInfo.department || this.employeeInfo.jobTitle);
+        },
         type: Schema.Types.ObjectId,
         ref: 'User',
       },

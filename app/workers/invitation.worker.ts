@@ -9,6 +9,7 @@ import { InvitationCsvProcessor } from '@services/csv';
 import { MailType } from '@interfaces/utils.interface';
 import { generateDefaultPassword } from '@utils/helpers';
 import { EventTypes } from '@interfaces/events.interface';
+import { IClientInfo } from '@interfaces/client.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { IInvitationData } from '@interfaces/invitation.interface';
 import { InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
@@ -196,11 +197,29 @@ export class InvitationWorker {
    */
   private async sendSingleInvitation(
     inviterUserId: string,
-    clientInfo: { cuid: string; displayName: string; id: string },
+    clientInfo: IClientInfo,
     invitationData: IInvitationData
   ) {
     if (!clientInfo.cuid || !clientInfo.id) {
       throw new Error('Client not found');
+    }
+
+    // Validate linkedVendorId if provided for vendor role
+    if (invitationData.linkedVendorId && invitationData.role === 'vendor') {
+      const primaryVendor = await this.userDAO.getUserById(invitationData.linkedVendorId);
+      if (!primaryVendor) {
+        throw new Error('Primary vendor not found');
+      }
+
+      // Check if the referenced user is actually a primary vendor (no linkedVendorId)
+      const vendorCuid = primaryVendor.cuids.find((c) => c.cuid === clientInfo.cuid);
+      if (!vendorCuid || !vendorCuid.roles.includes('vendor' as any)) {
+        throw new Error('Referenced user is not a vendor for this client');
+      }
+
+      if (vendorCuid.linkedVendorId) {
+        throw new Error('Cannot link to a vendor that is already linked to another vendor');
+      }
     }
 
     // Check for existing pending invitation
@@ -236,13 +255,13 @@ export class InvitationWorker {
     const emailData = {
       to: invitationData.inviteeEmail,
       subject: t('email.invitation.subject', {
-        companyName: clientInfo.displayName || 'Company',
+        companyName: clientInfo.clientDisplayName || 'Company',
       }),
       emailType: MailType.INVITATION,
       data: {
         inviteeName: `${invitationData.personalInfo.firstName} ${invitationData.personalInfo.lastName}`,
         inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
-        companyName: clientInfo.displayName || 'Company',
+        companyName: clientInfo.clientDisplayName || 'Company',
         role: invitationData.role,
         invitationUrl: `${envVariables.FRONTEND.URL}/invite/${clientInfo.cuid}?token=${invitation.invitationToken}`,
         expiresAt: invitation.expiresAt,
@@ -257,11 +276,29 @@ export class InvitationWorker {
 
   private async createDraftInvitation(
     inviterUserId: string,
-    clientInfo: { cuid: string; displayName: string; id: string },
+    clientInfo: IClientInfo,
     invitationData: IInvitationData
   ) {
     if (!clientInfo.cuid || !clientInfo.id) {
       throw new Error('Client not found');
+    }
+
+    // Validate linkedVendorId if provided for vendor role
+    if (invitationData.linkedVendorId && invitationData.role === 'vendor') {
+      const primaryVendor = await this.userDAO.getUserById(invitationData.linkedVendorId);
+      if (!primaryVendor) {
+        throw new Error('Primary vendor not found');
+      }
+
+      // Check if the referenced user is actually a primary vendor (no linkedVendorId)
+      const vendorCuid = primaryVendor.cuids.find((c) => c.cuid === clientInfo.cuid);
+      if (!vendorCuid || !vendorCuid.roles.includes('vendor' as any)) {
+        throw new Error('Referenced user is not a vendor for this client');
+      }
+
+      if (vendorCuid.linkedVendorId) {
+        throw new Error('Cannot link to a vendor that is already linked to another vendor');
+      }
     }
 
     // Check for existing pending invitation
@@ -434,7 +471,7 @@ export class InvitationWorker {
    */
   private async createBulkUser(
     creatorUserId: string,
-    clientInfo: { cuid: string; displayName: string; id: string },
+    clientInfo: IClientInfo,
     userData: IInvitationData,
     options: { sendNotifications?: boolean; passwordLength?: number }
   ) {
@@ -442,10 +479,7 @@ export class InvitationWorker {
       throw new Error('Client not found');
     }
 
-    // Generate secure default password
     const generatedPassword = generateDefaultPassword(options.passwordLength || 12);
-
-    // Start transaction for atomicity
     const session = await this.userDAO.startSession();
     const result = await this.userDAO.withTransaction(session, async (session) => {
       // Check if user already exists
@@ -463,9 +497,9 @@ export class InvitationWorker {
           existingUser._id.toString(),
           userData.role,
           {
-            id: clientInfo.id.toString(),
+            id: clientInfo.id!.toString(),
             cuid: clientInfo.cuid,
-            displayName: clientInfo.displayName,
+            clientDisplayName: clientInfo.clientDisplayName,
           },
           linkedVendorId,
           session
@@ -473,7 +507,11 @@ export class InvitationWorker {
       } else {
         // Create new user with bulk method
         user = await this.userDAO.createBulkUserWithDefaults(
-          clientInfo,
+          {
+            cuid: clientInfo.cuid,
+            clientDisplayName: clientInfo.clientDisplayName,
+            id: clientInfo.id!,
+          },
           {
             email: userData.inviteeEmail,
             firstName: userData.personalInfo.firstName,
@@ -499,7 +537,7 @@ export class InvitationWorker {
             lastName: userData.personalInfo.lastName,
             displayName: `${userData.personalInfo.firstName} ${userData.personalInfo.lastName}`,
             phoneNumber: userData.personalInfo.phoneNumber || '',
-            location: 'Unknown', // Default location like acceptInvitation
+            location: 'Unknown',
           },
           lang: 'en',
           timeZone: 'UTC',
@@ -516,11 +554,32 @@ export class InvitationWorker {
         };
 
         // Add vendor info if this is a vendor user
-        if (userData.role === 'vendor' && userData.metadata?.vendorInfo) {
-          profileData.vendorInfo = userData.metadata.vendorInfo;
+        if (userData.role === 'vendor') {
+          if (linkedVendorId) {
+            profileData.vendorInfo = {
+              isLinkedAccount: true,
+              companyName: null,
+              businessType: null,
+              taxId: null,
+              registrationNumber: null,
+              yearsInBusiness: 0,
+              servicesOffered: {},
+              contactPerson: {
+                name: `${userData.personalInfo.firstName} ${userData.personalInfo.lastName}`,
+                jobTitle: userData.metadata?.vendorInfo?.contactPerson?.jobTitle || 'Associate',
+                email: userData.inviteeEmail,
+                phone: userData.personalInfo.phoneNumber || '',
+              },
+            };
+          } else if (userData.metadata?.vendorInfo) {
+            profileData.vendorInfo = {
+              ...userData.metadata.vendorInfo,
+              isLinkedAccount: false,
+            };
+          }
         }
 
-        // Add employee info for staff/admin/manager users
+        // Add employee info for staff/admin/manager users ONLY (not vendors)
         if (
           ['manager', 'staff', 'admin'].includes(userData.role) &&
           userData.metadata?.employeeInfo
@@ -556,13 +615,13 @@ export class InvitationWorker {
       const emailData = {
         to: userData.inviteeEmail,
         subject: t('email.userCreated.subject', {
-          companyName: clientInfo.displayName || 'Company',
+          companyName: clientInfo.clientDisplayName || 'Company',
         }),
         emailType: MailType.USER_CREATED,
         data: {
           firstName: userData.personalInfo.firstName,
           lastName: userData.personalInfo.lastName,
-          companyName: clientInfo.displayName || 'Company',
+          companyName: clientInfo.clientDisplayName || 'Company',
           email: userData.inviteeEmail,
           temporaryPassword: generatedPassword,
           loginUrl: `${envVariables.FRONTEND.URL}/login`,

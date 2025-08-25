@@ -278,31 +278,163 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
           (typeof role === 'string' && role === 'vendor'));
 
       // Create aggregation pipelines for stats
-      const departmentStatsQuery = [
-        ...pipeline,
-        {
-          $group: {
-            _id: isVendorQuery
-              ? { $ifNull: ['$profile.vendorInfo.businessType', 'unassigned'] }
-              : { $ifNull: ['$profile.employeeInfo.department', 'unassigned'] },
-            count: { $sum: 1 },
+      let departmentStatsQuery;
+
+      if (isVendorQuery) {
+        // For vendors, group by primary vendor companies and count their teams
+        // Get all vendor users (including linked) to count them properly
+        const allVendorQuery: any = {
+          'cuids.cuid': cuid,
+          'cuids.roles': 'vendor',
+          'cuids.isConnected': true,
+          deletedAt: null,
+        };
+
+        if (status) {
+          allVendorQuery.isActive = status === 'active';
+        }
+
+        departmentStatsQuery = [
+          { $match: allVendorQuery },
+          {
+            $lookup: {
+              from: 'profiles',
+              localField: '_id',
+              foreignField: 'user',
+              as: 'profile',
+            },
           },
-        },
-        {
-          $project: {
-            _id: 0,
-            name: { $toUpper: { $substr: ['$_id', 0, 1] } },
-            category: { $substr: ['$_id', 1, { $strLenCP: '$_id' }] },
-            value: '$count',
+          { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+          // Unwind cuids to access linkedVendorId properly
+          { $unwind: '$cuids' },
+          // Match only the current client's cuid with vendor role
+          {
+            $match: {
+              'cuids.cuid': cuid,
+              'cuids.roles': 'vendor',
+            },
           },
-        },
-        {
-          $project: {
-            name: { $concat: ['$name', '$category'] },
-            value: 1,
+          // Determine the grouping key - use linkedVendorId if it exists, otherwise use user's own ID
+          {
+            $addFields: {
+              groupingId: {
+                $cond: {
+                  if: {
+                    $and: [
+                      { $ne: [{ $type: '$cuids.linkedVendorId' }, 'missing'] },
+                      { $ne: ['$cuids.linkedVendorId', null] },
+                      { $ne: ['$cuids.linkedVendorId', ''] },
+                    ],
+                  },
+                  then: '$cuids.linkedVendorId',
+                  else: { $toString: '$_id' },
+                },
+              },
+              isPrimaryVendor: {
+                $or: [
+                  { $eq: [{ $type: '$cuids.linkedVendorId' }, 'missing'] },
+                  { $eq: ['$cuids.linkedVendorId', null] },
+                  { $eq: ['$cuids.linkedVendorId', ''] },
+                ],
+              },
+            },
           },
-        },
-      ];
+          // First group to collect primary vendor info and count
+          {
+            $group: {
+              _id: '$groupingId',
+              primaryVendorData: {
+                $first: {
+                  $cond: {
+                    if: '$isPrimaryVendor',
+                    then: {
+                      companyName: '$profile.vendorInfo.companyName',
+                      userId: '$_id',
+                    },
+                    else: null,
+                  },
+                },
+              },
+              count: { $sum: 1 },
+            },
+          },
+          // Lookup primary vendor data if we don't have it (for linked vendor groups)
+          {
+            $lookup: {
+              from: 'users',
+              let: { vendorId: '$_id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $eq: [{ $toString: '$_id' }, '$$vendorId'],
+                    },
+                  },
+                },
+                {
+                  $lookup: {
+                    from: 'profiles',
+                    localField: '_id',
+                    foreignField: 'user',
+                    as: 'profile',
+                  },
+                },
+                { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+                {
+                  $project: {
+                    companyName: {
+                      $ifNull: ['$profile.vendorInfo.companyName', 'Unknown Company'],
+                    },
+                  },
+                },
+              ],
+              as: 'lookupVendorData',
+            },
+          },
+          { $unwind: { path: '$lookupVendorData', preserveNullAndEmptyArrays: true } },
+          // Final projection to get the company name and count
+          {
+            $project: {
+              _id: 0,
+              name: {
+                $ifNull: [
+                  '$primaryVendorData.companyName',
+                  '$lookupVendorData.companyName',
+                  'Unknown Company',
+                ],
+              },
+              value: '$count',
+            },
+          },
+          // Sort by count descending
+          { $sort: { value: -1 as 1 | -1 } },
+        ];
+      } else {
+        // For non-vendors, use department grouping
+        departmentStatsQuery = [
+          ...pipeline,
+          {
+            $group: {
+              _id: { $ifNull: ['$profile.employeeInfo.department', 'unassigned'] },
+              count: { $sum: 1 },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              name: { $toUpper: { $substr: ['$_id', 0, 1] } },
+              category: { $substr: ['$_id', 1, { $strLenCP: '$_id' }] },
+              value: '$count',
+            },
+          },
+          {
+            $project: {
+              name: { $concat: ['$name', '$category'] },
+              value: 1,
+            },
+          },
+        ];
+      }
 
       const roleStatsQuery = [
         ...pipeline,

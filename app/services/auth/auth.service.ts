@@ -5,8 +5,8 @@ import { t } from '@shared/languages';
 import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
-import { AuthTokenService } from '@services/index';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { AuthTokenService, VendorService } from '@services/index';
 import { IActiveAccountInfo } from '@interfaces/client.interface';
 import { ISignupData, IUserRole } from '@interfaces/user.interface';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
@@ -28,6 +28,7 @@ import {
 
 interface IConstructor {
   tokenService: AuthTokenService;
+  vendorService: VendorService;
   profileDAO: ProfileDAO;
   emailQueue: EmailQueue;
   authCache: AuthCache;
@@ -43,6 +44,7 @@ export class AuthService {
   private readonly profileDAO: ProfileDAO;
   private readonly emailQueue: EmailQueue;
   private readonly tokenService: AuthTokenService;
+  private readonly vendorService: VendorService;
 
   constructor({
     userDAO,
@@ -51,6 +53,7 @@ export class AuthService {
     emailQueue,
     tokenService,
     authCache,
+    vendorService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -58,6 +61,7 @@ export class AuthService {
     this.profileDAO = profileDAO;
     this.emailQueue = emailQueue;
     this.tokenService = tokenService;
+    this.vendorService = vendorService;
     this.log = createLogger('AuthService');
   }
 
@@ -245,6 +249,22 @@ export class AuthService {
         },
         session
       );
+
+      // Create vendor entity if this is a corporate account (likely vendor signup)
+      let vendorEntity = null;
+      if (signupData.accountType.isCorporate && signupData.companyProfile) {
+        try {
+          vendorEntity = await this.vendorService.createVendorFromCompanyProfile(
+            _userId.toString(),
+            signupData.companyProfile
+          );
+
+          this.log.info(`Vendor entity created for user ${user.uid}: ${vendorEntity.vuid}`);
+        } catch (vendorError) {
+          this.log.error(`Error creating vendor entity for user ${user.uid}: ${vendorError}`);
+          // Don't fail the entire signup if vendor creation fails
+        }
+      }
 
       return {
         emailData: {

@@ -3,4 +3,5 @@ export * from './invitationDAO';
 export * from './propertyDAO';
 export * from './profileDAO';
 export * from './clientDAO';
+export * from './vendorDAO';
 export * from './userDAO';

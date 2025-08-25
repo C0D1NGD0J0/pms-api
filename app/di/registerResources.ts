@@ -10,13 +10,14 @@ import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { EventsRegistryCache, PropertyCache, AuthCache, UserCache } from '@caching/index';
-import { PropertyUnit, Invitation, Property, Profile, Client, User } from '@models/index';
+import { PropertyUnit, Invitation, Property, Profile, Client, Vendor, User } from '@models/index';
 import {
   PropertyUnitDAO,
   InvitationDAO,
   PropertyDAO,
   ProfileDAO,
   ClientDAO,
+  VendorDAO,
   UserDAO,
 } from '@dao/index';
 import {
@@ -55,6 +56,7 @@ import {
   PropertyService,
   ProfileService,
   ClientService,
+  VendorService,
   UserService,
   AuthService,
 } from '@services/index';
@@ -76,6 +78,7 @@ const ModelResources = {
   propertyModel: asValue(Property),
   propertyUnitModel: asValue(PropertyUnit),
   invitationModel: asValue(Invitation),
+  vendorModel: asValue(Vendor),
 };
 
 const ServiceResources = {
@@ -94,6 +97,7 @@ const ServiceResources = {
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   permissionService: asClass(PermissionService).singleton(),
   invitationService: asClass(InvitationService).singleton(),
+  vendorService: asClass(VendorService).singleton(),
 };
 
 const DAOResources = {
@@ -103,6 +107,7 @@ const DAOResources = {
   propertyDAO: asClass(PropertyDAO).singleton(),
   propertyUnitDAO: asClass(PropertyUnitDAO).singleton(),
   invitationDAO: asClass(InvitationDAO).singleton(),
+  vendorDAO: asClass(VendorDAO).singleton(),
 };
 
 const CacheResources = {

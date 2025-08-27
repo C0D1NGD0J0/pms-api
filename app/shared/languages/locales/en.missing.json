@@ -22,5 +22,15 @@
     "success": {
       "roleInitialized": "profile.success.roleInitialized"
     }
+  },
+  "propertyUnit": {
+    "errors": {
+      "noCsvFileUploaded": "propertyUnit.errors.noCsvFileUploaded"
+    }
+  },
+  "vendor": {
+    "success": {
+      "statsRetrieved": "vendor.success.statsRetrieved"
+    }
   }
 }

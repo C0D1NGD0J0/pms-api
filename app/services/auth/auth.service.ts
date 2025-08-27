@@ -250,22 +250,6 @@ export class AuthService {
         session
       );
 
-      // Create vendor entity if this is a corporate account (likely vendor signup)
-      let vendorEntity = null;
-      if (signupData.accountType.isCorporate && signupData.companyProfile) {
-        try {
-          vendorEntity = await this.vendorService.createVendorFromCompanyProfile(
-            _userId.toString(),
-            signupData.companyProfile
-          );
-
-          this.log.info(`Vendor entity created for user ${user.uid}: ${vendorEntity.vuid}`);
-        } catch (vendorError) {
-          this.log.error(`Error creating vendor entity for user ${user.uid}: ${vendorError}`);
-          // Don't fail the entire signup if vendor creation fails
-        }
-      }
-
       return {
         emailData: {
           to: user.email,
@@ -273,7 +257,7 @@ export class AuthService {
           emailType: MailType.ACCOUNT_ACTIVATION,
           data: {
             fullname: profile.fullname,
-            activationUrl: `${process.env.FRONTEND_URL}/${client.cuid}/account_activation?t=${user.activationToken}`,
+            activationUrl: `${process.env.FRONTEND_URL}/account_activation/${client.cuid}?t=${user.activationToken}`,
           },
         },
       };

@@ -70,6 +70,7 @@ export class PropertyController {
   getClientProperties = async (req: AppRequest, res: Response) => {
     const { page, limit, sort, sortBy } = req.query;
     const { cuid } = req.params;
+    const currentuser = req.context.currentuser;
 
     const queryParams: IPropertyFilterQuery = {
       pagination: {
@@ -110,8 +111,8 @@ export class PropertyController {
         queryParams.filters.searchTerm = req.query.searchTerm as string;
       }
     }
-    const data = await this.propertyService.getClientProperties(cuid, queryParams);
-    console.log(data, 'data----');
+
+    const data = await this.propertyService.getClientProperties(cuid, currentuser, queryParams);
     res.status(httpStatusCodes.OK).json(data);
   };
 

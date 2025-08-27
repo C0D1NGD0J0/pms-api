@@ -4,9 +4,9 @@ import bunyan from 'bunyan';
 import * as nanoid from 'nanoid';
 import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
+import { PhoneNumber } from 'libphonenumber-js';
 import { Country, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
-import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import {
   AsyncRequestHandler,
   ExtractedMediaFile,
@@ -196,6 +196,26 @@ export function setAuthCookies(
 }
 
 /**
+ * Validates if a string is a valid phone number across multiple formats
+ * @param phoneNumber - The phone number string to validate
+ * @returns Boolean indicating if the phone number is valid
+ */
+export function isValidPhoneNumber(phoneNumber: string): boolean {
+  if (!phoneNumber || phoneNumber.length > 17) {
+    return false;
+  }
+  try {
+    // const parsedNumber = parsePhoneNumberWithError(phoneNumber);
+    const parsedNumber = new PhoneNumber(phoneNumber as any);
+    console.log('Parsed phone number:', parsedNumber);
+    return !!parsedNumber && parsedNumber.isValid();
+  } catch (error) {
+    console.error('Error validating phone number:', error);
+    return false;
+  }
+}
+
+/**
  * Generates a random hash string using SHA-256
  * @param opts - {
   byteLength?: number;
@@ -216,24 +236,6 @@ export function hashGenerator(hashOpts: {
     return crypto.createHash(algorithm).update(token).digest('hex');
   } catch (error) {
     throw new Error(`Failed to generate hash: ${error.message}`);
-  }
-}
-
-/**
- * Validates if a string is a valid phone number across multiple formats
- * @param phoneNumber - The phone number string to validate
- * @returns Boolean indicating if the phone number is valid
- */
-export function isValidPhoneNumber(phoneNumber: string): boolean {
-  if (!phoneNumber || phoneNumber.length > 17) {
-    return false;
-  }
-  try {
-    const parsedNumber = parsePhoneNumberFromString(phoneNumber);
-    return !!parsedNumber && parsedNumber.isValid();
-  } catch (error) {
-    console.error('Error validating phone number:', error);
-    return false;
   }
 }
 

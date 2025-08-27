@@ -514,32 +514,47 @@ export const invitationCsvSchema = z
           }
         : undefined;
 
-    // Build vendorInfo if any vendor fields are provided
-    const vendorInfo =
-      data.vendorInfo_companyName ||
-      data.vendorInfo_businessType ||
-      data.vendorInfo_taxId ||
-      data.vendorInfo_registrationNumber ||
-      data.vendorInfo_yearsInBusiness ||
-      data.vendorInfo_contactPerson_name ||
-      data.vendorInfo_contactPerson_jobTitle ||
-      data.vendorInfo_contactPerson_email ||
-      data.vendorInfo_contactPerson_phone
+    // Determine if this is a primary vendor (has business data) or team member (linkedVendorId without business data)
+    const isPrimaryVendor = Boolean(data.role === 'vendor' && data.vendorInfo_companyName);
+    const isVendorTeamMember = Boolean(
+      data.role === 'vendor' && data.linkedVendorId && !data.vendorInfo_companyName
+    );
+
+    // Build vendor data for primary vendor creation
+    const vendorEntityData =
+      isPrimaryVendor && data.vendorInfo_companyName
         ? {
-            companyName: data.vendorInfo_companyName,
-            businessType: data.vendorInfo_businessType,
+            companyName: data.vendorInfo_companyName as string,
+            businessType: data.vendorInfo_businessType || 'professional_services',
             taxId: data.vendorInfo_taxId,
             registrationNumber: data.vendorInfo_registrationNumber,
-            yearsInBusiness: data.vendorInfo_yearsInBusiness,
+            yearsInBusiness: data.vendorInfo_yearsInBusiness || 0,
             contactPerson:
-              data.vendorInfo_contactPerson_name || data.vendorInfo_contactPerson_jobTitle
+              data.vendorInfo_contactPerson_name || data.vendorInfo_contactPerson_email
                 ? {
-                    name: data.vendorInfo_contactPerson_name || '',
-                    jobTitle: data.vendorInfo_contactPerson_jobTitle || '',
-                    email: data.vendorInfo_contactPerson_email,
-                    phone: data.vendorInfo_contactPerson_phone,
+                    name:
+                      data.vendorInfo_contactPerson_name || data.firstName + ' ' + data.lastName,
+                    jobTitle: data.vendorInfo_contactPerson_jobTitle || 'Owner',
+                    email: data.vendorInfo_contactPerson_email || data.inviteeEmail,
+                    phone: data.vendorInfo_contactPerson_phone || data.phoneNumber,
                   }
-                : undefined,
+                : {
+                    name: data.firstName + ' ' + data.lastName,
+                    jobTitle: 'Owner',
+                    email: data.inviteeEmail,
+                    phone: data.phoneNumber || '',
+                  },
+          }
+        : undefined;
+
+    // Build legacy vendorInfo for profile references
+    const vendorInfo =
+      data.role === 'vendor'
+        ? {
+            isLinkedAccount: Boolean(isVendorTeamMember),
+            // For primary vendors, linkedVendorId will be populated after vendor entity creation
+            // For team members, use the CSV linkedVendorId as a temporary group identifier
+            linkedVendorId: isVendorTeamMember ? data.linkedVendorId : undefined,
           }
         : undefined;
 
@@ -558,6 +573,10 @@ export const invitationCsvSchema = z
         expectedStartDate: data.expectedStartDate,
         employeeInfo,
         vendorInfo,
+        vendorEntityData, // New field for vendor entity creation
+        isPrimaryVendor,
+        isVendorTeamMember,
+        csvGroupId: data.linkedVendorId, // CSV group identifier for linking vendors and team members
       },
     };
   });

@@ -120,7 +120,7 @@ export interface IRequestContext {
     endTime?: number;
     duration?: number;
   };
-  currentuser?: ICurrentUser | null;
+  currentuser: ICurrentUser;
   service: { env: string };
   source: RequestSource;
   requestId: string;

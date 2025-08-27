@@ -11,6 +11,28 @@ import {
 
 import { BaseCSVProcessorService } from './base';
 
+// Extended interface for CSV processing with vendor-specific metadata
+interface IInvitationCsvData extends IInvitationData {
+  metadata?: {
+    isPrimaryVendor?: boolean;
+    isVendorTeamMember?: boolean;
+    csvGroupId?: string;
+    vendorEntityData?: {
+      companyName: string;
+      businessType: string;
+      taxId?: string;
+      registrationNumber?: string;
+      yearsInBusiness?: number;
+      contactPerson: {
+        name: string;
+        jobTitle: string;
+        email: string;
+        phone?: string;
+      };
+    };
+  } & IInvitationData['metadata'];
+}
+
 interface IConstructor {
   invitationDAO: InvitationDAO;
   clientDAO: ClientDAO;
@@ -30,7 +52,7 @@ export class InvitationCsvProcessor {
   private readonly invitationDAO: InvitationDAO;
   private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
-  private transformedDataCache = new Map<number, IInvitationData>();
+  private transformedDataCache = new Map<number, IInvitationCsvData>();
 
   constructor({ invitationDAO, clientDAO, userDAO }: IConstructor) {
     this.invitationDAO = invitationDAO;
@@ -42,7 +64,7 @@ export class InvitationCsvProcessor {
     filePath: string,
     context: InvitationProcessingContext
   ): Promise<{
-    validInvitations: IInvitationData[];
+    validInvitations: IInvitationCsvData[];
     totalRows: number;
     finishedAt: Date;
     errors: null | IInvalidCsvProperty[];
@@ -57,7 +79,7 @@ export class InvitationCsvProcessor {
 
     try {
       const result = await BaseCSVProcessorService.processCsvFile<
-        IInvitationData,
+        IInvitationCsvData,
         InvitationProcessingContext
       >(filePath, {
         context,
@@ -171,7 +193,7 @@ export class InvitationCsvProcessor {
     _row: any,
     _context: InvitationProcessingContext,
     rowNumber: number
-  ): Promise<IInvitationData> => {
+  ): Promise<IInvitationCsvData> => {
     // Get the transformed data from cache (set during validation)
     const transformedData = this.transformedDataCache.get(rowNumber);
     if (!transformedData) {
@@ -284,15 +306,122 @@ export class InvitationCsvProcessor {
   }
 
   private postProcessInvitations = async (
-    invitations: IInvitationData[],
+    invitations: IInvitationCsvData[],
     _context: InvitationProcessingContext
-  ): Promise<{ validItems: IInvitationData[]; invalidItems: any[] }> => {
-    // For now, just return the invitations as-is
-    // In the future, we could add additional processing here
-    // like email validation, duplicate checking across the batch, etc.
+  ): Promise<{ validItems: IInvitationCsvData[]; invalidItems: any[] }> => {
+    const validItems: IInvitationCsvData[] = [];
+    const invalidItems: any[] = [];
+
+    // Separate primary vendors and team members for two-pass processing
+    const primaryVendors = invitations.filter(
+      (inv) => inv.role === 'vendor' && inv.metadata?.isPrimaryVendor
+    );
+    const vendorTeamMembers = invitations.filter(
+      (inv) => inv.role === 'vendor' && inv.metadata?.isVendorTeamMember
+    );
+    const nonVendors = invitations.filter((inv) => inv.role !== 'vendor');
+
+    // Group team members by their CSV group ID to validate they have corresponding primary vendors
+    const teamMembersByGroup = new Map<string, any[]>();
+    for (const teamMember of vendorTeamMembers) {
+      const csvGroupId = teamMember.metadata?.csvGroupId;
+      if (!csvGroupId) {
+        invalidItems.push({
+          email: teamMember.inviteeEmail,
+          error: 'Vendor team members must have a group identifier (linkedVendorId)',
+          row: teamMember,
+        });
+        continue;
+      }
+
+      if (!teamMembersByGroup.has(csvGroupId)) {
+        teamMembersByGroup.set(csvGroupId, []);
+      }
+      teamMembersByGroup.get(csvGroupId)!.push(teamMember);
+    }
+
+    // Validate that each team member group has a corresponding primary vendor
+    for (const [csvGroupId, members] of teamMembersByGroup) {
+      const hasPrimaryVendor = primaryVendors.some((pv) => pv.metadata?.csvGroupId === csvGroupId);
+
+      if (!hasPrimaryVendor) {
+        for (const member of members) {
+          invalidItems.push({
+            email: member.inviteeEmail,
+            error: `No primary vendor found for group ${csvGroupId}. Team members require a primary vendor in the same CSV.`,
+            row: member,
+          });
+        }
+      } else {
+        validItems.push(...members);
+      }
+    }
+
+    // Validate unique registration numbers within the CSV
+    const registrationNumbers = new Map<string, IInvitationCsvData>();
+    const duplicateRegNums = new Set<string>();
+
+    for (const vendor of primaryVendors) {
+      const regNum = vendor.metadata?.vendorEntityData?.registrationNumber;
+      if (regNum && regNum.trim() !== '') {
+        const normalizedRegNum = regNum.trim().toLowerCase();
+        if (registrationNumbers.has(normalizedRegNum)) {
+          duplicateRegNums.add(normalizedRegNum);
+          // Mark both vendors as invalid
+          const existingVendor = registrationNumbers.get(normalizedRegNum);
+          if (existingVendor) {
+            invalidItems.push({
+              email: existingVendor.inviteeEmail,
+              error: `Duplicate registration number: ${regNum}`,
+              row: existingVendor,
+            });
+          }
+          invalidItems.push({
+            email: vendor.inviteeEmail,
+            error: `Duplicate registration number: ${regNum}`,
+            row: vendor,
+          });
+        } else {
+          registrationNumbers.set(normalizedRegNum, vendor);
+        }
+      }
+    }
+
+    // Filter out vendors with duplicate registration numbers
+    const validPrimaryVendors = primaryVendors.filter((vendor) => {
+      const regNum = vendor.metadata?.vendorEntityData?.registrationNumber;
+      if (!regNum || regNum.trim() === '') return true; // Allow vendors without registration numbers
+      return !duplicateRegNums.has(regNum.trim().toLowerCase());
+    });
+
+    // Process non-vendor invitations (no special handling needed)
+    validItems.push(...nonVendors);
+
+    // Process valid primary vendors (duplicates already filtered out)
+    validItems.push(...validPrimaryVendors);
+
+    // Sort to ensure primary vendors are processed before their team members
+    validItems.sort((a, b) => {
+      // Primary vendors first
+      if (a.metadata?.isPrimaryVendor && !b.metadata?.isPrimaryVendor) return -1;
+      if (!a.metadata?.isPrimaryVendor && b.metadata?.isPrimaryVendor) return 1;
+
+      // Then team members, but group them by their CSV group ID
+      if (a.metadata?.isVendorTeamMember && b.metadata?.isVendorTeamMember) {
+        return (a.metadata?.csvGroupId || '').localeCompare(b.metadata?.csvGroupId || '');
+      }
+
+      // Team members after primary vendors
+      if (a.metadata?.isVendorTeamMember && !b.metadata?.isVendorTeamMember) return 1;
+      if (!a.metadata?.isVendorTeamMember && b.metadata?.isVendorTeamMember) return -1;
+
+      // Others maintain original order
+      return 0;
+    });
+
     return {
-      validItems: invitations,
-      invalidItems: [],
+      validItems,
+      invalidItems,
     };
   };
 }

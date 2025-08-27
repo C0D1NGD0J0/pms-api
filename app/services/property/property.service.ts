@@ -440,6 +440,7 @@ export class PropertyService implements IDisposable {
 
   async getClientProperties(
     cuid: string,
+    currentuser: ICurrentUser,
     queryParams: IPropertyFilterQuery
   ): Promise<
     ISuccessReturnData<{
@@ -461,22 +462,18 @@ export class PropertyService implements IDisposable {
     const filter: FilterQuery<IPropertyDocument> = {
       cuid,
       deletedAt: null,
-      $or: [
-        { approvalStatus: { $exists: false } },
-        { approvalStatus: PropertyApprovalStatusEnum.APPROVED },
-      ],
       status: { $ne: 'inactive' },
     };
 
-    if (filters) {
-      if (filters.includeUnapproved && queryParams.currentUser) {
-        const userRole = queryParams.currentUser.client.role;
-        if (PROPERTY_APPROVAL_ROLES.includes(userRole)) {
-          // Remove the $or filter to show all properties regardless of approval status
-          delete filter.$or;
-        }
-      }
+    const userRole = currentuser.client.role;
+    if (!PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+      filter.$and = [
+        { approvalStatus: { $exists: true } },
+        { approvalStatus: PropertyApprovalStatusEnum.APPROVED },
+      ];
+    }
 
+    if (filters) {
       if (filters.propertyType) {
         filter.propertyType = { $in: filters.propertyType };
       }
@@ -547,17 +544,6 @@ export class PropertyService implements IDisposable {
           filter[filters.dateRange.field] = dateFilter;
         }
       }
-
-      if (filters.searchTerm && filters.searchTerm.trim()) {
-        const searchRegex = new RegExp(filters.searchTerm.trim(), 'i');
-        filter.$or = [
-          { name: searchRegex },
-          { 'address.city': searchRegex },
-          { 'address.state': searchRegex },
-          { 'address.postCode': searchRegex },
-          { 'address.fullAddress': searchRegex },
-        ];
-      }
     }
 
     const opts: IPaginationQuery = {
@@ -567,16 +553,16 @@ export class PropertyService implements IDisposable {
       limit: Math.max(1, Math.min(pagination.limit || 10, 100)),
       skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
     };
-    const cachedResult = await this.propertyCache.getClientProperties(cuid, opts);
-    if (cachedResult.success && cachedResult.data) {
-      return {
-        success: true,
-        data: {
-          items: cachedResult.data.properties,
-          pagination: cachedResult.data.pagination,
-        },
-      };
-    }
+    // const cachedResult = await this.propertyCache.getClientProperties(cuid, opts);
+    // if (cachedResult.success && cachedResult.data) {
+    //   return {
+    //     success: true,
+    //     data: {
+    //       items: cachedResult.data.properties,
+    //       pagination: cachedResult.data.pagination,
+    //     },
+    //   };
+    // }
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
     await this.propertyCache.saveClientProperties(cuid, properties.items, {
       filter,
@@ -616,11 +602,11 @@ export class PropertyService implements IDisposable {
       throw new NotFoundError({ message: t('property.errors.notFound') });
     }
     const unitInfo = await this.getUnitInfoForProperty(property);
-
+    console.log('Unit Info:', property);
     return {
       success: true,
       data: {
-        ...property.toJSON(),
+        property,
         unitInfo,
       },
     };

@@ -445,6 +445,9 @@ export class ProfileService {
     metadata?: {
       employeeInfo?: any;
       vendorInfo?: any;
+      vendorEntityData?: any;
+      isPrimaryVendor?: boolean;
+      isVendorTeamMember?: boolean;
     }
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     await this.ensureClientRoleInfo(userId, cuid, role, linkedVendorId);
@@ -455,30 +458,59 @@ export class ProfileService {
       });
     }
 
-    let result: IProfileDocument | null = null;
+    let result: IProfileDocument | null = profile;
+    let createdVendor: any = null;
 
-    if (role === 'vendor' && !linkedVendorId) {
-      // For primary vendors, initialize the common vendor info with metadata if provided
-      const vendorData = metadata?.vendorInfo || {};
-      result = await this.profileDAO.updateCommonVendorInfo(profile.id, vendorData);
-      this.logger.info(`Initialized vendor info for profile ${profile.id} with metadata`);
+    if (role === 'vendor' && metadata?.isPrimaryVendor && metadata?.vendorEntityData) {
+      // For primary vendors, create vendor entity first
+      try {
+        const vendorResult = await this.vendorService.createVendor({
+          primaryAccountHolder: userId,
+          ...metadata.vendorEntityData,
+        });
+        createdVendor = vendorResult.data;
+
+        // Update profile with vendor reference
+        if (createdVendor) {
+          result = await this.profileDAO.updateVendorReference(profile.id, {
+            vendorId: createdVendor._id.toString(),
+            isLinkedAccount: false,
+          });
+        }
+
+        this.logger.info(`Created vendor entity ${createdVendor?.vuid} for profile ${profile.id}`);
+      } catch (error) {
+        this.logger.error(`Error creating vendor entity for profile ${profile.id}:`, error);
+        // Continue with profile creation even if vendor entity fails
+        result = profile;
+      }
+    } else if (role === 'vendor' && metadata?.isVendorTeamMember) {
+      // For vendor team members, update profile with linkedVendorId reference
+      result = await this.profileDAO.updateVendorReference(profile.id, {
+        linkedVendorId: linkedVendorId,
+        isLinkedAccount: true,
+      });
+      this.logger.info(
+        `Linked vendor team member profile ${profile.id} to vendor ${linkedVendorId}`
+      );
     } else if (['manager', 'staff', 'admin'].includes(role)) {
       // For employees, initialize the common employee info with metadata if provided
       const employeeData = metadata?.employeeInfo || {};
       result = await this.profileDAO.updateCommonEmployeeInfo(profile.id, employeeData);
       this.logger.info(`Initialized employee info for profile ${profile.id} with metadata`);
-    } else {
-      result = profile;
     }
+
     if (!result) {
       throw new NotFoundError({
         message: 'Error initializing user role.',
       });
     }
+
     return {
       success: true,
       data: result,
       message: t('profile.success.roleInitialized'),
+      ...(createdVendor && { vendorEntity: createdVendor }),
     };
   }
 

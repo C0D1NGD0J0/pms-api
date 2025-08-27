@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import dayjs from 'dayjs';
 import { User } from '@models/index';
-import { isValidLocation } from '@utils/index';
+import { isValidPhoneNumber, isValidLocation } from '@utils/index';
 import { IUserRelationshipsEnum } from '@interfaces/user.interface';
 
 const isUniqueEmail = async (value: string) => {
@@ -68,7 +68,7 @@ export const UserSignupSchema = z
       planName: z.enum(['personal', 'business'], { message: 'Invalid plan name provided.' }),
       isCorporate: z.boolean(),
     }),
-    confirmPassword: z.string().min(8, 'Confirm password must be at least 8 characters'),
+    cpassword: z.string().min(8, 'Confirm password must be at least 8 characters'),
     lang: z.string().optional(),
     timeZone: z.string().optional(),
     companyProfile: z
@@ -76,7 +76,16 @@ export const UserSignupSchema = z
         website: z.string().url('Invalid URL provided.').optional().or(z.literal('')),
         tradingName: z.string().min(2, 'Company name is required'),
         companyEmail: z.string().email('Invalid company email').optional(),
-        companyPhoneNumber: z.string().optional(),
+        companyPhone: z
+          .string()
+          .optional()
+          .refine(
+            (val) => {
+              if (!val) return true; // Allow empty
+              return isValidPhoneNumber(val);
+            },
+            { message: 'Invalid company phone number' }
+          ),
         legalEntityName: z.string().min(2, 'Legal entity name is required'),
         contactInfo: z
           .object({
@@ -130,7 +139,7 @@ export const UserSignupSchema = z
         });
       }
     }
-    if (data.password !== data.confirmPassword) {
+    if (data.password !== data.cpassword) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Passwords do not match',

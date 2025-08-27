@@ -1,5 +1,5 @@
-import { nanoid } from 'nanoid';
 import { Schema, model } from 'mongoose';
+import { generateShortUID } from '@utils/helpers';
 import uniqueValidator from 'mongoose-unique-validator';
 import { IVendorDocument } from '@interfaces/vendor.interface';
 
@@ -118,6 +118,8 @@ const VendorSchema = new Schema<IVendorDocument>(
       type: String,
       unique: true,
       index: true,
+      immutable: true,
+      default: () => generateShortUID(),
     },
     deletedAt: {
       type: Date,
@@ -135,15 +137,8 @@ const VendorSchema = new Schema<IVendorDocument>(
 // Indexes
 VendorSchema.index({ primaryAccountHolder: 1 });
 VendorSchema.index({ companyName: 1 });
+VendorSchema.index({ registrationNumber: 1 }, { unique: true });
 VendorSchema.index({ 'address.city': 1, 'address.state': 1 });
-
-// Generate unique vendor UID before saving
-VendorSchema.pre('save', function (this: IVendorDocument, next) {
-  if (this.isNew && !this.vuid) {
-    this.vuid = `vendor_${nanoid(12)}`;
-  }
-  next();
-});
 
 VendorSchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',

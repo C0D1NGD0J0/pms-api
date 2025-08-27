@@ -3,9 +3,9 @@ import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { UserCache } from '@caching/user.cache';
 import { VendorService } from '@services/index';
-import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
+import { PropertyDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
@@ -29,6 +29,7 @@ interface IConstructor {
   vendorService: VendorService;
   propertyDAO: PropertyDAO;
   clientDAO: ClientDAO;
+  vendorDAO: VendorDAO;
   userCache: UserCache;
   userDAO: UserDAO;
 }
@@ -38,6 +39,7 @@ export class UserService {
   private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
   private readonly propertyDAO: PropertyDAO;
+  private readonly vendorDAO: VendorDAO;
   private readonly userCache: UserCache;
   private readonly permissionService: PermissionService;
   private readonly vendorService: VendorService;
@@ -46,6 +48,7 @@ export class UserService {
     clientDAO,
     userDAO,
     propertyDAO,
+    vendorDAO,
     userCache,
     permissionService,
     vendorService,
@@ -54,6 +57,7 @@ export class UserService {
     this.clientDAO = clientDAO;
     this.userDAO = userDAO;
     this.propertyDAO = propertyDAO;
+    this.vendorDAO = vendorDAO;
     this.userCache = userCache;
     this.permissionService = permissionService;
     this.vendorService = vendorService;
@@ -283,7 +287,7 @@ export class UserService {
   async getUserStats(
     cuid: string,
     filterOptions: IUserFilterOptions
-  ): Promise<ISuccessReturnData<IUserStats>> {
+  ): Promise<ISuccessReturnData<IUserStats | any>> {
     try {
       if (!cuid) {
         throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
@@ -298,6 +302,45 @@ export class UserService {
         filterOptions.role = [filterOptions.role as IUserRoleType];
       }
 
+      // Check if we're querying for vendor stats
+      const rolesArray = Array.isArray(filterOptions.role)
+        ? filterOptions.role
+        : filterOptions.role
+          ? [filterOptions.role]
+          : [];
+      const isVendorQuery = rolesArray.includes(IUserRole.VENDOR as IUserRoleType);
+      const hasEmployeeRoles = rolesArray.some((r) =>
+        [
+          IUserRole.MANAGER as IUserRoleType,
+          IUserRole.STAFF as IUserRoleType,
+          IUserRole.ADMIN as IUserRoleType,
+        ].includes(r)
+      );
+
+      // If requesting vendor stats only
+      if (isVendorQuery && !hasEmployeeRoles) {
+        const vendorStats = await this.vendorDAO.getClientVendorStats(cuid, {
+          status: filterOptions.status,
+        });
+
+        return {
+          success: true,
+          data: {
+            // For vendors, businessType distribution instead of department
+            departmentDistribution: vendorStats.businessTypeDistribution,
+            // Services distribution instead of role distribution
+            roleDistribution: vendorStats.servicesDistribution,
+            totalFilteredUsers: vendorStats.totalVendors,
+            // Additional vendor-specific fields
+            businessTypeDistribution: vendorStats.businessTypeDistribution,
+            servicesDistribution: vendorStats.servicesDistribution,
+            totalVendors: vendorStats.totalVendors,
+          },
+          message: t('vendor.success.statsRetrieved'),
+        };
+      }
+
+      // Default to employee stats for all other cases
       const stats = await this.clientDAO.getClientUsersStats(cuid, filterOptions);
 
       return {
@@ -598,26 +641,26 @@ export class UserService {
 
       // Office information
       officeInfo: {
-        address: contactInfo.officeAddress || '123 Main Street, Suite 100',
-        city: contactInfo.officeCity || 'New York, NY 10001',
-        workHours: contactInfo.workHours || 'Mon-Fri: 8AM-5PM',
+        address: contactInfo.officeAddress || 'N/A',
+        city: contactInfo.officeCity || 'N/A',
+        workHours: contactInfo.workHours || 'N/A',
       },
 
       // Emergency contact
       emergencyContact: employeeInfo.emergencyContact || {
-        name: 'Emergency Contact',
-        relationship: 'Spouse',
-        phone: '+1 (555) 123-4568',
+        name: 'N/A',
+        relationship: 'N/A',
+        phone: 'N/A',
       },
 
       // Performance statistics
       stats: {
         propertiesManaged: properties.length,
         unitsManaged: properties.reduce((sum: number, p: any) => sum + (p.units || 0), 0),
-        tasksCompleted: 47,
-        onTimeRate: '98%',
-        rating: '4.8',
-        activeTasks: 8,
+        tasksCompleted: 47, // placeholder
+        onTimeRate: '98%', // placeholder
+        rating: '4.8', // placeholder
+        activeTasks: 8, // placeholder
       },
 
       // Performance metrics
@@ -641,11 +684,10 @@ export class UserService {
   ): Promise<IVendorDetailInfo> {
     const _personalInfo = profile.personalInfo || {};
 
-    // Get vendor entity from vendor collection
     const vendor = await this.vendorService.getVendorByUserId(userid);
-    const vendorInfo = vendor || {};
+    const vendorInfo = vendor;
 
-    // Get linked users if this is a primary vendor
+    // get linked users if this is a primary vendor
     let linkedUsers: any[] = [];
     if (!clientConnection.linkedVendorId) {
       try {
@@ -670,36 +712,36 @@ export class UserService {
     }
 
     return {
-      // Company information
-      companyName: vendorInfo.companyName || _personalInfo.displayName || '',
-      businessType: vendorInfo.businessType || 'General Contractor',
-      yearsInBusiness: vendorInfo.yearsInBusiness || 0,
-      registrationNumber: vendorInfo.registrationNumber || '',
-      taxId: vendorInfo.taxId || '',
+      companyName: vendorInfo?.companyName || _personalInfo.displayName || '',
+      businessType: vendorInfo?.businessType || 'General Contractor',
+      yearsInBusiness: vendorInfo?.yearsInBusiness || 0,
+      registrationNumber: vendorInfo?.registrationNumber || '',
+      taxId: vendorInfo?.taxId || '',
 
       // Services
-      servicesOffered: vendorInfo.servicesOffered || {},
+      servicesOffered: vendorInfo?.servicesOffered || {},
 
-      // Service areas
-      serviceAreas: vendorInfo.serviceAreas || {
-        baseLocation: vendorInfo.address?.fullAddress || '',
-        maxDistance: 25,
+      // Service areas - baseLocation should be a string
+      serviceAreas: {
+        baseLocation:
+          vendorInfo?.serviceAreas?.baseLocation?.address || vendorInfo?.address?.fullAddress || '',
+        maxDistance: vendorInfo?.serviceAreas?.maxDistance || 25,
       },
 
-      // Insurance
-      insuranceInfo: vendorInfo.insuranceInfo || {
-        provider: '',
-        policyNumber: '',
-        expirationDate: null,
-        coverageAmount: 0,
+      // Insurance - all fields must have values (not undefined)
+      insuranceInfo: {
+        provider: vendorInfo?.insuranceInfo?.provider || '',
+        policyNumber: vendorInfo?.insuranceInfo?.policyNumber || '',
+        expirationDate: vendorInfo?.insuranceInfo?.expirationDate || null,
+        coverageAmount: vendorInfo?.insuranceInfo?.coverageAmount || 0,
       },
 
-      // Contact person
-      contactPerson: vendorInfo.contactPerson || {
-        name: _personalInfo.displayName || '',
-        jobTitle: 'Owner',
-        email: _personalInfo.email || '',
-        phone: _personalInfo.phoneNumber || '',
+      // Contact person - all fields must have values (not undefined)
+      contactPerson: {
+        name: vendorInfo?.contactPerson?.name || _personalInfo.displayName || '',
+        jobTitle: vendorInfo?.contactPerson?.jobTitle || 'Employee',
+        email: vendorInfo?.contactPerson?.email || '',
+        phone: vendorInfo?.contactPerson?.phone || _personalInfo.phoneNumber || '',
       },
 
       // Vendor statistics (placeholder)
@@ -720,7 +762,7 @@ export class UserService {
       isPrimaryVendor: !clientConnection.linkedVendorId,
 
       // Linked users (only for primary vendors)
-      linkedUsers: linkedUsers.length > 0 ? linkedUsers : undefined,
+      ...(linkedUsers.length > 0 ? { linkedUsers } : {}),
     };
   }
 
@@ -885,7 +927,6 @@ export class UserService {
     // Access levels (placeholder)
     if (roles.includes('manager')) {
       tags.push('Master Key Access');
-      tags.push('Company Vehicle');
     }
 
     return tags;

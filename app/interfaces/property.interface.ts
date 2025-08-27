@@ -318,16 +318,16 @@ export type PropertyType =
   | 'industrial';
 
 /**
+ * Property with Unit Info Interface - using intersection type
+ */
+export type IPropertyWithUnitInfo = Partial<{ property: IPropertyDocument }> & {
+  unitInfo: UnitInfo;
+};
+
+/**
  * Property Status Types
  */
 export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
-
-/**
- * Property with Unit Info Interface - using intersection type
- */
-export type IPropertyWithUnitInfo = Partial<IPropertyDocument> & {
-  unitInfo: UnitInfo;
-};
 
 /**
  * Property Approval Status Types

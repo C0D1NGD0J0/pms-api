@@ -4,6 +4,7 @@ import { DoneCallback, Job } from 'bull';
 import { EmailQueue } from '@queues/index';
 import { envVariables } from '@shared/config';
 import { CsvJobData } from '@interfaces/index';
+import { VendorService } from '@services/index';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { InvitationCsvProcessor } from '@services/csv';
 import { MailType } from '@interfaces/utils.interface';
@@ -12,12 +13,35 @@ import { EventTypes } from '@interfaces/events.interface';
 import { IClientInfo } from '@interfaces/client.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { IInvitationData } from '@interfaces/invitation.interface';
+
+// Extended interface for CSV processing with vendor-specific metadata
+interface IInvitationCsvData extends IInvitationData {
+  metadata?: {
+    isPrimaryVendor?: boolean;
+    isVendorTeamMember?: boolean;
+    csvGroupId?: string;
+    vendorEntityData?: {
+      companyName: string;
+      businessType: string;
+      taxId?: string;
+      registrationNumber?: string;
+      yearsInBusiness?: number;
+      contactPerson: {
+        name: string;
+        jobTitle: string;
+        email: string;
+        phone?: string;
+      };
+    };
+  } & IInvitationData['metadata'];
+}
 import { InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 
 interface IConstructor {
   invitationCsvProcessor: InvitationCsvProcessor;
   emitterService: EventEmitterService;
   invitationDAO: InvitationDAO;
+  vendorService: VendorService;
   emailQueue: EmailQueue;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
@@ -35,6 +59,7 @@ export class InvitationWorker {
   private readonly emailQueue: EmailQueue;
   private readonly profileDAO: ProfileDAO;
   private readonly profileService: any;
+  private readonly vendorService: VendorService;
 
   constructor({
     emitterService,
@@ -45,6 +70,7 @@ export class InvitationWorker {
     emailQueue,
     profileDAO,
     profileService,
+    vendorService,
   }: IConstructor) {
     this.emitterService = emitterService;
     this.invitationCsvProcessor = invitationCsvProcessor;
@@ -54,6 +80,7 @@ export class InvitationWorker {
     this.emailQueue = emailQueue;
     this.profileDAO = profileDAO;
     this.profileService = profileService;
+    this.vendorService = vendorService;
     this.log = createLogger('InvitationWorker');
   }
 
@@ -198,7 +225,7 @@ export class InvitationWorker {
   private async sendSingleInvitation(
     inviterUserId: string,
     clientInfo: IClientInfo,
-    invitationData: IInvitationData
+    invitationData: IInvitationCsvData
   ) {
     if (!clientInfo.cuid || !clientInfo.id) {
       throw new Error('Client not found');
@@ -277,7 +304,7 @@ export class InvitationWorker {
   private async createDraftInvitation(
     inviterUserId: string,
     clientInfo: IClientInfo,
-    invitationData: IInvitationData
+    invitationData: IInvitationCsvData
   ) {
     if (!clientInfo.cuid || !clientInfo.id) {
       throw new Error('Client not found');
@@ -470,9 +497,9 @@ export class InvitationWorker {
    * Follows the same pattern as acceptInvitation but with generated password
    */
   private async createBulkUser(
-    creatorUserId: string,
+    _creatorUserId: string,
     clientInfo: IClientInfo,
-    userData: IInvitationData,
+    userData: IInvitationCsvData,
     options: { sendNotifications?: boolean; passwordLength?: number }
   ) {
     if (!clientInfo.cuid || !clientInfo.id) {
@@ -486,9 +513,11 @@ export class InvitationWorker {
       const existingUser = await this.userDAO.getActiveUserByEmail(userData.inviteeEmail);
 
       let user;
+      // linkedVendorId should only be set for team members linking to primary vendors
+      // Primary vendors should not have linkedVendorId (they create vendor entities instead)
       const linkedVendorId =
-        userData.linkedVendorId && userData.role === 'vendor'
-          ? userData.linkedVendorId.toString()
+        userData.role === 'vendor' && userData.metadata?.isVendorTeamMember
+          ? undefined // TODO: Will need proper vendor user lookup in future
           : undefined;
 
       if (existingUser) {
@@ -555,26 +584,22 @@ export class InvitationWorker {
 
         // Add vendor info if this is a vendor user
         if (userData.role === 'vendor') {
-          if (linkedVendorId) {
+          // Use metadata flags to determine vendor type correctly
+          if (userData.metadata?.isVendorTeamMember) {
+            // Team members: isLinkedAccount = true, minimal vendor data
             profileData.vendorInfo = {
               isLinkedAccount: true,
-              companyName: null,
-              businessType: null,
-              taxId: null,
-              registrationNumber: null,
-              yearsInBusiness: 0,
-              servicesOffered: {},
-              contactPerson: {
-                name: `${userData.personalInfo.firstName} ${userData.personalInfo.lastName}`,
-                jobTitle: userData.metadata?.vendorInfo?.contactPerson?.jobTitle || 'Associate',
-                email: userData.inviteeEmail,
-                phone: userData.personalInfo.phoneNumber || '',
-              },
+              linkedVendorId: linkedVendorId, // Reference to primary vendor
+            };
+          } else if (userData.metadata?.isPrimaryVendor) {
+            // Primary vendors: isLinkedAccount = false, will get vendor entity
+            profileData.vendorInfo = {
+              isLinkedAccount: false,
             };
           } else if (userData.metadata?.vendorInfo) {
+            // Fallback: copy from metadata (preserving existing behavior)
             profileData.vendorInfo = {
               ...userData.metadata.vendorInfo,
-              isLinkedAccount: false,
             };
           }
         }
@@ -590,25 +615,25 @@ export class InvitationWorker {
         await this.profileDAO.createUserProfile(user._id, profileData, session);
       }
 
+      // Initialize role-specific info (outside transaction like acceptInvitation)
+      if (user) {
+        await this.profileService.initializeRoleInfo(
+          user._id.toString(),
+          clientInfo.cuid,
+          userData.role,
+          result.linkedVendorId,
+          userData.metadata
+        );
+
+        // Log vendor linking if applicable
+        if (linkedVendorId && userData.role === 'vendor') {
+          this.log.info(
+            `Vendor link established from primary vendor ${linkedVendorId} to new user ${user._id}`
+          );
+        }
+      }
       return { user, linkedVendorId };
     });
-
-    // Initialize role-specific info (outside transaction like acceptInvitation)
-    if (result.user) {
-      await this.profileService.initializeRoleInfo(
-        result.user._id.toString(),
-        clientInfo.cuid,
-        userData.role,
-        result.linkedVendorId
-      );
-
-      // Log vendor linking if applicable
-      if (result.linkedVendorId && userData.role === 'vendor') {
-        this.log.info(
-          `Vendor link established from primary vendor ${result.linkedVendorId} to new user ${result.user._id}`
-        );
-      }
-    }
 
     // Send welcome email with credentials if notifications are enabled
     if (options.sendNotifications) {
@@ -631,7 +656,7 @@ export class InvitationWorker {
           expectedStartDate: userData.metadata?.expectedStartDate,
           department: userData.metadata?.employeeInfo?.department,
           jobTitle: userData.metadata?.employeeInfo?.jobTitle,
-          vendorCompanyName: userData.metadata?.vendorInfo?.companyName,
+          vendorCompanyName: userData.metadata?.vendorEntityData?.companyName,
         },
       };
       this.emailQueue.addToEmailQueue(JOB_NAME.USER_CREATED_JOB, emailData);

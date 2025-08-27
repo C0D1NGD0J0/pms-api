@@ -36,6 +36,18 @@ export class VendorService {
         throw new BadRequestError('Company name is required');
       }
 
+      // Check for duplicate registration number if provided
+      if (vendorData.registrationNumber && vendorData.registrationNumber.trim()) {
+        const existingVendor = await this.vendorDAO.findByRegistrationNumber(
+          vendorData.registrationNumber.trim()
+        );
+        if (existingVendor) {
+          throw new BadRequestError(
+            `A vendor with registration number '${vendorData.registrationNumber}' already exists`
+          );
+        }
+      }
+
       const vendor = await this.vendorDAO.createVendor(vendorData, session);
 
       this.logger.info(

@@ -328,7 +328,7 @@ export class InvitationCsvProcessor {
       if (!csvGroupId) {
         invalidItems.push({
           email: teamMember.inviteeEmail,
-          error: 'Vendor team members must have a group identifier (linkedVendorId)',
+          error: 'Vendor team members must have a group identifier (linkedVendorUid)',
           row: teamMember,
         });
         continue;

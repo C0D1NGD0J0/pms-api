@@ -25,7 +25,7 @@ const UserSchema = new Schema<IUserDocument>(
         roles: [{ type: String, required: true }],
         clientDisplayName: { type: String, required: true },
         cuid: { type: String, required: true, index: true },
-        linkedVendorId: { type: String, trim: true, default: null }, // Optional, for if the user is linked to a vendor
+        linkedVendorUid: { type: String, trim: true, default: null }, // Optional, for if the user is linked to a vendor
         isConnected: { type: Boolean, required: true, default: false },
         _id: false,
       },

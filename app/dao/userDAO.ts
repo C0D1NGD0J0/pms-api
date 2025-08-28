@@ -565,7 +565,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     client: { cuid: string; displayName?: string },
     invitationData: IInvitationDocument,
     userData: any,
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument> {
     try {
@@ -576,7 +576,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         isConnected: true,
         roles: [invitationData.role],
         clientDisplayName: client.displayName,
-        linkedVendorId: invitationData.role === 'vendor' ? linkedVendorId : null,
+        linkedVendorUid: invitationData.role === 'vendor' ? linkedVendorUid : null,
       };
 
       const user = await this.insert(
@@ -606,7 +606,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     userId: string,
     role: IUserRoleType,
     client: { cuid: string; clientDisplayName?: string; id: string },
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument | null> {
     try {
@@ -621,7 +621,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         const updateObj: any = {
           'cuids.$.isConnected': true,
           'cuids.$.clientDisplayName': client.clientDisplayName,
-          'cuids.$.linkedVendorId': role === 'vendor' ? linkedVendorId : null,
+          'cuids.$.linkedVendorUid': role === 'vendor' ? linkedVendorUid : null,
         };
 
         const updateOperation = existingConnection.roles.includes(role)
@@ -641,7 +641,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           isConnected: true,
           roles: [role],
           clientDisplayName: client.clientDisplayName || '',
-          linkedVendorId: role === 'vendor' ? linkedVendorId : null,
+          linkedVendorUid: role === 'vendor' ? linkedVendorUid : null,
         };
 
         return await this.updateById(
@@ -692,7 +692,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       role: IUserRoleType;
       defaultPassword: string;
     },
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument> {
     try {
@@ -703,7 +703,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         isConnected: true,
         roles: [userData.role],
         clientDisplayName: client.clientDisplayName || '',
-        linkedVendorId: userData.role === 'vendor' && linkedVendorId ? linkedVendorId : null,
+        linkedVendorUid: userData.role === 'vendor' && linkedVendorUid ? linkedVendorUid : null,
       };
 
       const user = await this.insert(
@@ -741,7 +741,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       const query: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
-        'cuids.linkedVendorId': new Types.ObjectId(primaryVendorId),
+        'cuids.linkedVendorUid': new Types.ObjectId(primaryVendorId),
         'cuids.isConnected': true,
         deletedAt: null,
       };
@@ -807,7 +807,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           // Determine if this is a linked vendor account
           const primaryCuid = user.cuids.find((c: any) => c.cuid === user.activecuid);
           const isLinkedVendor =
-            primaryCuid?.linkedVendorId && primaryCuid.roles.includes('vendor' as any);
+            primaryCuid?.linkedVendorUid && primaryCuid.roles.includes('vendor' as any);
 
           const profileData: any = {
             user: user._id,

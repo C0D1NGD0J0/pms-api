@@ -206,7 +206,7 @@ describe('UserService - getClientUserInfo', () => {
             displayName: 'ABC Plumbing',
             roles: ['vendor'],
             isConnected: true,
-            linkedVendorId: null,
+            linkedVendorUid: null,
           },
         ],
         profile: {
@@ -272,7 +272,7 @@ describe('UserService - getClientUserInfo', () => {
         tags: expect.arrayContaining(['Plumbing Services', 'Insured', 'Established']),
         isPrimaryVendor: true,
         isLinkedAccount: false,
-        linkedVendorId: null,
+        linkedVendorUid: null,
       });
     });
 
@@ -289,7 +289,7 @@ describe('UserService - getClientUserInfo', () => {
             displayName: 'Sub Contractor',
             roles: ['vendor'],
             isConnected: true,
-            linkedVendorId: 'primary-vendor-id',
+            linkedVendorUid: 'primary-vendor-id',
           },
         ],
         profile: {
@@ -308,7 +308,7 @@ describe('UserService - getClientUserInfo', () => {
 
       expect(result.data.vendorInfo).toMatchObject({
         isLinkedAccount: true,
-        linkedVendorId: 'primary-vendor-id',
+        linkedVendorUid: 'primary-vendor-id',
         isPrimaryVendor: false,
         tags: expect.arrayContaining(['Sub-contractor']),
       });

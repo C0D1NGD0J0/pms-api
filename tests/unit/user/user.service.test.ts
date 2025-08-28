@@ -27,7 +27,9 @@ describe('UserService', () => {
     mockClientDAO = createMockClientDAO();
     mockUserDAO = createMockUserDAO();
     // Add missing method to mock
-    mockUserDAO.getLinkedVendorUsers = jest.fn().mockResolvedValue({ items: [], pagination: undefined });
+    mockUserDAO.getLinkedVendorUsers = jest
+      .fn()
+      .mockResolvedValue({ items: [], pagination: undefined });
     mockPropertyDAO = {
       getPropertiesByClientId: jest.fn().mockResolvedValue({ items: [] }),
     };
@@ -230,7 +232,7 @@ describe('UserService', () => {
               roles: ['vendor'],
               isConnected: true,
               clientDisplayName: 'Vendor User',
-              linkedVendorId: 'vendor-company-123',
+              linkedVendorUid: 'vendor-company-123',
             },
           ],
           createdAt: new Date(),
@@ -243,17 +245,17 @@ describe('UserService', () => {
               phoneNumber: '',
               displayName: 'Jane Vendor',
             },
-            vendorInfo: { 
+            vendorInfo: {
               companyName: 'Vendor Corp',
               businessType: 'Plumbing',
               contactPerson: { name: 'Jane Vendor' },
-              stats: { 
+              stats: {
                 rating: '4.5',
                 completedJobs: 25,
-                responseTime: '2h'
+                responseTime: '2h',
               },
               reviewCount: 15,
-              averageServiceCost: 250
+              averageServiceCost: 250,
             },
           },
         },
@@ -264,12 +266,12 @@ describe('UserService', () => {
         items: mockUsers,
         pagination: { total: 1, page: 1, limit: 10, pages: 1 },
       });
-      
+
       // Mock vendor service for this specific test
       mockVendorService.getVendorByUserId.mockResolvedValue({
         companyName: 'Vendor Corp',
         businessType: 'Plumbing',
-        contactPerson: { name: 'Jane Vendor' }
+        contactPerson: { name: 'Jane Vendor' },
       });
 
       const result = await userService.getFilteredUsers(
@@ -295,7 +297,7 @@ describe('UserService', () => {
           averageResponseTime: '2h',
           averageServiceCost: 250,
           isLinkedAccount: true,
-          linkedVendorId: 'vendor-company-123',
+          linkedVendorUid: 'vendor-company-123',
           isPrimaryVendor: false,
         },
       });
@@ -354,7 +356,7 @@ describe('UserService', () => {
       expect(result.data.items[0]).not.toHaveProperty('employeeInfo');
     });
 
-    it('should handle vendor without linkedVendorId (primary vendor)', async () => {
+    it('should handle vendor without linkedVendorUid (primary vendor)', async () => {
       const filterOptions = { role: [IUserRole.VENDOR] };
       const paginationOpts = { limit: 10, skip: 0 };
       const mockUsers = [
@@ -380,16 +382,16 @@ describe('UserService', () => {
               phoneNumber: '',
               displayName: 'Primary Vendor',
             },
-            vendorInfo: { 
+            vendorInfo: {
               companyName: 'Primary Corp',
               businessType: 'General Contractor',
-              stats: { 
+              stats: {
                 rating: '4.2',
                 completedJobs: 18,
-                responseTime: '4h'
+                responseTime: '4h',
               },
               reviewCount: 12,
-              averageServiceCost: 300
+              averageServiceCost: 300,
             },
           },
         },
@@ -439,11 +441,7 @@ describe('UserService', () => {
         pagination: { total: 0, page: 1, limit: 10, pages: 0 },
       });
 
-      await userService.getFilteredUsers(
-        'test-client-id',
-        filterOptions,
-        paginationOpts
-      );
+      await userService.getFilteredUsers('test-client-id', filterOptions, paginationOpts);
 
       expect(mockUserDAO.getUsersByFilteredType).toHaveBeenCalledWith(
         'test-client-id',
@@ -456,9 +454,9 @@ describe('UserService', () => {
       const filterOptions = {};
       const paginationOpts = { limit: 10, skip: 0 };
 
-      await expect(
-        userService.getFilteredUsers('', filterOptions, paginationOpts)
-      ).rejects.toThrow(BadRequestError);
+      await expect(userService.getFilteredUsers('', filterOptions, paginationOpts)).rejects.toThrow(
+        BadRequestError
+      );
     });
 
     it('should throw NotFoundError when client not found', async () => {
@@ -468,11 +466,7 @@ describe('UserService', () => {
       mockClientDAO.getClientByCuid.mockResolvedValue(null);
 
       await expect(
-        userService.getFilteredUsers(
-          'invalid-client-id',
-          filterOptions,
-          paginationOpts
-        )
+        userService.getFilteredUsers('invalid-client-id', filterOptions, paginationOpts)
       ).rejects.toThrow(NotFoundError);
     });
 
@@ -506,7 +500,10 @@ describe('UserService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(expectedStats);
-      expect(mockClientDAO.getClientUsersStats).toHaveBeenCalledWith('test-client-id', filterOptions);
+      expect(mockClientDAO.getClientUsersStats).toHaveBeenCalledWith(
+        'test-client-id',
+        filterOptions
+      );
     });
 
     it('should successfully retrieve user statistics for any role', async () => {
@@ -525,7 +522,10 @@ describe('UserService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(expectedStats);
-      expect(mockClientDAO.getClientUsersStats).toHaveBeenCalledWith('test-client-id', filterOptions);
+      expect(mockClientDAO.getClientUsersStats).toHaveBeenCalledWith(
+        'test-client-id',
+        filterOptions
+      );
     });
 
     it('should work with no role filter specified', async () => {
@@ -552,7 +552,10 @@ describe('UserService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(expectedStats);
-      expect(mockClientDAO.getClientUsersStats).toHaveBeenCalledWith('test-client-id', filterOptions);
+      expect(mockClientDAO.getClientUsersStats).toHaveBeenCalledWith(
+        'test-client-id',
+        filterOptions
+      );
     });
   });
 
@@ -566,13 +569,15 @@ describe('UserService', () => {
         createMockUser({
           uid: 'team-member-1',
           email: 'member1@vendor.com',
-          cuids: [{
-            cuid: mockClientId,
-            roles: ['vendor'],
-            isConnected: true,
-            clientDisplayName: 'Team Member 1',
-            linkedVendorId: mockVendorId,
-          }],
+          cuids: [
+            {
+              cuid: mockClientId,
+              roles: ['vendor'],
+              isConnected: true,
+              clientDisplayName: 'Team Member 1',
+              linkedVendorUid: mockVendorId,
+            },
+          ],
           profile: {
             personalInfo: {
               firstName: 'John',
@@ -585,13 +590,15 @@ describe('UserService', () => {
         createMockUser({
           uid: 'team-member-2',
           email: 'member2@vendor.com',
-          cuids: [{
-            cuid: mockClientId,
-            roles: ['vendor'],
-            isConnected: true,
-            clientDisplayName: 'Team Member 2',
-            linkedVendorId: mockVendorId,
-          }],
+          cuids: [
+            {
+              cuid: mockClientId,
+              roles: ['vendor'],
+              isConnected: true,
+              clientDisplayName: 'Team Member 2',
+              linkedVendorUid: mockVendorId,
+            },
+          ],
           profile: {
             personalInfo: {
               firstName: 'Jane',
@@ -650,7 +657,7 @@ describe('UserService', () => {
       });
       expect(mockUserDAO.getUsersByFilteredType).toHaveBeenCalledWith(
         mockClientId,
-        { role: ['vendor'], status: 'active', linkedVendorId: mockVendorId },
+        { role: ['vendor'], status: 'active', linkedVendorUid: mockVendorId },
         paginationOpts
       );
     });
@@ -697,7 +704,7 @@ describe('UserService', () => {
       expect(result.data.teamMembers).toHaveLength(0);
       expect(mockUserDAO.getUsersByFilteredType).toHaveBeenCalledWith(
         mockClientId,
-        { role: ['vendor'], status: 'inactive', linkedVendorId: mockVendorId },
+        { role: ['vendor'], status: 'inactive', linkedVendorUid: mockVendorId },
         paginationOpts
       );
     });
@@ -711,7 +718,10 @@ describe('UserService', () => {
       });
 
       await expect(
-        userService.getVendorTeamMembers(mockContext, mockClientId, mockVendorId, undefined, { limit: 10, skip: 0 })
+        userService.getVendorTeamMembers(mockContext, mockClientId, mockVendorId, undefined, {
+          limit: 10,
+          skip: 0,
+        })
       ).rejects.toThrow(NotFoundError);
     });
 
@@ -734,7 +744,10 @@ describe('UserService', () => {
       });
 
       await expect(
-        userService.getVendorTeamMembers(mockContext, mockClientId, mockVendorId, undefined, { limit: 10, skip: 0 })
+        userService.getVendorTeamMembers(mockContext, mockClientId, mockVendorId, undefined, {
+          limit: 10,
+          skip: 0,
+        })
       ).rejects.toThrow('Database connection failed');
     });
   });
@@ -750,13 +763,15 @@ describe('UserService', () => {
           _id: 'vendor-enhanced-id',
           uid: 'vendor-enhanced',
           email: 'enhanced@vendor.com',
-          cuids: [{
-            cuid: 'test-client-id',
-            roles: ['vendor'],
-            isConnected: true,
-            clientDisplayName: 'Enhanced Vendor',
-            linkedVendorId: 'linked-vendor-123',
-          }],
+          cuids: [
+            {
+              cuid: 'test-client-id',
+              roles: ['vendor'],
+              isConnected: true,
+              clientDisplayName: 'Enhanced Vendor',
+              linkedVendorUid: 'linked-vendor-123',
+            },
+          ],
           createdAt: new Date(),
           isActive: true,
           profile: {
@@ -796,7 +811,11 @@ describe('UserService', () => {
         contactPerson: { name: 'Enhanced Contact', jobTitle: 'Manager' },
       });
 
-      const result = await userService.getFilteredUsers('test-client-id', filterOptions, paginationOpts);
+      const result = await userService.getFilteredUsers(
+        'test-client-id',
+        filterOptions,
+        paginationOpts
+      );
 
       expect(result.success).toBe(true);
       expect(result.data.items[0].vendorInfo).toMatchObject({
@@ -810,12 +829,12 @@ describe('UserService', () => {
         averageResponseTime: '2h', // hardcoded placeholder in user service
         averageServiceCost: 250, // hardcoded placeholder in user service
         isLinkedAccount: true,
-        linkedVendorId: 'linked-vendor-123',
+        linkedVendorUid: 'linked-vendor-123',
         isPrimaryVendor: false,
       });
     });
 
-    it('should handle primary vendor (no linkedVendorId) correctly', async () => {
+    it('should handle primary vendor (no linkedVendorUid) correctly', async () => {
       const mockClient = createMockClient({ cuid: 'test-client-id' });
       const filterOptions = { role: [IUserRole.VENDOR] };
       const paginationOpts = { limit: 10, skip: 0 };
@@ -825,12 +844,14 @@ describe('UserService', () => {
           _id: 'primary-vendor-id',
           uid: 'primary-vendor',
           email: 'primary@vendor.com',
-          cuids: [{
-            cuid: 'test-client-id',
-            roles: ['vendor'],
-            isConnected: true,
-            clientDisplayName: 'Primary Vendor',
-          }],
+          cuids: [
+            {
+              cuid: 'test-client-id',
+              roles: ['vendor'],
+              isConnected: true,
+              clientDisplayName: 'Primary Vendor',
+            },
+          ],
           createdAt: new Date(),
           isActive: true,
           profile: {
@@ -863,12 +884,16 @@ describe('UserService', () => {
         contactPerson: { name: 'Primary Owner' },
       });
 
-      const result = await userService.getFilteredUsers('test-client-id', filterOptions, paginationOpts);
+      const result = await userService.getFilteredUsers(
+        'test-client-id',
+        filterOptions,
+        paginationOpts
+      );
 
       expect(result.data.items[0].vendorInfo).toMatchObject({
         isPrimaryVendor: true,
         isLinkedAccount: false,
-        linkedVendorId: null,
+        linkedVendorUid: null,
         serviceType: 'general_contractor',
         contactPerson: 'Primary Owner',
       });

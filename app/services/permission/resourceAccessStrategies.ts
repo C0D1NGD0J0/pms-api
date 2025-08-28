@@ -55,12 +55,12 @@ export class UserAccessStrategy extends ResourceAccessStrategy {
           );
         },
         vendor: (user, target) => {
-          // Vendors can read users with matching linkedVendorId or themselves
+          // Vendors can read users with matching linkedVendorUid or themselves
           if (user.sub === target._id?.toString()) return true;
 
           const connection = target.cuids?.find(
             (c: any) =>
-              c.cuid === user.client.cuid && c.linkedVendorId === user.client.linkedVendorId
+              c.cuid === user.client.cuid && c.linkedVendorUid === user.client.linkedVendorUid
           );
           return !!connection;
         },

@@ -150,7 +150,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
         type: Schema.Types.ObjectId,
         ref: 'Vendor',
       },
-      linkedVendorId: {
+      linkedVendorUid: {
         // this is the primary vendor (user -> uid)
         type: String,
         trim: true,

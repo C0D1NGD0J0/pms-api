@@ -37,7 +37,7 @@ export class VendorService {
   async createVendor(
     vendorData: NewVendor,
     session?: ClientSession,
-    linkedVendorId?: string
+    linkedVendorUid?: string
   ): Promise<ISuccessReturnData<IVendorDocument>> {
     try {
       if (!vendorData.companyName) {
@@ -62,17 +62,17 @@ export class VendorService {
       }
 
       // Check for existing vendor with priority order:
-      // 1. linkedVendorId (if provided from CSV)
+      // 1. linkedVendorUid (if provided from CSV)
       // 2. Registration number (exact match)
       // 3. Company name (fallback)
       let existingVendor = null;
 
-      if (linkedVendorId && linkedVendorId.trim()) {
+      if (linkedVendorUid && linkedVendorUid.trim()) {
         try {
-          existingVendor = await this.vendorDAO.getVendorById(linkedVendorId.trim());
+          existingVendor = await this.vendorDAO.getVendorById(linkedVendorUid.trim());
         } catch (error) {
           this.logger.warn(
-            `LinkedVendorId ${linkedVendorId} not found, falling back to other methods`
+            `linkedVendorUid ${linkedVendorUid} not found, falling back to other methods`
           );
         }
       }
@@ -92,8 +92,8 @@ export class VendorService {
       }
 
       if (existingVendor) {
-        // Validate data consistency if linkedVendorId was used to find the vendor
-        if (linkedVendorId && linkedVendorId.trim() === existingVendor._id?.toString()) {
+        // Validate data consistency if linkedVendorUid was used to find the vendor
+        if (linkedVendorUid && linkedVendorUid.trim() === existingVendor._id?.toString()) {
           const conflicts = [];
 
           // Check for company name mismatch
@@ -120,7 +120,7 @@ export class VendorService {
 
           if (conflicts.length > 0) {
             this.logger.warn(
-              `Vendor data conflicts for linkedVendorId ${linkedVendorId}: ${conflicts.join(', ')}`
+              `Vendor data conflicts for linkedVendorUid ${linkedVendorUid}: ${conflicts.join(', ')}`
             );
             // For now, we'll log the warning but still proceed with linking
             // In the future, this could be configurable to either throw an error or update the data
@@ -320,9 +320,9 @@ export class VendorService {
               completedJobs: 0, // TODO: Get from completed work orders when available
               averageResponseTime: '24h', // TODO: Calculate from historical data
               averageServiceCost: 0, // TODO: Calculate from completed jobs
-              isLinkedAccount: !!userClientConnection?.linkedVendorId,
-              linkedVendorId: userClientConnection?.linkedVendorId || '',
-              isPrimaryVendor: !userClientConnection?.linkedVendorId,
+              isLinkedAccount: !!userClientConnection?.linkedVendorUid,
+              linkedVendorUid: userClientConnection?.linkedVendorUid || '',
+              isPrimaryVendor: !userClientConnection?.linkedVendorUid,
             },
           };
         })
@@ -392,7 +392,7 @@ export class VendorService {
 
       // Get linked users if this is a primary vendor
       let linkedUsers: any[] = [];
-      if (!userClientConnection?.linkedVendorId) {
+      if (!userClientConnection?.linkedVendorUid) {
         try {
           const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(
             user._id.toString(),
@@ -464,9 +464,9 @@ export class VendorService {
         tags: this.generateVendorTags(vendor, userClientConnection, roles, profile),
 
         // Linked vendor info if applicable
-        isLinkedAccount: !!userClientConnection?.linkedVendorId,
-        linkedVendorId: userClientConnection?.linkedVendorId || null,
-        isPrimaryVendor: !userClientConnection?.linkedVendorId,
+        isLinkedAccount: !!userClientConnection?.linkedVendorUid,
+        linkedVendorUid: userClientConnection?.linkedVendorUid || null,
+        isPrimaryVendor: !userClientConnection?.linkedVendorUid,
 
         // Linked users (only for primary vendors)
         ...(linkedUsers.length > 0 ? { linkedUsers } : {}),
@@ -533,7 +533,7 @@ export class VendorService {
     }
 
     // Linked account
-    if (clientConnection.linkedVendorId) {
+    if (clientConnection.linkedVendorUid) {
       tags.push('Sub-contractor');
     } else {
       tags.push('Primary Vendor');

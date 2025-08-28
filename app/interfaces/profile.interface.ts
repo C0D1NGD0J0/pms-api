@@ -60,7 +60,7 @@ export interface Profile {
 export interface VendorInfo {
   vendorId?: Types.ObjectId; // Reference to the vendor collection
   isLinkedAccount: boolean;
-  linkedVendorId?: string; // Reference to primary vendor (stays as string to match user model)
+  linkedVendorUid?: string; // Reference to primary vendor (stays as string to match user model)
 }
 
 export type IProfileDocument = {
@@ -100,5 +100,5 @@ export interface NotificationSettings {
   messages: boolean;
 }
 export interface ClientVendorInfo {
-  linkedVendorId?: Types.ObjectId;
+  linkedVendorUid?: Types.ObjectId;
 }

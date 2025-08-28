@@ -17,7 +17,7 @@ const vendorInfoSchema = z.object({
     .length(24, 'Vendor ID must be a valid MongoDB ObjectId')
     .regex(/^[0-9a-fA-F]{24}$/, 'Vendor ID must contain only hexadecimal characters')
     .optional(),
-  linkedVendorId: z
+  linkedVendorUid: z
     .string()
     .length(24, 'Linked vendor ID must be a valid MongoDB ObjectId')
     .regex(/^[0-9a-fA-F]{24}$/, 'Linked vendor ID must contain only hexadecimal characters')

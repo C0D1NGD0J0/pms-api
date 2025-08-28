@@ -228,7 +228,7 @@ export class ProfileService {
   ): Promise<
     ISuccessReturnData<{
       role?: string;
-      linkedVendorId?: string;
+      linkedVendorUid?: string;
       isConnected?: boolean;
       isPrimaryVendor?: boolean;
       vendorInfo?: any;
@@ -250,8 +250,8 @@ export class ProfileService {
         isPrimaryVendor: result.isPrimaryVendor,
       };
 
-      if (result.linkedVendorId) {
-        filteredResult.linkedVendorId = result.linkedVendorId;
+      if (result.linkedVendorUid) {
+        filteredResult.linkedVendorUid = result.linkedVendorUid;
       }
 
       // Include relevant info based on role and permissions
@@ -319,7 +319,7 @@ export class ProfileService {
     userId: string,
     cuid: string,
     role?: string,
-    linkedVendorId?: string
+    linkedVendorUid?: string
   ): Promise<void> {
     try {
       if (!userId || !cuid) {
@@ -349,7 +349,7 @@ export class ProfileService {
               roles: [role || ('vendor' as IUserRoleType)],
               isConnected: true,
               displayName: clientInfo.displayName,
-              linkedVendorId: role === 'vendor' ? linkedVendorId : null,
+              linkedVendorUid: role === 'vendor' ? linkedVendorUid : null,
             },
           },
         });
@@ -369,7 +369,7 @@ export class ProfileService {
     cuid: string
   ): Promise<{
     role?: string;
-    linkedVendorId?: string;
+    linkedVendorUid?: string;
     isConnected?: boolean;
     isPrimaryVendor?: boolean;
     vendorInfo?: any;
@@ -404,11 +404,11 @@ export class ProfileService {
         isConnected: clientConnection.isConnected,
       };
 
-      if (clientConnection.linkedVendorId) {
-        result.linkedVendorId = clientConnection.linkedVendorId;
+      if (clientConnection.linkedVendorUid) {
+        result.linkedVendorUid = clientConnection.linkedVendorUid;
         result.isPrimaryVendor = false;
       } else if (clientConnection.roles.includes('vendor' as IUserRoleType)) {
-        // If this is a vendor without linkedVendorId, it's a primary vendor
+        // If this is a vendor without linkedVendorUid, it's a primary vendor
         result.isPrimaryVendor = true;
       }
 
@@ -440,10 +440,10 @@ export class ProfileService {
     userId: string,
     cuid: string,
     role: IUserRoleType,
-    linkedVendorId?: string
-  ): Promise<{ userId: string; cuid: string; role: IUserRoleType; linkedVendorId?: string }> {
-    await this.ensureClientRoleInfo(userId, cuid, role, linkedVendorId);
-    return { userId, cuid, role, linkedVendorId };
+    linkedVendorUid?: string
+  ): Promise<{ userId: string; cuid: string; role: IUserRoleType; linkedVendorUid?: string }> {
+    await this.ensureClientRoleInfo(userId, cuid, role, linkedVendorUid);
+    return { userId, cuid, role, linkedVendorUid };
   }
 
   /**
@@ -463,7 +463,7 @@ export class ProfileService {
    * Handle vendor role initialization if needed
    */
   private async handleVendorRoleIfNeeded(
-    context: { userId: string; cuid: string; role: IUserRoleType; linkedVendorId?: string },
+    context: { userId: string; cuid: string; role: IUserRoleType; linkedVendorUid?: string },
     profile: IProfileDocument,
     metadata?: {
       vendorEntityData?: any;
@@ -492,7 +492,7 @@ export class ProfileService {
    * Create primary vendor entity and update profile
    */
   private async createPrimaryVendor(
-    context: { userId: string; cuid: string; linkedVendorId?: string },
+    context: { userId: string; cuid: string; linkedVendorUid?: string },
     profile: IProfileDocument,
     vendorEntityData: any
   ): Promise<{ profile: IProfileDocument; createdVendor?: any }> {
@@ -512,7 +512,7 @@ export class ProfileService {
       const vendorResult = await this.vendorService.createVendor(
         vendorData,
         undefined,
-        context.linkedVendorId
+        context.linkedVendorUid
       );
       const createdVendor = vendorResult.data;
 
@@ -539,16 +539,16 @@ export class ProfileService {
    * Link vendor team member to existing vendor
    */
   private async linkVendorTeamMember(
-    context: { linkedVendorId?: string },
+    context: { linkedVendorUid?: string },
     profile: IProfileDocument
   ): Promise<{ profile: IProfileDocument }> {
     const updatedProfile = await this.profileDAO.updateVendorReference(profile.id, {
-      linkedVendorId: context.linkedVendorId,
+      linkedVendorUid: context.linkedVendorUid,
       isLinkedAccount: true,
     });
 
     this.logger.info(
-      `Linked vendor team member profile ${profile.id} to vendor ${context.linkedVendorId}`
+      `Linked vendor team member profile ${profile.id} to vendor ${context.linkedVendorUid}`
     );
 
     return { profile: updatedProfile || profile };
@@ -604,7 +604,7 @@ export class ProfileService {
     userId: string,
     cuid: string,
     role: IUserRoleType,
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     metadata?: {
       employeeInfo?: any;
       vendorInfo?: any;
@@ -613,7 +613,7 @@ export class ProfileService {
       isVendorTeamMember?: boolean;
     }
   ): Promise<ISuccessReturnData<IProfileDocument>> {
-    const context = await this.validateAndPrepareContext(userId, cuid, role, linkedVendorId);
+    const context = await this.validateAndPrepareContext(userId, cuid, role, linkedVendorUid);
     const profile = await this.fetchUserProfile(context);
     const vendorResult = await this.handleVendorRoleIfNeeded(context, profile, metadata);
     const finalProfile = await this.handleEmployeeRoleIfNeeded(

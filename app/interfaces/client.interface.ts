@@ -56,7 +56,7 @@ export interface IClientDocument extends Document, IClient {
  */
 export interface IClientUserConnections {
   clientDisplayName: string;
-  linkedVendorId?: string;
+  linkedVendorUid?: string;
   roles: IUserRoleType[];
   isConnected: boolean;
   cuid: string;

@@ -273,9 +273,9 @@ export class UserService {
                 completedJobs: 25, // placeholder
                 averageServiceCost: 250, // placeholder
                 averageResponseTime: '2h', // placeholder
-                isLinkedAccount: !!clientConnection.linkedVendorId,
-                isPrimaryVendor: !clientConnection.linkedVendorId,
-                linkedVendorId: clientConnection.linkedVendorId || null,
+                isLinkedAccount: !!clientConnection.linkedVendorUid,
+                isPrimaryVendor: !clientConnection.linkedVendorUid,
+                linkedVendorUid: clientConnection.linkedVendorUid || null,
               };
             }
           }
@@ -397,7 +397,7 @@ export class UserService {
       }
 
       // Check if the vendor is a primary vendor (not a linked account)
-      if (vendorConnection.linkedVendorId) {
+      if (vendorConnection.linkedVendorUid) {
         throw new BadRequestError({ message: t('vendor.errors.notPrimaryVendor') });
       }
 
@@ -711,7 +711,7 @@ export class UserService {
 
     // get linked users if this is a primary vendor
     let linkedUsers: any[] = [];
-    if (!clientConnection.linkedVendorId) {
+    if (!clientConnection.linkedVendorUid) {
       try {
         const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(userid, cuid);
         linkedUsers = linkedUsersResult.items.map((linkedUser: any) => {
@@ -779,9 +779,9 @@ export class UserService {
       tags: this.generateVendorTags(vendorInfo, clientConnection),
 
       // Linked vendor info if applicable
-      isLinkedAccount: !!clientConnection.linkedVendorId,
-      linkedVendorId: clientConnection.linkedVendorId || null,
-      isPrimaryVendor: !clientConnection.linkedVendorId,
+      isLinkedAccount: !!clientConnection.linkedVendorUid,
+      linkedVendorUid: clientConnection.linkedVendorUid || null,
+      isPrimaryVendor: !clientConnection.linkedVendorUid,
 
       // Linked users (only for primary vendors)
       ...(linkedUsers.length > 0 ? { linkedUsers } : {}),
@@ -832,7 +832,7 @@ export class UserService {
     }
 
     // Linked account
-    if (clientConnection.linkedVendorId) {
+    if (clientConnection.linkedVendorUid) {
       tags.push('Sub-contractor');
     } else {
       tags.push('Primary Vendor');

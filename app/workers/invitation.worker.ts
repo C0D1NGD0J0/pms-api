@@ -17,7 +17,7 @@ import { IInvitationData } from '@interfaces/invitation.interface';
 // Extended interface for CSV processing with vendor-specific metadata
 interface IInvitationCsvData extends IInvitationData {
   metadata?: {
-    linkedVendorId?: string;
+    linkedVendorUid?: string;
     isPrimaryVendor?: boolean;
     isVendorTeamMember?: boolean;
     csvGroupId?: string;
@@ -232,20 +232,20 @@ export class InvitationWorker {
       throw new Error('Client not found');
     }
 
-    // Validate linkedVendorId if provided for vendor role
-    if (invitationData.linkedVendorId && invitationData.role === 'vendor') {
-      const primaryVendor = await this.userDAO.getUserById(invitationData.linkedVendorId);
+    // Validate linkedVendorUid if provided for vendor role
+    if (invitationData.linkedVendorUid && invitationData.role === 'vendor') {
+      const primaryVendor = await this.userDAO.getUserById(invitationData.linkedVendorUid);
       if (!primaryVendor) {
         throw new Error('Primary vendor not found');
       }
 
-      // Check if the referenced user is actually a primary vendor (no linkedVendorId)
+      // Check if the referenced user is actually a primary vendor (no linkedVendorUid)
       const vendorCuid = primaryVendor.cuids.find((c) => c.cuid === clientInfo.cuid);
       if (!vendorCuid || !vendorCuid.roles.includes('vendor' as any)) {
         throw new Error('Referenced user is not a vendor for this client');
       }
 
-      if (vendorCuid.linkedVendorId) {
+      if (vendorCuid.linkedVendorUid) {
         throw new Error('Cannot link to a vendor that is already linked to another vendor');
       }
     }
@@ -311,20 +311,20 @@ export class InvitationWorker {
       throw new Error('Client not found');
     }
 
-    // Validate linkedVendorId if provided for vendor role
-    if (invitationData.linkedVendorId && invitationData.role === 'vendor') {
-      const primaryVendor = await this.userDAO.getUserById(invitationData.linkedVendorId);
+    // Validate linkedVendorUid if provided for vendor role
+    if (invitationData.linkedVendorUid && invitationData.role === 'vendor') {
+      const primaryVendor = await this.userDAO.getUserById(invitationData.linkedVendorUid);
       if (!primaryVendor) {
         throw new Error('Primary vendor not found');
       }
 
-      // Check if the referenced user is actually a primary vendor (no linkedVendorId)
+      // Check if the referenced user is actually a primary vendor (no linkedVendorUid)
       const vendorCuid = primaryVendor.cuids.find((c) => c.cuid === clientInfo.cuid);
       if (!vendorCuid || !vendorCuid.roles.includes('vendor' as any)) {
         throw new Error('Referenced user is not a vendor for this client');
       }
 
-      if (vendorCuid.linkedVendorId) {
+      if (vendorCuid.linkedVendorUid) {
         throw new Error('Cannot link to a vendor that is already linked to another vendor');
       }
     }
@@ -501,14 +501,14 @@ export class InvitationWorker {
    * Determine vendor linking for bulk user creation
    */
   private determineVendorLinking(userData: IInvitationCsvData): string | undefined {
-    // For vendor role users, check if they have a linkedVendorId from CSV
-    if (userData.role === 'vendor' && userData.metadata?.linkedVendorId) {
-      return userData.metadata.linkedVendorId;
+    // For vendor role users, check if they have a linkedVendorUid from CSV
+    if (userData.role === 'vendor' && userData.metadata?.linkedVendorUid) {
+      return userData.metadata.linkedVendorUid;
     }
 
     // Fallback to legacy team member logic (though this should rarely be used now)
     return userData.role === 'vendor' && userData.metadata?.isVendorTeamMember
-      ? 'TEMP' // Legacy fallback - should be replaced by explicit linkedVendorId
+      ? 'TEMP' // Legacy fallback - should be replaced by explicit linkedVendorUid
       : undefined;
   }
 
@@ -519,7 +519,7 @@ export class InvitationWorker {
     existingUser: any,
     userData: IInvitationCsvData,
     clientInfo: IClientInfo,
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<any> {
     return await this.userDAO.addUserToClient(
@@ -530,7 +530,7 @@ export class InvitationWorker {
         cuid: clientInfo.cuid,
         clientDisplayName: clientInfo.clientDisplayName,
       },
-      linkedVendorId,
+      linkedVendorUid,
       session
     );
   }
@@ -542,7 +542,7 @@ export class InvitationWorker {
     userData: IInvitationCsvData,
     clientInfo: IClientInfo,
     generatedPassword: string,
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<any> {
     const user = await this.userDAO.createBulkUserWithDefaults(
@@ -559,7 +559,7 @@ export class InvitationWorker {
         role: userData.role,
         defaultPassword: generatedPassword,
       },
-      linkedVendorId,
+      linkedVendorUid,
       session
     );
 
@@ -567,7 +567,7 @@ export class InvitationWorker {
       throw new Error('Error creating user account.');
     }
 
-    const profileData = this.buildBulkUserProfileData(user, userData, linkedVendorId);
+    const profileData = this.buildBulkUserProfileData(user, userData, linkedVendorUid);
     await this.profileDAO.createUserProfile(user._id, profileData, session);
 
     return user;
@@ -579,7 +579,7 @@ export class InvitationWorker {
   private buildBulkUserProfileData(
     user: any,
     userData: IInvitationCsvData,
-    linkedVendorId?: string
+    linkedVendorUid?: string
   ): any {
     const profileData: any = {
       user: user._id,
@@ -611,7 +611,7 @@ export class InvitationWorker {
         // Team members: isLinkedAccount = true, minimal vendor data
         profileData.vendorInfo = {
           isLinkedAccount: true,
-          linkedVendorId: linkedVendorId, // Reference to primary vendor
+          linkedVendorUid: linkedVendorUid, // Reference to primary vendor
         };
       } else if (userData.metadata?.isPrimaryVendor) {
         // Primary vendors: isLinkedAccount = false, will get vendor entity
@@ -641,7 +641,7 @@ export class InvitationWorker {
     userData: IInvitationCsvData,
     clientInfo: IClientInfo,
     generatedPassword: string,
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<any> {
     const existingUser = await this.userDAO.getActiveUserByEmail(userData.inviteeEmail);
@@ -651,7 +651,7 @@ export class InvitationWorker {
         existingUser,
         userData,
         clientInfo,
-        linkedVendorId,
+        linkedVendorUid,
         session
       );
     } else {
@@ -659,7 +659,7 @@ export class InvitationWorker {
         userData,
         clientInfo,
         generatedPassword,
-        linkedVendorId,
+        linkedVendorUid,
         session
       );
     }
@@ -673,21 +673,21 @@ export class InvitationWorker {
     userData: IInvitationCsvData,
     clientInfo: IClientInfo,
     generatedPassword: string,
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     options: { sendNotifications?: boolean }
   ): Promise<void> {
     await this.profileService.initializeRoleInfo(
       user._id.toString(),
       clientInfo.cuid,
       userData.role,
-      linkedVendorId,
+      linkedVendorUid,
       userData.metadata
     );
 
     // Log vendor linking if applicable
-    if (linkedVendorId && userData.role === 'vendor') {
+    if (linkedVendorUid && userData.role === 'vendor') {
       this.log.info(
-        `Vendor link established from primary vendor ${linkedVendorId} to new user ${user._id}`
+        `Vendor link established from primary vendor ${linkedVendorUid} to new user ${user._id}`
       );
     }
 
@@ -742,7 +742,7 @@ export class InvitationWorker {
     }
 
     const generatedPassword = generateDefaultPassword(options.passwordLength || 12);
-    const linkedVendorId = this.determineVendorLinking(userData);
+    const linkedVendorUid = this.determineVendorLinking(userData);
 
     const session = await this.userDAO.startSession();
     const result = await this.userDAO.withTransaction(session, async (session) => {
@@ -750,10 +750,10 @@ export class InvitationWorker {
         userData,
         clientInfo,
         generatedPassword,
-        linkedVendorId,
+        linkedVendorUid,
         session
       );
-      return { user, linkedVendorId };
+      return { user, linkedVendorUid };
     });
 
     await this.finalizeBulkUserCreation(
@@ -761,7 +761,7 @@ export class InvitationWorker {
       userData,
       clientInfo,
       generatedPassword,
-      linkedVendorId,
+      linkedVendorUid,
       options
     );
 

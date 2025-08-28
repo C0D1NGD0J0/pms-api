@@ -13,7 +13,6 @@ import {
 
 const router = Router();
 
-// Vendor statistics endpoint
 router.get(
   '/:cuid/vendors/stats',
   isAuthenticated,
@@ -57,7 +56,7 @@ router.get(
 );
 
 router.get(
-  '/:cuid/vendor_members/:uid',
+  '/:cuid/vendor_members/:vuid',
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.READ),
   validateRequest({

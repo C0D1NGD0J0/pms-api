@@ -18,7 +18,7 @@ export interface IInvitation {
     phoneNumber?: string;
   };
   status: 'draft' | 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent' | 'declined';
-  linkedVendorId?: Types.ObjectId;
+  linkedVendorUid?: Types.ObjectId;
   acceptedBy?: Types.ObjectId;
   revokedBy?: Types.ObjectId;
   invitedBy: Types.ObjectId;
@@ -59,7 +59,7 @@ export interface IInvitationData {
     phoneNumber?: string;
   };
   status: 'draft' | 'pending';
-  linkedVendorId?: string; // ID of an existing vendor user to link this invitation to
+  linkedVendorUid?: string; // ID of an existing vendor user to link this invitation to
   inviteeEmail: string;
   role: IUserRole;
 }

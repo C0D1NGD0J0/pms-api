@@ -45,7 +45,7 @@ export interface IVendorDetailInfo {
   };
   servicesOffered: Record<string, any>;
   linkedUsers?: ILinkedVendorUser[];
-  linkedVendorId: string | null;
+  linkedVendorUid: string | null;
   registrationNumber: string;
   isLinkedAccount: boolean;
   isPrimaryVendor: boolean;
@@ -100,7 +100,7 @@ export interface ICurrentUser {
     cuid: string;
     displayname: string;
     role: IUserRoleType;
-    linkedVendorId?: string;
+    linkedVendorUid?: string;
     clientSettings?: any;
   };
   preferences: {
@@ -191,7 +191,7 @@ export interface FilteredUserVendorInfo
   averageServiceCost?: number;
   isLinkedAccount?: boolean;
   isPrimaryVendor?: boolean;
-  linkedVendorId?: string;
+  linkedVendorUid?: string;
   contactPerson?: string;
   completedJobs?: number;
   serviceType?: string;
@@ -334,7 +334,7 @@ export interface IUserStats {
 export interface FilteredVendorInfo extends VendorInfo {
   isPrimaryVendor?: boolean;
   isLinkedAccount: boolean;
-  linkedVendorId?: string;
+  linkedVendorUid?: string;
 }
 
 /**

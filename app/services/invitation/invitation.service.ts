@@ -280,7 +280,7 @@ export class InvitationService {
   private async validateInvitationAndClient(
     cuid: string,
     token: string
-  ): Promise<{ invitation: IInvitationDocument; client: any; linkedVendorId?: string }> {
+  ): Promise<{ invitation: IInvitationDocument; client: any; linkedVendorUid?: string }> {
     const invitation = await this.invitationDAO.findByToken(token);
     if (!invitation || !invitation.isValid()) {
       throw new BadRequestError({ message: t('invitation.errors.invalidOrExpired') });
@@ -291,12 +291,12 @@ export class InvitationService {
       throw new NotFoundError({ message: t('client.errors.notFound') });
     }
 
-    const linkedVendorId =
-      invitation.linkedVendorId && invitation.role === 'vendor'
-        ? invitation.linkedVendorId.toString()
+    const linkedVendorUid =
+      invitation.linkedVendorUid && invitation.role === 'vendor'
+        ? invitation.linkedVendorUid.toString()
         : undefined;
 
-    return { invitation, client, linkedVendorId };
+    return { invitation, client, linkedVendorUid };
   }
 
   /**
@@ -307,7 +307,7 @@ export class InvitationService {
     invitation: IInvitationDocument,
     client: any,
     cuid: string,
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<any> {
     return await this.userDAO.addUserToClient(
@@ -318,7 +318,7 @@ export class InvitationService {
         cuid,
         clientDisplayName: client.displayName || client.companyProfile?.legalEntityName,
       },
-      linkedVendorId,
+      linkedVendorUid,
       session
     );
   }
@@ -331,14 +331,14 @@ export class InvitationService {
     invitationData: IInvitationAcceptance,
     client: any,
     cuid: string,
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<any> {
     const user = await this.userDAO.createUserFromInvitation(
       { cuid, displayName: client.displayName || client.companyProfile?.legalEntityName },
       invitation,
       invitationData,
-      linkedVendorId,
+      linkedVendorUid,
       session
     );
 
@@ -393,7 +393,7 @@ export class InvitationService {
     invitationData: IInvitationAcceptance,
     client: any,
     cuid: string,
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<any> {
     const existingUser = await this.userDAO.getActiveUserByEmail(invitation.inviteeEmail);
@@ -404,7 +404,7 @@ export class InvitationService {
         invitation,
         client,
         cuid,
-        linkedVendorId,
+        linkedVendorUid,
         session
       );
     } else {
@@ -413,7 +413,7 @@ export class InvitationService {
         invitationData,
         client,
         cuid,
-        linkedVendorId,
+        linkedVendorUid,
         session
       );
     }
@@ -435,13 +435,13 @@ export class InvitationService {
       result.user._id.toString(),
       cuid,
       result.invitation.role,
-      result.invitation.linkedVendorId?.toString(),
+      result.invitation.linkedVendorUid?.toString(),
       metadata
     );
 
-    if (result.invitation.linkedVendorId && result.invitation.role === 'vendor') {
+    if (result.invitation.linkedVendorUid && result.invitation.role === 'vendor') {
       this.log.info(
-        `Vendor link established from primary vendor ${result.invitation.linkedVendorId} to new user ${result.user._id}`
+        `Vendor link established from primary vendor ${result.invitation.linkedVendorUid} to new user ${result.user._id}`
       );
     }
   }
@@ -450,7 +450,7 @@ export class InvitationService {
     cuid: string,
     invitationData: IInvitationAcceptance
   ): Promise<ISuccessReturnData<{ user: any; invitation: IInvitationDocument }>> {
-    const { invitation, client, linkedVendorId } = await this.validateInvitationAndClient(
+    const { invitation, client, linkedVendorUid } = await this.validateInvitationAndClient(
       cuid,
       invitationData.token
     );
@@ -462,7 +462,7 @@ export class InvitationService {
         invitationData,
         client,
         cuid,
-        linkedVendorId,
+        linkedVendorUid,
         session
       );
 

@@ -5,11 +5,23 @@ import { IVendorDocument } from '@interfaces/vendor.interface';
 
 const VendorSchema = new Schema<IVendorDocument>(
   {
-    primaryAccountHolder: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
+    connectedClients: [
+      {
+        cuid: {
+          type: String,
+          required: true,
+        },
+        isConnected: {
+          type: Boolean,
+          default: false,
+        },
+        primaryAccountHolder: {
+          type: Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+      },
+    ],
     companyName: {
       required: true,
       type: String,
@@ -115,6 +127,7 @@ const VendorSchema = new Schema<IVendorDocument>(
       department: { type: String, trim: true },
     },
     vuid: {
+      required: true,
       type: String,
       unique: true,
       index: true,
@@ -135,7 +148,7 @@ const VendorSchema = new Schema<IVendorDocument>(
 );
 
 // Indexes
-VendorSchema.index({ primaryAccountHolder: 1 });
+VendorSchema.index({ 'connectedClients.cuid': 1 });
 VendorSchema.index({ companyName: 1 });
 VendorSchema.index({ registrationNumber: 1 }, { unique: true });
 VendorSchema.index({ 'address.city': 1, 'address.state': 1 });

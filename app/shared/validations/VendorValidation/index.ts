@@ -1,5 +1,6 @@
 import {
   clientVendorsQuerySchema,
+  vendorFilterQuerySchema,
   vendorIdParamSchema,
   createVendorSchema,
   updateVendorSchema,
@@ -13,10 +14,12 @@ export const VendorValidations = {
   vendorQuery: vendorQuerySchema,
   vendorIdParam: vendorIdParamSchema,
   clientVendorsQuery: clientVendorsQuerySchema,
+  vendorFilterQuery: vendorFilterQuerySchema,
 };
 
 export {
   clientVendorsQuerySchema,
+  vendorFilterQuerySchema,
   vendorIdParamSchema,
   createVendorSchema,
   updateVendorSchema,

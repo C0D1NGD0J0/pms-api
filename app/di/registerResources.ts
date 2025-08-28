@@ -42,6 +42,7 @@ import {
   InvitationController,
   PropertyController,
   ClientController,
+  VendorController,
   UserController,
   AuthController,
 } from '@controllers/index';
@@ -69,6 +70,7 @@ const ControllerResources = {
   propertyController: asClass(PropertyController).scoped(),
   propertyUnitController: asClass(PropertyUnitController).scoped(),
   invitationController: asClass(InvitationController).scoped(),
+  vendorController: asClass(VendorController).scoped(),
 };
 
 const ModelResources = {

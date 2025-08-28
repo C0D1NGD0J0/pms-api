@@ -3,9 +3,9 @@ import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { UserCache } from '@caching/user.cache';
 import { VendorService } from '@services/index';
+import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
-import { PropertyDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
@@ -29,7 +29,6 @@ interface IConstructor {
   vendorService: VendorService;
   propertyDAO: PropertyDAO;
   clientDAO: ClientDAO;
-  vendorDAO: VendorDAO;
   userCache: UserCache;
   userDAO: UserDAO;
 }
@@ -39,7 +38,6 @@ export class UserService {
   private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
   private readonly propertyDAO: PropertyDAO;
-  private readonly vendorDAO: VendorDAO;
   private readonly userCache: UserCache;
   private readonly permissionService: PermissionService;
   private readonly vendorService: VendorService;
@@ -48,7 +46,6 @@ export class UserService {
     clientDAO,
     userDAO,
     propertyDAO,
-    vendorDAO,
     userCache,
     permissionService,
     vendorService,
@@ -57,10 +54,90 @@ export class UserService {
     this.clientDAO = clientDAO;
     this.userDAO = userDAO;
     this.propertyDAO = propertyDAO;
-    this.vendorDAO = vendorDAO;
     this.userCache = userCache;
     this.permissionService = permissionService;
     this.vendorService = vendorService;
+  }
+
+  /**
+   * Fetch and validate user with proper population
+   */
+  private async fetchAndValidateUser(
+    uid: string,
+    currentuser: any
+  ): Promise<IUserPopulatedDocument> {
+    const user = (await this.userDAO.getUserByUId(uid, {
+      populate: [
+        {
+          path: 'profile',
+          select: 'personalInfo employeeInfo vendorInfo contactInfo preferences',
+        },
+      ],
+    })) as IUserPopulatedDocument | null;
+
+    if (!user) {
+      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+    }
+
+    const targetUser = {
+      _id: user._id,
+      uid: user.uid,
+      activecuid: user.activecuid,
+      cuids: user.cuids,
+      profile: user.profile,
+    };
+
+    if (!this.permissionService.canUserAccessUser(currentuser, targetUser)) {
+      throw new ForbiddenError({
+        message: t('client.errors.insufficientPermissions', {
+          action: 'view',
+          resource: 'user',
+        }),
+      });
+    }
+
+    return user;
+  }
+
+  /**
+   * Check cache for existing user detail data
+   */
+  private async checkUserDetailCache(
+    clientId: string,
+    uid: string
+  ): Promise<ISuccessReturnData<IUserDetailResponse> | null> {
+    const cachedData = await this.userCache.getUserDetail(clientId, uid);
+    if (cachedData.success && cachedData.data) {
+      this.log.info('User detail retrieved from cache', { clientId, uid });
+      return {
+        success: true,
+        data: cachedData.data,
+        message: t('client.success.userRetrieved'),
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Validate client connection and build user detail
+   */
+  private async buildAndCacheUserDetail(
+    user: IUserPopulatedDocument,
+    clientId: string,
+    uid: string
+  ): Promise<IUserDetailResponse> {
+    const clientConnection = user.cuids?.find((c: any) => c.cuid === clientId);
+    if (!clientConnection || !clientConnection.isConnected) {
+      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+    }
+
+    const userDetail = await this.buildUserDetailData(user, clientConnection, clientId);
+
+    // Cache the result for 2 hours
+    await this.userCache.cacheUserDetail(clientId, uid, userDetail);
+    this.log.info('User detail cached', { clientId, uid });
+
+    return userDetail;
   }
 
   async getClientUserInfo(
@@ -71,57 +148,15 @@ export class UserService {
     const clientId = cxt.request.params.cuid || currentuser.client.cuid;
 
     try {
-      const user = (await this.userDAO.getUserByUId(uid, {
-        populate: [
-          {
-            path: 'profile',
-            select: 'personalInfo employeeInfo vendorInfo contactInfo preferences',
-          },
-        ],
-      })) as IUserPopulatedDocument | null;
-
-      if (!user) {
-        throw new NotFoundError({ message: t('client.errors.userNotFound') });
-      }
-
-      const targetUser = {
-        _id: user._id,
-        uid: user.uid,
-        activecuid: user.activecuid,
-        cuids: user.cuids,
-        profile: user.profile,
-      };
-
-      if (!this.permissionService.canUserAccessUser(currentuser, targetUser)) {
-        throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
-            action: 'view',
-            resource: 'user',
-          }),
-        });
-      }
+      const user = await this.fetchAndValidateUser(uid, currentuser);
 
       // Check cache after permission check
-      const cachedData = await this.userCache.getUserDetail(clientId, uid);
-      if (cachedData.success && cachedData.data) {
-        this.log.info('User detail retrieved from cache', { clientId, uid });
-        return {
-          success: true,
-          data: cachedData.data,
-          message: t('client.success.userRetrieved'),
-        };
+      const cachedResult = await this.checkUserDetailCache(clientId, uid);
+      if (cachedResult) {
+        return cachedResult;
       }
 
-      const clientConnection = user.cuids?.find((c: any) => c.cuid === clientId);
-      if (!clientConnection || !clientConnection.isConnected) {
-        throw new NotFoundError({ message: t('client.errors.userNotFound') });
-      }
-
-      const userDetail = await this.buildUserDetailData(user, clientConnection, clientId);
-
-      // Cache the result for 2 hours
-      await this.userCache.cacheUserDetail(clientId, uid, userDetail);
-      this.log.info('User detail cached', { clientId, uid });
+      const userDetail = await this.buildAndCacheUserDetail(user, clientId, uid);
 
       return {
         success: true,
@@ -197,67 +232,65 @@ export class UserService {
       }
 
       const result = await this.userDAO.getUsersByFilteredType(cuid, filterOptions, paginationOpts);
-      const users: FilteredUserTableData[] = result.items.map((user: any) => {
-        const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
-        const firstName = user.profile?.personalInfo?.firstName || '';
-        const lastName = user.profile?.personalInfo?.lastName || '';
-        const fullName = `${firstName} ${lastName}`.trim();
+      const users: FilteredUserTableData[] = await Promise.all(
+        result.items.map(async (user: any) => {
+          const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
+          const firstName = user.profile?.personalInfo?.firstName || '';
+          const lastName = user.profile?.personalInfo?.lastName || '';
+          const fullName = `${firstName} ${lastName}`.trim();
 
-        const tableUserData: FilteredUserTableData = {
-          uid: user.uid,
-          email: user.email,
-          displayName: clientConnection?.clientDisplayName || fullName || user.email,
-          fullName: fullName || undefined,
-          phoneNumber: user.profile?.personalInfo?.phoneNumber || undefined,
-          isActive: user.isActive,
-          isConnected: clientConnection?.isConnected || false,
-        };
-
-        const roles = clientConnection?.roles || [];
-
-        // Add minimal employee info if user is an employee
-        if (roles.some((r: string) => ['manager', 'admin', 'staff'].includes(r))) {
-          tableUserData.employeeInfo = {
-            jobTitle: user.profile?.employeeInfo?.jobTitle || undefined,
-            department: user.profile?.employeeInfo?.department || undefined,
-            startDate: user.profile?.employeeInfo?.startDate || undefined,
+          const tableUserData: FilteredUserTableData = {
+            uid: user.uid,
+            email: user.email,
+            isActive: user.isActive,
+            fullName: fullName || undefined,
+            displayName: fullName || user.email,
+            isConnected: clientConnection?.isConnected || false,
+            phoneNumber: user.profile?.personalInfo?.phoneNumber || undefined,
           };
-        }
 
-        // Add minimal vendor info if user is a vendor
-        if (roles.includes('vendor')) {
-          const personalInfo = user.profile?.personalInfo || {};
-          // const vendorInfo = user.profile?.vendorInfo || {};
+          const roles = clientConnection?.roles || [];
 
-          // Note: This method needs to be optimized to fetch vendor data in batch
-          // For now, using basic vendor info from profile reference
-          tableUserData.vendorInfo = {
-            companyName: personalInfo.displayName || undefined,
-            businessType: 'General Contractor',
-            serviceType: 'General Contractor',
-            contactPerson: personalInfo.displayName || fullName || undefined,
-            rating: 0,
-            reviewCount: 0,
-            completedJobs: 0,
-            averageResponseTime: '24h',
-            averageServiceCost: 0,
-            isLinkedAccount: !!clientConnection?.linkedVendorId,
-            linkedVendorId: clientConnection?.linkedVendorId || undefined,
-            isPrimaryVendor: !clientConnection?.linkedVendorId,
-          };
-        }
+          if (roles.some((r: string) => ['manager', 'admin', 'staff'].includes(r))) {
+            tableUserData.employeeInfo = {
+              jobTitle: user.profile?.employeeInfo?.jobTitle || undefined,
+              department: user.profile?.employeeInfo?.department || undefined,
+              startDate: user.profile?.employeeInfo?.startDate || undefined,
+            };
+          }
 
-        // Add minimal tenant info if user is a tenant
-        if (roles.includes('tenant')) {
-          tableUserData.tenantInfo = {
-            unitNumber: user.profile?.tenantInfo?.unitNumber || undefined,
-            leaseStatus: user.profile?.tenantInfo?.leaseStatus || undefined,
-            rentStatus: user.profile?.tenantInfo?.rentStatus || undefined,
-          };
-        }
+          // Add vendor info if user has vendor role
+          if (roles.includes('vendor') && user._id) {
+            const vendorEntity = await this.vendorService.getVendorByUserId(user._id.toString());
+            if (vendorEntity) {
+              tableUserData.vendorInfo = {
+                companyName: vendorEntity.companyName || 'Unknown Company',
+                businessType: vendorEntity.businessType || 'General Contractor',
+                serviceType: vendorEntity.businessType || 'General Contractor',
+                contactPerson: vendorEntity.contactPerson?.name || fullName,
+                rating: 4.5, // placeholder
+                reviewCount: 15, // placeholder
+                completedJobs: 25, // placeholder
+                averageServiceCost: 250, // placeholder
+                averageResponseTime: '2h', // placeholder
+                isLinkedAccount: !!clientConnection.linkedVendorId,
+                isPrimaryVendor: !clientConnection.linkedVendorId,
+                linkedVendorId: clientConnection.linkedVendorId || null,
+              };
+            }
+          }
 
-        return tableUserData;
-      });
+          if (roles.includes('tenant')) {
+            tableUserData.tenantInfo = {
+              unitNumber: user.profile?.tenantInfo?.unitNumber || undefined,
+              leaseStatus: user.profile?.tenantInfo?.leaseStatus || undefined,
+              rentStatus: user.profile?.tenantInfo?.rentStatus || undefined,
+            };
+          }
+
+          return tableUserData;
+        })
+      );
 
       return {
         success: true,
@@ -302,45 +335,8 @@ export class UserService {
         filterOptions.role = [filterOptions.role as IUserRoleType];
       }
 
-      // Check if we're querying for vendor stats
-      const rolesArray = Array.isArray(filterOptions.role)
-        ? filterOptions.role
-        : filterOptions.role
-          ? [filterOptions.role]
-          : [];
-      const isVendorQuery = rolesArray.includes(IUserRole.VENDOR as IUserRoleType);
-      const hasEmployeeRoles = rolesArray.some((r) =>
-        [
-          IUserRole.MANAGER as IUserRoleType,
-          IUserRole.STAFF as IUserRoleType,
-          IUserRole.ADMIN as IUserRoleType,
-        ].includes(r)
-      );
-
-      // If requesting vendor stats only
-      if (isVendorQuery && !hasEmployeeRoles) {
-        const vendorStats = await this.vendorDAO.getClientVendorStats(cuid, {
-          status: filterOptions.status,
-        });
-
-        return {
-          success: true,
-          data: {
-            // For vendors, businessType distribution instead of department
-            departmentDistribution: vendorStats.businessTypeDistribution,
-            // Services distribution instead of role distribution
-            roleDistribution: vendorStats.servicesDistribution,
-            totalFilteredUsers: vendorStats.totalVendors,
-            // Additional vendor-specific fields
-            businessTypeDistribution: vendorStats.businessTypeDistribution,
-            servicesDistribution: vendorStats.servicesDistribution,
-            totalVendors: vendorStats.totalVendors,
-          },
-          message: t('vendor.success.statsRetrieved'),
-        };
-      }
-
-      // Default to employee stats for all other cases
+      // Note: Vendor stats have been moved to VendorService.getVendorStats()
+      // This method now handles only user/employee statistics
       const stats = await this.clientDAO.getClientUsersStats(cuid, filterOptions);
 
       return {
@@ -524,32 +520,20 @@ export class UserService {
     }
   }
 
-  private async buildUserDetailData(
+  /**
+   * Build base profile structure
+   */
+  private buildBaseProfile(
     user: { profile: { contactInfo?: any } } & IUserPopulatedDocument,
-    clientConnection: any,
-    clientId: string
-  ): Promise<IUserDetailResponse> {
+    clientConnection: any
+  ): any {
     const profile = user.profile || {};
     const personalInfo = profile.personalInfo || {};
     const contactInfo = profile.contactInfo || {};
-
     const roles = clientConnection.roles || [];
     const userType = this.determineUserType(roles);
 
-    // base response structure
-    const response: any = {
-      // basic user info
-      user: {
-        roles: roles,
-        uid: user.uid,
-        email: user.email,
-        userType: userType,
-        isActive: user.isActive,
-        createdAt: user.createdAt,
-        displayName: clientConnection.clientDisplayName || '',
-      },
-
-      // Common profile information
+    return {
       profile: {
         firstName: personalInfo.firstName || '',
         lastName: personalInfo.lastName || '',
@@ -564,37 +548,81 @@ export class UserService {
           phone: personalInfo.phoneNumber || contactInfo.phoneNumber || '',
           email: user.email,
         },
+        roles: roles,
+        uid: user.uid,
+        userType: userType,
+        isActive: user.isActive,
       },
-
-      // Common fields
       status: user.isActive ? 'Active' : 'Inactive',
       properties: [],
       tasks: [],
       documents: [],
+      userType,
+      roles,
     };
+  }
 
-    switch (userType) {
+  /**
+   * Add employee-specific information to response
+   */
+  private async addEmployeeInfo(
+    response: any,
+    user: { profile: { contactInfo?: any } } & IUserPopulatedDocument,
+    profile: any,
+    roles: any[],
+    clientId: string
+  ): Promise<void> {
+    if (!roles.includes(IUserRole.TENANT) || roles.includes(IUserRole.VENDOR)) {
+      response.properties = await this.getUserProperties(user._id.toString(), clientId);
+    }
+
+    response.employeeInfo = await this.buildEmployeeInfo(user, profile, roles, response.properties);
+  }
+
+  /**
+   * Add vendor-specific information to response
+   */
+  private async addVendorInfo(
+    response: any,
+    user: { profile: { contactInfo?: any } } & IUserPopulatedDocument,
+    profile: any,
+    clientConnection: any,
+    clientId: string
+  ): Promise<void> {
+    response.vendorInfo = await this.buildVendorInfo(
+      user._id.toString(),
+      profile,
+      clientConnection,
+      clientId
+    );
+  }
+
+  /**
+   * Add tenant-specific information to response
+   */
+  private async addTenantInfo(response: any): Promise<void> {
+    response.tenantInfo = await this.buildTenantInfo();
+  }
+
+  private async buildUserDetailData(
+    user: { profile: { contactInfo?: any } } & IUserPopulatedDocument,
+    clientConnection: any,
+    clientId: string
+  ): Promise<IUserDetailResponse> {
+    const response = this.buildBaseProfile(user, clientConnection);
+    const profile = user.profile || {};
+
+    switch (response.userType) {
       case 'employee':
-        response.employeeInfo = await this.buildEmployeeInfo(
-          user,
-          profile,
-          clientConnection,
-          clientId
-        );
-        response.properties = await this.getUserProperties(user._id.toString(), clientId);
+        await this.addEmployeeInfo(response, user, profile, response.roles, clientId);
         break;
 
       case 'vendor':
-        response.vendorInfo = await this.buildVendorInfo(
-          user._id.toString(),
-          profile,
-          clientConnection,
-          clientId
-        );
+        await this.addVendorInfo(response, user, profile, clientConnection, clientId);
         break;
 
       case 'tenant':
-        response.tenantInfo = await this.buildTenantInfo();
+        await this.addTenantInfo(response);
         break;
     }
 
@@ -604,25 +632,16 @@ export class UserService {
   private async buildEmployeeInfo(
     user: any,
     profile: any,
-    clientConnection: any,
-    clientId: string
+    roles: any,
+    userManagedProperties: IUserProperty[]
   ): Promise<IEmployeeDetailInfo> {
     const employeeInfo = profile.employeeInfo || {};
     const contactInfo = profile.contactInfo || {};
-    const roles = clientConnection.roles || [];
 
-    // Calculate tenure
     const hireDate = employeeInfo.startDate || user.createdAt;
     const tenure = this.calculateTenure(hireDate);
 
-    // Get minimal property data if user is property manager
-    let properties: IUserProperty[] = [];
-    if (roles.includes('manager') || roles.includes('property_manager')) {
-      properties = await this.getUserProperties(user._id, clientId);
-    }
-
     return {
-      // Employment details
       employeeId: employeeInfo.employeeId || '',
       hireDate: hireDate,
       tenure: tenure,
@@ -655,8 +674,11 @@ export class UserService {
 
       // Performance statistics
       stats: {
-        propertiesManaged: properties.length,
-        unitsManaged: properties.reduce((sum: number, p: any) => sum + (p.units || 0), 0),
+        propertiesManaged: userManagedProperties.length,
+        unitsManaged: userManagedProperties.reduce(
+          (sum: number, p: any) => sum + (p.units || 0),
+          0
+        ),
         tasksCompleted: 47, // placeholder
         onTimeRate: '98%', // placeholder
         rating: '4.8', // placeholder

@@ -150,6 +150,7 @@ describe('PropertyService', () => {
       // Arrange
       const cuid = 'test-cuid';
       const mockClient = createMockClient();
+      const mockCurrentUser = createMockCurrentUser();
       const mockProperties = [createMockProperty(), createMockProperty()];
       const mockQueryParams = {
         filters: { propertyType: 'house', status: 'available' as const },
@@ -165,7 +166,7 @@ describe('PropertyService', () => {
       mockPropertyCache.saveClientProperties.mockResolvedValue({ success: true });
 
       // Act
-      const result = await propertyService.getClientProperties(cuid, mockQueryParams);
+      const result = await propertyService.getClientProperties(cuid, mockCurrentUser, mockQueryParams);
 
       // Assert
       expect(result.success).toBe(true);
@@ -193,7 +194,8 @@ describe('PropertyService', () => {
       });
 
       // Act
-      const result = await propertyService.getClientProperties(cuid, mockQueryParams);
+      const mockCurrentUser = createMockCurrentUser();
+      const result = await propertyService.getClientProperties(cuid, mockCurrentUser, mockQueryParams);
 
       // Assert
       expect(result.success).toBe(true);
@@ -1477,7 +1479,8 @@ describe('PropertyService', () => {
         });
 
         // Act
-        await propertyService.getClientProperties(cuid, mockQueryParams);
+        const mockCurrentUser = createMockCurrentUser();
+        await propertyService.getClientProperties(cuid, mockCurrentUser, mockQueryParams);
 
         // Assert
         expect(mockPropertyDAO.getPropertiesByClientId).toHaveBeenCalledWith(
@@ -1510,7 +1513,8 @@ describe('PropertyService', () => {
         });
 
         // Act
-        await propertyService.getClientProperties(cuid, mockQueryParams);
+        const mockCurrentUser = createMockCurrentUser();
+        await propertyService.getClientProperties(cuid, mockCurrentUser, mockQueryParams);
 
         // Assert
         const callArgs = mockPropertyDAO.getPropertiesByClientId.mock.calls[0][1];

@@ -11,6 +11,8 @@ import {
   createMockSignupData,
   createMockUser,
   createMockUserDAO,
+  createMockVendorService,
+  createMockCompanyProfile,
 } from '@tests/helpers';
 
 describe('AuthService', () => {
@@ -21,6 +23,7 @@ describe('AuthService', () => {
   let mockClientDAO: any;
   let mockProfileDAO: any;
   let mockEmailQueue: any;
+  let mockVendorService: any;
 
   beforeEach(() => {
     mockTokenService = createMockAuthTokenService();
@@ -29,6 +32,7 @@ describe('AuthService', () => {
     mockClientDAO = createMockClientDAO();
     mockProfileDAO = createMockProfileDAO();
     mockEmailQueue = createMockEmailQueue();
+    mockVendorService = createMockVendorService();
 
     authService = new AuthService({
       tokenService: mockTokenService,
@@ -37,6 +41,7 @@ describe('AuthService', () => {
       clientDAO: mockClientDAO,
       profileDAO: mockProfileDAO,
       emailQueue: mockEmailQueue,
+      vendorService: mockVendorService,
     });
   });
 
@@ -394,6 +399,152 @@ describe('AuthService', () => {
       // Assert
       expect(result.success).toBe(true);
       expect(result.data.activeAccount.cuid).toBe(clientId);
+    });
+  });
+
+  describe('vendor signup integration', () => {
+    it('should create vendor during corporate account signup', async () => {
+      const signupData = createMockSignupData({
+        accountType: {
+          isCorporate: true,
+          planName: 'business',
+          planId: 'business-plan',
+        },
+        companyProfile: createMockCompanyProfile(),
+      });
+
+      const mockUser = createMockUser();
+      const mockClient = { _id: new Types.ObjectId(), cuid: 'test-client' };
+      const mockProfile = { _id: new Types.ObjectId(), user: mockUser._id };
+
+      // Mock successful user and client creation
+      mockUserDAO.withTransaction.mockImplementation(async (session: any, callback: any) => {
+        return callback(session);
+      });
+      mockUserDAO.insert.mockResolvedValue(mockUser);
+      mockClientDAO.insert.mockResolvedValue(mockClient);
+      mockProfileDAO.createUserProfile.mockResolvedValue(mockProfile);
+      mockEmailQueue.addToEmailQueue.mockResolvedValue(true);
+
+      // Mock successful vendor creation
+      mockVendorService.createVendorFromCompanyProfile.mockResolvedValue({
+        vuid: 'vendor-123',
+        companyName: signupData.companyProfile?.legalEntityName || 'Test Company',
+      });
+
+      const result = await authService.signup(signupData);
+
+      expect(result.success).toBe(true);
+      expect(mockVendorService.createVendorFromCompanyProfile).toHaveBeenCalledWith(
+        mockUser._id?.toString(),
+        signupData.companyProfile
+      );
+    });
+
+    it('should handle vendor creation failure gracefully during signup', async () => {
+      const signupData = createMockSignupData({
+        accountType: {
+          isCorporate: true,
+          planName: 'business',
+          planId: 'business-plan',
+        },
+        companyProfile: createMockCompanyProfile(),
+      });
+
+      const mockUser = createMockUser();
+      const mockClient = { _id: new Types.ObjectId(), cuid: 'test-client' };
+      const mockProfile = { _id: new Types.ObjectId(), user: mockUser._id };
+
+      // Mock successful user and client creation
+      mockUserDAO.withTransaction.mockImplementation(async (session: any, callback: any) => {
+        return callback(session);
+      });
+      mockUserDAO.insert.mockResolvedValue(mockUser);
+      mockClientDAO.insert.mockResolvedValue(mockClient);
+      mockProfileDAO.createUserProfile.mockResolvedValue(mockProfile);
+      mockEmailQueue.addToEmailQueue.mockResolvedValue(true);
+
+      // Mock vendor creation failure (should not break signup)
+      mockVendorService.createVendorFromCompanyProfile.mockRejectedValue(
+        new Error('Vendor creation failed')
+      );
+
+      const result = await authService.signup(signupData);
+
+      expect(result.success).toBe(true);
+      expect(mockVendorService.createVendorFromCompanyProfile).toHaveBeenCalled();
+    });
+
+    it('should skip vendor creation for non-corporate accounts', async () => {
+      const signupData = createMockSignupData({
+        accountType: {
+          isCorporate: false,
+          planName: 'basic',
+          planId: 'basic-plan',
+        },
+      });
+
+      const mockUser = createMockUser();
+      const mockClient = { _id: new Types.ObjectId(), cuid: 'test-client' };
+      const mockProfile = { _id: new Types.ObjectId(), user: mockUser._id };
+
+      mockUserDAO.withTransaction.mockImplementation(async (session: any, callback: any) => {
+        return callback(session);
+      });
+      mockUserDAO.insert.mockResolvedValue(mockUser);
+      mockClientDAO.insert.mockResolvedValue(mockClient);
+      mockProfileDAO.createUserProfile.mockResolvedValue(mockProfile);
+      mockEmailQueue.addToEmailQueue.mockResolvedValue(true);
+
+      const result = await authService.signup(signupData);
+
+      expect(result.success).toBe(true);
+      expect(mockVendorService.createVendorFromCompanyProfile).not.toHaveBeenCalled();
+    });
+
+    it('should create vendor with email and contact person mapping', async () => {
+      const signupData = createMockSignupData({
+        email: 'owner@company.com',
+        firstName: 'John',
+        lastName: 'Owner',
+        accountType: {
+          isCorporate: true,
+          planName: 'business',
+          planId: 'business-plan',
+        },
+        companyProfile: createMockCompanyProfile({
+          companyEmail: 'info@company.com',
+          contactPerson: null, // Should fallback to signup data
+        }),
+      });
+
+      const mockUser = createMockUser();
+      const mockClient = { _id: new Types.ObjectId(), cuid: 'test-client' };
+      const mockProfile = { _id: new Types.ObjectId(), user: mockUser._id };
+
+      mockUserDAO.withTransaction.mockImplementation(async (session: any, callback: any) => {
+        return callback(session);
+      });
+      mockUserDAO.insert.mockResolvedValue(mockUser);
+      mockClientDAO.insert.mockResolvedValue(mockClient);
+      mockProfileDAO.createUserProfile.mockResolvedValue(mockProfile);
+      mockEmailQueue.addToEmailQueue.mockResolvedValue(true);
+
+      mockVendorService.createVendorFromCompanyProfile.mockResolvedValue({
+        vuid: 'vendor-123',
+        companyName:
+          signupData?.companyProfile?.legalEntityName || signupData?.companyProfile?.tradingName,
+      });
+
+      await authService.signup(signupData);
+
+      expect(mockVendorService.createVendorFromCompanyProfile).toHaveBeenCalledWith(
+        mockUser?._id?.toString(),
+        expect.objectContaining({
+          companyEmail: 'info@company.com',
+          // Should use signup data for contact person when not provided
+        })
+      );
     });
   });
 });

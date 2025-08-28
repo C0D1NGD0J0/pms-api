@@ -4,7 +4,6 @@ import { DoneCallback, Job } from 'bull';
 import { EmailQueue } from '@queues/index';
 import { envVariables } from '@shared/config';
 import { CsvJobData } from '@interfaces/index';
-import { VendorService } from '@services/index';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { InvitationCsvProcessor } from '@services/csv';
 import { MailType } from '@interfaces/utils.interface';
@@ -12,11 +11,13 @@ import { generateDefaultPassword } from '@utils/helpers';
 import { EventTypes } from '@interfaces/events.interface';
 import { IClientInfo } from '@interfaces/client.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { ProfileService, VendorService } from '@services/index';
 import { IInvitationData } from '@interfaces/invitation.interface';
 
 // Extended interface for CSV processing with vendor-specific metadata
 interface IInvitationCsvData extends IInvitationData {
   metadata?: {
+    linkedVendorId?: string;
     isPrimaryVendor?: boolean;
     isVendorTeamMember?: boolean;
     csvGroupId?: string;
@@ -58,7 +59,7 @@ export class InvitationWorker {
   private readonly clientDAO: ClientDAO;
   private readonly emailQueue: EmailQueue;
   private readonly profileDAO: ProfileDAO;
-  private readonly profileService: any;
+  private readonly profileService: ProfileService;
   private readonly vendorService: VendorService;
 
   constructor({
@@ -496,6 +497,240 @@ export class InvitationWorker {
    * Create a single user with default password (bypasses invitation flow)
    * Follows the same pattern as acceptInvitation but with generated password
    */
+  /**
+   * Determine vendor linking for bulk user creation
+   */
+  private determineVendorLinking(userData: IInvitationCsvData): string | undefined {
+    // For vendor role users, check if they have a linkedVendorId from CSV
+    if (userData.role === 'vendor' && userData.metadata?.linkedVendorId) {
+      return userData.metadata.linkedVendorId;
+    }
+
+    // Fallback to legacy team member logic (though this should rarely be used now)
+    return userData.role === 'vendor' && userData.metadata?.isVendorTeamMember
+      ? 'TEMP' // Legacy fallback - should be replaced by explicit linkedVendorId
+      : undefined;
+  }
+
+  /**
+   * Handle existing user by adding them to client
+   */
+  private async handleExistingBulkUser(
+    existingUser: any,
+    userData: IInvitationCsvData,
+    clientInfo: IClientInfo,
+    linkedVendorId?: string,
+    session?: any
+  ): Promise<any> {
+    return await this.userDAO.addUserToClient(
+      existingUser._id.toString(),
+      userData.role,
+      {
+        id: clientInfo.id!.toString(),
+        cuid: clientInfo.cuid,
+        clientDisplayName: clientInfo.clientDisplayName,
+      },
+      linkedVendorId,
+      session
+    );
+  }
+
+  /**
+   * Create new user from bulk import data
+   */
+  private async createNewBulkUser(
+    userData: IInvitationCsvData,
+    clientInfo: IClientInfo,
+    generatedPassword: string,
+    linkedVendorId?: string,
+    session?: any
+  ): Promise<any> {
+    const user = await this.userDAO.createBulkUserWithDefaults(
+      {
+        cuid: clientInfo.cuid,
+        clientDisplayName: clientInfo.clientDisplayName,
+        id: clientInfo.id!,
+      },
+      {
+        email: userData.inviteeEmail,
+        firstName: userData.personalInfo.firstName,
+        lastName: userData.personalInfo.lastName,
+        phoneNumber: userData.personalInfo.phoneNumber,
+        role: userData.role,
+        defaultPassword: generatedPassword,
+      },
+      linkedVendorId,
+      session
+    );
+
+    if (!user) {
+      throw new Error('Error creating user account.');
+    }
+
+    const profileData = this.buildBulkUserProfileData(user, userData, linkedVendorId);
+    await this.profileDAO.createUserProfile(user._id, profileData, session);
+
+    return user;
+  }
+
+  /**
+   * Build profile data for bulk user creation
+   */
+  private buildBulkUserProfileData(
+    user: any,
+    userData: IInvitationCsvData,
+    linkedVendorId?: string
+  ): any {
+    const profileData: any = {
+      user: user._id,
+      puid: user.uid,
+      personalInfo: {
+        firstName: userData.personalInfo.firstName,
+        lastName: userData.personalInfo.lastName,
+        displayName: `${userData.personalInfo.firstName} ${userData.personalInfo.lastName}`,
+        phoneNumber: userData.personalInfo.phoneNumber || '',
+        location: 'Unknown',
+      },
+      lang: 'en',
+      timeZone: 'UTC',
+      policies: {
+        tos: {
+          accepted: true, // Auto-accept for bulk created users
+          acceptedOn: new Date(),
+        },
+        marketing: {
+          accepted: false, // Conservative default - no marketing consent
+          acceptedOn: null,
+        },
+      },
+    };
+
+    // Add vendor info if this is a vendor user
+    if (userData.role === 'vendor') {
+      if (userData.metadata?.isVendorTeamMember) {
+        // Team members: isLinkedAccount = true, minimal vendor data
+        profileData.vendorInfo = {
+          isLinkedAccount: true,
+          linkedVendorId: linkedVendorId, // Reference to primary vendor
+        };
+      } else if (userData.metadata?.isPrimaryVendor) {
+        // Primary vendors: isLinkedAccount = false, will get vendor entity
+        profileData.vendorInfo = {
+          isLinkedAccount: false,
+        };
+      } else if (userData.metadata?.vendorInfo) {
+        // Fallback: copy from metadata (preserving existing behavior)
+        profileData.vendorInfo = {
+          ...userData.metadata.vendorInfo,
+        };
+      }
+    }
+
+    // Add employee info for staff/admin/manager users ONLY (not vendors)
+    if (['manager', 'staff', 'admin'].includes(userData.role) && userData.metadata?.employeeInfo) {
+      profileData.employeeInfo = userData.metadata.employeeInfo;
+    }
+
+    return profileData;
+  }
+
+  /**
+   * Process user for bulk creation (existing or new)
+   */
+  private async processBulkUser(
+    userData: IInvitationCsvData,
+    clientInfo: IClientInfo,
+    generatedPassword: string,
+    linkedVendorId?: string,
+    session?: any
+  ): Promise<any> {
+    const existingUser = await this.userDAO.getActiveUserByEmail(userData.inviteeEmail);
+
+    if (existingUser) {
+      return await this.handleExistingBulkUser(
+        existingUser,
+        userData,
+        clientInfo,
+        linkedVendorId,
+        session
+      );
+    } else {
+      return await this.createNewBulkUser(
+        userData,
+        clientInfo,
+        generatedPassword,
+        linkedVendorId,
+        session
+      );
+    }
+  }
+
+  /**
+   * Initialize role info and send welcome email if needed
+   */
+  private async finalizeBulkUserCreation(
+    user: any,
+    userData: IInvitationCsvData,
+    clientInfo: IClientInfo,
+    generatedPassword: string,
+    linkedVendorId?: string,
+    options: { sendNotifications?: boolean }
+  ): Promise<void> {
+    await this.profileService.initializeRoleInfo(
+      user._id.toString(),
+      clientInfo.cuid,
+      userData.role,
+      linkedVendorId,
+      userData.metadata
+    );
+
+    // Log vendor linking if applicable
+    if (linkedVendorId && userData.role === 'vendor') {
+      this.log.info(
+        `Vendor link established from primary vendor ${linkedVendorId} to new user ${user._id}`
+      );
+    }
+
+    // Send welcome email with credentials if notifications are enabled
+    if (options.sendNotifications) {
+      this.sendBulkUserWelcomeEmail(userData, clientInfo, generatedPassword);
+    }
+
+    this.log.info(`Bulk user created: ${userData.inviteeEmail} for client ${clientInfo.cuid}`);
+  }
+
+  /**
+   * Send welcome email for bulk created user
+   */
+  private sendBulkUserWelcomeEmail(
+    userData: IInvitationCsvData,
+    clientInfo: IClientInfo,
+    generatedPassword: string
+  ): void {
+    const emailData = {
+      to: userData.inviteeEmail,
+      subject: t('email.userCreated.subject', {
+        companyName: clientInfo.clientDisplayName || 'Company',
+      }),
+      emailType: MailType.USER_CREATED,
+      data: {
+        firstName: userData.personalInfo.firstName,
+        lastName: userData.personalInfo.lastName,
+        companyName: clientInfo.clientDisplayName || 'Company',
+        email: userData.inviteeEmail,
+        temporaryPassword: generatedPassword,
+        loginUrl: `${envVariables.FRONTEND.URL}/login`,
+        role: userData.role,
+        customMessage: userData.metadata?.inviteMessage,
+        expectedStartDate: userData.metadata?.expectedStartDate,
+        department: userData.metadata?.employeeInfo?.department,
+        jobTitle: userData.metadata?.employeeInfo?.jobTitle,
+        vendorCompanyName: userData.metadata?.vendorEntityData?.companyName,
+      },
+    };
+    this.emailQueue.addToEmailQueue(JOB_NAME.USER_CREATED_JOB, emailData);
+  }
+
   private async createBulkUser(
     _creatorUserId: string,
     clientInfo: IClientInfo,
@@ -507,162 +742,28 @@ export class InvitationWorker {
     }
 
     const generatedPassword = generateDefaultPassword(options.passwordLength || 12);
+    const linkedVendorId = this.determineVendorLinking(userData);
+
     const session = await this.userDAO.startSession();
     const result = await this.userDAO.withTransaction(session, async (session) => {
-      // Check if user already exists
-      const existingUser = await this.userDAO.getActiveUserByEmail(userData.inviteeEmail);
-
-      let user;
-      // linkedVendorId should only be set for team members linking to primary vendors
-      // Primary vendors should not have linkedVendorId (they create vendor entities instead)
-      const linkedVendorId =
-        userData.role === 'vendor' && userData.metadata?.isVendorTeamMember
-          ? undefined // TODO: Will need proper vendor user lookup in future
-          : undefined;
-
-      if (existingUser) {
-        // User exists, add them to this client
-        user = await this.userDAO.addUserToClient(
-          existingUser._id.toString(),
-          userData.role,
-          {
-            id: clientInfo.id!.toString(),
-            cuid: clientInfo.cuid,
-            clientDisplayName: clientInfo.clientDisplayName,
-          },
-          linkedVendorId,
-          session
-        );
-      } else {
-        // Create new user with bulk method
-        user = await this.userDAO.createBulkUserWithDefaults(
-          {
-            cuid: clientInfo.cuid,
-            clientDisplayName: clientInfo.clientDisplayName,
-            id: clientInfo.id!,
-          },
-          {
-            email: userData.inviteeEmail,
-            firstName: userData.personalInfo.firstName,
-            lastName: userData.personalInfo.lastName,
-            phoneNumber: userData.personalInfo.phoneNumber,
-            role: userData.role,
-            defaultPassword: generatedPassword,
-          },
-          linkedVendorId,
-          session
-        );
-
-        if (!user) {
-          throw new Error('Error creating user account.');
-        }
-
-        // Create user profile with rich metadata from CSV (following acceptInvitation pattern)
-        const profileData: any = {
-          user: user._id,
-          puid: user.uid,
-          personalInfo: {
-            firstName: userData.personalInfo.firstName,
-            lastName: userData.personalInfo.lastName,
-            displayName: `${userData.personalInfo.firstName} ${userData.personalInfo.lastName}`,
-            phoneNumber: userData.personalInfo.phoneNumber || '',
-            location: 'Unknown',
-          },
-          lang: 'en',
-          timeZone: 'UTC',
-          policies: {
-            tos: {
-              accepted: true, // Auto-accept for bulk created users
-              acceptedOn: new Date(),
-            },
-            marketing: {
-              accepted: false, // Conservative default - no marketing consent
-              acceptedOn: null,
-            },
-          },
-        };
-
-        // Add vendor info if this is a vendor user
-        if (userData.role === 'vendor') {
-          // Use metadata flags to determine vendor type correctly
-          if (userData.metadata?.isVendorTeamMember) {
-            // Team members: isLinkedAccount = true, minimal vendor data
-            profileData.vendorInfo = {
-              isLinkedAccount: true,
-              linkedVendorId: linkedVendorId, // Reference to primary vendor
-            };
-          } else if (userData.metadata?.isPrimaryVendor) {
-            // Primary vendors: isLinkedAccount = false, will get vendor entity
-            profileData.vendorInfo = {
-              isLinkedAccount: false,
-            };
-          } else if (userData.metadata?.vendorInfo) {
-            // Fallback: copy from metadata (preserving existing behavior)
-            profileData.vendorInfo = {
-              ...userData.metadata.vendorInfo,
-            };
-          }
-        }
-
-        // Add employee info for staff/admin/manager users ONLY (not vendors)
-        if (
-          ['manager', 'staff', 'admin'].includes(userData.role) &&
-          userData.metadata?.employeeInfo
-        ) {
-          profileData.employeeInfo = userData.metadata.employeeInfo;
-        }
-
-        await this.profileDAO.createUserProfile(user._id, profileData, session);
-      }
-
-      // Initialize role-specific info (outside transaction like acceptInvitation)
-      if (user) {
-        await this.profileService.initializeRoleInfo(
-          user._id.toString(),
-          clientInfo.cuid,
-          userData.role,
-          result.linkedVendorId,
-          userData.metadata
-        );
-
-        // Log vendor linking if applicable
-        if (linkedVendorId && userData.role === 'vendor') {
-          this.log.info(
-            `Vendor link established from primary vendor ${linkedVendorId} to new user ${user._id}`
-          );
-        }
-      }
+      const user = await this.processBulkUser(
+        userData,
+        clientInfo,
+        generatedPassword,
+        linkedVendorId,
+        session
+      );
       return { user, linkedVendorId };
     });
 
-    // Send welcome email with credentials if notifications are enabled
-    if (options.sendNotifications) {
-      const emailData = {
-        to: userData.inviteeEmail,
-        subject: t('email.userCreated.subject', {
-          companyName: clientInfo.clientDisplayName || 'Company',
-        }),
-        emailType: MailType.USER_CREATED,
-        data: {
-          firstName: userData.personalInfo.firstName,
-          lastName: userData.personalInfo.lastName,
-          companyName: clientInfo.clientDisplayName || 'Company',
-          email: userData.inviteeEmail,
-          temporaryPassword: generatedPassword,
-          loginUrl: `${envVariables.FRONTEND.URL}/login`,
-          role: userData.role,
-          // Include additional metadata for personalized emails
-          customMessage: userData.metadata?.inviteMessage,
-          expectedStartDate: userData.metadata?.expectedStartDate,
-          department: userData.metadata?.employeeInfo?.department,
-          jobTitle: userData.metadata?.employeeInfo?.jobTitle,
-          vendorCompanyName: userData.metadata?.vendorEntityData?.companyName,
-        },
-      };
-      this.emailQueue.addToEmailQueue(JOB_NAME.USER_CREATED_JOB, emailData);
-    }
-
-    this.log.info(`Bulk user created: ${userData.inviteeEmail} for client ${clientInfo.cuid}`);
+    await this.finalizeBulkUserCreation(
+      result.user,
+      userData,
+      clientInfo,
+      generatedPassword,
+      linkedVendorId,
+      options
+    );
 
     return {
       userId: result.user?._id?.toString() || '',

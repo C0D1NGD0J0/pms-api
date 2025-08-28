@@ -306,7 +306,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       const { role, department, status } = filterOptions;
 
-      // Base query for client users
       const query: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
         'cuids.isConnected': true,
@@ -318,22 +317,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       }
 
       if (role) {
-        const roles = Array.isArray(role) ? role : [role];
-
-        // For vendor filtering, we need to use $elemMatch to check within the specific cuid
-        if (roles.includes('vendor')) {
-          // Only get users who are vendors for this client AND don't have a linkedVendorId
-          query['cuids'] = {
-            $elemMatch: {
-              cuid: cuid,
-              roles: Array.isArray(role) ? { $in: role } : 'vendor',
-              $or: [{ linkedVendorId: { $exists: false } }, { linkedVendorId: null }],
-            },
-          };
-        } else {
-          // For non-vendor roles, use the standard query
-          query['cuids.roles'] = Array.isArray(role) ? { $in: role } : role;
-        }
+        // const roles = Array.isArray(role) ? role : [role];
+        query['cuids.roles'] = Array.isArray(role) ? { $in: role } : role;
       }
 
       const pipeline: PipelineStage[] = [

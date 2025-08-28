@@ -19,9 +19,6 @@ export enum IUserRole {
   ADMIN = 'admin',
 }
 
-/**
- * Vendor detail information for getClientUserInfo response
- */
 export interface IVendorDetailInfo {
   stats: {
     completedJobs: number;
@@ -98,38 +95,6 @@ export interface IEmployeeDetailInfo {
   tags: string[];
 }
 
-/**
- * Structured response for getClientUserInfo
- */
-export interface IUserDetailResponse {
-  profile: {
-    firstName: string;
-    lastName: string;
-    fullName: string;
-    avatar: string;
-    phoneNumber: string;
-    email: string;
-    about: string;
-    contact: {
-      phone: string;
-      email: string;
-    };
-  };
-  user: {
-    roles: string[];
-    userType: 'employee' | 'vendor' | 'tenant';
-    displayName: string;
-  } & Pick<IUserDocument, 'uid' | 'email' | 'isActive' | 'createdAt'>;
-  // Type-specific info - only one will be present based on userType
-  employeeInfo?: IEmployeeDetailInfo;
-  vendorInfo?: IVendorDetailInfo;
-  tenantInfo?: ITenantDetailInfo;
-  status: 'Active' | 'Inactive';
-  properties: IUserProperty[];
-  documents: any[];
-  tasks: any[];
-}
-
 export interface ICurrentUser {
   client: {
     cuid: string;
@@ -177,6 +142,30 @@ export interface FilteredUser
   avatar?: string;
 }
 
+/**
+ * Structured response for getClientUserInfo
+ */
+export interface IUserDetailResponse {
+  profile: {
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    avatar: string;
+    phoneNumber: string;
+    email: string;
+    about: string;
+    contact: {
+      phone: string;
+      email: string;
+    };
+    roles: string[];
+    userType: 'employee' | 'vendor' | 'tenant';
+  };
+  employeeInfo?: IEmployeeDetailInfo;
+  vendorInfo?: IVendorDetailInfo;
+  status: 'Active' | 'Inactive';
+}
+
 export interface IUserDocument extends Document, IUser {
   validatePassword: (pwd1: string) => Promise<boolean>;
   cuids: IClientUserConnections[];
@@ -208,23 +197,7 @@ export interface FilteredUserVendorInfo
   serviceType?: string;
   reviewCount?: number;
   rating?: number;
-}
-
-/**
- * Lightweight user data for table display only
- * Using Pick and optional fields to reduce duplication
- */
-export interface FilteredUserTableData extends Pick<IUser, 'email'> {
-  // Type-specific info - optional based on user type
-  employeeInfo?: FilteredUserEmployeeInfo;
-  vendorInfo?: FilteredUserVendorInfo;
-  tenantInfo?: FilteredUserTenantInfo;
-  phoneNumber?: string;
-  isConnected: boolean;
-  displayName: string;
-  fullName?: string;
-  isActive: boolean;
-  uid: string;
+  vuid?: string;
 }
 
 export interface ITenant extends IUser {
@@ -259,6 +232,22 @@ export interface ITenantDetailInfo {
   paymentHistory: any[];
   rentStatus: string;
   documents: any[];
+}
+
+/**
+ * Lightweight user data for table display only
+ * Using Pick and optional fields to reduce duplication
+ */
+export interface FilteredUserTableData extends Pick<IUser, 'email'> {
+  employeeInfo?: FilteredUserEmployeeInfo;
+  vendorInfo?: FilteredUserVendorInfo;
+  tenantInfo?: FilteredUserTenantInfo;
+  phoneNumber?: string;
+  isConnected: boolean;
+  displayName: string;
+  fullName?: string;
+  isActive: boolean;
+  uid: string;
 }
 
 export type ISignupData = {

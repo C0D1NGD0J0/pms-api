@@ -9,6 +9,8 @@ describe('UserService - getClientUserInfo', () => {
   let mockPropertyDAO: any;
   let mockUserCache: any;
   let mockPermissionService: any;
+  let mockVendorDAO: any;
+  let mockVendorService: any;
 
   beforeEach(() => {
     // Mock dependencies
@@ -33,6 +35,14 @@ describe('UserService - getClientUserInfo', () => {
       canUserAccessUser: jest.fn(() => true) as jest.Mock,
     };
 
+    mockVendorDAO = {
+      getClientVendorStats: jest.fn() as jest.Mock,
+    };
+
+    mockVendorService = {
+      getVendorByUserId: jest.fn() as jest.Mock,
+    };
+
     // Initialize service
     userService = new UserService({
       userDAO: mockUserDAO,
@@ -40,6 +50,8 @@ describe('UserService - getClientUserInfo', () => {
       propertyDAO: mockPropertyDAO,
       userCache: mockUserCache,
       permissionService: mockPermissionService,
+      vendorDAO: mockVendorDAO,
+      vendorService: mockVendorService,
     });
 
     // Mock context

@@ -161,3 +161,13 @@ export const clientVendorsQuerySchema = z.object({
   limit: z.number().min(1).max(100).default(20),
   skip: z.number().min(0).default(0),
 });
+
+// Vendor filter query schema (for filtered vendors endpoint)
+export const vendorFilterQuerySchema = z.object({
+  status: z.enum(['active', 'inactive']).optional(),
+  businessType: businessTypesEnum.optional(),
+  page: z.string().regex(/^\d+$/).transform(Number).optional(),
+  limit: z.string().regex(/^\d+$/).transform(Number).optional(),
+  sortBy: z.string().optional(),
+  sort: z.enum(['asc', 'desc']).optional(),
+});

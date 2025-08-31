@@ -30,7 +30,11 @@
   },
   "vendor": {
     "success": {
-      "statsRetrieved": "vendor.success.statsRetrieved"
+      "statsRetrieved": "vendor.success.statsRetrieved",
+      "teamMembersRetrieved": "vendor.success.teamMembersRetrieved"
+    },
+    "errors": {
+      "notPrimaryVendor": "vendor.errors.notPrimaryVendor"
     }
   }
 }

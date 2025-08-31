@@ -645,6 +645,7 @@ describe('VendorService', () => {
       const vendorData: NewVendor = {
         companyName: 'ACME Plumbing Services',
         registrationNumber: 'PLM-2024-002', // Different reg number
+        isPrimaryAccountHolder: true,
         connectedClients: [
           {
             cuid: mockClientId,
@@ -684,6 +685,7 @@ describe('VendorService', () => {
       const vendorData: NewVendor = {
         companyName: 'Different Company Name', // Conflicting name
         registrationNumber: 'PLM-2024-002', // Conflicting reg number
+        isPrimaryAccountHolder: true,
         connectedClients: [
           {
             cuid: mockClientId,
@@ -708,6 +710,35 @@ describe('VendorService', () => {
       loggerWarnSpy.mockRestore();
     });
 
+    it('should work with new vendor UID formats (dashes and underscores)', async () => {
+      const existingVendorId = new Types.ObjectId().toString();
+      const existingVendor = createMockVendorDocument({
+        _id: new Types.ObjectId(existingVendorId),
+        vuid: 'BQ--E29IUASZ', // New format with dashes
+        companyName: 'ACME Plumbing Services',
+        connectedClients: [],
+      });
+
+      const vendorData: NewVendor = {
+        companyName: 'ACME Plumbing Services',
+        isPrimaryAccountHolder: true,
+        connectedClients: [
+          {
+            cuid: mockClientId,
+            isConnected: true,
+            primaryAccountHolder: new Types.ObjectId(mockUserId),
+          },
+        ],
+      };
+
+      mockVendorDAO.getVendorById.mockResolvedValue(existingVendor);
+
+      const result = await vendorService.createVendor(vendorData, undefined, 'BQ--E29IUASZ');
+
+      expect(result.success).toBe(true);
+      expect(mockVendorDAO.getVendorById).toHaveBeenCalledWith(existingVendorId);
+    });
+
     it('should fall back to registration number matching when linkedVendorUid not found', async () => {
       const nonExistentVendorId = new Types.ObjectId().toString();
       const existingVendorByReg = createMockVendorDocument({
@@ -719,6 +750,7 @@ describe('VendorService', () => {
       const vendorData: NewVendor = {
         companyName: 'ACME Plumbing Services',
         registrationNumber: 'PLM-2024-001',
+        isPrimaryAccountHolder: true,
         connectedClients: [
           {
             cuid: mockClientId,

@@ -734,24 +734,23 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * @returns Promise resolving to linked vendor users
    */
   async getLinkedVendorUsers(
-    primaryVendorId: string,
+    vendorUid: string,
     cuid: string,
     opts?: IFindOptions
   ): Promise<ListResultWithPagination<IUserDocument[]>> {
     try {
       const query: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
-        'cuids.linkedVendorUid': new Types.ObjectId(primaryVendorId),
+        'cuids.linkedVendorUid': vendorUid,
         'cuids.isConnected': true,
         deletedAt: null,
       };
 
       return await this.list(query, {
         ...opts,
-        // populate: [{ path: 'profile', select: 'personalInfo' }],
       });
     } catch (error) {
-      this.logger.error(`Error getting linked vendor users for vendor ${primaryVendorId}:`, error);
+      this.logger.error(`Error getting linked vendor users for vendor ${vendorUid}:`, error);
       throw this.throwErrorHandler(error);
     }
   }

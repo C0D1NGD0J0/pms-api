@@ -68,27 +68,4 @@ export class UserController {
 
     res.status(httpStatusCodes.OK).json(result);
   };
-
-  getVendorTeamMembers = async (req: AppRequest, res: Response): Promise<void> => {
-    const { cuid, vendorId } = req.params;
-    const { page, limit, status } = req.query;
-
-    const paginationOpts = {
-      page: page ? parseInt(page as string, 10) : 1,
-      limit: limit ? parseInt(limit as string, 10) : 10,
-      skip:
-        ((page ? parseInt(page as string, 10) : 1) - 1) *
-        (limit ? parseInt(limit as string, 10) : 10),
-    };
-
-    const result = await this.userService.getVendorTeamMembers(
-      req.context,
-      cuid,
-      vendorId,
-      status as 'active' | 'inactive' | undefined,
-      paginationOpts
-    );
-
-    res.status(httpStatusCodes.OK).json(result);
-  };
 }

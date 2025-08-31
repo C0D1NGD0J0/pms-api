@@ -147,7 +147,6 @@ const VendorSchema = new Schema<IVendorDocument>(
   }
 );
 
-// Indexes
 VendorSchema.index({ 'connectedClients.cuid': 1 });
 VendorSchema.index({ companyName: 1 });
 VendorSchema.index({ registrationNumber: 1 }, { unique: true });

@@ -122,9 +122,6 @@ export interface ICurrentUser {
   sub: string;
 }
 
-/**
- * Full user data for list/table display with populated profile
- */
 export interface FilteredUser
   extends Pick<IUserDocument, 'uid' | 'email' | 'isActive' | 'createdAt'> {
   userType?: 'employee' | 'vendor' | 'tenant';
@@ -266,29 +263,11 @@ export type ISignupData = {
 };
 
 /**
- * Vendor team members response
- */
-export interface IVendorTeamMembersResponse {
-  summary: {
-    totalMembers: number;
-    activeMembers: number;
-    inactiveMembers: number;
-  };
-  vendor: {
-    vendorId: string;
-    companyName: string;
-    primaryContact: string;
-  };
-  teamMembers: IVendorTeamMember[];
-  pagination: any;
-}
-
-/**
  * Vendor team member response
  */
 export interface IVendorTeamMember {
   lastLogin: Date | null;
-  permissions: string[];
+  isTeamMember: boolean;
   displayName: string;
   phoneNumber: string;
   firstName: string;
@@ -317,6 +296,20 @@ export interface IUser {
   activationToken?: string;
   password: string;
   email: string;
+}
+
+/**
+ * Vendor team members response with pagination
+ */
+export interface IVendorTeamMembersResponse {
+  pagination: {
+    total: number;
+    perPage: number;
+    totalPages: number;
+    currentPage: number;
+    hasMoreResource: boolean;
+  };
+  items: IVendorTeamMember[];
 }
 
 /**

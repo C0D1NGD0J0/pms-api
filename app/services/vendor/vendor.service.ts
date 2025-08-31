@@ -5,17 +5,21 @@ import { VendorDAO } from '@dao/vendorDAO';
 import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { ClientSession, Types } from 'mongoose';
+import { PermissionService } from '@services/permission';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IVendorFilterOptions } from '@dao/interfaces/vendorDAO.interface';
-import { BadRequestError, NotFoundError } from '@shared/customErrors/index';
-import { ISuccessReturnData, PaginateResult } from '@interfaces/utils.interface';
 import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
+import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
+import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
 import {
   FilteredUserTableData,
   IUserDetailResponse,
   IVendorDetailInfo,
+  IVendorTeamMember,
+  IUserRole,
 } from '@interfaces/user.interface';
 interface IConstructor {
+  permissionService: PermissionService;
   vendorDAO: VendorDAO;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
@@ -26,11 +30,13 @@ export class VendorService {
   private userDAO: UserDAO;
   private vendorDAO: VendorDAO;
   private clientDAO: ClientDAO;
+  private permissionService: PermissionService;
 
-  constructor({ vendorDAO, userDAO, clientDAO }: IConstructor) {
+  constructor({ vendorDAO, userDAO, clientDAO, permissionService }: IConstructor) {
     this.vendorDAO = vendorDAO;
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
+    this.permissionService = permissionService;
     this.logger = createLogger('VendorService');
   }
 
@@ -346,6 +352,144 @@ export class VendorService {
     }
   }
 
+  async getVendorTeamMembers(
+    cxt: IRequestContext,
+    cuid: string,
+    vuid: string,
+    status?: 'active' | 'inactive',
+    paginationOpts?: any
+  ): Promise<
+    ISuccessReturnData<{
+      items: IVendorTeamMember[];
+      pagination: PaginateResult | undefined;
+    }>
+  > {
+    const currentuser = cxt.currentuser!;
+
+    try {
+      if (!cuid) {
+        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+      }
+
+      const vendor = await this.vendorDAO.findFirst({ vuid });
+      if (!vendor) {
+        throw new NotFoundError({ message: t('vendor.errors.notFound') });
+      }
+
+      // Check if the vendor is associated with this client
+      const vendorConnection = vendor.connectedClients?.find((c: any) => c.cuid === cuid);
+      if (!vendorConnection || !vendorConnection.isConnected) {
+        throw new NotFoundError({ message: t('vendor.errors.notAssociatedWithClient') });
+      }
+
+      const allowedRoles = [IUserRole.MANAGER, IUserRole.ADMIN].includes(
+        currentuser.client.role as IUserRole
+      );
+      const isPrimaryVendor =
+        vendorConnection.primaryAccountHolder.toString() === currentuser.sub.toString();
+
+      if (!allowedRoles && !isPrimaryVendor) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'view',
+            resource: 'vendor team members',
+          }),
+        });
+      }
+
+      // Check permissions
+      if (!this.permissionService.canUserAccessVendors(currentuser, vendor)) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'view',
+            resource: 'vendor team',
+          }),
+        });
+      }
+
+      // Fetch linked vendor users
+      const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(vendor.vuid, cuid, {
+        ...paginationOpts,
+        populate: [{ path: 'profile', select: 'personalInfo contactInfo' }],
+      });
+
+      // Filter by status if provided
+      let teamMembers = linkedUsersResult.items;
+      if (status !== undefined) {
+        teamMembers = teamMembers.filter((user: any) =>
+          status === 'active' ? user.isActive : !user.isActive
+        );
+      }
+
+      // Format the response
+      const formattedMembers: IVendorTeamMember[] = teamMembers.map((member: any) => {
+        const personalInfo = member.profile?.personalInfo || {};
+        const contactInfo = member.profile?.contactInfo || {};
+        const memberConnection = member.cuids?.find((c: any) => c.cuid === cuid);
+
+        return {
+          uid: member.uid,
+          email: member.email,
+          displayName:
+            memberConnection?.clientDisplayName ||
+            `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim() ||
+            member.email,
+          firstName: personalInfo.firstName || '',
+          lastName: personalInfo.lastName || '',
+          phoneNumber: personalInfo.phoneNumber || contactInfo.phoneNumber || '',
+          isActive: member.isActive,
+          role: memberConnection?.role || 'Team Member',
+          joinedDate: member.createdAt,
+          isTeamMember: true,
+          lastLogin: member.lastLogin || null,
+        };
+      });
+
+      // Get vendor entity and profile info for context
+      const vendorEntity = await this.getVendorByUserId(
+        vendorConnection.primaryAccountHolder.toString()
+      );
+
+      // Get the primary account holder user for additional profile data
+      const primaryUser = await this.userDAO.getUserById(
+        vendorConnection.primaryAccountHolder.toString(),
+        { populate: 'profile' }
+      );
+
+      const vendorProfile = (primaryUser?.profile as any) || {};
+      const _vendorInfo = {
+        vendorId: vendor.vuid,
+        companyName:
+          vendorEntity?.companyName ||
+          vendorProfile.personalInfo?.displayName ||
+          primaryUser?.email ||
+          'Unknown Company',
+        primaryContact:
+          vendorEntity?.contactPerson?.name ||
+          vendorProfile.personalInfo?.displayName ||
+          `${vendorProfile.personalInfo?.firstName || ''} ${vendorProfile.personalInfo?.lastName || ''}`.trim() ||
+          primaryUser?.email ||
+          'Unknown Contact',
+      };
+
+      return {
+        success: true,
+        data: {
+          items: formattedMembers,
+          pagination: linkedUsersResult.pagination,
+        },
+        message: t('vendor.success.teamMembersRetrieved'),
+      };
+    } catch (error) {
+      this.logger.error('Error getting vendor team members:', {
+        cuid,
+        vendorId: vuid,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
   async getVendorInfo(
     cuid: string,
     vuid: string
@@ -461,7 +605,7 @@ export class VendorService {
         },
 
         // Vendor tags
-        tags: this.generateVendorTags(vendor, userClientConnection, roles, profile),
+        tags: this.generateVendorTags(vendor, userClientConnection),
 
         // Linked vendor info if applicable
         isLinkedAccount: !!userClientConnection?.linkedVendorUid,
@@ -485,9 +629,8 @@ export class VendorService {
             phone: (_personalInfo as any).phoneNumber || '',
             email: user.email || '',
           },
-          uid: user.uid,
           roles: roles,
-          userType: 'vendor',
+          userType: 'vendor' as const,
         },
         vendorInfo: vendorDetailInfo,
         status: user.isActive ? 'Active' : 'Inactive',
@@ -508,9 +651,6 @@ export class VendorService {
     }
   }
 
-  /**
-   * Generate vendor tags based on vendor information, client connection, user roles, and profile
-   */
   private generateVendorTags(vendorInfo: any, clientConnection: any): string[] {
     const tags = [];
 

@@ -1,5 +1,6 @@
 import { ICurrentUser } from '@interfaces/user.interface';
 import { PermissionAction } from '@interfaces/utils.interface';
+import { IVendorDocument } from '@interfaces/vendor.interface';
 
 export interface IResourceAccessConfig {
   [action: string]: {
@@ -230,6 +231,40 @@ export class InvitationAccessStrategy extends ResourceAccessStrategy {
           return invitation.createdBy?.toString() === user.sub;
         },
         default: () => false,
+      },
+    });
+  }
+}
+
+// Vendor resource strategy
+export class VendorAccessStrategy extends ResourceAccessStrategy {
+  constructor() {
+    super({
+      [PermissionAction.READ]: {
+        admin: () => true,
+        manager: () => true,
+        default: (user: ICurrentUser, _vendor: IVendorDocument) => {
+          const notAllowedRoles = ['vendor'];
+          if (notAllowedRoles.includes(user.client.role)) {
+            return false;
+          }
+          return true;
+        },
+      },
+      [PermissionAction.UPDATE]: {
+        admin: () => true,
+        default: () => false,
+      },
+      [PermissionAction.LIST]: {
+        admin: () => true,
+        manager: () => true,
+        default: (user: ICurrentUser, _vendor: IVendorDocument) => {
+          const notAllowedRoles = ['vendor'];
+          if (notAllowedRoles.includes(user.client.role)) {
+            return false;
+          }
+          return true;
+        },
       },
     });
   }

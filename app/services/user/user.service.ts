@@ -10,14 +10,12 @@ import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
 import {
-  IVendorTeamMembersResponse,
   IUserPopulatedDocument,
   FilteredUserTableData,
   IUserDetailResponse,
   IEmployeeDetailInfo,
   IVendorDetailInfo,
   ITenantDetailInfo,
-  IVendorTeamMember,
   IUserRoleType,
   IUserProperty,
   IUserStats,
@@ -352,139 +350,6 @@ export class UserService {
       this.log.error('Error getting user stats:', {
         cuid,
         filterOptions,
-        error: error.message || error,
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Get vendor team members (linked accounts)
-   * @param cxt - Request context
-   * @param cuid - Client ID
-   * @param vendorId - Vendor ID (user ID of the primary vendor)
-   * @param status - Filter by active/inactive status
-   * @param paginationOpts - Pagination options
-   * @returns Vendor team members with pagination
-   */
-  async getVendorTeamMembers(
-    cxt: IRequestContext,
-    cuid: string,
-    vendorId: string,
-    status?: 'active' | 'inactive',
-    paginationOpts?: any
-  ): Promise<ISuccessReturnData<IVendorTeamMembersResponse>> {
-    const currentuser = cxt.currentuser!;
-
-    try {
-      if (!cuid) {
-        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
-      }
-
-      // Verify the vendor exists and is a primary vendor
-      const vendor = await this.userDAO.getUserByUId(vendorId, {
-        populate: [{ path: 'profile', select: 'personalInfo vendorInfo' }],
-      });
-
-      if (!vendor) {
-        throw new NotFoundError({ message: t('vendor.errors.notFound') });
-      }
-
-      // Check if the vendor is associated with this client
-      const vendorConnection = vendor.cuids?.find((c: any) => c.cuid === cuid);
-      if (!vendorConnection || !vendorConnection.isConnected) {
-        throw new NotFoundError({ message: t('vendor.errors.notAssociatedWithClient') });
-      }
-
-      // Check if the vendor is a primary vendor (not a linked account)
-      if (vendorConnection.linkedVendorUid) {
-        throw new BadRequestError({ message: t('vendor.errors.notPrimaryVendor') });
-      }
-
-      // Check permissions
-      if (!this.permissionService.canUserAccessUser(currentuser, vendor)) {
-        throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
-            action: 'view',
-            resource: 'vendor team',
-          }),
-        });
-      }
-
-      // Fetch linked vendor users
-      const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(
-        vendor._id.toString(),
-        cuid,
-        {
-          ...paginationOpts,
-          populate: [{ path: 'profile', select: 'personalInfo contactInfo' }],
-        }
-      );
-
-      // Filter by status if provided
-      let teamMembers = linkedUsersResult.items;
-      if (status !== undefined) {
-        teamMembers = teamMembers.filter((user: any) =>
-          status === 'active' ? user.isActive : !user.isActive
-        );
-      }
-
-      // Format the response
-      const formattedMembers: IVendorTeamMember[] = teamMembers.map((member: any) => {
-        const personalInfo = member.profile?.personalInfo || {};
-        const contactInfo = member.profile?.contactInfo || {};
-        const memberConnection = member.cuids?.find((c: any) => c.cuid === cuid);
-
-        return {
-          uid: member.uid,
-          email: member.email,
-          displayName:
-            memberConnection?.clientDisplayName ||
-            `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim() ||
-            member.email,
-          firstName: personalInfo.firstName || '',
-          lastName: personalInfo.lastName || '',
-          phoneNumber: personalInfo.phoneNumber || contactInfo.phoneNumber || '',
-          isActive: member.isActive,
-          role: 'Team Member',
-          joinedDate: member.createdAt,
-          lastLogin: member.lastLogin || null,
-          permissions: memberConnection?.permissions || [],
-        };
-      });
-
-      // Get vendor entity and profile info for context
-      const vendorEntity = await this.vendorService.getVendorByUserId(vendor._id.toString());
-      const vendorProfile = (vendor as any).profile || {};
-      const vendorInfo = {
-        vendorId: vendor.uid,
-        companyName:
-          vendorEntity?.companyName || vendorProfile.personalInfo?.displayName || vendor.email,
-        primaryContact:
-          vendorEntity?.contactPerson?.name ||
-          vendorProfile.personalInfo?.displayName ||
-          `${vendorProfile.personalInfo?.firstName || ''} ${vendorProfile.personalInfo?.lastName || ''}`.trim() ||
-          vendor.email,
-      };
-
-      return {
-        success: true,
-        data: {
-          vendor: vendorInfo,
-          teamMembers: formattedMembers,
-          pagination: linkedUsersResult.pagination,
-          summary: {
-            totalMembers: linkedUsersResult.pagination?.total || 0,
-            activeMembers: formattedMembers.filter((m: any) => m.isActive).length,
-            inactiveMembers: formattedMembers.filter((m: any) => !m.isActive).length,
-          },
-        },
-        message: t('vendor.success.teamMembersRetrieved'),
-      };
-    } catch (error) {
-      this.log.error('Error getting vendor team members:', {
-        cuid,
-        vendorId,
         error: error.message || error,
       });
       throw error;

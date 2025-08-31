@@ -115,16 +115,17 @@ export const invitationDataSchema = z.object({
 
   linkedVendorUid: z
     .string()
-    .min(24, 'Vendor ID must be a valid MongoDB ObjectId')
-    .max(24, 'Vendor ID must be a valid MongoDB ObjectId')
     .optional()
     .refine(
       (val) => {
         if (!val) return true;
-        // Check if valid MongoDB ObjectId (24 hex chars)
-        return /^[0-9a-fA-F]{24}$/.test(val);
+        // Check if valid vendor UID (12 alphanumeric chars) or MongoDB ObjectId (24 hex chars)
+        return /^[A-Z0-9]{12}$/.test(val) || /^[0-9a-fA-F]{24}$/.test(val);
       },
-      { message: 'Vendor ID must be a valid MongoDB ObjectId' }
+      {
+        message:
+          'Vendor ID must be a valid vendor UID (12 alphanumeric characters) or MongoDB ObjectId (24 hex characters)',
+      }
     ),
 
   personalInfo: z.object({
@@ -320,9 +321,11 @@ export const invitationCsvSchema = z
           return undefined;
         }
         const trimmed = str.trim();
-        // Check if valid MongoDB ObjectId (24 hex chars)
-        if (!/^[0-9a-fA-F]{24}$/.test(trimmed)) {
-          throw new Error('linkedVendorUid must be a valid MongoDB ObjectId (24 hex characters)');
+        // Check if valid vendor UID (12 chars with letters, numbers, dashes, underscores) or MongoDB ObjectId (24 hex chars)
+        if (!/^[A-Z0-9_-]{12}$/.test(trimmed) && !/^[0-9a-fA-F]{24}$/.test(trimmed)) {
+          throw new Error(
+            'linkedVendorUid must be a valid vendor UID (12 characters: letters, numbers, dashes, underscores) or MongoDB ObjectId (24 hex characters)'
+          );
         }
         return trimmed;
       })

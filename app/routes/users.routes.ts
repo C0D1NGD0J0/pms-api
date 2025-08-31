@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { UserController } from '@controllers/UserController';
 import { ClientController } from '@controllers/ClientController';
+import { VendorController } from '@controllers/VendorController';
 import { PropertyController } from '@controllers/PropertyController';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
@@ -150,8 +151,8 @@ router.get(
     params: ClientValidations.clientIdParam,
   }),
   asyncWrapper((req, res) => {
-    const userController = req.container.resolve<UserController>('userController');
-    return userController.getVendorTeamMembers(req, res);
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.getVendorTeamMembers(req, res);
   })
 );
 

@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { DoneCallback, Job } from 'bull';
 import { EmailQueue } from '@queues/index';
+import { VendorDAO } from '@dao/vendorDAO';
 import { envVariables } from '@shared/config';
 import { CsvJobData } from '@interfaces/index';
 import { createLogger, JOB_NAME } from '@utils/index';
@@ -46,6 +47,7 @@ interface IConstructor {
   emailQueue: EmailQueue;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
+  vendorDAO: VendorDAO;
   profileService: any; // Add profile service
   userDAO: UserDAO;
 }
@@ -61,6 +63,7 @@ export class InvitationWorker {
   private readonly profileDAO: ProfileDAO;
   private readonly profileService: ProfileService;
   private readonly vendorService: VendorService;
+  private readonly vendorDAO: VendorDAO;
 
   constructor({
     emitterService,
@@ -72,6 +75,7 @@ export class InvitationWorker {
     profileDAO,
     profileService,
     vendorService,
+    vendorDAO,
   }: IConstructor) {
     this.emitterService = emitterService;
     this.invitationCsvProcessor = invitationCsvProcessor;
@@ -82,6 +86,7 @@ export class InvitationWorker {
     this.profileDAO = profileDAO;
     this.profileService = profileService;
     this.vendorService = vendorService;
+    this.vendorDAO = vendorDAO;
     this.log = createLogger('InvitationWorker');
   }
 
@@ -494,22 +499,29 @@ export class InvitationWorker {
   };
 
   /**
-   * Create a single user with default password (bypasses invitation flow)
-   * Follows the same pattern as acceptInvitation but with generated password
-   */
-  /**
    * Determine vendor linking for bulk user creation
    */
-  private determineVendorLinking(userData: IInvitationCsvData): string | undefined {
-    // For vendor role users, check if they have a linkedVendorUid from CSV
-    if (userData.role === 'vendor' && userData.metadata?.linkedVendorUid) {
-      return userData.metadata.linkedVendorUid;
+  private async determineVendorLinking(
+    userData: IInvitationCsvData,
+    clientInfo: IClientInfo
+  ): Promise<{ vendorUid: string; primaryAccountHolderId: string } | null> {
+    if (userData.role === 'vendor' && userData.linkedVendorUid) {
+      const existingVendor = await this.vendorDAO.getVendorByVuid(userData.linkedVendorUid);
+      if (existingVendor) {
+        const vendorConnection = existingVendor.connectedClients?.find(
+          (cc: any) => cc.cuid === clientInfo.cuid
+        );
+        if (vendorConnection && vendorConnection.isConnected) {
+          return {
+            vendorUid: existingVendor.vuid,
+            primaryAccountHolderId: vendorConnection.primaryAccountHolder.toString(),
+          };
+        }
+      }
+      throw new Error(`Vendor ${userData.linkedVendorUid} not found or not connected to client`);
     }
 
-    // Fallback to legacy team member logic (though this should rarely be used now)
-    return userData.role === 'vendor' && userData.metadata?.isVendorTeamMember
-      ? 'TEMP' // Legacy fallback - should be replaced by explicit linkedVendorUid
-      : undefined;
+    return null;
   }
 
   /**
@@ -673,8 +685,8 @@ export class InvitationWorker {
     userData: IInvitationCsvData,
     clientInfo: IClientInfo,
     generatedPassword: string,
-    linkedVendorUid?: string,
-    options: { sendNotifications?: boolean }
+    options: { sendNotifications?: boolean },
+    linkedVendorUid?: string
   ): Promise<void> {
     await this.profileService.initializeRoleInfo(
       user._id.toString(),
@@ -742,7 +754,7 @@ export class InvitationWorker {
     }
 
     const generatedPassword = generateDefaultPassword(options.passwordLength || 12);
-    const linkedVendorUid = this.determineVendorLinking(userData);
+    const linkedVendorUid = await this.determineVendorLinking(userData, clientInfo);
 
     const session = await this.userDAO.startSession();
     const result = await this.userDAO.withTransaction(session, async (session) => {
@@ -750,7 +762,7 @@ export class InvitationWorker {
         userData,
         clientInfo,
         generatedPassword,
-        linkedVendorUid,
+        linkedVendorUid ? linkedVendorUid.vendorUid : '',
         session
       );
       return { user, linkedVendorUid };
@@ -761,8 +773,8 @@ export class InvitationWorker {
       userData,
       clientInfo,
       generatedPassword,
-      linkedVendorUid,
-      options
+      options,
+      linkedVendorUid ? linkedVendorUid.vendorUid : ''
     );
 
     return {

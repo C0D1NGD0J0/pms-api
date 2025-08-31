@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
-import { UserController } from '@controllers/UserController';
 import { VendorController } from '@controllers/VendorController';
 import { requirePermission, isAuthenticated } from '@shared/middlewares';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
@@ -56,15 +55,15 @@ router.get(
 );
 
 router.get(
-  '/:cuid/vendor_members/:vuid',
+  '/:cuid/team_members/:vuid',
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.READ),
   validateRequest({
-    params: ClientValidations.clientIdParam,
+    params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
   }),
   asyncWrapper((req, res) => {
-    const userController = req.container.resolve<UserController>('userController');
-    return userController.getVendorTeamMembers(req, res);
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.getVendorTeamMembers(req, res);
   })
 );
 

@@ -9,8 +9,14 @@ import { LanguageService } from '@shared/languages/language.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
-import { EventsRegistryCache, PropertyCache, AuthCache, UserCache } from '@caching/index';
 import { PropertyUnit, Invitation, Property, Profile, Client, Vendor, User } from '@models/index';
+import {
+  EventsRegistryCache,
+  PropertyCache,
+  VendorCache,
+  AuthCache,
+  UserCache,
+} from '@caching/index';
 import {
   PropertyUnitDAO,
   InvitationDAO,
@@ -117,6 +123,7 @@ const CacheResources = {
   propertyCache: asClass(PropertyCache).singleton(),
   eventsRegistry: asClass(EventsRegistryCache).singleton(),
   userCache: asClass(UserCache).singleton(),
+  vendorCache: asClass(VendorCache).singleton(),
 };
 
 const WorkerResources = {

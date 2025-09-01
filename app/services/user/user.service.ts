@@ -229,6 +229,22 @@ export class UserService {
         filterOptions.role = [filterOptions.role as IUserRoleType];
       }
 
+      const cachedResult = await this.userCache.getFilteredUsers(
+        cuid,
+        filterOptions,
+        paginationOpts
+      );
+      if (cachedResult.success && cachedResult.data) {
+        return {
+          success: true,
+          data: {
+            items: cachedResult.data.items,
+            pagination: cachedResult.data.pagination,
+          },
+          message: t('client.success.filteredUsersRetrieved'),
+        };
+      }
+
       const result = await this.userDAO.getUsersByFilteredType(cuid, filterOptions, paginationOpts);
       const users: FilteredUserTableData[] = await Promise.all(
         result.items.map(async (user: any) => {
@@ -289,6 +305,13 @@ export class UserService {
           return tableUserData;
         })
       );
+
+      // Cache the result for future requests
+      await this.userCache.saveFilteredUsers(cuid, users, {
+        filters: filterOptions,
+        pagination: paginationOpts,
+      });
+      this.log.info('Filtered users cached', { cuid, count: users.length });
 
       return {
         success: true,

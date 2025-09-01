@@ -5,6 +5,7 @@ import { VendorDAO } from '@dao/vendorDAO';
 import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { ClientSession, Types } from 'mongoose';
+import { VendorCache } from '@caching/vendor.cache';
 import { PermissionService } from '@services/permission';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IVendorFilterOptions } from '@dao/interfaces/vendorDAO.interface';
@@ -20,6 +21,7 @@ import {
 } from '@interfaces/user.interface';
 interface IConstructor {
   permissionService: PermissionService;
+  vendorCache: VendorCache;
   vendorDAO: VendorDAO;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
@@ -30,12 +32,14 @@ export class VendorService {
   private userDAO: UserDAO;
   private vendorDAO: VendorDAO;
   private clientDAO: ClientDAO;
+  private vendorCache: VendorCache;
   private permissionService: PermissionService;
 
-  constructor({ vendorDAO, userDAO, clientDAO, permissionService }: IConstructor) {
+  constructor({ vendorDAO, userDAO, clientDAO, vendorCache, permissionService }: IConstructor) {
     this.vendorDAO = vendorDAO;
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
+    this.vendorCache = vendorCache;
     this.permissionService = permissionService;
     this.logger = createLogger('VendorService');
   }
@@ -288,6 +292,23 @@ export class VendorService {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
+      const cachedResult = await this.vendorCache.getFilteredVendors(
+        cuid,
+        filterOptions,
+        paginationOpts
+      );
+      if (cachedResult.success && cachedResult.data) {
+        this.logger.info('Filtered vendors retrieved from cache', { cuid, filterOptions });
+        return {
+          success: true,
+          data: {
+            items: cachedResult.data.items,
+            pagination: cachedResult.data.pagination,
+          },
+          message: t('client.success.filteredUsersRetrieved'),
+        };
+      }
+
       // Use the optimized DAO method for filtering and pagination
       const result = await this.vendorDAO.getFilteredVendors(cuid, filterOptions, paginationOpts);
 
@@ -333,6 +354,11 @@ export class VendorService {
           };
         })
       );
+
+      await this.vendorCache.saveFilteredVendors(cuid, vendorTableData, {
+        filters: filterOptions,
+        pagination: paginationOpts,
+      });
 
       return {
         success: true,

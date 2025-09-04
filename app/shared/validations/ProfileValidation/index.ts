@@ -1,5 +1,62 @@
 import { z } from 'zod';
 
+// User model fields that can be updated
+const userInfoSchema = z.object({
+  email: z.string().email().optional(),
+  // Note: password updates should be handled separately via password reset flow
+});
+
+// Profile model fields that can be updated
+const personalInfoSchema = z.object({
+  firstName: z.string().min(2).max(25).optional(),
+  lastName: z.string().min(2).max(25).optional(),
+  displayName: z.string().min(2).max(45).optional(),
+  location: z.string().max(100).optional(),
+  dob: z.date().optional(),
+  avatar: z
+    .object({
+      url: z.string().url().optional(),
+      filename: z.string().optional(),
+      key: z.string().optional(),
+    })
+    .optional(),
+  phoneNumber: z.string().max(20).optional(),
+  bio: z.string().min(2).max(700).optional(),
+  headline: z.string().min(2).max(50).optional(),
+});
+
+const settingsSchema = z.object({
+  theme: z.enum(['light', 'dark']).optional(),
+  loginType: z.enum(['otp', 'password']).optional(),
+  notifications: z
+    .object({
+      messages: z.boolean().optional(),
+      comments: z.boolean().optional(),
+      announcements: z.boolean().optional(),
+    })
+    .optional(),
+  gdprSettings: z
+    .object({
+      dataRetentionPolicy: z.enum(['standard', 'extended', 'minimal']).optional(),
+      dataProcessingConsent: z.boolean().optional(),
+    })
+    .optional(),
+});
+
+const identificationSchema = z.object({
+  idType: z.enum(['passport', 'drivers-license', 'national-id', 'corporation-license']).optional(),
+  issueDate: z.date().optional(),
+  expiryDate: z.date().optional(),
+  idNumber: z.string().optional(),
+  authority: z.string().optional(),
+  issuingState: z.string().optional(),
+});
+
+const profileMetaSchema = z.object({
+  timeZone: z.string().optional(),
+  lang: z.string().min(2).max(5).optional(), // e.g., 'en', 'fr'
+});
+
 const employeeInfoSchema = z.object({
   jobTitle: z.string().min(2).max(100).optional(),
   department: z.string().min(2).max(50).optional(),
@@ -27,16 +84,27 @@ const vendorInfoSchema = z.object({
 
 // Role-specific profile updates
 export const ProfileValidations = {
+  // Individual schema exports
+  updateUserInfo: userInfoSchema,
+  updatePersonalInfo: personalInfoSchema,
+  updateSettings: settingsSchema,
+  updateIdentification: identificationSchema,
+  updateProfileMeta: profileMetaSchema,
   updateEmployeeInfo: employeeInfoSchema,
-  // @deprecated Use VendorValidations for vendor business data updates
-  // This now only validates vendor reference data in the profile
   updateVendorInfo: vendorInfoSchema,
 
-  // Combined validation for profile creation/update
+  // Combined validation for comprehensive profile updates
   profileUpdate: z
     .object({
+      // User model updates
+      userInfo: userInfoSchema.optional(),
+      // Profile model updates
+      personalInfo: personalInfoSchema.optional(),
+      settings: settingsSchema.optional(),
+      identification: identificationSchema.optional(),
+      profileMeta: profileMetaSchema.optional(),
+      // Role-specific updates
       employeeInfo: employeeInfoSchema.optional(),
-      // Vendor info now only contains references, not business data
       vendorInfo: vendorInfoSchema.optional(),
     })
     .refine(

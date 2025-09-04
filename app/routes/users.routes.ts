@@ -12,6 +12,7 @@ import {
 } from '@shared/middlewares';
 import {
   PropertyValidations,
+  ProfileValidations,
   ClientValidations,
   UtilsValidations,
   UserValidations,
@@ -19,19 +20,6 @@ import {
 } from '@shared/validations';
 
 const router = Router();
-
-router.get(
-  '/:cuid/user_details/:uid',
-  isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
-  validateRequest({
-    params: UserValidations.userUidParam,
-  }),
-  asyncWrapper((req, res) => {
-    const userController = req.container.resolve<UserController>('userController');
-    return userController.getClientUserInfo(req, res);
-  })
-);
 
 router.get(
   '/:cuid/users',
@@ -139,6 +127,34 @@ router.get(
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.getAssignableUsers(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/profile_details',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid,
+    query: UserValidations.userIdParam,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getUserProfile(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/update_profile/:uid',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  validateRequest({
+    params: UserValidations.userUidParam,
+    body: ProfileValidations.profileUpdate,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.updateUserProfile(req, res);
   })
 );
 

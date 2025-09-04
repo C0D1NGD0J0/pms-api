@@ -156,6 +156,7 @@ export interface IUserDetailResponse {
       email: string;
     };
     roles: string[];
+    id: string;
     userType: 'employee' | 'vendor' | 'tenant';
   };
   employeeInfo?: IEmployeeDetailInfo;

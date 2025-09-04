@@ -93,13 +93,13 @@ export const AssignRoleSchema = z.object({
 export const FilteredUsersQuerySchema = z.object({
   role: z
     .union([
-      z.enum(['manager', 'tenant', 'staff', 'vendor']),
-      z.array(z.enum(['manager', 'tenant', 'staff', 'vendor'])),
+      z.enum(['manager', 'tenant', 'staff', 'vendor', 'admin']),
+      z.array(z.enum(['manager', 'tenant', 'staff', 'vendor', 'admin'])),
       // Comma-separated string that gets transformed to array
       z
         .string()
         .transform((val) => val.split(',').map((r) => r.trim()))
-        .pipe(z.array(z.enum(['manager', 'tenant', 'staff', 'vendor']))),
+        .pipe(z.array(z.enum(['manager', 'tenant', 'staff', 'vendor', 'admin']))),
     ])
     .optional(),
   department: z.string().optional(),

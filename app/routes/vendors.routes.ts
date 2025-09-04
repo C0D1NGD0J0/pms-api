@@ -67,4 +67,33 @@ router.get(
   })
 );
 
+// Get vendor business data for editing (primaryAccountHolder only)
+router.get(
+  '/:cuid/vendor/:vuid/edit',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
+  }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.getVendorForEdit(req, res);
+  })
+);
+
+// Update vendor business details (primaryAccountHolder only)
+router.patch(
+  '/:cuid/vendor/:vuid',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
+    body: VendorValidations.updateVendor,
+  }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.updateVendorDetails(req, res);
+  })
+);
+
 export default router;

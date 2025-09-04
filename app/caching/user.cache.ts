@@ -23,7 +23,7 @@ export class UserCache extends BaseCache {
       }
     });
 
-    this.USER_DETAIL_CACHE_TTL = convertTimeToSecondsAndMilliseconds('2h').seconds;
+    this.USER_DETAIL_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;
     this.LIST_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;
   }
 

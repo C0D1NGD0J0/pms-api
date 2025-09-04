@@ -6,7 +6,7 @@ export const UserUidParamSchema = z.object({
 });
 
 export const UserIdParamSchema = z.object({
-  uid: z.string().trim().min(8, 'User ID must be at least 8 characters'),
+  uid: z.string().trim().min(8, 'User ID must be at least 8 characters').optional(),
 });
 
 export const UserFilterQuerySchema = z.object({

@@ -97,6 +97,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
       notifications: {
         messages: { type: Boolean, default: false },
         comments: { type: Boolean, default: false },
+
         announcements: { type: Boolean, default: true },
       },
     },

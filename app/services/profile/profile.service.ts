@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { VendorService } from '@services/index';
+import { UserService } from '@services/user/user.service';
 import { IUserRoleType } from '@interfaces/user.interface';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
@@ -12,6 +13,7 @@ import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customEr
 
 interface IConstructor {
   vendorService: VendorService;
+  userService: UserService;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
@@ -22,13 +24,15 @@ export class ProfileService {
   private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
   private readonly vendorService: VendorService;
+  private readonly userService: UserService;
   private readonly logger: Logger;
 
-  constructor({ profileDAO, clientDAO, userDAO, vendorService }: IConstructor) {
+  constructor({ profileDAO, clientDAO, userDAO, vendorService, userService }: IConstructor) {
     this.profileDAO = profileDAO;
     this.clientDAO = clientDAO;
     this.userDAO = userDAO;
     this.vendorService = vendorService;
+    this.userService = userService;
     this.logger = createLogger('ProfileService');
   }
 
@@ -626,12 +630,79 @@ export class ProfileService {
   }
 
   /**
-   * Update profile with role-specific information
+   * Get user profile data for editing/display
    */
+  async getUserProfileForEdit(
+    context: any,
+    uid: string | undefined
+  ): Promise<ISuccessReturnData<any>> {
+    const currentUser = context.currentuser!;
+    const cuid = context.request.params.cuid;
+    const targetUid = uid || currentUser.uid;
+
+    try {
+      if (
+        targetUid !== currentUser.uid &&
+        !(
+          currentUser.client.cuid === cuid && ['manager', 'admin'].includes(currentUser.client.role)
+        )
+      ) {
+        throw new ForbiddenError({
+          message: t('auth.errors.insufficientPermissions'),
+        });
+      }
+
+      const userDoc = await this.userService.getClientUserInfo(context, targetUid);
+      if (!userDoc.success || !userDoc.data) {
+        throw new NotFoundError({
+          message: t('user.errors.notFound'),
+        });
+      }
+
+      const profileDoc = await this.profileDAO.getProfileByUserId(userDoc.data.profile.id);
+      if (!profileDoc) {
+        throw new NotFoundError({
+          message: t('profile.errors.notFound'),
+        });
+      }
+
+      const profileData = {
+        personalInfo: {
+          ...profileDoc.personalInfo,
+          uid: targetUid,
+          email: userDoc.data.profile.email,
+          isActive: true,
+        },
+        identification: profileDoc.identification,
+        settings: {
+          ...profileDoc.settings,
+          timeZone: profileDoc.timeZone,
+          lang: profileDoc.lang,
+        },
+        userType: userDoc.data.profile.userType,
+        roles: userDoc.data.profile.roles,
+      };
+
+      return {
+        success: true,
+        data: profileData,
+        message: t('profile.success.profileRetrieved'),
+      };
+    } catch (error) {
+      this.logger.error(`Error getting user profile for edit (uid: ${targetUid}):`, error);
+      throw error;
+    }
+  }
+
   async updateProfileWithRoleInfo(
     profileId: string,
     cuid: string,
     profileData: {
+      userInfo?: any;
+      personalInfo?: any;
+      settings?: any;
+      identification?: any;
+      profileMeta?: any;
       employeeInfo?: any;
       vendorInfo?: any;
       commonEmployeeInfo?: any;
@@ -648,7 +719,115 @@ export class ProfileService {
       }
 
       let result: IProfileDocument | null = null;
+      let hasUpdates = false;
+      let userId: string | null = null;
 
+      // Get the profile to extract user ID for User model updates
+      if (profileData.userInfo) {
+        const profile = await this.profileDAO.findFirst({ id: profileId });
+        if (!profile) {
+          throw new NotFoundError({ message: t('profile.errors.notFound') });
+        }
+        userId = profile.user.toString();
+      }
+
+      // Handle User model updates
+      if (profileData.userInfo && userId) {
+        const userValidation = ProfileValidations.updateUserInfo.safeParse(profileData.userInfo);
+        if (!userValidation.success) {
+          throw new BadRequestError({
+            message: `User info validation failed: ${userValidation.error.issues.map((i) => i.message).join(', ')}`,
+          });
+        }
+
+        await this.userService.updateUserInfo(userId, userValidation.data);
+        hasUpdates = true;
+      }
+
+      if (profileData.personalInfo) {
+        const personalValidation = ProfileValidations.updatePersonalInfo.safeParse(
+          profileData.personalInfo
+        );
+        if (!personalValidation.success) {
+          throw new BadRequestError({
+            message: `Personal info validation failed: ${personalValidation.error.issues.map((i) => i.message).join(', ')}`,
+          });
+        }
+
+        // Use dot notation for nested updates to avoid overwriting entire object
+        const updateFields: any = {};
+        Object.keys(personalValidation.data).forEach((key) => {
+          updateFields[`personalInfo.${key}`] = (personalValidation.data as any)[key];
+        });
+
+        result = await this.profileDAO.updateById(profileId, updateFields);
+        hasUpdates = true;
+      }
+
+      if (profileData.settings) {
+        const settingsValidation = ProfileValidations.updateSettings.safeParse(
+          profileData.settings
+        );
+        if (!settingsValidation.success) {
+          throw new BadRequestError({
+            message: `Settings validation failed: ${settingsValidation.error.issues.map((i) => i.message).join(', ')}`,
+          });
+        }
+
+        // Use dot notation for nested updates
+        const updateFields: any = {};
+        Object.keys(settingsValidation.data).forEach((key) => {
+          const validatedData = settingsValidation.data as any;
+          if (key === 'notifications' || key === 'gdprSettings') {
+            // Handle nested objects
+            Object.keys(validatedData[key]).forEach((subKey) => {
+              updateFields[`settings.${key}.${subKey}`] = validatedData[key][subKey];
+            });
+          } else {
+            updateFields[`settings.${key}`] = validatedData[key];
+          }
+        });
+
+        result = await this.profileDAO.updateById(profileId, updateFields);
+        hasUpdates = true;
+      }
+
+      // Handle Profile model updates - Identification
+      if (profileData.identification) {
+        const identificationValidation = ProfileValidations.updateIdentification.safeParse(
+          profileData.identification
+        );
+        if (!identificationValidation.success) {
+          throw new BadRequestError({
+            message: `Identification validation failed: ${identificationValidation.error.issues.map((i) => i.message).join(', ')}`,
+          });
+        }
+
+        const updateFields: any = {};
+        Object.keys(identificationValidation.data).forEach((key) => {
+          updateFields[`identification.${key}`] = (identificationValidation.data as any)[key];
+        });
+
+        result = await this.profileDAO.updateById(profileId, updateFields);
+        hasUpdates = true;
+      }
+
+      // Handle Profile model updates - Meta information
+      if (profileData.profileMeta) {
+        const metaValidation = ProfileValidations.updateProfileMeta.safeParse(
+          profileData.profileMeta
+        );
+        if (!metaValidation.success) {
+          throw new BadRequestError({
+            message: `Profile meta validation failed: ${metaValidation.error.issues.map((i) => i.message).join(', ')}`,
+          });
+        }
+
+        result = await this.profileDAO.updateById(profileId, metaValidation.data);
+        hasUpdates = true;
+      }
+
+      // Handle role-specific updates
       if (profileData.employeeInfo) {
         const employeeResult = await this.updateEmployeeInfo(
           profileId,
@@ -657,6 +836,7 @@ export class ProfileService {
           userRole
         );
         result = employeeResult.data;
+        hasUpdates = true;
       }
 
       if (profileData.vendorInfo) {
@@ -667,6 +847,7 @@ export class ProfileService {
           userRole
         );
         result = vendorResult.data;
+        hasUpdates = true;
       }
 
       if (profileData.commonEmployeeInfo) {
@@ -676,6 +857,7 @@ export class ProfileService {
           userRole
         );
         result = commonEmployeeResult.data;
+        hasUpdates = true;
       }
 
       if (profileData.commonVendorInfo) {
@@ -685,17 +867,23 @@ export class ProfileService {
           userRole
         );
         result = commonVendorResult.data;
+        hasUpdates = true;
       }
 
-      if (!result) {
+      if (!hasUpdates) {
         throw new BadRequestError({
-          message: 'No valid role-specific information provided',
+          message: 'No valid information provided for update',
         });
+      }
+
+      // if no role-specific update was performed, get the updated profile
+      if (!result) {
+        result = await this.profileDAO.findFirst({ id: profileId });
       }
 
       return {
         success: true,
-        data: result,
+        data: result!,
         message: t('profile.success.profileUpdated'),
       };
     } catch (error) {

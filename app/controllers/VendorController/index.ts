@@ -98,4 +98,109 @@ export class VendorController {
 
     res.status(httpStatusCodes.OK).json(result);
   };
+
+  getVendorForEdit = async (req: AppRequest, res: Response): Promise<void> => {
+    const { cuid, vuid } = req.params;
+    const currentUser = req.context.currentuser!;
+
+    try {
+      // Get vendor document
+      const vendorDoc = await this.vendorService.getVendorById(vuid);
+      if (!vendorDoc) {
+        res.status(httpStatusCodes.NOT_FOUND).json({
+          success: false,
+          message: 'Vendor not found',
+        });
+        return;
+      }
+
+      // Find the client connection for this vendor
+      const clientConnection = vendorDoc.connectedClients?.find((cc: any) => cc.cuid === cuid);
+      if (!clientConnection) {
+        res.status(httpStatusCodes.NOT_FOUND).json({
+          success: false,
+          message: 'Vendor is not connected to this client',
+        });
+        return;
+      }
+
+      // Check if current user is the primary account holder
+      if (clientConnection.primaryAccountHolder?.toString() !== currentUser.uid) {
+        res.status(httpStatusCodes.FORBIDDEN).json({
+          success: false,
+          message: 'Only primary account holders can access vendor edit data',
+        });
+        return;
+      }
+
+      // Return vendor data formatted for editing
+      const vendorData = {
+        vuid: vendorDoc.vuid,
+        companyName: vendorDoc.companyName,
+        businessType: vendorDoc.businessType,
+        registrationNumber: vendorDoc.registrationNumber,
+        taxId: vendorDoc.taxId,
+        servicesOffered: vendorDoc.servicesOffered,
+        address: vendorDoc.address,
+        contactPerson: vendorDoc.contactPerson,
+        serviceAreas: vendorDoc.serviceAreas,
+        insuranceInfo: vendorDoc.insuranceInfo,
+        yearsInBusiness: vendorDoc.yearsInBusiness,
+        isConnected: clientConnection.isConnected,
+        primaryAccountHolder: clientConnection.primaryAccountHolder,
+      };
+
+      res.status(httpStatusCodes.OK).json({
+        success: true,
+        data: vendorData,
+        message: 'Vendor data retrieved successfully',
+      });
+    } catch (error) {
+      this.log.error('Error retrieving vendor for edit:', error);
+      res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Error retrieving vendor data',
+      });
+    }
+  };
+
+  updateVendorDetails = async (req: AppRequest, res: Response): Promise<void> => {
+    const { cuid, vuid } = req.params;
+    const updateData = req.body;
+    const currentUser = req.context.currentuser!;
+
+    // Check if user is primary account holder for this vendor
+    const vendorDoc = await this.vendorService.getVendorById(vuid);
+    if (!vendorDoc) {
+      res.status(httpStatusCodes.NOT_FOUND).json({
+        success: false,
+        message: 'Vendor not found',
+      });
+      return;
+    }
+
+    // Find the client connection for this vendor
+    const clientConnection = vendorDoc.connectedClients?.find((cc: any) => cc.cuid === cuid);
+    if (!clientConnection) {
+      res.status(httpStatusCodes.NOT_FOUND).json({
+        success: false,
+        message: 'Vendor is not connected to this client',
+      });
+      return;
+    }
+
+    // Check if current user is the primary account holder
+    if (clientConnection.primaryAccountHolder?.toString() !== currentUser.uid) {
+      res.status(httpStatusCodes.FORBIDDEN).json({
+        success: false,
+        message: 'Only primary account holders can update vendor business information',
+      });
+      return;
+    }
+
+    // Update vendor information
+    const result = await this.vendorService.updateVendorInfo(vuid, updateData);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

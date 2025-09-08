@@ -63,14 +63,31 @@ describe('Invitation Metadata Transfer', () => {
       off: jest.fn(),
     } as any;
 
-    // Create ProfileService instance
+    // Create ProfileService instance with required dependencies
+    const mockVendorService = {
+      getVendorByUserId: jest.fn(),
+      updateVendorInfo: jest.fn(),
+      createVendor: jest.fn(),
+    };
+    const mockUserService = {
+      getClientUserInfo: jest.fn(),
+      updateUserInfo: jest.fn(),
+    };
+    
     profileService = new ProfileService({
       profileDAO,
       clientDAO,
       userDAO,
+      vendorService: mockVendorService,
+      userService: mockUserService,
     });
 
-    // Create InvitationService instance
+    // Create InvitationService instance with required dependencies
+    const mockVendorServiceForInvitation = {
+      createVendor: jest.fn(),
+      linkVendorToClient: jest.fn(),
+    };
+    
     invitationService = new InvitationService({
       invitationDAO,
       emailQueue,
@@ -80,6 +97,7 @@ describe('Invitation Metadata Transfer', () => {
       invitationQueue,
       emitterService,
       profileService,
+      vendorService: mockVendorServiceForInvitation,
     });
 
     // Spy on the initializeRoleInfo method

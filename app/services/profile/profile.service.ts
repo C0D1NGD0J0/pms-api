@@ -123,108 +123,23 @@ export class ProfileService {
       // Update profile vendorInfo to maintain reference (if needed)
       await this.ensureClientRoleInfo(profileId, cuid);
 
+      // Get the updated profile to return current data
+      const updatedProfile = await this.profileDAO.findFirst({ id: profileId });
+      if (!updatedProfile) {
+        throw new NotFoundError({
+          message: t('profile.errors.notFound'),
+        });
+      }
+
       this.logger.info(`Vendor info updated for profile ${profileId}, client ${cuid}`);
 
       return {
         success: true,
-        data: profile,
+        data: updatedProfile,
         message: t('profile.success.vendorInfoUpdated'),
       };
     } catch (error) {
       this.logger.error(`Error updating vendor info for profile ${profileId}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get role-specific information for a profile and client
-   */
-  async getRoleSpecificInfo(
-    profileId: string,
-    cuid: string,
-    requestingUserRole: IUserRoleType
-  ): Promise<
-    ISuccessReturnData<{
-      role?: string;
-      linkedVendorUid?: string;
-      isConnected?: boolean;
-      isPrimaryVendor?: boolean;
-      vendorInfo?: any;
-      employeeInfo?: any;
-    }>
-  > {
-    try {
-      const result = await this.getClientRoleInfo(profileId, cuid);
-
-      if (!result) {
-        throw new NotFoundError({
-          message: t('profile.errors.notFound'),
-        });
-      }
-
-      const filteredResult: any = {
-        role: result.role,
-        isConnected: result.isConnected,
-        isPrimaryVendor: result.isPrimaryVendor,
-      };
-
-      if (result.linkedVendorUid) {
-        filteredResult.linkedVendorUid = result.linkedVendorUid;
-      }
-
-      // Include relevant info based on role and permissions
-      if (result.vendorInfo && requestingUserRole === 'vendor') {
-        filteredResult.vendorInfo = result.vendorInfo;
-      }
-
-      if (result.employeeInfo && ['manager', 'staff', 'admin'].includes(requestingUserRole)) {
-        filteredResult.employeeInfo = result.employeeInfo;
-      }
-
-      return {
-        success: true,
-        data: filteredResult,
-        message: t('profile.success.roleInfoRetrieved'),
-      };
-    } catch (error) {
-      this.logger.error(`Error getting role-specific info for profile ${profileId}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Clear role-specific information when user role changes
-   */
-  async clearRoleSpecificInfo(
-    profileId: string,
-    cuid: string,
-    roleType: 'employee' | 'vendor',
-    requestingUserRole: IUserRoleType
-  ): Promise<ISuccessReturnData<IProfileDocument>> {
-    try {
-      if (!['manager', 'admin'].includes(requestingUserRole)) {
-        throw new ForbiddenError({
-          message: t('auth.errors.insufficientPermissions'),
-        });
-      }
-
-      const result = await this.profileDAO.clearRoleSpecificInfo(profileId, cuid, roleType);
-
-      if (!result) {
-        throw new NotFoundError({
-          message: t('profile.errors.notFound'),
-        });
-      }
-
-      this.logger.info(`Cleared ${roleType} info for profile ${profileId}, client ${cuid}`);
-
-      return {
-        success: true,
-        data: result,
-        message: t('profile.success.roleInfoCleared'),
-      };
-    } catch (error) {
-      this.logger.error(`Error clearing ${roleType} info for profile ${profileId}:`, error);
       throw error;
     }
   }
@@ -274,79 +189,6 @@ export class ProfileService {
       }
     } catch (error) {
       this.logger.error(`Error ensuring client role info: ${error.message}`);
-      throw error;
-    }
-  }
-
-  /**
-   * Helper method to get role-specific information for a profile and client
-   * Now implemented using both ProfileDAO and UserDAO
-   */
-  private async getClientRoleInfo(
-    profileId: string,
-    cuid: string
-  ): Promise<{
-    role?: string;
-    linkedVendorUid?: string;
-    isConnected?: boolean;
-    isPrimaryVendor?: boolean;
-    vendorInfo?: any;
-    employeeInfo?: any;
-  } | null> {
-    try {
-      // Get the profile info
-      const profileInfo = await this.profileDAO.getProfileInfo(profileId);
-      if (!profileInfo) {
-        return null;
-      }
-
-      // Get the user if userId exists
-      const userId = profileInfo.userId;
-      if (!userId) {
-        return null;
-      }
-
-      const user = await this.userDAO.getUserById(userId);
-      if (!user) {
-        return null;
-      }
-
-      // Find the client connection in user's cuids array
-      const clientConnection = user.cuids.find((c) => c.cuid === cuid);
-      if (!clientConnection) {
-        return null;
-      }
-
-      const result: any = {
-        role: clientConnection.roles[0], // Taking first role as primary
-        isConnected: clientConnection.isConnected,
-      };
-
-      if (clientConnection.linkedVendorUid) {
-        result.linkedVendorUid = clientConnection.linkedVendorUid;
-        result.isPrimaryVendor = false;
-      } else if (clientConnection.roles.includes('vendor' as IUserRoleType)) {
-        // If this is a vendor without linkedVendorUid, it's a primary vendor
-        result.isPrimaryVendor = true;
-      }
-
-      // Include relevant info based on role
-      if (clientConnection.roles.includes('vendor' as IUserRoleType) && profileInfo.vendorInfo) {
-        result.vendorInfo = profileInfo.vendorInfo;
-      }
-
-      if (
-        ['manager', 'admin', 'staff'].some((role) =>
-          clientConnection.roles.includes(role as IUserRoleType)
-        ) &&
-        profileInfo.employeeInfo
-      ) {
-        result.employeeInfo = profileInfo.employeeInfo;
-      }
-
-      return result;
-    } catch (error) {
-      this.logger.error(`Error getting role-specific info: ${error.message}`);
       throw error;
     }
   }
@@ -617,207 +459,216 @@ export class ProfileService {
   }
 
   /**
-   * Update user profile with proper permission checking
-   * This method handles the complete profile update flow including:
-   * - Permission validation
-   * - User existence check
-   * - Profile ID retrieval
-   * - Delegating to updateProfileWithRoleInfo
+   * Validate permissions and retrieve user profile context for updates
+   */
+  private async validateAndGetProfileContext(context: IRequestContext): Promise<{
+    profileId: string;
+    userRole: IUserRoleType;
+    userId: string;
+  }> {
+    const currentUser = context.currentuser!;
+    const { cuid } = context.request.params;
+    const { uid } = context.request.query;
+
+    if (
+      currentUser.uid !== uid &&
+      !(currentUser.client.cuid === cuid && ['manager', 'admin'].includes(currentUser.client.role))
+    ) {
+      throw new ForbiddenError({
+        message: t('auth.errors.insufficientPermissions'),
+      });
+    }
+
+    const userData = await this.userService.getClientUserInfo(context, uid);
+    if (!userData.success || !userData.data) {
+      throw new NotFoundError({
+        message: t('user.errors.notFound'),
+      });
+    }
+
+    const profileDoc = await this.profileDAO.getProfileByUserId(uid);
+    if (!profileDoc) {
+      throw new NotFoundError({
+        message: t('profile.errors.notFound'),
+      });
+    }
+
+    return {
+      profileId: profileDoc._id.toString(),
+      userRole: userData.data.profile.roles?.[0] as IUserRoleType,
+      userId: profileDoc.user.toString(),
+    };
+  }
+
+  /**
+   * Process and validate profile data updates
+   */
+  private async processProfileUpdates(
+    profileData: IProfileUpdateData,
+    profileId: string,
+    userId: string,
+    cuid: string,
+    userRole: IUserRoleType
+  ): Promise<{ result: IProfileDocument | null; hasUpdates: boolean }> {
+    // Validate the main profile data
+    const validation = ProfileValidations.profileUpdate.safeParse(profileData);
+    if (!validation.success) {
+      throw new BadRequestError({
+        message: `Validation failed: ${validation.error.issues.map((i) => i.message).join(', ')}`,
+      });
+    }
+
+    let result: IProfileDocument | null = null;
+    let hasUpdates = false;
+
+    // Handle User model updates
+    if (profileData.userInfo) {
+      const userValidation = ProfileValidations.updateUserInfo.safeParse(profileData.userInfo);
+      if (!userValidation.success) {
+        throw new BadRequestError({
+          message: `User info validation failed: ${userValidation.error.issues.map((i) => i.message).join(', ')}`,
+        });
+      }
+
+      await this.userService.updateUserInfo(userId, userValidation.data);
+      hasUpdates = true;
+    }
+
+    // Handle personal info updates
+    if (profileData.personalInfo) {
+      const personalValidation = ProfileValidations.updatePersonalInfo.safeParse(
+        profileData.personalInfo
+      );
+      if (!personalValidation.success) {
+        throw new BadRequestError({
+          message: `Personal info validation failed: ${personalValidation.error.issues.map((i) => i.message).join(', ')}`,
+        });
+      }
+
+      const updateFields: any = {};
+      Object.keys(personalValidation.data).forEach((key) => {
+        updateFields[`personalInfo.${key}`] = (personalValidation.data as any)[key];
+      });
+
+      result = await this.profileDAO.updateById(profileId, updateFields);
+      hasUpdates = true;
+    }
+
+    // Handle settings updates
+    if (profileData.settings) {
+      const settingsValidation = ProfileValidations.updateSettings.safeParse(profileData.settings);
+      if (!settingsValidation.success) {
+        throw new BadRequestError({
+          message: `Settings validation failed: ${settingsValidation.error.issues.map((i) => i.message).join(', ')}`,
+        });
+      }
+
+      const updateFields: any = {};
+      Object.keys(settingsValidation.data).forEach((key) => {
+        const validatedData = settingsValidation.data as any;
+        if (key === 'notifications' || key === 'gdprSettings') {
+          // Handle nested objects - only update the fields that were actually sent
+          if (validatedData[key] && typeof validatedData[key] === 'object') {
+            Object.keys(validatedData[key]).forEach((subKey) => {
+              updateFields[`settings.${key}.${subKey}`] = validatedData[key][subKey];
+            });
+          }
+        } else {
+          updateFields[`settings.${key}`] = validatedData[key];
+        }
+      });
+
+      result = await this.profileDAO.updateById(profileId, updateFields);
+      hasUpdates = true;
+    }
+
+    // Handle identification updates
+    if (profileData.identification) {
+      const identificationValidation = ProfileValidations.updateIdentification.safeParse(
+        profileData.identification
+      );
+      if (!identificationValidation.success) {
+        throw new BadRequestError({
+          message: `Identification validation failed: ${identificationValidation.error.issues.map((i) => i.message).join(', ')}`,
+        });
+      }
+
+      const updateFields: any = {};
+      Object.keys(identificationValidation.data).forEach((key) => {
+        updateFields[`identification.${key}`] = (identificationValidation.data as any)[key];
+      });
+
+      result = await this.profileDAO.updateById(profileId, updateFields);
+      hasUpdates = true;
+    }
+
+    // Handle profile meta updates
+    if (profileData.profileMeta) {
+      const metaValidation = ProfileValidations.updateProfileMeta.safeParse(
+        profileData.profileMeta
+      );
+      if (!metaValidation.success) {
+        throw new BadRequestError({
+          message: `Profile meta validation failed: ${metaValidation.error.issues.map((i) => i.message).join(', ')}`,
+        });
+      }
+
+      // Use dot notation for nested updates to avoid overwriting entire object
+      const updateFields: any = {};
+      Object.keys(metaValidation.data).forEach((key) => {
+        updateFields[`profileMeta.${key}`] = (metaValidation.data as any)[key];
+      });
+
+      result = await this.profileDAO.updateById(profileId, updateFields);
+      hasUpdates = true;
+    }
+
+    // Handle role-specific updates
+    if (profileData.employeeInfo) {
+      const employeeResult = await this.updateEmployeeInfo(
+        profileId,
+        cuid,
+        profileData.employeeInfo,
+        userRole
+      );
+      result = employeeResult.data;
+      hasUpdates = true;
+    }
+
+    if (profileData.vendorInfo) {
+      const vendorResult = await this.updateVendorInfo(
+        profileId,
+        cuid,
+        profileData.vendorInfo,
+        userRole
+      );
+      result = vendorResult.data;
+      hasUpdates = true;
+    }
+
+    return { result, hasUpdates };
+  }
+
+  /**
+   * Update user profile with proper permission checking and validation
    */
   async updateUserProfile(
     context: IRequestContext,
     profileData: IProfileUpdateData
   ): Promise<ISuccessReturnData<IProfileDocument>> {
-    const currentUser = context.currentuser!;
-    const { cuid } = context.request.params;
     const { uid } = context.request.query;
+
     try {
-      if (
-        currentUser.uid !== uid &&
-        !(
-          currentUser.client.cuid === cuid && ['manager', 'admin'].includes(currentUser.client.role)
-        )
-      ) {
-        throw new ForbiddenError({
-          message: t('auth.errors.insufficientPermissions'),
-        });
-      }
+      const { profileId, userRole, userId } = await this.validateAndGetProfileContext(context);
+      const { cuid } = context.request.params;
 
-      const userData = await this.userService.getClientUserInfo(context, uid);
-      if (!userData.success || !userData.data) {
-        throw new NotFoundError({
-          message: t('user.errors.notFound'),
-        });
-      }
-
-      const profileDoc = await this.profileDAO.getProfileByUserId(uid);
-      if (!profileDoc) {
-        throw new NotFoundError({
-          message: t('profile.errors.notFound'),
-        });
-      }
-
-      // Get user role from the returned data
-      const userRole = userData.data.profile.roles?.[0] as IUserRoleType;
-
-      // Delegate to the existing method
-      return await this.updateProfileWithRoleInfo(
-        profileDoc._id.toString(),
-        cuid,
+      const { result, hasUpdates } = await this.processProfileUpdates(
         profileData,
+        profileId,
+        userId,
+        cuid,
         userRole
       );
-    } catch (error) {
-      this.logger.error(`Error updating user profile for uid ${uid}:`, error);
-      throw error;
-    }
-  }
-
-  async updateProfileWithRoleInfo(
-    profileId: string,
-    cuid: string,
-    profileData: IProfileUpdateData,
-    userRole: IUserRoleType
-  ): Promise<ISuccessReturnData<IProfileDocument>> {
-    try {
-      const validation = ProfileValidations.profileUpdate.safeParse(profileData);
-      if (!validation.success) {
-        throw new BadRequestError({
-          message: `Validation failed: ${validation.error.issues.map((i) => i.message).join(', ')}`,
-        });
-      }
-
-      let result: IProfileDocument | null = null;
-      let hasUpdates = false;
-      let userId: string | null = null;
-
-      // Get the profile to extract user ID for User model updates
-      if (profileData.userInfo) {
-        const profile = await this.profileDAO.findFirst({ id: profileId });
-        if (!profile) {
-          throw new NotFoundError({ message: t('profile.errors.notFound') });
-        }
-        userId = profile.user.toString();
-      }
-
-      // Handle User model updates
-      if (profileData.userInfo && userId) {
-        const userValidation = ProfileValidations.updateUserInfo.safeParse(profileData.userInfo);
-        if (!userValidation.success) {
-          throw new BadRequestError({
-            message: `User info validation failed: ${userValidation.error.issues.map((i) => i.message).join(', ')}`,
-          });
-        }
-
-        await this.userService.updateUserInfo(userId, userValidation.data);
-        hasUpdates = true;
-      }
-
-      if (profileData.personalInfo) {
-        const personalValidation = ProfileValidations.updatePersonalInfo.safeParse(
-          profileData.personalInfo
-        );
-        if (!personalValidation.success) {
-          throw new BadRequestError({
-            message: `Personal info validation failed: ${personalValidation.error.issues.map((i) => i.message).join(', ')}`,
-          });
-        }
-
-        // Use dot notation for nested updates to avoid overwriting entire object
-        const updateFields: any = {};
-        Object.keys(personalValidation.data).forEach((key) => {
-          updateFields[`personalInfo.${key}`] = (personalValidation.data as any)[key];
-        });
-
-        result = await this.profileDAO.updateById(profileId, updateFields);
-        hasUpdates = true;
-      }
-
-      if (profileData.settings) {
-        const settingsValidation = ProfileValidations.updateSettings.safeParse(
-          profileData.settings
-        );
-        if (!settingsValidation.success) {
-          throw new BadRequestError({
-            message: `Settings validation failed: ${settingsValidation.error.issues.map((i) => i.message).join(', ')}`,
-          });
-        }
-
-        // Use dot notation for nested updates
-        const updateFields: any = {};
-        Object.keys(settingsValidation.data).forEach((key) => {
-          const validatedData = settingsValidation.data as any;
-          if (key === 'notifications' || key === 'gdprSettings') {
-            // Handle nested objects
-            Object.keys(validatedData[key]).forEach((subKey) => {
-              updateFields[`settings.${key}.${subKey}`] = validatedData[key][subKey];
-            });
-          } else {
-            updateFields[`settings.${key}`] = validatedData[key];
-          }
-        });
-
-        result = await this.profileDAO.updateById(profileId, updateFields);
-        hasUpdates = true;
-      }
-
-      // Handle Profile model updates - Identification
-      if (profileData.identification) {
-        const identificationValidation = ProfileValidations.updateIdentification.safeParse(
-          profileData.identification
-        );
-        if (!identificationValidation.success) {
-          throw new BadRequestError({
-            message: `Identification validation failed: ${identificationValidation.error.issues.map((i) => i.message).join(', ')}`,
-          });
-        }
-
-        const updateFields: any = {};
-        Object.keys(identificationValidation.data).forEach((key) => {
-          updateFields[`identification.${key}`] = (identificationValidation.data as any)[key];
-        });
-
-        result = await this.profileDAO.updateById(profileId, updateFields);
-        hasUpdates = true;
-      }
-
-      // Handle Profile model updates - Meta information
-      if (profileData.profileMeta) {
-        const metaValidation = ProfileValidations.updateProfileMeta.safeParse(
-          profileData.profileMeta
-        );
-        if (!metaValidation.success) {
-          throw new BadRequestError({
-            message: `Profile meta validation failed: ${metaValidation.error.issues.map((i) => i.message).join(', ')}`,
-          });
-        }
-
-        result = await this.profileDAO.updateById(profileId, metaValidation.data);
-        hasUpdates = true;
-      }
-
-      // Handle role-specific updates
-      if (profileData.employeeInfo) {
-        const employeeResult = await this.updateEmployeeInfo(
-          profileId,
-          cuid,
-          profileData.employeeInfo,
-          userRole
-        );
-        result = employeeResult.data;
-        hasUpdates = true;
-      }
-
-      if (profileData.vendorInfo) {
-        const vendorResult = await this.updateVendorInfo(
-          profileId,
-          cuid,
-          profileData.vendorInfo,
-          userRole
-        );
-        result = vendorResult.data;
-        hasUpdates = true;
-      }
 
       if (!hasUpdates) {
         throw new BadRequestError({
@@ -825,18 +676,16 @@ export class ProfileService {
         });
       }
 
-      // if no role-specific update was performed, get the updated profile
-      if (!result) {
-        result = await this.profileDAO.findFirst({ id: profileId });
-      }
+      // If no role-specific update was performed, get the updated profile
+      const finalResult = result || (await this.profileDAO.findFirst({ id: profileId }));
 
       return {
         success: true,
-        data: result!,
+        data: finalResult!,
         message: t('profile.success.profileUpdated'),
       };
     } catch (error) {
-      this.logger.error(`Error updating profile with role info ${profileId}:`, error);
+      this.logger.error(`Error updating user profile for uid ${uid}:`, error);
       throw error;
     }
   }

@@ -86,27 +86,7 @@ export class UserController {
   };
 
   updateUserProfile = async (req: AppRequest, res: Response): Promise<void> => {
-    const {
-      userInfo,
-      personalInfo,
-      settings,
-      identification,
-      profileMeta,
-      employeeInfo,
-      vendorInfo,
-    } = req.body;
-
-    const profileData = {
-      userInfo,
-      personalInfo,
-      settings,
-      identification,
-      profileMeta,
-      employeeInfo,
-      vendorInfo,
-    };
-
-    const result = await this.profileService.updateUserProfile(req.context, profileData);
+    const result = await this.profileService.updateUserProfile(req.context, req.body);
 
     res.status(httpStatusCodes.OK).json(result);
   };

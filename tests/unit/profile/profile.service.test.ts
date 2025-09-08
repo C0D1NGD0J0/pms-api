@@ -39,18 +39,31 @@ describe('ProfileService', () => {
   let mockProfileDAO: any;
   let mockClientDAO: any;
   let mockUserDAO: any;
+  let mockVendorService: any;
+  let mockUserService: any;
   let mockTranslation: any;
 
   beforeEach(() => {
     mockProfileDAO = createMockProfileDAO();
     mockClientDAO = createMockClientDAO();
     mockUserDAO = createMockUserDAO();
+    mockVendorService = {
+      getVendorByUserId: jest.fn(),
+      updateVendorInfo: jest.fn(),
+      createVendor: jest.fn(),
+    };
+    mockUserService = {
+      getClientUserInfo: jest.fn(),
+      updateUserInfo: jest.fn(),
+    };
     mockTranslation = createMockTranslationFunction();
 
     profileService = new ProfileService({
       profileDAO: mockProfileDAO,
       clientDAO: mockClientDAO,
       userDAO: mockUserDAO,
+      vendorService: mockVendorService,
+      userService: mockUserService,
     });
 
     (global as any).t = mockTranslation;
@@ -58,7 +71,7 @@ describe('ProfileService', () => {
     jest.clearAllMocks();
   });
 
-  describe('updateRoleInfo', () => {
+  describe('updateEmployeeInfo', () => {
     it('should successfully update employee information', async () => {
       const profileId = new Types.ObjectId().toString();
       const cuid = 'test-cuid';
@@ -78,49 +91,21 @@ describe('ProfileService', () => {
         success: true,
         data: employeeInfo,
       });
-      mockProfileDAO.ensureClientRoleInfo.mockResolvedValue(true);
+      mockClientDAO.getClientByCuid.mockResolvedValue({ displayName: 'Test Client' });
+      mockUserDAO.getUserById.mockResolvedValue({ cuids: [] });
+      mockUserDAO.updateById.mockResolvedValue(true);
       mockProfileDAO.updateEmployeeInfo.mockResolvedValue(mockUpdatedProfile);
 
-      const result = await profileService.updateRoleInfo(
+      const result = await profileService.updateEmployeeInfo(
         profileId,
         cuid,
         employeeInfo,
-        userRole,
-        'employee'
+        userRole
       );
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(mockUpdatedProfile);
       expect(mockProfileDAO.updateEmployeeInfo).toHaveBeenCalledWith(profileId, cuid, employeeInfo);
-    });
-
-    it('should successfully update vendor information', async () => {
-      const profileId = new Types.ObjectId().toString();
-      const cuid = 'test-cuid';
-      const vendorInfo = createMockVendorInfo();
-      const userRole = 'vendor';
-      const mockUpdatedProfile = createMockProfile({
-        clientRoleInfo: [
-          {
-            cuid,
-            role: 'vendor',
-            vendorInfo,
-          },
-        ],
-      });
-
-      mockUpdateVendorInfoSafeParse.mockReturnValue({
-        success: true,
-        data: vendorInfo,
-      });
-      mockProfileDAO.ensureClientRoleInfo.mockResolvedValue(true);
-      mockProfileDAO.updateVendorInfo.mockResolvedValue(mockUpdatedProfile);
-
-      const result = await profileService.updateRoleInfo(profileId, cuid, vendorInfo, userRole, 'vendor');
-
-      expect(result.success).toBe(true);
-      expect(result.data).toEqual(mockUpdatedProfile);
-      expect(mockProfileDAO.updateVendorInfo).toHaveBeenCalledWith(profileId, cuid, vendorInfo);
     });
 
     it('should throw BadRequestError for invalid employee data', async () => {
@@ -137,7 +122,7 @@ describe('ProfileService', () => {
       });
 
       await expect(
-        profileService.updateRoleInfo(profileId, cuid, invalidEmployeeInfo, userRole, 'employee')
+        profileService.updateEmployeeInfo(profileId, cuid, invalidEmployeeInfo, userRole)
       ).rejects.toThrow(BadRequestError);
     });
 
@@ -153,8 +138,47 @@ describe('ProfileService', () => {
       });
 
       await expect(
-        profileService.updateRoleInfo(profileId, cuid, employeeInfo, userRole, 'employee')
+        profileService.updateEmployeeInfo(profileId, cuid, employeeInfo, userRole)
       ).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe('updateVendorInfo', () => {
+    it('should successfully update vendor information', async () => {
+      const profileId = new Types.ObjectId().toString();
+      const cuid = 'test-cuid';
+      const vendorInfo = createMockVendorInfo();
+      const userRole = 'vendor';
+      const mockProfile = createMockProfile({ user: new Types.ObjectId() });
+      const mockVendor = { _id: new Types.ObjectId() };
+      const mockUpdatedProfile = createMockProfile({
+        clientRoleInfo: [
+          {
+            cuid,
+            role: 'vendor',
+            vendorInfo,
+          },
+        ],
+      });
+
+      mockProfileDAO.findFirst.mockResolvedValue(mockProfile);
+      mockVendorService.getVendorByUserId.mockResolvedValue(mockVendor);
+      mockVendorService.updateVendorInfo.mockResolvedValue(true);
+      mockClientDAO.getClientByCuid.mockResolvedValue({ displayName: 'Test Client' });
+      mockUserDAO.getUserById.mockResolvedValue({ cuids: [] });
+      mockUserDAO.updateById.mockResolvedValue(true);
+      mockProfileDAO.findFirst.mockResolvedValueOnce(mockProfile).mockResolvedValueOnce(mockUpdatedProfile);
+
+      const result = await profileService.updateVendorInfo(
+        profileId,
+        cuid,
+        vendorInfo,
+        userRole
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(mockUpdatedProfile);
+      expect(mockVendorService.updateVendorInfo).toHaveBeenCalledWith(mockVendor._id.toString(), vendorInfo);
     });
 
     it('should throw ForbiddenError for non-vendor user role', async () => {
@@ -163,134 +187,82 @@ describe('ProfileService', () => {
       const vendorInfo = createMockVendorInfo();
       const userRole = 'manager'; // Invalid role for vendor operations
 
-      mockUpdateVendorInfoSafeParse.mockReturnValue({
-        success: true,
-        data: vendorInfo,
-      });
-
       await expect(
-        profileService.updateRoleInfo(profileId, cuid, vendorInfo, userRole, 'vendor')
+        profileService.updateVendorInfo(profileId, cuid, vendorInfo, userRole)
       ).rejects.toThrow(ForbiddenError);
     });
-  });
 
-  describe('updateCommonRoleInfo', () => {
-    it('should successfully update common employee information', async () => {
+    it('should throw NotFoundError when vendor entity not found', async () => {
       const profileId = new Types.ObjectId().toString();
-      const employeeInfo = createMockEmployeeInfo();
-      const userRole = 'admin';
-      const mockUpdatedProfile = createMockProfile({ employeeInfo });
-
-      mockUpdateEmployeeInfoSafeParse.mockReturnValue({
-        success: true,
-        data: employeeInfo,
-      });
-      mockProfileDAO.updateCommonEmployeeInfo.mockResolvedValue(mockUpdatedProfile);
-
-      const result = await profileService.updateCommonRoleInfo(
-        profileId,
-        employeeInfo,
-        userRole,
-        'employee'
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.data).toEqual(mockUpdatedProfile);
-      expect(mockProfileDAO.updateCommonEmployeeInfo).toHaveBeenCalledWith(profileId, employeeInfo);
-    });
-
-    it('should successfully update common vendor information', async () => {
-      const profileId = new Types.ObjectId().toString();
+      const cuid = 'test-cuid';
       const vendorInfo = createMockVendorInfo();
-      const userRole = 'vendor'; // Use vendor role for vendor operations
-      const mockUpdatedProfile = createMockProfile({ vendorInfo });
+      const userRole = 'vendor';
+      const mockProfile = createMockProfile({ user: new Types.ObjectId() });
 
-      mockUpdateVendorInfoSafeParse.mockReturnValue({
-        success: true,
-        data: vendorInfo,
-      });
-      mockProfileDAO.updateCommonVendorInfo.mockResolvedValue(mockUpdatedProfile);
+      mockProfileDAO.findFirst.mockResolvedValue(mockProfile);
+      mockVendorService.getVendorByUserId.mockResolvedValue(null);
 
-      const result = await profileService.updateCommonRoleInfo(
-        profileId,
-        vendorInfo,
-        userRole,
-        'vendor'
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.data).toEqual(mockUpdatedProfile);
-      expect(mockProfileDAO.updateCommonVendorInfo).toHaveBeenCalledWith(profileId, vendorInfo);
+      await expect(
+        profileService.updateVendorInfo(profileId, cuid, vendorInfo, userRole)
+      ).rejects.toThrow(NotFoundError);
     });
   });
 
   describe('initializeRoleInfo', () => {
     it('should successfully initialize employee role info', async () => {
-      const profileId = new Types.ObjectId().toString();
+      const userId = new Types.ObjectId().toString();
       const cuid = 'test-cuid';
       const role = 'manager';
       const mockProfileObjectId = new Types.ObjectId();
-      const mockUpdatedProfile = createMockProfile({ _id: mockProfileObjectId, id: mockProfileObjectId.toString() });
+      const mockUpdatedProfile = createMockProfile({ 
+        _id: mockProfileObjectId, 
+        id: mockProfileObjectId.toString(),
+        user: new Types.ObjectId(userId)
+      });
 
-      mockProfileDAO.ensureClientRoleInfo.mockResolvedValue(undefined);
+      mockClientDAO.getClientByCuid.mockResolvedValue({ displayName: 'Test Client' });
+      mockUserDAO.getUserById.mockResolvedValue({ cuids: [] });
+      mockUserDAO.updateById.mockResolvedValue(true);
       mockProfileDAO.findFirst.mockResolvedValue(mockUpdatedProfile);
-      mockProfileDAO.updateCommonEmployeeInfo.mockResolvedValue(mockUpdatedProfile);
-      mockUpdateEmployeeInfoSafeParse.mockReturnValue({
-        success: true,
-        data: {},
-      });
+      mockProfileDAO.updateEmployeeInfo.mockResolvedValue(mockUpdatedProfile);
 
-      // Mock updateCommonRoleInfo call
-      jest.spyOn(profileService, 'updateCommonRoleInfo').mockResolvedValue({
-        success: true,
-        data: mockUpdatedProfile,
-        message: 'Updated',
-      });
-
-      const result = await profileService.initializeRoleInfo(profileId, cuid, role);
+      const result = await profileService.initializeRoleInfo(userId, cuid, role);
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
-      expect(profileService.updateCommonRoleInfo).toHaveBeenCalledWith(mockUpdatedProfile.id, {}, 'admin', 'employee');
     });
 
     it('should successfully initialize vendor role info', async () => {
-      const profileId = new Types.ObjectId().toString();
+      const userId = new Types.ObjectId().toString();
       const cuid = 'test-cuid';
       const role = 'vendor';
       const mockProfileObjectId = new Types.ObjectId();
-      const mockUpdatedProfile = createMockProfile({ _id: mockProfileObjectId, id: mockProfileObjectId.toString() });
+      const mockUpdatedProfile = createMockProfile({ 
+        _id: mockProfileObjectId, 
+        id: mockProfileObjectId.toString(),
+        user: new Types.ObjectId(userId)
+      });
 
-      mockProfileDAO.ensureClientRoleInfo.mockResolvedValue(undefined);
+      mockClientDAO.getClientByCuid.mockResolvedValue({ displayName: 'Test Client' });
+      mockUserDAO.getUserById.mockResolvedValue({ cuids: [] });
+      mockUserDAO.updateById.mockResolvedValue(true);
       mockProfileDAO.findFirst.mockResolvedValue(mockUpdatedProfile);
-      mockProfileDAO.updateCommonVendorInfo.mockResolvedValue(mockUpdatedProfile);
-      mockUpdateVendorInfoSafeParse.mockReturnValue({
-        success: true,
-        data: {},
-      });
 
-      // Mock updateCommonRoleInfo call
-      jest.spyOn(profileService, 'updateCommonRoleInfo').mockResolvedValue({
-        success: true,
-        data: mockUpdatedProfile,
-        message: 'Updated',
-      });
-
-      const result = await profileService.initializeRoleInfo(profileId, cuid, role);
+      const result = await profileService.initializeRoleInfo(userId, cuid, role);
 
       expect(result.success).toBe(true);
-      expect(profileService.updateCommonRoleInfo).toHaveBeenCalledWith(mockUpdatedProfile.id, {}, 'admin', 'vendor');
+      expect(result.data).toBeDefined();
     });
 
     it('should throw NotFoundError when client role info initialization fails', async () => {
-      const profileId = new Types.ObjectId().toString();
+      const userId = new Types.ObjectId().toString();
       const cuid = 'test-cuid';
       const role = 'manager';
 
       // Mock clientDAO to return null to trigger NotFoundError in the private method
       mockClientDAO.getClientByCuid.mockResolvedValue(null);
 
-      await expect(profileService.initializeRoleInfo(profileId, cuid, role)).rejects.toThrow(
+      await expect(profileService.initializeRoleInfo(userId, cuid, role)).rejects.toThrow(
         NotFoundError
       );
     });

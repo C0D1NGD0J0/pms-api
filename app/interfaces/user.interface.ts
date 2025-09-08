@@ -19,9 +19,6 @@ export enum IUserRole {
   ADMIN = 'admin',
 }
 
-/**
- * Vendor detail information for getClientUserInfo response
- */
 export interface IVendorDetailInfo {
   stats: {
     completedJobs: number;
@@ -48,7 +45,7 @@ export interface IVendorDetailInfo {
   };
   servicesOffered: Record<string, any>;
   linkedUsers?: ILinkedVendorUser[];
-  linkedVendorId: string | null;
+  linkedVendorUid: string | null;
   registrationNumber: string;
   isLinkedAccount: boolean;
   isPrimaryVendor: boolean;
@@ -98,44 +95,12 @@ export interface IEmployeeDetailInfo {
   tags: string[];
 }
 
-/**
- * Structured response for getClientUserInfo
- */
-export interface IUserDetailResponse {
-  profile: {
-    firstName: string;
-    lastName: string;
-    fullName: string;
-    avatar: string;
-    phoneNumber: string;
-    email: string;
-    about: string;
-    contact: {
-      phone: string;
-      email: string;
-    };
-  };
-  user: {
-    roles: string[];
-    userType: 'employee' | 'vendor' | 'tenant';
-    displayName: string;
-  } & Pick<IUserDocument, 'uid' | 'email' | 'isActive' | 'createdAt'>;
-  // Type-specific info - only one will be present based on userType
-  employeeInfo?: IEmployeeDetailInfo;
-  vendorInfo?: IVendorDetailInfo;
-  tenantInfo?: ITenantDetailInfo;
-  status: 'Active' | 'Inactive';
-  properties: IUserProperty[];
-  documents: any[];
-  tasks: any[];
-}
-
 export interface ICurrentUser {
   client: {
     cuid: string;
     displayname: string;
     role: IUserRoleType;
-    linkedVendorId?: string;
+    linkedVendorUid?: string;
     clientSettings?: any;
   };
   preferences: {
@@ -157,9 +122,6 @@ export interface ICurrentUser {
   sub: string;
 }
 
-/**
- * Full user data for list/table display with populated profile
- */
 export interface FilteredUser
   extends Pick<IUserDocument, 'uid' | 'email' | 'isActive' | 'createdAt'> {
   userType?: 'employee' | 'vendor' | 'tenant';
@@ -175,6 +137,31 @@ export interface FilteredUser
   lastName?: string;
   fullName?: string;
   avatar?: string;
+}
+
+/**
+ * Structured response for getClientUserInfo
+ */
+export interface IUserDetailResponse {
+  profile: {
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    avatar: string;
+    phoneNumber: string;
+    email: string;
+    about: string;
+    contact: {
+      phone: string;
+      email: string;
+    };
+    roles: string[];
+    id: string;
+    userType: 'employee' | 'vendor' | 'tenant';
+  };
+  employeeInfo?: IEmployeeDetailInfo;
+  vendorInfo?: IVendorDetailInfo;
+  status: 'Active' | 'Inactive';
 }
 
 export interface IUserDocument extends Document, IUser {
@@ -202,29 +189,13 @@ export interface FilteredUserVendorInfo
   averageServiceCost?: number;
   isLinkedAccount?: boolean;
   isPrimaryVendor?: boolean;
-  linkedVendorId?: string;
+  linkedVendorUid?: string;
   contactPerson?: string;
   completedJobs?: number;
   serviceType?: string;
   reviewCount?: number;
   rating?: number;
-}
-
-/**
- * Lightweight user data for table display only
- * Using Pick and optional fields to reduce duplication
- */
-export interface FilteredUserTableData extends Pick<IUser, 'email'> {
-  // Type-specific info - optional based on user type
-  employeeInfo?: FilteredUserEmployeeInfo;
-  vendorInfo?: FilteredUserVendorInfo;
-  tenantInfo?: FilteredUserTenantInfo;
-  phoneNumber?: string;
-  isConnected: boolean;
-  displayName: string;
-  fullName?: string;
-  isActive: boolean;
-  uid: string;
+  vuid?: string;
 }
 
 export interface ITenant extends IUser {
@@ -261,6 +232,22 @@ export interface ITenantDetailInfo {
   documents: any[];
 }
 
+/**
+ * Lightweight user data for table display only
+ * Using Pick and optional fields to reduce duplication
+ */
+export interface FilteredUserTableData extends Pick<IUser, 'email'> {
+  employeeInfo?: FilteredUserEmployeeInfo;
+  vendorInfo?: FilteredUserVendorInfo;
+  tenantInfo?: FilteredUserTenantInfo;
+  phoneNumber?: string;
+  isConnected: boolean;
+  displayName: string;
+  fullName?: string;
+  isActive: boolean;
+  uid: string;
+}
+
 export type ISignupData = {
   email: string;
   location: string;
@@ -277,29 +264,11 @@ export type ISignupData = {
 };
 
 /**
- * Vendor team members response
- */
-export interface IVendorTeamMembersResponse {
-  summary: {
-    totalMembers: number;
-    activeMembers: number;
-    inactiveMembers: number;
-  };
-  vendor: {
-    vendorId: string;
-    companyName: string;
-    primaryContact: string;
-  };
-  teamMembers: IVendorTeamMember[];
-  pagination: any;
-}
-
-/**
  * Vendor team member response
  */
 export interface IVendorTeamMember {
   lastLogin: Date | null;
-  permissions: string[];
+  isTeamMember: boolean;
   displayName: string;
   phoneNumber: string;
   firstName: string;
@@ -331,6 +300,20 @@ export interface IUser {
 }
 
 /**
+ * Vendor team members response with pagination
+ */
+export interface IVendorTeamMembersResponse {
+  pagination: {
+    total: number;
+    perPage: number;
+    totalPages: number;
+    currentPage: number;
+    hasMoreResource: boolean;
+  };
+  items: IVendorTeamMember[];
+}
+
+/**
  * User statistics for filtered users response
  */
 export interface IUserStats {
@@ -345,7 +328,7 @@ export interface IUserStats {
 export interface FilteredVendorInfo extends VendorInfo {
   isPrimaryVendor?: boolean;
   isLinkedAccount: boolean;
-  linkedVendorId?: string;
+  linkedVendorUid?: string;
 }
 
 /**

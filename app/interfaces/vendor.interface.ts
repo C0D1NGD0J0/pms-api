@@ -4,8 +4,12 @@ import { Document, Types } from 'mongoose';
  * Main Vendor Interface
  */
 export interface IVendor {
+  connectedClients: {
+    cuid: string;
+    isConnected: boolean;
+    primaryAccountHolder: Types.ObjectId; // References the user who owns this vendor account
+  }[];
   servicesOffered?: VendorServicesOffered;
-  primaryAccountHolder: Types.ObjectId; // References the user who owns this vendor account
   insuranceInfo?: VendorInsuranceInfo;
   contactPerson?: VendorContactPerson;
   serviceAreas?: VendorServiceAreas;
@@ -101,4 +105,4 @@ export interface VendorContactPerson {
 /**
  * New Vendor Type (for creation)
  */
-export type NewVendor = Omit<IVendor, 'vid'>;
+export type NewVendor = { isPrimaryAccountHolder: boolean } & Omit<IVendor, 'vid'>;

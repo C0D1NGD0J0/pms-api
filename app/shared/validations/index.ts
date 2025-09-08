@@ -1,6 +1,7 @@
 export * from './PropertyUnitValidation';
 export * from './InvitationValidation';
 export * from './PropertyValidation';
+export * from './ProfileValidation';
 export * from './ClientValidation';
 export * from './VendorValidation';
 export * from './UtilsValidation';

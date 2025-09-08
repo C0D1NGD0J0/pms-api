@@ -113,18 +113,19 @@ export const invitationDataSchema = z.object({
     errorMap: () => ({ message: 'Please provide a valid role' }),
   }),
 
-  linkedVendorId: z
+  linkedVendorUid: z
     .string()
-    .min(24, 'Vendor ID must be a valid MongoDB ObjectId')
-    .max(24, 'Vendor ID must be a valid MongoDB ObjectId')
     .optional()
     .refine(
       (val) => {
         if (!val) return true;
-        // Check if valid MongoDB ObjectId (24 hex chars)
-        return /^[0-9a-fA-F]{24}$/.test(val);
+        // Check if valid vendor UID (12 alphanumeric chars) or MongoDB ObjectId (24 hex chars)
+        return /^[A-Z0-9]{12}$/.test(val) || /^[0-9a-fA-F]{24}$/.test(val);
       },
-      { message: 'Vendor ID must be a valid MongoDB ObjectId' }
+      {
+        message:
+          'Vendor ID must be a valid vendor UID (12 alphanumeric characters) or MongoDB ObjectId (24 hex characters)',
+      }
     ),
 
   personalInfo: z.object({
@@ -312,7 +313,7 @@ export const invitationCsvSchema = z
       errorMap: () => ({ message: 'Please provide a valid role' }),
     }),
 
-    linkedVendorId: z
+    linkedVendorUid: z
       .string()
       .transform((str) => {
         // Handle empty strings
@@ -320,9 +321,11 @@ export const invitationCsvSchema = z
           return undefined;
         }
         const trimmed = str.trim();
-        // Check if valid MongoDB ObjectId (24 hex chars)
-        if (!/^[0-9a-fA-F]{24}$/.test(trimmed)) {
-          throw new Error('linkedVendorId must be a valid MongoDB ObjectId (24 hex characters)');
+        // Check if valid vendor UID (12 chars with letters, numbers, dashes, underscores) or MongoDB ObjectId (24 hex chars)
+        if (!/^[A-Z0-9_-]{12}$/.test(trimmed) && !/^[0-9a-fA-F]{24}$/.test(trimmed)) {
+          throw new Error(
+            'linkedVendorUid must be a valid vendor UID (12 characters: letters, numbers, dashes, underscores) or MongoDB ObjectId (24 hex characters)'
+          );
         }
         return trimmed;
       })
@@ -514,10 +517,10 @@ export const invitationCsvSchema = z
           }
         : undefined;
 
-    // Determine if this is a primary vendor (has business data) or team member (linkedVendorId without business data)
+    // Determine if this is a primary vendor (has business data) or team member (linkedVendorUid without business data)
     const isPrimaryVendor = Boolean(data.role === 'vendor' && data.vendorInfo_companyName);
     const isVendorTeamMember = Boolean(
-      data.role === 'vendor' && data.linkedVendorId && !data.vendorInfo_companyName
+      data.role === 'vendor' && data.linkedVendorUid && !data.vendorInfo_companyName
     );
 
     // Build vendor data for primary vendor creation
@@ -552,9 +555,9 @@ export const invitationCsvSchema = z
       data.role === 'vendor'
         ? {
             isLinkedAccount: Boolean(isVendorTeamMember),
-            // For primary vendors, linkedVendorId will be populated after vendor entity creation
-            // For team members, use the CSV linkedVendorId as a temporary group identifier
-            linkedVendorId: isVendorTeamMember ? data.linkedVendorId : undefined,
+            // For primary vendors, linkedVendorUid will be populated after vendor entity creation
+            // For team members, use the CSV linkedVendorUid as a temporary group identifier
+            linkedVendorUid: isVendorTeamMember ? data.linkedVendorUid : undefined,
           }
         : undefined;
 
@@ -562,7 +565,7 @@ export const invitationCsvSchema = z
       inviteeEmail: data.inviteeEmail,
       role: data.role,
       status: data.status,
-      linkedVendorId: data.linkedVendorId,
+      linkedVendorUid: data.linkedVendorUid,
       personalInfo: {
         firstName: data.firstName,
         lastName: data.lastName,
@@ -576,7 +579,7 @@ export const invitationCsvSchema = z
         vendorEntityData, // New field for vendor entity creation
         isPrimaryVendor,
         isVendorTeamMember,
-        csvGroupId: data.linkedVendorId, // CSV group identifier for linking vendors and team members
+        csvGroupId: data.linkedVendorUid, // CSV group identifier for linking vendors and team members
       },
     };
   });

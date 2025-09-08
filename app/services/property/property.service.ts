@@ -123,25 +123,21 @@ export class PropertyService implements IDisposable {
     this.log.info(t('property.logging.eventListenersInitialized'));
   }
 
-  async addProperty(
+  /**
+   * Validate property data and check for errors
+   */
+  private validatePropertyData(
+    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
     cxt: IRequestContext,
-    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType
-  ): Promise<ISuccessReturnData> {
-    const {
-      params: { cuid },
-    } = cxt.request;
-    const currentuser = cxt.currentuser!;
-    const start = process.hrtime.bigint();
-
-    this.log.info(t('property.logging.startingCreation'));
-
+    start: bigint
+  ): void {
     const validationResult = PropertyValidationService.validateProperty(propertyData);
     if (!validationResult.valid) {
       this.log.error(
         {
-          cuid,
+          cuid: cxt.request.params.cuid,
           url: cxt.request.url,
-          userId: currentuser.sub,
+          userId: cxt.currentuser!.sub,
           requestId: cxt.requestId,
           errors: validationResult.errors,
           propertyType: propertyData.propertyType,
@@ -163,111 +159,151 @@ export class PropertyService implements IDisposable {
         errorInfo,
       });
     }
+  }
 
-    const session = await this.propertyDAO.startSession();
-    const result = await this.propertyDAO.withTransaction(session, async (session) => {
-      const client = await this.clientDAO.getClientByCuid(cuid);
-      if (!client) {
-        this.log.error(`Client with cuid ${cuid} not found`);
-        throw new BadRequestError({ message: t('property.errors.unableToAdd') });
-      }
+  /**
+   * Check for duplicate address
+   */
+  private async checkAddressUniqueness(
+    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
+    cuid: string
+  ): Promise<void> {
+    const fullAddress = propertyData.address.fullAddress;
+    if (fullAddress && cuid) {
+      const existingProperty = await this.propertyDAO.findPropertyByAddress(
+        fullAddress,
+        cuid.toString()
+      );
 
-      const fullAddress = propertyData.address.fullAddress;
-      // address uniqueness check
-      if (fullAddress && cuid) {
-        const existingProperty = await this.propertyDAO.findPropertyByAddress(
-          fullAddress,
-          cuid.toString()
-        );
-
-        if (existingProperty) {
-          throw new InvalidRequestError({
-            message: t('property.errors.duplicateAddress'),
-          });
-        }
-      }
-
-      this.propertyTypeValidation(propertyData);
-
-      // Check user role and determine approval status
-      const userRole = currentuser.client.role;
-      let approvalStatus: PropertyApprovalStatusEnum = PropertyApprovalStatusEnum.PENDING;
-      let approvalDetails: any = {};
-
-      if (PROPERTY_APPROVAL_ROLES.includes(userRole)) {
-        // Admin or Manager - auto-approve
-        approvalStatus = PropertyApprovalStatusEnum.APPROVED;
-        approvalDetails = {
-          approvedBy: new Types.ObjectId(currentuser.sub),
-          approvedAt: new Date(),
-        };
-        this.log.info('Property auto-approved for admin/manager', {
-          userId: currentuser.sub,
-          role: userRole,
-        });
-      } else if (PROPERTY_STAFF_ROLES.includes(userRole)) {
-        // Staff - check department
-        const userProfile = await this.profileDAO.getProfileByUserId(currentuser.sub);
-        const userDepartment = userProfile?.employeeInfo?.department;
-
-        if (
-          !userDepartment ||
-          !PROPERTY_CREATION_ALLOWED_DEPARTMENTS.includes(userDepartment as any)
-        ) {
-          throw new InvalidRequestError({
-            message:
-              'You are not authorized to create properties. Only staff in Operations or Management departments can create properties.',
-          });
-        }
-
-        // Staff in allowed department - requires approval
-        approvalStatus = PropertyApprovalStatusEnum.PENDING;
-        approvalDetails = {
-          requestedBy: new Types.ObjectId(currentuser.sub),
-        };
-        this.log.info('Property pending approval for staff', {
-          userId: currentuser.sub,
-          department: userDepartment,
-        });
-      } else {
-        // Other roles (vendor, tenant, etc.) - not allowed
+      if (existingProperty) {
         throw new InvalidRequestError({
-          message: 'You are not authorized to create properties.',
+          message: t('property.errors.duplicateAddress'),
+        });
+      }
+    }
+  }
+
+  /**
+   * Determine approval status based on user role and permissions
+   */
+  private async determineApprovalStatus(
+    currentuser: any
+  ): Promise<{ approvalStatus: PropertyApprovalStatusEnum; approvalDetails: any }> {
+    const userRole = currentuser.client.role;
+    let approvalStatus: PropertyApprovalStatusEnum = PropertyApprovalStatusEnum.PENDING;
+    let approvalDetails: any = {};
+
+    if (PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+      // Admin or Manager - auto-approve
+      approvalStatus = PropertyApprovalStatusEnum.APPROVED;
+      approvalDetails = {
+        approvedBy: new Types.ObjectId(currentuser.sub),
+        approvedAt: new Date(),
+      };
+      this.log.info('Property auto-approved for admin/manager', {
+        userId: currentuser.sub,
+        role: userRole,
+      });
+    } else if (PROPERTY_STAFF_ROLES.includes(userRole)) {
+      // Staff - check department
+      const userProfile = await this.profileDAO.getProfileByUserId(currentuser.sub);
+      const userDepartment = userProfile?.employeeInfo?.department;
+
+      if (
+        !userDepartment ||
+        !PROPERTY_CREATION_ALLOWED_DEPARTMENTS.includes(userDepartment as any)
+      ) {
+        throw new InvalidRequestError({
+          message:
+            'You are not authorized to create properties. Only staff in Operations or Management departments can create properties.',
         });
       }
 
-      propertyData.createdBy = new Types.ObjectId(currentuser.sub);
-      propertyData.managedBy = propertyData.managedBy
-        ? new Types.ObjectId(propertyData.managedBy)
-        : new Types.ObjectId(currentuser.sub);
+      // Staff in allowed department - requires approval
+      approvalStatus = PropertyApprovalStatusEnum.PENDING;
+      approvalDetails = {
+        requestedBy: new Types.ObjectId(currentuser.sub),
+      };
+      this.log.info('Property pending approval for staff', {
+        userId: currentuser.sub,
+        department: userDepartment,
+      });
+    } else {
+      // Other roles (vendor, tenant, etc.) - not allowed
+      throw new InvalidRequestError({
+        message: 'You are not authorized to create properties.',
+      });
+    }
 
-      const property = await this.propertyDAO.createProperty(
-        {
-          ...propertyData,
-          cuid,
-          approvalStatus,
-          approvalDetails,
-        },
-        session
-      );
+    return { approvalStatus, approvalDetails };
+  }
 
-      if (!property) {
-        throw new BadRequestError({ message: t('property.errors.unableToCreate') });
-      }
+  /**
+   * Create the property in database
+   */
+  private async createPropertyInDatabase(
+    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
+    cuid: string,
+    currentuser: any,
+    approvalStatus: PropertyApprovalStatusEnum,
+    approvalDetails: any,
+    session: any
+  ): Promise<any> {
+    // Validate client exists
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      this.log.error(`Client with cuid ${cuid} not found`);
+      throw new BadRequestError({ message: t('property.errors.unableToAdd') });
+    }
 
-      this.log.info(
-        {
-          propertyId: property.id,
-          propertyName: property.name,
-          propertyType: property.propertyType,
-          approvalStatus: property.approvalStatus,
-        },
-        'Property created successfully'
-      );
+    // Check address uniqueness
+    await this.checkAddressUniqueness(propertyData, cuid);
 
-      return { property };
-    });
+    // Validate property type
+    this.propertyTypeValidation(propertyData);
 
+    // Set creation metadata
+    propertyData.createdBy = new Types.ObjectId(currentuser.sub);
+    propertyData.managedBy = propertyData.managedBy
+      ? new Types.ObjectId(propertyData.managedBy)
+      : new Types.ObjectId(currentuser.sub);
+
+    // Create property
+    const property = await this.propertyDAO.createProperty(
+      {
+        ...propertyData,
+        cuid,
+        approvalStatus,
+        approvalDetails,
+      },
+      session
+    );
+
+    if (!property) {
+      throw new BadRequestError({ message: t('property.errors.unableToCreate') });
+    }
+
+    this.log.info(
+      {
+        propertyId: property.id,
+        propertyName: property.name,
+        propertyType: property.propertyType,
+        approvalStatus: property.approvalStatus,
+      },
+      'Property created successfully'
+    );
+
+    return property;
+  }
+
+  /**
+   * Handle file uploads if any
+   */
+  private handlePropertyFiles(
+    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
+    property: any,
+    currentuser: any
+  ): void {
     if (propertyData.scannedFiles && propertyData.scannedFiles.length > 0) {
       this.uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
         resource: {
@@ -275,14 +311,51 @@ export class PropertyService implements IDisposable {
           resourceType: 'unknown',
           resourceName: 'property',
           actorId: currentuser.sub,
-          resourceId: result.property.id,
+          resourceId: property.id,
         },
         files: propertyData.scannedFiles,
       });
     }
+  }
 
-    await this.propertyCache.cacheProperty(cuid, result.property.id, result.property);
-    return { success: true, data: result.property, message: t('property.success.created') };
+  /**
+   * Cache property and return success response
+   */
+  private async finalizePropertyCreation(property: any, cuid: string): Promise<ISuccessReturnData> {
+    await this.propertyCache.cacheProperty(cuid, property.id, property);
+    return { success: true, data: property, message: t('property.success.created') };
+  }
+
+  async addProperty(
+    cxt: IRequestContext,
+    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType
+  ): Promise<ISuccessReturnData> {
+    const {
+      params: { cuid },
+    } = cxt.request;
+    const currentuser = cxt.currentuser!;
+    const start = process.hrtime.bigint();
+
+    this.log.info(t('property.logging.startingCreation'));
+
+    this.validatePropertyData(propertyData, cxt, start);
+    const { approvalStatus, approvalDetails } = await this.determineApprovalStatus(currentuser);
+
+    const session = await this.propertyDAO.startSession();
+    const result = await this.propertyDAO.withTransaction(session, async (session) => {
+      const property = await this.createPropertyInDatabase(
+        propertyData,
+        cuid,
+        currentuser,
+        approvalStatus,
+        approvalDetails,
+        session
+      );
+      return { property };
+    });
+
+    this.handlePropertyFiles(propertyData, result.property, currentuser);
+    return await this.finalizePropertyCreation(result.property, cuid);
   }
 
   private propertyTypeValidation(propertyData: NewPropertyType): void {
@@ -458,7 +531,7 @@ export class PropertyService implements IDisposable {
       throw new BadRequestError({ message: 'Unable to get properties for this account.' });
     }
 
-    const { pagination, filters } = queryParams;
+    const { pagination, filters } = queryParams || {};
     const filter: FilterQuery<IPropertyDocument> = {
       cuid,
       deletedAt: null,

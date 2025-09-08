@@ -20,7 +20,11 @@
   },
   "profile": {
     "success": {
-      "roleInitialized": "profile.success.roleInitialized"
+      "roleInitialized": "profile.success.roleInitialized",
+      "profileRetrieved": "profile.success.profileRetrieved"
+    },
+    "errors": {
+      "notFound": "profile.errors.notFound"
     }
   },
   "propertyUnit": {
@@ -30,7 +34,11 @@
   },
   "vendor": {
     "success": {
-      "statsRetrieved": "vendor.success.statsRetrieved"
+      "statsRetrieved": "vendor.success.statsRetrieved",
+      "teamMembersRetrieved": "vendor.success.teamMembersRetrieved"
+    },
+    "errors": {
+      "notPrimaryVendor": "vendor.errors.notPrimaryVendor"
     }
   }
 }

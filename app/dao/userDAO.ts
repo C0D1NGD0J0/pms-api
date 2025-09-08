@@ -306,7 +306,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       const { role, department, status } = filterOptions;
 
-      // Base query for client users
       const query: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
         'cuids.isConnected': true,
@@ -318,22 +317,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       }
 
       if (role) {
-        const roles = Array.isArray(role) ? role : [role];
-
-        // For vendor filtering, we need to use $elemMatch to check within the specific cuid
-        if (roles.includes('vendor')) {
-          // Only get users who are vendors for this client AND don't have a linkedVendorId
-          query['cuids'] = {
-            $elemMatch: {
-              cuid: cuid,
-              roles: Array.isArray(role) ? { $in: role } : 'vendor',
-              $or: [{ linkedVendorId: { $exists: false } }, { linkedVendorId: null }],
-            },
-          };
-        } else {
-          // For non-vendor roles, use the standard query
-          query['cuids.roles'] = Array.isArray(role) ? { $in: role } : role;
-        }
+        // const roles = Array.isArray(role) ? role : [role];
+        query['cuids.roles'] = Array.isArray(role) ? { $in: role } : role;
       }
 
       const pipeline: PipelineStage[] = [
@@ -580,7 +565,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     client: { cuid: string; displayName?: string },
     invitationData: IInvitationDocument,
     userData: any,
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument> {
     try {
@@ -591,7 +576,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         isConnected: true,
         roles: [invitationData.role],
         clientDisplayName: client.displayName,
-        linkedVendorId: invitationData.role === 'vendor' ? linkedVendorId : null,
+        linkedVendorUid: invitationData.role === 'vendor' ? linkedVendorUid : null,
       };
 
       const user = await this.insert(
@@ -621,7 +606,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     userId: string,
     role: IUserRoleType,
     client: { cuid: string; clientDisplayName?: string; id: string },
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument | null> {
     try {
@@ -636,7 +621,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         const updateObj: any = {
           'cuids.$.isConnected': true,
           'cuids.$.clientDisplayName': client.clientDisplayName,
-          'cuids.$.linkedVendorId': role === 'vendor' ? linkedVendorId : null,
+          'cuids.$.linkedVendorUid': role === 'vendor' ? linkedVendorUid : null,
         };
 
         const updateOperation = existingConnection.roles.includes(role)
@@ -656,7 +641,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           isConnected: true,
           roles: [role],
           clientDisplayName: client.clientDisplayName || '',
-          linkedVendorId: role === 'vendor' ? linkedVendorId : null,
+          linkedVendorUid: role === 'vendor' ? linkedVendorUid : null,
         };
 
         return await this.updateById(
@@ -707,7 +692,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       role: IUserRoleType;
       defaultPassword: string;
     },
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument> {
     try {
@@ -718,7 +703,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         isConnected: true,
         roles: [userData.role],
         clientDisplayName: client.clientDisplayName || '',
-        linkedVendorId: userData.role === 'vendor' && linkedVendorId ? linkedVendorId : null,
+        linkedVendorUid: userData.role === 'vendor' && linkedVendorUid ? linkedVendorUid : null,
       };
 
       const user = await this.insert(
@@ -749,24 +734,23 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * @returns Promise resolving to linked vendor users
    */
   async getLinkedVendorUsers(
-    primaryVendorId: string,
+    vendorUid: string,
     cuid: string,
     opts?: IFindOptions
   ): Promise<ListResultWithPagination<IUserDocument[]>> {
     try {
       const query: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
-        'cuids.linkedVendorId': new Types.ObjectId(primaryVendorId),
+        'cuids.linkedVendorUid': vendorUid,
         'cuids.isConnected': true,
         deletedAt: null,
       };
 
       return await this.list(query, {
         ...opts,
-        // populate: [{ path: 'profile', select: 'personalInfo' }],
       });
     } catch (error) {
-      this.logger.error(`Error getting linked vendor users for vendor ${primaryVendorId}:`, error);
+      this.logger.error(`Error getting linked vendor users for vendor ${vendorUid}:`, error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -822,7 +806,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           // Determine if this is a linked vendor account
           const primaryCuid = user.cuids.find((c: any) => c.cuid === user.activecuid);
           const isLinkedVendor =
-            primaryCuid?.linkedVendorId && primaryCuid.roles.includes('vendor' as any);
+            primaryCuid?.linkedVendorUid && primaryCuid.roles.includes('vendor' as any);
 
           const profileData: any = {
             user: user._id,

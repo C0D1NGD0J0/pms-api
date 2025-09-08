@@ -5,15 +5,24 @@ import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
 import { UserService } from '@services/user/user.service';
 import { IUserRoleType } from '@interfaces/user.interface';
+import { ProfileService } from '@services/profile/profile.service';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 
 export class UserController {
   private readonly log: Logger;
   private readonly userService: UserService;
+  private readonly profileService: ProfileService;
 
-  constructor({ userService }: { userService: UserService }) {
+  constructor({
+    userService,
+    profileService,
+  }: {
+    userService: UserService;
+    profileService: ProfileService;
+  }) {
     this.log = createLogger('UserController');
     this.userService = userService;
+    this.profileService = profileService;
   }
 
   getClientUserInfo = async (req: AppRequest, res: Response) => {
@@ -69,25 +78,35 @@ export class UserController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  getVendorTeamMembers = async (req: AppRequest, res: Response): Promise<void> => {
-    const { cuid, vendorId } = req.params;
-    const { page, limit, status } = req.query;
+  getUserProfile = async (req: AppRequest, res: Response): Promise<void> => {
+    const { uid } = req.query as { uid: string | undefined };
+    const result = await this.profileService.getUserProfileForEdit(req.context, uid);
 
-    const paginationOpts = {
-      page: page ? parseInt(page as string, 10) : 1,
-      limit: limit ? parseInt(limit as string, 10) : 10,
-      skip:
-        ((page ? parseInt(page as string, 10) : 1) - 1) *
-        (limit ? parseInt(limit as string, 10) : 10),
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  updateUserProfile = async (req: AppRequest, res: Response): Promise<void> => {
+    const {
+      userInfo,
+      personalInfo,
+      settings,
+      identification,
+      profileMeta,
+      employeeInfo,
+      vendorInfo,
+    } = req.body;
+
+    const profileData = {
+      userInfo,
+      personalInfo,
+      settings,
+      identification,
+      profileMeta,
+      employeeInfo,
+      vendorInfo,
     };
 
-    const result = await this.userService.getVendorTeamMembers(
-      req.context,
-      cuid,
-      vendorId,
-      status as 'active' | 'inactive' | undefined,
-      paginationOpts
-    );
+    const result = await this.profileService.updateUserProfile(req.context, profileData);
 
     res.status(httpStatusCodes.OK).json(result);
   };

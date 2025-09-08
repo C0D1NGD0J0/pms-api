@@ -1,6 +1,6 @@
 import { Document, Types } from 'mongoose';
 
-import { IdentificationType } from './user.interface';
+import { IdentificationType, IUserRoleType } from './user.interface';
 
 export enum EmployeeDepartment {
   MAINTENANCE = 'maintenance', // Maintenance and repairs
@@ -57,10 +57,53 @@ export interface Profile {
   lang: string;
 }
 
+/**
+ * Data structure for updateUserProfile input
+ * Used when updating profile data
+ */
+export interface IProfileUpdateData {
+  settings?: Partial<
+    {
+      timeZone?: string;
+      lang?: string;
+    } & Profile['settings']
+  >;
+  profileMeta?: {
+    timeZone?: string;
+    lang?: string;
+  };
+  personalInfo?: Partial<Profile['personalInfo']>;
+  identification?: Partial<IdentificationType>;
+  userInfo?: {
+    email?: string;
+  };
+  employeeInfo?: Partial<EmployeeInfo>;
+  vendorInfo?: Partial<VendorInfo>;
+}
+
+/**
+ * Data structure for getUserProfileForEdit response
+ * Used when fetching profile data for editing/display
+ */
+export interface IProfileEditData {
+  personalInfo: {
+    uid: string;
+    email: string;
+    isActive: boolean;
+  } & Profile['personalInfo'];
+  settings: {
+    timeZone: string;
+    lang: string;
+  } & Profile['settings'];
+  userType: 'employee' | 'vendor' | 'tenant' | 'primary_account_holder';
+  identification?: IdentificationType;
+  roles: IUserRoleType[];
+}
+
 export interface VendorInfo {
   vendorId?: Types.ObjectId; // Reference to the vendor collection
   isLinkedAccount: boolean;
-  linkedVendorId?: string; // Reference to primary vendor (stays as string to match user model)
+  linkedVendorUid?: string; // Reference to primary vendor (stays as string to match user model)
 }
 
 export type IProfileDocument = {
@@ -75,6 +118,8 @@ export type IProfileDocument = {
 } & Document &
   Profile;
 
+// ClientRoleInfo interface removed as it's now part of the User model's cuids array
+
 export interface EmployeeInfo {
   department?: EmployeeDepartment;
   clientSpecificSettings?: any;
@@ -84,7 +129,6 @@ export interface EmployeeInfo {
   jobTitle?: string;
   startDate?: Date;
 }
-
 export interface GDPRSettings {
   dataRetentionPolicy: DataRetentionPolicy;
   dataProcessingConsent: boolean;
@@ -92,13 +136,12 @@ export interface GDPRSettings {
   retentionExpiryDate: Date;
 }
 
-// ClientRoleInfo interface removed as it's now part of the User model's cuids array
-
 export interface NotificationSettings {
   announcements: boolean;
   comments: boolean;
   messages: boolean;
 }
+
 export interface ClientVendorInfo {
-  linkedVendorId?: Types.ObjectId;
+  linkedVendorUid?: Types.ObjectId;
 }

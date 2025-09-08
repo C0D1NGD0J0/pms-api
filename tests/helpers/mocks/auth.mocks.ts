@@ -228,6 +228,7 @@ export const createMockUserDAO = () => ({
   activateAccount: jest.fn().mockResolvedValue(createMockUser()),
   createPasswordResetToken: jest.fn().mockResolvedValue(true),
   resetPassword: jest.fn().mockResolvedValue(true),
+  getLinkedVendorUsers: jest.fn().mockResolvedValue({ items: [], pagination: undefined }),
 });
 
 // Profile DAO Mock

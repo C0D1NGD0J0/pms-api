@@ -97,6 +97,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
       notifications: {
         messages: { type: Boolean, default: false },
         comments: { type: Boolean, default: false },
+
         announcements: { type: Boolean, default: true },
       },
     },
@@ -150,7 +151,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
         type: Schema.Types.ObjectId,
         ref: 'Vendor',
       },
-      linkedVendorId: {
+      linkedVendorUid: {
         // this is the primary vendor (user -> uid)
         type: String,
         trim: true,

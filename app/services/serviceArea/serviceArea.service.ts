@@ -1,4 +1,5 @@
 import { Model } from 'mongoose';
+import { IVendorDocument } from '@interfaces/vendor.interface';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { GeoCoderService } from '@services/external/geoCoder.service';
 
@@ -24,10 +25,13 @@ export interface GeospatialQueryResult {
 export class ServiceAreaService {
   private geoCoderService: GeoCoderService;
   private profileModel: Model<IProfileDocument>;
+  private vendorModel: Model<IVendorDocument>;
 
-  constructor(profileModel: Model<IProfileDocument>) {
+  constructor(profileModel: Model<IProfileDocument>, vendorModel?: Model<IVendorDocument>) {
     this.geoCoderService = new GeoCoderService();
     this.profileModel = profileModel;
+    // Vendor model is optional for backward compatibility
+    this.vendorModel = vendorModel!;
   }
 
   /**
@@ -59,7 +63,7 @@ export class ServiceAreaService {
         targetCoords = targetLocation;
       }
 
-      // Build aggregation pipeline
+      // Build aggregation pipeline - search vendors directly
       const pipeline: any[] = [
         {
           $geoNear: {
@@ -71,14 +75,13 @@ export class ServiceAreaService {
             maxDistance: maxDistance * 1000, // Convert km to meters
             spherical: true,
             query: {
-              vendorInfo: { $exists: true },
-              'vendorInfo.address.computedLocation': { $exists: true },
+              'address.computedLocation': { $exists: true },
             },
           },
         },
         {
           $match: {
-            'vendorInfo.serviceAreas.maxDistance': { $gte: maxDistance },
+            'serviceAreas.maxDistance': { $gte: maxDistance },
           },
         },
       ];
@@ -87,7 +90,7 @@ export class ServiceAreaService {
       if (options.serviceTypes && options.serviceTypes.length > 0) {
         const serviceTypeQuery: any = {};
         options.serviceTypes.forEach((serviceType) => {
-          serviceTypeQuery[`vendorInfo.servicesOffered.${serviceType}`] = true;
+          serviceTypeQuery[`servicesOffered.${serviceType}`] = true;
         });
         pipeline.push({ $match: serviceTypeQuery });
       }
@@ -107,7 +110,8 @@ export class ServiceAreaService {
         },
       });
 
-      const results = await this.profileModel.aggregate(pipeline);
+      // Execute on vendor model instead of profile model
+      const results = await this.vendorModel.aggregate(pipeline);
       return results;
     } catch (error) {
       throw new Error(
@@ -131,17 +135,16 @@ export class ServiceAreaService {
     message: string;
   }> {
     try {
-      // Get vendor profile
-      const vendorProfile = await this.profileModel.findById(vendorId);
-      if (!vendorProfile || !vendorProfile.vendorInfo) {
+      // Get vendor directly
+      const vendor = await this.vendorModel.findById(vendorId);
+      if (!vendor) {
         return {
           isInRange: false,
           message: 'Vendor not found',
         };
       }
 
-      const vendorInfo = vendorProfile.vendorInfo;
-      if (!vendorInfo?.address?.computedLocation || !vendorInfo.serviceAreas?.maxDistance) {
+      if (!vendor.address?.computedLocation || !vendor.serviceAreas?.maxDistance) {
         return {
           isInRange: false,
           message: 'Vendor service area not configured',
@@ -164,7 +167,7 @@ export class ServiceAreaService {
       }
 
       // Use MongoDB's $geoNear to calculate distance
-      const result = await this.profileModel.aggregate([
+      const result = await this.vendorModel.aggregate([
         {
           $geoNear: {
             near: {
@@ -172,9 +175,9 @@ export class ServiceAreaService {
               coordinates: targetCoords,
             },
             distanceField: 'distance',
-            maxDistance: vendorInfo.serviceAreas.maxDistance * 1000, // Convert km to meters
+            maxDistance: vendor.serviceAreas.maxDistance * 1000, // Convert km to meters
             spherical: true,
-            query: { _id: vendorProfile._id },
+            query: { _id: vendor._id },
           },
         },
         {
@@ -188,7 +191,7 @@ export class ServiceAreaService {
       if (result.length === 0) {
         return {
           isInRange: false,
-          message: `Location is outside service area (max: ${vendorInfo.serviceAreas.maxDistance}km)`,
+          message: `Location is outside service area (max: ${vendor.serviceAreas.maxDistance}km)`,
         };
       }
 
@@ -217,20 +220,19 @@ export class ServiceAreaService {
     address: string;
   } | null> {
     try {
-      const vendorProfile = await this.profileModel.findById(vendorId);
-      if (!vendorProfile || !vendorProfile.vendorInfo) {
+      const vendor = await this.vendorModel.findById(vendorId);
+      if (!vendor) {
         return null;
       }
 
-      const vendorInfo = vendorProfile.vendorInfo;
-      if (!vendorInfo?.address?.computedLocation || !vendorInfo.serviceAreas?.maxDistance) {
+      if (!vendor.address?.computedLocation || !vendor.serviceAreas?.maxDistance) {
         return null;
       }
 
       return {
-        center: vendorInfo.address.computedLocation.coordinates,
-        radius: vendorInfo.serviceAreas.maxDistance,
-        address: vendorInfo.address.fullAddress,
+        center: vendor.address.computedLocation.coordinates,
+        radius: vendor.serviceAreas.maxDistance,
+        address: vendor.address.fullAddress,
       };
     } catch (error) {
       console.error('Error getting vendor service area boundary:', error);
@@ -267,14 +269,14 @@ export class ServiceAreaService {
   public async ensureGeospatialIndexes(): Promise<void> {
     try {
       // Create 2dsphere index on vendor address coordinates
-      await this.profileModel.collection.createIndex({
-        'vendorInfo.address.computedLocation': '2dsphere',
+      await this.vendorModel.collection.createIndex({
+        'address.computedLocation': '2dsphere',
       });
 
       // Create compound index for common queries
-      await this.profileModel.collection.createIndex({
-        'vendorInfo.address.computedLocation': '2dsphere',
-        'vendorInfo.serviceAreas.maxDistance': 1,
+      await this.vendorModel.collection.createIndex({
+        'address.computedLocation': '2dsphere',
+        'serviceAreas.maxDistance': 1,
       });
 
       console.info('Geospatial indexes created successfully');

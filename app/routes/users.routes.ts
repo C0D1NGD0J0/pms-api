@@ -9,9 +9,12 @@ import {
   requirePermission,
   isAuthenticated,
   routeLimiter,
+  diskUpload,
+  scanFile,
 } from '@shared/middlewares';
 import {
   PropertyValidations,
+  ProfileValidations,
   ClientValidations,
   UtilsValidations,
   UserValidations,
@@ -19,19 +22,6 @@ import {
 } from '@shared/validations';
 
 const router = Router();
-
-router.get(
-  '/:cuid/user_details/:uid',
-  isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
-  validateRequest({
-    params: UserValidations.userUidParam,
-  }),
-  asyncWrapper((req, res) => {
-    const userController = req.container.resolve<UserController>('userController');
-    return userController.getClientUserInfo(req, res);
-  })
-);
 
 router.get(
   '/:cuid/users',
@@ -143,15 +133,31 @@ router.get(
 );
 
 router.get(
-  '/:cuid/vendor_members/:uid',
+  '/:cuid/profile_details',
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.READ),
   validateRequest({
-    params: ClientValidations.clientIdParam,
+    params: UtilsValidations.cuid,
+    query: UserValidations.userIdParam,
   }),
   asyncWrapper((req, res) => {
     const userController = req.container.resolve<UserController>('userController');
-    return userController.getVendorTeamMembers(req, res);
+    return userController.getUserProfile(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/update_profile',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  diskUpload(['documents.items[*].file', 'personalInfo.avatar.file']),
+  scanFile,
+  validateRequest({
+    body: ProfileValidations.profileUpdate,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.updateUserProfile(req, res);
   })
 );
 

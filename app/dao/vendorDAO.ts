@@ -1,10 +1,12 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { ClientSession, Types, Model } from 'mongoose';
+import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
 
 import { BaseDAO } from './baseDAO';
-import { IVendorDAO } from './interfaces/vendorDAO.interface';
+import { IFindOptions } from './interfaces/baseDAO.interface';
+import { IVendorFilterOptions, IVendorDAO } from './interfaces/vendorDAO.interface';
 
 export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
   protected logger: Logger;
@@ -12,6 +14,107 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
   constructor({ vendorModel }: { vendorModel: Model<IVendorDocument> }) {
     super(vendorModel);
     this.logger = createLogger('VendorDAO');
+  }
+
+  /**
+   * Get filtered vendors for a client with optimized pagination
+   * This method handles all vendor filtering at the database level
+   */
+  async getFilteredVendors(
+    cuid: string,
+    filterOptions: IVendorFilterOptions,
+    paginationOpts?: IFindOptions
+  ): Promise<ListResultWithPagination<IVendorDocument[]>> {
+    try {
+      const { status, businessType, search } = filterOptions;
+
+      // Build base aggregation pipeline
+      const pipeline: any[] = [
+        {
+          $match: {
+            'connectedClients.cuid': cuid,
+            deletedAt: null,
+          },
+        },
+      ];
+
+      // Add business type filter
+      if (businessType) {
+        pipeline.push({
+          $match: {
+            businessType: businessType,
+          },
+        });
+      }
+
+      // Add search filter (company name, contact person)
+      if (search && search.trim()) {
+        const searchRegex = new RegExp(search.trim(), 'i');
+        pipeline.push({
+          $match: {
+            $or: [
+              { companyName: { $regex: searchRegex } },
+              { 'contactPerson.name': { $regex: searchRegex } },
+            ],
+          },
+        });
+      }
+
+      // Add connection status filter
+      if (status) {
+        const isConnected = status === 'active';
+        pipeline.push({
+          $match: {
+            connectedClients: {
+              $elemMatch: {
+                cuid: cuid,
+                isConnected: isConnected,
+              },
+            },
+          },
+        });
+      }
+
+      // Add pagination to the pipeline
+      const limit = paginationOpts?.limit || 10;
+      const skip = paginationOpts?.skip || 0;
+
+      // Create separate pipeline for count
+      const countPipeline = [...pipeline, { $count: 'total' }];
+
+      // Add pagination stages to main pipeline
+      pipeline.push({ $skip: skip });
+      pipeline.push({ $limit: limit });
+
+      // Execute both pipelines
+      const [vendors, countResult] = await Promise.all([
+        this.aggregate(pipeline),
+        this.aggregate(countPipeline),
+      ]);
+
+      const total = countResult.length > 0 ? (countResult[0] as any).total : 0;
+      const totalPages = Math.ceil(total / limit);
+      const currentPage = Math.floor(skip / limit) + 1;
+
+      this.logger.info(`Retrieved ${vendors.length} filtered vendors for client ${cuid}`, {
+        filterOptions,
+        totalFound: total,
+      });
+
+      return {
+        items: vendors as IVendorDocument[],
+        pagination: {
+          total,
+          perPage: limit,
+          totalPages,
+          currentPage,
+          hasMoreResource: currentPage < totalPages,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error getting filtered vendors for client ${cuid}:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -36,6 +139,18 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
       return await this.findById(vendorId);
     } catch (error) {
       this.logger.error(`Error getting vendor by ID ${vendorId}: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get vendor by VUID (vendor unique identifier)
+   */
+  async getVendorByVuid(vuid: string): Promise<IVendorDocument | null> {
+    try {
+      return await this.findFirst({ vuid, deletedAt: null });
+    } catch (error) {
+      this.logger.error(`Error getting vendor by VUID ${vuid}: ${error}`);
       throw error;
     }
   }
@@ -67,6 +182,21 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
       this.logger.error(
         `Error finding vendor by registration number ${registrationNumber}: ${error}`
       );
+      throw error;
+    }
+  }
+
+  /**
+   * Find vendor by company name (for uniqueness validation)
+   */
+  async findByCompanyName(companyName: string): Promise<IVendorDocument | null> {
+    try {
+      return await this.findFirst({
+        companyName: companyName.trim(),
+        deletedAt: null,
+      });
+    } catch (error) {
+      this.logger.error(`Error finding vendor by company name ${companyName}: ${error}`);
       throw error;
     }
   }
@@ -156,40 +286,45 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     try {
       const { status } = filterOptions;
 
-      // Build pipeline to get vendor stats
+      // Build pipeline to get vendor stats - query vendors directly by connectedClients
       const pipeline: any[] = [
         {
-          $lookup: {
-            from: 'users',
-            localField: 'primaryAccountHolder',
-            foreignField: '_id',
-            as: 'user',
-          },
-        },
-        {
-          $unwind: '$user',
-        },
-        {
           $match: {
-            'user.cuids': {
+            // Find vendors connected to this client
+            connectedClients: {
               $elemMatch: {
                 cuid: cuid,
-                roles: 'vendor',
-                // Only count primary vendors (no linkedVendorId)
-                $or: [
-                  { linkedVendorId: { $exists: false } },
-                  { linkedVendorId: null },
-                  { linkedVendorId: '' },
-                ],
+                isConnected: true,
               },
             },
             deletedAt: null,
-            ...(status && { 'user.isActive': status === 'active' }),
           },
         },
       ];
 
-      // Execute pipeline to get all primary vendors
+      // Add user lookup for status filtering if needed
+      if (status) {
+        pipeline.push(
+          {
+            $lookup: {
+              from: 'users',
+              localField: 'primaryAccountHolder',
+              foreignField: '_id',
+              as: 'user',
+            },
+          },
+          {
+            $unwind: '$user',
+          },
+          {
+            $match: {
+              'user.isActive': status === 'active',
+            },
+          }
+        );
+      }
+
+      // Execute pipeline to get all connected vendors
       const vendors = await this.aggregate(pipeline);
       const totalVendors = vendors.length;
 

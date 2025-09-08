@@ -345,13 +345,13 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   cuid: '$$activeClient.cuid',
                   clientDisplayName: '$$activeClient.clientDisplayName',
                   role: { $arrayElemAt: ['$$activeClient.roles', 0] },
-                  linkedVendorId: '$$activeClient.linkedVendorId',
+                  linkedVendorUid: '$$activeClient.linkedVendorUid',
                   isPrimaryVendor: {
                     $cond: {
                       if: {
                         $and: [
                           { $in: ['vendor', '$$activeClient.roles'] },
-                          { $not: '$$activeClient.linkedVendorId' },
+                          { $not: '$$activeClient.linkedVendorUid' },
                         ],
                       },
                       then: true,
@@ -479,11 +479,11 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   }
 
   /**
-   * Update vendor reference information (vendorId, linkedVendorId, isLinkedAccount)
+   * Update vendor reference information (vendorId, linkedVendorUid, isLinkedAccount)
    */
   async updateVendorReference(
     profileId: string,
-    vendorReference: { vendorId?: string; linkedVendorId?: string; isLinkedAccount?: boolean }
+    vendorReference: { vendorId?: string; linkedVendorUid?: string; isLinkedAccount?: boolean }
   ): Promise<IProfileDocument | null> {
     try {
       if (!vendorReference || typeof vendorReference !== 'object') {
@@ -494,7 +494,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
       const updateFields: Record<string, any> = {};
 
       // Only allow updating vendor reference fields
-      const allowedFields = ['vendorId', 'linkedVendorId', 'isLinkedAccount'];
+      const allowedFields = ['vendorId', 'linkedVendorUid', 'isLinkedAccount'];
       for (const [key, value] of Object.entries(vendorReference)) {
         if (allowedFields.includes(key)) {
           updateFields[`vendorInfo.${key}`] = value;
@@ -539,7 +539,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
       // Only update vendor reference fields, ignore business data
       const vendorReference = {
         vendorId: vendorInfo.vendorId,
-        linkedVendorId: vendorInfo.linkedVendorId,
+        linkedVendorUid: vendorInfo.linkedVendorUid,
         isLinkedAccount: vendorInfo.isLinkedAccount,
       };
 

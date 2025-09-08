@@ -9,14 +9,21 @@ import { LanguageService } from '@shared/languages/language.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
-import { EventsRegistryCache, PropertyCache, AuthCache, UserCache } from '@caching/index';
-import { PropertyUnit, Invitation, Property, Profile, Client, User } from '@models/index';
+import { PropertyUnit, Invitation, Property, Profile, Client, Vendor, User } from '@models/index';
+import {
+  EventsRegistryCache,
+  PropertyCache,
+  VendorCache,
+  AuthCache,
+  UserCache,
+} from '@caching/index';
 import {
   PropertyUnitDAO,
   InvitationDAO,
   PropertyDAO,
   ProfileDAO,
   ClientDAO,
+  VendorDAO,
   UserDAO,
 } from '@dao/index';
 import {
@@ -41,6 +48,7 @@ import {
   InvitationController,
   PropertyController,
   ClientController,
+  VendorController,
   UserController,
   AuthController,
 } from '@controllers/index';
@@ -55,6 +63,7 @@ import {
   PropertyService,
   ProfileService,
   ClientService,
+  VendorService,
   UserService,
   AuthService,
 } from '@services/index';
@@ -67,6 +76,7 @@ const ControllerResources = {
   propertyController: asClass(PropertyController).scoped(),
   propertyUnitController: asClass(PropertyUnitController).scoped(),
   invitationController: asClass(InvitationController).scoped(),
+  vendorController: asClass(VendorController).scoped(),
 };
 
 const ModelResources = {
@@ -76,6 +86,7 @@ const ModelResources = {
   propertyModel: asValue(Property),
   propertyUnitModel: asValue(PropertyUnit),
   invitationModel: asValue(Invitation),
+  vendorModel: asValue(Vendor),
 };
 
 const ServiceResources = {
@@ -94,6 +105,7 @@ const ServiceResources = {
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   permissionService: asClass(PermissionService).singleton(),
   invitationService: asClass(InvitationService).singleton(),
+  vendorService: asClass(VendorService).singleton(),
 };
 
 const DAOResources = {
@@ -103,6 +115,7 @@ const DAOResources = {
   propertyDAO: asClass(PropertyDAO).singleton(),
   propertyUnitDAO: asClass(PropertyUnitDAO).singleton(),
   invitationDAO: asClass(InvitationDAO).singleton(),
+  vendorDAO: asClass(VendorDAO).singleton(),
 };
 
 const CacheResources = {
@@ -110,6 +123,7 @@ const CacheResources = {
   propertyCache: asClass(PropertyCache).singleton(),
   eventsRegistry: asClass(EventsRegistryCache).singleton(),
   userCache: asClass(UserCache).singleton(),
+  vendorCache: asClass(VendorCache).singleton(),
 };
 
 const WorkerResources = {

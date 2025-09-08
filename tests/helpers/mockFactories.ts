@@ -518,6 +518,136 @@ export const createMockSession = () => ({
   },
 });
 
+// Vendor Mocks
+export const createMockVendor = (overrides: Partial<import('@interfaces/vendor.interface').IVendor> = {}): Partial<import('@interfaces/vendor.interface').IVendor> => ({
+  primaryAccountHolder: new Types.ObjectId(),
+  companyName: faker.company.name(),
+  businessType: faker.helpers.arrayElement([
+    'general_contractor',
+    'electrical',
+    'plumbing',
+    'hvac',
+    'landscaping',
+    'cleaning',
+    'security',
+    'maintenance',
+  ] as const),
+  registrationNumber: faker.string.alphanumeric(10).toUpperCase(),
+  taxId: faker.string.numeric(9),
+  yearsInBusiness: faker.number.int({ min: 1, max: 50 }),
+  address: {
+    fullAddress: faker.location.streetAddress() + ', ' + faker.location.city() + ', ' + faker.location.state(),
+    street: faker.location.streetAddress(),
+    streetNumber: faker.location.buildingNumber(),
+    city: faker.location.city(),
+    state: faker.location.state(),
+    country: faker.location.country(),
+    postCode: faker.location.zipCode(),
+    unitNumber: faker.datatype.boolean() ? faker.number.int({ min: 1, max: 999 }).toString() : undefined,
+    computedLocation: {
+      type: 'Point' as const,
+      coordinates: [faker.location.longitude(), faker.location.latitude()],
+    },
+  },
+  servicesOffered: {
+    applianceRepair: faker.datatype.boolean(),
+    landscaping: faker.datatype.boolean(),
+    maintenance: faker.datatype.boolean(),
+    pestControl: faker.datatype.boolean(),
+    electrical: faker.datatype.boolean(),
+    carpentry: faker.datatype.boolean(),
+    cleaning: faker.datatype.boolean(),
+    painting: faker.datatype.boolean(),
+    plumbing: faker.datatype.boolean(),
+    security: faker.datatype.boolean(),
+    roofing: faker.datatype.boolean(),
+    hvac: faker.datatype.boolean(),
+    other: faker.datatype.boolean(),
+  },
+  serviceAreas: {
+    baseLocation: {
+      address: faker.location.streetAddress() + ', ' + faker.location.city(),
+      coordinates: [faker.location.longitude(), faker.location.latitude()],
+    },
+    maxDistance: faker.helpers.arrayElement([10, 15, 25, 50] as const),
+  },
+  contactPerson: {
+    name: faker.person.fullName(),
+    jobTitle: faker.person.jobTitle(),
+    email: faker.internet.email(),
+    phone: faker.phone.number(),
+    department: faker.helpers.arrayElement(['Operations', 'Sales', 'Customer Service']),
+  },
+  insuranceInfo: {
+    provider: faker.company.name() + ' Insurance',
+    policyNumber: faker.string.alphanumeric(12).toUpperCase(),
+    coverageAmount: faker.number.int({ min: 100000, max: 5000000 }),
+    expirationDate: faker.date.future(),
+  },
+  ...overrides,
+});
+
+export const createMockVendorDocument = (overrides: Partial<import('@interfaces/vendor.interface').IVendorDocument> = {}): Partial<import('@interfaces/vendor.interface').IVendorDocument> => ({
+  ...createMockVendor(),
+  _id: new Types.ObjectId(),
+  vuid: faker.string.uuid(),
+  deletedAt: undefined,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  id: new Types.ObjectId().toString(),
+  // Mock methods that might be used in tests
+  toJSON: function () {
+    const { toJSON, ...rest } = this;
+    return rest;
+  },
+  ...overrides,
+});
+
+export const createMockNewVendor = (overrides: Partial<import('@interfaces/vendor.interface').NewVendor> = {}): import('@interfaces/vendor.interface').NewVendor => {
+  const mockVendor = createMockVendor();
+  // Remove vuid as it's not part of NewVendor
+  const { ...newVendorData } = mockVendor;
+  return {
+    ...newVendorData,
+    primaryAccountHolder: mockVendor.primaryAccountHolder!,
+    ...overrides,
+  } as import('@interfaces/vendor.interface').NewVendor;
+};
+
+export const createMockCompanyProfile = (overrides: any = {}) => ({
+  legalEntityName: faker.company.name(),
+  companyName: faker.company.name(),
+  businessType: faker.helpers.arrayElement([
+    'general_contractor',
+    'electrical',
+    'plumbing',
+    'hvac',
+    'landscaping',
+    'cleaning',
+    'security',
+    'maintenance',
+  ] as const),
+  registrationNumber: faker.string.alphanumeric(10).toUpperCase(),
+  taxId: faker.string.numeric(9),
+  companyEmail: faker.internet.email(),
+  address: {
+    fullAddress: faker.location.streetAddress() + ', ' + faker.location.city() + ', ' + faker.location.state(),
+    street: faker.location.streetAddress(),
+    city: faker.location.city(),
+    state: faker.location.state(),
+    country: faker.location.country(),
+    postCode: faker.location.zipCode(),
+    coordinates: [faker.location.longitude(), faker.location.latitude()],
+  },
+  contactPerson: {
+    name: faker.person.fullName(),
+    jobTitle: faker.person.jobTitle(),
+    email: faker.internet.email(),
+    phone: faker.phone.number(),
+  },
+  ...overrides,
+});
+
 // Success return data mock
 export const createSuccessResponse = <T>(data: T, message?: string) => ({
   success: true,

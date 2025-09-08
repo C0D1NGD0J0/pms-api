@@ -16,21 +16,21 @@ export interface IUserDAO {
       role: IUserRoleType;
       defaultPassword: string;
     },
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument>;
   createUserFromInvitation(
     client: { cuid: string; displayName?: string },
     invitationData: IInvitationDocument,
     userData: any,
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument>;
   addUserToClient(
     userId: string,
     role: IUserRoleType,
     client: { cuid: string; displayName?: string; id: string },
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument | null>;
   getUsersByFilteredType(
@@ -43,6 +43,11 @@ export interface IUserDAO {
     filter?: FilterQuery<IUserDocument>,
     opts?: IFindOptions
   ): ListResultWithPagination<IUserDocument[]>;
+  getLinkedVendorUsers(
+    primaryVendorId: string,
+    cuid: string,
+    opts?: IFindOptions
+  ): Promise<ListResultWithPagination<IUserDocument[]>>;
   getUsersByClientIdAndRole(
     cuid: string,
     role: IUserRoleType,

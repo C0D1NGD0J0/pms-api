@@ -5,6 +5,86 @@ import { IPropertyDocument } from '@interfaces/property.interface';
 
 const logger = createLogger('PropertyModel');
 
+// Define specifications as a separate schema for proper handling
+const SpecificationsSchema = new Schema(
+  {
+    totalArea: {
+      type: Number,
+      min: 0,
+    },
+    lotSize: {
+      type: Number,
+      min: 0,
+    },
+    bedrooms: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    bathrooms: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    floors: {
+      type: Number,
+      min: 1,
+      default: 1,
+    },
+    garageSpaces: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    maxOccupants: {
+      type: Number,
+      min: 1,
+    },
+  },
+  { _id: false, strict: false } // Don't create a separate _id and allow additional fields
+);
+
+// Define utilities schema
+const UtilitiesSchema = new Schema(
+  {
+    water: { type: Boolean, default: false },
+    gas: { type: Boolean, default: false },
+    electricity: { type: Boolean, default: false },
+    internet: { type: Boolean, default: false },
+    cableTV: { type: Boolean, default: false },
+  },
+  { _id: false, strict: false }
+);
+
+// Define interior amenities schema
+const InteriorAmenitiesSchema = new Schema(
+  {
+    airConditioning: { type: Boolean, default: false },
+    heating: { type: Boolean, default: false },
+    washerDryer: { type: Boolean, default: false },
+    dishwasher: { type: Boolean, default: false },
+    fridge: { type: Boolean, default: false },
+    furnished: { type: Boolean, default: false },
+    storageSpace: { type: Boolean, default: false },
+  },
+  { _id: false, strict: false }
+);
+
+// Define community amenities schema
+const CommunityAmenitiesSchema = new Schema(
+  {
+    swimmingPool: { type: Boolean, default: false },
+    fitnessCenter: { type: Boolean, default: false },
+    elevator: { type: Boolean, default: false },
+    parking: { type: Boolean, default: false },
+    securitySystem: { type: Boolean, default: false },
+    laundryFacility: { type: Boolean, default: false },
+    petFriendly: { type: Boolean, default: false },
+    doorman: { type: Boolean, default: false },
+  },
+  { _id: false, strict: false }
+);
+
 const PropertySchema = new Schema<IPropertyDocument>(
   {
     pid: {
@@ -112,47 +192,8 @@ const PropertySchema = new Schema<IPropertyDocument>(
         set: (val: number) => val * 100,
       },
     },
-    specifications: {
-      totalArea: {
-        type: Number,
-        min: 0,
-      },
-      lotSize: {
-        type: Number,
-        min: 0,
-      },
-      bedrooms: {
-        type: Number,
-        min: 0,
-        default: 0,
-      },
-      bathrooms: {
-        type: Number,
-        min: 0,
-        default: 0,
-      },
-      floors: {
-        type: Number,
-        min: 1,
-        default: 1,
-      },
-      garageSpaces: {
-        type: Number,
-        min: 0,
-        default: 0,
-      },
-      maxOccupants: {
-        type: Number,
-        min: 1,
-      },
-    },
-    utilities: {
-      water: { type: Boolean, default: false },
-      gas: { type: Boolean, default: false },
-      electricity: { type: Boolean, default: false },
-      internet: { type: Boolean, default: false },
-      cableTV: { type: Boolean, default: false },
-    },
+    specifications: SpecificationsSchema,
+    utilities: UtilitiesSchema,
     description: {
       text: {
         required: true,
@@ -164,25 +205,8 @@ const PropertySchema = new Schema<IPropertyDocument>(
         trim: true,
       },
     },
-    interiorAmenities: {
-      airConditioning: { type: Boolean, default: false },
-      heating: { type: Boolean, default: false },
-      washerDryer: { type: Boolean, default: false },
-      dishwasher: { type: Boolean, default: false },
-      fridge: { type: Boolean, default: false },
-      furnished: { type: Boolean, default: false },
-      storageSpace: { type: Boolean, default: false },
-    },
-    communityAmenities: {
-      swimmingPool: { type: Boolean, default: false },
-      fitnessCenter: { type: Boolean, default: false },
-      elevator: { type: Boolean, default: false },
-      parking: { type: Boolean, default: false },
-      securitySystem: { type: Boolean, default: false },
-      laundryFacility: { type: Boolean, default: false },
-      petFriendly: { type: Boolean, default: false },
-      doorman: { type: Boolean, default: false },
-    },
+    interiorAmenities: InteriorAmenitiesSchema,
+    communityAmenities: CommunityAmenitiesSchema,
     address: {
       street: { type: String },
       country: { type: String },

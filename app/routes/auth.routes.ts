@@ -35,7 +35,7 @@ router.get(
   })
 );
 
-router.put(
+router.patch(
   '/:cuid/account_activation',
   validateRequest({
     query: AuthValidations.activationToken,
@@ -46,7 +46,7 @@ router.put(
   })
 );
 
-router.put(
+router.patch(
   '/resend_activation_link',
   validateRequest({
     body: AuthValidations.resendActivation,
@@ -69,7 +69,7 @@ router.patch(
   })
 );
 
-router.put(
+router.patch(
   '/forgot_password',
   validateRequest({
     body: AuthValidations.emailValidation,

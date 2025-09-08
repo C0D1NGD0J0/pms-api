@@ -5,8 +5,9 @@ import { t } from '@shared/languages';
 import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
-import { AuthTokenService } from '@services/index';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { AuthTokenService, VendorService } from '@services/index';
+import { IActiveAccountInfo } from '@interfaces/client.interface';
 import { ISignupData, IUserRole } from '@interfaces/user.interface';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
 import {
@@ -27,6 +28,7 @@ import {
 
 interface IConstructor {
   tokenService: AuthTokenService;
+  vendorService: VendorService;
   profileDAO: ProfileDAO;
   emailQueue: EmailQueue;
   authCache: AuthCache;
@@ -42,6 +44,7 @@ export class AuthService {
   private readonly profileDAO: ProfileDAO;
   private readonly emailQueue: EmailQueue;
   private readonly tokenService: AuthTokenService;
+  private readonly vendorService: VendorService;
 
   constructor({
     userDAO,
@@ -50,6 +53,7 @@ export class AuthService {
     emailQueue,
     tokenService,
     authCache,
+    vendorService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -57,6 +61,7 @@ export class AuthService {
     this.profileDAO = profileDAO;
     this.emailQueue = emailQueue;
     this.tokenService = tokenService;
+    this.vendorService = vendorService;
     this.log = createLogger('AuthService');
   }
 
@@ -252,7 +257,7 @@ export class AuthService {
           emailType: MailType.ACCOUNT_ACTIVATION,
           data: {
             fullname: profile.fullname,
-            activationUrl: `${process.env.FRONTEND_URL}/${client.cuid}/account_activation?t=${user.activationToken}`,
+            activationUrl: `${process.env.FRONTEND_URL}/account_activation/${client.cuid}?t=${user.activationToken}`,
           },
         },
       };
@@ -271,8 +276,8 @@ export class AuthService {
       accessToken: string;
       rememberMe: boolean;
       refreshToken: string;
-      activeAccount: { cuid: string; clientDisplayName: string };
-      accounts: { cuid: string; clientDisplayName: string }[] | null;
+      activeAccount: IActiveAccountInfo;
+      accounts: IActiveAccountInfo[] | null;
     }>
   > {
     const { email, password, rememberMe } = data;
@@ -388,7 +393,7 @@ export class AuthService {
     ISuccessReturnData<{
       accessToken: string;
       refreshToken: string;
-      activeAccount: { cuid: string; clientDisplayName: string };
+      activeAccount: IActiveAccountInfo;
     }>
   > {
     if (!userId || !newcuid) {
@@ -561,8 +566,8 @@ export class AuthService {
     ISuccessReturnData<{
       accessToken: string;
       refreshToken: string;
-      activeAccount: { cuid: string; clientDisplayName: string };
-      accounts: { cuid: string; clientDisplayName: string }[] | null;
+      activeAccount: IActiveAccountInfo;
+      accounts: IActiveAccountInfo[] | null;
     }>
   > {
     try {

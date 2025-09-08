@@ -97,6 +97,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
       notifications: {
         messages: { type: Boolean, default: false },
         comments: { type: Boolean, default: false },
+
         announcements: { type: Boolean, default: true },
       },
     },
@@ -146,72 +147,18 @@ const ProfileSchema = new Schema<IProfileDocument>(
     lang: { type: String, default: 'en' },
 
     vendorInfo: {
-      servicesOffered: {
-        plumbing: { type: Boolean },
-        electrical: { type: Boolean },
-        hvac: { type: Boolean },
-        cleaning: { type: Boolean },
-        landscaping: { type: Boolean },
-        painting: { type: Boolean },
-        carpentry: { type: Boolean },
-        roofing: { type: Boolean },
-        security: { type: Boolean },
-        pestControl: { type: Boolean },
-        applianceRepair: { type: Boolean },
-        maintenance: { type: Boolean },
-        other: { type: Boolean },
+      vendorId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Vendor',
       },
-      address: {
-        street: { type: String },
-        country: { type: String },
-        postCode: { type: String },
-        unitNumber: { type: String },
-        streetNumber: { type: String },
-        city: { type: String, index: true },
-        state: { type: String, index: true },
-        fullAddress: { type: String, index: true },
-        computedLocation: {
-          type: {
-            type: String,
-            enum: ['Point'],
-            default: 'Point',
-          },
-          coordinates: {
-            type: [Number],
-            default: [0, 0],
-            validate: {
-              validator: function (this: any, v: number[]) {
-                // Only validate if fullAddress exists and coordinates are provided
-                const addressDoc = this.parent();
-                if (!addressDoc || !addressDoc.fullAddress) {
-                  return true; // Skip validation if no fullAddress
-                }
-                if (!v || v.length === 0) {
-                  return true; // Allow empty array when no fullAddress
-                }
-                return v.length === 2 && v[0] >= -180 && v[0] <= 180 && v[1] >= -90 && v[1] <= 90;
-              },
-              message: 'Coordinates must be [longitude, latitude] with valid ranges',
-            },
-          },
-        },
+      linkedVendorUid: {
+        // this is the primary vendor (user -> uid)
+        type: String,
+        trim: true,
       },
-      contactPerson: {
-        name: { type: String, trim: true },
-        jobTitle: { type: String, trim: true },
-        email: { type: String, trim: true },
-        phone: { type: String, trim: true },
-      },
-      registrationNumber: { type: String, trim: true },
-      yearsInBusiness: { type: Number, min: 0 },
-      businessType: { type: String, trim: true },
-      companyName: { type: String, trim: true },
-      taxId: { type: String, trim: true },
-      insuranceInfo: {
-        provider: { type: String, trim: true },
-        policyNumber: { type: String, trim: true },
-        expirationDate: { type: Date },
-        coverageAmount: { type: Number, min: 0 },
+      isLinkedAccount: {
+        type: Boolean,
+        default: false,
       },
     },
 
@@ -220,7 +167,18 @@ const ProfileSchema = new Schema<IProfileDocument>(
       jobTitle: { type: String, trim: true },
       employeeId: { type: String, trim: true, sparse: true, select: false },
       reportsTo: {
-        required: true,
+        required: function (this: IProfileDocument) {
+          // Not required for vendor linked accounts
+          if (this.vendorInfo?.isLinkedAccount) {
+            return false;
+          }
+          // Not required if employeeInfo doesn't exist or is being set
+          if (!this.employeeInfo || Object.keys(this.employeeInfo).length === 0) {
+            return false;
+          }
+          // Only required for actual employees (when employeeInfo is present and not a vendor)
+          return !!(this.employeeInfo.department || this.employeeInfo.jobTitle);
+        },
         type: Schema.Types.ObjectId,
         ref: 'User',
       },

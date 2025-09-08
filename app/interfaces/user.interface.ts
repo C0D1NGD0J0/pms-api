@@ -19,25 +19,7 @@ export enum IUserRole {
   ADMIN = 'admin',
 }
 
-/**
- * Vendor detail information for getClientUserInfo response
- */
 export interface IVendorDetailInfo {
-  servicesOffered: {
-    plumbing?: boolean;
-    electrical?: boolean;
-    hvac?: boolean;
-    cleaning?: boolean;
-    landscaping?: boolean;
-    painting?: boolean;
-    carpentry?: boolean;
-    roofing?: boolean;
-    security?: boolean;
-    pestControl?: boolean;
-    applianceRepair?: boolean;
-    maintenance?: boolean;
-    other?: boolean;
-  };
   stats: {
     completedJobs: number;
     activeJobs: number;
@@ -61,7 +43,9 @@ export interface IVendorDetailInfo {
     baseLocation: string;
     maxDistance: number;
   };
-  linkedVendorId: string | null;
+  servicesOffered: Record<string, any>;
+  linkedUsers?: ILinkedVendorUser[];
+  linkedVendorUid: string | null;
   registrationNumber: string;
   isLinkedAccount: boolean;
   isPrimaryVendor: boolean;
@@ -111,73 +95,12 @@ export interface IEmployeeDetailInfo {
   tags: string[];
 }
 
-export interface FilteredUser {
-  // User type indicator
-  userType?: 'employee' | 'vendor' | 'tenant';
-  vendorInfo?: FilteredVendorInfo; // Extended version with additional fields
-  // Type-specific information (conditional based on userType)
-  employeeInfo?: EmployeeInfo;
-  createdAt: Date | string;
-  tenantInfo?: TenantInfo;
-  roles: IUserRoleType[];
-  isConnected: boolean;
-
-  phoneNumber?: string;
-  displayName: string;
-  // Profile information (optional, from populated profile)
-  firstName?: string;
-  isActive: boolean;
-  lastName?: string;
-
-  fullName?: string;
-
-  avatar?: string;
-  email: string;
-  // Basic user information
-  id: string;
-}
-
-/**
- * Structured response for getClientUserInfo
- */
-export interface IUserDetailResponse {
-  profile: {
-    firstName: string;
-    lastName: string;
-    fullName: string;
-    avatar: any;
-    phoneNumber: string;
-    email: string;
-    about: string;
-    contact: {
-      phone: string;
-      email: string;
-    };
-  };
-  user: {
-    uid: string;
-    email: string;
-    displayName: string;
-    roles: string[];
-    isActive: boolean;
-    createdAt: Date | string;
-    userType: 'employee' | 'vendor' | 'tenant';
-  };
-  employeeInfo?: IEmployeeDetailInfo;
-  vendorInfo?: IVendorDetailInfo;
-  tenantInfo?: ITenantDetailInfo;
-  properties: any[];
-  documents: any[];
-  status: string;
-  tasks: any[];
-}
-
 export interface ICurrentUser {
   client: {
     cuid: string;
     displayname: string;
     role: IUserRoleType;
-    linkedVendorId?: string;
+    linkedVendorUid?: string;
     clientSettings?: any;
   };
   preferences: {
@@ -199,27 +122,48 @@ export interface ICurrentUser {
   sub: string;
 }
 
-export interface FilteredUser {
+export interface FilteredUser
+  extends Pick<IUserDocument, 'uid' | 'email' | 'isActive' | 'createdAt'> {
   userType?: 'employee' | 'vendor' | 'tenant';
   vendorInfo?: FilteredVendorInfo;
+  // Type-specific information (conditional based on userType)
   employeeInfo?: EmployeeInfo;
-  createdAt: Date | string;
   tenantInfo?: TenantInfo;
   roles: IUserRoleType[];
   isConnected: boolean;
-
   phoneNumber?: string;
   displayName: string;
   firstName?: string;
-  isActive: boolean;
   lastName?: string;
-
   fullName?: string;
-
   avatar?: string;
-  email: string;
-  id: string;
 }
+
+/**
+ * Structured response for getClientUserInfo
+ */
+export interface IUserDetailResponse {
+  profile: {
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    avatar: string;
+    phoneNumber: string;
+    email: string;
+    about: string;
+    contact: {
+      phone: string;
+      email: string;
+    };
+    roles: string[];
+    id: string;
+    userType: 'employee' | 'vendor' | 'tenant';
+  };
+  employeeInfo?: IEmployeeDetailInfo;
+  vendorInfo?: IVendorDetailInfo;
+  status: 'Active' | 'Inactive';
+}
+
 export interface IUserDocument extends Document, IUser {
   validatePassword: (pwd1: string) => Promise<boolean>;
   cuids: IClientUserConnections[];
@@ -233,6 +177,25 @@ export interface IUserDocument extends Document, IUser {
   updatedAt: Date;
   uid: string;
   id: string;
+}
+
+/**
+ * Minimal vendor info for table display
+ * Using Pick to select specific fields from IVendorDetailInfo
+ */
+export interface FilteredUserVendorInfo
+  extends Pick<IVendorDetailInfo, 'companyName' | 'businessType'> {
+  averageResponseTime?: string;
+  averageServiceCost?: number;
+  isLinkedAccount?: boolean;
+  isPrimaryVendor?: boolean;
+  linkedVendorUid?: string;
+  contactPerson?: string;
+  completedJobs?: number;
+  serviceType?: string;
+  reviewCount?: number;
+  rating?: number;
+  vuid?: string;
 }
 
 export interface ITenant extends IUser {
@@ -269,20 +232,11 @@ export interface ITenantDetailInfo {
   documents: any[];
 }
 
-export type IdentificationType = {
-  idType: 'passport' | 'national-id' | 'drivers-license' | 'corporation-license';
-  idNumber: string;
-  authority: string;
-  issueDate: Date | string; // or Date if you prefer Date objects
-  expiryDate: Date | string; // or Date if you prefer Date objects
-  issuingState: string;
-};
-
 /**
  * Lightweight user data for table display only
- * Contains only the fields needed for table rendering
+ * Using Pick and optional fields to reduce duplication
  */
-export interface FilteredUserTableData {
+export interface FilteredUserTableData extends Pick<IUser, 'email'> {
   employeeInfo?: FilteredUserEmployeeInfo;
   vendorInfo?: FilteredUserVendorInfo;
   tenantInfo?: FilteredUserTenantInfo;
@@ -291,7 +245,6 @@ export interface FilteredUserTableData {
   displayName: string;
   fullName?: string;
   isActive: boolean;
-  email: string;
   uid: string;
 }
 
@@ -310,6 +263,32 @@ export type ISignupData = {
   termsAccepted: boolean;
 };
 
+/**
+ * Vendor team member response
+ */
+export interface IVendorTeamMember {
+  lastLogin: Date | null;
+  isTeamMember: boolean;
+  displayName: string;
+  phoneNumber: string;
+  firstName: string;
+  isActive: boolean;
+  lastName: string;
+  joinedDate: Date;
+  email: string;
+  role: string;
+  uid: string;
+}
+
+export type IdentificationType = {
+  idType: 'passport' | 'national-id' | 'drivers-license' | 'corporation-license';
+  idNumber: string;
+  authority: string;
+  issueDate: Date | string;
+  expiryDate: Date | string;
+  issuingState: string;
+};
+
 // USER INTERFACE
 export interface IUser {
   passwordResetTokenExpiresAt: Date | number | null;
@@ -321,14 +300,17 @@ export interface IUser {
 }
 
 /**
- * Minimal vendor info for table display
+ * Vendor team members response with pagination
  */
-export interface FilteredUserVendorInfo {
-  isLinkedAccount?: boolean;
-  isPrimaryVendor?: boolean;
-  linkedVendorId?: string;
-  businessType?: string;
-  companyName?: string;
+export interface IVendorTeamMembersResponse {
+  pagination: {
+    total: number;
+    perPage: number;
+    totalPages: number;
+    currentPage: number;
+    hasMoreResource: boolean;
+  };
+  items: IVendorTeamMember[];
 }
 
 /**
@@ -344,9 +326,31 @@ export interface IUserStats {
  * Extended vendor info that includes additional fields from getUsersByRole
  */
 export interface FilteredVendorInfo extends VendorInfo {
-  isLinkedAccount?: boolean;
   isPrimaryVendor?: boolean;
-  linkedVendorId?: string;
+  isLinkedAccount: boolean;
+  linkedVendorUid?: string;
+}
+
+/**
+ * Linked vendor user info
+ */
+export interface ILinkedVendorUser {
+  phoneNumber?: string;
+  displayName: string;
+  isActive: boolean;
+  email: string;
+  uid: string;
+}
+
+/**
+ * Property info for user (minimal)
+ */
+export interface IUserProperty {
+  occupancy: string;
+  location: string;
+  units: number;
+  since: string;
+  name: string;
 }
 
 export interface ITenantDocument extends Document, ITenant {
@@ -402,6 +406,10 @@ export interface StatsDistribution {
 }
 
 export type IUserRoleType = 'admin' | 'tenant' | 'manager' | 'staff' | 'landlord' | 'vendor';
+
+export type IUserPopulatedDocument = {
+  profile: IProfileDocument;
+} & IUserDocument;
 
 /**
  * Tenant information placeholder

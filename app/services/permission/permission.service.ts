@@ -1,6 +1,8 @@
 import bunyan from 'bunyan';
 import { createLogger } from '@utils/index';
 import { AccessControl } from 'accesscontrol';
+import { IVendorDocument } from '@interfaces/vendor.interface';
+import { IPropertyDocument } from '@interfaces/property.interface';
 import permissionConfig from '@shared/permissions/permissions.json';
 import { IUserRoleType, ICurrentUser } from '@interfaces/user.interface';
 import {
@@ -19,6 +21,7 @@ import {
   PropertyAccessStrategy,
   PaymentAccessStrategy,
   ClientAccessStrategy,
+  VendorAccessStrategy,
   LeaseAccessStrategy,
   UserAccessStrategy,
 } from './resourceAccessStrategies';
@@ -50,6 +53,7 @@ export class PermissionService {
       [PermissionResource.INVITATION, new InvitationAccessStrategy()],
       [PermissionResource.PROPERTY, new PropertyAccessStrategy()],
       [PermissionResource.PAYMENT, new PaymentAccessStrategy()],
+      [PermissionResource.VENDOR, new VendorAccessStrategy()],
       [PermissionResource.CLIENT, new ClientAccessStrategy()],
       [PermissionResource.LEASE, new LeaseAccessStrategy()],
       [PermissionResource.USER, new UserAccessStrategy()],
@@ -768,7 +772,7 @@ export class PermissionService {
     );
   }
 
-  canUserAccessProperty(currentUser: ICurrentUser, property: any): boolean {
+  canUserAccessProperty(currentUser: ICurrentUser, property: IPropertyDocument): boolean {
     return this.canAccessResource(
       currentUser,
       PermissionResource.PROPERTY,
@@ -777,7 +781,7 @@ export class PermissionService {
     );
   }
 
-  canUserModifyProperty(currentUser: ICurrentUser, property: any): boolean {
+  canUserModifyProperty(currentUser: ICurrentUser, property: IPropertyDocument): boolean {
     return this.canAccessResource(
       currentUser,
       PermissionResource.PROPERTY,
@@ -786,7 +790,7 @@ export class PermissionService {
     );
   }
 
-  canUserDeleteProperty(currentUser: ICurrentUser, property: any): boolean {
+  canUserDeleteProperty(currentUser: ICurrentUser, property: IPropertyDocument): boolean {
     return this.canAccessResource(
       currentUser,
       PermissionResource.PROPERTY,
@@ -810,6 +814,15 @@ export class PermissionService {
       PermissionResource.LEASE,
       PermissionAction.READ,
       lease
+    );
+  }
+
+  canUserAccessVendors(currentUser: ICurrentUser, vendor: IVendorDocument): boolean {
+    return this.canAccessResource(
+      currentUser,
+      PermissionResource.VENDOR,
+      PermissionAction.READ,
+      vendor
     );
   }
 

@@ -1,5 +1,62 @@
 import { z } from 'zod';
 
+// User model fields that can be updated
+const userInfoSchema = z.object({
+  email: z.string().email().optional(),
+  // Note: password updates should be handled separately via password reset flow
+});
+
+// Profile model fields that can be updated
+const personalInfoSchema = z.object({
+  firstName: z.string().min(2).max(25).optional(),
+  lastName: z.string().min(2).max(25).optional(),
+  displayName: z.string().min(2).max(45).optional(),
+  location: z.string().max(100).optional(),
+  dob: z.date().optional(),
+  avatar: z
+    .object({
+      url: z.string().url().optional(),
+      filename: z.string().optional(),
+      key: z.string().optional(),
+    })
+    .optional(),
+  phoneNumber: z.string().max(20).optional(),
+  bio: z.string().min(2).max(700).optional(),
+  headline: z.string().min(2).max(50).optional(),
+});
+
+const settingsSchema = z.object({
+  theme: z.enum(['light', 'dark']).optional(),
+  loginType: z.enum(['otp', 'password']).optional(),
+  notifications: z
+    .object({
+      messages: z.boolean().optional(),
+      comments: z.boolean().optional(),
+      announcements: z.boolean().optional(),
+    })
+    .optional(),
+  gdprSettings: z
+    .object({
+      dataRetentionPolicy: z.enum(['standard', 'extended', 'minimal']).optional(),
+      dataProcessingConsent: z.boolean().optional(),
+    })
+    .optional(),
+});
+
+const identificationSchema = z.object({
+  idType: z.enum(['passport', 'drivers-license', 'national-id', 'corporation-license']).optional(),
+  issueDate: z.date().optional(),
+  expiryDate: z.date().optional(),
+  idNumber: z.string().optional(),
+  authority: z.string().optional(),
+  issuingState: z.string().optional(),
+});
+
+const profileMetaSchema = z.object({
+  timeZone: z.string().optional(),
+  lang: z.string().min(2).max(5).optional(), // e.g., 'en', 'fr'
+});
+
 const employeeInfoSchema = z.object({
   jobTitle: z.string().min(2).max(100).optional(),
   department: z.string().min(2).max(50).optional(),
@@ -9,103 +66,62 @@ const employeeInfoSchema = z.object({
   permissions: z.array(z.string()).optional(),
 });
 
+// Updated vendor info schema for profile references only
+// Business data is now stored in the vendor collection
 const vendorInfoSchema = z.object({
-  address: z
-    .object({
-      city: z.string().min(1).max(100).optional(),
-      computedLocation: z.object({
-        coordinates: z
-          .array(z.number())
-          .length(2)
-          .refine(
-            (coords) =>
-              coords[0] >= -180 && coords[0] <= 180 && coords[1] >= -90 && coords[1] <= 90,
-            {
-              message: 'Coordinates must be [longitude, latitude] with valid ranges',
-            }
-          ),
-        type: z.literal('Point'),
-      }),
-      country: z.string().min(1).max(100).optional(),
-      fullAddress: z.string().min(1).max(255),
-      postCode: z.string().min(1).max(20).optional(),
-      state: z.string().min(1).max(100).optional(),
-      street: z.string().min(1).max(255).optional(),
-      streetNumber: z.string().min(1).max(20).optional(),
-      unitNumber: z.string().min(1).max(20).optional(),
-    })
+  vendorId: z
+    .string()
+    .length(24, 'Vendor ID must be a valid MongoDB ObjectId')
+    .regex(/^[0-9a-fA-F]{24}$/, 'Vendor ID must contain only hexadecimal characters')
     .optional(),
-  companyName: z.string().min(2).max(100).optional(),
-  businessType: z.string().min(2).max(50).optional(),
-  registrationNumber: z.string().min(3).max(50).optional(),
-  taxId: z.string().min(5).max(20).optional(),
-  yearsInBusiness: z.number().min(0).max(100).optional(),
-  contactPerson: z
-    .object({
-      name: z.string().min(2).max(100),
-      jobTitle: z.string().min(2).max(100),
-      department: z.string().min(2).max(50).optional(),
-      email: z.string().email().optional(),
-      phone: z.string().min(10).max(20).optional(),
-    })
+  linkedVendorUid: z
+    .string()
+    .length(24, 'Linked vendor ID must be a valid MongoDB ObjectId')
+    .regex(/^[0-9a-fA-F]{24}$/, 'Linked vendor ID must contain only hexadecimal characters')
     .optional(),
-  servicesOffered: z
-    .object({
-      plumbing: z.boolean().optional(),
-      electrical: z.boolean().optional(),
-      hvac: z.boolean().optional(),
-      cleaning: z.boolean().optional(),
-      landscaping: z.boolean().optional(),
-      painting: z.boolean().optional(),
-      carpentry: z.boolean().optional(),
-      roofing: z.boolean().optional(),
-      security: z.boolean().optional(),
-      pestControl: z.boolean().optional(),
-      applianceRepair: z.boolean().optional(),
-      maintenance: z.boolean().optional(),
-      other: z.boolean().optional(),
-    })
-    .optional(),
-  serviceAreas: z
-    .object({
-      maxDistance: z.number().refine((value) => [10, 15, 25, 50].includes(value), {
-        message: 'Max distance must be one of: 10, 15, 25, or 50 km',
-      }),
-      baseLocation: z
-        .object({
-          address: z.string().min(1).max(255),
-          coordinates: z
-            .array(z.number())
-            .length(2)
-            .refine(
-              (coords) =>
-                coords[0] >= -180 && coords[0] <= 180 && coords[1] >= -90 && coords[1] <= 90,
-              {
-                message: 'Coordinates must be [longitude, latitude] with valid ranges',
-              }
-            ),
-        })
-        .optional(),
-    })
-    .optional(),
-  insuranceInfo: z
-    .object({
-      provider: z.string().min(2).max(100).optional(),
-      policyNumber: z.string().min(5).max(50).optional(),
-      expirationDate: z.date().optional(),
-      coverageAmount: z.number().min(0).optional(),
-    })
-    .optional(),
+  isLinkedAccount: z.boolean().default(false),
 });
 
-// Role-specific profile updates
+const documentSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1, 'Document name is required'),
+  type: z.enum([
+    'passport',
+    'utility_bill',
+    'certification',
+    'drivers_license',
+    'employment_verification',
+    'other',
+  ]),
+  file: z.any().optional(), // File object from multer
+  filename: z.string().optional(),
+  url: z.string().optional(),
+  key: z.string().optional(),
+  uploadedAt: z.date().optional(),
+  expiryDate: z.date().optional(),
+  status: z.enum(['valid', 'expiring', 'expired', 'uploaded']).default('uploaded'),
+});
+
+const documentsSchema = z.object({
+  items: z.array(documentSchema).default([]).optional(),
+});
+
 export const ProfileValidations = {
+  updateUserInfo: userInfoSchema,
+  updatePersonalInfo: personalInfoSchema,
+  updateSettings: settingsSchema,
+  updateIdentification: identificationSchema,
+  updateProfileMeta: profileMetaSchema,
   updateEmployeeInfo: employeeInfoSchema,
   updateVendorInfo: vendorInfoSchema,
-
-  // Combined validation for profile creation/update
   profileUpdate: z
     .object({
+      userInfo: userInfoSchema.optional(),
+      personalInfo: personalInfoSchema.optional(),
+      settings: settingsSchema.optional(),
+      identification: identificationSchema.optional(),
+      profileMeta: profileMetaSchema.optional(),
+      documents: documentsSchema.optional(),
       employeeInfo: employeeInfoSchema.optional(),
       vendorInfo: vendorInfoSchema.optional(),
     })

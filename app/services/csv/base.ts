@@ -205,17 +205,22 @@ export class BaseCSVProcessorService {
 
       await this.validateRowColumns(row, state);
 
-      const isValid = await this.validateRowData(row, state, options, completion);
+      const validationResult = await this.validateRowData(row, state, options, completion);
 
-      if (!isValid) {
+      if (!validationResult.isValid) {
         // validation failed - row already added to invalidItems, increment and continue
         state.rowNumber++;
         stream.resume();
         return;
       }
 
-      // transform using the current row number (before incrementing)
-      const transformedRow = await this.transformRow(row, state, options);
+      // transform using the current row number (before incrementing) and pass validated data
+      const transformedRow = await this.transformRow(
+        row,
+        state,
+        options,
+        validationResult.transformedData
+      );
 
       // increment row number after successful processing
       state.rowNumber++;
@@ -252,26 +257,34 @@ export class BaseCSVProcessorService {
     state: any,
     options: ICsvProcessorOptions<T, C>,
     completion: { checkCompletion: () => void }
-  ): Promise<boolean> {
-    if (!options.validateRow) return true;
+  ): Promise<{ isValid: boolean; transformedData?: any }> {
+    if (!options.validateRow) return { isValid: true };
 
-    const { isValid, errors } = await options.validateRow(row, options.context, state.rowNumber);
+    const validationResult = await options.validateRow(row, options.context, state.rowNumber);
+    const { isValid, errors, transformedData } = validationResult;
+
     if (!isValid) {
       state.invalidItems.push({ rowNumber: state.rowNumber, errors });
       state.pendingOperations--;
       completion.checkCompletion();
-      return false;
+      return { isValid: false };
     }
-    return true;
+
+    return { isValid: true, transformedData };
   }
 
   private static async transformRow<T, C>(
     row: any,
     state: any,
-    options: ICsvProcessorOptions<T, C>
+    options: ICsvProcessorOptions<T, C>,
+    validatedData?: any
   ): Promise<T> {
     if (options.transformRow) {
-      return await options.transformRow(row, options.context, state.rowNumber);
+      return await options.transformRow(row, options.context, state.rowNumber, validatedData);
+    }
+    // If no transform function provided but we have validated data, use that
+    if (validatedData) {
+      return validatedData as T;
     }
     return row as unknown as T;
   }

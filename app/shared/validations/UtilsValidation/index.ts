@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { isValidObjectId } from 'mongoose';
-import { PropertyUnitDAO, InvitationDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
+import {
+  PropertyUnitDAO,
+  InvitationDAO,
+  PropertyDAO,
+  ClientDAO,
+  VendorDAO,
+  UserDAO,
+} from '@dao/index';
 
 const getContainer = async () => {
   const { container } = await import('@di/setup');
@@ -8,16 +15,35 @@ const getContainer = async () => {
 };
 
 export const ValidatecuidSchema = z.object({
-  cuid: z.string().refine(
-    async (cuid) => {
-      const { clientDAO }: { clientDAO: ClientDAO } = (await getContainer()).cradle;
-      const client = await clientDAO.findFirst({ cuid });
-      return !!client;
-    },
-    {
-      message: 'Invalid params detected in the request.',
-    }
-  ),
+  cuid: z
+    .string()
+    .optional()
+    .refine(
+      async (cuid) => {
+        const { clientDAO }: { clientDAO: ClientDAO } = (await getContainer()).cradle;
+        const client = await clientDAO.findFirst({ cuid });
+        return !!client;
+      },
+      {
+        message: 'Invalid params detected in the request.',
+      }
+    ),
+});
+
+export const ValidateuidSchema = z.object({
+  vuid: z
+    .string()
+    .optional()
+    .refine(
+      async (vuid) => {
+        const { vendorDAO }: { vendorDAO: VendorDAO } = (await getContainer()).cradle;
+        const vendor = await vendorDAO.findFirst({ vuid });
+        return !!vendor;
+      },
+      {
+        message: 'Invalid params detected in the request.',
+      }
+    ),
 });
 
 export const ValidatePropertyIdSchema = z.object({
@@ -119,5 +145,6 @@ export const UtilsValidations = {
   unitPuid: ValidateUnitPuid,
   isUniqueEmail: ValidateEmailSchema,
   propertyId: ValidatePropertyIdSchema,
+  vuid: ValidateuidSchema,
   invitationuid: ValidateInvitationIuidSchema,
 };

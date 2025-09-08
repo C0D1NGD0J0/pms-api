@@ -5,15 +5,24 @@ import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
 import { UserService } from '@services/user/user.service';
 import { IUserRoleType } from '@interfaces/user.interface';
+import { ProfileService } from '@services/profile/profile.service';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 
 export class UserController {
   private readonly log: Logger;
   private readonly userService: UserService;
+  private readonly profileService: ProfileService;
 
-  constructor({ userService }: { userService: UserService }) {
+  constructor({
+    userService,
+    profileService,
+  }: {
+    userService: UserService;
+    profileService: ProfileService;
+  }) {
     this.log = createLogger('UserController');
     this.userService = userService;
+    this.profileService = profileService;
   }
 
   getClientUserInfo = async (req: AppRequest, res: Response) => {
@@ -52,7 +61,6 @@ export class UserController {
 
     const result = await this.userService.getFilteredUsers(
       cuid as string,
-      req.context.currentuser!,
       filterOptions,
       paginationOpts
     );
@@ -60,17 +68,45 @@ export class UserController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  /**
-   * Get user statistics for a client (for charts)
-   * @param req - Express Request object
-   * @param res - Express Response object
-   */
   getUserStats = async (req: AppRequest, res: Response): Promise<void> => {
     const { cuid } = req.params;
 
-    const result = await this.userService.getUserStats(cuid, req.context.currentuser!, {
+    const result = await this.userService.getUserStats(cuid, {
       ...req.query,
     });
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getUserProfile = async (req: AppRequest, res: Response): Promise<void> => {
+    const { uid } = req.query as { uid: string | undefined };
+    const result = await this.profileService.getUserProfileForEdit(req.context, uid);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  updateUserProfile = async (req: AppRequest, res: Response): Promise<void> => {
+    const {
+      userInfo,
+      personalInfo,
+      settings,
+      identification,
+      profileMeta,
+      employeeInfo,
+      vendorInfo,
+    } = req.body;
+
+    const profileData = {
+      userInfo,
+      personalInfo,
+      settings,
+      identification,
+      profileMeta,
+      employeeInfo,
+      vendorInfo,
+    };
+
+    const result = await this.profileService.updateUserProfile(req.context, profileData);
 
     res.status(httpStatusCodes.OK).json(result);
   };

@@ -2,7 +2,7 @@ import Logger from 'bunyan';
 import { ListResultWithPagination } from '@interfaces/index';
 import { generateShortUID, createLogger } from '@utils/index';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
-import { IdentificationType, IUserDocument } from '@interfaces/user.interface';
+import { IdentificationType, IUserDocument, IUserRole } from '@interfaces/user.interface';
 import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/client.interface';
 
 import { BaseDAO } from './baseDAO';
@@ -212,10 +212,10 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   }
 
   /**
-   * Get user statistics for department and role distribution for a client
+   * Get user statistics for employee roles (staff/admin/manager)
    * @param cuid - Client ID
-   * @param filterOptions - Filter options (same as getUsersByFilteredType but ignoring pagination)
-   * @returns Statistics about the filtered user set for the client
+   * @param filterOptions - Filter options
+   * @returns Statistics about employees for the client
    */
   async getClientUsersStats(
     cuid: string,
@@ -226,43 +226,81 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     totalFilteredUsers: number;
   }> {
     try {
-      const { role, department, status, search } = filterOptions;
+      const { status, department, role } = filterOptions;
+      const employeeRoles: string[] = [IUserRole.STAFF, IUserRole.ADMIN, IUserRole.MANAGER];
 
-      const query: FilterQuery<IUserDocument> = {
+      let rolesToQuery: string[];
+      if (role) {
+        const rolesArray = Array.isArray(role) ? role : [role];
+        // Only include employee roles from the filter
+        rolesToQuery = rolesArray.filter((r) => employeeRoles.includes(r));
+        if (rolesToQuery.length === 0) {
+          // No employee roles in filter, return empty stats
+          return {
+            totalFilteredUsers: 0,
+            roleDistribution: [],
+            departmentDistribution: [],
+          };
+        }
+      } else {
+        rolesToQuery = employeeRoles;
+      }
+
+      const baseQuery: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
         'cuids.isConnected': true,
         deletedAt: null,
+        'cuids.roles': { $in: rolesToQuery },
+        ...(status && { isActive: status === 'active' }),
       };
 
-      // Handle active/inactive status
-      if (status) {
-        query.isActive = status === 'active';
-      }
+      // Get total count and role distribution in a single aggregation
+      const statsQuery = [
+        { $match: baseQuery },
+        {
+          $facet: {
+            // Get total count
+            total: [{ $count: 'count' }],
+            // Get role distribution
+            roleStats: [
+              { $unwind: '$cuids' },
+              {
+                $match: {
+                  'cuids.cuid': cuid,
+                  'cuids.roles': { $in: rolesToQuery },
+                },
+              },
+              { $unwind: '$cuids.roles' },
+              {
+                $match: {
+                  'cuids.roles': { $in: rolesToQuery },
+                },
+              },
+              {
+                $group: {
+                  _id: '$cuids.roles',
+                  count: { $sum: 1 },
+                },
+              },
+            ],
+          },
+        },
+      ];
 
-      // Handle role filtering
-      if (role) {
-        if (Array.isArray(role)) {
-          query['cuids.roles'] = { $in: role };
-        } else {
-          query['cuids.roles'] = role;
-        }
-      }
+      const [statsResult] = await this.userModel.aggregate(statsQuery).exec();
 
-      // Handle search term
-      if (search && search.trim()) {
-        const searchRegex = new RegExp(search.trim(), 'i');
-        query.$or = [
-          { email: searchRegex },
-          { 'profile.personalInfo.firstName': searchRegex },
-          { 'profile.personalInfo.lastName': searchRegex },
-          { 'profile.personalInfo.displayName': searchRegex },
-          { 'profile.personalInfo.phoneNumber': searchRegex },
-        ];
-      }
+      // Extract total count
+      const totalEmployees = statsResult.total[0]?.count || 0;
 
-      // Base pipeline (same as getUsersByFilteredType)
-      const pipeline: PipelineStage[] = [
-        { $match: query },
+      // Map role counts
+      const roleCountMap: Record<string, number> = {};
+      statsResult.roleStats.forEach((stat: any) => {
+        roleCountMap[stat._id] = stat.count;
+      });
+
+      // Simple aggregation for department distribution
+      const departmentPipeline: PipelineStage[] = [
+        { $match: baseQuery },
         {
           $lookup: {
             from: 'profiles',
@@ -276,112 +314,46 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
 
       // Add department filter if specified
       if (department) {
-        pipeline.push({
-          $match: {
-            'profile.employeeInfo.department': department,
-          },
+        departmentPipeline.push({
+          $match: { 'profile.employeeInfo.department': department },
         });
       }
 
-      // Create aggregation pipelines for stats
-      const departmentStatsQuery = [
-        ...pipeline,
-        {
-          $group: {
-            _id: { $ifNull: ['$profile.employeeInfo.department', 'unassigned'] },
-            count: { $sum: 1 },
-          },
+      departmentPipeline.push({
+        $group: {
+          _id: { $ifNull: ['$profile.employeeInfo.department', 'unassigned'] },
+          count: { $sum: 1 },
         },
-        {
-          $project: {
-            _id: 0,
-            name: { $toUpper: { $substr: ['$_id', 0, 1] } },
-            department: { $substr: ['$_id', 1, { $strLenCP: '$_id' }] },
-            value: '$count',
-          },
-        },
-        {
-          $project: {
-            name: { $concat: ['$name', '$department'] },
-            value: 1,
-          },
-        },
-      ];
+      });
 
-      const roleStatsQuery = [
-        ...pipeline,
-        {
-          $unwind: '$cuids',
-        },
-        {
-          $match: {
-            'cuids.cuid': cuid,
-          },
-        },
-        {
-          $unwind: '$cuids.roles',
-        },
-        {
-          $group: {
-            _id: '$cuids.roles',
-            count: { $sum: 1 },
-          },
-        },
-        {
-          $project: {
-            _id: 0,
-            name: { $toUpper: { $substr: ['$_id', 0, 1] } },
-            role: { $substr: ['$_id', 1, { $strLenCP: '$_id' }] },
-            value: '$count',
-          },
-        },
-        {
-          $project: {
-            name: { $concat: ['$name', '$role'] },
-            value: 1,
-          },
-        },
-      ];
+      const departmentStats = await this.userModel.aggregate(departmentPipeline).exec();
 
-      const totalCountQuery = [...pipeline, { $count: 'total' }];
+      // Format role distribution based on actual roles queried
+      const roleDistribution = rolesToQuery
+        .map((roleName) => ({
+          name: roleName.charAt(0).toUpperCase() + roleName.slice(1),
+          value: roleCountMap[roleName] || 0,
+          percentage:
+            totalEmployees > 0 ? Math.round((roleCountMap[roleName] / totalEmployees) * 100) : 0,
+        }))
+        .filter((r) => r.value > 0)
+        .sort((a, b) => b.value - a.value);
 
-      // Execute all queries in parallel using the user model
-      const [departmentStats, roleStats, totalCountResult] = await Promise.all([
-        this.userModel.aggregate(departmentStatsQuery).exec(),
-        this.userModel.aggregate(roleStatsQuery).exec(),
-        this.userModel.aggregate(totalCountQuery).exec(),
-      ]);
-
-      const totalFilteredUsers =
-        totalCountResult.length > 0 ? (totalCountResult[0] as any).total : 0;
-
-      // Calculate percentages for department distribution
       const departmentDistribution = departmentStats
         .map((dept: any) => ({
-          name: dept.name,
-          value: dept.value,
-          percentage:
-            totalFilteredUsers > 0 ? Math.round((dept.value / totalFilteredUsers) * 100) : 0,
+          name: dept._id.charAt(0).toUpperCase() + dept._id.slice(1),
+          value: dept.count,
+          percentage: totalEmployees > 0 ? Math.round((dept.count / totalEmployees) * 100) : 0,
         }))
-        .sort((a: any, b: any) => b.value - a.value);
-
-      // Calculate percentages for role distribution
-      const roleDistribution = roleStats
-        .map((role: any) => ({
-          name: role.name,
-          value: role.value,
-          percentage:
-            totalFilteredUsers > 0 ? Math.round((role.value / totalFilteredUsers) * 100) : 0,
-        }))
-        .sort((a: any, b: any) => b.value - a.value);
+        .sort((a, b) => b.value - a.value);
 
       return {
-        departmentDistribution,
+        totalFilteredUsers: totalEmployees,
         roleDistribution,
-        totalFilteredUsers,
+        departmentDistribution,
       };
     } catch (error) {
-      this.logger.error(`Error getting user stats for client ${cuid}:`, error);
+      this.logger.error(`Error getting employee stats for client ${cuid}:`, error);
       throw this.throwErrorHandler(error);
     }
   }

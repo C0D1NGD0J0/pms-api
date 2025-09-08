@@ -64,6 +64,19 @@ export const createMockClientDAO = () => ({
   }),
   createClient: jest.fn(),
   doesClientExist: jest.fn(),
+  getClientUsersStats: jest.fn().mockResolvedValue({
+    totalFilteredUsers: 10,
+    roleDistribution: [
+      { name: 'Staff', value: 5, percentage: 50 },
+      { name: 'Manager', value: 3, percentage: 30 },
+      { name: 'Admin', value: 2, percentage: 20 },
+    ],
+    departmentDistribution: [
+      { name: 'IT', value: 4, percentage: 40 },
+      { name: 'HR', value: 3, percentage: 30 },
+      { name: 'Finance', value: 3, percentage: 30 },
+    ],
+  }),
 });
 
 export const createMockUserDAO = () => ({

@@ -37,6 +37,10 @@ export {
   createMockUser,
   createMockFile,
   createObjectId,
+  createMockVendor,
+  createMockVendorDocument,
+  createMockNewVendor,
+  createMockCompanyProfile,
 } from './mockFactories';
 
 // Export all invitation-related mocks
@@ -103,5 +107,10 @@ export {
   createScopedTestContainer,
   setupTestContainer,
 } from './mocks/container.mocks';
+
+export {
+  createMockVendorDAO,
+  createMockVendorService,
+} from './mocks/vendor.mocks';
 
 export * from './testUtils';

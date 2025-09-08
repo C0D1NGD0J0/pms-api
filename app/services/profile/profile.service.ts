@@ -6,10 +6,14 @@ import { VendorService } from '@services/index';
 import { UserService } from '@services/user/user.service';
 import { IUserRoleType } from '@interfaces/user.interface';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
-import { ISuccessReturnData } from '@interfaces/utils.interface';
-import { IProfileDocument } from '@interfaces/profile.interface';
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
+import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
+import {
+  IProfileUpdateData,
+  IProfileDocument,
+  IProfileEditData,
+} from '@interfaces/profile.interface';
 
 interface IConstructor {
   vendorService: VendorService;
@@ -128,96 +132,6 @@ export class ProfileService {
       };
     } catch (error) {
       this.logger.error(`Error updating vendor info for profile ${profileId}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Update common employee information that applies across all clients
-   */
-  async updateCommonEmployeeInfo(
-    profileId: string,
-    employeeInfo: any,
-    userRole: IUserRoleType
-  ): Promise<ISuccessReturnData<IProfileDocument>> {
-    try {
-      const validation = ProfileValidations.updateEmployeeInfo.safeParse(employeeInfo);
-      if (!validation.success) {
-        throw new BadRequestError({
-          message: `Validation failed: ${validation.error.issues.map((i) => i.message).join(', ')}`,
-        });
-      }
-
-      if (!['manager', 'staff', 'admin'].includes(userRole)) {
-        throw new ForbiddenError({
-          message: t('auth.errors.insufficientPermissions'),
-        });
-      }
-
-      const result = await this.profileDAO.updateCommonEmployeeInfo(profileId, validation.data);
-
-      if (!result) {
-        throw new NotFoundError({
-          message: t('profile.errors.notFound'),
-        });
-      }
-
-      this.logger.info(`Common employee info updated for profile ${profileId}`);
-
-      return {
-        success: true,
-        data: result,
-        message: t('profile.success.commonEmployeeInfoUpdated'),
-      };
-    } catch (error) {
-      this.logger.error(`Error updating common employee info for profile ${profileId}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Update common vendor information that applies across all clients
-   */
-  async updateCommonVendorInfo(
-    profileId: string,
-    vendorInfo: any,
-    userRole: IUserRoleType
-  ): Promise<ISuccessReturnData<IProfileDocument>> {
-    try {
-      if (userRole !== 'vendor') {
-        throw new ForbiddenError({
-          message: t('auth.errors.insufficientPermissions'),
-        });
-      }
-
-      // Get the profile to find the associated user
-      const profile = await this.profileDAO.findFirst({ id: profileId });
-      if (!profile) {
-        throw new NotFoundError({
-          message: t('profile.errors.notFound'),
-        });
-      }
-
-      // Get the vendor entity for this user
-      const vendor = await this.vendorService.getVendorByUserId(profile.user.toString());
-      if (!vendor) {
-        throw new NotFoundError({
-          message: 'Vendor entity not found',
-        });
-      }
-
-      // Update the vendor entity with new common information
-      await this.vendorService.updateVendorInfo(vendor._id.toString(), vendorInfo);
-
-      this.logger.info(`Common vendor info updated for profile ${profileId}`);
-
-      return {
-        success: true,
-        data: profile,
-        message: t('profile.success.commonVendorInfoUpdated'),
-      };
-    } catch (error) {
-      this.logger.error(`Error updating common vendor info for profile ${profileId}:`, error);
       throw error;
     }
   }
@@ -562,7 +476,7 @@ export class ProfileService {
    * Handle employee role initialization if needed
    */
   private async handleEmployeeRoleIfNeeded(
-    context: { role: IUserRoleType },
+    context: { role: IUserRoleType; cuid: string },
     profile: IProfileDocument,
     metadata?: { employeeInfo?: any }
   ): Promise<IProfileDocument> {
@@ -573,7 +487,11 @@ export class ProfileService {
     }
 
     const employeeData = metadata?.employeeInfo || {};
-    const updatedProfile = await this.profileDAO.updateCommonEmployeeInfo(profile.id, employeeData);
+    const updatedProfile = await this.profileDAO.updateEmployeeInfo(
+      profile.id,
+      context.cuid,
+      employeeData
+    );
 
     this.logger.info(`Initialized employee info for profile ${profile.id} with metadata`);
 
@@ -633,9 +551,9 @@ export class ProfileService {
    * Get user profile data for editing/display
    */
   async getUserProfileForEdit(
-    context: any,
+    context: IRequestContext,
     uid: string | undefined
-  ): Promise<ISuccessReturnData<any>> {
+  ): Promise<ISuccessReturnData<IProfileEditData>> {
     const currentUser = context.currentuser!;
     const cuid = context.request.params.cuid;
     const targetUid = uid || currentUser.uid;
@@ -666,7 +584,7 @@ export class ProfileService {
         });
       }
 
-      const profileData = {
+      const profileData: IProfileEditData = {
         personalInfo: {
           ...profileDoc.personalInfo,
           uid: targetUid,
@@ -679,8 +597,12 @@ export class ProfileService {
           timeZone: profileDoc.timeZone,
           lang: profileDoc.lang,
         },
-        userType: userDoc.data.profile.userType,
-        roles: userDoc.data.profile.roles,
+        userType: userDoc.data.profile.userType as
+          | 'employee'
+          | 'vendor'
+          | 'tenant'
+          | 'primary_account_holder',
+        roles: userDoc.data.profile.roles as IUserRoleType[],
       };
 
       return {
@@ -694,20 +616,67 @@ export class ProfileService {
     }
   }
 
+  /**
+   * Update user profile with proper permission checking
+   * This method handles the complete profile update flow including:
+   * - Permission validation
+   * - User existence check
+   * - Profile ID retrieval
+   * - Delegating to updateProfileWithRoleInfo
+   */
+  async updateUserProfile(
+    context: IRequestContext,
+    profileData: IProfileUpdateData
+  ): Promise<ISuccessReturnData<IProfileDocument>> {
+    const currentUser = context.currentuser!;
+    const { cuid } = context.request.params;
+    const { uid } = context.request.query;
+    try {
+      if (
+        currentUser.uid !== uid &&
+        !(
+          currentUser.client.cuid === cuid && ['manager', 'admin'].includes(currentUser.client.role)
+        )
+      ) {
+        throw new ForbiddenError({
+          message: t('auth.errors.insufficientPermissions'),
+        });
+      }
+
+      const userData = await this.userService.getClientUserInfo(context, uid);
+      if (!userData.success || !userData.data) {
+        throw new NotFoundError({
+          message: t('user.errors.notFound'),
+        });
+      }
+
+      const profileDoc = await this.profileDAO.getProfileByUserId(uid);
+      if (!profileDoc) {
+        throw new NotFoundError({
+          message: t('profile.errors.notFound'),
+        });
+      }
+
+      // Get user role from the returned data
+      const userRole = userData.data.profile.roles?.[0] as IUserRoleType;
+
+      // Delegate to the existing method
+      return await this.updateProfileWithRoleInfo(
+        profileDoc._id.toString(),
+        cuid,
+        profileData,
+        userRole
+      );
+    } catch (error) {
+      this.logger.error(`Error updating user profile for uid ${uid}:`, error);
+      throw error;
+    }
+  }
+
   async updateProfileWithRoleInfo(
     profileId: string,
     cuid: string,
-    profileData: {
-      userInfo?: any;
-      personalInfo?: any;
-      settings?: any;
-      identification?: any;
-      profileMeta?: any;
-      employeeInfo?: any;
-      vendorInfo?: any;
-      commonEmployeeInfo?: any;
-      commonVendorInfo?: any;
-    },
+    profileData: IProfileUpdateData,
     userRole: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
@@ -847,26 +816,6 @@ export class ProfileService {
           userRole
         );
         result = vendorResult.data;
-        hasUpdates = true;
-      }
-
-      if (profileData.commonEmployeeInfo) {
-        const commonEmployeeResult = await this.updateCommonEmployeeInfo(
-          profileId,
-          profileData.commonEmployeeInfo,
-          userRole
-        );
-        result = commonEmployeeResult.data;
-        hasUpdates = true;
-      }
-
-      if (profileData.commonVendorInfo) {
-        const commonVendorResult = await this.updateCommonVendorInfo(
-          profileId,
-          profileData.commonVendorInfo,
-          userRole
-        );
-        result = commonVendorResult.data;
         hasUpdates = true;
       }
 

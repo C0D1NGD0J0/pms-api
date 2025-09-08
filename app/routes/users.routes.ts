@@ -9,6 +9,8 @@ import {
   requirePermission,
   isAuthenticated,
   routeLimiter,
+  diskUpload,
+  scanFile,
 } from '@shared/middlewares';
 import {
   PropertyValidations,
@@ -145,11 +147,12 @@ router.get(
 );
 
 router.patch(
-  '/:cuid/update_profile/:uid',
+  '/:cuid/update_profile',
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  diskUpload(['documents.items[*].file', 'personalInfo.avatar.file']),
+  scanFile,
   validateRequest({
-    params: UserValidations.userUidParam,
     body: ProfileValidations.profileUpdate,
   }),
   asyncWrapper((req, res) => {

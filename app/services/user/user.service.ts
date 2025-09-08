@@ -136,7 +136,6 @@ export class UserService {
 
     const userDetail = await this.buildUserDetailData(user, clientConnection, clientId, client);
 
-    // Cache the result for 2 hours
     await this.userCache.cacheUserDetail(clientId, uid, userDetail);
     this.log.info('User detail cached', { clientId, uid });
 
@@ -469,7 +468,7 @@ export class UserService {
     switch (response.userType) {
       case 'primary_account_holder':
         // Primary account holders get all properties and enhanced employee info
-        response.properties = await this.getUserProperties(user._id.toString(), clientId);
+        // response.properties = await this.getUserProperties(user._id.toString(), clientId);
         response.employeeInfo = await this.buildEmployeeInfo(
           user,
           profile,
@@ -530,7 +529,7 @@ export class UserService {
       employmentType: employeeInfo.employmentType || 'Full-Time',
       department: employeeInfo.department || 'operations',
       position: this.determinePrimaryRole(roles),
-      directManager: employeeInfo.reportsTo || 'Sarah Wilson',
+      directManager: employeeInfo.reportsTo || '',
 
       // Skills and expertise
       skills: employeeInfo.skills || [
@@ -752,7 +751,6 @@ export class UserService {
       super_admin: 'Super Administrator',
       admin: 'Administrator',
       manager: 'Property Manager',
-      property_manager: 'Property Manager',
       staff: 'Staff Member',
       vendor: 'Vendor',
       tenant: 'Tenant',
@@ -769,22 +767,16 @@ export class UserService {
 
   private determineUserType(
     roles: string[],
-    userUid: string,
+    userId: string,
     client: any
   ): 'employee' | 'vendor' | 'tenant' | 'primary_account_holder' {
     // Check if user is the primary account holder (accountAdmin) first
-    if (client.accountAdmin?.toString() === userUid) {
+    if (client.accountAdmin?.toString() === userId) {
       return 'primary_account_holder';
     }
 
     // Employee roles include both enum values and additional string values
-    const employeeRoles = [
-      IUserRole.STAFF,
-      IUserRole.ADMIN,
-      IUserRole.MANAGER,
-      'super_admin',
-      'property_manager',
-    ];
+    const employeeRoles = [IUserRole.STAFF, IUserRole.ADMIN, IUserRole.MANAGER, 'super_admin'];
 
     if (roles.some((r: string) => employeeRoles.includes(r as any))) {
       return 'employee';

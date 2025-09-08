@@ -82,9 +82,31 @@ const vendorInfoSchema = z.object({
   isLinkedAccount: z.boolean().default(false),
 });
 
-// Role-specific profile updates
+const documentSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1, 'Document name is required'),
+  type: z.enum([
+    'passport',
+    'utility_bill',
+    'certification',
+    'drivers_license',
+    'employment_verification',
+    'other',
+  ]),
+  file: z.any().optional(), // File object from multer
+  filename: z.string().optional(),
+  url: z.string().optional(),
+  key: z.string().optional(),
+  uploadedAt: z.date().optional(),
+  expiryDate: z.date().optional(),
+  status: z.enum(['valid', 'expiring', 'expired', 'uploaded']).default('uploaded'),
+});
+
+const documentsSchema = z.object({
+  items: z.array(documentSchema).default([]).optional(),
+});
+
 export const ProfileValidations = {
-  // Individual schema exports
   updateUserInfo: userInfoSchema,
   updatePersonalInfo: personalInfoSchema,
   updateSettings: settingsSchema,
@@ -92,18 +114,14 @@ export const ProfileValidations = {
   updateProfileMeta: profileMetaSchema,
   updateEmployeeInfo: employeeInfoSchema,
   updateVendorInfo: vendorInfoSchema,
-
-  // Combined validation for comprehensive profile updates
   profileUpdate: z
     .object({
-      // User model updates
       userInfo: userInfoSchema.optional(),
-      // Profile model updates
       personalInfo: personalInfoSchema.optional(),
       settings: settingsSchema.optional(),
       identification: identificationSchema.optional(),
       profileMeta: profileMetaSchema.optional(),
-      // Role-specific updates
+      documents: documentsSchema.optional(),
       employeeInfo: employeeInfoSchema.optional(),
       vendorInfo: vendorInfoSchema.optional(),
     })

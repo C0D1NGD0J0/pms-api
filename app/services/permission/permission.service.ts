@@ -737,7 +737,6 @@ export class PermissionService {
     resourceData: any
   ): boolean {
     try {
-      // Common pre-checks
       const activeConnection = currentUser.clients?.find(
         (c: any) => c.cuid === currentUser.client.cuid
       );
@@ -747,14 +746,12 @@ export class PermissionService {
         return false;
       }
 
-      // Get the appropriate strategy for this resource
       const strategy = this.resourceStrategies.get(resource);
       if (!strategy) {
         this.log.warn(`No access strategy defined for resource: ${resource}`);
         return false;
       }
 
-      // Delegate to the strategy
       return strategy.canAccess(currentUser, action, resourceData);
     } catch (error) {
       this.log.error(`Error checking access for resource ${resource}:`, error);

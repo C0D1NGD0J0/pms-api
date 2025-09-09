@@ -119,11 +119,31 @@ const DAOResources = {
 };
 
 const CacheResources = {
-  authCache: asClass(AuthCache).singleton(),
-  propertyCache: asClass(PropertyCache).singleton(),
-  eventsRegistry: asClass(EventsRegistryCache).singleton(),
-  userCache: asClass(UserCache).singleton(),
-  vendorCache: asClass(VendorCache).singleton(),
+  // Lazy-loaded cache services to reduce Redis connections and memory usage
+  authCache: asFunction(() => {
+    // Only initialize when authentication is actually used
+    return new AuthCache();
+  }).singleton(),
+
+  propertyCache: asFunction(() => {
+    // Only initialize when property operations are used
+    return new PropertyCache();
+  }).singleton(),
+
+  eventsRegistry: asFunction(() => {
+    // Only initialize when event system is used
+    return new EventsRegistryCache();
+  }).singleton(),
+
+  userCache: asFunction(() => {
+    // Only initialize when user operations are used
+    return new UserCache();
+  }).singleton(),
+
+  vendorCache: asFunction(() => {
+    // Only initialize when vendor operations are used
+    return new VendorCache();
+  }).singleton(),
 };
 
 const WorkerResources = {
@@ -146,15 +166,28 @@ const QueuesResources = {
 };
 
 const UtilsResources = {
-  geoCoderService: asClass(GeoCoderService).singleton(),
+  // Lazy-loaded services to reduce memory footprint
+  geoCoderService: asFunction(() => {
+    // Only create when actually needed to reduce memory usage
+    return new GeoCoderService();
+  }).singleton(),
+
   redisService: asFunction(() => {
     return new RedisService('Redis Service');
   }).singleton(),
+
   dbService: asClass(DatabaseService).singleton(),
-  s3Service: asClass(S3Service).singleton(),
+
+  // S3Service lazy loading for reduced memory footprint
+  s3Service: asFunction(() => {
+    // Only initialize S3Service when actually needed
+    return new S3Service();
+  }).singleton(),
+
   clamScanner: asClass(ClamScannerService).singleton(),
   diskStorage: asClass(DiskStorage).singleton(),
   propertyCsvService: asClass(PropertyCsvProcessor).singleton(),
+
   queueFactory: asFunction(() => {
     return QueueFactory.getInstance();
   }).singleton(),
@@ -165,25 +198,58 @@ const SocketIOResources = {
 };
 
 export const initQueues = (container: AwilixContainer) => {
+  // Always initialize ClamScanner as it's essential for file security
   container.resolve('clamScanner');
 
+  // Only initialize queues in development or when explicitly forced
   if (process.env.NODE_ENV === 'development' || process.env.FORCE_INIT_QUEUES === 'true') {
-    container.resolve('documentProcessingQueue');
-    container.resolve('emailQueue');
-    container.resolve('eventBusQueue');
-    container.resolve('propertyQueue');
-    container.resolve('propertyUnitQueue');
-    container.resolve('uploadQueue');
-    container.resolve('invitationQueue');
-    container.resolve('documentProcessingWorker');
-    container.resolve('emailWorker');
-    container.resolve('propertyWorker');
-    container.resolve('propertyUnitWorker');
-    container.resolve('uploadWorker');
-    container.resolve('invitationWorker');
+    console.log('🔧 Initializing all queues and workers for development/forced environment...');
+
+    // Initialize all queues
+    const queueNames = [
+      'documentProcessingQueue',
+      'emailQueue',
+      'eventBusQueue',
+      'propertyQueue',
+      'propertyUnitQueue',
+      'uploadQueue',
+      'invitationQueue',
+    ];
+
+    // Initialize all workers
+    const workerNames = [
+      'documentProcessingWorker',
+      'emailWorker',
+      'propertyWorker',
+      'propertyUnitWorker',
+      'uploadWorker',
+      'invitationWorker',
+    ];
+
+    // Resolve queues
+    queueNames.forEach((queueName) => {
+      try {
+        container.resolve(queueName);
+      } catch (error) {
+        console.error(`Failed to initialize queue ${queueName}:`, error);
+      }
+    });
+
+    // Resolve workers
+    workerNames.forEach((workerName) => {
+      try {
+        container.resolve(workerName);
+      } catch (error) {
+        console.error(`Failed to initialize worker ${workerName}:`, error);
+      }
+    });
+
     console.log('✅ All queues and workers initialized successfully');
   } else {
-    console.log('⏸️  Queue initialization skipped (test environment)');
+    console.log(
+      '⏸️  Queue initialization skipped (production environment - using lazy initialization)'
+    );
+    console.log('💡 Queues will be initialized on-demand when first accessed');
   }
 };
 

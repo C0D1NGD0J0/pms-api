@@ -21,7 +21,8 @@
   "profile": {
     "success": {
       "roleInitialized": "profile.success.roleInitialized",
-      "profileRetrieved": "profile.success.profileRetrieved"
+      "profileRetrieved": "profile.success.profileRetrieved",
+      "profileUpdated": "profile.success.profileUpdated"
     },
     "errors": {
       "notFound": "profile.errors.notFound"

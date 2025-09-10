@@ -153,7 +153,7 @@ describe('PropertyService', () => {
       const mockCurrentUser = createMockCurrentUser();
       const mockProperties = [createMockProperty(), createMockProperty()];
       const mockQueryParams = {
-        filters: { propertyType: 'house', status: 'available' as const },
+        filters: { propertyType: 'house' as any, status: 'available' as const },
         pagination: { page: 1, limit: 10, sort: { createdAt: 1 as const } },
       };
 
@@ -166,7 +166,11 @@ describe('PropertyService', () => {
       mockPropertyCache.saveClientProperties.mockResolvedValue({ success: true });
 
       // Act
-      const result = await propertyService.getClientProperties(cuid, mockCurrentUser, mockQueryParams);
+      const result = await propertyService.getClientProperties(
+        cuid,
+        mockCurrentUser,
+        mockQueryParams
+      );
 
       // Assert
       expect(result.success).toBe(true);
@@ -195,7 +199,11 @@ describe('PropertyService', () => {
 
       // Act
       const mockCurrentUser = createMockCurrentUser();
-      const result = await propertyService.getClientProperties(cuid, mockCurrentUser, mockQueryParams);
+      const result = await propertyService.getClientProperties(
+        cuid,
+        mockCurrentUser,
+        mockQueryParams
+      );
 
       // Assert
       expect(result.success).toBe(true);

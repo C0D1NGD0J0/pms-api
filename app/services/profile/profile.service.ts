@@ -1,11 +1,11 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
-import { createLogger } from '@utils/index';
 import { VendorService } from '@services/index';
 import { UserService } from '@services/user/user.service';
-import { IUserRoleType } from '@interfaces/user.interface';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { buildDotNotation, createLogger } from '@utils/index';
+import { IUserRoleType, ICurrentUser } from '@interfaces/user.interface';
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
@@ -144,10 +144,6 @@ export class ProfileService {
     }
   }
 
-  /**
-   * Helper method to ensure a client role exists for a user
-   * Now implemented using UserDAO directly
-   */
   private async ensureClientRoleInfo(
     userId: string,
     cuid: string,
@@ -193,9 +189,6 @@ export class ProfileService {
     }
   }
 
-  /**
-   * Validate inputs and prepare context for role initialization
-   */
   private async validateAndPrepareContext(
     userId: string,
     cuid: string,
@@ -206,9 +199,6 @@ export class ProfileService {
     return { userId, cuid, role, linkedVendorUid };
   }
 
-  /**
-   * Fetch user profile with proper error handling
-   */
   private async fetchUserProfile(context: { userId: string }): Promise<IProfileDocument> {
     const profile = await this.profileDAO.findFirst({ user: new Types.ObjectId(context.userId) });
     if (!profile) {
@@ -219,9 +209,6 @@ export class ProfileService {
     return profile;
   }
 
-  /**
-   * Handle vendor role initialization if needed
-   */
   private async handleVendorRoleIfNeeded(
     context: { userId: string; cuid: string; role: IUserRoleType; linkedVendorUid?: string },
     profile: IProfileDocument,
@@ -314,9 +301,6 @@ export class ProfileService {
     return { profile: updatedProfile || profile };
   }
 
-  /**
-   * Handle employee role initialization if needed
-   */
   private async handleEmployeeRoleIfNeeded(
     context: { role: IUserRoleType; cuid: string },
     profile: IProfileDocument,
@@ -340,9 +324,6 @@ export class ProfileService {
     return updatedProfile || profile;
   }
 
-  /**
-   * Build success response for role initialization
-   */
   private buildSuccessResponse(
     profile: IProfileDocument,
     createdVendor?: any
@@ -361,9 +342,6 @@ export class ProfileService {
     };
   }
 
-  /**
-   * Initialize role-specific information for new users during invitation acceptance
-   */
   async initializeRoleInfo(
     userId: string,
     cuid: string,
@@ -389,9 +367,6 @@ export class ProfileService {
     return this.buildSuccessResponse(finalProfile, vendorResult.createdVendor);
   }
 
-  /**
-   * Get user profile data for editing/display
-   */
   async getUserProfileForEdit(
     context: IRequestContext,
     uid: string | undefined
@@ -412,7 +387,7 @@ export class ProfileService {
         });
       }
 
-      const userDoc = await this.userService.getClientUserInfo(context, targetUid);
+      const userDoc = await this.userService.getClientUserInfo(cuid, targetUid, currentUser);
       if (!userDoc.success || !userDoc.data) {
         throw new NotFoundError({
           message: t('user.errors.notFound'),
@@ -458,35 +433,33 @@ export class ProfileService {
     }
   }
 
-  /**
-   * Validate permissions and retrieve user profile context for updates
-   */
-  private async validateAndGetProfileContext(context: IRequestContext): Promise<{
+  private async validateAndGetProfileContext(
+    cuid: string,
+    uid: string,
+    currentuser: ICurrentUser
+  ): Promise<{
     profileId: string;
     userRole: IUserRoleType;
     userId: string;
   }> {
-    const currentUser = context.currentuser!;
-    const { cuid } = context.request.params;
-    const { uid } = context.request.query;
-
     if (
-      currentUser.uid !== uid &&
-      !(currentUser.client.cuid === cuid && ['manager', 'admin'].includes(currentUser.client.role))
+      currentuser.uid !== uid &&
+      !(currentuser.client.cuid === cuid && ['manager', 'admin'].includes(currentuser.client.role))
     ) {
       throw new ForbiddenError({
         message: t('auth.errors.insufficientPermissions'),
       });
     }
 
-    const userData = await this.userService.getClientUserInfo(context, uid);
+    const userData = await this.userService.getClientUserInfo(cuid, uid, currentuser);
     if (!userData.success || !userData.data) {
       throw new NotFoundError({
         message: t('user.errors.notFound'),
       });
     }
 
-    const profileDoc = await this.profileDAO.getProfileByUserId(uid);
+    const userDoc = await this.userDAO.findFirst({ uid });
+    const profileDoc = await this.profileDAO.getProfileByUserId(userDoc?._id.toString() || '');
     if (!profileDoc) {
       throw new NotFoundError({
         message: t('profile.errors.notFound'),
@@ -518,10 +491,10 @@ export class ProfileService {
       });
     }
 
-    let result: IProfileDocument | null = null;
     let hasUpdates = false;
+    const validatedData: any = {};
 
-    // Handle User model updates
+    // Handle User model updates (separate collection, needs its own call)
     if (profileData.userInfo) {
       const userValidation = ProfileValidations.updateUserInfo.safeParse(profileData.userInfo);
       if (!userValidation.success) {
@@ -534,7 +507,7 @@ export class ProfileService {
       hasUpdates = true;
     }
 
-    // Handle personal info updates
+    // Validate and collect all profile updates
     if (profileData.personalInfo) {
       const personalValidation = ProfileValidations.updatePersonalInfo.safeParse(
         profileData.personalInfo
@@ -544,17 +517,10 @@ export class ProfileService {
           message: `Personal info validation failed: ${personalValidation.error.issues.map((i) => i.message).join(', ')}`,
         });
       }
-
-      const updateFields: any = {};
-      Object.keys(personalValidation.data).forEach((key) => {
-        updateFields[`personalInfo.${key}`] = (personalValidation.data as any)[key];
-      });
-
-      result = await this.profileDAO.updateById(profileId, updateFields);
+      validatedData.personalInfo = personalValidation.data;
       hasUpdates = true;
     }
 
-    // Handle settings updates
     if (profileData.settings) {
       const settingsValidation = ProfileValidations.updateSettings.safeParse(profileData.settings);
       if (!settingsValidation.success) {
@@ -562,27 +528,10 @@ export class ProfileService {
           message: `Settings validation failed: ${settingsValidation.error.issues.map((i) => i.message).join(', ')}`,
         });
       }
-
-      const updateFields: any = {};
-      Object.keys(settingsValidation.data).forEach((key) => {
-        const validatedData = settingsValidation.data as any;
-        if (key === 'notifications' || key === 'gdprSettings') {
-          // Handle nested objects - only update the fields that were actually sent
-          if (validatedData[key] && typeof validatedData[key] === 'object') {
-            Object.keys(validatedData[key]).forEach((subKey) => {
-              updateFields[`settings.${key}.${subKey}`] = validatedData[key][subKey];
-            });
-          }
-        } else {
-          updateFields[`settings.${key}`] = validatedData[key];
-        }
-      });
-
-      result = await this.profileDAO.updateById(profileId, updateFields);
+      validatedData.settings = settingsValidation.data;
       hasUpdates = true;
     }
 
-    // Handle identification updates
     if (profileData.identification) {
       const identificationValidation = ProfileValidations.updateIdentification.safeParse(
         profileData.identification
@@ -592,17 +541,10 @@ export class ProfileService {
           message: `Identification validation failed: ${identificationValidation.error.issues.map((i) => i.message).join(', ')}`,
         });
       }
-
-      const updateFields: any = {};
-      Object.keys(identificationValidation.data).forEach((key) => {
-        updateFields[`identification.${key}`] = (identificationValidation.data as any)[key];
-      });
-
-      result = await this.profileDAO.updateById(profileId, updateFields);
+      validatedData.identification = identificationValidation.data;
       hasUpdates = true;
     }
 
-    // Handle profile meta updates
     if (profileData.profileMeta) {
       const metaValidation = ProfileValidations.updateProfileMeta.safeParse(
         profileData.profileMeta
@@ -612,18 +554,18 @@ export class ProfileService {
           message: `Profile meta validation failed: ${metaValidation.error.issues.map((i) => i.message).join(', ')}`,
         });
       }
-
-      // Use dot notation for nested updates to avoid overwriting entire object
-      const updateFields: any = {};
-      Object.keys(metaValidation.data).forEach((key) => {
-        updateFields[`profileMeta.${key}`] = (metaValidation.data as any)[key];
-      });
-
-      result = await this.profileDAO.updateById(profileId, updateFields);
+      validatedData.profileMeta = metaValidation.data;
       hasUpdates = true;
     }
 
-    // Handle role-specific updates
+    // Make ONE database call for all profile updates
+    let result: IProfileDocument | null = null;
+    if (Object.keys(validatedData).length > 0) {
+      const dotNotationData = buildDotNotation(validatedData);
+      result = await this.profileDAO.updateById(profileId, { $set: dotNotationData });
+    }
+
+    // Handle role-specific updates (these go to different services/collections)
     if (profileData.employeeInfo) {
       const employeeResult = await this.updateEmployeeInfo(
         profileId,
@@ -646,21 +588,27 @@ export class ProfileService {
       hasUpdates = true;
     }
 
+    // Get the final updated profile if we made updates but don't have the result yet
+    if (hasUpdates && !result) {
+      result = await this.profileDAO.findFirst({ id: profileId });
+    }
+
     return { result, hasUpdates };
   }
 
-  /**
-   * Update user profile with proper permission checking and validation
-   */
   async updateUserProfile(
     context: IRequestContext,
     profileData: IProfileUpdateData
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     const { uid } = context.request.query;
-
+    const { cuid } = context.request.params;
+    const targetUid = uid ?? context.currentuser!.uid;
     try {
-      const { profileId, userRole, userId } = await this.validateAndGetProfileContext(context);
-      const { cuid } = context.request.params;
+      const { profileId, userRole, userId } = await this.validateAndGetProfileContext(
+        cuid,
+        targetUid,
+        context.currentuser!
+      );
 
       const { result, hasUpdates } = await this.processProfileUpdates(
         profileData,
@@ -670,18 +618,15 @@ export class ProfileService {
         userRole
       );
 
-      if (!hasUpdates) {
+      if (!hasUpdates || !result) {
         throw new BadRequestError({
           message: 'No valid information provided for update',
         });
       }
 
-      // If no role-specific update was performed, get the updated profile
-      const finalResult = result || (await this.profileDAO.findFirst({ id: profileId }));
-
       return {
         success: true,
-        data: finalResult!,
+        data: result,
         message: t('profile.success.profileUpdated'),
       };
     } catch (error) {

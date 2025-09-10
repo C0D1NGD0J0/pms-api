@@ -18,6 +18,7 @@ import {
   ITenantDetailInfo,
   IUserRoleType,
   IUserProperty,
+  ICurrentUser,
   IUserStats,
   IUserRole,
 } from '@interfaces/user.interface';
@@ -62,7 +63,7 @@ export class UserService {
    */
   private async fetchAndValidateUser(
     uid: string,
-    currentuser: any
+    currentuser: ICurrentUser
   ): Promise<IUserPopulatedDocument> {
     const user = (await this.userDAO.getUserByUId(uid, {
       populate: [
@@ -143,21 +144,19 @@ export class UserService {
   }
 
   async getClientUserInfo(
-    cxt: IRequestContext,
-    uid: string
+    cuid: string,
+    uid: string,
+    currentuser: ICurrentUser
   ): Promise<ISuccessReturnData<IUserDetailResponse>> {
-    const currentuser = cxt.currentuser!;
-    const clientId = cxt.request.params.cuid || currentuser.client.cuid;
-
     try {
       const user = await this.fetchAndValidateUser(uid, currentuser);
 
-      const _cachedResult = await this.checkUserDetailCache(clientId, uid);
+      const _cachedResult = await this.checkUserDetailCache(cuid, uid);
       if (_cachedResult) {
         return _cachedResult;
       }
 
-      const userDetail = await this.buildAndCacheUserDetail(user, clientId, uid);
+      const userDetail = await this.buildAndCacheUserDetail(user, cuid, uid);
 
       return {
         success: true,
@@ -166,7 +165,7 @@ export class UserService {
       };
     } catch (error) {
       this.log.error('Error getting client user:', {
-        clientId,
+        cuid,
         uid,
         error: error.message || error,
       });

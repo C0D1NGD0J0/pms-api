@@ -569,3 +569,20 @@ export function generateDefaultPassword(length = 12): string {
     throw new Error(`Failed to generate default password: ${error.message}`);
   }
 }
+
+export const buildDotNotation = (obj: any, prefix = ''): Record<string, any> => {
+  const result: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(obj)) {
+    const newKey = prefix ? `${prefix}.${key}` : key;
+
+    if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+      // Recursively flatten nested objects
+      Object.assign(result, buildDotNotation(value, newKey));
+    } else {
+      result[newKey] = value;
+    }
+  }
+
+  return result;
+};

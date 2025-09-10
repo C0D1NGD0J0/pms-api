@@ -110,10 +110,23 @@ describe('VendorService', () => {
       getClientByCuid: jest.fn(),
     } as unknown as jest.Mocked<any>;
 
+    // Create mock PermissionService
+    const mockPermissionService = {
+      canUserAccessVendors: jest.fn().mockReturnValue(true),
+    } as unknown as jest.Mocked<any>;
+
+    // Create mock VendorCache
+    const mockVendorCache = {
+      getFilteredVendors: jest.fn().mockResolvedValue({ success: false }),
+      saveFilteredVendors: jest.fn().mockResolvedValue({ success: true }),
+    } as unknown as jest.Mocked<any>;
+
     vendorService = new VendorService({
       vendorDAO: mockVendorDAO,
       userDAO: mockUserDAO,
       clientDAO: mockClientDAO,
+      permissionService: mockPermissionService,
+      vendorCache: mockVendorCache,
     });
   });
 
@@ -124,9 +137,7 @@ describe('VendorService', () => {
   describe('createVendor', () => {
     it('should successfully create vendor with valid data', async () => {
       const vendorData = createMockNewVendor();
-      const mockVendorDoc = createMockVendorDocument({
-        primaryAccountHolder: new Types.ObjectId(mockUserId),
-      });
+      const mockVendorDoc = createMockVendorDocument();
 
       mockVendorDAO.findByRegistrationNumber.mockResolvedValue(null);
       mockVendorDAO.findByCompanyName.mockResolvedValue(null);
@@ -549,15 +560,14 @@ describe('VendorService', () => {
         items: mockVendors,
         pagination: {
           total: 1,
-          perPage: 10,
-          totalPages: 1,
-          currentPage: 1,
-          hasMoreResource: false,
+          page: 1,
+          limit: 10,
+          pages: 1,
         },
       };
 
       (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
-      mockVendorDAO.getFilteredVendors.mockResolvedValue(mockResult);
+      mockVendorDAO.getFilteredVendors.mockResolvedValue(mockResult as any);
       (vendorService as any).userDAO.getUserById.mockResolvedValue(mockUsers[0]);
 
       const result = await vendorService.getFilteredVendors(

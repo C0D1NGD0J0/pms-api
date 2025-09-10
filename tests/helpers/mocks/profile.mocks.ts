@@ -167,9 +167,9 @@ export const createMockEmployeeInfo = (overrides: Partial<EmployeeInfo> = {}): E
 });
 
 export const createMockVendorInfo = (overrides: Partial<VendorInfo> = {}): VendorInfo => ({
-  companyName: 'Vendor Company LLC',
-  businessType: 'Software Development',
-  taxId: 'TAX789012',
+  isLinkedAccount: false,
+  vendorId: new Types.ObjectId(),
+  linkedVendorUid: undefined,
   ...overrides,
 });
 

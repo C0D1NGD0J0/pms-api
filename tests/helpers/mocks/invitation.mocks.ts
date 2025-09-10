@@ -101,28 +101,9 @@ export const createMockInvitationData = (
       startDate: faker.date.future().toISOString() as any, // Cast to any for Zod validation
     },
     vendorInfo: {
-      businessType: faker.company.buzzPhrase(),
-      companyName: faker.company.name(),
-      taxId: faker.string.alphanumeric(12),
-      yearsInBusiness: faker.number.int({ min: 1, max: 50 }),
-      contactPerson: {
-        name: faker.person.fullName(),
-        jobTitle: faker.person.jobTitle(),
-        email: faker.internet.email(),
-        phone: '+1234567890',
-      },
-      address: {
-        fullAddress: faker.location.streetAddress({ useFullAddress: true }),
-        street: faker.location.street(),
-        city: faker.location.city(),
-        state: faker.location.state(),
-        postCode: faker.location.zipCode(),
-        country: faker.location.country(),
-        computedLocation: {
-          coordinates: [faker.location.longitude(), faker.location.latitude()],
-          type: 'Point',
-        },
-      },
+      isLinkedAccount: faker.datatype.boolean(),
+      vendorId: new Types.ObjectId(),
+      linkedVendorUid: faker.datatype.boolean() ? faker.string.uuid() : undefined,
     },
   },
   ...overrides,

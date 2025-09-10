@@ -38,6 +38,7 @@ describe('InvitationService', () => {
   let mockEmailQueue: any;
   let mockInvitationQueue: any;
   let mockEventEmitterService: any;
+  let mockVendorService: any;
 
   // Common test data
   const testUserId = '507f1f77bcf86cd799439011';
@@ -82,6 +83,11 @@ describe('InvitationService', () => {
     mockEmailQueue = createMockEmailQueue();
     mockInvitationQueue = createMockInvitationQueue();
     mockEventEmitterService = createMockEventEmitterService();
+    mockVendorService = {
+      createVendor: jest.fn(),
+      getVendorByUserId: jest.fn(),
+      updateVendorInfo: jest.fn(),
+    };
 
     // Add missing methods to the mocks
     mockInvitationDAO.updateInvitation = jest.fn().mockResolvedValue(createMockInvitation());
@@ -100,6 +106,7 @@ describe('InvitationService', () => {
       emailQueue: mockEmailQueue,
       invitationQueue: mockInvitationQueue,
       emitterService: mockEventEmitterService,
+      vendorService: mockVendorService,
     });
   });
 

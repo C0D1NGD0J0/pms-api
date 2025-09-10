@@ -519,8 +519,9 @@ export const createMockSession = () => ({
 });
 
 // Vendor Mocks
-export const createMockVendor = (overrides: Partial<import('@interfaces/vendor.interface').IVendor> = {}): Partial<import('@interfaces/vendor.interface').IVendor> => ({
-  primaryAccountHolder: new Types.ObjectId(),
+export const createMockVendor = (
+  overrides: Partial<import('@interfaces/vendor.interface').IVendor> = {}
+): Partial<import('@interfaces/vendor.interface').IVendor> => ({
   companyName: faker.company.name(),
   businessType: faker.helpers.arrayElement([
     'general_contractor',
@@ -536,14 +537,17 @@ export const createMockVendor = (overrides: Partial<import('@interfaces/vendor.i
   taxId: faker.string.numeric(9),
   yearsInBusiness: faker.number.int({ min: 1, max: 50 }),
   address: {
-    fullAddress: faker.location.streetAddress() + ', ' + faker.location.city() + ', ' + faker.location.state(),
+    fullAddress:
+      faker.location.streetAddress() + ', ' + faker.location.city() + ', ' + faker.location.state(),
     street: faker.location.streetAddress(),
     streetNumber: faker.location.buildingNumber(),
     city: faker.location.city(),
     state: faker.location.state(),
     country: faker.location.country(),
     postCode: faker.location.zipCode(),
-    unitNumber: faker.datatype.boolean() ? faker.number.int({ min: 1, max: 999 }).toString() : undefined,
+    unitNumber: faker.datatype.boolean()
+      ? faker.number.int({ min: 1, max: 999 }).toString()
+      : undefined,
     computedLocation: {
       type: 'Point' as const,
       coordinates: [faker.location.longitude(), faker.location.latitude()],
@@ -571,6 +575,13 @@ export const createMockVendor = (overrides: Partial<import('@interfaces/vendor.i
     },
     maxDistance: faker.helpers.arrayElement([10, 15, 25, 50] as const),
   },
+  connectedClients: [
+    {
+      cuid: faker.string.uuid(),
+      isConnected: true,
+      primaryAccountHolder: new Types.ObjectId(),
+    },
+  ],
   contactPerson: {
     name: faker.person.fullName(),
     jobTitle: faker.person.jobTitle(),
@@ -587,7 +598,9 @@ export const createMockVendor = (overrides: Partial<import('@interfaces/vendor.i
   ...overrides,
 });
 
-export const createMockVendorDocument = (overrides: Partial<import('@interfaces/vendor.interface').IVendorDocument> = {}): Partial<import('@interfaces/vendor.interface').IVendorDocument> => ({
+export const createMockVendorDocument = (
+  overrides: Partial<import('@interfaces/vendor.interface').IVendorDocument> = {}
+): Partial<import('@interfaces/vendor.interface').IVendorDocument> => ({
   ...createMockVendor(),
   _id: new Types.ObjectId(),
   vuid: faker.string.uuid(),
@@ -603,13 +616,15 @@ export const createMockVendorDocument = (overrides: Partial<import('@interfaces/
   ...overrides,
 });
 
-export const createMockNewVendor = (overrides: Partial<import('@interfaces/vendor.interface').NewVendor> = {}): import('@interfaces/vendor.interface').NewVendor => {
+export const createMockNewVendor = (
+  overrides: Partial<import('@interfaces/vendor.interface').NewVendor> = {}
+): import('@interfaces/vendor.interface').NewVendor => {
   const mockVendor = createMockVendor();
   // Remove vuid as it's not part of NewVendor
   const { ...newVendorData } = mockVendor;
   return {
     ...newVendorData,
-    primaryAccountHolder: mockVendor.primaryAccountHolder!,
+    isPrimaryAccountHolder: true,
     ...overrides,
   } as import('@interfaces/vendor.interface').NewVendor;
 };
@@ -631,7 +646,8 @@ export const createMockCompanyProfile = (overrides: any = {}) => ({
   taxId: faker.string.numeric(9),
   companyEmail: faker.internet.email(),
   address: {
-    fullAddress: faker.location.streetAddress() + ', ' + faker.location.city() + ', ' + faker.location.state(),
+    fullAddress:
+      faker.location.streetAddress() + ', ' + faker.location.city() + ', ' + faker.location.state(),
     street: faker.location.streetAddress(),
     city: faker.location.city(),
     state: faker.location.state(),

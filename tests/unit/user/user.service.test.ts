@@ -50,7 +50,6 @@ describe('UserService', () => {
       propertyDAO: mockPropertyDAO,
       userCache: mockUserCache,
       permissionService: mockPermissionService,
-      vendorDAO: mockVendorDAO,
       vendorService: mockVendorService,
     });
   });
@@ -559,7 +558,8 @@ describe('UserService', () => {
     });
   });
 
-  describe('getVendorTeamMembers', () => {
+  /* Skipped: getVendorTeamMembers has been moved to VendorService
+  describe('getVendorTeamMembers - MOVED TO VendorService', () => {
     const mockVendorId = 'vendor-123';
     const mockClientId = 'test-client-id';
 
@@ -582,10 +582,12 @@ describe('UserService', () => {
             personalInfo: {
               firstName: 'John',
               lastName: 'Doe',
+              displayName: 'John Doe',
+              location: 'New York',
               avatar: { filename: 'avatar1.jpg', key: 'key1', url: 'url1' },
               phoneNumber: '+1234567890',
             },
-          },
+          } as any,
         }),
         createMockUser({
           uid: 'team-member-2',
@@ -603,10 +605,12 @@ describe('UserService', () => {
             personalInfo: {
               firstName: 'Jane',
               lastName: 'Smith',
+              displayName: 'Jane Smith',
+              location: 'Los Angeles',
               avatar: { filename: 'avatar2.jpg', key: 'key2', url: 'url2' },
               phoneNumber: '+1987654321',
             },
-          },
+          } as any,
         }),
       ];
 
@@ -717,40 +721,10 @@ describe('UserService', () => {
         request: { params: { cuid: mockClientId } },
       });
 
-      await expect(
-        userService.getVendorTeamMembers(mockContext, mockClientId, mockVendorId, undefined, {
-          limit: 10,
-          skip: 0,
-        })
-      ).rejects.toThrow(NotFoundError);
-    });
-
-    it('should handle database errors gracefully', async () => {
-      const mockClient = createMockClient({ cuid: mockClientId });
-      const error = new Error('Database connection failed');
-
-      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
-      mockUserDAO.getUserByUId.mockResolvedValue({
-        _id: 'vendor-object-id',
-        uid: mockVendorId,
-        cuids: [{ cuid: mockClientId, isConnected: true, roles: ['vendor'] }],
-        profile: { personalInfo: { firstName: 'Vendor', lastName: 'Owner' } },
-      });
-      mockUserDAO.getLinkedVendorUsers.mockRejectedValue(error);
-
-      const mockContext = createMockRequestContext({
-        currentuser: createMockCurrentUser(),
-        request: { params: { cuid: mockClientId } },
-      });
-
-      await expect(
-        userService.getVendorTeamMembers(mockContext, mockClientId, mockVendorId, undefined, {
-          limit: 10,
-          skip: 0,
-        })
-      ).rejects.toThrow('Database connection failed');
+      // Test removed - getVendorTeamMembers no longer exists on UserService
     });
   });
+  */
 
   describe('enhanced vendor data transformation in getFilteredUsers', () => {
     it('should properly transform vendor data with enhanced vendor information', async () => {

@@ -68,12 +68,12 @@ describe('Invitation Metadata Transfer', () => {
       getVendorByUserId: jest.fn(),
       updateVendorInfo: jest.fn(),
       createVendor: jest.fn(),
-    };
+    } as any;
     const mockUserService = {
       getClientUserInfo: jest.fn(),
       updateUserInfo: jest.fn(),
-    };
-    
+    } as any;
+
     profileService = new ProfileService({
       profileDAO,
       clientDAO,
@@ -86,8 +86,8 @@ describe('Invitation Metadata Transfer', () => {
     const mockVendorServiceForInvitation = {
       createVendor: jest.fn(),
       linkVendorToClient: jest.fn(),
-    };
-    
+    } as any;
+
     invitationService = new InvitationService({
       invitationDAO,
       emailQueue,
@@ -272,7 +272,7 @@ describe('Invitation Metadata Transfer', () => {
       (profileDAO.createUserProfile as jest.Mock).mockResolvedValue(mockProfile);
       (invitationDAO.acceptInvitation as jest.Mock).mockResolvedValue(true);
       (profileDAO.findFirst as jest.Mock).mockResolvedValue(mockProfile);
-      (profileDAO.updateCommonVendorInfo as jest.Mock).mockResolvedValue(mockProfile);
+      (profileDAO.updateVendorInfo as jest.Mock).mockResolvedValue(mockProfile);
       (userDAO.getUserById as jest.Mock).mockResolvedValue(mockUser);
 
       const acceptanceData: IInvitationAcceptance = {
@@ -305,7 +305,7 @@ describe('Invitation Metadata Transfer', () => {
       );
 
       // Verify that updateCommonVendorInfo was called with the vendor data
-      expect(profileDAO.updateCommonVendorInfo).toHaveBeenCalledWith(mockProfileId, mockVendorInfo);
+      expect(profileDAO.updateVendorInfo).toHaveBeenCalledWith(mockProfileId, mockVendorInfo);
     });
   });
 

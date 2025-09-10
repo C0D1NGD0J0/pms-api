@@ -644,6 +644,7 @@ export class VendorService {
 
       const userData: IUserDetailResponse = {
         profile: {
+          id: profile?._id?.toString() || '',
           firstName: firstName || '',
           lastName: lastName || '',
           fullName: fullName || '',

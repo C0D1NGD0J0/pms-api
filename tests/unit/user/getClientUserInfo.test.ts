@@ -128,7 +128,11 @@ describe('UserService - getClientUserInfo', () => {
         ],
       });
 
-      const result = await userService.getClientUserInfo(mockContext, 'employee-uid');
+      const result = await userService.getClientUserInfo(
+        'test-client-id',
+        'employee-uid',
+        mockContext.currentuser!
+      );
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('profile');
@@ -234,7 +238,11 @@ describe('UserService - getClientUserInfo', () => {
 
       mockUserDAO.getUserByUId.mockResolvedValue(mockVendorUser);
 
-      const result = await userService.getClientUserInfo(mockContext, 'vendor-uid');
+      const result = await userService.getClientUserInfo(
+        'test-client-id',
+        'vendor-uid',
+        mockContext.currentuser!
+      );
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('vendorInfo');
@@ -299,7 +307,11 @@ describe('UserService - getClientUserInfo', () => {
 
       mockUserDAO.getUserByUId.mockResolvedValue(mockLinkedVendorUser);
 
-      const result = await userService.getClientUserInfo(mockContext, 'linked-vendor-uid');
+      const result = await userService.getClientUserInfo(
+        'test-client-id',
+        'linked-vendor-uid',
+        mockContext.currentuser!
+      );
 
       expect(result.data.vendorInfo).toMatchObject({
         isLinkedAccount: true,
@@ -337,7 +349,11 @@ describe('UserService - getClientUserInfo', () => {
 
       mockUserDAO.getUserByUId.mockResolvedValue(mockTenantUser);
 
-      const result = await userService.getClientUserInfo(mockContext, 'tenant-uid');
+      const result = await userService.getClientUserInfo(
+        'test-client-id',
+        'tenant-uid',
+        mockContext.currentuser!
+      );
 
       expect(result.success).toBe(true);
       // Note: tenantInfo is not yet fully implemented in the interface
@@ -380,7 +396,7 @@ describe('UserService - getClientUserInfo', () => {
       mockUserDAO.getUserByUId.mockResolvedValue(mockUser);
       mockPropertyDAO.getPropertiesByClientId.mockResolvedValue({ items: [] });
 
-      await userService.getClientUserInfo(mockContext, 'test-uid');
+      await userService.getClientUserInfo('test-client-id', 'test-uid', mockContext.currentuser!);
 
       expect(mockUserCache.cacheUserDetail).toHaveBeenCalledWith(
         'test-client-id',

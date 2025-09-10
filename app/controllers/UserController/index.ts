@@ -26,8 +26,8 @@ export class UserController {
   }
 
   getClientUserInfo = async (req: AppRequest, res: Response) => {
-    const { uid } = req.params;
-    const result = await this.userService.getClientUserInfo(req.context, uid);
+    const { cuid, uid } = req.params;
+    const result = await this.userService.getClientUserInfo(cuid, uid, req.context.currentuser);
 
     res.status(httpStatusCodes.OK).json(result);
   };

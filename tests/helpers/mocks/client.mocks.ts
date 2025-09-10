@@ -64,6 +64,19 @@ export const createMockClientDAO = () => ({
   }),
   createClient: jest.fn(),
   doesClientExist: jest.fn(),
+  getClientUsersStats: jest.fn().mockResolvedValue({
+    totalFilteredUsers: 10,
+    roleDistribution: [
+      { name: 'Staff', value: 5, percentage: 50 },
+      { name: 'Manager', value: 3, percentage: 30 },
+      { name: 'Admin', value: 2, percentage: 20 },
+    ],
+    departmentDistribution: [
+      { name: 'IT', value: 4, percentage: 40 },
+      { name: 'HR', value: 3, percentage: 30 },
+      { name: 'Finance', value: 3, percentage: 30 },
+    ],
+  }),
 });
 
 export const createMockUserDAO = () => ({
@@ -150,6 +163,10 @@ export const createMockUserDAO = () => ({
   createPasswordResetToken: jest.fn(),
   activateAccount: jest.fn(),
   isEmailUnique: jest.fn(),
+  getUsersByFilteredType: jest.fn().mockResolvedValue({
+    items: [],
+    pagination: { total: 0, perPage: 10, totalPages: 1, currentPage: 1, hasMoreResource: false },
+  }),
 });
 
 export const createMockPropertyDAO = () => ({

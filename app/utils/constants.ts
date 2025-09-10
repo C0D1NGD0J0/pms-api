@@ -1,4 +1,4 @@
-import { IPropertyFilterQuery } from '@interfaces/index';
+import { IPropertyFilterQuery, EmployeeDepartment } from '@interfaces/index';
 
 export const httpStatusCodes = {
   OK: 200,
@@ -19,6 +19,7 @@ export const JWT_KEY_NAMES = {
 };
 
 export const SLUGIFY_CONFIG = { lower: true, strict: true, replacement: '_', trim: true };
+export const EMPLOYEE_ROLE = 'employee';
 
 export const EMAIL_TEMPLATES = {
   PASSWORD_RESET: 'password-reset',
@@ -71,3 +72,21 @@ export const defaultPagination: IPropertyFilterQuery = {
   },
   filters: null,
 };
+
+/**
+ * Departments allowed to create properties (with approval required)
+ */
+export const PROPERTY_CREATION_ALLOWED_DEPARTMENTS: EmployeeDepartment[] = [
+  EmployeeDepartment.OPERATIONS,
+  EmployeeDepartment.MANAGEMENT,
+];
+
+/**
+ * Roles that can approve/reject properties immediately
+ */
+export const PROPERTY_APPROVAL_ROLES = ['admin', 'manager'];
+
+/**
+ * Roles that require approval for property creation
+ */
+export const PROPERTY_STAFF_ROLES = ['staff'];

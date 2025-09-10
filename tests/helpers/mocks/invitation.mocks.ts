@@ -92,37 +92,18 @@ export const createMockInvitationData = (
   status: faker.helpers.arrayElement(['draft', 'pending']),
   metadata: {
     inviteMessage: faker.lorem.sentences(2),
-    expectedStartDate: faker.date.future(),
+    expectedStartDate: faker.date.future().toISOString() as any, // Cast to any for Zod validation
     employeeInfo: {
       department: 'Engineering' as any, // Cast to any as a temporary fix for EmployeeDepartment
       jobTitle: faker.person.jobTitle(),
       employeeId: faker.string.alphanumeric(8),
       reportsTo: faker.person.fullName(),
-      startDate: faker.date.future(),
+      startDate: faker.date.future().toISOString() as any, // Cast to any for Zod validation
     },
     vendorInfo: {
-      businessType: faker.company.buzzPhrase(),
-      companyName: faker.company.name(),
-      taxId: faker.string.alphanumeric(12),
-      yearsInBusiness: faker.number.int({ min: 1, max: 50 }),
-      contactPerson: {
-        name: faker.person.fullName(),
-        jobTitle: faker.person.jobTitle(),
-        email: faker.internet.email(),
-        phone: '+1234567890',
-      },
-      address: {
-        fullAddress: faker.location.streetAddress({ useFullAddress: true }),
-        street: faker.location.street(),
-        city: faker.location.city(),
-        state: faker.location.state(),
-        postCode: faker.location.zipCode(),
-        country: faker.location.country(),
-        computedLocation: {
-          coordinates: [faker.location.longitude(), faker.location.latitude()],
-          type: 'Point',
-        },
-      },
+      isLinkedAccount: faker.datatype.boolean(),
+      vendorId: new Types.ObjectId(),
+      linkedVendorUid: faker.datatype.boolean() ? faker.string.uuid() : undefined,
     },
   },
   ...overrides,
@@ -206,7 +187,15 @@ export const createMockInvitationDAO = () => ({
   insert: jest.fn().mockResolvedValue(createMockInvitation()),
   updateById: jest.fn().mockResolvedValue({ acknowledged: true, modifiedCount: 1 }),
   deleteById: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
-  // Avoid duplicate methods by renaming or removing
+  // Support both versions for compatibility
+  startSession: jest.fn().mockImplementation(() => createMockSession()),
+  withTransaction: jest
+    .fn()
+    .mockImplementation(
+      async (session: ClientSession, callback: (session: ClientSession) => Promise<any>) => {
+        return await callback(session);
+      }
+    ),
   _startSession: jest.fn().mockImplementation(() => createMockSession()),
   _withTransaction: jest
     .fn()

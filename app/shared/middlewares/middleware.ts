@@ -460,7 +460,6 @@ export const requirePermission = (
       }
 
       const { permissionService }: { permissionService: PermissionService } = req.container.cradle;
-
       const hasPermission = await permissionService.checkUserPermission(
         currentuser,
         resource as PermissionResource,

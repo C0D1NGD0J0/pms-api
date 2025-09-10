@@ -72,22 +72,4 @@ export class ClientController {
     const result = await this.clientService.reconnectUser(req.context, uid);
     res.status(httpStatusCodes.OK).json(result);
   };
-
-  getClientUsers = async (req: AppRequest, res: Response) => {
-    this.log.info('Getting client users with roles and connections');
-
-    const result = await this.clientService.getClientUsers(req.context);
-
-    res.status(httpStatusCodes.OK).json(result);
-  };
-
-  /**
-   * Get users by specific role for a client
-   */
-  getUsersByRole = async (req: AppRequest, res: Response) => {
-    const { role } = req.params;
-    const result = await this.clientService.getUsersByRole(req.context, role as any);
-
-    res.status(httpStatusCodes.OK).json(result);
-  };
 }

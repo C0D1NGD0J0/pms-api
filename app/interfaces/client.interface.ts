@@ -8,7 +8,9 @@ import {
   IAccountType,
 } from './user.interface';
 
-// CLIENT
+/**
+ * Main Client Interface
+ */
 export interface IClient {
   accountAdmin: Types.ObjectId | PopulatedAccountAdmin;
   identification?: IdentificationType;
@@ -19,6 +21,10 @@ export interface IClient {
   accountType: IAccountType;
   displayName: string;
 }
+
+/**
+ * Company Profile Interface
+ */
 export interface ICompanyProfile {
   contactInfo?: IContactInfoType;
   registrationNumber?: string;
@@ -30,6 +36,9 @@ export interface ICompanyProfile {
   website?: string;
 }
 
+/**
+ * Client Document Interface (extends Mongoose Document)
+ */
 export interface IClientDocument extends Document, IClient {
   verifiedBy: string | Types.ObjectId;
   isVerified: boolean;
@@ -40,6 +49,22 @@ export interface IClientDocument extends Document, IClient {
   cuid: string;
   id: string;
 }
+
+/**
+ * Client User Connections Interface
+ * Represents the connection between a user and a client
+ */
+export interface IClientUserConnections {
+  clientDisplayName: string;
+  linkedVendorUid?: string;
+  roles: IUserRoleType[];
+  isConnected: boolean;
+  cuid: string;
+}
+
+/**
+ * Client Settings Interface
+ */
 export interface IClientSettings {
   notificationPreferences: {
     email: boolean;
@@ -50,14 +75,9 @@ export interface IClientSettings {
   lang: string;
 }
 
-export interface IClientUserConnections {
-  linkedVendorId?: string;
-  roles: IUserRoleType[];
-  isConnected: boolean;
-  displayName: string;
-  cuid: string;
-}
-
+/**
+ * Populated Account Admin Type
+ */
 export type PopulatedAccountAdmin = {
   _id: Types.ObjectId;
   email: string;
@@ -66,10 +86,32 @@ export type PopulatedAccountAdmin = {
   avatar?: string;
 };
 
+/**
+ * Populated Client Document Type
+ * Using Omit to replace admin field type
+ */
 export type IPopulatedClientDocument = {
-  admin: IUserDocument | Types.ObjectId;
-} & Omit<IClientDocument, 'admin'>;
+  accountAdmin: IUserDocument | Types.ObjectId;
+} & Omit<IClientDocument, 'accountAdmin'>;
 
+/**
+ * Simplified client info for passing around client context
+ * Using Pick to select only needed fields
+ */
+export type IClientInfo = {
+  clientDisplayName: string;
+  id?: string;
+} & Pick<IClientDocument, 'cuid'>;
+
+/**
+ * Type for active account info (used in auth responses)
+ * Already using Pick efficiently
+ */
+export type IActiveAccountInfo = Pick<IClientUserConnections, 'cuid' | 'clientDisplayName'>;
+
+/**
+ * Client Statistics Interface
+ */
 export interface IClientStats {
   totalProperties: number;
   totalUsers: number;

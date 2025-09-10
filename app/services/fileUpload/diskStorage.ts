@@ -7,7 +7,7 @@ import { NextFunction, Response, Request } from 'express';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 
 interface FieldSizeConfig {
-  fileTypes?: string[]; // Optional array of file extensions
+  fileTypes?: string[];
   maxCount: number;
   maxSize: number; // Size in bytes
   name: string;
@@ -17,17 +17,18 @@ export class DiskStorage {
   private readonly log: Logger = createLogger('DiskStorage');
   private upload: multer.Multer;
   private readonly storagePath = 'uploads/';
+  private currentFieldPatterns: string[] = [];
   private readonly allowedExtensions = [
     'jpeg',
     'jpg',
     'png',
-    'svg',
     'pdf',
     'mp4',
-    'avi',
     'csv',
     'mov',
     'x-matroska',
+    'doc',
+    'docx',
   ];
   private fieldConfigs: FieldSizeConfig[] = [
     {
@@ -43,12 +44,6 @@ export class DiskStorage {
       fileTypes: ['pdf'],
     },
     {
-      name: 'images',
-      maxCount: 5,
-      maxSize: 10 * 1024 * 1024, // 10MB
-      fileTypes: ['jpeg', 'jpg', 'png'],
-    },
-    {
       name: 'videos',
       maxCount: 1,
       maxSize: 100 * 1024 * 1024, // 60MB
@@ -61,10 +56,16 @@ export class DiskStorage {
       fileTypes: ['csv'],
     },
     {
-      name: 'document.photos',
-      maxCount: 5,
-      maxSize: 15 * 1024 * 1024, // 15MB
-      fileTypes: ['jpeg', 'jpg', 'png', 'pdf'],
+      name: 'documents.items[*].file', // Wildcard pattern for documents
+      maxCount: 1,
+      maxSize: 20 * 1024 * 1024, // 20MB
+      fileTypes: ['pdf', 'jpeg', 'jpg', 'png', 'doc', 'docx'],
+    },
+    {
+      name: 'personalInfo.avatar.file',
+      maxCount: 1,
+      maxSize: 5 * 1024 * 1024, // 5MB
+      fileTypes: ['jpeg', 'jpg', 'png'],
     },
   ];
 
@@ -77,23 +78,20 @@ export class DiskStorage {
     this.log.info(`DiskStorage initialized. Path: ${this.storagePath}`);
   }
 
-  uploadMiddleware = (fieldNames: string[]) => {
-    const fieldsToUse = fieldNames
-      ? this.fieldConfigs.filter((config) => fieldNames.includes(config.name))
-      : null;
-
-    // convert to multer field format
-    const multerFields = fieldsToUse?.map((config) => ({
-      name: config.name,
-      maxCount: config.maxCount,
-    }));
+  uploadMiddleware = (fieldPatterns: string[]) => {
+    // Store patterns for use in filter
+    this.currentFieldPatterns = fieldPatterns;
 
     this.upload = multer({
       storage: this.createDiskStorage(),
       fileFilter: this.fieldSpecificFilter,
     });
+
     return (req: Request, res: Response, next: NextFunction): void => {
-      const upload = this.upload.fields(multerFields || []);
+      const fieldsArray = this.buildFieldsArray(fieldPatterns);
+
+      const upload = fieldsArray.length > 0 ? this.upload.fields(fieldsArray) : this.upload.none(); // If no fields, accept no files
+
       upload(req, res, (err) => {
         if (err) {
           let errorMessage = 'File upload error';
@@ -121,6 +119,34 @@ export class DiskStorage {
       });
     };
   };
+
+  private buildFieldsArray(patterns: string[]): multer.Field[] {
+    const fields: multer.Field[] = [];
+
+    for (const pattern of patterns) {
+      // Find exact match or pattern match in fieldConfigs
+      const matchingConfig = this.fieldConfigs.find(
+        (config) =>
+          config.name === pattern ||
+          this.matchesPattern(pattern, config.name) ||
+          this.matchesPattern(config.name, pattern)
+      );
+
+      if (matchingConfig) {
+        fields.push({
+          name: pattern,
+          maxCount: matchingConfig.maxCount,
+        });
+      } else {
+        fields.push({
+          name: pattern,
+          maxCount: 1,
+        });
+      }
+    }
+
+    return fields;
+  }
 
   async getFile(filename: string): Promise<Buffer> {
     const filePath = path.join(process.cwd(), this.storagePath, filename);
@@ -184,15 +210,25 @@ export class DiskStorage {
     file: Express.Multer.File,
     cb: multer.FileFilterCallback
   ) => {
-    // if the file type is allowed
+    const isAllowedField = this.currentFieldPatterns.some((pattern) =>
+      this.matchesPattern(file.fieldname, pattern)
+    );
+
+    if (!isAllowedField) {
+      cb(new Error(`Unexpected field: ${file.fieldname}`));
+      return;
+    }
+
     const fileExt = file.mimetype.split('/')[1]?.toLowerCase();
     if (!fileExt || !this.allowedExtensions.includes(fileExt)) {
       cb(new Error(`File type not supported. Allowed types: ${this.allowedExtensions.join(', ')}`));
       return;
     }
-    const fieldConfig = this.fieldConfigs.find((config) => config.name === file.fieldname) || false;
 
-    // validate file type for field
+    const fieldConfig = this.fieldConfigs.find(
+      (config) => config.name === file.fieldname || this.matchesPattern(file.fieldname, config.name)
+    );
+
     if (fieldConfig && fieldConfig.fileTypes && fieldConfig.fileTypes.length > 0) {
       if (!fieldConfig.fileTypes.includes(fileExt)) {
         cb(
@@ -204,7 +240,6 @@ export class DiskStorage {
       }
     }
 
-    // validate file size for field
     if (fieldConfig && fieldConfig.maxSize && file.size > fieldConfig.maxSize) {
       this.log.warn(`${file.originalname} exceeds size limit for ${file.fieldname}`);
       return cb(
@@ -217,4 +252,17 @@ export class DiskStorage {
 
     cb(null, true);
   };
+
+  private matchesPattern(fieldName: string, pattern: string): boolean {
+    if (fieldName === pattern) return true;
+
+    // Convert pattern to regex, escape regex meta-characters, then replace [*] with [\d+]
+    const escapeRegExp = (s: string) =>
+      s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let regexPattern = escapeRegExp(pattern);
+    regexPattern = regexPattern.replace(/\\\[\*\]/g, '\\[\\d+\\]'); // [*] becomes [\d+], after escaping
+
+    const regex = new RegExp(`^${regexPattern}$`);
+    return regex.test(fieldName);
+  }
 }

@@ -1,7 +1,12 @@
 {
   "client": {
     "errors": {
-      "notFound": "client.errors.notFound"
+      "notFound": "client.errors.notFound",
+      "insufficientPermissions": "client.errors.insufficientPermissions"
+    },
+    "success": {
+      "userRetrieved": "client.success.userRetrieved",
+      "userStatsRetrieved": "client.success.userStatsRetrieved"
     }
   },
   "invitation": {
@@ -15,7 +20,26 @@
   },
   "profile": {
     "success": {
-      "roleInitialized": "profile.success.roleInitialized"
+      "roleInitialized": "profile.success.roleInitialized",
+      "profileRetrieved": "profile.success.profileRetrieved",
+      "profileUpdated": "profile.success.profileUpdated"
+    },
+    "errors": {
+      "notFound": "profile.errors.notFound"
+    }
+  },
+  "propertyUnit": {
+    "errors": {
+      "noCsvFileUploaded": "propertyUnit.errors.noCsvFileUploaded"
+    }
+  },
+  "vendor": {
+    "success": {
+      "statsRetrieved": "vendor.success.statsRetrieved",
+      "teamMembersRetrieved": "vendor.success.teamMembersRetrieved"
+    },
+    "errors": {
+      "notPrimaryVendor": "vendor.errors.notPrimaryVendor"
     }
   }
 }

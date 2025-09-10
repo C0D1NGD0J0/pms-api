@@ -20,6 +20,7 @@ export enum MailType {
 }
 
 export enum PermissionAction {
+  MANAGE_VENDORS = 'manage_vendors',
   ASSIGN_ROLES = 'assign_roles',
   MANAGE_USERS = 'manage_users',
   SETTINGS = 'settings',
@@ -42,6 +43,7 @@ export enum PermissionResource {
   PROPERTY = 'property',
   PAYMENT = 'payment',
   CLIENT = 'client',
+  VENDOR = 'vendor',
   REPORT = 'report',
   LEASE = 'lease',
   USER = 'user',
@@ -120,7 +122,7 @@ export interface IRequestContext {
     endTime?: number;
     duration?: number;
   };
-  currentuser?: ICurrentUser | null;
+  currentuser: ICurrentUser;
   service: { env: string };
   source: RequestSource;
   requestId: string;

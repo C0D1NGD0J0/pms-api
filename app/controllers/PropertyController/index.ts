@@ -70,6 +70,7 @@ export class PropertyController {
   getClientProperties = async (req: AppRequest, res: Response) => {
     const { page, limit, sort, sortBy } = req.query;
     const { cuid } = req.params;
+    const currentuser = req.context.currentuser;
 
     const queryParams: IPropertyFilterQuery = {
       pagination: {
@@ -110,7 +111,8 @@ export class PropertyController {
         queryParams.filters.searchTerm = req.query.searchTerm as string;
       }
     }
-    const data = await this.propertyService.getClientProperties(cuid, queryParams);
+
+    const data = await this.propertyService.getClientProperties(cuid, currentuser, queryParams);
     res.status(httpStatusCodes.OK).json(data);
   };
 
@@ -221,6 +223,121 @@ export class PropertyController {
     };
     const currentuser = req.context.currentuser!;
     const result = await this.propertyService.getAssignableUsers(cuid, currentuser, filters);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getPendingApprovals = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const { currentuser } = req.context;
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+
+    const pagination = {
+      page: parseInt(req.query.page as string) || 1,
+      limit: parseInt(req.query.limit as string) || 10,
+      sort: req.query.sort as string,
+      sortBy: req.query.sortBy as string,
+    };
+
+    const result = await this.propertyService.getPendingApprovals(cuid, currentuser, pagination);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  approveProperty = async (req: AppRequest, res: Response) => {
+    const { cuid, pid } = req.params;
+    const { currentuser } = req.context;
+    const { notes } = req.body;
+
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+
+    const result = await this.propertyService.approveProperty(cuid, pid, currentuser, notes);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  rejectProperty = async (req: AppRequest, res: Response) => {
+    const { cuid, pid } = req.params;
+    const { currentuser } = req.context;
+    const { reason } = req.body;
+
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+
+    const result = await this.propertyService.rejectProperty(cuid, pid, currentuser, reason);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  bulkApproveProperties = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const { currentuser } = req.context;
+    const { propertyIds } = req.body;
+
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+
+    const result = await this.propertyService.bulkApproveProperties(cuid, propertyIds, currentuser);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  bulkRejectProperties = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const { currentuser } = req.context;
+    const { propertyIds, reason } = req.body;
+
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+
+    const result = await this.propertyService.bulkRejectProperties(
+      cuid,
+      propertyIds,
+      currentuser,
+      reason
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getMyPropertyRequests = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const { currentuser } = req.context;
+
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+
+    const filters = {
+      approvalStatus: req.query.approvalStatus as 'pending' | 'approved' | 'rejected' | undefined,
+      pagination: {
+        page: parseInt(req.query.page as string) || 1,
+        limit: parseInt(req.query.limit as string) || 10,
+        sort: req.query.sort as string,
+        sortBy: req.query.sortBy as string,
+      },
+    };
+
+    const result = await this.propertyService.getMyPropertyRequests(cuid, currentuser, filters);
     res.status(httpStatusCodes.OK).json(result);
   };
 }

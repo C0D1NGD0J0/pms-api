@@ -15,29 +15,46 @@ export const DEFAULT_JOB_OPTIONS: BullJobOptions = {
   delay: 5000,
 };
 
-export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions = {
+// Production-optimized queue options for reduced network traffic
+const PRODUCTION_QUEUE_OPTIONS: BullQueueOptions = {
   settings: {
     maxStalledCount: 1800000,
     lockDuration: 3600000, // 1hr
-    stalledInterval: 300000,
+    stalledInterval: 300000, // 5 minutes - reduces Redis polling frequency
   },
   redis: {
     host: envVariables.REDIS.HOST,
     port: envVariables.REDIS.PORT,
-    ...(envVariables.SERVER.ENV === 'production'
-      ? { username: envVariables.REDIS.USERNAME, password: envVariables.REDIS.PASSWORD }
-      : {}),
+    username: envVariables.REDIS.USERNAME,
+    password: envVariables.REDIS.PASSWORD,
     family: 0,
-    ...(envVariables.SERVER.ENV === 'production'
-      ? {
-          connectTimeout: 30000,
-          lazyConnect: true,
-          keepAlive: 60000,
-          maxRetriesPerRequest: 3,
-        }
-      : {}),
+    connectTimeout: 30000,
+    lazyConnect: true,
+    keepAlive: 60000, // Reduced keep-alive frequency
+    maxRetriesPerRequest: 3,
+    commandTimeout: 15000,
   },
 };
+
+// Development queue options for faster feedback
+const DEVELOPMENT_QUEUE_OPTIONS: BullQueueOptions = {
+  settings: {
+    maxStalledCount: 3,
+    lockDuration: 300000, // 5 minutes
+    stalledInterval: 30000, // 30 seconds for faster development feedback
+  },
+  redis: {
+    host: envVariables.REDIS.HOST,
+    port: envVariables.REDIS.PORT,
+    family: 0,
+    connectTimeout: 10000,
+    keepAlive: 30000,
+    maxRetriesPerRequest: 2,
+  },
+};
+
+export const DEFAULT_QUEUE_OPTIONS: BullQueueOptions =
+  envVariables.SERVER.ENV === 'production' ? PRODUCTION_QUEUE_OPTIONS : DEVELOPMENT_QUEUE_OPTIONS;
 
 export type JobData = any;
 
@@ -59,7 +76,12 @@ export class BaseQueue<T extends JobData = JobData> {
       deadLetterQueue = new Queue(dlqName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
     }
     this.dlq = deadLetterQueue;
-    this.addQueueToBullBoard(this.queue, this.dlq);
+
+    // Only add to Bull Board in development or when explicitly enabled
+    if (envVariables.SERVER.ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
+      this.addQueueToBullBoard(this.queue, this.dlq);
+    }
+
     this.initializeQueueEvents();
     this.autoResumeQueue();
 

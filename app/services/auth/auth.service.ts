@@ -5,8 +5,9 @@ import { t } from '@shared/languages';
 import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
-import { AuthTokenService } from '@services/index';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { AuthTokenService, VendorService } from '@services/index';
+import { IActiveAccountInfo } from '@interfaces/client.interface';
 import { ISignupData, IUserRole } from '@interfaces/user.interface';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
 import {
@@ -27,6 +28,7 @@ import {
 
 interface IConstructor {
   tokenService: AuthTokenService;
+  vendorService: VendorService;
   profileDAO: ProfileDAO;
   emailQueue: EmailQueue;
   authCache: AuthCache;
@@ -42,6 +44,7 @@ export class AuthService {
   private readonly profileDAO: ProfileDAO;
   private readonly emailQueue: EmailQueue;
   private readonly tokenService: AuthTokenService;
+  private readonly vendorService: VendorService;
 
   constructor({
     userDAO,
@@ -50,6 +53,7 @@ export class AuthService {
     emailQueue,
     tokenService,
     authCache,
+    vendorService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -57,6 +61,7 @@ export class AuthService {
     this.profileDAO = profileDAO;
     this.emailQueue = emailQueue;
     this.tokenService = tokenService;
+    this.vendorService = vendorService;
     this.log = createLogger('AuthService');
   }
 
@@ -196,7 +201,7 @@ export class AuthService {
               cuid: clientId,
               isConnected: true,
               roles: [IUserRole.ADMIN],
-              displayName: signupData.displayName,
+              clientDisplayName: signupData.displayName,
             },
           ],
         },
@@ -252,7 +257,7 @@ export class AuthService {
           emailType: MailType.ACCOUNT_ACTIVATION,
           data: {
             fullname: profile.fullname,
-            activationUrl: `${process.env.FRONTEND_URL}/${client.cuid}/account_activation?t=${user.activationToken}`,
+            activationUrl: `${process.env.FRONTEND_URL}/account_activation/${client.cuid}?t=${user.activationToken}`,
           },
         },
       };
@@ -271,8 +276,8 @@ export class AuthService {
       accessToken: string;
       rememberMe: boolean;
       refreshToken: string;
-      activeAccount: { cuid: string; displayName: string };
-      accounts: { cuid: string; displayName: string }[] | null;
+      activeAccount: IActiveAccountInfo;
+      accounts: IActiveAccountInfo[] | null;
     }>
   > {
     const { email, password, rememberMe } = data;
@@ -328,7 +333,7 @@ export class AuthService {
           accessToken: tokens.accessToken,
           activeAccount: {
             cuid: activeAccount.cuid,
-            displayName: activeAccount.displayName,
+            clientDisplayName: activeAccount.clientDisplayName,
           },
           accounts: [],
         },
@@ -338,7 +343,7 @@ export class AuthService {
 
     const otherAccounts = connectedClients
       .filter((c) => c.cuid !== activeAccount.cuid)
-      .map((c) => ({ cuid: c.cuid, displayName: c.displayName }));
+      .map((c) => ({ cuid: c.cuid, clientDisplayName: c.clientDisplayName }));
     return {
       success: true,
       data: {
@@ -347,7 +352,7 @@ export class AuthService {
         accessToken: tokens.accessToken,
         activeAccount: {
           cuid: activeAccount.cuid,
-          displayName: activeAccount.displayName,
+          clientDisplayName: activeAccount.clientDisplayName,
         },
         accounts: otherAccounts,
       },
@@ -388,7 +393,7 @@ export class AuthService {
     ISuccessReturnData<{
       accessToken: string;
       refreshToken: string;
-      activeAccount: { cuid: string; displayName: string };
+      activeAccount: IActiveAccountInfo;
     }>
   > {
     if (!userId || !newcuid) {
@@ -428,7 +433,7 @@ export class AuthService {
         accessToken: tokens.accessToken,
         activeAccount: {
           cuid: activeAccount.cuid,
-          displayName: activeAccount.displayName,
+          clientDisplayName: activeAccount.clientDisplayName,
         },
       },
       message: t('auth.success.accountSelected'),
@@ -554,46 +559,6 @@ export class AuthService {
     return { success: true, data: null, message: t('auth.success.logoutSuccessful') };
   }
 
-  /**
-   * Complete user registration from invitation acceptance
-   * This method handles the signup process for users who were invited to join a client
-   */
-  async inviteUserSignup(
-    _invitationToken: string,
-    _userData: {
-      password: string;
-      location?: string;
-      timeZone?: string;
-      lang?: string;
-    }
-  ): Promise<
-    ISuccessReturnData<{
-      accessToken: string;
-      refreshToken: string;
-      user: any;
-    }>
-  > {
-    const session = await this.userDAO.startSession();
-
-    try {
-      const result = await this.userDAO.withTransaction(session, async (_session) => {
-        // This will be handled by the InvitationService.acceptInvitation method
-        // We're keeping this method here for API consistency but it will delegate
-        // to the invitation service in the controller layer
-        throw new Error('This method should be called through InvitationService.acceptInvitation');
-      });
-
-      return result;
-    } catch (error) {
-      this.log.error('Error in invite user signup:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Login for users who just completed invitation signup
-   * This is a simplified login that skips some checks since the user was just created
-   */
   async loginAfterInvitationSignup(
     userId: string,
     cuid: string
@@ -601,8 +566,8 @@ export class AuthService {
     ISuccessReturnData<{
       accessToken: string;
       refreshToken: string;
-      activeAccount: { cuid: string; displayName: string };
-      accounts: { cuid: string; displayName: string }[] | null;
+      activeAccount: IActiveAccountInfo;
+      accounts: IActiveAccountInfo[] | null;
     }>
   > {
     try {
@@ -632,7 +597,7 @@ export class AuthService {
       const connectedClients = user.cuids.filter((c) => c.isConnected);
       const otherAccounts = connectedClients
         .filter((c) => c.cuid !== activeConnection.cuid)
-        .map((c) => ({ cuid: c.cuid, displayName: c.displayName }));
+        .map((c) => ({ cuid: c.cuid, clientDisplayName: c.clientDisplayName }));
 
       return {
         success: true,
@@ -641,7 +606,7 @@ export class AuthService {
           refreshToken: tokens.refreshToken,
           activeAccount: {
             cuid: activeConnection.cuid,
-            displayName: activeConnection.displayName,
+            clientDisplayName: activeConnection.clientDisplayName,
           },
           accounts:
             otherAccounts.length > 0
@@ -649,7 +614,7 @@ export class AuthService {
               : [
                   {
                     cuid: activeConnection.cuid,
-                    displayName: activeConnection.displayName,
+                    clientDisplayName: activeConnection.clientDisplayName,
                   },
                 ],
         },

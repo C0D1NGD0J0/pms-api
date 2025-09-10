@@ -87,7 +87,8 @@
       "userNotInClient": "User is not connected to this client",
       "userAlreadyHasRole": "User already has the role {{role}}",
       "cannotRemoveLastAdmin": "Cannot remove admin role from the last administrator",
-      "cannotDisconnectLastAdmin": "Cannot disconnect the last administrator"
+      "cannotDisconnectLastAdmin": "Cannot disconnect the last administrator",
+      "clientIdRequired": "Client ID is required"
     },
     "success": {
       "profileUpdated": "Client profile updated successfully",
@@ -99,6 +100,7 @@
       "userDisconnected": "User disconnected successfully",
       "userReconnected": "User reconnected successfully",
       "usersRetrieved": "Client users retrieved successfully",
+      "filteredUsersRetrieved": "Users retrieved successfully",
       "retrieved": "Client details retrieved successfully"
     }
   },

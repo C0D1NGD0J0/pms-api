@@ -1,14 +1,14 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { User } from '@models/index';
-import { hashGenerator, createLogger } from '@utils/index';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
 import { IUserRoleType, IUserDocument } from '@interfaces/user.interface';
+import { paginateResult, hashGenerator, createLogger } from '@utils/index';
 import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
 
 import { BaseDAO } from './baseDAO';
-import { IUserDAO } from './interfaces/userDAO.interface';
 import { IFindOptions, dynamic } from './interfaces/baseDAO.interface';
+import { IUserFilterOptions, IUserDAO } from './interfaces/userDAO.interface';
 
 export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   protected logger: Logger;
@@ -291,6 +291,101 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   }
 
   /**
+   * Get users filtered by type (employee, tenant, vendor) and other criteria
+   *
+   * @param cuid - The client CUID
+   * @param filterOptions - Options to filter users by (type, role, department, status, search)
+   * @param paginationOpts - Pagination and sorting options
+   * @returns A promise that resolves to an array of filtered user documents with pagination info
+   */
+  async getUsersByFilteredType(
+    cuid: string,
+    filterOptions: IUserFilterOptions,
+    paginationOpts?: IFindOptions
+  ): Promise<ListResultWithPagination<IUserDocument[]>> {
+    try {
+      const { role, department, status } = filterOptions;
+
+      const query: FilterQuery<IUserDocument> = {
+        'cuids.cuid': cuid,
+        'cuids.isConnected': true,
+        deletedAt: null,
+      };
+
+      if (status) {
+        query.isActive = status === 'active';
+      }
+
+      if (role) {
+        // const roles = Array.isArray(role) ? role : [role];
+        query['cuids.roles'] = Array.isArray(role) ? { $in: role } : role;
+      }
+
+      const pipeline: PipelineStage[] = [
+        { $match: query },
+        {
+          $lookup: {
+            from: 'profiles',
+            localField: '_id',
+            foreignField: 'user',
+            as: 'profile',
+          },
+        },
+        { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+      ];
+
+      if (department) {
+        pipeline.push({
+          $match: {
+            'profile.employeeInfo.department': department,
+          },
+        });
+      }
+
+      pipeline.push({
+        $project: {
+          password: 0,
+          activationToken: 0,
+          passwordResetToken: 0,
+          activationTokenExpiresAt: 0,
+          passwordResetTokenExpiresAt: 0,
+          'profile.__v': 0,
+        },
+      });
+
+      // Handle pagination
+      const limit = paginationOpts?.limit || 10;
+      const skip = paginationOpts?.skip || 0;
+      const sort = paginationOpts?.sort || 'desc';
+      const sortBy = paginationOpts?.sortBy || 'createdAt';
+
+      const countPipeline = [...pipeline, { $count: 'total' }];
+
+      pipeline.push(
+        { $sort: { [sortBy]: sort === 'desc' ? -1 : 1 } },
+        { $skip: skip },
+        { $limit: limit }
+      );
+
+      const [users, countResult] = await Promise.all([
+        this.aggregate(pipeline),
+        this.aggregate(countPipeline),
+      ]);
+
+      const total = countResult.length > 0 ? (countResult[0] as any).total : 0;
+      const pagination = paginateResult(total, skip, limit);
+
+      return {
+        items: users,
+        pagination,
+      };
+    } catch (error) {
+      this.logger.error(`Error getting filtered users for client ${cuid}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
    * Search for users by name, email, or other criteria.
    *
    * @param query - The search query string.
@@ -470,7 +565,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     client: { cuid: string; displayName?: string },
     invitationData: IInvitationDocument,
     userData: any,
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument> {
     try {
@@ -480,8 +575,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         cuid: client.cuid,
         isConnected: true,
         roles: [invitationData.role],
-        displayName: client.displayName,
-        linkedVendorId: invitationData.role === 'vendor' ? linkedVendorId : null,
+        clientDisplayName: client.displayName,
+        linkedVendorUid: invitationData.role === 'vendor' ? linkedVendorUid : null,
       };
 
       const user = await this.insert(
@@ -510,8 +605,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   async addUserToClient(
     userId: string,
     role: IUserRoleType,
-    client: { cuid: string; displayName?: string; id: string },
-    linkedVendorId?: string,
+    client: { cuid: string; clientDisplayName?: string; id: string },
+    linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument | null> {
     try {
@@ -525,8 +620,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       if (existingConnection) {
         const updateObj: any = {
           'cuids.$.isConnected': true,
-          'cuids.$.displayName': client.displayName,
-          'cuids.$.linkedVendorId': role === 'vendor' ? linkedVendorId : null,
+          'cuids.$.clientDisplayName': client.clientDisplayName,
+          'cuids.$.linkedVendorUid': role === 'vendor' ? linkedVendorUid : null,
         };
 
         const updateOperation = existingConnection.roles.includes(role)
@@ -545,8 +640,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           cuid: client.cuid,
           isConnected: true,
           roles: [role],
-          displayName: client.displayName || '',
-          linkedVendorId: role === 'vendor' ? linkedVendorId : null,
+          clientDisplayName: client.clientDisplayName || '',
+          linkedVendorUid: role === 'vendor' ? linkedVendorUid : null,
         };
 
         return await this.updateById(
@@ -588,7 +683,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * Create a new user with default password for bulk user creation
    */
   async createBulkUserWithDefaults(
-    client: { cuid: string; displayName?: string; id: string },
+    client: { cuid: string; clientDisplayName?: string; id: string },
     userData: {
       email: string;
       firstName: string;
@@ -597,7 +692,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       role: IUserRoleType;
       defaultPassword: string;
     },
-    linkedVendorId?: string,
+    linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument> {
     try {
@@ -607,8 +702,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         cuid: client.cuid,
         isConnected: true,
         roles: [userData.role],
-        displayName: client.displayName,
-        linkedVendorId: userData.role === 'vendor' && linkedVendorId ? linkedVendorId : null,
+        clientDisplayName: client.clientDisplayName || '',
+        linkedVendorUid: userData.role === 'vendor' && linkedVendorUid ? linkedVendorUid : null,
       };
 
       const user = await this.insert(
@@ -627,6 +722,173 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       return user;
     } catch (error) {
       this.logger.error('Error creating bulk user:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Get all users linked to a primary vendor
+   * @param primaryVendorId - The ID of the primary vendor
+   * @param cuid - Client ID
+   * @param opts - Query options
+   * @returns Promise resolving to linked vendor users
+   */
+  async getLinkedVendorUsers(
+    vendorUid: string,
+    cuid: string,
+    opts?: IFindOptions
+  ): Promise<ListResultWithPagination<IUserDocument[]>> {
+    try {
+      const query: FilterQuery<IUserDocument> = {
+        'cuids.cuid': cuid,
+        'cuids.linkedVendorUid': vendorUid,
+        'cuids.isConnected': true,
+        deletedAt: null,
+      };
+
+      return await this.list(query, {
+        ...opts,
+      });
+    } catch (error) {
+      this.logger.error(`Error getting linked vendor users for vendor ${vendorUid}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Rebuild missing profiles for users
+   * This method identifies users without profiles and creates minimal profiles for them
+   * @param cuid - Optional client ID to limit the rebuild scope
+   * @returns Promise resolving to rebuild statistics
+   */
+  async rebuildMissingProfiles(
+    cuid?: string,
+    profileDAO?: any
+  ): Promise<{
+    totalUsers: number;
+    totalProfiles: number;
+    missingProfiles: number;
+    fixedProfiles: number;
+    failedProfiles: number;
+    errors: Array<{ userId: string; email: string; error: string }>;
+  }> {
+    try {
+      // Get all users (optionally filtered by client)
+      const userQuery: FilterQuery<IUserDocument> = { deletedAt: null };
+      if (cuid) {
+        userQuery['cuids.cuid'] = cuid;
+      }
+
+      const users = await this.list(userQuery, { limit: 10000 });
+      const userIds = users.items.map((u: IUserDocument) => u._id);
+
+      // Get all profiles for these users
+      const profiles = await profileDAO.list({ user: { $in: userIds } }, { limit: 10000 });
+      const profileUserIds = new Set(profiles.items.map((p: any) => p.user.toString()));
+
+      // Find users without profiles
+      const usersWithoutProfiles = users.items.filter(
+        (u: IUserDocument) => !profileUserIds.has(u._id.toString())
+      );
+
+      const stats = {
+        totalUsers: users.items.length,
+        totalProfiles: profiles.items.length,
+        missingProfiles: usersWithoutProfiles.length,
+        fixedProfiles: 0,
+        failedProfiles: 0,
+        errors: [] as Array<{ userId: string; email: string; error: string }>,
+      };
+
+      // Create missing profiles
+      for (const user of usersWithoutProfiles) {
+        try {
+          // Determine if this is a linked vendor account
+          const primaryCuid = user.cuids.find((c: any) => c.cuid === user.activecuid);
+          const isLinkedVendor =
+            primaryCuid?.linkedVendorUid && primaryCuid.roles.includes('vendor' as any);
+
+          const profileData: any = {
+            user: user._id,
+            puid: user.uid,
+            personalInfo: {
+              firstName: 'Unknown',
+              lastName: 'User',
+              displayName: user.email.split('@')[0],
+              phoneNumber: '',
+              location: 'Unknown',
+            },
+            lang: 'en',
+            timeZone: 'UTC',
+            policies: {
+              tos: {
+                accepted: false,
+                acceptedOn: null,
+              },
+              marketing: {
+                accepted: false,
+                acceptedOn: null,
+              },
+            },
+          };
+
+          // Add vendor info for vendor users
+          if (primaryCuid?.roles.includes('vendor' as any)) {
+            if (isLinkedVendor) {
+              // Linked vendor - minimal info
+              profileData.vendorInfo = {
+                isLinkedAccount: true,
+                companyName: null,
+                businessType: null,
+                taxId: null,
+                registrationNumber: null,
+                yearsInBusiness: 0,
+                servicesOffered: {},
+                contactPerson: {
+                  name: user.email.split('@')[0],
+                  jobTitle: 'Associate',
+                  email: user.email,
+                  phone: '',
+                },
+              };
+            } else {
+              // Primary vendor - needs full info (placeholder)
+              profileData.vendorInfo = {
+                isLinkedAccount: false,
+                companyName: 'Unknown Company',
+                businessType: 'Unknown',
+                taxId: null,
+                registrationNumber: null,
+                yearsInBusiness: 0,
+                servicesOffered: {},
+                contactPerson: {
+                  name: user.email.split('@')[0],
+                  jobTitle: 'Manager',
+                  email: user.email,
+                  phone: '',
+                },
+              };
+            }
+          }
+
+          await profileDAO.createUserProfile(user._id, profileData);
+          stats.fixedProfiles++;
+          this.logger.info(`Created missing profile for user ${user.email}`);
+        } catch (error) {
+          stats.failedProfiles++;
+          stats.errors.push({
+            userId: user._id.toString(),
+            email: user.email,
+            error: error.message || 'Unknown error',
+          });
+          this.logger.error(`Failed to create profile for user ${user.email}:`, error);
+        }
+      }
+
+      this.logger.info('Profile rebuild complete:', stats);
+      return stats;
+    } catch (error) {
+      this.logger.error('Error in rebuildMissingProfiles:', error);
       throw this.throwErrorHandler(error);
     }
   }

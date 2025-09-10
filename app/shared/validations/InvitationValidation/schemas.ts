@@ -113,18 +113,19 @@ export const invitationDataSchema = z.object({
     errorMap: () => ({ message: 'Please provide a valid role' }),
   }),
 
-  linkedVendorId: z
+  linkedVendorUid: z
     .string()
-    .min(24, 'Vendor ID must be a valid MongoDB ObjectId')
-    .max(24, 'Vendor ID must be a valid MongoDB ObjectId')
     .optional()
     .refine(
       (val) => {
         if (!val) return true;
-        // Check if valid MongoDB ObjectId (24 hex chars)
-        return /^[0-9a-fA-F]{24}$/.test(val);
+        // Check if valid vendor UID (12 alphanumeric chars) or MongoDB ObjectId (24 hex chars)
+        return /^[A-Z0-9]{12}$/.test(val) || /^[0-9a-fA-F]{24}$/.test(val);
       },
-      { message: 'Vendor ID must be a valid MongoDB ObjectId' }
+      {
+        message:
+          'Vendor ID must be a valid vendor UID (12 alphanumeric characters) or MongoDB ObjectId (24 hex characters)',
+      }
     ),
 
   personalInfo: z.object({
@@ -143,8 +144,12 @@ export const invitationDataSchema = z.object({
     phoneNumber: z
       .string()
       .regex(/^\+?[\d\s\-()]+$/, 'Please provide a valid phone number')
-      .min(10, 'Phone number must be at least 10 digits')
       .max(20, 'Phone number must be less than 20 characters')
+      .refine((val) => {
+        if (!val) return true; // optional field
+        const digitsOnly = val.replace(/\D/g, '');
+        return digitsOnly.length >= 10;
+      }, 'Phone number must contain at least 10 digits')
       .optional(),
   }),
 
@@ -308,6 +313,24 @@ export const invitationCsvSchema = z
       errorMap: () => ({ message: 'Please provide a valid role' }),
     }),
 
+    linkedVendorUid: z
+      .string()
+      .transform((str) => {
+        // Handle empty strings
+        if (!str || str.trim() === '') {
+          return undefined;
+        }
+        const trimmed = str.trim();
+        // Check if valid vendor UID (12 chars with letters, numbers, dashes, underscores) or MongoDB ObjectId (24 hex chars)
+        if (!/^[A-Z0-9_-]{12}$/.test(trimmed) && !/^[0-9a-fA-F]{24}$/.test(trimmed)) {
+          throw new Error(
+            'linkedVendorUid must be a valid vendor UID (12 characters: letters, numbers, dashes, underscores) or MongoDB ObjectId (24 hex characters)'
+          );
+        }
+        return trimmed;
+      })
+      .optional(),
+
     firstName: z
       .string()
       .min(2, 'First name must be at least 2 characters')
@@ -323,8 +346,12 @@ export const invitationCsvSchema = z
     phoneNumber: z
       .string()
       .regex(/^\+?[\d\s\-()]+$/, 'Please provide a valid phone number')
-      .min(10, 'Phone number must be at least 10 digits')
       .max(20, 'Phone number must be less than 20 characters')
+      .refine((val) => {
+        if (!val) return true; // optional field
+        const digitsOnly = val.replace(/\D/g, '');
+        return digitsOnly.length >= 10;
+      }, 'Phone number must contain at least 10 digits')
       .optional(),
 
     status: z
@@ -457,12 +484,13 @@ export const invitationCsvSchema = z
           return undefined;
         }
         // Validate email format
+        const trimmed = str.trim();
         const emailSchema = z.string().email();
-        const result = emailSchema.safeParse(str);
+        const result = emailSchema.safeParse(trimmed);
         if (!result.success) {
           throw new Error('Please provide a valid contact person email');
         }
-        return str;
+        return trimmed;
       })
       .optional(),
     vendorInfo_contactPerson_phone: z
@@ -489,32 +517,47 @@ export const invitationCsvSchema = z
           }
         : undefined;
 
-    // Build vendorInfo if any vendor fields are provided
-    const vendorInfo =
-      data.vendorInfo_companyName ||
-      data.vendorInfo_businessType ||
-      data.vendorInfo_taxId ||
-      data.vendorInfo_registrationNumber ||
-      data.vendorInfo_yearsInBusiness ||
-      data.vendorInfo_contactPerson_name ||
-      data.vendorInfo_contactPerson_jobTitle ||
-      data.vendorInfo_contactPerson_email ||
-      data.vendorInfo_contactPerson_phone
+    // Determine if this is a primary vendor (has business data) or team member (linkedVendorUid without business data)
+    const isPrimaryVendor = Boolean(data.role === 'vendor' && data.vendorInfo_companyName);
+    const isVendorTeamMember = Boolean(
+      data.role === 'vendor' && data.linkedVendorUid && !data.vendorInfo_companyName
+    );
+
+    // Build vendor data for primary vendor creation
+    const vendorEntityData =
+      isPrimaryVendor && data.vendorInfo_companyName
         ? {
-            companyName: data.vendorInfo_companyName,
-            businessType: data.vendorInfo_businessType,
+            companyName: data.vendorInfo_companyName as string,
+            businessType: data.vendorInfo_businessType || 'professional_services',
             taxId: data.vendorInfo_taxId,
             registrationNumber: data.vendorInfo_registrationNumber,
-            yearsInBusiness: data.vendorInfo_yearsInBusiness,
+            yearsInBusiness: data.vendorInfo_yearsInBusiness || 0,
             contactPerson:
-              data.vendorInfo_contactPerson_name || data.vendorInfo_contactPerson_jobTitle
+              data.vendorInfo_contactPerson_name || data.vendorInfo_contactPerson_email
                 ? {
-                    name: data.vendorInfo_contactPerson_name || '',
-                    jobTitle: data.vendorInfo_contactPerson_jobTitle || '',
-                    email: data.vendorInfo_contactPerson_email,
-                    phone: data.vendorInfo_contactPerson_phone,
+                    name:
+                      data.vendorInfo_contactPerson_name || data.firstName + ' ' + data.lastName,
+                    jobTitle: data.vendorInfo_contactPerson_jobTitle || 'Owner',
+                    email: data.vendorInfo_contactPerson_email || data.inviteeEmail,
+                    phone: data.vendorInfo_contactPerson_phone || data.phoneNumber,
                   }
-                : undefined,
+                : {
+                    name: data.firstName + ' ' + data.lastName,
+                    jobTitle: 'Owner',
+                    email: data.inviteeEmail,
+                    phone: data.phoneNumber || '',
+                  },
+          }
+        : undefined;
+
+    // Build legacy vendorInfo for profile references
+    const vendorInfo =
+      data.role === 'vendor'
+        ? {
+            isLinkedAccount: Boolean(isVendorTeamMember),
+            // For primary vendors, linkedVendorUid will be populated after vendor entity creation
+            // For team members, use the CSV linkedVendorUid as a temporary group identifier
+            linkedVendorUid: isVendorTeamMember ? data.linkedVendorUid : undefined,
           }
         : undefined;
 
@@ -522,6 +565,7 @@ export const invitationCsvSchema = z
       inviteeEmail: data.inviteeEmail,
       role: data.role,
       status: data.status,
+      linkedVendorUid: data.linkedVendorUid,
       personalInfo: {
         firstName: data.firstName,
         lastName: data.lastName,
@@ -532,6 +576,10 @@ export const invitationCsvSchema = z
         expectedStartDate: data.expectedStartDate,
         employeeInfo,
         vendorInfo,
+        vendorEntityData, // New field for vendor entity creation
+        isPrimaryVendor,
+        isVendorTeamMember,
+        csvGroupId: data.linkedVendorUid, // CSV group identifier for linking vendors and team members
       },
     };
   });

@@ -137,7 +137,7 @@ const InvitationSchema = new Schema<IInvitationDocument>(
     declinedAt: {
       type: Date,
     },
-    linkedVendorId: {
+    linkedVendorUid: {
       type: Schema.Types.ObjectId,
       ref: 'User',
       index: true,

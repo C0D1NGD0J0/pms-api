@@ -1,6 +1,8 @@
 import bunyan from 'bunyan';
 import { createLogger } from '@utils/index';
 import { AccessControl } from 'accesscontrol';
+import { IVendorDocument } from '@interfaces/vendor.interface';
+import { IPropertyDocument } from '@interfaces/property.interface';
 import permissionConfig from '@shared/permissions/permissions.json';
 import { IUserRoleType, ICurrentUser } from '@interfaces/user.interface';
 import {
@@ -8,13 +10,27 @@ import {
   IPermissionConfig,
   IPermissionResult,
   IPermissionCheck,
+  PermissionAction,
   PermissionScope,
 } from '@interfaces/utils.interface';
+
+import {
+  MaintenanceAccessStrategy,
+  InvitationAccessStrategy,
+  ResourceAccessStrategy,
+  PropertyAccessStrategy,
+  PaymentAccessStrategy,
+  ClientAccessStrategy,
+  VendorAccessStrategy,
+  LeaseAccessStrategy,
+  UserAccessStrategy,
+} from './resourceAccessStrategies';
 
 export class PermissionService {
   private readonly log: bunyan;
   private readonly permissionConfig: IPermissionConfig;
   private readonly accessControl: AccessControl;
+  private resourceStrategies: Map<PermissionResource, ResourceAccessStrategy>;
 
   constructor() {
     this.log = createLogger('PermissionService');
@@ -23,11 +39,26 @@ export class PermissionService {
       this.permissionConfig = permissionConfig as IPermissionConfig;
       this.accessControl = new AccessControl();
       this.initializePermissions();
+      this.initializeResourceStrategies();
       this.log.debug('PermissionService initialized successfully');
     } catch (error) {
       this.log.error('Failed to initialize PermissionService:', error);
       throw error;
     }
+  }
+
+  private initializeResourceStrategies(): void {
+    this.resourceStrategies = new Map([
+      [PermissionResource.MAINTENANCE, new MaintenanceAccessStrategy()],
+      [PermissionResource.INVITATION, new InvitationAccessStrategy()],
+      [PermissionResource.PROPERTY, new PropertyAccessStrategy()],
+      [PermissionResource.PAYMENT, new PaymentAccessStrategy()],
+      [PermissionResource.VENDOR, new VendorAccessStrategy()],
+      [PermissionResource.CLIENT, new ClientAccessStrategy()],
+      [PermissionResource.LEASE, new LeaseAccessStrategy()],
+      [PermissionResource.USER, new UserAccessStrategy()],
+    ]);
+    this.log.debug('Resource access strategies initialized');
   }
 
   private initializePermissions(): void {
@@ -300,13 +331,29 @@ export class PermissionService {
     const userId = currentUser.sub;
     const clientId = currentUser.client.cuid;
 
-    // Determine scope based on context and resource type
     let scope = PermissionScope.ANY;
+    let context: IPermissionCheck['context'] = {
+      clientId,
+      userId,
+    };
+
     // USER resource where ownership matters (users editing their own profile)
-    if (resource === PermissionResource.USER && resourceData && resourceData._id) {
-      scope = resourceData._id.toString() === userId ? PermissionScope.MINE : PermissionScope.ANY;
+    if (resource === PermissionResource.USER && resourceData) {
+      // Handle both cases: full user object or just an ID
+      const resourceId = resourceData._id || resourceData.uid || resourceData;
+      const resourceOwnerId = resourceData._id || resourceData.id || resourceData;
+
+      scope = resourceId.toString() === userId ? PermissionScope.MINE : PermissionScope.ANY;
+
+      // Add resource context for better permission checking
+      context = {
+        ...context,
+        resourceId: resourceId.toString(),
+        resourceOwnerId: resourceOwnerId.toString(),
+      };
     }
-    // CLIENT resource - always use MINE scope  since users can only access their own client
+
+    // CLIENT resource - always use MINE scope since users can only access their own client
     if (resource === PermissionResource.CLIENT) {
       scope = PermissionScope.MINE;
     }
@@ -316,10 +363,7 @@ export class PermissionService {
       resource,
       action,
       scope,
-      context: {
-        clientId,
-        userId,
-      },
+      context,
     };
 
     const result = await this.checkPermission(permissionCheckData);
@@ -680,6 +724,103 @@ export class PermissionService {
 
   getPermissionConfig(): IPermissionConfig {
     return this.permissionConfig;
+  }
+
+  /**
+   * Generic method to check if user can access a resource
+   * This replaces all the individual canUserAccessX methods
+   */
+  canAccessResource(
+    currentUser: ICurrentUser,
+    resource: PermissionResource,
+    action: PermissionAction | string,
+    resourceData: any
+  ): boolean {
+    try {
+      const activeConnection = currentUser.clients?.find(
+        (c: any) => c.cuid === currentUser.client.cuid
+      );
+
+      if (!activeConnection?.isConnected) {
+        this.log.debug('User not connected to client');
+        return false;
+      }
+
+      const strategy = this.resourceStrategies.get(resource);
+      if (!strategy) {
+        this.log.warn(`No access strategy defined for resource: ${resource}`);
+        return false;
+      }
+
+      return strategy.canAccess(currentUser, action, resourceData);
+    } catch (error) {
+      this.log.error(`Error checking access for resource ${resource}:`, error);
+      return false;
+    }
+  }
+
+  // Backward compatibility methods - these now delegate to the generic method
+  canUserAccessUser(currentUser: ICurrentUser, targetUser: any): boolean {
+    return this.canAccessResource(
+      currentUser,
+      PermissionResource.USER,
+      PermissionAction.READ,
+      targetUser
+    );
+  }
+
+  canUserAccessProperty(currentUser: ICurrentUser, property: IPropertyDocument): boolean {
+    return this.canAccessResource(
+      currentUser,
+      PermissionResource.PROPERTY,
+      PermissionAction.READ,
+      property
+    );
+  }
+
+  canUserModifyProperty(currentUser: ICurrentUser, property: IPropertyDocument): boolean {
+    return this.canAccessResource(
+      currentUser,
+      PermissionResource.PROPERTY,
+      PermissionAction.UPDATE,
+      property
+    );
+  }
+
+  canUserDeleteProperty(currentUser: ICurrentUser, property: IPropertyDocument): boolean {
+    return this.canAccessResource(
+      currentUser,
+      PermissionResource.PROPERTY,
+      PermissionAction.DELETE,
+      property
+    );
+  }
+
+  canUserAccessMaintenance(currentUser: ICurrentUser, maintenance: any): boolean {
+    return this.canAccessResource(
+      currentUser,
+      PermissionResource.MAINTENANCE,
+      PermissionAction.READ,
+      maintenance
+    );
+  }
+
+  canUserAccessLease(currentUser: ICurrentUser, lease: any): boolean {
+    return this.canAccessResource(
+      currentUser,
+      PermissionResource.LEASE,
+      PermissionAction.READ,
+      lease
+    );
+  }
+
+  canUserAccessVendors(currentUser: ICurrentUser, vendor: IVendorDocument): boolean {
+    return this.canAccessResource(
+      currentUser,
+      PermissionResource.VENDOR,
+      PermissionAction.READ,
+      vendor
+    );
   }
 
   /**

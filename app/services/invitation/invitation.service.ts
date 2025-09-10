@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
+import { VendorService } from '@services/index';
 import { ProfileService } from '@services/profile';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { MailType } from '@interfaces/utils.interface';
@@ -36,6 +37,7 @@ interface IConstructor {
   emitterService: EventEmitterService;
   invitationQueue: InvitationQueue;
   profileService: ProfileService;
+  vendorService: VendorService;
   invitationDAO: InvitationDAO;
   emailQueue: EmailQueue;
   profileDAO: ProfileDAO;
@@ -53,6 +55,7 @@ export class InvitationService {
   private readonly invitationQueue: InvitationQueue;
   private readonly emitterService: EventEmitterService;
   private readonly profileService: ProfileService;
+  private readonly vendorService: VendorService;
 
   constructor({
     invitationDAO,
@@ -63,6 +66,7 @@ export class InvitationService {
     invitationQueue,
     emitterService,
     profileService,
+    vendorService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -72,6 +76,7 @@ export class InvitationService {
     this.emitterService = emitterService;
     this.invitationQueue = invitationQueue;
     this.profileService = profileService;
+    this.vendorService = vendorService;
     this.log = createLogger('InvitationService');
     this.setupEventListeners();
   }
@@ -269,101 +274,207 @@ export class InvitationService {
     }
   }
 
+  /**
+   * Validate invitation token and retrieve client data
+   */
+  private async validateInvitationAndClient(
+    cuid: string,
+    token: string
+  ): Promise<{ invitation: IInvitationDocument; client: any; linkedVendorUid?: string }> {
+    const invitation = await this.invitationDAO.findByToken(token);
+    if (!invitation || !invitation.isValid()) {
+      throw new BadRequestError({ message: t('invitation.errors.invalidOrExpired') });
+    }
+
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      throw new NotFoundError({ message: t('client.errors.notFound') });
+    }
+
+    const linkedVendorUid =
+      invitation.linkedVendorUid && invitation.role === 'vendor'
+        ? invitation.linkedVendorUid.toString()
+        : undefined;
+
+    return { invitation, client, linkedVendorUid };
+  }
+
+  /**
+   * Handle existing user by adding them to the client
+   */
+  private async handleExistingUser(
+    existingUser: any,
+    invitation: IInvitationDocument,
+    client: any,
+    cuid: string,
+    linkedVendorUid?: string,
+    session?: any
+  ): Promise<any> {
+    return await this.userDAO.addUserToClient(
+      existingUser._id.toString(),
+      invitation.role,
+      {
+        id: client.id.toString(),
+        cuid,
+        clientDisplayName: client.displayName || client.companyProfile?.legalEntityName,
+      },
+      linkedVendorUid,
+      session
+    );
+  }
+
+  /**
+   * Create new user from invitation data
+   */
+  private async createNewUserFromInvitation(
+    invitation: IInvitationDocument,
+    invitationData: IInvitationAcceptance,
+    client: any,
+    cuid: string,
+    linkedVendorUid?: string,
+    session?: any
+  ): Promise<any> {
+    const user = await this.userDAO.createUserFromInvitation(
+      { cuid, displayName: client.displayName || client.companyProfile?.legalEntityName },
+      invitation,
+      invitationData,
+      linkedVendorUid,
+      session
+    );
+
+    if (!user) {
+      throw new BadRequestError({ message: 'Error creating user account.' });
+    }
+
+    const profileData = this.buildProfileDataFromInvitation(user, invitation, invitationData);
+    await this.profileDAO.createUserProfile(user._id, profileData, session);
+
+    return user;
+  }
+
+  /**
+   * Build profile data from invitation and user data
+   */
+  private buildProfileDataFromInvitation(
+    user: any,
+    invitation: IInvitationDocument,
+    invitationData: IInvitationAcceptance
+  ): any {
+    return {
+      user: user._id,
+      puid: user.uid,
+      personalInfo: {
+        firstName: invitation.personalInfo.firstName,
+        lastName: invitation.personalInfo.lastName,
+        displayName: invitation.inviteeFullName,
+        phoneNumber: invitation.personalInfo.phoneNumber || '',
+        location: invitationData.location || 'Unknown',
+      },
+      lang: invitationData.lang || 'en',
+      timeZone: invitationData.timeZone || 'UTC',
+      policies: {
+        tos: {
+          accepted: invitationData.termsAccepted || false,
+          acceptedOn: invitationData.termsAccepted ? new Date() : null,
+        },
+        marketing: {
+          accepted: invitationData.newsletterOptIn || false,
+          acceptedOn: invitationData.newsletterOptIn ? new Date() : null,
+        },
+      },
+    };
+  }
+
+  /**
+   * Handle user creation or linking based on existence
+   */
+  private async processUserForInvitation(
+    invitation: IInvitationDocument,
+    invitationData: IInvitationAcceptance,
+    client: any,
+    cuid: string,
+    linkedVendorUid?: string,
+    session?: any
+  ): Promise<any> {
+    const existingUser = await this.userDAO.getActiveUserByEmail(invitation.inviteeEmail);
+
+    if (existingUser) {
+      return await this.handleExistingUser(
+        existingUser,
+        invitation,
+        client,
+        cuid,
+        linkedVendorUid,
+        session
+      );
+    } else {
+      return await this.createNewUserFromInvitation(
+        invitation,
+        invitationData,
+        client,
+        cuid,
+        linkedVendorUid,
+        session
+      );
+    }
+  }
+
+  /**
+   * Complete invitation acceptance and initialize role info
+   */
+  private async finalizeInvitationAcceptance(
+    result: { user: any; invitation: IInvitationDocument },
+    cuid: string
+  ): Promise<void> {
+    const metadata = {
+      employeeInfo: result.invitation.metadata?.employeeInfo,
+      vendorInfo: result.invitation.metadata?.vendorInfo,
+    };
+
+    await this.profileService.initializeRoleInfo(
+      result.user._id.toString(),
+      cuid,
+      result.invitation.role,
+      result.invitation.linkedVendorUid?.toString(),
+      metadata
+    );
+
+    if (result.invitation.linkedVendorUid && result.invitation.role === 'vendor') {
+      this.log.info(
+        `Vendor link established from primary vendor ${result.invitation.linkedVendorUid} to new user ${result.user._id}`
+      );
+    }
+  }
+
   async acceptInvitation(
     cuid: string,
     invitationData: IInvitationAcceptance
   ): Promise<ISuccessReturnData<{ user: any; invitation: IInvitationDocument }>> {
+    const { invitation, client, linkedVendorUid } = await this.validateInvitationAndClient(
+      cuid,
+      invitationData.token
+    );
+
     const session = await this.invitationDAO.startSession();
     const result = await this.invitationDAO.withTransaction(session, async (session) => {
-      const invitation = await this.invitationDAO.findByToken(invitationData.token);
-      if (!invitation || !invitation.isValid()) {
-        throw new BadRequestError({ message: t('invitation.errors.invalidOrExpired') });
-      }
-
-      const existingUser = await this.userDAO.getActiveUserByEmail(invitation.inviteeEmail);
-      const client = await this.clientDAO.getClientByCuid(cuid);
-      if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
-      }
-
-      let user;
-      const linkedVendorId =
-        invitation.linkedVendorId && invitation.role === 'vendor'
-          ? invitation.linkedVendorId.toString()
-          : undefined;
-      if (existingUser) {
-        user = await this.userDAO.addUserToClient(
-          existingUser._id.toString(),
-          invitation.role,
-          {
-            id: client.id.toString(),
-            cuid,
-            displayName: client.displayName || client.companyProfile?.legalEntityName,
-          },
-          linkedVendorId,
-          session
-        );
-      } else {
-        user = await this.userDAO.createUserFromInvitation(
-          { cuid, displayName: client.displayName || client.companyProfile?.legalEntityName },
-          invitation,
-          invitationData,
-          linkedVendorId,
-          session
-        );
-
-        if (!user) {
-          throw new BadRequestError({ message: 'Error creating user account.' });
-        }
-
-        const profileData = {
-          user: user._id,
-          puid: user.uid,
-          personalInfo: {
-            firstName: invitation.personalInfo.firstName,
-            lastName: invitation.personalInfo.lastName,
-            displayName: invitation.inviteeFullName,
-            phoneNumber: invitation.personalInfo.phoneNumber || '',
-            location: invitationData.location || 'Unknown',
-          },
-          lang: invitationData.lang || 'en',
-          timeZone: invitationData.timeZone || 'UTC',
-          policies: {
-            tos: {
-              accepted: invitationData.termsAccepted || false,
-              acceptedOn: invitationData.termsAccepted ? new Date() : null,
-            },
-            marketing: {
-              accepted: invitationData.newsletterOptIn || false,
-              acceptedOn: invitationData.newsletterOptIn ? new Date() : null,
-            },
-          },
-        };
-
-        await this.profileDAO.createUserProfile(user._id, profileData, session);
-      }
+      const user = await this.processUserForInvitation(
+        invitation,
+        invitationData,
+        client,
+        cuid,
+        linkedVendorUid,
+        session
+      );
 
       if (!user) {
         throw new BadRequestError({ message: 'Error creating user account.' });
       }
 
       await this.invitationDAO.acceptInvitation(invitationData.token, user._id.toString(), session);
-
       return { user, invitation };
     });
 
-    await this.profileService.initializeRoleInfo(
-      result.user._id.toString(),
-      cuid,
-      result.invitation.role,
-      result.invitation.linkedVendorId?.toString()
-    );
-
-    if (result.invitation.linkedVendorId && result.invitation.role === 'vendor') {
-      this.log.info(
-        `Vendor link established from primary vendor ${result.invitation.linkedVendorId} to new user ${result.user._id}`
-      );
-    }
+    await this.finalizeInvitationAcceptance(result, cuid);
 
     return {
       success: true,
@@ -690,7 +801,7 @@ export class InvitationService {
       const jobData = {
         userId: currentUser.sub,
         csvFilePath: csvFile.path,
-        clientInfo: { cuid, displayName: client.displayName, id: client.id },
+        clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
       };
 
       const job = await this.invitationQueue.addCsvValidationJob(jobData);
@@ -730,7 +841,7 @@ export class InvitationService {
       const jobData = {
         userId: currentUser.sub,
         csvFilePath: csvFile.path,
-        clientInfo: { cuid, displayName: client.displayName, id: client.id },
+        clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
         bulkCreateOptions: {
           sendNotifications: options.sendNotifications || false,
           passwordLength: options.passwordLength || 12,
@@ -771,7 +882,7 @@ export class InvitationService {
       const jobData = {
         userId,
         csvFilePath,
-        clientInfo: { cuid, displayName: client.displayName, id: client.id },
+        clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
       };
 
       const job = await this.invitationQueue.addCsvImportJob(jobData);
@@ -809,7 +920,7 @@ export class InvitationService {
       const jobData = {
         userId,
         csvFilePath,
-        clientInfo: { cuid, displayName: client.displayName, id: client.id },
+        clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
         bulkCreateOptions: {
           sendNotifications: options.sendNotifications || false,
           passwordLength: options.passwordLength || 12,

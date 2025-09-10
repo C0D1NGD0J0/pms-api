@@ -21,26 +21,50 @@ export class RedisService {
 
     // Parse Redis URL for Railway compatibility
     const redisUrl = envVariables.REDIS.URL;
-    const clientConfig: any = {
+
+    // Production-optimized Redis configuration for reduced network traffic
+    const productionConfig = {
       socket: {
         reconnectStrategy: (retries: number) => {
           if (retries > 5) {
             return new Error('Too many reconnect attempts');
           }
+          // Exponential backoff to reduce connection attempts
+          return Math.min(retries * 500, 10000);
+        },
+        connectTimeout: 30000,
+        keepAlive: 120000, // 2 minutes - reduced frequency
+        noDelay: true,
+      },
+      commandsQueueMaxLength: 50, // Reduced queue length
+      lazyConnect: true,
+      maxRetriesPerRequest: 2, // Reduced retries
+      retryDelayOnFailover: 2000,
+      commandTimeout: 20000,
+      // Connection pooling optimization
+      enableReadyCheck: true,
+      maxLoadingTimeout: 10000,
+    };
+
+    // Development configuration for faster feedback
+    const developmentConfig = {
+      socket: {
+        reconnectStrategy: (retries: number) => {
+          if (retries > 3) {
+            return new Error('Too many reconnect attempts');
+          }
           return Math.min(retries * 100, 3000);
         },
-        connectTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 10000,
-        keepAlive: envVariables.SERVER.ENV === 'production' ? 60000 : 30000,
+        connectTimeout: 10000,
+        keepAlive: 30000,
       },
       commandsQueueMaxLength: 100,
-      ...(envVariables.SERVER.ENV === 'production'
-        ? {
-            lazyConnect: true,
-            maxRetriesPerRequest: 3,
-            retryDelayOnFailover: 1000,
-          }
-        : {}),
+      maxRetriesPerRequest: 3,
+      retryDelayOnFailover: 1000,
     };
+
+    const clientConfig: any =
+      envVariables.SERVER.ENV === 'production' ? productionConfig : developmentConfig;
 
     if (redisUrl) {
       clientConfig.url = redisUrl;

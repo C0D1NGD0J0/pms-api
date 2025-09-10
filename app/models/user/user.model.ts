@@ -23,9 +23,9 @@ const UserSchema = new Schema<IUserDocument>(
     cuids: [
       {
         roles: [{ type: String, required: true }],
-        displayName: { type: String, required: true },
+        clientDisplayName: { type: String, required: true },
         cuid: { type: String, required: true, index: true },
-        linkedVendorId: { type: String, trim: true, default: null }, // Optional, for if the user is linked to a vendor
+        linkedVendorUid: { type: String, trim: true, default: null }, // Optional, for if the user is linked to a vendor
         isConnected: { type: Boolean, required: true, default: false },
         _id: false,
       },
@@ -48,7 +48,6 @@ const UserSchema = new Schema<IUserDocument>(
 
 UserSchema.pre('save', async function (this: IUserDocument, next) {
   if (this.isModified('password')) {
-    // Hashing Password
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
   }

@@ -60,8 +60,8 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         },
       };
 
-      if (invitationData.linkedVendorId) {
-        invitationToInsert.linkedVendorId = new Types.ObjectId(invitationData.linkedVendorId);
+      if (invitationData.linkedVendorUid) {
+        invitationToInsert.linkedVendorUid = new Types.ObjectId(invitationData.linkedVendorUid);
       }
 
       const invitation = await this.insert(invitationToInsert, session);
@@ -234,11 +234,11 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         },
       };
 
-      if (invitationData.linkedVendorId) {
-        updateData.$set.linkedVendorId = new Types.ObjectId(invitationData.linkedVendorId);
+      if (invitationData.linkedVendorUid) {
+        updateData.$set.linkedVendorUid = new Types.ObjectId(invitationData.linkedVendorUid);
       } else {
-        // If linkedVendorId is explicitly set to null or undefined, remove the field
-        updateData.$unset = { linkedVendorId: 1 };
+        // If linkedVendorUid is explicitly set to null or undefined, remove the field
+        updateData.$unset = { linkedVendorUid: 1 };
       }
 
       return await this.update({ iuid, clientId }, updateData, { session });

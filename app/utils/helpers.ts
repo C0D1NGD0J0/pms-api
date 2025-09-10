@@ -4,9 +4,9 @@ import bunyan from 'bunyan';
 import * as nanoid from 'nanoid';
 import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
+import { PhoneNumber } from 'libphonenumber-js';
 import { Country, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
-import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import {
   AsyncRequestHandler,
   ExtractedMediaFile,
@@ -229,10 +229,10 @@ export function isValidPhoneNumber(phoneNumber: string): boolean {
     return false;
   }
   try {
-    const parsedNumber = parsePhoneNumberFromString(phoneNumber);
+    // const parsedNumber = parsePhoneNumberWithError(phoneNumber);
+    const parsedNumber = new PhoneNumber(phoneNumber as any);
     return !!parsedNumber && parsedNumber.isValid();
   } catch (error) {
-    console.error('Error validating phone number:', error);
     return false;
   }
 }
@@ -567,3 +567,20 @@ export function generateDefaultPassword(length = 12): string {
     throw new Error(`Failed to generate default password: ${error.message}`);
   }
 }
+
+export const buildDotNotation = (obj: any, prefix = ''): Record<string, any> => {
+  const result: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(obj)) {
+    const newKey = prefix ? `${prefix}.${key}` : key;
+
+    if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+      // Recursively flatten nested objects
+      Object.assign(result, buildDotNotation(value, newKey));
+    } else {
+      result[newKey] = value;
+    }
+  }
+
+  return result;
+};

@@ -9,6 +9,7 @@
     },
     "manager": {
       "$extend": ["staff"],
+      "user": ["read:any", "update:any"],
       "lease": ["create:mine", "delete:mine"],
       "property": ["create:mine", "delete:mine"],
       "maintenance": ["create:mine", "delete:mine"],
@@ -17,14 +18,14 @@
     "staff": {
       "$extend": ["tenant"],
       "property": ["read:any", "update:assigned"],
-      "user": ["list:any"],
+      "user": ["list:any", "read:any"],
       "maintenance": ["create:assigned", "read:any", "update:assigned", "list:any"],
       "lease": ["read:any", "update:assigned", "list:any"],
       "payment": ["read:any", "list:any"],
       "report": ["read:any", "create:assigned"]
     },
     "tenant": {
-      "property": ["read:available"],
+      "property": ["read:mine"],
       "user": ["read:mine", "update:mine"],
       "client": ["read:mine"],
       "maintenance": ["create:mine", "read:mine", "update:mine", "list:mine"],

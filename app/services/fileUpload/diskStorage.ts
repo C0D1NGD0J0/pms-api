@@ -256,10 +256,11 @@ export class DiskStorage {
   private matchesPattern(fieldName: string, pattern: string): boolean {
     if (fieldName === pattern) return true;
 
-    // Convert pattern to regex, replacing [*] with [\\d+]
-    const regexPattern = pattern
-      .replace(/\[(\*)\]/g, '\\[\\d+\\]') // [*] becomes [\d+]
-      .replace(/\./g, '\\.'); // Escape dots
+    // Convert pattern to regex, escape regex meta-characters, then replace [*] with [\d+]
+    const escapeRegExp = (s: string) =>
+      s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let regexPattern = escapeRegExp(pattern);
+    regexPattern = regexPattern.replace(/\\\[\*\]/g, '\\[\\d+\\]'); // [*] becomes [\d+], after escaping
 
     const regex = new RegExp(`^${regexPattern}$`);
     return regex.test(fieldName);

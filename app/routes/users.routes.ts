@@ -39,6 +39,7 @@ router.get(
 router.get(
   '/:cuid/filtered-users',
   isAuthenticated,
+  routeLimiter,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
     params: ClientValidations.clientIdParam,

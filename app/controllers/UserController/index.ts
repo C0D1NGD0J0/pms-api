@@ -1,28 +1,33 @@
 import Logger from 'bunyan';
 import { Response } from 'express';
 import { createLogger } from '@utils/index';
+import { UserService } from '@services/index';
 import { httpStatusCodes } from '@utils/constants';
-import { AppRequest } from '@interfaces/utils.interface';
-import { UserService } from '@services/user/user.service';
 import { IUserRoleType } from '@interfaces/user.interface';
 import { ProfileService } from '@services/profile/profile.service';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
+import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
+import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 
 export class UserController {
   private readonly log: Logger;
   private readonly userService: UserService;
   private readonly profileService: ProfileService;
+  private readonly mediaUploadService: MediaUploadService;
 
   constructor({
     userService,
     profileService,
+    mediaUploadService,
   }: {
     userService: UserService;
     profileService: ProfileService;
+    mediaUploadService: MediaUploadService;
   }) {
     this.log = createLogger('UserController');
     this.userService = userService;
     this.profileService = profileService;
+    this.mediaUploadService = mediaUploadService;
   }
 
   getClientUserInfo = async (req: AppRequest, res: Response) => {
@@ -86,8 +91,18 @@ export class UserController {
   };
 
   updateUserProfile = async (req: AppRequest, res: Response): Promise<void> => {
+    const uploadResult = await this.mediaUploadService.handleFiles(req, {
+      primaryResourceId: req.context.currentuser?.uid as string,
+      uploadedBy: req.context.currentuser?.sub as string,
+      resourceContext: ResourceContext.USER_PROFILE,
+    });
+
     const result = await this.profileService.updateUserProfile(req.context, req.body);
 
-    res.status(httpStatusCodes.OK).json(result);
+    const response = uploadResult.hasFiles
+      ? { ...result, fileUpload: uploadResult.message, processedFiles: uploadResult.processedFiles }
+      : result;
+
+    res.status(httpStatusCodes.OK).json(response);
   };
 }

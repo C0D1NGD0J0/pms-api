@@ -16,10 +16,12 @@ export class EventListenerSetup {
   static registerQueueListeners(container: AwilixContainer): void {
     try {
       const { emitterService, diskStorage }: DIServices = container.cradle;
+      // Register infrastructure event listeners only
       emitterService.once(EventTypes.DELETE_LOCAL_ASSET, diskStorage.deleteFiles);
-      this.log.info('Registered EventBusQueue listeners.');
+
+      this.log.info('Registered infrastructure event listeners.');
     } catch (error) {
-      this.log.error({ err: error }, 'Failed to register EventBusQueue listeners');
+      this.log.error({ err: error }, 'Failed to register infrastructure event listeners');
       throw new Error(
         `Event listener registration failed: ${error instanceof Error ? error.message : String(error)}`
       );

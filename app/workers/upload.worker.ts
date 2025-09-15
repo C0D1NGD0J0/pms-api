@@ -52,6 +52,7 @@ export class UploadWorker {
         resourceType: resource.resourceType || 'document',
         resourceName: resource.resourceName,
         resourceId: resource.resourceId,
+        fieldName: resource.fieldName,
       });
 
       job.progress(90);

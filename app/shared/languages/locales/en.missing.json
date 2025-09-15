@@ -41,5 +41,10 @@
     "errors": {
       "notPrimaryVendor": "vendor.errors.notPrimaryVendor"
     }
+  },
+  "property": {
+    "logging": {
+      "ignoringUploadEvent": "property.logging.ignoringUploadEvent"
+    }
   }
 }

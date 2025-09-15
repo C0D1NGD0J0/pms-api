@@ -56,6 +56,14 @@ export enum IdentificationEnumType {
   PASSPORT = 'passport',
 }
 
+export enum ResourceContext {
+  SERVICE_REQUEST = 'service-request',
+  USER_PROFILE = 'user-profile',
+  PROPERTY = 'property',
+  CLIENT = 'client',
+  VENDOR = 'vendor',
+}
+
 export enum CURRENCIES {
   USD = 'USD',
   EUR = 'EUR',
@@ -165,7 +173,7 @@ export interface IAWSFileUploadResponse {
 
 export interface ResourceInfo {
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
-  resourceName: 'property' | 'profile'; //name of the resource
+  resourceName: 'property' | 'profile' | 'client'; //name of the resource
   resourceId: string; //id of the resource
   fieldName: string; //name of the field
   actorId: string; //user who uploaded the file

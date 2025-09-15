@@ -1,21 +1,24 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
-import { VendorService } from '@services/index';
-import { UserService } from '@services/user/user.service';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { buildDotNotation, createLogger } from '@utils/index';
-import { IUserRoleType, ICurrentUser } from '@interfaces/user.interface';
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
-import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
+import { EventEmitterService, VendorService, UserService } from '@services/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {
   IProfileUpdateData,
+  ISuccessReturnData,
   IProfileDocument,
   IProfileEditData,
-} from '@interfaces/profile.interface';
+  IRequestContext,
+  IUserRoleType,
+  ICurrentUser,
+  EventTypes,
+} from '@interfaces/index';
 
 interface IConstructor {
+  emitterService: EventEmitterService;
   vendorService: VendorService;
   userService: UserService;
   profileDAO: ProfileDAO;
@@ -29,15 +32,25 @@ export class ProfileService {
   private readonly userDAO: UserDAO;
   private readonly vendorService: VendorService;
   private readonly userService: UserService;
+  private readonly emitterService: EventEmitterService;
   private readonly logger: Logger;
 
-  constructor({ profileDAO, clientDAO, userDAO, vendorService, userService }: IConstructor) {
+  constructor({
+    profileDAO,
+    clientDAO,
+    userDAO,
+    vendorService,
+    userService,
+    emitterService,
+  }: IConstructor) {
     this.profileDAO = profileDAO;
     this.clientDAO = clientDAO;
     this.userDAO = userDAO;
     this.vendorService = vendorService;
     this.userService = userService;
+    this.emitterService = emitterService;
     this.logger = createLogger('ProfileService');
+    this.setupEventListeners();
   }
 
   /**
@@ -483,7 +496,6 @@ export class ProfileService {
     cuid: string,
     userRole: IUserRoleType
   ): Promise<{ result: IProfileDocument | null; hasUpdates: boolean }> {
-    // Validate the main profile data
     const validation = ProfileValidations.profileUpdate.safeParse(profileData);
     if (!validation.success) {
       throw new BadRequestError({
@@ -558,7 +570,6 @@ export class ProfileService {
       hasUpdates = true;
     }
 
-    // Make ONE database call for all profile updates
     let result: IProfileDocument | null = null;
     if (Object.keys(validatedData).length > 0) {
       const dotNotationData = buildDotNotation(validatedData);
@@ -610,7 +621,7 @@ export class ProfileService {
         context.currentuser!
       );
 
-      const { result, hasUpdates } = await this.processProfileUpdates(
+      const { result } = await this.processProfileUpdates(
         profileData,
         profileId,
         userId,
@@ -618,20 +629,112 @@ export class ProfileService {
         userRole
       );
 
-      if (!hasUpdates || !result) {
-        throw new BadRequestError({
-          message: 'No valid information provided for update',
+      const finalProfile = result || (await this.profileDAO.findFirst({ id: profileId }));
+
+      if (!finalProfile) {
+        throw new NotFoundError({
+          message: t('profile.errors.notFound'),
         });
       }
 
       return {
         success: true,
-        data: result,
+        data: finalProfile,
         message: t('profile.success.profileUpdated'),
       };
     } catch (error) {
       this.logger.error(`Error updating user profile for uid ${uid}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Update user avatar information from upload results
+   */
+  async updateAvatarInfo(
+    userUid: string,
+    uploadResults: Array<{ url: string; filename: string; publicuid: string }>
+  ): Promise<ISuccessReturnData<IProfileDocument>> {
+    try {
+      if (!uploadResults || uploadResults.length === 0) {
+        throw new BadRequestError({
+          message: 'No upload results provided for avatar update',
+        });
+      }
+      // assuming the first result is the avatar in this instance
+      const avatarResult = uploadResults[0];
+      const userToUpdate = await this.userDAO.findFirst({ uid: userUid }, { populate: 'profile' });
+      if (!userToUpdate || !userToUpdate.profile) {
+        throw new NotFoundError({
+          message: t('user.errors.notFound'),
+        });
+      }
+
+      const avatarUpdateData = {
+        'personalInfo.avatar.url': avatarResult.url,
+        'personalInfo.avatar.filename': avatarResult.filename,
+        'personalInfo.avatar.key': avatarResult.publicuid,
+      };
+
+      const updatedProfile = await this.profileDAO.updateById(
+        userToUpdate.profile._id?.toString(),
+        {
+          $set: avatarUpdateData,
+        }
+      );
+
+      if (!updatedProfile) {
+        throw new NotFoundError({
+          message: 'Failed to update profile avatar',
+        });
+      }
+
+      this.logger.info(`Avatar updated for user ${userUid} - new avatar: ${avatarResult.filename}`);
+
+      return {
+        success: true,
+        data: updatedProfile,
+        message: 'Avatar updated successfully',
+      };
+    } catch (error) {
+      this.logger.error(`Error updating avatar for user ${userUid}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Setup event listeners for profile-related events
+   */
+  private setupEventListeners(): void {
+    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
+    this.logger.info('Profile service event listeners initialized');
+  }
+
+  /**
+   * Handle upload completion events - only process avatar uploads
+   */
+  private async handleUploadCompleted(data: any): Promise<void> {
+    try {
+      // Only handle avatar uploads (profile-specific uploads)
+      if (
+        data.resourceName === 'profile' &&
+        data.fieldName === 'avatar' &&
+        data.results?.length > 0
+      ) {
+        await this.updateAvatarInfo(data.resourceId, data.results);
+        this.logger.info(`Avatar updated for user ${data.resourceId}`);
+      }
+      // Ignore other upload types - they're handled by other services
+    } catch (error) {
+      this.logger.error('Error handling upload completion in ProfileService:', error);
+    }
+  }
+
+  /**
+   * Clean up event listeners when service is destroyed
+   */
+  destroy(): void {
+    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
+    this.logger.info('Profile service event listeners removed');
   }
 }

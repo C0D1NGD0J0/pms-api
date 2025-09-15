@@ -727,7 +727,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
   }
 
   /**
-   * Enhanced sync that considers available spaces when determining occupancy status
+   * Enhanced sync that correctly determines occupancy status based on existing units only
    * @param propertyId - The property ID
    * @param userId - The ID of the user triggering the update
    * @returns A promise that resolves to the updated property
@@ -747,32 +747,22 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       }
 
       const unitCounts = await this.getUnitCountsByStatus(propertyId);
-      const unitInfo = await this.propertyUnitDAO.getPropertyUnitInfo(propertyId);
-
-      // Calculate available spaces considering total units vs max allowed
-      const maxAllowedUnits = property.maxAllowedUnits || 0;
-      const availableSpaces = Math.max(0, maxAllowedUnits - unitInfo.currentUnits);
 
       let occupancyStatus: OccupancyStatus = 'vacant';
 
+      // Determine occupancy status based on existing units only
+      // The ability to add more units (maxAllowedUnits vs currentUnits) should not affect occupancy status
       if (unitCounts.total === 0) {
         // No units exist
         occupancyStatus = 'vacant';
-      } else if (availableSpaces === 0) {
-        // Property is at maximum capacity (no available spaces)
-        if (unitCounts.occupied > 0) {
-          occupancyStatus = 'occupied'; // At capacity with occupied units
-        } else {
-          occupancyStatus = 'occupied'; // At capacity (could be maintenance, reserved, etc.)
-        }
       } else if (unitCounts.occupied === unitCounts.total) {
-        // All existing units are occupied (but could add more units)
+        // All existing units are occupied
         occupancyStatus = 'occupied';
       } else if (unitCounts.occupied > 0) {
         // Some units occupied, some not
         occupancyStatus = 'partially_occupied';
       } else {
-        // No units occupied
+        // No units occupied (could be available, maintenance, reserved, etc.)
         occupancyStatus = 'vacant';
       }
 
@@ -781,8 +771,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
           propertyId,
           totalUnits: unitCounts.total,
           occupiedUnits: unitCounts.occupied,
-          maxAllowedUnits,
-          availableSpaces,
           newOccupancyStatus: occupancyStatus,
         },
         'Enhanced property occupancy sync completed'

@@ -110,6 +110,15 @@ export interface EmailFailedPayload {
   to: string;
 }
 
+export interface UploadCompletedPayload {
+  results: UploadResult[];
+  resourceName: string;
+  resourceType: string;
+  resourceId: string;
+  fieldName: string;
+  actorId: string;
+}
+
 export interface UploadFailedPayload {
   error: {
     message: string;
@@ -118,14 +127,6 @@ export interface UploadFailedPayload {
   };
   resourceType: string;
   resourceId: string;
-}
-
-export interface UploadCompletedPayload {
-  results: UploadResult[];
-  resourceType: string;
-  resourceName: string;
-  resourceId: string;
-  actorId: string;
 }
 
 export interface PropertyUpdatedPayload {

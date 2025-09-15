@@ -1,20 +1,20 @@
-import { PropertyUnitService } from '@services/property/propertyUnit.service';
 import { IRequestContext, RequestSource } from '@interfaces/utils.interface';
+import { PropertyUnitService } from '@services/property/propertyUnit.service';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
 import {
-  createMockClientDAO,
+  createMockUnitNumberingService,
   createMockEventEmitterService,
-  createMockProfileDAO,
-  createMockProperty,
+  createMockPropertyUnitQueue,
+  createMockPropertyUnitDAO,
   createMockPropertyCache,
-  createMockPropertyDAO,
   createMockPropertyQueue,
   createMockPropertyUnit,
-  createMockPropertyUnitDAO,
-  createMockPropertyUnitQueue,
-  createMockUnitNumberingService,
-  createMockClient,
   createMockCurrentUser,
+  createMockPropertyDAO,
+  createMockProfileDAO,
+  createMockClientDAO,
+  createMockProperty,
+  createMockClient,
 } from '@tests/helpers';
 
 // Mock EventTypes
@@ -102,9 +102,7 @@ describe('PropertyUnitService', () => {
     });
 
     it('should create units directly for batch size ≤ 5', async () => {
-      // Arrange
       const mockContext = createMockContext();
-      // Using 'any' type to bypass interface compatibility issues in tests
       const unitData: any = {
         units: [
           { unitNumber: '101', fees: { rentAmount: 1200, securityDeposit: 1200, currency: 'USD' } },
@@ -134,19 +132,15 @@ describe('PropertyUnitService', () => {
         message: 'Units created successfully',
       });
 
-      // Act
       const result = await propertyUnitService.addPropertyUnit(mockContext, unitData);
 
-      // Assert
       expect(result.success).toBe(true);
       expect(result.data).toEqual(mockCreatedUnits);
       expect(propertyUnitService['createUnitsDirectly']).toHaveBeenCalled();
     });
 
     it('should create units via queue for batch size > 5', async () => {
-      // Arrange
       const mockContext = createMockContext();
-      // Using 'any' type to bypass interface compatibility issues in tests
       const unitData: any = {
         units: Array.from({ length: 7 }, (_, i) => ({
           unitNumber: `10${i + 1}`,
@@ -169,10 +163,8 @@ describe('PropertyUnitService', () => {
         message: 'Units queued for creation',
       });
 
-      // Act
       const result = await propertyUnitService.addPropertyUnit(mockContext, unitData);
 
-      // Assert
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ jobId: 'job-123' });
       expect(propertyUnitService['createUnitsViaQueue']).toHaveBeenCalled();
@@ -835,9 +827,9 @@ describe('PropertyUnitService', () => {
       mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
 
       // Act & Assert
-      await expect(
-        propertyUnitService.validateUnitsCsv(mockContext, csvFile)
-      ).rejects.toThrow(BadRequestError);
+      await expect(propertyUnitService.validateUnitsCsv(mockContext, csvFile)).rejects.toThrow(
+        BadRequestError
+      );
     });
   });
 });

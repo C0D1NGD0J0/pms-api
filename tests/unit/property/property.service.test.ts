@@ -100,7 +100,6 @@ describe('PropertyService', () => {
 
   describe('addProperty', () => {
     it('should call DAO methods for property creation', async () => {
-      // Arrange
       const mockContext = createMockRequestContext({
         request: {
           params: { cuid: 'test-cuid' },
@@ -130,10 +129,8 @@ describe('PropertyService', () => {
       mockPropertyDAO.createProperty.mockResolvedValue(mockProperty);
       mockPropertyCache.cacheProperty.mockResolvedValue({ success: true });
 
-      // Act
       const result = await propertyService.addProperty(mockContext, propertyData);
 
-      // Assert
       expect(result.success).toBe(true);
       expect(result.data).toEqual(mockProperty);
       expect(mockPropertyDAO.createProperty).toHaveBeenCalled();
@@ -147,7 +144,6 @@ describe('PropertyService', () => {
 
   describe('getClientProperties', () => {
     it('should successfully retrieve client properties with filters', async () => {
-      // Arrange
       const cuid = 'test-cuid';
       const mockClient = createMockClient();
       const mockCurrentUser = createMockCurrentUser();
@@ -165,21 +161,18 @@ describe('PropertyService', () => {
       });
       mockPropertyCache.saveClientProperties.mockResolvedValue({ success: true });
 
-      // Act
       const result = await propertyService.getClientProperties(
         cuid,
         mockCurrentUser,
         mockQueryParams
       );
 
-      // Assert
       expect(result.success).toBe(true);
       expect(result.data.items).toEqual(mockProperties);
       expect(mockPropertyDAO.getPropertiesByClientId).toHaveBeenCalled();
     });
 
     it('should return cached properties when available', async () => {
-      // Arrange
       const cuid = 'test-cuid';
       const mockClient = createMockClient();
       const mockCachedProperties = [createMockProperty()];
@@ -197,7 +190,6 @@ describe('PropertyService', () => {
         },
       });
 
-      // Act
       const mockCurrentUser = createMockCurrentUser();
       const result = await propertyService.getClientProperties(
         cuid,
@@ -205,7 +197,6 @@ describe('PropertyService', () => {
         mockQueryParams
       );
 
-      // Assert
       expect(result.success).toBe(true);
       expect(result.data.items).toEqual(mockCachedProperties);
       expect(mockPropertyDAO.getPropertiesByClientId).not.toHaveBeenCalled();
@@ -618,7 +609,7 @@ describe('PropertyService', () => {
       mockPropertyDAO.syncPropertyOccupancyWithUnitsEnhanced.mockImplementation(
         async (propertyId: string, userId: string) => {
           // Simulate the fixed logic
-          const property = await mockPropertyDAO.findById(propertyId);
+          const _property = await mockPropertyDAO.findById(propertyId);
           const unitCounts = await mockPropertyDAO.getUnitCountsByStatus(propertyId);
 
           let occupancyStatus = 'vacant';

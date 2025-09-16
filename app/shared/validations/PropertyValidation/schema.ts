@@ -165,6 +165,24 @@ const PropertyMediaDocumentSchema = z.object({
   documentName: z.string().max(100, 'Document name must be at most 100 characters').optional(),
 });
 
+const PropertyImageSchema = z.object({
+  url: z.string().url('Invalid URL format for image'),
+  filename: z.string().optional(),
+  key: z.string().optional(),
+  uploadedAt: z.coerce
+    .date({
+      errorMap: (issue, { defaultError }) => ({
+        message:
+          issue.code === z.ZodIssueCode.invalid_date
+            ? 'Invalid date format for uploaded date'
+            : defaultError,
+      }),
+    })
+    .default(() => new Date()),
+  uploadedBy: z.string(),
+  description: z.string().max(150, 'Description must be at most 150 characters').optional(),
+});
+
 const DescriptionSchema = z.object({
   text: z.string().max(2000, 'Description text must be at most 2000 characters'),
   html: z.string().max(2000, 'Description HTML must be at most 2000 characters').optional(),
@@ -215,6 +233,7 @@ const CreatePropertySchema = z.object({
   interiorAmenities: InteriorAmenitiesSchema.optional(),
   communityAmenities: CommunityAmenitiesSchema.optional(),
   documents: z.array(PropertyMediaDocumentSchema).optional(),
+  images: z.array(PropertyImageSchema).max(5, 'Property cannot have more than 5 images').optional(),
 });
 
 export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefine(

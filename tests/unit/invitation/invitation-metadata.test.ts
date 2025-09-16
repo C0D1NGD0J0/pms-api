@@ -80,6 +80,7 @@ describe('Invitation Metadata Transfer', () => {
       userDAO,
       vendorService: mockVendorService,
       userService: mockUserService,
+      emitterService,
     });
 
     // Create InvitationService instance with required dependencies

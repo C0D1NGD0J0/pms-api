@@ -62,6 +62,18 @@ export class DiskStorage {
       fileTypes: ['pdf', 'jpeg', 'jpg', 'png', 'doc', 'docx'],
     },
     {
+      name: 'documents[*].file', // Property documents pattern
+      maxCount: 10,
+      maxSize: 20 * 1024 * 1024, // 20MB
+      fileTypes: ['pdf', 'jpeg', 'jpg', 'png', 'doc', 'docx'],
+    },
+    {
+      name: 'images[*].file', // Property images pattern
+      maxCount: 20,
+      maxSize: 10 * 1024 * 1024, // 10MB
+      fileTypes: ['jpeg', 'jpg', 'png'],
+    },
+    {
       name: 'personalInfo.avatar.file',
       maxCount: 1,
       maxSize: 5 * 1024 * 1024, // 5MB
@@ -257,10 +269,10 @@ export class DiskStorage {
     if (fieldName === pattern) return true;
 
     // Convert pattern to regex, escape regex meta-characters, then replace [*] with [\d+]
-    const escapeRegExp = (s: string) =>
-      s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     let regexPattern = escapeRegExp(pattern);
-    regexPattern = regexPattern.replace(/\\\[\*\]/g, '\\[\\d+\\]'); // [*] becomes [\d+], after escaping
+    // After escaping, [*] becomes \[\*\], so we need to replace \[\*\] with \[\d+\]
+    regexPattern = regexPattern.replace(/\\\[\\\*\\\]/g, '\\[\\d+\\]');
 
     const regex = new RegExp(`^${regexPattern}$`);
     return regex.test(fieldName);

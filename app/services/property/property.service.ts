@@ -23,6 +23,13 @@ import {
   NotFoundError,
 } from '@shared/customErrors';
 import {
+  PROPERTY_CREATION_ALLOWED_DEPARTMENTS,
+  PROPERTY_APPROVAL_ROLES,
+  PROPERTY_STAFF_ROLES,
+  getRequestDuration,
+  createLogger,
+} from '@utils/index';
+import {
   ExtractedMediaFile,
   ISuccessReturnData,
   IPaginationQuery,
@@ -30,14 +37,6 @@ import {
   PaginateResult,
   UploadResult,
 } from '@interfaces/utils.interface';
-import {
-  PROPERTY_CREATION_ALLOWED_DEPARTMENTS,
-  PROPERTY_APPROVAL_ROLES,
-  PROPERTY_STAFF_ROLES,
-  getRequestDuration,
-  createLogger,
-  JOB_NAME,
-} from '@utils/index';
 import {
   PropertyApprovalStatusEnum,
   IAssignableUsersFilter,
@@ -297,28 +296,6 @@ export class PropertyService implements IDisposable {
   }
 
   /**
-   * Handle file uploads if any
-   */
-  private handlePropertyFiles(
-    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
-    property: any,
-    currentuser: any
-  ): void {
-    if (propertyData.scannedFiles && propertyData.scannedFiles.length > 0) {
-      this.uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
-        resource: {
-          fieldName: 'documents',
-          resourceType: 'unknown',
-          resourceName: 'property',
-          actorId: currentuser.sub,
-          resourceId: property.id,
-        },
-        files: propertyData.scannedFiles,
-      });
-    }
-  }
-
-  /**
    * Cache property and return success response
    */
   private async finalizePropertyCreation(property: any, cuid: string): Promise<ISuccessReturnData> {
@@ -354,7 +331,6 @@ export class PropertyService implements IDisposable {
       return { property };
     });
 
-    this.handlePropertyFiles(propertyData, result.property, currentuser);
     return await this.finalizePropertyCreation(result.property, cuid);
   }
 
@@ -1479,6 +1455,15 @@ export class PropertyService implements IDisposable {
     availableSpaces: number;
     lastUnitNumber?: string;
     suggestedNextUnitNumber?: string;
+    statistics: {
+      occupied: number;
+      vacant: number;
+      maintenance: number;
+      available: number;
+      reserved: number;
+      inactive: number;
+    };
+    totalUnits: number;
     unitStats: {
       occupied: number;
       vacant: number;
@@ -1549,6 +1534,8 @@ export class PropertyService implements IDisposable {
         availableSpaces,
         lastUnitNumber,
         suggestedNextUnitNumber,
+        statistics: unitData.unitStats,
+        totalUnits: unitData.currentUnits,
         unitStats: unitData.unitStats,
       };
     } else {
@@ -1590,6 +1577,8 @@ export class PropertyService implements IDisposable {
         currentUnits: 1,
         availableSpaces: 0,
         suggestedNextUnitNumber,
+        statistics: unitStats,
+        totalUnits: 1,
         unitStats,
       };
     }

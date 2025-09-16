@@ -260,12 +260,15 @@ export class PropertyTypeManager {
 
     // Validate specifications object
     if (propertyData.specifications) {
-      const areaValidation = this.validateTotalArea(
-        propertyType,
-        propertyData.specifications.totalArea
-      );
-      if (!areaValidation.valid && areaValidation.message) {
-        errors.push(areaValidation.message);
+      // Only validate total area if it exists
+      if (propertyData.specifications.totalArea !== undefined) {
+        const areaValidation = this.validateTotalArea(
+          propertyType,
+          propertyData.specifications.totalArea
+        );
+        if (!areaValidation.valid && areaValidation.message) {
+          errors.push(areaValidation.message);
+        }
       }
 
       // Multi-unit properties should not have bedrooms/bathrooms at property level

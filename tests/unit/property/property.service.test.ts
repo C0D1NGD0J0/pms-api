@@ -216,6 +216,15 @@ describe('PropertyService', () => {
         maxAllowedUnits: 10,
         currentUnits: 5,
         availableSpaces: 5,
+        totalUnits: 5,
+        statistics: {
+          occupied: 3,
+          vacant: 2,
+          maintenance: 0,
+          available: 2,
+          reserved: 0,
+          inactive: 0,
+        },
         unitStats: {
           occupied: 3,
           vacant: 2,
@@ -609,7 +618,6 @@ describe('PropertyService', () => {
       mockPropertyDAO.syncPropertyOccupancyWithUnitsEnhanced.mockImplementation(
         async (propertyId: string, userId: string) => {
           // Simulate the fixed logic
-          const _property = await mockPropertyDAO.findById(propertyId);
           const unitCounts = await mockPropertyDAO.getUnitCountsByStatus(propertyId);
 
           let occupancyStatus = 'vacant';
@@ -679,7 +687,6 @@ describe('PropertyService', () => {
       // Use the fixed logic
       mockPropertyDAO.syncPropertyOccupancyWithUnitsEnhanced.mockImplementation(
         async (propertyId: string, userId: string) => {
-          const property = await mockPropertyDAO.findById(propertyId);
           const unitCounts = await mockPropertyDAO.getUnitCountsByStatus(propertyId);
 
           let occupancyStatus = 'vacant';
@@ -749,7 +756,6 @@ describe('PropertyService', () => {
       // Use the fixed logic
       mockPropertyDAO.syncPropertyOccupancyWithUnitsEnhanced.mockImplementation(
         async (propertyId: string, userId: string) => {
-          const property = await mockPropertyDAO.findById(propertyId);
           const unitCounts = await mockPropertyDAO.getUnitCountsByStatus(propertyId);
 
           let occupancyStatus = 'vacant';
@@ -819,7 +825,6 @@ describe('PropertyService', () => {
       // Use the fixed logic
       mockPropertyDAO.syncPropertyOccupancyWithUnitsEnhanced.mockImplementation(
         async (propertyId: string, userId: string) => {
-          const property = await mockPropertyDAO.findById(propertyId);
           const unitCounts = await mockPropertyDAO.getUnitCountsByStatus(propertyId);
 
           let occupancyStatus = 'vacant';
@@ -865,12 +870,6 @@ describe('PropertyService', () => {
     });
 
     it('should ignore maxAllowedUnits vs currentUnits when determining occupancy status', async () => {
-      // This specifically tests the bug fix: availableSpaces for adding new units
-      // should NOT influence occupancy status calculation
-
-      // Arrange - Property at max capacity (5/5 units) but only 2 are occupied
-      // In the old buggy logic, this would incorrectly show as "occupied"
-      // because availableSpaces === 0 (can't add more units)
       const propertyId = 'test-property-id';
       const userId = 'test-user-id';
       const mockProperty = createMockProperty({
@@ -894,7 +893,6 @@ describe('PropertyService', () => {
       // Use the fixed logic - this is the key test case!
       mockPropertyDAO.syncPropertyOccupancyWithUnitsEnhanced.mockImplementation(
         async (propertyId: string, userId: string) => {
-          const property = await mockPropertyDAO.findById(propertyId);
           const unitCounts = await mockPropertyDAO.getUnitCountsByStatus(propertyId);
 
           // The fixed logic: only consider existing units, ignore maxAllowedUnits vs currentUnits

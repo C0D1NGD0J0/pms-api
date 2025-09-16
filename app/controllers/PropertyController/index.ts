@@ -3,22 +3,42 @@ import { t } from '@shared/languages';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyService } from '@services/index';
 import propertyFormMeta from '@shared/constants/fromStaticData.json';
-import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
+import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { IPropertyFilterQuery, PropertyType } from '@interfaces/property.interface';
+import { ExtractedMediaFile, ResourceContext, AppRequest } from '@interfaces/utils.interface';
 
 interface IConstructor {
+  mediaUploadService: MediaUploadService;
   propertyService: PropertyService;
 }
 
 export class PropertyController {
   propertyService: PropertyService;
-  constructor({ propertyService }: IConstructor) {
+  mediaUploadService: MediaUploadService;
+
+  constructor({ propertyService, mediaUploadService }: IConstructor) {
     this.propertyService = propertyService;
+    this.mediaUploadService = mediaUploadService;
   }
 
   create = async (req: AppRequest, res: Response) => {
     const newProperty = await this.propertyService.addProperty(req.context, req.body);
-    res.status(httpStatusCodes.OK).json({ success: true, data: newProperty });
+
+    const uploadResult = await this.mediaUploadService.handleFiles(req, {
+      primaryResourceId: newProperty.data.id,
+      uploadedBy: req.context.currentuser!.sub,
+      resourceContext: ResourceContext.PROPERTY,
+    });
+
+    const response = uploadResult.hasFiles
+      ? {
+          ...newProperty,
+          fileUpload: uploadResult.message,
+          processedFiles: uploadResult.processedFiles,
+        }
+      : newProperty;
+
+    res.status(httpStatusCodes.OK).json(response);
   };
 
   validateCsv = async (req: AppRequest, res: Response) => {
@@ -144,6 +164,13 @@ export class PropertyController {
         message: 'User not authenticated',
       });
     }
+
+    const uploadResult = await this.mediaUploadService.handleFiles(req, {
+      primaryResourceId: pid,
+      uploadedBy: currentuser.sub,
+      resourceContext: ResourceContext.PROPERTY,
+    });
+
     const ctx = {
       cuid,
       pid,
@@ -151,7 +178,15 @@ export class PropertyController {
     };
     const result = await this.propertyService.updateClientProperty(ctx, req.body);
 
-    res.status(httpStatusCodes.OK).json({ ...result });
+    const response = uploadResult.hasFiles
+      ? {
+          ...result,
+          fileUpload: uploadResult.message,
+          processedFiles: uploadResult.processedFiles,
+        }
+      : result;
+
+    res.status(httpStatusCodes.OK).json(response);
   };
 
   archiveProperty = async (req: AppRequest, res: Response) => {

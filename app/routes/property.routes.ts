@@ -31,7 +31,7 @@ router.post(
   '/:cuid/add_property',
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   routeLimiter(),
-  diskUpload(['document.photos']),
+  diskUpload(['documents[*].file', 'images[*].file']),
   scanFile,
   validateRequest({
     params: PropertyValidations.validatecuid,
@@ -168,6 +168,8 @@ router.get(
 
 router.patch(
   '/:cuid/client_properties/:pid',
+  diskUpload(['documents[*].file', 'images[*].file']),
+  scanFile,
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
     body: PropertyValidations.updateProperty,
@@ -175,17 +177,6 @@ router.patch(
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.updateClientProperty(req, res);
-  })
-);
-
-router.patch(
-  '/:cuid/client_properties/:pid/add_media',
-  validateRequest({
-    params: PropertyValidations.validatePropertyAndClientIds,
-  }),
-  asyncWrapper((req, res) => {
-    const propertyController = req.container.resolve<PropertyController>('propertyController');
-    return propertyController.addMediaToProperty(req, res);
   })
 );
 

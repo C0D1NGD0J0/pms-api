@@ -41,7 +41,17 @@ export class UploadWorker {
         resourceId: resource.resourceId,
       });
 
-      const result = await this.awsS3Service.uploadFiles(files, resource);
+      // Map ExtractedMediaFile[] to UploadedFile[] format
+      const uploadFiles = files.map((file) => ({
+        originalFileName: file.originalFileName,
+        fileSize: file.fileSize,
+        fieldName: file.fieldName,
+        mimeType: file.mimeType,
+        fileName: file.filename, // Map filename to fileName
+        path: file.path,
+      }));
+
+      const result = await this.awsS3Service.uploadFiles(uploadFiles, resource);
 
       job.progress(70);
       this.log.info('S3 upload completed, emitting UPLOAD_COMPLETED event');
@@ -52,6 +62,7 @@ export class UploadWorker {
         resourceType: resource.resourceType || 'document',
         resourceName: resource.resourceName,
         resourceId: resource.resourceId,
+        fieldName: resource.fieldName,
       });
 
       job.progress(90);

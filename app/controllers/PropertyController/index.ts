@@ -3,22 +3,42 @@ import { t } from '@shared/languages';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyService } from '@services/index';
 import propertyFormMeta from '@shared/constants/fromStaticData.json';
-import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
+import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { IPropertyFilterQuery, PropertyType } from '@interfaces/property.interface';
+import { ExtractedMediaFile, ResourceContext, AppRequest } from '@interfaces/utils.interface';
 
 interface IConstructor {
+  mediaUploadService: MediaUploadService;
   propertyService: PropertyService;
 }
 
 export class PropertyController {
   propertyService: PropertyService;
-  constructor({ propertyService }: IConstructor) {
+  mediaUploadService: MediaUploadService;
+
+  constructor({ propertyService, mediaUploadService }: IConstructor) {
     this.propertyService = propertyService;
+    this.mediaUploadService = mediaUploadService;
   }
 
   create = async (req: AppRequest, res: Response) => {
     const newProperty = await this.propertyService.addProperty(req.context, req.body);
-    res.status(httpStatusCodes.OK).json({ success: true, data: newProperty });
+
+    const uploadResult = await this.mediaUploadService.handleFiles(req, {
+      primaryResourceId: newProperty.data.id,
+      uploadedBy: req.context.currentuser!.sub,
+      resourceContext: ResourceContext.PROPERTY,
+    });
+
+    const response = uploadResult.hasFiles
+      ? {
+          ...newProperty,
+          fileUpload: uploadResult.message,
+          processedFiles: uploadResult.processedFiles,
+        }
+      : newProperty;
+
+    res.status(httpStatusCodes.OK).json(response);
   };
 
   validateCsv = async (req: AppRequest, res: Response) => {
@@ -116,10 +136,6 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(data);
   };
 
-  getPropertyUnits = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
-
   getProperty = async (req: AppRequest, res: Response) => {
     const { cuid, pid } = req.params;
     const { currentuser } = req.context;
@@ -138,20 +154,34 @@ export class PropertyController {
   updateClientProperty = async (req: AppRequest, res: Response) => {
     const { cuid, pid } = req.params;
     const { currentuser } = req.context;
+
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
         message: 'User not authenticated',
       });
     }
-    const ctx = {
-      cuid,
-      pid,
-      currentuser,
-    };
+
+    const hardDelete = req.query['hard-delete'] === 'true';
+    const uploadResult = await this.mediaUploadService.handleFiles(req, {
+      primaryResourceId: pid,
+      uploadedBy: currentuser.sub,
+      resourceContext: ResourceContext.PROPERTY,
+      hardDelete,
+    });
+
+    const ctx = { cuid, pid, currentuser, hardDelete };
     const result = await this.propertyService.updateClientProperty(ctx, req.body);
 
-    res.status(httpStatusCodes.OK).json({ ...result });
+    const response = uploadResult.hasFiles
+      ? {
+          ...result,
+          fileUpload: uploadResult.message,
+          processedFiles: uploadResult.processedFiles,
+        }
+      : result;
+
+    res.status(httpStatusCodes.OK).json(response);
   };
 
   archiveProperty = async (req: AppRequest, res: Response) => {
@@ -169,43 +199,21 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(data);
   };
 
-  verifyOccupancyStatus = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
-
-  search = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
-
-  addMediaToProperty = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
-
   deleteMediaFromProperty = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
+    // const { cuid, pid } = req.params;
+    const { currentuser } = req.context;
 
-  checkAvailability = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
-
-  getNearbyProperties = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
-
-  restorArchivedProperty = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+    // TODO: implement archive restoration
+    res.status(httpStatusCodes.OK).json({ success: true, message: 'Method not implemented yet' });
   };
 
   getPropertyFormMetadata = async (req: AppRequest, res: Response) => {
-    // const formType = req.query.formType as 'propertyForm' | 'unitForm';
-    // if (formType && !propertyFormMeta[formType]) {
-    //   return res.status(httpStatusCodes.BAD_REQUEST).json({
-    //     success: false,
-    //     message: `Invalid form type: ${formType}`,
-    //   });
-    // }
-
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: propertyFormMeta,

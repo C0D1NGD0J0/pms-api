@@ -1,71 +1,67 @@
-import { Types, ClientSession } from 'mongoose';
+import { Types } from 'mongoose';
 import { VendorService } from '@services/vendor/vendor.service';
 import { VendorDAO } from '@dao/vendorDAO';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
-import { ISuccessReturnData } from '@interfaces/utils.interface';
 import { IVendorDocument, NewVendor } from '@interfaces/vendor.interface';
 
 describe('VendorService', () => {
   let vendorService: VendorService;
   let mockVendorDAO: jest.Mocked<VendorDAO>;
 
-  const mockVendorId = new Types.ObjectId().toString();
-  const mockUserId = new Types.ObjectId().toString();
-  const mockClientId = 'test-client-123';
+  const mockIds = {
+    vendor: new Types.ObjectId().toString(),
+    user: new Types.ObjectId().toString(),
+    client: 'test-client-123',
+  };
 
-  const createMockVendorDocument = (overrides: Partial<IVendorDocument> = {}): IVendorDocument =>
-    ({
-      _id: new Types.ObjectId(),
-      vuid: 'vendor-123',
-      connectedClients: [
-        {
-          cuid: mockClientId,
-          isConnected: true,
-          primaryAccountHolder: new Types.ObjectId(mockUserId),
-        },
-      ],
-      companyName: 'Test Vendor Corp',
-      businessType: 'general_contractor',
-      registrationNumber: 'REG123456',
-      taxId: 'TAX789',
-      address: {
-        street: '123 Business St',
-        city: 'Test City',
-        state: 'Test State',
-        country: 'Test Country',
-        postCode: '12345',
-        fullAddress: '123 Business St, Test City, Test State 12345',
-        computedLocation: {
-          type: 'Point',
-          coordinates: [-122.4194, 37.7749],
-        },
+  const createMockVendorDocument = (overrides: Partial<IVendorDocument> = {}): IVendorDocument => ({
+    _id: new Types.ObjectId(),
+    vuid: 'vendor-123',
+    connectedClients: [{
+      cuid: mockIds.client,
+      isConnected: true,
+      primaryAccountHolder: new Types.ObjectId(mockIds.user),
+    }],
+    companyName: 'Test Vendor Corp',
+    businessType: 'general_contractor',
+    registrationNumber: 'REG123456',
+    taxId: 'TAX789',
+    address: {
+      street: '123 Business St',
+      city: 'Test City',
+      state: 'Test State',
+      country: 'Test Country',
+      postCode: '12345',
+      fullAddress: '123 Business St, Test City, Test State 12345',
+      computedLocation: {
+        type: 'Point',
+        coordinates: [-122.4194, 37.7749],
       },
-      contactPerson: {
-        name: 'John Vendor',
-        jobTitle: 'Owner',
-        email: 'john@testvendor.com',
-        phone: '+1234567890',
-      },
-      servicesOffered: {
-        plumbing: true,
-        electrical: false,
-        hvac: true,
-      },
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      deletedAt: null,
-      ...overrides,
-    }) as IVendorDocument;
+    },
+    contactPerson: {
+      name: 'John Vendor',
+      jobTitle: 'Owner',
+      email: 'john@testvendor.com',
+      phone: '+1234567890',
+    },
+    servicesOffered: {
+      plumbing: true,
+      electrical: false,
+      hvac: true,
+    },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    deletedAt: null,
+    ...overrides,
+  }) as IVendorDocument;
 
   const createMockNewVendor = (overrides: Partial<NewVendor> = {}): NewVendor => ({
     isPrimaryAccountHolder: true,
-    connectedClients: [
-      {
-        cuid: mockClientId,
-        isConnected: true,
-        primaryAccountHolder: new Types.ObjectId(mockUserId),
-      },
-    ],
+    connectedClients: [{
+      cuid: mockIds.client,
+      isConnected: true,
+      primaryAccountHolder: new Types.ObjectId(mockIds.user),
+    }],
     companyName: 'Test Vendor Corp',
     businessType: 'general_contractor',
     registrationNumber: 'REG123456',
@@ -73,9 +69,8 @@ describe('VendorService', () => {
     ...overrides,
   });
 
-  beforeEach(() => {
-    // Create mock VendorDAO with all required methods
-    mockVendorDAO = {
+  const createMockServices = () => {
+    const vendorDAO = {
       createVendor: jest.fn(),
       getVendorById: jest.fn(),
       getVendorByPrimaryAccountHolder: jest.fn(),
@@ -98,36 +93,34 @@ describe('VendorService', () => {
       withTransaction: jest.fn(),
     } as unknown as jest.Mocked<VendorDAO>;
 
-    // Create mock UserDAO
-    const mockUserDAO = {
+    const userDAO = {
       getUsersByFilteredType: jest.fn(),
       getUserById: jest.fn(),
       getLinkedVendorUsers: jest.fn(),
     } as unknown as jest.Mocked<any>;
 
-    // Create mock ClientDAO
-    const mockClientDAO = {
+    const clientDAO = {
       getClientByCuid: jest.fn(),
     } as unknown as jest.Mocked<any>;
 
-    // Create mock PermissionService
-    const mockPermissionService = {
+    const permissionService = {
       canUserAccessVendors: jest.fn().mockReturnValue(true),
     } as unknown as jest.Mocked<any>;
 
-    // Create mock VendorCache
-    const mockVendorCache = {
+    const vendorCache = {
       getFilteredVendors: jest.fn().mockResolvedValue({ success: false }),
       saveFilteredVendors: jest.fn().mockResolvedValue({ success: true }),
     } as unknown as jest.Mocked<any>;
 
-    vendorService = new VendorService({
-      vendorDAO: mockVendorDAO,
-      userDAO: mockUserDAO,
-      clientDAO: mockClientDAO,
-      permissionService: mockPermissionService,
-      vendorCache: mockVendorCache,
-    });
+    return { vendorDAO, userDAO, clientDAO, permissionService, vendorCache };
+  };
+
+  beforeEach(() => {
+    const mocks = createMockServices();
+    mockVendorDAO = mocks.vendorDAO;
+
+    vendorService = new VendorService(mocks);
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
@@ -253,9 +246,9 @@ describe('VendorService', () => {
       const existingVendor = createMockVendorDocument({
         connectedClients: [
           {
-            cuid: mockClientId, // same client
+            cuid: mockIds.client, // same client
             isConnected: true,
-            primaryAccountHolder: new Types.ObjectId(mockUserId),
+            primaryAccountHolder: new Types.ObjectId(mockIds.user),
           },
         ],
       });
@@ -274,14 +267,14 @@ describe('VendorService', () => {
       const vendorData = createMockNewVendor({
         connectedClients: [
           {
-            cuid: mockClientId,
+            cuid: mockIds.client,
             isConnected: true,
-            primaryAccountHolder: new Types.ObjectId(mockUserId),
+            primaryAccountHolder: new Types.ObjectId(mockIds.user),
           },
           {
-            cuid: mockClientId, // duplicate
+            cuid: mockIds.client, // duplicate
             isConnected: true,
-            primaryAccountHolder: new Types.ObjectId(mockUserId),
+            primaryAccountHolder: new Types.ObjectId(mockIds.user),
           },
         ],
       });
@@ -298,19 +291,19 @@ describe('VendorService', () => {
       const mockVendorDoc = createMockVendorDocument();
       mockVendorDAO.getVendorByPrimaryAccountHolder.mockResolvedValue(mockVendorDoc);
 
-      const result = await vendorService.getVendorByUserId(mockUserId);
+      const result = await vendorService.getVendorByUserId(mockIds.user);
 
       expect(result).toEqual(mockVendorDoc);
-      expect(mockVendorDAO.getVendorByPrimaryAccountHolder).toHaveBeenCalledWith(mockUserId);
+      expect(mockVendorDAO.getVendorByPrimaryAccountHolder).toHaveBeenCalledWith(mockIds.user);
     });
 
     it('should return null when vendor not found', async () => {
       mockVendorDAO.getVendorByPrimaryAccountHolder.mockResolvedValue(null);
 
-      const result = await vendorService.getVendorByUserId(mockUserId);
+      const result = await vendorService.getVendorByUserId(mockIds.user);
 
       expect(result).toBeNull();
-      expect(mockVendorDAO.getVendorByPrimaryAccountHolder).toHaveBeenCalledWith(mockUserId);
+      expect(mockVendorDAO.getVendorByPrimaryAccountHolder).toHaveBeenCalledWith(mockIds.user);
     });
   });
 
@@ -321,21 +314,21 @@ describe('VendorService', () => {
       const mockVendorDoc = createMockVendorDocument({ companyName: 'Updated Vendor Corp' });
       mockVendorDAO.updateVendor.mockResolvedValue(mockVendorDoc);
 
-      const result = await vendorService.updateVendorInfo(mockVendorId, updateData);
+      const result = await vendorService.updateVendorInfo(mockIds.vendor, updateData);
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(mockVendorDoc);
       expect(result.message).toBe('Vendor information updated successfully');
-      expect(mockVendorDAO.updateVendor).toHaveBeenCalledWith(mockVendorId, updateData, undefined);
+      expect(mockVendorDAO.updateVendor).toHaveBeenCalledWith(mockIds.vendor, updateData, undefined);
     });
 
     it('should throw NotFoundError when vendor not found', async () => {
       mockVendorDAO.updateVendor.mockResolvedValue(null);
 
-      await expect(vendorService.updateVendorInfo(mockVendorId, updateData)).rejects.toThrow(
+      await expect(vendorService.updateVendorInfo(mockIds.vendor, updateData)).rejects.toThrow(
         NotFoundError
       );
-      await expect(vendorService.updateVendorInfo(mockVendorId, updateData)).rejects.toThrow(
+      await expect(vendorService.updateVendorInfo(mockIds.vendor, updateData)).rejects.toThrow(
         'Vendor not found'
       );
     });
@@ -344,7 +337,7 @@ describe('VendorService', () => {
       const error = new Error('Database connection failed');
       mockVendorDAO.updateVendor.mockRejectedValue(error);
 
-      await expect(vendorService.updateVendorInfo(mockVendorId, updateData)).rejects.toThrow(
+      await expect(vendorService.updateVendorInfo(mockIds.vendor, updateData)).rejects.toThrow(
         'Database connection failed'
       );
     });
@@ -355,17 +348,17 @@ describe('VendorService', () => {
       const mockVendors = [createMockVendorDocument(), createMockVendorDocument()];
       mockVendorDAO.getClientVendors.mockResolvedValue(mockVendors);
 
-      const result = await vendorService.getClientVendors(mockClientId);
+      const result = await vendorService.getClientVendors(mockIds.client);
 
       expect(result).toEqual(mockVendors);
-      expect(mockVendorDAO.getClientVendors).toHaveBeenCalledWith(mockClientId);
+      expect(mockVendorDAO.getClientVendors).toHaveBeenCalledWith(mockIds.client);
     });
 
     it('should handle DAO errors gracefully', async () => {
       const error = new Error('Database query failed');
       mockVendorDAO.getClientVendors.mockRejectedValue(error);
 
-      await expect(vendorService.getClientVendors(mockClientId)).rejects.toThrow(
+      await expect(vendorService.getClientVendors(mockIds.client)).rejects.toThrow(
         'Database query failed'
       );
     });
@@ -376,19 +369,19 @@ describe('VendorService', () => {
       const mockVendorDoc = createMockVendorDocument();
       mockVendorDAO.getVendorById.mockResolvedValue(mockVendorDoc);
 
-      const result = await vendorService.getVendorById(mockVendorId);
+      const result = await vendorService.getVendorById(mockIds.vendor);
 
       expect(result).toEqual(mockVendorDoc);
-      expect(mockVendorDAO.getVendorById).toHaveBeenCalledWith(mockVendorId);
+      expect(mockVendorDAO.getVendorById).toHaveBeenCalledWith(mockIds.vendor);
     });
 
     it('should return null when vendor not found', async () => {
       mockVendorDAO.getVendorById.mockResolvedValue(null);
 
-      const result = await vendorService.getVendorById(mockVendorId);
+      const result = await vendorService.getVendorById(mockIds.vendor);
 
       expect(result).toBeNull();
-      expect(mockVendorDAO.getVendorById).toHaveBeenCalledWith(mockVendorId);
+      expect(mockVendorDAO.getVendorById).toHaveBeenCalledWith(mockIds.vendor);
     });
   });
 
@@ -426,8 +419,8 @@ describe('VendorService', () => {
       mockVendorDAO.createVendor.mockResolvedValue(mockVendorDoc);
 
       const result = await vendorService.createVendorFromCompanyProfile(
-        mockClientId,
-        mockUserId,
+        mockIds.client,
+        mockIds.user,
         companyProfile
       );
 
@@ -464,8 +457,8 @@ describe('VendorService', () => {
       mockVendorDAO.createVendor.mockResolvedValue(mockVendorDoc);
 
       const result = await vendorService.createVendorFromCompanyProfile(
-        mockClientId,
-        mockUserId,
+        mockIds.client,
+        mockIds.user,
         companyProfile
       );
 
@@ -489,8 +482,8 @@ describe('VendorService', () => {
       mockVendorDAO.createVendor.mockResolvedValue(mockVendorDoc);
 
       const result = await vendorService.createVendorFromCompanyProfile(
-        mockClientId,
-        mockUserId,
+        mockIds.client,
+        mockIds.user,
         companyProfile
       );
 
@@ -509,8 +502,8 @@ describe('VendorService', () => {
       mockVendorDAO.createVendor.mockResolvedValue(mockVendorDoc);
 
       const result = await vendorService.createVendorFromCompanyProfile(
-        mockClientId,
-        mockUserId,
+        mockIds.client,
+        mockIds.user,
         companyProfile
       );
 
@@ -531,22 +524,22 @@ describe('VendorService', () => {
       mockVendorDAO.createVendor.mockRejectedValue(error);
 
       await expect(
-        vendorService.createVendorFromCompanyProfile(mockClientId, mockUserId, companyProfile)
+        vendorService.createVendorFromCompanyProfile(mockIds.client, mockIds.user, companyProfile)
       ).rejects.toThrow(BadRequestError);
     });
   });
 
   describe('getFilteredVendors', () => {
     it('should return vendors with proper FilteredUserTableData format', async () => {
-      const mockClient = { _id: mockClientId, cuid: mockClientId };
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
       const mockVendors = [createMockVendorDocument()];
       const mockUsers = [
         {
-          _id: new Types.ObjectId(mockUserId),
+          _id: new Types.ObjectId(mockIds.user),
           uid: 'user-123',
           email: 'vendor@test.com',
           isActive: true,
-          cuids: [{ cuid: mockClientId, isConnected: true }],
+          cuids: [{ cuid: mockIds.client, isConnected: true }],
           profile: {
             personalInfo: {
               firstName: 'John',
@@ -571,7 +564,7 @@ describe('VendorService', () => {
       (vendorService as any).userDAO.getUserById.mockResolvedValue(mockUsers[0]);
 
       const result = await vendorService.getFilteredVendors(
-        mockClientId,
+        mockIds.client,
         {},
         { limit: 10, skip: 0 }
       );
@@ -593,14 +586,14 @@ describe('VendorService', () => {
 
   describe('getVendorInfo', () => {
     it('should return single vendor with proper format', async () => {
-      const mockClient = { _id: mockClientId, cuid: mockClientId };
-      const mockVendor = createMockVendorDocument({ _id: new Types.ObjectId(mockVendorId) });
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const mockVendor = createMockVendorDocument({ _id: new Types.ObjectId(mockIds.vendor) });
       const mockUser = {
-        _id: new Types.ObjectId(mockUserId),
+        _id: new Types.ObjectId(mockIds.user),
         uid: 'user-123',
         email: 'vendor@test.com',
         isActive: true,
-        cuids: [{ cuid: mockClientId, isConnected: true, roles: ['vendor'] }],
+        cuids: [{ cuid: mockIds.client, isConnected: true, roles: ['vendor'] }],
         profile: {
           personalInfo: {
             firstName: 'John',
@@ -615,13 +608,14 @@ describe('VendorService', () => {
       (vendorService as any).userDAO.getUserById.mockResolvedValue(mockUser);
       (vendorService as any).userDAO.getLinkedVendorUsers.mockResolvedValue({ items: [] });
 
-      const result = await vendorService.getVendorInfo(mockClientId, 'vendor-123');
+      const result = await vendorService.getVendorInfo(mockIds.client, 'vendor-123');
 
       expect(result.success).toBe(true);
       expect(result.data).toMatchObject({
         profile: expect.objectContaining({
-          uid: 'user-123',
           email: 'vendor@test.com',
+          fullName: 'John Vendor',
+          userType: 'vendor',
         }),
         vendorInfo: expect.objectContaining({
           companyName: 'Test Vendor Corp',
@@ -631,12 +625,12 @@ describe('VendorService', () => {
     });
 
     it('should throw NotFoundError when vendor not found', async () => {
-      const mockClient = { _id: mockClientId, cuid: mockClientId };
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
 
       (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockVendorDAO.getVendorByVuid.mockResolvedValue(null);
 
-      await expect(vendorService.getVendorInfo(mockClientId, 'nonexistent-vuid')).rejects.toThrow(
+      await expect(vendorService.getVendorInfo(mockIds.client, 'nonexistent-vuid')).rejects.toThrow(
         'Vendor not found'
       );
     });
@@ -658,9 +652,9 @@ describe('VendorService', () => {
         isPrimaryAccountHolder: true,
         connectedClients: [
           {
-            cuid: mockClientId,
+            cuid: mockIds.client,
             isConnected: true,
-            primaryAccountHolder: new Types.ObjectId(mockUserId),
+            primaryAccountHolder: new Types.ObjectId(mockIds.user),
           },
         ],
       };
@@ -698,9 +692,9 @@ describe('VendorService', () => {
         isPrimaryAccountHolder: true,
         connectedClients: [
           {
-            cuid: mockClientId,
+            cuid: mockIds.client,
             isConnected: true,
-            primaryAccountHolder: new Types.ObjectId(mockUserId),
+            primaryAccountHolder: new Types.ObjectId(mockIds.user),
           },
         ],
       };
@@ -734,9 +728,9 @@ describe('VendorService', () => {
         isPrimaryAccountHolder: true,
         connectedClients: [
           {
-            cuid: mockClientId,
+            cuid: mockIds.client,
             isConnected: true,
-            primaryAccountHolder: new Types.ObjectId(mockUserId),
+            primaryAccountHolder: new Types.ObjectId(mockIds.user),
           },
         ],
       };
@@ -746,7 +740,7 @@ describe('VendorService', () => {
       const result = await vendorService.createVendor(vendorData, undefined, 'BQ--E29IUASZ');
 
       expect(result.success).toBe(true);
-      expect(mockVendorDAO.getVendorById).toHaveBeenCalledWith(existingVendorId);
+      expect(mockVendorDAO.getVendorById).toHaveBeenCalledWith('BQ--E29IUASZ');
     });
 
     it('should fall back to registration number matching when linkedVendorUid not found', async () => {
@@ -763,9 +757,9 @@ describe('VendorService', () => {
         isPrimaryAccountHolder: true,
         connectedClients: [
           {
-            cuid: mockClientId,
+            cuid: mockIds.client,
             isConnected: true,
-            primaryAccountHolder: new Types.ObjectId(mockUserId),
+            primaryAccountHolder: new Types.ObjectId(mockIds.user),
           },
         ],
       };
@@ -790,7 +784,7 @@ describe('VendorService', () => {
   describe('getVendorStats', () => {
     it('should successfully retrieve vendor statistics', async () => {
       const cuid = 'test-client-123';
-      const mockClient = { _id: mockClientId, cuid };
+      const mockClient = { _id: mockIds.client, cuid };
       const mockVendorStats = {
         totalVendors: 5,
         businessTypeDistribution: [
@@ -814,10 +808,6 @@ describe('VendorService', () => {
         businessTypeDistribution: mockVendorStats.businessTypeDistribution,
         servicesDistribution: mockVendorStats.servicesDistribution,
         totalVendors: mockVendorStats.totalVendors,
-        // Legacy compatibility fields
-        departmentDistribution: mockVendorStats.businessTypeDistribution,
-        roleDistribution: mockVendorStats.servicesDistribution,
-        totalFilteredUsers: mockVendorStats.totalVendors,
       });
       expect(result.message).toBe('vendor.success.statsRetrieved');
 

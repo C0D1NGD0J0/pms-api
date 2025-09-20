@@ -10,11 +10,13 @@ export const createMockPropertyDAO = () => ({
   updateById: jest.fn(),
   deleteById: jest.fn(),
   startSession: jest.fn(),
-  withTransaction: jest.fn().mockImplementation(
-    async (session: ClientSession, callback: (session: ClientSession) => Promise<any>) => {
-      return await callback(session);
-    }
-  ),
+  withTransaction: jest
+    .fn()
+    .mockImplementation(
+      async (session: ClientSession, callback: (session: ClientSession) => Promise<any>) => {
+        return await callback(session);
+      }
+    ),
   getPropertyById: jest.fn(),
   getPropertiesByClient: jest.fn(),
   getPropertiesByClientId: jest.fn(),
@@ -24,6 +26,8 @@ export const createMockPropertyDAO = () => ({
   archiveProperty: jest.fn(),
   canAddUnitToProperty: jest.fn(),
   getPropertyUnits: jest.fn(),
+  getUnitCountsByStatus: jest.fn(),
+  updatePropertyOccupancy: jest.fn(),
   countDocuments: jest.fn(),
   syncPropertyOccupancyWithUnitsEnhanced: jest.fn(),
 });
@@ -37,11 +41,13 @@ export const createMockPropertyUnitDAO = () => ({
   updateById: jest.fn(),
   deleteById: jest.fn(),
   startSession: jest.fn(),
-  withTransaction: jest.fn().mockImplementation(
-    async (session: ClientSession, callback: (session: ClientSession) => Promise<any>) => {
-      return await callback(session);
-    }
-  ),
+  withTransaction: jest
+    .fn()
+    .mockImplementation(
+      async (session: ClientSession, callback: (session: ClientSession) => Promise<any>) => {
+        return await callback(session);
+      }
+    ),
   getUnitById: jest.fn(),
   getUnitsByProperty: jest.fn(),
   getPropertyUnitInfo: jest.fn(),
@@ -156,14 +162,14 @@ export const createMockPropertyValidationService = () => ({
   validateDate: jest.fn().mockReturnValue([]),
   validateNumericField: jest.fn().mockReturnValue([]),
   validateProperty: jest.fn().mockReturnValue({ valid: true, errors: [] }),
-  validateFieldByType: jest.fn().mockReturnValue([])
+  validateFieldByType: jest.fn().mockReturnValue([]),
 });
 
 // Validation Result Mock
 export const createMockValidationResult = (overrides = {}) => ({
   valid: true,
   errors: [],
-  ...overrides
+  ...overrides,
 });
 
 // Property Validation Rules Mock
@@ -172,5 +178,5 @@ export const createMockPropertyValidationRules = (overrides = {}) => ({
   maxUnits: 100,
   allowBedrooms: true,
   allowBathrooms: true,
-  ...overrides
+  ...overrides,
 });

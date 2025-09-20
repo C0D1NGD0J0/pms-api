@@ -266,6 +266,32 @@ const PropertySchema = new Schema<IPropertyDocument>(
         documentName: { type: String, trim: true, maxlength: 100 },
       },
     ],
+    images: {
+      type: [
+        {
+          url: {
+            type: String,
+            validate: {
+              validator: function (v: string) {
+                return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
+              },
+              message: (props: any) => `${props.value} is not a valid URL!`,
+            },
+          },
+          filename: { type: String },
+          key: { type: String },
+          uploadedAt: { type: Date, default: Date.now },
+          uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        },
+      ],
+      validate: {
+        validator: function (images: any[]) {
+          return images.length <= 5;
+        },
+        message: 'Property cannot have more than 5 images',
+      },
+      default: [],
+    },
     occupancyStatus: {
       type: String,
       enum: ['vacant', 'occupied', 'partially_occupied'],

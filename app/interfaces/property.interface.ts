@@ -18,18 +18,18 @@ export enum PropertyApprovalStatusEnum {
  */
 export interface IProperty {
   fees: {
-    taxAmount: number;
     currency: CURRENCIES;
-    rentalAmount: number | string;
     managementFees: number | string;
+    rentalAmount: number | string;
+    taxAmount: number;
   };
   description?: {
     html?: string;
     text?: string;
   };
   approvalDetails?: PropertyApprovalDetails;
-  communityAmenities?: CommunityAmenities;
   approvalStatus?: PropertyApprovalStatus;
+  communityAmenities?: CommunityAmenities;
   pendingChanges?: IPendingChanges | null;
   specifications: PropertySpecifications;
   interiorAmenities?: InteriorAmenities;
@@ -37,16 +37,17 @@ export interface IProperty {
   financialDetails?: FinancialDetails;
   documents?: PropertyDocumentItem[];
   occupancyStatus: OccupancyStatus;
+  images?: PropertyImageItem[];
   utilities: PropertyUtilities;
-  propertyType: PropertyType;
   managedBy?: Types.ObjectId;
+  propertyType: PropertyType;
   createdBy: Types.ObjectId;
   maxAllowedUnits?: number;
   address: AddressDetails;
   status: PropertyStatus;
   yearBuilt?: number;
-  name: string;
   cuid: string;
+  name: string;
 }
 
 /**
@@ -54,35 +55,35 @@ export interface IProperty {
  */
 export interface IPropertyFilterQuery {
   filters: {
-    propertyType?: PropertyType;
-    status?: PropertyStatus;
-    occupancyStatus?: OccupancyStatus;
-    priceRange?: {
-      min?: number;
-      max?: number;
-    };
+    approvalStatus?: PropertyApprovalStatus;
     areaRange?: {
-      min?: number;
       max?: number;
-    };
-    location?: {
-      city?: string;
-      state?: string;
-      postCode?: string;
-    };
-    yearBuilt?: {
       min?: number;
-      max?: number;
     };
-    searchTerm?: string;
-    managedBy?: string;
     dateRange?: {
+      end?: Date | string;
       field: 'createdAt' | 'updatedAt' | 'financialDetails.purchaseDate';
       start?: Date | string;
-      end?: Date | string;
     };
     includeUnapproved?: boolean;
-    approvalStatus?: PropertyApprovalStatus;
+    location?: {
+      city?: string;
+      postCode?: string;
+      state?: string;
+    };
+    managedBy?: string;
+    occupancyStatus?: OccupancyStatus;
+    priceRange?: {
+      max?: number;
+      min?: number;
+    };
+    propertyType?: PropertyType;
+    searchTerm?: string;
+    status?: PropertyStatus;
+    yearBuilt?: {
+      max?: number;
+      min?: number;
+    };
   } | null;
   pagination: IPaginationQuery;
   currentUser?: any;
@@ -93,26 +94,26 @@ export interface IPropertyFilterQuery {
  */
 export interface PropertyTypeRule {
   validationRules?: {
-    maxTotalArea?: number;
-    minTotalArea?: number;
-    maxUnits?: number;
-    allowBedrooms?: boolean;
     allowBathrooms?: boolean;
+    allowBedrooms?: boolean;
+    maxTotalArea?: number;
+    maxUnits?: number;
+    minTotalArea?: number;
     requiresElevator?: boolean;
   };
   visibleFields: {
-    core: string[];
-    specifications: string[];
-    financial: string[];
     amenities: string[];
+    core: string[];
     documents: string[];
+    financial: string[];
+    specifications: string[];
     unit: string[];
   };
   helpText: Record<string, string>;
-  validateBedBath: boolean;
   requiredFields: string[];
-  isMultiUnit: boolean;
+  validateBedBath: boolean;
   defaultUnits: number;
+  isMultiUnit: boolean;
   minUnits: number;
 }
 
@@ -132,19 +133,79 @@ export interface PropertyDocumentItem {
 }
 
 /**
+ * Financial Details Type
+ */
+export interface FinancialDetails {
+  lastAssessmentDate?: Date;
+  maintenanceCost?: number;
+  insuranceCost?: number;
+  monthlyIncome?: number;
+  purchasePrice?: number;
+  currentValue?: number;
+  downPayment?: number;
+  marketValue?: number;
+  propertyTax?: number;
+  purchaseDate?: Date;
+}
+
+/**
+ * Unit Info Type
+ */
+export interface UnitInfo {
+  suggestedNextUnitNumber?: string;
+  availableSpaces?: number;
+  maxAllowedUnits?: number;
+  lastUnitNumber?: string;
+  currentUnits?: number;
+  statistics: UnitStats;
+  unitStats?: UnitStats;
+  canAddUnit?: boolean;
+  totalUnits: number;
+}
+
+/**
+ * Property Specifications Type
+ */
+export interface PropertySpecifications {
+  parkingSpaces?: number;
+  garageSpaces?: number;
+  maxOccupants?: number;
+  totalFloors?: number;
+  bathrooms?: number;
+  totalArea?: number;
+  bedrooms?: number;
+  unitType?: string;
+  lotSize?: number;
+  floors?: number;
+}
+
+/**
  * Assignable User Interface (for property assignment)
  */
 export interface IAssignableUser {
   employeeInfo?: {
-    jobTitle?: string;
-    employeeId?: string;
     department?: string;
+    employeeId?: string;
+    jobTitle?: string;
   };
   role: 'admin' | 'staff' | 'manager';
-  displayName: string;
   department?: string;
+  displayName: string;
   email: string;
   id: string;
+}
+
+/**
+ * Property Image Item Type
+ */
+export interface PropertyImageItem {
+  status: 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
+  uploadedBy: Types.ObjectId;
+  description?: string;
+  filename?: string;
+  uploadedAt: Date;
+  key?: string;
+  url: string;
 }
 
 /**
@@ -157,21 +218,21 @@ export interface CommunityAmenities {
   swimmingPool: boolean;
   petFriendly: boolean;
   elevator: boolean;
-  parking: boolean;
   doorman: boolean;
+  parking: boolean;
 }
 
 /**
- * Unit Information Type
+ * Property Approval Details Type
  */
-export interface UnitInfo {
-  suggestedNextUnitNumber?: string;
-  availableSpaces: number;
-  lastUnitNumber?: string;
-  maxAllowedUnits: number;
-  unitStats: UnitStats;
-  currentUnits: number;
-  canAddUnit: boolean;
+export interface PropertyApprovalDetails {
+  approvedBy?: Types.ObjectId;
+  rejectedBy?: Types.ObjectId;
+  rejectionReason?: string;
+  reviewNotes?: string;
+  approvedDate?: Date;
+  rejectedDate?: Date;
+  notes?: string;
 }
 
 /**
@@ -192,13 +253,13 @@ export interface IPropertyDocument extends IProperty, Document {
  */
 export interface CsvJobData {
   bulkCreateOptions?: {
-    sendNotifications?: boolean;
     passwordLength?: number;
+    sendNotifications?: boolean;
   };
   clientInfo: IClientInfo;
   csvFilePath: string;
-  userId: string;
   jobId?: string;
+  userId: string;
 }
 
 /**
@@ -229,49 +290,15 @@ export interface InteriorAmenities {
 }
 
 /**
- * Property Specifications Type
- */
-export interface PropertySpecifications {
-  garageSpaces?: number;
-  maxOccupants?: number;
-  bathrooms?: number;
-  totalArea: number;
-  bedrooms?: number;
-  lotSize?: number;
-  floors?: number;
-}
-
-/**
- * Property Approval Details
- */
-export interface PropertyApprovalDetails {
-  requestedBy?: Types.ObjectId;
-  rejectionReason?: string[];
-  actor?: Types.ObjectId;
-  updatedAt?: Date;
-  notes?: string[];
-}
-
-/**
  * Assignable Users Filter Interface
  */
 export interface IAssignableUsersFilter {
   role?: 'admin' | 'staff' | 'manager' | 'all';
   department?: string;
+  searchTerm?: string;
   search?: string;
   limit?: number;
   page?: number;
-}
-
-/**
- * Financial Details Type
- */
-export interface FinancialDetails {
-  lastAssessmentDate?: Date;
-  purchasePrice?: number;
-  marketValue?: number;
-  propertyTax?: number;
-  purchaseDate?: Date;
 }
 
 /**
@@ -281,8 +308,8 @@ export interface PropertyUtilities {
   electricity: boolean;
   internet: boolean;
   cableTV: boolean;
-  water: boolean;
   trash: boolean;
+  water: boolean;
   gas: boolean;
 }
 
@@ -292,9 +319,9 @@ export interface PropertyUtilities {
 export interface UnitStats {
   maintenance: number;
   available: number;
+  inactive: number;
   occupied: number;
   reserved: number;
-  inactive: number;
   vacant: number;
 }
 
@@ -302,8 +329,8 @@ export interface UnitStats {
  * Pending Changes Type - using Omit to exclude specific fields
  */
 export type IPendingChanges = Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>> & {
-  updatedBy: Types.ObjectId;
   updatedAt: Date;
+  updatedBy: Types.ObjectId;
 };
 
 /**
@@ -359,16 +386,16 @@ export interface ComputedLocation {
   coordinates: number[];
 }
 
+export type IPropertyDocumentItem = PropertyDocumentItem;
+export type ICommunityAmenities = CommunityAmenities;
+export type ISpecifications = PropertySpecifications;
+export type IInteriorAmenities = InteriorAmenities;
+export type IComputedLocation = ComputedLocation;
+export type IFinancialDetails = FinancialDetails;
 /**
  * Export commonly used types for backward compatibility
  * These are being kept to avoid breaking existing code
  */
-export type IPropertyDocumentItem = PropertyDocumentItem;
-export type ISpecifications = PropertySpecifications;
-export type ICommunityAmenities = CommunityAmenities;
-export type IInteriorAmenities = InteriorAmenities;
-export type IFinancialDetails = FinancialDetails;
-export type IComputedLocation = ComputedLocation;
 export type IAddressDetails = AddressDetails;
 export type IUtilities = PropertyUtilities;
 export type NewPropertyType = NewProperty;

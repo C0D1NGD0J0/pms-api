@@ -34,15 +34,15 @@ export class S3Service {
 
     for (const file of files) {
       try {
-        this.log.debug(`Uploading file: ${file.filename}`);
+        this.log.debug(`Uploading file: ${file.fileName}`);
         const fileStream = fs.createReadStream(file.path);
-        const s3Key = `${context.resourceName}_${file.originalname || file.filename}`;
+        const s3Key = `${context.resourceName}_${file.originalFileName || file.fileName}`;
 
         const params = {
           Bucket: this.bucketName,
           Key: s3Key,
           Body: fileStream,
-          ContentType: file.mimetype,
+          ContentType: file.mimeType,
           Tagging: this.generateResourceTag(context.resourceId),
         };
 
@@ -56,26 +56,26 @@ export class S3Service {
             progress.total && progress.loaded
               ? Math.round((progress.loaded / progress.total) * 100)
               : 0;
-          this.log.debug(`Upload progress for ${file.filename}: ${percentage}%`);
+          this.log.debug(`Upload progress for ${file.fileName}: ${percentage}%`);
         });
 
         const result = await upload.done();
-        this.log.info(`Successfully uploaded ${file.filename} to S3`);
+        this.log.info(`Successfully uploaded ${file.fileName} to S3`);
 
         results.push({
           resourceId: context.resourceId,
           resourceName: context.resourceName,
           url: result.Location!,
-          publicuid: result.Key!,
+          publicuid: context.resourceId,
+          key: result.Key!,
           fieldName: file.fieldName.split('.')[0] || file.fieldName,
-          filename: file.originalname || file.filename,
-          size: file.size,
-          mediatype: this.determineMediaType(file.mimetype),
+          filename: file.originalFileName || file.fileName,
+          size: file.fileSize,
+          mediatype: this.determineMediaType(file.mimeType),
         });
       } catch (error) {
         // Log error but continue with other files
-        this.log.error(`Error uploading ${file.filename} to S3:`, error);
-        // throw new Error(`Failed to upload ${file.filename} to S3: ${error.message}`);
+        this.log.error(`Error uploading ${file.fileName} to S3:`, error);
       }
     }
 

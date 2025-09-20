@@ -92,7 +92,13 @@ export class PropertyValidationService {
     const errors: ValidationError[] = [];
 
     // Check if required
-    if (options.required && (value === undefined || value === null || value === '')) {
+    if (
+      options.required &&
+      (value === undefined ||
+        value === null ||
+        value === '' ||
+        (typeof value === 'string' && value.trim() === ''))
+    ) {
       errors.push({
         field: fieldName,
         message: `${fieldName} is required`,
@@ -102,7 +108,12 @@ export class PropertyValidationService {
     }
 
     // Skip validation if not provided and not required
-    if (value === undefined || value === null || value === '') {
+    if (
+      value === undefined ||
+      value === null ||
+      value === '' ||
+      (typeof value === 'string' && value.trim() === '')
+    ) {
       return errors;
     }
 
@@ -374,7 +385,10 @@ export class PropertyValidationService {
         );
       }
 
-      if (propertyData.financialDetails.purchaseDate) {
+      if (
+        propertyData.financialDetails.purchaseDate &&
+        propertyData.financialDetails.purchaseDate.toString().trim() !== ''
+      ) {
         errors.push(
           ...this.validateDate(propertyData.financialDetails.purchaseDate, 'purchaseDate', {
             allowFuture: false,
@@ -383,7 +397,10 @@ export class PropertyValidationService {
         );
       }
 
-      if (propertyData.financialDetails.lastAssessmentDate) {
+      if (
+        propertyData.financialDetails.lastAssessmentDate &&
+        propertyData.financialDetails.lastAssessmentDate.toString().trim() !== ''
+      ) {
         errors.push(
           ...this.validateDate(
             propertyData.financialDetails.lastAssessmentDate,

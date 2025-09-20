@@ -6,8 +6,8 @@ import {
   createMockEmployeeInfo,
   createMockProfileDAO,
   createMockVendorInfo,
-  createMockProfile,
   createMockClientDAO,
+  createMockProfile,
   createMockUserDAO,
 } from '@tests/helpers';
 
@@ -29,10 +29,6 @@ jest.mock('@shared/validations/ProfileValidation', () => ({
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
 const mockUpdateEmployeeInfoSafeParse = ProfileValidations.updateEmployeeInfo
   .safeParse as jest.MockedFunction<typeof ProfileValidations.updateEmployeeInfo.safeParse>;
-const mockUpdateVendorInfoSafeParse = ProfileValidations.updateVendorInfo
-  .safeParse as jest.MockedFunction<typeof ProfileValidations.updateVendorInfo.safeParse>;
-const mockProfileUpdateSafeParse = ProfileValidations.profileUpdate
-  .safeParse as jest.MockedFunction<typeof ProfileValidations.profileUpdate.safeParse>;
 
 describe('ProfileService', () => {
   let profileService: ProfileService;
@@ -58,12 +54,28 @@ describe('ProfileService', () => {
     };
     mockTranslation = createMockTranslationFunction();
 
+    const mockEmitterService = {
+      emit: jest.fn(),
+      on: jest.fn(),
+      off: jest.fn(),
+      once: jest.fn(),
+      removeAllListeners: jest.fn(),
+      listenerCount: jest.fn(),
+      destroy: jest.fn(),
+    } as any;
+
+    const mockMediaUploadService = {
+      handleMediaDeletion: jest.fn(),
+    } as any;
+
     profileService = new ProfileService({
       profileDAO: mockProfileDAO,
       clientDAO: mockClientDAO,
       userDAO: mockUserDAO,
       vendorService: mockVendorService,
       userService: mockUserService,
+      emitterService: mockEmitterService,
+      mediaUploadService: mockMediaUploadService,
     });
 
     (global as any).t = mockTranslation;
@@ -167,18 +179,18 @@ describe('ProfileService', () => {
       mockClientDAO.getClientByCuid.mockResolvedValue({ displayName: 'Test Client' });
       mockUserDAO.getUserById.mockResolvedValue({ cuids: [] });
       mockUserDAO.updateById.mockResolvedValue(true);
-      mockProfileDAO.findFirst.mockResolvedValueOnce(mockProfile).mockResolvedValueOnce(mockUpdatedProfile);
+      mockProfileDAO.findFirst
+        .mockResolvedValueOnce(mockProfile)
+        .mockResolvedValueOnce(mockUpdatedProfile);
 
-      const result = await profileService.updateVendorInfo(
-        profileId,
-        cuid,
-        vendorInfo,
-        userRole
-      );
+      const result = await profileService.updateVendorInfo(profileId, cuid, vendorInfo, userRole);
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(mockUpdatedProfile);
-      expect(mockVendorService.updateVendorInfo).toHaveBeenCalledWith(mockVendor._id.toString(), vendorInfo);
+      expect(mockVendorService.updateVendorInfo).toHaveBeenCalledWith(
+        mockVendor._id.toString(),
+        vendorInfo
+      );
     });
 
     it('should throw ForbiddenError for non-vendor user role', async () => {
@@ -214,10 +226,10 @@ describe('ProfileService', () => {
       const cuid = 'test-cuid';
       const role = 'manager';
       const mockProfileObjectId = new Types.ObjectId();
-      const mockUpdatedProfile = createMockProfile({ 
-        _id: mockProfileObjectId, 
+      const mockUpdatedProfile = createMockProfile({
+        _id: mockProfileObjectId,
         id: mockProfileObjectId.toString(),
-        user: new Types.ObjectId(userId)
+        user: new Types.ObjectId(userId),
       });
 
       mockClientDAO.getClientByCuid.mockResolvedValue({ displayName: 'Test Client' });
@@ -237,10 +249,10 @@ describe('ProfileService', () => {
       const cuid = 'test-cuid';
       const role = 'vendor';
       const mockProfileObjectId = new Types.ObjectId();
-      const mockUpdatedProfile = createMockProfile({ 
-        _id: mockProfileObjectId, 
+      const mockUpdatedProfile = createMockProfile({
+        _id: mockProfileObjectId,
         id: mockProfileObjectId.toString(),
-        user: new Types.ObjectId(userId)
+        user: new Types.ObjectId(userId),
       });
 
       mockClientDAO.getClientByCuid.mockResolvedValue({ displayName: 'Test Client' });
@@ -267,5 +279,4 @@ describe('ProfileService', () => {
       );
     });
   });
-
 });

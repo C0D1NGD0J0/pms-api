@@ -36,6 +36,9 @@ describe('UserService', () => {
     mockUserCache = {
       getUserDetail: jest.fn().mockResolvedValue({ success: false }),
       cacheUserDetail: jest.fn().mockResolvedValue({ success: true }),
+      getFilteredUsers: jest.fn().mockResolvedValue({ success: false }),
+      cacheFilteredUsers: jest.fn().mockResolvedValue({ success: true }),
+      saveFilteredUsers: jest.fn().mockResolvedValue({ success: true }),
     };
     mockPermissionService = {
       canUserAccessUser: jest.fn().mockReturnValue(true),

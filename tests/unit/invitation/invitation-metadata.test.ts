@@ -10,97 +10,102 @@ import { InvitationService } from '@services/invitation/invitation.service';
 describe('Invitation Metadata Transfer', () => {
   let invitationService: InvitationService;
   let profileService: ProfileService;
-  let invitationDAO: InvitationDAO;
-  let profileDAO: ProfileDAO;
-  let clientDAO: ClientDAO;
-  let userDAO: UserDAO;
-  let emailQueue: EmailQueue;
-  let invitationQueue: InvitationQueue;
+  let mockDAOs: {
+    invitationDAO: InvitationDAO;
+    profileDAO: ProfileDAO;
+    clientDAO: ClientDAO;
+    userDAO: UserDAO;
+  };
+  let mockQueues: {
+    emailQueue: EmailQueue;
+    invitationQueue: InvitationQueue;
+  };
   let emitterService: EventEmitterService;
 
-  const mockClientId = new Types.ObjectId();
-  const mockUserId = new Types.ObjectId();
-  const mockInvitationId = new Types.ObjectId();
-  const mockProfileId = new Types.ObjectId();
+  const mockIds = {
+    client: new Types.ObjectId(),
+    user: new Types.ObjectId(),
+    invitation: new Types.ObjectId(),
+    profile: new Types.ObjectId(),
+  };
 
-  beforeEach(() => {
-    // Create mock instances
-    invitationDAO = {
+  const createMockDAOs = () => ({
+    invitationDAO: {
       findByToken: jest.fn(),
       acceptInvitation: jest.fn(),
       startSession: jest.fn(),
       withTransaction: jest.fn(),
       createInvitation: jest.fn(),
       findPendingInvitation: jest.fn(),
-    } as any;
-
-    profileDAO = {
+    } as any,
+    profileDAO: {
       createUserProfile: jest.fn(),
       findFirst: jest.fn(),
       updateCommonEmployeeInfo: jest.fn(),
       updateCommonVendorInfo: jest.fn(),
-    } as any;
-
-    clientDAO = {
+      updateEmployeeInfo: jest.fn(),
+      updateVendorInfo: jest.fn(),
+      updateVendorReference: jest.fn(),
+    } as any,
+    clientDAO: {
       getClientByCuid: jest.fn(),
-    } as any;
-
-    userDAO = {
+    } as any,
+    userDAO: {
       getActiveUserByEmail: jest.fn(),
       createUserFromInvitation: jest.fn(),
       getUserById: jest.fn(),
       getUserWithClientAccess: jest.fn(),
       updateById: jest.fn(),
-    } as any;
+    } as any,
+  });
 
-    emailQueue = {
+  const createMockQueues = () => ({
+    emailQueue: {
       addToEmailQueue: jest.fn(),
-    } as any;
+    } as any,
+    invitationQueue: {} as any,
+  });
 
-    invitationQueue = {} as any;
+  beforeEach(() => {
+    mockDAOs = createMockDAOs();
+    mockQueues = createMockQueues();
     emitterService = {
       on: jest.fn(),
       off: jest.fn(),
     } as any;
 
-    // Create ProfileService instance with required dependencies
     const mockVendorService = {
       getVendorByUserId: jest.fn(),
       updateVendorInfo: jest.fn(),
       createVendor: jest.fn(),
+      linkVendorToClient: jest.fn(),
     } as any;
+
     const mockUserService = {
       getClientUserInfo: jest.fn(),
       updateUserInfo: jest.fn(),
     } as any;
 
-    profileService = new ProfileService({
-      profileDAO,
-      clientDAO,
-      userDAO,
-      vendorService: mockVendorService,
-      userService: mockUserService,
-    });
-
-    // Create InvitationService instance with required dependencies
-    const mockVendorServiceForInvitation = {
-      createVendor: jest.fn(),
-      linkVendorToClient: jest.fn(),
+    const mockMediaUploadService = {
+      handleMediaDeletion: jest.fn(),
     } as any;
 
-    invitationService = new InvitationService({
-      invitationDAO,
-      emailQueue,
-      userDAO,
-      profileDAO,
-      clientDAO,
-      invitationQueue,
+    profileService = new ProfileService({
+      ...mockDAOs,
+      vendorService: mockVendorService,
+      userService: mockUserService,
       emitterService,
-      profileService,
-      vendorService: mockVendorServiceForInvitation,
+      mediaUploadService: mockMediaUploadService,
     });
 
-    // Spy on the initializeRoleInfo method
+    invitationService = new InvitationService({
+      ...mockDAOs,
+      ...mockQueues,
+      emitterService,
+      profileService,
+      vendorService: mockVendorService,
+    });
+
     jest.spyOn(profileService, 'initializeRoleInfo');
   });
 
@@ -119,7 +124,7 @@ describe('Invitation Metadata Transfer', () => {
       };
 
       const mockInvitation = {
-        _id: mockInvitationId,
+        _id: mockIds.invitation,
         inviteeEmail: 'employee@example.com',
         role: 'manager',
         metadata: {
@@ -131,41 +136,43 @@ describe('Invitation Metadata Transfer', () => {
         },
         inviteeFullName: 'Jane Smith',
         isValid: () => true,
-        clientId: mockClientId,
+        clientId: mockIds.client,
       };
 
       const mockUser = {
-        _id: mockUserId,
+        _id: mockIds.user,
         email: 'employee@example.com',
         uid: 'user-uid-123',
         cuids: [],
       };
 
       const mockClient = {
-        id: mockClientId,
+        id: mockIds.client,
         cuid: 'client-123',
         displayName: 'Test Company',
       };
 
       const mockProfile = {
-        id: mockProfileId,
-        user: mockUserId,
+        id: mockIds.profile,
+        user: mockIds.user,
       };
 
       // Setup mocks
-      (invitationDAO.startSession as jest.Mock).mockResolvedValue({});
-      (invitationDAO.withTransaction as jest.Mock).mockImplementation(async (session, callback) => {
-        return callback(session);
-      });
-      (invitationDAO.findByToken as jest.Mock).mockResolvedValue(mockInvitation);
-      (userDAO.getActiveUserByEmail as jest.Mock).mockResolvedValue(null);
-      (clientDAO.getClientByCuid as jest.Mock).mockResolvedValue(mockClient);
-      (userDAO.createUserFromInvitation as jest.Mock).mockResolvedValue(mockUser);
-      (profileDAO.createUserProfile as jest.Mock).mockResolvedValue(mockProfile);
-      (invitationDAO.acceptInvitation as jest.Mock).mockResolvedValue(true);
-      (profileDAO.findFirst as jest.Mock).mockResolvedValue(mockProfile);
-      (profileDAO.updateCommonEmployeeInfo as jest.Mock).mockResolvedValue(mockProfile);
-      (userDAO.getUserById as jest.Mock).mockResolvedValue(mockUser);
+      (mockDAOs.invitationDAO.startSession as jest.Mock).mockResolvedValue({});
+      (mockDAOs.invitationDAO.withTransaction as jest.Mock).mockImplementation(
+        async (session, callback) => {
+          return callback(session);
+        }
+      );
+      (mockDAOs.invitationDAO.findByToken as jest.Mock).mockResolvedValue(mockInvitation);
+      (mockDAOs.userDAO.getActiveUserByEmail as jest.Mock).mockResolvedValue(null);
+      (mockDAOs.clientDAO.getClientByCuid as jest.Mock).mockResolvedValue(mockClient);
+      (mockDAOs.userDAO.createUserFromInvitation as jest.Mock).mockResolvedValue(mockUser);
+      (mockDAOs.profileDAO.createUserProfile as jest.Mock).mockResolvedValue(mockProfile);
+      (mockDAOs.invitationDAO.acceptInvitation as jest.Mock).mockResolvedValue(true);
+      (mockDAOs.profileDAO.findFirst as jest.Mock).mockResolvedValue(mockProfile);
+      (mockDAOs.profileDAO.updateCommonEmployeeInfo as jest.Mock).mockResolvedValue(mockProfile);
+      (mockDAOs.userDAO.getUserById as jest.Mock).mockResolvedValue(mockUser);
 
       const acceptanceData: IInvitationAcceptance = {
         token: 'test-token',
@@ -186,7 +193,7 @@ describe('Invitation Metadata Transfer', () => {
 
       // Verify that initializeRoleInfo was called with the employee metadata
       expect(profileService.initializeRoleInfo).toHaveBeenCalledWith(
-        mockUserId.toString(),
+        mockIds.user.toString(),
         'client-123',
         'manager',
         undefined,
@@ -196,9 +203,10 @@ describe('Invitation Metadata Transfer', () => {
         }
       );
 
-      // Verify that updateCommonEmployeeInfo was called with the employee data
-      expect(profileDAO.updateCommonEmployeeInfo).toHaveBeenCalledWith(
-        mockProfileId,
+      // Verify that updateEmployeeInfo was called with the employee data
+      expect(mockDAOs.profileDAO.updateEmployeeInfo).toHaveBeenCalledWith(
+        mockIds.profile,
+        'client-123',
         mockEmployeeInfo
       );
     });
@@ -227,7 +235,7 @@ describe('Invitation Metadata Transfer', () => {
       };
 
       const mockInvitation = {
-        _id: mockInvitationId,
+        _id: mockIds.invitation,
         inviteeEmail: 'vendor@example.com',
         role: 'vendor',
         metadata: {
@@ -239,41 +247,50 @@ describe('Invitation Metadata Transfer', () => {
         },
         inviteeFullName: 'Bob Vendor',
         isValid: () => true,
-        clientId: mockClientId,
+        clientId: mockIds.client,
       };
 
       const mockUser = {
-        _id: mockUserId,
+        _id: mockIds.user,
         email: 'vendor@example.com',
         uid: 'vendor-uid-456',
         cuids: [],
       };
 
       const mockClient = {
-        id: mockClientId,
+        id: mockIds.client,
         cuid: 'client-123',
         displayName: 'Test Company',
       };
 
       const mockProfile = {
-        id: mockProfileId,
-        user: mockUserId,
+        id: mockIds.profile,
+        user: mockIds.user,
       };
 
       // Setup mocks
-      (invitationDAO.startSession as jest.Mock).mockResolvedValue({});
-      (invitationDAO.withTransaction as jest.Mock).mockImplementation(async (session, callback) => {
-        return callback(session);
+      (mockDAOs.invitationDAO.startSession as jest.Mock).mockResolvedValue({});
+      (mockDAOs.invitationDAO.withTransaction as jest.Mock).mockImplementation(
+        async (session, callback) => {
+          return callback(session);
+        }
+      );
+      (mockDAOs.invitationDAO.findByToken as jest.Mock).mockResolvedValue(mockInvitation);
+      (mockDAOs.userDAO.getActiveUserByEmail as jest.Mock).mockResolvedValue(null);
+      (mockDAOs.clientDAO.getClientByCuid as jest.Mock).mockResolvedValue(mockClient);
+      (mockDAOs.userDAO.createUserFromInvitation as jest.Mock).mockResolvedValue(mockUser);
+      (mockDAOs.profileDAO.createUserProfile as jest.Mock).mockResolvedValue(mockProfile);
+      (mockDAOs.invitationDAO.acceptInvitation as jest.Mock).mockResolvedValue(true);
+      (mockDAOs.profileDAO.findFirst as jest.Mock).mockResolvedValue(mockProfile);
+      (mockDAOs.profileDAO.updateVendorReference as jest.Mock).mockResolvedValue(mockProfile);
+      (mockDAOs.userDAO.getUserById as jest.Mock).mockResolvedValue(mockUser);
+
+      // Mock vendor service
+      const mockVendorServiceForInvitation = (invitationService as any).vendorService;
+      mockVendorServiceForInvitation.createVendor.mockResolvedValue({
+        success: true,
+        data: { _id: new Types.ObjectId(), vuid: 'vendor-123' },
       });
-      (invitationDAO.findByToken as jest.Mock).mockResolvedValue(mockInvitation);
-      (userDAO.getActiveUserByEmail as jest.Mock).mockResolvedValue(null);
-      (clientDAO.getClientByCuid as jest.Mock).mockResolvedValue(mockClient);
-      (userDAO.createUserFromInvitation as jest.Mock).mockResolvedValue(mockUser);
-      (profileDAO.createUserProfile as jest.Mock).mockResolvedValue(mockProfile);
-      (invitationDAO.acceptInvitation as jest.Mock).mockResolvedValue(true);
-      (profileDAO.findFirst as jest.Mock).mockResolvedValue(mockProfile);
-      (profileDAO.updateVendorInfo as jest.Mock).mockResolvedValue(mockProfile);
-      (userDAO.getUserById as jest.Mock).mockResolvedValue(mockUser);
 
       const acceptanceData: IInvitationAcceptance = {
         token: 'vendor-token',
@@ -294,7 +311,7 @@ describe('Invitation Metadata Transfer', () => {
 
       // Verify that initializeRoleInfo was called with the vendor metadata
       expect(profileService.initializeRoleInfo).toHaveBeenCalledWith(
-        mockUserId.toString(),
+        mockIds.user.toString(),
         'client-123',
         'vendor',
         undefined,
@@ -304,15 +321,17 @@ describe('Invitation Metadata Transfer', () => {
         }
       );
 
-      // Verify that updateCommonVendorInfo was called with the vendor data
-      expect(profileDAO.updateVendorInfo).toHaveBeenCalledWith(mockProfileId, mockVendorInfo);
+      // Verify that for simple vendorInfo without isPrimaryVendor, no vendor entity is created
+      // since the profile service only creates vendors for primary vendors or team members
+      expect(mockVendorServiceForInvitation.createVendor).not.toHaveBeenCalled();
+      expect(mockDAOs.profileDAO.updateVendorReference).not.toHaveBeenCalled();
     });
   });
 
   describe('No Metadata Scenario', () => {
     it('should handle invitation acceptance when no metadata is provided', async () => {
       const mockInvitation = {
-        _id: mockInvitationId,
+        _id: mockIds.invitation,
         inviteeEmail: 'staff@example.com',
         role: 'staff',
         metadata: {}, // Empty metadata
@@ -322,41 +341,43 @@ describe('Invitation Metadata Transfer', () => {
         },
         inviteeFullName: 'Alice Staff',
         isValid: () => true,
-        clientId: mockClientId,
+        clientId: mockIds.client,
       };
 
       const mockUser = {
-        _id: mockUserId,
+        _id: mockIds.user,
         email: 'staff@example.com',
         uid: 'staff-uid-789',
         cuids: [],
       };
 
       const mockClient = {
-        id: mockClientId,
+        id: mockIds.client,
         cuid: 'client-123',
         displayName: 'Test Company',
       };
 
       const mockProfile = {
-        id: mockProfileId,
-        user: mockUserId,
+        id: mockIds.profile,
+        user: mockIds.user,
       };
 
       // Setup mocks
-      (invitationDAO.startSession as jest.Mock).mockResolvedValue({});
-      (invitationDAO.withTransaction as jest.Mock).mockImplementation(async (session, callback) => {
-        return callback(session);
-      });
-      (invitationDAO.findByToken as jest.Mock).mockResolvedValue(mockInvitation);
-      (userDAO.getActiveUserByEmail as jest.Mock).mockResolvedValue(null);
-      (clientDAO.getClientByCuid as jest.Mock).mockResolvedValue(mockClient);
-      (userDAO.createUserFromInvitation as jest.Mock).mockResolvedValue(mockUser);
-      (profileDAO.createUserProfile as jest.Mock).mockResolvedValue(mockProfile);
-      (invitationDAO.acceptInvitation as jest.Mock).mockResolvedValue(true);
-      (profileDAO.findFirst as jest.Mock).mockResolvedValue(mockProfile);
-      (profileDAO.updateCommonEmployeeInfo as jest.Mock).mockResolvedValue(mockProfile);
-      (userDAO.getUserById as jest.Mock).mockResolvedValue(mockUser);
+      (mockDAOs.invitationDAO.startSession as jest.Mock).mockResolvedValue({});
+      (mockDAOs.invitationDAO.withTransaction as jest.Mock).mockImplementation(
+        async (session, callback) => {
+          return callback(session);
+        }
+      );
+      (mockDAOs.invitationDAO.findByToken as jest.Mock).mockResolvedValue(mockInvitation);
+      (mockDAOs.userDAO.getActiveUserByEmail as jest.Mock).mockResolvedValue(null);
+      (mockDAOs.clientDAO.getClientByCuid as jest.Mock).mockResolvedValue(mockClient);
+      (mockDAOs.userDAO.createUserFromInvitation as jest.Mock).mockResolvedValue(mockUser);
+      (mockDAOs.profileDAO.createUserProfile as jest.Mock).mockResolvedValue(mockProfile);
+      (mockDAOs.invitationDAO.acceptInvitation as jest.Mock).mockResolvedValue(true);
+      (mockDAOs.profileDAO.findFirst as jest.Mock).mockResolvedValue(mockProfile);
+      (mockDAOs.profileDAO.updateEmployeeInfo as jest.Mock).mockResolvedValue(mockProfile);
+      (mockDAOs.userDAO.getUserById as jest.Mock).mockResolvedValue(mockUser);
 
       const acceptanceData: IInvitationAcceptance = {
         token: 'staff-token',
@@ -377,7 +398,7 @@ describe('Invitation Metadata Transfer', () => {
 
       // Verify that initializeRoleInfo was called with empty metadata
       expect(profileService.initializeRoleInfo).toHaveBeenCalledWith(
-        mockUserId.toString(),
+        mockIds.user.toString(),
         'client-123',
         'staff',
         undefined,
@@ -387,8 +408,12 @@ describe('Invitation Metadata Transfer', () => {
         }
       );
 
-      // Verify that updateCommonEmployeeInfo was called with empty object
-      expect(profileDAO.updateCommonEmployeeInfo).toHaveBeenCalledWith(mockProfileId, {});
+      // Verify that updateEmployeeInfo was called with empty object
+      expect(mockDAOs.profileDAO.updateEmployeeInfo).toHaveBeenCalledWith(
+        mockIds.profile,
+        'client-123',
+        {}
+      );
     });
   });
 });

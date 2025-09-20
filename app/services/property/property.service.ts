@@ -4,12 +4,11 @@ import sanitizeHtml from 'sanitize-html';
 import { FilterQuery, Types } from 'mongoose';
 import { PropertyCache } from '@caching/index';
 import { GeoCoderService } from '@services/external';
-import { PropertyCsvProcessor } from '@services/csv';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
-import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyTypeManager } from '@utils/PropertyTypeManager';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
 import {
   UploadCompletedPayload,
   UploadFailedPayload,
@@ -23,6 +22,13 @@ import {
   NotFoundError,
 } from '@shared/customErrors';
 import {
+  PROPERTY_CREATION_ALLOWED_DEPARTMENTS,
+  PROPERTY_APPROVAL_ROLES,
+  PROPERTY_STAFF_ROLES,
+  getRequestDuration,
+  createLogger,
+} from '@utils/index';
+import {
   ExtractedMediaFile,
   ISuccessReturnData,
   IPaginationQuery,
@@ -30,14 +36,6 @@ import {
   PaginateResult,
   UploadResult,
 } from '@interfaces/utils.interface';
-import {
-  PROPERTY_CREATION_ALLOWED_DEPARTMENTS,
-  PROPERTY_APPROVAL_ROLES,
-  PROPERTY_STAFF_ROLES,
-  getRequestDuration,
-  createLogger,
-  JOB_NAME,
-} from '@utils/index';
 import {
   PropertyApprovalStatusEnum,
   IAssignableUsersFilter,
@@ -52,6 +50,7 @@ import { PropertyValidationService } from './propertyValidation.service';
 
 interface IConstructor {
   propertyCsvProcessor: PropertyCsvProcessor;
+  mediaUploadService: MediaUploadService;
   emitterService: EventEmitterService;
   geoCoderService: GeoCoderService;
   propertyUnitDAO: PropertyUnitDAO;
@@ -76,6 +75,7 @@ export class PropertyService implements IDisposable {
   private readonly geoCoderService: GeoCoderService;
   private readonly emitterService: EventEmitterService;
   private readonly propertyCsvProcessor: PropertyCsvProcessor;
+  private readonly mediaUploadService: MediaUploadService;
   private readonly userDAO: UserDAO;
 
   constructor({
@@ -89,6 +89,7 @@ export class PropertyService implements IDisposable {
     propertyQueue,
     geoCoderService,
     propertyCsvProcessor,
+    mediaUploadService,
     userDAO,
   }: IConstructor) {
     this.clientDAO = clientDAO;
@@ -102,9 +103,9 @@ export class PropertyService implements IDisposable {
     this.geoCoderService = geoCoderService;
     this.log = createLogger('PropertyService');
     this.propertyCsvProcessor = propertyCsvProcessor;
+    this.mediaUploadService = mediaUploadService;
     this.userDAO = userDAO;
 
-    // Initialize event listeners
     this.setupEventListeners();
   }
 
@@ -123,9 +124,6 @@ export class PropertyService implements IDisposable {
     this.log.info(t('property.logging.eventListenersInitialized'));
   }
 
-  /**
-   * Validate property data and check for errors
-   */
   private validatePropertyData(
     propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
     cxt: IRequestContext,
@@ -161,9 +159,6 @@ export class PropertyService implements IDisposable {
     }
   }
 
-  /**
-   * Check for duplicate address
-   */
   private async checkAddressUniqueness(
     propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
     cuid: string
@@ -183,9 +178,6 @@ export class PropertyService implements IDisposable {
     }
   }
 
-  /**
-   * Determine approval status based on user role and permissions
-   */
   private async determineApprovalStatus(
     currentuser: any
   ): Promise<{ approvalStatus: PropertyApprovalStatusEnum; approvalDetails: any }> {
@@ -238,9 +230,6 @@ export class PropertyService implements IDisposable {
     return { approvalStatus, approvalDetails };
   }
 
-  /**
-   * Create the property in database
-   */
   private async createPropertyInDatabase(
     propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
     cuid: string,
@@ -296,31 +285,6 @@ export class PropertyService implements IDisposable {
     return property;
   }
 
-  /**
-   * Handle file uploads if any
-   */
-  private handlePropertyFiles(
-    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
-    property: any,
-    currentuser: any
-  ): void {
-    if (propertyData.scannedFiles && propertyData.scannedFiles.length > 0) {
-      this.uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
-        resource: {
-          fieldName: 'documents',
-          resourceType: 'unknown',
-          resourceName: 'property',
-          actorId: currentuser.sub,
-          resourceId: property.id,
-        },
-        files: propertyData.scannedFiles,
-      });
-    }
-  }
-
-  /**
-   * Cache property and return success response
-   */
   private async finalizePropertyCreation(property: any, cuid: string): Promise<ISuccessReturnData> {
     await this.propertyCache.cacheProperty(cuid, property.id, property);
     return { success: true, data: property, message: t('property.success.created') };
@@ -354,7 +318,6 @@ export class PropertyService implements IDisposable {
       return { property };
     });
 
-    this.handlePropertyFiles(propertyData, result.property, currentuser);
     return await this.finalizePropertyCreation(result.property, cuid);
   }
 
@@ -449,24 +412,27 @@ export class PropertyService implements IDisposable {
   }
 
   async updatePropertyDocuments(
-    propertyId: string,
+    propertyUid: string,
     uploadResult: UploadResult[],
     userid: string
   ): Promise<ISuccessReturnData> {
-    if (!propertyId) {
+    if (!propertyUid) {
       throw new BadRequestError({ message: t('property.errors.propertyIdRequired') });
     }
 
     if (!uploadResult || uploadResult.length === 0) {
       throw new BadRequestError({ message: t('property.errors.uploadResultRequired') });
     }
-    const property = await this.propertyDAO.findById(propertyId);
+    const property = await this.propertyDAO.findFirst({
+      pid: propertyUid,
+      deletedAt: null,
+    });
     if (!property) {
       throw new BadRequestError({ message: t('property.errors.unableToFind') });
     }
 
     const updatedProperty = await this.propertyDAO.updatePropertyDocument(
-      propertyId,
+      propertyUid,
       uploadResult,
       userid
     );
@@ -637,6 +603,18 @@ export class PropertyService implements IDisposable {
     //   };
     // }
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
+
+    // Add pending changes preview to each property
+    const itemsWithPreview = properties.items.map((property) => {
+      const propertyObj = property.toObject ? property.toObject() : property;
+      const pendingChangesPreview = this.generatePendingChangesPreview(property, currentuser);
+
+      return {
+        ...propertyObj,
+        ...(pendingChangesPreview && { pendingChangesPreview }),
+      };
+    });
+
     await this.propertyCache.saveClientProperties(cuid, properties.items, {
       filter,
       pagination: opts,
@@ -645,7 +623,7 @@ export class PropertyService implements IDisposable {
     return {
       success: true,
       data: {
-        items: properties.items,
+        items: itemsWithPreview,
         pagination: properties.pagination,
       },
     };
@@ -654,7 +632,7 @@ export class PropertyService implements IDisposable {
   async getClientProperty(
     cuid: string,
     pid: string,
-    _currentUser: ICurrentUser
+    currentUser: ICurrentUser
   ): Promise<ISuccessReturnData<IPropertyWithUnitInfo>> {
     if (!cuid || !pid) {
       throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
@@ -674,12 +652,22 @@ export class PropertyService implements IDisposable {
     if (!property) {
       throw new NotFoundError({ message: t('property.errors.notFound') });
     }
+
     const unitInfo = await this.getUnitInfoForProperty(property);
-    console.log('Unit Info:', property);
+
+    // Add pending changes preview to property
+    const propertyObj = property.toObject ? property.toObject() : property;
+    const pendingChangesPreview = this.generatePendingChangesPreview(property, currentUser);
+
+    const propertyWithPreview = {
+      ...propertyObj,
+      ...(pendingChangesPreview && { pendingChangesPreview }),
+    };
+
     return {
       success: true,
       data: {
-        property,
+        property: propertyWithPreview,
         unitInfo,
       },
     };
@@ -690,10 +678,11 @@ export class PropertyService implements IDisposable {
       cuid: string;
       pid: string;
       currentuser: ICurrentUser;
+      hardDelete?: boolean;
     },
     updateData: Partial<IPropertyDocument>
   ): Promise<ISuccessReturnData> {
-    const { cuid, pid } = ctx;
+    const { cuid, pid, hardDelete = false } = ctx;
 
     if (!cuid || !pid) {
       this.log.error('Client ID and Property ID are required');
@@ -720,7 +709,30 @@ export class PropertyService implements IDisposable {
     let message = 'Property updated successfully';
 
     // Remove pendingChanges from updateData if it exists
-    const { pendingChanges, ...cleanUpdateData } = updateData;
+    const { pendingChanges, images, documents, ...restUpdateData } = updateData;
+
+    // Create properly typed cleanUpdateData
+    const cleanUpdateData: Partial<IPropertyDocument> = { ...restUpdateData };
+
+    const deletionTasks = [];
+
+    if (images !== undefined) {
+      deletionTasks.push(
+        this.mediaUploadService.handleMediaDeletion([], images, ctx.currentuser.sub, hardDelete)
+      );
+      cleanUpdateData.images = images;
+    }
+
+    if (documents !== undefined) {
+      deletionTasks.push(
+        this.mediaUploadService.handleMediaDeletion([], documents, ctx.currentuser.sub, hardDelete)
+      );
+      cleanUpdateData.documents = documents;
+    }
+
+    if (deletionTasks.length > 0) {
+      await Promise.all(deletionTasks);
+    }
 
     // Staff edits go to pendingChanges, admin/manager edits go directly to main fields
     if (PROPERTY_STAFF_ROLES.includes(userRole)) {
@@ -831,10 +843,6 @@ export class PropertyService implements IDisposable {
     };
   }
 
-  /**
-   * Get pending property approvals
-   * Only admin/managers can access this
-   */
   async getPendingApprovals(
     cuid: string,
     currentuser: ICurrentUser,
@@ -874,10 +882,6 @@ export class PropertyService implements IDisposable {
     };
   }
 
-  /**
-   * Approve a property
-   * Only admin/managers can approve
-   */
   async approveProperty(
     cuid: string,
     pid: string,
@@ -963,10 +967,6 @@ export class PropertyService implements IDisposable {
     };
   }
 
-  /**
-   * Reject a property
-   * Only admin/managers can reject
-   */
   async rejectProperty(
     cuid: string,
     pid: string,
@@ -1048,10 +1048,6 @@ export class PropertyService implements IDisposable {
     };
   }
 
-  /**
-   * Bulk approve properties
-   * Only admin/managers can bulk approve
-   */
   async bulkApproveProperties(
     cuid: string,
     propertyIds: string[],
@@ -1101,10 +1097,6 @@ export class PropertyService implements IDisposable {
     };
   }
 
-  /**
-   * Bulk reject properties
-   * Only admin/managers can bulk reject
-   */
   async bulkRejectProperties(
     cuid: string,
     propertyIds: string[],
@@ -1160,9 +1152,6 @@ export class PropertyService implements IDisposable {
     };
   }
 
-  /**
-   * Get staff's own property requests
-   */
   async getMyPropertyRequests(
     cuid: string,
     currentuser: ICurrentUser,
@@ -1199,6 +1188,74 @@ export class PropertyService implements IDisposable {
       },
       message: 'Property requests retrieved successfully',
     };
+  }
+
+  private shouldShowPendingChanges(
+    currentUser: ICurrentUser,
+    property: IPropertyDocument
+  ): boolean {
+    // Return false if no pending changes exist
+    if (!property.pendingChanges) {
+      return false;
+    }
+
+    const userRole = currentUser.client.role;
+
+    // Admin/managers can see all pending changes
+    if (PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+      return true;
+    }
+
+    // Staff can only see their own pending changes
+    if (PROPERTY_STAFF_ROLES.includes(userRole)) {
+      const pendingChanges = property.pendingChanges as any;
+      return pendingChanges.updatedBy?.toString() === currentUser.sub;
+    }
+
+    return false;
+  }
+
+  private generatePendingChangesPreview(
+    property: IPropertyDocument,
+    currentUser: ICurrentUser
+  ): any {
+    if (!property.pendingChanges || !this.shouldShowPendingChanges(currentUser, property)) {
+      return undefined;
+    }
+
+    const pendingChanges = property.pendingChanges as any;
+    const { updatedBy, updatedAt, ...changes } = pendingChanges;
+
+    const updatedFields = Object.keys(changes);
+    const summary = this.generateChangesSummary(updatedFields);
+
+    return {
+      updatedFields,
+      updatedAt,
+      updatedBy,
+      summary,
+    };
+  }
+
+  private generateChangesSummary(updatedFields: string[]): string {
+    if (updatedFields.length === 0) return 'No changes';
+
+    const fieldNames = updatedFields.map((field) => {
+      // Convert camelCase and nested fields to readable names
+      return field
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (str) => str.toUpperCase())
+        .replace(/\./g, ' > ');
+    });
+
+    if (fieldNames.length === 1) {
+      return `Modified ${fieldNames[0]}`;
+    } else if (fieldNames.length === 2) {
+      return `Modified ${fieldNames[0]} and ${fieldNames[1]}`;
+    } else {
+      const lastField = fieldNames.pop();
+      return `Modified ${fieldNames.join(', ')}, and ${lastField}`;
+    }
   }
 
   private validateOccupancyStatusChange(
@@ -1479,6 +1536,15 @@ export class PropertyService implements IDisposable {
     availableSpaces: number;
     lastUnitNumber?: string;
     suggestedNextUnitNumber?: string;
+    statistics: {
+      occupied: number;
+      vacant: number;
+      maintenance: number;
+      available: number;
+      reserved: number;
+      inactive: number;
+    };
+    totalUnits: number;
     unitStats: {
       occupied: number;
       vacant: number;
@@ -1549,6 +1615,8 @@ export class PropertyService implements IDisposable {
         availableSpaces,
         lastUnitNumber,
         suggestedNextUnitNumber,
+        statistics: unitData.unitStats,
+        totalUnits: unitData.currentUnits,
         unitStats: unitData.unitStats,
       };
     } else {
@@ -1590,15 +1658,13 @@ export class PropertyService implements IDisposable {
         currentUnits: 1,
         availableSpaces: 0,
         suggestedNextUnitNumber,
+        statistics: unitStats,
+        totalUnits: 1,
         unitStats,
       };
     }
   }
 
-  /**
-   * Get users that can be assigned to manage properties
-   * Filters for admin, staff, and manager roles only, with optional department filtering
-   */
   async getAssignableUsers(
     cuid: string,
     currentuser: ICurrentUser,
@@ -1669,7 +1735,6 @@ export class PropertyService implements IDisposable {
       // Add projection to shape the response
       pipeline.push({
         $project: {
-          // id: { $toString: '$_id' },
           puid: '$profile.puid',
           email: 1,
           displayName: '$profile.personalInfo.displayName',

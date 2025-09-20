@@ -113,4 +113,10 @@ export {
   createMockVendorService,
 } from './mocks/vendor.mocks';
 
+export {
+  createMockAssetService,
+  createMockMediaUploadService,
+  createMockUploadResult,
+} from './mocks/mediaUpload.mocks';
+
 export * from './testUtils';

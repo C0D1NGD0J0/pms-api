@@ -494,7 +494,17 @@ describe('Auth Routes Integration Tests', () => {
         .set('Authorization', `Bearer ${faker.string.alphanumeric(50)}`)
         .expect(httpStatusCodes.OK);
 
-      expect(response.body).toEqual(mockResponse);
+      expect(response.body).toEqual({
+        ...mockResponse,
+        data: {
+          ...mockResponse.data,
+          gdpr: {
+            ...mockResponse.data.gdpr,
+            processingConsentDate: expect.any(String),
+            retentionExpiryDate: expect.any(String),
+          },
+        },
+      });
       expect(mockController.getCurrentUser).toHaveBeenCalled();
     });
 
@@ -1167,7 +1177,17 @@ describe('Auth Routes Integration Tests', () => {
         .get(`${baseUrl}/${faker.string.uuid()}/me`)
         .expect(httpStatusCodes.OK);
 
-      expect(response.body).toEqual(mockResponse);
+      expect(response.body).toEqual({
+        ...mockResponse,
+        data: {
+          ...mockResponse.data,
+          gdpr: {
+            ...mockResponse.data.gdpr,
+            processingConsentDate: expect.any(String),
+            retentionExpiryDate: expect.any(String),
+          },
+        },
+      });
       expect(mockController.getCurrentUser).toHaveBeenCalled();
     });
   });

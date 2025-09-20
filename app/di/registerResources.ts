@@ -1,15 +1,17 @@
 import { BaseIO } from '@sockets/index';
+import { AssetDAO } from '@dao/assetDAO';
 import { MailService } from '@mailer/index';
 import { QueueFactory } from '@services/queue';
 import { GeoCoderService } from '@services/external';
 import { ClamScannerService } from '@shared/config/index';
+import { AssetService } from '@services/asset/asset.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { LanguageService } from '@shared/languages/language.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
+import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
-import { PropertyUnit, Invitation, Property, Profile, Client, Vendor, User } from '@models/index';
 import {
   EventsRegistryCache,
   PropertyCache,
@@ -17,6 +19,16 @@ import {
   AuthCache,
   UserCache,
 } from '@caching/index';
+import {
+  PropertyUnit,
+  Invitation,
+  Property,
+  Profile,
+  Client,
+  Vendor,
+  Asset,
+  User,
+} from '@models/index';
 import {
   PropertyUnitDAO,
   InvitationDAO,
@@ -80,41 +92,45 @@ const ControllerResources = {
 };
 
 const ModelResources = {
-  userModel: asValue(User),
+  assetModel: asValue(Asset),
   clientModel: asValue(Client),
+  invitationModel: asValue(Invitation),
   profileModel: asValue(Profile),
   propertyModel: asValue(Property),
   propertyUnitModel: asValue(PropertyUnit),
-  invitationModel: asValue(Invitation),
+  userModel: asValue(User),
   vendorModel: asValue(Vendor),
 };
 
 const ServiceResources = {
+  assetService: asClass(AssetService).singleton(),
   authService: asClass(AuthService).singleton(),
   clientService: asClass(ClientService).singleton(),
-  userService: asClass(UserService).singleton(),
-  mailerService: asClass(MailService).singleton(),
-  tokenService: asClass(AuthTokenService).singleton(),
-  languageService: asClass(LanguageService).singleton(),
-  propertyService: asClass(PropertyService).singleton(),
-  profileService: asClass(ProfileService).singleton(),
   emitterService: asClass(EventEmitterService).singleton(),
-  propertyUnitService: asClass(PropertyUnitService).singleton(),
-  propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
-  unitNumberingService: asClass(UnitNumberingService).singleton(),
-  permissionService: asClass(PermissionService).singleton(),
   invitationService: asClass(InvitationService).singleton(),
+  languageService: asClass(LanguageService).singleton(),
+  mailerService: asClass(MailService).singleton(),
+  mediaUploadService: asClass(MediaUploadService).singleton(),
+  permissionService: asClass(PermissionService).singleton(),
+  profileService: asClass(ProfileService).singleton(),
+  propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
+  propertyService: asClass(PropertyService).singleton(),
+  propertyUnitService: asClass(PropertyUnitService).singleton(),
+  tokenService: asClass(AuthTokenService).singleton(),
+  unitNumberingService: asClass(UnitNumberingService).singleton(),
+  userService: asClass(UserService).singleton(),
   vendorService: asClass(VendorService).singleton(),
 };
 
 const DAOResources = {
-  userDAO: asClass(UserDAO).singleton(),
+  assetDAO: asClass(AssetDAO).singleton(),
   clientDAO: asClass(ClientDAO).singleton(),
+  invitationDAO: asClass(InvitationDAO).singleton(),
   profileDAO: asClass(ProfileDAO).singleton(),
   propertyDAO: asClass(PropertyDAO).singleton(),
   propertyUnitDAO: asClass(PropertyUnitDAO).singleton(),
-  invitationDAO: asClass(InvitationDAO).singleton(),
+  userDAO: asClass(UserDAO).singleton(),
   vendorDAO: asClass(VendorDAO).singleton(),
 };
 

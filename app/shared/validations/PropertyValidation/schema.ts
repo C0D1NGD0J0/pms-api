@@ -148,7 +148,7 @@ const PropertyMediaDocumentSchema = z.object({
   documentType: z.enum(['deed', 'tax', 'insurance', 'inspection', 'other', 'lease']).optional(),
   url: z.string().url('Invalid URL format for document'),
   key: z.string().optional(),
-  status: z.enum(['active', 'inactive']).default('active'),
+  status: z.enum(['active', 'inactive', 'deleted', 'pending', 'processing']).default('active'),
   externalUrl: z.string().url('Invalid external URL format').optional(),
   uploadedAt: z.coerce
     .date({
@@ -163,6 +163,25 @@ const PropertyMediaDocumentSchema = z.object({
   uploadedBy: z.string(),
   description: z.string().max(150, 'Description must be at most 150 characters').optional(),
   documentName: z.string().max(100, 'Document name must be at most 100 characters').optional(),
+});
+
+const PropertyImageSchema = z.object({
+  url: z.string().url('Invalid URL format for image'),
+  status: z.enum(['active', 'inactive', 'deleted', 'pending', 'processing']).default('active'),
+  filename: z.string().optional(),
+  key: z.string().optional(),
+  uploadedAt: z.coerce
+    .date({
+      errorMap: (issue, { defaultError }) => ({
+        message:
+          issue.code === z.ZodIssueCode.invalid_date
+            ? 'Invalid date format for uploaded date'
+            : defaultError,
+      }),
+    })
+    .default(() => new Date()),
+  uploadedBy: z.string(),
+  description: z.string().max(150, 'Description must be at most 150 characters').optional(),
 });
 
 const DescriptionSchema = z.object({
@@ -215,6 +234,7 @@ const CreatePropertySchema = z.object({
   interiorAmenities: InteriorAmenitiesSchema.optional(),
   communityAmenities: CommunityAmenitiesSchema.optional(),
   documents: z.array(PropertyMediaDocumentSchema).optional(),
+  images: z.array(PropertyImageSchema).max(5, 'Property cannot have more than 5 images').optional(),
 });
 
 export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefine(

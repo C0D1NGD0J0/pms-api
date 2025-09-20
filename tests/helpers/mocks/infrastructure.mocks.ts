@@ -74,6 +74,8 @@ export const createMockPropertyUnitQueue = () => ({
 
 export const createMockUploadQueue = () => ({
   addToQueue: jest.fn().mockResolvedValue(true),
+  addToUploadQueue: jest.fn().mockResolvedValue(true),
+  addToRemovalQueue: jest.fn().mockResolvedValue(true),
   processQueueJobs: jest.fn().mockResolvedValue(true),
   shutdown: jest.fn().mockResolvedValue(true),
 });

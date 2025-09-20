@@ -8,80 +8,84 @@ import {
   createMockProperty,
 } from '@tests/helpers';
 
-// Mock the services
-const mockPropertyService = {
-  addProperty: jest.fn(),
-  updateClientProperty: jest.fn(),
-  getClientProperty: jest.fn(),
-  getClientProperties: jest.fn(),
-  archiveClientProperty: jest.fn(),
-  validateCsv: jest.fn(),
-  addPropertiesFromCsv: jest.fn(),
-  getPendingApprovals: jest.fn(),
-  approveProperty: jest.fn(),
-  rejectProperty: jest.fn(),
-  bulkApproveProperties: jest.fn(),
-  bulkRejectProperties: jest.fn(),
-  getMyPropertyRequests: jest.fn(),
-  getAssignableUsers: jest.fn(),
-};
-
-const mockMediaUploadService = {
-  handleFiles: jest.fn(),
-};
-
-const mockRequest = {
-  context: createMockRequestContext({
-    currentuser: createMockCurrentUser(),
-    request: { params: { cuid: 'test-cuid', pid: 'test-pid' } },
-  }),
-  params: { cuid: 'test-cuid', pid: 'test-pid' },
-  body: { name: 'Test Property' },
-  query: {},
-} as any;
-
-const mockResponse = {
-  status: jest.fn().mockReturnThis(),
-  json: jest.fn(),
-} as unknown as Response;
+const createMockServices = () => ({
+  propertyService: {
+    addProperty: jest.fn(),
+    updateClientProperty: jest.fn(),
+    getClientProperty: jest.fn(),
+    getClientProperties: jest.fn(),
+    archiveClientProperty: jest.fn(),
+    validateCsv: jest.fn(),
+    addPropertiesFromCsv: jest.fn(),
+    getPendingApprovals: jest.fn(),
+    approveProperty: jest.fn(),
+    rejectProperty: jest.fn(),
+    bulkApproveProperties: jest.fn(),
+    bulkRejectProperties: jest.fn(),
+    getMyPropertyRequests: jest.fn(),
+    getAssignableUsers: jest.fn(),
+  },
+  mediaUploadService: {
+    handleFiles: jest.fn(),
+  },
+});
 
 describe('PropertyController', () => {
   let propertyController: PropertyController;
+  let mockServices: ReturnType<typeof createMockServices>;
+  let mockRequest: any;
+  let mockResponse: Response;
+
+  const createMockRequest = (overrides = {}) => ({
+    context: createMockRequestContext({
+      currentuser: createMockCurrentUser(),
+      request: { params: { cuid: 'test-cuid', pid: 'test-pid' } },
+    }),
+    params: { cuid: 'test-cuid', pid: 'test-pid' },
+    body: { name: 'Test Property' },
+    query: {},
+    ...overrides,
+  });
+
+  const createMockResponse = (): Response => ({
+    status: jest.fn().mockReturnThis(),
+    json: jest.fn(),
+  } as unknown as Response);
 
   beforeEach(() => {
+    mockServices = createMockServices();
+    mockRequest = createMockRequest();
+    mockResponse = createMockResponse();
+
     propertyController = new PropertyController({
-      propertyService: mockPropertyService as any,
-      mediaUploadService: mockMediaUploadService as any,
+      propertyService: mockServices.propertyService as any,
+      mediaUploadService: mockServices.mediaUploadService as any,
     });
 
-    // Reset all mocks
     jest.clearAllMocks();
   });
 
   describe('create', () => {
+    const mockPropertyData = { success: true, data: { id: 'prop-123', name: 'Test Property' } };
+    const mockUploadResult = {
+      hasFiles: true,
+      message: '2 file(s) queued for processing',
+      processedFiles: { documents: { queuedCount: 2, message: '2 files queued' } },
+      totalQueued: 2,
+    };
+
     it('should create property and handle file uploads successfully', async () => {
-      // Arrange
-      const mockProperty = { success: true, data: { id: 'prop-123', name: 'Test Property' } };
-      const mockUploadResult = {
-        hasFiles: true,
-        message: '2 file(s) queued for processing',
-        processedFiles: { documents: { queuedCount: 2, message: '2 files queued' } },
-        totalQueued: 2,
-      };
+      mockServices.propertyService.addProperty.mockResolvedValue(mockPropertyData);
+      mockServices.mediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
 
-      mockPropertyService.addProperty.mockResolvedValue(mockProperty);
-      mockMediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
-
-      // Act
       await propertyController.create(mockRequest, mockResponse);
 
-      // Assert
-      expect(mockPropertyService.addProperty).toHaveBeenCalledWith(
+      expect(mockServices.propertyService.addProperty).toHaveBeenCalledWith(
         mockRequest.context,
         mockRequest.body
       );
 
-      expect(mockMediaUploadService.handleFiles).toHaveBeenCalledWith(mockRequest, {
+      expect(mockServices.mediaUploadService.handleFiles).toHaveBeenCalledWith(mockRequest, {
         primaryResourceId: 'prop-123',
         uploadedBy: mockRequest.context.currentuser.sub,
         resourceContext: ResourceContext.PROPERTY,
@@ -89,7 +93,7 @@ describe('PropertyController', () => {
 
       expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.OK);
       expect(mockResponse.json).toHaveBeenCalledWith({
-        ...mockProperty,
+        ...mockPropertyData,
         fileUpload: mockUploadResult.message,
         processedFiles: mockUploadResult.processedFiles,
       });
@@ -105,27 +109,27 @@ describe('PropertyController', () => {
         totalQueued: 0,
       };
 
-      mockPropertyService.addProperty.mockResolvedValue(mockProperty);
-      mockMediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
+      mockServices.propertyService.addProperty.mockResolvedValue(mockProperty);
+      mockServices.mediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
 
       // Act
       await propertyController.create(mockRequest, mockResponse);
 
       // Assert
-      expect(mockMediaUploadService.handleFiles).toHaveBeenCalled();
+      expect(mockServices.mediaUploadService.handleFiles).toHaveBeenCalled();
       expect(mockResponse.json).toHaveBeenCalledWith(mockProperty);
     });
 
     it('should handle property creation error', async () => {
       // Arrange
       const error = new Error('Property creation failed');
-      mockPropertyService.addProperty.mockRejectedValue(error);
+      mockServices.propertyService.addProperty.mockRejectedValue(error);
 
       // Act & Assert
       await expect(propertyController.create(mockRequest, mockResponse)).rejects.toThrow(
         'Property creation failed'
       );
-      expect(mockMediaUploadService.handleFiles).not.toHaveBeenCalled();
+      expect(mockServices.mediaUploadService.handleFiles).not.toHaveBeenCalled();
     });
 
     it('should handle file upload error during creation', async () => {
@@ -133,8 +137,8 @@ describe('PropertyController', () => {
       const mockProperty = { success: true, data: { id: 'prop-123', name: 'Test Property' } };
       const uploadError = new Error('File upload failed');
 
-      mockPropertyService.addProperty.mockResolvedValue(mockProperty);
-      mockMediaUploadService.handleFiles.mockRejectedValue(uploadError);
+      mockServices.propertyService.addProperty.mockResolvedValue(mockProperty);
+      mockServices.mediaUploadService.handleFiles.mockRejectedValue(uploadError);
 
       // Act & Assert
       await expect(propertyController.create(mockRequest, mockResponse)).rejects.toThrow(
@@ -157,24 +161,26 @@ describe('PropertyController', () => {
         totalQueued: 1,
       };
 
-      mockMediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
-      mockPropertyService.updateClientProperty.mockResolvedValue(mockUpdateResult);
+      mockServices.mediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
+      mockServices.propertyService.updateClientProperty.mockResolvedValue(mockUpdateResult);
 
       // Act
       await propertyController.updateClientProperty(mockRequest, mockResponse);
 
       // Assert
-      expect(mockMediaUploadService.handleFiles).toHaveBeenCalledWith(mockRequest, {
+      expect(mockServices.mediaUploadService.handleFiles).toHaveBeenCalledWith(mockRequest, {
         primaryResourceId: 'test-pid',
         uploadedBy: mockRequest.context.currentuser.sub,
         resourceContext: ResourceContext.PROPERTY,
+        hardDelete: false,
       });
 
-      expect(mockPropertyService.updateClientProperty).toHaveBeenCalledWith(
+      expect(mockServices.propertyService.updateClientProperty).toHaveBeenCalledWith(
         {
           cuid: 'test-cuid',
           pid: 'test-pid',
           currentuser: mockRequest.context.currentuser,
+          hardDelete: false,
         },
         mockRequest.body
       );
@@ -199,8 +205,8 @@ describe('PropertyController', () => {
         totalQueued: 0,
       };
 
-      mockMediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
-      mockPropertyService.updateClientProperty.mockResolvedValue(mockUpdateResult);
+      mockServices.mediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
+      mockServices.propertyService.updateClientProperty.mockResolvedValue(mockUpdateResult);
 
       // Act
       await propertyController.updateClientProperty(mockRequest, mockResponse);
@@ -230,13 +236,13 @@ describe('PropertyController', () => {
     it('should handle file upload error during update', async () => {
       // Arrange
       const uploadError = new Error('Upload service error');
-      mockMediaUploadService.handleFiles.mockRejectedValue(uploadError);
+      mockServices.mediaUploadService.handleFiles.mockRejectedValue(uploadError);
 
       // Act & Assert
       await expect(
         propertyController.updateClientProperty(mockRequest, mockResponse)
       ).rejects.toThrow('Upload service error');
-      expect(mockPropertyService.updateClientProperty).not.toHaveBeenCalled();
+      expect(mockServices.propertyService.updateClientProperty).not.toHaveBeenCalled();
     });
 
     it('should handle property update error after successful file upload', async () => {
@@ -244,14 +250,14 @@ describe('PropertyController', () => {
       const mockUploadResult = { hasFiles: false, processedFiles: {}, totalQueued: 0 };
       const updateError = new Error('Property update failed');
 
-      mockMediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
-      mockPropertyService.updateClientProperty.mockRejectedValue(updateError);
+      mockServices.mediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
+      mockServices.propertyService.updateClientProperty.mockRejectedValue(updateError);
 
       // Act & Assert
       await expect(
         propertyController.updateClientProperty(mockRequest, mockResponse)
       ).rejects.toThrow('Property update failed');
-      expect(mockMediaUploadService.handleFiles).toHaveBeenCalled();
+      expect(mockServices.mediaUploadService.handleFiles).toHaveBeenCalled();
     });
   });
 
@@ -259,7 +265,7 @@ describe('PropertyController', () => {
     it('should get property successfully', async () => {
       // Arrange
       const mockProperty = createMockProperty();
-      mockPropertyService.getClientProperty.mockResolvedValue({
+      mockServices.propertyService.getClientProperty.mockResolvedValue({
         success: true,
         data: { property: mockProperty, unitInfo: {} },
       });
@@ -268,7 +274,7 @@ describe('PropertyController', () => {
       await propertyController.getProperty(mockRequest, mockResponse);
 
       // Assert
-      expect(mockPropertyService.getClientProperty).toHaveBeenCalledWith(
+      expect(mockServices.propertyService.getClientProperty).toHaveBeenCalledWith(
         'test-cuid',
         'test-pid',
         mockRequest.context.currentuser
@@ -279,7 +285,7 @@ describe('PropertyController', () => {
     it('should get client properties successfully', async () => {
       // Arrange
       const mockProperties = [createMockProperty(), createMockProperty()];
-      mockPropertyService.getClientProperties.mockResolvedValue({
+      mockServices.propertyService.getClientProperties.mockResolvedValue({
         success: true,
         data: { items: mockProperties, pagination: {} },
       });
@@ -293,13 +299,13 @@ describe('PropertyController', () => {
       await propertyController.getClientProperties(requestWithQuery, mockResponse);
 
       // Assert
-      expect(mockPropertyService.getClientProperties).toHaveBeenCalled();
+      expect(mockServices.propertyService.getClientProperties).toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.OK);
     });
 
     it('should archive property successfully', async () => {
       // Arrange
-      mockPropertyService.archiveClientProperty.mockResolvedValue({
+      mockServices.propertyService.archiveClientProperty.mockResolvedValue({
         success: true,
         data: null,
         message: 'Property archived successfully',
@@ -309,7 +315,7 @@ describe('PropertyController', () => {
       await propertyController.archiveProperty(mockRequest, mockResponse);
 
       // Assert
-      expect(mockPropertyService.archiveClientProperty).toHaveBeenCalledWith(
+      expect(mockServices.propertyService.archiveClientProperty).toHaveBeenCalledWith(
         'test-cuid',
         'test-pid',
         mockRequest.context.currentuser
@@ -336,7 +342,7 @@ describe('PropertyController', () => {
         },
       };
 
-      mockPropertyService.validateCsv.mockResolvedValue({
+      mockServices.propertyService.validateCsv.mockResolvedValue({
         success: true,
         data: { processId: 'job-123' },
       });
@@ -345,7 +351,7 @@ describe('PropertyController', () => {
       await propertyController.validateCsv(csvRequest, mockResponse);
 
       // Assert
-      expect(mockPropertyService.validateCsv).toHaveBeenCalled();
+      expect(mockServices.propertyService.validateCsv).toHaveBeenCalled();
     });
 
     it('should get pending approvals successfully', async () => {
@@ -355,7 +361,7 @@ describe('PropertyController', () => {
         query: { page: '1', limit: '10' },
       };
 
-      mockPropertyService.getPendingApprovals.mockResolvedValue({
+      mockServices.propertyService.getPendingApprovals.mockResolvedValue({
         success: true,
         data: { items: [], pagination: {} },
       });
@@ -364,7 +370,7 @@ describe('PropertyController', () => {
       await propertyController.getPendingApprovals(requestWithQuery, mockResponse);
 
       // Assert
-      expect(mockPropertyService.getPendingApprovals).toHaveBeenCalled();
+      expect(mockServices.propertyService.getPendingApprovals).toHaveBeenCalled();
     });
 
     it('should approve property successfully', async () => {
@@ -374,7 +380,7 @@ describe('PropertyController', () => {
         body: { notes: 'Looks good' },
       };
 
-      mockPropertyService.approveProperty.mockResolvedValue({
+      mockServices.propertyService.approveProperty.mockResolvedValue({
         success: true,
         data: createMockProperty(),
       });
@@ -383,7 +389,7 @@ describe('PropertyController', () => {
       await propertyController.approveProperty(approveRequest, mockResponse);
 
       // Assert
-      expect(mockPropertyService.approveProperty).toHaveBeenCalledWith(
+      expect(mockServices.propertyService.approveProperty).toHaveBeenCalledWith(
         'test-cuid',
         'test-pid',
         mockRequest.context.currentuser,
@@ -431,14 +437,14 @@ describe('PropertyController', () => {
       const mockProperty = { success: true, data: { id: 'prop-123' } };
       const mockUploadResult = { hasFiles: false, processedFiles: {}, totalQueued: 0 };
 
-      mockPropertyService.addProperty.mockResolvedValue(mockProperty);
-      mockMediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
+      mockServices.propertyService.addProperty.mockResolvedValue(mockProperty);
+      mockServices.mediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
 
       // Act
       await propertyController.create(mockRequest, mockResponse);
 
       // Assert
-      expect(mockMediaUploadService.handleFiles).toHaveBeenCalledWith(
+      expect(mockServices.mediaUploadService.handleFiles).toHaveBeenCalledWith(
         mockRequest,
         expect.objectContaining({
           resourceContext: ResourceContext.PROPERTY,
@@ -452,14 +458,14 @@ describe('PropertyController', () => {
       const mockProperty = { success: true, data: { id: propertyId } };
       const mockUploadResult = { hasFiles: false, processedFiles: {}, totalQueued: 0 };
 
-      mockPropertyService.addProperty.mockResolvedValue(mockProperty);
-      mockMediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
+      mockServices.propertyService.addProperty.mockResolvedValue(mockProperty);
+      mockServices.mediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
 
       // Act
       await propertyController.create(mockRequest, mockResponse);
 
       // Assert
-      expect(mockMediaUploadService.handleFiles).toHaveBeenCalledWith(
+      expect(mockServices.mediaUploadService.handleFiles).toHaveBeenCalledWith(
         mockRequest,
         expect.objectContaining({
           primaryResourceId: propertyId,
@@ -472,14 +478,14 @@ describe('PropertyController', () => {
       const mockUploadResult = { hasFiles: false, processedFiles: {}, totalQueued: 0 };
       const mockUpdateResult = { success: true, data: {} };
 
-      mockMediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
-      mockPropertyService.updateClientProperty.mockResolvedValue(mockUpdateResult);
+      mockServices.mediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
+      mockServices.propertyService.updateClientProperty.mockResolvedValue(mockUpdateResult);
 
       // Act
       await propertyController.updateClientProperty(mockRequest, mockResponse);
 
       // Assert
-      expect(mockMediaUploadService.handleFiles).toHaveBeenCalledWith(
+      expect(mockServices.mediaUploadService.handleFiles).toHaveBeenCalledWith(
         mockRequest,
         expect.objectContaining({
           primaryResourceId: 'test-pid',
@@ -492,14 +498,14 @@ describe('PropertyController', () => {
       const mockProperty = { success: true, data: { id: 'prop-123' } };
       const mockUploadResult = { hasFiles: false, processedFiles: {}, totalQueued: 0 };
 
-      mockPropertyService.addProperty.mockResolvedValue(mockProperty);
-      mockMediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
+      mockServices.propertyService.addProperty.mockResolvedValue(mockProperty);
+      mockServices.mediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
 
       // Act
       await propertyController.create(mockRequest, mockResponse);
 
       // Assert
-      expect(mockMediaUploadService.handleFiles).toHaveBeenCalledWith(
+      expect(mockServices.mediaUploadService.handleFiles).toHaveBeenCalledWith(
         mockRequest,
         expect.objectContaining({
           uploadedBy: mockRequest.context.currentuser.sub,
@@ -523,8 +529,8 @@ describe('PropertyController', () => {
         totalQueued: 2,
       };
 
-      mockPropertyService.addProperty.mockResolvedValue(mockProperty);
-      mockMediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
+      mockServices.propertyService.addProperty.mockResolvedValue(mockProperty);
+      mockServices.mediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
 
       // Act
       await propertyController.create(mockRequest, mockResponse);
@@ -553,8 +559,8 @@ describe('PropertyController', () => {
         totalQueued: 0,
       };
 
-      mockPropertyService.addProperty.mockResolvedValue(mockProperty);
-      mockMediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
+      mockServices.propertyService.addProperty.mockResolvedValue(mockProperty);
+      mockServices.mediaUploadService.handleFiles.mockResolvedValue(mockUploadResult);
 
       // Act
       await propertyController.create(mockRequest, mockResponse);

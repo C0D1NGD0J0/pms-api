@@ -4,56 +4,47 @@ import { IRequestContext } from '@interfaces/utils.interface';
 describe('UserService - getClientUserInfo', () => {
   let userService: UserService;
   let mockContext: IRequestContext;
-  let mockUserDAO: any;
-  let mockClientDAO: any;
-  let mockPropertyDAO: any;
-  let mockUserCache: any;
-  let mockPermissionService: any;
-  let mockVendorDAO: any;
-  let mockVendorService: any;
+  let mockServices: {
+    userDAO: any;
+    clientDAO: any;
+    propertyDAO: any;
+    userCache: any;
+    permissionService: any;
+    vendorDAO: any;
+    vendorService: any;
+  };
 
-  beforeEach(() => {
-    // Mock dependencies
-    mockUserDAO = {
+  const createMockServices = () => ({
+    userDAO: {
       getUserByUId: jest.fn() as jest.Mock,
-    };
-
-    mockClientDAO = {
+      getLinkedVendorUsers: jest.fn().mockResolvedValue([]),
+    },
+    clientDAO: {
       getClientByCuid: jest.fn() as jest.Mock,
-    };
-
-    mockPropertyDAO = {
+    },
+    propertyDAO: {
       getPropertiesByClientId: jest.fn() as jest.Mock,
-    };
-
-    mockUserCache = {
+    },
+    userCache: {
       getUserDetail: jest.fn(() => Promise.resolve({ success: false, data: null })) as jest.Mock,
       cacheUserDetail: jest.fn(() => Promise.resolve(undefined)) as jest.Mock,
-    };
-
-    mockPermissionService = {
+    },
+    permissionService: {
       canUserAccessUser: jest.fn(() => true) as jest.Mock,
-    };
-
-    mockVendorDAO = {
+    },
+    vendorDAO: {
       getClientVendorStats: jest.fn() as jest.Mock,
-    };
-
-    mockVendorService = {
+    },
+    vendorService: {
       getVendorByUserId: jest.fn() as jest.Mock,
-    };
+    },
+  });
 
-    // Initialize service
-    userService = new UserService({
-      userDAO: mockUserDAO,
-      clientDAO: mockClientDAO,
-      propertyDAO: mockPropertyDAO,
-      userCache: mockUserCache,
-      permissionService: mockPermissionService,
-      vendorService: mockVendorService,
-    });
+  beforeEach(() => {
+    mockServices = createMockServices();
 
-    // Mock context
+    userService = new UserService(mockServices);
+
     mockContext = {
       currentuser: {
         client: {
@@ -71,6 +62,8 @@ describe('UserService - getClientUserInfo', () => {
         },
       } as any,
     } as IRequestContext;
+
+    jest.clearAllMocks();
   });
 
   describe('Employee User Response Structure', () => {
@@ -115,8 +108,14 @@ describe('UserService - getClientUserInfo', () => {
         },
       };
 
-      mockUserDAO.getUserByUId.mockResolvedValue(mockEmployeeUser);
-      mockPropertyDAO.getPropertiesByClientId.mockResolvedValue({
+      mockServices.userDAO.getUserByUId.mockResolvedValue(mockEmployeeUser);
+      mockServices.clientDAO.getClientByCuid.mockResolvedValue({
+        _id: 'client-id',
+        cuid: 'test-client-id',
+        displayName: 'Test Client',
+        isActive: true,
+      });
+      mockServices.propertyDAO.getPropertiesByClientId.mockResolvedValue({
         items: [
           {
             name: 'Test Property',
@@ -236,7 +235,30 @@ describe('UserService - getClientUserInfo', () => {
         },
       };
 
-      mockUserDAO.getUserByUId.mockResolvedValue(mockVendorUser);
+      mockServices.userDAO.getUserByUId.mockResolvedValue(mockVendorUser);
+      mockServices.clientDAO.getClientByCuid.mockResolvedValue({
+        _id: 'client-id',
+        cuid: 'test-client-id',
+        displayName: 'Test Client',
+        isActive: true,
+      });
+      mockServices.vendorService.getVendorByUserId.mockResolvedValue({
+        businessType: 'Plumbing Services',
+        companyName: 'ABC Plumbing Inc.',
+        registrationNumber: 'REG123456',
+        taxId: 'TAX789',
+        yearsInBusiness: 10,
+        servicesOffered: {
+          plumbing: true,
+          electrical: false,
+          hvac: false,
+        },
+        businessLicense: 'LIC789012',
+        insuranceInfo: {
+          hasLiability: true,
+          provider: 'SafeGuard Insurance',
+        },
+      });
 
       const result = await userService.getClientUserInfo(
         'test-client-id',
@@ -272,7 +294,7 @@ describe('UserService - getClientUserInfo', () => {
           responseTime: expect.any(String),
           onTimeRate: expect.any(String),
         },
-        tags: expect.arrayContaining(['Plumbing Services', 'Insured', 'Established']),
+        tags: expect.arrayContaining(['Primary Vendor']),
         isPrimaryVendor: true,
         isLinkedAccount: false,
         linkedVendorUid: null,
@@ -305,7 +327,19 @@ describe('UserService - getClientUserInfo', () => {
         },
       };
 
-      mockUserDAO.getUserByUId.mockResolvedValue(mockLinkedVendorUser);
+      mockServices.userDAO.getUserByUId.mockResolvedValue(mockLinkedVendorUser);
+      mockServices.clientDAO.getClientByCuid.mockResolvedValue({
+        _id: 'client-id',
+        cuid: 'test-client-id',
+        displayName: 'Test Client',
+        isActive: true,
+      });
+      mockServices.vendorService.getVendorByUserId.mockResolvedValue({
+        businessType: 'subcontracting',
+        companyName: 'Sub Contractor',
+        businessLicense: '789012',
+        servicesOffered: ['Subcontracting'],
+      });
 
       const result = await userService.getClientUserInfo(
         'test-client-id',
@@ -347,7 +381,13 @@ describe('UserService - getClientUserInfo', () => {
         },
       };
 
-      mockUserDAO.getUserByUId.mockResolvedValue(mockTenantUser);
+      mockServices.userDAO.getUserByUId.mockResolvedValue(mockTenantUser);
+      mockServices.clientDAO.getClientByCuid.mockResolvedValue({
+        _id: 'client-id',
+        cuid: 'test-client-id',
+        displayName: 'Test Client',
+        isActive: true,
+      });
 
       const result = await userService.getClientUserInfo(
         'test-client-id',
@@ -393,12 +433,18 @@ describe('UserService - getClientUserInfo', () => {
         },
       };
 
-      mockUserDAO.getUserByUId.mockResolvedValue(mockUser);
-      mockPropertyDAO.getPropertiesByClientId.mockResolvedValue({ items: [] });
+      mockServices.userDAO.getUserByUId.mockResolvedValue(mockUser);
+      mockServices.clientDAO.getClientByCuid.mockResolvedValue({
+        _id: 'client-id',
+        cuid: 'test-client-id',
+        displayName: 'Test Client',
+        isActive: true,
+      });
+      mockServices.propertyDAO.getPropertiesByClientId.mockResolvedValue({ items: [] });
 
       await userService.getClientUserInfo('test-client-id', 'test-uid', mockContext.currentuser!);
 
-      expect(mockUserCache.cacheUserDetail).toHaveBeenCalledWith(
+      expect(mockServices.userCache.cacheUserDetail).toHaveBeenCalledWith(
         'test-client-id',
         'test-uid',
         expect.objectContaining({

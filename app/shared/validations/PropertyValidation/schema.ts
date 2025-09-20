@@ -148,7 +148,7 @@ const PropertyMediaDocumentSchema = z.object({
   documentType: z.enum(['deed', 'tax', 'insurance', 'inspection', 'other', 'lease']).optional(),
   url: z.string().url('Invalid URL format for document'),
   key: z.string().optional(),
-  status: z.enum(['active', 'inactive']).default('active'),
+  status: z.enum(['active', 'inactive', 'deleted', 'pending', 'processing']).default('active'),
   externalUrl: z.string().url('Invalid external URL format').optional(),
   uploadedAt: z.coerce
     .date({
@@ -167,6 +167,7 @@ const PropertyMediaDocumentSchema = z.object({
 
 const PropertyImageSchema = z.object({
   url: z.string().url('Invalid URL format for image'),
+  status: z.enum(['active', 'inactive', 'deleted', 'pending', 'processing']).default('active'),
   filename: z.string().optional(),
   key: z.string().optional(),
   uploadedAt: z.coerce

@@ -4,6 +4,7 @@ import { t } from '@shared/languages';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { buildDotNotation, createLogger } from '@utils/index';
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
+import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { EventEmitterService, VendorService, UserService } from '@services/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {
@@ -18,6 +19,7 @@ import {
 } from '@interfaces/index';
 
 interface IConstructor {
+  mediaUploadService: MediaUploadService;
   emitterService: EventEmitterService;
   vendorService: VendorService;
   userService: UserService;
@@ -33,6 +35,7 @@ export class ProfileService {
   private readonly vendorService: VendorService;
   private readonly userService: UserService;
   private readonly emitterService: EventEmitterService;
+  private readonly mediaUploadService: MediaUploadService;
   private readonly logger: Logger;
 
   constructor({
@@ -42,6 +45,7 @@ export class ProfileService {
     vendorService,
     userService,
     emitterService,
+    mediaUploadService,
   }: IConstructor) {
     this.profileDAO = profileDAO;
     this.clientDAO = clientDAO;
@@ -49,6 +53,7 @@ export class ProfileService {
     this.vendorService = vendorService;
     this.userService = userService;
     this.emitterService = emitterService;
+    this.mediaUploadService = mediaUploadService;
     this.logger = createLogger('ProfileService');
     this.setupEventListeners();
   }
@@ -661,13 +666,28 @@ export class ProfileService {
           message: 'No upload results provided for avatar update',
         });
       }
-      // assuming the first result is the avatar in this instance
+
       const avatarResult = uploadResults[0];
       const userToUpdate = await this.userDAO.findFirst({ uid: userUid }, { populate: 'profile' });
       if (!userToUpdate || !userToUpdate.profile) {
         throw new NotFoundError({
           message: t('user.errors.notFound'),
         });
+      }
+
+      // Get current avatar to handle deletion of old one
+      const currentProfile = await this.profileDAO.findFirst({
+        id: userToUpdate.profile._id?.toString(),
+      });
+      const currentAvatar = currentProfile?.personalInfo?.avatar;
+
+      // Handle deletion of old avatar if exists
+      if (currentAvatar?.key) {
+        const newAvatar = {
+          key: avatarResult.publicuid,
+        };
+
+        await this.mediaUploadService.handleAvatarDeletion(currentAvatar, newAvatar);
       }
 
       const avatarUpdateData = {

@@ -69,7 +69,13 @@ export class DiskStorage {
     },
     {
       name: 'images[*].file', // Property images pattern
-      maxCount: 20,
+      maxCount: 5,
+      maxSize: 10 * 1024 * 1024, // 10MB
+      fileTypes: ['jpeg', 'jpg', 'png'],
+    },
+    {
+      name: 'propertyImages[*].file', // Property images pattern (alternative naming)
+      maxCount: 5,
       maxSize: 10 * 1024 * 1024, // 10MB
       fileTypes: ['jpeg', 'jpg', 'png'],
     },
@@ -136,7 +142,6 @@ export class DiskStorage {
     const fields: multer.Field[] = [];
 
     for (const pattern of patterns) {
-      // Find exact match or pattern match in fieldConfigs
       const matchingConfig = this.fieldConfigs.find(
         (config) =>
           config.name === pattern ||
@@ -145,15 +150,37 @@ export class DiskStorage {
       );
 
       if (matchingConfig) {
-        fields.push({
-          name: pattern,
-          maxCount: matchingConfig.maxCount,
-        });
+        if (pattern.includes('[*]')) {
+          // Expand wildcard pattern into multiple specific field entries
+          for (let i = 0; i < matchingConfig.maxCount; i++) {
+            const specificFieldName = pattern.replace('[*]', `[${i}]`);
+            fields.push({
+              name: specificFieldName,
+              maxCount: 1, // Each specific field can only accept 1 file
+            });
+          }
+        } else {
+          // Non-wildcard pattern - keep existing behavior
+          fields.push({
+            name: pattern,
+            maxCount: matchingConfig.maxCount,
+          });
+        }
       } else {
-        fields.push({
-          name: pattern,
-          maxCount: 1,
-        });
+        this.log.warn(`No config found for pattern "${pattern}", using defaults`);
+        // Check if unknown pattern is wildcard - expand with default maxCount
+        if (pattern.includes('[*]')) {
+          const specificFieldName = pattern.replace('[*]', '[0]');
+          fields.push({
+            name: specificFieldName,
+            maxCount: 1,
+          });
+        } else {
+          fields.push({
+            name: pattern,
+            maxCount: 1,
+          });
+        }
       }
     }
 
@@ -222,15 +249,14 @@ export class DiskStorage {
     file: Express.Multer.File,
     cb: multer.FileFilterCallback
   ) => {
-    const isAllowedField = this.currentFieldPatterns.some((pattern) =>
-      this.matchesPattern(file.fieldname, pattern)
-    );
+    const isAllowedField = this.currentFieldPatterns.some((pattern) => {
+      return this.matchesPattern(file.fieldname, pattern);
+    });
 
     if (!isAllowedField) {
       cb(new Error(`Unexpected field: ${file.fieldname}`));
       return;
     }
-
     const fileExt = file.mimetype.split('/')[1]?.toLowerCase();
     if (!fileExt || !this.allowedExtensions.includes(fileExt)) {
       cb(new Error(`File type not supported. Allowed types: ${this.allowedExtensions.join(', ')}`));
@@ -268,10 +294,10 @@ export class DiskStorage {
   private matchesPattern(fieldName: string, pattern: string): boolean {
     if (fieldName === pattern) return true;
 
-    // Convert pattern to regex, escape regex meta-characters, then replace [*] with [\d+]
+    // convert pattern to regex, escape regex meta-characters, then replace [*] with [\d+]
     const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     let regexPattern = escapeRegExp(pattern);
-    // After escaping, [*] becomes \[\*\], so we need to replace \[\*\] with \[\d+\]
+    // after escaping, [*] becomes \[\*\], so we need to replace \[\*\] with \[\d+\]
     regexPattern = regexPattern.replace(/\\\[\\\*\\\]/g, '\\[\\d+\\]');
 
     const regex = new RegExp(`^${regexPattern}$`);

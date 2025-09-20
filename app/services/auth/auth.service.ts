@@ -250,6 +250,19 @@ export class AuthService {
         session
       );
 
+      // Create vendor for corporate accounts
+      if (signupData.accountType.isCorporate && signupData.companyProfile) {
+        try {
+          await this.vendorService.createVendorFromCompanyProfile(
+            user._id?.toString() || _userId.toString(),
+            signupData.companyProfile
+          );
+        } catch (error) {
+          // Log vendor creation failure but don't fail the entire signup
+          this.log.warn('Failed to create vendor during signup:', error);
+        }
+      }
+
       return {
         emailData: {
           to: user.email,

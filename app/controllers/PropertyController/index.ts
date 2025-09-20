@@ -136,10 +136,6 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(data);
   };
 
-  getPropertyUnits = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
-
   getProperty = async (req: AppRequest, res: Response) => {
     const { cuid, pid } = req.params;
     const { currentuser } = req.context;
@@ -158,6 +154,7 @@ export class PropertyController {
   updateClientProperty = async (req: AppRequest, res: Response) => {
     const { cuid, pid } = req.params;
     const { currentuser } = req.context;
+
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
@@ -165,17 +162,15 @@ export class PropertyController {
       });
     }
 
+    const hardDelete = req.query['hard-delete'] === 'true';
     const uploadResult = await this.mediaUploadService.handleFiles(req, {
       primaryResourceId: pid,
       uploadedBy: currentuser.sub,
       resourceContext: ResourceContext.PROPERTY,
+      hardDelete,
     });
 
-    const ctx = {
-      cuid,
-      pid,
-      currentuser,
-    };
+    const ctx = { cuid, pid, currentuser, hardDelete };
     const result = await this.propertyService.updateClientProperty(ctx, req.body);
 
     const response = uploadResult.hasFiles
@@ -204,43 +199,21 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(data);
   };
 
-  verifyOccupancyStatus = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
-
-  search = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
-
-  addMediaToProperty = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
-
   deleteMediaFromProperty = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
+    // const { cuid, pid } = req.params;
+    const { currentuser } = req.context;
 
-  checkAvailability = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
-
-  getNearbyProperties = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
-  };
-
-  restorArchivedProperty = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.OK).json({ success: true });
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+    // TODO: implement archive restoration
+    res.status(httpStatusCodes.OK).json({ success: true, message: 'Method not implemented yet' });
   };
 
   getPropertyFormMetadata = async (req: AppRequest, res: Response) => {
-    // const formType = req.query.formType as 'propertyForm' | 'unitForm';
-    // if (formType && !propertyFormMeta[formType]) {
-    //   return res.status(httpStatusCodes.BAD_REQUEST).json({
-    //     success: false,
-    //     message: `Invalid form type: ${formType}`,
-    //   });
-    // }
-
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: propertyFormMeta,

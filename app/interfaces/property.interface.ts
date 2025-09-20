@@ -196,6 +196,19 @@ export interface IAssignableUser {
 }
 
 /**
+ * Property Image Item Type
+ */
+export interface PropertyImageItem {
+  status: 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
+  uploadedBy: Types.ObjectId;
+  description?: string;
+  filename?: string;
+  uploadedAt: Date;
+  key?: string;
+  url: string;
+}
+
+/**
  * Community Amenities Type
  */
 export interface CommunityAmenities {
@@ -286,18 +299,6 @@ export interface IAssignableUsersFilter {
   search?: string;
   limit?: number;
   page?: number;
-}
-
-/**
- * Property Image Item Type
- */
-export interface PropertyImageItem {
-  uploadedBy: Types.ObjectId;
-  description?: string;
-  filename?: string;
-  uploadedAt: Date;
-  key?: string;
-  url: string;
 }
 
 /**

@@ -236,58 +236,107 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
   /**
    * Update property documents/photos
    * @param propertyId - The property ID
-   * @param documentData - The document data to add
+   * @param uploadData - The upload data to add
    * @param userId - The ID of the user performing the action
    * @returns A promise that resolves to the updated property document
    */
   async updatePropertyDocument(
-    propertyId: string,
+    propertyUid: string,
     uploadData: UploadResult[],
     userId: string
   ): Promise<IPropertyDocument | null> {
     try {
-      if (!propertyId || !uploadData.length) {
-        throw new Error('Property ID, document data, and user ID are required');
+      if (!propertyUid || !uploadData.length) {
+        throw new Error('Property ID, upload data, and user ID are required');
       }
 
-      const property = await this.findById(propertyId);
+      const property = await this.findFirst({ uid: propertyUid });
       if (!property) {
         throw new Error('Property not found');
       }
 
-      let result = null;
-      if (uploadData) {
-        result = uploadData
+      // Separate images and documents based on fieldName
+      const documentUploads = uploadData.filter(
+        (upload) => upload.fieldName === 'documents' || upload.fieldName?.includes('documents')
+      );
+
+      const imageUploads = uploadData.filter(
+        (upload) => upload.fieldName === 'images' || upload.fieldName?.includes('images')
+      );
+
+      const updateOperation: any = {
+        $set: { lastModifiedBy: new Types.ObjectId(userId) },
+      };
+
+      // Process document uploads
+      if (documentUploads.length > 0) {
+        const processedDocuments = documentUploads
           .map((upload) => {
             const foundDocument = property.documents?.find(
               (doc) => doc.documentName === upload?.documentName
             );
             if (!foundDocument) {
-              return null;
+              this.logger.warn(`Document template not found for: ${upload.documentName}`);
+              // Create a basic document entry if template not found
+              return {
+                key: upload.key,
+                url: upload.url,
+                status: 'active' as const,
+                uploadedAt: new Date(),
+                externalUrl: upload.url ?? '',
+                documentName: upload.documentName || 'Unknown Document',
+                description: 'Uploaded document',
+                documentType: 'other' as const,
+                uploadedBy: new Types.ObjectId(upload.actorId || userId),
+              };
             }
             return {
               key: upload.key,
               url: upload.url,
-              status: 'active',
+              status: 'active' as const,
               uploadedAt: new Date(),
-              externalUrl: upload.url,
+              externalUrl: upload.url ?? '',
               documentName: upload.documentName,
               description: foundDocument.description,
               documentType: foundDocument.documentType,
-              uploadedBy: new Types.ObjectId(upload.actorId),
+              uploadedBy: new Types.ObjectId(upload.actorId || userId),
             };
           })
           .filter((document) => document !== null);
+
+        if (processedDocuments.length > 0) {
+          updateOperation.$push = {
+            ...updateOperation.$push,
+            documents: { $each: processedDocuments },
+          };
+        }
       }
 
-      const updateOperation = {
-        $push: { documents: result },
-        $set: { lastModifiedBy: new Types.ObjectId(userId) },
-      };
+      // Process image uploads
+      if (imageUploads.length > 0) {
+        const processedImages = imageUploads.map((upload) => ({
+          key: upload.key,
+          url: upload.url,
+          uploadedAt: new Date(),
+          filename: upload.filename,
+          uploadedBy: new Types.ObjectId(upload.actorId || userId),
+        }));
 
-      return await this.updateById(propertyId, updateOperation);
+        updateOperation.$push = {
+          ...updateOperation.$push,
+          images: { $each: processedImages },
+        };
+      }
+
+      this.logger.info(`Processing uploads for property ${propertyUid}:`, {
+        documentsCount: documentUploads.length,
+        imagesCount: imageUploads.length,
+        totalUploads: uploadData.length,
+      });
+
+      return await this.updateById(property.id, updateOperation);
     } catch (error) {
-      this.logger.error('Error in addPropertyDocument:', error);
+      this.logger.error('Error in updatePropertyDocument:', error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -395,7 +444,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
   }
 
   /**
-   * Remove a property document/photo
+   * Remove a property document
    * @param propertyId - The property ID
    * @param documentId - The document ID to remove
    * @param userId - The ID of the user performing the action
@@ -419,6 +468,74 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       return await this.updateById(propertyId, updateOperation);
     } catch (error) {
       this.logger.error('Error in removePropertyDocument:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Remove a property image
+   * @param propertyId - The property ID
+   * @param imageId - The image ID to remove
+   * @param userId - The ID of the user performing the action
+   * @returns A promise that resolves to the updated property document
+   */
+  async removePropertyImage(
+    propertyId: string,
+    imageId: string,
+    userId: string
+  ): Promise<IPropertyDocument | null> {
+    try {
+      if (!propertyId || !imageId || !userId) {
+        throw new Error('Property ID, image ID, and user ID are required');
+      }
+
+      const updateOperation = {
+        $pull: { images: { _id: new Types.ObjectId(imageId) } },
+        $set: { lastModifiedBy: new Types.ObjectId(userId) },
+      };
+
+      return await this.updateById(propertyId, updateOperation);
+    } catch (error) {
+      this.logger.error('Error in removePropertyImage:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Remove property media (documents or images) by type and ID
+   * @param propertyId - The property ID
+   * @param mediaId - The media ID to remove
+   * @param mediaType - The type of media ('document' or 'image')
+   * @param userId - The ID of the user performing the action
+   * @returns A promise that resolves to the updated property document
+   */
+  async removePropertyMedia(
+    propertyId: string,
+    mediaId: string,
+    mediaType: 'document' | 'image',
+    userId: string
+  ): Promise<IPropertyDocument | null> {
+    try {
+      if (!propertyId || !mediaId || !mediaType || !userId) {
+        throw new Error('Property ID, media ID, media type, and user ID are required');
+      }
+
+      const arrayField = mediaType === 'document' ? 'documents' : 'images';
+      const updateOperation = {
+        $pull: { [arrayField]: { _id: new Types.ObjectId(mediaId) } },
+        $set: { lastModifiedBy: new Types.ObjectId(userId) },
+      };
+
+      this.logger.info(`Removing ${mediaType} from property`, {
+        propertyId,
+        mediaId,
+        mediaType,
+        userId,
+      });
+
+      return await this.updateById(propertyId, updateOperation);
+    } catch (error) {
+      this.logger.error(`Error in removePropertyMedia for ${mediaType}:`, error);
       throw this.throwErrorHandler(error);
     }
   }

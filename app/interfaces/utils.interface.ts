@@ -267,11 +267,11 @@ export type ISuccessReturnData<T = any> = {
 };
 
 export interface UploadedFile {
-  originalname?: string;
+  originalFileName?: string;
+  fileSize?: number;
   fieldName: string;
-  mimetype?: string;
-  filename: string;
-  size?: number;
+  mimeType?: string;
+  fileName: string;
   path: string;
 }
 

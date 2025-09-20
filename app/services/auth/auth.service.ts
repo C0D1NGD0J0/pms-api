@@ -254,6 +254,7 @@ export class AuthService {
       if (signupData.accountType.isCorporate && signupData.companyProfile) {
         try {
           await this.vendorService.createVendorFromCompanyProfile(
+            clientId,
             user._id?.toString() || _userId.toString(),
             signupData.companyProfile
           );

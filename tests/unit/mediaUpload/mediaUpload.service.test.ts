@@ -28,9 +28,10 @@ describe('MediaUploadService', () => {
   });
 
   describe('handleFiles', () => {
-    const createMockRequest = (scannedFiles = []) => ({
-      body: { scannedFiles },
-    } as any);
+    const createMockRequest = (scannedFiles: any[] = []) =>
+      ({
+        body: { scannedFiles },
+      }) as any;
 
     const createContext = (resourceId = 'property123', userId = 'user123') => ({
       primaryResourceId: resourceId,
@@ -61,11 +62,13 @@ describe('MediaUploadService', () => {
             fieldName: 'images',
             actorId: 'user123',
           }),
-          files: [expect.objectContaining({
-            fieldName: 'images.0',
-            filename: 'test-image.jpg',
-            mimeType: 'image/jpeg',
-          })],
+          files: [
+            expect.objectContaining({
+              fieldName: 'images.0',
+              filename: 'test-image.jpg',
+              mimeType: 'image/jpeg',
+            }),
+          ],
         })
       );
     });
@@ -128,12 +131,13 @@ describe('MediaUploadService', () => {
   });
 
   describe('handleMediaDeletion', () => {
-    const createMediaArray = (assets) => assets.map((asset, index) => ({
-      _id: `asset${index + 1}`,
-      key: `file${index + 1}.jpg`,
-      status: asset.status,
-      ...asset,
-    }));
+    const createMediaArray = (assets: any[]) =>
+      assets.map((asset: any, index: number) => ({
+        _id: `asset${index + 1}`,
+        key: `file${index + 1}.jpg`,
+        status: asset.status,
+        ...asset,
+      }));
 
     beforeEach(() => {
       mockAssetService.deleteAsset.mockResolvedValue({ success: true });
@@ -199,7 +203,7 @@ describe('MediaUploadService', () => {
   });
 
   describe('handleAvatarDeletion', () => {
-    const createAvatar = (key) => ({ key });
+    const createAvatar = (key: string) => ({ key });
 
     const testCases = [
       {
@@ -276,9 +280,7 @@ describe('MediaUploadService', () => {
 
       const toDelete = mediaUploadService['findMediaToDelete'](currentMedia, newMedia);
 
-      expect(toDelete).toMatchObject([
-        { _id: 'asset2', status: 'deleted' },
-      ]);
+      expect(toDelete).toMatchObject([{ _id: 'asset2', status: 'deleted' }]);
     });
 
     it('should only return items with keys or IDs', () => {
@@ -291,7 +293,7 @@ describe('MediaUploadService', () => {
       const toDelete = mediaUploadService['findMediaToDelete']([], newMedia);
 
       expect(toDelete).toHaveLength(2);
-      expect(toDelete.every(item => item._id || item.key)).toBe(true);
+      expect(toDelete.every((item) => item._id || item.key)).toBe(true);
     });
   });
 });

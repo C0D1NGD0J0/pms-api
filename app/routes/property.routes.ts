@@ -181,17 +181,6 @@ router.patch(
 );
 
 router.patch(
-  '/:cuid/client_properties/:pid/add_media',
-  validateRequest({
-    params: PropertyValidations.validatePropertyAndClientIds,
-  }),
-  asyncWrapper((req, res) => {
-    const propertyController = req.container.resolve<PropertyController>('propertyController');
-    return propertyController.addMediaToProperty(req, res);
-  })
-);
-
-router.patch(
   '/:cuid/client_properties/:pid/remove_media',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,

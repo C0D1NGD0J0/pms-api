@@ -64,6 +64,10 @@ describe('ProfileService', () => {
       destroy: jest.fn(),
     } as any;
 
+    const mockMediaUploadService = {
+      handleMediaDeletion: jest.fn(),
+    } as any;
+
     profileService = new ProfileService({
       profileDAO: mockProfileDAO,
       clientDAO: mockClientDAO,
@@ -71,6 +75,7 @@ describe('ProfileService', () => {
       vendorService: mockVendorService,
       userService: mockUserService,
       emitterService: mockEmitterService,
+      mediaUploadService: mockMediaUploadService,
     });
 
     (global as any).t = mockTranslation;

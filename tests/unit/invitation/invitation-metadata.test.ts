@@ -86,11 +86,16 @@ describe('Invitation Metadata Transfer', () => {
       updateUserInfo: jest.fn(),
     } as any;
 
+    const mockMediaUploadService = {
+      handleMediaDeletion: jest.fn(),
+    } as any;
+
     profileService = new ProfileService({
       ...mockDAOs,
       vendorService: mockVendorService,
       userService: mockUserService,
       emitterService,
+      mediaUploadService: mockMediaUploadService,
     });
 
     invitationService = new InvitationService({
@@ -154,9 +159,11 @@ describe('Invitation Metadata Transfer', () => {
 
       // Setup mocks
       (mockDAOs.invitationDAO.startSession as jest.Mock).mockResolvedValue({});
-      (mockDAOs.invitationDAO.withTransaction as jest.Mock).mockImplementation(async (session, callback) => {
-        return callback(session);
-      });
+      (mockDAOs.invitationDAO.withTransaction as jest.Mock).mockImplementation(
+        async (session, callback) => {
+          return callback(session);
+        }
+      );
       (mockDAOs.invitationDAO.findByToken as jest.Mock).mockResolvedValue(mockInvitation);
       (mockDAOs.userDAO.getActiveUserByEmail as jest.Mock).mockResolvedValue(null);
       (mockDAOs.clientDAO.getClientByCuid as jest.Mock).mockResolvedValue(mockClient);
@@ -263,9 +270,11 @@ describe('Invitation Metadata Transfer', () => {
 
       // Setup mocks
       (mockDAOs.invitationDAO.startSession as jest.Mock).mockResolvedValue({});
-      (mockDAOs.invitationDAO.withTransaction as jest.Mock).mockImplementation(async (session, callback) => {
-        return callback(session);
-      });
+      (mockDAOs.invitationDAO.withTransaction as jest.Mock).mockImplementation(
+        async (session, callback) => {
+          return callback(session);
+        }
+      );
       (mockDAOs.invitationDAO.findByToken as jest.Mock).mockResolvedValue(mockInvitation);
       (mockDAOs.userDAO.getActiveUserByEmail as jest.Mock).mockResolvedValue(null);
       (mockDAOs.clientDAO.getClientByCuid as jest.Mock).mockResolvedValue(mockClient);
@@ -280,7 +289,7 @@ describe('Invitation Metadata Transfer', () => {
       const mockVendorServiceForInvitation = (invitationService as any).vendorService;
       mockVendorServiceForInvitation.createVendor.mockResolvedValue({
         success: true,
-        data: { _id: new Types.ObjectId(), vuid: 'vendor-123' }
+        data: { _id: new Types.ObjectId(), vuid: 'vendor-123' },
       });
 
       const acceptanceData: IInvitationAcceptance = {
@@ -315,7 +324,7 @@ describe('Invitation Metadata Transfer', () => {
       // Verify that for simple vendorInfo without isPrimaryVendor, no vendor entity is created
       // since the profile service only creates vendors for primary vendors or team members
       expect(mockVendorServiceForInvitation.createVendor).not.toHaveBeenCalled();
-      expect(profileDAO.updateVendorReference).not.toHaveBeenCalled();
+      expect(mockDAOs.profileDAO.updateVendorReference).not.toHaveBeenCalled();
     });
   });
 
@@ -355,9 +364,11 @@ describe('Invitation Metadata Transfer', () => {
 
       // Setup mocks
       (mockDAOs.invitationDAO.startSession as jest.Mock).mockResolvedValue({});
-      (mockDAOs.invitationDAO.withTransaction as jest.Mock).mockImplementation(async (session, callback) => {
-        return callback(session);
-      });
+      (mockDAOs.invitationDAO.withTransaction as jest.Mock).mockImplementation(
+        async (session, callback) => {
+          return callback(session);
+        }
+      );
       (mockDAOs.invitationDAO.findByToken as jest.Mock).mockResolvedValue(mockInvitation);
       (mockDAOs.userDAO.getActiveUserByEmail as jest.Mock).mockResolvedValue(null);
       (mockDAOs.clientDAO.getClientByCuid as jest.Mock).mockResolvedValue(mockClient);
@@ -398,7 +409,7 @@ describe('Invitation Metadata Transfer', () => {
       );
 
       // Verify that updateEmployeeInfo was called with empty object
-      expect(profileDAO.updateEmployeeInfo).toHaveBeenCalledWith(
+      expect(mockDAOs.profileDAO.updateEmployeeInfo).toHaveBeenCalledWith(
         mockIds.profile,
         'client-123',
         {}

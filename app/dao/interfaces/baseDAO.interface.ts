@@ -110,12 +110,12 @@ export interface IBaseDAO<T extends Document> {
   deleteAll(ids: (string | Types.ObjectId)[]): Promise<boolean>;
 
   /**
-   * Delete a document from the collection by its unique identifier.
+   * Delete a document from the collection.
    *
-   * @param id - The unique identifier of the document to delete.
+   * @param query - Additional query criteria to match the document.
    * @returns A promise that resolves to true if the document was successfully deleted, or false if not.
    */
-  deleteById(id: string | Types.ObjectId): Promise<boolean>;
+  deleteItem(query: Record<string, string>): Promise<boolean>;
 
   /**
    * Find a document by its unique identifier.

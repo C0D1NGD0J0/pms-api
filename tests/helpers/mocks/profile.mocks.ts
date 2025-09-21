@@ -12,7 +12,7 @@ export const createMockProfileDAO = () => ({
   list: jest.fn(),
   insert: jest.fn(),
   updateById: jest.fn(),
-  deleteById: jest.fn(),
+  deleteItem: jest.fn(),
   startSession: jest.fn().mockReturnValue({} as ClientSession),
   withTransaction: jest
     .fn()

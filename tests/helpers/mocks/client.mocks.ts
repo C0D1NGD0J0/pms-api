@@ -11,7 +11,7 @@ export const createMockClientDAO = () => ({
     .mockImplementation(async (id: string, data: any, _options?: any, _session?: ClientSession) => {
       return { _id: id, ...data };
     }),
-  deleteById: jest.fn(),
+  deleteItem: jest.fn(),
   startSession: jest.fn().mockResolvedValue({} as ClientSession),
   withTransaction: jest
     .fn()
@@ -88,7 +88,7 @@ export const createMockUserDAO = () => ({
     .mockImplementation(async (id: string, data: any, _options?: any, _session?: ClientSession) => {
       return { _id: id, ...data };
     }),
-  deleteById: jest.fn(),
+  deleteItem: jest.fn(),
   startSession: jest.fn().mockResolvedValue({} as ClientSession),
   withTransaction: jest
     .fn()
@@ -220,7 +220,7 @@ export const createMockInvitationDAO = () => ({
   list: jest.fn(),
   insert: jest.fn(),
   updateById: jest.fn(),
-  deleteById: jest.fn(),
+  deleteItem: jest.fn(),
   startSession: jest.fn(),
   withTransaction: jest
     .fn()

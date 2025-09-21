@@ -3,22 +3,13 @@ import { PropertyTypeManager } from '@utils/PropertyTypeManager';
 import { PropertyService } from '@services/property/property.service';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
-  createMockPropertyCsvProcessor,
-  createMockEventEmitterService,
-  createMockGeoCoderService,
-  createMockPropertyUnitDAO,
   createMockRequestContext,
-  createMockPropertyCache,
-  createMockPropertyQueue,
   createMockCurrentUser,
   createMockNewProperty,
-  createMockPropertyDAO,
-  createMockUploadQueue,
-  createMockProfileDAO,
-  createMockClientDAO,
   createMockProperty,
   createMockClient,
 } from '@tests/helpers';
+import { createPropertyServiceDependencies, createServiceWithMocks } from '@tests/helpers/mocks/services.mocks';
 
 // Mock PropertyTypeManager
 jest.mock('@utils/PropertyTypeManager', () => ({
@@ -54,53 +45,12 @@ jest.mock('@interfaces/events.interface', () => ({
 
 describe('PropertyService', () => {
   let propertyService: PropertyService;
-  let mockPropertyDAO: any;
-  let mockClientDAO: any;
-  let mockProfileDAO: any;
-  let mockPropertyUnitDAO: any;
-  let mockGeoCoderService: any;
-  let mockEventEmitterService: any;
-  let mockPropertyCache: any;
-  let mockPropertyQueue: any;
-  let mockUploadQueue: any;
-  let mockPropertyCsvProcessor: any;
-  let mockUserDAO: any;
-  let mockMediaUploadService: any;
+  let mocks: any;
 
   beforeEach(() => {
-    mockPropertyDAO = createMockPropertyDAO();
-    mockClientDAO = createMockClientDAO();
-    mockProfileDAO = createMockProfileDAO();
-    mockPropertyUnitDAO = createMockPropertyUnitDAO();
-    mockGeoCoderService = createMockGeoCoderService();
-    mockEventEmitterService = createMockEventEmitterService();
-    mockPropertyCache = createMockPropertyCache();
-    mockPropertyQueue = createMockPropertyQueue();
-    mockUploadQueue = createMockUploadQueue();
-    mockPropertyCsvProcessor = createMockPropertyCsvProcessor();
-    mockUserDAO = { getUserById: jest.fn() }; // Create a simple mock for userDAO
-    mockMediaUploadService = {
-      handleMediaDeletion: jest.fn().mockResolvedValue(undefined),
-    };
-
-    // Add missing mock methods
-    mockPropertyDAO.updateMany = jest.fn();
-    mockProfileDAO.getProfileByUserId = jest.fn();
-
-    propertyService = new PropertyService({
-      propertyDAO: mockPropertyDAO,
-      clientDAO: mockClientDAO,
-      profileDAO: mockProfileDAO,
-      propertyUnitDAO: mockPropertyUnitDAO,
-      geoCoderService: mockGeoCoderService,
-      emitterService: mockEventEmitterService,
-      propertyCache: mockPropertyCache,
-      propertyQueue: mockPropertyQueue,
-      uploadQueue: mockUploadQueue,
-      propertyCsvProcessor: mockPropertyCsvProcessor,
-      mediaUploadService: mockMediaUploadService,
-      userDAO: mockUserDAO,
-    });
+    const result = createServiceWithMocks(PropertyService, createPropertyServiceDependencies);
+    propertyService = result.service;
+    mocks = result.mocks;
   });
 
   afterEach(() => {

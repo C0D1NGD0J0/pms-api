@@ -1,6 +1,11 @@
 import { Document, Types } from 'mongoose';
 
-import { ISuccessReturnData, IPaginationQuery, ResourceContext } from './utils.interface';
+import {
+  ISuccessReturnData,
+  IPaginationQuery,
+  ResourceContext,
+  PaginateResult,
+} from './utils.interface';
 
 /**
  * Notification Enums
@@ -116,7 +121,7 @@ export interface INotification {
   title: string;
   readAt?: Date;
   cuid: string;
-  uid: string;
+  nuid: string;
 }
 
 /**
@@ -198,19 +203,6 @@ export interface IBulkNotificationRequest {
   cuid: string;
 }
 
-export interface INotificationListResponse {
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
-  notifications: INotificationResponse[];
-  unreadCount: number;
-}
-
 /**
  * Email Notification Interface
  */
@@ -255,6 +247,16 @@ export interface IGetNotificationsQuery extends IPaginationQuery {
   type?: string;
 }
 
+/**
+ * Resource Reference Interface
+ */
+export interface INotificationResource {
+  resourceName: ResourceContext;
+  resourceId: Types.ObjectId;
+  displayName?: string;
+  resourceUid: string;
+}
+
 export interface IBulkNotificationResponse {
   notifications: INotificationResponse[];
   errors?: string[];
@@ -262,13 +264,10 @@ export interface IBulkNotificationResponse {
   failed: number;
 }
 
-/**
- * Resource Reference Interface
- */
-export interface INotificationResource {
-  resourceName: ResourceContext;
-  resourceId: Types.ObjectId;
-  resourceUid: string;
+export interface INotificationListResponse {
+  notifications: INotificationResponse[];
+  pagination?: PaginateResult;
+  unreadCount: number;
 }
 
 export interface INotificationUnreadCountResponse {

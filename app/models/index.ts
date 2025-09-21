@@ -6,7 +6,7 @@ import Profile from '@models/profile/profile.model';
 import Property from '@models/property/property.model';
 import Invitation from '@models/invitation/invitation.model';
 import PropertyUnit from '@models/property-unit/propertyUnit.model';
-import { NotificationModel } from '@models/notification/notification.model';
+import NotificationModel from '@models/notification/notification.model';
 
 export {
   NotificationModel,

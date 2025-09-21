@@ -247,15 +247,21 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
   }
 
   /**
-   * Delete a document from the collection by its unique identifier.
-   *
-   * @param id - The unique identifier of the document to delete.
+   * Delete a document from the collection.
+   * @param query - An object containing key-value pairs to filter the document to delete.
    * @returns A promise that resolves to true if the document was successfully deleted, or false if not.
    */
-  async deleteById(id: string): Promise<boolean> {
+  async deleteItem(query: Record<string, string | Types.ObjectId>): Promise<boolean> {
     try {
-      const result = await this.model.deleteOne({ _id: new Types.ObjectId(id) }).exec();
-      return result.deletedCount === 1;
+      if (Object.keys(query).length > 0) {
+        if (query._id || query.id) {
+          query._id = new Types.ObjectId(query._id ?? query.id);
+          delete query.id;
+        }
+        const result = await this.model.deleteOne(query).exec();
+        return result.deletedCount === 1;
+      }
+      return false;
     } catch (error) {
       throw this.throwErrorHandler(error);
     }

@@ -130,7 +130,7 @@ export interface INotificationResponse {
   type: NotificationTypeEnum;
   actionUrl?: string;
   isExpired: boolean;
-  recipient?: string; // Optional for announcements
+  recipient?: string;
   message: string;
   isRead: boolean;
   createdAt: Date;
@@ -138,7 +138,7 @@ export interface INotificationResponse {
   title: string;
   readAt?: Date;
   cuid: string;
-  uid: string;
+  nuid: string;
   id: string;
 }
 
@@ -156,21 +156,6 @@ export interface INotificationSocketData {
   createdAt: Date;
   title: string;
   id: string;
-}
-
-/**
- * Notification Document Interface for Mongoose
- */
-export interface INotificationDocument extends INotification, Document {
-  // Instance methods
-  markAsRead(): Promise<INotificationDocument>;
-
-  softDelete(): Promise<INotificationDocument>;
-  _id: Types.ObjectId;
-
-  // Virtual properties
-  isExpired: boolean;
-  timeAgo: string;
 }
 
 export interface INotificationFilters {
@@ -238,6 +223,17 @@ export interface IEmailNotificationData {
   actionUrl?: string;
   message: string;
   title: string;
+}
+
+/**
+ * Notification Document Interface for Mongoose
+ */
+export interface INotificationDocument extends INotification, Document {
+  markAsRead(): Promise<INotificationDocument>;
+  softDelete(): Promise<INotificationDocument>;
+  _id: Types.ObjectId;
+  isExpired: boolean;
+  timeAgo: string;
 }
 
 export interface IUpdateNotificationRequest {

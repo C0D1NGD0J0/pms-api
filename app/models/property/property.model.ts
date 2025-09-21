@@ -5,7 +5,6 @@ import { IPropertyDocument } from '@interfaces/property.interface';
 
 const logger = createLogger('PropertyModel');
 
-// Define specifications as a separate schema for proper handling
 const SpecificationsSchema = new Schema(
   {
     totalArea: {
@@ -41,10 +40,9 @@ const SpecificationsSchema = new Schema(
       min: 1,
     },
   },
-  { _id: false, strict: false } // Don't create a separate _id and allow additional fields
+  { _id: false, strict: false }
 );
 
-// Define utilities schema
 const UtilitiesSchema = new Schema(
   {
     water: { type: Boolean, default: false },
@@ -56,7 +54,6 @@ const UtilitiesSchema = new Schema(
   { _id: false, strict: false }
 );
 
-// Define interior amenities schema
 const InteriorAmenitiesSchema = new Schema(
   {
     airConditioning: { type: Boolean, default: false },
@@ -70,7 +67,6 @@ const InteriorAmenitiesSchema = new Schema(
   { _id: false, strict: false }
 );
 
-// Define community amenities schema
 const CommunityAmenitiesSchema = new Schema(
   {
     swimmingPool: { type: Boolean, default: false },

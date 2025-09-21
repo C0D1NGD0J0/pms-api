@@ -38,6 +38,7 @@ export enum PermissionAction {
 }
 
 export enum PermissionResource {
+  NOTIFICATION = 'notification',
   MAINTENANCE = 'maintenance',
   INVITATION = 'invitation',
   PROPERTY = 'property',
@@ -49,19 +50,22 @@ export enum PermissionResource {
   USER = 'user',
 }
 
+export enum ResourceContext {
+  SERVICE_REQUEST = 'service-request',
+  USER_PROFILE = 'user-profile',
+  MAINTENANCE = 'maintenance',
+  PROPERTY = 'property',
+  PAYMENT = 'payment',
+  CLIENT = 'client',
+  VENDOR = 'vendor',
+  LEASE = 'lease',
+}
+
 export enum IdentificationEnumType {
   CORPORATION_LICENSE = 'corporation-license',
   DRIVERS_LICENSE = 'drivers-license',
   NATIONAL_ID = 'national-id',
   PASSPORT = 'passport',
-}
-
-export enum ResourceContext {
-  SERVICE_REQUEST = 'service-request',
-  USER_PROFILE = 'user-profile',
-  PROPERTY = 'property',
-  CLIENT = 'client',
-  VENDOR = 'vendor',
 }
 
 export enum CURRENCIES {

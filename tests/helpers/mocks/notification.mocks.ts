@@ -18,7 +18,9 @@ import { createObjectId } from '../mockFactories';
 /**
  * Create a mock notification document
  */
-export const createMockNotificationDocument = (overrides?: Partial<INotification>): INotificationDocument => {
+export const createMockNotificationDocument = (
+  overrides?: Partial<INotification>
+): INotificationDocument => {
   const baseNotification: INotification = {
     recipientType: RecipientTypeEnum.INDIVIDUAL,
     recipient: new Types.ObjectId(),
@@ -56,7 +58,9 @@ export const createMockNotificationDocument = (overrides?: Partial<INotification
 /**
  * Create a mock notification response
  */
-export const createMockNotificationResponse = (overrides?: Partial<INotificationResponse>): INotificationResponse => ({
+export const createMockNotificationResponse = (
+  overrides?: Partial<INotificationResponse>
+): INotificationResponse => ({
   id: faker.string.uuid(),
   recipientType: RecipientTypeEnum.INDIVIDUAL,
   recipient: faker.string.uuid(),
@@ -83,7 +87,9 @@ export const createMockNotificationResponse = (overrides?: Partial<INotification
 /**
  * Create a mock create notification request
  */
-export const createMockCreateNotificationRequest = (overrides?: Partial<ICreateNotificationRequest>): ICreateNotificationRequest => ({
+export const createMockCreateNotificationRequest = (
+  overrides?: Partial<ICreateNotificationRequest>
+): ICreateNotificationRequest => ({
   recipientType: RecipientTypeEnum.INDIVIDUAL,
   recipient: new Types.ObjectId().toString(),
   cuid: faker.string.uuid(),
@@ -105,7 +111,9 @@ export const createMockCreateNotificationRequest = (overrides?: Partial<ICreateN
 /**
  * Create a mock announcement notification request
  */
-export const createMockAnnouncementRequest = (overrides?: Partial<ICreateNotificationRequest>): ICreateNotificationRequest => ({
+export const createMockAnnouncementRequest = (
+  overrides?: Partial<ICreateNotificationRequest>
+): ICreateNotificationRequest => ({
   recipientType: RecipientTypeEnum.ANNOUNCEMENT,
   cuid: faker.string.uuid(),
   title: faker.lorem.sentence(),
@@ -164,8 +172,8 @@ export const createMockNotificationDAO = () => ({
   findByUid: jest.fn(),
   findForUser: jest.fn(),
   updateById: jest.fn(),
-  deleteById: jest.fn(),
-  softDeleteById: jest.fn(),
+  deleteItem: jest.fn(),
+  softdeleteItem: jest.fn(),
   getUnreadCount: jest.fn(),
   getUnreadCountByType: jest.fn(),
   markAsRead: jest.fn(),
@@ -294,7 +302,10 @@ export const createMockResourceInfo = (overrides?: any) => ({
 /**
  * Create multiple notification documents for testing
  */
-export const createMockNotificationDocuments = (count = 5, overrides?: Partial<INotification>[]): INotificationDocument[] => {
+export const createMockNotificationDocuments = (
+  count = 5,
+  overrides?: Partial<INotification>[]
+): INotificationDocument[] => {
   return Array.from({ length: count }, (_, index) =>
     createMockNotificationDocument(overrides?.[index])
   );
@@ -303,7 +314,9 @@ export const createMockNotificationDocuments = (count = 5, overrides?: Partial<I
 /**
  * Create mock notification for different recipient types
  */
-export const createMockIndividualNotification = (overrides?: Partial<INotification>): INotificationDocument =>
+export const createMockIndividualNotification = (
+  overrides?: Partial<INotification>
+): INotificationDocument =>
   createMockNotificationDocument({
     recipientType: RecipientTypeEnum.INDIVIDUAL,
     recipient: new Types.ObjectId(),
@@ -311,7 +324,9 @@ export const createMockIndividualNotification = (overrides?: Partial<INotificati
     ...overrides,
   });
 
-export const createMockAnnouncementNotification = (overrides?: Partial<INotification>): INotificationDocument =>
+export const createMockAnnouncementNotification = (
+  overrides?: Partial<INotification>
+): INotificationDocument =>
   createMockNotificationDocument({
     recipientType: RecipientTypeEnum.ANNOUNCEMENT,
     type: NotificationTypeEnum.ANNOUNCEMENT,
@@ -321,7 +336,9 @@ export const createMockAnnouncementNotification = (overrides?: Partial<INotifica
 /**
  * Create mock notification with specific resource
  */
-export const createMockMaintenanceNotification = (overrides?: Partial<INotification>): INotificationDocument =>
+export const createMockMaintenanceNotification = (
+  overrides?: Partial<INotification>
+): INotificationDocument =>
   createMockNotificationDocument({
     type: NotificationTypeEnum.MAINTENANCE,
     resourceInfo: {
@@ -333,7 +350,9 @@ export const createMockMaintenanceNotification = (overrides?: Partial<INotificat
     ...overrides,
   });
 
-export const createMockPropertyNotification = (overrides?: Partial<INotification>): INotificationDocument =>
+export const createMockPropertyNotification = (
+  overrides?: Partial<INotification>
+): INotificationDocument =>
   createMockNotificationDocument({
     type: NotificationTypeEnum.PROPERTY,
     resourceInfo: {

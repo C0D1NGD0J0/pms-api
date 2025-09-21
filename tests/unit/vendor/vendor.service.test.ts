@@ -14,54 +14,59 @@ describe('VendorService', () => {
     client: 'test-client-123',
   };
 
-  const createMockVendorDocument = (overrides: Partial<IVendorDocument> = {}): IVendorDocument => ({
-    _id: new Types.ObjectId(),
-    vuid: 'vendor-123',
-    connectedClients: [{
-      cuid: mockIds.client,
-      isConnected: true,
-      primaryAccountHolder: new Types.ObjectId(mockIds.user),
-    }],
-    companyName: 'Test Vendor Corp',
-    businessType: 'general_contractor',
-    registrationNumber: 'REG123456',
-    taxId: 'TAX789',
-    address: {
-      street: '123 Business St',
-      city: 'Test City',
-      state: 'Test State',
-      country: 'Test Country',
-      postCode: '12345',
-      fullAddress: '123 Business St, Test City, Test State 12345',
-      computedLocation: {
-        type: 'Point',
-        coordinates: [-122.4194, 37.7749],
+  const createMockVendorDocument = (overrides: Partial<IVendorDocument> = {}): IVendorDocument =>
+    ({
+      _id: new Types.ObjectId(),
+      vuid: 'vendor-123',
+      connectedClients: [
+        {
+          cuid: mockIds.client,
+          isConnected: true,
+          primaryAccountHolder: new Types.ObjectId(mockIds.user),
+        },
+      ],
+      companyName: 'Test Vendor Corp',
+      businessType: 'general_contractor',
+      registrationNumber: 'REG123456',
+      taxId: 'TAX789',
+      address: {
+        street: '123 Business St',
+        city: 'Test City',
+        state: 'Test State',
+        country: 'Test Country',
+        postCode: '12345',
+        fullAddress: '123 Business St, Test City, Test State 12345',
+        computedLocation: {
+          type: 'Point',
+          coordinates: [-122.4194, 37.7749],
+        },
       },
-    },
-    contactPerson: {
-      name: 'John Vendor',
-      jobTitle: 'Owner',
-      email: 'john@testvendor.com',
-      phone: '+1234567890',
-    },
-    servicesOffered: {
-      plumbing: true,
-      electrical: false,
-      hvac: true,
-    },
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    deletedAt: null,
-    ...overrides,
-  }) as IVendorDocument;
+      contactPerson: {
+        name: 'John Vendor',
+        jobTitle: 'Owner',
+        email: 'john@testvendor.com',
+        phone: '+1234567890',
+      },
+      servicesOffered: {
+        plumbing: true,
+        electrical: false,
+        hvac: true,
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      ...overrides,
+    }) as IVendorDocument;
 
   const createMockNewVendor = (overrides: Partial<NewVendor> = {}): NewVendor => ({
     isPrimaryAccountHolder: true,
-    connectedClients: [{
-      cuid: mockIds.client,
-      isConnected: true,
-      primaryAccountHolder: new Types.ObjectId(mockIds.user),
-    }],
+    connectedClients: [
+      {
+        cuid: mockIds.client,
+        isConnected: true,
+        primaryAccountHolder: new Types.ObjectId(mockIds.user),
+      },
+    ],
     companyName: 'Test Vendor Corp',
     businessType: 'general_contractor',
     registrationNumber: 'REG123456',
@@ -87,7 +92,7 @@ describe('VendorService', () => {
       upsert: jest.fn(),
       insert: jest.fn(),
       updateById: jest.fn(),
-      deleteById: jest.fn(),
+      deleteItem: jest.fn(),
       count: jest.fn(),
       aggregate: jest.fn(),
       withTransaction: jest.fn(),
@@ -319,7 +324,11 @@ describe('VendorService', () => {
       expect(result.success).toBe(true);
       expect(result.data).toEqual(mockVendorDoc);
       expect(result.message).toBe('Vendor information updated successfully');
-      expect(mockVendorDAO.updateVendor).toHaveBeenCalledWith(mockIds.vendor, updateData, undefined);
+      expect(mockVendorDAO.updateVendor).toHaveBeenCalledWith(
+        mockIds.vendor,
+        updateData,
+        undefined
+      );
     });
 
     it('should throw NotFoundError when vendor not found', async () => {

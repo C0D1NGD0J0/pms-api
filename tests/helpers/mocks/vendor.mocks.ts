@@ -7,17 +7,17 @@ import { createMockVendorDocument, createMockNewVendor } from '../mockFactories'
 export const createMockVendorDAO = () => ({
   // Core CRUD operations
   createVendor: jest.fn().mockResolvedValue(createMockVendorDocument()),
-  
+
   getVendorById: jest.fn().mockResolvedValue(createMockVendorDocument()),
-  
+
   getVendorByPrimaryAccountHolder: jest.fn().mockResolvedValue(createMockVendorDocument()),
-  
+
   findByRegistrationNumber: jest.fn().mockResolvedValue(null),
-  
+
   updateVendor: jest.fn().mockResolvedValue(createMockVendorDocument()),
-  
+
   getClientVendors: jest.fn().mockResolvedValue([createMockVendorDocument()]),
-  
+
   getClientVendorStats: jest.fn().mockResolvedValue({
     totalVendors: 5,
     businessTypeDistribution: [
@@ -37,12 +37,14 @@ export const createMockVendorDAO = () => ({
   list: jest.fn().mockResolvedValue([createMockVendorDocument()]),
   insert: jest.fn().mockResolvedValue(createMockVendorDocument()),
   updateById: jest.fn().mockResolvedValue(createMockVendorDocument()),
-  deleteById: jest.fn().mockResolvedValue(createMockVendorDocument()),
+  deleteItem: jest.fn().mockResolvedValue(createMockVendorDocument()),
   count: jest.fn().mockResolvedValue(1),
   aggregate: jest.fn().mockResolvedValue([]),
-  withTransaction: jest.fn().mockImplementation(async (session: ClientSession, callback: Function) => {
-    return callback(session);
-  }),
+  withTransaction: jest
+    .fn()
+    .mockImplementation(async (session: ClientSession, callback: Function) => {
+      return callback(session);
+    }),
 });
 
 // VendorService Mock with all business methods

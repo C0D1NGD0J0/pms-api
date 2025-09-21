@@ -186,7 +186,7 @@ export const createMockInvitationDAO = () => ({
   }),
   insert: jest.fn().mockResolvedValue(createMockInvitation()),
   updateById: jest.fn().mockResolvedValue({ acknowledged: true, modifiedCount: 1 }),
-  deleteById: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
+  deleteItem: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
   // Support both versions for compatibility
   startSession: jest.fn().mockImplementation(() => createMockSession()),
   withTransaction: jest
@@ -237,7 +237,7 @@ export const createMockClientDAO = () => ({
   list: jest.fn().mockResolvedValue({ items: [createMockClient()], pagination: undefined }),
   insert: jest.fn().mockResolvedValue(createMockClient()),
   updateById: jest.fn().mockResolvedValue({ acknowledged: true, modifiedCount: 1 }),
-  deleteById: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
+  deleteItem: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
   startSession: jest.fn().mockImplementation(() => createMockSession()),
   withTransaction: jest
     .fn()
@@ -261,7 +261,7 @@ export const createMockUserDAO = () => ({
   list: jest.fn().mockResolvedValue({ items: [createMockUser()], pagination: undefined }),
   insert: jest.fn().mockResolvedValue(createMockUser()),
   updateById: jest.fn().mockResolvedValue({ acknowledged: true, modifiedCount: 1 }),
-  deleteById: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
+  deleteItem: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
   startSession: jest.fn().mockImplementation(() => createMockSession()),
   withTransaction: jest
     .fn()
@@ -290,7 +290,7 @@ export const createMockProfileDAO = () => ({
   list: jest.fn().mockResolvedValue({ items: [createMockProfile()], pagination: undefined }),
   insert: jest.fn().mockResolvedValue(createMockProfile()),
   updateById: jest.fn().mockResolvedValue({ acknowledged: true, modifiedCount: 1 }),
-  deleteById: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
+  deleteItem: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
   startSession: jest.fn().mockImplementation(() => createMockSession()),
   withTransaction: jest
     .fn()

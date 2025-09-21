@@ -120,3 +120,8 @@ export {
 } from './mocks/mediaUpload.mocks';
 
 export * from './testUtils';
+
+// Centralized base mocks
+export * from './mocks/baseDAO.mocks';
+export * from './mocks/models.mocks';
+export * from './mocks/services.mocks';

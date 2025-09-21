@@ -8,7 +8,7 @@ export const createMockPropertyDAO = () => ({
   insert: jest.fn(),
   update: jest.fn(),
   updateById: jest.fn(),
-  deleteById: jest.fn(),
+  deleteItem: jest.fn(),
   startSession: jest.fn(),
   withTransaction: jest
     .fn()
@@ -39,7 +39,7 @@ export const createMockPropertyUnitDAO = () => ({
   insert: jest.fn(),
   update: jest.fn(),
   updateById: jest.fn(),
-  deleteById: jest.fn(),
+  deleteItem: jest.fn(),
   startSession: jest.fn(),
   withTransaction: jest
     .fn()

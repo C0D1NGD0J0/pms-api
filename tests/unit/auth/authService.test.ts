@@ -2,47 +2,21 @@ import { Types } from 'mongoose';
 import { AuthService } from '@services/auth/auth.service';
 import { UnauthorizedError, NotFoundError } from '@shared/customErrors';
 import {
-  createMockAuthCache,
-  createMockAuthTokenService,
-  createMockClientDAO,
   createMockCurrentUser,
-  createMockEmailQueue,
-  createMockProfileDAO,
   createMockSignupData,
   createMockUser,
-  createMockUserDAO,
-  createMockVendorService,
   createMockCompanyProfile,
 } from '@tests/helpers';
+import { createAuthServiceDependencies, createServiceWithMocks } from '@tests/helpers/mocks/services.mocks';
 
 describe('AuthService', () => {
   let authService: AuthService;
-  let mockTokenService: any;
-  let mockAuthCache: any;
-  let mockUserDAO: any;
-  let mockClientDAO: any;
-  let mockProfileDAO: any;
-  let mockEmailQueue: any;
-  let mockVendorService: any;
+  let mocks: any;
 
   beforeEach(() => {
-    mockTokenService = createMockAuthTokenService();
-    mockAuthCache = createMockAuthCache();
-    mockUserDAO = createMockUserDAO();
-    mockClientDAO = createMockClientDAO();
-    mockProfileDAO = createMockProfileDAO();
-    mockEmailQueue = createMockEmailQueue();
-    mockVendorService = createMockVendorService();
-
-    authService = new AuthService({
-      tokenService: mockTokenService,
-      authCache: mockAuthCache,
-      userDAO: mockUserDAO,
-      clientDAO: mockClientDAO,
-      profileDAO: mockProfileDAO,
-      emailQueue: mockEmailQueue,
-      vendorService: mockVendorService,
-    });
+    const result = createServiceWithMocks(AuthService, createAuthServiceDependencies);
+    authService = result.service;
+    mocks = result.mocks;
   });
 
   afterEach(() => {
@@ -58,17 +32,17 @@ describe('AuthService', () => {
         userId: new Types.ObjectId().toString(),
       };
 
-      mockAuthCache.getRefreshToken.mockResolvedValue({ success: true });
-      mockTokenService.verifyJwtToken.mockResolvedValue({
+      mocks.authCache.getRefreshToken.mockResolvedValue({ success: true });
+      mocks.tokenService.verifyJwtToken.mockResolvedValue({
         success: true,
         data: { sub: mockRefreshData.userId, rememberMe: false, csub: 'mock-cuid' },
       });
-      mockTokenService.createJwtTokens.mockReturnValue({
+      mocks.tokenService.createJwtTokens.mockReturnValue({
         accessToken: 'new-access-token',
         refreshToken: 'new-refresh-token',
         rememberMe: false,
       });
-      mockAuthCache.saveRefreshToken.mockResolvedValue({ success: true });
+      mocks.authCache.saveRefreshToken.mockResolvedValue({ success: true });
 
       // Act
       const result = await authService.refreshToken(mockRefreshData);
@@ -109,15 +83,15 @@ describe('AuthService', () => {
         activecuid: 'test-cuid',
       });
 
-      mockUserDAO.getActiveUserByEmail.mockResolvedValue(mockUser);
-      mockUserDAO.verifyCredentials.mockResolvedValue(mockUser);
-      mockTokenService.createJwtTokens.mockReturnValue({
+      mocks.userDAO.getActiveUserByEmail.mockResolvedValue(mockUser);
+      mocks.userDAO.verifyCredentials.mockResolvedValue(mockUser);
+      mocks.tokenService.createJwtTokens.mockReturnValue({
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
       });
-      mockAuthCache.saveRefreshToken.mockResolvedValue({ success: true });
-      mockProfileDAO.generateCurrentUserInfo.mockResolvedValue(createMockCurrentUser());
-      mockAuthCache.saveCurrentUser.mockResolvedValue({ success: true });
+      mocks.authCache.saveRefreshToken.mockResolvedValue({ success: true });
+      mocks.profileDAO.generateCurrentUserInfo.mockResolvedValue(createMockCurrentUser());
+      mocks.authCache.saveCurrentUser.mockResolvedValue({ success: true });
 
       // Act
       const result = await authService.login(mockLoginData);
@@ -134,7 +108,7 @@ describe('AuthService', () => {
         password: 'password123',
         rememberMe: false,
       };
-      mockUserDAO.getActiveUserByEmail.mockResolvedValue(null);
+      mocks.userDAO.getActiveUserByEmail.mockResolvedValue(null);
 
       // Act & Assert
       await expect(authService.login(mockLoginData)).rejects.toThrow(NotFoundError);
@@ -150,14 +124,14 @@ describe('AuthService', () => {
       const mockClient = { cuid: 'test-cuid' };
       const mockProfile = { fullname: 'Test User' };
 
-      mockUserDAO.startSession.mockReturnValue('mock-session');
-      mockUserDAO.withTransaction.mockImplementation(async (_session: any, callback: any) => {
+      mocks.userDAO.startSession.mockReturnValue('mock-session');
+      mocks.userDAO.withTransaction.mockImplementation(async (_session: any, callback: any) => {
         return await callback(_session);
       });
-      mockUserDAO.insert.mockResolvedValue(mockUser);
-      mockClientDAO.insert.mockResolvedValue(mockClient);
-      mockProfileDAO.createUserProfile.mockResolvedValue(mockProfile);
-      mockEmailQueue.addToEmailQueue.mockResolvedValue(true);
+      mocks.userDAO.insert.mockResolvedValue(mockUser);
+      mocks.clientDAO.insert.mockResolvedValue(mockClient);
+      mocks.profileDAO.createUserProfile.mockResolvedValue(mockProfile);
+      mocks.emailQueue.addToEmailQueue.mockResolvedValue(true);
 
       // Act
       const result = await authService.signup(mockSignupData);
@@ -170,8 +144,8 @@ describe('AuthService', () => {
     it('should handle transaction failure', async () => {
       // Arrange
       const mockSignupData = createMockSignupData();
-      mockUserDAO.startSession.mockReturnValue('mock-session');
-      mockUserDAO.withTransaction.mockImplementation(async (_session: any, _callback: any) => {
+      mocks.userDAO.startSession.mockReturnValue('mock-session');
+      mocks.userDAO.withTransaction.mockImplementation(async (_session: any, _callback: any) => {
         throw new Error('Transaction failed');
       });
 
@@ -198,15 +172,15 @@ describe('AuthService', () => {
         ],
       });
 
-      mockUserDAO.getUserById.mockResolvedValue(mockUser);
-      mockUserDAO.updateById.mockResolvedValue({ acknowledged: true });
-      mockTokenService.createJwtTokens.mockReturnValue({
+      mocks.userDAO.getUserById.mockResolvedValue(mockUser);
+      mocks.userDAO.updateById.mockResolvedValue({ acknowledged: true });
+      mocks.tokenService.createJwtTokens.mockReturnValue({
         accessToken: 'new-access-token',
         refreshToken: 'new-refresh-token',
       });
-      mockAuthCache.saveRefreshToken.mockResolvedValue({ success: true });
-      mockProfileDAO.generateCurrentUserInfo.mockResolvedValue(createMockCurrentUser());
-      mockAuthCache.saveCurrentUser.mockResolvedValue({ success: true });
+      mocks.authCache.saveRefreshToken.mockResolvedValue({ success: true });
+      mocks.profileDAO.generateCurrentUserInfo.mockResolvedValue(createMockCurrentUser());
+      mocks.authCache.saveCurrentUser.mockResolvedValue({ success: true });
 
       // Act
       const result = await authService.switchActiveAccount(userId, newCuid);
@@ -235,11 +209,11 @@ describe('AuthService', () => {
         ],
       });
 
-      mockTokenService.verifyJwtToken.mockResolvedValue({
+      mocks.tokenService.verifyJwtToken.mockResolvedValue({
         success: true,
         data: mockDecodedData,
       });
-      mockUserDAO.getUserById.mockResolvedValue(mockUser);
+      mocks.userDAO.getUserById.mockResolvedValue(mockUser);
 
       // Act
       const result = await authService.getTokenUser(mockToken);
@@ -255,8 +229,8 @@ describe('AuthService', () => {
       // Arrange
       const userId = new Types.ObjectId().toString();
       const mockCurrentUser = createMockCurrentUser();
-      mockProfileDAO.generateCurrentUserInfo.mockResolvedValue(mockCurrentUser);
-      mockAuthCache.saveCurrentUser.mockResolvedValue({ success: true });
+      mocks.profileDAO.generateCurrentUserInfo.mockResolvedValue(mockCurrentUser);
+      mocks.authCache.saveCurrentUser.mockResolvedValue({ success: true });
 
       // Act
       const result = await authService.getCurrentUser(userId);
@@ -280,8 +254,8 @@ describe('AuthService', () => {
       });
       const mockClient = { cuid: clientId, displayName: 'Test Client' };
 
-      mockUserDAO.getUserById.mockResolvedValue(mockUser);
-      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mocks.userDAO.getUserById.mockResolvedValue(mockUser);
+      mocks.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
 
       // Act
       const result = await authService.verifyClientAccess(userId, clientId);
@@ -299,9 +273,9 @@ describe('AuthService', () => {
       const mockUser = createMockUser({ email: userEmail });
       (mockUser as any).profile = { fullname: 'Test User' };
 
-      mockUserDAO.createPasswordResetToken.mockResolvedValue(true);
-      mockUserDAO.getActiveUserByEmail.mockResolvedValue(mockUser);
-      mockEmailQueue.addToEmailQueue.mockResolvedValue(true);
+      mocks.userDAO.createPasswordResetToken.mockResolvedValue(true);
+      mocks.userDAO.getActiveUserByEmail.mockResolvedValue(mockUser);
+      mocks.emailQueue.addToEmailQueue.mockResolvedValue(true);
 
       // Act
       const result = await authService.forgotPassword(userEmail);
@@ -320,9 +294,9 @@ describe('AuthService', () => {
       const mockUser = createMockUser({ email: userEmail });
       (mockUser as any).profile = { fullname: 'Test User' };
 
-      mockUserDAO.resetPassword.mockResolvedValue(true);
-      mockUserDAO.getActiveUserByEmail.mockResolvedValue(mockUser);
-      mockEmailQueue.addToEmailQueue.mockResolvedValue(true);
+      mocks.userDAO.resetPassword.mockResolvedValue(true);
+      mocks.userDAO.getActiveUserByEmail.mockResolvedValue(mockUser);
+      mocks.emailQueue.addToEmailQueue.mockResolvedValue(true);
 
       // Act
       const result = await authService.resetPassword(userEmail, resetToken);
@@ -337,7 +311,7 @@ describe('AuthService', () => {
     it('should successfully activate account', async () => {
       // Arrange
       const activationToken = 'activation-token';
-      mockUserDAO.activateAccount.mockResolvedValue(true);
+      mocks.userDAO.activateAccount.mockResolvedValue(true);
 
       // Act
       const result = await authService.accountActivation(activationToken);
@@ -353,11 +327,11 @@ describe('AuthService', () => {
       // Arrange
       const accessToken = 'valid-access-token';
       const userId = new Types.ObjectId().toString();
-      mockTokenService.verifyJwtToken.mockResolvedValue({
+      mocks.tokenService.verifyJwtToken.mockResolvedValue({
         success: true,
         data: { sub: userId },
       });
-      mockAuthCache.invalidateUserSession.mockResolvedValue({ success: true });
+      mocks.authCache.invalidateUserSession.mockResolvedValue({ success: true });
 
       // Act
       const result = await authService.logout(accessToken);
@@ -384,14 +358,14 @@ describe('AuthService', () => {
         ],
       });
 
-      mockUserDAO.getUserById.mockResolvedValue(mockUser);
-      mockTokenService.createJwtTokens.mockReturnValue({
+      mocks.userDAO.getUserById.mockResolvedValue(mockUser);
+      mocks.tokenService.createJwtTokens.mockReturnValue({
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
       });
-      mockAuthCache.saveRefreshToken.mockResolvedValue({ success: true });
-      mockProfileDAO.generateCurrentUserInfo.mockResolvedValue(createMockCurrentUser());
-      mockAuthCache.saveCurrentUser.mockResolvedValue({ success: true });
+      mocks.authCache.saveRefreshToken.mockResolvedValue({ success: true });
+      mocks.profileDAO.generateCurrentUserInfo.mockResolvedValue(createMockCurrentUser());
+      mocks.authCache.saveCurrentUser.mockResolvedValue({ success: true });
 
       // Act
       const result = await authService.loginAfterInvitationSignup(userId, clientId);
@@ -418,16 +392,16 @@ describe('AuthService', () => {
       const mockProfile = { _id: new Types.ObjectId(), user: mockUser._id };
 
       // Mock successful user and client creation
-      mockUserDAO.withTransaction.mockImplementation(async (session: any, callback: any) => {
+      mocks.userDAO.withTransaction.mockImplementation(async (session: any, callback: any) => {
         return callback(session);
       });
-      mockUserDAO.insert.mockResolvedValue(mockUser);
-      mockClientDAO.insert.mockResolvedValue(mockClient);
-      mockProfileDAO.createUserProfile.mockResolvedValue(mockProfile);
-      mockEmailQueue.addToEmailQueue.mockResolvedValue(true);
+      mocks.userDAO.insert.mockResolvedValue(mockUser);
+      mocks.clientDAO.insert.mockResolvedValue(mockClient);
+      mocks.profileDAO.createUserProfile.mockResolvedValue(mockProfile);
+      mocks.emailQueue.addToEmailQueue.mockResolvedValue(true);
 
       // Mock successful vendor creation
-      mockVendorService.createVendorFromCompanyProfile.mockResolvedValue({
+      mocks.vendorService.createVendorFromCompanyProfile.mockResolvedValue({
         vuid: 'vendor-123',
         companyName: signupData.companyProfile?.legalEntityName || 'Test Company',
       });
@@ -435,7 +409,7 @@ describe('AuthService', () => {
       const result = await authService.signup(signupData);
 
       expect(result.success).toBe(true);
-      expect(mockVendorService.createVendorFromCompanyProfile).toHaveBeenCalledWith(
+      expect(mocks.vendorService.createVendorFromCompanyProfile).toHaveBeenCalledWith(
         mockUser._id?.toString(),
         signupData.companyProfile
       );
@@ -456,23 +430,23 @@ describe('AuthService', () => {
       const mockProfile = { _id: new Types.ObjectId(), user: mockUser._id };
 
       // Mock successful user and client creation
-      mockUserDAO.withTransaction.mockImplementation(async (session: any, callback: any) => {
+      mocks.userDAO.withTransaction.mockImplementation(async (session: any, callback: any) => {
         return callback(session);
       });
-      mockUserDAO.insert.mockResolvedValue(mockUser);
-      mockClientDAO.insert.mockResolvedValue(mockClient);
-      mockProfileDAO.createUserProfile.mockResolvedValue(mockProfile);
-      mockEmailQueue.addToEmailQueue.mockResolvedValue(true);
+      mocks.userDAO.insert.mockResolvedValue(mockUser);
+      mocks.clientDAO.insert.mockResolvedValue(mockClient);
+      mocks.profileDAO.createUserProfile.mockResolvedValue(mockProfile);
+      mocks.emailQueue.addToEmailQueue.mockResolvedValue(true);
 
       // Mock vendor creation failure (should not break signup)
-      mockVendorService.createVendorFromCompanyProfile.mockRejectedValue(
+      mocks.vendorService.createVendorFromCompanyProfile.mockRejectedValue(
         new Error('Vendor creation failed')
       );
 
       const result = await authService.signup(signupData);
 
       expect(result.success).toBe(true);
-      expect(mockVendorService.createVendorFromCompanyProfile).toHaveBeenCalled();
+      expect(mocks.vendorService.createVendorFromCompanyProfile).toHaveBeenCalled();
     });
 
     it('should skip vendor creation for non-corporate accounts', async () => {
@@ -488,18 +462,18 @@ describe('AuthService', () => {
       const mockClient = { _id: new Types.ObjectId(), cuid: 'test-client' };
       const mockProfile = { _id: new Types.ObjectId(), user: mockUser._id };
 
-      mockUserDAO.withTransaction.mockImplementation(async (session: any, callback: any) => {
+      mocks.userDAO.withTransaction.mockImplementation(async (session: any, callback: any) => {
         return callback(session);
       });
-      mockUserDAO.insert.mockResolvedValue(mockUser);
-      mockClientDAO.insert.mockResolvedValue(mockClient);
-      mockProfileDAO.createUserProfile.mockResolvedValue(mockProfile);
-      mockEmailQueue.addToEmailQueue.mockResolvedValue(true);
+      mocks.userDAO.insert.mockResolvedValue(mockUser);
+      mocks.clientDAO.insert.mockResolvedValue(mockClient);
+      mocks.profileDAO.createUserProfile.mockResolvedValue(mockProfile);
+      mocks.emailQueue.addToEmailQueue.mockResolvedValue(true);
 
       const result = await authService.signup(signupData);
 
       expect(result.success).toBe(true);
-      expect(mockVendorService.createVendorFromCompanyProfile).not.toHaveBeenCalled();
+      expect(mocks.vendorService.createVendorFromCompanyProfile).not.toHaveBeenCalled();
     });
 
     it('should create vendor with email and contact person mapping', async () => {
@@ -522,15 +496,15 @@ describe('AuthService', () => {
       const mockClient = { _id: new Types.ObjectId(), cuid: 'test-client' };
       const mockProfile = { _id: new Types.ObjectId(), user: mockUser._id };
 
-      mockUserDAO.withTransaction.mockImplementation(async (session: any, callback: any) => {
+      mocks.userDAO.withTransaction.mockImplementation(async (session: any, callback: any) => {
         return callback(session);
       });
-      mockUserDAO.insert.mockResolvedValue(mockUser);
-      mockClientDAO.insert.mockResolvedValue(mockClient);
-      mockProfileDAO.createUserProfile.mockResolvedValue(mockProfile);
-      mockEmailQueue.addToEmailQueue.mockResolvedValue(true);
+      mocks.userDAO.insert.mockResolvedValue(mockUser);
+      mocks.clientDAO.insert.mockResolvedValue(mockClient);
+      mocks.profileDAO.createUserProfile.mockResolvedValue(mockProfile);
+      mocks.emailQueue.addToEmailQueue.mockResolvedValue(true);
 
-      mockVendorService.createVendorFromCompanyProfile.mockResolvedValue({
+      mocks.vendorService.createVendorFromCompanyProfile.mockResolvedValue({
         vuid: 'vendor-123',
         companyName:
           signupData?.companyProfile?.legalEntityName || signupData?.companyProfile?.tradingName,
@@ -538,7 +512,7 @@ describe('AuthService', () => {
 
       await authService.signup(signupData);
 
-      expect(mockVendorService.createVendorFromCompanyProfile).toHaveBeenCalledWith(
+      expect(mocks.vendorService.createVendorFromCompanyProfile).toHaveBeenCalledWith(
         mockUser?._id?.toString(),
         expect.objectContaining({
           companyEmail: 'info@company.com',

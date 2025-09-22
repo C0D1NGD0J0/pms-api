@@ -8,13 +8,8 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
 import { PropertyTypeManager } from '@utils/PropertyTypeManager';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
-import {
-  UploadCompletedPayload,
-  UploadFailedPayload,
-  IDisposable,
-  EventTypes,
-} from '@interfaces/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -63,7 +58,7 @@ interface IConstructor {
   userDAO: UserDAO;
 }
 
-export class PropertyService implements IDisposable {
+export class PropertyService {
   private readonly log: Logger;
   private uploadQueue: UploadQueue;
   private readonly clientDAO: ClientDAO;

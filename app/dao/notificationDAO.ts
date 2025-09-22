@@ -76,6 +76,7 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
   async findForUser(
     userId: string,
     cuid: string,
+    targetingInfo: { roles: string[]; vendorId?: string },
     filters?: INotificationFilters,
     pagination?: IPaginationQuery
   ): Promise<{ data: INotificationDocument[]; total: number }> {
@@ -85,13 +86,31 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
         $or: [
           // Individual notifications for this user
           { recipientType: 'individual', recipient: new Types.ObjectId(userId) },
-          // Announcement notifications for this client
-          { recipientType: 'announcement' },
+          {
+            recipientType: 'announcement',
+            targetRoles: { $exists: false },
+            targetVendor: { $exists: false },
+          },
+          ...(targetingInfo.roles.length > 0
+            ? [
+                {
+                  recipientType: 'announcement',
+                  targetRoles: { $in: targetingInfo.roles },
+                },
+              ]
+            : []),
+          ...(targetingInfo.vendorId
+            ? [
+                {
+                  recipientType: 'announcement',
+                  targetVendor: targetingInfo.vendorId,
+                },
+              ]
+            : []),
         ],
         deletedAt: null,
       };
 
-      // Apply additional filters
       if (filters) {
         if (filters.type) {
           filter.type = Array.isArray(filters.type) ? { $in: filters.type } : filters.type;
@@ -124,8 +143,6 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
       };
 
       const result = await this.list(filter, options);
-
-      // Transform the result to match the interface
       return {
         data: result.items || [],
         total: result.pagination?.total || 0,

@@ -5,14 +5,12 @@ import {
   INotification,
 } from '@interfaces/notification.interface';
 
-/**
- * DAO Interface Definition - Streamlined with essential methods only
- */
 export interface INotificationDAO {
   // Notification-specific methods
   findForUser(
     userId: string,
     cuid: string,
+    targetingInfo: { roles: string[]; vendorId?: string },
     filters?: INotificationFilters,
     pagination?: IPaginationQuery
   ): Promise<{ data: INotificationDocument[]; total: number }>;

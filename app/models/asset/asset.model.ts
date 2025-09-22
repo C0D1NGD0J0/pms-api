@@ -46,7 +46,6 @@ const AssetSchema = new Schema<IAssetDocument>(
         type: String,
         required: [true, 'S3 key is required'],
         trim: true,
-        index: true,
       },
     },
     resource: {

@@ -100,6 +100,15 @@ const NotificationSchema = new Schema<INotificationDocument>(
       type: Schema.Types.Mixed,
       default: {},
     },
+    // Announcement targeting fields
+    targetRoles: {
+      type: [String],
+      default: undefined,
+    },
+    targetVendor: {
+      type: String,
+      trim: true,
+    },
     expiresAt: {
       type: Date,
       index: { expireAfterSeconds: 0 }, // TTL index for automatic cleanup
@@ -131,12 +140,12 @@ NotificationSchema.index({ recipientType: 1, cuid: 1, type: 1, createdAt: -1 });
 NotificationSchema.index({ cuid: 1, type: 1, createdAt: -1 }); // Client notifications by type
 NotificationSchema.index({ 'resourceInfo.resourceName': 1, 'resourceInfo.resourceId': 1, cuid: 1 }); // Resource-specific queries
 
-// set expiration date if not provided (default 90 days)
+// set expiration date if not provided (default 30 days)
 NotificationSchema.pre('save', function (this: INotificationDocument, next) {
   if (this.isNew && !this.expiresAt) {
-    const ninetyDaysFromNow = new Date();
-    ninetyDaysFromNow.setDate(ninetyDaysFromNow.getDate() + 90);
-    this.expiresAt = ninetyDaysFromNow;
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    this.expiresAt = thirtyDaysFromNow;
   }
   next();
 });

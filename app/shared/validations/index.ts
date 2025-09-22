@@ -1,3 +1,4 @@
+export * from './NotificationValidation';
 export * from './PropertyUnitValidation';
 export * from './InvitationValidation';
 export * from './PropertyValidation';

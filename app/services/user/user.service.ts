@@ -58,9 +58,6 @@ export class UserService {
     this.vendorService = vendorService;
   }
 
-  /**
-   * Fetch and validate user with proper population
-   */
   private async fetchAndValidateUser(
     uid: string,
     currentuser: ICurrentUser
@@ -98,9 +95,6 @@ export class UserService {
     return user;
   }
 
-  /**
-   * Check cache for existing user detail data
-   */
   private async checkUserDetailCache(
     clientId: string,
     uid: string
@@ -117,9 +111,6 @@ export class UserService {
     return null;
   }
 
-  /**
-   * Validate client connection and build user detail
-   */
   private async buildAndCacheUserDetail(
     user: IUserPopulatedDocument,
     clientId: string,

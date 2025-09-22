@@ -80,7 +80,7 @@ router.patch(
   })
 );
 
-router.post(
+router.patch(
   '/reset_password',
   validateRequest({
     body: AuthValidations.resetPassword,

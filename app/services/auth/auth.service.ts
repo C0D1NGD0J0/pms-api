@@ -528,14 +528,17 @@ export class AuthService {
     };
   }
 
-  async resetPassword(email: string, token: string): Promise<ISuccessReturnData> {
-    if (!email && !token) {
+  async resetPassword(resetToken: string, password: string): Promise<ISuccessReturnData> {
+    if (!resetToken && !password) {
       this.log.error('User email and token are required. | ResetPassword');
       throw new BadRequestError({ message: t('auth.errors.invalidEmailToken') });
     }
 
-    await this.userDAO.resetPassword(email, token);
-    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
+    const result = await this.userDAO.resetPassword(resetToken, password);
+    if (!result) {
+      throw new BadRequestError({ message: t('auth.errors.invalidEmailToken') });
+    }
+    const user = await this.userDAO.getActiveUserByEmail(result.email, { populate: 'profile' });
     if (!user) {
       throw new NotFoundError({ message: t('auth.errors.noRecordFound') });
     }

@@ -6,7 +6,7 @@ import { PropertyCache } from '@caching/index';
 import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
-import { PropertyTypeManager } from '@utils/PropertyTypeManager';
+import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';

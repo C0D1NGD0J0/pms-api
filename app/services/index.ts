@@ -1,4 +1,5 @@
 export * from './eventEmitter';
+export * from './notification';
 export * from './mediaUpload';
 export * from './fileUpload';
 export * from './invitation';

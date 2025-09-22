@@ -1,5 +1,5 @@
-import { PropertyTypeManager } from '@utils/PropertyTypeManager';
 import { NewPropertyType } from '@interfaces/property.interface';
+import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 
 export interface ValidationError {
   message: string;

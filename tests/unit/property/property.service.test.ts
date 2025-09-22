@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import { PropertyTypeManager } from '@utils/PropertyTypeManager';
+import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyService } from '@services/property/property.service';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
@@ -9,7 +9,10 @@ import {
   createMockProperty,
   createMockClient,
 } from '@tests/helpers';
-import { createPropertyServiceDependencies, createServiceWithMocks } from '@tests/helpers/mocks/services.mocks';
+import {
+  createPropertyServiceDependencies,
+  createServiceWithMocks,
+} from '@tests/helpers/mocks/services.mocks';
 
 // Mock PropertyTypeManager
 jest.mock('@utils/PropertyTypeManager', () => ({
@@ -2599,10 +2602,7 @@ describe('PropertyService', () => {
         expect(mockPropertyDAO.getPropertiesByClientId).toHaveBeenCalledWith(
           cuid,
           expect.objectContaining({
-            $and: [
-              { approvalStatus: { $exists: true } },
-              { approvalStatus: 'approved' },
-            ],
+            $and: [{ approvalStatus: { $exists: true } }, { approvalStatus: 'approved' }],
             status: { $ne: 'inactive' },
           }),
           expect.any(Object)

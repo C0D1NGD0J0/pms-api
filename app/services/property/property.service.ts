@@ -4,8 +4,9 @@ import sanitizeHtml from 'sanitize-html';
 import { FilterQuery, Types } from 'mongoose';
 import { PropertyCache } from '@caching/index';
 import { GeoCoderService } from '@services/external';
-import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
+import { NotificationService } from '@services/notification';
+import { ICurrentUser, IUserRole } from '@interfaces/user.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
@@ -17,13 +18,6 @@ import {
   NotFoundError,
 } from '@shared/customErrors';
 import {
-  PROPERTY_CREATION_ALLOWED_DEPARTMENTS,
-  PROPERTY_APPROVAL_ROLES,
-  PROPERTY_STAFF_ROLES,
-  getRequestDuration,
-  createLogger,
-} from '@utils/index';
-import {
   ExtractedMediaFile,
   ISuccessReturnData,
   IPaginationQuery,
@@ -31,6 +25,14 @@ import {
   PaginateResult,
   UploadResult,
 } from '@interfaces/utils.interface';
+import {
+  PROPERTY_CREATION_ALLOWED_DEPARTMENTS,
+  PROPERTY_APPROVAL_ROLES,
+  PROPERTY_STAFF_ROLES,
+  getRequestDuration,
+  createLogger,
+  MoneyUtils,
+} from '@utils/index';
 import {
   PropertyApprovalStatusEnum,
   IAssignableUsersFilter,
@@ -45,6 +47,7 @@ import { PropertyValidationService } from './propertyValidation.service';
 
 interface IConstructor {
   propertyCsvProcessor: PropertyCsvProcessor;
+  notificationService: NotificationService;
   mediaUploadService: MediaUploadService;
   emitterService: EventEmitterService;
   geoCoderService: GeoCoderService;
@@ -72,6 +75,7 @@ export class PropertyService {
   private readonly propertyCsvProcessor: PropertyCsvProcessor;
   private readonly mediaUploadService: MediaUploadService;
   private readonly userDAO: UserDAO;
+  private readonly notificationService: NotificationService;
 
   constructor({
     clientDAO,
@@ -86,6 +90,7 @@ export class PropertyService {
     propertyCsvProcessor,
     mediaUploadService,
     userDAO,
+    notificationService,
   }: IConstructor) {
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -100,8 +105,17 @@ export class PropertyService {
     this.propertyCsvProcessor = propertyCsvProcessor;
     this.mediaUploadService = mediaUploadService;
     this.userDAO = userDAO;
+    this.notificationService = notificationService;
 
     this.setupEventListeners();
+  }
+
+  /**
+   * Utility method to convert user role string to IUserRole enum value
+   */
+  private convertUserRoleToEnum(userRole: string): IUserRole {
+    const upperRole = userRole.toUpperCase() as keyof typeof IUserRole;
+    return IUserRole[upperRole] as IUserRole;
   }
 
   private setupEventListeners(): void {
@@ -228,7 +242,7 @@ export class PropertyService {
   private async createPropertyInDatabase(
     propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType,
     cuid: string,
-    currentuser: any,
+    currentuser: ICurrentUser,
     approvalStatus: PropertyApprovalStatusEnum,
     approvalDetails: any,
     session: any
@@ -240,10 +254,7 @@ export class PropertyService {
       throw new BadRequestError({ message: t('property.errors.unableToAdd') });
     }
 
-    // Check address uniqueness
     await this.checkAddressUniqueness(propertyData, cuid);
-
-    // Validate property type
     this.propertyTypeValidation(propertyData);
 
     // Set creation metadata
@@ -252,7 +263,6 @@ export class PropertyService {
       ? new Types.ObjectId(propertyData.managedBy)
       : new Types.ObjectId(currentuser.sub);
 
-    // Create property
     const property = await this.propertyDAO.createProperty(
       {
         ...propertyData,
@@ -297,6 +307,11 @@ export class PropertyService {
 
     this.log.info(t('property.logging.startingCreation'));
 
+    // Transform fees from frontend format (strings) to database format (cents)
+    if (propertyData.fees) {
+      propertyData.fees = MoneyUtils.parseMoneyInput(propertyData.fees);
+    }
+
     this.validatePropertyData(propertyData, cxt, start);
     const { approvalStatus, approvalDetails } = await this.determineApprovalStatus(currentuser);
 
@@ -329,7 +344,7 @@ export class PropertyService {
         errors.push(`${propertyType} properties require at least ${rules.minUnits} units`);
       }
 
-      // For multi-unit properties, bedrooms/bathrooms should be managed at unit level
+      // multi-unit properties bedrooms/bathrooms should be managed at unit level
       if (specifications?.bedrooms && specifications.bedrooms > 0) {
         this.log.warn(
           {
@@ -500,7 +515,8 @@ export class PropertyService {
     };
 
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+    const userRoleEnum = userRole.toUpperCase() as keyof typeof IUserRole;
+    if (!PROPERTY_APPROVAL_ROLES.includes(IUserRole[userRoleEnum])) {
       filter.$and = [
         { approvalStatus: { $exists: true } },
         { approvalStatus: PropertyApprovalStatusEnum.APPROVED },
@@ -599,7 +615,6 @@ export class PropertyService {
     // }
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
 
-    // Add pending changes preview to each property
     const itemsWithPreview = properties.items.map((property) => {
       const propertyObj = property.toObject ? property.toObject() : property;
       const pendingChangesPreview = this.generatePendingChangesPreview(property, currentuser);
@@ -607,6 +622,7 @@ export class PropertyService {
       return {
         ...propertyObj,
         ...(pendingChangesPreview && { pendingChangesPreview }),
+        fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
       };
     });
 
@@ -639,7 +655,7 @@ export class PropertyService {
       throw new BadRequestError({ message: 'Unable to get properties for this account.' });
     }
 
-    const property = await this.propertyDAO.findFirst({
+    const property = await this.propertyDAO.findPropertyWithActiveMedia({
       pid,
       cuid,
       deletedAt: null,
@@ -650,13 +666,13 @@ export class PropertyService {
 
     const unitInfo = await this.getUnitInfoForProperty(property);
 
-    // Add pending changes preview to property
     const propertyObj = property.toObject ? property.toObject() : property;
     const pendingChangesPreview = this.generatePendingChangesPreview(property, currentUser);
 
     const propertyWithPreview = {
       ...propertyObj,
       ...(pendingChangesPreview && { pendingChangesPreview }),
+      fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
     };
 
     return {
@@ -703,11 +719,12 @@ export class PropertyService {
     let updatePayload: any = {};
     let message = 'Property updated successfully';
 
-    // Remove pendingChanges from updateData if it exists
     const { pendingChanges, images, documents, ...restUpdateData } = updateData;
-
-    // Create properly typed cleanUpdateData
     const cleanUpdateData: Partial<IPropertyDocument> = { ...restUpdateData };
+
+    if (cleanUpdateData.fees) {
+      cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
+    }
 
     const deletionTasks = [];
 
@@ -730,7 +747,7 @@ export class PropertyService {
     }
 
     // Staff edits go to pendingChanges, admin/manager edits go directly to main fields
-    if (PROPERTY_STAFF_ROLES.includes(userRole)) {
+    if (PROPERTY_STAFF_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
       // Staff update - store in pendingChanges
       updatePayload = {
         pendingChanges: {
@@ -747,7 +764,7 @@ export class PropertyService {
         propertyId: property.id,
         editedBy: ctx.currentuser.sub,
       });
-    } else if (PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+    } else if (PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
       // Admin/Manager update - apply directly
       if (cleanUpdateData.description?.text) {
         cleanUpdateData.description = {
@@ -831,6 +848,19 @@ export class PropertyService {
     }
 
     await this.propertyCache.invalidateProperty(cuid, property.id);
+
+    // Send notifications after successful update using consolidated method
+    await this.notificationService.handlePropertyUpdateNotifications({
+      userRole,
+      updatedProperty,
+      propertyName: updatedProperty.name || property.name || 'Unknown Property',
+      actorUserId: ctx.currentuser.sub,
+      actorDisplayName: ctx.currentuser.displayName,
+      cuid,
+      updateData: cleanUpdateData,
+      propertyManagerId: updatedProperty.managedBy?.toString(),
+    });
+
     return {
       success: true,
       data: updatedProperty,
@@ -843,9 +873,8 @@ export class PropertyService {
     currentuser: ICurrentUser,
     pagination: IPaginationQuery
   ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: PaginateResult }>> {
-    // Check if user has permission
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to view pending approvals.',
       });
@@ -883,9 +912,8 @@ export class PropertyService {
     currentuser: ICurrentUser,
     notes?: string
   ): Promise<ISuccessReturnData> {
-    // Check if user has permission
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to approve properties.',
       });
@@ -953,6 +981,35 @@ export class PropertyService {
       hadPendingChanges: !!property.pendingChanges,
     });
 
+    // Send approval notification
+    try {
+      const originalRequesterId =
+        property.pendingChanges?.updatedBy?.toString() ||
+        property.approvalDetails?.requestedBy?.toString();
+
+      if (originalRequesterId) {
+        await this.notificationService.notifyApprovalDecision(
+          updatedProperty.pid,
+          updatedProperty.name || 'Unknown Property',
+          currentuser.sub,
+          cuid,
+          'approved',
+          originalRequesterId,
+          notes,
+          {
+            address: updatedProperty.address?.fullAddress,
+            hadPendingChanges: !!property.pendingChanges,
+          }
+        );
+      }
+    } catch (notificationError) {
+      this.log.error('Failed to send approval notification', {
+        error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+        propertyId: updatedProperty.pid,
+        approverId: currentuser.sub,
+      });
+    }
+
     return {
       success: true,
       data: updatedProperty,
@@ -974,7 +1031,7 @@ export class PropertyService {
 
     // Check if user has permission
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to reject properties.',
       });
@@ -1034,6 +1091,35 @@ export class PropertyService {
       hadPendingChanges: !!property.pendingChanges,
     });
 
+    // Send rejection notification
+    try {
+      const originalRequesterId =
+        property.pendingChanges?.updatedBy?.toString() ||
+        property.approvalDetails?.requestedBy?.toString();
+
+      if (originalRequesterId) {
+        await this.notificationService.notifyApprovalDecision(
+          updatedProperty.pid,
+          updatedProperty.name || property.name || 'Unknown Property',
+          currentuser.sub,
+          cuid,
+          'rejected',
+          originalRequesterId,
+          reason.trim(),
+          {
+            address: updatedProperty.address?.fullAddress || property.address?.fullAddress,
+            hadPendingChanges: !!property.pendingChanges,
+          }
+        );
+      }
+    } catch (notificationError) {
+      this.log.error('Failed to send rejection notification', {
+        error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+        propertyId: updatedProperty.pid,
+        rejectorId: currentuser.sub,
+      });
+    }
+
     return {
       success: true,
       data: updatedProperty,
@@ -1050,7 +1136,7 @@ export class PropertyService {
   ): Promise<ISuccessReturnData> {
     // Check if user has permission
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to bulk approve properties.',
       });
@@ -1104,7 +1190,7 @@ export class PropertyService {
 
     // Check if user has permission
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to bulk reject properties.',
       });
@@ -1197,12 +1283,12 @@ export class PropertyService {
     const userRole = currentUser.client.role;
 
     // Admin/managers can see all pending changes
-    if (PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+    if (PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
       return true;
     }
 
     // Staff can only see their own pending changes
-    if (PROPERTY_STAFF_ROLES.includes(userRole)) {
+    if (PROPERTY_STAFF_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
       const pendingChanges = property.pendingChanges as any;
       return pendingChanges.updatedBy?.toString() === currentUser.sub;
     }
@@ -1221,6 +1307,12 @@ export class PropertyService {
     const pendingChanges = property.pendingChanges as any;
     const { updatedBy, updatedAt, ...changes } = pendingChanges;
 
+    // Format fee values in pending changes for frontend display
+    const formattedChanges = { ...changes };
+    if (formattedChanges.fees) {
+      formattedChanges.fees = MoneyUtils.formatMoneyDisplay(formattedChanges.fees);
+    }
+
     const updatedFields = Object.keys(changes);
     const summary = this.generateChangesSummary(updatedFields);
 
@@ -1229,6 +1321,7 @@ export class PropertyService {
       updatedAt,
       updatedBy,
       summary,
+      changes: formattedChanges, // Include formatted pending changes
     };
   }
 
@@ -1553,8 +1646,8 @@ export class PropertyService {
     const maxAllowedUnits = property.maxAllowedUnits || 1;
 
     if (isMultiUnit) {
-      const unitData = await this.propertyUnitDAO.getPropertyUnitInfo(property.id);
-      const canAddUnitResult = await this.propertyDAO.canAddUnitToProperty(property.id);
+      const unitData = await this.propertyUnitDAO.getPropertyUnitInfo(property._id.toString());
+      const canAddUnitResult = await this.propertyDAO.canAddUnitToProperty(property._id.toString());
       const availableSpaces = Math.max(0, maxAllowedUnits - unitData.currentUnits);
 
       let lastUnitNumber: string | undefined;
@@ -1563,7 +1656,7 @@ export class PropertyService {
       if (unitData.currentUnits > 0) {
         try {
           const existingUnitNumbers = await this.propertyUnitDAO.getExistingUnitNumbers(
-            property.id
+            property._id.toString()
           );
 
           if (existingUnitNumbers.length > 0) {
@@ -1581,20 +1674,23 @@ export class PropertyService {
 
               // get suggested next unit number
               suggestedNextUnitNumber = await this.propertyUnitDAO.getNextAvailableUnitNumber(
-                property.id,
+                property._id.toString(),
                 'sequential'
               );
             } else {
               // No numeric patterns found, get the last unit alphabetically
               lastUnitNumber = existingUnitNumbers.sort().pop();
               suggestedNextUnitNumber = await this.propertyUnitDAO.getNextAvailableUnitNumber(
-                property.id,
+                property._id.toString(),
                 'custom'
               );
             }
           }
         } catch (error) {
-          this.log.warn(`Error getting unit numbers for property ${property.id}:`, error);
+          this.log.warn(
+            `Error getting unit numbers for property ${property._id.toString()}:`,
+            error
+          );
           // continue without unit numbering info
         }
       } else {

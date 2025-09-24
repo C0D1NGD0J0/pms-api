@@ -33,6 +33,7 @@ interface PermissionCheck {
   resource: PermissionResource | string;
   action: PermissionAction | string;
 }
+
 export const scopedMiddleware = (req: Request, res: Response, next: NextFunction) => {
   const scope = container.createScope();
   req.container = scope;
@@ -215,17 +216,17 @@ export const createSpeedLimit = (options: Partial<RateLimitOptions> = {}) => {
   });
 };
 
+const basicRateLimiter = createRateLimit();
+const basicSpeedLimiter = createSpeedLimit();
+
 /**
  * combined limiter that applies both rate and speed limiting with default settings
  */
 export const basicLimiter = () => {
-  const rateLimiter = createRateLimit();
-  const speedLimiter = createSpeedLimit();
-
   return (req: Request, res: Response, next: NextFunction) => {
-    rateLimiter(req, res, (err?: any) => {
+    basicRateLimiter(req, res, (err?: any) => {
       if (err) return next(err);
-      speedLimiter(req, res, next);
+      basicSpeedLimiter(req, res, next);
     });
   };
 };

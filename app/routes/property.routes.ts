@@ -84,7 +84,7 @@ router.get(
 );
 
 router.get(
-  '/:cuid/client_properties/:pid',
+  '/:cuid/client_property/:pid',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),

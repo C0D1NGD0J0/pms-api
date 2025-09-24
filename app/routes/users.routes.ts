@@ -147,6 +147,19 @@ router.get(
   })
 );
 
+router.get(
+  '/:cuid/user_details/:uid',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  validateRequest({
+    params: UserValidations.userUidParam,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getClientUserInfo(req, res);
+  })
+);
+
 router.patch(
   '/:cuid/update_profile',
   isAuthenticated,

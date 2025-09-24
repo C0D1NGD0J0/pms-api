@@ -133,6 +133,22 @@ export interface PropertyDocumentItem {
 }
 
 /**
+ * Property Approval Details Type
+ */
+export interface PropertyApprovalDetails {
+  requestedBy?: Types.ObjectId;
+  approvedBy?: Types.ObjectId;
+  rejectedBy?: Types.ObjectId;
+  rejectionReason?: string;
+  reviewNotes?: string;
+  approvedDate?: Date;
+  rejectedDate?: Date;
+  approvedAt?: Date;
+  rejectedAt?: Date;
+  notes?: string;
+}
+
+/**
  * Financial Details Type
  */
 export interface FinancialDetails {
@@ -220,19 +236,6 @@ export interface CommunityAmenities {
   elevator: boolean;
   doorman: boolean;
   parking: boolean;
-}
-
-/**
- * Property Approval Details Type
- */
-export interface PropertyApprovalDetails {
-  approvedBy?: Types.ObjectId;
-  rejectedBy?: Types.ObjectId;
-  rejectionReason?: string;
-  reviewNotes?: string;
-  approvedDate?: Date;
-  rejectedDate?: Date;
-  notes?: string;
 }
 
 /**

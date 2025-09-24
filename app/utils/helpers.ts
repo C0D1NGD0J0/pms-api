@@ -584,3 +584,123 @@ export const buildDotNotation = (obj: any, prefix = ''): Record<string, any> => 
 
   return result;
 };
+
+export const MoneyUtils = {
+  /**
+   * Converts cents (integer) to dollar string format
+   * @param cents - The amount in cents (e.g., 450000)
+   * @param decimalPlaces - Number of decimal places (default: 2)
+   * @returns Formatted string (e.g., "4500.00")
+   */
+  centsToString: (cents: number | null | undefined, decimalPlaces = 2): string => {
+    if (cents == null) return '0.00';
+    if (typeof cents !== 'number' || isNaN(cents)) return '0.00';
+    return (cents / 100).toFixed(decimalPlaces);
+  },
+
+  /**
+   * Converts dollar string to cents (integer)
+   * @param dollarString - The amount as string (e.g., "4500.00")
+   * @returns Amount in cents (e.g., 450000)
+   */
+  stringToCents: (dollarString: string | number): number => {
+    if (dollarString == null) return 0;
+    const numericValue = typeof dollarString === 'string' ? parseFloat(dollarString) : dollarString;
+    if (isNaN(numericValue)) return 0;
+    return Math.round(numericValue * 100);
+  },
+
+  /**
+   * Formats a dollar amount with currency symbol
+   * @param cents - The amount in cents
+   * @param currency - Currency code (default: 'USD')
+   * @param locale - Locale for formatting (default: 'en-US')
+   * @returns Formatted currency string (e.g., "$4,500.00")
+   */
+  formatCurrency: (
+    cents: number | null | undefined,
+    currency = 'USD',
+    locale = 'en-US'
+  ): string => {
+    if (cents == null)
+      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(0);
+    if (typeof cents !== 'number' || isNaN(cents))
+      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(0);
+
+    const dollars = cents / 100;
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+    }).format(dollars);
+  },
+
+  /**
+   * Transforms a money object from database format (cents) to frontend format (strings) for display
+   * @param moneyData - The money object from database (fees, rent, lease amounts, etc.)
+   * @returns Transformed money object with string values for frontend display
+   */
+  formatMoneyDisplay: (moneyData: any): any => {
+    if (!moneyData || typeof moneyData !== 'object') return moneyData;
+
+    return {
+      ...moneyData,
+      ...(moneyData.taxAmount !== undefined && {
+        taxAmount: MoneyUtils.centsToString(moneyData.taxAmount),
+      }),
+      ...(moneyData.rentalAmount !== undefined && {
+        rentalAmount: MoneyUtils.centsToString(moneyData.rentalAmount),
+      }),
+      ...(moneyData.managementFees !== undefined && {
+        managementFees: MoneyUtils.centsToString(moneyData.managementFees),
+      }),
+      ...(moneyData.securityDeposit !== undefined && {
+        securityDeposit: MoneyUtils.centsToString(moneyData.securityDeposit),
+      }),
+    };
+  },
+
+  /**
+   * Parses a money object from frontend format (strings) to database format (cents) for storage
+   * @param moneyData - The money object from frontend (fees, rent, lease amounts, etc.)
+   * @returns Parsed money object with cent values for database storage
+   */
+  parseMoneyInput: (moneyData: any): any => {
+    if (!moneyData || typeof moneyData !== 'object') return moneyData;
+
+    return {
+      ...moneyData,
+      ...(moneyData.taxAmount !== undefined && {
+        taxAmount: MoneyUtils.stringToCents(moneyData.taxAmount),
+      }),
+      ...(moneyData.rentalAmount !== undefined && {
+        rentalAmount: MoneyUtils.stringToCents(moneyData.rentalAmount),
+      }),
+      ...(moneyData.managementFees !== undefined && {
+        managementFees: MoneyUtils.stringToCents(moneyData.managementFees),
+      }),
+      ...(moneyData.securityDeposit !== undefined && {
+        securityDeposit: MoneyUtils.stringToCents(moneyData.securityDeposit),
+      }),
+    };
+  },
+
+  /**
+   * Validates that a money value is properly formatted
+   * @param value - The value to validate
+   * @returns true if valid, false otherwise
+   */
+  isValidMoneyValue: (value: any): boolean => {
+    if (value == null || value === '') return true; // allow empty values
+
+    if (typeof value === 'string') {
+      const numericValue = parseFloat(value);
+      return !isNaN(numericValue) && numericValue >= 0;
+    }
+
+    if (typeof value === 'number') {
+      return !isNaN(value) && value >= 0;
+    }
+
+    return false;
+  },
+};

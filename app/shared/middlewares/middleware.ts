@@ -222,13 +222,11 @@ const basicSpeedLimiter = createSpeedLimit();
 /**
  * combined limiter that applies both rate and speed limiting with default settings
  */
-export const basicLimiter = () => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    basicRateLimiter(req, res, (err?: any) => {
-      if (err) return next(err);
-      basicSpeedLimiter(req, res, next);
-    });
-  };
+export const basicLimiter = (req: Request, res: Response, next: NextFunction) => {
+  basicRateLimiter(req, res, (err?: any) => {
+    if (err) return next(err);
+    basicSpeedLimiter(req, res, next);
+  });
 };
 
 export const requestLogger =

@@ -39,7 +39,7 @@ router.get(
 router.get(
   '/:cuid/filtered-users',
   isAuthenticated,
-  basicLimiter(),
+  basicLimiter,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
     params: ClientValidations.clientIdParam,
@@ -122,7 +122,7 @@ router.get(
   '/:cuid/property_managers',
   isAuthenticated,
   requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
-  basicLimiter(),
+  basicLimiter,
   validateRequest({
     params: PropertyValidations.validatecuid,
     query: PropertyValidations.getAssignableUsers,

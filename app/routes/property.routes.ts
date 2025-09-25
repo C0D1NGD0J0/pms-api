@@ -20,7 +20,7 @@ router.use(isAuthenticated);
 
 router.get(
   '/property_form_metadata',
-  basicLimiter(),
+  basicLimiter,
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.getPropertyFormMetadata(req, res);
@@ -30,7 +30,7 @@ router.get(
 router.post(
   '/:cuid/add_property',
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
-  basicLimiter(),
+  basicLimiter,
   diskUpload(['documents[*].file', 'images[*].file']),
   scanFile,
   validateRequest({
@@ -73,7 +73,7 @@ router.post(
 
 router.get(
   '/:cuid/client_properties',
-  basicLimiter(),
+  basicLimiter,
   validateRequest({
     params: PropertyValidations.validatecuid,
   }),

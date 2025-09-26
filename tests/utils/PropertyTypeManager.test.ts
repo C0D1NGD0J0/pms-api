@@ -1,5 +1,5 @@
 import { CURRENCIES } from '@interfaces/utils.interface';
-import { PropertyTypeManager } from '@utils/PropertyTypeManager';
+import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { OccupancyStatus, IProperty } from '@interfaces/property.interface';
 
 describe('PropertyTypeManager', () => {

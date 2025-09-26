@@ -27,7 +27,7 @@ export interface IProperty {
     html?: string;
     text?: string;
   };
-  approvalDetails?: PropertyApprovalDetails;
+  approvalDetails?: PropertyApprovalEntry[];
   approvalStatus?: PropertyApprovalStatus;
   communityAmenities?: CommunityAmenities;
   pendingChanges?: IPendingChanges | null;
@@ -180,6 +180,18 @@ export interface PropertySpecifications {
 }
 
 /**
+ * Individual Property Approval Entry Type
+ */
+export interface PropertyApprovalEntry {
+  action: 'created' | 'approved' | 'rejected' | 'updated' | 'submitted';
+  rejectionReason?: string; // Only for rejected actions
+  actor: Types.ObjectId;
+  timestamp: Date;
+  notes?: string;
+  metadata?: any;
+}
+
+/**
  * Assignable User Interface (for property assignment)
  */
 export interface IAssignableUser {
@@ -220,19 +232,6 @@ export interface CommunityAmenities {
   elevator: boolean;
   doorman: boolean;
   parking: boolean;
-}
-
-/**
- * Property Approval Details Type
- */
-export interface PropertyApprovalDetails {
-  approvedBy?: Types.ObjectId;
-  rejectedBy?: Types.ObjectId;
-  rejectionReason?: string;
-  reviewNotes?: string;
-  approvedDate?: Date;
-  rejectedDate?: Date;
-  notes?: string;
 }
 
 /**
@@ -302,6 +301,15 @@ export interface IAssignableUsersFilter {
 }
 
 /**
+ * Pending Changes Type - using Omit to exclude specific fields
+ */
+export type IPendingChanges = {
+  updatedAt: Date;
+  updatedBy: Types.ObjectId;
+  displayName: string;
+} & Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>>;
+
+/**
  * Property Utilities Type
  */
 export interface PropertyUtilities {
@@ -324,14 +332,6 @@ export interface UnitStats {
   reserved: number;
   vacant: number;
 }
-
-/**
- * Pending Changes Type - using Omit to exclude specific fields
- */
-export type IPendingChanges = Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>> & {
-  updatedAt: Date;
-  updatedBy: Types.ObjectId;
-};
 
 /**
  * Property Type Classifications

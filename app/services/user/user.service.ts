@@ -1,4 +1,5 @@
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { UserCache } from '@caching/user.cache';
@@ -58,9 +59,6 @@ export class UserService {
     this.vendorService = vendorService;
   }
 
-  /**
-   * Fetch and validate user with proper population
-   */
   private async fetchAndValidateUser(
     uid: string,
     currentuser: ICurrentUser
@@ -98,9 +96,6 @@ export class UserService {
     return user;
   }
 
-  /**
-   * Check cache for existing user detail data
-   */
   private async checkUserDetailCache(
     clientId: string,
     uid: string
@@ -117,9 +112,6 @@ export class UserService {
     return null;
   }
 
-  /**
-   * Validate client connection and build user detail
-   */
   private async buildAndCacheUserDetail(
     user: IUserPopulatedDocument,
     clientId: string,
@@ -834,6 +826,154 @@ export class UserService {
     }
 
     return tags;
+  }
+
+  /**
+   * Get user with client context validation - Base method for user operations
+   */
+  async getUserWithClientContext(
+    userId: string,
+    cuid: string,
+    opts?: IFindOptions
+  ): Promise<any | null> {
+    try {
+      if (!userId || !cuid) return null;
+
+      const user = await this.userDAO.findFirst(
+        {
+          _id: new Types.ObjectId(userId),
+          'cuids.cuid': cuid,
+        },
+        opts
+      );
+
+      return user;
+    } catch (error) {
+      this.log.error('Failed to get user with client context', { error, userId, cuid });
+      return null;
+    }
+  }
+
+  /**
+   * Find user's supervisor based on employeeInfo.reportsTo
+   */
+  async getUserSupervisor(userId: string, cuid: string): Promise<string | null> {
+    try {
+      if (!userId) return null;
+
+      const user = await this.getUserWithClientContext(userId, cuid, {
+        populate: 'profile',
+      });
+
+      if (!user || !user.profile?.employeeInfo?.reportsTo) {
+        return null;
+      }
+
+      const supervisorId = user.profile.employeeInfo.reportsTo;
+
+      // Validate supervisor exists and belongs to same client
+      const supervisor = await this.getUserWithClientContext(supervisorId, cuid);
+
+      if (!supervisor) {
+        this.log.warn('Supervisor not found or not in same client', {
+          userId,
+          supervisorId,
+          cuid,
+        });
+        return null;
+      }
+
+      return supervisorId;
+    } catch (error) {
+      this.log.error('Failed to find user supervisor', { error, userId, cuid });
+      return null;
+    }
+  }
+
+  /**
+   * Get user's display name for notifications/UI
+   */
+  async getUserDisplayName(userId: string, cuid: string): Promise<string> {
+    try {
+      if (!userId || userId === 'system') return 'System';
+
+      const user = await this.getUserWithClientContext(userId, cuid, {
+        populate: 'profile',
+      });
+
+      if (!user || !user.profile) return 'Unknown User';
+
+      const { firstName, lastName, displayName } = user.profile.personalInfo;
+      return displayName || `${firstName} ${lastName}`.trim() || user.email || 'Unknown User';
+    } catch (error) {
+      this.log.error('Failed to get user display name', { error, userId, cuid });
+      return 'Unknown User';
+    }
+  }
+
+  /**
+   * Get user's announcement targeting filters (roles and vendor association)
+   * Used by notification system to determine which announcements a user should see
+   */
+  async getUserAnnouncementFilters(
+    userId: string,
+    cuid: string
+  ): Promise<{ roles: string[]; vendorId?: string }> {
+    try {
+      const user = await this.getUserWithClientContext(userId, cuid, {
+        populate: 'profile',
+      });
+
+      if (!user) {
+        this.log.warn('User not found for announcement filters', { userId, cuid });
+        return { roles: [] };
+      }
+
+      // Get roles for this client
+      const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
+      const roles = clientConnection?.roles || [];
+
+      // Get vendor ID for users associated with vendors
+      let vendorId: string | undefined;
+
+      // Check if user is directly linked to a vendor (sub-contractor/employee)
+      if (clientConnection?.linkedVendorUid) {
+        vendorId = clientConnection.linkedVendorUid;
+      }
+      // Check if user has vendor role and is a primary vendor
+      else if (roles.includes('vendor')) {
+        try {
+          const vendorEntity = await this.vendorService.getVendorByUserId(user._id.toString());
+          if (vendorEntity && vendorEntity.vuid) {
+            vendorId = vendorEntity.vuid;
+          }
+        } catch (error) {
+          this.log.warn('Failed to get vendor entity for primary vendor', {
+            userId,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+      // Check if staff user is associated with a vendor through profile
+      else if (roles.includes('staff') && user.profile?.vendorInfo?.linkedVendorUid) {
+        vendorId = user.profile.vendorInfo.linkedVendorUid;
+      }
+
+      this.log.debug('Retrieved user announcement filters', {
+        userId,
+        cuid,
+        roles,
+        vendorId,
+        hasLinkedVendor: !!clientConnection?.linkedVendorUid,
+        isPrimaryVendor: roles.includes('vendor') && !clientConnection?.linkedVendorUid,
+        isStaffWithVendor: roles.includes('staff') && !!vendorId,
+      });
+
+      return { roles, vendorId };
+    } catch (error) {
+      this.log.error('Error getting user announcement filters', { userId, cuid, error });
+      return { roles: [] };
+    }
   }
 
   /**

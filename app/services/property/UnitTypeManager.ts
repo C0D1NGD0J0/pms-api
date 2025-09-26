@@ -1,6 +1,5 @@
+import { unitTypeRules } from '@utils/unitTypeConstants';
 import { PropertyUnitType, IPropertyUnit, UnitTypeRule } from '@interfaces/propertyUnit.interface';
-
-import { unitTypeRules } from './unitTypeConstants';
 
 /**
  * UnitTypeManager - Manages unit type validation and business rules

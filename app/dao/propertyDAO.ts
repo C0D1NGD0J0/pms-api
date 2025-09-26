@@ -936,4 +936,48 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       throw this.throwErrorHandler(error);
     }
   }
+
+  /**
+   * Find property with active media only (filters out deleted images/documents at database level)
+   * @param filter - The filter criteria for finding the property
+   * @param opts - Additional options for the query
+   * @returns A promise that resolves to the property document with only active media or null if not found
+   */
+  async findPropertyWithActiveMedia(
+    filter: FilterQuery<IPropertyDocument>,
+    opts?: IFindOptions
+  ): Promise<IPropertyDocument | null> {
+    try {
+      const pipeline: any[] = [
+        { $match: filter },
+        {
+          $addFields: {
+            images: {
+              $filter: {
+                input: { $ifNull: ['$images', []] },
+                cond: { $ne: ['$$this.status', 'deleted'] },
+              },
+            },
+            documents: {
+              $filter: {
+                input: { $ifNull: ['$documents', []] },
+                cond: { $ne: ['$$this.status', 'deleted'] },
+              },
+            },
+          },
+        },
+        { $limit: 1 },
+      ];
+
+      if (opts?.projection) {
+        pipeline.push({ $project: opts.projection });
+      }
+
+      const result = await this.aggregate(pipeline);
+      return result.length > 0 ? result[0] : null;
+    } catch (error) {
+      this.logger.error('Error in findPropertyWithActiveMedia:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
 }

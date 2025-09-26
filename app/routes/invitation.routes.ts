@@ -10,7 +10,7 @@ import {
 import {
   requirePermission,
   isAuthenticated,
-  routeLimiter,
+  basicLimiter,
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
@@ -24,7 +24,7 @@ const router = Router();
  */
 router.get(
   '/:cuid/validate_token',
-  routeLimiter(),
+  basicLimiter,
   validateRequest({ params: UtilsValidations.cuid, query: InvitationValidations.invitationToken }),
   asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
@@ -39,7 +39,7 @@ router.get(
  */
 router.post(
   '/:cuid/accept_invite/:token',
-  routeLimiter(),
+  basicLimiter,
   validateRequest({
     params: InvitationValidations.validateTokenAndCuid,
     body: InvitationValidations.acceptInvitation,
@@ -57,7 +57,7 @@ router.post(
  */
 router.patch(
   '/:cuid/decline_invite/:token',
-  routeLimiter(),
+  basicLimiter,
   validateRequest({
     params: InvitationValidations.validateTokenAndCuid,
     body: InvitationValidations.revokeInvitation,
@@ -76,7 +76,7 @@ router.patch(
 router.post(
   '/:cuid/send_invite',
   isAuthenticated,
-  routeLimiter(),
+  basicLimiter,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   validateRequest({
     params: UtilsValidations.cuid,
@@ -96,7 +96,7 @@ router.post(
 router.get(
   '/clients/:cuid',
   isAuthenticated,
-  routeLimiter(),
+  basicLimiter,
   requirePermission(PermissionResource.INVITATION, PermissionAction.LIST),
   validateRequest({
     params: UtilsValidations.cuid,

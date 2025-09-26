@@ -20,6 +20,7 @@ import {
   UserCache,
 } from '@caching/index';
 import {
+  NotificationModel,
   PropertyUnit,
   Invitation,
   Property,
@@ -31,6 +32,7 @@ import {
 } from '@models/index';
 import {
   PropertyUnitDAO,
+  NotificationDAO,
   InvitationDAO,
   PropertyDAO,
   ProfileDAO,
@@ -67,6 +69,7 @@ import {
 import {
   InvitationCsvProcessor,
   PropertyCsvProcessor,
+  NotificationService,
   EventEmitterService,
   PropertyUnitService,
   PermissionService,
@@ -99,6 +102,7 @@ const ModelResources = {
   propertyModel: asValue(Property),
   propertyUnitModel: asValue(PropertyUnit),
   userModel: asValue(User),
+  notificationModel: asValue(NotificationModel),
   vendorModel: asValue(Vendor),
 };
 
@@ -111,6 +115,7 @@ const ServiceResources = {
   invitationService: asClass(InvitationService).singleton(),
   languageService: asClass(LanguageService).singleton(),
   mailerService: asClass(MailService).singleton(),
+  notificationService: asClass(NotificationService).singleton(),
   mediaUploadService: asClass(MediaUploadService).singleton(),
   permissionService: asClass(PermissionService).singleton(),
   profileService: asClass(ProfileService).singleton(),
@@ -132,6 +137,7 @@ const DAOResources = {
   propertyUnitDAO: asClass(PropertyUnitDAO).singleton(),
   userDAO: asClass(UserDAO).singleton(),
   vendorDAO: asClass(VendorDAO).singleton(),
+  notificationDAO: asClass(NotificationDAO).singleton(),
 };
 
 const CacheResources = {

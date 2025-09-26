@@ -8,7 +8,7 @@ import {
   requireUserManagement,
   requirePermission,
   isAuthenticated,
-  routeLimiter,
+  basicLimiter,
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
@@ -39,7 +39,7 @@ router.get(
 router.get(
   '/:cuid/filtered-users',
   isAuthenticated,
-  routeLimiter,
+  basicLimiter,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
     params: ClientValidations.clientIdParam,
@@ -122,7 +122,7 @@ router.get(
   '/:cuid/property_managers',
   isAuthenticated,
   requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
-  routeLimiter(),
+  basicLimiter,
   validateRequest({
     params: PropertyValidations.validatecuid,
     query: PropertyValidations.getAssignableUsers,
@@ -144,6 +144,19 @@ router.get(
   asyncWrapper((req, res) => {
     const userController = req.container.resolve<UserController>('userController');
     return userController.getUserProfile(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/user_details/:uid',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  validateRequest({
+    params: UserValidations.userUidParam,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getClientUserInfo(req, res);
   })
 );
 

@@ -314,12 +314,23 @@ const PropertySchema = new Schema<IPropertyDocument>(
       default: 'pending',
       index: true,
     },
-    approvalDetails: {
-      requestedBy: { type: Schema.Types.ObjectId, ref: 'User' },
-      updatedAt: { type: Date },
-      actor: { type: Schema.Types.ObjectId, ref: 'User' },
-      rejectionReason: [{ type: String, maxlength: 500 }],
-      notes: [{ type: String, maxlength: 500 }],
+    approvalDetails: [
+      {
+        action: {
+          type: String,
+          enum: ['created', 'updated', 'approved', 'rejected'],
+          required: true,
+        },
+        actor: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        timestamp: { type: Date, default: Date.now },
+        notes: { type: String, maxlength: 500 },
+        rejectionReason: { type: String, maxlength: 500 },
+        metadata: { type: Schema.Types.Mixed },
+      },
+    ],
+    pendingChanges: {
+      type: Schema.Types.Mixed,
+      default: null,
     },
     deletedAt: {
       type: Date,

@@ -7,7 +7,7 @@ import { PermissionResource, PermissionAction } from '@interfaces/utils.interfac
 import {
   requirePermission,
   isAuthenticated,
-  routeLimiter,
+  basicLimiter,
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
@@ -20,7 +20,7 @@ router.use(isAuthenticated);
 
 router.get(
   '/property_form_metadata',
-  routeLimiter({ enableRateLimit: true }),
+  basicLimiter,
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.getPropertyFormMetadata(req, res);
@@ -30,7 +30,7 @@ router.get(
 router.post(
   '/:cuid/add_property',
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
-  routeLimiter(),
+  basicLimiter,
   diskUpload(['documents[*].file', 'images[*].file']),
   scanFile,
   validateRequest({
@@ -73,7 +73,7 @@ router.post(
 
 router.get(
   '/:cuid/client_properties',
-  routeLimiter(),
+  basicLimiter,
   validateRequest({
     params: PropertyValidations.validatecuid,
   }),
@@ -84,7 +84,7 @@ router.get(
 );
 
 router.get(
-  '/:cuid/client_properties/:pid',
+  '/:cuid/client_property/:pid',
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),

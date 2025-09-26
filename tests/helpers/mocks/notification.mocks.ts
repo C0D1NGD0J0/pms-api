@@ -38,7 +38,7 @@ export const createMockNotificationDocument = (
     isRead: false,
     createdAt: faker.date.recent(),
     updatedAt: faker.date.recent(),
-    uid: faker.string.uuid(),
+    nuid: faker.string.uuid(),
     ...overrides,
   };
 
@@ -77,7 +77,6 @@ export const createMockNotificationResponse = (
   },
   isRead: false,
   isExpired: false,
-  timeAgo: '5 minutes ago',
   createdAt: faker.date.recent(),
   updatedAt: faker.date.recent(),
   uid: faker.string.uuid(),
@@ -134,12 +133,15 @@ export const createMockNotificationListResponse = (count = 5): INotificationList
   return {
     notifications,
     pagination: {
-      page: 1,
+      docs: notifications,
+      totalDocs: count,
       limit: 10,
-      total: count,
       totalPages: 1,
-      hasNextPage: false,
+      pagingCounter: 1,
       hasPrevPage: false,
+      hasNextPage: false,
+      prevPage: null,
+      nextPage: null,
     },
     unreadCount: faker.number.int({ min: 0, max: count }),
   };
@@ -181,6 +183,10 @@ export const createMockNotificationDAO = () => ({
   findByResource: jest.fn(),
   bulkCreate: jest.fn(),
   cleanup: jest.fn(),
+  findOne: jest.fn(),
+  find: jest.fn(),
+  updateOne: jest.fn(),
+  deleteOne: jest.fn(),
 });
 
 /**

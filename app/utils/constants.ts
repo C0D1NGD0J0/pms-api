@@ -1,4 +1,4 @@
-import { IPropertyFilterQuery, EmployeeDepartment } from '@interfaces/index';
+import { IPropertyFilterQuery, EmployeeDepartment, IUserRole } from '@interfaces/index';
 
 export const httpStatusCodes = {
   OK: 200,
@@ -84,9 +84,9 @@ export const PROPERTY_CREATION_ALLOWED_DEPARTMENTS: EmployeeDepartment[] = [
 /**
  * Roles that can approve/reject properties immediately
  */
-export const PROPERTY_APPROVAL_ROLES = ['admin', 'manager'];
+export const PROPERTY_APPROVAL_ROLES = [IUserRole.ADMIN, IUserRole.MANAGER];
 
 /**
  * Roles that require approval for property creation
  */
-export const PROPERTY_STAFF_ROLES = ['staff'];
+export const PROPERTY_STAFF_ROLES = [IUserRole.STAFF];

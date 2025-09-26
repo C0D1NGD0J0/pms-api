@@ -56,6 +56,11 @@ export interface INotificationService {
     cuid: string,
     updates: IUpdateNotificationRequest
   ): Promise<ISuccessReturnData<INotificationResponse>>;
+  createNotification(
+    cuid: string,
+    notificationType: NotificationTypeEnum,
+    data: ICreateNotificationRequest
+  ): Promise<ISuccessReturnData<INotificationResponse>>;
   getNotificationById(
     notificationId: string,
     userId: string,
@@ -75,11 +80,34 @@ export interface INotificationService {
     userId: string,
     cuid: string
   ): Promise<ISuccessReturnData<INotificationUnreadCountResponse>>;
-  createNotification(
-    data: ICreateNotificationRequest
-  ): Promise<ISuccessReturnData<INotificationResponse>>;
   markAllAsRead(userId: string, cuid: string): Promise<ISuccessReturnData<{ markedCount: number }>>;
   deliverNotification(notification: INotificationDocument): Promise<void>;
+}
+
+/**
+ * Core Notification Interface
+ */
+export interface INotification {
+  resourceInfo?: INotificationResource;
+  priority: NotificationPriorityEnum;
+  recipientType: RecipientTypeEnum;
+  metadata?: Record<string, any>;
+  type: NotificationTypeEnum;
+  recipient?: Types.ObjectId; // Optional - only required for individual notifications
+  // Announcement targeting fields
+  targetRoles?: string[];
+  targetVendor?: string;
+  actionUrl?: string;
+  expiresAt?: Date;
+  deletedAt?: Date;
+  message: string;
+  isRead: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  title: string;
+  readAt?: Date;
+  cuid: string;
+  nuid: string;
 }
 
 export interface ICreateNotificationRequest {
@@ -94,34 +122,13 @@ export interface ICreateNotificationRequest {
   recipientType: RecipientTypeEnum;
   metadata?: Record<string, any>;
   type: NotificationTypeEnum;
+  targetRoles?: string[];
+  targetVendor?: string;
   actionUrl?: string;
   expiresAt?: Date;
   message: string;
   title: string;
   cuid: string;
-}
-
-/**
- * Core Notification Interface
- */
-export interface INotification {
-  resourceInfo?: INotificationResource;
-  priority: NotificationPriorityEnum;
-  recipientType: RecipientTypeEnum;
-  metadata?: Record<string, any>;
-  type: NotificationTypeEnum;
-  recipient?: Types.ObjectId; // Optional - only required for individual notifications
-  actionUrl?: string;
-  expiresAt?: Date;
-  deletedAt?: Date;
-  message: string;
-  isRead: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  title: string;
-  readAt?: Date;
-  cuid: string;
-  nuid: string;
 }
 
 /**

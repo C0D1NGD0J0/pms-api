@@ -87,6 +87,12 @@ export const createPropertyServiceDependencies = (overrides: any = {}) => {
     mediaUploadService: {
       handleMediaDeletion: jest.fn().mockResolvedValue(undefined),
     },
+    notificationService: {
+      handlePropertyUpdateNotifications: jest.fn().mockResolvedValue(undefined),
+      notifyPropertyUpdate: jest.fn().mockResolvedValue(undefined),
+      notifyApprovalNeeded: jest.fn().mockResolvedValue(undefined),
+      notifyApprovalDecision: jest.fn().mockResolvedValue(undefined),
+    },
     ...overrides,
   };
 };

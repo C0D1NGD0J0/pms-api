@@ -248,7 +248,6 @@ export class NotificationService {
         cuid,
       });
 
-      // Basic validation
       if (!notificationId || !userId || !cuid) {
         const errorMsg = 'Notification ID, User ID, and Client ID (cuid) are required';
         this.log.error(errorMsg, { notificationId, userId, cuid });
@@ -259,7 +258,6 @@ export class NotificationService {
         };
       }
 
-      // Get notification from DAO
       const notification = await this.notificationDAO.findByNuid(notificationId, cuid);
 
       if (!notification) {
@@ -272,9 +270,6 @@ export class NotificationService {
         };
       }
 
-      // Check if user has access to this notification
-      // Individual notifications: must be the recipient
-      // Announcements: all users in the client can see them
       if (
         notification.recipientType === 'individual' &&
         notification.recipient?.toString() !== userId

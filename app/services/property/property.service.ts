@@ -763,6 +763,24 @@ export class PropertyService {
       this.validateOccupancyStatusChange(property, cleanUpdateData);
     }
 
+    // checks for concurrent updates (optimistic locking) - staff only
+    if (PROPERTY_STAFF_ROLES.includes(userRoleEnum) && property.pendingChanges) {
+      const pendingChanges = property.pendingChanges as any;
+      const lockedByUserId = pendingChanges.updatedBy?.toString();
+
+      // Check if another user has pending changes
+      if (lockedByUserId && lockedByUserId !== ctx.currentuser.sub) {
+        const lockedByDisplayName = pendingChanges.displayName || 'Another user';
+        const lockedAt = pendingChanges.updatedAt
+          ? new Date(pendingChanges.updatedAt).toLocaleString()
+          : 'recently';
+
+        throw new BadRequestError({
+          message: `Cannot edit property - ${lockedByDisplayName} has pending changes since ${lockedAt}. Changes must be approved or rejected before further edits can be made.`,
+        });
+      }
+    }
+
     // Determine save strategy and execute update
     let updatedProperty: IPropertyDocument;
     let message: string;
@@ -773,7 +791,12 @@ export class PropertyService {
         { cuid, pid, deletedAt: null },
         {
           $set: {
-            pendingChanges: { ...cleanUpdateData, displayName: ctx.currentuser.fullname },
+            pendingChanges: {
+              ...cleanUpdateData,
+              updatedBy: new Types.ObjectId(ctx.currentuser.sub),
+              updatedAt: new Date(),
+              displayName: ctx.currentuser.fullname,
+            },
             approvalStatus: PropertyApprovalStatusEnum.PENDING,
             lastModifiedBy: new Types.ObjectId(ctx.currentuser.sub),
           },

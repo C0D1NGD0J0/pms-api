@@ -15,7 +15,7 @@ import {
 } from '@tests/helpers/mocks/services.mocks';
 
 // Mock PropertyTypeManager
-jest.mock('@utils/PropertyTypeManager', () => ({
+jest.mock('@services/property/PropertyTypeManager', () => ({
   PropertyTypeManager: {
     supportsMultipleUnits: jest.fn(),
     validateUnitCount: jest.fn().mockReturnValue({ valid: true }),
@@ -2353,6 +2353,180 @@ describe('PropertyService', () => {
         await expect(propertyService.updateClientProperty(ctx, updateData)).rejects.toThrow(
           'You are not authorized to update properties'
         );
+      });
+    });
+
+    describe('updateClientProperty with optimistic locking', () => {
+      it('should block staff user from editing when another user has pending changes', async () => {
+        // Arrange
+        const ctx = {
+          cuid: 'test-cuid',
+          pid: 'test-pid',
+          currentuser: createMockCurrentUser({
+            sub: '507f1f77bcf86cd799439010',
+            client: { role: 'staff', cuid: 'test-cuid', displayname: 'User B' },
+          }),
+        };
+        const updateData = { name: 'User B Update' };
+        const mockClient = createMockClient();
+
+        // Property with pending changes from another user (User A)
+        const mockProperty = createMockProperty({
+          approvalStatus: 'approved',
+          pendingChanges: {
+            name: 'User A Update',
+            updatedBy: new Types.ObjectId('507f1f77bcf86cd799439011'), // Different user
+            updatedAt: new Date(),
+            displayName: 'User A'
+          }
+        });
+
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+
+        // Act & Assert
+        await expect(propertyService.updateClientProperty(ctx, updateData)).rejects.toThrow(
+          /Cannot edit property - User A has pending changes since .* Changes must be approved or rejected before further edits can be made/
+        );
+
+        // Ensure no update was attempted
+        expect(mockPropertyDAO.update).not.toHaveBeenCalled();
+      });
+
+      it('should allow staff user to edit when they are the same user with pending changes', async () => {
+        // Arrange
+        const userId = '507f1f77bcf86cd799439012';
+        const ctx = {
+          cuid: 'test-cuid',
+          pid: 'test-pid',
+          currentuser: createMockCurrentUser({
+            sub: userId,
+            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Same User' },
+          }),
+        };
+        const updateData = { name: 'Updated by Same User' };
+        const mockClient = createMockClient();
+
+        // Property with pending changes from the same user
+        const mockProperty = createMockProperty({
+          approvalStatus: 'approved',
+          pendingChanges: {
+            name: 'Previous Update',
+            updatedBy: new Types.ObjectId(userId), // Same user
+            updatedAt: new Date(),
+            displayName: 'Same User'
+          }
+        });
+
+        const mockUpdatedProperty = {
+          ...mockProperty,
+          pendingChanges: {
+            ...updateData,
+            updatedBy: new Types.ObjectId(userId),
+            updatedAt: new Date(),
+            displayName: 'Same User'
+          }
+        };
+
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue(mockUpdatedProperty);
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.updateClientProperty(ctx, updateData);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.message).toBe('Property changes submitted for approval');
+        expect(mockPropertyDAO.update).toHaveBeenCalled();
+      });
+
+      it('should allow admin user to edit even when staff user has pending changes', async () => {
+        // Arrange
+        const ctx = {
+          cuid: 'test-cuid',
+          pid: 'test-pid',
+          currentuser: createMockCurrentUser({
+            sub: '507f1f77bcf86cd799439015',
+            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          }),
+        };
+        const updateData = { name: 'Admin Override Update' };
+        const mockClient = createMockClient();
+
+        // Property with pending changes from staff user
+        const mockProperty = createMockProperty({
+          approvalStatus: 'approved',
+          pendingChanges: {
+            name: 'Staff Update',
+            updatedBy: new Types.ObjectId('507f1f77bcf86cd799439013'),
+            updatedAt: new Date(),
+            displayName: 'Staff User'
+          }
+        });
+
+        const mockUpdatedProperty = {
+          ...mockProperty,
+          ...updateData,
+          approvalStatus: 'approved'
+        };
+
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue(mockUpdatedProperty);
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.updateClientProperty(ctx, updateData);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.message).toBe('Property updated successfully');
+        expect(mockPropertyDAO.update).toHaveBeenCalled();
+      });
+
+      it('should allow staff user to edit when property has no pending changes', async () => {
+        // Arrange
+        const ctx = {
+          cuid: 'test-cuid',
+          pid: 'test-pid',
+          currentuser: createMockCurrentUser({
+            sub: '507f1f77bcf86cd799439014',
+            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          }),
+        };
+        const updateData = { name: 'New Staff Update' };
+        const mockClient = createMockClient();
+
+        // Property with no pending changes
+        const mockProperty = createMockProperty({
+          approvalStatus: 'approved',
+          pendingChanges: null
+        });
+
+        const mockUpdatedProperty = {
+          ...mockProperty,
+          pendingChanges: {
+            ...updateData,
+            updatedBy: new Types.ObjectId('507f1f77bcf86cd799439014'),
+            updatedAt: new Date(),
+            displayName: 'Staff User'
+          }
+        };
+
+        mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.update.mockResolvedValue(mockUpdatedProperty);
+        mockPropertyCache.invalidateProperty.mockResolvedValue({ success: true });
+
+        // Act
+        const result = await propertyService.updateClientProperty(ctx, updateData);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.message).toBe('Property changes submitted for approval');
+        expect(mockPropertyDAO.update).toHaveBeenCalled();
       });
     });
 

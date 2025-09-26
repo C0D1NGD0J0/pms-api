@@ -1,6 +1,8 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { UserService } from '@services/user';
 import { createLogger } from '@utils/helpers';
+import { ICurrentUser } from '@interfaces/user.interface';
 import { ResourceContext } from '@interfaces/utils.interface';
 import { NotificationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES } from '@utils/constants';
@@ -34,7 +36,7 @@ export class NotificationService {
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
-  private readonly userService: any;
+  private readonly userService: UserService;
   private readonly log: Logger;
 
   constructor({ notificationDAO, profileDAO, clientDAO, userDAO, userService }: IConstructor) {
@@ -175,8 +177,8 @@ export class NotificationService {
   }
 
   async getNotifications(
-    userId: string,
     cuid: string,
+    userId: ICurrentUser['sub'],
     filters?: INotificationFilters,
     pagination?: IPaginationQuery
   ): Promise<ISuccessReturnData<{ notifications: INotificationDocument[]; total: number }>> {
@@ -186,12 +188,11 @@ export class NotificationService {
         this.log.error(errorMsg, { userId, cuid });
         return {
           success: false,
-          data: null as any,
+          data: [] as any,
           message: errorMsg,
         };
       }
 
-      // Get user's targeting info for announcement filtering
       const targetingInfo = await this.getUserTargetingInfo(userId, cuid);
 
       const result = await this.notificationDAO.findForUser(
@@ -201,14 +202,6 @@ export class NotificationService {
         filters,
         pagination
       );
-      this.log.info('Retrieved notifications successfully', {
-        userId,
-        cuid,
-        count: result.data.length,
-        total: result.total,
-        roles: targetingInfo.roles,
-        vendorId: targetingInfo.vendorId,
-      });
 
       return {
         success: true,
@@ -230,7 +223,7 @@ export class NotificationService {
 
       return {
         success: false,
-        data: null as any,
+        data: [] as any,
         message: errorMsg,
       };
     }
@@ -990,6 +983,52 @@ export class NotificationService {
     }
 
     await this.createNotification(cuid, type, notificationData);
+  }
+
+  /**
+   * Mark notification as read
+   */
+  async markAsRead(
+    notificationId: string,
+    userId: string,
+    cuid: string
+  ): Promise<ISuccessReturnData<INotificationDocument>> {
+    try {
+      this.log.info('Marking notification as read', {
+        notificationId,
+        userId,
+        cuid,
+      });
+
+      const result = await this.updateNotification(notificationId, userId, cuid, {
+        isRead: true,
+      });
+
+      if (result.success) {
+        this.log.info('Notification marked as read successfully', {
+          notificationId,
+          userId,
+          cuid,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      const errorMsg = 'Unexpected error marking notification as read';
+      this.log.error(errorMsg, {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        notificationId,
+        userId,
+        cuid,
+      });
+
+      return {
+        success: false,
+        data: null as any,
+        message: errorMsg,
+      };
+    }
   }
 
   /**

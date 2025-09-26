@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { isValidObjectId } from 'mongoose';
 import {
+  NotificationDAO,
   PropertyUnitDAO,
   InvitationDAO,
   PropertyDAO,
@@ -30,7 +31,7 @@ export const ValidatecuidSchema = z.object({
     ),
 });
 
-export const ValidateuidSchema = z.object({
+export const ValidatevuidSchema = z.object({
   vuid: z
     .string()
     .optional()
@@ -44,6 +45,20 @@ export const ValidateuidSchema = z.object({
         message: 'Invalid params detected in the request.',
       }
     ),
+});
+
+export const ValidatenuidSchema = z.object({
+  nuid: z.string().refine(
+    async (nuid) => {
+      const { notificationDAO }: { notificationDAO: NotificationDAO } = (await getContainer())
+        .cradle;
+      const notification = await notificationDAO.findFirst({ nuid });
+      return !!notification;
+    },
+    {
+      message: 'Invalid params detected in the request.',
+    }
+  ),
 });
 
 export const ValidatePropertyIdSchema = z.object({
@@ -142,9 +157,10 @@ export const ValidateInvitationIuidSchema = z
 
 export const UtilsValidations = {
   cuid: ValidatecuidSchema,
+  nuid: ValidatenuidSchema,
   unitPuid: ValidateUnitPuid,
   isUniqueEmail: ValidateEmailSchema,
   propertyId: ValidatePropertyIdSchema,
-  vuid: ValidateuidSchema,
+  vuid: ValidatevuidSchema,
   invitationuid: ValidateInvitationIuidSchema,
 };

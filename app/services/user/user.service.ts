@@ -929,7 +929,6 @@ export class UserService {
         return { roles: [] };
       }
 
-      // Get roles for this client
       const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
       const roles = clientConnection?.roles || [];
 

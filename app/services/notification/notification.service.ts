@@ -1,8 +1,8 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/helpers';
-import { NotificationDAO, UserDAO } from '@dao/index';
 import { ResourceContext } from '@interfaces/utils.interface';
+import { NotificationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES } from '@utils/constants';
 import { ISuccessReturnData, IPaginationQuery } from '@interfaces/utils.interface';
 import {
@@ -23,18 +23,27 @@ import { getFormattedNotification, NotificationMessageKey } from './notification
 
 interface IConstructor {
   notificationDAO: NotificationDAO;
+  profileDAO: ProfileDAO;
+  clientDAO: ClientDAO;
   userDAO: UserDAO;
+  userService: any; // UserService - avoiding circular import
 }
 
 export class NotificationService {
   private readonly notificationDAO: NotificationDAO;
+  private readonly profileDAO: ProfileDAO;
+  private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
+  private readonly userService: any;
   private readonly log: Logger;
 
-  constructor({ notificationDAO, userDAO }: IConstructor) {
+  constructor({ notificationDAO, profileDAO, clientDAO, userDAO, userService }: IConstructor) {
     this.setupEventListeners();
     this.notificationDAO = notificationDAO;
+    this.profileDAO = profileDAO;
+    this.clientDAO = clientDAO;
     this.userDAO = userDAO;
+    this.userService = userService;
     this.log = createLogger('NotificationService');
   }
 
@@ -747,6 +756,7 @@ export class NotificationService {
     cuid: string;
     updateData: Record<string, any>;
     propertyManagerId?: string;
+    resource: { resourceId: string; resourceType: ResourceContext; resourceUid: string };
   }): Promise<void> {
     const {
       userRole,
@@ -757,18 +767,19 @@ export class NotificationService {
       cuid,
       updateData,
       propertyManagerId,
+      resource,
     } = params;
 
     try {
       if ((PROPERTY_STAFF_ROLES as string[]).includes(userRole)) {
         // Staff update - notify about approval needed
         await this.notifyApprovalNeeded(
-          updatedProperty.pid,
+          resource.resourceId,
           propertyName,
           actorUserId,
           actorDisplayName,
           cuid,
-          ResourceContext.PROPERTY,
+          resource.resourceType,
           {
             address: updatedProperty.address?.fullAddress,
             changes: Object.keys(updateData),
@@ -776,14 +787,14 @@ export class NotificationService {
         );
 
         this.log.info('Sent staff update approval notification', {
-          propertyId: updatedProperty.pid,
+          propertyId: resource.resourceId,
           actorUserId,
           userRole,
         });
       } else if ((PROPERTY_APPROVAL_ROLES as string[]).includes(userRole)) {
         // Admin/Manager update - notify property manager if exists
         await this.notifyPropertyUpdate(
-          updatedProperty.pid,
+          resource.resourceId,
           propertyName,
           actorUserId,
           actorDisplayName,
@@ -811,76 +822,68 @@ export class NotificationService {
   }
 
   /**
-   * Find user's supervisor based on employeeInfo.reportsTo
+   * Find user's supervisor - delegates to UserService
    */
   async findUserSupervisor(userId: string, cuid: string): Promise<string | null> {
-    try {
-      if (!userId) return null;
-
-      const user = await this.userDAO.findFirst({
-        _id: new Types.ObjectId(userId),
-        'cuids.cuid': cuid,
-      });
-
-      if (!user || !user.profile?.employeeInfo?.reportsTo) {
-        return null;
-      }
-
-      const supervisorId = user.profile.employeeInfo.reportsTo;
-
-      // Validate supervisor exists and belongs to same client
-      const supervisor = await this.userDAO.findFirst({
-        _id: new Types.ObjectId(supervisorId),
-        'cuids.cuid': cuid,
-      });
-
-      if (!supervisor) {
-        this.log.warn('Supervisor not found or not in same client', {
-          userId,
-          supervisorId,
-          cuid,
-        });
-        return null;
-      }
-
-      return supervisorId;
-    } catch (error) {
-      this.log.error('Failed to find user supervisor', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        userId,
-        cuid,
-      });
-      return null;
-    }
+    return this.userService.getUserSupervisor(userId, cuid);
   }
 
   /**
-   * Find users who can approve (supervisors, admins, managers)
+   * Find users who can approve - implements selective role-based notification logic
+   * Priority: (1) Direct supervisor, (2) Client accountAdmin as fallback
+   * Includes deduplication logic to prevent duplicate notifications
    */
   private async findApprovers(userId: string, cuid: string): Promise<string[]> {
     try {
       const approvers: string[] = [];
 
-      // Find direct supervisor
+      // find direct supervisor
       const supervisorId = await this.findUserSupervisor(userId, cuid);
-      if (supervisorId) {
+      if (supervisorId && !this.isSelfNotification(userId, supervisorId)) {
         approvers.push(supervisorId);
+        this.log.info('Found direct supervisor for approval', {
+          userId,
+          supervisorId,
+          cuid,
+        });
       }
 
-      // Find admins and managers in the client
-      const adminUsersResult = await this.userDAO.list({
-        'cuids.cuid': cuid,
-        'cuids.roles': { $in: ['admin', 'manager'] },
-        deletedAt: null,
-      });
-      const adminUsers = adminUsersResult.items;
-
-      for (const admin of adminUsers) {
-        const adminId = admin._id.toString();
-        if (!approvers.includes(adminId) && !this.isSelfNotification(userId, adminId)) {
-          approvers.push(adminId);
+      // opt b: find client's accountAdmin as fallback (only if no supervisor found)
+      if (approvers.length === 0) {
+        const accountAdminId = await this.getClientAccountAdmin(cuid);
+        if (accountAdminId && !this.isSelfNotification(userId, accountAdminId)) {
+          approvers.push(accountAdminId);
+          this.log.info('Using client accountAdmin as fallback approver', {
+            userId,
+            accountAdminId,
+            cuid,
+          });
+        }
+      } else {
+        // opt c: add accountAdmin as secondary approver only if different from supervisor
+        const accountAdminId = await this.getClientAccountAdmin(cuid);
+        if (
+          accountAdminId &&
+          !this.isSelfNotification(userId, accountAdminId) &&
+          !approvers.includes(accountAdminId)
+        ) {
+          approvers.push(accountAdminId);
+          this.log.info('Added client accountAdmin as secondary approver', {
+            userId,
+            supervisorId,
+            accountAdminId,
+            cuid,
+          });
         }
       }
+
+      this.log.info('Final approvers list - selective notification logic', {
+        userId,
+        cuid,
+        approversCount: approvers.length,
+        approvers: approvers,
+        method: 'selective role-based',
+      });
 
       return approvers;
     } catch (error) {
@@ -894,28 +897,51 @@ export class NotificationService {
   }
 
   /**
-   * Get user display name for notifications
+   * Get client's accountAdmin user ID
    */
-  private async getUserDisplayName(userId: string, cuid: string): Promise<string> {
+  private async getClientAccountAdmin(cuid: string): Promise<string | null> {
     try {
-      if (!userId || userId === 'system') return 'System';
+      const client = await this.clientDAO.findFirst({ cuid });
+      if (!client || !client.accountAdmin) {
+        this.log.warn('Client not found or no accountAdmin configured', { cuid });
+        return null;
+      }
 
-      const user = await this.userDAO.findFirst({
-        _id: new Types.ObjectId(userId),
+      // Handle both ObjectId and populated document cases
+      const accountAdminId =
+        typeof client.accountAdmin === 'object' && client.accountAdmin._id
+          ? client.accountAdmin._id.toString()
+          : client.accountAdmin.toString();
+
+      // Validate that the accountAdmin user exists and belongs to this client
+      const accountAdmin = await this.userDAO.findFirst({
+        _id: new Types.ObjectId(accountAdminId),
         'cuids.cuid': cuid,
       });
 
-      if (!user || !user.profile) return 'Unknown User';
+      if (!accountAdmin) {
+        this.log.warn('Account admin user not found or not connected to client', {
+          cuid,
+          accountAdminId,
+        });
+        return null;
+      }
 
-      const { firstName, lastName, displayName } = user.profile.personalInfo;
-      return displayName || `${firstName} ${lastName}`.trim() || user.email || 'Unknown User';
+      return accountAdminId;
     } catch (error) {
-      this.log.error('Failed to get user display name', {
+      this.log.error('Failed to get client account admin', {
         error: error instanceof Error ? error.message : 'Unknown error',
-        userId,
+        cuid,
       });
-      return 'Unknown User';
+      return null;
     }
+  }
+
+  /**
+   * Get user display name for notifications - delegates to UserService
+   */
+  private async getUserDisplayName(userId: string, cuid: string): Promise<string> {
+    return this.userService.getUserDisplayName(userId, cuid);
   }
 
   /**
@@ -972,55 +998,13 @@ export class NotificationService {
   }
 
   /**
-   * Get user's targeting info (roles and vendor) for announcement filtering
+   * Get user's targeting info (roles and vendor) for announcement filtering - delegates to UserService
    */
   private async getUserTargetingInfo(
     userId: string,
     cuid: string
   ): Promise<{ roles: string[]; vendorId?: string }> {
-    try {
-      // Get user with their client connection info
-      const user = await this.userDAO.findFirst({
-        _id: new Types.ObjectId(userId),
-        'cuids.cuid': cuid,
-      });
-
-      if (!user) {
-        this.log.warn('User not found for targeting info', { userId, cuid });
-        return { roles: [] };
-      }
-
-      // Get roles for this client
-      const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
-      const roles = clientConnection?.roles || [];
-
-      // Get vendor ID if user is linked to a vendor
-      let vendorId: string | undefined;
-      const vendorInfo = user.profile?.vendorInfo;
-      if (vendorInfo?.linkedVendorUid) {
-        vendorId = vendorInfo.linkedVendorUid;
-      }
-
-      this.log.debug('Retrieved user targeting info', {
-        userId,
-        cuid,
-        roles,
-        vendorId,
-      });
-
-      return {
-        roles,
-        vendorId,
-      };
-    } catch (error) {
-      this.log.error('Error getting user targeting info', {
-        userId,
-        cuid,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-      // Return empty targeting info on error - user will still get individual notifications
-      return { roles: [] };
-    }
+    return this.userService.getUserAnnouncementFilters(userId, cuid);
   }
 
   private setupEventListeners(): void {}

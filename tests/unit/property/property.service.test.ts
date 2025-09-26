@@ -49,11 +49,27 @@ jest.mock('@interfaces/events.interface', () => ({
 describe('PropertyService', () => {
   let propertyService: PropertyService;
   let mocks: any;
+  let mockPropertyDAO: any;
+  let mockClientDAO: any;
+  let mockProfileDAO: any;
+  let mockPropertyUnitDAO: any;
+  let mockPropertyCache: any;
+  let mockPropertyQueue: any;
+  let mockEventEmitterService: any;
 
   beforeEach(() => {
     const result = createServiceWithMocks(PropertyService, createPropertyServiceDependencies);
     propertyService = result.service;
     mocks = result.mocks;
+
+    // Extract commonly used mocks for easier access
+    mockPropertyDAO = mocks.propertyDAO;
+    mockClientDAO = mocks.clientDAO;
+    mockProfileDAO = mocks.profileDAO;
+    mockPropertyUnitDAO = mocks.propertyUnitDAO;
+    mockPropertyCache = mocks.propertyCache;
+    mockPropertyQueue = mocks.propertyQueue;
+    mockEventEmitterService = mocks.emitterService;
   });
 
   afterEach(() => {
@@ -87,6 +103,7 @@ describe('PropertyService', () => {
         return await callback(_session);
       });
       mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockClientDAO.findFirst.mockResolvedValue(mockClient);
       mockPropertyDAO.findPropertyByAddress.mockResolvedValue(null);
       mockPropertyDAO.createProperty.mockResolvedValue(mockProperty);
       mockPropertyCache.cacheProperty.mockResolvedValue({ success: true });
@@ -100,6 +117,98 @@ describe('PropertyService', () => {
         'test-cuid',
         mockProperty.id,
         mockProperty
+      );
+    });
+
+    it('should set managedBy to accountAdmin when staff creates property without explicit manager', async () => {
+      const mockContext = createMockRequestContext({
+        request: {
+          params: { cuid: 'test-cuid' },
+          url: '/test',
+          path: '/test',
+          method: 'POST',
+          query: {},
+        },
+        currentuser: createMockCurrentUser({
+          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+        }),
+      });
+      const propertyData = createMockNewProperty(); // No managedBy specified
+      const mockClient = createMockClient({
+        accountAdmin: new Types.ObjectId('507f1f77bcf86cd799439999'),
+      });
+      const mockProfile = {
+        employeeInfo: { department: 'operations' },
+      };
+      const mockProperty = createMockProperty({ approvalStatus: 'pending' });
+
+      mockPropertyDAO.startSession.mockReturnValue('mock-session');
+      mockPropertyDAO.withTransaction.mockImplementation(async (_session: any, callback: any) => {
+        return await callback(_session);
+      });
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockClientDAO.findFirst.mockResolvedValue(mockClient);
+      mockProfileDAO.getProfileByUserId.mockResolvedValue(mockProfile);
+      mockPropertyDAO.findPropertyByAddress.mockResolvedValue(null);
+      mockPropertyDAO.createProperty.mockResolvedValue(mockProperty);
+      mockPropertyCache.cacheProperty.mockResolvedValue({ success: true });
+
+      const result = await propertyService.addProperty(mockContext, propertyData);
+
+      expect(result.success).toBe(true);
+      expect(mockPropertyDAO.createProperty).toHaveBeenCalledWith(
+        expect.objectContaining({
+          managedBy: new Types.ObjectId('507f1f77bcf86cd799439999'), // Should be accountAdmin
+          approvalStatus: 'pending',
+        }),
+        'mock-session'
+      );
+    });
+
+    it('should fallback to current user when no accountAdmin available', async () => {
+      const mockUserId = '507f1f77bcf86cd799439012';
+      const mockContext = createMockRequestContext({
+        request: {
+          params: { cuid: 'test-cuid' },
+          url: '/test',
+          path: '/test',
+          method: 'POST',
+          query: {},
+        },
+        currentuser: createMockCurrentUser({
+          sub: mockUserId,
+          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+        }),
+      });
+      const propertyData = createMockNewProperty(); // No managedBy specified
+      const mockClient = createMockClient({
+        accountAdmin: null, // No accountAdmin
+      });
+      const mockProfile = {
+        employeeInfo: { department: 'operations' },
+      };
+      const mockProperty = createMockProperty({ approvalStatus: 'pending' });
+
+      mockPropertyDAO.startSession.mockReturnValue('mock-session');
+      mockPropertyDAO.withTransaction.mockImplementation(async (_session: any, callback: any) => {
+        return await callback(_session);
+      });
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockClientDAO.findFirst.mockResolvedValue(mockClient);
+      mockProfileDAO.getProfileByUserId.mockResolvedValue(mockProfile);
+      mockPropertyDAO.findPropertyByAddress.mockResolvedValue(null);
+      mockPropertyDAO.createProperty.mockResolvedValue(mockProperty);
+      mockPropertyCache.cacheProperty.mockResolvedValue({ success: true });
+
+      const result = await propertyService.addProperty(mockContext, propertyData);
+
+      expect(result.success).toBe(true);
+      expect(mockPropertyDAO.createProperty).toHaveBeenCalledWith(
+        expect.objectContaining({
+          managedBy: new Types.ObjectId(mockUserId), // Should fallback to current user
+          approvalStatus: 'pending',
+        }),
+        'mock-session'
       );
     });
   });

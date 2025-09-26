@@ -585,6 +585,32 @@ export const buildDotNotation = (obj: any, prefix = ''): Record<string, any> => 
   return result;
 };
 
+/**
+ * Creates a MongoDB-safe update object using dot notation to prevent nested object overwrites
+ * @param updateData - The object containing fields to update
+ * @returns Safe MongoDB update object with dot notation for nested fields
+ *
+ * @example
+ * // Input: { fees: { rentalAmount: 1200 }, name: "New Property" }
+ * // Output: { "fees.rentalAmount": 1200, name: "New Property" }
+ */
+export const createSafeMongoUpdate = (updateData: Record<string, any>): Record<string, any> => {
+  const result: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(updateData)) {
+    if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+      // Convert nested objects to dot notation
+      const dotNotated = buildDotNotation(value, key);
+      Object.assign(result, dotNotated);
+    } else {
+      // Keep primitive values, arrays, dates, and null as-is
+      result[key] = value;
+    }
+  }
+
+  return result;
+};
+
 export const MoneyUtils = {
   /**
    * Converts cents (integer) to dollar string format

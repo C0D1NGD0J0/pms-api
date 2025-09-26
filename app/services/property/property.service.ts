@@ -521,7 +521,6 @@ export class PropertyService {
         { approvalStatus: PropertyApprovalStatusEnum.APPROVED },
         {
           approvalStatus: PropertyApprovalStatusEnum.PENDING,
-          lastModifiedBy: new Types.ObjectId(currentuser.sub),
         },
       ];
     }

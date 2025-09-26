@@ -58,6 +58,7 @@ import {
   EmailQueue,
 } from '@queues/index';
 import {
+  NotificationController,
   PropertyUnitController,
   InvitationController,
   PropertyController,
@@ -85,58 +86,59 @@ import {
 
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
-  clientController: asClass(ClientController).scoped(),
   userController: asClass(UserController).scoped(),
-  emailTemplateController: asClass(EmailTemplateController).scoped(),
-  propertyController: asClass(PropertyController).scoped(),
-  propertyUnitController: asClass(PropertyUnitController).scoped(),
-  invitationController: asClass(InvitationController).scoped(),
+  clientController: asClass(ClientController).scoped(),
   vendorController: asClass(VendorController).scoped(),
+  propertyController: asClass(PropertyController).scoped(),
+  invitationController: asClass(InvitationController).scoped(),
+  propertyUnitController: asClass(PropertyUnitController).scoped(),
+  notificationController: asClass(NotificationController).scoped(),
+  emailTemplateController: asClass(EmailTemplateController).scoped(),
 };
 
 const ModelResources = {
+  userModel: asValue(User),
   assetModel: asValue(Asset),
+  vendorModel: asValue(Vendor),
   clientModel: asValue(Client),
-  invitationModel: asValue(Invitation),
   profileModel: asValue(Profile),
   propertyModel: asValue(Property),
+  invitationModel: asValue(Invitation),
   propertyUnitModel: asValue(PropertyUnit),
-  userModel: asValue(User),
   notificationModel: asValue(NotificationModel),
-  vendorModel: asValue(Vendor),
 };
 
 const ServiceResources = {
-  assetService: asClass(AssetService).singleton(),
   authService: asClass(AuthService).singleton(),
-  clientService: asClass(ClientService).singleton(),
-  emitterService: asClass(EventEmitterService).singleton(),
-  invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
-  invitationService: asClass(InvitationService).singleton(),
-  languageService: asClass(LanguageService).singleton(),
-  mailerService: asClass(MailService).singleton(),
-  notificationService: asClass(NotificationService).singleton(),
-  mediaUploadService: asClass(MediaUploadService).singleton(),
-  permissionService: asClass(PermissionService).singleton(),
-  profileService: asClass(ProfileService).singleton(),
-  propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
-  propertyService: asClass(PropertyService).singleton(),
-  propertyUnitService: asClass(PropertyUnitService).singleton(),
-  tokenService: asClass(AuthTokenService).singleton(),
-  unitNumberingService: asClass(UnitNumberingService).singleton(),
   userService: asClass(UserService).singleton(),
+  assetService: asClass(AssetService).singleton(),
+  mailerService: asClass(MailService).singleton(),
+  clientService: asClass(ClientService).singleton(),
   vendorService: asClass(VendorService).singleton(),
+  profileService: asClass(ProfileService).singleton(),
+  tokenService: asClass(AuthTokenService).singleton(),
+  languageService: asClass(LanguageService).singleton(),
+  propertyService: asClass(PropertyService).singleton(),
+  emitterService: asClass(EventEmitterService).singleton(),
+  permissionService: asClass(PermissionService).singleton(),
+  invitationService: asClass(InvitationService).singleton(),
+  mediaUploadService: asClass(MediaUploadService).singleton(),
+  propertyUnitService: asClass(PropertyUnitService).singleton(),
+  notificationService: asClass(NotificationService).singleton(),
+  propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
+  unitNumberingService: asClass(UnitNumberingService).singleton(),
+  invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
 };
 
 const DAOResources = {
+  userDAO: asClass(UserDAO).singleton(),
   assetDAO: asClass(AssetDAO).singleton(),
   clientDAO: asClass(ClientDAO).singleton(),
-  invitationDAO: asClass(InvitationDAO).singleton(),
+  vendorDAO: asClass(VendorDAO).singleton(),
   profileDAO: asClass(ProfileDAO).singleton(),
   propertyDAO: asClass(PropertyDAO).singleton(),
+  invitationDAO: asClass(InvitationDAO).singleton(),
   propertyUnitDAO: asClass(PropertyUnitDAO).singleton(),
-  userDAO: asClass(UserDAO).singleton(),
-  vendorDAO: asClass(VendorDAO).singleton(),
   notificationDAO: asClass(NotificationDAO).singleton(),
 };
 
@@ -148,64 +150,54 @@ const CacheResources = {
   }).singleton(),
 
   propertyCache: asFunction(() => {
-    // Only initialize when property operations are used
     return new PropertyCache();
   }).singleton(),
 
   eventsRegistry: asFunction(() => {
-    // Only initialize when event system is used
     return new EventsRegistryCache();
   }).singleton(),
 
   userCache: asFunction(() => {
-    // Only initialize when user operations are used
     return new UserCache();
   }).singleton(),
 
   vendorCache: asFunction(() => {
-    // Only initialize when vendor operations are used
     return new VendorCache();
   }).singleton(),
 };
 
 const WorkerResources = {
-  documentProcessingWorker: asClass(DocumentProcessingWorker).singleton(),
   emailWorker: asClass(EmailWorker).singleton(),
-  propertyWorker: asClass(PropertyWorker).singleton(),
-  propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
   uploadWorker: asClass(UploadWorker).singleton(),
+  propertyWorker: asClass(PropertyWorker).singleton(),
   invitationWorker: asClass(InvitationWorker).singleton(),
+  propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
+  documentProcessingWorker: asClass(DocumentProcessingWorker).singleton(),
 };
 
 const QueuesResources = {
-  documentProcessingQueue: asClass(DocumentProcessingQueue).singleton(),
   emailQueue: asClass(EmailQueue).singleton(),
+  uploadQueue: asClass(UploadQueue).singleton(),
   eventBusQueue: asClass(EventBusQueue).singleton(),
   propertyQueue: asClass(PropertyQueue).singleton(),
-  propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
-  uploadQueue: asClass(UploadQueue).singleton(),
   invitationQueue: asClass(InvitationQueue).singleton(),
+  propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
+  documentProcessingQueue: asClass(DocumentProcessingQueue).singleton(),
 };
 
 const UtilsResources = {
   // Lazy-loaded services to reduce memory footprint
   geoCoderService: asFunction(() => {
-    // Only create when actually needed to reduce memory usage
     return new GeoCoderService();
   }).singleton(),
-
   redisService: asFunction(() => {
     return new RedisService('Redis Service');
   }).singleton(),
-
   dbService: asClass(DatabaseService).singleton(),
-
-  // S3Service lazy loading for reduced memory footprint
   s3Service: asFunction(() => {
     // Only initialize S3Service when actually needed
     return new S3Service();
   }).singleton(),
-
   clamScanner: asClass(ClamScannerService).singleton(),
   diskStorage: asClass(DiskStorage).singleton(),
   propertyCsvService: asClass(PropertyCsvProcessor).singleton(),
@@ -222,7 +214,6 @@ const SocketIOResources = {
 export const initQueues = (container: AwilixContainer) => {
   // Always initialize ClamScanner as it's essential for file security
   container.resolve('clamScanner');
-
   // Only initialize queues in development or when explicitly forced
   if (process.env.NODE_ENV === 'development' || process.env.FORCE_INIT_QUEUES === 'true') {
     console.log('🔧 Initializing all queues and workers for development/forced environment...');

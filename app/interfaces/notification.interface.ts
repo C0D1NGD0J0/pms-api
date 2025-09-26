@@ -45,8 +45,8 @@ export interface INotificationService {
     priority?: NotificationPriorityEnum
   ): Promise<ISuccessReturnData<INotificationResponse[]>>;
   getNotifications(
-    userId: string,
     cuid: string,
+    userId: string,
     filters?: INotificationFilters,
     pagination?: IPaginationQuery
   ): Promise<ISuccessReturnData<INotificationListResponse>>;
@@ -67,12 +67,12 @@ export interface INotificationService {
     cuid: string
   ): Promise<ISuccessReturnData<INotificationResponse>>;
   markAsRead(
-    notificationId: string,
+    notificationUid: string,
     userId: string,
     cuid: string
   ): Promise<ISuccessReturnData<INotificationResponse>>;
   deleteNotification(
-    notificationId: string,
+    notificationUid: string,
     userId: string,
     cuid: string
   ): Promise<ISuccessReturnData<boolean>>;
@@ -130,10 +130,6 @@ export interface ICreateNotificationRequest {
   title: string;
   cuid: string;
 }
-
-/**
- * Response Interfaces
- */
 export interface INotificationResponse {
   resourceInfo?: INotificationResource;
   priority: NotificationPriorityEnum;
@@ -174,10 +170,10 @@ export interface INotificationFilters {
   priority?: NotificationPriorityEnum | NotificationPriorityEnum[];
   type?: NotificationTypeEnum | NotificationTypeEnum[];
   resourceName?: ResourceContext;
+  last30days?: boolean;
   resourceId?: string;
+  last7days?: boolean;
   isRead?: boolean;
-  dateFrom?: Date;
-  dateTo?: Date;
 }
 
 /**

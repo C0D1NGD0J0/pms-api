@@ -188,18 +188,29 @@ export class NotificationService {
         this.log.error(errorMsg, { userId, cuid });
         return {
           success: false,
-          data: [] as any,
+          data: null as any,
           message: errorMsg,
         };
       }
 
-      const targetingInfo = await this.getUserTargetingInfo(userId, cuid);
+      this.log.info('Retrieving personal notifications', {
+        userId,
+        cuid,
+        filters,
+        pagination,
+      });
 
+      const personalFilters: INotificationFilters = {
+        ...filters,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+      };
+
+      const targetingInfo = { roles: [], vendorId: undefined };
       const result = await this.notificationDAO.findForUser(
         userId,
         cuid,
         targetingInfo,
-        filters,
+        personalFilters,
         pagination
       );
 
@@ -223,7 +234,81 @@ export class NotificationService {
 
       return {
         success: false,
-        data: [] as any,
+        data: null as any,
+        message: errorMsg,
+      };
+    }
+  }
+
+  async getAnnouncements(
+    cuid: string,
+    userId: string,
+    filters?: INotificationFilters,
+    pagination?: IPaginationQuery
+  ): Promise<ISuccessReturnData<{ notifications: INotificationDocument[]; total: number }>> {
+    try {
+      if (!userId || !cuid) {
+        const errorMsg = 'User ID and Client ID (cuid) are required';
+        this.log.error(errorMsg, { userId, cuid });
+        return {
+          success: false,
+          data: null as any,
+          message: errorMsg,
+        };
+      }
+
+      this.log.info('Retrieving announcements', {
+        userId,
+        cuid,
+        filters,
+        pagination,
+      });
+
+      // Get announcements only (recipientType = announcement)
+      const announcementFilters: INotificationFilters = {
+        ...filters,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT, // Only announcements
+      };
+
+      // For announcements, we need the user's targeting info to filter properly
+      const targetingInfo = await this.userService.getUserAnnouncementFilters(userId, cuid);
+
+      const result = await this.notificationDAO.findForUser(
+        userId,
+        cuid,
+        targetingInfo,
+        announcementFilters,
+        pagination
+      );
+
+      this.log.info('Retrieved announcements successfully', {
+        userId,
+        cuid,
+        count: result.data.length,
+        total: result.total,
+      });
+
+      return {
+        success: true,
+        data: {
+          notifications: result.data,
+          total: result.total,
+        },
+        message: 'Announcements retrieved successfully',
+      };
+    } catch (error) {
+      const errorMsg = 'Unexpected error retrieving announcements';
+      this.log.error(errorMsg, {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        userId,
+        cuid,
+        filters,
+      });
+
+      return {
+        success: false,
+        data: null as any,
         message: errorMsg,
       };
     }
@@ -1029,16 +1114,6 @@ export class NotificationService {
         message: errorMsg,
       };
     }
-  }
-
-  /**
-   * Get user's targeting info (roles and vendor) for announcement filtering - delegates to UserService
-   */
-  private async getUserTargetingInfo(
-    userId: string,
-    cuid: string
-  ): Promise<{ roles: string[]; vendorId?: string }> {
-    return this.userService.getUserAnnouncementFilters(userId, cuid);
   }
 
   private setupEventListeners(): void {}

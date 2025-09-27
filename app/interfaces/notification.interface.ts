@@ -150,6 +150,17 @@ export interface INotificationResponse {
   id: string;
 }
 
+export interface INotificationFilters {
+  priority?: NotificationPriorityEnum | NotificationPriorityEnum[];
+  type?: NotificationTypeEnum | NotificationTypeEnum[];
+  recipientType?: RecipientTypeEnum;
+  resourceName?: ResourceContext;
+  last30days?: boolean;
+  resourceId?: string;
+  last7days?: boolean;
+  isRead?: boolean;
+}
+
 /**
  * Socket.IO Event Interfaces
  */
@@ -164,16 +175,6 @@ export interface INotificationSocketData {
   createdAt: Date;
   title: string;
   id: string;
-}
-
-export interface INotificationFilters {
-  priority?: NotificationPriorityEnum | NotificationPriorityEnum[];
-  type?: NotificationTypeEnum | NotificationTypeEnum[];
-  resourceName?: ResourceContext;
-  last30days?: boolean;
-  resourceId?: string;
-  last7days?: boolean;
-  isRead?: boolean;
 }
 
 /**

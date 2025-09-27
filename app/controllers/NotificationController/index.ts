@@ -63,76 +63,41 @@ export class NotificationController {
   };
 
   getAnnouncements = async (req: AppRequest, res: Response) => {
-    try {
-      const { cuid } = req.params;
-      const userId = req.context?.currentuser?.sub;
+    const { cuid } = req.params;
+    const userId = req.context?.currentuser?.sub;
+    const { type, priority, isRead, last7days, last30days }: INotificationFilters = req.query;
 
-      if (!userId) {
-        throw new UnauthorizedError({ message: 'User not authenticated' });
-      }
-
-      if (!cuid) {
-        throw new BadRequestError({ message: 'Client ID (cuid) is required' });
-      }
-
-      // Validate user has access to this client
-      if (req.context.currentuser.client.cuid !== cuid) {
-        throw new BadRequestError({ message: 'Invalid client context' });
-      }
-
-      this.log.info('Fetching announcements', { userId, cuid });
-
-      // Filter for announcements only
-      const filters: INotificationFilters = {
-        recipientType: 'announcement', // Only get announcements
-        type: req.query.type as any,
-        priority: req.query.priority as any,
-        isRead: req.query.isRead ? req.query.isRead === 'true' : undefined,
-        dateFrom: req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined,
-        dateTo: req.query.dateTo ? new Date(req.query.dateTo as string) : undefined,
-      };
-
-      const pagination: IPaginationQuery = {
-        page: req.query.page ? parseInt(req.query.page as string) : 1,
-        limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
-        sort: (req.query.sort as string) || 'createdAt',
-        sortBy: (req.query.sortBy as string) || 'desc',
-      };
-
-      const result = await this.notificationService.getNotifications(
-        cuid,
-        userId,
-        filters,
-        pagination
-      );
-
-      if (!result.success) {
-        return res.status(httpStatusCodes.BAD_REQUEST).json({
-          success: false,
-          message: result.message,
-        });
-      }
-
-      res.status(httpStatusCodes.OK).json({
-        success: true,
-        data: result.data,
-        message: result.message || t('announcement.success.fetched'),
-      });
-    } catch (error) {
-      this.log.error('Error fetching announcements:', error);
-
-      if (error instanceof BadRequestError || error instanceof UnauthorizedError) {
-        return res.status(error.statusCode).json({
-          success: false,
-          message: error.message,
-        });
-      }
-
-      res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
-        success: false,
-        message: 'Failed to fetch announcements',
-      });
+    if (req.context.currentuser.client.cuid !== cuid) {
+      throw new BadRequestError({ message: 'Invalid client context' });
     }
+
+    const filters: INotificationFilters = {
+      type,
+      priority,
+      isRead: isRead ? isRead === ('true' as unknown as boolean) : undefined,
+      last7days: last7days ? last7days === ('true' as unknown as boolean) : undefined,
+      last30days: last30days ? last30days === ('true' as unknown as boolean) : undefined,
+    };
+
+    const pagination: IPaginationQuery = {
+      page: req.query.page ? parseInt(req.query.page as string) : 1,
+      limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
+      sort: (req.query.sort as string) || 'createdAt',
+      sortBy: (req.query.sortBy as string) || 'desc',
+    };
+
+    const result = await this.notificationService.getAnnouncements(
+      cuid,
+      userId,
+      filters,
+      pagination
+    );
+
+    res.status(httpStatusCodes.OK).json({
+      data: result.data,
+      success: result.success,
+      message: result.message || t('announcement.success.fetched'),
+    });
   };
 
   markNotificationAsRead = async (req: AppRequest, res: Response) => {

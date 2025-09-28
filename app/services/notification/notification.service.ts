@@ -1,7 +1,9 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { UserService } from '@services/user';
+import { SSECache } from '@caching/index';
 import { createLogger } from '@utils/helpers';
+import { ISSEMessage } from '@interfaces/sse.interface';
+import { UserService, SSEService } from '@services/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ResourceContext } from '@interfaces/utils.interface';
 import { NotificationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
@@ -25,27 +27,41 @@ import { getFormattedNotification, NotificationMessageKey } from './notification
 
 interface IConstructor {
   notificationDAO: NotificationDAO;
+  userService: UserService;
+  sseService: SSEService;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
+  sseCache: SSECache;
   userDAO: UserDAO;
-  userService: any; // UserService - avoiding circular import
 }
 
 export class NotificationService {
   private readonly notificationDAO: NotificationDAO;
+  private readonly userService: UserService;
+  private readonly sseService: SSEService;
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
+  private readonly sseCache: SSECache;
   private readonly userDAO: UserDAO;
-  private readonly userService: UserService;
   private readonly log: Logger;
 
-  constructor({ notificationDAO, profileDAO, clientDAO, userDAO, userService }: IConstructor) {
-    this.setupEventListeners();
-    this.notificationDAO = notificationDAO;
-    this.profileDAO = profileDAO;
-    this.clientDAO = clientDAO;
+  constructor({
+    notificationDAO,
+    profileDAO,
+    clientDAO,
+    userDAO,
+    userService,
+    sseService,
+    sseCache,
+  }: IConstructor) {
     this.userDAO = userDAO;
+    this.setupEventListeners();
+    this.clientDAO = clientDAO;
+    this.sseService = sseService;
+    this.sseCache = sseCache;
+    this.profileDAO = profileDAO;
     this.userService = userService;
+    this.notificationDAO = notificationDAO;
     this.log = createLogger('NotificationService');
   }
 
@@ -1113,6 +1129,52 @@ export class NotificationService {
         data: null as any,
         message: errorMsg,
       };
+    }
+  }
+
+  private async publishToSSE(notification: INotificationDocument): Promise<void> {
+    try {
+      const sseMessage: ISSEMessage = {
+        id: notification.nuid,
+        event: notification.recipientType === 'individual' ? 'notification' : 'announcement',
+        data: notification,
+        timestamp: new Date(),
+      };
+
+      if (notification.recipientType === 'individual' && notification.recipient) {
+        // Personal notification
+        await this.sseService.sendToUser(
+          notification.recipient.toString(),
+          notification.cuid,
+          sseMessage
+        );
+
+        this.log.debug('Published personal notification to SSE', {
+          nuid: notification.nuid,
+          recipientId: notification.recipient,
+          cuid: notification.cuid,
+        });
+      } else if (notification.recipientType === 'announcement') {
+        // Announcement - publish to announcement channels
+        const announcementChannels = this.sseCache.generateAnnouncementChannels(notification.cuid);
+
+        for (const channel of announcementChannels) {
+          await this.sseService.sendToChannel(channel, sseMessage);
+        }
+
+        this.log.debug('Published announcement to SSE', {
+          nuid: notification.nuid,
+          channels: announcementChannels,
+          cuid: notification.cuid,
+        });
+      }
+    } catch (error) {
+      // Log error but don't fail notification creation
+      this.log.error('Failed to publish notification to SSE', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        nuid: notification.nuid,
+        recipientType: notification.recipientType,
+      });
     }
   }
 

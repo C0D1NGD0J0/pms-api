@@ -8,28 +8,6 @@ import { UtilsValidations, validateRequest } from '@shared/validations/index';
 const router = Router();
 router.use(isAuthenticated);
 
-router.get(
-  '/:cuid/announcements',
-  basicLimiter,
-  validateRequest({ params: UtilsValidations.cuid }),
-  asyncWrapper((req: AppRequest, res) => {
-    const controller = req.container.resolve<NotificationController>('notificationController');
-    return controller.getAnnouncements(req, res);
-  })
-);
-
-router.get(
-  '/:cuid/my_notifications',
-  basicLimiter,
-  validateRequest({
-    params: UtilsValidations.cuid,
-  }),
-  asyncWrapper((req: AppRequest, res) => {
-    const controller = req.container.resolve<NotificationController>('notificationController');
-    return controller.getMyNotifications(req, res);
-  })
-);
-
 router.patch(
   '/:cuid/mark-read/:nuid',
   basicLimiter,
@@ -39,6 +17,24 @@ router.patch(
   asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<NotificationController>('notificationController');
     return controller.markNotificationAsRead(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/my-notifications/stream',
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<NotificationController>('notificationController');
+    return controller.getMyNotificationsStream(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/announcements/stream',
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<NotificationController>('notificationController');
+    return controller.getAnnouncementsStream(req, res);
   })
 );
 

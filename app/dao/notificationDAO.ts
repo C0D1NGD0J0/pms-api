@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { IPaginationQuery } from '@interfaces/utils.interface';
@@ -129,10 +130,14 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
         if (filters.resourceId) {
           filter['resourceInfo.resourceId'] = new Types.ObjectId(filters.resourceId);
         }
-        if (filters.dateFrom || filters.dateTo) {
+        if (filters.last7days || filters.last30days) {
           filter.createdAt = {};
-          if (filters.dateFrom) filter.createdAt.$gte = filters.dateFrom;
-          if (filters.dateTo) filter.createdAt.$lte = filters.dateTo;
+
+          if (filters.last7days) {
+            filter.createdAt.$gte = dayjs().subtract(7, 'days').toDate();
+          } else if (filters.last30days) {
+            filter.createdAt.$gte = dayjs().subtract(30, 'days').toDate();
+          }
         }
       }
 

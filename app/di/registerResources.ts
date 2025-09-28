@@ -18,6 +18,7 @@ import {
   VendorCache,
   AuthCache,
   UserCache,
+  SSECache,
 } from '@caching/index';
 import {
   NotificationModel,
@@ -82,6 +83,7 @@ import {
   VendorService,
   UserService,
   AuthService,
+  SSEService,
 } from '@services/index';
 
 const ControllerResources = {
@@ -109,6 +111,7 @@ const ModelResources = {
 };
 
 const ServiceResources = {
+  sseService: asClass(SSEService).singleton(),
   authService: asClass(AuthService).singleton(),
   userService: asClass(UserService).singleton(),
   assetService: asClass(AssetService).singleton(),
@@ -151,6 +154,10 @@ const CacheResources = {
 
   propertyCache: asFunction(() => {
     return new PropertyCache();
+  }).singleton(),
+
+  sseCache: asFunction(() => {
+    return new SSECache();
   }).singleton(),
 
   eventsRegistry: asFunction(() => {

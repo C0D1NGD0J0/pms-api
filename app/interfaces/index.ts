@@ -9,3 +9,4 @@ export * from './events.interface';
 export * from './utils.interface';
 export * from './user.interface';
 export * from './csv.interface';
+export * from './sse.interface';

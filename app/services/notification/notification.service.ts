@@ -845,6 +845,7 @@ export class NotificationService {
     cuid: string;
     updateData: Record<string, any>;
     propertyManagerId?: string;
+    isDirectUpdate?: boolean;
     resource: { resourceId: string; resourceType: ResourceContext; resourceUid: string };
   }): Promise<void> {
     const {
@@ -856,6 +857,7 @@ export class NotificationService {
       cuid,
       updateData,
       propertyManagerId,
+      isDirectUpdate = false,
       resource,
     } = params;
 
@@ -897,6 +899,7 @@ export class NotificationService {
           actorUserId,
           userRole,
           propertyManagerId,
+          isDirectUpdate,
         });
       }
     } catch (error) {
@@ -907,6 +910,77 @@ export class NotificationService {
         actorUserId,
         userRole,
       });
+    }
+  }
+
+  /**
+   * Notify staff when their pending changes are overridden by admin
+   */
+  async notifyPendingChangesOverridden(
+    propertyId: string,
+    propertyName: string,
+    adminUserId: string,
+    adminName: string,
+    originalRequesterId: string,
+    cuid: string,
+    context: {
+      address?: string;
+      overriddenAt: Date;
+      overrideReason: string;
+    }
+  ): Promise<void> {
+    try {
+      // Don't notify if admin is overriding their own changes
+      if (this.isSelfNotification(adminUserId, originalRequesterId)) {
+        this.log.debug('Skipping self-notification for pending changes override', {
+          adminUserId,
+          originalRequesterId,
+        });
+        return;
+      }
+
+      const messageVars = {
+        propertyName,
+        adminName,
+        overrideReason: context.overrideReason,
+        address: context.address || 'N/A',
+      };
+
+      await this.createNotificationFromTemplate(
+        'property.pendingChangesOverridden' as NotificationMessageKey,
+        messageVars,
+        originalRequesterId,
+        NotificationTypeEnum.PROPERTY,
+        NotificationPriorityEnum.HIGH,
+        cuid,
+        {
+          resourceName: ResourceContext.PROPERTY,
+          resourceUid: propertyId,
+          resourceId: propertyId,
+          metadata: {
+            overriddenAt: context.overriddenAt,
+            overrideReason: context.overrideReason,
+            address: context.address,
+            adminUserId,
+            adminName,
+          },
+        }
+      );
+
+      this.log.info('Staff notified of pending changes override', {
+        propertyId,
+        adminUserId,
+        originalRequesterId,
+        cuid,
+      });
+    } catch (error) {
+      this.log.error('Failed to notify staff of pending changes override', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        propertyId,
+        adminUserId,
+        originalRequesterId,
+      });
+      throw error;
     }
   }
 

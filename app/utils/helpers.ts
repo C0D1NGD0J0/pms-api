@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
 import { PhoneNumber } from 'libphonenumber-js';
 import { Country, City } from 'country-state-city';
+import { IUserRole } from '@interfaces/user.interface';
 import { NextFunction, Response, Request } from 'express';
 import {
   AsyncRequestHandler,
@@ -19,6 +20,7 @@ import { JWT_KEY_NAMES } from './constants';
 
 const loggers = new WeakMap<object, bunyan>();
 const loggerKeys = new Map<string, object>();
+
 /**
  * Creates a customized Bunyan logger instance with color-coded console output
  * @param name - The name of the logger to create
@@ -140,7 +142,6 @@ export function createLogger(name: string) {
 
   return logger;
 }
-
 /**
  * Sets an authentication cookie in the HTTP response
  * @param cookieName - The name of the JWT cookie
@@ -193,6 +194,28 @@ export function setAuthCookies(
   }
 
   return res;
+}
+
+/**
+ * Converts a user role string to IUserRole enum value
+ * @param userRole - The user role string to convert (case-insensitive)
+ * @returns The corresponding IUserRole enum value
+ * @throws Error if the role string is invalid or not supported
+ */
+export function convertUserRoleToEnum(userRole: string): IUserRole {
+  if (!userRole || typeof userRole !== 'string') {
+    throw new Error('User role must be a non-empty string');
+  }
+
+  const upperRole = userRole.trim().toUpperCase() as keyof typeof IUserRole;
+  const enumValue = IUserRole[upperRole];
+
+  if (!enumValue) {
+    const validRoles = Object.values(IUserRole).join(', ');
+    throw new Error(`Invalid user role: "${userRole}". Valid roles are: ${validRoles}`);
+  }
+
+  return enumValue;
 }
 
 /**

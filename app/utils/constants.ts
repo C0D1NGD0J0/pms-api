@@ -90,3 +90,30 @@ export const PROPERTY_APPROVAL_ROLES = [IUserRole.ADMIN, IUserRole.MANAGER];
  * Roles that require approval for property creation
  */
 export const PROPERTY_STAFF_ROLES = [IUserRole.STAFF];
+
+/**
+ * Unit fields that require approval when modified (high-impact changes)
+ */
+export const HIGH_IMPACT_UNIT_FIELDS = [
+  'fees.rentAmount',
+  'fees.securityDeposit',
+  'status',
+  'specifications.bedrooms',
+  'specifications.bathrooms',
+  'specifications.totalArea',
+  'currentLease',
+  'floor', // if changing floor affects rent
+];
+
+/**
+ * Unit fields that can be modified without approval (operational changes)
+ */
+export const OPERATIONAL_UNIT_FIELDS = [
+  'notes',
+  'description',
+  'inspections',
+  'documents',
+  'media.photos',
+  'amenities',
+  'utilities',
+];

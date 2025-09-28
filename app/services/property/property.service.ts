@@ -28,15 +28,6 @@ import {
   UploadResult,
 } from '@interfaces/utils.interface';
 import {
-  PROPERTY_CREATION_ALLOWED_DEPARTMENTS,
-  PROPERTY_APPROVAL_ROLES,
-  createSafeMongoUpdate,
-  PROPERTY_STAFF_ROLES,
-  getRequestDuration,
-  createLogger,
-  MoneyUtils,
-} from '@utils/index';
-import {
   PropertyApprovalStatusEnum,
   IAssignableUsersFilter,
   IPropertyWithUnitInfo,
@@ -45,6 +36,16 @@ import {
   IAssignableUser,
   NewPropertyType,
 } from '@interfaces/property.interface';
+import {
+  PROPERTY_CREATION_ALLOWED_DEPARTMENTS,
+  PROPERTY_APPROVAL_ROLES,
+  createSafeMongoUpdate,
+  convertUserRoleToEnum,
+  PROPERTY_STAFF_ROLES,
+  getRequestDuration,
+  createLogger,
+  MoneyUtils,
+} from '@utils/index';
 
 import { PropertyValidationService } from './propertyValidation.service';
 
@@ -113,14 +114,6 @@ export class PropertyService {
     this.setupEventListeners();
   }
 
-  /**
-   * Utility method to convert user role string to IUserRole enum value
-   */
-  private convertUserRoleToEnum(userRole: string): IUserRole {
-    const upperRole = userRole.toUpperCase() as keyof typeof IUserRole;
-    return IUserRole[upperRole] as IUserRole;
-  }
-
   private setupEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
@@ -157,7 +150,7 @@ export class PropertyService {
     }
 
     const userRole = currentuser.client.role;
-    const userRoleEnum = this.convertUserRoleToEnum(userRole);
+    const userRoleEnum = convertUserRoleToEnum(userRole);
     if (
       !PROPERTY_STAFF_ROLES.includes(userRoleEnum) &&
       !PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)
@@ -709,7 +702,7 @@ export class PropertyService {
 
     // Check user authorization
     const userRole = ctx.currentuser.client.role;
-    const userRoleEnum = this.convertUserRoleToEnum(userRole);
+    const userRoleEnum = convertUserRoleToEnum(userRole);
     if (
       !PROPERTY_STAFF_ROLES.includes(userRoleEnum) &&
       !PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)
@@ -762,29 +755,36 @@ export class PropertyService {
       this.validateOccupancyStatusChange(property, cleanUpdateData);
     }
 
-    // checks for concurrent updates (optimistic locking) - staff only
-    if (PROPERTY_STAFF_ROLES.includes(userRoleEnum) && property.pendingChanges) {
+    // Smart Approval Workflow Logic
+    const hasPendingChanges = !!property.pendingChanges;
+    let pendingChangesInfo: any = null;
+
+    if (hasPendingChanges) {
       const pendingChanges = property.pendingChanges as any;
-      const lockedByUserId = pendingChanges.updatedBy?.toString();
-
-      // Check if another user has pending changes
-      if (lockedByUserId && lockedByUserId !== ctx.currentuser.sub) {
-        const lockedByDisplayName = pendingChanges.displayName || 'Another user';
-        const lockedAt = pendingChanges.updatedAt
-          ? new Date(pendingChanges.updatedAt).toLocaleString()
-          : 'recently';
-
-        throw new BadRequestError({
-          message: `Cannot edit property - ${lockedByDisplayName} has pending changes since ${lockedAt}. Changes must be approved or rejected before further edits can be made.`,
-        });
-      }
+      pendingChangesInfo = {
+        updatedBy: pendingChanges.updatedBy?.toString(),
+        displayName: pendingChanges.displayName || 'Unknown User',
+        updatedAt: pendingChanges.updatedAt,
+      };
     }
 
-    // Determine save strategy and execute update
-    let updatedProperty: IPropertyDocument;
-    let message: string;
-
+    // STAFF LOGIC: Block if another user has pending changes
     if (PROPERTY_STAFF_ROLES.includes(userRoleEnum)) {
+      if (hasPendingChanges) {
+        const lockedByUserId = pendingChangesInfo.updatedBy;
+
+        // Block if another user has pending changes
+        if (lockedByUserId && lockedByUserId !== ctx.currentuser.sub) {
+          const lockedAt = pendingChangesInfo.updatedAt
+            ? new Date(pendingChangesInfo.updatedAt).toLocaleString()
+            : 'recently';
+
+          throw new BadRequestError({
+            message: `Cannot edit property - ${pendingChangesInfo.displayName} has pending changes since ${lockedAt}. Changes must be approved or rejected before further edits can be made.`,
+          });
+        }
+      }
+
       // Staff update - store in pendingChanges
       const result = await this.propertyDAO.update(
         { cuid, pid, deletedAt: null },
@@ -801,57 +801,145 @@ export class PropertyService {
           },
         }
       );
+
       if (!result) {
         throw new BadRequestError({ message: 'Unable to update property.' });
       }
-      updatedProperty = result;
-      message = 'Property changes submitted for approval';
-    } else {
-      // Admin/Manager direct update
-      const safeUpdateData = createSafeMongoUpdate(cleanUpdateData);
-      const result = await this.propertyDAO.update(
-        { cuid, pid, deletedAt: null },
-        {
-          $set: {
-            ...safeUpdateData,
-            approvalStatus: PropertyApprovalStatusEnum.APPROVED,
-            lastModifiedBy: new Types.ObjectId(ctx.currentuser.sub),
-          },
-          $push: {
-            approvalDetails: {
-              timestamp: new Date(),
-              action: 'updated' as const,
-              actor: new Types.ObjectId(ctx.currentuser.sub),
-            },
-          },
-        }
-      );
-      if (!result) {
-        throw new BadRequestError({ message: 'Unable to update property.' });
-      }
-      updatedProperty = result;
-      message = 'Property updated successfully';
+
+      // Send notification to approvers
+      await this.handleUpdateNotifications(ctx, result, cleanUpdateData, false);
+
+      return {
+        success: true,
+        data: result,
+        message: 'Property changes submitted for approval',
+      };
     }
 
-    // Cache invalidation and notifications
-    await this.propertyCache.invalidateProperty(cuid, property.id);
-    await this.notificationService.handlePropertyUpdateNotifications({
-      userRole: ctx.currentuser.client.role,
-      updatedProperty,
-      propertyName: updatedProperty.name || property.name || 'Unknown Property',
-      actorUserId: ctx.currentuser.sub,
-      actorDisplayName: ctx.currentuser.displayName,
-      cuid,
-      updateData: cleanUpdateData,
-      propertyManagerId: updatedProperty.managedBy?.toString(),
-      resource: {
-        resourceType: ResourceContext.PROPERTY,
-        resourceId: updatedProperty.id,
-        resourceUid: updatedProperty.pid,
-      },
-    });
+    // ADMIN/MANAGER LOGIC: Direct update with override handling
+    if (PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)) {
+      let overrideMessage = '';
+      let notifyStaffOfOverride = false;
+      let originalRequesterId: string | undefined;
 
-    return { success: true, data: updatedProperty, message };
+      // Check if we're overriding pending changes
+      if (hasPendingChanges) {
+        originalRequesterId = pendingChangesInfo.updatedBy;
+        overrideMessage = ` (overriding pending changes from ${pendingChangesInfo.displayName})`;
+        notifyStaffOfOverride = true;
+
+        this.log.info('Admin overriding pending changes', {
+          propertyId: property.id,
+          adminId: ctx.currentuser.sub,
+          adminName: ctx.currentuser.displayName,
+          originalRequesterId,
+          originalRequesterName: pendingChangesInfo.displayName,
+        });
+      }
+
+      // Apply admin changes directly and clear pending changes
+      const safeUpdateData = createSafeMongoUpdate(cleanUpdateData);
+      const updateOperation: any = {
+        $set: {
+          ...safeUpdateData,
+          approvalStatus: PropertyApprovalStatusEnum.APPROVED,
+          lastModifiedBy: new Types.ObjectId(ctx.currentuser.sub),
+          pendingChanges: null, // Clear any pending changes
+        },
+        $push: {
+          approvalDetails: {
+            timestamp: new Date(),
+            action: hasPendingChanges ? 'overridden' : 'updated',
+            actor: new Types.ObjectId(ctx.currentuser.sub),
+            ...(overrideMessage && { notes: `Direct update${overrideMessage}` }),
+          },
+        },
+      };
+
+      const result = await this.propertyDAO.update({ cuid, pid, deletedAt: null }, updateOperation);
+
+      if (!result) {
+        throw new BadRequestError({ message: 'Unable to update property.' });
+      }
+
+      // Send notifications
+      await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
+
+      // NEW: Notify staff if their pending changes were overridden
+      if (notifyStaffOfOverride && originalRequesterId) {
+        try {
+          await this.notificationService.notifyPendingChangesOverridden(
+            property.pid,
+            property.name || 'Unknown Property',
+            ctx.currentuser.sub,
+            ctx.currentuser.displayName,
+            originalRequesterId,
+            cuid,
+            {
+              address: property.address?.fullAddress,
+              overriddenAt: new Date(),
+              overrideReason: 'Direct admin update with higher priority',
+            }
+          );
+        } catch (notificationError) {
+          this.log.error('Failed to send override notification to staff', {
+            error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+            propertyId: property.pid,
+            adminId: ctx.currentuser.sub,
+            originalRequesterId,
+          });
+        }
+      }
+
+      const message = hasPendingChanges
+        ? `Property updated successfully${overrideMessage}`
+        : 'Property updated successfully';
+
+      return { success: true, data: result, message };
+    }
+
+    // Fallback - should not reach here
+    throw new ForbiddenError({ message: 'Unable to determine update strategy for user role.' });
+  }
+
+  /**
+   * Helper method to handle update notifications
+   */
+  private async handleUpdateNotifications(
+    ctx: { cuid: string; currentuser: ICurrentUser },
+    updatedProperty: IPropertyDocument,
+    updateData: Partial<IPropertyDocument>,
+    isDirectUpdate: boolean
+  ): Promise<void> {
+    try {
+      // Invalidate cache first
+      await this.propertyCache.invalidateProperty(ctx.cuid, updatedProperty.id);
+
+      // Send appropriate notifications
+      await this.notificationService.handlePropertyUpdateNotifications({
+        userRole: ctx.currentuser.client.role,
+        updatedProperty,
+        propertyName: updatedProperty.name || 'Unknown Property',
+        actorUserId: ctx.currentuser.sub,
+        actorDisplayName: ctx.currentuser.displayName,
+        cuid: ctx.cuid,
+        updateData,
+        propertyManagerId: updatedProperty.managedBy?.toString(),
+        isDirectUpdate, // Pass flag to differentiate notification types
+        resource: {
+          resourceType: ResourceContext.PROPERTY,
+          resourceId: updatedProperty.id,
+          resourceUid: updatedProperty.pid,
+        },
+      });
+    } catch (notificationError) {
+      this.log.error('Failed to send update notification', {
+        error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+        propertyId: updatedProperty.pid,
+        userId: ctx.currentuser.sub,
+        isDirectUpdate,
+      });
+    }
   }
 
   async getPendingApprovals(
@@ -860,7 +948,7 @@ export class PropertyService {
     pagination: IPaginationQuery
   ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: PaginateResult }>> {
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to view pending approvals.',
       });
@@ -899,7 +987,7 @@ export class PropertyService {
     notes?: string
   ): Promise<ISuccessReturnData> {
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to approve properties.',
       });
@@ -1029,7 +1117,7 @@ export class PropertyService {
 
     // Check if user has permission
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to reject properties.',
       });
@@ -1139,7 +1227,7 @@ export class PropertyService {
   ): Promise<ISuccessReturnData> {
     // Check if user has permission
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to bulk approve properties.',
       });
@@ -1193,7 +1281,7 @@ export class PropertyService {
 
     // Check if user has permission
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to bulk reject properties.',
       });
@@ -1299,12 +1387,12 @@ export class PropertyService {
     const userRole = currentUser.client.role;
 
     // Admin/managers can see all pending changes
-    if (PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       return true;
     }
 
     // Staff can only see their own pending changes
-    if (PROPERTY_STAFF_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (PROPERTY_STAFF_ROLES.includes(convertUserRoleToEnum(userRole))) {
       const pendingChanges = property.pendingChanges as any;
       return pendingChanges.updatedBy?.toString() === currentUser.sub;
     }

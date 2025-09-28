@@ -1518,7 +1518,7 @@ describe('PropertyService', () => {
         });
 
         mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
-        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.findPropertyWithActiveMedia.mockResolvedValue(mockProperty);
         jest.spyOn(propertyService, 'getUnitInfoForProperty').mockResolvedValue(mockUnitInfo);
 
         // Act
@@ -2042,9 +2042,16 @@ describe('PropertyService', () => {
         expect(mockPropertyDAO.update).toHaveBeenCalledWith(
           { pid, cuid, deletedAt: null },
           expect.objectContaining({
-            $set: expect.objectContaining({
-              approvalStatus: 'approved',
+            approvalStatus: 'approved',
+            $push: expect.objectContaining({
+              approvalDetails: expect.objectContaining({
+                action: 'approved',
+                actor: expect.any(Object),
+                timestamp: expect.any(Date),
+                notes: 'Approved for listing',
+              }),
             }),
+            lastModifiedBy: expect.any(Object),
           })
         );
       });
@@ -2377,8 +2384,8 @@ describe('PropertyService', () => {
             name: 'User A Update',
             updatedBy: new Types.ObjectId('507f1f77bcf86cd799439011'), // Different user
             updatedAt: new Date(),
-            displayName: 'User A'
-          }
+            displayName: 'User A',
+          },
         });
 
         mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
@@ -2414,8 +2421,8 @@ describe('PropertyService', () => {
             name: 'Previous Update',
             updatedBy: new Types.ObjectId(userId), // Same user
             updatedAt: new Date(),
-            displayName: 'Same User'
-          }
+            displayName: 'Same User',
+          },
         });
 
         const mockUpdatedProperty = {
@@ -2424,8 +2431,8 @@ describe('PropertyService', () => {
             ...updateData,
             updatedBy: new Types.ObjectId(userId),
             updatedAt: new Date(),
-            displayName: 'Same User'
-          }
+            displayName: 'Same User',
+          },
         };
 
         mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
@@ -2462,14 +2469,14 @@ describe('PropertyService', () => {
             name: 'Staff Update',
             updatedBy: new Types.ObjectId('507f1f77bcf86cd799439013'),
             updatedAt: new Date(),
-            displayName: 'Staff User'
-          }
+            displayName: 'Staff User',
+          },
         });
 
         const mockUpdatedProperty = {
           ...mockProperty,
           ...updateData,
-          approvalStatus: 'approved'
+          approvalStatus: 'approved',
         };
 
         mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
@@ -2502,7 +2509,7 @@ describe('PropertyService', () => {
         // Property with no pending changes
         const mockProperty = createMockProperty({
           approvalStatus: 'approved',
-          pendingChanges: null
+          pendingChanges: null,
         });
 
         const mockUpdatedProperty = {
@@ -2511,8 +2518,8 @@ describe('PropertyService', () => {
             ...updateData,
             updatedBy: new Types.ObjectId('507f1f77bcf86cd799439014'),
             updatedAt: new Date(),
-            displayName: 'Staff User'
-          }
+            displayName: 'Staff User',
+          },
         };
 
         mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
@@ -2885,7 +2892,7 @@ describe('PropertyService', () => {
         expect(mockPropertyDAO.getPropertiesByClientId).toHaveBeenCalledWith(
           cuid,
           expect.objectContaining({
-            $and: [{ approvalStatus: { $exists: true } }, { approvalStatus: 'approved' }],
+            $or: [{ approvalStatus: 'approved' }, { approvalStatus: 'pending' }],
             status: { $ne: 'inactive' },
           }),
           expect.any(Object)

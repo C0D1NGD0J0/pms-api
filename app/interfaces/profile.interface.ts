@@ -1,6 +1,7 @@
 import { Document, Types } from 'mongoose';
+import { IUserRoleType } from '@shared/constants/roles.constants';
 
-import { IdentificationType, IUserRoleType } from './user.interface';
+import { IdentificationType } from './user.interface';
 
 export enum EmployeeDepartment {
   MAINTENANCE = 'maintenance', // Maintenance and repairs

@@ -8,6 +8,7 @@ import { MailType } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { InvitationQueue, EmailQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
+import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
 import { EmailFailedPayload, EmailSentPayload, EventTypes } from '@interfaces/events.interface';
@@ -292,7 +293,7 @@ export class InvitationService {
     }
 
     const linkedVendorUid =
-      invitation.linkedVendorUid && invitation.role === 'vendor'
+      invitation.linkedVendorUid && invitation.role === ROLES.VENDOR
         ? invitation.linkedVendorUid.toString()
         : undefined;
 
@@ -439,7 +440,7 @@ export class InvitationService {
       metadata
     );
 
-    if (result.invitation.linkedVendorUid && result.invitation.role === 'vendor') {
+    if (result.invitation.linkedVendorUid && result.invitation.role === ROLES.VENDOR) {
       this.log.info(
         `Vendor link established from primary vendor ${result.invitation.linkedVendorUid} to new user ${result.user._id}`
       );
@@ -768,7 +769,7 @@ export class InvitationService {
     }
 
     const hasPermission = clientConnection.roles.some((role) =>
-      ['manager', 'admin'].includes(role)
+      ROLE_GROUPS.MANAGEMENT_ROLES.includes(role as any)
     );
 
     if (!hasPermission) {

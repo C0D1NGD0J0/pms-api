@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { ProfileService } from '@services/profile/profile.service';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {
   createMockTranslationFunction,
@@ -88,12 +89,12 @@ describe('ProfileService', () => {
       const profileId = new Types.ObjectId().toString();
       const cuid = 'test-cuid';
       const employeeInfo = createMockEmployeeInfo();
-      const userRole = 'manager';
+      const userRole = ROLES.MANAGER;
       const mockUpdatedProfile = createMockProfile({
         clientRoleInfo: [
           {
             cuid,
-            role: 'manager',
+            role: ROLES.MANAGER,
             employeeInfo,
           },
         ],
@@ -124,7 +125,7 @@ describe('ProfileService', () => {
       const profileId = new Types.ObjectId().toString();
       const cuid = 'test-cuid';
       const invalidEmployeeInfo = { invalid: 'data' } as any;
-      const userRole = 'manager';
+      const userRole = ROLES.MANAGER;
 
       mockUpdateEmployeeInfoSafeParse.mockReturnValue({
         success: false,
@@ -197,7 +198,7 @@ describe('ProfileService', () => {
       const profileId = new Types.ObjectId().toString();
       const cuid = 'test-cuid';
       const vendorInfo = createMockVendorInfo();
-      const userRole = 'manager'; // Invalid role for vendor operations
+      const userRole = ROLES.MANAGER; // Invalid role for vendor operations
 
       await expect(
         profileService.updateVendorInfo(profileId, cuid, vendorInfo, userRole)

@@ -1,10 +1,11 @@
 import bunyan from 'bunyan';
 import { createLogger } from '@utils/index';
 import { AccessControl } from 'accesscontrol';
+import { ICurrentUser } from '@interfaces/user.interface';
 import { IVendorDocument } from '@interfaces/vendor.interface';
 import { IPropertyDocument } from '@interfaces/property.interface';
 import permissionConfig from '@shared/permissions/permissions.json';
-import { IUserRoleType, ICurrentUser } from '@interfaces/user.interface';
+import { IUserRoleType, ROLES } from '@shared/constants/roles.constants';
 import {
   PermissionResource,
   IPermissionConfig,
@@ -568,21 +569,21 @@ export class PermissionService {
     const { userId, resourceOwnerId, assignedUsers } = context;
 
     switch (role) {
-      case 'manager':
+      case ROLES.MANAGER:
         // Managers can access properties they created or manage
         if (resourceOwnerId === userId || assignedUsers?.includes(userId)) {
           return { granted: true, reason: 'Manager has access to managed property' };
         }
         break;
 
-      case 'vendor':
+      case ROLES.VENDOR:
         // Vendors can access properties with active maintenance assignments
         if (assignedUsers?.includes(userId)) {
           return { granted: true, reason: 'Vendor has maintenance assignments for property' };
         }
         break;
 
-      case 'staff':
+      case ROLES.STAFF:
         // Staff can access properties assigned to them
         if (assignedUsers?.includes(userId)) {
           return { granted: true, reason: 'Staff has access to assigned property' };
@@ -610,21 +611,21 @@ export class PermissionService {
     const { userId, resourceOwnerId, assignedUsers } = context;
 
     switch (role) {
-      case 'manager':
+      case ROLES.MANAGER:
         // Managers can access maintenance for properties they manage
         if (resourceOwnerId === userId || assignedUsers?.includes(userId)) {
           return { granted: true, reason: 'Manager has access to property maintenance' };
         }
         break;
 
-      case 'vendor':
+      case ROLES.VENDOR:
         // Vendors can access maintenance requests assigned to them
         if (assignedUsers?.includes(userId)) {
           return { granted: true, reason: `${role} assigned to maintenance request` };
         }
         break;
 
-      case 'staff':
+      case ROLES.STAFF:
         // Staff can access maintenance requests assigned to them
         if (assignedUsers?.includes(userId)) {
           return { granted: true, reason: `${role} assigned to maintenance request` };
@@ -652,21 +653,21 @@ export class PermissionService {
     const { userId, resourceOwnerId, assignedUsers } = context;
 
     switch (role) {
-      case 'manager':
+      case ROLES.MANAGER:
         // Managers can access leases for properties they manage or leases they created
         if (resourceOwnerId === userId || assignedUsers?.includes(userId)) {
           return { granted: true, reason: 'Manager has access to managed lease' };
         }
         break;
 
-      case 'tenant':
+      case ROLES.TENANT:
         // Tenants can access their own leases
         if (resourceOwnerId === userId) {
           return { granted: true, reason: 'Tenant accessing own lease' };
         }
         break;
 
-      case 'staff':
+      case ROLES.STAFF:
         // Staff can access leases for properties assigned to them
         if (assignedUsers?.includes(userId)) {
           return { granted: true, reason: 'Staff has access to assigned lease' };
@@ -694,21 +695,21 @@ export class PermissionService {
     const { userId, resourceOwnerId, assignedUsers } = context;
 
     switch (role) {
-      case 'manager':
+      case ROLES.MANAGER:
         // Managers can access payments for leases/properties they manage
         if (assignedUsers?.includes(userId)) {
           return { granted: true, reason: 'Manager has access to managed property payments' };
         }
         break;
 
-      case 'tenant':
+      case ROLES.TENANT:
         // Tenants can access their own payments
         if (resourceOwnerId === userId) {
           return { granted: true, reason: 'Tenant accessing own payments' };
         }
         break;
 
-      case 'staff':
+      case ROLES.STAFF:
         // Staff can access payments for assigned properties
         if (assignedUsers?.includes(userId)) {
           return { granted: true, reason: 'Staff has access to assigned property payments' };

@@ -5,10 +5,11 @@ import { t } from '@shared/languages';
 import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
+import { ISignupData } from '@interfaces/user.interface';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { IUserRole } from '@shared/constants/roles.constants';
 import { AuthTokenService, VendorService } from '@services/index';
 import { IActiveAccountInfo } from '@interfaces/client.interface';
-import { ISignupData, IUserRole } from '@interfaces/user.interface';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
 import {
   getLocationDetails,

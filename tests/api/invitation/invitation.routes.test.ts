@@ -4,6 +4,7 @@ jest.setTimeout(10000);
 import request from 'supertest';
 import express, { Application, Request, Response } from 'express';
 import { faker } from '@faker-js/faker';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 
 // Create mock ObjectId generator to avoid mongoose import
 class MockObjectId {
@@ -24,13 +25,6 @@ const Types = {
 };
 
 // Define interfaces and constants directly to avoid imports
-enum IUserRole {
-  ADMIN = 'admin',
-  MANAGER = 'manager',
-  STAFF = 'staff',
-  VENDOR = 'vendor',
-  TENANT = 'tenant',
-}
 
 // Define HTTP status codes directly to avoid importing full app
 const httpStatusCodes = {
@@ -61,7 +55,7 @@ const createMockCurrentUser = (overrides = {}) => ({
   client: {
     cuid: faker.string.uuid(),
     displayname: faker.company.name(),
-    role: 'admin' as any,
+    role: ROLES.ADMIN as any,
   },
   clients: [],
   permissions: ['read', 'write', 'admin'],
@@ -86,7 +80,7 @@ const createMockInvitation = (overrides = {}) => ({
     lastName: faker.person.lastName(),
     phoneNumber: faker.phone.number(),
   },
-  role: faker.helpers.arrayElement(['admin', 'manager', 'staff', 'vendor', 'tenant']),
+  role: faker.helpers.arrayElement([ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF, ROLES.VENDOR, ROLES.TENANT]),
   status: faker.helpers.arrayElement([
     'draft',
     'pending',
@@ -144,7 +138,6 @@ const createMockInvitationStats = (overrides = {}) => ({
   ...overrides,
 });
 
-// Simplified mock services - removed complex service dependencies
 
 const mockInvitationController = {
   validateInvitation: jest.fn((_req: Request, res: Response) => {

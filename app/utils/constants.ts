@@ -1,4 +1,5 @@
-import { IPropertyFilterQuery, EmployeeDepartment, IUserRole } from '@interfaces/index';
+import { IUserRole } from '@shared/constants/roles.constants';
+import { IPropertyFilterQuery, EmployeeDepartment } from '@interfaces/index';
 
 export const httpStatusCodes = {
   OK: 200,

@@ -1,8 +1,9 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { User } from '@models/index';
+import { IUserDocument } from '@interfaces/user.interface';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
-import { IUserRoleType, IUserDocument } from '@interfaces/user.interface';
+import { IUserRoleType, ROLES } from '@shared/constants/roles.constants';
 import { paginateResult, hashGenerator, createLogger } from '@utils/index';
 import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
 
@@ -576,7 +577,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         isConnected: true,
         roles: [invitationData.role],
         clientDisplayName: client.displayName,
-        linkedVendorUid: invitationData.role === 'vendor' ? linkedVendorUid : null,
+        linkedVendorUid: invitationData.role === ROLES.VENDOR ? linkedVendorUid : null,
       };
 
       const user = await this.insert(
@@ -621,7 +622,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         const updateObj: any = {
           'cuids.$.isConnected': true,
           'cuids.$.clientDisplayName': client.clientDisplayName,
-          'cuids.$.linkedVendorUid': role === 'vendor' ? linkedVendorUid : null,
+          'cuids.$.linkedVendorUid': role === ROLES.VENDOR ? linkedVendorUid : null,
         };
 
         const updateOperation = existingConnection.roles.includes(role)
@@ -641,7 +642,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           isConnected: true,
           roles: [role],
           clientDisplayName: client.clientDisplayName || '',
-          linkedVendorUid: role === 'vendor' ? linkedVendorUid : null,
+          linkedVendorUid: role === ROLES.VENDOR ? linkedVendorUid : null,
         };
 
         return await this.updateById(
@@ -703,7 +704,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         isConnected: true,
         roles: [userData.role],
         clientDisplayName: client.clientDisplayName || '',
-        linkedVendorUid: userData.role === 'vendor' && linkedVendorUid ? linkedVendorUid : null,
+        linkedVendorUid: userData.role === ROLES.VENDOR && linkedVendorUid ? linkedVendorUid : null,
       };
 
       const user = await this.insert(
@@ -806,7 +807,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           // Determine if this is a linked vendor account
           const primaryCuid = user.cuids.find((c: any) => c.cuid === user.activecuid);
           const isLinkedVendor =
-            primaryCuid?.linkedVendorUid && primaryCuid.roles.includes('vendor' as any);
+            primaryCuid?.linkedVendorUid && primaryCuid.roles.includes(ROLES.VENDOR as any);
 
           const profileData: any = {
             user: user._id,
@@ -833,7 +834,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           };
 
           // Add vendor info for vendor users
-          if (primaryCuid?.roles.includes('vendor' as any)) {
+          if (primaryCuid?.roles.includes(ROLES.VENDOR as any)) {
             if (isLinkedVendor) {
               // Linked vendor - minimal info
               profileData.vendorInfo = {

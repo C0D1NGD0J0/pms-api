@@ -4,6 +4,7 @@ jest.setTimeout(10000);
 import request from 'supertest';
 import { faker } from '@faker-js/faker';
 import express, { Response, Request } from 'express';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 
 // Create mock ObjectId generator to avoid mongoose import
 class MockObjectId {
@@ -23,13 +24,6 @@ const Types = {
   ObjectId: MockObjectId,
 };
 // Define interfaces and constants directly to avoid imports
-enum IUserRole {
-  MANAGER = 'manager',
-  VENDOR = 'vendor',
-  TENANT = 'tenant',
-  ADMIN = 'admin',
-  STAFF = 'staff',
-}
 
 enum DataRetentionPolicy {
   STANDARD = 'standard',
@@ -104,7 +98,7 @@ function createTestApp(controller: any) {
           {
             cuid: 'test-cuid',
             isConnected: true,
-            roles: ['admin'],
+            roles: [ROLES.ADMIN],
             clientDisplayName: 'Test Client',
           },
         ],

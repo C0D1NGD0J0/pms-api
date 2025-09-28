@@ -6,8 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
 import { PhoneNumber } from 'libphonenumber-js';
 import { Country, City } from 'country-state-city';
-import { IUserRole } from '@interfaces/user.interface';
 import { NextFunction, Response, Request } from 'express';
+import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
   AsyncRequestHandler,
   ExtractedMediaFile,
@@ -207,15 +207,23 @@ export function convertUserRoleToEnum(userRole: string): IUserRole {
     throw new Error('User role must be a non-empty string');
   }
 
-  const upperRole = userRole.trim().toUpperCase() as keyof typeof IUserRole;
-  const enumValue = IUserRole[upperRole];
-
-  if (!enumValue) {
-    const validRoles = Object.values(IUserRole).join(', ');
-    throw new Error(`Invalid user role: "${userRole}". Valid roles are: ${validRoles}`);
+  // First, try to find the role in ROLES constants (case-insensitive)
+  const roleValue = Object.values(ROLES).find(
+    (role) => role.toLowerCase() === userRole.toLowerCase()
+  );
+  if (roleValue) {
+    return roleValue as IUserRole;
   }
 
-  return enumValue;
+  // Fallback: try enum lookup for backward compatibility
+  const upperRole = userRole.trim().toUpperCase() as keyof typeof IUserRole;
+  const enumValue = IUserRole[upperRole];
+  if (enumValue) {
+    return enumValue;
+  }
+
+  const validRoles = Object.values(ROLES).join(', ');
+  throw new Error(`Invalid user role: "${userRole}". Valid roles are: ${validRoles}`);
 }
 
 /**

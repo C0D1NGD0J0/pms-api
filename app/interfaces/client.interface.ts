@@ -1,9 +1,9 @@
 import { Document, Types } from 'mongoose';
+import { IUserRoleType } from '@shared/constants/roles.constants';
 
 import {
   IdentificationType,
   IContactInfoType,
-  IUserRoleType,
   IUserDocument,
   IAccountType,
 } from './user.interface';

@@ -9,6 +9,7 @@ import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
+import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
 import {
   IUserPopulatedDocument,
@@ -17,11 +18,9 @@ import {
   IEmployeeDetailInfo,
   IVendorDetailInfo,
   ITenantDetailInfo,
-  IUserRoleType,
   IUserProperty,
   ICurrentUser,
   IUserStats,
-  IUserRole,
 } from '@interfaces/user.interface';
 
 interface IConstructor {
@@ -259,7 +258,7 @@ export class UserService {
 
           const roles = clientConnection?.roles || [];
 
-          if (roles.some((r: string) => ['manager', 'admin', 'staff'].includes(r))) {
+          if (roles.some((r: string) => ROLE_GROUPS.EMPLOYEE_ROLES.includes(r as any))) {
             tableUserData.employeeInfo = {
               jobTitle: user.profile?.employeeInfo?.jobTitle || undefined,
               department: user.profile?.employeeInfo?.department || undefined,
@@ -268,7 +267,7 @@ export class UserService {
           }
 
           // Add vendor info if user has vendor role
-          if (roles.includes('vendor') && user._id) {
+          if (roles.includes(ROLES.VENDOR as string) && user._id) {
             const vendorEntity = await this.vendorService.getVendorByUserId(user._id.toString());
             if (vendorEntity) {
               tableUserData.vendorInfo = {
@@ -288,7 +287,7 @@ export class UserService {
             }
           }
 
-          if (roles.includes('tenant')) {
+          if (roles.includes(ROLES.TENANT as string)) {
             tableUserData.tenantInfo = {
               unitNumber: user.profile?.tenantInfo?.unitNumber || undefined,
               leaseStatus: user.profile?.tenantInfo?.leaseStatus || undefined,
@@ -471,8 +470,8 @@ export class UserService {
       case 'employee':
         // Get properties for employees (excluding tenants)
         if (
-          !response.roles.includes(IUserRole.TENANT) ||
-          response.roles.includes(IUserRole.VENDOR)
+          !response.roles.includes(IUserRole.TENANT as string) ||
+          response.roles.includes(IUserRole.VENDOR as string)
         ) {
           response.properties = await this.getUserProperties(user._id.toString(), clientId);
         }
@@ -771,9 +770,9 @@ export class UserService {
 
     if (roles.some((r: string) => employeeRoles.includes(r as any))) {
       return 'employee';
-    } else if (roles.includes(IUserRole.VENDOR)) {
+    } else if (roles.includes(IUserRole.VENDOR as string)) {
       return 'vendor';
-    } else if (roles.includes(IUserRole.TENANT)) {
+    } else if (roles.includes(IUserRole.TENANT as string)) {
       return 'tenant';
     }
     return 'employee';
@@ -809,7 +808,7 @@ export class UserService {
     }
 
     // Performance indicators (placeholder)
-    if (roles.includes('manager') || roles.includes('admin')) {
+    if (roles.includes(ROLES.MANAGER as string) || roles.includes(ROLES.ADMIN as string)) {
       tags.push('Top Performer');
     }
 
@@ -821,7 +820,7 @@ export class UserService {
     }
 
     // Access levels (placeholder)
-    if (roles.includes('manager')) {
+    if (roles.includes(ROLES.MANAGER as string)) {
       tags.push('Master Key Access');
     }
 
@@ -940,7 +939,7 @@ export class UserService {
         vendorId = clientConnection.linkedVendorUid;
       }
       // Check if user has vendor role and is a primary vendor
-      else if (roles.includes('vendor')) {
+      else if (roles.includes(ROLES.VENDOR as string)) {
         try {
           const vendorEntity = await this.vendorService.getVendorByUserId(user._id.toString());
           if (vendorEntity && vendorEntity.vuid) {
@@ -954,7 +953,7 @@ export class UserService {
         }
       }
       // Check if staff user is associated with a vendor through profile
-      else if (roles.includes('staff') && user.profile?.vendorInfo?.linkedVendorUid) {
+      else if (roles.includes(ROLES.STAFF as string) && user.profile?.vendorInfo?.linkedVendorUid) {
         vendorId = user.profile.vendorInfo.linkedVendorUid;
       }
 
@@ -964,8 +963,9 @@ export class UserService {
         roles,
         vendorId,
         hasLinkedVendor: !!clientConnection?.linkedVendorUid,
-        isPrimaryVendor: roles.includes('vendor') && !clientConnection?.linkedVendorUid,
-        isStaffWithVendor: roles.includes('staff') && !!vendorId,
+        isPrimaryVendor:
+          roles.includes(ROLES.VENDOR as string) && !clientConnection?.linkedVendorUid,
+        isStaffWithVendor: roles.includes(ROLES.STAFF as string) && !!vendorId,
       });
 
       return { roles, vendorId };

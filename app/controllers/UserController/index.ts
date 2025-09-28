@@ -3,7 +3,7 @@ import { Response } from 'express';
 import { createLogger } from '@utils/index';
 import { UserService } from '@services/index';
 import { httpStatusCodes } from '@utils/constants';
-import { IUserRoleType } from '@interfaces/user.interface';
+import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ProfileService } from '@services/profile/profile.service';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { ResourceContext, AppRequest } from '@interfaces/utils.interface';

@@ -232,8 +232,6 @@ ProfileSchema.methods.getGravatarUrl = function (email: string): string {
   return `https://gravatar.com/avatar/${hash}?s=200`;
 };
 
-// These methods have been removed since clientRoleInfo is now in the User model
-
 // automatically set retention date based on policy
 ProfileSchema.pre('save', function (this: IProfileDocument, next) {
   if (this.isModified('settings.dataRetentionPolicy')) {

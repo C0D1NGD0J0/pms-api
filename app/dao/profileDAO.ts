@@ -350,7 +350,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                     $cond: {
                       if: {
                         $and: [
-                          { $in: ['vendor', '$$activeClient.roles'] },
+                          { $in: [ROLES.VENDOR, '$$activeClient.roles'] },
                           { $not: '$$activeClient.linkedVendorUid' },
                         ],
                       },

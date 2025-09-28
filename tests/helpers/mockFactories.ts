@@ -1,12 +1,12 @@
 import { Types } from 'mongoose';
 import { faker } from '@faker-js/faker';
 import { GDPRSettings } from '@interfaces/profile.interface';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 import {
   IUserDocument,
   ICurrentUser,
   IAccountType,
   ISignupData,
-  IUserRole,
 } from '@interfaces/user.interface';
 
 // User Mocks with proper interfaces
@@ -25,7 +25,7 @@ export const createMockUser = (overrides: Partial<IUserDocument> = {}): Partial<
     {
       cuid: faker.string.uuid(),
       isConnected: true,
-      roles: [IUserRole.ADMIN],
+      roles: [ROLES.ADMIN],
       clientDisplayName: faker.company.name(),
     },
   ],
@@ -53,13 +53,13 @@ export const createMockCurrentUser = (overrides: Partial<ICurrentUser> = {}): IC
   client: {
     cuid: faker.string.uuid(),
     displayname: faker.company.name(),
-    role: 'admin',
+    role: ROLES.ADMIN,
   },
   clients: [
     {
       cuid: faker.string.uuid(),
       isConnected: true,
-      roles: [IUserRole.ADMIN],
+      roles: [ROLES.ADMIN],
       clientDisplayName: faker.company.name(),
     },
   ],
@@ -367,7 +367,7 @@ export const createMockInvitation = (overrides: any = {}) => ({
     lastName: faker.person.lastName(),
     phoneNumber: faker.phone.number(),
   },
-  role: faker.helpers.arrayElement(['admin', 'manager', 'staff', 'vendor', 'tenant']),
+  role: faker.helpers.arrayElement([ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF, ROLES.VENDOR, ROLES.TENANT]),
   status: faker.helpers.arrayElement([
     'draft',
     'pending',

@@ -1,4 +1,4 @@
-import { IUserRole } from '@interfaces/user.interface';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { ClientService } from '@services/client/client.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {
@@ -257,13 +257,13 @@ describe('ClientService', () => {
         currentuser: createMockCurrentUser(),
       });
       const targetUserId = 'user-123';
-      const role = 'manager';
+      const role = ROLES.MANAGER;
       const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
           {
             cuid: clientId,
-            roles: ['admin', 'manager'],
+            roles: [ROLES.ADMIN, ROLES.MANAGER],
             isConnected: true,
             clientDisplayName: 'Test User',
           },
@@ -273,12 +273,12 @@ describe('ClientService', () => {
         items: [
           createMockUser({
             cuids: [
-              { cuid: clientId, roles: ['admin'], isConnected: true, clientDisplayName: 'Admin 1' },
+              { cuid: clientId, roles: [ROLES.ADMIN], isConnected: true, clientDisplayName: 'Admin 1' },
             ],
           }),
           createMockUser({
             cuids: [
-              { cuid: clientId, roles: ['admin'], isConnected: true, clientDisplayName: 'Admin 2' },
+              { cuid: clientId, roles: [ROLES.ADMIN], isConnected: true, clientDisplayName: 'Admin 2' },
             ],
           }),
         ],
@@ -308,11 +308,11 @@ describe('ClientService', () => {
         currentuser: createMockCurrentUser(),
       });
       const targetUserId = 'user-123';
-      const role = 'admin';
+      const role = ROLES.ADMIN;
       const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
-          { cuid: clientId, roles: ['admin'], isConnected: true, clientDisplayName: 'Admin User' },
+          { cuid: clientId, roles: [ROLES.ADMIN], isConnected: true, clientDisplayName: 'Admin User' },
         ],
       });
       const mockAdminUsers = {
@@ -326,7 +326,7 @@ describe('ClientService', () => {
         ForbiddenError
       );
       expect(mockUserDAO.getUsersByClientId).toHaveBeenCalledWith(clientId, {
-        'cuids.roles': 'admin',
+        'cuids.roles': ROLES.ADMIN,
         'cuids.isConnected': true,
       });
     });
@@ -336,7 +336,7 @@ describe('ClientService', () => {
         currentuser: createMockCurrentUser(),
       });
       const targetUserId = 'user-123';
-      const role = 'manager';
+      const role = ROLES.MANAGER;
 
       mockUserDAO.updateById.mockRejectedValue(new Error('Database error'));
 
@@ -357,7 +357,7 @@ describe('ClientService', () => {
         cuids: [
           {
             cuid: clientId,
-            roles: ['manager'],
+            roles: [ROLES.MANAGER],
             isConnected: true,
             clientDisplayName: 'Manager User',
           },
@@ -392,7 +392,7 @@ describe('ClientService', () => {
         cuids: [
           {
             cuid: clientId,
-            roles: ['admin'],
+            roles: [ROLES.ADMIN],
             isConnected: true,
             clientDisplayName: 'testDisplayName',
           },
@@ -409,7 +409,7 @@ describe('ClientService', () => {
         ForbiddenError
       );
       expect(mockUserDAO.getUsersByClientId).toHaveBeenCalledWith(clientId, {
-        'cuids.roles': 'admin',
+        'cuids.roles': ROLES.ADMIN,
         'cuids.isConnected': true,
       });
     });
@@ -421,11 +421,11 @@ describe('ClientService', () => {
         currentuser: createMockCurrentUser(),
       });
       const targetUserId = 'user-123';
-      const role = 'manager';
+      const role = ROLES.MANAGER;
       const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
-          { cuid: clientId, roles: ['tenant'], isConnected: true, clientDisplayName: 'Test User' },
+          { cuid: clientId, roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'Test User' },
         ],
       });
 
@@ -452,13 +452,13 @@ describe('ClientService', () => {
         currentuser: createMockCurrentUser(),
       });
       const targetUserId = 'user-123';
-      const role = 'manager';
+      const role = ROLES.MANAGER;
       const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
           {
             cuid: clientId,
-            roles: ['manager'],
+            roles: [ROLES.MANAGER],
             isConnected: true,
             clientDisplayName: 'testDisplayName',
           },
@@ -477,12 +477,12 @@ describe('ClientService', () => {
         currentuser: createMockCurrentUser(),
       });
       const targetUserId = 'user-123';
-      const role = 'manager';
+      const role = ROLES.MANAGER;
       const mockUser = createMockUser({
         cuids: [
           {
             cuid: 'different-client-id',
-            roles: [IUserRole.MANAGER],
+            roles: [ROLES.MANAGER],
             isConnected: true,
             clientDisplayName: 'testDisplayName2',
           },
@@ -508,7 +508,7 @@ describe('ClientService', () => {
         cuids: [
           {
             cuid: clientId,
-            roles: ['admin', 'manager'],
+            roles: [ROLES.ADMIN, ROLES.MANAGER],
             isConnected: true,
             clientDisplayName: 'testDisplayName233',
           },
@@ -521,7 +521,7 @@ describe('ClientService', () => {
 
       // Assert
       expect(result.success).toBe(true);
-      expect(result.data.roles).toEqual(['admin', 'manager']);
+      expect(result.data.roles).toEqual([ROLES.ADMIN, ROLES.MANAGER]);
     });
   });
 
@@ -536,7 +536,7 @@ describe('ClientService', () => {
         cuids: [
           {
             cuid: clientId,
-            roles: ['manager'],
+            roles: [ROLES.MANAGER],
             isConnected: false,
             clientDisplayName: 'testDisplayName2334',
           },
@@ -581,7 +581,7 @@ describe('ClientService', () => {
       mockUserDAO.getUserById.mockResolvedValue(null);
 
       await expect(
-        clientService.assignUserRole(mockContext, 'invalid-user', 'manager')
+        clientService.assignUserRole(mockContext, 'invalid-user', ROLES.MANAGER)
       ).rejects.toThrow(NotFoundError);
     });
   });

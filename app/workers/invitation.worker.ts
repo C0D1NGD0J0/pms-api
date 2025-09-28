@@ -14,6 +14,7 @@ import { IClientInfo } from '@interfaces/client.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { ProfileService, VendorService } from '@services/index';
 import { IInvitationData } from '@interfaces/invitation.interface';
+import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 
 // Extended interface for CSV processing with vendor-specific metadata
 interface IInvitationCsvData extends IInvitationData {
@@ -238,7 +239,7 @@ export class InvitationWorker {
     }
 
     // Validate linkedVendorUid if provided for vendor role
-    if (invitationData.linkedVendorUid && invitationData.role === 'vendor') {
+    if (invitationData.linkedVendorUid && invitationData.role === ROLES.VENDOR) {
       const primaryVendor = await this.userDAO.getUserById(invitationData.linkedVendorUid);
       if (!primaryVendor) {
         throw new Error('Primary vendor not found');
@@ -246,7 +247,7 @@ export class InvitationWorker {
 
       // Check if the referenced user is actually a primary vendor (no linkedVendorUid)
       const vendorCuid = primaryVendor.cuids.find((c) => c.cuid === clientInfo.cuid);
-      if (!vendorCuid || !vendorCuid.roles.includes('vendor' as any)) {
+      if (!vendorCuid || !vendorCuid.roles.includes(ROLES.VENDOR as any)) {
         throw new Error('Referenced user is not a vendor for this client');
       }
 
@@ -317,7 +318,7 @@ export class InvitationWorker {
     }
 
     // Validate linkedVendorUid if provided for vendor role
-    if (invitationData.linkedVendorUid && invitationData.role === 'vendor') {
+    if (invitationData.linkedVendorUid && invitationData.role === ROLES.VENDOR) {
       const primaryVendor = await this.userDAO.getUserById(invitationData.linkedVendorUid);
       if (!primaryVendor) {
         throw new Error('Primary vendor not found');
@@ -325,7 +326,7 @@ export class InvitationWorker {
 
       // Check if the referenced user is actually a primary vendor (no linkedVendorUid)
       const vendorCuid = primaryVendor.cuids.find((c) => c.cuid === clientInfo.cuid);
-      if (!vendorCuid || !vendorCuid.roles.includes('vendor' as any)) {
+      if (!vendorCuid || !vendorCuid.roles.includes(ROLES.VENDOR as any)) {
         throw new Error('Referenced user is not a vendor for this client');
       }
 
@@ -505,7 +506,7 @@ export class InvitationWorker {
     userData: IInvitationCsvData,
     clientInfo: IClientInfo
   ): Promise<{ vendorUid: string; primaryAccountHolderId: string } | null> {
-    if (userData.role === 'vendor' && userData.linkedVendorUid) {
+    if (userData.role === ROLES.VENDOR && userData.linkedVendorUid) {
       const existingVendor = await this.vendorDAO.getVendorByVuid(userData.linkedVendorUid);
       if (existingVendor) {
         const vendorConnection = existingVendor.connectedClients?.find(
@@ -618,7 +619,7 @@ export class InvitationWorker {
     };
 
     // Add vendor info if this is a vendor user
-    if (userData.role === 'vendor') {
+    if (userData.role === ROLES.VENDOR) {
       if (userData.metadata?.isVendorTeamMember) {
         // Team members: isLinkedAccount = true, minimal vendor data
         profileData.vendorInfo = {
@@ -639,7 +640,10 @@ export class InvitationWorker {
     }
 
     // Add employee info for staff/admin/manager users ONLY (not vendors)
-    if (['manager', 'staff', 'admin'].includes(userData.role) && userData.metadata?.employeeInfo) {
+    if (
+      ROLE_GROUPS.EMPLOYEE_ROLES.includes(userData.role as any) &&
+      userData.metadata?.employeeInfo
+    ) {
       profileData.employeeInfo = userData.metadata.employeeInfo;
     }
 
@@ -697,7 +701,7 @@ export class InvitationWorker {
     );
 
     // Log vendor linking if applicable
-    if (linkedVendorUid && userData.role === 'vendor') {
+    if (linkedVendorUid && userData.role === ROLES.VENDOR) {
       this.log.info(
         `Vendor link established from primary vendor ${linkedVendorUid} to new user ${user._id}`
       );

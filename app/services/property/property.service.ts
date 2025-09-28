@@ -4,9 +4,10 @@ import sanitizeHtml from 'sanitize-html';
 import { FilterQuery, Types } from 'mongoose';
 import { PropertyCache } from '@caching/index';
 import { GeoCoderService } from '@services/external';
+import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
 import { NotificationService } from '@services/notification';
-import { ICurrentUser, IUserRole } from '@interfaces/user.interface';
+import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
@@ -1875,7 +1876,7 @@ export class PropertyService {
       }
 
       // Define management roles only (exclude vendor, tenant)
-      const managementRoles = ['admin', 'staff', 'manager'];
+      const managementRoles = ROLE_GROUPS.EMPLOYEE_ROLES;
       const roleFilter = filters.role && filters.role !== 'all' ? [filters.role] : managementRoles;
 
       // Build aggregation pipeline to get users with profile data

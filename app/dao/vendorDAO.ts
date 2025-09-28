@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { ClientSession, Types, Model } from 'mongoose';
+import { ROLES } from '@shared/constants/roles.constants';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
 
@@ -251,7 +252,7 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
             'user.cuids': {
               $elemMatch: {
                 cuid: cuid,
-                roles: 'vendor',
+                roles: ROLES.VENDOR,
               },
             },
             deletedAt: null,

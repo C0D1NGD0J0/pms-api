@@ -7,7 +7,7 @@ import {
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
 import { httpStatusCodes } from '@utils/index';
-import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { BadRequestError, NotFoundError, UnauthorizedError } from '@shared/customErrors';
 import {
   createMockNotificationService,
   createMockNotificationResponse,
@@ -17,16 +17,23 @@ import {
   createNotificationSuccessResponse,
   createMockCurrentUser,
   createMockRequestContext,
+  createMockSSEService,
+  createMockSSESession,
+  createMockClientService,
 } from '@tests/helpers';
 
 describe('NotificationController', () => {
   let notificationController: NotificationController;
   let mockNotificationService: jest.Mocked<any>;
+  let mockSSEService: jest.Mocked<any>;
+  let mockClientService: jest.Mocked<any>;
   let mockRequest: Partial<Request>;
   let mockResponse: Partial<Response>;
 
   beforeEach(() => {
     mockNotificationService = createMockNotificationService();
+    mockSSEService = createMockSSEService();
+    mockClientService = createMockClientService();
     mockRequest = {
       params: {},
       query: {},
@@ -40,6 +47,8 @@ describe('NotificationController', () => {
 
     notificationController = new NotificationController({
       notificationService: mockNotificationService,
+      clientService: mockClientService,
+      sseService: mockSSEService,
     });
 
     jest.clearAllMocks();
@@ -355,6 +364,78 @@ describe('NotificationController', () => {
     });
   });
 
+  describe('markNotificationAsRead', () => {
+    it('should mark notification as read successfully', async () => {
+      const currentUser = createMockCurrentUser();
+      const mockNotificationResponse = createMockNotificationResponse({ isRead: true });
+
+      mockRequest.params = {
+        cuid: 'test-client',
+        nuid: new Types.ObjectId().toString(),
+      };
+      mockRequest.context = { ...mockRequest.context, currentuser: currentUser };
+
+      mockNotificationService.markAsRead.mockResolvedValue(
+        createNotificationSuccessResponse(mockNotificationResponse)
+      );
+
+      await notificationController.markNotificationAsRead(mockRequest as Request, mockResponse as Response);
+
+      expect(mockNotificationService.markAsRead).toHaveBeenCalledWith(
+        mockRequest.params.nuid,
+        currentUser.sub,
+        'test-client'
+      );
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.OK);
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockNotificationResponse,
+        message: 'Notification marked as read',
+      });
+    });
+
+    it('should handle invalid client context', async () => {
+      const currentUser = createMockCurrentUser();
+      currentUser.client.cuid = 'different-client';
+
+      mockRequest.params = { cuid: 'test-client', nuid: 'test-nuid' };
+      mockRequest.context = { ...mockRequest.context, currentuser: currentUser };
+
+      await expect(
+        notificationController.markNotificationAsRead(mockRequest as Request, mockResponse as Response)
+      ).rejects.toThrow(BadRequestError);
+    });
+
+    it('should handle service failure', async () => {
+      const currentUser = createMockCurrentUser();
+
+      mockRequest.params = { cuid: 'test-client', nuid: 'test-nuid' };
+      mockRequest.context = { ...mockRequest.context, currentuser: currentUser };
+
+      mockNotificationService.markAsRead.mockResolvedValue({
+        success: false,
+        data: null,
+        message: 'Notification not found',
+      });
+
+      await notificationController.markNotificationAsRead(mockRequest as Request, mockResponse as Response);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.BAD_REQUEST);
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        success: false,
+        message: 'Notification not found',
+      });
+    });
+
+    it('should return 401 if user not authenticated', async () => {
+      mockRequest.context = { ...mockRequest.context, currentuser: null };
+
+      await expect(
+        notificationController.markNotificationAsRead(mockRequest as Request, mockResponse as Response)
+      ).rejects.toThrow(UnauthorizedError);
+    });
+  });
+
   describe('getUnreadCount', () => {
     it('should get unread count successfully', async () => {
       const currentUser = createMockCurrentUser();
@@ -509,6 +590,132 @@ describe('NotificationController', () => {
         data: mockNotificationResponse,
         message: 'Notification updated successfully',
       });
+    });
+  });
+
+  describe('getMyNotificationsStream (SSE)', () => {
+    it('should establish personal notifications SSE stream successfully', async () => {
+      const currentUser = createMockCurrentUser();
+      currentUser.client.cuid = 'test-client'; // Ensure client cuid matches request
+      const mockSession = { push: jest.fn().mockResolvedValue(undefined) };
+      const mockSessionData = createMockSSESession();
+      const mockInitialData = createMockNotificationListResponse(5);
+
+      mockRequest.params = { cuid: 'test-client' };
+      mockRequest.query = { type: 'user', priority: 'high' };
+      mockRequest.context = { ...mockRequest.context, currentuser: currentUser };
+
+      mockNotificationService.getNotifications.mockResolvedValue(
+        createNotificationSuccessResponse(mockInitialData)
+      );
+      mockSSEService.createPersonalSession.mockResolvedValue(mockSessionData);
+      mockSSEService.initializeConnection.mockResolvedValue(mockSession);
+
+      await notificationController.getMyNotificationsStream(mockRequest as Request, mockResponse as Response);
+
+      expect(mockNotificationService.getNotifications).toHaveBeenCalledWith(
+        'test-client',
+        currentUser.sub,
+        expect.objectContaining({
+          type: 'user',
+          priority: 'high',
+        }),
+        expect.objectContaining({
+          page: 1,
+          limit: 10,
+          sortBy: 'createdAt',
+        })
+      );
+      expect(mockSSEService.createPersonalSession).toHaveBeenCalledWith(currentUser.sub, 'test-client');
+      expect(mockSSEService.initializeConnection).toHaveBeenCalledWith(
+        mockRequest,
+        mockResponse,
+        mockSessionData
+      );
+      expect(mockSession.push).toHaveBeenCalledWith(mockInitialData, 'my-notifications');
+    });
+
+    it('should handle invalid client context', async () => {
+      const currentUser = createMockCurrentUser();
+      currentUser.client.cuid = 'different-client';
+
+      mockRequest.params = { cuid: 'test-client' };
+      mockRequest.context = { ...mockRequest.context, currentuser: currentUser };
+
+      await expect(
+        notificationController.getMyNotificationsStream(mockRequest as Request, mockResponse as Response)
+      ).rejects.toThrow(BadRequestError);
+    });
+
+    it('should handle unauthenticated user', async () => {
+      mockRequest.params = { cuid: 'test-client' };
+      mockRequest.context = { ...mockRequest.context, currentuser: null };
+
+      await expect(
+        notificationController.getMyNotificationsStream(mockRequest as Request, mockResponse as Response)
+      ).rejects.toThrow(UnauthorizedError);
+    });
+  });
+
+  describe('getAnnouncementsStream (SSE)', () => {
+    it('should establish announcements SSE stream successfully', async () => {
+      const currentUser = createMockCurrentUser();
+      currentUser.client.cuid = 'test-client'; // Ensure client cuid matches request
+      const mockSession = { push: jest.fn().mockResolvedValue(undefined) };
+      const mockSessionData = createMockSSESession();
+      const mockInitialData = createMockNotificationListResponse(3);
+
+      mockRequest.params = { cuid: 'test-client' };
+      mockRequest.query = { priority: 'urgent' };
+      mockRequest.context = { ...mockRequest.context, currentuser: currentUser };
+
+      mockNotificationService.getAnnouncements.mockResolvedValue(
+        createNotificationSuccessResponse(mockInitialData)
+      );
+      mockSSEService.createAnnouncementSession.mockResolvedValue(mockSessionData);
+      mockSSEService.initializeConnection.mockResolvedValue(mockSession);
+
+      await notificationController.getAnnouncementsStream(mockRequest as Request, mockResponse as Response);
+
+      expect(mockNotificationService.getAnnouncements).toHaveBeenCalledWith(
+        'test-client',
+        currentUser.sub,
+        expect.objectContaining({
+          priority: 'urgent',
+        }),
+        expect.objectContaining({
+          page: 1,
+          limit: 20,
+        })
+      );
+      expect(mockSSEService.createAnnouncementSession).toHaveBeenCalledWith(currentUser.sub, 'test-client');
+      expect(mockSSEService.initializeConnection).toHaveBeenCalledWith(
+        mockRequest,
+        mockResponse,
+        mockSessionData
+      );
+      expect(mockSession.push).toHaveBeenCalledWith(mockInitialData, 'announcements');
+    });
+
+    it('should handle invalid client context for announcements', async () => {
+      const currentUser = createMockCurrentUser();
+      currentUser.client.cuid = 'different-client';
+
+      mockRequest.params = { cuid: 'test-client' };
+      mockRequest.context = { ...mockRequest.context, currentuser: currentUser };
+
+      await expect(
+        notificationController.getAnnouncementsStream(mockRequest as Request, mockResponse as Response)
+      ).rejects.toThrow(BadRequestError);
+    });
+
+    it('should handle unauthenticated user for announcements', async () => {
+      mockRequest.params = { cuid: 'test-client' };
+      mockRequest.context = { ...mockRequest.context, currentuser: null };
+
+      await expect(
+        notificationController.getAnnouncementsStream(mockRequest as Request, mockResponse as Response)
+      ).rejects.toThrow(UnauthorizedError);
     });
   });
 });

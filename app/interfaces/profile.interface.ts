@@ -112,8 +112,6 @@ export interface NotificationSettings {
   messages: boolean;
   payments: boolean;
   system: boolean;
-  leases: boolean;
-  users: boolean;
 }
 
 export interface VendorInfo {

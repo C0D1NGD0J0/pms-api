@@ -102,8 +102,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
         payments: { type: Boolean, default: true },
         system: { type: Boolean, default: true },
         propertyUpdates: { type: Boolean, default: true },
-        leases: { type: Boolean, default: true },
-        users: { type: Boolean, default: true },
         emailNotifications: { type: Boolean, default: true },
         inAppNotifications: { type: Boolean, default: true },
 

@@ -29,6 +29,16 @@ export interface ISSEChannelService {
 }
 
 /**
+ * SSE Message format
+ */
+export interface ISSEMessage {
+  data: INotificationDocument | any; // Allow pagination data structure
+  timestamp: Date;
+  event: string;
+  id: string;
+}
+
+/**
  * Simple SSE Session tracking
  */
 export interface ISSESession {
@@ -37,15 +47,5 @@ export interface ISSESession {
   session: Session;
   userId: string;
   cuid: string;
-  id: string;
-}
-
-/**
- * SSE Message format
- */
-export interface ISSEMessage {
-  data: INotificationDocument;
-  timestamp: Date;
-  event: string;
   id: string;
 }

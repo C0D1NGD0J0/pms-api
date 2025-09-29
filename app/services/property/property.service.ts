@@ -599,16 +599,16 @@ export class PropertyService {
       limit: Math.max(1, Math.min(pagination.limit || 10, 100)),
       skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
     };
-    // const cachedResult = await this.propertyCache.getClientProperties(cuid, opts);
-    // if (cachedResult.success && cachedResult.data) {
-    //   return {
-    //     success: true,
-    //     data: {
-    //       items: cachedResult.data.properties,
-    //       pagination: cachedResult.data.pagination,
-    //     },
-    //   };
-    // }
+    const cachedResult = await this.propertyCache.getClientProperties(cuid, opts);
+    if (cachedResult.success && cachedResult.data) {
+      return {
+        success: true,
+        data: {
+          items: cachedResult.data.properties,
+          pagination: cachedResult.data.pagination,
+        },
+      };
+    }
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
 
     const itemsWithPreview = properties.items.map((property) => {
@@ -926,7 +926,7 @@ export class PropertyService {
         cuid: ctx.cuid,
         updateData,
         propertyManagerId: updatedProperty.managedBy?.toString(),
-        isDirectUpdate, // Pass flag to differentiate notification types
+        isDirectUpdate,
         resource: {
           resourceType: ResourceContext.PROPERTY,
           resourceId: updatedProperty.id,

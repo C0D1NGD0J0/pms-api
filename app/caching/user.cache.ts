@@ -193,20 +193,16 @@ export class UserCache extends BaseCache {
         };
       }
 
-      const listKey = this.generateListKeyFromOptions(opts.filters, opts.pagination);
+      const listKey = this.generateListKeyFromOptions(opts.pagination);
       const key = `${this.KEY_PREFIXES.FILTERED_USERS}${cuid}:${listKey}`;
 
-      // Clear any existing data for this key
       await this.deleteItems([key]);
-
       const multi = this.client.multi();
 
-      // Store each user in the list
       for (const user of userList) {
         multi.RPUSH(key, this.serialize(user));
       }
 
-      // Store metadata for pagination
       const metaKey = `${key}:meta`;
       await this.setObject(
         metaKey,
@@ -215,8 +211,6 @@ export class UserCache extends BaseCache {
           lastUpdated: Date.now(),
           listKey,
           cuid,
-          filters: opts.filters,
-          pagination: opts.pagination,
         },
         this.LIST_CACHE_TTL
       );
@@ -264,7 +258,7 @@ export class UserCache extends BaseCache {
         };
       }
 
-      const listKey = this.generateListKeyFromOptions(filters, pagination);
+      const listKey = this.generateListKeyFromOptions(pagination);
       const key = `${this.KEY_PREFIXES.FILTERED_USERS}${cuid}:${listKey}`;
 
       const listResult = await this.getListRange<FilteredUserTableData>(key, 0, -1);
@@ -355,18 +349,8 @@ export class UserCache extends BaseCache {
    * @param filters - Filter options
    * @param pagination - Pagination options
    */
-  private generateListKeyFromOptions(
-    filters: IUserFilterOptions,
-    pagination: IPaginationQuery
-  ): string {
-    const combined = {
-      ...filters,
-      page: pagination.page,
-      limit: pagination.limit,
-      sortBy: pagination.sortBy,
-      sort: pagination.sort,
-    };
-    const hash = this.hashData(combined);
+  private generateListKeyFromOptions(pagination: IPaginationQuery): string {
+    const hash = this.hashData(pagination);
     return `q:${hash}`;
   }
 }

@@ -756,6 +756,54 @@ export class ProfileService {
   }
 
   /**
+   * Get user notification preferences by user ID
+   * Returns default preferences if user profile doesn't exist
+   */
+  async getUserNotificationPreferences(
+    userId: string,
+    cuid: string
+  ): Promise<ISuccessReturnData<IProfileDocument['settings']['notifications']>> {
+    try {
+      this.logger.info(`Getting notification preferences for user ${userId} in client ${cuid}`);
+
+      const preferences = await this.profileDAO.getNotificationPreferences(userId);
+
+      if (!preferences) {
+        this.logger.warn(
+          `No notification preferences found for user ${userId}, returning defaults`
+        );
+        const defaultPreferences: IProfileDocument['settings']['notifications'] = {
+          messages: false,
+          comments: false,
+          announcements: true,
+          maintenance: true,
+          payments: true,
+          system: true,
+          propertyUpdates: true,
+          emailNotifications: true,
+          inAppNotifications: true,
+          emailFrequency: 'immediate' as const,
+        };
+
+        return {
+          success: true,
+          message: 'Default notification preferences retrieved',
+          data: defaultPreferences,
+        };
+      }
+
+      return {
+        success: true,
+        message: 'Notification preferences retrieved successfully',
+        data: preferences,
+      };
+    } catch (error) {
+      this.logger.error(`Error getting notification preferences for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Clean up event listeners when service is destroyed
    */
   destroy(): void {

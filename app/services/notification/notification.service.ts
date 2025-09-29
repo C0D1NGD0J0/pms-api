@@ -3,9 +3,9 @@ import { Types } from 'mongoose';
 import { SSECache } from '@caching/index';
 import { createLogger } from '@utils/helpers';
 import { ISSEMessage } from '@interfaces/sse.interface';
-import { UserService, SSEService } from '@services/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ResourceContext } from '@interfaces/utils.interface';
+import { ProfileService, UserService, SSEService } from '@services/index';
 import { NotificationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES } from '@utils/constants';
 import { ISuccessReturnData, IPaginationQuery } from '@interfaces/utils.interface';
@@ -27,9 +27,10 @@ import { getFormattedNotification, NotificationMessageKey } from './notification
 
 interface IConstructor {
   notificationDAO: NotificationDAO;
+  profileService: ProfileService;
   userService: UserService;
-  sseService: SSEService;
   profileDAO: ProfileDAO;
+  sseService: SSEService;
   clientDAO: ClientDAO;
   sseCache: SSECache;
   userDAO: UserDAO;
@@ -39,6 +40,7 @@ export class NotificationService {
   private readonly notificationDAO: NotificationDAO;
   private readonly userService: UserService;
   private readonly sseService: SSEService;
+  private readonly profileService: ProfileService;
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
   private readonly sseCache: SSECache;
@@ -52,6 +54,7 @@ export class NotificationService {
     userDAO,
     userService,
     sseService,
+    profileService,
     sseCache,
   }: IConstructor) {
     this.userDAO = userDAO;
@@ -61,6 +64,7 @@ export class NotificationService {
     this.sseCache = sseCache;
     this.profileDAO = profileDAO;
     this.userService = userService;
+    this.profileService = profileService;
     this.notificationDAO = notificationDAO;
     this.log = createLogger('NotificationService');
   }
@@ -108,6 +112,34 @@ export class NotificationService {
       }
 
       const validatedData = validationResult.data;
+
+      if (validatedData.recipientType === RecipientTypeEnum.INDIVIDUAL && validatedData.recipient) {
+        const recipientId =
+          typeof validatedData.recipient === 'string'
+            ? validatedData.recipient
+            : validatedData.recipient.toString();
+
+        const shouldSend = await this.checkUserNotificationPreferences(
+          recipientId,
+          cuid,
+          notificationType,
+          validatedData
+        );
+
+        if (!shouldSend) {
+          this.log.info('Notification skipped due to user preferences', {
+            userId: recipientId,
+            notificationType,
+            cuid,
+          });
+
+          return {
+            success: true,
+            data: null as any,
+            message: 'Notification skipped due to user preferences',
+          };
+        }
+      }
 
       const notificationToCreate: any = {
         title: validatedData.title,
@@ -170,6 +202,8 @@ export class NotificationService {
         recipientType: notification.recipientType,
         cuid: notification.cuid,
       });
+
+      await this.publishToSSE(notification);
 
       return {
         success: true,
@@ -1154,6 +1188,7 @@ export class NotificationService {
 
       const result = await this.updateNotification(notificationId, userId, cuid, {
         isRead: true,
+        readAt: new Date(),
       });
 
       if (result.success) {
@@ -1185,6 +1220,24 @@ export class NotificationService {
 
   private async publishToSSE(notification: INotificationDocument): Promise<void> {
     try {
+      if (notification.recipientType === 'individual' && notification.recipient) {
+        const shouldSend = await this.checkUserNotificationPreferences(
+          notification.recipient.toString(),
+          notification.cuid,
+          notification.type,
+          notification
+        );
+
+        if (!shouldSend) {
+          this.log.debug('Skipping SSE publish due to user preferences', {
+            nuid: notification.nuid,
+            recipientId: notification.recipient,
+            cuid: notification.cuid,
+          });
+          return;
+        }
+      }
+
       const sseMessage: ISSEMessage = {
         id: notification.nuid,
         event: notification.recipientType === 'individual' ? 'notification' : 'announcement',
@@ -1226,6 +1279,80 @@ export class NotificationService {
         nuid: notification.nuid,
         recipientType: notification.recipientType,
       });
+    }
+  }
+
+  /**
+   * Check if user preferences allow sending this notification
+   */
+  private async checkUserNotificationPreferences(
+    userId: string,
+    cuid: string,
+    notificationType: NotificationTypeEnum,
+    _notificationData: any
+  ): Promise<boolean> {
+    try {
+      const preferencesResult = await this.profileService.getUserNotificationPreferences(
+        userId,
+        cuid
+      );
+
+      if (!preferencesResult.success || !preferencesResult.data) {
+        this.log.warn('Could not get user preferences, allowing notification', { userId, cuid });
+        return true; // Allow by default if preferences can't be retrieved
+      }
+
+      const preferences = preferencesResult.data;
+
+      // Check if in-app notifications are disabled globally
+      if (!preferences.inAppNotifications) {
+        this.log.debug('In-app notifications disabled for user', { userId, cuid });
+        return false;
+      }
+
+      // Map notification types to preference fields
+      const typeToPreferenceMap: Record<NotificationTypeEnum, keyof typeof preferences> = {
+        [NotificationTypeEnum.ANNOUNCEMENT]: 'announcements',
+        [NotificationTypeEnum.MAINTENANCE]: 'maintenance',
+        [NotificationTypeEnum.PROPERTY]: 'propertyUpdates',
+        [NotificationTypeEnum.MESSAGE]: 'messages',
+        [NotificationTypeEnum.COMMENT]: 'comments',
+        [NotificationTypeEnum.PAYMENT]: 'payments',
+        [NotificationTypeEnum.SYSTEM]: 'system',
+        [NotificationTypeEnum.TASK]: 'system', // Map TASK to system notifications
+        [NotificationTypeEnum.USER]: 'system', // Map USER to system notifications
+      };
+
+      const preferenceField = typeToPreferenceMap[notificationType];
+
+      if (!preferenceField) {
+        this.log.warn('Unknown notification type, allowing by default', {
+          notificationType,
+          userId,
+          cuid,
+        });
+        return true; // Allow unknown types by default
+      }
+
+      const isAllowed = preferences[preferenceField] as boolean;
+
+      this.log.debug('User preference check completed', {
+        userId,
+        cuid,
+        notificationType,
+        preferenceField,
+        isAllowed,
+      });
+
+      return isAllowed;
+    } catch (error) {
+      this.log.error('Error checking user notification preferences, allowing by default', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        userId,
+        cuid,
+        notificationType,
+      });
+      return true; // Allow by default on error
     }
   }
 

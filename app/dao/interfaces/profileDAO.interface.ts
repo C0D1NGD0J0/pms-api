@@ -6,6 +6,29 @@ import { IFindOptions, IBaseDAO } from './baseDAO.interface';
 
 export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   /**
+   * Updates notification preferences for a profile.
+   *
+   * @param profileId - The ID of the profile to update
+   * @param preferences - Object containing notification preferences
+   * @returns A promise that resolves to the updated profile or null if profile not found
+   */
+  updateNotificationPreferences(
+    profileId: string,
+    preferences: {
+      messages?: boolean;
+      comments?: boolean;
+      announcements?: boolean;
+      maintenance?: boolean;
+      payments?: boolean;
+      system?: boolean;
+      propertyUpdates?: boolean;
+      emailNotifications?: boolean;
+      inAppNotifications?: boolean;
+      emailFrequency?: 'immediate' | 'daily';
+    }
+  ): Promise<IProfileDocument | null>;
+
+  /**
    * Updates identification documents for a profile.
    *
    * @param profileId - The ID of the profile to update
@@ -36,18 +59,6 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   updateVendorReference(
     profileId: string,
     vendorReference: { vendorId?: string; linkedVendorUid?: string; isLinkedAccount?: boolean }
-  ): Promise<IProfileDocument | null>;
-
-  /**
-   * Updates notification preferences for a profile.
-   *
-   * @param profileId - The ID of the profile to update
-   * @param preferences - Object containing notification preferences
-   * @returns A promise that resolves to the updated profile or null if profile not found
-   */
-  updateNotificationPreferences(
-    profileId: string,
-    preferences: { messages?: boolean; comments?: boolean; announcements?: boolean }
   ): Promise<IProfileDocument | null>;
 
   /**
@@ -207,6 +218,16 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
     profileId: string,
     loginType: 'otp' | 'password'
   ): Promise<IProfileDocument | null>;
+
+  /**
+   * Gets notification preferences for a user by their user ID.
+   *
+   * @param userId - The user ID to get preferences for
+   * @returns A promise that resolves to notification preferences or null if not found
+   */
+  getNotificationPreferences(
+    userId: string
+  ): Promise<IProfileDocument['settings']['notifications'] | null>;
 
   /**
    * Updates theme settings for a profile.

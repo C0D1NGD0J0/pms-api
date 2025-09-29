@@ -266,7 +266,6 @@ export class UserService {
             };
           }
 
-          // Add vendor info if user has vendor role
           if (roles.includes(ROLES.VENDOR as string) && user._id) {
             const vendorEntity = await this.vendorService.getVendorByUserId(user._id.toString());
             if (vendorEntity) {
@@ -299,7 +298,6 @@ export class UserService {
         })
       );
 
-      // Cache the result for future requests
       await this.userCache.saveFilteredUsers(cuid, users, {
         filters: filterOptions,
         pagination: paginationOpts,

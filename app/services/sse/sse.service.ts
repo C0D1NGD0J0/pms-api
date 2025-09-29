@@ -54,7 +54,6 @@ export class SSEService implements ISSEService {
    */
   async createPersonalSession(userId: string, cuid: string): Promise<ISSESession> {
     try {
-      // Generate personal notification channels
       const personalChannels = [this.sseCache.generatePersonalChannel(userId, cuid)];
 
       const storeResult = await this.sseCache.storeUserChannels(userId, cuid, personalChannels);
@@ -62,16 +61,15 @@ export class SSEService implements ISSEService {
         throw new Error(`Failed to store user channels: ${storeResult.error}`);
       }
 
-      // Add user to channel subscriber lists for message targeting
       for (const channel of personalChannels) {
         await this.sseCache.addUserToChannel(channel, userId, cuid);
       }
 
       const sessionData: ISSESession = {
-        id: '', // Will be set by better-sse
+        id: '', // to be set by better-sse
         userId,
         cuid,
-        session: null as any, // Will be set during connection initialization
+        session: null as any, // to be set during connection initialization
         channels: personalChannels,
         connectedAt: new Date(),
       };

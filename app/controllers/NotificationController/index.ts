@@ -3,26 +3,23 @@ import { Response } from 'express';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { httpStatusCodes } from '@utils/constants';
-import { INotificationFilters } from '@interfaces/notification.interface';
+import { NotificationService, SSEService } from '@services/index';
 import { UnauthorizedError, BadRequestError } from '@shared/customErrors';
+import { INotificationFilters } from '@interfaces/notification.interface';
 import { IPaginationQuery, AppRequest } from '@interfaces/utils.interface';
-import { NotificationService, ClientService, SSEService } from '@services/index';
 
 interface IConstructor {
   notificationService: NotificationService;
-  clientService: ClientService;
   sseService: SSEService;
 }
 
 export class NotificationController {
   private readonly log: Logger;
-  private readonly clientService: ClientService;
   private readonly notificationService: NotificationService;
   private readonly sseService: SSEService;
 
-  constructor({ clientService, notificationService, sseService }: IConstructor) {
+  constructor({ notificationService, sseService }: IConstructor) {
     this.sseService = sseService;
-    this.clientService = clientService;
     this.notificationService = notificationService;
     this.log = createLogger('NotificationController');
   }
@@ -89,7 +86,6 @@ export class NotificationController {
         throw new UnauthorizedError({ message: 'User not authenticated' });
       }
 
-      // Validate client access
       if (req.context.currentuser.client.cuid !== cuid) {
         throw new BadRequestError({ message: 'Invalid client context' });
       }

@@ -14,6 +14,7 @@ describe('NotificationService', () => {
   let mockClientDAO: jest.Mocked<any>;
   let mockUserDAO: jest.Mocked<any>;
   let mockUserService: jest.Mocked<any>;
+  let mockProfileService: jest.Mocked<any>;
   let mockSSEService: jest.Mocked<any>;
   let mockSSECache: jest.Mocked<any>;
 
@@ -48,6 +49,10 @@ describe('NotificationService', () => {
       getUserAnnouncementFilters: jest.fn(),
     };
 
+    mockProfileService = {
+      getUserNotificationPreferences: jest.fn(),
+    };
+
     // ADD SSE Service Mock
     mockSSEService = {
       sendToUser: jest.fn(),
@@ -74,6 +79,7 @@ describe('NotificationService', () => {
       clientDAO: mockClientDAO,
       userDAO: mockUserDAO,
       userService: mockUserService,
+      profileService: mockProfileService,
       sseService: mockSSEService,
       sseCache: mockSSECache,
     });
@@ -106,6 +112,15 @@ describe('NotificationService', () => {
 
       mockNotificationDAO.create.mockResolvedValue(mockNotification);
       mockSSEService.sendToUser.mockResolvedValue(true);
+
+      // Mock user preferences to allow notification
+      mockProfileService.getUserNotificationPreferences.mockResolvedValue({
+        success: true,
+        data: {
+          inAppNotifications: true,
+          system: true,
+        },
+      });
 
       const result = await notificationService.createNotification(
         'test-client',
@@ -204,6 +219,15 @@ describe('NotificationService', () => {
       // Mock SSE failure
       mockSSEService.sendToUser.mockRejectedValue(new Error('SSE connection failed'));
 
+      // Mock user preferences to allow notification
+      mockProfileService.getUserNotificationPreferences.mockResolvedValue({
+        success: true,
+        data: {
+          inAppNotifications: true,
+          system: true,
+        },
+      });
+
       const result = await notificationService.createNotification(
         'test-client',
         NotificationTypeEnum.USER,
@@ -243,6 +267,42 @@ describe('NotificationService', () => {
       // Should not attempt SSE publishing if notification creation failed
       expect(mockSSEService.sendToUser).not.toHaveBeenCalled();
       expect(mockSSEService.sendToChannel).not.toHaveBeenCalled();
+    });
+
+    it('should skip notification if user preferences block it', async () => {
+      const recipientId = new Types.ObjectId().toString();
+      const requestData: ICreateNotificationRequest = {
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: recipientId,
+        cuid: 'test-client',
+        title: 'System Notification',
+        message: 'System message',
+        type: NotificationTypeEnum.SYSTEM,
+        priority: NotificationPriorityEnum.LOW,
+      };
+
+      // Mock user preferences to block system notifications
+      mockProfileService.getUserNotificationPreferences.mockResolvedValue({
+        success: true,
+        data: {
+          inAppNotifications: false, // User disabled in-app notifications
+          system: true,
+        },
+      });
+
+      const result = await notificationService.createNotification(
+        'test-client',
+        NotificationTypeEnum.SYSTEM,
+        requestData
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.message).toBe('Notification skipped due to user preferences');
+      expect(result.data).toBe(null);
+
+      // Should not create notification or publish to SSE
+      expect(mockNotificationDAO.create).not.toHaveBeenCalled();
+      expect(mockSSEService.sendToUser).not.toHaveBeenCalled();
     });
   });
 

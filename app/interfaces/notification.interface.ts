@@ -235,11 +235,11 @@ export interface INotificationDocument extends INotification, Document {
 export interface IUpdateNotificationRequest {
   priority?: NotificationPriorityEnum;
   metadata?: Record<string, any>;
-  actionUrl?: string;
   message?: string;
-  isRead?: boolean;
   expiresAt?: Date;
+  isRead?: boolean;
   title?: string;
+  readAt?: Date;
 }
 
 export interface IGetNotificationsQuery extends IPaginationQuery {

@@ -253,7 +253,6 @@ export class UserService {
             fullName: fullName || undefined,
             displayName: fullName || user.email,
             isConnected: clientConnection?.isConnected || false,
-            phoneNumber: user.profile?.personalInfo?.phoneNumber || undefined,
           };
 
           const roles = clientConnection?.roles || [];
@@ -262,7 +261,8 @@ export class UserService {
             tableUserData.employeeInfo = {
               jobTitle: user.profile?.employeeInfo?.jobTitle || undefined,
               department: user.profile?.employeeInfo?.department || undefined,
-              startDate: user.profile?.employeeInfo?.startDate || undefined,
+              startDate:
+                user.profile?.employeeInfo?.startDate || user.profile?.createdAt || undefined,
             };
           }
 

@@ -209,13 +209,6 @@ export class NotificationService {
         };
       }
 
-      this.log.info('Retrieving personal notifications', {
-        userId,
-        cuid,
-        filters,
-        pagination,
-      });
-
       const personalFilters: INotificationFilters = {
         ...filters,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
@@ -273,20 +266,11 @@ export class NotificationService {
         };
       }
 
-      this.log.info('Retrieving announcements', {
-        userId,
-        cuid,
-        filters,
-        pagination,
-      });
-
-      // Get announcements only (recipientType = announcement)
       const announcementFilters: INotificationFilters = {
         ...filters,
-        recipientType: RecipientTypeEnum.ANNOUNCEMENT, // Only announcements
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
       };
 
-      // For announcements, we need the user's targeting info to filter properly
       const targetingInfo = await this.userService.getUserAnnouncementFilters(userId, cuid);
 
       const result = await this.notificationDAO.findForUser(
@@ -296,13 +280,6 @@ export class NotificationService {
         announcementFilters,
         pagination
       );
-
-      this.log.info('Retrieved announcements successfully', {
-        userId,
-        cuid,
-        count: result.data.length,
-        total: result.total,
-      });
 
       return {
         success: true,

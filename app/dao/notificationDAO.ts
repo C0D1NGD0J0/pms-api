@@ -82,9 +82,43 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     pagination?: IPaginationQuery
   ): Promise<{ data: INotificationDocument[]; total: number }> {
     try {
-      const filter: FilterQuery<INotificationDocument> = {
-        cuid,
-        $or: [
+      // Build $or conditions based on recipientType filter
+      let orConditions: FilterQuery<INotificationDocument>[] = [];
+
+      if (filters?.recipientType) {
+        // Filter by specific recipientType
+        if (filters.recipientType === 'individual') {
+          // Only individual notifications for this user
+          orConditions = [{ recipientType: 'individual', recipient: new Types.ObjectId(userId) }];
+        } else if (filters.recipientType === 'announcement') {
+          // Only announcement notifications
+          orConditions = [
+            {
+              recipientType: 'announcement',
+              targetRoles: { $exists: false },
+              targetVendor: { $exists: false },
+            },
+            ...(targetingInfo.roles.length > 0
+              ? [
+                  {
+                    recipientType: 'announcement',
+                    targetRoles: { $in: targetingInfo.roles },
+                  },
+                ]
+              : []),
+            ...(targetingInfo.vendorId
+              ? [
+                  {
+                    recipientType: 'announcement',
+                    targetVendor: targetingInfo.vendorId,
+                  },
+                ]
+              : []),
+          ];
+        }
+      } else {
+        // No recipientType filter - include both individual and announcements (existing behavior)
+        orConditions = [
           // Individual notifications for this user
           { recipientType: 'individual', recipient: new Types.ObjectId(userId) },
           {
@@ -108,7 +142,12 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
                 },
               ]
             : []),
-        ],
+        ];
+      }
+
+      const filter: FilterQuery<INotificationDocument> = {
+        cuid,
+        $or: orConditions,
         deletedAt: null,
       };
 

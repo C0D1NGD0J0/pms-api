@@ -1,8 +1,6 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { SSECache } from '@caching/index';
 import { createLogger } from '@utils/helpers';
-import { ISSEMessage } from '@interfaces/sse.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ResourceContext } from '@interfaces/utils.interface';
 import { ProfileService, UserService, SSEService } from '@services/index';
@@ -32,7 +30,6 @@ interface IConstructor {
   profileDAO: ProfileDAO;
   sseService: SSEService;
   clientDAO: ClientDAO;
-  sseCache: SSECache;
   userDAO: UserDAO;
 }
 
@@ -43,7 +40,6 @@ export class NotificationService {
   private readonly profileService: ProfileService;
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
-  private readonly sseCache: SSECache;
   private readonly userDAO: UserDAO;
   private readonly log: Logger;
 
@@ -55,13 +51,11 @@ export class NotificationService {
     userService,
     sseService,
     profileService,
-    sseCache,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.setupEventListeners();
     this.clientDAO = clientDAO;
     this.sseService = sseService;
-    this.sseCache = sseCache;
     this.profileDAO = profileDAO;
     this.userService = userService;
     this.profileService = profileService;
@@ -117,7 +111,7 @@ export class NotificationService {
         const recipientId =
           typeof validatedData.recipient === 'string'
             ? validatedData.recipient
-            : validatedData.recipient.toString();
+            : String(validatedData.recipient);
 
         const shouldSend = await this.checkUserNotificationPreferences(
           recipientId,
@@ -1220,6 +1214,7 @@ export class NotificationService {
 
   private async publishToSSE(notification: INotificationDocument): Promise<void> {
     try {
+      // Check user preferences for individual notifications
       if (notification.recipientType === 'individual' && notification.recipient) {
         const shouldSend = await this.checkUserNotificationPreferences(
           notification.recipient.toString(),
@@ -1238,42 +1233,31 @@ export class NotificationService {
         }
       }
 
-      const sseMessage: ISSEMessage = {
-        id: notification.nuid,
-        event: notification.recipientType === 'individual' ? 'notification' : 'announcement',
-        data: notification,
-        timestamp: new Date(),
-      };
-
       if (notification.recipientType === 'individual' && notification.recipient) {
-        // Personal notification
+        const notificationData = notification.toObject ? notification.toObject() : notification;
+        const ssePayload = {
+          notifications: [notificationData],
+          total: 1,
+          isInitial: false, // Flag to indicate this is a new notification, not initial data
+        };
+
         await this.sseService.sendToUser(
           notification.recipient.toString(),
           notification.cuid,
-          sseMessage
+          ssePayload,
+          'my-notifications'
         );
-
-        this.log.debug('Published personal notification to SSE', {
-          nuid: notification.nuid,
-          recipientId: notification.recipient,
-          cuid: notification.cuid,
-        });
       } else if (notification.recipientType === 'announcement') {
-        // Announcement - publish to announcement channels
-        const announcementChannels = this.sseCache.generateAnnouncementChannels(notification.cuid);
+        const notificationData = notification.toObject ? notification.toObject() : notification;
+        const ssePayload = {
+          notifications: [notificationData],
+          total: 1,
+          isInitial: false,
+        };
 
-        for (const channel of announcementChannels) {
-          await this.sseService.sendToChannel(channel, sseMessage);
-        }
-
-        this.log.debug('Published announcement to SSE', {
-          nuid: notification.nuid,
-          channels: announcementChannels,
-          cuid: notification.cuid,
-        });
+        await this.sseService.broadcastToClient(notification.cuid, ssePayload, 'announcements');
       }
     } catch (error) {
-      // Log error but don't fail notification creation
       this.log.error('Failed to publish notification to SSE', {
         error: error instanceof Error ? error.message : 'Unknown error',
         nuid: notification.nuid,
@@ -1282,9 +1266,6 @@ export class NotificationService {
     }
   }
 
-  /**
-   * Check if user preferences allow sending this notification
-   */
   private async checkUserNotificationPreferences(
     userId: string,
     cuid: string,
@@ -1304,13 +1285,11 @@ export class NotificationService {
 
       const preferences = preferencesResult.data;
 
-      // Check if in-app notifications are disabled globally
       if (!preferences.inAppNotifications) {
         this.log.debug('In-app notifications disabled for user', { userId, cuid });
         return false;
       }
 
-      // Map notification types to preference fields
       const typeToPreferenceMap: Record<NotificationTypeEnum, keyof typeof preferences> = {
         [NotificationTypeEnum.ANNOUNCEMENT]: 'announcements',
         [NotificationTypeEnum.MAINTENANCE]: 'maintenance',

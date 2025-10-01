@@ -25,56 +25,30 @@ export class NotificationController {
   }
 
   markNotificationAsRead = async (req: AppRequest, res: Response) => {
-    try {
-      const { cuid, nuid } = req.params;
-      const userId = req.context?.currentuser?.sub;
+    const { cuid, nuid } = req.params;
+    const userId = req.context?.currentuser?.sub;
 
-      if (!userId) {
-        throw new UnauthorizedError({ message: 'User not authenticated' });
-      }
+    if (!userId) {
+      throw new UnauthorizedError({ message: 'User not authenticated' });
+    }
 
-      if (!cuid || !nuid) {
-        throw new BadRequestError({
-          message: 'Client ID (cuid) and Notification ID (nuid) are required',
-        });
-      }
+    if (req.context.currentuser.client.cuid !== cuid) {
+      throw new BadRequestError({ message: 'Invalid client context' });
+    }
 
-      // Validate user has access to this client
-      if (req.context.currentuser.client.cuid !== cuid) {
-        throw new BadRequestError({ message: 'Invalid client context' });
-      }
-
-      this.log.info('Marking notification as read', { nuid, userId, cuid });
-
-      const result = await this.notificationService.markAsRead(nuid, userId, cuid);
-
-      if (!result.success) {
-        return res.status(httpStatusCodes.BAD_REQUEST).json({
-          success: false,
-          message: result.message,
-        });
-      }
-
-      res.status(httpStatusCodes.OK).json({
-        success: true,
-        data: result.data,
-        message: result.message || t('notification.success.marked_as_read'),
-      });
-    } catch (error) {
-      this.log.error('Error marking notification as read:', error);
-
-      if (error instanceof BadRequestError || error instanceof UnauthorizedError) {
-        return res.status(error.statusCode).json({
-          success: false,
-          message: error.message,
-        });
-      }
-
-      res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
+    const result = await this.notificationService.markAsRead(nuid, userId, cuid);
+    if (!result.success) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
-        message: 'Failed to mark notification as read',
+        message: result.message,
       });
     }
+
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: result.data,
+      message: result.message || t('notification.success.marked_as_read'),
+    });
   };
 
   getMyNotificationsStream = async (req: AppRequest, res: Response): Promise<void> => {
@@ -90,12 +64,9 @@ export class NotificationController {
         throw new BadRequestError({ message: 'Invalid client context' });
       }
 
-      this.log.info(
-        `Starting personal notifications SSE stream for user ${userId} in client ${cuid}`
-      );
+      this.log.info('Starting personal notifications SSE stream', { userId, cuid });
 
       const { type, priority, isRead, last7days, last30days }: INotificationFilters = req.query;
-
       const filters: INotificationFilters = {
         type,
         priority,
@@ -104,22 +75,31 @@ export class NotificationController {
         last30days: last30days ? last30days === ('true' as unknown as boolean) : undefined,
       };
 
-      const initialData = await this.notificationService.getNotifications(cuid, userId, filters, {
+      const pagination: IPaginationQuery = {
         page: parseInt(req.query.page as string) || 1,
         limit: parseInt(req.query.limit as string) || 10,
         sortBy: (req.query.sortBy as string) || 'createdAt',
-      } as IPaginationQuery);
+      };
 
-      const sessionData = await this.sseService.createPersonalSession(userId, cuid);
-      const session = await this.sseService.initializeConnection(req, res, sessionData);
+      const initialData = await this.notificationService.getNotifications(
+        cuid,
+        userId,
+        filters,
+        pagination
+      );
 
+      const session = await this.sseService.connect(req, res, userId, cuid, 'personal');
       if (initialData.success && initialData.data) {
-        session.push(initialData.data, 'my-notifications');
+        const initialPayload = {
+          ...initialData.data,
+          isInitial: true,
+        };
+        session.push(initialPayload, 'my-notifications');
       }
 
-      this.log.info(`Personal notifications SSE stream established for user ${userId}`);
+      this.log.info('Personal notifications SSE stream established', { userId, cuid });
     } catch (error) {
-      this.log.error('Failed to start personal notifications SSE stream:', error);
+      this.log.error('Failed to start personal notifications SSE stream', { error });
       throw error;
     }
   };
@@ -137,7 +117,7 @@ export class NotificationController {
         throw new BadRequestError({ message: 'Invalid client context' });
       }
 
-      this.log.info(`Starting announcements SSE stream for user ${userId} in client ${cuid}`);
+      this.log.info('Starting announcements SSE stream', { userId, cuid });
 
       const { type, priority, isRead, last7days, last30days }: INotificationFilters = req.query;
       const filters: INotificationFilters = {
@@ -148,22 +128,31 @@ export class NotificationController {
         last30days: last30days ? last30days === ('true' as unknown as boolean) : undefined,
       };
 
-      const initialData = await this.notificationService.getAnnouncements(cuid, userId, filters, {
+      const pagination: IPaginationQuery = {
         page: parseInt(req.query.page as string) || 1,
         limit: parseInt(req.query.limit as string) || 20,
-      });
+        sortBy: (req.query.sortBy as string) || 'createdAt',
+      };
 
-      const sessionData = await this.sseService.createAnnouncementSession(userId, cuid);
-      const session = await this.sseService.initializeConnection(req, res, sessionData);
+      const initialData = await this.notificationService.getAnnouncements(
+        cuid,
+        userId,
+        filters,
+        pagination
+      );
 
-      // Send initial data as the first SSE message
+      const session = await this.sseService.connect(req, res, userId, cuid, 'announcement');
       if (initialData.success && initialData.data) {
-        session.push(initialData.data, 'announcements');
+        const initialPayload = {
+          ...initialData.data,
+          isInitial: true,
+        };
+        session.push(initialPayload, 'announcements');
       }
 
-      this.log.info(`Announcements SSE stream established for user ${userId}`);
+      this.log.info('Announcements SSE stream established', { userId, cuid });
     } catch (error) {
-      this.log.error('Failed to start announcements SSE stream:', error);
+      this.log.error('Failed to start announcements SSE stream', { error });
       throw error;
     }
   };

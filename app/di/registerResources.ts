@@ -18,7 +18,6 @@ import {
   VendorCache,
   AuthCache,
   UserCache,
-  SSECache,
 } from '@caching/index';
 import {
   NotificationModel,
@@ -154,10 +153,6 @@ const CacheResources = {
 
   propertyCache: asFunction(() => {
     return new PropertyCache();
-  }).singleton(),
-
-  sseCache: asFunction(() => {
-    return new SSECache();
   }).singleton(),
 
   eventsRegistry: asFunction(() => {

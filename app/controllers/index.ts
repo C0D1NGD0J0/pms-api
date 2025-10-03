@@ -1,4 +1,5 @@
 export * from './PropertyUnitController';
+export * from './NotificationController';
 export * from './InvitationController';
 export * from './PropertyController';
 export * from './ClientController';

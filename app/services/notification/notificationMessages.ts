@@ -6,11 +6,11 @@ export const NotificationMessages = {
     },
     approved: {
       title: 'Property Approved',
-      message: '{{propertyName}} has been approved by {{approverName}}',
+      message: '{{propertyName}} update has been approved by {{approverName}}',
     },
     rejected: {
       title: 'Property Rejected',
-      message: '{{propertyName}} was rejected. Reason: {{reason}}',
+      message: '{{propertyName}} update was rejected. Reason: {{reason}}',
     },
     updated: {
       title: 'Property Updated',

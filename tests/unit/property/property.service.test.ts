@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyService } from '@services/property/property.service';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
   createMockRequestContext,
@@ -130,7 +131,7 @@ describe('PropertyService', () => {
           query: {},
         },
         currentuser: createMockCurrentUser({
-          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
         }),
       });
       const propertyData = createMockNewProperty(); // No managedBy specified
@@ -177,7 +178,7 @@ describe('PropertyService', () => {
         },
         currentuser: createMockCurrentUser({
           sub: mockUserId,
-          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
         }),
       });
       const propertyData = createMockNewProperty(); // No managedBy specified
@@ -1056,7 +1057,7 @@ describe('PropertyService', () => {
       it('should return true for admin users', () => {
         // Arrange
         const adminUser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const mockProperty = createMockProperty({ pendingChanges: { name: 'test' } });
 
@@ -1070,7 +1071,7 @@ describe('PropertyService', () => {
       it('should return true for manager users', () => {
         // Arrange
         const managerUser = createMockCurrentUser({
-          client: { role: 'manager', cuid: 'test-cuid', displayname: 'Manager User' },
+          client: { role: ROLES.MANAGER, cuid: 'test-cuid', displayname: 'Manager User' },
         });
         const mockProperty = createMockProperty({ pendingChanges: { name: 'test' } });
 
@@ -1086,7 +1087,7 @@ describe('PropertyService', () => {
         const staffUserId = new Types.ObjectId().toString();
         const staffUser = createMockCurrentUser({
           sub: staffUserId,
-          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
         });
         const mockProperty = createMockProperty({
           pendingChanges: {
@@ -1107,7 +1108,7 @@ describe('PropertyService', () => {
         // Arrange
         const staffUser = createMockCurrentUser({
           sub: '507f1f77bcf86cd799439012',
-          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
         });
         const mockProperty = createMockProperty({
           pendingChanges: {
@@ -1127,7 +1128,7 @@ describe('PropertyService', () => {
       it('should return false for non-privileged users', () => {
         // Arrange
         const tenantUser = createMockCurrentUser({
-          client: { role: 'tenant', cuid: 'test-cuid', displayname: 'Tenant User' },
+          client: { role: ROLES.TENANT, cuid: 'test-cuid', displayname: 'Tenant User' },
         });
         const mockProperty = createMockProperty({ pendingChanges: { name: 'test' } });
 
@@ -1141,7 +1142,7 @@ describe('PropertyService', () => {
       it('should return false when property has no pending changes', () => {
         // Arrange
         const adminUser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const mockProperty = createMockProperty({ pendingChanges: null });
 
@@ -1225,7 +1226,7 @@ describe('PropertyService', () => {
       it('should generate preview for admin user', () => {
         // Arrange
         const adminUser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const updatedBy = new Types.ObjectId();
         const updatedAt = new Date();
@@ -1256,7 +1257,7 @@ describe('PropertyService', () => {
       it('should return undefined when user cannot see pending changes', () => {
         // Arrange
         const tenantUser = createMockCurrentUser({
-          client: { role: 'tenant', cuid: 'test-cuid', displayname: 'Tenant User' },
+          client: { role: ROLES.TENANT, cuid: 'test-cuid', displayname: 'Tenant User' },
         });
         const mockProperty = createMockProperty({
           pendingChanges: {
@@ -1279,7 +1280,7 @@ describe('PropertyService', () => {
       it('should return undefined when property has no pending changes', () => {
         // Arrange
         const adminUser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const mockProperty = createMockProperty({ pendingChanges: null });
 
@@ -1298,7 +1299,7 @@ describe('PropertyService', () => {
         const staffUserId = '507f1f77bcf86cd799439012';
         const staffUser = createMockCurrentUser({
           sub: staffUserId,
-          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
         });
         const updatedBy = new Types.ObjectId(staffUserId);
         const updatedAt = new Date();
@@ -1331,7 +1332,7 @@ describe('PropertyService', () => {
         // Arrange
         const cuid = 'test-cuid';
         const adminUser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const mockClient = createMockClient();
         const updatedBy = new Types.ObjectId();
@@ -1381,7 +1382,7 @@ describe('PropertyService', () => {
         // Arrange
         const cuid = 'test-cuid';
         const adminUser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const mockClient = createMockClient();
         const mockProperty = createMockProperty({ pendingChanges: null });
@@ -1419,7 +1420,7 @@ describe('PropertyService', () => {
         const staffUserId = '507f1f77bcf86cd799439012';
         const staffUser = createMockCurrentUser({
           sub: staffUserId,
-          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
         });
         const mockClient = createMockClient();
 
@@ -1474,7 +1475,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const pid = 'test-pid';
         const adminUser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const mockClient = createMockClient();
         const updatedBy = new Types.ObjectId();
@@ -1518,7 +1519,7 @@ describe('PropertyService', () => {
         });
 
         mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
-        mockPropertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockPropertyDAO.findPropertyWithActiveMedia.mockResolvedValue(mockProperty);
         jest.spyOn(propertyService, 'getUnitInfoForProperty').mockResolvedValue(mockUnitInfo);
 
         // Act
@@ -1542,7 +1543,7 @@ describe('PropertyService', () => {
         const pid = 'test-pid';
         const staffUser = createMockCurrentUser({
           sub: '507f1f77bcf86cd799439012',
-          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
         });
         const mockClient = createMockClient();
         const mockProperty = createMockProperty({
@@ -1642,7 +1643,7 @@ describe('PropertyService', () => {
           cuid: 'test-cuid',
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
-            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+            client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
           }),
           hardDelete: false,
         };
@@ -1695,7 +1696,7 @@ describe('PropertyService', () => {
           cuid: 'test-cuid',
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
-            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+            client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
           }),
           hardDelete: true,
         };
@@ -1752,7 +1753,7 @@ describe('PropertyService', () => {
           cuid: 'test-cuid',
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
-            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+            client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
           }),
           hardDelete: false,
         };
@@ -1796,7 +1797,7 @@ describe('PropertyService', () => {
           cuid: 'test-cuid',
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
-            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+            client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
           }),
         };
         const updateData = {
@@ -1826,7 +1827,7 @@ describe('PropertyService', () => {
           cuid: 'test-cuid',
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
-            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+            client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
           }),
         };
         const updateData = {
@@ -1860,7 +1861,7 @@ describe('PropertyService', () => {
             query: {},
           },
           currentuser: createMockCurrentUser({
-            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+            client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
           }),
         });
         const propertyData = createMockNewProperty();
@@ -1900,7 +1901,7 @@ describe('PropertyService', () => {
             query: {},
           },
           currentuser: createMockCurrentUser({
-            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+            client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
           }),
         });
         const propertyData = createMockNewProperty();
@@ -1944,7 +1945,7 @@ describe('PropertyService', () => {
             query: {},
           },
           currentuser: createMockCurrentUser({
-            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+            client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
           }),
         });
         const propertyData = createMockNewProperty();
@@ -1973,7 +1974,7 @@ describe('PropertyService', () => {
         // Arrange
         const cuid = 'test-cuid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const pagination = { page: 1, limit: 10 };
         const mockPendingProperties = [
@@ -2005,7 +2006,7 @@ describe('PropertyService', () => {
         // Arrange
         const cuid = 'test-cuid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
         });
         const pagination = { page: 1, limit: 10 };
 
@@ -2022,7 +2023,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const pid = 'test-pid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const notes = 'Approved for listing';
         const mockProperty = createMockProperty({ approvalStatus: 'pending' });
@@ -2042,9 +2043,16 @@ describe('PropertyService', () => {
         expect(mockPropertyDAO.update).toHaveBeenCalledWith(
           { pid, cuid, deletedAt: null },
           expect.objectContaining({
-            $set: expect.objectContaining({
-              approvalStatus: 'approved',
+            approvalStatus: 'approved',
+            $push: expect.objectContaining({
+              approvalDetails: expect.objectContaining({
+                action: 'approved',
+                actor: expect.any(Object),
+                timestamp: expect.any(Date),
+                notes: 'Approved for listing',
+              }),
             }),
+            lastModifiedBy: expect.any(Object),
           })
         );
       });
@@ -2054,7 +2062,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const pid = 'test-pid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const mockProperty = createMockProperty({ approvalStatus: 'approved' });
 
@@ -2071,7 +2079,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const pid = 'test-pid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
         });
 
         // Act & Assert
@@ -2087,7 +2095,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const pid = 'test-pid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'manager', cuid: 'test-cuid', displayname: 'Manager User' },
+          client: { role: ROLES.MANAGER, cuid: 'test-cuid', displayname: 'Manager User' },
         });
         const reason = 'Incomplete property information';
         const mockProperty = createMockProperty({ approvalStatus: 'pending' });
@@ -2119,7 +2127,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const pid = 'test-pid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
 
         // Act & Assert
@@ -2135,7 +2143,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const propertyIds = ['pid-1', 'pid-2', 'pid-3'];
         const currentuser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
 
         mockPropertyDAO.updateMany.mockResolvedValue({ modifiedCount: 3 });
@@ -2162,7 +2170,7 @@ describe('PropertyService', () => {
         // Arrange
         const cuid = 'test-cuid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
 
         // Act & Assert
@@ -2178,7 +2186,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const propertyIds = ['pid-1', 'pid-2'];
         const currentuser = createMockCurrentUser({
-          client: { role: 'manager', cuid: 'test-cuid', displayname: 'Manager User' },
+          client: { role: ROLES.MANAGER, cuid: 'test-cuid', displayname: 'Manager User' },
         });
         const reason = 'Batch rejection for incomplete data';
 
@@ -2205,7 +2213,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const currentuser = createMockCurrentUser({
           sub: '507f1f77bcf86cd799439013',
-          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
         });
         const filters = {
           approvalStatus: 'pending' as const,
@@ -2244,7 +2252,7 @@ describe('PropertyService', () => {
           cuid: 'test-cuid',
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
-            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+            client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
           }),
         };
         const updateData = {
@@ -2298,7 +2306,7 @@ describe('PropertyService', () => {
           cuid: 'test-cuid',
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
-            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+            client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
           }),
         };
         const updateData = { name: 'Admin Updated Name' };
@@ -2339,7 +2347,7 @@ describe('PropertyService', () => {
           cuid: 'test-cuid',
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
-            client: { role: 'tenant', cuid: 'test-cuid', displayname: 'Tenant User' },
+            client: { role: ROLES.TENANT, cuid: 'test-cuid', displayname: 'Tenant User' },
           }),
         };
         const updateData = { name: 'Attempted Update' };
@@ -2364,7 +2372,7 @@ describe('PropertyService', () => {
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
             sub: '507f1f77bcf86cd799439010',
-            client: { role: 'staff', cuid: 'test-cuid', displayname: 'User B' },
+            client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'User B' },
           }),
         };
         const updateData = { name: 'User B Update' };
@@ -2377,8 +2385,8 @@ describe('PropertyService', () => {
             name: 'User A Update',
             updatedBy: new Types.ObjectId('507f1f77bcf86cd799439011'), // Different user
             updatedAt: new Date(),
-            displayName: 'User A'
-          }
+            displayName: 'User A',
+          },
         });
 
         mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
@@ -2401,7 +2409,7 @@ describe('PropertyService', () => {
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
             sub: userId,
-            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Same User' },
+            client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Same User' },
           }),
         };
         const updateData = { name: 'Updated by Same User' };
@@ -2414,8 +2422,8 @@ describe('PropertyService', () => {
             name: 'Previous Update',
             updatedBy: new Types.ObjectId(userId), // Same user
             updatedAt: new Date(),
-            displayName: 'Same User'
-          }
+            displayName: 'Same User',
+          },
         });
 
         const mockUpdatedProperty = {
@@ -2424,8 +2432,8 @@ describe('PropertyService', () => {
             ...updateData,
             updatedBy: new Types.ObjectId(userId),
             updatedAt: new Date(),
-            displayName: 'Same User'
-          }
+            displayName: 'Same User',
+          },
         };
 
         mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
@@ -2449,7 +2457,7 @@ describe('PropertyService', () => {
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
             sub: '507f1f77bcf86cd799439015',
-            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+            client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
           }),
         };
         const updateData = { name: 'Admin Override Update' };
@@ -2462,14 +2470,14 @@ describe('PropertyService', () => {
             name: 'Staff Update',
             updatedBy: new Types.ObjectId('507f1f77bcf86cd799439013'),
             updatedAt: new Date(),
-            displayName: 'Staff User'
-          }
+            displayName: 'Staff User',
+          },
         });
 
         const mockUpdatedProperty = {
           ...mockProperty,
           ...updateData,
-          approvalStatus: 'approved'
+          approvalStatus: 'approved',
         };
 
         mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
@@ -2493,7 +2501,7 @@ describe('PropertyService', () => {
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
             sub: '507f1f77bcf86cd799439014',
-            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+            client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
           }),
         };
         const updateData = { name: 'New Staff Update' };
@@ -2502,7 +2510,7 @@ describe('PropertyService', () => {
         // Property with no pending changes
         const mockProperty = createMockProperty({
           approvalStatus: 'approved',
-          pendingChanges: null
+          pendingChanges: null,
         });
 
         const mockUpdatedProperty = {
@@ -2511,8 +2519,8 @@ describe('PropertyService', () => {
             ...updateData,
             updatedBy: new Types.ObjectId('507f1f77bcf86cd799439014'),
             updatedAt: new Date(),
-            displayName: 'Staff User'
-          }
+            displayName: 'Staff User',
+          },
         };
 
         mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
@@ -2536,7 +2544,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const pid = 'test-pid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const mockProperty = createMockProperty({
           approvalStatus: 'approved',
@@ -2585,7 +2593,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const pid = 'test-pid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'manager', cuid: 'test-cuid', displayname: 'Manager User' },
+          client: { role: ROLES.MANAGER, cuid: 'test-cuid', displayname: 'Manager User' },
         });
         const mockProperty = createMockProperty({
           approvalStatus: 'pending',
@@ -2622,7 +2630,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const pid = 'test-pid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const mockProperty = createMockProperty({
           approvalStatus: 'approved',
@@ -2644,7 +2652,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const pid = 'test-pid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const reason = 'Changes not appropriate';
         const mockProperty = createMockProperty({
@@ -2692,7 +2700,7 @@ describe('PropertyService', () => {
         const cuid = 'test-cuid';
         const pid = 'test-pid';
         const currentuser = createMockCurrentUser({
-          client: { role: 'manager', cuid: 'test-cuid', displayname: 'Manager User' },
+          client: { role: ROLES.MANAGER, cuid: 'test-cuid', displayname: 'Manager User' },
         });
         const reason = 'Property does not meet standards';
         const mockProperty = createMockProperty({
@@ -2734,7 +2742,7 @@ describe('PropertyService', () => {
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
             sub: '507f1f77bcf86cd799439012',
-            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+            client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
           }),
         };
         const updateData = {
@@ -2765,7 +2773,7 @@ describe('PropertyService', () => {
 
         // Step 2: Admin approves (applies pending changes)
         const adminUser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const propertyWithPendingChanges = {
           ...mockProperty,
@@ -2802,7 +2810,7 @@ describe('PropertyService', () => {
           pid: 'test-pid',
           currentuser: createMockCurrentUser({
             sub: '507f1f77bcf86cd799439012',
-            client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+            client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
           }),
         };
         const updateData = { name: 'Bad Update' };
@@ -2828,7 +2836,7 @@ describe('PropertyService', () => {
 
         // Step 2: Admin rejects (clears pending changes, keeps original)
         const adminUser = createMockCurrentUser({
-          client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+          client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
         });
         const propertyWithPendingChanges = {
           ...mockProperty,
@@ -2877,7 +2885,7 @@ describe('PropertyService', () => {
 
         // Act
         const mockCurrentUser = createMockCurrentUser({
-          client: { role: 'staff', cuid: 'test-cuid', displayname: 'Staff User' },
+          client: { role: ROLES.STAFF, cuid: 'test-cuid', displayname: 'Staff User' },
         });
         await propertyService.getClientProperties(cuid, mockCurrentUser, mockQueryParams);
 
@@ -2885,7 +2893,7 @@ describe('PropertyService', () => {
         expect(mockPropertyDAO.getPropertiesByClientId).toHaveBeenCalledWith(
           cuid,
           expect.objectContaining({
-            $and: [{ approvalStatus: { $exists: true } }, { approvalStatus: 'approved' }],
+            $or: [{ approvalStatus: 'approved' }, { approvalStatus: 'pending' }],
             status: { $ne: 'inactive' },
           }),
           expect.any(Object)
@@ -2900,7 +2908,7 @@ describe('PropertyService', () => {
           filters: { includeUnapproved: true },
           pagination: { page: 1, limit: 10 },
           currentUser: createMockCurrentUser({
-            client: { role: 'admin', cuid: 'test-cuid', displayname: 'Admin User' },
+            client: { role: ROLES.ADMIN, cuid: 'test-cuid', displayname: 'Admin User' },
           }),
         };
 

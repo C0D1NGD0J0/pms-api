@@ -33,6 +33,13 @@ const settingsSchema = z.object({
       messages: z.boolean().optional(),
       comments: z.boolean().optional(),
       announcements: z.boolean().optional(),
+      maintenance: z.boolean().optional(),
+      payments: z.boolean().optional(),
+      system: z.boolean().optional(),
+      propertyUpdates: z.boolean().optional(),
+      emailNotifications: z.boolean().optional(),
+      inAppNotifications: z.boolean().optional(),
+      emailFrequency: z.enum(['immediate', 'daily']).optional(),
     })
     .optional(),
   gdprSettings: z
@@ -106,6 +113,20 @@ const documentsSchema = z.object({
   items: z.array(documentSchema).default([]).optional(),
 });
 
+// Dedicated notification preferences schema
+const notificationPreferencesSchema = z.object({
+  messages: z.boolean().optional(),
+  comments: z.boolean().optional(),
+  announcements: z.boolean().optional(),
+  maintenance: z.boolean().optional(),
+  payments: z.boolean().optional(),
+  system: z.boolean().optional(),
+  propertyUpdates: z.boolean().optional(),
+  emailNotifications: z.boolean().optional(),
+  inAppNotifications: z.boolean().optional(),
+  emailFrequency: z.enum(['immediate', 'daily']).optional(),
+});
+
 export const ProfileValidations = {
   updateUserInfo: userInfoSchema,
   updatePersonalInfo: personalInfoSchema,
@@ -114,6 +135,7 @@ export const ProfileValidations = {
   updateProfileMeta: profileMetaSchema,
   updateEmployeeInfo: employeeInfoSchema,
   updateVendorInfo: vendorInfoSchema,
+  updateNotificationPreferences: notificationPreferencesSchema,
   profileUpdate: z
     .object({
       userInfo: userInfoSchema.optional(),

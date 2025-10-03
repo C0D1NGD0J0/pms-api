@@ -2,11 +2,13 @@ import color from 'colors';
 import crypto from 'crypto';
 import bunyan from 'bunyan';
 import * as nanoid from 'nanoid';
+import { Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
 import { PhoneNumber } from 'libphonenumber-js';
 import { Country, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
+import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
   AsyncRequestHandler,
   ExtractedMediaFile,
@@ -19,6 +21,7 @@ import { JWT_KEY_NAMES } from './constants';
 
 const loggers = new WeakMap<object, bunyan>();
 const loggerKeys = new Map<string, object>();
+
 /**
  * Creates a customized Bunyan logger instance with color-coded console output
  * @param name - The name of the logger to create
@@ -140,7 +143,6 @@ export function createLogger(name: string) {
 
   return logger;
 }
-
 /**
  * Sets an authentication cookie in the HTTP response
  * @param cookieName - The name of the JWT cookie
@@ -193,6 +195,36 @@ export function setAuthCookies(
   }
 
   return res;
+}
+
+/**
+ * Converts a user role string to IUserRole enum value
+ * @param userRole - The user role string to convert (case-insensitive)
+ * @returns The corresponding IUserRole enum value
+ * @throws Error if the role string is invalid or not supported
+ */
+export function convertUserRoleToEnum(userRole: string): IUserRole {
+  if (!userRole || typeof userRole !== 'string') {
+    throw new Error('User role must be a non-empty string');
+  }
+
+  // First, try to find the role in ROLES constants (case-insensitive)
+  const roleValue = Object.values(ROLES).find(
+    (role) => role.toLowerCase() === userRole.toLowerCase()
+  );
+  if (roleValue) {
+    return roleValue as IUserRole;
+  }
+
+  // Fallback: try enum lookup for backward compatibility
+  const upperRole = userRole.trim().toUpperCase() as keyof typeof IUserRole;
+  const enumValue = IUserRole[upperRole];
+  if (enumValue) {
+    return enumValue;
+  }
+
+  const validRoles = Object.values(ROLES).join(', ');
+  throw new Error(`Invalid user role: "${userRole}". Valid roles are: ${validRoles}`);
 }
 
 /**
@@ -598,12 +630,16 @@ export const createSafeMongoUpdate = (updateData: Record<string, any>): Record<s
   const result: Record<string, any> = {};
 
   for (const [key, value] of Object.entries(updateData)) {
-    if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
-      // Convert nested objects to dot notation
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      !(value instanceof Date) &&
+      !(value instanceof Types.ObjectId)
+    ) {
       const dotNotated = buildDotNotation(value, key);
       Object.assign(result, dotNotated);
     } else {
-      // Keep primitive values, arrays, dates, and null as-is
       result[key] = value;
     }
   }

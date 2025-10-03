@@ -102,8 +102,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
         payments: { type: Boolean, default: true },
         system: { type: Boolean, default: true },
         propertyUpdates: { type: Boolean, default: true },
-        leases: { type: Boolean, default: true },
-        users: { type: Boolean, default: true },
         emailNotifications: { type: Boolean, default: true },
         inAppNotifications: { type: Boolean, default: true },
 
@@ -231,8 +229,6 @@ ProfileSchema.methods.getGravatarUrl = function (email: string): string {
   const hash = md5(email);
   return `https://gravatar.com/avatar/${hash}?s=200`;
 };
-
-// These methods have been removed since clientRoleInfo is now in the User model
 
 // automatically set retention date based on policy
 ProfileSchema.pre('save', function (this: IProfileDocument, next) {

@@ -1,4 +1,5 @@
 import { Document, Types } from 'mongoose';
+import { IUserRoleType } from '@shared/constants/roles.constants';
 
 import { IClientUserConnections, ICompanyProfile } from './client.interface';
 import { IProfileDocument, GDPRSettings, EmployeeInfo, VendorInfo } from './profile.interface';
@@ -9,14 +10,6 @@ export enum IUserRelationshipsEnum {
   spouse = 'spouse',
   child = 'child',
   other = 'other',
-}
-
-export enum IUserRole {
-  MANAGER = 'manager',
-  VENDOR = 'vendor',
-  TENANT = 'tenant',
-  STAFF = 'staff',
-  ADMIN = 'admin',
 }
 
 export interface IVendorDetailInfo {
@@ -404,8 +397,6 @@ export interface StatsDistribution {
   value: number;
   name: string;
 }
-
-export type IUserRoleType = 'admin' | 'tenant' | 'manager' | 'staff' | 'landlord' | 'vendor';
 
 export type IUserPopulatedDocument = {
   profile: IProfileDocument;

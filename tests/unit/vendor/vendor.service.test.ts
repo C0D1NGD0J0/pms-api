@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { VendorService } from '@services/vendor/vendor.service';
 import { VendorDAO } from '@dao/vendorDAO';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IVendorDocument, NewVendor } from '@interfaces/vendor.interface';
 
@@ -602,7 +603,7 @@ describe('VendorService', () => {
         uid: 'user-123',
         email: 'vendor@test.com',
         isActive: true,
-        cuids: [{ cuid: mockIds.client, isConnected: true, roles: ['vendor'] }],
+        cuids: [{ cuid: mockIds.client, isConnected: true, roles: [ROLES.VENDOR] }],
         profile: {
           personalInfo: {
             firstName: 'John',

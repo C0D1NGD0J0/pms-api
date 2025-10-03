@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { RequestSource } from '@interfaces/utils.interface';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { BadRequestError, ConflictError } from '@shared/customErrors';
 import { InvitationService } from '@services/invitation/invitation.service';
 import {
@@ -120,7 +121,7 @@ describe('InvitationService', () => {
       const mockInviter = createMockUser({
         _id: new Types.ObjectId(testUserId),
         cuids: [
-          { cuid: testCuid, roles: ['admin'], isConnected: true, clientDisplayName: 'Test Client' },
+          { cuid: testCuid, roles: [ROLES.ADMIN], isConnected: true, clientDisplayName: 'Test Client' },
         ],
       });
       const mockInvitation = createMockInvitation({
@@ -144,7 +145,7 @@ describe('InvitationService', () => {
       const invitationData = createMockInvitationData({
         inviteeEmail: testEmail,
         personalInfo: { firstName: 'John', lastName: 'Doe' },
-        role: 'manager' as any,
+        role: ROLES.MANAGER as any,
         status: 'pending',
       });
 
@@ -286,7 +287,7 @@ describe('InvitationService', () => {
         cuids: [
           {
             cuid: mockClientId.toString(),
-            roles: ['admin'],
+            roles: [ROLES.ADMIN],
             isConnected: true,
             clientDisplayName: 'Test Client',
           },
@@ -334,7 +335,7 @@ describe('InvitationService', () => {
         cuids: [
           {
             cuid: mockClientId.toString(),
-            roles: ['admin'],
+            roles: [ROLES.ADMIN],
             isConnected: true,
             clientDisplayName: 'Test Client',
           },
@@ -371,7 +372,7 @@ describe('InvitationService', () => {
         cuids: [
           {
             cuid: mockClientId.toString(),
-            roles: ['admin'],
+            roles: [ROLES.ADMIN],
             isConnected: true,
             clientDisplayName: 'Test Client',
           },

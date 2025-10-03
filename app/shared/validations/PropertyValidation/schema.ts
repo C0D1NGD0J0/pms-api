@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { PropertyDAO, ClientDAO } from '@dao/index';
 import { BaseCSVProcessorService } from '@services/csv/base';
+import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
 const getContainer = async () => {
   const { container } = await import('@di/setup');
@@ -480,7 +481,7 @@ export const AddressValidationSchema = z.object({
 
 export const GetAssignableUsersSchema = z.object({
   role: z
-    .enum(['admin', 'staff', 'manager', 'all'], {
+    .enum([...ROLE_VALIDATION.EMPLOYEE_ROLES, 'all'] as [string, ...string[]], {
       errorMap: () => ({ message: 'Role must be admin, staff, manager, or all' }),
     })
     .optional(),

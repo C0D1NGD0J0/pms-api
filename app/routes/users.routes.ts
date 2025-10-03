@@ -175,4 +175,18 @@ router.patch(
   })
 );
 
+router.get(
+  '/:cuid/notification-preferences',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid,
+    query: UserValidations.userIdParam,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getNotificationPreferences(req, res);
+  })
+);
+
 export default router;

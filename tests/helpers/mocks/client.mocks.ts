@@ -1,6 +1,7 @@
 import { ClientSession } from 'mongoose';
 import { IUserDocument } from '@interfaces/user.interface';
 import { IClientDocument } from '@interfaces/client.interface';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 
 export const createMockClientDAO = () => ({
   findFirst: jest.fn(),
@@ -125,7 +126,7 @@ export const createMockUserDAO = () => ({
         _id: 'user1',
         email: 'user1@example.com',
         cuids: [
-          { cuid: 'client1', roles: ['admin'], isConnected: true, displayName: 'Admin User' },
+          { cuid: 'client1', roles: [ROLES.ADMIN], isConnected: true, displayName: 'Admin User' },
         ],
         profile: { personalInfo: { firstName: 'Admin', lastName: 'User' } },
       },
@@ -298,7 +299,7 @@ export const createMockClientService = () => ({
           id: 'user1',
           email: 'user1@example.com',
           displayName: 'User One',
-          roles: ['admin'],
+          roles: [ROLES.ADMIN],
           isConnected: true,
           profile: { personalInfo: { firstName: 'User', lastName: 'One' } },
         },

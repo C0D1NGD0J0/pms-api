@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { t } from '@shared/languages';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyService } from '@services/index';
+import { IUserRole } from '@shared/constants/roles.constants';
 import propertyFormMeta from '@shared/constants/fromStaticData.json';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { IPropertyFilterQuery, PropertyType } from '@interfaces/property.interface';
@@ -223,7 +224,12 @@ export class PropertyController {
   getAssignableUsers = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     const filters = {
-      role: req.query.role as 'admin' | 'staff' | 'manager' | 'all' | undefined,
+      role: req.query.role as
+        | IUserRole.ADMIN
+        | IUserRole.STAFF
+        | IUserRole.MANAGER
+        | 'all'
+        | undefined,
       department: req.query.department as string | undefined,
       search: req.query.search as string | undefined,
       page: req.query.page ? parseInt(req.query.page as string) : undefined,

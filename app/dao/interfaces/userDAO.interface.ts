@@ -1,7 +1,8 @@
 import { FilterQuery } from 'mongoose';
+import { IUserDocument } from '@interfaces/user.interface';
+import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
-import { IUserDocument, IUserRoleType } from '@interfaces/user.interface';
 
 import { IFindOptions, dynamic } from './baseDAO.interface';
 

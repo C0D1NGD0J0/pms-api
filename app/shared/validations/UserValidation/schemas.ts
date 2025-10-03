@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
 export const UserUidParamSchema = z.object({
   cuid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
@@ -12,13 +13,13 @@ export const UserIdParamSchema = z.object({
 export const UserFilterQuerySchema = z.object({
   role: z
     .union([
-      z.enum(['admin', 'manager', 'tenant', 'staff', 'vendor']),
-      z.array(z.enum(['admin', 'manager', 'tenant', 'staff', 'vendor'])),
+      z.enum(ROLE_VALIDATION.ALL_ROLES),
+      z.array(z.enum(ROLE_VALIDATION.ALL_ROLES)),
       // Comma-separated string that gets transformed to array
       z
         .string()
         .transform((val) => val.split(',').map((r) => r.trim()))
-        .pipe(z.array(z.enum(['admin', 'manager', 'tenant', 'staff', 'vendor']))),
+        .pipe(z.array(z.enum(ROLE_VALIDATION.ALL_ROLES))),
     ])
     .optional(),
   department: z.string().optional(),
@@ -32,7 +33,7 @@ export const UserFilterQuerySchema = z.object({
 
 export const UserRoleParamSchema = z.object({
   cuid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
-  role: z.enum(['admin', 'manager', 'tenant', 'staff', 'vendor'], {
+  role: z.enum(ROLE_VALIDATION.ALL_ROLES, {
     errorMap: () => ({
       message: 'Invalid role. Must be one of: admin, manager, tenant, staff, vendor',
     }),

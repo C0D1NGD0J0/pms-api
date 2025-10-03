@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { IPaginationQuery } from '@interfaces/utils.interface';
@@ -81,9 +82,43 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     pagination?: IPaginationQuery
   ): Promise<{ data: INotificationDocument[]; total: number }> {
     try {
-      const filter: FilterQuery<INotificationDocument> = {
-        cuid,
-        $or: [
+      // Build $or conditions based on recipientType filter
+      let orConditions: FilterQuery<INotificationDocument>[] = [];
+
+      if (filters?.recipientType) {
+        // Filter by specific recipientType
+        if (filters.recipientType === 'individual') {
+          // Only individual notifications for this user
+          orConditions = [{ recipientType: 'individual', recipient: new Types.ObjectId(userId) }];
+        } else if (filters.recipientType === 'announcement') {
+          // Only announcement notifications
+          orConditions = [
+            {
+              recipientType: 'announcement',
+              targetRoles: { $exists: false },
+              targetVendor: { $exists: false },
+            },
+            ...(targetingInfo.roles.length > 0
+              ? [
+                  {
+                    recipientType: 'announcement',
+                    targetRoles: { $in: targetingInfo.roles },
+                  },
+                ]
+              : []),
+            ...(targetingInfo.vendorId
+              ? [
+                  {
+                    recipientType: 'announcement',
+                    targetVendor: targetingInfo.vendorId,
+                  },
+                ]
+              : []),
+          ];
+        }
+      } else {
+        // No recipientType filter - include both individual and announcements (existing behavior)
+        orConditions = [
           // Individual notifications for this user
           { recipientType: 'individual', recipient: new Types.ObjectId(userId) },
           {
@@ -107,7 +142,12 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
                 },
               ]
             : []),
-        ],
+        ];
+      }
+
+      const filter: FilterQuery<INotificationDocument> = {
+        cuid,
+        $or: orConditions,
         deletedAt: null,
       };
 
@@ -129,10 +169,14 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
         if (filters.resourceId) {
           filter['resourceInfo.resourceId'] = new Types.ObjectId(filters.resourceId);
         }
-        if (filters.dateFrom || filters.dateTo) {
+        if (filters.last7days || filters.last30days) {
           filter.createdAt = {};
-          if (filters.dateFrom) filter.createdAt.$gte = filters.dateFrom;
-          if (filters.dateTo) filter.createdAt.$lte = filters.dateTo;
+
+          if (filters.last7days) {
+            filter.createdAt.$gte = dayjs().subtract(7, 'days').toDate();
+          } else if (filters.last30days) {
+            filter.createdAt.$gte = dayjs().subtract(30, 'days').toDate();
+          }
         }
       }
 

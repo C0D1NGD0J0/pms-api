@@ -1,8 +1,9 @@
 import Logger from 'bunyan';
 import { ListResultWithPagination } from '@interfaces/index';
 import { generateShortUID, createLogger } from '@utils/index';
+import { IUserRole } from '@shared/constants/roles.constants';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
-import { IdentificationType, IUserDocument, IUserRole } from '@interfaces/user.interface';
+import { IdentificationType, IUserDocument } from '@interfaces/user.interface';
 import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/client.interface';
 
 import { BaseDAO } from './baseDAO';

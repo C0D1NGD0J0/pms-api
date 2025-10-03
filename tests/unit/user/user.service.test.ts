@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { UserService } from '@services/user/user.service';
-import { IUserRole } from '@interfaces/user.interface';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
   createMockRequestContext,
@@ -69,7 +69,7 @@ describe('UserService', () => {
           params: { cuid: 'test-client-id' },
         },
       });
-      const role = IUserRole.MANAGER;
+      const role = ROLES.MANAGER;
       const clientId = 'test-client-id';
       const mockClient = createMockClient({ cuid: clientId });
       const mockUsers = [
@@ -78,7 +78,7 @@ describe('UserService', () => {
           cuids: [
             {
               cuid: clientId,
-              roles: ['manager'],
+              roles: [ROLES.MANAGER],
               isConnected: true,
               clientDisplayName: 'Manager 1',
             },
@@ -89,7 +89,7 @@ describe('UserService', () => {
           cuids: [
             {
               cuid: clientId,
-              roles: ['manager'],
+              roles: [ROLES.MANAGER],
               isConnected: true,
               clientDisplayName: 'Manager 2',
             },
@@ -139,7 +139,7 @@ describe('UserService', () => {
           params: {},
         },
       });
-      const role = IUserRole.ADMIN;
+      const role = ROLES.ADMIN;
       const clientId = mockContext.currentuser.client.cuid;
       const mockClient = createMockClient({ cuid: clientId });
 
@@ -163,7 +163,7 @@ describe('UserService', () => {
     const mockClient = createMockClient({ cuid: 'test-client-id' });
 
     it('should successfully retrieve filtered users with employee type', async () => {
-      const filterOptions = { role: [IUserRole.MANAGER], status: 'active' as const };
+      const filterOptions = { role: [ROLES.MANAGER], status: 'active' as const };
       const paginationOpts = { limit: 10, skip: 0 };
       const mockUsers = [
         {
@@ -172,7 +172,7 @@ describe('UserService', () => {
           cuids: [
             {
               cuid: 'test-client-id',
-              roles: ['manager'],
+              roles: [ROLES.MANAGER],
               isConnected: true,
               clientDisplayName: 'Employee Manager',
             },
@@ -215,13 +215,13 @@ describe('UserService', () => {
       expect(mockClientDAO.getClientByCuid).toHaveBeenCalledWith('test-client-id');
       expect(mockUserDAO.getUsersByFilteredType).toHaveBeenCalledWith(
         'test-client-id',
-        { role: ['manager'], status: 'active' },
+        { role: [ROLES.MANAGER], status: 'active' },
         paginationOpts
       );
     });
 
     it('should successfully retrieve filtered users with vendor type', async () => {
-      const filterOptions = { role: [IUserRole.VENDOR] };
+      const filterOptions = { role: [ROLES.VENDOR] };
       const paginationOpts = { limit: 10, skip: 0 };
       const mockUsers = [
         {
@@ -231,7 +231,7 @@ describe('UserService', () => {
           cuids: [
             {
               cuid: 'test-client-id',
-              roles: ['vendor'],
+              roles: [ROLES.VENDOR],
               isConnected: true,
               clientDisplayName: 'Vendor User',
               linkedVendorUid: 'vendor-company-123',
@@ -307,7 +307,7 @@ describe('UserService', () => {
     });
 
     it('should successfully retrieve filtered users with tenant type', async () => {
-      const filterOptions = { role: [IUserRole.TENANT] };
+      const filterOptions = { role: [ROLES.TENANT] };
       const paginationOpts = { limit: 10, skip: 0 };
       const mockUsers = [
         {
@@ -316,7 +316,7 @@ describe('UserService', () => {
           cuids: [
             {
               cuid: 'test-client-id',
-              roles: ['tenant'],
+              roles: [ROLES.TENANT],
               isConnected: true,
               clientDisplayName: 'Tenant User',
             },
@@ -359,7 +359,7 @@ describe('UserService', () => {
     });
 
     it('should handle vendor without linkedVendorUid (primary vendor)', async () => {
-      const filterOptions = { role: [IUserRole.VENDOR] };
+      const filterOptions = { role: [ROLES.VENDOR] };
       const paginationOpts = { limit: 10, skip: 0 };
       const mockUsers = [
         {
@@ -369,7 +369,7 @@ describe('UserService', () => {
           cuids: [
             {
               cuid: 'test-client-id',
-              roles: ['vendor'],
+              roles: [ROLES.VENDOR],
               isConnected: true,
               clientDisplayName: 'Primary Vendor',
             },
@@ -434,7 +434,7 @@ describe('UserService', () => {
     });
 
     it('should convert string role to array format', async () => {
-      const filterOptions = { role: IUserRole.MANAGER as any };
+      const filterOptions = { role: ROLES.MANAGER as any };
       const paginationOpts = { limit: 10, skip: 0 };
 
       mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
@@ -447,7 +447,7 @@ describe('UserService', () => {
 
       expect(mockUserDAO.getUsersByFilteredType).toHaveBeenCalledWith(
         'test-client-id',
-        { role: ['manager'] },
+        { role: [ROLES.MANAGER] },
         paginationOpts
       );
     });
@@ -488,7 +488,7 @@ describe('UserService', () => {
   describe('getUserStats', () => {
     it('should successfully retrieve user statistics for employee roles', async () => {
       const mockClient = createMockClient({ cuid: 'test-client-id' });
-      const filterOptions = { role: [IUserRole.STAFF] };
+      const filterOptions = { role: [ROLES.STAFF] };
       const expectedStats = {
         totalFilteredUsers: 10,
         roleDistribution: [{ name: 'Staff', value: 10, percentage: 100 }],
@@ -510,7 +510,7 @@ describe('UserService', () => {
 
     it('should successfully retrieve user statistics for any role', async () => {
       const mockClient = createMockClient({ cuid: 'test-client-id' });
-      const filterOptions = { role: [IUserRole.MANAGER] };
+      const filterOptions = { role: [ROLES.MANAGER] };
       const expectedStats = {
         totalFilteredUsers: 5,
         roleDistribution: [{ name: 'Manager', value: 5, percentage: 100 }],
@@ -575,7 +575,7 @@ describe('UserService', () => {
           cuids: [
             {
               cuid: mockClientId,
-              roles: ['vendor'],
+              roles: [ROLES.VENDOR],
               isConnected: true,
               clientDisplayName: 'Team Member 1',
               linkedVendorUid: mockVendorId,
@@ -598,7 +598,7 @@ describe('UserService', () => {
           cuids: [
             {
               cuid: mockClientId,
-              roles: ['vendor'],
+              roles: [ROLES.VENDOR],
               isConnected: true,
               clientDisplayName: 'Team Member 2',
               linkedVendorUid: mockVendorId,
@@ -628,7 +628,7 @@ describe('UserService', () => {
       mockUserDAO.getUserByUId.mockResolvedValue({
         _id: 'vendor-object-id',
         uid: mockVendorId,
-        cuids: [{ cuid: mockClientId, isConnected: true, roles: ['vendor'] }],
+        cuids: [{ cuid: mockClientId, isConnected: true, roles: [ROLES.VENDOR] }],
         profile: { personalInfo: { firstName: 'Vendor', lastName: 'Owner' } },
       });
 
@@ -664,7 +664,7 @@ describe('UserService', () => {
       });
       expect(mockUserDAO.getUsersByFilteredType).toHaveBeenCalledWith(
         mockClientId,
-        { role: ['vendor'], status: 'active', linkedVendorUid: mockVendorId },
+        { role: [ROLES.VENDOR], status: 'active', linkedVendorUid: mockVendorId },
         paginationOpts
       );
     });
@@ -684,7 +684,7 @@ describe('UserService', () => {
       mockUserDAO.getUserByUId.mockResolvedValue({
         _id: 'vendor-object-id',
         uid: mockVendorId,
-        cuids: [{ cuid: mockClientId, isConnected: true, roles: ['vendor'] }],
+        cuids: [{ cuid: mockClientId, isConnected: true, roles: [ROLES.VENDOR] }],
         profile: { personalInfo: { firstName: 'Vendor', lastName: 'Owner' } },
       });
 
@@ -711,7 +711,7 @@ describe('UserService', () => {
       expect(result.data.teamMembers).toHaveLength(0);
       expect(mockUserDAO.getUsersByFilteredType).toHaveBeenCalledWith(
         mockClientId,
-        { role: ['vendor'], status: 'inactive', linkedVendorUid: mockVendorId },
+        { role: [ROLES.VENDOR], status: 'inactive', linkedVendorUid: mockVendorId },
         paginationOpts
       );
     });
@@ -724,7 +724,6 @@ describe('UserService', () => {
         request: { params: { cuid: mockClientId } },
       });
 
-      // Test removed - getVendorTeamMembers no longer exists on UserService
     });
   });
   */
@@ -732,7 +731,7 @@ describe('UserService', () => {
   describe('enhanced vendor data transformation in getFilteredUsers', () => {
     it('should properly transform vendor data with enhanced vendor information', async () => {
       const mockClient = createMockClient({ cuid: 'test-client-id' });
-      const filterOptions = { role: [IUserRole.VENDOR] };
+      const filterOptions = { role: [ROLES.VENDOR] };
       const paginationOpts = { limit: 10, skip: 0 };
 
       const mockVendorUsers = [
@@ -743,7 +742,7 @@ describe('UserService', () => {
           cuids: [
             {
               cuid: 'test-client-id',
-              roles: ['vendor'],
+              roles: [ROLES.VENDOR],
               isConnected: true,
               clientDisplayName: 'Enhanced Vendor',
               linkedVendorUid: 'linked-vendor-123',
@@ -813,7 +812,7 @@ describe('UserService', () => {
 
     it('should handle primary vendor (no linkedVendorUid) correctly', async () => {
       const mockClient = createMockClient({ cuid: 'test-client-id' });
-      const filterOptions = { role: [IUserRole.VENDOR] };
+      const filterOptions = { role: [ROLES.VENDOR] };
       const paginationOpts = { limit: 10, skip: 0 };
 
       const mockPrimaryVendor = [
@@ -824,7 +823,7 @@ describe('UserService', () => {
           cuids: [
             {
               cuid: 'test-client-id',
-              roles: ['vendor'],
+              roles: [ROLES.VENDOR],
               isConnected: true,
               clientDisplayName: 'Primary Vendor',
             },

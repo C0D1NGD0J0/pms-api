@@ -5,6 +5,9 @@
     "cuids",
     "currentuser",
     "dsphere",
+    "invitationuid",
+    "ISSE",
+    "Iuid",
     "maxlength",
     "mediatype",
     "nuid",
@@ -13,6 +16,10 @@
     "Reapproval",
     "ttypescript",
     "UNARCHIVED",
-    "validatecuid"
+    "validatecuid",
+    "Validatenuid",
+    "validatepuid",
+    "Validatevuid",
+    "vuid"
   ]
 }

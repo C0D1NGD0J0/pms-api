@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { AuthService } from '@services/auth/auth.service';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { UnauthorizedError, NotFoundError } from '@shared/customErrors';
 import {
   createMockCurrentUser,
@@ -77,7 +78,7 @@ describe('AuthService', () => {
             cuid: 'test-cuid',
             isConnected: true,
             clientDisplayName: 'Test Client',
-            roles: ['admin'],
+            roles: [ROLES.ADMIN],
           },
         ],
         activecuid: 'test-cuid',
@@ -166,9 +167,9 @@ describe('AuthService', () => {
             cuid: 'old-cuid',
             isConnected: true,
             clientDisplayName: 'Old Client',
-            roles: ['admin'],
+            roles: [ROLES.ADMIN],
           },
-          { cuid: newCuid, isConnected: true, clientDisplayName: 'New Client', roles: ['tenant'] },
+          { cuid: newCuid, isConnected: true, clientDisplayName: 'New Client', roles: [ROLES.TENANT] },
         ],
       });
 
@@ -204,7 +205,7 @@ describe('AuthService', () => {
             cuid: 'test-cuid',
             isConnected: true,
             clientDisplayName: 'Test Client',
-            roles: ['admin'],
+            roles: [ROLES.ADMIN],
           },
         ],
       });
@@ -249,7 +250,7 @@ describe('AuthService', () => {
       const clientId = 'test-cuid';
       const mockUser = createMockUser({
         cuids: [
-          { cuid: clientId, isConnected: true, clientDisplayName: 'Test Client', roles: ['admin'] },
+          { cuid: clientId, isConnected: true, clientDisplayName: 'Test Client', roles: [ROLES.ADMIN] },
         ],
       });
       const mockClient = { cuid: clientId, displayName: 'Test Client' };
@@ -353,7 +354,7 @@ describe('AuthService', () => {
             cuid: clientId,
             isConnected: true,
             clientDisplayName: 'Test Client',
-            roles: ['tenant'],
+            roles: [ROLES.TENANT],
           },
         ],
       });

@@ -17,11 +17,6 @@ import {
 
 const router = Router();
 
-/**
- * @route GET /api/v1/invites/:cuid/validate_token?token=token
- * @desc Validate an invitation token (public endpoint)
- * @access Public
- */
 router.get(
   '/:cuid/validate_token',
   basicLimiter,
@@ -32,11 +27,6 @@ router.get(
   })
 );
 
-/**
- * @route POST /api/v1/invites/:cuid/accept_invite/:token
- * @desc Accept an invitation and complete user registration (public endpoint)
- * @access Public
- */
 router.post(
   '/:cuid/accept_invite/:token',
   basicLimiter,
@@ -50,11 +40,6 @@ router.post(
   })
 );
 
-/**
- * @route POST /api/v1/invites/:cuid/decline_invite/:token
- * @desc Decline an invitation (public endpoint)
- * @access Public
- */
 router.patch(
   '/:cuid/decline_invite/:token',
   basicLimiter,
@@ -68,11 +53,6 @@ router.patch(
   })
 );
 
-/**
- * @route POST /api/v1/invites/:cuid/send
- * @desc Send an invitation to join a client
- * @access Private (Admin/Manager only)
- */
 router.post(
   '/:cuid/send_invite',
   isAuthenticated,
@@ -88,11 +68,6 @@ router.post(
   })
 );
 
-/**
- * @route GET /api/v1/invites/clients/:cuid
- * @desc Get invitations for a client with filtering and pagination
- * @access Private (Admin/Manager only)
- */
 router.get(
   '/clients/:cuid',
   isAuthenticated,
@@ -108,11 +83,6 @@ router.get(
   })
 );
 
-/**
- * @route GET /api/v1/invites/clients/:cuid/stats
- * @desc Get invitation statistics for a client
- * @access Private (Admin/Manager only)
- */
 router.get(
   '/clients/:cuid/stats',
   isAuthenticated,
@@ -124,11 +94,6 @@ router.get(
   })
 );
 
-/**
- * @route GET /api/v1/invites/:iuid
- * @desc Get invitation details by ID
- * @access Private (Admin/Manager only)
- */
 router.get(
   '/:iuid',
   isAuthenticated,
@@ -140,11 +105,6 @@ router.get(
   })
 );
 
-/**
- * @route PATCH /api/v1/invites/:iuid/revoke
- * @desc Revoke a pending invitation
- * @access Private (Admin/Manager only)
- */
 router.patch(
   '/:cuid/revoke/:iuid',
   isAuthenticated,
@@ -159,11 +119,6 @@ router.patch(
   })
 );
 
-/**
- * @route PATCH /api/v1/invites/:cuid/update/:iuid
- * @desc Update invitation details (only draft invitations)
- * @access Private (Admin/Manager only)
- */
 router.patch(
   '/:cuid/update_invite/:iuid',
   isAuthenticated,
@@ -178,11 +133,6 @@ router.patch(
   })
 );
 
-/**
- * @route PATCH /api/v1/invites/:iuid/resend
- * @desc Resend an invitation reminder
- * @access Private (Admin/Manager only)
- */
 router.patch(
   '/:cuid/resend/:iuid',
   isAuthenticated,
@@ -197,11 +147,6 @@ router.patch(
   })
 );
 
-/**
- * @route GET /api/v1/invites/by-email/:email
- * @desc Get invitations by email (for user's own invitations)
- * @access Private (Self or Admin only)
- */
 router.get(
   '/by-email/:email',
   isAuthenticated,
@@ -212,11 +157,6 @@ router.get(
   })
 );
 
-/**
- * @route POST /api/v1/invites/:cuid/validate_csv
- * @desc Validate a CSV file for bulk invitation import or user creation
- * @access Private (Admin/Manager only)
- */
 router.post(
   '/:cuid/validate_csv',
   isAuthenticated,
@@ -233,11 +173,6 @@ router.post(
   })
 );
 
-/**
- * @route POST /api/v1/invites/:cuid/import_invitations_csv
- * @desc Import invitations from a CSV file or bulk create users
- * @access Private (Admin/Manager only)
- */
 router.post(
   '/:cuid/import_invitations_csv',
   isAuthenticated,

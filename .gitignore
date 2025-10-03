@@ -137,3 +137,5 @@ random.ts
 docs/
 *.md
 uploads/
+.vscode/*
+.vscode/settings.json

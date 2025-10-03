@@ -4,6 +4,7 @@ import { createLogger } from '@utils/index';
 import { GeoCoderService } from '@services/external';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
+import { ROLES } from '@shared/constants/roles.constants';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
 import {
@@ -451,9 +452,9 @@ export class PropertyCsvProcessor {
         };
       }
 
-      const hasManagerRole = clientAssociation.roles.some((role) =>
-        ['landlord', 'manager', 'admin'].includes(role)
-      );
+      // Note: includes 'landlord' role which is not in ROLES constants but exists in legacy type
+      const managerRoles = ['landlord', ROLES.MANAGER, ROLES.ADMIN];
+      const hasManagerRole = clientAssociation.roles.some((role) => managerRoles.includes(role));
 
       if (!hasManagerRole) {
         return {

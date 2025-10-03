@@ -63,6 +63,18 @@ export interface IPropertyUnit {
     internet: boolean;
     storage: boolean;
   };
+  approvalDetails?: Array<{
+    action: 'created' | 'approved' | 'rejected' | 'updated' | 'overridden';
+    actor: Types.ObjectId;
+    timestamp: Date;
+    notes?: string;
+  }>;
+  pendingChanges?: {
+    [key: string]: any;
+    updatedBy: Types.ObjectId;
+    updatedAt: Date;
+    displayName: string;
+  };
   utilities: {
     water: boolean;
     centralAC: boolean;
@@ -87,6 +99,7 @@ export interface IPropertyUnit {
     rentAmount: number;
     securityDeposit?: number;
   };
+  approvalStatus?: 'approved' | 'pending' | 'rejected';
   media?: {
     photos: PropertyUnitPhoto[];
   };
@@ -102,8 +115,8 @@ export interface IPropertyUnit {
   unitNumber: string;
   isActive: boolean;
   floor?: number;
-  puid: string;
   cuid: string;
+  puid: string;
 }
 
 /**

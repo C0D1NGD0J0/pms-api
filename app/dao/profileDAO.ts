@@ -1,5 +1,6 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
+import ROLES from '@shared/constants/roles.constants';
 import { BadRequestError } from '@shared/customErrors';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IProfileDocument } from '@interfaces/profile.interface';
@@ -138,26 +139,64 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
    */
   async updateNotificationPreferences(
     profileId: string,
-    preferences: { messages?: boolean; comments?: boolean; announcements?: boolean }
+    preferences: {
+      messages?: boolean;
+      comments?: boolean;
+      announcements?: boolean;
+      maintenance?: boolean;
+      payments?: boolean;
+      system?: boolean;
+      propertyUpdates?: boolean;
+      emailNotifications?: boolean;
+      inAppNotifications?: boolean;
+      emailFrequency?: 'immediate' | 'daily';
+    }
   ): Promise<IProfileDocument | null> {
     try {
-      const updateFields: Record<string, boolean> = {};
+      const updateFields: Record<string, boolean | string> = {};
 
-      if (preferences.messages !== undefined) {
-        updateFields['settings.notifications.messages'] = preferences.messages;
+      const booleanFields = [
+        'messages',
+        'comments',
+        'announcements',
+        'maintenance',
+        'payments',
+        'system',
+        'propertyUpdates',
+        'emailNotifications',
+        'inAppNotifications',
+      ];
+
+      for (const field of booleanFields) {
+        if (preferences[field as keyof typeof preferences] !== undefined) {
+          updateFields[`settings.notifications.${field}`] = preferences[
+            field as keyof typeof preferences
+          ] as boolean;
+        }
       }
 
-      if (preferences.comments !== undefined) {
-        updateFields['settings.notifications.comments'] = preferences.comments;
-      }
-
-      if (preferences.announcements !== undefined) {
-        updateFields['settings.notifications.announcements'] = preferences.announcements;
+      if (preferences.emailFrequency !== undefined) {
+        updateFields['settings.notifications.emailFrequency'] = preferences.emailFrequency;
       }
 
       return await this.updateById(profileId, { $set: updateFields });
     } catch (error) {
       this.logger.error(`Error updating notification preferences for profile ${profileId}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Get notification preferences for a user by their user ID
+   */
+  async getNotificationPreferences(
+    userId: string
+  ): Promise<IProfileDocument['settings']['notifications'] | null> {
+    try {
+      const profile = await this.findFirst({ user: new Types.ObjectId(userId) });
+      return profile?.settings?.notifications || null;
+    } catch (error) {
+      this.logger.error(`Error getting notification preferences for user ${userId}:`, error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -350,7 +389,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                     $cond: {
                       if: {
                         $and: [
-                          { $in: ['vendor', '$$activeClient.roles'] },
+                          { $in: [ROLES.VENDOR, '$$activeClient.roles'] },
                           { $not: '$$activeClient.linkedVendorUid' },
                         ],
                       },

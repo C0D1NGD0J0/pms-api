@@ -195,6 +195,7 @@ export const createMockNotificationDAO = () => ({
 export const createMockNotificationService = () => ({
   createNotification: jest.fn(),
   getNotifications: jest.fn(),
+  getAnnouncements: jest.fn(),
   getNotificationById: jest.fn(),
   updateNotification: jest.fn(),
   markAsRead: jest.fn(),
@@ -316,6 +317,55 @@ export const createMockNotificationDocuments = (
     createMockNotificationDocument(overrides?.[index])
   );
 };
+
+/**
+ * Create a mock SSE service
+ */
+export const createMockSSEService = () => ({
+  createPersonalSession: jest.fn(),
+  createAnnouncementSession: jest.fn(),
+  initializeConnection: jest.fn(),
+  sendToUser: jest.fn(),
+  sendToChannel: jest.fn(),
+  cleanup: jest.fn(),
+});
+
+/**
+ * Create a mock SSE session
+ */
+export const createMockSSESession = () => ({
+  id: faker.string.uuid(),
+  userId: faker.string.uuid(),
+  cuid: faker.string.uuid(),
+  session: {
+    push: jest.fn().mockResolvedValue(undefined),
+    state: {},
+    on: jest.fn(),
+  },
+  channels: ['test-channel'],
+  connectedAt: new Date(),
+});
+
+/**
+ * Create a mock SSE message
+ */
+export const createMockSSEMessage = () => ({
+  id: faker.string.uuid(),
+  event: 'notification',
+  data: createMockNotificationDocument(),
+  timestamp: new Date(),
+});
+
+/**
+ * Create a mock client service
+ */
+export const createMockClientService = () => ({
+  getClientById: jest.fn(),
+  getClientByCuid: jest.fn(),
+  createClient: jest.fn(),
+  updateClient: jest.fn(),
+  deleteClient: jest.fn(),
+});
 
 /**
  * Create mock notification for different recipient types

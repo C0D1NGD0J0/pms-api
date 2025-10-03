@@ -722,8 +722,11 @@ export class NotificationService {
    * Notify about approval needed - sends to appropriate approvers
    */
   async notifyApprovalNeeded(
-    resourceId: string,
-    resourceName: string,
+    resource: {
+      resourceId: string;
+      resourceUid: string;
+      resourceName: string;
+    },
     requesterId: string,
     requesterDisplayName: string,
     cuid: string,
@@ -732,7 +735,7 @@ export class NotificationService {
   ): Promise<void> {
     try {
       const messageVars = {
-        propertyName: resourceName,
+        propertyName: resource.resourceName,
         address: metadata?.address || 'N/A',
         requesterName: requesterDisplayName,
       };
@@ -751,14 +754,14 @@ export class NotificationService {
             cuid,
             {
               resourceName: resourceType,
-              resourceUid: resourceId,
-              resourceId: resourceId,
+              resourceUid: resource.resourceUid,
+              resourceId: resource.resourceId,
               metadata,
             }
           );
 
           this.log.info('Sent approval needed notification', {
-            resourceId,
+            resourceUid: resource.resourceUid,
             approverId,
             requesterId,
           });
@@ -767,7 +770,7 @@ export class NotificationService {
     } catch (error) {
       this.log.error('Failed to send approval needed notifications', {
         error: error instanceof Error ? error.message : 'Unknown error',
-        resourceId,
+        resourceUid: resource.resourceUid,
         requesterId,
         cuid,
       });
@@ -778,8 +781,11 @@ export class NotificationService {
    * Notify about approval decision (approved/rejected)
    */
   async notifyApprovalDecision(
-    resourceId: string,
-    resourceName: string,
+    resource: {
+      resourceId: string;
+      resourceName: string;
+      resourceUid: string;
+    },
     approverId: string,
     cuid: string,
     decision: 'approved' | 'rejected',
@@ -798,7 +804,7 @@ export class NotificationService {
 
       const messageKey = decision === 'approved' ? 'property.approved' : 'property.rejected';
       const messageVars = {
-        propertyName: resourceName,
+        propertyName: resource.resourceName,
         approverName: await this.getUserDisplayName(approverId, cuid),
         reason: reason || 'No reason provided',
       };
@@ -815,14 +821,14 @@ export class NotificationService {
         cuid,
         {
           resourceName: ResourceContext.PROPERTY,
-          resourceUid: resourceId,
-          resourceId: resourceId,
+          resourceUid: resource.resourceUid,
+          resourceId: resource.resourceId,
           metadata,
         }
       );
 
       this.log.info('Sent approval decision notification', {
-        resourceId,
+        resourceId: resource.resourceId,
         decision,
         approverId,
         originalRequesterId,
@@ -830,7 +836,7 @@ export class NotificationService {
     } catch (error) {
       this.log.error('Failed to send approval decision notification', {
         error: error instanceof Error ? error.message : 'Unknown error',
-        resourceId,
+        resourceId: resource.resourceId,
         approverId,
         decision,
       });
@@ -868,10 +874,8 @@ export class NotificationService {
 
     try {
       if ((PROPERTY_STAFF_ROLES as string[]).includes(userRole)) {
-        // Staff update - notify about approval needed
         await this.notifyApprovalNeeded(
-          resource.resourceId,
-          propertyName,
+          { ...resource, resourceName: resource.resourceType },
           actorUserId,
           actorDisplayName,
           cuid,

@@ -2,6 +2,7 @@ import color from 'colors';
 import crypto from 'crypto';
 import bunyan from 'bunyan';
 import * as nanoid from 'nanoid';
+import { Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
 import { PhoneNumber } from 'libphonenumber-js';
@@ -629,12 +630,16 @@ export const createSafeMongoUpdate = (updateData: Record<string, any>): Record<s
   const result: Record<string, any> = {};
 
   for (const [key, value] of Object.entries(updateData)) {
-    if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
-      // Convert nested objects to dot notation
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      !(value instanceof Date) &&
+      !(value instanceof Types.ObjectId)
+    ) {
       const dotNotated = buildDotNotation(value, key);
       Object.assign(result, dotNotated);
     } else {
-      // Keep primitive values, arrays, dates, and null as-is
       result[key] = value;
     }
   }

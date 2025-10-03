@@ -3,13 +3,10 @@ import { Response, Request } from 'express';
 import { createLogger } from '@utils/index';
 import { createSession, Session } from 'better-sse';
 
-interface IConstructor {
-  // Minimal dependencies for now
-}
+interface IConstructor {}
 
 export class SSEService {
   private readonly log: Logger;
-  // In-memory map to track active sessions by userId-cuid combination
   private readonly activeSessions: Map<string, Session[]> = new Map();
 
   constructor(_deps: IConstructor = {}) {
@@ -24,7 +21,6 @@ export class SSEService {
     channelType: 'personal' | 'announcement'
   ): Promise<Session> {
     try {
-      this.log.info('Creating SSE connection', { userId, cuid, channelType });
       const session = await createSession(req, res);
       session.state = {
         userId,
@@ -41,16 +37,6 @@ export class SSEService {
       session.on('disconnected', () => {
         this.handleDisconnect(session, sessionKey);
       });
-
-      this.log.info('SSE connection established', {
-        userId,
-        cuid,
-        channelType,
-        sessionKey,
-        totalActiveSessions: existingSessions.length,
-        isConnected: session.isConnected,
-      });
-
       return session;
     } catch (error) {
       this.log.error('Failed to create SSE connection', { error, userId, cuid });
@@ -163,18 +149,12 @@ export class SSEService {
 
   private handleDisconnect(session: Session, sessionKey: string): void {
     try {
-      const { userId, cuid, channelType } = session.state;
-      this.log.info('SSE session disconnected', { userId, cuid, channelType });
-
-      // Remove the disconnected session from tracking
       const sessions = this.activeSessions.get(sessionKey) || [];
       const updatedSessions = sessions.filter((s) => s !== session);
 
       if (updatedSessions.length === 0) {
-        // No more sessions for this key, remove the entry
         this.activeSessions.delete(sessionKey);
       } else {
-        // Update with remaining sessions
         this.activeSessions.set(sessionKey, updatedSessions);
       }
 

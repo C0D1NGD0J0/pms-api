@@ -301,8 +301,13 @@ export class UserService {
       await this.userCache.saveFilteredUsers(cuid, users, {
         filters: filterOptions,
         pagination: paginationOpts,
+        totalCount: result.pagination?.total,
       });
-      this.log.info('Filtered users cached', { cuid, count: users.length });
+      this.log.info('Filtered users cached', {
+        cuid,
+        count: users.length,
+        total: result.pagination?.total,
+      });
 
       return {
         success: true,
@@ -851,9 +856,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Find user's supervisor based on employeeInfo.reportsTo
-   */
   async getUserSupervisor(userId: string, cuid: string): Promise<string | null> {
     try {
       if (!userId) return null;
@@ -887,9 +889,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Get user's display name for notifications/UI
-   */
   async getUserDisplayName(userId: string, cuid: string): Promise<string> {
     try {
       if (!userId || userId === 'system') return 'System';
@@ -908,10 +907,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Get user's announcement targeting filters (roles and vendor association)
-   * Used by notification system to determine which announcements a user should see
-   */
   async getUserAnnouncementFilters(
     userId: string,
     cuid: string
@@ -955,17 +950,6 @@ export class UserService {
         vendorId = user.profile.vendorInfo.linkedVendorUid;
       }
 
-      this.log.debug('Retrieved user announcement filters', {
-        userId,
-        cuid,
-        roles,
-        vendorId,
-        hasLinkedVendor: !!clientConnection?.linkedVendorUid,
-        isPrimaryVendor:
-          roles.includes(ROLES.VENDOR as string) && !clientConnection?.linkedVendorUid,
-        isStaffWithVendor: roles.includes(ROLES.STAFF as string) && !!vendorId,
-      });
-
       return { roles, vendorId };
     } catch (error) {
       this.log.error('Error getting user announcement filters', { userId, cuid, error });
@@ -973,9 +957,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Update user information in the User model
-   */
   async updateUserInfo(
     userId: string,
     userInfo: { email?: string }

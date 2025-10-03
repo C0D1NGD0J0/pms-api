@@ -175,6 +175,7 @@ export class UserCache extends BaseCache {
    * @param cuid - Client identifier
    * @param userList - Array of user data (FilteredUserTableData format)
    * @param opts - Filter and pagination options used to generate this list
+   * @param opts.totalCount - Total count across all pages
    */
   async saveFilteredUsers(
     cuid: string,
@@ -182,6 +183,7 @@ export class UserCache extends BaseCache {
     opts: {
       filters: IUserFilterOptions;
       pagination: IPaginationQuery;
+      totalCount?: number;
     }
   ): Promise<ISuccessReturnData> {
     try {
@@ -196,6 +198,8 @@ export class UserCache extends BaseCache {
       const listKey = this.generateListKeyFromOptions(opts.pagination);
       const key = `${this.KEY_PREFIXES.FILTERED_USERS}${cuid}:${listKey}`;
 
+      const totalToCache = opts.totalCount ?? userList.length;
+
       await this.deleteItems([key]);
       const multi = this.client.multi();
 
@@ -207,7 +211,7 @@ export class UserCache extends BaseCache {
       await this.setObject(
         metaKey,
         {
-          total: userList.length,
+          total: totalToCache,
           lastUpdated: Date.now(),
           listKey,
           cuid,
@@ -218,11 +222,6 @@ export class UserCache extends BaseCache {
       // Set TTL on the list
       multi.EXPIRE(key, this.LIST_CACHE_TTL);
       await multi.exec();
-
-      this.log.info(`Cached ${userList.length} filtered users for client ${cuid}`, {
-        listKey,
-        ttl: this.LIST_CACHE_TTL,
-      });
 
       return {
         data: { count: userList.length },

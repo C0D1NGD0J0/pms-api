@@ -64,8 +64,6 @@ export class NotificationController {
         throw new BadRequestError({ message: 'Invalid client context' });
       }
 
-      this.log.info('Starting personal notifications SSE stream', { userId, cuid });
-
       const { type, priority, isRead, last7days, last30days }: INotificationFilters = req.query;
       const filters: INotificationFilters = {
         type,
@@ -96,8 +94,6 @@ export class NotificationController {
         };
         session.push(initialPayload, 'my-notifications');
       }
-
-      this.log.info('Personal notifications SSE stream established', { userId, cuid });
     } catch (error) {
       this.log.error('Failed to start personal notifications SSE stream', { error });
       throw error;
@@ -116,8 +112,6 @@ export class NotificationController {
       if (req.context.currentuser.client.cuid !== cuid) {
         throw new BadRequestError({ message: 'Invalid client context' });
       }
-
-      this.log.info('Starting announcements SSE stream', { userId, cuid });
 
       const { type, priority, isRead, last7days, last30days }: INotificationFilters = req.query;
       const filters: INotificationFilters = {
@@ -149,8 +143,6 @@ export class NotificationController {
         };
         session.push(initialPayload, 'announcements');
       }
-
-      this.log.info('Announcements SSE stream established', { userId, cuid });
     } catch (error) {
       this.log.error('Failed to start announcements SSE stream', { error });
       throw error;

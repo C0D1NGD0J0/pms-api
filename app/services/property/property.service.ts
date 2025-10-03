@@ -599,6 +599,7 @@ export class PropertyService {
       limit: Math.max(1, Math.min(pagination.limit || 10, 100)),
       skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
     };
+
     const cachedResult = await this.propertyCache.getClientProperties(cuid, opts);
     if (cachedResult.success && cachedResult.data) {
       return {
@@ -609,6 +610,7 @@ export class PropertyService {
         },
       };
     }
+
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
 
     const itemsWithPreview = properties.items.map((property) => {
@@ -625,6 +627,7 @@ export class PropertyService {
     await this.propertyCache.saveClientProperties(cuid, properties.items, {
       filter,
       pagination: opts,
+      totalCount: properties.pagination?.total,
     });
 
     return {
@@ -786,7 +789,7 @@ export class PropertyService {
         }
       }
 
-      // Staff update - store in pendingChanges
+      // staff update - store in pendingChanges
       const result = await this.propertyDAO.update(
         { cuid, pid, deletedAt: null },
         {
@@ -817,13 +820,13 @@ export class PropertyService {
       };
     }
 
-    // ADMIN/MANAGER LOGIC: Direct update with override handling
+    // ADMIN/MANAGER LOGIC: direct update with override handling
     if (PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)) {
       let overrideMessage = '';
       let notifyStaffOfOverride = false;
       let originalRequesterId: string | undefined;
 
-      // Check if we're overriding pending changes
+      // are we overriding pending changes
       if (hasPendingChanges) {
         originalRequesterId = pendingChangesInfo.updatedBy;
         overrideMessage = ` (overriding pending changes from ${pendingChangesInfo.displayName})`;
@@ -838,7 +841,7 @@ export class PropertyService {
         });
       }
 
-      // Apply admin changes directly and clear pending changes
+      // apply admin changes directly and clear pending changes
       const safeUpdateData = createSafeMongoUpdate(cleanUpdateData);
       const updateOperation: any = {
         $set: {
@@ -863,10 +866,9 @@ export class PropertyService {
         throw new BadRequestError({ message: 'Unable to update property.' });
       }
 
-      // Send notifications
       await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
 
-      // NEW: Notify staff if their pending changes were overridden
+      // notify staff if their pending changes were overridden
       if (notifyStaffOfOverride && originalRequesterId) {
         try {
           await this.notificationService.notifyPendingChangesOverridden(
@@ -899,7 +901,6 @@ export class PropertyService {
       return { success: true, data: result, message };
     }
 
-    // Fallback - should not reach here
     throw new ForbiddenError({ message: 'Unable to determine update strategy for user role.' });
   }
 
@@ -913,10 +914,7 @@ export class PropertyService {
     isDirectUpdate: boolean
   ): Promise<void> {
     try {
-      // Invalidate cache first
       await this.propertyCache.invalidateProperty(ctx.cuid, updatedProperty.id);
-
-      // Send appropriate notifications
       await this.notificationService.handlePropertyUpdateNotifications({
         userRole: ctx.currentuser.client.role,
         updatedProperty,
@@ -1010,7 +1008,6 @@ export class PropertyService {
       });
     }
 
-    // Create new approval entry for the array
     const approvalEntry = {
       action: 'approved' as const,
       actor: new Types.ObjectId(currentuser.sub),
@@ -1018,27 +1015,32 @@ export class PropertyService {
       ...(notes && { notes }),
     };
 
-    let updateData: any = {
+    const updateData: any = {
       approvalStatus: 'approved',
-      $push: { approvalDetails: approvalEntry },
       lastModifiedBy: new Types.ObjectId(currentuser.sub),
     };
 
-    // If there are pending changes, apply them to the main fields
+    // Defensive check: Ensure approvalDetails is an array before $push
+    if (!property.approvalDetails || !Array.isArray(property.approvalDetails)) {
+      this.log.warn('Fixing approvalDetails type mismatch - initializing as empty array', {
+        propertyId: property.id,
+        pid: property.pid,
+        currentType: property.approvalDetails ? typeof property.approvalDetails : 'undefined',
+        wasArray: Array.isArray(property.approvalDetails),
+      });
+      updateData.approvalDetails = [approvalEntry];
+    } else {
+      updateData.$push = { approvalDetails: approvalEntry };
+    }
+
     if (property.pendingChanges) {
-      // Use createSafeMongoUpdate to prevent nested object overwrites
       const safeChanges = createSafeMongoUpdate(property.pendingChanges);
 
-      // Apply pending changes to main fields and clear them
-      updateData = {
-        ...updateData,
-        $set: {
-          ...safeChanges,
-          pendingChanges: null, // Clear pending changes after applying
-          approvalStatus: 'approved',
-          lastModifiedBy: new Types.ObjectId(currentuser.sub),
-        },
-        $push: { approvalDetails: approvalEntry },
+      updateData.$set = {
+        ...safeChanges,
+        pendingChanges: null,
+        approvalStatus: 'approved',
+        lastModifiedBy: new Types.ObjectId(currentuser.sub),
       };
 
       this.log.info('Applying pending changes during approval with safe updates', {
@@ -1066,7 +1068,6 @@ export class PropertyService {
       hadPendingChanges: !!property.pendingChanges,
     });
 
-    // Send approval notification
     try {
       const originalRequesterId =
         property.pendingChanges?.updatedBy?.toString() ||
@@ -1076,8 +1077,11 @@ export class PropertyService {
 
       if (originalRequesterId) {
         await this.notificationService.notifyApprovalDecision(
-          updatedProperty.pid,
-          updatedProperty.name || 'Unknown Property',
+          {
+            resourceId: updatedProperty.id,
+            resourceUid: updatedProperty.pid,
+            resourceName: updatedProperty.name || property.name || 'Unknown Property',
+          },
           currentuser.sub,
           cuid,
           'approved',
@@ -1144,19 +1148,19 @@ export class PropertyService {
 
     // Determine the appropriate status after rejection
     const updateData: any = {
-      $push: { approvalDetails: rejectionEntry },
       lastModifiedBy: new Types.ObjectId(currentuser.sub),
     };
 
+    if (!property.approvalDetails || !Array.isArray(property.approvalDetails)) {
+      updateData.approvalDetails = [rejectionEntry];
+    } else {
+      updateData.$push = { approvalDetails: rejectionEntry };
+    }
+
     // If property has pending changes, clear them and keep status as approved (using old data)
     if (property.pendingChanges) {
-      updateData.pendingChanges = null; // Clear pending changes
+      updateData.pendingChanges = null;
       // Keep approvalStatus as 'approved' since we're keeping the old approved data
-
-      this.log.info('Clearing pending changes on rejection', {
-        propertyId: property.id,
-        hadPendingChanges: true,
-      });
     } else {
       // If no pending changes, this is a new property being rejected
       updateData.approvalStatus = 'rejected';
@@ -1181,7 +1185,6 @@ export class PropertyService {
       hadPendingChanges: !!property.pendingChanges,
     });
 
-    // Send rejection notification
     try {
       const originalRequesterId =
         property.pendingChanges?.updatedBy?.toString() ||
@@ -1191,8 +1194,11 @@ export class PropertyService {
 
       if (originalRequesterId) {
         await this.notificationService.notifyApprovalDecision(
-          updatedProperty.pid,
-          updatedProperty.name || property.name || 'Unknown Property',
+          {
+            resourceId: updatedProperty.id,
+            resourceUid: updatedProperty.pid,
+            resourceName: updatedProperty.name || property.name || 'Unknown Property',
+          },
           currentuser.sub,
           cuid,
           'rejected',
@@ -1380,7 +1386,6 @@ export class PropertyService {
     currentUser: ICurrentUser,
     property: IPropertyDocument
   ): boolean {
-    // Return false if no pending changes exist
     if (!property.pendingChanges) {
       return false;
     }
@@ -1412,7 +1417,6 @@ export class PropertyService {
     const pendingChanges = property.pendingChanges as any;
     const { updatedBy, updatedAt, ...changes } = pendingChanges;
 
-    // Format fee values in pending changes for frontend display
     const formattedChanges = { ...changes };
     if (formattedChanges.fees) {
       formattedChanges.fees = MoneyUtils.formatMoneyDisplay(formattedChanges.fees);
@@ -1426,7 +1430,7 @@ export class PropertyService {
       updatedAt,
       updatedBy,
       summary,
-      changes: formattedChanges, // Include formatted pending changes
+      changes: formattedChanges,
     };
   }
 

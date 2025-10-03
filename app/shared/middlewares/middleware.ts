@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
 import { NextFunction, Response, Request } from 'express';
+import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { LanguageService } from '@shared/languages/language.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
@@ -437,8 +438,8 @@ export const requirePermission = (
 
       // For CLIENT resource actions, ensure user has appropriate role
       if (resource === PermissionResource.CLIENT) {
-        const restrictedRoles = ['tenant', 'vendor'];
-        if (restrictedRoles.includes(currentuser.client.role)) {
+        const restrictedRoles = ROLE_GROUPS.EXTERNAL_ROLES;
+        if (restrictedRoles.includes(currentuser.client.role as any)) {
           console.log('Insufficient role for CLIENT resource:', {
             role: currentuser.client.role,
             resource,

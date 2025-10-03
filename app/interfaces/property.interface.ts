@@ -1,6 +1,7 @@
 import { Document, Types } from 'mongoose';
 
 import { IClientInfo } from './client.interface';
+import { IUserRole } from '../shared/constants/roles.constants';
 import { IPaginationQuery, CURRENCIES } from './utils.interface';
 
 /**
@@ -149,6 +150,22 @@ export interface FinancialDetails {
 }
 
 /**
+ * Assignable User Interface (for property assignment)
+ */
+export interface IAssignableUser {
+  employeeInfo?: {
+    department?: string;
+    employeeId?: string;
+    jobTitle?: string;
+  };
+  role: IUserRole.ADMIN | IUserRole.STAFF | IUserRole.MANAGER;
+  department?: string;
+  displayName: string;
+  email: string;
+  id: string;
+}
+
+/**
  * Unit Info Type
  */
 export interface UnitInfo {
@@ -192,22 +209,6 @@ export interface PropertyApprovalEntry {
 }
 
 /**
- * Assignable User Interface (for property assignment)
- */
-export interface IAssignableUser {
-  employeeInfo?: {
-    department?: string;
-    employeeId?: string;
-    jobTitle?: string;
-  };
-  role: 'admin' | 'staff' | 'manager';
-  department?: string;
-  displayName: string;
-  email: string;
-  id: string;
-}
-
-/**
  * Property Image Item Type
  */
 export interface PropertyImageItem {
@@ -232,6 +233,18 @@ export interface CommunityAmenities {
   elevator: boolean;
   doorman: boolean;
   parking: boolean;
+}
+
+/**
+ * Assignable Users Filter Interface
+ */
+export interface IAssignableUsersFilter {
+  role?: IUserRole.ADMIN | IUserRole.STAFF | IUserRole.MANAGER | 'all';
+  department?: string;
+  searchTerm?: string;
+  search?: string;
+  limit?: number;
+  page?: number;
 }
 
 /**
@@ -286,18 +299,6 @@ export interface InteriorAmenities {
   furnished: boolean;
   heating: boolean;
   fridge: boolean;
-}
-
-/**
- * Assignable Users Filter Interface
- */
-export interface IAssignableUsersFilter {
-  role?: 'admin' | 'staff' | 'manager' | 'all';
-  department?: string;
-  searchTerm?: string;
-  search?: string;
-  limit?: number;
-  page?: number;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { faker } from '@faker-js/faker';
 import { ClientSession, Types } from 'mongoose';
-import { IUserRole } from '@interfaces/user.interface';
+import { IUserRole } from '@shared/constants/roles.constants';
 import { EmailFailedPayload, EmailSentPayload, EventTypes } from '@interfaces/events.interface';
 import { ExtractedMediaFile, IRequestContext, RequestSource, MailType } from '@interfaces/index';
 import {
@@ -279,7 +279,6 @@ export const createMockUserDAO = () => ({
   createUserFromInvitation: jest.fn().mockResolvedValue(createMockUser()),
   addUserToClient: jest.fn().mockResolvedValue(createMockUser()),
   createBulkUserWithDefaults: jest.fn().mockResolvedValue(createMockUser()),
-  // Removed duplicate startSession and withTransaction methods
 });
 
 /**

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
 export const ClientSettingsSchema = z.object({
   notificationPreferences: z
@@ -83,7 +84,7 @@ export const RoleParamSchema = z.object({
 });
 
 export const AssignRoleSchema = z.object({
-  role: z.enum(['admin', 'manager', 'tenant', 'staff', 'vendor'], {
+  role: z.enum(ROLE_VALIDATION.ALL_ROLES, {
     errorMap: () => ({
       message: 'Invalid role. Must be one of: admin, manager, tenant, staff, vendor',
     }),
@@ -93,13 +94,13 @@ export const AssignRoleSchema = z.object({
 export const FilteredUsersQuerySchema = z.object({
   role: z
     .union([
-      z.enum(['manager', 'tenant', 'staff', 'vendor', 'admin']),
-      z.array(z.enum(['manager', 'tenant', 'staff', 'vendor', 'admin'])),
+      z.enum(ROLE_VALIDATION.ALL_ROLES),
+      z.array(z.enum(ROLE_VALIDATION.ALL_ROLES)),
       // Comma-separated string that gets transformed to array
       z
         .string()
         .transform((val) => val.split(',').map((r) => r.trim()))
-        .pipe(z.array(z.enum(['manager', 'tenant', 'staff', 'vendor', 'admin']))),
+        .pipe(z.array(z.enum(ROLE_VALIDATION.ALL_ROLES))),
     ])
     .optional(),
   department: z.string().optional(),

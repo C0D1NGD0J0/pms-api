@@ -1,7 +1,9 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/helpers';
+import { ICurrentUser } from '@interfaces/user.interface';
 import { ResourceContext } from '@interfaces/utils.interface';
+import { ProfileService, UserService, SSEService } from '@services/index';
 import { NotificationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES } from '@utils/constants';
 import { ISuccessReturnData, IPaginationQuery } from '@interfaces/utils.interface';
@@ -23,27 +25,41 @@ import { getFormattedNotification, NotificationMessageKey } from './notification
 
 interface IConstructor {
   notificationDAO: NotificationDAO;
+  profileService: ProfileService;
+  userService: UserService;
   profileDAO: ProfileDAO;
+  sseService: SSEService;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
-  userService: any; // UserService - avoiding circular import
 }
 
 export class NotificationService {
   private readonly notificationDAO: NotificationDAO;
+  private readonly userService: UserService;
+  private readonly sseService: SSEService;
+  private readonly profileService: ProfileService;
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
-  private readonly userService: any;
   private readonly log: Logger;
 
-  constructor({ notificationDAO, profileDAO, clientDAO, userDAO, userService }: IConstructor) {
-    this.setupEventListeners();
-    this.notificationDAO = notificationDAO;
-    this.profileDAO = profileDAO;
-    this.clientDAO = clientDAO;
+  constructor({
+    notificationDAO,
+    profileDAO,
+    clientDAO,
+    userDAO,
+    userService,
+    sseService,
+    profileService,
+  }: IConstructor) {
     this.userDAO = userDAO;
+    this.setupEventListeners();
+    this.clientDAO = clientDAO;
+    this.sseService = sseService;
+    this.profileDAO = profileDAO;
     this.userService = userService;
+    this.profileService = profileService;
+    this.notificationDAO = notificationDAO;
     this.log = createLogger('NotificationService');
   }
 
@@ -90,6 +106,34 @@ export class NotificationService {
       }
 
       const validatedData = validationResult.data;
+
+      if (validatedData.recipientType === RecipientTypeEnum.INDIVIDUAL && validatedData.recipient) {
+        const recipientId =
+          typeof validatedData.recipient === 'string'
+            ? validatedData.recipient
+            : String(validatedData.recipient);
+
+        const shouldSend = await this.checkUserNotificationPreferences(
+          recipientId,
+          cuid,
+          notificationType,
+          validatedData
+        );
+
+        if (!shouldSend) {
+          this.log.info('Notification skipped due to user preferences', {
+            userId: recipientId,
+            notificationType,
+            cuid,
+          });
+
+          return {
+            success: true,
+            data: null as any,
+            message: 'Notification skipped due to user preferences',
+          };
+        }
+      }
 
       const notificationToCreate: any = {
         title: validatedData.title,
@@ -153,6 +197,8 @@ export class NotificationService {
         cuid: notification.cuid,
       });
 
+      await this.publishToSSE(notification);
+
       return {
         success: true,
         data: notification,
@@ -175,8 +221,8 @@ export class NotificationService {
   }
 
   async getNotifications(
-    userId: string,
     cuid: string,
+    userId: ICurrentUser['sub'],
     filters?: INotificationFilters,
     pagination?: IPaginationQuery
   ): Promise<ISuccessReturnData<{ notifications: INotificationDocument[]; total: number }>> {
@@ -191,24 +237,19 @@ export class NotificationService {
         };
       }
 
-      // Get user's targeting info for announcement filtering
-      const targetingInfo = await this.getUserTargetingInfo(userId, cuid);
+      const personalFilters: INotificationFilters = {
+        ...filters,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+      };
 
+      const targetingInfo = { roles: [], vendorId: undefined };
       const result = await this.notificationDAO.findForUser(
         userId,
         cuid,
         targetingInfo,
-        filters,
+        personalFilters,
         pagination
       );
-      this.log.info('Retrieved notifications successfully', {
-        userId,
-        cuid,
-        count: result.data.length,
-        total: result.total,
-        roles: targetingInfo.roles,
-        vendorId: targetingInfo.vendorId,
-      });
 
       return {
         success: true,
@@ -220,6 +261,64 @@ export class NotificationService {
       };
     } catch (error) {
       const errorMsg = 'Unexpected error retrieving notifications';
+      this.log.error(errorMsg, {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        userId,
+        cuid,
+        filters,
+      });
+
+      return {
+        success: false,
+        data: null as any,
+        message: errorMsg,
+      };
+    }
+  }
+
+  async getAnnouncements(
+    cuid: string,
+    userId: string,
+    filters?: INotificationFilters,
+    pagination?: IPaginationQuery
+  ): Promise<ISuccessReturnData<{ notifications: INotificationDocument[]; total: number }>> {
+    try {
+      if (!userId || !cuid) {
+        const errorMsg = 'User ID and Client ID (cuid) are required';
+        this.log.error(errorMsg, { userId, cuid });
+        return {
+          success: false,
+          data: null as any,
+          message: errorMsg,
+        };
+      }
+
+      const announcementFilters: INotificationFilters = {
+        ...filters,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+      };
+
+      const targetingInfo = await this.userService.getUserAnnouncementFilters(userId, cuid);
+
+      const result = await this.notificationDAO.findForUser(
+        userId,
+        cuid,
+        targetingInfo,
+        announcementFilters,
+        pagination
+      );
+
+      return {
+        success: true,
+        data: {
+          notifications: result.data,
+          total: result.total,
+        },
+        message: 'Announcements retrieved successfully',
+      };
+    } catch (error) {
+      const errorMsg = 'Unexpected error retrieving announcements';
       this.log.error(errorMsg, {
         error: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined,
@@ -546,7 +645,7 @@ export class NotificationService {
    * Notify about property updates - sends to property manager and supervisor if needed
    */
   async notifyPropertyUpdate(
-    propertyId: string,
+    resourceInfo: { resourceName: ResourceContext; resourceUid: string; resourceId: string },
     propertyName: string,
     actorUserId: string,
     actorDisplayName: string,
@@ -572,14 +671,14 @@ export class NotificationService {
           cuid,
           {
             resourceName: ResourceContext.PROPERTY,
-            resourceUid: propertyId,
-            resourceId: propertyId,
+            resourceUid: resourceInfo?.resourceUid,
+            resourceId: resourceInfo?.resourceId,
             metadata: { changes },
           }
         );
 
         this.log.info('Notified property manager of update', {
-          propertyId,
+          propertyId: resourceInfo.resourceId,
           propertyManagerId,
           actorUserId,
         });
@@ -596,15 +695,15 @@ export class NotificationService {
           NotificationPriorityEnum.LOW,
           cuid,
           {
-            resourceName: ResourceContext.PROPERTY,
-            resourceUid: propertyId,
-            resourceId: propertyId,
+            resourceName: resourceInfo.resourceName,
+            resourceUid: resourceInfo.resourceUid,
+            resourceId: resourceInfo.resourceId,
             metadata: { changes },
           }
         );
 
         this.log.info('Notified supervisor of property update', {
-          propertyId,
+          propertyId: resourceInfo.resourceId,
           supervisorId,
           actorUserId,
         });
@@ -612,7 +711,7 @@ export class NotificationService {
     } catch (error) {
       this.log.error('Failed to send property update notifications', {
         error: error instanceof Error ? error.message : 'Unknown error',
-        propertyId,
+        propertyId: resourceInfo.resourceId,
         actorUserId,
         cuid,
       });
@@ -623,8 +722,11 @@ export class NotificationService {
    * Notify about approval needed - sends to appropriate approvers
    */
   async notifyApprovalNeeded(
-    resourceId: string,
-    resourceName: string,
+    resource: {
+      resourceId: string;
+      resourceUid: string;
+      resourceName: string;
+    },
     requesterId: string,
     requesterDisplayName: string,
     cuid: string,
@@ -633,7 +735,7 @@ export class NotificationService {
   ): Promise<void> {
     try {
       const messageVars = {
-        propertyName: resourceName,
+        propertyName: resource.resourceName,
         address: metadata?.address || 'N/A',
         requesterName: requesterDisplayName,
       };
@@ -652,14 +754,14 @@ export class NotificationService {
             cuid,
             {
               resourceName: resourceType,
-              resourceUid: resourceId,
-              resourceId: resourceId,
+              resourceUid: resource.resourceUid,
+              resourceId: resource.resourceId,
               metadata,
             }
           );
 
           this.log.info('Sent approval needed notification', {
-            resourceId,
+            resourceUid: resource.resourceUid,
             approverId,
             requesterId,
           });
@@ -668,7 +770,7 @@ export class NotificationService {
     } catch (error) {
       this.log.error('Failed to send approval needed notifications', {
         error: error instanceof Error ? error.message : 'Unknown error',
-        resourceId,
+        resourceUid: resource.resourceUid,
         requesterId,
         cuid,
       });
@@ -679,8 +781,11 @@ export class NotificationService {
    * Notify about approval decision (approved/rejected)
    */
   async notifyApprovalDecision(
-    resourceId: string,
-    resourceName: string,
+    resource: {
+      resourceId: string;
+      resourceName: string;
+      resourceUid: string;
+    },
     approverId: string,
     cuid: string,
     decision: 'approved' | 'rejected',
@@ -699,7 +804,7 @@ export class NotificationService {
 
       const messageKey = decision === 'approved' ? 'property.approved' : 'property.rejected';
       const messageVars = {
-        propertyName: resourceName,
+        propertyName: resource.resourceName,
         approverName: await this.getUserDisplayName(approverId, cuid),
         reason: reason || 'No reason provided',
       };
@@ -716,14 +821,14 @@ export class NotificationService {
         cuid,
         {
           resourceName: ResourceContext.PROPERTY,
-          resourceUid: resourceId,
-          resourceId: resourceId,
+          resourceUid: resource.resourceUid,
+          resourceId: resource.resourceId,
           metadata,
         }
       );
 
       this.log.info('Sent approval decision notification', {
-        resourceId,
+        resourceId: resource.resourceId,
         decision,
         approverId,
         originalRequesterId,
@@ -731,7 +836,7 @@ export class NotificationService {
     } catch (error) {
       this.log.error('Failed to send approval decision notification', {
         error: error instanceof Error ? error.message : 'Unknown error',
-        resourceId,
+        resourceId: resource.resourceId,
         approverId,
         decision,
       });
@@ -751,6 +856,7 @@ export class NotificationService {
     cuid: string;
     updateData: Record<string, any>;
     propertyManagerId?: string;
+    isDirectUpdate?: boolean;
     resource: { resourceId: string; resourceType: ResourceContext; resourceUid: string };
   }): Promise<void> {
     const {
@@ -762,15 +868,14 @@ export class NotificationService {
       cuid,
       updateData,
       propertyManagerId,
+      isDirectUpdate = false,
       resource,
     } = params;
 
     try {
       if ((PROPERTY_STAFF_ROLES as string[]).includes(userRole)) {
-        // Staff update - notify about approval needed
         await this.notifyApprovalNeeded(
-          resource.resourceId,
-          propertyName,
+          { ...resource, resourceName: resource.resourceType },
           actorUserId,
           actorDisplayName,
           cuid,
@@ -789,7 +894,7 @@ export class NotificationService {
       } else if ((PROPERTY_APPROVAL_ROLES as string[]).includes(userRole)) {
         // Admin/Manager update - notify property manager if exists
         await this.notifyPropertyUpdate(
-          resource.resourceId,
+          { ...resource, resourceName: ResourceContext.PROPERTY },
           propertyName,
           actorUserId,
           actorDisplayName,
@@ -803,16 +908,87 @@ export class NotificationService {
           actorUserId,
           userRole,
           propertyManagerId,
+          isDirectUpdate,
         });
       }
     } catch (error) {
-      // Log error but don't throw - don't fail property update if notifications fail
       this.log.error('Failed to send property update notifications', {
         error: error instanceof Error ? error.message : 'Unknown error',
         propertyId: updatedProperty.pid,
         actorUserId,
         userRole,
       });
+    }
+  }
+
+  /**
+   * Notify staff when their pending changes are overridden by admin
+   */
+  async notifyPendingChangesOverridden(
+    propertyId: string,
+    propertyName: string,
+    adminUserId: string,
+    adminName: string,
+    originalRequesterId: string,
+    cuid: string,
+    context: {
+      address?: string;
+      overriddenAt: Date;
+      overrideReason: string;
+    }
+  ): Promise<void> {
+    try {
+      // Don't notify if admin is overriding their own changes
+      if (this.isSelfNotification(adminUserId, originalRequesterId)) {
+        this.log.debug('Skipping self-notification for pending changes override', {
+          adminUserId,
+          originalRequesterId,
+        });
+        return;
+      }
+
+      const messageVars = {
+        propertyName,
+        adminName,
+        overrideReason: context.overrideReason,
+        address: context.address || 'N/A',
+      };
+
+      await this.createNotificationFromTemplate(
+        'property.pendingChangesOverridden' as NotificationMessageKey,
+        messageVars,
+        originalRequesterId,
+        NotificationTypeEnum.PROPERTY,
+        NotificationPriorityEnum.HIGH,
+        cuid,
+        {
+          resourceName: ResourceContext.PROPERTY,
+          resourceUid: propertyId,
+          resourceId: propertyId,
+          metadata: {
+            overriddenAt: context.overriddenAt,
+            overrideReason: context.overrideReason,
+            address: context.address,
+            adminUserId,
+            adminName,
+          },
+        }
+      );
+
+      this.log.info('Staff notified of pending changes override', {
+        propertyId,
+        adminUserId,
+        originalRequesterId,
+        cuid,
+      });
+    } catch (error) {
+      this.log.error('Failed to notify staff of pending changes override', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        propertyId,
+        adminUserId,
+        originalRequesterId,
+      });
+      throw error;
     }
   }
 
@@ -980,7 +1156,6 @@ export class NotificationService {
       metadata: resourceInfo?.metadata,
     };
 
-    // Add resource info if available
     if (resourceInfo) {
       notificationData.resourceInfo = {
         resourceName: resourceInfo.resourceName,
@@ -993,13 +1168,173 @@ export class NotificationService {
   }
 
   /**
-   * Get user's targeting info (roles and vendor) for announcement filtering - delegates to UserService
+   * Mark notification as read
    */
-  private async getUserTargetingInfo(
+  async markAsRead(
+    notificationId: string,
     userId: string,
     cuid: string
-  ): Promise<{ roles: string[]; vendorId?: string }> {
-    return this.userService.getUserAnnouncementFilters(userId, cuid);
+  ): Promise<ISuccessReturnData<INotificationDocument>> {
+    try {
+      this.log.info('Marking notification as read', {
+        notificationId,
+        userId,
+        cuid,
+      });
+
+      const result = await this.updateNotification(notificationId, userId, cuid, {
+        isRead: true,
+        readAt: new Date(),
+      });
+
+      if (result.success) {
+        this.log.info('Notification marked as read successfully', {
+          notificationId,
+          userId,
+          cuid,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      const errorMsg = 'Unexpected error marking notification as read';
+      this.log.error(errorMsg, {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        notificationId,
+        userId,
+        cuid,
+      });
+
+      return {
+        success: false,
+        data: null as any,
+        message: errorMsg,
+      };
+    }
+  }
+
+  private async publishToSSE(notification: INotificationDocument): Promise<void> {
+    try {
+      // Check user preferences for individual notifications
+      if (notification.recipientType === 'individual' && notification.recipient) {
+        const shouldSend = await this.checkUserNotificationPreferences(
+          notification.recipient.toString(),
+          notification.cuid,
+          notification.type,
+          notification
+        );
+
+        if (!shouldSend) {
+          this.log.debug('Skipping SSE publish due to user preferences', {
+            nuid: notification.nuid,
+            recipientId: notification.recipient,
+            cuid: notification.cuid,
+          });
+          return;
+        }
+      }
+
+      if (notification.recipientType === 'individual' && notification.recipient) {
+        const notificationData = notification.toObject ? notification.toObject() : notification;
+        const ssePayload = {
+          notifications: [notificationData],
+          total: 1,
+          isInitial: false, // Flag to indicate this is a new notification, not initial data
+        };
+
+        await this.sseService.sendToUser(
+          notification.recipient.toString(),
+          notification.cuid,
+          ssePayload,
+          'my-notifications'
+        );
+      } else if (notification.recipientType === 'announcement') {
+        const notificationData = notification.toObject ? notification.toObject() : notification;
+        const ssePayload = {
+          notifications: [notificationData],
+          total: 1,
+          isInitial: false,
+        };
+
+        await this.sseService.broadcastToClient(notification.cuid, ssePayload, 'announcements');
+      }
+    } catch (error) {
+      this.log.error('Failed to publish notification to SSE', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        nuid: notification.nuid,
+        recipientType: notification.recipientType,
+      });
+    }
+  }
+
+  private async checkUserNotificationPreferences(
+    userId: string,
+    cuid: string,
+    notificationType: NotificationTypeEnum,
+    _notificationData: any
+  ): Promise<boolean> {
+    try {
+      const preferencesResult = await this.profileService.getUserNotificationPreferences(
+        userId,
+        cuid
+      );
+
+      if (!preferencesResult.success || !preferencesResult.data) {
+        this.log.warn('Could not get user preferences, allowing notification', { userId, cuid });
+        return true; // Allow by default if preferences can't be retrieved
+      }
+
+      const preferences = preferencesResult.data;
+
+      if (!preferences.inAppNotifications) {
+        this.log.debug('In-app notifications disabled for user', { userId, cuid });
+        return false;
+      }
+
+      const typeToPreferenceMap: Record<NotificationTypeEnum, keyof typeof preferences> = {
+        [NotificationTypeEnum.ANNOUNCEMENT]: 'announcements',
+        [NotificationTypeEnum.MAINTENANCE]: 'maintenance',
+        [NotificationTypeEnum.PROPERTY]: 'propertyUpdates',
+        [NotificationTypeEnum.MESSAGE]: 'messages',
+        [NotificationTypeEnum.COMMENT]: 'comments',
+        [NotificationTypeEnum.PAYMENT]: 'payments',
+        [NotificationTypeEnum.SYSTEM]: 'system',
+        [NotificationTypeEnum.TASK]: 'system', // Map TASK to system notifications
+        [NotificationTypeEnum.USER]: 'system', // Map USER to system notifications
+      };
+
+      const preferenceField = typeToPreferenceMap[notificationType];
+
+      if (!preferenceField) {
+        this.log.warn('Unknown notification type, allowing by default', {
+          notificationType,
+          userId,
+          cuid,
+        });
+        return true; // Allow unknown types by default
+      }
+
+      const isAllowed = preferences[preferenceField] as boolean;
+
+      this.log.debug('User preference check completed', {
+        userId,
+        cuid,
+        notificationType,
+        preferenceField,
+        isAllowed,
+      });
+
+      return isAllowed;
+    } catch (error) {
+      this.log.error('Error checking user notification preferences, allowing by default', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        userId,
+        cuid,
+        notificationType,
+      });
+      return true; // Allow by default on error
+    }
   }
 
   private setupEventListeners(): void {}

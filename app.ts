@@ -71,8 +71,8 @@ export class App implements IAppSetup {
     if (process.env.NODE_ENV !== 'production') {
       app.use(requestLogger(this.log));
     }
-    app.use(express.json({ limit: '250mb' }));
-    app.use(urlencoded({ extended: true, limit: '250mb' }));
+    app.use(express.json({ limit: '200mb' }));
+    app.use(urlencoded({ extended: true, limit: '200mb' }));
     app.use(cookieParser());
     app.use(compression());
     app.use(scopedMiddleware);
@@ -107,14 +107,14 @@ export class App implements IAppSetup {
       app.use(`${BASE_PATH}/queues`, serverAdapter.getRouter());
     }
     app.use(`${BASE_PATH}/auth`, routes.authRoutes);
-    app.use(`${BASE_PATH}/clients`, routes.clientRoutes);
-    app.use(`${BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
-    app.use(`${BASE_PATH}/invites`, routes.invitationRoutes);
-    // app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
     app.use(`${BASE_PATH}/users`, routes.userRoutes);
+    app.use(`${BASE_PATH}/clients`, routes.clientRoutes);
     app.use(`${BASE_PATH}/vendors`, routes.vendorRoutes);
+    // app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
+    app.use(`${BASE_PATH}/invites`, routes.invitationRoutes);
     app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
-    // app.use(`${BASE_PATH}/notifications`, routes.notificationRoutes);
+    app.use(`${BASE_PATH}/notifications`, routes.notificationRoutes);
+    app.use(`${BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
     // app.use(`${BASE_PATH}/subscriptions`, routes.subscriptionsRoutes);
     // app.use(`${BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
     app.all('*', (req: Request, res: Response) => {

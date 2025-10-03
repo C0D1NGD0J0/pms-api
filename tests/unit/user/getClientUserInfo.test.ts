@@ -1,5 +1,6 @@
 import { UserService } from '@services/user/user.service';
 import { IRequestContext } from '@interfaces/utils.interface';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 
 describe('UserService - getClientUserInfo', () => {
   let userService: UserService;
@@ -50,7 +51,7 @@ describe('UserService - getClientUserInfo', () => {
         client: {
           cuid: 'test-client-id',
           displayname: 'Test Client',
-          role: 'admin',
+          role: ROLES.ADMIN,
         },
         email: 'admin@test.com',
         sub: 'admin-uid',
@@ -78,7 +79,7 @@ describe('UserService - getClientUserInfo', () => {
           {
             cuid: 'test-client-id',
             displayName: 'John Doe',
-            roles: ['manager'],
+            roles: [ROLES.MANAGER],
             isConnected: true,
           },
         ],
@@ -142,7 +143,7 @@ describe('UserService - getClientUserInfo', () => {
       // Validate profile structure
       expect(result.data.profile).toMatchObject({
         email: 'employee@test.com',
-        roles: ['manager'],
+        roles: [ROLES.MANAGER],
         userType: 'employee',
       });
 
@@ -202,7 +203,7 @@ describe('UserService - getClientUserInfo', () => {
           {
             cuid: 'test-client-id',
             displayName: 'ABC Plumbing',
-            roles: ['vendor'],
+            roles: [ROLES.VENDOR],
             isConnected: true,
             linkedVendorUid: null,
           },
@@ -312,7 +313,7 @@ describe('UserService - getClientUserInfo', () => {
           {
             cuid: 'test-client-id',
             displayName: 'Sub Contractor',
-            roles: ['vendor'],
+            roles: [ROLES.VENDOR],
             isConnected: true,
             linkedVendorUid: 'primary-vendor-id',
           },

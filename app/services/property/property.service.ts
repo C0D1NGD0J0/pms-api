@@ -4,9 +4,10 @@ import sanitizeHtml from 'sanitize-html';
 import { FilterQuery, Types } from 'mongoose';
 import { PropertyCache } from '@caching/index';
 import { GeoCoderService } from '@services/external';
+import { ICurrentUser } from '@interfaces/user.interface';
 import { PropertyQueue, UploadQueue } from '@queues/index';
 import { NotificationService } from '@services/notification';
-import { ICurrentUser, IUserRole } from '@interfaces/user.interface';
+import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
@@ -28,15 +29,6 @@ import {
   UploadResult,
 } from '@interfaces/utils.interface';
 import {
-  PROPERTY_CREATION_ALLOWED_DEPARTMENTS,
-  PROPERTY_APPROVAL_ROLES,
-  createSafeMongoUpdate,
-  PROPERTY_STAFF_ROLES,
-  getRequestDuration,
-  createLogger,
-  MoneyUtils,
-} from '@utils/index';
-import {
   PropertyApprovalStatusEnum,
   IAssignableUsersFilter,
   IPropertyWithUnitInfo,
@@ -45,6 +37,16 @@ import {
   IAssignableUser,
   NewPropertyType,
 } from '@interfaces/property.interface';
+import {
+  PROPERTY_CREATION_ALLOWED_DEPARTMENTS,
+  PROPERTY_APPROVAL_ROLES,
+  createSafeMongoUpdate,
+  convertUserRoleToEnum,
+  PROPERTY_STAFF_ROLES,
+  getRequestDuration,
+  createLogger,
+  MoneyUtils,
+} from '@utils/index';
 
 import { PropertyValidationService } from './propertyValidation.service';
 
@@ -113,14 +115,6 @@ export class PropertyService {
     this.setupEventListeners();
   }
 
-  /**
-   * Utility method to convert user role string to IUserRole enum value
-   */
-  private convertUserRoleToEnum(userRole: string): IUserRole {
-    const upperRole = userRole.toUpperCase() as keyof typeof IUserRole;
-    return IUserRole[upperRole] as IUserRole;
-  }
-
   private setupEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
@@ -157,7 +151,7 @@ export class PropertyService {
     }
 
     const userRole = currentuser.client.role;
-    const userRoleEnum = this.convertUserRoleToEnum(userRole);
+    const userRoleEnum = convertUserRoleToEnum(userRole);
     if (
       !PROPERTY_STAFF_ROLES.includes(userRoleEnum) &&
       !PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)
@@ -605,16 +599,18 @@ export class PropertyService {
       limit: Math.max(1, Math.min(pagination.limit || 10, 100)),
       skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
     };
-    // const cachedResult = await this.propertyCache.getClientProperties(cuid, opts);
-    // if (cachedResult.success && cachedResult.data) {
-    //   return {
-    //     success: true,
-    //     data: {
-    //       items: cachedResult.data.properties,
-    //       pagination: cachedResult.data.pagination,
-    //     },
-    //   };
-    // }
+
+    const cachedResult = await this.propertyCache.getClientProperties(cuid, opts);
+    if (cachedResult.success && cachedResult.data) {
+      return {
+        success: true,
+        data: {
+          items: cachedResult.data.properties,
+          pagination: cachedResult.data.pagination,
+        },
+      };
+    }
+
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
 
     const itemsWithPreview = properties.items.map((property) => {
@@ -631,6 +627,7 @@ export class PropertyService {
     await this.propertyCache.saveClientProperties(cuid, properties.items, {
       filter,
       pagination: opts,
+      totalCount: properties.pagination?.total,
     });
 
     return {
@@ -709,7 +706,7 @@ export class PropertyService {
 
     // Check user authorization
     const userRole = ctx.currentuser.client.role;
-    const userRoleEnum = this.convertUserRoleToEnum(userRole);
+    const userRoleEnum = convertUserRoleToEnum(userRole);
     if (
       !PROPERTY_STAFF_ROLES.includes(userRoleEnum) &&
       !PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)
@@ -762,30 +759,37 @@ export class PropertyService {
       this.validateOccupancyStatusChange(property, cleanUpdateData);
     }
 
-    // checks for concurrent updates (optimistic locking) - staff only
-    if (PROPERTY_STAFF_ROLES.includes(userRoleEnum) && property.pendingChanges) {
+    // Smart Approval Workflow Logic
+    const hasPendingChanges = !!property.pendingChanges;
+    let pendingChangesInfo: any = null;
+
+    if (hasPendingChanges) {
       const pendingChanges = property.pendingChanges as any;
-      const lockedByUserId = pendingChanges.updatedBy?.toString();
-
-      // Check if another user has pending changes
-      if (lockedByUserId && lockedByUserId !== ctx.currentuser.sub) {
-        const lockedByDisplayName = pendingChanges.displayName || 'Another user';
-        const lockedAt = pendingChanges.updatedAt
-          ? new Date(pendingChanges.updatedAt).toLocaleString()
-          : 'recently';
-
-        throw new BadRequestError({
-          message: `Cannot edit property - ${lockedByDisplayName} has pending changes since ${lockedAt}. Changes must be approved or rejected before further edits can be made.`,
-        });
-      }
+      pendingChangesInfo = {
+        updatedBy: pendingChanges.updatedBy?.toString(),
+        displayName: pendingChanges.displayName || 'Unknown User',
+        updatedAt: pendingChanges.updatedAt,
+      };
     }
 
-    // Determine save strategy and execute update
-    let updatedProperty: IPropertyDocument;
-    let message: string;
-
+    // STAFF LOGIC: Block if another user has pending changes
     if (PROPERTY_STAFF_ROLES.includes(userRoleEnum)) {
-      // Staff update - store in pendingChanges
+      if (hasPendingChanges) {
+        const lockedByUserId = pendingChangesInfo.updatedBy;
+
+        // Block if another user has pending changes
+        if (lockedByUserId && lockedByUserId !== ctx.currentuser.sub) {
+          const lockedAt = pendingChangesInfo.updatedAt
+            ? new Date(pendingChangesInfo.updatedAt).toLocaleString()
+            : 'recently';
+
+          throw new BadRequestError({
+            message: `Cannot edit property - ${pendingChangesInfo.displayName} has pending changes since ${lockedAt}. Changes must be approved or rejected before further edits can be made.`,
+          });
+        }
+      }
+
+      // staff update - store in pendingChanges
       const result = await this.propertyDAO.update(
         { cuid, pid, deletedAt: null },
         {
@@ -801,57 +805,140 @@ export class PropertyService {
           },
         }
       );
+
       if (!result) {
         throw new BadRequestError({ message: 'Unable to update property.' });
       }
-      updatedProperty = result;
-      message = 'Property changes submitted for approval';
-    } else {
-      // Admin/Manager direct update
-      const safeUpdateData = createSafeMongoUpdate(cleanUpdateData);
-      const result = await this.propertyDAO.update(
-        { cuid, pid, deletedAt: null },
-        {
-          $set: {
-            ...safeUpdateData,
-            approvalStatus: PropertyApprovalStatusEnum.APPROVED,
-            lastModifiedBy: new Types.ObjectId(ctx.currentuser.sub),
-          },
-          $push: {
-            approvalDetails: {
-              timestamp: new Date(),
-              action: 'updated' as const,
-              actor: new Types.ObjectId(ctx.currentuser.sub),
-            },
-          },
-        }
-      );
-      if (!result) {
-        throw new BadRequestError({ message: 'Unable to update property.' });
-      }
-      updatedProperty = result;
-      message = 'Property updated successfully';
+
+      // Send notification to approvers
+      await this.handleUpdateNotifications(ctx, result, cleanUpdateData, false);
+
+      return {
+        success: true,
+        data: result,
+        message: 'Property changes submitted for approval',
+      };
     }
 
-    // Cache invalidation and notifications
-    await this.propertyCache.invalidateProperty(cuid, property.id);
-    await this.notificationService.handlePropertyUpdateNotifications({
-      userRole: ctx.currentuser.client.role,
-      updatedProperty,
-      propertyName: updatedProperty.name || property.name || 'Unknown Property',
-      actorUserId: ctx.currentuser.sub,
-      actorDisplayName: ctx.currentuser.displayName,
-      cuid,
-      updateData: cleanUpdateData,
-      propertyManagerId: updatedProperty.managedBy?.toString(),
-      resource: {
-        resourceType: ResourceContext.PROPERTY,
-        resourceId: updatedProperty.id,
-        resourceUid: updatedProperty.pid,
-      },
-    });
+    // ADMIN/MANAGER LOGIC: direct update with override handling
+    if (PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)) {
+      let overrideMessage = '';
+      let notifyStaffOfOverride = false;
+      let originalRequesterId: string | undefined;
 
-    return { success: true, data: updatedProperty, message };
+      // are we overriding pending changes
+      if (hasPendingChanges) {
+        originalRequesterId = pendingChangesInfo.updatedBy;
+        overrideMessage = ` (overriding pending changes from ${pendingChangesInfo.displayName})`;
+        notifyStaffOfOverride = true;
+
+        this.log.info('Admin overriding pending changes', {
+          propertyId: property.id,
+          adminId: ctx.currentuser.sub,
+          adminName: ctx.currentuser.displayName,
+          originalRequesterId,
+          originalRequesterName: pendingChangesInfo.displayName,
+        });
+      }
+
+      // apply admin changes directly and clear pending changes
+      const safeUpdateData = createSafeMongoUpdate(cleanUpdateData);
+      const updateOperation: any = {
+        $set: {
+          ...safeUpdateData,
+          approvalStatus: PropertyApprovalStatusEnum.APPROVED,
+          lastModifiedBy: new Types.ObjectId(ctx.currentuser.sub),
+          pendingChanges: null, // Clear any pending changes
+        },
+        $push: {
+          approvalDetails: {
+            timestamp: new Date(),
+            action: hasPendingChanges ? 'overridden' : 'updated',
+            actor: new Types.ObjectId(ctx.currentuser.sub),
+            ...(overrideMessage && { notes: `Direct update${overrideMessage}` }),
+          },
+        },
+      };
+
+      const result = await this.propertyDAO.update({ cuid, pid, deletedAt: null }, updateOperation);
+
+      if (!result) {
+        throw new BadRequestError({ message: 'Unable to update property.' });
+      }
+
+      await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
+
+      // notify staff if their pending changes were overridden
+      if (notifyStaffOfOverride && originalRequesterId) {
+        try {
+          await this.notificationService.notifyPendingChangesOverridden(
+            property.pid,
+            property.name || 'Unknown Property',
+            ctx.currentuser.sub,
+            ctx.currentuser.displayName,
+            originalRequesterId,
+            cuid,
+            {
+              address: property.address?.fullAddress,
+              overriddenAt: new Date(),
+              overrideReason: 'Direct admin update with higher priority',
+            }
+          );
+        } catch (notificationError) {
+          this.log.error('Failed to send override notification to staff', {
+            error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+            propertyId: property.pid,
+            adminId: ctx.currentuser.sub,
+            originalRequesterId,
+          });
+        }
+      }
+
+      const message = hasPendingChanges
+        ? `Property updated successfully${overrideMessage}`
+        : 'Property updated successfully';
+
+      return { success: true, data: result, message };
+    }
+
+    throw new ForbiddenError({ message: 'Unable to determine update strategy for user role.' });
+  }
+
+  /**
+   * Helper method to handle update notifications
+   */
+  private async handleUpdateNotifications(
+    ctx: { cuid: string; currentuser: ICurrentUser },
+    updatedProperty: IPropertyDocument,
+    updateData: Partial<IPropertyDocument>,
+    isDirectUpdate: boolean
+  ): Promise<void> {
+    try {
+      await this.propertyCache.invalidateProperty(ctx.cuid, updatedProperty.id);
+      await this.notificationService.handlePropertyUpdateNotifications({
+        userRole: ctx.currentuser.client.role,
+        updatedProperty,
+        propertyName: updatedProperty.name || 'Unknown Property',
+        actorUserId: ctx.currentuser.sub,
+        actorDisplayName: ctx.currentuser.displayName,
+        cuid: ctx.cuid,
+        updateData,
+        propertyManagerId: updatedProperty.managedBy?.toString(),
+        isDirectUpdate,
+        resource: {
+          resourceType: ResourceContext.PROPERTY,
+          resourceId: updatedProperty.id,
+          resourceUid: updatedProperty.pid,
+        },
+      });
+    } catch (notificationError) {
+      this.log.error('Failed to send update notification', {
+        error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+        propertyId: updatedProperty.pid,
+        userId: ctx.currentuser.sub,
+        isDirectUpdate,
+      });
+    }
   }
 
   async getPendingApprovals(
@@ -860,7 +947,7 @@ export class PropertyService {
     pagination: IPaginationQuery
   ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: PaginateResult }>> {
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to view pending approvals.',
       });
@@ -899,7 +986,7 @@ export class PropertyService {
     notes?: string
   ): Promise<ISuccessReturnData> {
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to approve properties.',
       });
@@ -921,7 +1008,6 @@ export class PropertyService {
       });
     }
 
-    // Create new approval entry for the array
     const approvalEntry = {
       action: 'approved' as const,
       actor: new Types.ObjectId(currentuser.sub),
@@ -929,27 +1015,32 @@ export class PropertyService {
       ...(notes && { notes }),
     };
 
-    let updateData: any = {
+    const updateData: any = {
       approvalStatus: 'approved',
-      $push: { approvalDetails: approvalEntry },
       lastModifiedBy: new Types.ObjectId(currentuser.sub),
     };
 
-    // If there are pending changes, apply them to the main fields
+    // Defensive check: Ensure approvalDetails is an array before $push
+    if (!property.approvalDetails || !Array.isArray(property.approvalDetails)) {
+      this.log.warn('Fixing approvalDetails type mismatch - initializing as empty array', {
+        propertyId: property.id,
+        pid: property.pid,
+        currentType: property.approvalDetails ? typeof property.approvalDetails : 'undefined',
+        wasArray: Array.isArray(property.approvalDetails),
+      });
+      updateData.approvalDetails = [approvalEntry];
+    } else {
+      updateData.$push = { approvalDetails: approvalEntry };
+    }
+
     if (property.pendingChanges) {
-      // Use createSafeMongoUpdate to prevent nested object overwrites
       const safeChanges = createSafeMongoUpdate(property.pendingChanges);
 
-      // Apply pending changes to main fields and clear them
-      updateData = {
-        ...updateData,
-        $set: {
-          ...safeChanges,
-          pendingChanges: null, // Clear pending changes after applying
-          approvalStatus: 'approved',
-          lastModifiedBy: new Types.ObjectId(currentuser.sub),
-        },
-        $push: { approvalDetails: approvalEntry },
+      updateData.$set = {
+        ...safeChanges,
+        pendingChanges: null,
+        approvalStatus: 'approved',
+        lastModifiedBy: new Types.ObjectId(currentuser.sub),
       };
 
       this.log.info('Applying pending changes during approval with safe updates', {
@@ -977,7 +1068,6 @@ export class PropertyService {
       hadPendingChanges: !!property.pendingChanges,
     });
 
-    // Send approval notification
     try {
       const originalRequesterId =
         property.pendingChanges?.updatedBy?.toString() ||
@@ -987,8 +1077,11 @@ export class PropertyService {
 
       if (originalRequesterId) {
         await this.notificationService.notifyApprovalDecision(
-          updatedProperty.pid,
-          updatedProperty.name || 'Unknown Property',
+          {
+            resourceId: updatedProperty.id,
+            resourceUid: updatedProperty.pid,
+            resourceName: updatedProperty.name || property.name || 'Unknown Property',
+          },
           currentuser.sub,
           cuid,
           'approved',
@@ -1029,7 +1122,7 @@ export class PropertyService {
 
     // Check if user has permission
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to reject properties.',
       });
@@ -1055,19 +1148,19 @@ export class PropertyService {
 
     // Determine the appropriate status after rejection
     const updateData: any = {
-      $push: { approvalDetails: rejectionEntry },
       lastModifiedBy: new Types.ObjectId(currentuser.sub),
     };
 
+    if (!property.approvalDetails || !Array.isArray(property.approvalDetails)) {
+      updateData.approvalDetails = [rejectionEntry];
+    } else {
+      updateData.$push = { approvalDetails: rejectionEntry };
+    }
+
     // If property has pending changes, clear them and keep status as approved (using old data)
     if (property.pendingChanges) {
-      updateData.pendingChanges = null; // Clear pending changes
+      updateData.pendingChanges = null;
       // Keep approvalStatus as 'approved' since we're keeping the old approved data
-
-      this.log.info('Clearing pending changes on rejection', {
-        propertyId: property.id,
-        hadPendingChanges: true,
-      });
     } else {
       // If no pending changes, this is a new property being rejected
       updateData.approvalStatus = 'rejected';
@@ -1092,7 +1185,6 @@ export class PropertyService {
       hadPendingChanges: !!property.pendingChanges,
     });
 
-    // Send rejection notification
     try {
       const originalRequesterId =
         property.pendingChanges?.updatedBy?.toString() ||
@@ -1102,8 +1194,11 @@ export class PropertyService {
 
       if (originalRequesterId) {
         await this.notificationService.notifyApprovalDecision(
-          updatedProperty.pid,
-          updatedProperty.name || property.name || 'Unknown Property',
+          {
+            resourceId: updatedProperty.id,
+            resourceUid: updatedProperty.pid,
+            resourceName: updatedProperty.name || property.name || 'Unknown Property',
+          },
           currentuser.sub,
           cuid,
           'rejected',
@@ -1137,9 +1232,8 @@ export class PropertyService {
     propertyIds: string[],
     currentuser: ICurrentUser
   ): Promise<ISuccessReturnData> {
-    // Check if user has permission
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to bulk approve properties.',
       });
@@ -1193,7 +1287,7 @@ export class PropertyService {
 
     // Check if user has permission
     const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
         message: 'You are not authorized to bulk reject properties.',
       });
@@ -1291,7 +1385,6 @@ export class PropertyService {
     currentUser: ICurrentUser,
     property: IPropertyDocument
   ): boolean {
-    // Return false if no pending changes exist
     if (!property.pendingChanges) {
       return false;
     }
@@ -1299,12 +1392,12 @@ export class PropertyService {
     const userRole = currentUser.client.role;
 
     // Admin/managers can see all pending changes
-    if (PROPERTY_APPROVAL_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       return true;
     }
 
     // Staff can only see their own pending changes
-    if (PROPERTY_STAFF_ROLES.includes(this.convertUserRoleToEnum(userRole))) {
+    if (PROPERTY_STAFF_ROLES.includes(convertUserRoleToEnum(userRole))) {
       const pendingChanges = property.pendingChanges as any;
       return pendingChanges.updatedBy?.toString() === currentUser.sub;
     }
@@ -1323,7 +1416,6 @@ export class PropertyService {
     const pendingChanges = property.pendingChanges as any;
     const { updatedBy, updatedAt, ...changes } = pendingChanges;
 
-    // Format fee values in pending changes for frontend display
     const formattedChanges = { ...changes };
     if (formattedChanges.fees) {
       formattedChanges.fees = MoneyUtils.formatMoneyDisplay(formattedChanges.fees);
@@ -1337,7 +1429,7 @@ export class PropertyService {
       updatedAt,
       updatedBy,
       summary,
-      changes: formattedChanges, // Include formatted pending changes
+      changes: formattedChanges,
     };
   }
 
@@ -1787,7 +1879,7 @@ export class PropertyService {
       }
 
       // Define management roles only (exclude vendor, tenant)
-      const managementRoles = ['admin', 'staff', 'manager'];
+      const managementRoles = ROLE_GROUPS.EMPLOYEE_ROLES;
       const roleFilter = filters.role && filters.role !== 'all' ? [filters.role] : managementRoles;
 
       // Build aggregation pipeline to get users with profile data

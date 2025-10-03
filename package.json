@@ -45,6 +45,7 @@
     "aws-sdk": "^2.1692.0",
     "babel-jest": "^29.7.0",
     "bcryptjs": "^3.0.2",
+    "better-sse": "^0.15.1",
     "bull": "^4.16.5",
     "bullmq": "^5.41.8",
     "bunyan": "^1.8.15",

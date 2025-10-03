@@ -106,7 +106,7 @@ export class BaseCache extends RedisService implements IBaseCache {
 
       return {
         data: null,
-        success: typeof hsetResult === 'number' && hsetResult > 0,
+        success: typeof hsetResult === 'number' && hsetResult >= 0,
       };
     } catch (error) {
       return this.handleError(error, `setObject(${objName})`);

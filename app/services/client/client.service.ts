@@ -2,8 +2,8 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { getRequestDuration, createLogger } from '@utils/index';
-import { IUserRoleType, IUserRole } from '@interfaces/user.interface';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
+import { IUserRoleType, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { PopulatedAccountAdmin, IClientDocument, IClientStats } from '@interfaces/client.interface';
 
@@ -331,9 +331,9 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
-    if (role === 'admin') {
+    if (role === ROLES.ADMIN) {
       const adminUsers = await this.userDAO.getUsersByClientId(clientId, {
-        'cuids.roles': 'admin',
+        'cuids.roles': ROLES.ADMIN,
         'cuids.isConnected': true,
       });
 
@@ -410,7 +410,7 @@ export class ClientService {
 
     if (clientConnection.roles.includes(IUserRole.ADMIN)) {
       const connectedAdmins = await this.userDAO.getUsersByClientId(clientId, {
-        'cuids.roles': 'admin',
+        'cuids.roles': ROLES.ADMIN,
         'cuids.isConnected': true,
       });
 

@@ -4,6 +4,7 @@ import clientRoutes from './client.routes';
 import vendorRoutes from './vendors.routes';
 import propertyRoutes from './property.routes';
 import invitationRoutes from './invitation.routes';
+import notificationRoutes from './notification.routes';
 import emailTemplateRoutes from './emailTemplate.routes';
 
 export const routes = {
@@ -14,4 +15,5 @@ export const routes = {
   propertyRoutes,
   invitationRoutes,
   emailTemplateRoutes,
+  notificationRoutes,
 };

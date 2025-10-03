@@ -5,15 +5,25 @@ import { PropertyQueue } from '@queues/property.queue';
 import { PropertyCache } from '@caching/property.cache';
 import { PropertyUnitCsvProcessor } from '@services/csv';
 import { EventTypes } from '@interfaces/events.interface';
+import { ICurrentUser } from '@interfaces/user.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyUnitQueue } from '@queues/propertyUnit.queue';
-import { getRequestDuration, createLogger } from '@utils/index';
 import { IPropertyUnit } from '@interfaces/propertyUnit.interface';
-import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
+import { ValidationRequestError, BadRequestError, ForbiddenError } from '@shared/customErrors';
 import { ExtractedMediaFile, IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
+import {
+  PROPERTY_APPROVAL_ROLES,
+  HIGH_IMPACT_UNIT_FIELDS,
+  OPERATIONAL_UNIT_FIELDS,
+  createSafeMongoUpdate,
+  convertUserRoleToEnum,
+  PROPERTY_STAFF_ROLES,
+  getRequestDuration,
+  createLogger,
+} from '@utils/index';
 
 interface IConstructor {
   unitNumberingService: UnitNumberingService;
@@ -66,6 +76,63 @@ export class PropertyUnitService {
     this.propertyUnitQueue = propertyUnitQueue;
     this.unitNumberingService = unitNumberingService;
     this.log = createLogger('PropertyUnitService');
+  }
+
+  /**
+   * Extract high-impact unit changes that require approval
+   */
+  private extractHighImpactUnitChanges(updateData: any): any {
+    const highImpactChanges: any = {};
+    HIGH_IMPACT_UNIT_FIELDS.forEach((field) => {
+      if (this.hasNestedProperty(updateData, field)) {
+        this.setNestedProperty(highImpactChanges, field, this.getNestedProperty(updateData, field));
+      }
+    });
+    return highImpactChanges;
+  }
+
+  /**
+   * Extract operational unit changes that can be applied directly
+   */
+  private extractOperationalUnitChanges(updateData: any): any {
+    const operationalChanges: any = {};
+    OPERATIONAL_UNIT_FIELDS.forEach((field) => {
+      if (this.hasNestedProperty(updateData, field)) {
+        this.setNestedProperty(
+          operationalChanges,
+          field,
+          this.getNestedProperty(updateData, field)
+        );
+      }
+    });
+    return operationalChanges;
+  }
+
+  /**
+   * Helper to check if nested property exists
+   */
+  private hasNestedProperty(obj: any, path: string): boolean {
+    return path.split('.').reduce((current, key) => current && current[key] !== undefined, obj);
+  }
+
+  /**
+   * Helper to get nested property value
+   */
+  private getNestedProperty(obj: any, path: string): any {
+    return path.split('.').reduce((current, key) => current && current[key], obj);
+  }
+
+  /**
+   * Helper to set nested property value
+   */
+  private setNestedProperty(obj: any, path: string, value: any): void {
+    const keys = path.split('.');
+    const lastKey = keys.pop()!;
+    const target = keys.reduce((current, key) => {
+      if (!current[key]) current[key] = {};
+      return current[key];
+    }, obj);
+    target[lastKey] = value;
   }
 
   async addPropertyUnit(cxt: IRequestContext, data: BatchUnitData) {
@@ -388,50 +455,90 @@ export class PropertyUnitService {
       });
     }
 
-    const session = await this.propertyUnitDAO.startSession();
-    const result = await this.propertyUnitDAO.withTransaction(session, async (session) => {
-      const updatedUnit = await this.propertyUnitDAO.update(
+    // Smart Approval Workflow for Units
+    const userRole = currentuser.client.role;
+    const userRoleEnum = convertUserRoleToEnum(userRole);
+
+    // Check user authorization
+    if (
+      !PROPERTY_STAFF_ROLES.includes(userRoleEnum) &&
+      !PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)
+    ) {
+      throw new ForbiddenError({ message: 'You are not authorized to update units.' });
+    }
+
+    // Categorize changes into high-impact vs operational
+    const highImpactChanges = this.extractHighImpactUnitChanges(updateData);
+    const operationalChanges = this.extractOperationalUnitChanges(updateData);
+
+    let updatedUnit: any;
+    let message: string = t('propertyUnit.success.updated'); // Initialize with default value
+
+    // 1. Always apply operational changes directly
+    if (Object.keys(operationalChanges).length > 0) {
+      updatedUnit = await this.propertyUnitDAO.update(
         { id: unitId, propertyId: property.id },
         {
-          ...updateData,
+          ...operationalChanges,
           lastModifiedBy: new Types.ObjectId(currentuser.sub),
-        },
-        session
+        }
       );
+    }
 
-      // Emit event for property occupancy sync if status changed
-      if (updateData.status) {
-        this.emitterService.emit(EventTypes.UNIT_STATUS_CHANGED, {
-          propertyId: property.id,
-          propertyPid: pid,
-          cuid,
-          unitId,
-          userId: currentuser.sub,
-          changeType: 'status_changed',
-          previousStatus: unit.status,
-          newStatus: updateData.status,
-        });
-      } else {
-        // Emit general unit updated event
-        this.emitterService.emit(EventTypes.UNIT_UPDATED, {
-          propertyId: property.id,
-          propertyPid: pid,
-          cuid,
-          unitId,
-          userId: currentuser.sub,
-          changeType: 'updated',
-        });
+    // 2. Handle high-impact changes based on user role
+    if (Object.keys(highImpactChanges).length > 0) {
+      if (PROPERTY_STAFF_ROLES.includes(userRoleEnum)) {
+        // Staff: Submit for approval
+        updatedUnit = await this.submitUnitChangesForApproval(
+          cxt,
+          unit,
+          highImpactChanges,
+          currentuser
+        );
+        message = 'Unit changes submitted for approval';
+      } else if (PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)) {
+        // Admin/Manager: Apply directly with override handling
+        const result = await this.applyUnitChangesDirectly(
+          cxt,
+          unit,
+          highImpactChanges,
+          currentuser
+        );
+        updatedUnit = result.unit;
+        message = result.message;
       }
+    }
 
-      return { data: updatedUnit };
-    });
+    // Emit events for property occupancy sync
+    if (updateData.status || highImpactChanges.status) {
+      this.emitterService.emit(EventTypes.UNIT_STATUS_CHANGED, {
+        propertyId: property.id,
+        propertyPid: pid,
+        cuid,
+        unitId,
+        userId: currentuser.sub,
+        changeType: 'status_changed',
+        previousStatus: unit.status,
+        newStatus: updateData.status || highImpactChanges.status,
+      });
+    } else {
+      this.emitterService.emit(EventTypes.UNIT_UPDATED, {
+        propertyId: property.id,
+        propertyPid: pid,
+        cuid,
+        unitId,
+        userId: currentuser.sub,
+        changeType: 'updated',
+      });
+    }
+
     await this.propertyCache.invalidateProperty(cuid, pid);
     await this.propertyCache.invalidatePropertyLists(cuid);
 
     return {
       success: true,
-      data: result.data,
-      message: t('propertyUnit.success.updated'),
+      data: updatedUnit || unit,
+      message,
     };
   }
 
@@ -798,5 +905,90 @@ export class PropertyUnitService {
         message: error.message || t('propertyUnit.errors.csvImportFailed'),
       });
     }
+  }
+
+  /**
+   * Submit unit changes for approval (staff workflow)
+   */
+  private async submitUnitChangesForApproval(
+    cxt: IRequestContext,
+    unit: any,
+    highImpactChanges: any,
+    currentuser: ICurrentUser
+  ): Promise<any> {
+    const { unitId } = cxt.request.params;
+
+    // Check for existing pending changes
+    if (unit.pendingChanges) {
+      const lockedByUserId = unit.pendingChanges.updatedBy?.toString();
+      if (lockedByUserId && lockedByUserId !== currentuser.sub) {
+        throw new BadRequestError({
+          message: `Unit is locked for editing - ${unit.pendingChanges.displayName} has pending changes.`,
+        });
+      }
+    }
+
+    return await this.propertyUnitDAO.update(
+      { id: unitId },
+      {
+        $set: {
+          pendingChanges: {
+            ...highImpactChanges,
+            updatedBy: new Types.ObjectId(currentuser.sub),
+            updatedAt: new Date(),
+            displayName: currentuser.fullname,
+          },
+          approvalStatus: 'pending',
+        },
+      }
+    );
+  }
+
+  /**
+   * Apply unit changes directly (admin/manager workflow)
+   */
+  private async applyUnitChangesDirectly(
+    cxt: IRequestContext,
+    unit: any,
+    highImpactChanges: any,
+    currentuser: ICurrentUser
+  ): Promise<{ unit: any; message: string }> {
+    const { unitId } = cxt.request.params;
+    let overrideMessage = '';
+    let _notifyStaffOfOverride = false;
+
+    // Check for override scenario
+    if (unit.pendingChanges) {
+      const pendingChanges = unit.pendingChanges as any;
+      overrideMessage = ` (overriding pending changes from ${pendingChanges.displayName})`;
+      _notifyStaffOfOverride = true;
+    }
+
+    const safeUpdateData = createSafeMongoUpdate(highImpactChanges);
+    const updatedUnit = await this.propertyUnitDAO.update(
+      { id: unitId },
+      {
+        $set: {
+          ...safeUpdateData,
+          approvalStatus: 'approved',
+          pendingChanges: null,
+          lastModifiedBy: new Types.ObjectId(currentuser.sub),
+        },
+        $push: {
+          approvalDetails: {
+            action: unit.pendingChanges ? 'overridden' : 'updated',
+            actor: new Types.ObjectId(currentuser.sub),
+            timestamp: new Date(),
+            ...(overrideMessage && { notes: `Direct update${overrideMessage}` }),
+          },
+        },
+      }
+    );
+
+    const message = unit.pendingChanges
+      ? `Unit updated successfully${overrideMessage}`
+      : 'Unit updated successfully';
+
+    return { unit: updatedUnit, message };
   }
 }

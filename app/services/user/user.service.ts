@@ -9,6 +9,7 @@ import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
+import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
 import {
   IUserPopulatedDocument,
@@ -17,11 +18,9 @@ import {
   IEmployeeDetailInfo,
   IVendorDetailInfo,
   ITenantDetailInfo,
-  IUserRoleType,
   IUserProperty,
   ICurrentUser,
   IUserStats,
-  IUserRole,
 } from '@interfaces/user.interface';
 
 interface IConstructor {
@@ -254,21 +253,20 @@ export class UserService {
             fullName: fullName || undefined,
             displayName: fullName || user.email,
             isConnected: clientConnection?.isConnected || false,
-            phoneNumber: user.profile?.personalInfo?.phoneNumber || undefined,
           };
 
           const roles = clientConnection?.roles || [];
 
-          if (roles.some((r: string) => ['manager', 'admin', 'staff'].includes(r))) {
+          if (roles.some((r: string) => ROLE_GROUPS.EMPLOYEE_ROLES.includes(r as any))) {
             tableUserData.employeeInfo = {
               jobTitle: user.profile?.employeeInfo?.jobTitle || undefined,
               department: user.profile?.employeeInfo?.department || undefined,
-              startDate: user.profile?.employeeInfo?.startDate || undefined,
+              startDate:
+                user.profile?.employeeInfo?.startDate || user.profile?.createdAt || undefined,
             };
           }
 
-          // Add vendor info if user has vendor role
-          if (roles.includes('vendor') && user._id) {
+          if (roles.includes(ROLES.VENDOR as string) && user._id) {
             const vendorEntity = await this.vendorService.getVendorByUserId(user._id.toString());
             if (vendorEntity) {
               tableUserData.vendorInfo = {
@@ -288,7 +286,7 @@ export class UserService {
             }
           }
 
-          if (roles.includes('tenant')) {
+          if (roles.includes(ROLES.TENANT as string)) {
             tableUserData.tenantInfo = {
               unitNumber: user.profile?.tenantInfo?.unitNumber || undefined,
               leaseStatus: user.profile?.tenantInfo?.leaseStatus || undefined,
@@ -300,12 +298,16 @@ export class UserService {
         })
       );
 
-      // Cache the result for future requests
       await this.userCache.saveFilteredUsers(cuid, users, {
         filters: filterOptions,
         pagination: paginationOpts,
+        totalCount: result.pagination?.total,
       });
-      this.log.info('Filtered users cached', { cuid, count: users.length });
+      this.log.info('Filtered users cached', {
+        cuid,
+        count: users.length,
+        total: result.pagination?.total,
+      });
 
       return {
         success: true,
@@ -471,8 +473,8 @@ export class UserService {
       case 'employee':
         // Get properties for employees (excluding tenants)
         if (
-          !response.roles.includes(IUserRole.TENANT) ||
-          response.roles.includes(IUserRole.VENDOR)
+          !response.roles.includes(IUserRole.TENANT as string) ||
+          response.roles.includes(IUserRole.VENDOR as string)
         ) {
           response.properties = await this.getUserProperties(user._id.toString(), clientId);
         }
@@ -771,9 +773,9 @@ export class UserService {
 
     if (roles.some((r: string) => employeeRoles.includes(r as any))) {
       return 'employee';
-    } else if (roles.includes(IUserRole.VENDOR)) {
+    } else if (roles.includes(IUserRole.VENDOR as string)) {
       return 'vendor';
-    } else if (roles.includes(IUserRole.TENANT)) {
+    } else if (roles.includes(IUserRole.TENANT as string)) {
       return 'tenant';
     }
     return 'employee';
@@ -809,7 +811,7 @@ export class UserService {
     }
 
     // Performance indicators (placeholder)
-    if (roles.includes('manager') || roles.includes('admin')) {
+    if (roles.includes(ROLES.MANAGER as string) || roles.includes(ROLES.ADMIN as string)) {
       tags.push('Top Performer');
     }
 
@@ -821,7 +823,7 @@ export class UserService {
     }
 
     // Access levels (placeholder)
-    if (roles.includes('manager')) {
+    if (roles.includes(ROLES.MANAGER as string)) {
       tags.push('Master Key Access');
     }
 
@@ -854,9 +856,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Find user's supervisor based on employeeInfo.reportsTo
-   */
   async getUserSupervisor(userId: string, cuid: string): Promise<string | null> {
     try {
       if (!userId) return null;
@@ -890,9 +889,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Get user's display name for notifications/UI
-   */
   async getUserDisplayName(userId: string, cuid: string): Promise<string> {
     try {
       if (!userId || userId === 'system') return 'System';
@@ -911,10 +907,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Get user's announcement targeting filters (roles and vendor association)
-   * Used by notification system to determine which announcements a user should see
-   */
   async getUserAnnouncementFilters(
     userId: string,
     cuid: string
@@ -929,7 +921,6 @@ export class UserService {
         return { roles: [] };
       }
 
-      // Get roles for this client
       const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
       const roles = clientConnection?.roles || [];
 
@@ -941,7 +932,7 @@ export class UserService {
         vendorId = clientConnection.linkedVendorUid;
       }
       // Check if user has vendor role and is a primary vendor
-      else if (roles.includes('vendor')) {
+      else if (roles.includes(ROLES.VENDOR as string)) {
         try {
           const vendorEntity = await this.vendorService.getVendorByUserId(user._id.toString());
           if (vendorEntity && vendorEntity.vuid) {
@@ -955,19 +946,9 @@ export class UserService {
         }
       }
       // Check if staff user is associated with a vendor through profile
-      else if (roles.includes('staff') && user.profile?.vendorInfo?.linkedVendorUid) {
+      else if (roles.includes(ROLES.STAFF as string) && user.profile?.vendorInfo?.linkedVendorUid) {
         vendorId = user.profile.vendorInfo.linkedVendorUid;
       }
-
-      this.log.debug('Retrieved user announcement filters', {
-        userId,
-        cuid,
-        roles,
-        vendorId,
-        hasLinkedVendor: !!clientConnection?.linkedVendorUid,
-        isPrimaryVendor: roles.includes('vendor') && !clientConnection?.linkedVendorUid,
-        isStaffWithVendor: roles.includes('staff') && !!vendorId,
-      });
 
       return { roles, vendorId };
     } catch (error) {
@@ -976,9 +957,6 @@ export class UserService {
     }
   }
 
-  /**
-   * Update user information in the User model
-   */
   async updateUserInfo(
     userId: string,
     userInfo: { email?: string }

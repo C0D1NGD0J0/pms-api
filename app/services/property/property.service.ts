@@ -1232,7 +1232,6 @@ export class PropertyService {
     propertyIds: string[],
     currentuser: ICurrentUser
   ): Promise<ISuccessReturnData> {
-    // Check if user has permission
     const userRole = currentuser.client.role;
     if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({

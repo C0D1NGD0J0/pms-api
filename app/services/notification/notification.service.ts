@@ -645,7 +645,7 @@ export class NotificationService {
    * Notify about property updates - sends to property manager and supervisor if needed
    */
   async notifyPropertyUpdate(
-    propertyId: string,
+    resourceInfo: { resourceName: ResourceContext; resourceUid: string; resourceId: string },
     propertyName: string,
     actorUserId: string,
     actorDisplayName: string,
@@ -671,14 +671,14 @@ export class NotificationService {
           cuid,
           {
             resourceName: ResourceContext.PROPERTY,
-            resourceUid: propertyId,
-            resourceId: propertyId,
+            resourceUid: resourceInfo?.resourceUid,
+            resourceId: resourceInfo?.resourceId,
             metadata: { changes },
           }
         );
 
         this.log.info('Notified property manager of update', {
-          propertyId,
+          propertyId: resourceInfo.resourceId,
           propertyManagerId,
           actorUserId,
         });
@@ -695,15 +695,15 @@ export class NotificationService {
           NotificationPriorityEnum.LOW,
           cuid,
           {
-            resourceName: ResourceContext.PROPERTY,
-            resourceUid: propertyId,
-            resourceId: propertyId,
+            resourceName: resourceInfo.resourceName,
+            resourceUid: resourceInfo.resourceUid,
+            resourceId: resourceInfo.resourceId,
             metadata: { changes },
           }
         );
 
         this.log.info('Notified supervisor of property update', {
-          propertyId,
+          propertyId: resourceInfo.resourceId,
           supervisorId,
           actorUserId,
         });
@@ -711,7 +711,7 @@ export class NotificationService {
     } catch (error) {
       this.log.error('Failed to send property update notifications', {
         error: error instanceof Error ? error.message : 'Unknown error',
-        propertyId,
+        propertyId: resourceInfo.resourceId,
         actorUserId,
         cuid,
       });
@@ -894,7 +894,7 @@ export class NotificationService {
       } else if ((PROPERTY_APPROVAL_ROLES as string[]).includes(userRole)) {
         // Admin/Manager update - notify property manager if exists
         await this.notifyPropertyUpdate(
-          resource.resourceId,
+          { ...resource, resourceName: ResourceContext.PROPERTY },
           propertyName,
           actorUserId,
           actorDisplayName,
@@ -912,7 +912,6 @@ export class NotificationService {
         });
       }
     } catch (error) {
-      // Log error but don't throw - don't fail property update if notifications fail
       this.log.error('Failed to send property update notifications', {
         error: error instanceof Error ? error.message : 'Unknown error',
         propertyId: updatedProperty.pid,
@@ -1157,7 +1156,6 @@ export class NotificationService {
       metadata: resourceInfo?.metadata,
     };
 
-    // Add resource info if available
     if (resourceInfo) {
       notificationData.resourceInfo = {
         resourceName: resourceInfo.resourceName,

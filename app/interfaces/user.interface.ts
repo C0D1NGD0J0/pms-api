@@ -18,6 +18,106 @@ export enum IUserRelationshipsEnum {
   other = 'other',
 }
 
+/**
+ * Detailed tenant information for property management view
+ */
+export interface IClientTenantDetails {
+  tenantInfo: {
+    activeLease?: {
+      leaseId: string;
+      propertyId: string;
+      propertyName?: string;
+      unitId: string;
+      unitNumber?: string;
+      durationMonths: number;
+      rentAmount: number;
+      paymentDueDate: Date;
+      leaseStartDate?: Date;
+      leaseEndDate?: Date;
+      securityDeposit?: number;
+    };
+    employerInfo?: {
+      companyName: string;
+      position: string;
+      monthlyIncome: number;
+      [key: string]: any;
+    };
+    rentalReferences?: Array<{
+      landlordName: string;
+      propertyAddress: string;
+      [key: string]: any;
+    }>;
+    pets?: Array<{
+      type: string;
+      breed: string;
+      isServiceAnimal: boolean;
+      [key: string]: any;
+    }>;
+    emergencyContact?: {
+      name: string;
+      phone: string;
+      relationship: string;
+      email: string;
+    };
+    backgroundCheckStatus?: 'pending' | 'approved' | 'failed' | 'not_required';
+  };
+  // Statistics and metrics
+  tenantMetrics?: {
+    onTimePaymentRate: number;
+    averagePaymentDelay: number;
+    totalMaintenanceRequests: number;
+    currentRentStatus: 'current' | 'late' | 'overdue';
+    daysCurrentLease: number;
+    totalRentPaid: number;
+  };
+  maintenanceRequests?: Array<{
+    requestId: string;
+    date: Date;
+    type: string;
+    status: 'pending' | 'in_progress' | 'completed';
+    description: string;
+    priority: 'low' | 'medium' | 'high' | 'urgent';
+  }>;
+  // Property management specific data
+  leaseHistory?: Array<{
+    propertyName: string;
+    unitNumber: string;
+    leaseStart: Date;
+    leaseEnd: Date;
+    rentAmount: number;
+    status: 'completed' | 'active' | 'terminated';
+  }>;
+  paymentHistory?: Array<{
+    date: Date;
+    amount: number;
+    type: 'rent' | 'fee' | 'deposit';
+    status: 'paid' | 'late' | 'pending';
+    dueDate: Date;
+  }>;
+  // Communication and notes
+  notes?: Array<{
+    date: Date;
+    author: string;
+    note: string;
+    type: 'general' | 'payment' | 'maintenance' | 'lease';
+  }>;
+  phoneNumber?: string;
+  displayName: string;
+
+  isActive: boolean;
+
+  fullName: string;
+
+  joinedDate: Date;
+
+  avatar?: string;
+
+  email: string;
+
+  // Basic tenant info
+  uid: string;
+}
+
 export interface IVendorDetailInfo {
   stats: {
     activeJobs: number;
@@ -147,6 +247,34 @@ export interface IUserDetailResponse {
   status: 'Active' | 'Inactive';
 }
 
+/**
+ * Tenant statistics interface
+ */
+export interface ITenantStats {
+  backgroundCheckDistribution: {
+    pending: number;
+    approved: number;
+    failed: number;
+    notRequired: number;
+  };
+  distributionByProperty: Array<{
+    propertyId: string;
+    propertyName: string;
+    tenantCount: number;
+  }>;
+  rentStatus: {
+    current: number;
+    late: number;
+    overdue: number;
+  };
+  expiredLeases: number;
+  pendingLeases: number;
+  occupancyRate: number;
+  activeLeases: number;
+  averageRent: number;
+  total: number;
+}
+
 export interface FilteredUser
   extends Pick<IUserDocument, 'uid' | 'email' | 'isActive' | 'createdAt'> {
   userType?: 'employee' | 'vendor' | 'tenant';
@@ -195,6 +323,18 @@ export interface FilteredUserVendorInfo
   serviceType?: string;
   rating?: number;
   vuid?: string;
+}
+
+/**
+ * Filter options for tenant queries
+ */
+export interface ITenantFilterOptions extends IUserFilterOptions {
+  backgroundCheckStatus?: 'pending' | 'approved' | 'failed' | 'not_required';
+  leaseStatus?: 'active' | 'expired' | 'pending' | 'terminated';
+  moveInDateRange?: { start: Date; end: Date };
+  rentStatus?: 'current' | 'late' | 'overdue';
+  propertyId?: string;
+  unitType?: string;
 }
 
 /**
@@ -297,6 +437,28 @@ export interface IVendorTeamMembersResponse {
     totalPages: number;
   };
   items: IVendorTeamMember[];
+}
+
+/**
+ * Extended result type that includes tenant-specific data
+ */
+export interface IPaginatedResult<T> {
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+  items: T;
+}
+
+export interface IUserFilterOptions {
+  role?: IUserRoleType | IUserRoleType[];
+  status?: 'active' | 'inactive';
+  department?: string;
+  search?: string;
 }
 
 /**

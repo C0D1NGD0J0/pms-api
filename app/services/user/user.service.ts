@@ -1003,4 +1003,239 @@ export class UserService {
       throw error;
     }
   }
+
+  /**
+   * Get tenants by client with filtering and pagination
+   * @param cuid - Client unique identifier
+   * @param filters - Optional tenant-specific filters
+   * @param pagination - Optional pagination parameters
+   * @param currentUser - Current user context for permissions
+   * @returns Promise resolving to paginated tenant users with tenant-specific data
+   */
+  async getTenantsByClient(
+    cuid: string,
+    filters?: import('@interfaces/user.interface').ITenantFilterOptions,
+    pagination?: IFindOptions,
+    currentUser?: ICurrentUser
+  ): Promise<ISuccessReturnData<import('@interfaces/user.interface').IPaginatedResult<any[]>>> {
+    try {
+      if (!cuid) {
+        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+      }
+
+      // Validate client exists
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      // Optional permission check if currentUser is provided
+      if (currentUser && currentUser.client.cuid !== cuid) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'view',
+            resource: 'tenants',
+          }),
+        });
+      }
+
+      // Get tenants from DAO
+      const result = await this.userDAO.getTenantsByClient(cuid, filters, pagination);
+
+      // Transform the result to include additional tenant-specific data
+      const enrichedTenants = await Promise.all(
+        result.items.map(async (tenant: any) => {
+          const personalInfo = tenant.profile?.personalInfo || {};
+          const tenantInfo = tenant.profile?.tenantInfo || {};
+
+          return {
+            uid: tenant.uid,
+            email: tenant.email,
+            isActive: tenant.isActive,
+            fullName: `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim(),
+            displayName:
+              personalInfo.displayName ||
+              `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim() ||
+              tenant.email,
+            phoneNumber: personalInfo.phoneNumber,
+            avatar: personalInfo.avatar,
+            tenantInfo: {
+              activeLease: tenantInfo.activeLease,
+              employerInfo: tenantInfo.employerInfo,
+              rentalReferences: tenantInfo.rentalReferences,
+              pets: tenantInfo.pets,
+              emergencyContact: tenantInfo.emergencyContact,
+              backgroundCheckStatus: tenantInfo.backgroundCheckStatus,
+            },
+            createdAt: tenant.createdAt,
+            updatedAt: tenant.updatedAt,
+          };
+        })
+      );
+
+      const enrichedResult = {
+        items: enrichedTenants,
+        pagination: result.pagination,
+      };
+
+      this.log.info('Tenants retrieved', { cuid, count: enrichedTenants.length });
+
+      return {
+        success: true,
+        data: enrichedResult,
+        message: t('client.success.tenantsRetrieved'),
+      };
+    } catch (error) {
+      this.log.error('Error getting tenants by client:', {
+        cuid,
+        filters,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get tenant statistics for a client
+   * @param cuid - Client unique identifier
+   * @param filters - Optional tenant filters
+   * @param currentUser - Current user context for permissions
+   * @returns Promise resolving to tenant statistics
+   */
+  async getTenantStats(
+    cuid: string,
+    filters?: import('@interfaces/user.interface').ITenantFilterOptions,
+    currentUser?: ICurrentUser
+  ): Promise<ISuccessReturnData<import('@interfaces/user.interface').ITenantStats>> {
+    try {
+      if (!cuid) {
+        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+      }
+
+      // Validate client exists
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      // Optional permission check if currentUser is provided
+      if (currentUser && currentUser.client.cuid !== cuid) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'view',
+            resource: 'tenant_stats',
+          }),
+        });
+      }
+
+      // Get stats from DAO
+      const stats = await this.userDAO.getTenantStats(cuid, filters);
+
+      // Enhance stats with property names if we have property IDs
+      if (stats.distributionByProperty?.length > 0) {
+        const enhancedDistribution = await Promise.all(
+          stats.distributionByProperty.map(async (item) => {
+            try {
+              const property = await this.propertyDAO.findById(item.propertyId);
+              return {
+                ...item,
+                propertyName: property?.name || item.propertyName || `Property ${item.propertyId}`,
+              };
+            } catch (error) {
+              this.log.warn(`Failed to get property name for ${item.propertyId}:`, error);
+              return item;
+            }
+          })
+        );
+        stats.distributionByProperty = enhancedDistribution;
+      }
+
+      this.log.info('Tenant stats retrieved', { cuid, total: stats.total });
+
+      return {
+        success: true,
+        data: stats,
+        message: t('client.success.tenantStatsRetrieved'),
+      };
+    } catch (error) {
+      this.log.error('Error getting tenant stats:', {
+        cuid,
+        filters,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get detailed tenant information for property management view
+   * @param cuid - Client unique identifier
+   * @param tenantUid - Tenant user unique identifier
+   * @param currentUser - Current user context for permissions
+   * @returns Promise resolving to detailed tenant information
+   */
+  async getClientTenantDetails(
+    cuid: string,
+    tenantUid: string,
+    currentUser?: ICurrentUser
+  ): Promise<ISuccessReturnData<import('@interfaces/user.interface').IClientTenantDetails>> {
+    try {
+      if (!cuid || !tenantUid) {
+        throw new BadRequestError({
+          message: t('client.errors.missingParameters'),
+        });
+      }
+
+      // Validate client exists
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      // Optional permission check if currentUser is provided
+      if (currentUser && currentUser.client.cuid !== cuid) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'view',
+            resource: 'tenant_details',
+          }),
+        });
+      }
+
+      // Get tenant details from DAO
+      const tenantDetails = await this.userDAO.getClientTenantDetails(cuid, tenantUid);
+
+      if (!tenantDetails) {
+        throw new NotFoundError({
+          message: t('tenant.errors.notFound'),
+        });
+      }
+
+      // TODO: In a production system, you might want to enhance this data with:
+      // - Recent payment history from payment service
+      // - Active maintenance requests from maintenance service
+      // - Communication history from messaging service
+      // - Document attachments from document service
+      // - Lease documents and amendments
+
+      this.log.info('Tenant details retrieved', {
+        cuid,
+        tenantUid,
+        hasActiveLease: !!tenantDetails.tenantInfo.activeLease,
+      });
+
+      return {
+        success: true,
+        data: tenantDetails,
+        message: t('tenant.success.detailsRetrieved'),
+      };
+    } catch (error) {
+      this.log.error('Error getting client tenant details:', {
+        cuid,
+        tenantUid,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
 }

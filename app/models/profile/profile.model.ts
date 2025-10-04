@@ -1,7 +1,7 @@
 import md5 from 'md5';
 import { Schema, model } from 'mongoose';
 import uniqueValidator from 'mongoose-unique-validator';
-import { IProfileDocument } from '@interfaces/profile.interface';
+import { BackgroundCheckStatus, IProfileDocument } from '@interfaces/profile.interface';
 
 const ProfileSchema = new Schema<IProfileDocument>(
   {
@@ -61,6 +61,47 @@ const ProfileSchema = new Schema<IProfileDocument>(
         minlength: 2,
         trim: true,
       },
+      identification: {
+        idType: {
+          type: String,
+          enum: ['passport', 'drivers-license', 'national-id', 'corporation-license'],
+          required: function (this: IProfileDocument) {
+            if (this.isNew) return false;
+            return this.isModified('accountType.identification');
+          },
+        },
+        issueDate: {
+          type: Date,
+          required: function (this: IProfileDocument) {
+            if (this.isNew) return false;
+            return this.isModified('accountType.issueDate');
+          },
+        },
+        expiryDate: {
+          type: Date,
+          required: function (this: IProfileDocument) {
+            if (this.isNew) return false;
+            return this.isModified('accountType.expiryDate');
+          },
+        },
+        idNumber: {
+          type: String,
+          trim: true,
+          required: function (this: IProfileDocument) {
+            if (this.isNew) return false;
+            return this.isModified('accountType.idNumber');
+          },
+        },
+        authority: { type: String, trim: true },
+        issuingState: {
+          type: String,
+          trim: true,
+          required: function (this: IProfileDocument) {
+            if (this.isNew) return false;
+            return this.isModified('accountType.issuingState');
+          },
+        },
+      },
     },
     user: {
       required: true,
@@ -112,48 +153,8 @@ const ProfileSchema = new Schema<IProfileDocument>(
         },
       },
     },
+
     puid: { type: String, required: true, index: true },
-    identification: {
-      idType: {
-        type: String,
-        enum: ['passport', 'drivers-license', 'national-id', 'corporation-license'],
-        required: function (this: IProfileDocument) {
-          if (this.isNew) return false;
-          return this.isModified('accountType.identification');
-        },
-      },
-      issueDate: {
-        type: Date,
-        required: function (this: IProfileDocument) {
-          if (this.isNew) return false;
-          return this.isModified('accountType.issueDate');
-        },
-      },
-      expiryDate: {
-        type: Date,
-        required: function (this: IProfileDocument) {
-          if (this.isNew) return false;
-          return this.isModified('accountType.expiryDate');
-        },
-      },
-      idNumber: {
-        type: String,
-        trim: true,
-        required: function (this: IProfileDocument) {
-          if (this.isNew) return false;
-          return this.isModified('accountType.idNumber');
-        },
-      },
-      authority: { type: String, trim: true },
-      issuingState: {
-        type: String,
-        trim: true,
-        required: function (this: IProfileDocument) {
-          if (this.isNew) return false;
-          return this.isModified('accountType.issuingState');
-        },
-      },
-    },
     timeZone: { type: String, default: 'UTC' },
     lang: { type: String, default: 'en' },
 
@@ -172,7 +173,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
         default: false,
       },
     },
-
     employeeInfo: {
       department: { type: String, trim: true },
       jobTitle: { type: String, trim: true },
@@ -197,6 +197,54 @@ const ProfileSchema = new Schema<IProfileDocument>(
       permissions: [{ type: String }],
       clientSpecificSettings: { type: Schema.Types.Mixed },
     },
+
+    tenantInfo: {
+      activeLease: {
+        leaseId: { type: Schema.Types.ObjectId, ref: 'Lease' },
+        propertyId: { type: Schema.Types.ObjectId, ref: 'Property' },
+        unitId: { type: Schema.Types.ObjectId, ref: 'PropertyUnit' },
+        durationMonths: { type: Number, min: 1, max: 60 },
+        rentAmount: {
+          default: 0,
+          type: Number,
+          get: (val: number) => {
+            return (val / 100).toFixed(2);
+          },
+          set: (val: number) => val * 100,
+        },
+        paymentDueDate: { type: Date },
+      },
+      employerInfo: {
+        companyName: { type: String, trim: true },
+        position: { type: String, trim: true },
+        monthlyIncome: { type: Number, min: 0 },
+      },
+      rentalReferences: [
+        {
+          landlordName: { type: String, required: true, trim: true },
+          propertyAddress: { type: String, required: true, trim: true },
+        },
+      ],
+      pets: [
+        {
+          type: { type: String, required: true, trim: true },
+          breed: { type: String, required: true, trim: true },
+          isServiceAnimal: { type: Boolean, default: false },
+        },
+      ],
+      emergencyContact: {
+        name: { type: String, trim: true },
+        phone: { type: String, trim: true },
+        relationship: { type: String, trim: true },
+        email: { type: String, trim: true, lowercase: true },
+      },
+      backgroundCheckStatus: {
+        type: String,
+        enum: Object.values(BackgroundCheckStatus),
+        default: BackgroundCheckStatus.PENDING,
+      },
+    },
+
     policies: {
       tos: {
         acceptedOn: { type: Date, default: null },

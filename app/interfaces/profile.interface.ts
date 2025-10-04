@@ -10,6 +10,13 @@ export enum EmployeeDepartment {
   MANAGEMENT = 'management', // Executive and general management
 }
 
+export enum BackgroundCheckStatus {
+  NOT_REQUIRED = 'not_required',
+  APPROVED = 'approved',
+  PENDING = 'pending',
+  FAILED = 'failed',
+}
+
 enum DataRetentionPolicy {
   STANDARD = 'standard',
   EXTENDED = 'extended',
@@ -31,6 +38,7 @@ export interface Profile {
     lastName: string;
     location: string;
     phoneNumber?: string;
+    identification?: IdentificationType;
   };
   policies: {
     tos: {
@@ -50,12 +58,34 @@ export interface Profile {
     theme: 'light' | 'dark';
   };
 
-  identification?: IdentificationType;
   employeeInfo?: EmployeeInfo;
+  tenantInfo?: TenantInfo;
   vendorInfo?: VendorInfo;
+
   user: Types.ObjectId;
   timeZone: string;
   lang: string;
+}
+
+export interface TenantInfo {
+  activeLease?: {
+    leaseId: string | Types.ObjectId;
+    propertyId: string | Types.ObjectId;
+    unitId: string | Types.ObjectId;
+    durationMonths: number;
+    rentAmount: number;
+    paymentDueDate: Date;
+  } | null;
+  employerInfo?: {
+    companyName: string;
+    position: string;
+    monthlyIncome: number;
+    [key: string]: any;
+  };
+  rentalReferences?: Array<{ landlordName: string; propertyAddress: string; [key: string]: any }>;
+  pets?: Array<{ type: string; breed: string; isServiceAnimal: boolean; [key: string]: any }>;
+  emergencyContact?: { name: string; phone: string; relationship: string; email: string };
+  backgroundCheckStatus?: BackgroundCheckStatus;
 }
 
 /**
@@ -74,7 +104,6 @@ export interface IProfileUpdateData {
     lang?: string;
   };
   personalInfo?: Partial<Profile['personalInfo']>;
-  identification?: Partial<IdentificationType>;
   userInfo?: {
     email?: string;
   };
@@ -131,6 +160,7 @@ export type IProfileDocument = {
   updatedAt: Date;
 } & Document &
   Profile;
+
 export interface EmployeeInfo {
   department?: EmployeeDepartment;
   clientSpecificSettings?: any;

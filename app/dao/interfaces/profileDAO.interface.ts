@@ -208,6 +208,16 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   ): ListResultWithPagination<IProfileDocument[]>;
 
   /**
+   * Gets notification preferences for a user by their user ID.
+   *
+   * @param userId - The user ID to get preferences for
+   * @returns A promise that resolves to notification preferences or null if not found
+   */
+  getNotificationPreferences(
+    userId: string
+  ): Promise<IProfileDocument['settings']['notifications'] | null>;
+
+  /**
    * Updates login type for a profile.
    *
    * @param profileId - The ID of the profile to update
@@ -218,16 +228,6 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
     profileId: string,
     loginType: 'otp' | 'password'
   ): Promise<IProfileDocument | null>;
-
-  /**
-   * Gets notification preferences for a user by their user ID.
-   *
-   * @param userId - The user ID to get preferences for
-   * @returns A promise that resolves to notification preferences or null if not found
-   */
-  getNotificationPreferences(
-    userId: string
-  ): Promise<IProfileDocument['settings']['notifications'] | null>;
 
   /**
    * Updates theme settings for a profile.

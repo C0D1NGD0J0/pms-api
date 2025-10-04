@@ -48,20 +48,17 @@ export class ProfileService {
     emitterService,
     mediaUploadService,
   }: IConstructor) {
-    this.profileDAO = profileDAO;
-    this.clientDAO = clientDAO;
     this.userDAO = userDAO;
-    this.vendorService = vendorService;
+    this.clientDAO = clientDAO;
+    this.setupEventListeners();
+    this.profileDAO = profileDAO;
     this.userService = userService;
+    this.vendorService = vendorService;
     this.emitterService = emitterService;
     this.mediaUploadService = mediaUploadService;
     this.logger = createLogger('ProfileService');
-    this.setupEventListeners();
   }
 
-  /**
-   * Update employee-specific information for a profile
-   */
   async updateEmployeeInfo(
     profileId: string,
     cuid: string,
@@ -105,9 +102,6 @@ export class ProfileService {
     }
   }
 
-  /**
-   * Update vendor-specific information for a profile
-   */
   async updateVendorInfo(
     profileId: string,
     cuid: string,
@@ -254,9 +248,6 @@ export class ProfileService {
     return { profile };
   }
 
-  /**
-   * Create primary vendor entity and update profile
-   */
   private async createPrimaryVendor(
     context: { userId: string; cuid: string; linkedVendorUid?: string },
     profile: IProfileDocument,
@@ -428,7 +419,7 @@ export class ProfileService {
           email: userDoc.data.profile.email,
           isActive: true,
         },
-        identification: profileDoc.identification,
+        identification: profileDoc.personalInfo.identification,
         settings: {
           ...profileDoc.settings,
           timeZone: profileDoc.timeZone,
@@ -551,19 +542,6 @@ export class ProfileService {
         });
       }
       validatedData.settings = settingsValidation.data;
-      hasUpdates = true;
-    }
-
-    if (profileData.identification) {
-      const identificationValidation = ProfileValidations.updateIdentification.safeParse(
-        profileData.identification
-      );
-      if (!identificationValidation.success) {
-        throw new BadRequestError({
-          message: `Identification validation failed: ${identificationValidation.error.issues.map((i) => i.message).join(', ')}`,
-        });
-      }
-      validatedData.identification = identificationValidation.data;
       hasUpdates = true;
     }
 

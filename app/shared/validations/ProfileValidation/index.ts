@@ -1,12 +1,17 @@
 import { z } from 'zod';
 
 // User model fields that can be updated
-const userInfoSchema = z.object({
-  email: z.string().email().optional(),
-  // Note: password updates should be handled separately via password reset flow
-});
+const userInfoSchema = z
+  .object({
+    email: z.string().email().optional(),
+    password: z.string().min(8).max(20).optional(),
+    cpassword: z.string().min(8).max(20).optional(),
+  })
+  .refine((data) => data.password === data.cpassword, {
+    message: 'Passwords do not match',
+  });
 
-// Profile model fields that can be updated
+// profile model fields that can be updated
 const personalInfoSchema = z.object({
   firstName: z.string().min(2).max(25).optional(),
   lastName: z.string().min(2).max(25).optional(),
@@ -23,6 +28,18 @@ const personalInfoSchema = z.object({
   phoneNumber: z.string().max(20).optional(),
   bio: z.string().min(2).max(700).optional(),
   headline: z.string().min(2).max(50).optional(),
+  identification: z
+    .object({
+      idType: z
+        .enum(['passport', 'drivers-license', 'national-id', 'corporation-license'])
+        .optional(),
+      issueDate: z.date().optional(),
+      expiryDate: z.date().optional(),
+      idNumber: z.string().optional(),
+      authority: z.string().optional(),
+      issuingState: z.string().optional(),
+    })
+    .optional(),
 });
 
 const settingsSchema = z.object({
@@ -141,7 +158,6 @@ export const ProfileValidations = {
       userInfo: userInfoSchema.optional(),
       personalInfo: personalInfoSchema.optional(),
       settings: settingsSchema.optional(),
-      identification: identificationSchema.optional(),
       profileMeta: profileMetaSchema.optional(),
       documents: documentsSchema.optional(),
       employeeInfo: employeeInfoSchema.optional(),

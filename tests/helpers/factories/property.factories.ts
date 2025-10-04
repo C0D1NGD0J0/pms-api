@@ -1,5 +1,6 @@
 import { faker } from '@faker-js/faker';
 import { Types } from 'mongoose';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { createMockMulterFile } from '../testUtils';
 
 // Property Data Factory
@@ -345,7 +346,7 @@ export const createMockCurrentUser = (overrides = {}) => ({
   client: {
     cuid: new Types.ObjectId().toString(),
     displayname: faker.company.name(),
-    role: 'admin',
+    role: ROLES.ADMIN,
   },
   clients: [
     {

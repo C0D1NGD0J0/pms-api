@@ -5,10 +5,11 @@ import { t } from '@shared/languages';
 import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
+import { ISignupData } from '@interfaces/user.interface';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { IUserRole } from '@shared/constants/roles.constants';
 import { AuthTokenService, VendorService } from '@services/index';
 import { IActiveAccountInfo } from '@interfaces/client.interface';
-import { ISignupData, IUserRole } from '@interfaces/user.interface';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
 import {
   getLocationDetails,
@@ -528,14 +529,17 @@ export class AuthService {
     };
   }
 
-  async resetPassword(email: string, token: string): Promise<ISuccessReturnData> {
-    if (!email && !token) {
+  async resetPassword(resetToken: string, password: string): Promise<ISuccessReturnData> {
+    if (!resetToken && !password) {
       this.log.error('User email and token are required. | ResetPassword');
       throw new BadRequestError({ message: t('auth.errors.invalidEmailToken') });
     }
 
-    await this.userDAO.resetPassword(email, token);
-    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
+    const result = await this.userDAO.resetPassword(resetToken, password);
+    if (!result) {
+      throw new BadRequestError({ message: t('auth.errors.invalidEmailToken') });
+    }
+    const user = await this.userDAO.getActiveUserByEmail(result.email, { populate: 'profile' });
     if (!user) {
       throw new NotFoundError({ message: t('auth.errors.noRecordFound') });
     }

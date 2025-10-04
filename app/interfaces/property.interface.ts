@@ -1,6 +1,7 @@
 import { Document, Types } from 'mongoose';
 
 import { IClientInfo } from './client.interface';
+import { IUserRole } from '../shared/constants/roles.constants';
 import { IPaginationQuery, CURRENCIES } from './utils.interface';
 
 /**
@@ -27,7 +28,7 @@ export interface IProperty {
     html?: string;
     text?: string;
   };
-  approvalDetails?: PropertyApprovalDetails;
+  approvalDetails?: PropertyApprovalEntry[];
   approvalStatus?: PropertyApprovalStatus;
   communityAmenities?: CommunityAmenities;
   pendingChanges?: IPendingChanges | null;
@@ -149,6 +150,22 @@ export interface FinancialDetails {
 }
 
 /**
+ * Assignable User Interface (for property assignment)
+ */
+export interface IAssignableUser {
+  employeeInfo?: {
+    department?: string;
+    employeeId?: string;
+    jobTitle?: string;
+  };
+  role: IUserRole.ADMIN | IUserRole.STAFF | IUserRole.MANAGER;
+  department?: string;
+  displayName: string;
+  email: string;
+  id: string;
+}
+
+/**
  * Unit Info Type
  */
 export interface UnitInfo {
@@ -180,19 +197,15 @@ export interface PropertySpecifications {
 }
 
 /**
- * Assignable User Interface (for property assignment)
+ * Individual Property Approval Entry Type
  */
-export interface IAssignableUser {
-  employeeInfo?: {
-    department?: string;
-    employeeId?: string;
-    jobTitle?: string;
-  };
-  role: 'admin' | 'staff' | 'manager';
-  department?: string;
-  displayName: string;
-  email: string;
-  id: string;
+export interface PropertyApprovalEntry {
+  action: 'created' | 'approved' | 'rejected' | 'updated' | 'submitted';
+  rejectionReason?: string; // Only for rejected actions
+  actor: Types.ObjectId;
+  timestamp: Date;
+  notes?: string;
+  metadata?: any;
 }
 
 /**
@@ -223,16 +236,15 @@ export interface CommunityAmenities {
 }
 
 /**
- * Property Approval Details Type
+ * Assignable Users Filter Interface
  */
-export interface PropertyApprovalDetails {
-  approvedBy?: Types.ObjectId;
-  rejectedBy?: Types.ObjectId;
-  rejectionReason?: string;
-  reviewNotes?: string;
-  approvedDate?: Date;
-  rejectedDate?: Date;
-  notes?: string;
+export interface IAssignableUsersFilter {
+  role?: IUserRole.ADMIN | IUserRole.STAFF | IUserRole.MANAGER | 'all';
+  department?: string;
+  searchTerm?: string;
+  search?: string;
+  limit?: number;
+  page?: number;
 }
 
 /**
@@ -290,16 +302,13 @@ export interface InteriorAmenities {
 }
 
 /**
- * Assignable Users Filter Interface
+ * Pending Changes Type - using Omit to exclude specific fields
  */
-export interface IAssignableUsersFilter {
-  role?: 'admin' | 'staff' | 'manager' | 'all';
-  department?: string;
-  searchTerm?: string;
-  search?: string;
-  limit?: number;
-  page?: number;
-}
+export type IPendingChanges = {
+  updatedAt: Date;
+  updatedBy: Types.ObjectId;
+  displayName: string;
+} & Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>>;
 
 /**
  * Property Utilities Type
@@ -324,14 +333,6 @@ export interface UnitStats {
   reserved: number;
   vacant: number;
 }
-
-/**
- * Pending Changes Type - using Omit to exclude specific fields
- */
-export type IPendingChanges = Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>> & {
-  updatedAt: Date;
-  updatedBy: Types.ObjectId;
-};
 
 /**
  * Property Type Classifications

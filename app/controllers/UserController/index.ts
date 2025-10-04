@@ -3,7 +3,7 @@ import { Response } from 'express';
 import { createLogger } from '@utils/index';
 import { UserService } from '@services/index';
 import { httpStatusCodes } from '@utils/constants';
-import { IUserRoleType } from '@interfaces/user.interface';
+import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ProfileService } from '@services/profile/profile.service';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
@@ -104,5 +104,25 @@ export class UserController {
       : result;
 
     res.status(httpStatusCodes.OK).json(response);
+  };
+
+  getNotificationPreferences = async (req: AppRequest, res: Response): Promise<void> => {
+    const { cuid } = req.params;
+    const { userId } = req.query as { userId: string };
+
+    // Use current user ID if no userId specified
+    const targetUserId = userId || req.context.currentuser?.sub;
+
+    if (!targetUserId) {
+      res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        data: null,
+        message: 'User ID is required',
+      });
+      return;
+    }
+
+    const result = await this.profileService.getUserNotificationPreferences(targetUserId, cuid);
+    res.status(httpStatusCodes.OK).json(result);
   };
 }

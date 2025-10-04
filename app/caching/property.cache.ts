@@ -114,6 +114,7 @@ export class PropertyCache extends BaseCache {
    * @param page - Page number
    * @param limit - Items per page
    * @param propertyList - Array of property data
+   * @param totalCount - Total count across all pages
    */
   async saveClientProperties(
     cuid: string,
@@ -121,6 +122,7 @@ export class PropertyCache extends BaseCache {
     opts: {
       pagination: IPaginationQuery;
       filter: FilterQuery<IPropertyDocument>;
+      totalCount?: number;
     }
   ): Promise<ISuccessReturnData> {
     try {
@@ -134,6 +136,8 @@ export class PropertyCache extends BaseCache {
       const listKey = this.generateListKeyFromPagination(opts.pagination);
       const key = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cuid}:${listKey}`;
 
+      const totalToCache = opts.totalCount ?? propertyList.length;
+
       await this.deleteItems([key]);
       const multi = this.client.multi();
 
@@ -145,7 +149,7 @@ export class PropertyCache extends BaseCache {
       await this.setObject(
         metaKey,
         {
-          total: propertyList.length,
+          total: totalToCache,
           lastUpdated: Date.now(),
           listKey,
           cuid,
@@ -191,6 +195,7 @@ export class PropertyCache extends BaseCache {
       }
       const listKey = this.generateListKeyFromPagination(pagination);
       const key = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cuid}:${listKey}`;
+
       const listResult = await this.getListRange(key, 0, -1);
       if (!listResult.success || !listResult.data || listResult.data.length === 0) {
         return {

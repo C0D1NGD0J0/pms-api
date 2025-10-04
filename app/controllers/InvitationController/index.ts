@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { t } from '@shared/languages';
 import { UnauthorizedError } from '@shared/customErrors';
+import { ROLES } from '@shared/constants/roles.constants';
 import { httpStatusCodes, setAuthCookies } from '@utils/index';
 import { InvitationService, AuthService } from '@services/index';
 import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
@@ -270,7 +271,7 @@ export class InvitationController {
 
     if (currentuser.email !== email) {
       // Check if user is an admin in any client - simplified check
-      const hasAdminRole = currentuser.client.role === 'admin';
+      const hasAdminRole = currentuser.client.role === ROLES.ADMIN;
       if (!hasAdminRole) {
         return res.status(httpStatusCodes.FORBIDDEN).json({
           success: false,
@@ -279,8 +280,6 @@ export class InvitationController {
       }
     }
 
-    // This would need to be implemented in the invitation service
-    // For now, return a placeholder response
     res.status(httpStatusCodes.OK).json({
       success: true,
       message: 'Feature coming soon',

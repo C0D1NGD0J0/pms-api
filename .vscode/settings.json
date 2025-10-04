@@ -4,11 +4,22 @@
     "Awilix",
     "cuids",
     "currentuser",
+    "dsphere",
+    "invitationuid",
+    "ISSE",
+    "Iuid",
+    "maxlength",
     "mediatype",
+    "nuid",
     "publicuid",
     "puid",
     "Reapproval",
+    "ttypescript",
     "UNARCHIVED",
-    "validatecuid"
+    "validatecuid",
+    "Validatenuid",
+    "validatepuid",
+    "Validatevuid",
+    "vuid"
   ]
 }

@@ -225,16 +225,8 @@ class Server {
         }
       }
 
-      // Clean up queues
-      const queueNames = [
-        'documentProcessingQueue',
-        'emailQueue',
-        'eventBusQueue',
-        'invitationQueue',
-        'propertyQueue',
-        'propertyUnitQueue',
-        'uploadQueue',
-      ];
+      // Clean up queues - dynamically discover all registered queues
+      const queueNames = Object.keys(container.registrations).filter(name => name.endsWith('Queue'));
       let queueCount = 0;
       for (const queueName of queueNames) {
         try {

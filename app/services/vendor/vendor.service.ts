@@ -8,6 +8,7 @@ import { ClientSession, Types } from 'mongoose';
 import { VendorCache } from '@caching/vendor.cache';
 import { PermissionService } from '@services/permission';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
+import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { IVendorFilterOptions } from '@dao/interfaces/vendorDAO.interface';
 import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
@@ -17,7 +18,6 @@ import {
   IUserDetailResponse,
   IVendorDetailInfo,
   IVendorTeamMember,
-  IUserRole,
 } from '@interfaces/user.interface';
 interface IConstructor {
   permissionService: PermissionService;
@@ -657,7 +657,7 @@ export class VendorService {
             email: user.email || '',
           },
           roles: roles,
-          userType: 'vendor' as const,
+          userType: ROLES.VENDOR,
         },
         vendorInfo: vendorDetailInfo,
         status: user.isActive ? 'Active' : 'Inactive',

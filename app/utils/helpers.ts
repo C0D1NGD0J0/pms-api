@@ -2,11 +2,13 @@ import color from 'colors';
 import crypto from 'crypto';
 import bunyan from 'bunyan';
 import * as nanoid from 'nanoid';
+import { Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
 import { PhoneNumber } from 'libphonenumber-js';
 import { Country, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
+import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
   AsyncRequestHandler,
   ExtractedMediaFile,
@@ -19,6 +21,7 @@ import { JWT_KEY_NAMES } from './constants';
 
 const loggers = new WeakMap<object, bunyan>();
 const loggerKeys = new Map<string, object>();
+
 /**
  * Creates a customized Bunyan logger instance with color-coded console output
  * @param name - The name of the logger to create
@@ -140,7 +143,6 @@ export function createLogger(name: string) {
 
   return logger;
 }
-
 /**
  * Sets an authentication cookie in the HTTP response
  * @param cookieName - The name of the JWT cookie
@@ -193,6 +195,36 @@ export function setAuthCookies(
   }
 
   return res;
+}
+
+/**
+ * Converts a user role string to IUserRole enum value
+ * @param userRole - The user role string to convert (case-insensitive)
+ * @returns The corresponding IUserRole enum value
+ * @throws Error if the role string is invalid or not supported
+ */
+export function convertUserRoleToEnum(userRole: string): IUserRole {
+  if (!userRole || typeof userRole !== 'string') {
+    throw new Error('User role must be a non-empty string');
+  }
+
+  // First, try to find the role in ROLES constants (case-insensitive)
+  const roleValue = Object.values(ROLES).find(
+    (role) => role.toLowerCase() === userRole.toLowerCase()
+  );
+  if (roleValue) {
+    return roleValue as IUserRole;
+  }
+
+  // Fallback: try enum lookup for backward compatibility
+  const upperRole = userRole.trim().toUpperCase() as keyof typeof IUserRole;
+  const enumValue = IUserRole[upperRole];
+  if (enumValue) {
+    return enumValue;
+  }
+
+  const validRoles = Object.values(ROLES).join(', ');
+  throw new Error(`Invalid user role: "${userRole}". Valid roles are: ${validRoles}`);
 }
 
 /**
@@ -583,4 +615,154 @@ export const buildDotNotation = (obj: any, prefix = ''): Record<string, any> => 
   }
 
   return result;
+};
+
+/**
+ * Creates a MongoDB-safe update object using dot notation to prevent nested object overwrites
+ * @param updateData - The object containing fields to update
+ * @returns Safe MongoDB update object with dot notation for nested fields
+ *
+ * @example
+ * // Input: { fees: { rentalAmount: 1200 }, name: "New Property" }
+ * // Output: { "fees.rentalAmount": 1200, name: "New Property" }
+ */
+export const createSafeMongoUpdate = (updateData: Record<string, any>): Record<string, any> => {
+  const result: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(updateData)) {
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      !(value instanceof Date) &&
+      !(value instanceof Types.ObjectId)
+    ) {
+      const dotNotated = buildDotNotation(value, key);
+      Object.assign(result, dotNotated);
+    } else {
+      result[key] = value;
+    }
+  }
+
+  return result;
+};
+
+export const MoneyUtils = {
+  /**
+   * Converts cents (integer) to dollar string format
+   * @param cents - The amount in cents (e.g., 450000)
+   * @param decimalPlaces - Number of decimal places (default: 2)
+   * @returns Formatted string (e.g., "4500.00")
+   */
+  centsToString: (cents: number | null | undefined, decimalPlaces = 2): string => {
+    if (cents == null) return '0.00';
+    if (typeof cents !== 'number' || isNaN(cents)) return '0.00';
+    return (cents / 100).toFixed(decimalPlaces);
+  },
+
+  /**
+   * Converts dollar string to cents (integer)
+   * @param dollarString - The amount as string (e.g., "4500.00")
+   * @returns Amount in cents (e.g., 450000)
+   */
+  stringToCents: (dollarString: string | number): number => {
+    if (dollarString == null) return 0;
+    const numericValue = typeof dollarString === 'string' ? parseFloat(dollarString) : dollarString;
+    if (isNaN(numericValue)) return 0;
+    return Math.round(numericValue * 100);
+  },
+
+  /**
+   * Formats a dollar amount with currency symbol
+   * @param cents - The amount in cents
+   * @param currency - Currency code (default: 'USD')
+   * @param locale - Locale for formatting (default: 'en-US')
+   * @returns Formatted currency string (e.g., "$4,500.00")
+   */
+  formatCurrency: (
+    cents: number | null | undefined,
+    currency = 'USD',
+    locale = 'en-US'
+  ): string => {
+    if (cents == null)
+      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(0);
+    if (typeof cents !== 'number' || isNaN(cents))
+      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(0);
+
+    const dollars = cents / 100;
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+    }).format(dollars);
+  },
+
+  /**
+   * Transforms a money object from database format (cents) to frontend format (strings) for display
+   * @param moneyData - The money object from database (fees, rent, lease amounts, etc.)
+   * @returns Transformed money object with string values for frontend display
+   */
+  formatMoneyDisplay: (moneyData: any): any => {
+    if (!moneyData || typeof moneyData !== 'object') return moneyData;
+
+    return {
+      ...moneyData,
+      ...(moneyData.taxAmount !== undefined && {
+        taxAmount: MoneyUtils.centsToString(moneyData.taxAmount),
+      }),
+      ...(moneyData.rentalAmount !== undefined && {
+        rentalAmount: MoneyUtils.centsToString(moneyData.rentalAmount),
+      }),
+      ...(moneyData.managementFees !== undefined && {
+        managementFees: MoneyUtils.centsToString(moneyData.managementFees),
+      }),
+      ...(moneyData.securityDeposit !== undefined && {
+        securityDeposit: MoneyUtils.centsToString(moneyData.securityDeposit),
+      }),
+    };
+  },
+
+  /**
+   * Parses a money object from frontend format (strings) to database format (cents) for storage
+   * @param moneyData - The money object from frontend (fees, rent, lease amounts, etc.)
+   * @returns Parsed money object with cent values for database storage
+   */
+  parseMoneyInput: (moneyData: any): any => {
+    if (!moneyData || typeof moneyData !== 'object') return moneyData;
+
+    return {
+      ...moneyData,
+      ...(moneyData.taxAmount !== undefined && {
+        taxAmount: MoneyUtils.stringToCents(moneyData.taxAmount),
+      }),
+      ...(moneyData.rentalAmount !== undefined && {
+        rentalAmount: MoneyUtils.stringToCents(moneyData.rentalAmount),
+      }),
+      ...(moneyData.managementFees !== undefined && {
+        managementFees: MoneyUtils.stringToCents(moneyData.managementFees),
+      }),
+      ...(moneyData.securityDeposit !== undefined && {
+        securityDeposit: MoneyUtils.stringToCents(moneyData.securityDeposit),
+      }),
+    };
+  },
+
+  /**
+   * Validates that a money value is properly formatted
+   * @param value - The value to validate
+   * @returns true if valid, false otherwise
+   */
+  isValidMoneyValue: (value: any): boolean => {
+    if (value == null || value === '') return true; // allow empty values
+
+    if (typeof value === 'string') {
+      const numericValue = parseFloat(value);
+      return !isNaN(numericValue) && numericValue >= 0;
+    }
+
+    if (typeof value === 'number') {
+      return !isNaN(value) && value >= 0;
+    }
+
+    return false;
+  },
 };

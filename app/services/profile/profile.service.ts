@@ -3,6 +3,8 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { buildDotNotation, createLogger } from '@utils/index';
+import { IUserRoleType } from '@shared/constants/roles.constants';
+import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { EventEmitterService, VendorService, UserService } from '@services/index';
@@ -13,7 +15,6 @@ import {
   IProfileDocument,
   IProfileEditData,
   IRequestContext,
-  IUserRoleType,
   ICurrentUser,
   EventTypes,
 } from '@interfaces/index';
@@ -75,7 +76,7 @@ export class ProfileService {
         });
       }
 
-      if (!['manager', 'staff', 'admin'].includes(userRole)) {
+      if (!ROLE_GROUPS.EMPLOYEE_ROLES.includes(userRole as any)) {
         throw new ForbiddenError({
           message: t('auth.errors.insufficientPermissions'),
         });
@@ -114,7 +115,7 @@ export class ProfileService {
     userRole: IUserRoleType
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
-      if (userRole !== 'vendor') {
+      if (userRole !== ROLES.VENDOR) {
         throw new ForbiddenError({
           message: t('auth.errors.insufficientPermissions'),
         });
@@ -193,10 +194,10 @@ export class ProfileService {
           $push: {
             cuids: {
               cuid,
-              roles: [role || ('vendor' as IUserRoleType)],
+              roles: [role || (ROLES.VENDOR as IUserRoleType)],
               isConnected: true,
               displayName: clientInfo.displayName,
-              linkedVendorUid: role === 'vendor' ? linkedVendorUid : null,
+              linkedVendorUid: role === ROLES.VENDOR ? linkedVendorUid : null,
             },
           },
         });
@@ -236,7 +237,7 @@ export class ProfileService {
       isVendorTeamMember?: boolean;
     }
   ): Promise<{ profile: IProfileDocument; createdVendor?: any }> {
-    if (context.role !== 'vendor') {
+    if (context.role !== ROLES.VENDOR) {
       return { profile };
     }
 
@@ -324,9 +325,9 @@ export class ProfileService {
     profile: IProfileDocument,
     metadata?: { employeeInfo?: any }
   ): Promise<IProfileDocument> {
-    const employeeRoles = ['manager', 'staff', 'admin'];
+    const employeeRoles = ROLE_GROUPS.EMPLOYEE_ROLES;
 
-    if (!employeeRoles.includes(context.role)) {
+    if (!employeeRoles.includes(context.role as any)) {
       return profile;
     }
 
@@ -397,7 +398,8 @@ export class ProfileService {
       if (
         targetUid !== currentUser.uid &&
         !(
-          currentUser.client.cuid === cuid && ['manager', 'admin'].includes(currentUser.client.role)
+          currentUser.client.cuid === cuid &&
+          ROLE_GROUPS.MANAGEMENT_ROLES.includes(currentUser.client.role as any)
         )
       ) {
         throw new ForbiddenError({
@@ -462,7 +464,10 @@ export class ProfileService {
   }> {
     if (
       currentuser.uid !== uid &&
-      !(currentuser.client.cuid === cuid && ['manager', 'admin'].includes(currentuser.client.role))
+      !(
+        currentuser.client.cuid === cuid &&
+        ROLE_GROUPS.MANAGEMENT_ROLES.includes(currentuser.client.role as any)
+      )
     ) {
       throw new ForbiddenError({
         message: t('auth.errors.insufficientPermissions'),
@@ -747,6 +752,54 @@ export class ProfileService {
       // Ignore other upload types - they're handled by other services
     } catch (error) {
       this.logger.error('Error handling upload completion in ProfileService:', error);
+    }
+  }
+
+  /**
+   * Get user notification preferences by user ID
+   * Returns default preferences if user profile doesn't exist
+   */
+  async getUserNotificationPreferences(
+    userId: string,
+    cuid: string
+  ): Promise<ISuccessReturnData<IProfileDocument['settings']['notifications']>> {
+    try {
+      this.logger.info(`Getting notification preferences for user ${userId} in client ${cuid}`);
+
+      const preferences = await this.profileDAO.getNotificationPreferences(userId);
+
+      if (!preferences) {
+        this.logger.warn(
+          `No notification preferences found for user ${userId}, returning defaults`
+        );
+        const defaultPreferences: IProfileDocument['settings']['notifications'] = {
+          messages: false,
+          comments: false,
+          announcements: true,
+          maintenance: true,
+          payments: true,
+          system: true,
+          propertyUpdates: true,
+          emailNotifications: true,
+          inAppNotifications: true,
+          emailFrequency: 'immediate' as const,
+        };
+
+        return {
+          success: true,
+          message: 'Default notification preferences retrieved',
+          data: defaultPreferences,
+        };
+      }
+
+      return {
+        success: true,
+        message: 'Notification preferences retrieved successfully',
+        data: preferences,
+      };
+    } catch (error) {
+      this.logger.error(`Error getting notification preferences for user ${userId}:`, error);
+      throw error;
     }
   }
 

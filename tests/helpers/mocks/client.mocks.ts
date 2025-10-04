@@ -1,6 +1,7 @@
 import { ClientSession } from 'mongoose';
 import { IUserDocument } from '@interfaces/user.interface';
 import { IClientDocument } from '@interfaces/client.interface';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 
 export const createMockClientDAO = () => ({
   findFirst: jest.fn(),
@@ -11,7 +12,7 @@ export const createMockClientDAO = () => ({
     .mockImplementation(async (id: string, data: any, _options?: any, _session?: ClientSession) => {
       return { _id: id, ...data };
     }),
-  deleteById: jest.fn(),
+  deleteItem: jest.fn(),
   startSession: jest.fn().mockResolvedValue({} as ClientSession),
   withTransaction: jest
     .fn()
@@ -88,7 +89,7 @@ export const createMockUserDAO = () => ({
     .mockImplementation(async (id: string, data: any, _options?: any, _session?: ClientSession) => {
       return { _id: id, ...data };
     }),
-  deleteById: jest.fn(),
+  deleteItem: jest.fn(),
   startSession: jest.fn().mockResolvedValue({} as ClientSession),
   withTransaction: jest
     .fn()
@@ -125,7 +126,7 @@ export const createMockUserDAO = () => ({
         _id: 'user1',
         email: 'user1@example.com',
         cuids: [
-          { cuid: 'client1', roles: ['admin'], isConnected: true, displayName: 'Admin User' },
+          { cuid: 'client1', roles: [ROLES.ADMIN], isConnected: true, displayName: 'Admin User' },
         ],
         profile: { personalInfo: { firstName: 'Admin', lastName: 'User' } },
       },
@@ -220,7 +221,7 @@ export const createMockInvitationDAO = () => ({
   list: jest.fn(),
   insert: jest.fn(),
   updateById: jest.fn(),
-  deleteById: jest.fn(),
+  deleteItem: jest.fn(),
   startSession: jest.fn(),
   withTransaction: jest
     .fn()
@@ -298,7 +299,7 @@ export const createMockClientService = () => ({
           id: 'user1',
           email: 'user1@example.com',
           displayName: 'User One',
-          roles: ['admin'],
+          roles: [ROLES.ADMIN],
           isConnected: true,
           profile: { personalInfo: { firstName: 'User', lastName: 'One' } },
         },

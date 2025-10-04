@@ -1,7 +1,7 @@
-import { Types, ClientSession } from 'mongoose';
+import { ClientSession, Types } from 'mongoose';
 import { ISuccessReturnData, ICurrentUser } from '@interfaces/index';
-import { IUserDocument } from '@interfaces/user.interface';
-import { createMockUser, createMockCurrentUser } from '../mockFactories';
+
+import { createMockCurrentUser, createMockUser } from '../mockFactories';
 
 // Auth Service Mocks with proper interfaces
 export const createMockAuthService = () => ({
@@ -104,9 +104,11 @@ export const createMockAuthService = () => ({
     message: 'Logout successful',
   } as ISuccessReturnData),
 
-  inviteUserSignup: jest.fn().mockRejectedValue(
-    new Error('This method should be called through InvitationService.acceptInvitation')
-  ),
+  inviteUserSignup: jest
+    .fn()
+    .mockRejectedValue(
+      new Error('This method should be called through InvitationService.acceptInvitation')
+    ),
 
   loginAfterInvitationSignup: jest.fn().mockResolvedValue({
     success: true,
@@ -205,20 +207,21 @@ export const createMockUserDAO = () => ({
   list: jest.fn().mockResolvedValue({ items: [createMockUser()], pagination: undefined }),
   insert: jest.fn().mockResolvedValue(createMockUser()),
   updateById: jest.fn().mockResolvedValue({ acknowledged: true, modifiedCount: 1 }),
-  deleteById: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
+  deleteItem: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
   startSession: jest.fn().mockImplementation(() => ({
     startTransaction: jest.fn(),
     commitTransaction: jest.fn(),
     abortTransaction: jest.fn(),
     endSession: jest.fn(),
   })),
-  withTransaction: jest.fn().mockImplementation(
-    async (session: ClientSession, callback: (session: ClientSession) => Promise<any>) => {
-      return await callback(session);
-    }
-  ),
+  withTransaction: jest
+    .fn()
+    .mockImplementation(
+      async (session: ClientSession, callback: (session: ClientSession) => Promise<any>) => {
+        return await callback(session);
+      }
+    ),
 
-  // UserDAO specific methods
   getUserById: jest.fn().mockResolvedValue(createMockUser()),
   getUserByUId: jest.fn().mockResolvedValue(createMockUser()),
   listUsers: jest.fn().mockResolvedValue({ items: [createMockUser()], pagination: undefined }),
@@ -231,25 +234,20 @@ export const createMockUserDAO = () => ({
   getLinkedVendorUsers: jest.fn().mockResolvedValue({ items: [], pagination: undefined }),
 });
 
-// Profile DAO Mock
 export const createMockProfileDAO = () => ({
-  // BaseDAO methods
   findFirst: jest.fn(),
   list: jest.fn(),
   insert: jest.fn(),
   updateById: jest.fn(),
-  deleteById: jest.fn(),
+  deleteItem: jest.fn(),
   startSession: jest.fn(),
   withTransaction: jest.fn(),
-
-  // ProfileDAO specific methods
   generateCurrentUserInfo: jest.fn().mockResolvedValue(createMockCurrentUser()),
   getUserProfile: jest.fn(),
   updateProfile: jest.fn(),
   createUserProfile: jest.fn(),
 });
 
-// Permission Service Mock
 export const createMockPermissionService = () => ({
   checkUserPermission: jest.fn().mockResolvedValue({
     granted: true,

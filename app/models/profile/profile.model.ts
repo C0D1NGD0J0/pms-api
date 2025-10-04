@@ -97,8 +97,19 @@ const ProfileSchema = new Schema<IProfileDocument>(
       notifications: {
         messages: { type: Boolean, default: false },
         comments: { type: Boolean, default: false },
-
         announcements: { type: Boolean, default: true },
+        maintenance: { type: Boolean, default: true },
+        payments: { type: Boolean, default: true },
+        system: { type: Boolean, default: true },
+        propertyUpdates: { type: Boolean, default: true },
+        emailNotifications: { type: Boolean, default: true },
+        inAppNotifications: { type: Boolean, default: true },
+
+        emailFrequency: {
+          type: String,
+          enum: ['immediate', 'daily'],
+          default: 'immediate',
+        },
       },
     },
     puid: { type: String, required: true, index: true },
@@ -218,8 +229,6 @@ ProfileSchema.methods.getGravatarUrl = function (email: string): string {
   const hash = md5(email);
   return `https://gravatar.com/avatar/${hash}?s=200`;
 };
-
-// These methods have been removed since clientRoleInfo is now in the User model
 
 // automatically set retention date based on policy
 ProfileSchema.pre('save', function (this: IProfileDocument, next) {

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { IUserRole } from '@interfaces/user.interface';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
+import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
 const employeeInfoSchema = z
   .object({
@@ -109,7 +109,7 @@ export const invitationDataSchema = z.object({
     .email('Please provide a valid email address')
     .max(255, 'Email must be less than 255 characters'),
 
-  role: z.nativeEnum(IUserRole, {
+  role: z.enum(ROLE_VALIDATION.ALL_ROLES, {
     errorMap: () => ({ message: 'Please provide a valid role' }),
   }),
 
@@ -262,7 +262,7 @@ export const getInvitationsQuerySchema = z.object({
     .optional(),
 
   role: z
-    .nativeEnum(IUserRole, {
+    .enum(ROLE_VALIDATION.ALL_ROLES, {
       errorMap: () => ({ message: 'Invalid role value' }),
     })
     .optional(),
@@ -309,7 +309,7 @@ export const invitationCsvSchema = z
       .email('Please provide a valid email address')
       .max(255, 'Email must be less than 255 characters'),
 
-    role: z.nativeEnum(IUserRole, {
+    role: z.enum(ROLE_VALIDATION.ALL_ROLES, {
       errorMap: () => ({ message: 'Please provide a valid role' }),
     }),
 
@@ -592,7 +592,7 @@ export const processPendingQuerySchema = z.object({
     .optional(),
 
   role: z
-    .nativeEnum(IUserRole, {
+    .enum(ROLE_VALIDATION.ALL_ROLES, {
       errorMap: () => ({ message: 'Invalid role value' }),
     })
     .optional(),

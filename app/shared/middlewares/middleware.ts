@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
 import { NextFunction, Response, Request } from 'express';
+import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { LanguageService } from '@shared/languages/language.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
@@ -33,6 +34,7 @@ interface PermissionCheck {
   resource: PermissionResource | string;
   action: PermissionAction | string;
 }
+
 export const scopedMiddleware = (req: Request, res: Response, next: NextFunction) => {
   const scope = container.createScope();
   req.container = scope;
@@ -187,57 +189,45 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
   }
 };
 
-export const routeLimiter = (options: RateLimitOptions = {}) => {
-  const defaultOptions: RateLimitOptions = {
-    windowMs: 5 * 60 * 1000, // 5 minutes
-    max: 30,
-    delayAfter: 20,
-    delayMs: () => 500,
-    message: 'Too many requests, please try again later.',
-    enableSpeedLimit: true,
-    enableRateLimit: true,
-  };
+/**
+ * rate limiter middleware - blocks requests after max limit is reached
+ * @param options - rate limiting options
+ */
+export const createRateLimit = (options: Partial<RateLimitOptions> = {}) => {
+  return rateLimit({
+    windowMs: options.windowMs || 5 * 60 * 1000, // 5 minutes default
+    max: options.max || 30, // 30 requests per window default
+    standardHeaders: true,
+    handler: (_req, res, _next) => {
+      const message = options.message || 'Too many requests, please try again later.';
+      return res.status(httpStatusCodes.RATE_LIMITER).send(message);
+    },
+  });
+};
 
-  const middlewares: any[] = [];
-  const mergedOptions = { ...defaultOptions, ...options };
+/**
+ * speed limiter middleware - adds delays after threshold is reached
+ * @param options - speed limiting options
+ */
+export const createSpeedLimit = (options: Partial<RateLimitOptions> = {}) => {
+  return slowDown({
+    windowMs: options.windowMs || 5 * 60 * 1000, // 5 minutes default
+    delayAfter: options.delayAfter || 20, // Start slowing down after 20 requests
+    delayMs: options.delayMs || (() => 500), // 500ms delay default
+  });
+};
 
-  if (mergedOptions.enableRateLimit) {
-    middlewares.push(
-      rateLimit({
-        windowMs: mergedOptions.windowMs,
-        max: mergedOptions.max,
-        standardHeaders: true,
-        handler: (_req, res, _next) => {
-          return res.status(httpStatusCodes.RATE_LIMITER).send(mergedOptions.message);
-        },
-      })
-    );
-  }
+const basicRateLimiter = createRateLimit();
+const basicSpeedLimiter = createSpeedLimit();
 
-  if (mergedOptions.enableSpeedLimit) {
-    middlewares.push(
-      slowDown({
-        windowMs: mergedOptions.windowMs,
-        delayAfter: mergedOptions.delayAfter,
-        delayMs: mergedOptions.delayMs,
-      })
-    );
-  }
-
-  return (req: Request, res: Response, next: NextFunction) => {
-    const applyMiddleware = (index: number) => {
-      if (index >= middlewares.length) {
-        return next();
-      }
-
-      middlewares[index](req, res, (err?: any) => {
-        if (err) return next(err);
-        applyMiddleware(index + 1);
-      });
-    };
-
-    applyMiddleware(0);
-  };
+/**
+ * combined limiter that applies both rate and speed limiting with default settings
+ */
+export const basicLimiter = (req: Request, res: Response, next: NextFunction) => {
+  basicRateLimiter(req, res, (err?: any) => {
+    if (err) return next(err);
+    basicSpeedLimiter(req, res, next);
+  });
 };
 
 export const requestLogger =
@@ -448,8 +438,8 @@ export const requirePermission = (
 
       // For CLIENT resource actions, ensure user has appropriate role
       if (resource === PermissionResource.CLIENT) {
-        const restrictedRoles = ['tenant', 'vendor'];
-        if (restrictedRoles.includes(currentuser.client.role)) {
+        const restrictedRoles = ROLE_GROUPS.EXTERNAL_ROLES;
+        if (restrictedRoles.includes(currentuser.client.role as any)) {
           console.log('Insufficient role for CLIENT resource:', {
             role: currentuser.client.role,
             resource,

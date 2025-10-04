@@ -5,6 +5,7 @@ import Mail from 'nodemailer/lib/mailer';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { MailType } from '@interfaces/utils.interface';
+import { ROLES } from '@shared/constants/roles.constants';
 
 interface MailOptions extends Mail.Options {
   data: EmailTemplateData;
@@ -109,9 +110,9 @@ export class MailService {
         const role = emailData.data?.role;
         let templateName = 'invitation'; // fallback to generic template
 
-        if (role === 'vendor') {
+        if (role === ROLES.VENDOR) {
           templateName = 'invitation-vendor';
-        } else if (role === 'tenant') {
+        } else if (role === ROLES.TENANT) {
           templateName = 'invitation-tenant';
         } else {
           templateName = 'invitation-staff';
@@ -139,12 +140,17 @@ export class MailService {
     data: EmailTemplateData,
     subdir?: string
   ): Promise<EmailTemplate> {
+    // Add ROLES constants to template data for EJS templates
+    const templateData = {
+      ...data,
+      ROLES,
+    };
     const basePath = subdir ? `${subdir}/${filename}` : filename;
     const templatePath = (type: string) => `${basePath}/${filename}${type}.ejs`;
 
     const renderSafely = async (path: string): Promise<string> => {
       try {
-        return await this.renderTemplateFile(path, data);
+        return await this.renderTemplateFile(path, templateData);
       } catch (err) {
         this.log.debug(`Template not found: ${path}`);
         return '';

@@ -3,6 +3,7 @@ import dayjs from 'dayjs';
 import { User } from '@models/index';
 import { isValidPhoneNumber, isValidLocation } from '@utils/index';
 import { IUserRelationshipsEnum } from '@interfaces/user.interface';
+import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
 const isUniqueEmail = async (value: string) => {
   try {
@@ -155,7 +156,7 @@ export const InviteUserSignupSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
   phoneNumber: z.string().optional(),
   location: z.string().optional(),
-  userType: z.enum(['admin', 'tenant', 'manager', 'employee']),
+  userType: z.enum(ROLE_VALIDATION.ALL_ROLES),
   emergencyContact: z
     .object({
       name: z.string(),
@@ -265,7 +266,7 @@ export const ResendActivationSchema = z.object({
 });
 
 export const ResetPasswordSchema = z.object({
-  token: z.string({ message: 'Invalid url, token missing.' }).refine(
+  resetToken: z.string({ message: 'Invalid url, token missing.' }).refine(
     async (token) => {
       try {
         const user = await User.findOne({

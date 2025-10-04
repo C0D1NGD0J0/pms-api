@@ -175,6 +175,7 @@ export class UserCache extends BaseCache {
    * @param cuid - Client identifier
    * @param userList - Array of user data (FilteredUserTableData format)
    * @param opts - Filter and pagination options used to generate this list
+   * @param opts.totalCount - Total count across all pages
    */
   async saveFilteredUsers(
     cuid: string,
@@ -182,6 +183,7 @@ export class UserCache extends BaseCache {
     opts: {
       filters: IUserFilterOptions;
       pagination: IPaginationQuery;
+      totalCount?: number;
     }
   ): Promise<ISuccessReturnData> {
     try {
@@ -193,30 +195,26 @@ export class UserCache extends BaseCache {
         };
       }
 
-      const listKey = this.generateListKeyFromOptions(opts.filters, opts.pagination);
+      const listKey = this.generateListKeyFromOptions(opts.pagination);
       const key = `${this.KEY_PREFIXES.FILTERED_USERS}${cuid}:${listKey}`;
 
-      // Clear any existing data for this key
-      await this.deleteItems([key]);
+      const totalToCache = opts.totalCount ?? userList.length;
 
+      await this.deleteItems([key]);
       const multi = this.client.multi();
 
-      // Store each user in the list
       for (const user of userList) {
         multi.RPUSH(key, this.serialize(user));
       }
 
-      // Store metadata for pagination
       const metaKey = `${key}:meta`;
       await this.setObject(
         metaKey,
         {
-          total: userList.length,
+          total: totalToCache,
           lastUpdated: Date.now(),
           listKey,
           cuid,
-          filters: opts.filters,
-          pagination: opts.pagination,
         },
         this.LIST_CACHE_TTL
       );
@@ -224,11 +222,6 @@ export class UserCache extends BaseCache {
       // Set TTL on the list
       multi.EXPIRE(key, this.LIST_CACHE_TTL);
       await multi.exec();
-
-      this.log.info(`Cached ${userList.length} filtered users for client ${cuid}`, {
-        listKey,
-        ttl: this.LIST_CACHE_TTL,
-      });
 
       return {
         data: { count: userList.length },
@@ -264,7 +257,7 @@ export class UserCache extends BaseCache {
         };
       }
 
-      const listKey = this.generateListKeyFromOptions(filters, pagination);
+      const listKey = this.generateListKeyFromOptions(pagination);
       const key = `${this.KEY_PREFIXES.FILTERED_USERS}${cuid}:${listKey}`;
 
       const listResult = await this.getListRange<FilteredUserTableData>(key, 0, -1);
@@ -355,18 +348,8 @@ export class UserCache extends BaseCache {
    * @param filters - Filter options
    * @param pagination - Pagination options
    */
-  private generateListKeyFromOptions(
-    filters: IUserFilterOptions,
-    pagination: IPaginationQuery
-  ): string {
-    const combined = {
-      ...filters,
-      page: pagination.page,
-      limit: pagination.limit,
-      sortBy: pagination.sortBy,
-      sort: pagination.sort,
-    };
-    const hash = this.hashData(combined);
+  private generateListKeyFromOptions(pagination: IPaginationQuery): string {
+    const hash = this.hashData(pagination);
     return `q:${hash}`;
   }
 }

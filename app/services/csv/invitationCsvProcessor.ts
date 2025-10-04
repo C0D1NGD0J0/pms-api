@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ICurrentUser } from '@interfaces/user.interface';
+import { ROLES } from '@shared/constants/roles.constants';
 import { IInvitationData } from '@interfaces/invitation.interface';
 import { InvitationDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
@@ -156,7 +157,7 @@ export class InvitationCsvProcessor {
       }
 
       // Validate vendor linkage for vendor role
-      if (transformedData.role === 'vendor' && transformedData.linkedVendorUid) {
+      if (transformedData.role === ROLES.VENDOR && transformedData.linkedVendorUid) {
         // Check if the linkedVendorUid refers to an existing vendor
         const existingVendor = await this.vendorDAO.getVendorByVuid(
           transformedData.linkedVendorUid
@@ -193,7 +194,7 @@ export class InvitationCsvProcessor {
       }
 
       // Validate that vendor role with no linkedVendorUid has required vendor fields
-      if (transformedData.role === 'vendor' && !transformedData.linkedVendorUid) {
+      if (transformedData.role === ROLES.VENDOR && !transformedData.linkedVendorUid) {
         if (!transformedData.metadata?.vendorEntityData?.companyName) {
           return {
             isValid: false,
@@ -345,12 +346,12 @@ export class InvitationCsvProcessor {
 
     // Separate vendors by type
     const primaryVendors = invitations.filter(
-      (inv) => inv.role === 'vendor' && inv.metadata?.isPrimaryVendor
+      (inv) => inv.role === ROLES.VENDOR && inv.metadata?.isPrimaryVendor
     );
     const vendorTeamMembers = invitations.filter(
-      (inv) => inv.role === 'vendor' && inv.metadata?.isVendorTeamMember
+      (inv) => inv.role === ROLES.VENDOR && inv.metadata?.isVendorTeamMember
     );
-    const nonVendors = invitations.filter((inv) => inv.role !== 'vendor');
+    const nonVendors = invitations.filter((inv) => inv.role !== ROLES.VENDOR);
 
     // Process vendor team members (already validated against database in validateInvitationRow)
     validItems.push(...vendorTeamMembers);

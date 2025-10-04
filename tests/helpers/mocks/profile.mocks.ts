@@ -12,7 +12,7 @@ export const createMockProfileDAO = () => ({
   list: jest.fn(),
   insert: jest.fn(),
   updateById: jest.fn(),
-  deleteById: jest.fn(),
+  deleteItem: jest.fn(),
   startSession: jest.fn().mockReturnValue({} as ClientSession),
   withTransaction: jest
     .fn()
@@ -46,6 +46,10 @@ export const createMockProfileDAO = () => ({
   updateVendorInfo: jest.fn().mockResolvedValue(createMockProfile()),
   updateCommonEmployeeInfo: jest.fn().mockResolvedValue(createMockProfile()),
   updateCommonVendorInfo: jest.fn().mockResolvedValue(createMockProfile()),
+
+  // Notification preferences methods
+  getNotificationPreferences: jest.fn(),
+  updateNotificationPreferences: jest.fn().mockResolvedValue(createMockProfile()),
   getRoleSpecificInfo: jest.fn().mockResolvedValue({
     employeeInfo: {
       department: EmployeeDepartment.MANAGEMENT, // Using enum value

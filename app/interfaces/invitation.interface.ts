@@ -1,6 +1,7 @@
 import { Document, Types } from 'mongoose';
+import { IUserRole } from '@shared/constants/roles.constants';
 
-import { IUserDocument, IUserRole } from './user.interface';
+import { IUserDocument } from './user.interface';
 import { EmployeeInfo, VendorInfo } from './profile.interface';
 
 export interface IInvitation {

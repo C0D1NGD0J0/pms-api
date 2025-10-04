@@ -1,4 +1,5 @@
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { UserCache } from '@caching/user.cache';
@@ -8,6 +9,7 @@ import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
+import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
 import {
   IUserPopulatedDocument,
@@ -16,11 +18,9 @@ import {
   IEmployeeDetailInfo,
   IVendorDetailInfo,
   ITenantDetailInfo,
-  IUserRoleType,
   IUserProperty,
   ICurrentUser,
   IUserStats,
-  IUserRole,
 } from '@interfaces/user.interface';
 
 interface IConstructor {
@@ -58,9 +58,6 @@ export class UserService {
     this.vendorService = vendorService;
   }
 
-  /**
-   * Fetch and validate user with proper population
-   */
   private async fetchAndValidateUser(
     uid: string,
     currentuser: ICurrentUser
@@ -98,9 +95,6 @@ export class UserService {
     return user;
   }
 
-  /**
-   * Check cache for existing user detail data
-   */
   private async checkUserDetailCache(
     clientId: string,
     uid: string
@@ -117,9 +111,6 @@ export class UserService {
     return null;
   }
 
-  /**
-   * Validate client connection and build user detail
-   */
   private async buildAndCacheUserDetail(
     user: IUserPopulatedDocument,
     clientId: string,
@@ -262,21 +253,20 @@ export class UserService {
             fullName: fullName || undefined,
             displayName: fullName || user.email,
             isConnected: clientConnection?.isConnected || false,
-            phoneNumber: user.profile?.personalInfo?.phoneNumber || undefined,
           };
 
           const roles = clientConnection?.roles || [];
 
-          if (roles.some((r: string) => ['manager', 'admin', 'staff'].includes(r))) {
+          if (roles.some((r: string) => ROLE_GROUPS.EMPLOYEE_ROLES.includes(r as any))) {
             tableUserData.employeeInfo = {
               jobTitle: user.profile?.employeeInfo?.jobTitle || undefined,
               department: user.profile?.employeeInfo?.department || undefined,
-              startDate: user.profile?.employeeInfo?.startDate || undefined,
+              startDate:
+                user.profile?.employeeInfo?.startDate || user.profile?.createdAt || undefined,
             };
           }
 
-          // Add vendor info if user has vendor role
-          if (roles.includes('vendor') && user._id) {
+          if (roles.includes(ROLES.VENDOR as string) && user._id) {
             const vendorEntity = await this.vendorService.getVendorByUserId(user._id.toString());
             if (vendorEntity) {
               tableUserData.vendorInfo = {
@@ -296,7 +286,7 @@ export class UserService {
             }
           }
 
-          if (roles.includes('tenant')) {
+          if (roles.includes(ROLES.TENANT as string)) {
             tableUserData.tenantInfo = {
               unitNumber: user.profile?.tenantInfo?.unitNumber || undefined,
               leaseStatus: user.profile?.tenantInfo?.leaseStatus || undefined,
@@ -308,12 +298,16 @@ export class UserService {
         })
       );
 
-      // Cache the result for future requests
       await this.userCache.saveFilteredUsers(cuid, users, {
         filters: filterOptions,
         pagination: paginationOpts,
+        totalCount: result.pagination?.total,
       });
-      this.log.info('Filtered users cached', { cuid, count: users.length });
+      this.log.info('Filtered users cached', {
+        cuid,
+        count: users.length,
+        total: result.pagination?.total,
+      });
 
       return {
         success: true,
@@ -479,8 +473,8 @@ export class UserService {
       case 'employee':
         // Get properties for employees (excluding tenants)
         if (
-          !response.roles.includes(IUserRole.TENANT) ||
-          response.roles.includes(IUserRole.VENDOR)
+          !response.roles.includes(IUserRole.TENANT as string) ||
+          response.roles.includes(IUserRole.VENDOR as string)
         ) {
           response.properties = await this.getUserProperties(user._id.toString(), clientId);
         }
@@ -779,9 +773,9 @@ export class UserService {
 
     if (roles.some((r: string) => employeeRoles.includes(r as any))) {
       return 'employee';
-    } else if (roles.includes(IUserRole.VENDOR)) {
+    } else if (roles.includes(IUserRole.VENDOR as string)) {
       return 'vendor';
-    } else if (roles.includes(IUserRole.TENANT)) {
+    } else if (roles.includes(IUserRole.TENANT as string)) {
       return 'tenant';
     }
     return 'employee';
@@ -817,7 +811,7 @@ export class UserService {
     }
 
     // Performance indicators (placeholder)
-    if (roles.includes('manager') || roles.includes('admin')) {
+    if (roles.includes(ROLES.MANAGER as string) || roles.includes(ROLES.ADMIN as string)) {
       tags.push('Top Performer');
     }
 
@@ -829,7 +823,7 @@ export class UserService {
     }
 
     // Access levels (placeholder)
-    if (roles.includes('manager')) {
+    if (roles.includes(ROLES.MANAGER as string)) {
       tags.push('Master Key Access');
     }
 
@@ -837,8 +831,132 @@ export class UserService {
   }
 
   /**
-   * Update user information in the User model
+   * Get user with client context validation - Base method for user operations
    */
+  async getUserWithClientContext(
+    userId: string,
+    cuid: string,
+    opts?: IFindOptions
+  ): Promise<any | null> {
+    try {
+      if (!userId || !cuid) return null;
+
+      const user = await this.userDAO.findFirst(
+        {
+          _id: new Types.ObjectId(userId),
+          'cuids.cuid': cuid,
+        },
+        opts
+      );
+
+      return user;
+    } catch (error) {
+      this.log.error('Failed to get user with client context', { error, userId, cuid });
+      return null;
+    }
+  }
+
+  async getUserSupervisor(userId: string, cuid: string): Promise<string | null> {
+    try {
+      if (!userId) return null;
+
+      const user = await this.getUserWithClientContext(userId, cuid, {
+        populate: 'profile',
+      });
+
+      if (!user || !user.profile?.employeeInfo?.reportsTo) {
+        return null;
+      }
+
+      const supervisorId = user.profile.employeeInfo.reportsTo;
+
+      // Validate supervisor exists and belongs to same client
+      const supervisor = await this.getUserWithClientContext(supervisorId, cuid);
+
+      if (!supervisor) {
+        this.log.warn('Supervisor not found or not in same client', {
+          userId,
+          supervisorId,
+          cuid,
+        });
+        return null;
+      }
+
+      return supervisorId;
+    } catch (error) {
+      this.log.error('Failed to find user supervisor', { error, userId, cuid });
+      return null;
+    }
+  }
+
+  async getUserDisplayName(userId: string, cuid: string): Promise<string> {
+    try {
+      if (!userId || userId === 'system') return 'System';
+
+      const user = await this.getUserWithClientContext(userId, cuid, {
+        populate: 'profile',
+      });
+
+      if (!user || !user.profile) return 'Unknown User';
+
+      const { firstName, lastName, displayName } = user.profile.personalInfo;
+      return displayName || `${firstName} ${lastName}`.trim() || user.email || 'Unknown User';
+    } catch (error) {
+      this.log.error('Failed to get user display name', { error, userId, cuid });
+      return 'Unknown User';
+    }
+  }
+
+  async getUserAnnouncementFilters(
+    userId: string,
+    cuid: string
+  ): Promise<{ roles: string[]; vendorId?: string }> {
+    try {
+      const user = await this.getUserWithClientContext(userId, cuid, {
+        populate: 'profile',
+      });
+
+      if (!user) {
+        this.log.warn('User not found for announcement filters', { userId, cuid });
+        return { roles: [] };
+      }
+
+      const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
+      const roles = clientConnection?.roles || [];
+
+      // Get vendor ID for users associated with vendors
+      let vendorId: string | undefined;
+
+      // Check if user is directly linked to a vendor (sub-contractor/employee)
+      if (clientConnection?.linkedVendorUid) {
+        vendorId = clientConnection.linkedVendorUid;
+      }
+      // Check if user has vendor role and is a primary vendor
+      else if (roles.includes(ROLES.VENDOR as string)) {
+        try {
+          const vendorEntity = await this.vendorService.getVendorByUserId(user._id.toString());
+          if (vendorEntity && vendorEntity.vuid) {
+            vendorId = vendorEntity.vuid;
+          }
+        } catch (error) {
+          this.log.warn('Failed to get vendor entity for primary vendor', {
+            userId,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+      // Check if staff user is associated with a vendor through profile
+      else if (roles.includes(ROLES.STAFF as string) && user.profile?.vendorInfo?.linkedVendorUid) {
+        vendorId = user.profile.vendorInfo.linkedVendorUid;
+      }
+
+      return { roles, vendorId };
+    } catch (error) {
+      this.log.error('Error getting user announcement filters', { userId, cuid, error });
+      return { roles: [] };
+    }
+  }
+
   async updateUserInfo(
     userId: string,
     userInfo: { email?: string }

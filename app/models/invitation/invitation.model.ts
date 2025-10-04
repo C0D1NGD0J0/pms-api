@@ -1,7 +1,7 @@
 import { Schema, model, Types } from 'mongoose';
 import { ConflictError } from '@shared/customErrors';
-import { IUserRole } from '@interfaces/user.interface';
 import uniqueValidator from 'mongoose-unique-validator';
+import { IUserRole } from '@shared/constants/roles.constants';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
 

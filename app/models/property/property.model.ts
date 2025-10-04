@@ -5,7 +5,6 @@ import { IPropertyDocument } from '@interfaces/property.interface';
 
 const logger = createLogger('PropertyModel');
 
-// Define specifications as a separate schema for proper handling
 const SpecificationsSchema = new Schema(
   {
     totalArea: {
@@ -41,10 +40,9 @@ const SpecificationsSchema = new Schema(
       min: 1,
     },
   },
-  { _id: false, strict: false } // Don't create a separate _id and allow additional fields
+  { _id: false, strict: false }
 );
 
-// Define utilities schema
 const UtilitiesSchema = new Schema(
   {
     water: { type: Boolean, default: false },
@@ -56,7 +54,6 @@ const UtilitiesSchema = new Schema(
   { _id: false, strict: false }
 );
 
-// Define interior amenities schema
 const InteriorAmenitiesSchema = new Schema(
   {
     airConditioning: { type: Boolean, default: false },
@@ -70,7 +67,6 @@ const InteriorAmenitiesSchema = new Schema(
   { _id: false, strict: false }
 );
 
-// Define community amenities schema
 const CommunityAmenitiesSchema = new Schema(
   {
     swimmingPool: { type: Boolean, default: false },
@@ -318,12 +314,23 @@ const PropertySchema = new Schema<IPropertyDocument>(
       default: 'pending',
       index: true,
     },
-    approvalDetails: {
-      requestedBy: { type: Schema.Types.ObjectId, ref: 'User' },
-      updatedAt: { type: Date },
-      actor: { type: Schema.Types.ObjectId, ref: 'User' },
-      rejectionReason: [{ type: String, maxlength: 500 }],
-      notes: [{ type: String, maxlength: 500 }],
+    approvalDetails: [
+      {
+        action: {
+          type: String,
+          enum: ['created', 'updated', 'approved', 'rejected'],
+          required: true,
+        },
+        actor: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        timestamp: { type: Date, default: Date.now },
+        notes: { type: String, maxlength: 500 },
+        rejectionReason: { type: String, maxlength: 500 },
+        metadata: { type: Schema.Types.Mixed },
+      },
+    ],
+    pendingChanges: {
+      type: Schema.Types.Mixed,
+      default: null,
     },
     deletedAt: {
       type: Date,

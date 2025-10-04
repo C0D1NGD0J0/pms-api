@@ -1,6 +1,7 @@
 import { Document, Types } from 'mongoose';
+import { IUserRoleType } from '@shared/constants/roles.constants';
 
-import { IdentificationType, IUserRoleType } from './user.interface';
+import { IdentificationType } from './user.interface';
 
 export enum EmployeeDepartment {
   MAINTENANCE = 'maintenance', // Maintenance and repairs
@@ -100,6 +101,19 @@ export interface IProfileEditData {
   roles: IUserRoleType[];
 }
 
+export interface NotificationSettings {
+  emailFrequency: 'immediate' | 'daily';
+  emailNotifications: boolean;
+  inAppNotifications: boolean;
+  propertyUpdates: boolean;
+  announcements: boolean;
+  maintenance: boolean;
+  comments: boolean;
+  messages: boolean;
+  payments: boolean;
+  system: boolean;
+}
+
 export interface VendorInfo {
   vendorId?: Types.ObjectId; // Reference to the vendor collection
   isLinkedAccount: boolean;
@@ -117,9 +131,6 @@ export type IProfileDocument = {
   updatedAt: Date;
 } & Document &
   Profile;
-
-// ClientRoleInfo interface removed as it's now part of the User model's cuids array
-
 export interface EmployeeInfo {
   department?: EmployeeDepartment;
   clientSpecificSettings?: any;
@@ -129,17 +140,12 @@ export interface EmployeeInfo {
   jobTitle?: string;
   startDate?: Date;
 }
+
 export interface GDPRSettings {
   dataRetentionPolicy: DataRetentionPolicy;
   dataProcessingConsent: boolean;
   processingConsentDate: Date;
   retentionExpiryDate: Date;
-}
-
-export interface NotificationSettings {
-  announcements: boolean;
-  comments: boolean;
-  messages: boolean;
 }
 
 export interface ClientVendorInfo {

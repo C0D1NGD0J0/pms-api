@@ -4,13 +4,13 @@ Hi <%= firstName %>,
 
 Welcome to <%= companyName %>! Your account has been set up and you're ready to get started.
 
-<% if (role === 'vendor') { %>
+<% if (role === ROLES.VENDOR) { %>
 As a vendor partner, you'll have access to our vendor portal where you can manage service requests, submit invoices, and communicate with our team.
 <% if (vendorCompanyName) { %>
 
 Your company <%= vendorCompanyName %> is now registered in our system.
 <% } %>
-<% } else if (role === 'tenant') { %>
+<% } else if (role === ROLES.TENANT) { %>
 As a tenant, you'll have access to your resident portal where you can submit maintenance requests, pay rent, and stay connected with your property management team.
 <% } else { %>
 As a team member with <%= role %> access, you'll be able to manage properties, work with tenants and vendors, and collaborate with your colleagues.

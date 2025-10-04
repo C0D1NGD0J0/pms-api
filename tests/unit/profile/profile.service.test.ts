@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { ProfileService } from '@services/profile/profile.service';
+import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {
   createMockTranslationFunction,
@@ -88,12 +89,12 @@ describe('ProfileService', () => {
       const profileId = new Types.ObjectId().toString();
       const cuid = 'test-cuid';
       const employeeInfo = createMockEmployeeInfo();
-      const userRole = 'manager';
+      const userRole = ROLES.MANAGER;
       const mockUpdatedProfile = createMockProfile({
         clientRoleInfo: [
           {
             cuid,
-            role: 'manager',
+            role: ROLES.MANAGER,
             employeeInfo,
           },
         ],
@@ -124,7 +125,7 @@ describe('ProfileService', () => {
       const profileId = new Types.ObjectId().toString();
       const cuid = 'test-cuid';
       const invalidEmployeeInfo = { invalid: 'data' } as any;
-      const userRole = 'manager';
+      const userRole = ROLES.MANAGER;
 
       mockUpdateEmployeeInfoSafeParse.mockReturnValue({
         success: false,
@@ -197,7 +198,7 @@ describe('ProfileService', () => {
       const profileId = new Types.ObjectId().toString();
       const cuid = 'test-cuid';
       const vendorInfo = createMockVendorInfo();
-      const userRole = 'manager'; // Invalid role for vendor operations
+      const userRole = ROLES.MANAGER; // Invalid role for vendor operations
 
       await expect(
         profileService.updateVendorInfo(profileId, cuid, vendorInfo, userRole)
@@ -276,6 +277,70 @@ describe('ProfileService', () => {
 
       await expect(profileService.initializeRoleInfo(userId, cuid, role)).rejects.toThrow(
         NotFoundError
+      );
+    });
+  });
+
+  describe('getUserNotificationPreferences', () => {
+    it('should return user notification preferences successfully', async () => {
+      const userId = new Types.ObjectId().toString();
+      const cuid = 'test-cuid';
+      const mockPreferences = {
+        messages: false,
+        comments: true,
+        announcements: true,
+        maintenance: true,
+        payments: true,
+        system: true,
+        propertyUpdates: true,
+        emailNotifications: true,
+        inAppNotifications: true,
+        emailFrequency: 'immediate' as const,
+      };
+
+      mockProfileDAO.getNotificationPreferences.mockResolvedValue(mockPreferences);
+
+      const result = await profileService.getUserNotificationPreferences(userId, cuid);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(mockPreferences);
+      expect(result.message).toBe('Notification preferences retrieved successfully');
+      expect(mockProfileDAO.getNotificationPreferences).toHaveBeenCalledWith(userId);
+    });
+
+    it('should return default preferences when user profile not found', async () => {
+      const userId = new Types.ObjectId().toString();
+      const cuid = 'test-cuid';
+
+      mockProfileDAO.getNotificationPreferences.mockResolvedValue(null);
+
+      const result = await profileService.getUserNotificationPreferences(userId, cuid);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toBe('Default notification preferences retrieved');
+      expect(result.data).toEqual({
+        messages: false,
+        comments: false,
+        announcements: true,
+        maintenance: true,
+        payments: true,
+        system: true,
+        propertyUpdates: true,
+        emailNotifications: true,
+        inAppNotifications: true,
+        emailFrequency: 'immediate',
+      });
+    });
+
+    it('should handle errors and throw them', async () => {
+      const userId = new Types.ObjectId().toString();
+      const cuid = 'test-cuid';
+      const mockError = new Error('Database error');
+
+      mockProfileDAO.getNotificationPreferences.mockRejectedValue(mockError);
+
+      await expect(profileService.getUserNotificationPreferences(userId, cuid)).rejects.toThrow(
+        'Database error'
       );
     });
   });

@@ -1,7 +1,7 @@
 import md5 from 'md5';
 import { Schema, model } from 'mongoose';
 import uniqueValidator from 'mongoose-unique-validator';
-import { IProfileDocument } from '@interfaces/profile.interface';
+import { BackgroundCheckStatus, IProfileDocument } from '@interfaces/profile.interface';
 
 const ProfileSchema = new Schema<IProfileDocument>(
   {
@@ -204,7 +204,14 @@ const ProfileSchema = new Schema<IProfileDocument>(
         propertyId: { type: Schema.Types.ObjectId, ref: 'Property' },
         unitId: { type: Schema.Types.ObjectId, ref: 'PropertyUnit' },
         durationMonths: { type: Number, min: 1, max: 60 },
-        rentAmount: { type: Number, min: 0 },
+        rentAmount: {
+          default: 0,
+          type: Number,
+          get: (val: number) => {
+            return (val / 100).toFixed(2);
+          },
+          set: (val: number) => val * 100,
+        },
         paymentDueDate: { type: Date },
       },
       employerInfo: {
@@ -233,8 +240,8 @@ const ProfileSchema = new Schema<IProfileDocument>(
       },
       backgroundCheckStatus: {
         type: String,
-        enum: ['pending', 'approved', 'failed', 'not_required'],
-        default: 'not_required',
+        enum: Object.values(BackgroundCheckStatus),
+        default: BackgroundCheckStatus.PENDING,
       },
     },
 

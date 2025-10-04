@@ -10,6 +10,13 @@ export enum EmployeeDepartment {
   MANAGEMENT = 'management', // Executive and general management
 }
 
+export enum BackgroundCheckStatus {
+  NOT_REQUIRED = 'not_required',
+  APPROVED = 'approved',
+  PENDING = 'pending',
+  FAILED = 'failed',
+}
+
 enum DataRetentionPolicy {
   STANDARD = 'standard',
   EXTENDED = 'extended',
@@ -78,7 +85,7 @@ export interface TenantInfo {
   rentalReferences?: Array<{ landlordName: string; propertyAddress: string; [key: string]: any }>;
   pets?: Array<{ type: string; breed: string; isServiceAnimal: boolean; [key: string]: any }>;
   emergencyContact?: { name: string; phone: string; relationship: string; email: string };
-  backgroundCheckStatus?: 'pending' | 'approved' | 'failed' | 'not_required';
+  backgroundCheckStatus?: BackgroundCheckStatus;
 }
 
 /**

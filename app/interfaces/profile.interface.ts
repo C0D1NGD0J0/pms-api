@@ -108,6 +108,7 @@ export interface IProfileUpdateData {
     email?: string;
   };
   employeeInfo?: Partial<EmployeeInfo>;
+  tenantInfo?: Partial<TenantInfo>;
   vendorInfo?: Partial<VendorInfo>;
 }
 

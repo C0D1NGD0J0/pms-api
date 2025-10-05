@@ -109,8 +109,6 @@ export class UserController {
   getNotificationPreferences = async (req: AppRequest, res: Response): Promise<void> => {
     const { cuid } = req.params;
     const { userId } = req.query as { userId: string };
-
-    // Use current user ID if no userId specified
     const targetUserId = userId || req.context.currentuser?.sub;
 
     if (!targetUserId) {

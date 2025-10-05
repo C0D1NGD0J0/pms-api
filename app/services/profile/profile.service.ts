@@ -17,6 +17,7 @@ import {
   IRequestContext,
   ICurrentUser,
   EventTypes,
+  TenantInfo,
 } from '@interfaces/index';
 
 interface IConstructor {
@@ -50,13 +51,13 @@ export class ProfileService {
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
-    this.setupEventListeners();
     this.profileDAO = profileDAO;
     this.userService = userService;
     this.vendorService = vendorService;
     this.emitterService = emitterService;
     this.mediaUploadService = mediaUploadService;
     this.logger = createLogger('ProfileService');
+    this.setupEventListeners();
   }
 
   async updateEmployeeInfo(
@@ -79,7 +80,14 @@ export class ProfileService {
         });
       }
 
-      await this.ensureClientRoleInfo(profileId, cuid);
+      const profile = await this.profileDAO.findFirst({ id: profileId });
+      if (!profile) {
+        throw new NotFoundError({
+          message: t('profile.errors.notFound'),
+        });
+      }
+
+      await this.ensureClientRoleInfo(profile.user.toString(), cuid);
 
       const result = await this.profileDAO.updateEmployeeInfo(profileId, cuid, validation.data);
 
@@ -134,7 +142,7 @@ export class ProfileService {
       await this.vendorService.updateVendorInfo(vendor._id.toString(), vendorInfo);
 
       // Update profile vendorInfo to maintain reference (if needed)
-      await this.ensureClientRoleInfo(profileId, cuid);
+      await this.ensureClientRoleInfo(profile.user.toString(), cuid);
 
       // Get the updated profile to return current data
       const updatedProfile = await this.profileDAO.findFirst({ id: profileId });
@@ -153,6 +161,48 @@ export class ProfileService {
       };
     } catch (error) {
       this.logger.error(`Error updating vendor info for profile ${profileId}:`, error);
+      throw error;
+    }
+  }
+
+  async updateTenantInfo(
+    cuid: string,
+    profileId: string,
+    tenantInfo: Partial<TenantInfo>
+  ): Promise<ISuccessReturnData<IProfileDocument>> {
+    try {
+      const validation = ProfileValidations.updateTenantInfo.safeParse(tenantInfo);
+      if (!validation.success) {
+        throw new BadRequestError({
+          message: `Validation failed: ${validation.error.issues.map((i) => i.message).join(', ')}`,
+        });
+      }
+      const profile = await this.profileDAO.findFirst({ id: profileId });
+      if (!profile) {
+        throw new NotFoundError({
+          message: t('profile.errors.notFound'),
+        });
+      }
+      await this.ensureClientRoleInfo(profile.user.toString(), cuid);
+
+      const tenantUpdateData = buildDotNotation({ tenantInfo: validation.data });
+      const result = await this.profileDAO.updateById(profileId, { $set: tenantUpdateData });
+
+      if (!result) {
+        throw new NotFoundError({
+          message: t('profile.errors.notFound'),
+        });
+      }
+
+      this.logger.info(`Tenant info updated for profile ${profileId}, client ${cuid}`);
+
+      return {
+        success: true,
+        data: result,
+        message: t('profile.success.tenantInfoUpdated'),
+      };
+    } catch (error) {
+      this.logger.error(`Error updating tenant info for profile ${profileId}:`, error);
       throw error;
     }
   }
@@ -584,6 +634,12 @@ export class ProfileService {
         userRole
       );
       result = vendorResult.data;
+      hasUpdates = true;
+    }
+
+    if (profileData.tenantInfo) {
+      const tenantResult = await this.updateTenantInfo(cuid, profileId, profileData.tenantInfo);
+      result = tenantResult.data;
       hasUpdates = true;
     }
 

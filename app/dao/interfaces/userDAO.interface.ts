@@ -1,8 +1,13 @@
 import { FilterQuery } from 'mongoose';
-import { IUserDocument } from '@interfaces/user.interface';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
+import {
+  ITenantFilterOptions,
+  IPaginatedResult,
+  IUserDocument,
+  ITenantStats,
+} from '@interfaces/user.interface';
 
 import { IFindOptions, dynamic } from './baseDAO.interface';
 
@@ -44,11 +49,20 @@ export interface IUserDAO {
     filter?: FilterQuery<IUserDocument>,
     opts?: IFindOptions
   ): ListResultWithPagination<IUserDocument[]>;
+  getTenantsByClient(
+    cuid: string,
+    filters?: ITenantFilterOptions,
+    pagination?: IFindOptions
+  ): Promise<IPaginatedResult<IUserDocument[]>>;
   getLinkedVendorUsers(
     primaryVendorId: string,
     cuid: string,
     opts?: IFindOptions
   ): Promise<ListResultWithPagination<IUserDocument[]>>;
+  getClientTenantDetails(
+    cuid: string,
+    tenantUid: string
+  ): Promise<import('@interfaces/user.interface').IClientTenantDetails | null>;
   getUsersByClientIdAndRole(
     cuid: string,
     role: IUserRoleType,
@@ -61,6 +75,7 @@ export interface IUserDAO {
   associateUserWithClient(userId: string, clientId: string, role: IUserRoleType): Promise<boolean>;
   createActivationToken(userId?: string, email?: string): Promise<IUserDocument | null>;
   getUserWithClientAccess(email: string, cuid: string): Promise<IUserDocument | null>;
+  getTenantStats(cuid: string, filters?: ITenantFilterOptions): Promise<ITenantStats>;
   getActiveUserByEmail(email: string, opts?: dynamic): Promise<IUserDocument | null>;
   verifyCredentials(email: string, password: string): Promise<IUserDocument | null>;
   resetPassword(token: string, newPassword: string): Promise<IUserDocument | null>;

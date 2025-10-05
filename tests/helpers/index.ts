@@ -1,3 +1,30 @@
+// Export all mock factories from mockFactories.ts
+export {
+  createValidObjectIdString,
+  createMockRequestContext,
+  createMockVendorDocument,
+  createMockCompanyProfile,
+  createMockPropertyUnit,
+  createMockTokenPayload,
+  createMockCurrentUser,
+  createMockNewProperty,
+  createSuccessResponse,
+  createMockSignupData,
+  createMockInvitation,
+  createMockJWTTokens,
+  createMockEmailData,
+  createErrorResponse,
+  createMockNewVendor,
+  createMockProperty,
+  createMockProfile,
+  createMockSession,
+  createMockClient,
+  createMockVendor,
+  createMockUser,
+  createMockFile,
+  createObjectId,
+} from './mockFactories';
+
 export {
   createMockPropertyValidationService,
   createMockPropertyUnitCsvProcessor,
@@ -15,33 +42,6 @@ export {
   createMockPropertyDAO,
   createMockUploadQueue,
 } from './mocks/property.mocks';
-
-// Export all mock factories from mockFactories.ts
-export {
-  createValidObjectIdString,
-  createMockRequestContext,
-  createMockPropertyUnit,
-  createMockTokenPayload,
-  createMockCurrentUser,
-  createMockNewProperty,
-  createSuccessResponse,
-  createMockSignupData,
-  createMockInvitation,
-  createMockJWTTokens,
-  createMockEmailData,
-  createErrorResponse,
-  createMockProperty,
-  createMockProfile,
-  createMockSession,
-  createMockClient,
-  createMockUser,
-  createMockFile,
-  createObjectId,
-  createMockVendor,
-  createMockVendorDocument,
-  createMockNewVendor,
-  createMockCompanyProfile,
-} from './mockFactories';
 
 // Export all invitation-related mocks
 export {
@@ -61,6 +61,19 @@ export {
   EventTypes,
   MailType,
 } from './mocks/invitation.mocks';
+
+// Export notification mocks
+export {
+  createMockCreateNotificationRequest,
+  createMockNotificationListResponse,
+  createNotificationSuccessResponse,
+  createMockNotificationResponse,
+  createMockNotificationService,
+  createMockUnreadCountResponse,
+  createMockSSEService,
+  createMockSSESession,
+  createMockSSEMessage,
+} from './mocks/notification.mocks';
 
 // Export all client-related mocks (excluding InvitationDAO which is better implemented in invitation.mocks.ts)
 // ProfileDAO is exported from profile.mocks.ts instead for more complete implementation
@@ -103,40 +116,25 @@ export {
 } from './mocks/auth.mocks';
 
 export {
+  createMockMediaUploadService,
+  createMockAssetService,
+  createMockUploadResult,
+} from './mocks/mediaUpload.mocks';
+
+export {
   createMockAwilixContainer,
   createScopedTestContainer,
   setupTestContainer,
 } from './mocks/container.mocks';
 
-export {
-  createMockVendorDAO,
-  createMockVendorService,
-} from './mocks/vendor.mocks';
+export { createMockVendorService, createMockVendorDAO } from './mocks/vendor.mocks';
 
-export {
-  createMockAssetService,
-  createMockMediaUploadService,
-  createMockUploadResult,
-} from './mocks/mediaUpload.mocks';
-
-
-export * from './testUtils';
-
-// Export notification mocks
-export {
-  createMockNotificationService,
-  createMockNotificationResponse,
-  createMockNotificationListResponse,
-  createMockUnreadCountResponse,
-  createMockCreateNotificationRequest,
-  createNotificationSuccessResponse,
-  createMockSSEService,
-  createMockSSESession,
-  createMockSSEMessage,
-  createMockClientService,
-} from './mocks/notification.mocks';
+export * from './mocks/services.mocks';
 
 // Centralized base mocks
 export * from './mocks/baseDAO.mocks';
 export * from './mocks/models.mocks';
-export * from './mocks/services.mocks';
+// API test helpers
+export * from './apiTestHelper';
+
+export * from './testUtils';

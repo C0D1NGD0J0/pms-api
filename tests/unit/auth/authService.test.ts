@@ -411,6 +411,7 @@ describe('AuthService', () => {
 
       expect(result.success).toBe(true);
       expect(mocks.vendorService.createVendorFromCompanyProfile).toHaveBeenCalledWith(
+        expect.any(String), // cuid is generated dynamically
         mockUser._id?.toString(),
         signupData.companyProfile
       );
@@ -514,6 +515,7 @@ describe('AuthService', () => {
       await authService.signup(signupData);
 
       expect(mocks.vendorService.createVendorFromCompanyProfile).toHaveBeenCalledWith(
+        expect.any(String), // cuid is generated dynamically
         mockUser?._id?.toString(),
         expect.objectContaining({
           companyEmail: 'info@company.com',

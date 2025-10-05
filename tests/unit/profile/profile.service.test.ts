@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
+import { ROLES } from '@shared/constants/roles.constants';
 import { ProfileService } from '@services/profile/profile.service';
-import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
+import { BackgroundCheckStatus } from '@interfaces/profile.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {
   createMockTranslationFunction,
@@ -20,6 +21,12 @@ jest.mock('@shared/validations/ProfileValidation', () => ({
     updateVendorInfo: {
       safeParse: jest.fn(),
     },
+    updateTenantInfo: {
+      safeParse: jest.fn(),
+    },
+    tenantInfo: {
+      safeParse: jest.fn(),
+    },
     profileUpdate: {
       safeParse: jest.fn(),
     },
@@ -30,6 +37,8 @@ jest.mock('@shared/validations/ProfileValidation', () => ({
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
 const mockUpdateEmployeeInfoSafeParse = ProfileValidations.updateEmployeeInfo
   .safeParse as jest.MockedFunction<typeof ProfileValidations.updateEmployeeInfo.safeParse>;
+const mockUpdateTenantInfoSafeParse = ProfileValidations.updateTenantInfo
+  .safeParse as jest.MockedFunction<typeof ProfileValidations.updateTenantInfo.safeParse>;
 
 describe('ProfileService', () => {
   let profileService: ProfileService;
@@ -67,7 +76,11 @@ describe('ProfileService', () => {
 
     const mockMediaUploadService = {
       handleMediaDeletion: jest.fn(),
+      handleAvatarDeletion: jest.fn(),
     } as any;
+
+    // Set global translation function before creating service
+    (global as any).t = mockTranslation;
 
     profileService = new ProfileService({
       profileDAO: mockProfileDAO,
@@ -78,8 +91,6 @@ describe('ProfileService', () => {
       emitterService: mockEmitterService,
       mediaUploadService: mockMediaUploadService,
     });
-
-    (global as any).t = mockTranslation;
 
     jest.clearAllMocks();
   });
@@ -107,6 +118,7 @@ describe('ProfileService', () => {
       mockClientDAO.getClientByCuid.mockResolvedValue({ displayName: 'Test Client' });
       mockUserDAO.getUserById.mockResolvedValue({ cuids: [] });
       mockUserDAO.updateById.mockResolvedValue(true);
+      mockProfileDAO.findFirst.mockResolvedValue(mockUpdatedProfile);
       mockProfileDAO.updateEmployeeInfo.mockResolvedValue(mockUpdatedProfile);
 
       const result = await profileService.updateEmployeeInfo(
@@ -218,6 +230,107 @@ describe('ProfileService', () => {
       await expect(
         profileService.updateVendorInfo(profileId, cuid, vendorInfo, userRole)
       ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe('updateTenantInfo', () => {
+    const createMockTenantInfo = () => ({
+      activeLease: {
+        leaseId: new Types.ObjectId().toString(),
+        propertyId: new Types.ObjectId().toString(),
+        unitId: new Types.ObjectId().toString(),
+        durationMonths: 12,
+        rentAmount: 1500,
+        paymentDueDate: new Date('2024-01-01'),
+      },
+      employerInfo: {
+        companyName: 'Test Company',
+        position: 'Software Engineer',
+        monthlyIncome: 5000,
+      },
+      rentalReferences: [
+        {
+          landlordName: 'John Doe',
+          propertyAddress: '123 Main St, City, State',
+        },
+      ],
+      pets: [
+        {
+          type: 'dog',
+          breed: 'Golden Retriever',
+          isServiceAnimal: false,
+        },
+      ],
+      emergencyContact: {
+        name: 'Jane Doe',
+        phone: '+1234567890',
+        relationship: 'spouse',
+        email: 'jane@example.com',
+      },
+      backgroundCheckStatus: BackgroundCheckStatus.APPROVED,
+    });
+
+    it('should successfully update tenant information using buildDotNotation', async () => {
+      const cuid = 'test-cuid';
+      const profileId = new Types.ObjectId().toString();
+      const tenantInfo = createMockTenantInfo();
+      const mockUpdatedProfile = createMockProfile({
+        tenantInfo,
+      });
+
+      mockUpdateTenantInfoSafeParse.mockReturnValue({
+        success: true,
+        data: tenantInfo,
+      });
+      mockClientDAO.getClientByCuid.mockResolvedValue({ displayName: 'Test Client' });
+      mockUserDAO.getUserById.mockResolvedValue({ cuids: [] });
+      mockUserDAO.updateById.mockResolvedValue(true);
+      mockProfileDAO.findFirst.mockResolvedValue(mockUpdatedProfile);
+      mockProfileDAO.updateById.mockResolvedValue(mockUpdatedProfile);
+
+      const result = await profileService.updateTenantInfo(cuid, profileId, tenantInfo);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(mockUpdatedProfile);
+      expect(mockProfileDAO.updateById).toHaveBeenCalledWith(profileId, expect.objectContaining({
+        $set: expect.any(Object),
+      }));
+    });
+
+    it('should throw BadRequestError for invalid tenant data', async () => {
+      const cuid = 'test-cuid';
+      const profileId = new Types.ObjectId().toString();
+      const invalidTenantInfo = { invalid: 'data' } as any;
+
+      mockUpdateTenantInfoSafeParse.mockReturnValue({
+        success: false,
+        error: {
+          issues: [{ path: ['activeLease'], message: 'Invalid lease information', code: 'custom' }],
+        } as any,
+      });
+
+      await expect(
+        profileService.updateTenantInfo(cuid, profileId, invalidTenantInfo)
+      ).rejects.toThrow(BadRequestError);
+    });
+
+    it('should throw NotFoundError when profile update fails', async () => {
+      const cuid = 'test-cuid';
+      const profileId = new Types.ObjectId().toString();
+      const tenantInfo = createMockTenantInfo();
+
+      mockUpdateTenantInfoSafeParse.mockReturnValue({
+        success: true,
+        data: tenantInfo,
+      });
+      mockClientDAO.getClientByCuid.mockResolvedValue({ displayName: 'Test Client' });
+      mockUserDAO.getUserById.mockResolvedValue({ cuids: [] });
+      mockUserDAO.updateById.mockResolvedValue(true);
+      mockProfileDAO.updateById.mockResolvedValue(null);
+
+      await expect(profileService.updateTenantInfo(cuid, profileId, tenantInfo)).rejects.toThrow(
+        NotFoundError
+      );
     });
   });
 

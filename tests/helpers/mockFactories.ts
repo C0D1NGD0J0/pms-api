@@ -1,13 +1,8 @@
 import { Types } from 'mongoose';
 import { faker } from '@faker-js/faker';
+import { ROLES } from '@shared/constants/roles.constants';
 import { GDPRSettings } from '@interfaces/profile.interface';
-import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
-import {
-  IUserDocument,
-  ICurrentUser,
-  IAccountType,
-  ISignupData,
-} from '@interfaces/user.interface';
+import { IUserDocument, ICurrentUser, IAccountType, ISignupData } from '@interfaces/user.interface';
 
 // User Mocks with proper interfaces
 export const createMockUser = (overrides: Partial<IUserDocument> = {}): Partial<IUserDocument> => ({
@@ -367,7 +362,13 @@ export const createMockInvitation = (overrides: any = {}) => ({
     lastName: faker.person.lastName(),
     phoneNumber: faker.phone.number(),
   },
-  role: faker.helpers.arrayElement([ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF, ROLES.VENDOR, ROLES.TENANT]),
+  role: faker.helpers.arrayElement([
+    ROLES.ADMIN,
+    ROLES.MANAGER,
+    ROLES.STAFF,
+    ROLES.VENDOR,
+    ROLES.TENANT,
+  ]),
   status: faker.helpers.arrayElement([
     'draft',
     'pending',

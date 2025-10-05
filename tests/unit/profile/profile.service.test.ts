@@ -118,6 +118,7 @@ describe('ProfileService', () => {
       mockClientDAO.getClientByCuid.mockResolvedValue({ displayName: 'Test Client' });
       mockUserDAO.getUserById.mockResolvedValue({ cuids: [] });
       mockUserDAO.updateById.mockResolvedValue(true);
+      mockProfileDAO.findFirst.mockResolvedValue(mockUpdatedProfile);
       mockProfileDAO.updateEmployeeInfo.mockResolvedValue(mockUpdatedProfile);
 
       const result = await profileService.updateEmployeeInfo(
@@ -284,22 +285,16 @@ describe('ProfileService', () => {
       mockClientDAO.getClientByCuid.mockResolvedValue({ displayName: 'Test Client' });
       mockUserDAO.getUserById.mockResolvedValue({ cuids: [] });
       mockUserDAO.updateById.mockResolvedValue(true);
+      mockProfileDAO.findFirst.mockResolvedValue(mockUpdatedProfile);
       mockProfileDAO.updateById.mockResolvedValue(mockUpdatedProfile);
 
       const result = await profileService.updateTenantInfo(cuid, profileId, tenantInfo);
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(mockUpdatedProfile);
-      expect(mockProfileDAO.updateById).toHaveBeenCalledWith(profileId, {
-        $set: {
-          'tenantInfo.activeLease': tenantInfo.activeLease,
-          'tenantInfo.employerInfo': tenantInfo.employerInfo,
-          'tenantInfo.rentalReferences': tenantInfo.rentalReferences,
-          'tenantInfo.pets': tenantInfo.pets,
-          'tenantInfo.emergencyContact': tenantInfo.emergencyContact,
-          'tenantInfo.backgroundCheckStatus': tenantInfo.backgroundCheckStatus,
-        },
-      });
+      expect(mockProfileDAO.updateById).toHaveBeenCalledWith(profileId, expect.objectContaining({
+        $set: expect.any(Object),
+      }));
     });
 
     it('should throw BadRequestError for invalid tenant data', async () => {

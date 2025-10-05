@@ -2,9 +2,10 @@
 jest.setTimeout(10000);
 
 import request from 'supertest';
-import express, { Application, Request, Response } from 'express';
+import { Application, Request, Response } from 'express';
 import { faker } from '@faker-js/faker';
-import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
+import { ROLES, ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
+import { createApiTestHelper } from '@tests/helpers';
 
 // Create mock ObjectId generator to avoid mongoose import
 class MockObjectId {
@@ -395,51 +396,56 @@ function serializeInvitationForHTTP(invitation: any) {
   return serialized;
 }
 
-// Simplified Express app for testing - focus on route logic only
-function createTestApp(): Application {
-  const app = express();
-  app.use(express.json());
-
-  // Inject container directly without complex middleware chains
-  app.use((req, res, next) => {
-    req.container = mockContainer as any;
-    req.context = { currentuser: createMockCurrentUser() } as any;
-    next();
-  });
-
-  const baseUrl = '/api/v1/invites';
-
-  // Simple route definitions without complex middleware
-  app.get(`${baseUrl}/:token/validate`, mockInvitationController.validateInvitation);
-  app.post(`${baseUrl}/:token/accept`, mockInvitationController.acceptInvitation);
-  app.patch(`${baseUrl}/:cuid/decline_invite/:token`, mockInvitationController.declineInvitation);
-  app.post(`${baseUrl}/:cuid/send_invite`, mockInvitationController.sendInvitation);
-  app.get(`${baseUrl}/clients/:cuid`, mockInvitationController.getInvitations);
-  app.get(`${baseUrl}/clients/:cuid/stats`, mockInvitationController.getInvitationStats);
-  app.get(`${baseUrl}/:iuid`, mockInvitationController.getInvitationById);
-  app.patch(`${baseUrl}/:cuid/revoke/:iuid`, mockInvitationController.revokeInvitation);
-  app.patch(`${baseUrl}/:cuid/update_invite/:iuid`, mockInvitationController.updateInvitation);
-  app.patch(`${baseUrl}/:cuid/resend/:iuid`, mockInvitationController.resendInvitation);
-  app.get(`${baseUrl}/by-email/:email`, mockInvitationController.getInvitationsByEmail);
-  app.post(`${baseUrl}/:cuid/validate_csv`, mockInvitationController.validateInvitationCsv);
-  app.post(
-    `${baseUrl}/:cuid/import_invitations_csv`,
-    mockInvitationController.importInvitationsFromCsv
-  );
-  app.patch(`${baseUrl}/:cuid/process-pending`, mockInvitationController.processPendingInvitations);
-
-  return app;
-}
-
 describe('Invitation Routes Integration Tests', () => {
   const baseUrl = '/api/v1/invites';
+  const apiHelper = createApiTestHelper();
   let app: Application;
   let mockController: any;
 
+  beforeAll(() => {
+    // Setup test app with routes using the helper
+    app = apiHelper.createApp((testApp) => {
+      // Inject container directly without complex middleware chains
+      testApp.use((req, res, next) => {
+        req.container = mockContainer as any;
+        req.context = { currentuser: createMockCurrentUser() } as any;
+        next();
+      });
+
+      // Simple route definitions without complex middleware
+      testApp.get(`${baseUrl}/:token/validate`, mockInvitationController.validateInvitation);
+      testApp.post(`${baseUrl}/:token/accept`, mockInvitationController.acceptInvitation);
+      testApp.patch(
+        `${baseUrl}/:cuid/decline_invite/:token`,
+        mockInvitationController.declineInvitation
+      );
+      testApp.post(`${baseUrl}/:cuid/send_invite`, mockInvitationController.sendInvitation);
+      testApp.get(`${baseUrl}/clients/:cuid`, mockInvitationController.getInvitations);
+      testApp.get(`${baseUrl}/clients/:cuid/stats`, mockInvitationController.getInvitationStats);
+      testApp.get(`${baseUrl}/:iuid`, mockInvitationController.getInvitationById);
+      testApp.patch(`${baseUrl}/:cuid/revoke/:iuid`, mockInvitationController.revokeInvitation);
+      testApp.patch(
+        `${baseUrl}/:cuid/update_invite/:iuid`,
+        mockInvitationController.updateInvitation
+      );
+      testApp.patch(`${baseUrl}/:cuid/resend/:iuid`, mockInvitationController.resendInvitation);
+      testApp.get(`${baseUrl}/by-email/:email`, mockInvitationController.getInvitationsByEmail);
+      testApp.post(`${baseUrl}/:cuid/validate_csv`, mockInvitationController.validateInvitationCsv);
+      testApp.post(
+        `${baseUrl}/:cuid/import_invitations_csv`,
+        mockInvitationController.importInvitationsFromCsv
+      );
+      testApp.patch(
+        `${baseUrl}/:cuid/process-pending`,
+        mockInvitationController.processPendingInvitations
+      );
+    });
+
+    mockController = mockInvitationController;
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
-    app = createTestApp();
-    mockController = mockInvitationController;
   });
 
   describe('GET /:token/validate (public)', () => {

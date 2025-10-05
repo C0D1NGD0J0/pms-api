@@ -49,7 +49,7 @@
     "transpileOnly": true
   },
   "compileOnSave": true,
-  "include": ["app/**/*", "app.ts", "server.ts", "tests/**/*", "types/**/*"],
+  "include": ["app/**/*", "app.ts", "server.ts", "tests/**/*", "types/**/*", "docs/tenant-portal.routes.ts"],
   "exclude": [
     "node_modules",
     "**/*.spec.ts",

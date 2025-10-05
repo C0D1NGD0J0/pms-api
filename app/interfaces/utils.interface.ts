@@ -44,6 +44,7 @@ export enum PermissionResource {
   PROPERTY = 'property',
   PAYMENT = 'payment',
   CLIENT = 'client',
+  TENANT = 'tenant',
   VENDOR = 'vendor',
   REPORT = 'report',
   LEASE = 'lease',
@@ -52,6 +53,7 @@ export enum PermissionResource {
 
 export enum ResourceContext {
   SERVICE_REQUEST = 'service-request',
+  TENANT_PROFILE = 'tenant-profile',
   USER_PROFILE = 'user-profile',
   MAINTENANCE = 'maintenance',
   PROPERTY = 'property',
@@ -142,19 +144,6 @@ export interface IRequestContext {
   ip?: string;
 }
 
-export interface RateLimitOptions {
-  delayMs?: number | ((numRequests: number) => number); // delay in ms to add
-  enableSpeedLimit?: boolean;
-  enableRateLimit?: boolean;
-
-  // speed limiting params
-  delayAfter?: number; // number of requests before adding delay
-  // rate limiting params
-  windowMs?: number; // time window in milliseconds
-  message?: string; // custom message on rate limit exceeded
-  max?: number; // max requests per window
-}
-
 export interface IAWSFileUploadResponse {
   serverSideEncryption: string | null;
   contentDisposition: string | null;
@@ -173,6 +162,16 @@ export interface IAWSFileUploadResponse {
   acl?: string;
   etag: string;
   key: string;
+}
+
+export interface RateLimitOptions {
+  delayMs?: number | ((numRequests: number) => number); // delay in ms to add
+  enableSpeedLimit?: boolean;
+  enableRateLimit?: boolean;
+  delayAfter?: number; // number of requests before adding delay
+  windowMs?: number; // time window in milliseconds
+  message?: string; // custom message on rate limit exceeded
+  max?: number; // max requests per window
 }
 
 export interface ResourceInfo {

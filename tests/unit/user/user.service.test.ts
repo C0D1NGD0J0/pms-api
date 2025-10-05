@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { UserService } from '@services/user/user.service';
 import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
-import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { BadRequestError, NotFoundError, ForbiddenError } from '@shared/customErrors';
 import {
   createMockRequestContext,
   createMockCurrentUser,
@@ -873,6 +873,383 @@ describe('UserService', () => {
         serviceType: 'general_contractor',
         contactPerson: 'Primary Owner',
       });
+    });
+  });
+
+  // ===================================================================
+  // MISSING METHOD TESTS - Added for Phase 1 Completion
+  // ===================================================================
+
+  describe('updateUserInfo', () => {
+    beforeEach(() => {
+      mockUserDAO.findFirst = jest.fn();
+      mockUserDAO.updateById = jest.fn();
+    });
+
+    it('should successfully update user email', async () => {
+      const userId = 'user-123';
+      const existingUser = { _id: 'obj-id-123', uid: userId, email: 'old@example.com' };
+      const updatedUser = { ...existingUser, email: 'new@example.com' };
+
+      mockUserDAO.findFirst
+        .mockResolvedValueOnce(existingUser) // First call: check user exists
+        .mockResolvedValueOnce(null); // Second call: email doesn't exist
+      mockUserDAO.updateById.mockResolvedValue(updatedUser);
+
+      const result = await userService.updateUserInfo(userId, { email: 'new@example.com' });
+
+      expect(result.success).toBe(true);
+      expect(result.data.email).toBe('new@example.com');
+    });
+
+    it('should throw error for duplicate email', async () => {
+      const userId = 'user-123';
+      const existingUser = { _id: 'obj-id-123', uid: userId, email: 'old@example.com' };
+
+      mockUserDAO.findFirst
+        .mockResolvedValueOnce(existingUser)
+        .mockResolvedValueOnce({ email: 'exists@example.com' }); // Email exists
+
+      await expect(userService.updateUserInfo(userId, { email: 'exists@example.com' })).rejects.toThrow(BadRequestError);
+    });
+
+    it('should throw error for user not found', async () => {
+      mockUserDAO.findFirst.mockResolvedValue(null);
+
+      await expect(userService.updateUserInfo('nonexistent', { email: 'test@example.com' })).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe('getTenantsByClient', () => {
+    beforeEach(() => {
+      mockUserDAO.getTenantsByClient = jest.fn();
+    });
+
+    it('should successfully retrieve tenants', async () => {
+      const cuid = 'client-123';
+      const mockClient = createMockClient({ cuid });
+      const mockTenants = {
+        items: [
+          {
+            uid: 'tenant-1',
+            email: 'tenant@example.com',
+            isActive: true,
+            profile: {
+              personalInfo: { firstName: 'John', lastName: 'Doe' },
+              tenantInfo: {},
+            },
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+        pagination: { total: 1, page: 1, limit: 10, pages: 1 },
+      };
+
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockUserDAO.getTenantsByClient.mockResolvedValue(mockTenants);
+
+      const result = await userService.getTenantsByClient(cuid);
+
+      expect(result.success).toBe(true);
+      expect(result.data.items).toHaveLength(1);
+    });
+
+    it('should throw error for missing client ID', async () => {
+      await expect(userService.getTenantsByClient('')).rejects.toThrow(BadRequestError);
+    });
+
+    it('should throw error for non-existent client', async () => {
+      mockClientDAO.getClientByCuid.mockResolvedValue(null);
+
+      await expect(userService.getTenantsByClient('nonexistent')).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe('getTenantStats', () => {
+    beforeEach(() => {
+      mockUserDAO.getTenantStats = jest.fn();
+    });
+
+    it('should retrieve tenant statistics', async () => {
+      const cuid = 'client-123';
+      const mockClient = createMockClient({ cuid });
+      const mockStats = {
+        total: 10,
+        byLeaseStatus: { active: 8, inactive: 2 },
+        byBackgroundCheck: { completed: 9, pending: 1 },
+      };
+
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockUserDAO.getTenantStats.mockResolvedValue(mockStats);
+
+      const result = await userService.getTenantStats(cuid);
+
+      expect(result.success).toBe(true);
+      expect(result.data.total).toBe(10);
+    });
+
+    it('should throw error for missing client ID', async () => {
+      await expect(userService.getTenantStats('')).rejects.toThrow(BadRequestError);
+    });
+
+    it('should throw error for non-existent client', async () => {
+      mockClientDAO.getClientByCuid.mockResolvedValue(null);
+
+      await expect(userService.getTenantStats('nonexistent')).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe('getClientTenantDetails', () => {
+    beforeEach(() => {
+      mockUserDAO.getClientTenantDetails = jest.fn();
+    });
+
+    it('should retrieve tenant details', async () => {
+      const cuid = 'client-123';
+      const tenantUid = 'tenant-456';
+      const mockClient = createMockClient({ cuid });
+      const mockTenant = {
+        uid: tenantUid,
+        email: 'tenant@example.com',
+        personalInfo: { firstName: 'Jane', lastName: 'Smith' },
+        tenantInfo: { activeLease: {} },
+      };
+
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockUserDAO.getClientTenantDetails.mockResolvedValue(mockTenant);
+
+      const result = await userService.getClientTenantDetails(cuid, tenantUid);
+
+      expect(result.success).toBe(true);
+      expect(result.data.uid).toBe(tenantUid);
+    });
+
+    it('should throw error for non-existent tenant', async () => {
+      const mockClient = createMockClient({ cuid: 'client-123' });
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockUserDAO.getClientTenantDetails.mockResolvedValue(null);
+
+      await expect(userService.getClientTenantDetails('client-123', 'nonexistent')).rejects.toThrow(NotFoundError);
+    });
+
+    it('should throw error for missing parameters', async () => {
+      await expect(userService.getClientTenantDetails('', 'tenant-456')).rejects.toThrow(BadRequestError);
+    });
+  });
+
+  describe('getUserAnnouncementFilters', () => {
+    beforeEach(() => {
+      mockUserDAO.findFirst = jest.fn();
+    });
+
+    it('should return user roles', async () => {
+      const userId = new Types.ObjectId().toString();
+      const mockUser = createMockUser({
+        _id: userId,
+        cuids: [{ cuid: 'client-123', roles: [ROLES.EMPLOYEE] }],
+        profile: { personalInfo: {} },
+      });
+
+      mockUserDAO.findFirst.mockResolvedValue(mockUser);
+
+      const result = await userService.getUserAnnouncementFilters(userId, 'client-123');
+
+      expect(result.roles).toContain(ROLES.EMPLOYEE);
+    });
+
+    it('should return vendorId for vendor users', async () => {
+      const userId = new Types.ObjectId().toString();
+      const mockUser = createMockUser({
+        _id: userId,
+        cuids: [{ cuid: 'client-123', roles: [ROLES.VENDOR] }],
+        profile: { personalInfo: {} },
+      });
+
+      mockUserDAO.findFirst.mockResolvedValue(mockUser);
+      mockVendorService.getVendorByUserId.mockResolvedValue({ vuid: 'vendor-123' });
+
+      const result = await userService.getUserAnnouncementFilters(userId, 'client-123');
+
+      expect(result.vendorId).toBe('vendor-123');
+    });
+
+    it('should return empty roles for non-existent user', async () => {
+      mockUserDAO.findFirst.mockResolvedValue(null);
+
+      const result = await userService.getUserAnnouncementFilters('nonexistent', 'client-123');
+
+      expect(result.roles).toEqual([]);
+    });
+  });
+
+  describe('getUserProperties', () => {
+    it('should retrieve user properties', async () => {
+      mockPropertyDAO.getPropertiesByClientId.mockResolvedValue({
+        items: [
+          {
+            _id: 'prop-1',
+            name: 'Building A',
+            address: { street: '123 Main St', city: 'NYC' },
+          },
+        ],
+      });
+
+      const result = await userService.getUserProperties('user-123', 'client-123');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe('Building A');
+    });
+
+    it('should return empty array for no properties', async () => {
+      mockPropertyDAO.getPropertiesByClientId.mockResolvedValue({ items: [] });
+
+      const result = await userService.getUserProperties('user-123', 'client-123');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array on error', async () => {
+      mockPropertyDAO.getPropertiesByClientId.mockRejectedValue(new Error('Database error'));
+
+      const result = await userService.getUserProperties('user-123', 'client-123');
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('getUserWithClientContext', () => {
+    beforeEach(() => {
+      mockUserDAO.findFirst = jest.fn();
+    });
+
+    it('should retrieve user with client context', async () => {
+      const userId = new Types.ObjectId().toString();
+      const mockUser = createMockUser({
+        _id: userId,
+        uid: 'user-123',
+        cuids: [{ cuid: 'client-123', roles: [ROLES.EMPLOYEE] }],
+      });
+
+      mockUserDAO.findFirst.mockResolvedValue(mockUser);
+
+      const result = await userService.getUserWithClientContext(userId, 'client-123');
+
+      expect(result).toBeDefined();
+      expect(result.uid).toBe('user-123');
+    });
+
+    it('should return null for missing user ID', async () => {
+      const result = await userService.getUserWithClientContext('', 'client-123');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null for missing client ID', async () => {
+      const userId = new Types.ObjectId().toString();
+      const result = await userService.getUserWithClientContext(userId, '');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getUserSupervisor', () => {
+    beforeEach(() => {
+      mockUserDAO.findFirst = jest.fn();
+    });
+
+    it('should return supervisor ID', async () => {
+      const userId = new Types.ObjectId().toString();
+      const supervisorObjId = new Types.ObjectId().toString();
+      const mockUser = createMockUser({
+        _id: userId,
+        profile: {
+          personalInfo: {},
+          employeeInfo: { reportsTo: supervisorObjId },
+        },
+      });
+
+      const mockSupervisor = createMockUser({ _id: supervisorObjId, uid: 'supervisor-123' });
+
+      mockUserDAO.findFirst
+        .mockResolvedValueOnce(mockUser)
+        .mockResolvedValueOnce(mockSupervisor);
+
+      const result = await userService.getUserSupervisor(userId, 'client-123');
+
+      expect(result).toBe(supervisorObjId);
+    });
+
+    it('should return null when user has no supervisor', async () => {
+      const userId = new Types.ObjectId().toString();
+      const mockUser = createMockUser({
+        _id: userId,
+        profile: {
+          personalInfo: {},
+          employeeInfo: {},
+        },
+      });
+
+      mockUserDAO.findFirst.mockResolvedValue(mockUser);
+
+      const result = await userService.getUserSupervisor(userId, 'client-123');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when supervisor not found', async () => {
+      const userId = new Types.ObjectId().toString();
+      const supervisorObjId = new Types.ObjectId().toString();
+      const mockUser = createMockUser({
+        _id: userId,
+        profile: {
+          personalInfo: {},
+          employeeInfo: { reportsTo: supervisorObjId },
+        },
+      });
+
+      mockUserDAO.findFirst
+        .mockResolvedValueOnce(mockUser)
+        .mockResolvedValueOnce(null); // Supervisor not found
+
+      const result = await userService.getUserSupervisor(userId, 'client-123');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getUserDisplayName', () => {
+    beforeEach(() => {
+      mockUserDAO.findFirst = jest.fn();
+    });
+
+    it('should return "System" for system user', async () => {
+      const result = await userService.getUserDisplayName('system', 'client-123');
+
+      expect(result).toBe('System');
+    });
+
+    it('should return full name for valid user', async () => {
+      const userId = new Types.ObjectId().toString();
+      const mockUser = createMockUser({
+        _id: userId,
+        profile: {
+          personalInfo: { firstName: 'John', lastName: 'Doe' },
+        },
+      });
+
+      mockUserDAO.findFirst.mockResolvedValue(mockUser);
+
+      const result = await userService.getUserDisplayName(userId, 'client-123');
+
+      expect(result).toBe('John Doe');
+    });
+
+    it('should return "Unknown User" for non-existent user', async () => {
+      mockUserDAO.findFirst.mockResolvedValue(null);
+
+      const result = await userService.getUserDisplayName('nonexistent', 'client-123');
+
+      expect(result).toBe('Unknown User');
     });
   });
 });

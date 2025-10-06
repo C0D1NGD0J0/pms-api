@@ -4,9 +4,9 @@ import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { UserCache } from '@caching/user.cache';
 import { VendorService } from '@services/index';
-import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
+import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
@@ -27,6 +27,7 @@ interface IConstructor {
   permissionService: PermissionService;
   vendorService: VendorService;
   propertyDAO: PropertyDAO;
+  profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   userCache: UserCache;
   userDAO: UserDAO;
@@ -37,6 +38,7 @@ export class UserService {
   private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
   private readonly propertyDAO: PropertyDAO;
+  private readonly profileDAO: ProfileDAO;
   private readonly userCache: UserCache;
   private readonly permissionService: PermissionService;
   private readonly vendorService: VendorService;
@@ -45,6 +47,7 @@ export class UserService {
     clientDAO,
     userDAO,
     propertyDAO,
+    profileDAO,
     userCache,
     permissionService,
     vendorService,
@@ -53,6 +56,7 @@ export class UserService {
     this.clientDAO = clientDAO;
     this.userDAO = userDAO;
     this.propertyDAO = propertyDAO;
+    this.profileDAO = profileDAO;
     this.userCache = userCache;
     this.permissionService = permissionService;
     this.vendorService = vendorService;
@@ -828,6 +832,117 @@ export class UserService {
     }
 
     return tags;
+  }
+
+  /**
+   * Handle existing user by adding them to the client (moved from InvitationService)
+   */
+  async addExistingUserToClient(
+    existingUser: any,
+    role: IUserRoleType,
+    client: { id: string; cuid: string; displayName: string },
+    linkedVendorUid?: string,
+    session?: any
+  ): Promise<any> {
+    return await this.userDAO.addUserToClient(
+      existingUser._id.toString(),
+      role as IUserRoleType,
+      {
+        id: client.id.toString(),
+        cuid: client.cuid,
+        clientDisplayName: client.displayName,
+      },
+      linkedVendorUid,
+      session
+    );
+  }
+
+  /**
+   * Create new user from invitation data (moved from InvitationService)
+   */
+  async createUserFromInvitationData(
+    invitationData: any,
+    userData: any,
+    client: { id: string; cuid: string; displayName: string },
+    linkedVendorUid?: string,
+    session?: any
+  ): Promise<any> {
+    const user = await this.userDAO.createUserFromInvitation(
+      { cuid: client.cuid, displayName: client.displayName },
+      invitationData,
+      userData,
+      linkedVendorUid,
+      session
+    );
+
+    if (!user) {
+      throw new BadRequestError({ message: 'Error creating user account.' });
+    }
+
+    const profileData = this.buildProfileFromInvitationData(user, invitationData, userData);
+    await this.profileDAO.createUserProfile(user._id, profileData, session);
+
+    return user;
+  }
+
+  /**
+   * Build profile data from invitation and user data (moved from InvitationService)
+   */
+  buildProfileFromInvitationData(user: any, invitation: any, userData: any): any {
+    return {
+      user: user._id,
+      puid: user.uid,
+      personalInfo: {
+        firstName: invitation.personalInfo.firstName,
+        lastName: invitation.personalInfo.lastName,
+        displayName: invitation.inviteeFullName,
+        phoneNumber: invitation.personalInfo.phoneNumber || '',
+        location: userData.location || 'Unknown',
+      },
+      lang: userData.lang || 'en',
+      timeZone: userData.timeZone || 'UTC',
+      policies: {
+        tos: {
+          accepted: userData.termsAccepted || false,
+          acceptedOn: userData.termsAccepted ? new Date() : null,
+        },
+        marketing: {
+          accepted: userData.newsletterOptIn || false,
+          acceptedOn: userData.newsletterOptIn ? new Date() : null,
+        },
+      },
+    };
+  }
+
+  /**
+   * Handle user creation or linking based on existence (moved from InvitationService)
+   */
+  async processUserForClientInvitation(
+    invitation: any,
+    invitationData: any,
+    client: { id: string; cuid: string; displayName: string },
+    linkedVendorUid?: string,
+    session?: any
+  ): Promise<any> {
+    const existingUser = await this.userDAO.getActiveUserByEmail(invitation.inviteeEmail);
+
+    if (existingUser) {
+      return await this.addExistingUserToClient(
+        existingUser,
+        invitation.role as IUserRoleType,
+        client,
+        linkedVendorUid,
+        session
+      );
+    } else {
+      return await this.createUserFromInvitationData(
+        invitation,
+        invitationData,
+        client,
+        linkedVendorUid,
+        session
+      );
+    }
   }
 
   /**

@@ -214,14 +214,23 @@ const ProfileSchema = new Schema<IProfileDocument>(
         },
         paymentDueDate: { type: Date },
       },
-      employerInfo: {
-        companyName: { type: String, trim: true },
-        position: { type: String, trim: true },
-        monthlyIncome: { type: Number, min: 0 },
-      },
+      employerInfo: [
+        {
+          companyName: { type: String, trim: true },
+          position: { type: String, trim: true },
+          monthlyIncome: { type: Number, min: 0 },
+          contactPerson: { type: String, trim: true },
+          companyAddress: { type: String, trim: true },
+          contactEmail: { type: String, trim: true, lowercase: true },
+        },
+      ],
       rentalReferences: [
         {
           landlordName: { type: String, required: true, trim: true },
+          landlordEmail: { type: String, trim: true },
+          landlordContact: { type: String, required: true, trim: true },
+          durationMonths: { type: Number, min: 1, max: 120 },
+          reasonForLeaving: { type: String, trim: true },
           propertyAddress: { type: String, required: true, trim: true },
         },
       ],

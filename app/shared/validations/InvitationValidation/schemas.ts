@@ -17,6 +17,59 @@ const employeeInfoSchema = z
   })
   .optional();
 
+const tenantInfoSchema = z
+  .object({
+    employerInfo: z
+      .object({
+        companyName: z
+          .string()
+          .max(200, 'Company name must be less than 200 characters')
+          .optional(),
+        position: z.string().max(100, 'Position must be less than 100 characters').optional(),
+        monthlyIncome: z.number().min(0, 'Monthly income must be positive').optional(),
+        companyRef: z
+          .string()
+          .max(100, 'Company reference must be less than 100 characters')
+          .optional(),
+        refContactEmail: z.string().email('Please provide a valid email address').optional(),
+      })
+      .optional(),
+    emergencyContact: z
+      .object({
+        name: z.string().max(100, 'Name must be less than 100 characters').optional(),
+        phone: z.string().max(20, 'Phone must be less than 20 characters').optional(),
+        relationship: z.string().max(50, 'Relationship must be less than 50 characters').optional(),
+        email: z.string().email('Please provide a valid email address').optional(),
+      })
+      .optional(),
+    rentalReferences: z
+      .array(
+        z.object({
+          landlordName: z
+            .string()
+            .max(100, 'Landlord name must be less than 100 characters')
+            .optional(),
+          landlordEmail: z.string().email('Please provide a valid email address').optional(),
+          landlordContact: z.string().max(20, 'Contact must be less than 20 characters').optional(),
+          durationMonths: z
+            .number()
+            .min(1)
+            .max(120, 'Duration must be between 1 and 120 months')
+            .optional(),
+          reasonForLeaving: z
+            .string()
+            .max(500, 'Reason must be less than 500 characters')
+            .optional(),
+          propertyAddress: z
+            .string()
+            .max(500, 'Address must be less than 500 characters')
+            .optional(),
+        })
+      )
+      .optional(),
+  })
+  .optional();
+
 const vendorInfoSchema = z
   .object({
     servicesOffered: z
@@ -152,6 +205,8 @@ export const invitationDataSchema = z.object({
       }, 'Phone number must contain at least 10 digits')
       .optional(),
   }),
+
+  tenantInfo: tenantInfoSchema,
 
   metadata: z
     .object({
@@ -498,6 +553,73 @@ export const invitationCsvSchema = z
       .transform((str) => (str && str.trim() !== '' ? str : undefined))
       .optional(),
 
+    // Tenant Info fields
+    tenantInfo_employerCompanyName: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    tenantInfo_employerPosition: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    tenantInfo_employerMonthlyIncome: z
+      .string()
+      .transform((str) => {
+        if (!str || str.trim() === '') return undefined;
+        const num = parseFloat(str);
+        if (isNaN(num) || num < 0) {
+          throw new Error('Monthly income must be a positive number');
+        }
+        return num;
+      })
+      .optional(),
+    tenantInfo_employerCompanyRef: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    tenantInfo_employerRefContactEmail: z
+      .string()
+      .transform((str) => {
+        if (!str || str.trim() === '') {
+          return undefined;
+        }
+        const trimmed = str.trim();
+        const emailSchema = z.string().email();
+        const result = emailSchema.safeParse(trimmed);
+        if (!result.success) {
+          throw new Error('Please provide a valid reference contact email');
+        }
+        return trimmed;
+      })
+      .optional(),
+    tenantInfo_emergencyContactName: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    tenantInfo_emergencyContactPhone: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    tenantInfo_emergencyContactRelationship: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    tenantInfo_emergencyContactEmail: z
+      .string()
+      .transform((str) => {
+        if (!str || str.trim() === '') {
+          return undefined;
+        }
+        const trimmed = str.trim();
+        const emailSchema = z.string().email();
+        const result = emailSchema.safeParse(trimmed);
+        if (!result.success) {
+          throw new Error('Please provide a valid emergency contact email');
+        }
+        return trimmed;
+      })
+      .optional(),
+
     cuid: z.string().optional(),
   })
   .transform((data) => {
@@ -514,6 +636,48 @@ export const invitationCsvSchema = z
             employeeId: data.employeeInfo_employeeId,
             reportsTo: data.employeeInfo_reportsTo,
             startDate: data.employeeInfo_startDate,
+          }
+        : undefined;
+
+    // Build tenantInfo if any tenant fields are provided
+    const tenantInfo =
+      data.role === 'tenant' &&
+      (data.tenantInfo_employerCompanyName ||
+        data.tenantInfo_employerPosition ||
+        data.tenantInfo_employerMonthlyIncome ||
+        data.tenantInfo_employerCompanyRef ||
+        data.tenantInfo_employerRefContactEmail ||
+        data.tenantInfo_emergencyContactName ||
+        data.tenantInfo_emergencyContactPhone ||
+        data.tenantInfo_emergencyContactRelationship ||
+        data.tenantInfo_emergencyContactEmail)
+        ? {
+            employerInfo:
+              data.tenantInfo_employerCompanyName ||
+              data.tenantInfo_employerPosition ||
+              data.tenantInfo_employerMonthlyIncome ||
+              data.tenantInfo_employerCompanyRef ||
+              data.tenantInfo_employerRefContactEmail
+                ? {
+                    companyName: data.tenantInfo_employerCompanyName,
+                    position: data.tenantInfo_employerPosition,
+                    monthlyIncome: data.tenantInfo_employerMonthlyIncome,
+                    companyRef: data.tenantInfo_employerCompanyRef,
+                    refContactEmail: data.tenantInfo_employerRefContactEmail,
+                  }
+                : undefined,
+            emergencyContact:
+              data.tenantInfo_emergencyContactName ||
+              data.tenantInfo_emergencyContactPhone ||
+              data.tenantInfo_emergencyContactRelationship ||
+              data.tenantInfo_emergencyContactEmail
+                ? {
+                    name: data.tenantInfo_emergencyContactName,
+                    phone: data.tenantInfo_emergencyContactPhone,
+                    relationship: data.tenantInfo_emergencyContactRelationship,
+                    email: data.tenantInfo_emergencyContactEmail,
+                  }
+                : undefined,
           }
         : undefined;
 
@@ -550,7 +714,6 @@ export const invitationCsvSchema = z
           }
         : undefined;
 
-    // Build legacy vendorInfo for profile references
     const vendorInfo =
       data.role === 'vendor'
         ? {
@@ -576,7 +739,8 @@ export const invitationCsvSchema = z
         expectedStartDate: data.expectedStartDate,
         employeeInfo,
         vendorInfo,
-        vendorEntityData, // New field for vendor entity creation
+        tenantInfo,
+        vendorEntityData,
         isPrimaryVendor,
         isVendorTeamMember,
         csvGroupId: data.linkedVendorUid, // CSV group identifier for linking vendors and team members

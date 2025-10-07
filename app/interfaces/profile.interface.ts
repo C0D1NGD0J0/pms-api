@@ -80,8 +80,10 @@ export interface TenantInfo {
     companyName: string;
     position: string;
     monthlyIncome: number;
-    [key: string]: any;
-  };
+    contactPerson: string;
+    companyAddress: string;
+    contactEmail: string;
+  }[];
   rentalReferences?: Array<{ landlordName: string; propertyAddress: string; [key: string]: any }>;
   pets?: Array<{ type: string; breed: string; isServiceAnimal: boolean; [key: string]: any }>;
   emergencyContact?: { name: string; phone: string; relationship: string; email: string };

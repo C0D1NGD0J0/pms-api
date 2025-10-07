@@ -20,19 +20,57 @@ const employeeInfoSchema = z
 const tenantInfoSchema = z
   .object({
     employerInfo: z
-      .object({
-        companyName: z
-          .string()
-          .max(200, 'Company name must be less than 200 characters')
-          .optional(),
-        position: z.string().max(100, 'Position must be less than 100 characters').optional(),
-        monthlyIncome: z.number().min(0, 'Monthly income must be positive').optional(),
-        companyRef: z
-          .string()
-          .max(100, 'Company reference must be less than 100 characters')
-          .optional(),
-        refContactEmail: z.string().email('Please provide a valid email address').optional(),
-      })
+      .array(
+        z.object({
+          cuid: z.string().optional(), // Track which client invited the tenant
+          companyName: z
+            .string()
+            .max(200, 'Company name must be less than 200 characters')
+            .optional(),
+          position: z.string().max(100, 'Position must be less than 100 characters').optional(),
+          monthlyIncome: z.number().min(0, 'Monthly income must be positive').optional(),
+          contactPerson: z
+            .string()
+            .max(100, 'Contact person must be less than 100 characters')
+            .optional(),
+          companyAddress: z
+            .string()
+            .max(500, 'Company address must be less than 500 characters')
+            .optional(),
+          contactEmail: z.string().email('Please provide a valid email address').optional(),
+        })
+      )
+      .optional(),
+    activeLeases: z
+      .array(
+        z.object({
+          cuid: z.string().optional(),
+          leaseId: z.string().optional(),
+        })
+      )
+      .optional(),
+    rentalReferences: z
+      .array(
+        z.object({
+          landlordName: z
+            .string()
+            .max(100, 'Landlord name must be less than 100 characters')
+            .optional(),
+          propertyAddress: z
+            .string()
+            .max(500, 'Address must be less than 500 characters')
+            .optional(),
+        })
+      )
+      .optional(),
+    pets: z
+      .array(
+        z.object({
+          type: z.string().max(50, 'Pet type must be less than 50 characters').optional(),
+          breed: z.string().max(100, 'Breed must be less than 100 characters').optional(),
+          isServiceAnimal: z.boolean().optional(),
+        })
+      )
       .optional(),
     emergencyContact: z
       .object({
@@ -42,28 +80,16 @@ const tenantInfoSchema = z
         email: z.string().email('Please provide a valid email address').optional(),
       })
       .optional(),
-    rentalReferences: z
+    backgroundChecks: z
       .array(
         z.object({
-          landlordName: z
-            .string()
-            .max(100, 'Landlord name must be less than 100 characters')
-            .optional(),
-          landlordEmail: z.string().email('Please provide a valid email address').optional(),
-          landlordContact: z.string().max(20, 'Contact must be less than 20 characters').optional(),
-          durationMonths: z
-            .number()
-            .min(1)
-            .max(120, 'Duration must be between 1 and 120 months')
-            .optional(),
-          reasonForLeaving: z
-            .string()
-            .max(500, 'Reason must be less than 500 characters')
-            .optional(),
-          propertyAddress: z
-            .string()
-            .max(500, 'Address must be less than 500 characters')
-            .optional(),
+          cuid: z.string().optional(),
+          status: z.enum(['pending', 'approved', 'failed', 'not_required'], {
+            errorMap: () => ({ message: 'Invalid background check status' }),
+          }),
+          checkedDate: z.date(),
+          expiryDate: z.date().optional(),
+          notes: z.string().max(500).optional(),
         })
       )
       .optional(),
@@ -573,11 +599,15 @@ export const invitationCsvSchema = z
         return num;
       })
       .optional(),
-    tenantInfo_employerCompanyRef: z
+    tenantInfo_employerContactPerson: z
       .string()
       .transform((str) => (str && str.trim() !== '' ? str : undefined))
       .optional(),
-    tenantInfo_employerRefContactEmail: z
+    tenantInfo_employerCompanyAddress: z
+      .string()
+      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .optional(),
+    tenantInfo_employerContactEmail: z
       .string()
       .transform((str) => {
         if (!str || str.trim() === '') {
@@ -587,7 +617,7 @@ export const invitationCsvSchema = z
         const emailSchema = z.string().email();
         const result = emailSchema.safeParse(trimmed);
         if (!result.success) {
-          throw new Error('Please provide a valid reference contact email');
+          throw new Error('Please provide a valid employer contact email');
         }
         return trimmed;
       })
@@ -645,8 +675,9 @@ export const invitationCsvSchema = z
       (data.tenantInfo_employerCompanyName ||
         data.tenantInfo_employerPosition ||
         data.tenantInfo_employerMonthlyIncome ||
-        data.tenantInfo_employerCompanyRef ||
-        data.tenantInfo_employerRefContactEmail ||
+        data.tenantInfo_employerContactPerson ||
+        data.tenantInfo_employerCompanyAddress ||
+        data.tenantInfo_employerContactEmail ||
         data.tenantInfo_emergencyContactName ||
         data.tenantInfo_emergencyContactPhone ||
         data.tenantInfo_emergencyContactRelationship ||
@@ -656,15 +687,20 @@ export const invitationCsvSchema = z
               data.tenantInfo_employerCompanyName ||
               data.tenantInfo_employerPosition ||
               data.tenantInfo_employerMonthlyIncome ||
-              data.tenantInfo_employerCompanyRef ||
-              data.tenantInfo_employerRefContactEmail
-                ? {
-                    companyName: data.tenantInfo_employerCompanyName,
-                    position: data.tenantInfo_employerPosition,
-                    monthlyIncome: data.tenantInfo_employerMonthlyIncome,
-                    companyRef: data.tenantInfo_employerCompanyRef,
-                    refContactEmail: data.tenantInfo_employerRefContactEmail,
-                  }
+              data.tenantInfo_employerContactPerson ||
+              data.tenantInfo_employerCompanyAddress ||
+              data.tenantInfo_employerContactEmail
+                ? [
+                    {
+                      cuid: data.cuid, // Will be populated by the service
+                      companyName: data.tenantInfo_employerCompanyName,
+                      position: data.tenantInfo_employerPosition,
+                      monthlyIncome: data.tenantInfo_employerMonthlyIncome,
+                      contactPerson: data.tenantInfo_employerContactPerson,
+                      companyAddress: data.tenantInfo_employerCompanyAddress,
+                      contactEmail: data.tenantInfo_employerContactEmail,
+                    },
+                  ]
                 : undefined,
             emergencyContact:
               data.tenantInfo_emergencyContactName ||

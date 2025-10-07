@@ -123,4 +123,43 @@ export class UserController {
     const result = await this.profileService.getUserNotificationPreferences(targetUserId, cuid);
     res.status(httpStatusCodes.OK).json(result);
   };
+
+  getTenantsStats = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const result = await this.userService.getTenantsStats(cuid, req.context.currentuser);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  updateTenantProfile = async (req: AppRequest, res: Response) => {
+    const { cuid, uid } = req.params;
+    const result = await this.userService.updateTenantProfile(cuid, uid, req.body, req.context);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  archiveUser = async (req: AppRequest, res: Response) => {
+    const { cuid, uid } = req.params;
+    const result = await this.userService.archiveUser(cuid, uid, req.context.currentuser);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getTenantUserInfo = async (req: AppRequest, res: Response) => {
+    const { cuid, uid } = req.params;
+    const result = await this.userService.getTenantUserInfo(cuid, uid, req.context);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getClientTenantDetails = async (req: AppRequest, res: Response) => {
+    const { cuid, uid } = req.params;
+    const result = await this.userService.getClientTenantDetails(
+      cuid,
+      uid,
+      req.context.currentuser
+    );
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

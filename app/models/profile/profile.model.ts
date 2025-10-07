@@ -199,29 +199,34 @@ const ProfileSchema = new Schema<IProfileDocument>(
     },
 
     tenantInfo: {
-      activeLease: {
-        leaseId: { type: Schema.Types.ObjectId, ref: 'Lease' },
-        propertyId: { type: Schema.Types.ObjectId, ref: 'Property' },
-        unitId: { type: Schema.Types.ObjectId, ref: 'PropertyUnit' },
-        durationMonths: { type: Number, min: 1, max: 60 },
-        rentAmount: {
-          default: 0,
-          type: Number,
-          get: (val: number) => {
-            return (val / 100).toFixed(2);
-          },
-          set: (val: number) => val * 100,
-        },
-        paymentDueDate: { type: Date },
-      },
       employerInfo: [
         {
-          companyName: { type: String, trim: true },
-          position: { type: String, trim: true },
-          monthlyIncome: { type: Number, min: 0 },
-          contactPerson: { type: String, trim: true },
-          companyAddress: { type: String, trim: true },
-          contactEmail: { type: String, trim: true, lowercase: true },
+          cuid: { type: String, trim: true, required: true },
+          companyName: { type: String, trim: true, required: true },
+          position: { type: String, trim: true, required: true },
+          monthlyIncome: { type: Number, min: 0, required: true },
+          contactPerson: { type: String, trim: true, required: true },
+          companyAddress: { type: String, trim: true, required: true },
+          contactEmail: { type: String, trim: true, lowercase: true, required: true },
+        },
+      ],
+      activeLeases: [
+        {
+          cuid: { type: String, trim: true, required: true },
+          leaseId: { type: Schema.Types.ObjectId, ref: 'Lease', required: true },
+        },
+      ],
+      backgroundChecks: [
+        {
+          cuid: { type: String, trim: true, required: true },
+          status: {
+            type: String,
+            enum: Object.values(BackgroundCheckStatus),
+            required: true,
+          },
+          checkedDate: { type: Date, required: true },
+          expiryDate: { type: Date },
+          notes: { type: String, trim: true },
         },
       ],
       rentalReferences: [
@@ -246,11 +251,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
         phone: { type: String, trim: true },
         relationship: { type: String, trim: true },
         email: { type: String, trim: true, lowercase: true },
-      },
-      backgroundCheckStatus: {
-        type: String,
-        enum: Object.values(BackgroundCheckStatus),
-        default: BackgroundCheckStatus.PENDING,
       },
     },
 

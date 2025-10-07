@@ -34,6 +34,23 @@ router.get(
   })
 );
 
+// Property management view - comprehensive tenant details
+router.get(
+  '/:cuid/client_tenant/:uid',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+    // Query params: ?include=lease,payments,maintenance,documents,notes
+    // ?include=all for everything
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getClientTenantDetails(req, res);
+  })
+);
+
+// General tenant user view - consistent with employee/vendor views
 router
   .route('/:cuid/tenant_details/:uid')
   .get(
@@ -41,12 +58,10 @@ router
     requirePermission(PermissionResource.USER, PermissionAction.READ),
     validateRequest({
       params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
-      // Query params: ?include=lease,payments,maintenance,documents,notes
-      // ?include=all for everything
     }),
     asyncWrapper((req, res) => {
       const userController = req.container.resolve<UserController>('userController');
-      return userController.getClientTenantInfo(req, res);
+      return userController.getTenantUserInfo(req, res);
     })
   )
   .patch(

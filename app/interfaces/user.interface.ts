@@ -19,49 +19,10 @@ export enum IUserRelationshipsEnum {
 }
 
 /**
- * Detailed tenant information for property management view
+ * Comprehensive tenant details for property management view
+ * Used by getTenantManagementDetails endpoint - includes user info, metrics, and history
  */
 export interface IClientTenantDetails {
-  tenantInfo: {
-    activeLease?: {
-      leaseId: string;
-      propertyId: string;
-      propertyName?: string;
-      unitId: string;
-      unitNumber?: string;
-      durationMonths: number;
-      rentAmount: number;
-      paymentDueDate: Date;
-      leaseStartDate?: Date;
-      leaseEndDate?: Date;
-      securityDeposit?: number;
-    };
-    employerInfo?: {
-      companyName: string;
-      position: string;
-      monthlyIncome: number;
-      [key: string]: any;
-    };
-    rentalReferences?: Array<{
-      landlordName: string;
-      propertyAddress: string;
-      [key: string]: any;
-    }>;
-    pets?: Array<{
-      type: string;
-      breed: string;
-      isServiceAnimal: boolean;
-      [key: string]: any;
-    }>;
-    emergencyContact?: {
-      name: string;
-      phone: string;
-      relationship: string;
-      email: string;
-    };
-    backgroundCheckStatus?: 'pending' | 'approved' | 'failed' | 'not_required';
-  };
-  // Statistics and metrics
   tenantMetrics?: {
     onTimePaymentRate: number;
     averagePaymentDelay: number;
@@ -78,7 +39,7 @@ export interface IClientTenantDetails {
     description: string;
     priority: 'low' | 'medium' | 'high' | 'urgent';
   }>;
-  // Property management specific data
+  // Historical data
   leaseHistory?: Array<{
     propertyName: string;
     unitNumber: string;
@@ -94,13 +55,13 @@ export interface IClientTenantDetails {
     status: 'paid' | 'late' | 'pending';
     dueDate: Date;
   }>;
-  // Communication and notes
   notes?: Array<{
     date: Date;
     author: string;
     note: string;
     type: 'general' | 'payment' | 'maintenance' | 'lease';
   }>;
+  tenantInfo: TenantInfo;
   phoneNumber?: string;
   displayName: string;
 
@@ -114,7 +75,7 @@ export interface IClientTenantDetails {
 
   email: string;
 
-  // Basic tenant info
+  // Basic user info
   uid: string;
 }
 
@@ -338,27 +299,6 @@ export interface ITenantFilterOptions extends IUserFilterOptions {
 }
 
 /**
- * Tenant detail information for getClientUserInfo response
- */
-export interface ITenantDetailInfo {
-  leaseInfo: {
-    endDate: Date | null;
-    monthlyRent: number;
-    startDate: Date;
-    status: string;
-  };
-  unit: {
-    address: string;
-    propertyName: string;
-    unitNumber: string;
-  };
-  maintenanceRequests: any[];
-  paymentHistory: any[];
-  rentStatus: string;
-  documents: any[];
-}
-
-/**
  * Lightweight user data for table display only
  * Using Pick and optional fields to reduce duplication
  */
@@ -550,5 +490,11 @@ export interface StatsDistribution {
 export type IUserPopulatedDocument = {
   profile: IProfileDocument;
 } & IUserDocument;
+
+/**
+ * Tenant detail information for getClientUserInfo response (general user view)
+ * Just the tenant info from profile - extends TenantInfo
+ */
+export interface ITenantDetailInfo extends TenantInfo {}
 
 export type IRefreshToken = IRefreshTokenDocument;

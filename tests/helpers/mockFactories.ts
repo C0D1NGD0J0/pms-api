@@ -87,22 +87,26 @@ export const createMockSignupData = (overrides: Partial<ISignupData> = {}): ISig
   ...overrides,
 });
 
-export const createMockClient = (overrides: any = {}) => ({
-  _id: new Types.ObjectId(),
-  cuid: faker.string.uuid(),
-  displayName: faker.company.name(),
-  accountAdmin: new Types.ObjectId(),
-  accountType: {
-    isCorporate: false,
-    planName: 'basic',
-    planId: 'basic-plan',
-  },
-  isActive: true,
-  settings: {},
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  ...overrides,
-});
+export const createMockClient = (overrides: any = {}) => {
+  const _id = overrides._id || new Types.ObjectId();
+  return {
+    _id,
+    id: _id, // Add id property for compatibility
+    cuid: faker.string.uuid(),
+    displayName: faker.company.name(),
+    accountAdmin: new Types.ObjectId(),
+    accountType: {
+      isCorporate: false,
+      planName: 'basic',
+      planId: 'basic-plan',
+    },
+    isActive: true,
+    settings: {},
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+};
 
 export const createMockProperty = (overrides: any = {}) => ({
   _id: new Types.ObjectId(),

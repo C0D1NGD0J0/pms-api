@@ -19,7 +19,15 @@ const router = Router();
 
 router.get(
   '/:cuid/validate_token',
-  basicLimiter,
+  basicLimiter({
+    max: 10, // 10 attempts per window
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    message: 'Too many validation attempts. Please try again later.',
+    keyGenerator: (req) => {
+      const token = req.query.token as string;
+      return token ? `validate:${token}` : 'invite_token_unknown';
+    },
+  }),
   validateRequest({ params: UtilsValidations.cuid, query: InvitationValidations.invitationToken }),
   asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
@@ -29,7 +37,15 @@ router.get(
 
 router.post(
   '/:cuid/accept_invite/:token',
-  basicLimiter,
+  basicLimiter({
+    max: 5,
+    windowMs: 10 * 60 * 1000,
+    message: 'Too many invitation acceptance attempts. Please try again later.',
+    keyGenerator: (req) => {
+      const token = req.params.token;
+      return token ? `accept:${token}` : 'invite_token_unknown';
+    },
+  }),
   validateRequest({
     params: InvitationValidations.validateTokenAndCuid,
     body: InvitationValidations.acceptInvitation,
@@ -42,7 +58,7 @@ router.post(
 
 router.patch(
   '/:cuid/decline_invite/:token',
-  basicLimiter,
+  basicLimiter(),
   validateRequest({
     params: InvitationValidations.validateTokenAndCuid,
     body: InvitationValidations.revokeInvitation,
@@ -56,7 +72,7 @@ router.patch(
 router.post(
   '/:cuid/send_invite',
   isAuthenticated,
-  basicLimiter,
+  basicLimiter(),
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   validateRequest({
     params: UtilsValidations.cuid,
@@ -71,7 +87,7 @@ router.post(
 router.get(
   '/clients/:cuid',
   isAuthenticated,
-  basicLimiter,
+  basicLimiter(),
   requirePermission(PermissionResource.INVITATION, PermissionAction.LIST),
   validateRequest({
     params: UtilsValidations.cuid,
@@ -85,6 +101,7 @@ router.get(
 
 router.get(
   '/clients/:cuid/stats',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.STATS),
   validateRequest({ params: UtilsValidations.cuid }),
@@ -96,6 +113,7 @@ router.get(
 
 router.get(
   '/:iuid',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.READ),
   validateRequest({ params: InvitationValidations.iuid }),
@@ -107,6 +125,7 @@ router.get(
 
 router.patch(
   '/:cuid/revoke/:iuid',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.REVOKE),
   validateRequest({
@@ -121,6 +140,7 @@ router.patch(
 
 router.patch(
   '/:cuid/update_invite/:iuid',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.UPDATE),
   validateRequest({
@@ -135,6 +155,7 @@ router.patch(
 
 router.patch(
   '/:cuid/resend/:iuid',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.RESEND),
   validateRequest({
@@ -149,6 +170,7 @@ router.patch(
 
 router.get(
   '/by-email/:email',
+  basicLimiter(),
   isAuthenticated,
   validateRequest({ params: UtilsValidations.isUniqueEmail }),
   asyncWrapper((req: AppRequest, res) => {
@@ -159,6 +181,7 @@ router.get(
 
 router.post(
   '/:cuid/validate_csv',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   diskUpload(['csv_file']),
@@ -175,6 +198,7 @@ router.post(
 
 router.post(
   '/:cuid/import_invitations_csv',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   diskUpload(['csv_file']),
@@ -196,6 +220,7 @@ router.post(
  */
 router.patch(
   '/:cuid/process-pending',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   validateRequest({

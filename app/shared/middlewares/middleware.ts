@@ -194,13 +194,23 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
  * @param options - rate limiting options
  */
 export const createRateLimit = (options: Partial<RateLimitOptions> = {}) => {
+  const windowMs = options.windowMs || 5 * 60 * 1000; // 5 minutes default
+
   return rateLimit({
-    windowMs: options.windowMs || 5 * 60 * 1000, // 5 minutes default
+    windowMs,
     max: options.max || 30, // 30 requests per window default
     standardHeaders: true,
+    keyGenerator: options.keyGenerator,
+    skip: options.skip,
     handler: (_req, res, _next) => {
       const message = options.message || 'Too many requests, please try again later.';
-      return res.status(httpStatusCodes.RATE_LIMITER).send(message);
+      // Send Retry-After header in seconds
+      res.setHeader('Retry-After', Math.ceil(windowMs / 1000));
+      return res.status(httpStatusCodes.RATE_LIMITER).json({
+        success: false,
+        message,
+        retryAfter: Math.ceil(windowMs / 1000),
+      });
     },
   });
 };
@@ -217,17 +227,16 @@ export const createSpeedLimit = (options: Partial<RateLimitOptions> = {}) => {
   });
 };
 
-const basicRateLimiter = createRateLimit();
-const basicSpeedLimiter = createSpeedLimit();
+export const basicLimiter = (options: Partial<RateLimitOptions> = {}) => {
+  const rateLimiter = createRateLimit(options);
+  const speedLimiter = createSpeedLimit(options);
 
-/**
- * combined limiter that applies both rate and speed limiting with default settings
- */
-export const basicLimiter = (req: Request, res: Response, next: NextFunction) => {
-  basicRateLimiter(req, res, (err?: any) => {
-    if (err) return next(err);
-    basicSpeedLimiter(req, res, next);
-  });
+  return (req: Request, res: Response, next: NextFunction) => {
+    rateLimiter(req, res, (err?: any) => {
+      if (err) return next(err);
+      speedLimiter(req, res, next);
+    });
+  };
 };
 
 export const requestLogger =

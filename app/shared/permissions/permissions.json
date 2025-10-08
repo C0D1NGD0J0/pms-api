@@ -55,7 +55,7 @@
       "description": "User management operations"
     },
     "invitation": {
-      "actions": ["send", "revoke", "resend", "list", "read", "stats"],
+      "actions": ["send", "revoke", "resend", "list", "read", "stats", "update"],
       "scopes": ["any", "mine"],
       "description": "Invitation management operations"
     },
@@ -63,6 +63,16 @@
       "actions": ["read", "update", "settings", "manage_users"],
       "scopes": ["any", "mine"],
       "description": "Company account operations"
+    },
+    "tenant": {
+      "actions": ["create", "read", "update", "delete", "list"],
+      "scopes": ["any", "mine"],
+      "description": "Tenant management operations"
+    },
+    "vendor": {
+      "actions": ["create", "read", "update", "delete", "list"],
+      "scopes": ["any", "mine", "assigned"],
+      "description": "Vendor management operations"
     },
     "maintenance": {
       "actions": ["create", "read", "update", "delete", "list"],
@@ -78,6 +88,11 @@
       "actions": ["create", "read", "update", "delete", "list"],
       "scopes": ["any", "mine", "assigned"],
       "description": "Payment and billing operations"
+    },
+    "notification": {
+      "actions": ["create", "read", "update", "delete", "list", "send"],
+      "scopes": ["any", "mine"],
+      "description": "Notification operations"
     },
     "report": {
       "actions": ["create", "read", "update", "delete", "list"],

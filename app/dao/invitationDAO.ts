@@ -42,7 +42,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     session?: ClientSession
   ): Promise<IInvitationDocument> {
     try {
-      const invitationToken = hashGenerator({ _usenano: true });
+      const invitationToken = hashGenerator({});
       const expiresAt = dayjs().add(1, 'day').toDate();
 
       const invitationToInsert: any = {

@@ -16,6 +16,7 @@ import {
 } from '@interfaces/utils.interface';
 
 import {
+  NotificationAccessStrategy,
   MaintenanceAccessStrategy,
   InvitationAccessStrategy,
   ResourceAccessStrategy,
@@ -23,6 +24,8 @@ import {
   PaymentAccessStrategy,
   ClientAccessStrategy,
   VendorAccessStrategy,
+  TenantAccessStrategy,
+  ReportAccessStrategy,
   LeaseAccessStrategy,
   UserAccessStrategy,
 } from './resourceAccessStrategies';
@@ -50,11 +53,14 @@ export class PermissionService {
 
   private initializeResourceStrategies(): void {
     this.resourceStrategies = new Map([
+      [PermissionResource.NOTIFICATION, new NotificationAccessStrategy()],
       [PermissionResource.MAINTENANCE, new MaintenanceAccessStrategy()],
       [PermissionResource.INVITATION, new InvitationAccessStrategy()],
       [PermissionResource.PROPERTY, new PropertyAccessStrategy()],
       [PermissionResource.PAYMENT, new PaymentAccessStrategy()],
       [PermissionResource.VENDOR, new VendorAccessStrategy()],
+      [PermissionResource.TENANT, new TenantAccessStrategy()],
+      [PermissionResource.REPORT, new ReportAccessStrategy()],
       [PermissionResource.CLIENT, new ClientAccessStrategy()],
       [PermissionResource.LEASE, new LeaseAccessStrategy()],
       [PermissionResource.USER, new UserAccessStrategy()],

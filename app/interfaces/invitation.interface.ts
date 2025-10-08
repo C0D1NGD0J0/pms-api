@@ -54,6 +54,7 @@ export interface IInvitationData {
     expectedStartDate?: Date;
     employeeInfo?: EmployeeInfo;
     vendorInfo?: VendorInfo;
+    tenantInfo?: TenantInfo;
   };
   personalInfo: {
     firstName: string;
@@ -62,6 +63,7 @@ export interface IInvitationData {
   };
   status: 'draft' | 'pending';
   linkedVendorUid?: string; // ID of an existing vendor user to link this invitation to
+  tenantInfo?: TenantInfo;
   inviteeEmail: string;
   role: IUserRole;
 }

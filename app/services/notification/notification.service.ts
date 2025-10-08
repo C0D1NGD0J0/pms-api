@@ -669,6 +669,7 @@ export class NotificationService {
           NotificationTypeEnum.PROPERTY,
           NotificationPriorityEnum.LOW,
           cuid,
+          actorUserId,
           {
             resourceName: ResourceContext.PROPERTY,
             resourceUid: resourceInfo?.resourceUid,
@@ -694,6 +695,7 @@ export class NotificationService {
           NotificationTypeEnum.PROPERTY,
           NotificationPriorityEnum.LOW,
           cuid,
+          actorUserId,
           {
             resourceName: resourceInfo.resourceName,
             resourceUid: resourceInfo.resourceUid,
@@ -752,6 +754,7 @@ export class NotificationService {
             NotificationTypeEnum.PROPERTY,
             NotificationPriorityEnum.HIGH,
             cuid,
+            requesterId,
             {
               resourceName: resourceType,
               resourceUid: resource.resourceUid,
@@ -819,6 +822,7 @@ export class NotificationService {
         NotificationTypeEnum.PROPERTY,
         priority,
         cuid,
+        originalRequesterId,
         {
           resourceName: ResourceContext.PROPERTY,
           resourceUid: resource.resourceUid,
@@ -961,6 +965,7 @@ export class NotificationService {
         NotificationTypeEnum.PROPERTY,
         NotificationPriorityEnum.HIGH,
         cuid,
+        originalRequesterId,
         {
           resourceName: ResourceContext.PROPERTY,
           resourceUid: propertyId,
@@ -1136,6 +1141,7 @@ export class NotificationService {
     type: NotificationTypeEnum,
     priority: NotificationPriorityEnum,
     cuid: string,
+    authorId: string,
     resourceInfo?: {
       resourceName: ResourceContext;
       resourceUid: string;
@@ -1154,6 +1160,7 @@ export class NotificationService {
       priority,
       cuid,
       metadata: resourceInfo?.metadata,
+      author: authorId,
     };
 
     if (resourceInfo) {

@@ -17,29 +17,25 @@ const employeeInfoSchema = z
   })
   .optional();
 
+// Define the employer info object schema
+const employerInfoObjectSchema = z.object({
+  cuid: z.string().optional(), // Track which client invited the tenant
+  companyName: z.string().max(200, 'Company name must be less than 200 characters').optional(),
+  position: z.string().max(100, 'Position must be less than 100 characters').optional(),
+  monthlyIncome: z.number().min(0, 'Monthly income must be positive').optional(),
+  contactPerson: z.string().max(100, 'Contact person must be less than 100 characters').optional(),
+  companyAddress: z
+    .string()
+    .max(500, 'Company address must be less than 500 characters')
+    .optional(),
+  contactEmail: z.string().email('Please provide a valid email address').optional(),
+});
+
 const tenantInfoSchema = z
   .object({
     employerInfo: z
-      .array(
-        z.object({
-          cuid: z.string().optional(), // Track which client invited the tenant
-          companyName: z
-            .string()
-            .max(200, 'Company name must be less than 200 characters')
-            .optional(),
-          position: z.string().max(100, 'Position must be less than 100 characters').optional(),
-          monthlyIncome: z.number().min(0, 'Monthly income must be positive').optional(),
-          contactPerson: z
-            .string()
-            .max(100, 'Contact person must be less than 100 characters')
-            .optional(),
-          companyAddress: z
-            .string()
-            .max(500, 'Company address must be less than 500 characters')
-            .optional(),
-          contactEmail: z.string().email('Please provide a valid email address').optional(),
-        })
-      )
+      .union([employerInfoObjectSchema, z.array(employerInfoObjectSchema)])
+      .transform((val) => (Array.isArray(val) ? val : [val]))
       .optional(),
     activeLeases: z
       .array(
@@ -50,7 +46,7 @@ const tenantInfoSchema = z
       )
       .optional(),
     rentalReferences: z
-      .array(
+      .union([
         z.object({
           landlordName: z
             .string()
@@ -60,17 +56,38 @@ const tenantInfoSchema = z
             .string()
             .max(500, 'Address must be less than 500 characters')
             .optional(),
-        })
-      )
+        }),
+        z.array(
+          z.object({
+            landlordName: z
+              .string()
+              .max(100, 'Landlord name must be less than 100 characters')
+              .optional(),
+            propertyAddress: z
+              .string()
+              .max(500, 'Address must be less than 500 characters')
+              .optional(),
+          })
+        ),
+      ])
+      .transform((val) => (Array.isArray(val) ? val : [val]))
       .optional(),
     pets: z
-      .array(
+      .union([
         z.object({
           type: z.string().max(50, 'Pet type must be less than 50 characters').optional(),
           breed: z.string().max(100, 'Breed must be less than 100 characters').optional(),
           isServiceAnimal: z.boolean().optional(),
-        })
-      )
+        }),
+        z.array(
+          z.object({
+            type: z.string().max(50, 'Pet type must be less than 50 characters').optional(),
+            breed: z.string().max(100, 'Breed must be less than 100 characters').optional(),
+            isServiceAnimal: z.boolean().optional(),
+          })
+        ),
+      ])
+      .transform((val) => (Array.isArray(val) ? val : [val]))
       .optional(),
     emergencyContact: z
       .object({
@@ -232,8 +249,6 @@ export const invitationDataSchema = z.object({
       .optional(),
   }),
 
-  tenantInfo: tenantInfoSchema,
-
   metadata: z
     .object({
       inviteMessage: z
@@ -249,6 +264,7 @@ export const invitationDataSchema = z.object({
 
       employeeInfo: employeeInfoSchema,
       vendorInfo: vendorInfoSchema,
+      tenantInfo: tenantInfoSchema,
     })
     .optional(),
 

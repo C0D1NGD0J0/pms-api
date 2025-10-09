@@ -20,8 +20,8 @@ const router = Router();
 router.get(
   '/:cuid/validate_token',
   basicLimiter({
-    max: 10, // 10 attempts per window
-    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 10,
+    windowMs: 2 * 60 * 1000,
     message: 'Too many validation attempts. Please try again later.',
     keyGenerator: (req) => {
       const token = req.query.token as string;

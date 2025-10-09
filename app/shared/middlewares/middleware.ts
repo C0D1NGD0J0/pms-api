@@ -195,7 +195,6 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
  */
 export const createRateLimit = (options: Partial<RateLimitOptions> = {}) => {
   const windowMs = options.windowMs || 5 * 60 * 1000; // 5 minutes default
-
   return rateLimit({
     windowMs,
     max: options.max || 30, // 30 requests per window default
@@ -221,9 +220,9 @@ export const createRateLimit = (options: Partial<RateLimitOptions> = {}) => {
  */
 export const createSpeedLimit = (options: Partial<RateLimitOptions> = {}) => {
   return slowDown({
-    windowMs: options.windowMs || 5 * 60 * 1000, // 5 minutes default
+    windowMs: options.windowMs || 2 * 60 * 1000, // 2 minutes default
     delayAfter: options.delayAfter || 20, // Start slowing down after 20 requests
-    delayMs: options.delayMs || (() => 500), // 500ms delay default
+    delayMs: options.delayMs || (() => 50000), // 50000ms delay default
   });
 };
 

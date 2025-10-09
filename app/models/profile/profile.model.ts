@@ -212,6 +212,8 @@ const ProfileSchema = new Schema<IProfileDocument>(
       ],
       activeLeases: [
         {
+          confirmedDate: { type: Date },
+          confirmed: { type: Boolean, default: false },
           cuid: { type: String, trim: true, required: true },
           leaseId: { type: Schema.Types.ObjectId, ref: 'Lease', required: true },
         },

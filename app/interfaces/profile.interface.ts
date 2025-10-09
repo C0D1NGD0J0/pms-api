@@ -39,17 +39,19 @@ export interface TenantInfo {
     contactEmail: string;
   }[];
 
+  activeLeases?: {
+    cuid: string; // Track which client the lease is associated with
+    confirmedDate: Date;
+    confirmed: boolean;
+    leaseId: string | Types.ObjectId; // Reference to Lease entity - all details fetched from there
+  }[];
+
   backgroundChecks?: {
     cuid: string; // Track which client performed the background check
     status: BackgroundCheckStatus;
     checkedDate: Date;
     expiryDate?: Date;
     notes?: string;
-  }[];
-
-  activeLeases?: {
-    cuid: string; // Track which client the lease is associated with
-    leaseId: string | Types.ObjectId; // Reference to Lease entity - all details fetched from there
   }[];
 
   rentalReferences?: Array<{

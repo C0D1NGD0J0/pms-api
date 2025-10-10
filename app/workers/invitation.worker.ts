@@ -12,9 +12,9 @@ import { generateDefaultPassword } from '@utils/helpers';
 import { EventTypes } from '@interfaces/events.interface';
 import { IClientInfo } from '@interfaces/client.interface';
 import { EventEmitterService } from '@services/eventEmitter';
-import { ProfileService, VendorService } from '@services/index';
 import { IInvitationData } from '@interfaces/invitation.interface';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
+import { ProfileService, VendorService, SSEService } from '@services/index';
 
 // Extended interface for CSV processing with vendor-specific metadata
 interface IInvitationCsvData extends IInvitationData {
@@ -45,6 +45,7 @@ interface IConstructor {
   emitterService: EventEmitterService;
   invitationDAO: InvitationDAO;
   vendorService: VendorService;
+  sseService: SSEService;
   emailQueue: EmailQueue;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
@@ -55,6 +56,7 @@ interface IConstructor {
 
 export class InvitationWorker {
   log: Logger;
+  private readonly sseService: SSEService;
   private readonly emitterService: EventEmitterService;
   private readonly invitationCsvProcessor: InvitationCsvProcessor;
   private readonly invitationDAO: InvitationDAO;
@@ -67,6 +69,7 @@ export class InvitationWorker {
   private readonly vendorDAO: VendorDAO;
 
   constructor({
+    sseService,
     emitterService,
     invitationCsvProcessor,
     invitationDAO,
@@ -78,6 +81,7 @@ export class InvitationWorker {
     vendorService,
     vendorDAO,
   }: IConstructor) {
+    this.sseService = sseService;
     this.emitterService = emitterService;
     this.invitationCsvProcessor = invitationCsvProcessor;
     this.invitationDAO = invitationDAO;
@@ -106,8 +110,52 @@ export class InvitationWorker {
       });
       job.progress(100);
 
+      // Send appropriate notification based on validation results
+      if (result.validInvitations.length === 0) {
+        // No valid invitations - send FAILED notification
+        await this.sseService.sendToUser(
+          userId,
+          clientInfo.cuid,
+          {
+            jobId: job.id.toString(),
+            jobType: 'csv_validation',
+            stage: 'failed',
+            progress: 0,
+            message: 'No valid record found in CSV file provided.',
+            errors: result.errors,
+            totalRows: result.totalRows,
+            errorCount: result.errors?.length || 0,
+          },
+          'job-notification'
+        );
+      } else {
+        // Has valid invitations - send COMPLETED notification
+        await this.sseService.sendToUser(
+          userId,
+          clientInfo.cuid,
+          {
+            jobId: job.id.toString(),
+            jobType: 'csv_validation',
+            stage: 'completed',
+            totalItems: result.totalRows,
+            validCount: result.validInvitations.length,
+            errorCount: result.errors?.length || 0,
+            progress: 100,
+            message: `Validated ${result.validInvitations.length} records successfully${result.errors && result.errors.length > 0 ? `, ${result.errors.length} errors found` : ''}`,
+            validData: result.validInvitations.map((inv) => ({
+              inviteeEmail: inv.inviteeEmail,
+              firstName: inv.personalInfo?.firstName,
+              lastName: inv.personalInfo?.lastName,
+              role: inv.role,
+              phoneNumber: inv.personalInfo?.phoneNumber,
+              expectedStartDate: inv.metadata?.expectedStartDate,
+              inviteMessage: inv.metadata?.inviteMessage,
+            })),
+          },
+          'job-notification'
+        );
+      }
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
-
       done(null, {
         processId: job.id,
         validCount: result.validInvitations.length,
@@ -142,6 +190,23 @@ export class InvitationWorker {
 
       if (!csvResult.validInvitations.length) {
         this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+
+        // Notify job failed - no valid invitations
+        await this.sseService.sendToUser(
+          userId,
+          clientInfo.cuid,
+          {
+            jobId: job.id.toString(),
+            jobType: 'csv_invitation',
+            stage: 'failed',
+            progress: 0,
+            message: 'No valid records found in CSV file provided.',
+            errors: csvResult.errors,
+            totalRows: csvResult.totalRows,
+          },
+          'job-notification'
+        );
+
         done(null, {
           success: false,
           processId: job.id,
@@ -203,6 +268,24 @@ export class InvitationWorker {
 
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
 
+      // Notify job completed via SSE
+      await this.sseService.sendToUser(
+        userId,
+        clientInfo.cuid,
+        {
+          jobId: job.id.toString(),
+          jobType: 'csv_invitation',
+          stage: 'completed',
+          progress: 100,
+          totalItems: results.length,
+          successCount,
+          failedCount,
+          failedResults: results.filter((r) => !r.success), // Only send failed items
+          message: `Processed ${successCount} records successfully${failedCount > 0 ? `, ${failedCount} failed` : ''}`,
+        },
+        'job-notification'
+      );
+
       done(null, {
         success: true,
         processId: job.id,
@@ -222,6 +305,22 @@ export class InvitationWorker {
     } catch (error) {
       this.log.error(`Error processing invitation CSV import job ${job.id}:`, error);
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+
+      // Notify job failed via SSE
+      await this.sseService.sendToUser(
+        userId,
+        clientInfo.cuid,
+        {
+          jobId: job.id.toString(),
+          jobType: 'csv_invitation',
+          stage: 'failed',
+          progress: 0,
+          message: 'CSV file processing encountered a fatal error',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'job-notification'
+      );
+
       done(error, null);
     }
   };

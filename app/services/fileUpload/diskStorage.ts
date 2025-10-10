@@ -206,7 +206,10 @@ export class DiskStorage {
     let allSuccessful = true;
     for (const filename of filenames) {
       try {
-        const filePath = path.join(this.storagePath, filename);
+        // Handle both absolute paths and relative filenames
+        const filePath = path.isAbsolute(filename)
+          ? filename
+          : path.join(this.storagePath, filename);
         await fs.promises.unlink(filePath);
       } catch (err: any) {
         if (err.code === 'ENOENT') {

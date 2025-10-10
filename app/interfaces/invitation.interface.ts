@@ -63,7 +63,6 @@ export interface IInvitationData {
   };
   status: 'draft' | 'pending';
   linkedVendorUid?: string; // ID of an existing vendor user to link this invitation to
-  tenantInfo?: TenantInfo;
   inviteeEmail: string;
   role: IUserRole;
 }

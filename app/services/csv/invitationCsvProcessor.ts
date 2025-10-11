@@ -293,6 +293,16 @@ export class InvitationCsvProcessor {
         'vendorInfo_contactPerson_jobTitle',
         'vendorInfo_contactPerson_email',
         'vendorInfo_contactPerson_phone',
+        'tenantInfo_employerCompanyName',
+        'tenantInfo_employerPosition',
+        'tenantInfo_employerMonthlyIncome',
+        'tenantInfo_employerContactPerson',
+        'tenantInfo_employerCompanyAddress',
+        'tenantInfo_employerContactEmail',
+        'tenantInfo_emergencyContactName',
+        'tenantInfo_emergencyContactPhone',
+        'tenantInfo_emergencyContactRelationship',
+        'tenantInfo_emergencyContactEmail',
       ];
       return knownKeys as string[];
     }

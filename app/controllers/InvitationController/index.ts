@@ -27,8 +27,9 @@ export class InvitationController {
       personalInfo: req.body.personalInfo || {},
       metadata: {
         ...req.body.metadata,
-        employeeInfo: req.body.metadata?.employeeInfo || {},
-        vendrorInfo: req.body.metadata?.vendorInfo || {},
+        employeeInfo: req.body.employeeInfo || {},
+        vendorInfo: req.body.vendorInfo || {},
+        tenantInfo: req.body.tenantInfo || {},
       },
       role: req.body.role,
       status: req.body.status || 'pending',

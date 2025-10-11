@@ -18,12 +18,15 @@ export enum EventTypes {
   UNIT_UNARCHIVED = 'unit:unarchived',
   UNIT_ARCHIVED = 'unit:archived',
   UPLOAD_FAILED = 'upload:failed',
+  JOB_COMPLETED = 'job:completed',
   EMAIL_FAILED = 'email:failed',
   SYSTEM_ERROR = 'system:error',
   UNIT_CREATED = 'unit:created',
   UNIT_UPDATED = 'unit:updated',
   UPLOAD_ASSET = 'upload:asset',
+  JOB_STARTED = 'job:started',
   EMAIL_SENT = 'email:sent',
+  JOB_FAILED = 'job:failed',
 }
 
 export type EventPayloadMap = {
@@ -33,6 +36,9 @@ export type EventPayloadMap = {
   [EventTypes.DELETE_REMOTE_ASSET]: DeleteRemoteAssetPayload;
   [EventTypes.EMAIL_FAILED]: EmailFailedPayload;
   [EventTypes.EMAIL_SENT]: EmailSentPayload;
+  [EventTypes.JOB_COMPLETED]: JobNotificationPayload;
+  [EventTypes.JOB_FAILED]: JobNotificationPayload;
+  [EventTypes.JOB_STARTED]: JobNotificationPayload;
   [EventTypes.PROPERTY_CREATED]: any;
   [EventTypes.PROPERTY_DELETED]: any;
   [EventTypes.PROPERTY_DOCUMENTS_UPDATE]: PropertyUpdatedPayload;
@@ -58,6 +64,24 @@ export interface UnitChangedPayload {
   unitId?: string; // Unit ID (for updates/status changes)
   userId: string; // User who made the change
   cuid: string; // Client ID
+}
+
+export interface JobNotificationPayload {
+  metadata?: {
+    totalItems?: number;
+    processedItems?: number;
+    successCount?: number;
+    failedCount?: number;
+    errors?: Array<{ item: string; error: string }>;
+    message?: string;
+    [key: string]: any; // Allow job-specific fields
+  };
+  jobType: JobType;
+  progress: number; // 0-100
+  stage: JobStage;
+  userId: string;
+  jobId: string;
+  cuid: string;
 }
 
 export interface IEventBus {
@@ -98,6 +122,17 @@ export interface SystemErrorPayload {
   resourceId?: string;
   context?: any;
 }
+
+// Generic background job notification payload
+export type JobType =
+  | 'csv_invitation'
+  | 'csv_bulk_user'
+  | 'file_upload'
+  | 'video_processing'
+  | 'image_processing'
+  | 'document_processing'
+  | 'report_generation'
+  | 'bulk_operation';
 
 export interface EmailFailedPayload {
   error: {
@@ -160,13 +195,15 @@ export interface DeleteAssetFailedPayload {
   userId?: string;
   reason: string;
 }
-
 export interface DeleteAssetCompletedPayload {
   deletedKeys: string[];
   failedKeys?: string[];
 }
 
 export type DeleteRemoteAssetPayload = AssetIdentifiersPayload;
+
 export type DeleteLocalAssetPayload = AssetIdentifiersPayload;
+
+export type JobStage = 'started' | 'completed' | 'failed';
 
 type AssetIdentifiersPayload = string[];

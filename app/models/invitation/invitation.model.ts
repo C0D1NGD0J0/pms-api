@@ -102,6 +102,10 @@ const InvitationSchema = new Schema<IInvitationDocument>(
         type: Schema.Types.Mixed,
         default: undefined,
       },
+      tenantInfo: {
+        type: Schema.Types.Mixed,
+        default: undefined,
+      },
       vendorInfo: {
         type: Schema.Types.Mixed,
         default: undefined,

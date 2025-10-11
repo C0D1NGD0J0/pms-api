@@ -69,6 +69,7 @@ describe('PermissionService', () => {
         sub: 'admin-user-id',
         client: {
           csub: 'client-id',
+          cuid: 'test-client-uuid',
           role: 'admin',
         },
         permissions: [],
@@ -92,12 +93,13 @@ describe('PermissionService', () => {
       );
       expect(adminClientResult.granted).toBe(true);
 
-      // Regular user should have limited access
-      const regularUser: ICurrentUser = {
+      // Regular tenant should have limited access
+      const tenantUser: ICurrentUser = {
         sub: 'regular-user-id',
         client: {
           csub: 'client-id',
-          role: 'user',
+          cuid: 'test-client-uuid',
+          role: 'tenant',
         },
         permissions: [],
         clients: [],
@@ -105,7 +107,7 @@ describe('PermissionService', () => {
       } as any;
 
       const userPropertyResult = await permissionService.checkUserPermission(
-        regularUser,
+        tenantUser,
         PermissionResource.PROPERTY,
         'delete'
       );
@@ -117,7 +119,8 @@ describe('PermissionService', () => {
         sub: 'user-id',
         client: {
           csub: 'client-id',
-          role: 'user',
+          cuid: 'test-client-uuid',
+          role: 'tenant',
         },
         permissions: [],
         clients: [],
@@ -149,6 +152,7 @@ describe('PermissionService', () => {
         sub: 'tenant-user-id',
         client: {
           csub: 'client-id',
+          cuid: 'test-client-uuid',
           role: 'tenant',
         },
         permissions: [],
@@ -173,6 +177,7 @@ describe('PermissionService', () => {
         sub: 'manager-user-id',
         client: {
           csub: 'client-id',
+          cuid: 'test-client-uuid',
           role: 'manager',
         },
         permissions: [],
@@ -221,6 +226,7 @@ describe('PermissionService', () => {
         sub: 'user-id',
         client: {
           csub: 'client-id',
+          cuid: 'test-client-uuid',
           role: 'invalid_role' as any,
         },
         permissions: [],

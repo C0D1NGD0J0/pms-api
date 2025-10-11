@@ -17,7 +17,7 @@ export class EventListenerSetup {
     try {
       const { emitterService, diskStorage }: DIServices = container.cradle;
       // Register infrastructure event listeners only
-      emitterService.once(EventTypes.DELETE_LOCAL_ASSET, diskStorage.deleteFiles);
+      emitterService.on(EventTypes.DELETE_LOCAL_ASSET, diskStorage.deleteFiles);
 
       this.log.info('Registered infrastructure event listeners.');
     } catch (error) {

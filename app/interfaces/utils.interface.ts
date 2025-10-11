@@ -144,6 +144,18 @@ export interface IRequestContext {
   ip?: string;
 }
 
+export interface RateLimitOptions {
+  delayMs?: number | ((numRequests: number) => number); // delay in ms to add
+  keyGenerator?: (req: any) => string; // custom key generator for tracking (e.g., by token, user ID, or IP)
+  skip?: (req: any) => boolean; // function to skip rate limiting for certain requests
+  enableSpeedLimit?: boolean;
+  enableRateLimit?: boolean;
+  delayAfter?: number; // number of requests before adding delay
+  windowMs?: number; // time window in milliseconds
+  message?: string; // custom message on rate limit exceeded
+  max?: number; // max requests per window
+}
+
 export interface IAWSFileUploadResponse {
   serverSideEncryption: string | null;
   contentDisposition: string | null;
@@ -162,16 +174,6 @@ export interface IAWSFileUploadResponse {
   acl?: string;
   etag: string;
   key: string;
-}
-
-export interface RateLimitOptions {
-  delayMs?: number | ((numRequests: number) => number); // delay in ms to add
-  enableSpeedLimit?: boolean;
-  enableRateLimit?: boolean;
-  delayAfter?: number; // number of requests before adding delay
-  windowMs?: number; // time window in milliseconds
-  message?: string; // custom message on rate limit exceeded
-  max?: number; // max requests per window
 }
 
 export interface ResourceInfo {

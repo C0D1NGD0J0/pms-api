@@ -237,11 +237,7 @@ export function convertUserRoleToEnum(userRole: string): IUserRole {
  * @returns A hexadecimal string representation of the hash
  * @throws Error if crypto operations fail
  */
-export function hashGenerator(hashOpts: {
-  byteLength?: number;
-  algorithm?: string;
-  _usenano?: boolean;
-}): string {
+export function hashGenerator(hashOpts: { byteLength?: number; algorithm?: string }): string {
   try {
     const { byteLength = 16, algorithm = 'sha256' } = hashOpts;
     const token = crypto.randomBytes(byteLength).toString('hex');

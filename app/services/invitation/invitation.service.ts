@@ -1,12 +1,12 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
-import { VendorService } from '@services/index';
 import { ProfileService } from '@services/profile';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { MailType } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { InvitationQueue, EmailQueue } from '@queues/index';
+import { VendorService, UserService } from '@services/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
@@ -38,8 +38,9 @@ interface IConstructor {
   emitterService: EventEmitterService;
   invitationQueue: InvitationQueue;
   profileService: ProfileService;
-  vendorService: VendorService;
   invitationDAO: InvitationDAO;
+  vendorService: VendorService;
+  userService: UserService;
   emailQueue: EmailQueue;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
@@ -57,6 +58,7 @@ export class InvitationService {
   private readonly emitterService: EventEmitterService;
   private readonly profileService: ProfileService;
   private readonly vendorService: VendorService;
+  private readonly userService: UserService;
 
   constructor({
     invitationDAO,
@@ -68,6 +70,7 @@ export class InvitationService {
     emitterService,
     profileService,
     vendorService,
+    userService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -78,6 +81,7 @@ export class InvitationService {
     this.invitationQueue = invitationQueue;
     this.profileService = profileService;
     this.vendorService = vendorService;
+    this.userService = userService;
     this.log = createLogger('InvitationService');
     this.setupEventListeners();
   }
@@ -301,93 +305,7 @@ export class InvitationService {
   }
 
   /**
-   * Handle existing user by adding them to the client
-   */
-  private async handleExistingUser(
-    existingUser: any,
-    invitation: IInvitationDocument,
-    client: any,
-    cuid: string,
-    linkedVendorUid?: string,
-    session?: any
-  ): Promise<any> {
-    return await this.userDAO.addUserToClient(
-      existingUser._id.toString(),
-      invitation.role,
-      {
-        id: client.id.toString(),
-        cuid,
-        clientDisplayName: client.displayName || client.companyProfile?.legalEntityName,
-      },
-      linkedVendorUid,
-      session
-    );
-  }
-
-  /**
-   * Create new user from invitation data
-   */
-  private async createNewUserFromInvitation(
-    invitation: IInvitationDocument,
-    invitationData: IInvitationAcceptance,
-    client: any,
-    cuid: string,
-    linkedVendorUid?: string,
-    session?: any
-  ): Promise<any> {
-    const user = await this.userDAO.createUserFromInvitation(
-      { cuid, displayName: client.displayName || client.companyProfile?.legalEntityName },
-      invitation,
-      invitationData,
-      linkedVendorUid,
-      session
-    );
-
-    if (!user) {
-      throw new BadRequestError({ message: 'Error creating user account.' });
-    }
-
-    const profileData = this.buildProfileDataFromInvitation(user, invitation, invitationData);
-    await this.profileDAO.createUserProfile(user._id, profileData, session);
-
-    return user;
-  }
-
-  /**
-   * Build profile data from invitation and user data
-   */
-  private buildProfileDataFromInvitation(
-    user: any,
-    invitation: IInvitationDocument,
-    invitationData: IInvitationAcceptance
-  ): any {
-    return {
-      user: user._id,
-      puid: user.uid,
-      personalInfo: {
-        firstName: invitation.personalInfo.firstName,
-        lastName: invitation.personalInfo.lastName,
-        displayName: invitation.inviteeFullName,
-        phoneNumber: invitation.personalInfo.phoneNumber || '',
-        location: invitationData.location || 'Unknown',
-      },
-      lang: invitationData.lang || 'en',
-      timeZone: invitationData.timeZone || 'UTC',
-      policies: {
-        tos: {
-          accepted: invitationData.termsAccepted || false,
-          acceptedOn: invitationData.termsAccepted ? new Date() : null,
-        },
-        marketing: {
-          accepted: invitationData.newsletterOptIn || false,
-          acceptedOn: invitationData.newsletterOptIn ? new Date() : null,
-        },
-      },
-    };
-  }
-
-  /**
-   * Handle user creation or linking based on existence
+   * Handle user creation or linking based on existence (delegated to UserService)
    */
   private async processUserForInvitation(
     invitation: IInvitationDocument,
@@ -397,27 +315,17 @@ export class InvitationService {
     linkedVendorUid?: string,
     session?: any
   ): Promise<any> {
-    const existingUser = await this.userDAO.getActiveUserByEmail(invitation.inviteeEmail);
-
-    if (existingUser) {
-      return await this.handleExistingUser(
-        existingUser,
-        invitation,
-        client,
+    return await this.userService.processUserForClientInvitation(
+      invitation,
+      invitationData,
+      {
+        id: client.id.toString(),
         cuid,
-        linkedVendorUid,
-        session
-      );
-    } else {
-      return await this.createNewUserFromInvitation(
-        invitation,
-        invitationData,
-        client,
-        cuid,
-        linkedVendorUid,
-        session
-      );
-    }
+        displayName: client.displayName || client.companyProfile?.legalEntityName,
+      },
+      linkedVendorUid,
+      session
+    );
   }
 
   /**

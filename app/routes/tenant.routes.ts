@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { UserController } from '@controllers/index';
-import { requirePermission, isAuthenticated } from '@shared/middlewares';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import { ClientValidations, validateRequest, UserValidations } from '@shared/validations';
+import { requirePermission, isAuthenticated, diskUpload, scanFile } from '@shared/middlewares';
 
 const router = Router();
 
@@ -34,6 +34,23 @@ router.get(
   })
 );
 
+// Property management view - comprehensive tenant details
+router.get(
+  '/:cuid/client_tenant/:uid',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+    // Query params: ?include=lease,payments,maintenance,documents,notes
+    // ?include=all for everything
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getClientTenantDetails(req, res);
+  })
+);
+
+// General tenant user view - consistent with employee/vendor views
 router
   .route('/:cuid/tenant_details/:uid')
   .get(
@@ -41,23 +58,23 @@ router
     requirePermission(PermissionResource.USER, PermissionAction.READ),
     validateRequest({
       params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
-      // Query params: ?include=lease,payments,maintenance,documents,notes
-      // ?include=all for everything
     }),
     asyncWrapper((req, res) => {
       const userController = req.container.resolve<UserController>('userController');
-      return userController.getClientUserInfo(req, res);
+      return userController.getTenantUserInfo(req, res);
     })
   )
   .patch(
     isAuthenticated,
     requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+    diskUpload(['documents.items[*].file', 'personalInfo.avatar.file']),
+    scanFile,
     validateRequest({
       params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
     }),
     asyncWrapper((req, res) => {
       const userController = req.container.resolve<UserController>('userController');
-      return userController.updateUserProfile(req, res);
+      return userController.updateTenantProfile(req, res);
     })
   );
 
@@ -70,7 +87,7 @@ router.delete(
   }),
   asyncWrapper((req, res) => {
     const userController = req.container.resolve<UserController>('userController');
-    return userController.archiveTenant(req, res);
+    return userController.archiveUser(req, res);
   })
 );
 

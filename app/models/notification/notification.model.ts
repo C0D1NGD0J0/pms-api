@@ -126,6 +126,11 @@ const NotificationSchema = new Schema<INotificationDocument>(
       immutable: true,
       default: () => generateShortUID(),
     },
+    author: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
   },
   {
     timestamps: true,

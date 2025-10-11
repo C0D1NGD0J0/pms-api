@@ -23,6 +23,58 @@ enum DataRetentionPolicy {
   MINIMAL = 'minimal',
 }
 
+/**
+ * Tenant information structure
+ * - employerInfo, activeLeases, backgroundChecks are client-specific (filtered by cuid)
+ * - rentalReferences, pets, emergencyContact are shared across all clients
+ */
+export interface TenantInfo {
+  employerInfo?: {
+    cuid: string; // Track which client the employer info is associated with
+    companyName: string;
+    position: string;
+    monthlyIncome: number;
+    contactPerson: string;
+    companyAddress: string;
+    contactEmail: string;
+  }[];
+
+  activeLeases?: {
+    cuid: string; // Track which client the lease is associated with
+    confirmedDate: Date;
+    confirmed: boolean;
+    leaseId: string | Types.ObjectId; // Reference to Lease entity - all details fetched from there
+  }[];
+
+  backgroundChecks?: {
+    cuid: string; // Track which client performed the background check
+    status: BackgroundCheckStatus;
+    checkedDate: Date;
+    expiryDate?: Date;
+    notes?: string;
+  }[];
+
+  rentalReferences?: Array<{
+    landlordName: string;
+    propertyAddress: string;
+    [key: string]: any;
+  }>;
+
+  pets?: Array<{
+    type: string;
+    breed: string;
+    isServiceAnimal: boolean;
+    [key: string]: any;
+  }>;
+
+  emergencyContact?: {
+    name: string;
+    phone: string;
+    relationship: string;
+    email: string;
+  };
+}
+
 export interface Profile {
   personalInfo: {
     avatar?: {
@@ -65,27 +117,6 @@ export interface Profile {
   user: Types.ObjectId;
   timeZone: string;
   lang: string;
-}
-
-export interface TenantInfo {
-  activeLease?: {
-    leaseId: string | Types.ObjectId;
-    propertyId: string | Types.ObjectId;
-    unitId: string | Types.ObjectId;
-    durationMonths: number;
-    rentAmount: number;
-    paymentDueDate: Date;
-  } | null;
-  employerInfo?: {
-    companyName: string;
-    position: string;
-    monthlyIncome: number;
-    [key: string]: any;
-  };
-  rentalReferences?: Array<{ landlordName: string; propertyAddress: string; [key: string]: any }>;
-  pets?: Array<{ type: string; breed: string; isServiceAnimal: boolean; [key: string]: any }>;
-  emergencyContact?: { name: string; phone: string; relationship: string; email: string };
-  backgroundCheckStatus?: BackgroundCheckStatus;
 }
 
 /**

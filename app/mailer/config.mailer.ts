@@ -107,7 +107,7 @@ export class MailService {
         break;
       case MailType.INVITATION: {
         // Select template based on user role
-        const role = emailData.data?.role;
+        const role = emailData.role;
         let templateName = 'invitation'; // fallback to generic template
 
         if (role === ROLES.VENDOR) {
@@ -118,7 +118,7 @@ export class MailService {
           templateName = 'invitation-staff';
         }
 
-        template = await this.buildTemplate(templateName, emailData);
+        template = await this.buildTemplate(templateName, emailData, 'invitation');
         break;
       }
       default:
@@ -140,12 +140,11 @@ export class MailService {
     data: EmailTemplateData,
     subdir?: string
   ): Promise<EmailTemplate> {
-    // Add ROLES constants to template data for EJS templates
     const templateData = {
       ...data,
       ROLES,
     };
-    const basePath = subdir ? `${subdir}/${filename}` : filename;
+    const basePath = subdir ? `${subdir}` : filename;
     const templatePath = (type: string) => `${basePath}/${filename}${type}.ejs`;
 
     const renderSafely = async (path: string): Promise<string> => {

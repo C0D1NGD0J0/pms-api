@@ -1,6 +1,5 @@
 import bunyan from 'bunyan';
 import { createLogger } from '@utils/index';
-import { AccessControl } from 'accesscontrol';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IVendorDocument } from '@interfaces/vendor.interface';
 import { IPropertyDocument } from '@interfaces/property.interface';
@@ -16,6 +15,7 @@ import {
 } from '@interfaces/utils.interface';
 
 import {
+  NotificationAccessStrategy,
   MaintenanceAccessStrategy,
   InvitationAccessStrategy,
   ResourceAccessStrategy,
@@ -23,6 +23,8 @@ import {
   PaymentAccessStrategy,
   ClientAccessStrategy,
   VendorAccessStrategy,
+  TenantAccessStrategy,
+  ReportAccessStrategy,
   LeaseAccessStrategy,
   UserAccessStrategy,
 } from './resourceAccessStrategies';
@@ -30,7 +32,6 @@ import {
 export class PermissionService {
   private readonly log: bunyan;
   private readonly permissionConfig: IPermissionConfig;
-  private readonly accessControl: AccessControl;
   private resourceStrategies: Map<PermissionResource, ResourceAccessStrategy>;
 
   constructor() {
@@ -38,8 +39,6 @@ export class PermissionService {
 
     try {
       this.permissionConfig = permissionConfig as IPermissionConfig;
-      this.accessControl = new AccessControl();
-      this.initializePermissions();
       this.initializeResourceStrategies();
       this.log.debug('PermissionService initialized successfully');
     } catch (error) {
@@ -50,11 +49,14 @@ export class PermissionService {
 
   private initializeResourceStrategies(): void {
     this.resourceStrategies = new Map([
+      [PermissionResource.NOTIFICATION, new NotificationAccessStrategy()],
       [PermissionResource.MAINTENANCE, new MaintenanceAccessStrategy()],
       [PermissionResource.INVITATION, new InvitationAccessStrategy()],
       [PermissionResource.PROPERTY, new PropertyAccessStrategy()],
       [PermissionResource.PAYMENT, new PaymentAccessStrategy()],
       [PermissionResource.VENDOR, new VendorAccessStrategy()],
+      [PermissionResource.TENANT, new TenantAccessStrategy()],
+      [PermissionResource.REPORT, new ReportAccessStrategy()],
       [PermissionResource.CLIENT, new ClientAccessStrategy()],
       [PermissionResource.LEASE, new LeaseAccessStrategy()],
       [PermissionResource.USER, new UserAccessStrategy()],
@@ -62,168 +64,12 @@ export class PermissionService {
     this.log.debug('Resource access strategies initialized');
   }
 
-  private initializePermissions(): void {
-    const roles = this.permissionConfig.roles;
-
-    // create all roles and their direct permissions (no inheritance)
-    Object.entries(roles).forEach(([roleName, roleConfig]) => {
-      this.processRolePermissions(roleName, roleConfig);
-    });
-
-    // handle role inheritance after all roles are defined
-    Object.entries(roles).forEach(([roleName, roleConfig]) => {
-      if (roleConfig.$extend) {
-        roleConfig.$extend.forEach((baseRole: string) => {
-          try {
-            this.accessControl.extendRole(roleName, baseRole);
-          } catch (error) {
-            this.log.warn(`Failed to extend role ${roleName} with ${baseRole}:`, error);
-          }
-        });
-      }
-    });
-
-    this.log.debug('AccessControl permissions initialized successfully');
-  }
-
-  private processRolePermissions(roleName: string, roleConfig: any): void {
-    Object.entries(roleConfig).forEach(([resource, permissions]) => {
-      if (resource === '$extend') return; // Skip inheritance config
-
-      (permissions as string[]).forEach((permission: string) => {
-        const [action, scope] = permission.split(':');
-
-        // convert scope to AccessControl possession
-        const possession = scope === 'mine' ? 'own' : 'any';
-        // grant specific permission using AccessControl
-        try {
-          const grant = this.accessControl.grant(roleName);
-
-          if (possession === 'any') {
-            switch (action) {
-              case 'create':
-                grant.createAny(resource);
-                break;
-              case 'delete':
-                grant.deleteAny(resource);
-                break;
-              case 'update':
-                grant.updateAny(resource);
-                break;
-              case 'read':
-                grant.readAny(resource);
-                break;
-              default:
-                // Skip unknown actions - they'll be handled by business logic fallback
-                // this.log.debug(
-                //   `Skipping unknown action: ${action} for ${resource} - will use business logic fallback`
-                // );
-                break;
-            }
-          } else if (possession === 'own') {
-            switch (action) {
-              case 'create':
-                grant.createOwn(resource);
-                break;
-              case 'delete':
-                grant.deleteOwn(resource);
-                break;
-              case 'update':
-                grant.updateOwn(resource);
-                break;
-              case 'read':
-                grant.readOwn(resource);
-                break;
-              default:
-                // Custom actions (send, revoke, settings, etc.) are not handled by AccessControl
-                // They will be processed by business logic in evaluateBusinessSpecificPermission
-                this.log.debug(
-                  `Custom action '${action}' for '${resource}' will be handled by business logic`
-                );
-                break;
-            }
-          }
-        } catch (error) {
-          this.log.warn(
-            `Failed to grant ${action}:${possession} on ${resource} for role ${roleName}:`,
-            error
-          );
-        }
-      });
-    });
-  }
-
   async checkPermission(permissionCheck: IPermissionCheck): Promise<IPermissionResult> {
     try {
       const { role, resource, action, scope, context } = permissionCheck;
-      try {
-        const query = this.accessControl.can(role);
-        let permission;
 
-        if (scope === PermissionScope.ANY) {
-          switch (action) {
-            case 'create':
-              permission = query.createAny(resource);
-              break;
-            case 'delete':
-              permission = query.deleteAny(resource);
-              break;
-            case 'update':
-              permission = query.updateAny(resource);
-              break;
-            case 'read':
-              permission = query.readAny(resource);
-              break;
-            default:
-              // Custom actions (send, revoke, settings, etc.) are not standard CRUD operations
-              // Set permission to null to ensure fallback to business logic
-              permission = null;
-              this.log.debug(
-                `Custom action '${action}' with scope 'any' for '${resource}' - using business logic`
-              );
-              break;
-          }
-        } else if (scope === PermissionScope.MINE) {
-          switch (action) {
-            case 'create':
-              permission = query.createOwn(resource);
-              break;
-            case 'delete':
-              permission = query.deleteOwn(resource);
-              break;
-            case 'update':
-              permission = query.updateOwn(resource);
-              break;
-            case 'read':
-              permission = query.readOwn(resource);
-              break;
-            default:
-              // Custom actions (send, revoke, settings, etc.) are not standard CRUD operations
-              // Set permission to null to ensure fallback to business logic
-              permission = null;
-              this.log.debug(
-                `Custom action '${action}' with scope 'mine' for '${resource}' - using business logic`
-              );
-              break;
-          }
-        }
-
-        if (permission && permission.granted) {
-          return {
-            granted: true,
-            reason: `Permission granted by AccessControl${scope === PermissionScope.MINE ? ' (own)' : ''}`,
-            attributes: permission.attributes,
-          };
-        }
-      } catch (error) {
-        this.log.warn(
-          `AccessControl check failed for ${role}:${action}:${scope} on ${resource}:`,
-          error
-        );
-      }
-
-      // Always fall back to business logic when AccessControl doesn't grant permission
-      // This handles custom actions like "send", "revoke", etc. that aren't standard CRUD operations
+      // Use business logic for all permission checks
+      // This handles both CRUD and custom actions (send, revoke, settings, etc.)
       return this.evaluateBusinessSpecificPermission(
         role,
         resource.toString(),
@@ -373,43 +219,24 @@ export class PermissionService {
 
   getRolePermissions(role: IUserRoleType): Record<string, string[]> {
     try {
-      const grants = this.accessControl.getGrants();
-      const roleGrants = grants[role] || {};
+      const roleConfig = this.permissionConfig.roles[role];
+      if (!roleConfig) {
+        return {};
+      }
 
       const permissions: Record<string, string[]> = {};
 
-      Object.entries(roleGrants).forEach(([resource, actions]: [string, any]) => {
-        permissions[resource] = [];
-        Object.entries(actions).forEach(([action, attributes]: [string, any]) => {
-          if (attributes['*:any']) {
-            permissions[resource].push(`${action}:any`);
-          }
-          if (attributes['*:own']) {
-            permissions[resource].push(`${action}:mine`);
-          }
-        });
+      // Extract permissions directly from permissions.json
+      Object.entries(roleConfig).forEach(([resource, perms]) => {
+        if (resource !== '$extend') {
+          permissions[resource] = perms as string[];
+        }
       });
-
-      const roleConfig = this.permissionConfig.roles[role];
-      if (roleConfig) {
-        Object.entries(roleConfig).forEach(([resource, perms]) => {
-          if (resource !== '$extend') {
-            if (!permissions[resource]) {
-              permissions[resource] = [];
-            }
-            perms.forEach((perm: string) => {
-              if (!permissions[resource].includes(perm)) {
-                permissions[resource].push(perm);
-              }
-            });
-          }
-        });
-      }
 
       return permissions;
     } catch (error) {
       this.log.error(`Error getting role permissions for ${role}:`, error);
-      return this.permissionConfig.roles[role] || {};
+      return {};
     }
   }
 

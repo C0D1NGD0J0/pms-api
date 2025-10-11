@@ -3,24 +3,24 @@ import { container } from '@di/index';
 import { t } from '@shared/languages';
 import { UAParser } from 'ua-parser-js';
 import ProfileDAO from '@dao/profileDAO';
-import slowDown from 'express-slow-down';
-import rateLimit from 'express-rate-limit';
 import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
 import { NextFunction, Response, Request } from 'express';
 import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { LanguageService } from '@shared/languages/language.service';
 import { PermissionService } from '@services/permission/permission.service';
+import { extractMulterFiles, generateShortUID, JWT_KEY_NAMES } from '@utils/index';
 import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
 import { InvalidRequestError, UnauthorizedError, ForbiddenError } from '@shared/customErrors';
 import { PermissionResource, PermissionAction, ICurrentUser, EventTypes } from '@interfaces/index';
-import { extractMulterFiles, generateShortUID, httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
 import {
   RateLimitOptions,
   IPermissionCheck,
   RequestSource,
   TokenType,
 } from '@interfaces/utils.interface';
+
+import { rateLimiterFactory } from './rateLimiterFactory';
 
 interface DIServices {
   permissionService: PermissionService;
@@ -194,24 +194,7 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
  * @param options - rate limiting options
  */
 export const createRateLimit = (options: Partial<RateLimitOptions> = {}) => {
-  const windowMs = options.windowMs || 5 * 60 * 1000; // 5 minutes default
-  return rateLimit({
-    windowMs,
-    max: options.max || 30, // 30 requests per window default
-    standardHeaders: true,
-    keyGenerator: options.keyGenerator,
-    skip: options.skip,
-    handler: (_req, res, _next) => {
-      const message = options.message || 'Too many requests, please try again later.';
-      // Send Retry-After header in seconds
-      res.setHeader('Retry-After', Math.ceil(windowMs / 1000));
-      return res.status(httpStatusCodes.RATE_LIMITER).json({
-        success: false,
-        message,
-        retryAfter: Math.ceil(windowMs / 1000),
-      });
-    },
-  });
+  return rateLimiterFactory.getRateLimiter(options);
 };
 
 /**
@@ -219,23 +202,11 @@ export const createRateLimit = (options: Partial<RateLimitOptions> = {}) => {
  * @param options - speed limiting options
  */
 export const createSpeedLimit = (options: Partial<RateLimitOptions> = {}) => {
-  return slowDown({
-    windowMs: options.windowMs || 2 * 60 * 1000, // 2 minutes default
-    delayAfter: options.delayAfter || 20, // Start slowing down after 20 requests
-    delayMs: options.delayMs || (() => 50000), // 50000ms delay default
-  });
+  return rateLimiterFactory.getSpeedLimiter(options);
 };
 
 export const basicLimiter = (options: Partial<RateLimitOptions> = {}) => {
-  const rateLimiter = createRateLimit(options);
-  const speedLimiter = createSpeedLimit(options);
-
-  return (req: Request, res: Response, next: NextFunction) => {
-    rateLimiter(req, res, (err?: any) => {
-      if (err) return next(err);
-      speedLimiter(req, res, next);
-    });
-  };
+  return rateLimiterFactory.getBasicLimiter(options);
 };
 
 export const requestLogger =

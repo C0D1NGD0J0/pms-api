@@ -73,6 +73,35 @@ export class UserController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  getFilteredTenants = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const { role, department, status, page, limit, sortBy, sort } = req.query;
+
+    const filterOptions: IUserFilterOptions = {
+      role: role as IUserRoleType | IUserRoleType[] | undefined,
+      department: department as string | undefined,
+      status: status as 'active' | 'inactive' | undefined,
+    };
+
+    const paginationOpts = {
+      page: page ? parseInt(page as string, 10) : 1,
+      limit: limit ? parseInt(limit as string, 10) : 10,
+      sortBy: sortBy as string | undefined,
+      sort: sort as 'asc' | 'desc' | undefined,
+      skip:
+        ((page ? parseInt(page as string, 10) : 1) - 1) *
+        (limit ? parseInt(limit as string, 10) : 10),
+    };
+
+    const result = await this.userService.getTenantsByClient(
+      cuid as string,
+      filterOptions,
+      paginationOpts
+    );
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   getUserStats = async (req: AppRequest, res: Response): Promise<void> => {
     const { cuid } = req.params;
 

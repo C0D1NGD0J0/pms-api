@@ -1,7 +1,6 @@
 import authRoutes from './auth.routes';
 import userRoutes from './users.routes';
 import clientRoutes from './client.routes';
-import tenantRoutes from './tenant.routes';
 import vendorRoutes from './vendors.routes';
 import propertyRoutes from './property.routes';
 import invitationRoutes from './invitation.routes';
@@ -12,7 +11,6 @@ export const routes = {
   authRoutes,
   userRoutes,
   clientRoutes,
-  tenantRoutes,
   vendorRoutes,
   propertyRoutes,
   invitationRoutes,

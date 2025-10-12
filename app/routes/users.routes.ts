@@ -189,4 +189,86 @@ router.get(
   })
 );
 
+router.get(
+  '/:cuid/filtered-tenants',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.LIST),
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+    query: UserValidations.userFilterQuery,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getFilteredTenants(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/stats',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.LIST),
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getTenantsStats(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/client_tenant/:uid',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+    // Query params: ?include=lease,payments,maintenance,documents,notes
+    // ?include=all for everything
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getClientTenantDetails(req, res);
+  })
+);
+
+router
+  .route('/:cuid/tenant_details/:uid')
+  .get(
+    isAuthenticated,
+    requirePermission(PermissionResource.USER, PermissionAction.READ),
+    validateRequest({
+      params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+    }),
+    asyncWrapper((req, res) => {
+      const userController = req.container.resolve<UserController>('userController');
+      return userController.getTenantUserInfo(req, res);
+    })
+  )
+  .patch(
+    isAuthenticated,
+    requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+    diskUpload(['documents.items[*].file', 'personalInfo.avatar.file']),
+    scanFile,
+    validateRequest({
+      params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+    }),
+    asyncWrapper((req, res) => {
+      const userController = req.container.resolve<UserController>('userController');
+      return userController.updateTenantProfile(req, res);
+    })
+  );
+
+router.delete(
+  '/:cuid/:uid',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.DELETE),
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.archiveUser(req, res);
+  })
+);
+
 export default router;

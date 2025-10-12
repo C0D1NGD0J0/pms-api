@@ -6,7 +6,8 @@
     },
     "success": {
       "userRetrieved": "client.success.userRetrieved",
-      "userStatsRetrieved": "client.success.userStatsRetrieved"
+      "userStatsRetrieved": "client.success.userStatsRetrieved",
+      "tenantsRetrieved": "client.success.tenantsRetrieved"
     }
   },
   "invitation": {

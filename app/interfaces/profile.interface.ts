@@ -27,6 +27,7 @@ enum DataRetentionPolicy {
  * Tenant information structure
  * - employerInfo, activeLeases, backgroundChecks are client-specific (filtered by cuid)
  * - rentalReferences, pets, emergencyContact are shared across all clients
+ * - Historical/relationship data (leaseHistory, paymentHistory, etc.) specific to tenant management
  */
 export interface TenantInfo {
   employerInfo?: {
@@ -46,6 +47,15 @@ export interface TenantInfo {
     leaseId: string | Types.ObjectId; // Reference to Lease entity - all details fetched from there
   }[];
 
+  maintenanceRequests?: Array<{
+    requestId: string;
+    date: Date;
+    type: string;
+    status: 'pending' | 'in_progress' | 'completed';
+    description: string;
+    priority: 'low' | 'medium' | 'high' | 'urgent';
+  }>;
+
   backgroundChecks?: {
     cuid: string; // Track which client performed the background check
     status: BackgroundCheckStatus;
@@ -53,6 +63,31 @@ export interface TenantInfo {
     expiryDate?: Date;
     notes?: string;
   }[];
+
+  // Historical/relationship data for property management view
+  leaseHistory?: Array<{
+    propertyName: string;
+    unitNumber: string;
+    leaseStart: Date;
+    leaseEnd: Date;
+    rentAmount: number;
+    status: 'completed' | 'active' | 'terminated';
+  }>;
+
+  paymentHistory?: Array<{
+    date: Date;
+    amount: number;
+    type: 'rent' | 'fee' | 'deposit';
+    status: 'paid' | 'late' | 'pending';
+    dueDate: Date;
+  }>;
+
+  notes?: Array<{
+    date: Date;
+    author: string;
+    note: string;
+    type: 'general' | 'payment' | 'maintenance' | 'lease';
+  }>;
 
   rentalReferences?: Array<{
     landlordName: string;

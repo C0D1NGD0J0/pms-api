@@ -1090,11 +1090,11 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             total: 1,
             activeLeases: 1,
             expiredLeases: { $subtract: ['$total', '$activeLeases'] },
-            pendingLeases: 0, // This would need additional logic based on lease dates
+            pendingLeases: { $literal: 0 }, // This would need additional logic based on lease dates
             rentStatus: {
               current: '$activeLeases', // Simplified - would need payment data
-              late: 0,
-              overdue: 0,
+              late: { $literal: 0 },
+              overdue: { $literal: 0 },
             },
             averageRent: {
               $cond: [
@@ -1246,10 +1246,13 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         // Project the final structure
         {
           $project: {
+            _id: 1,
             uid: 1,
             email: 1,
             isActive: 1,
             createdAt: 1,
+            firstName: { $ifNull: ['$profile.personalInfo.firstName', ''] },
+            lastName: { $ifNull: ['$profile.personalInfo.lastName', ''] },
             fullName: {
               $concat: [
                 { $ifNull: ['$profile.personalInfo.firstName', ''] },
@@ -1302,19 +1305,20 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
               rentalReferences: '$profile.tenantInfo.rentalReferences',
               pets: '$profile.tenantInfo.pets',
               emergencyContact: '$profile.tenantInfo.emergencyContact',
-            },
 
-            // Placeholder for additional data that would come from other collections
-            leaseHistory: [],
-            paymentHistory: [],
-            maintenanceRequests: [],
-            notes: [],
+              // Historical/relationship data (nested in tenantInfo for better encapsulation)
+              // These would come from other collections/services when implemented
+              leaseHistory: [],
+              paymentHistory: [],
+              maintenanceRequests: [],
+              notes: [],
+            },
 
             // Calculate basic metrics
             tenantMetrics: {
               onTimePaymentRate: 100, // Placeholder - needs payment data
-              averagePaymentDelay: 0, // Placeholder - needs payment data
-              totalMaintenanceRequests: 0, // Placeholder - needs maintenance data
+              averagePaymentDelay: { $literal: 0 }, // Placeholder - needs payment data
+              totalMaintenanceRequests: { $literal: 0 }, // Placeholder - needs maintenance data
               currentRentStatus: {
                 $cond: [
                   {
@@ -1324,8 +1328,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
                   'no_lease',
                 ],
               },
-              daysCurrentLease: 0, // Placeholder - needs lease start date from lease entity
-              totalRentPaid: 0, // Placeholder - needs payment history
+              daysCurrentLease: { $literal: 0 }, // Placeholder - needs lease start date from lease entity
+              totalRentPaid: { $literal: 0 }, // Placeholder - needs payment history
             },
           },
         },

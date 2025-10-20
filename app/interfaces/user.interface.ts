@@ -21,62 +21,42 @@ export enum IUserRelationshipsEnum {
 /**
  * Comprehensive tenant details for property management view
  * Used by getTenantManagementDetails endpoint - includes user info, metrics, and history
+ * Structure consistent with IUserDetailResponse for staff/vendor details
+ * Historical data (leaseHistory, paymentHistory, etc.) is now nested within tenantInfo
  */
 export interface IClientTenantDetails {
   tenantMetrics?: {
     onTimePaymentRate: number;
     averagePaymentDelay: number;
     totalMaintenanceRequests: number;
-    currentRentStatus: 'current' | 'late' | 'overdue';
+    currentRentStatus: 'current' | 'late' | 'overdue' | 'no_lease';
     daysCurrentLease: number;
     totalRentPaid: number;
   };
-  maintenanceRequests?: Array<{
-    requestId: string;
-    date: Date;
-    type: string;
-    status: 'pending' | 'in_progress' | 'completed';
-    description: string;
-    priority: 'low' | 'medium' | 'high' | 'urgent';
-  }>;
-  // Historical data
-  leaseHistory?: Array<{
-    propertyName: string;
-    unitNumber: string;
-    leaseStart: Date;
-    leaseEnd: Date;
-    rentAmount: number;
-    status: 'completed' | 'active' | 'terminated';
-  }>;
-  paymentHistory?: Array<{
-    date: Date;
-    amount: number;
-    type: 'rent' | 'fee' | 'deposit';
-    status: 'paid' | 'late' | 'pending';
-    dueDate: Date;
-  }>;
-  notes?: Array<{
-    date: Date;
-    author: string;
-    note: string;
-    type: 'general' | 'payment' | 'maintenance' | 'lease';
-  }>;
+  // Standard profile structure (consistent with IUserDetailResponse)
+  profile: {
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    avatar: string;
+    phoneNumber: string;
+    email: string;
+    roles: string[];
+    uid: string;
+    id: string;
+    isActive: boolean;
+    userType: 'tenant';
+  };
+  status: 'Active' | 'Inactive';
+  // Tenant-specific information (includes historical data)
   tenantInfo: TenantInfo;
-  phoneNumber?: string;
-  displayName: string;
 
-  isActive: boolean;
+  userType: 'tenant';
 
-  fullName: string;
-
+  // Management-specific fields
   joinedDate: Date;
 
-  avatar?: string;
-
-  email: string;
-
-  // Basic user info
-  uid: string;
+  roles: string[];
 }
 
 export interface IVendorDetailInfo {

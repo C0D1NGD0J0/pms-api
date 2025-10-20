@@ -1317,13 +1317,40 @@ export class UserService {
       }
 
       // Get tenant details from DAO
-      const tenantDetails = await this.userDAO.getClientTenantDetails(cuid, tenantUid);
+      const rawTenantDetails = await this.userDAO.getClientTenantDetails(cuid, tenantUid);
 
-      if (!tenantDetails) {
+      if (!rawTenantDetails) {
         throw new NotFoundError({
           message: t('tenant.errors.notFound'),
         });
       }
+
+      // Transform to match IClientTenantDetails interface structure
+      // This ensures consistency with employee/vendor detail responses
+      // Historical data is now nested within tenantInfo for better encapsulation
+      const transformedResponse: import('@interfaces/user.interface').IClientTenantDetails = {
+        profile: {
+          firstName: (rawTenantDetails as any).firstName || '',
+          lastName: (rawTenantDetails as any).lastName || '',
+          fullName: (rawTenantDetails as any).fullName || '',
+          avatar: (rawTenantDetails as any).avatar?.url || (rawTenantDetails as any).avatar || '',
+          phoneNumber: (rawTenantDetails as any).phoneNumber || '',
+          email: (rawTenantDetails as any).email || '',
+          roles: ['tenant'],
+          uid: (rawTenantDetails as any).uid || '',
+          id: (rawTenantDetails as any)._id?.toString() || '',
+          isActive: (rawTenantDetails as any).isActive ?? true,
+          userType: 'tenant' as const,
+        },
+        status: (rawTenantDetails as any).isActive ? ('Active' as const) : ('Inactive' as const),
+        userType: 'tenant' as const,
+        roles: ['tenant'],
+
+        // Tenant-specific data (includes historical data nested within)
+        tenantInfo: rawTenantDetails.tenantInfo,
+        tenantMetrics: rawTenantDetails.tenantMetrics,
+        joinedDate: (rawTenantDetails as any).joinedDate || (rawTenantDetails as any).createdAt,
+      };
 
       // TODO: Integrate with other services to get details as needed
       // - Recent payment history from payment service
@@ -1335,12 +1362,12 @@ export class UserService {
       this.log.info('Tenant details retrieved', {
         cuid,
         tenantUid,
-        hasActiveLeases: !!tenantDetails.tenantInfo.activeLeases?.length,
+        hasActiveLeases: !!transformedResponse.tenantInfo.activeLeases?.length,
       });
 
       return {
         success: true,
-        data: tenantDetails,
+        data: transformedResponse,
         message: t('tenant.success.detailsRetrieved'),
       };
     } catch (error) {

@@ -1,16 +1,16 @@
 import { Types } from 'mongoose';
 import { UserService } from '@services/user/user.service';
-import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
-import { BadRequestError, NotFoundError, ForbiddenError } from '@shared/customErrors';
+import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
+import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {
   createMockRequestContext,
+  createMockVendorService,
   createMockCurrentUser,
   createMockClientDAO,
-  createMockUserDAO,
-  createMockUser,
-  createMockClient,
   createMockVendorDAO,
-  createMockVendorService,
+  createMockUserDAO,
+  createMockClient,
+  createMockUser,
 } from '@tests/helpers';
 
 describe('UserService', () => {
@@ -22,6 +22,7 @@ describe('UserService', () => {
   let mockPermissionService: any;
   let mockVendorDAO: any;
   let mockVendorService: any;
+  let mockProfileDAO: any;
 
   beforeEach(() => {
     mockClientDAO = createMockClientDAO();
@@ -39,6 +40,8 @@ describe('UserService', () => {
       getFilteredUsers: jest.fn().mockResolvedValue({ success: false }),
       cacheFilteredUsers: jest.fn().mockResolvedValue({ success: true }),
       saveFilteredUsers: jest.fn().mockResolvedValue({ success: true }),
+      invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }),
+      invalidateUserLists: jest.fn().mockResolvedValue({ success: true }),
     };
     mockPermissionService = {
       canUserAccessUser: jest.fn().mockReturnValue(true),
@@ -46,6 +49,10 @@ describe('UserService', () => {
     };
     mockVendorDAO = createMockVendorDAO();
     mockVendorService = createMockVendorService();
+    mockProfileDAO = {
+      updateById: jest.fn().mockResolvedValue({ success: true }),
+      findById: jest.fn().mockResolvedValue({}),
+    };
 
     userService = new UserService({
       clientDAO: mockClientDAO,
@@ -54,6 +61,7 @@ describe('UserService', () => {
       userCache: mockUserCache,
       permissionService: mockPermissionService,
       vendorService: mockVendorService,
+      profileDAO: mockProfileDAO,
     });
   });
 
@@ -910,13 +918,17 @@ describe('UserService', () => {
         .mockResolvedValueOnce(existingUser)
         .mockResolvedValueOnce({ email: 'exists@example.com' }); // Email exists
 
-      await expect(userService.updateUserInfo(userId, { email: 'exists@example.com' })).rejects.toThrow(BadRequestError);
+      await expect(
+        userService.updateUserInfo(userId, { email: 'exists@example.com' })
+      ).rejects.toThrow(BadRequestError);
     });
 
     it('should throw error for user not found', async () => {
       mockUserDAO.findFirst.mockResolvedValue(null);
 
-      await expect(userService.updateUserInfo('nonexistent', { email: 'test@example.com' })).rejects.toThrow(NotFoundError);
+      await expect(
+        userService.updateUserInfo('nonexistent', { email: 'test@example.com' })
+      ).rejects.toThrow(NotFoundError);
     });
   });
 
@@ -1029,11 +1041,15 @@ describe('UserService', () => {
       mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
       mockUserDAO.getClientTenantDetails.mockResolvedValue(null);
 
-      await expect(userService.getClientTenantDetails('client-123', 'nonexistent')).rejects.toThrow(NotFoundError);
+      await expect(userService.getClientTenantDetails('client-123', 'nonexistent')).rejects.toThrow(
+        NotFoundError
+      );
     });
 
     it('should throw error for missing parameters', async () => {
-      await expect(userService.getClientTenantDetails('', 'tenant-456')).rejects.toThrow(BadRequestError);
+      await expect(userService.getClientTenantDetails('', 'tenant-456')).rejects.toThrow(
+        BadRequestError
+      );
     });
   });
 
@@ -1170,9 +1186,7 @@ describe('UserService', () => {
 
       const mockSupervisor = createMockUser({ _id: supervisorObjId, uid: 'supervisor-123' });
 
-      mockUserDAO.findFirst
-        .mockResolvedValueOnce(mockUser)
-        .mockResolvedValueOnce(mockSupervisor);
+      mockUserDAO.findFirst.mockResolvedValueOnce(mockUser).mockResolvedValueOnce(mockSupervisor);
 
       const result = await userService.getUserSupervisor(userId, 'client-123');
 
@@ -1207,9 +1221,7 @@ describe('UserService', () => {
         },
       });
 
-      mockUserDAO.findFirst
-        .mockResolvedValueOnce(mockUser)
-        .mockResolvedValueOnce(null); // Supervisor not found
+      mockUserDAO.findFirst.mockResolvedValueOnce(mockUser).mockResolvedValueOnce(null); // Supervisor not found
 
       const result = await userService.getUserSupervisor(userId, 'client-123');
 
@@ -1250,6 +1262,341 @@ describe('UserService', () => {
       const result = await userService.getUserDisplayName('nonexistent', 'client-123');
 
       expect(result).toBe('Unknown User');
+    });
+  });
+
+  // NEW: Tenant Admin Methods Tests
+  describe('getTenantUserInfo', () => {
+    beforeEach(() => {
+      mockUserDAO.getUserByUId = jest.fn();
+    });
+
+    it('should retrieve tenant profile successfully', async () => {
+      const cuid = 'client-123';
+      const uid = 'tenant-123';
+      const mockCurrentUser = createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN } });
+      const mockContext = createMockRequestContext({
+        currentuser: mockCurrentUser,
+      });
+      const mockTenant = createMockUser({
+        uid,
+        _id: new Types.ObjectId().toString(),
+        cuids: [{ cuid, roles: [ROLES.TENANT], isConnected: true }],
+        profile: {
+          personalInfo: { firstName: 'Jane', lastName: 'Tenant' },
+          tenantInfo: {
+            leaseStatus: 'active',
+            rentStatus: 'current',
+          },
+        },
+      });
+
+      // Mock fetchAndValidateUser chain
+      mockUserDAO.getUserByUId.mockResolvedValue(mockTenant);
+      mockUserCache.getUserDetail.mockResolvedValue({
+        success: true,
+        data: {
+          ...mockTenant,
+          profile: {
+            ...mockTenant.profile,
+            userType: 'tenant',
+          },
+        },
+      });
+
+      const result = await userService.getTenantUserInfo(cuid, uid, mockContext);
+
+      expect(result.success).toBe(true);
+      expect(result.data.profile.userType).toBe('tenant');
+    });
+
+    it('should throw NotFoundError when tenant not found', async () => {
+      const cuid = 'client-123';
+      const uid = 'nonexistent';
+      const mockContext = createMockRequestContext({
+        currentuser: createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN } }),
+      });
+
+      mockUserDAO.getUserByUId.mockResolvedValue(null);
+
+      await expect(userService.getTenantUserInfo(cuid, uid, mockContext)).rejects.toThrow(
+        NotFoundError
+      );
+    });
+
+    it('should throw BadRequestError for non-tenant user', async () => {
+      const cuid = 'client-123';
+      const uid = 'employee-123';
+      const mockCurrentUser = createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN } });
+      const mockContext = createMockRequestContext({
+        currentuser: mockCurrentUser,
+      });
+      const mockEmployee = createMockUser({
+        uid,
+        _id: new Types.ObjectId().toString(),
+        cuids: [{ cuid, roles: [ROLES.EMPLOYEE], isConnected: true }],
+      });
+
+      mockUserDAO.getUserByUId.mockResolvedValue(mockEmployee);
+      mockUserCache.getUserDetail.mockResolvedValue({
+        success: true,
+        data: {
+          ...mockEmployee,
+          profile: {
+            userType: 'employee',
+          },
+        },
+      });
+
+      await expect(userService.getTenantUserInfo(cuid, uid, mockContext)).rejects.toThrow(
+        BadRequestError
+      );
+    });
+  });
+
+  describe('updateTenantProfile', () => {
+    beforeEach(() => {
+      mockUserDAO.updateTenantProfile = jest.fn();
+      mockUserDAO.getUserByUId = jest.fn();
+    });
+
+    it('should update tenant profile successfully', async () => {
+      const cuid = 'client-123';
+      const uid = 'tenant-123';
+      const mockContext = createMockRequestContext({
+        currentuser: createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN } }),
+      });
+      const updateData = {
+        personalInfo: { phone: '555-1234' },
+        tenantInfo: { leaseStatus: 'active', rentAmount: 1500 },
+      };
+      const mockTenant = createMockUser({
+        uid,
+        _id: new Types.ObjectId().toString(),
+        cuids: [{ cuid, roles: ['tenant'], isConnected: true }],
+        profile: {
+          _id: new Types.ObjectId(),
+          tenantInfo: {},
+        },
+      });
+      const updatedTenant = { ...mockTenant, ...updateData };
+
+      mockUserDAO.getUserByUId.mockResolvedValue(mockTenant);
+      mockPermissionService.canUserAccessUser.mockReturnValue(true);
+      mockProfileDAO.updateById.mockResolvedValue({ success: true });
+
+      const result = await userService.updateTenantProfile(cuid, uid, updateData, mockContext);
+
+      expect(result.success).toBe(true);
+      expect(mockProfileDAO.updateById).toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestError for non-tenant user', async () => {
+      const cuid = 'client-123';
+      const uid = 'employee-123';
+      const mockContext = createMockRequestContext({
+        currentuser: createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN } }),
+      });
+      const mockEmployee = createMockUser({
+        uid,
+        _id: new Types.ObjectId().toString(),
+        cuids: [{ cuid, roles: [ROLES.EMPLOYEE], isConnected: true }],
+      });
+
+      mockUserDAO.getUserByUId.mockResolvedValue(mockEmployee);
+
+      await expect(userService.updateTenantProfile(cuid, uid, {}, mockContext)).rejects.toThrow(
+        BadRequestError
+      );
+    });
+
+    it('should throw NotFoundError when tenant not found', async () => {
+      const cuid = 'client-123';
+      const uid = 'nonexistent';
+      const mockContext = createMockRequestContext({
+        currentuser: createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN } }),
+      });
+
+      mockUserDAO.getUserByUId.mockResolvedValue(null);
+
+      await expect(userService.updateTenantProfile(cuid, uid, {}, mockContext)).rejects.toThrow(
+        NotFoundError
+      );
+    });
+  });
+
+  describe('archiveUser', () => {
+    beforeEach(() => {
+      mockUserDAO.archiveUser = jest.fn();
+      mockUserDAO.getUserByUId = jest.fn();
+      mockClientDAO.getClientByCuid = jest.fn();
+    });
+
+    it('should successfully archive user (soft delete)', async () => {
+      const cuid = 'client-123';
+      const uid = 'user-123';
+      const mockCurrentUser = createMockCurrentUser({
+        client: { cuid, role: ROLES.ADMIN },
+        uid: 'admin-123',
+      });
+      const mockUser = createMockUser({
+        uid,
+        _id: new Types.ObjectId().toString(),
+        cuids: [{ cuid, roles: [ROLES.TENANT], isConnected: true }],
+      });
+      const mockClient = createMockClient({ cuid, primaryAccountHolder: 'other-user' });
+
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockUserDAO.getUserByUId.mockResolvedValue(mockUser);
+      mockUserDAO.archiveUser.mockResolvedValue({ ...mockUser, deletedAt: new Date() });
+      mockPermissionService.canUserAccessUser.mockReturnValue(true);
+
+      const result = await userService.archiveUser(cuid, uid, mockCurrentUser);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should prevent archiving self', async () => {
+      const cuid = 'client-123';
+      const uid = 'user-123';
+      const mockCurrentUser = createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN }, uid });
+      const mockUser = createMockUser({
+        uid,
+        _id: new Types.ObjectId().toString(),
+        cuids: [{ cuid, roles: [ROLES.ADMIN], isConnected: true }],
+      });
+
+      mockUserDAO.getUserByUId.mockResolvedValue(mockUser);
+      mockPermissionService.canUserAccessUser.mockReturnValue(true);
+
+      await expect(userService.archiveUser(cuid, uid, mockCurrentUser)).rejects.toThrow(
+        BadRequestError
+      );
+    });
+
+    it('should throw NotFoundError when user not found', async () => {
+      const cuid = 'client-123';
+      const uid = 'nonexistent';
+      const mockCurrentUser = createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN } });
+
+      mockUserDAO.getUserByUId.mockResolvedValue(null);
+
+      await expect(userService.archiveUser(cuid, uid, mockCurrentUser)).rejects.toThrow(
+        NotFoundError
+      );
+    });
+  });
+
+  describe('getTenantsStats', () => {
+    beforeEach(() => {
+      mockUserDAO.getTenantStats = jest.fn();
+      mockClientDAO.getClientByCuid = jest.fn();
+    });
+
+    it('should return tenant statistics successfully', async () => {
+      const cuid = 'client-123';
+      const mockCurrentUser = createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN } });
+      const mockClient = createMockClient({ cuid });
+      const mockStats = {
+        total: 20,
+        byLeaseStatus: { active: 15, expired: 5 },
+        byRentStatus: { current: 18, late: 2 },
+      };
+
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockUserDAO.getTenantStats.mockResolvedValue(mockStats);
+
+      const result = await userService.getTenantsStats(cuid, mockCurrentUser);
+
+      expect(result.success).toBe(true);
+      expect(result.data.total).toBe(20);
+    });
+
+    it('should handle missing client ID', async () => {
+      const mockCurrentUser = createMockCurrentUser();
+
+      await expect(userService.getTenantsStats('', mockCurrentUser)).rejects.toThrow(
+        BadRequestError
+      );
+    });
+
+    it('should handle errors gracefully', async () => {
+      const cuid = 'client-123';
+      const mockCurrentUser = createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN } });
+
+      mockClientDAO.getClientByCuid.mockResolvedValue(null);
+
+      await expect(userService.getTenantsStats(cuid, mockCurrentUser)).rejects.toThrow(
+        NotFoundError
+      );
+    });
+  });
+
+  describe('getClientUserInfo', () => {
+    beforeEach(() => {
+      mockUserDAO.getUserByUId = jest.fn();
+      mockUserCache.getUserDetail = jest.fn();
+      mockUserCache.cacheUserDetail = jest.fn();
+    });
+
+    it('should retrieve user info with cache hit', async () => {
+      const cuid = 'client-123';
+      const uid = 'user-123';
+      const mockCurrentUser = createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN } });
+      const mockUser = createMockUser({
+        uid,
+        _id: new Types.ObjectId().toString(),
+        cuids: [{ cuid, roles: [ROLES.EMPLOYEE], isConnected: true }],
+      });
+      const cachedUserInfo = {
+        uid,
+        email: 'user@example.com',
+        profile: { personalInfo: { firstName: 'John', lastName: 'Doe' } },
+      };
+
+      mockUserDAO.getUserByUId.mockResolvedValue(mockUser);
+      mockUserCache.getUserDetail.mockResolvedValue({ success: true, data: cachedUserInfo });
+
+      const result = await userService.getClientUserInfo(cuid, uid, mockCurrentUser);
+
+      expect(result.success).toBe(true);
+      expect(result.data.uid).toBe(uid);
+    });
+
+    it('should build user details with cache miss', async () => {
+      const cuid = 'client-123';
+      const uid = 'user-123';
+      const mockCurrentUser = createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN } });
+      const mockUser = createMockUser({
+        uid,
+        _id: new Types.ObjectId().toString(),
+        email: 'user@example.com',
+        cuids: [{ cuid, roles: [ROLES.EMPLOYEE], isConnected: true }],
+        profile: {
+          personalInfo: { firstName: 'Jane', lastName: 'Smith' },
+        },
+      });
+
+      mockUserDAO.getUserByUId.mockResolvedValue(mockUser);
+      mockUserCache.getUserDetail.mockResolvedValue({ success: false });
+      mockUserCache.cacheUserDetail.mockResolvedValue({ success: true });
+
+      const result = await userService.getClientUserInfo(cuid, uid, mockCurrentUser);
+
+      expect(result.success).toBe(true);
+      expect(mockUserCache.cacheUserDetail).toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundError for invalid user', async () => {
+      const cuid = 'client-123';
+      const uid = 'nonexistent';
+      const mockCurrentUser = createMockCurrentUser({ client: { cuid, role: ROLES.ADMIN } });
+
+      mockUserDAO.getUserByUId.mockResolvedValue(null);
+
+      await expect(userService.getClientUserInfo(cuid, uid, mockCurrentUser)).rejects.toThrow(
+        NotFoundError
+      );
     });
   });
 });

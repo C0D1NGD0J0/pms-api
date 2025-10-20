@@ -524,4 +524,59 @@ describe('AuthService', () => {
       );
     });
   });
+
+  // NEW: Additional tests for 80% coverage
+  describe('login - edge cases', () => {
+    it('should reject login for inactive account', async () => {
+      const mockLoginData = {
+        email: 'inactive@example.com',
+        password: 'password123',
+        rememberMe: false,
+      };
+
+      const mockInactiveUser = createMockUser({
+        isActive: false,
+        email: mockLoginData.email,
+        cuids: [
+          {
+            cuid: 'test-cuid',
+            isConnected: true,
+            roles: [ROLES.EMPLOYEE],
+          },
+        ],
+      });
+
+      mocks.userDAO.findFirst.mockResolvedValue(mockInactiveUser);
+      mocks.authUtils.comparePassword.mockResolvedValue(true);
+
+      await expect(authService.login(mockLoginData)).rejects.toThrow(UnauthorizedError);
+    });
+  });
+
+  describe('forgotPassword', () => {
+    it('should handle non-existent email gracefully', async () => {
+      mocks.userDAO.findFirst.mockResolvedValue(null);
+
+      const result = await authService.forgotPassword('nonexistent@example.com');
+
+      // Should still return success for security (don't reveal if email exists)
+      expect(result.success).toBe(true);
+      expect(mocks.emailQueue.addToEmailQueue).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('should reject expired reset token', async () => {
+      const mockUser = createMockUser({
+        resetPasswordToken: 'expired-token',
+        resetPasswordExpires: new Date(Date.now() - 1000), // Expired 1 second ago
+      });
+
+      mocks.userDAO.findFirst.mockResolvedValue(mockUser);
+
+      await expect(
+        authService.resetPassword('expired-token', 'newPassword123')
+      ).rejects.toThrow(UnauthorizedError);
+    });
+  });
 });

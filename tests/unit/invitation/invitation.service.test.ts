@@ -93,6 +93,7 @@ describe('InvitationService', () => {
     // Add missing methods to the mocks
     mockInvitationDAO.updateInvitation = jest.fn().mockResolvedValue(createMockInvitation());
     mockInvitationDAO.updateInvitationStatus = jest.fn().mockResolvedValue(createMockInvitation());
+    mockInvitationDAO.declineInvitation = jest.fn().mockResolvedValue(createMockInvitation());
     mockClientDAO.findById = jest.fn().mockResolvedValue(createMockClient());
     mockClientDAO.getClientByCuid = jest.fn().mockResolvedValue(createMockClient());
     mockUserDAO.getActiveUserByEmail = jest.fn().mockResolvedValue(null);
@@ -184,6 +185,63 @@ describe('InvitationService', () => {
       mockInvitationDAO.findPendingInvitation.mockResolvedValue(existingInvitation);
 
       const invitationData = createMockInvitationData({ inviteeEmail: testEmail });
+
+      await expect(
+        invitationService.sendInvitation(testUserId, testCuid, invitationData)
+      ).rejects.toThrow(ConflictError);
+    });
+
+    it('should successfully create draft invitation without sending email', async () => {
+      const { mockInvitation } = setupMocks('draft');
+      const invitationData = createMockInvitationData({
+        inviteeEmail: testEmail,
+        personalInfo: { firstName: 'Jane', lastName: 'Smith' },
+        role: ROLES.STAFF as any,
+        status: 'draft',
+      });
+
+      const result = await invitationService.sendInvitation(testUserId, testCuid, invitationData);
+
+      expect(result.success).toBe(true);
+      expect(result.data.invitation.status).toBe('draft');
+      expect(mockInvitationDAO.createInvitation).toHaveBeenCalled();
+      expect(mockEmailQueue.addToEmailQueue).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestError when inviter tries to invite themselves', async () => {
+      setupMocks();
+      const invitationData = createMockInvitationData({
+        inviteeEmail: 'inviter@example.com',
+      });
+      const mockInviter = createMockUser({
+        _id: new Types.ObjectId(testUserId),
+        email: 'inviter@example.com',
+        cuids: [
+          {
+            cuid: testCuid,
+            roles: [ROLES.ADMIN],
+            isConnected: true,
+            clientDisplayName: 'Test Client',
+          },
+        ],
+      });
+
+      mockUserDAO.getUserById.mockResolvedValue(mockInviter);
+
+      await expect(
+        invitationService.sendInvitation(testUserId, testCuid, invitationData)
+      ).rejects.toThrow(BadRequestError);
+    });
+
+    it('should throw ConflictError when user already has access to client', async () => {
+      setupMocks();
+      const invitationData = createMockInvitationData({ inviteeEmail: testEmail });
+      const existingUser = createMockUser({
+        email: testEmail,
+        cuids: [{ cuid: testCuid, roles: [ROLES.STAFF], isConnected: true }],
+      });
+
+      mockUserDAO.getUserWithClientAccess.mockResolvedValue(existingUser);
 
       await expect(
         invitationService.sendInvitation(testUserId, testCuid, invitationData)
@@ -490,6 +548,39 @@ describe('InvitationService', () => {
       expect(result.data.items).toHaveLength(2);
       expect(mockInvitationDAO.getInvitationsByClient).toHaveBeenCalledWith(query);
     });
+
+    it('should return empty list when no invitations found', async () => {
+      const mockContext = createMockContext();
+      const query = { cuid: testCuid, status: 'accepted' as const, page: 1, limit: 10 };
+
+      mockInvitationDAO.getInvitationsByClient.mockResolvedValue({
+        items: [],
+        pagination: { total: 0, page: 1, limit: 10 },
+      });
+
+      const result = await invitationService.getInvitations(mockContext, query);
+
+      expect(result.success).toBe(true);
+      expect(result.data.items).toHaveLength(0);
+      expect(result.data.pagination.total).toBe(0);
+    });
+
+    it('should filter invitations by role', async () => {
+      const mockContext = createMockContext();
+      const query = { cuid: testCuid, role: ROLES.ADMIN as any, page: 1, limit: 10 };
+      const mockInvitations = [createMockInvitation({ role: ROLES.ADMIN, status: 'pending' })];
+
+      mockInvitationDAO.getInvitationsByClient.mockResolvedValue({
+        items: mockInvitations,
+        pagination: { total: 1, page: 1, limit: 10 },
+      });
+
+      const result = await invitationService.getInvitations(mockContext, query);
+
+      expect(result.success).toBe(true);
+      expect(result.data.items).toHaveLength(1);
+      expect(result.data.items[0].role).toBe(ROLES.ADMIN);
+    });
   });
 
   describe('getInvitationStats', () => {
@@ -514,6 +605,38 @@ describe('InvitationService', () => {
       expect(result.data.total).toBe(100);
       expect(mockInvitationDAO.getInvitationStats).toHaveBeenCalledWith(clientId);
     });
+
+    it('should return zero stats for client with no invitations', async () => {
+      const clientId = 'new-client-123';
+      const emptyStats = {
+        total: 0,
+        pending: 0,
+        accepted: 0,
+        expired: 0,
+        revoked: 0,
+        sent: 0,
+        byRole: {},
+      };
+
+      mockInvitationDAO.getInvitationStats.mockResolvedValue(emptyStats);
+
+      const result = await invitationService.getInvitationStats(clientId, testUserId);
+
+      expect(result.success).toBe(true);
+      expect(result.data.total).toBe(0);
+      expect(result.data.pending).toBe(0);
+    });
+
+    it('should handle database errors when retrieving stats', async () => {
+      const clientId = 'client-123';
+      const dbError = new Error('Stats query failed');
+
+      mockInvitationDAO.getInvitationStats.mockRejectedValue(dbError);
+
+      await expect(invitationService.getInvitationStats(clientId, testUserId)).rejects.toThrow(
+        'Stats query failed'
+      );
+    });
   });
 
   describe('expireInvitations', () => {
@@ -527,6 +650,26 @@ describe('InvitationService', () => {
       expect(result.data.expiredCount).toBe(expiredCount);
       expect(result.message).toBe('invitation.success.expired');
       expect(mockInvitationDAO.expireInvitations).toHaveBeenCalledWith();
+    });
+
+    it('should handle case when no invitations to expire', async () => {
+      const expiredCount = 0;
+      mockInvitationDAO.expireInvitations.mockResolvedValue(expiredCount);
+
+      const result = await invitationService.expireInvitations();
+
+      expect(result.success).toBe(true);
+      expect(result.data.expiredCount).toBe(0);
+      expect(mockInvitationDAO.expireInvitations).toHaveBeenCalledWith();
+    });
+
+    it('should handle database errors during expiration', async () => {
+      const dbError = new Error('Expiration update failed');
+      mockInvitationDAO.expireInvitations.mockRejectedValue(dbError);
+
+      await expect(invitationService.expireInvitations()).rejects.toThrow(
+        'Expiration update failed'
+      );
     });
   });
 
@@ -733,6 +876,251 @@ describe('InvitationService', () => {
       expect(result.data.processed).toBe(2);
       expect(result.data.failed).toBe(0);
       expect(result.data.totalFound).toBe(2);
+    });
+
+    it('should perform dry run without processing invitations', async () => {
+      const filters = { timeline: '48h', role: 'manager', limit: 5, dryRun: true };
+      const mockPendingInvitations = [
+        createMockInvitation({
+          iuid: 'invitation-3',
+          status: 'pending',
+          inviteeEmail: 'manager1@example.com',
+          role: 'manager',
+          createdAt: new Date(Date.now() - 36 * 60 * 60 * 1000),
+        }),
+      ];
+
+      mockInvitationDAO.getInvitationsByClient.mockResolvedValue({
+        items: mockPendingInvitations,
+        pagination: { total: 1, page: 1, limit: 5 },
+      });
+
+      const result = await invitationService.processPendingInvitations(
+        testCuid,
+        testUserId,
+        filters
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.totalFound).toBe(1);
+      expect(result.data.invitations).toBeDefined();
+      expect(result.data.invitations[0].iuid).toBe('invitation-3');
+      expect(result.message).toBe('invitation.success.dryRunCompleted');
+    });
+
+    it('should handle partial failures during processing', async () => {
+      const filters = { timeline: '72h', limit: 10 };
+      const mockPendingInvitations = [
+        createMockInvitation({
+          iuid: 'invitation-success',
+          status: 'pending',
+          inviteeEmail: 'success@example.com',
+          createdAt: new Date(Date.now() - 60 * 60 * 60 * 1000),
+        }),
+        createMockInvitation({
+          iuid: 'invitation-fail',
+          status: 'pending',
+          inviteeEmail: 'fail@example.com',
+          createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
+        }),
+      ];
+
+      mockInvitationDAO.getInvitationsByClient.mockResolvedValue({
+        items: mockPendingInvitations,
+        pagination: { total: 2, page: 1, limit: 10 },
+      });
+
+      const resendSpy = jest.spyOn(invitationService, 'resendInvitation');
+      resendSpy
+        .mockResolvedValueOnce({
+          success: true,
+          data: { invitation: mockPendingInvitations[0], emailData: {} },
+          message: 'success',
+        } as any)
+        .mockRejectedValueOnce(new Error('Email service unavailable'));
+
+      const result = await invitationService.processPendingInvitations(
+        testCuid,
+        testUserId,
+        filters
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.processed).toBe(1);
+      expect(result.data.failed).toBe(1);
+      expect(result.data.errors).toBeDefined();
+      expect(result.data.errors![0].iuid).toBe('invitation-fail');
+    });
+
+    it('should return appropriate message when no pending invitations found', async () => {
+      const filters = { timeline: '7d', limit: 50 };
+
+      mockInvitationDAO.getInvitationsByClient.mockResolvedValue({
+        items: [],
+        pagination: { total: 0, page: 1, limit: 50 },
+      });
+
+      const result = await invitationService.processPendingInvitations(
+        testCuid,
+        testUserId,
+        filters
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.processed).toBe(0);
+      expect(result.data.totalFound).toBe(0);
+      expect(result.message).toBe('invitation.info.noPendingFound');
+    });
+  });
+
+  describe('getInvitationByIuid', () => {
+    it('should successfully retrieve invitation by iuid', async () => {
+      const iuid = 'invitation-123';
+      const mockInvitation = createMockInvitation({ iuid, status: 'pending' });
+
+      mockInvitationDAO.findByIuidUnsecured.mockResolvedValue(mockInvitation);
+
+      const result = await invitationService.getInvitationByIuid(iuid);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(mockInvitation);
+      expect(result.message).toBe('invitation.success.retrieved');
+      expect(mockInvitationDAO.findByIuidUnsecured).toHaveBeenCalledWith(iuid);
+    });
+
+    it('should return null when invitation not found', async () => {
+      const iuid = 'nonexistent-invitation';
+
+      mockInvitationDAO.findByIuidUnsecured.mockResolvedValue(null);
+
+      const result = await invitationService.getInvitationByIuid(iuid);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeNull();
+      expect(result.message).toBe('invitation.info.notFound');
+      expect(mockInvitationDAO.findByIuidUnsecured).toHaveBeenCalledWith(iuid);
+    });
+
+    it('should handle database errors gracefully', async () => {
+      const iuid = 'invitation-123';
+      const dbError = new Error('Database connection failed');
+
+      mockInvitationDAO.findByIuidUnsecured.mockRejectedValue(dbError);
+
+      await expect(invitationService.getInvitationByIuid(iuid)).rejects.toThrow(
+        'Database connection failed'
+      );
+      expect(mockInvitationDAO.findByIuidUnsecured).toHaveBeenCalledWith(iuid);
+    });
+  });
+
+  describe('declineInvitation', () => {
+    it('should successfully decline pending invitation', async () => {
+      const token = 'valid-token';
+      const reason = 'Not interested at this time';
+      const mockInvitation = createMockInvitation({
+        iuid: 'invitation-123',
+        status: 'pending',
+        invitationToken: token,
+      });
+      const declinedInvitation = { ...mockInvitation, status: 'declined' };
+
+      mockInvitationDAO.findByToken.mockResolvedValue(mockInvitation);
+      mockInvitationDAO.declineInvitation.mockResolvedValue(declinedInvitation);
+
+      const result = await invitationService.declineInvitation(testCuid, { token, reason });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(declinedInvitation);
+      expect(result.message).toBe('invitation.success.declined');
+      expect(mockInvitationDAO.findByToken).toHaveBeenCalledWith(token);
+      expect(mockInvitationDAO.declineInvitation).toHaveBeenCalledWith(
+        mockInvitation.iuid,
+        mockInvitation.clientId.toString(),
+        reason
+      );
+    });
+
+    it('should successfully decline sent invitation', async () => {
+      const token = 'valid-token';
+      const mockInvitation = createMockInvitation({
+        iuid: 'invitation-456',
+        status: 'sent',
+        invitationToken: token,
+      });
+      const declinedInvitation = { ...mockInvitation, status: 'declined' };
+
+      mockInvitationDAO.findByToken.mockResolvedValue(mockInvitation);
+      mockInvitationDAO.declineInvitation.mockResolvedValue(declinedInvitation);
+
+      const result = await invitationService.declineInvitation(testCuid, {
+        token,
+        reason: undefined,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.status).toBe('declined');
+      expect(mockInvitationDAO.declineInvitation).toHaveBeenCalledWith(
+        mockInvitation.iuid,
+        mockInvitation.clientId.toString(),
+        undefined
+      );
+    });
+
+    it('should throw NotFoundError when invitation not found', async () => {
+      const token = 'invalid-token';
+
+      mockInvitationDAO.findByToken.mockResolvedValue(null);
+
+      await expect(
+        invitationService.declineInvitation(testCuid, { token, reason: 'Test reason' })
+      ).rejects.toThrow('invitation.errors.notFound');
+    });
+
+    it('should throw BadRequestError when invitation status is accepted', async () => {
+      const token = 'accepted-token';
+      const mockInvitation = createMockInvitation({
+        iuid: 'invitation-789',
+        status: 'accepted',
+        invitationToken: token,
+      });
+
+      mockInvitationDAO.findByToken.mockResolvedValue(mockInvitation);
+
+      await expect(
+        invitationService.declineInvitation(testCuid, { token, reason: 'Changed my mind' })
+      ).rejects.toThrow(BadRequestError);
+    });
+
+    it('should throw BadRequestError when invitation status is draft', async () => {
+      const token = 'draft-token';
+      const mockInvitation = createMockInvitation({
+        iuid: 'invitation-draft',
+        status: 'draft',
+        invitationToken: token,
+      });
+
+      mockInvitationDAO.findByToken.mockResolvedValue(mockInvitation);
+
+      await expect(
+        invitationService.declineInvitation(testCuid, { token })
+      ).rejects.toThrow(BadRequestError);
+    });
+
+    it('should throw BadRequestError when decline operation fails', async () => {
+      const token = 'valid-token';
+      const mockInvitation = createMockInvitation({
+        iuid: 'invitation-123',
+        status: 'pending',
+        invitationToken: token,
+      });
+
+      mockInvitationDAO.findByToken.mockResolvedValue(mockInvitation);
+      mockInvitationDAO.declineInvitation.mockResolvedValue(null);
+
+      await expect(
+        invitationService.declineInvitation(testCuid, { token, reason: 'Test' })
+      ).rejects.toThrow('invitation.errors.declineFailed');
     });
   });
 

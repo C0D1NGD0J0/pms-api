@@ -47,5 +47,10 @@
     "logging": {
       "ignoringUploadEvent": "property.logging.ignoringUploadEvent"
     }
+  },
+  "tenant": {
+    "success": {
+      "detailsRetrieved": "tenant.success.detailsRetrieved"
+    }
   }
 }

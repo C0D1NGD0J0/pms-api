@@ -893,4 +893,453 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       throw this.throwErrorHandler(error);
     }
   }
+
+  /**
+   * Get tenants by client with filtering and pagination
+   * @param cuid - Client unique identifier
+   * @param filters - Optional tenant-specific filters
+   * @param pagination - Optional pagination parameters
+   * @returns Promise resolving to paginated tenant users with tenant-specific data
+   */
+  async getTenantsByClient(
+    cuid: string,
+    filters?: import('@interfaces/user.interface').ITenantFilterOptions,
+    pagination?: IFindOptions
+  ): Promise<import('@interfaces/user.interface').IPaginatedResult<IUserDocument[]>> {
+    try {
+      const pipeline: PipelineStage[] = [
+        {
+          $match: {
+            'cuids.cuid': cuid,
+            'cuids.roles': 'tenant',
+            'cuids.isConnected': true,
+            deletedAt: null,
+          },
+        },
+        {
+          $lookup: {
+            from: 'profiles',
+            localField: '_id',
+            foreignField: 'user',
+            as: 'profile',
+          },
+        },
+        { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+      ];
+
+      if (filters) {
+        const matchConditions: any = {};
+
+        if (filters.status) {
+          matchConditions.isActive = filters.status === 'active';
+        }
+
+        if (filters.leaseStatus) {
+          matchConditions['profile.tenantInfo.activeLease'] = {
+            $exists: filters.leaseStatus !== 'pending',
+          };
+        }
+
+        if (filters.backgroundCheckStatus) {
+          matchConditions['profile.tenantInfo.backgroundCheckStatus'] =
+            filters.backgroundCheckStatus;
+        }
+
+        if (filters.propertyId) {
+          matchConditions['profile.tenantInfo.activeLease.propertyId'] = filters.propertyId;
+        }
+
+        if (filters.moveInDateRange) {
+          matchConditions['profile.tenantInfo.activeLease.paymentDueDate'] = {
+            $gte: filters.moveInDateRange.start,
+            $lte: filters.moveInDateRange.end,
+          };
+        }
+
+        if (Object.keys(matchConditions).length > 0) {
+          pipeline.push({ $match: matchConditions });
+        }
+      }
+
+      pipeline.push({
+        $project: {
+          password: 0,
+          activationToken: 0,
+          passwordResetToken: 0,
+          activationTokenExpiresAt: 0,
+          passwordResetTokenExpiresAt: 0,
+          'profile.__v': 0,
+        },
+      });
+
+      const limit = pagination?.limit || 10;
+      const skip = pagination?.skip || 0;
+      const sort = pagination?.sort || 'desc';
+      const sortBy = pagination?.sortBy || 'createdAt';
+
+      const countPipeline = [...pipeline, { $count: 'total' }];
+
+      pipeline.push(
+        { $sort: { [sortBy]: sort === 'desc' ? -1 : 1 } },
+        { $skip: skip },
+        { $limit: limit }
+      );
+
+      const [tenants, countResult] = await Promise.all([
+        this.aggregate(pipeline),
+        this.aggregate(countPipeline),
+      ]);
+
+      const total = countResult.length > 0 ? (countResult[0] as any).total : 0;
+
+      return {
+        items: tenants,
+        pagination: {
+          total,
+          page: Math.floor(skip / limit) + 1,
+          limit,
+          totalPages: Math.ceil(total / limit),
+          hasNext: skip + limit < total,
+          hasPrev: skip > 0,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error getting tenants for client ${cuid}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Get tenant statistics for a client
+   * @param cuid - Client unique identifier
+   * @param filters - Optional tenant filters
+   * @returns Promise resolving to tenant statistics
+   */
+  async getTenantStats(
+    cuid: string,
+    filters?: import('@interfaces/user.interface').ITenantFilterOptions
+  ): Promise<import('@interfaces/user.interface').ITenantStats> {
+    try {
+      const pipeline: PipelineStage[] = [
+        {
+          $match: {
+            'cuids.cuid': cuid,
+            'cuids.roles': 'tenant',
+            'cuids.isConnected': true,
+            deletedAt: null,
+          },
+        },
+        {
+          $lookup: {
+            from: 'profiles',
+            localField: '_id',
+            foreignField: 'user',
+            as: 'profile',
+          },
+        },
+        { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+      ];
+
+      // Apply filters if provided
+      if (filters) {
+        const matchConditions: any = {};
+
+        if (filters.status) {
+          matchConditions.isActive = filters.status === 'active';
+        }
+
+        if (filters.propertyId) {
+          matchConditions['profile.tenantInfo.activeLease.propertyId'] = filters.propertyId;
+        }
+
+        if (Object.keys(matchConditions).length > 0) {
+          pipeline.push({ $match: matchConditions });
+        }
+      }
+
+      // Add aggregation stages for statistics
+      pipeline.push(
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            activeLeases: {
+              $sum: {
+                $cond: [{ $ne: ['$profile.tenantInfo.activeLease', null] }, 1, 0],
+              },
+            },
+            totalRent: {
+              $sum: {
+                $ifNull: ['$profile.tenantInfo.activeLease.rentAmount', 0],
+              },
+            },
+            backgroundCheckDistribution: {
+              $push: '$profile.tenantInfo.backgroundCheckStatus',
+            },
+            propertyDistribution: {
+              $push: {
+                propertyId: '$profile.tenantInfo.activeLease.propertyId',
+                rentAmount: '$profile.tenantInfo.activeLease.rentAmount',
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            total: 1,
+            activeLeases: 1,
+            expiredLeases: { $subtract: ['$total', '$activeLeases'] },
+            pendingLeases: { $literal: 0 }, // This would need additional logic based on lease dates
+            rentStatus: {
+              current: '$activeLeases', // Simplified - would need payment data
+              late: { $literal: 0 },
+              overdue: { $literal: 0 },
+            },
+            averageRent: {
+              $cond: [
+                { $gt: ['$activeLeases', 0] },
+                { $divide: ['$totalRent', '$activeLeases'] },
+                0,
+              ],
+            },
+            occupancyRate: {
+              $cond: [
+                { $gt: ['$total', 0] },
+                { $multiply: [{ $divide: ['$activeLeases', '$total'] }, 100] },
+                0,
+              ],
+            },
+            backgroundCheckDistribution: {
+              $reduce: {
+                input: '$backgroundCheckDistribution',
+                initialValue: { pending: 0, approved: 0, failed: 0, notRequired: 0 },
+                in: {
+                  pending: {
+                    $cond: [
+                      { $eq: ['$$this', 'pending'] },
+                      { $add: ['$$value.pending', 1] },
+                      '$$value.pending',
+                    ],
+                  },
+                  approved: {
+                    $cond: [
+                      { $eq: ['$$this', 'approved'] },
+                      { $add: ['$$value.approved', 1] },
+                      '$$value.approved',
+                    ],
+                  },
+                  failed: {
+                    $cond: [
+                      { $eq: ['$$this', 'failed'] },
+                      { $add: ['$$value.failed', 1] },
+                      '$$value.failed',
+                    ],
+                  },
+                  notRequired: {
+                    $cond: [
+                      { $eq: ['$$this', 'not_required'] },
+                      { $add: ['$$value.notRequired', 1] },
+                      '$$value.notRequired',
+                    ],
+                  },
+                },
+              },
+            },
+            distributionByProperty: '$propertyDistribution',
+          },
+        }
+      );
+
+      const result = await this.aggregate(pipeline);
+
+      if (!result.length) {
+        return {
+          total: 0,
+          activeLeases: 0,
+          expiredLeases: 0,
+          pendingLeases: 0,
+          rentStatus: {
+            current: 0,
+            late: 0,
+            overdue: 0,
+          },
+          averageRent: 0,
+          occupancyRate: 0,
+          distributionByProperty: [],
+          backgroundCheckDistribution: {
+            pending: 0,
+            approved: 0,
+            failed: 0,
+            notRequired: 0,
+          },
+        };
+      }
+
+      const stats: any = result[0];
+
+      // Process property distribution
+      const propertyMap = new Map<string, { count: number; totalRent: number; name?: string }>();
+
+      for (const prop of stats.distributionByProperty || []) {
+        if (prop.propertyId) {
+          const existing = propertyMap.get(prop.propertyId) || {
+            count: 0,
+            totalRent: 0,
+            name: `Property ${prop.propertyId}`,
+          };
+          existing.count++;
+          existing.totalRent += prop.rentAmount || 0;
+          propertyMap.set(prop.propertyId, existing);
+        }
+      }
+
+      stats.distributionByProperty = Array.from(propertyMap.entries()).map(([id, data]) => ({
+        propertyId: id,
+        propertyName: data.name,
+        tenantCount: data.count,
+      }));
+
+      return stats as import('@interfaces/user.interface').ITenantStats;
+    } catch (error) {
+      this.logger.error(`Error getting tenant stats for client ${cuid}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async getClientTenantDetails(
+    cuid: string,
+    tenantUid: string,
+    include?: string[]
+  ): Promise<import('@interfaces/user.interface').IClientTenantDetails | null> {
+    try {
+      const includeAll = !include || include.includes('all');
+      const includeLeaseHistory = includeAll || include.includes('lease');
+      const includePaymentHistory = includeAll || include.includes('payments');
+      const includeMaintenanceRequests = includeAll || include.includes('maintenance');
+      const includeNotes = includeAll || include.includes('notes');
+
+      const pipeline: PipelineStage[] = [
+        {
+          $match: {
+            uid: tenantUid,
+            'cuids.cuid': cuid,
+            'cuids.roles': 'tenant',
+            'cuids.isConnected': true,
+            deletedAt: null,
+          },
+        },
+        {
+          $lookup: {
+            from: 'profiles',
+            localField: '_id',
+            foreignField: 'user',
+            as: 'profile',
+          },
+        },
+        { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            _id: 1,
+            uid: 1,
+            email: 1,
+            isActive: 1,
+            createdAt: 1,
+            firstName: { $ifNull: ['$profile.personalInfo.firstName', ''] },
+            lastName: { $ifNull: ['$profile.personalInfo.lastName', ''] },
+            fullName: {
+              $concat: [
+                { $ifNull: ['$profile.personalInfo.firstName', ''] },
+                ' ',
+                { $ifNull: ['$profile.personalInfo.lastName', ''] },
+              ],
+            },
+            displayName: {
+              $ifNull: [
+                '$profile.personalInfo.displayName',
+                {
+                  $concat: [
+                    { $ifNull: ['$profile.personalInfo.firstName', ''] },
+                    ' ',
+                    { $ifNull: ['$profile.personalInfo.lastName', ''] },
+                  ],
+                },
+              ],
+            },
+            phoneNumber: '$profile.personalInfo.phoneNumber',
+            avatar: '$profile.personalInfo.avatar',
+            joinedDate: '$createdAt',
+            tenantInfo: {
+              employerInfo: {
+                $filter: {
+                  input: { $ifNull: ['$profile.tenantInfo.employerInfo', []] },
+                  as: 'employer',
+                  cond: { $eq: ['$$employer.cuid', cuid] },
+                },
+              },
+              activeLeases: {
+                $filter: {
+                  input: { $ifNull: ['$profile.tenantInfo.activeLeases', []] },
+                  as: 'lease',
+                  cond: { $eq: ['$$lease.cuid', cuid] },
+                },
+              },
+              backgroundChecks: {
+                $filter: {
+                  input: { $ifNull: ['$profile.tenantInfo.backgroundChecks', []] },
+                  as: 'check',
+                  cond: { $eq: ['$$check.cuid', cuid] },
+                },
+              },
+              rentalReferences: '$profile.tenantInfo.rentalReferences',
+              pets: '$profile.tenantInfo.pets',
+              emergencyContact: '$profile.tenantInfo.emergencyContact',
+              ...(includeLeaseHistory && { leaseHistory: [] }),
+              ...(includePaymentHistory && { paymentHistory: [] }),
+              ...(includeMaintenanceRequests && { maintenanceRequests: [] }),
+              ...(includeNotes && { notes: [] }),
+            },
+            tenantMetrics: {
+              onTimePaymentRate: 100,
+              averagePaymentDelay: { $literal: 0 },
+              totalMaintenanceRequests: { $literal: 0 },
+              currentRentStatus: {
+                $cond: [
+                  {
+                    $gt: [{ $size: { $ifNull: ['$profile.tenantInfo.activeLeases', []] } }, 0],
+                  },
+                  'current',
+                  'no_lease',
+                ],
+              },
+              daysCurrentLease: { $literal: 0 },
+              totalRentPaid: { $literal: 0 },
+            },
+          },
+        },
+      ];
+
+      const result = await this.aggregate(pipeline);
+
+      if (!result.length) {
+        return null;
+      }
+
+      const tenant = result[0] as any;
+
+      // TODO: In a real implementation, you would fetch additional data from other collections:
+      // - Lease history from a leases collection
+      // - Payment history from a payments collection
+      // - Maintenance requests from a maintenance collection
+      // - Notes from a tenant_notes collection
+
+      return tenant as import('@interfaces/user.interface').IClientTenantDetails;
+    } catch (error) {
+      this.logger.error(
+        `Error getting tenant details for client ${cuid}, tenant ${tenantUid}:`,
+        error
+      );
+      throw this.throwErrorHandler(error);
+    }
+  }
 }

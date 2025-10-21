@@ -6,7 +6,8 @@
     },
     "success": {
       "userRetrieved": "client.success.userRetrieved",
-      "userStatsRetrieved": "client.success.userStatsRetrieved"
+      "userStatsRetrieved": "client.success.userStatsRetrieved",
+      "tenantsRetrieved": "client.success.tenantsRetrieved"
     }
   },
   "invitation": {
@@ -45,6 +46,11 @@
   "property": {
     "logging": {
       "ignoringUploadEvent": "property.logging.ignoringUploadEvent"
+    }
+  },
+  "tenant": {
+    "success": {
+      "detailsRetrieved": "tenant.success.detailsRetrieved"
     }
   }
 }

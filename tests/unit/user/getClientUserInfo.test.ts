@@ -1,6 +1,6 @@
 import { UserService } from '@services/user/user.service';
+import { ROLES } from '@shared/constants/roles.constants';
 import { IRequestContext } from '@interfaces/utils.interface';
-import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
 
 describe('UserService - getClientUserInfo', () => {
   let userService: UserService;
@@ -154,7 +154,6 @@ describe('UserService - getClientUserInfo', () => {
         fullName: 'John Doe',
         phoneNumber: '+1-555-0123',
         email: 'employee@test.com',
-        about: 'Experienced property manager',
       });
 
       // Validate employeeInfo structure

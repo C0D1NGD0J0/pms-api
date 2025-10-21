@@ -2,7 +2,7 @@ import { Document, Types } from 'mongoose';
 import { IUserRole } from '@shared/constants/roles.constants';
 
 import { IUserDocument } from './user.interface';
-import { EmployeeInfo, VendorInfo } from './profile.interface';
+import { EmployeeInfo, TenantInfo, VendorInfo } from './profile.interface';
 
 export interface IInvitation {
   metadata: {
@@ -10,6 +10,7 @@ export interface IInvitation {
     expectedStartDate?: Date;
     employeeInfo?: EmployeeInfo;
     vendorInfo?: VendorInfo;
+    tenantInfo?: TenantInfo;
     remindersSent: number;
     lastReminderSent?: Date;
   };
@@ -53,6 +54,7 @@ export interface IInvitationData {
     expectedStartDate?: Date;
     employeeInfo?: EmployeeInfo;
     vendorInfo?: VendorInfo;
+    tenantInfo?: TenantInfo;
   };
   personalInfo: {
     firstName: string;

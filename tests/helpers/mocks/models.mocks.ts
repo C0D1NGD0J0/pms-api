@@ -120,6 +120,6 @@ export const createChainableQueryResult = (result: any) => ({
 /**
  * Mock model constructor for jest.mock scenarios
  */
-export const MockModel = jest.fn().mockImplementation((schema, collection) =>
+export const MockModel = jest.fn().mockImplementation(() =>
   createMockModelWithDefaults()
 );

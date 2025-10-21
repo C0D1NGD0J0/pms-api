@@ -127,7 +127,9 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         throw new Error('Expiry date must be after issue date');
       }
 
-      return await this.updateById(profileId, { $set: { identification: identificationData } });
+      return await this.updateById(profileId, {
+        $set: { 'personalInfo.identification': identificationData },
+      });
     } catch (error) {
       this.logger.error(`Error updating identification for profile ${profileId}:`, error);
       throw this.throwErrorHandler(error);

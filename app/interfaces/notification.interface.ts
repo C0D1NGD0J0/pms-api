@@ -95,6 +95,7 @@ export interface INotification {
   type: NotificationTypeEnum;
   recipient?: Types.ObjectId; // Optional - only required for individual notifications
   // Announcement targeting fields
+  author?: Types.ObjectId; // User who created the notification
   targetRoles?: string[];
   targetVendor?: string;
   actionUrl?: string;
@@ -120,6 +121,7 @@ export interface ICreateNotificationRequest {
   priority?: NotificationPriorityEnum;
   recipient?: string | Types.ObjectId; // Optional - only required for individual
   recipientType: RecipientTypeEnum;
+  author?: string | Types.ObjectId; // User who created the notification
   metadata?: Record<string, any>;
   type: NotificationTypeEnum;
   targetRoles?: string[];

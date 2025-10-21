@@ -1,14 +1,14 @@
 import { Types } from 'mongoose';
 import { AuthService } from '@services/auth/auth.service';
-import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
+import { ROLES } from '@shared/constants/roles.constants';
 import { UnauthorizedError, NotFoundError } from '@shared/customErrors';
+import { createAuthServiceDependencies, createServiceWithMocks } from '@tests/helpers/mocks/services.mocks';
 import {
+  createMockCompanyProfile,
   createMockCurrentUser,
   createMockSignupData,
   createMockUser,
-  createMockCompanyProfile,
 } from '@tests/helpers';
-import { createAuthServiceDependencies, createServiceWithMocks } from '@tests/helpers/mocks/services.mocks';
 
 describe('AuthService', () => {
   let authService: AuthService;
@@ -411,6 +411,7 @@ describe('AuthService', () => {
 
       expect(result.success).toBe(true);
       expect(mocks.vendorService.createVendorFromCompanyProfile).toHaveBeenCalledWith(
+        expect.any(String), // cuid is generated dynamically
         mockUser._id?.toString(),
         signupData.companyProfile
       );
@@ -514,12 +515,62 @@ describe('AuthService', () => {
       await authService.signup(signupData);
 
       expect(mocks.vendorService.createVendorFromCompanyProfile).toHaveBeenCalledWith(
+        expect.any(String), // cuid is generated dynamically
         mockUser?._id?.toString(),
         expect.objectContaining({
           companyEmail: 'info@company.com',
           // Should use signup data for contact person when not provided
         })
       );
+    });
+  });
+
+  // NEW: Additional tests for 80% coverage
+  describe('login - edge cases', () => {
+    it('should reject login for inactive account', async () => {
+      const mockLoginData = {
+        email: 'inactive@example.com',
+        password: 'password123',
+        rememberMe: false,
+      };
+
+      const mockInactiveUser = createMockUser({
+        isActive: false,
+        email: mockLoginData.email,
+        cuids: [
+          {
+            cuid: 'test-cuid',
+            isConnected: true,
+            roles: [ROLES.EMPLOYEE],
+          },
+        ],
+      });
+
+      mocks.userDAO.getActiveUserByEmail.mockResolvedValue(mockInactiveUser);
+
+      await expect(authService.login(mockLoginData)).rejects.toThrow();
+    });
+  });
+
+  describe('forgotPassword', () => {
+    it('should handle non-existent email gracefully', async () => {
+      mocks.userDAO.createPasswordResetToken.mockResolvedValue(true);
+      mocks.userDAO.getActiveUserByEmail.mockResolvedValue(null);
+
+      // Should throw NotFoundError if user doesn't exist
+      await expect(authService.forgotPassword('nonexistent@example.com')).rejects.toThrow(NotFoundError);
+      expect(mocks.emailQueue.addToEmailQueue).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('should reject expired reset token', async () => {
+      // Mock userDAO.resetPassword to return null for expired/invalid token
+      mocks.userDAO.resetPassword.mockResolvedValue(null);
+
+      await expect(
+        authService.resetPassword('expired-token', 'newPassword123')
+      ).rejects.toThrow();
     });
   });
 });

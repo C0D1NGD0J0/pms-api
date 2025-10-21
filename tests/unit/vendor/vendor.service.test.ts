@@ -1,9 +1,9 @@
 import { Types } from 'mongoose';
-import { VendorService } from '@services/vendor/vendor.service';
 import { VendorDAO } from '@dao/vendorDAO';
-import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
-import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { VendorService } from '@services/vendor/vendor.service';
+import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { IVendorDocument, NewVendor } from '@interfaces/vendor.interface';
+import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 
 describe('VendorService', () => {
   let vendorService: VendorService;
@@ -837,6 +837,826 @@ describe('VendorService', () => {
       (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(null);
 
       await expect(vendorService.getVendorStats(cuid)).rejects.toThrow('client.errors.notFound');
+    });
+  });
+
+  describe('getVendorTeamMembers', () => {
+    const createMockContext = (overrides: any = {}) => ({
+      currentuser: {
+        sub: new Types.ObjectId(mockIds.user),
+        client: {
+          role: 'admin',
+          ...overrides.client,
+        },
+        ...overrides,
+      },
+    });
+
+    const createMockVendorWithConnection = () => {
+      return createMockVendorDocument({
+        vuid: 'vendor-123',
+        connectedClients: [
+          {
+            cuid: mockIds.client,
+            isConnected: true,
+            primaryAccountHolder: new Types.ObjectId(mockIds.user),
+          },
+        ],
+      });
+    };
+
+    it('should successfully retrieve vendor team members as admin', async () => {
+      const mockContext = createMockContext();
+      const mockVendor = createMockVendorWithConnection();
+      const mockTeamMembers = [
+        {
+          _id: new Types.ObjectId(),
+          uid: 'team-member-1',
+          email: 'member1@test.com',
+          isActive: true,
+          createdAt: new Date(),
+          lastLogin: new Date(),
+          cuids: [{ cuid: mockIds.client, role: 'Team Member', clientDisplayName: 'John Smith' }],
+          profile: {
+            personalInfo: {
+              firstName: 'John',
+              lastName: 'Smith',
+              phoneNumber: '+1234567890',
+            },
+            contactInfo: {},
+          },
+        },
+      ];
+
+      mockVendorDAO.findFirst.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getLinkedVendorUsers.mockResolvedValue({
+        items: mockTeamMembers,
+        pagination: { total: 1, page: 1, limit: 10, pages: 1 },
+      });
+
+      const result = await vendorService.getVendorTeamMembers(
+        mockContext as any,
+        mockIds.client,
+        'vendor-123',
+        'active',
+        { limit: 10, skip: 0 }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.items).toHaveLength(1);
+      expect(result.data.items[0]).toMatchObject({
+        uid: 'team-member-1',
+        email: 'member1@test.com',
+        displayName: 'John Smith',
+        firstName: 'John',
+        lastName: 'Smith',
+        phoneNumber: '+1234567890',
+        isActive: true,
+        role: 'Team Member',
+        isTeamMember: true,
+      });
+      expect(result.message).toBe('vendor.success.teamMembersRetrieved');
+    });
+
+    it('should throw BadRequestError when cuid is missing', async () => {
+      const mockContext = createMockContext();
+
+      await expect(
+        vendorService.getVendorTeamMembers(mockContext as any, '', 'vendor-123')
+      ).rejects.toThrow('client.errors.clientIdRequired');
+    });
+
+    it('should throw NotFoundError when vendor not found', async () => {
+      const mockContext = createMockContext();
+      mockVendorDAO.findFirst.mockResolvedValue(null);
+
+      await expect(
+        vendorService.getVendorTeamMembers(mockContext as any, mockIds.client, 'nonexistent-vuid')
+      ).rejects.toThrow('vendor.errors.notFound');
+    });
+
+    it('should throw NotFoundError when vendor is not connected to client', async () => {
+      const mockContext = createMockContext();
+      const mockVendor = createMockVendorDocument({
+        connectedClients: [
+          {
+            cuid: 'different-client',
+            isConnected: true,
+            primaryAccountHolder: new Types.ObjectId(),
+          },
+        ],
+      });
+
+      mockVendorDAO.findFirst.mockResolvedValue(mockVendor);
+
+      await expect(
+        vendorService.getVendorTeamMembers(mockContext as any, mockIds.client, 'vendor-123')
+      ).rejects.toThrow('vendor.errors.notAssociatedWithClient');
+    });
+
+    it('should throw NotFoundError when vendor connection is not active', async () => {
+      const mockContext = createMockContext();
+      const mockVendor = createMockVendorDocument({
+        connectedClients: [
+          {
+            cuid: mockIds.client,
+            isConnected: false,
+            primaryAccountHolder: new Types.ObjectId(),
+          },
+        ],
+      });
+
+      mockVendorDAO.findFirst.mockResolvedValue(mockVendor);
+
+      await expect(
+        vendorService.getVendorTeamMembers(mockContext as any, mockIds.client, 'vendor-123')
+      ).rejects.toThrow('vendor.errors.notAssociatedWithClient');
+    });
+
+    it('should allow primary vendor to view team members', async () => {
+      const primaryUserId = new Types.ObjectId(mockIds.user);
+      const mockContext = createMockContext({
+        client: { role: 'vendor' },
+      });
+      const mockVendor = createMockVendorDocument({
+        connectedClients: [
+          {
+            cuid: mockIds.client,
+            isConnected: true,
+            primaryAccountHolder: primaryUserId,
+          },
+        ],
+      });
+
+      mockVendorDAO.findFirst.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getLinkedVendorUsers.mockResolvedValue({
+        items: [],
+        pagination: undefined,
+      });
+
+      const result = await vendorService.getVendorTeamMembers(
+        mockContext as any,
+        mockIds.client,
+        'vendor-123'
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockVendorDAO.findFirst).toHaveBeenCalledWith({ vuid: 'vendor-123' });
+    });
+
+    it('should throw ForbiddenError when user is not admin, manager, or primary vendor', async () => {
+      const differentUserId = new Types.ObjectId();
+      const mockContext = {
+        currentuser: {
+          sub: differentUserId,
+          client: { role: IUserRole.STAFF },
+        },
+      };
+      const mockVendor = createMockVendorDocument({
+        connectedClients: [
+          {
+            cuid: mockIds.client,
+            isConnected: true,
+            primaryAccountHolder: new Types.ObjectId(mockIds.user),
+          },
+        ],
+      });
+
+      mockVendorDAO.findFirst.mockResolvedValue(mockVendor);
+
+      await expect(
+        vendorService.getVendorTeamMembers(mockContext as any, mockIds.client, 'vendor-123')
+      ).rejects.toThrow(ForbiddenError);
+    });
+
+    it('should throw ForbiddenError when permission check fails', async () => {
+      const mockContext = createMockContext();
+      const mockVendor = createMockVendorWithConnection();
+
+      mockVendorDAO.findFirst.mockResolvedValue(mockVendor);
+      (vendorService as any).permissionService.canUserAccessVendors.mockReturnValue(false);
+
+      await expect(
+        vendorService.getVendorTeamMembers(mockContext as any, mockIds.client, 'vendor-123')
+      ).rejects.toThrow('client.errors.insufficientPermissions');
+    });
+
+    it('should filter team members by active status', async () => {
+      const mockContext = createMockContext();
+      const mockVendor = createMockVendorWithConnection();
+      const mockTeamMembers = [
+        {
+          _id: new Types.ObjectId(),
+          uid: 'active-member',
+          email: 'active@test.com',
+          isActive: true,
+          createdAt: new Date(),
+          cuids: [{ cuid: mockIds.client }],
+          profile: { personalInfo: {}, contactInfo: {} },
+        },
+        {
+          _id: new Types.ObjectId(),
+          uid: 'inactive-member',
+          email: 'inactive@test.com',
+          isActive: false,
+          createdAt: new Date(),
+          cuids: [{ cuid: mockIds.client }],
+          profile: { personalInfo: {}, contactInfo: {} },
+        },
+      ];
+
+      mockVendorDAO.findFirst.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getLinkedVendorUsers.mockResolvedValue({
+        items: mockTeamMembers,
+        pagination: undefined,
+      });
+
+      const result = await vendorService.getVendorTeamMembers(
+        mockContext as any,
+        mockIds.client,
+        'vendor-123',
+        'active'
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.items).toHaveLength(1);
+      expect(result.data.items[0].uid).toBe('active-member');
+      expect(result.data.items[0].isActive).toBe(true);
+    });
+
+    it('should filter team members by inactive status', async () => {
+      const mockContext = createMockContext();
+      const mockVendor = createMockVendorWithConnection();
+      const mockTeamMembers = [
+        {
+          _id: new Types.ObjectId(),
+          uid: 'active-member',
+          email: 'active@test.com',
+          isActive: true,
+          createdAt: new Date(),
+          cuids: [{ cuid: mockIds.client }],
+          profile: { personalInfo: {}, contactInfo: {} },
+        },
+        {
+          _id: new Types.ObjectId(),
+          uid: 'inactive-member',
+          email: 'inactive@test.com',
+          isActive: false,
+          createdAt: new Date(),
+          cuids: [{ cuid: mockIds.client }],
+          profile: { personalInfo: {}, contactInfo: {} },
+        },
+      ];
+
+      mockVendorDAO.findFirst.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getLinkedVendorUsers.mockResolvedValue({
+        items: mockTeamMembers,
+        pagination: undefined,
+      });
+
+      const result = await vendorService.getVendorTeamMembers(
+        mockContext as any,
+        mockIds.client,
+        'vendor-123',
+        'inactive'
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.items).toHaveLength(1);
+      expect(result.data.items[0].uid).toBe('inactive-member');
+      expect(result.data.items[0].isActive).toBe(false);
+    });
+
+    it('should handle missing profile data gracefully', async () => {
+      const mockContext = createMockContext();
+      const mockVendor = createMockVendorWithConnection();
+      const mockTeamMembers = [
+        {
+          _id: new Types.ObjectId(),
+          uid: 'member-no-profile',
+          email: 'noprofile@test.com',
+          isActive: true,
+          createdAt: new Date(),
+          cuids: [{ cuid: mockIds.client }],
+          profile: null,
+        },
+      ];
+
+      mockVendorDAO.findFirst.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getLinkedVendorUsers.mockResolvedValue({
+        items: mockTeamMembers,
+        pagination: undefined,
+      });
+
+      const result = await vendorService.getVendorTeamMembers(
+        mockContext as any,
+        mockIds.client,
+        'vendor-123'
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.items[0]).toMatchObject({
+        uid: 'member-no-profile',
+        displayName: 'noprofile@test.com',
+        firstName: '',
+        lastName: '',
+        phoneNumber: '',
+      });
+    });
+
+    it('should use clientDisplayName when available', async () => {
+      const mockContext = createMockContext();
+      const mockVendor = createMockVendorWithConnection();
+      const mockTeamMembers = [
+        {
+          _id: new Types.ObjectId(),
+          uid: 'member-1',
+          email: 'member@test.com',
+          isActive: true,
+          createdAt: new Date(),
+          cuids: [{ cuid: mockIds.client, clientDisplayName: 'Custom Display Name' }],
+          profile: {
+            personalInfo: { firstName: 'John', lastName: 'Doe' },
+            contactInfo: {},
+          },
+        },
+      ];
+
+      mockVendorDAO.findFirst.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getLinkedVendorUsers.mockResolvedValue({
+        items: mockTeamMembers,
+        pagination: undefined,
+      });
+
+      const result = await vendorService.getVendorTeamMembers(
+        mockContext as any,
+        mockIds.client,
+        'vendor-123'
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.items[0].displayName).toBe('Custom Display Name');
+    });
+
+    it('should handle pagination correctly', async () => {
+      const mockContext = createMockContext();
+      const mockVendor = createMockVendorWithConnection();
+      const mockPagination = {
+        total: 25,
+        page: 2,
+        limit: 10,
+        pages: 3,
+      };
+
+      mockVendorDAO.findFirst.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getLinkedVendorUsers.mockResolvedValue({
+        items: [],
+        pagination: mockPagination,
+      });
+
+      const result = await vendorService.getVendorTeamMembers(
+        mockContext as any,
+        mockIds.client,
+        'vendor-123',
+        undefined,
+        { limit: 10, skip: 10 }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.pagination).toEqual(mockPagination);
+      expect((vendorService as any).userDAO.getLinkedVendorUsers).toHaveBeenCalledWith(
+        'vendor-123',
+        mockIds.client,
+        expect.objectContaining({
+          limit: 10,
+          skip: 10,
+        })
+      );
+    });
+
+    it('should handle DAO errors properly', async () => {
+      const mockContext = createMockContext();
+      const error = new Error('Database connection failed');
+
+      mockVendorDAO.findFirst.mockRejectedValue(error);
+
+      await expect(
+        vendorService.getVendorTeamMembers(mockContext as any, mockIds.client, 'vendor-123')
+      ).rejects.toThrow('Database connection failed');
+    });
+  });
+
+  describe('getFilteredVendors - Extended Coverage', () => {
+    it('should throw BadRequestError when cuid is missing', async () => {
+      await expect(vendorService.getFilteredVendors('', {}, { limit: 10, skip: 0 })).rejects.toThrow(
+        'client.errors.clientIdRequired'
+      );
+    });
+
+    it('should throw NotFoundError when client not found', async () => {
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(null);
+
+      await expect(
+        vendorService.getFilteredVendors('nonexistent-client', {}, { limit: 10, skip: 0 })
+      ).rejects.toThrow('client.errors.notFound');
+    });
+
+    it('should return cached results when available', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const cachedData = {
+        items: [
+          {
+            uid: 'cached-vendor',
+            email: 'cached@test.com',
+            isActive: true,
+            displayName: 'Cached Vendor',
+            vendorInfo: { vuid: 'cached-123', companyName: 'Cached Corp' },
+          },
+        ],
+        pagination: { total: 1, page: 1, limit: 10, pages: 1 },
+      };
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      (vendorService as any).vendorCache.getFilteredVendors.mockResolvedValue({
+        success: true,
+        data: cachedData,
+      });
+
+      const result = await vendorService.getFilteredVendors(
+        mockIds.client,
+        {},
+        { limit: 10, skip: 0 }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.items[0].uid).toBe('cached-vendor');
+      expect(mockVendorDAO.getFilteredVendors).not.toHaveBeenCalled();
+    });
+
+    it('should handle filters and pagination correctly', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const mockVendor = createMockVendorDocument();
+      const mockUser = {
+        _id: new Types.ObjectId(mockIds.user),
+        uid: 'user-123',
+        email: 'vendor@test.com',
+        isActive: true,
+        cuids: [{ cuid: mockIds.client }],
+        profile: { personalInfo: { firstName: 'John', lastName: 'Doe' } },
+      };
+      const filterOptions = { businessType: 'general_contractor', isActive: true };
+      const paginationOpts = { limit: 20, skip: 20 };
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockVendorDAO.getFilteredVendors.mockResolvedValue({
+        items: [mockVendor],
+        pagination: { total: 30, page: 2, limit: 20, pages: 2 },
+      });
+      (vendorService as any).userDAO.getUserById.mockResolvedValue(mockUser);
+
+      const result = await vendorService.getFilteredVendors(
+        mockIds.client,
+        filterOptions,
+        paginationOpts
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockVendorDAO.getFilteredVendors).toHaveBeenCalledWith(
+        mockIds.client,
+        filterOptions,
+        paginationOpts
+      );
+      expect(result.data.pagination.page).toBe(2);
+    });
+
+    it('should map linked vendor information correctly', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const mockVendor = createMockVendorDocument();
+      const mockUser = {
+        _id: new Types.ObjectId(mockIds.user),
+        uid: 'user-123',
+        email: 'vendor@test.com',
+        isActive: true,
+        cuids: [{ cuid: mockIds.client, linkedVendorUid: 'primary-vendor-123' }],
+        profile: { personalInfo: { firstName: 'John', lastName: 'Doe' } },
+      };
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockVendorDAO.getFilteredVendors.mockResolvedValue({
+        items: [mockVendor],
+        pagination: { total: 1, page: 1, limit: 10, pages: 1 },
+      });
+      (vendorService as any).userDAO.getUserById.mockResolvedValue(mockUser);
+
+      const result = await vendorService.getFilteredVendors(
+        mockIds.client,
+        {},
+        { limit: 10, skip: 0 }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.items[0].vendorInfo.isLinkedAccount).toBe(true);
+      expect(result.data.items[0].vendorInfo.linkedVendorUid).toBe('primary-vendor-123');
+      expect(result.data.items[0].vendorInfo.isPrimaryVendor).toBe(false);
+    });
+
+    it('should handle missing user profile gracefully', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const mockVendor = createMockVendorDocument();
+      const mockUser = {
+        _id: new Types.ObjectId(mockIds.user),
+        uid: 'user-123',
+        email: 'vendor@test.com',
+        isActive: true,
+        cuids: [{ cuid: mockIds.client }],
+        profile: null,
+      };
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockVendorDAO.getFilteredVendors.mockResolvedValue({
+        items: [mockVendor],
+        pagination: { total: 1, page: 1, limit: 10, pages: 1 },
+      });
+      (vendorService as any).userDAO.getUserById.mockResolvedValue(mockUser);
+
+      const result = await vendorService.getFilteredVendors(
+        mockIds.client,
+        {},
+        { limit: 10, skip: 0 }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.items[0].fullName).toBeUndefined();
+      expect(result.data.items[0].displayName).toBe('vendor@test.com');
+    });
+
+    it('should save results to cache after fetching', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const mockVendor = createMockVendorDocument();
+      const mockUser = {
+        _id: new Types.ObjectId(mockIds.user),
+        uid: 'user-123',
+        email: 'vendor@test.com',
+        isActive: true,
+        cuids: [{ cuid: mockIds.client }],
+        profile: { personalInfo: { firstName: 'John', lastName: 'Doe' } },
+      };
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockVendorDAO.getFilteredVendors.mockResolvedValue({
+        items: [mockVendor],
+        pagination: { total: 1, page: 1, limit: 10, pages: 1 },
+      });
+      (vendorService as any).userDAO.getUserById.mockResolvedValue(mockUser);
+
+      await vendorService.getFilteredVendors(mockIds.client, {}, { limit: 10, skip: 0 });
+
+      expect((vendorService as any).vendorCache.saveFilteredVendors).toHaveBeenCalledWith(
+        mockIds.client,
+        expect.any(Array),
+        expect.objectContaining({
+          filters: {},
+          pagination: { limit: 10, skip: 0 },
+        })
+      );
+    });
+
+    it('should handle DAO errors properly', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const error = new Error('Database query failed');
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockVendorDAO.getFilteredVendors.mockRejectedValue(error);
+
+      await expect(
+        vendorService.getFilteredVendors(mockIds.client, {}, { limit: 10, skip: 0 })
+      ).rejects.toThrow('Database query failed');
+    });
+  });
+
+  describe('getVendorInfo - Extended Coverage', () => {
+    it('should throw BadRequestError when cuid is missing', async () => {
+      await expect(vendorService.getVendorInfo('', 'vendor-123')).rejects.toThrow(
+        'Client ID and Vendor UID are required'
+      );
+    });
+
+    it('should throw BadRequestError when vuid is missing', async () => {
+      await expect(vendorService.getVendorInfo(mockIds.client, '')).rejects.toThrow(
+        'Client ID and Vendor UID are required'
+      );
+    });
+
+    it('should throw NotFoundError when client not found', async () => {
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(null);
+
+      await expect(vendorService.getVendorInfo(mockIds.client, 'vendor-123')).rejects.toThrow(
+        'client.errors.notFound'
+      );
+    });
+
+    it('should throw NotFoundError when vendor not connected to client', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const mockVendor = createMockVendorDocument({
+        connectedClients: [
+          {
+            cuid: 'different-client',
+            isConnected: true,
+            primaryAccountHolder: new Types.ObjectId(),
+          },
+        ],
+      });
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockVendorDAO.getVendorByVuid.mockResolvedValue(mockVendor);
+
+      await expect(vendorService.getVendorInfo(mockIds.client, 'vendor-123')).rejects.toThrow(
+        'Vendor not connected to this client'
+      );
+    });
+
+    it('should throw NotFoundError when vendor user account not found', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const mockVendor = createMockVendorDocument();
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockVendorDAO.getVendorByVuid.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getUserById.mockResolvedValue(null);
+
+      await expect(vendorService.getVendorInfo(mockIds.client, 'vendor-123')).rejects.toThrow(
+        'Vendor user account not found'
+      );
+    });
+
+    it('should include linked users for primary vendors', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const mockVendor = createMockVendorDocument();
+      const mockUser = {
+        _id: new Types.ObjectId(mockIds.user),
+        uid: 'user-123',
+        email: 'vendor@test.com',
+        isActive: true,
+        cuids: [{ cuid: mockIds.client, roles: [ROLES.VENDOR] }],
+        profile: { personalInfo: { firstName: 'John', lastName: 'Doe' } },
+      };
+      const linkedUsers = [
+        {
+          uid: 'linked-1',
+          email: 'linked@test.com',
+          isActive: true,
+          profile: { personalInfo: { firstName: 'Jane', lastName: 'Smith' } },
+        },
+      ];
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockVendorDAO.getVendorByVuid.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getUserById.mockResolvedValue(mockUser);
+      (vendorService as any).userDAO.getLinkedVendorUsers.mockResolvedValue({ items: linkedUsers });
+
+      const result = await vendorService.getVendorInfo(mockIds.client, 'vendor-123');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.vendorInfo.linkedUsers).toBeDefined();
+      expect(result.data?.vendorInfo.linkedUsers).toHaveLength(1);
+    });
+
+    it('should not include linked users for sub-contractor vendors', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const mockVendor = createMockVendorDocument();
+      const mockUser = {
+        _id: new Types.ObjectId(mockIds.user),
+        uid: 'user-123',
+        email: 'vendor@test.com',
+        isActive: true,
+        cuids: [{ cuid: mockIds.client, linkedVendorUid: 'primary-vendor-123', roles: [ROLES.VENDOR] }],
+        profile: { personalInfo: { firstName: 'John', lastName: 'Doe' } },
+      };
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockVendorDAO.getVendorByVuid.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getUserById.mockResolvedValue(mockUser);
+
+      const result = await vendorService.getVendorInfo(mockIds.client, 'vendor-123');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.vendorInfo.linkedUsers).toBeUndefined();
+      expect((vendorService as any).userDAO.getLinkedVendorUsers).not.toHaveBeenCalled();
+    });
+
+    it('should handle linked user fetch errors gracefully', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const mockVendor = createMockVendorDocument();
+      const mockUser = {
+        _id: new Types.ObjectId(mockIds.user),
+        uid: 'user-123',
+        email: 'vendor@test.com',
+        isActive: true,
+        cuids: [{ cuid: mockIds.client, roles: [ROLES.VENDOR] }],
+        profile: { personalInfo: { firstName: 'John', lastName: 'Doe' } },
+      };
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockVendorDAO.getVendorByVuid.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getUserById.mockResolvedValue(mockUser);
+      (vendorService as any).userDAO.getLinkedVendorUsers.mockRejectedValue(
+        new Error('Database error')
+      );
+
+      const result = await vendorService.getVendorInfo(mockIds.client, 'vendor-123');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.vendorInfo.linkedUsers).toBeUndefined();
+    });
+
+    it('should handle vendors with minimal data', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      // Create a minimal vendor by omitting optional fields from the mock entirely
+      const mockVendor = {
+        _id: new Types.ObjectId(),
+        vuid: 'vendor-123',
+        connectedClients: [
+          {
+            cuid: mockIds.client,
+            isConnected: true,
+            primaryAccountHolder: new Types.ObjectId(mockIds.user),
+          },
+        ],
+        companyName: 'Minimal Vendor',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as IVendorDocument;
+
+      const mockUser = {
+        _id: new Types.ObjectId(mockIds.user),
+        uid: 'user-123',
+        email: 'vendor@test.com',
+        isActive: true,
+        cuids: [{ cuid: mockIds.client, roles: [ROLES.VENDOR] }],
+        profile: null,
+      };
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockVendorDAO.getVendorByVuid.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getUserById.mockResolvedValue(mockUser);
+      (vendorService as any).userDAO.getLinkedVendorUsers.mockResolvedValue({ items: [] });
+
+      const result = await vendorService.getVendorInfo(mockIds.client, 'vendor-123');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.vendorInfo.insuranceInfo).toMatchObject({
+        provider: '',
+        policyNumber: '',
+        expirationDate: null,
+        coverageAmount: 0,
+      });
+      expect(result.data?.vendorInfo.contactPerson).toMatchObject({
+        name: '',
+        jobTitle: 'Employee',
+        email: '',
+        phone: '',
+      });
+      expect(result.data?.vendorInfo.businessType).toBe('General Contractor');
+    });
+
+    it('should generate vendor tags correctly', async () => {
+      const mockClient = { _id: mockIds.client, cuid: mockIds.client };
+      const mockVendor = createMockVendorDocument({
+        businessType: 'general_contractor',
+        yearsInBusiness: 10,
+        insuranceInfo: {
+          provider: 'Test Insurance',
+          policyNumber: 'POL123',
+          expirationDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+          coverageAmount: 1000000,
+        },
+        servicesOffered: {
+          plumbing: true,
+          electrical: true,
+          hvac: false,
+        },
+      });
+      const mockUser = {
+        _id: new Types.ObjectId(mockIds.user),
+        uid: 'user-123',
+        email: 'vendor@test.com',
+        isActive: true,
+        cuids: [{ cuid: mockIds.client, roles: [ROLES.VENDOR] }],
+        profile: { personalInfo: { firstName: 'John', lastName: 'Doe' } },
+      };
+
+      (vendorService as any).clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+      mockVendorDAO.getVendorByVuid.mockResolvedValue(mockVendor);
+      (vendorService as any).userDAO.getUserById.mockResolvedValue(mockUser);
+      (vendorService as any).userDAO.getLinkedVendorUsers.mockResolvedValue({ items: [] });
+
+      const result = await vendorService.getVendorInfo(mockIds.client, 'vendor-123');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.vendorInfo.tags).toContain('general_contractor');
+      expect(result.data?.vendorInfo.tags).toContain('Insured');
+      expect(result.data?.vendorInfo.tags).toContain('Established');
+      expect(result.data?.vendorInfo.tags).toContain('Primary Vendor');
+      expect(result.data?.vendorInfo.tags).toContain('2 Services');
     });
   });
 });

@@ -74,6 +74,13 @@ describe('Invitation Metadata Transfer', () => {
       off: jest.fn(),
     } as any;
 
+    const mockUser = {
+      _id: mockIds.user,
+      email: 'test@example.com',
+      uid: 'user-uid-123',
+      cuids: [],
+    };
+
     const mockVendorService = {
       getVendorByUserId: jest.fn(),
       updateVendorInfo: jest.fn(),
@@ -84,6 +91,10 @@ describe('Invitation Metadata Transfer', () => {
     const mockUserService = {
       getClientUserInfo: jest.fn(),
       updateUserInfo: jest.fn(),
+      processUserForClientInvitation: jest.fn().mockResolvedValue(mockUser),
+      addExistingUserToClient: jest.fn().mockResolvedValue(mockUser),
+      createUserFromInvitationData: jest.fn().mockResolvedValue(mockUser),
+      buildProfileFromInvitationData: jest.fn().mockReturnValue({}),
     } as any;
 
     const mockMediaUploadService = {
@@ -104,6 +115,7 @@ describe('Invitation Metadata Transfer', () => {
       emitterService,
       profileService,
       vendorService: mockVendorService,
+      userService: mockUserService,
     });
 
     jest.spyOn(profileService, 'initializeRoleInfo');

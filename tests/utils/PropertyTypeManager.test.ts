@@ -1,6 +1,6 @@
 import { CURRENCIES } from '@interfaces/utils.interface';
-import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { OccupancyStatus, IProperty } from '@interfaces/property.interface';
+import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 
 describe('PropertyTypeManager', () => {
   describe('validateRequiredFields', () => {

@@ -4,9 +4,9 @@ import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { UserCache } from '@caching/user.cache';
 import { VendorService } from '@services/index';
-import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
+import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
@@ -27,6 +27,7 @@ interface IConstructor {
   permissionService: PermissionService;
   vendorService: VendorService;
   propertyDAO: PropertyDAO;
+  profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   userCache: UserCache;
   userDAO: UserDAO;
@@ -37,6 +38,7 @@ export class UserService {
   private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
   private readonly propertyDAO: PropertyDAO;
+  private readonly profileDAO: ProfileDAO;
   private readonly userCache: UserCache;
   private readonly permissionService: PermissionService;
   private readonly vendorService: VendorService;
@@ -45,6 +47,7 @@ export class UserService {
     clientDAO,
     userDAO,
     propertyDAO,
+    profileDAO,
     userCache,
     permissionService,
     vendorService,
@@ -53,6 +56,7 @@ export class UserService {
     this.clientDAO = clientDAO;
     this.userDAO = userDAO;
     this.propertyDAO = propertyDAO;
+    this.profileDAO = profileDAO;
     this.userCache = userCache;
     this.permissionService = permissionService;
     this.vendorService = vendorService;
@@ -427,13 +431,6 @@ export class UserService {
         avatar: personalInfo.avatar || '',
         phoneNumber: personalInfo.phoneNumber || contactInfo.phoneNumber || '',
         email: user.email,
-        about:
-          personalInfo.bio ||
-          `${personalInfo.firstName || 'User'} is a valued member of our community.`,
-        contact: {
-          phone: personalInfo.phoneNumber || contactInfo.phoneNumber || '',
-          email: user.email,
-        },
         roles: roles,
         uid: user.uid,
         id: user.id,
@@ -441,9 +438,6 @@ export class UserService {
         isActive: user.isActive,
       },
       status: user.isActive ? 'Active' : 'Inactive',
-      properties: [],
-      tasks: [],
-      documents: [],
       userType,
       roles,
     };
@@ -496,7 +490,7 @@ export class UserService {
         break;
 
       case 'tenant':
-        response.tenantInfo = await this.buildTenantInfo();
+        response.tenantInfo = await this.buildTenantInfo(user, profile, clientId);
         break;
     }
 
@@ -662,37 +656,48 @@ export class UserService {
     };
   }
 
-  private async buildTenantInfo(): Promise<ITenantDetailInfo> {
-    // Placeholder implementation for tenant info
-    // This should be expanded when tenant model is fully implemented
+  private async buildTenantInfo(
+    user: any,
+    profile: any,
+    clientId: string
+  ): Promise<ITenantDetailInfo> {
+    const tenantInfo = profile.tenantInfo || {};
+
+    // Filter client-specific arrays by current client's cuid
+    // This ensures we only return data relevant to the requesting client
+    const filteredEmployerInfo = (tenantInfo.employerInfo || []).filter(
+      (employer: any) => employer.cuid === clientId
+    );
+
+    const filteredActiveLeases = (tenantInfo.activeLeases || []).filter(
+      (lease: any) => lease.cuid === clientId
+    );
+
+    const filteredBackgroundChecks = (tenantInfo.backgroundChecks || []).filter(
+      (check: any) => check.cuid === clientId
+    );
+
+    // ITenantDetailInfo extends TenantInfo, so return TenantInfo fields directly
     return {
-      leaseInfo: {
-        status: 'Active',
-        startDate: new Date(),
-        endDate: null,
-        monthlyRent: 0,
-      },
-      unit: {
-        propertyName: '',
-        unitNumber: '',
-        address: '',
-      },
-      rentStatus: 'Current',
-      paymentHistory: [],
-      maintenanceRequests: [],
-      documents: [],
+      // Client-specific data (filtered)
+      employerInfo: filteredEmployerInfo,
+      activeLeases: filteredActiveLeases,
+      backgroundChecks: filteredBackgroundChecks,
+
+      // Shared data (not filtered)
+      rentalReferences: tenantInfo.rentalReferences || [],
+      pets: tenantInfo.pets || [],
+      emergencyContact: tenantInfo.emergencyContact || undefined,
     };
   }
 
   private generateVendorTags(vendorInfo: any, clientConnection: any): string[] {
     const tags = [];
 
-    // Business type
     if (vendorInfo.businessType) {
       tags.push(vendorInfo.businessType);
     }
 
-    // Insurance status
     if (vendorInfo.insuranceInfo?.expirationDate) {
       const expirationDate = new Date(vendorInfo.insuranceInfo.expirationDate);
       if (expirationDate > new Date()) {
@@ -700,19 +705,16 @@ export class UserService {
       }
     }
 
-    // Years in business
     if (vendorInfo.yearsInBusiness > 5) {
       tags.push('Established');
     }
 
-    // Linked account
     if (clientConnection.linkedVendorUid) {
       tags.push('Sub-contractor');
     } else {
       tags.push('Primary Vendor');
     }
 
-    // Service specialties
     const services = vendorInfo.servicesOffered || {};
     const activeServices = Object.keys(services).filter((key) => services[key]);
     if (activeServices.length > 0) {
@@ -828,6 +830,117 @@ export class UserService {
     }
 
     return tags;
+  }
+
+  /**
+   * Handle existing user by adding them to the client (moved from InvitationService)
+   */
+  async addExistingUserToClient(
+    existingUser: any,
+    role: IUserRoleType,
+    client: { id: string; cuid: string; displayName: string },
+    linkedVendorUid?: string,
+    session?: any
+  ): Promise<any> {
+    return await this.userDAO.addUserToClient(
+      existingUser._id.toString(),
+      role as IUserRoleType,
+      {
+        id: client.id.toString(),
+        cuid: client.cuid,
+        clientDisplayName: client.displayName,
+      },
+      linkedVendorUid,
+      session
+    );
+  }
+
+  /**
+   * Create new user from invitation data (moved from InvitationService)
+   */
+  async createUserFromInvitationData(
+    invitationData: any,
+    userData: any,
+    client: { id: string; cuid: string; displayName: string },
+    linkedVendorUid?: string,
+    session?: any
+  ): Promise<any> {
+    const user = await this.userDAO.createUserFromInvitation(
+      { cuid: client.cuid, displayName: client.displayName },
+      invitationData,
+      userData,
+      linkedVendorUid,
+      session
+    );
+
+    if (!user) {
+      throw new BadRequestError({ message: 'Error creating user account.' });
+    }
+
+    const profileData = this.buildProfileFromInvitationData(user, invitationData, userData);
+    await this.profileDAO.createUserProfile(user._id, profileData, session);
+
+    return user;
+  }
+
+  /**
+   * Build profile data from invitation and user data (moved from InvitationService)
+   */
+  buildProfileFromInvitationData(user: any, invitation: any, userData: any): any {
+    return {
+      user: user._id,
+      puid: user.uid,
+      personalInfo: {
+        firstName: invitation.personalInfo.firstName,
+        lastName: invitation.personalInfo.lastName,
+        displayName: invitation.inviteeFullName,
+        phoneNumber: invitation.personalInfo.phoneNumber || '',
+        location: userData.location || 'Unknown',
+      },
+      lang: userData.lang || 'en',
+      timeZone: userData.timeZone || 'UTC',
+      policies: {
+        tos: {
+          accepted: userData.termsAccepted || false,
+          acceptedOn: userData.termsAccepted ? new Date() : null,
+        },
+        marketing: {
+          accepted: userData.newsletterOptIn || false,
+          acceptedOn: userData.newsletterOptIn ? new Date() : null,
+        },
+      },
+    };
+  }
+
+  /**
+   * Handle user creation or linking based on existence (moved from InvitationService)
+   */
+  async processUserForClientInvitation(
+    invitation: any,
+    invitationData: any,
+    client: { id: string; cuid: string; displayName: string },
+    linkedVendorUid?: string,
+    session?: any
+  ): Promise<any> {
+    const existingUser = await this.userDAO.getActiveUserByEmail(invitation.inviteeEmail);
+
+    if (existingUser) {
+      return await this.addExistingUserToClient(
+        existingUser,
+        invitation.role as IUserRoleType,
+        client,
+        linkedVendorUid,
+        session
+      );
+    } else {
+      return await this.createUserFromInvitationData(
+        invitation,
+        invitationData,
+        client,
+        linkedVendorUid,
+        session
+      );
+    }
   }
 
   /**
@@ -1000,6 +1113,783 @@ export class UserService {
       };
     } catch (error) {
       this.log.error(`Error updating user info for ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get tenants by client with filtering and pagination
+   * @param cuid - Client unique identifier
+   * @param filters - Optional tenant-specific filters
+   * @param pagination - Optional pagination parameters
+   * @param currentUser - Current user context for permissions
+   * @returns Promise resolving to paginated tenant users with tenant-specific data
+   */
+  async getTenantsByClient(
+    cuid: string,
+    filters?: import('@interfaces/user.interface').ITenantFilterOptions,
+    pagination?: IFindOptions,
+    currentUser?: ICurrentUser
+  ): Promise<ISuccessReturnData<import('@interfaces/user.interface').IPaginatedResult<any[]>>> {
+    try {
+      if (!cuid) {
+        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+      }
+
+      // Validate client exists
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      // Optional permission check if currentUser is provided
+      if (currentUser && currentUser.client.cuid !== cuid) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'view',
+            resource: 'tenants',
+          }),
+        });
+      }
+
+      // Get tenants from DAO
+      const result = await this.userDAO.getTenantsByClient(cuid, filters, pagination);
+
+      // Transform the result to include additional tenant-specific data
+      const enrichedTenants = await Promise.all(
+        result.items.map(async (tenant: any) => {
+          const personalInfo = tenant.profile?.personalInfo || {};
+          const tenantInfo = tenant.profile?.tenantInfo || {};
+
+          return {
+            uid: tenant.uid,
+            email: tenant.email,
+            isActive: tenant.isActive,
+            fullName: `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim(),
+            displayName:
+              personalInfo.displayName ||
+              `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim() ||
+              tenant.email,
+            phoneNumber: personalInfo.phoneNumber,
+            avatar: personalInfo.avatar,
+            tenantInfo: {
+              activeLease: tenantInfo.activeLease,
+              employerInfo: tenantInfo.employerInfo,
+              rentalReferences: tenantInfo.rentalReferences,
+              pets: tenantInfo.pets,
+              emergencyContact: tenantInfo.emergencyContact,
+              backgroundCheckStatus: tenantInfo.backgroundCheckStatus,
+            },
+            createdAt: tenant.createdAt,
+            updatedAt: tenant.updatedAt,
+          };
+        })
+      );
+
+      const enrichedResult = {
+        items: enrichedTenants,
+        pagination: result.pagination,
+      };
+
+      this.log.info('Tenants retrieved', { cuid, count: enrichedTenants.length });
+
+      return {
+        success: true,
+        data: enrichedResult,
+        message: t('client.success.tenantsRetrieved'),
+      };
+    } catch (error) {
+      this.log.error('Error getting tenants by client:', {
+        cuid,
+        filters,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get tenant statistics for a client
+   * @param cuid - Client unique identifier
+   * @param filters - Optional tenant filters
+   * @param currentUser - Current user context for permissions
+   * @returns Promise resolving to tenant statistics
+   */
+  async getTenantStats(
+    cuid: string,
+    filters?: import('@interfaces/user.interface').ITenantFilterOptions,
+    currentUser?: ICurrentUser
+  ): Promise<ISuccessReturnData<import('@interfaces/user.interface').ITenantStats>> {
+    try {
+      if (!cuid) {
+        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+      }
+
+      // Validate client exists
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      // Optional permission check if currentUser is provided
+      if (currentUser && currentUser.client.cuid !== cuid) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'view',
+            resource: 'tenant_stats',
+          }),
+        });
+      }
+
+      // Get stats from DAO
+      const stats = await this.userDAO.getTenantStats(cuid, filters);
+
+      // Enhance stats with property names if we have property IDs
+      if (stats.distributionByProperty?.length > 0) {
+        const enhancedDistribution = await Promise.all(
+          stats.distributionByProperty.map(async (item) => {
+            try {
+              const property = await this.propertyDAO.findById(item.propertyId);
+              return {
+                ...item,
+                propertyName: property?.name || item.propertyName || `Property ${item.propertyId}`,
+              };
+            } catch (error) {
+              this.log.warn(`Failed to get property name for ${item.propertyId}:`, error);
+              return item;
+            }
+          })
+        );
+        stats.distributionByProperty = enhancedDistribution;
+      }
+
+      this.log.info('Tenant stats retrieved', { cuid, total: stats.total });
+
+      return {
+        success: true,
+        data: stats,
+        message: t('client.success.tenantStatsRetrieved'),
+      };
+    } catch (error) {
+      this.log.error('Error getting tenant stats:', {
+        cuid,
+        filters,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
+  async getClientTenantDetails(
+    cuid: string,
+    tenantUid: string,
+    currentUser?: ICurrentUser,
+    include?: string[]
+  ): Promise<ISuccessReturnData<import('@interfaces/user.interface').IClientTenantDetails>> {
+    try {
+      if (!cuid || !tenantUid) {
+        throw new BadRequestError({
+          message: t('client.errors.missingParameters'),
+        });
+      }
+
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      if (currentUser && currentUser.client.cuid !== cuid) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'view',
+            resource: 'tenant_details',
+          }),
+        });
+      }
+
+      const rawTenantDetails = await this.userDAO.getClientTenantDetails(cuid, tenantUid, include);
+
+      if (!rawTenantDetails) {
+        throw new NotFoundError({
+          message: t('tenant.errors.notFound'),
+        });
+      }
+
+      const transformedResponse: import('@interfaces/user.interface').IClientTenantDetails = {
+        profile: {
+          firstName: (rawTenantDetails as any).firstName || '',
+          lastName: (rawTenantDetails as any).lastName || '',
+          fullName: (rawTenantDetails as any).fullName || '',
+          avatar: (rawTenantDetails as any).avatar?.url || (rawTenantDetails as any).avatar || '',
+          phoneNumber: (rawTenantDetails as any).phoneNumber || '',
+          email: (rawTenantDetails as any).email || '',
+          roles: ['tenant'],
+          uid: (rawTenantDetails as any).uid || '',
+          id: (rawTenantDetails as any)._id?.toString() || '',
+          isActive: (rawTenantDetails as any).isActive ?? true,
+          userType: 'tenant' as const,
+        },
+        status: (rawTenantDetails as any).isActive ? ('Active' as const) : ('Inactive' as const),
+        userType: 'tenant' as const,
+        roles: ['tenant'],
+        tenantInfo: rawTenantDetails.tenantInfo,
+        tenantMetrics: rawTenantDetails.tenantMetrics,
+        joinedDate: (rawTenantDetails as any).joinedDate || (rawTenantDetails as any).createdAt,
+      };
+
+      this.log.info('Tenant details retrieved', {
+        cuid,
+        tenantUid,
+        hasActiveLeases: !!transformedResponse.tenantInfo.activeLeases?.length,
+      });
+
+      return {
+        success: true,
+        data: transformedResponse,
+        message: t('tenant.success.detailsRetrieved'),
+      };
+    } catch (error) {
+      this.log.error('Error getting client tenant details:', {
+        cuid,
+        tenantUid,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get tenant user information (general user view)
+   * Returns the same user detail structure as employees/vendors but validates tenant role
+   * @param cuid - Client unique identifier
+   * @param uid - Tenant user unique identifier
+   * @param context - Request context
+   * @returns Promise resolving to tenant user information
+   */
+  async getTenantUserInfo(
+    cuid: string,
+    uid: string,
+    context: IRequestContext
+  ): Promise<ISuccessReturnData<any>> {
+    try {
+      if (!cuid || !uid) {
+        throw new BadRequestError({
+          message: t('client.errors.missingParameters'),
+        });
+      }
+
+      const currentUser = context.currentuser!;
+      const result = await this.getClientUserInfo(cuid, uid, currentUser);
+
+      // If the user is not a tenant, throw an error
+      if (result.data.profile?.userType !== 'tenant') {
+        throw new BadRequestError({
+          message: t('tenant.errors.notTenant'),
+        });
+      }
+
+      return result;
+    } catch (error) {
+      this.log.error('Error getting client tenant info:', {
+        cuid,
+        uid,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get tenant statistics wrapper method
+   * @param cuid - Client unique identifier
+   * @param currentUser - Current user context
+   * @returns Promise resolving to tenant statistics
+   */
+  async getTenantsStats(
+    cuid: string,
+    currentUser?: ICurrentUser
+  ): Promise<ISuccessReturnData<any>> {
+    try {
+      // Leverage the existing getTenantStats method
+      return await this.getTenantStats(cuid, undefined, currentUser);
+    } catch (error) {
+      this.log.error('Error getting tenants stats:', {
+        cuid,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Update tenant profile information
+   * @param cuid - Client unique identifier
+   * @param uid - Tenant user unique identifier
+   * @param updateData - Data to update
+   * @param context - Request context
+   * @returns Promise resolving to success response
+   */
+  async updateTenantProfile(
+    cuid: string,
+    uid: string,
+    updateData: any,
+    context: IRequestContext
+  ): Promise<ISuccessReturnData<any>> {
+    try {
+      if (!cuid || !uid) {
+        throw new BadRequestError({
+          message: t('client.errors.missingParameters'),
+        });
+      }
+
+      const currentUser = context.currentuser!;
+
+      // Validate user exists and is a tenant
+      const user = await this.userDAO.getUserByUId(uid, {
+        populate: [{ path: 'profile' }],
+      });
+
+      if (!user) {
+        throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      }
+
+      // Check if user is connected to this client
+      const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
+      if (!clientConnection || !clientConnection.isConnected) {
+        throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      }
+
+      // Verify user is a tenant
+      if (!clientConnection.roles.includes('tenant')) {
+        throw new BadRequestError({
+          message: t('tenant.errors.notTenant'),
+        });
+      }
+
+      // Check permissions
+      if (!this.permissionService.canUserAccessUser(currentUser, user as any)) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'update',
+            resource: 'tenant',
+          }),
+        });
+      }
+
+      // Update profile data
+      const profileUpdateFields: Record<string, any> = {};
+
+      if (updateData.personalInfo) {
+        for (const [key, value] of Object.entries(updateData.personalInfo)) {
+          profileUpdateFields[`personalInfo.${key}`] = value;
+        }
+      }
+
+      if (updateData.contactInfo) {
+        for (const [key, value] of Object.entries(updateData.contactInfo)) {
+          profileUpdateFields[`contactInfo.${key}`] = value;
+        }
+      }
+
+      if (updateData.tenantInfo) {
+        // Only update non-lease fields for now
+        const { activeLease, ...allowedTenantInfo } = updateData.tenantInfo;
+        for (const [key, value] of Object.entries(allowedTenantInfo)) {
+          profileUpdateFields[`tenantInfo.${key}`] = value;
+        }
+      }
+
+      if (Object.keys(profileUpdateFields).length > 0 && user.profile) {
+        await this.profileDAO.updateById(user.profile._id.toString(), {
+          $set: profileUpdateFields,
+        });
+      }
+
+      // Update user email if provided
+      if (updateData.email && updateData.email !== user.email) {
+        // Check if email is already in use
+        const emailExists = await this.userDAO.findFirst({ email: updateData.email });
+        if (emailExists && emailExists.uid !== uid) {
+          throw new BadRequestError({ message: t('client.errors.emailExists') });
+        }
+        await this.userDAO.updateById(user._id.toString(), { email: updateData.email });
+      }
+
+      // Invalidate caches
+      await this.userCache.invalidateUserDetail(cuid, uid);
+      await this.userCache.invalidateUserLists(cuid);
+
+      this.log.info('Tenant profile updated', { cuid, uid });
+
+      return {
+        success: true,
+        data: { uid },
+        message: t('tenant.success.profileUpdated'),
+      };
+    } catch (error) {
+      this.log.error('Error updating tenant profile:', {
+        cuid,
+        uid,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Archive (soft delete) a user with comprehensive cleanup
+   * Handles:
+   * - Property management reassignment to supervisor
+   * - Primary vendor account cleanup (archives linked vendor accounts)
+   * - User disconnection from client
+   * - Cache invalidation
+   *
+   * TODO: When lease/task/maintenance features are added:
+   * - Reassign active leases
+   * - Reassign or complete active tasks
+   * - Reassign active maintenance requests
+   *
+   * @param cuid - Client unique identifier
+   * @param uid - User unique identifier
+   * @param currentUser - Current user context
+   * @returns Promise resolving to success response with archival summary
+   */
+  async archiveUser(
+    cuid: string,
+    uid: string,
+    currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData<any>> {
+    try {
+      if (!cuid || !uid) {
+        throw new BadRequestError({
+          message: t('client.errors.missingParameters'),
+        });
+      }
+
+      // Get user with full profile
+      const user = await this.userDAO.getUserByUId(uid, {
+        populate: [{ path: 'profile' }],
+      });
+
+      if (!user) {
+        throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      }
+
+      // Check permissions
+      if (!this.permissionService.canUserAccessUser(currentUser, user as any)) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'delete',
+            resource: 'user',
+          }),
+        });
+      }
+
+      // Prevent archiving self
+      if (uid === currentUser.uid) {
+        throw new BadRequestError({
+          message: t('client.errors.cannotArchiveSelf'),
+        });
+      }
+
+      const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
+      if (!clientConnection) {
+        throw new NotFoundError({ message: t('client.errors.userNotFoundInClient') });
+      }
+
+      const roles: string[] = clientConnection.roles || [];
+      const archivalSummary: any = {
+        uid,
+        archivedAt: new Date(),
+        archivedBy: currentUser.uid,
+        actions: [],
+      };
+
+      // 1. Handle Property Management Reassignment
+      const managedProperties = await this.propertyDAO.getPropertiesByClientId(
+        cuid,
+        { managedBy: user._id.toString(), deletedAt: null },
+        { limit: 1000 }
+      );
+
+      if (managedProperties.items.length > 0) {
+        this.log.info('User manages properties, attempting reassignment', {
+          uid,
+          propertyCount: managedProperties.items.length,
+        });
+
+        // Get user's supervisor
+        const supervisorId = await this.getUserSupervisor(user._id.toString(), cuid);
+
+        if (supervisorId) {
+          // Reassign all properties to supervisor
+          for (const property of managedProperties.items) {
+            await this.propertyDAO.updateById(property._id.toString(), {
+              managedBy: new Types.ObjectId(supervisorId),
+            });
+          }
+
+          archivalSummary.actions.push({
+            action: 'properties_reassigned',
+            count: managedProperties.items.length,
+            reassignedTo: supervisorId,
+          });
+
+          this.log.info('Properties reassigned to supervisor', {
+            uid,
+            supervisorId,
+            propertyCount: managedProperties.items.length,
+          });
+        } else {
+          // No supervisor found - properties need manual reassignment
+          this.log.warn('No supervisor found for user with managed properties', {
+            uid,
+            propertyCount: managedProperties.items.length,
+          });
+
+          archivalSummary.actions.push({
+            action: 'properties_require_manual_reassignment',
+            count: managedProperties.items.length,
+            warning: 'No supervisor found - properties need manual reassignment',
+          });
+        }
+      }
+
+      // 2. Handle Primary Vendor Account Cleanup
+      if (roles.includes(IUserRole.VENDOR as string) && !clientConnection.linkedVendorUid) {
+        // This is a primary vendor - need to archive linked accounts
+        try {
+          const vendor = await this.vendorService.getVendorByUserId(user._id.toString());
+
+          if (vendor && vendor.vuid) {
+            // Get all linked vendor users
+            const linkedUsers = await this.userDAO.getLinkedVendorUsers(user._id.toString(), cuid);
+
+            if (linkedUsers.items.length > 0) {
+              this.log.info('Archiving linked vendor accounts', {
+                uid,
+                vendorId: vendor.vuid,
+                linkedAccountCount: linkedUsers.items.length,
+              });
+
+              // Archive all linked vendor accounts
+              for (const linkedUser of linkedUsers.items) {
+                await this.userDAO.updateById(linkedUser._id.toString(), {
+                  deletedAt: new Date(),
+                  isActive: false,
+                });
+
+                // Disconnect from client
+                await this.userDAO.updateById(
+                  linkedUser._id.toString(),
+                  {
+                    $set: { 'cuids.$[elem].isConnected': false },
+                  },
+                  {
+                    arrayFilters: [{ 'elem.cuid': cuid }],
+                  } as any
+                );
+
+                // Invalidate cache for linked user
+                await this.userCache.invalidateUserDetail(cuid, linkedUser.uid);
+              }
+
+              archivalSummary.actions.push({
+                action: 'linked_vendor_accounts_archived',
+                count: linkedUsers.items.length,
+                vendorId: vendor.vuid,
+              });
+            }
+
+            // Note: Vendor entity itself is not deleted, just marked inactive via user deletion
+            archivalSummary.actions.push({
+              action: 'primary_vendor_archived',
+              vendorId: vendor.vuid,
+            });
+          }
+        } catch (error) {
+          this.log.error('Error handling vendor account cleanup:', {
+            uid,
+            error: error.message || error,
+          });
+          // Continue with user archival even if vendor cleanup fails
+        }
+      }
+
+      // 3. Soft delete the user
+      await this.userDAO.updateById(user._id.toString(), {
+        deletedAt: new Date(),
+        isActive: false,
+      });
+
+      // 4. Disconnect user from this client
+      await this.userDAO.updateById(
+        user._id.toString(),
+        {
+          $set: { 'cuids.$[elem].isConnected': false },
+        },
+        {
+          arrayFilters: [{ 'elem.cuid': cuid }],
+        } as any
+      );
+
+      // 5. Invalidate caches
+      await this.userCache.invalidateUserDetail(cuid, uid);
+      await this.userCache.invalidateUserLists(cuid);
+
+      this.log.info('User archived successfully', {
+        cuid,
+        uid,
+        archivedBy: currentUser.uid,
+        summary: archivalSummary,
+      });
+
+      return {
+        success: true,
+        data: archivalSummary,
+        message: t('client.success.userArchived'),
+      };
+    } catch (error) {
+      this.log.error('Error archiving user:', {
+        cuid,
+        uid,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Deactivate (soft delete) a tenant
+   * Handles:
+   * - Soft delete user with deletedAt timestamp
+   * - Mark user as inactive
+   * - Disconnect tenant from client
+   * - Cache invalidation
+   *
+   * TODO: When lease/maintenance features are added:
+   * - Check for active leases (prevent deactivation if active)
+   * - Check for pending maintenance requests
+   * - Check for pending service requests
+   *
+   * @param cuid - Client unique identifier
+   * @param uid - User unique identifier (tenant)
+   * @param context - Request context with current user
+   * @returns Promise resolving to success response with deactivation summary
+   */
+  async deactivateTenant(
+    cuid: string,
+    uid: string,
+    context: IRequestContext
+  ): Promise<ISuccessReturnData<any>> {
+    try {
+      if (!cuid || !uid) {
+        throw new BadRequestError({
+          message: t('client.errors.missingParameters'),
+        });
+      }
+
+      const user = await this.userDAO.getUserByUId(uid, {
+        populate: [{ path: 'profile' }],
+      });
+
+      if (!user) {
+        throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      }
+
+      const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
+      if (!clientConnection) {
+        throw new NotFoundError({ message: t('client.errors.userNotFoundInClient') });
+      }
+
+      const roles: string[] = clientConnection.roles || [];
+
+      if (!roles.includes('tenant')) {
+        throw new BadRequestError({
+          message: 'User is not a tenant',
+        });
+      }
+
+      if (!this.permissionService.canUserAccessUser(context.currentuser, user as any)) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'deactivate',
+            resource: 'tenant',
+          }),
+        });
+      }
+
+      if (uid === context.currentuser.uid) {
+        throw new BadRequestError({
+          message: 'Cannot deactivate yourself',
+        });
+      }
+
+      const deactivationSummary: any = {
+        uid,
+        deactivatedAt: new Date(),
+        deactivatedBy: context.currentuser.uid,
+        actions: [],
+      };
+
+      // TODO: Check for active leases when lease feature is implemented
+      // const activeLeases = await this.leaseDAO.getActiveLeasesByTenant(uid);
+      // if (activeLeases.length > 0) {
+      //   throw new BadRequestError({
+      //     message: 'Cannot deactivate tenant with active leases',
+      //   });
+      // }
+
+      // 1. Soft delete the user
+      await this.userDAO.updateById(user._id.toString(), {
+        deletedAt: new Date(),
+        isActive: false,
+      });
+
+      deactivationSummary.actions.push({
+        action: 'user_soft_deleted',
+        timestamp: new Date(),
+      });
+
+      // 2. Disconnect tenant from this client
+      await this.userDAO.updateById(
+        user._id.toString(),
+        {
+          $set: { 'cuids.$[elem].isConnected': false },
+        },
+        {
+          arrayFilters: [{ 'elem.cuid': cuid }],
+        } as any
+      );
+
+      deactivationSummary.actions.push({
+        action: 'tenant_disconnected_from_client',
+        cuid,
+        timestamp: new Date(),
+      });
+
+      // 3. Invalidate caches
+      await this.userCache.invalidateUserDetail(cuid, uid);
+      await this.userCache.invalidateUserLists(cuid);
+
+      this.log.info('Tenant deactivated successfully', {
+        cuid,
+        uid,
+        deactivatedBy: context.currentuser.uid,
+        summary: deactivationSummary,
+      });
+
+      return {
+        success: true,
+        data: deactivationSummary,
+        message: 'Tenant deactivated successfully',
+      };
+    } catch (error) {
+      this.log.error('Error deactivating tenant:', {
+        cuid,
+        uid,
+        error: error.message || error,
+      });
       throw error;
     }
   }

@@ -1,6 +1,6 @@
-import { AuthTokenService } from '@services/auth/authToken.service';
-import { Request } from 'express';
 import jwt from 'jsonwebtoken';
+import { Request } from 'express';
+import { AuthTokenService } from '@services/auth/authToken.service';
 
 // Mock jwt module
 jest.mock('jsonwebtoken');
@@ -38,12 +38,10 @@ jest.mock('@utils/index', () => ({
 
 describe('AuthTokenService', () => {
   let authTokenService: AuthTokenService;
-  let mockLogger: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
     authTokenService = new AuthTokenService();
-    mockLogger = authTokenService['logger'];
   });
 
   describe('createJwtTokens', () => {

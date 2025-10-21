@@ -112,6 +112,19 @@ export const FilteredUsersQuerySchema = z.object({
   sort: z.enum(['asc', 'desc']).optional(),
 });
 
+export const TenantDetailsIncludeQuerySchema = z.object({
+  include: z
+    .union([
+      z.enum(['lease', 'payments', 'maintenance', 'documents', 'notes', 'all']),
+      z.array(z.enum(['lease', 'payments', 'maintenance', 'documents', 'notes', 'all'])),
+      z
+        .string()
+        .transform((val) => val.split(',').map((item) => item.trim()))
+        .pipe(z.array(z.enum(['lease', 'payments', 'maintenance', 'documents', 'notes', 'all']))),
+    ])
+    .optional(),
+});
+
 export const UpdateClientDetailsSchema = z
   .object({
     identification: ClientIdentificationSchema.partial().optional(),
@@ -150,3 +163,77 @@ export const UpdateClientDetailsSchema = z
       path: ['companyProfile', 'companyEmail'],
     }
   );
+
+export const UpdateTenantProfileSchema = z.object({
+  personalInfo: z
+    .object({
+      firstName: z.string().trim().min(1, 'First name is required').optional(),
+      lastName: z.string().trim().min(1, 'Last name is required').optional(),
+      email: z.string().email('Invalid email format').optional(),
+      phoneNumber: z
+        .string()
+        .trim()
+        .regex(/^\+?[\d\s\-()]+$/, 'Invalid phone number format')
+        .optional(),
+    })
+    .optional(),
+  tenantInfo: z
+    .object({
+      employerInfo: z
+        .array(
+          z.object({
+            companyName: z.string().trim().min(1, 'Company name is required'),
+            position: z.string().trim().min(1, 'Position is required'),
+            monthlyIncome: z.number().min(0, 'Monthly income must be non-negative'),
+            contactPerson: z.string().trim().optional(),
+            companyAddress: z.string().trim().optional(),
+            contactEmail: z.string().email('Invalid email format').optional(),
+          })
+        )
+        .optional(),
+      rentalReferences: z
+        .array(
+          z.object({
+            landlordName: z.string().trim().min(1, 'Landlord name is required'),
+            landlordEmail: z.string().email('Invalid email format').optional(),
+            landlordContact: z.string().trim().optional(),
+            durationMonths: z.number().int().min(0, 'Duration must be non-negative'),
+            reasonForLeaving: z.string().trim().optional(),
+            propertyAddress: z.string().trim().optional(),
+          })
+        )
+        .optional(),
+      pets: z
+        .array(
+          z.object({
+            type: z.string().trim().min(1, 'Pet type is required'),
+            breed: z.string().trim().optional(),
+            isServiceAnimal: z.boolean().default(false),
+          })
+        )
+        .optional(),
+      emergencyContact: z
+        .object({
+          name: z.string().trim().min(1, 'Emergency contact name is required').optional(),
+          phone: z
+            .string()
+            .trim()
+            .regex(/^\+?[\d\s\-()]+$/, 'Invalid phone number format')
+            .optional(),
+          relationship: z.string().trim().optional(),
+          email: z.string().email('Invalid email format').optional(),
+        })
+        .optional(),
+      backgroundChecks: z
+        .array(
+          z.object({
+            status: z.string().trim(),
+            checkedDate: z.string().datetime('Invalid date format'),
+            expiryDate: z.string().datetime('Invalid date format').optional(),
+            notes: z.string().trim().optional(),
+          })
+        )
+        .optional(),
+    })
+    .optional(),
+});

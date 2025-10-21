@@ -1,4 +1,4 @@
-import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
+import { ROLES } from '@shared/constants/roles.constants';
 import { ClientService } from '@services/client/client.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {

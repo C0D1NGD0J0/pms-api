@@ -1,6 +1,7 @@
 import { ICurrentUser } from '@interfaces/user.interface';
 import { PermissionAction } from '@interfaces/utils.interface';
 import { IVendorDocument } from '@interfaces/vendor.interface';
+import { INotification } from '@interfaces/notification.interface';
 
 export interface IResourceAccessConfig {
   [action: string]: {
@@ -112,6 +113,66 @@ export class UserAccessStrategy extends ResourceAccessStrategy {
   }
 }
 
+// Invitation resource strategy
+export class InvitationAccessStrategy extends ResourceAccessStrategy {
+  constructor() {
+    super({
+      [PermissionAction.CREATE]: {
+        admin: () => true,
+        manager: () => true,
+        default: () => false,
+      },
+      [PermissionAction.READ]: {
+        admin: () => true,
+        manager: () => true,
+        default: (user, invitation) => {
+          // Users can read invitations sent to them
+          return invitation.email === user.email;
+        },
+      },
+      [PermissionAction.SEND]: {
+        admin: () => true,
+        manager: () => true,
+        default: () => false,
+      },
+      [PermissionAction.LIST]: {
+        admin: () => true,
+        manager: () => true,
+        default: () => false,
+      },
+      [PermissionAction.STATS]: {
+        admin: () => true,
+        manager: () => true,
+        default: () => false,
+      },
+      [PermissionAction.UPDATE]: {
+        admin: () => true,
+        manager: (user, invitation) => {
+          // Managers can update invitations they created
+          return invitation.createdBy?.toString() === user.sub;
+        },
+        default: () => false,
+      },
+      [PermissionAction.REVOKE]: {
+        admin: () => true,
+        manager: (user, invitation) => {
+          // Managers can revoke invitations they created
+          return invitation.createdBy?.toString() === user.sub;
+        },
+        default: () => false,
+      },
+      [PermissionAction.RESEND]: {
+        admin: () => true,
+        manager: (user, invitation) => {
+          // Managers can resend invitations they created
+          return invitation.createdBy?.toString() === user.sub;
+        },
+        default: () => false,
+      },
+    });
+  }
+}
+
 // Property resource strategy
 export class PropertyAccessStrategy extends ResourceAccessStrategy {
   constructor() {
@@ -199,37 +260,125 @@ export class MaintenanceAccessStrategy extends ResourceAccessStrategy {
   }
 }
 
-// Invitation resource strategy
-export class InvitationAccessStrategy extends ResourceAccessStrategy {
+// Notification resource strategy
+export class NotificationAccessStrategy extends ResourceAccessStrategy {
   constructor() {
     super({
+      [PermissionAction.READ]: {
+        // Users can read their own notifications
+        default: (user, notification: INotification) => {
+          return notification.recipient?.toString() === user.sub;
+        },
+      },
+      [PermissionAction.LIST]: {
+        // Users can list their own notifications
+        default: () => true,
+      },
       [PermissionAction.CREATE]: {
         admin: () => true,
         manager: () => true,
         default: () => false,
       },
+      [PermissionAction.SEND]: {
+        admin: () => true,
+        manager: () => true,
+        default: () => false,
+      },
+      [PermissionAction.UPDATE]: {
+        // Users can mark their own notifications as read
+        default: (user, notification: INotification) => {
+          return notification.recipient?.toString() === user.sub;
+        },
+      },
+      [PermissionAction.DELETE]: {
+        admin: () => true,
+        default: (user, notification: INotification) => {
+          // Users can delete their own notifications
+          return notification.recipient?.toString() === user.sub;
+        },
+      },
+    });
+  }
+}
+
+// Report resource strategy
+export class ReportAccessStrategy extends ResourceAccessStrategy {
+  constructor() {
+    super({
       [PermissionAction.READ]: {
         admin: () => true,
         manager: () => true,
-        default: (user, invitation) => {
-          // Users can read invitations sent to them
-          return invitation.email === user.email;
-        },
-      },
-      [PermissionAction.REVOKE]: {
-        admin: () => true,
-        manager: (user, invitation) => {
-          // Managers can revoke invitations they created
-          return invitation.createdBy?.toString() === user.sub;
+        staff: () => true,
+        tenant: (user, report) => {
+          // Tenants can read reports they created or that are about them
+          return report.createdBy?.toString() === user.sub;
         },
         default: () => false,
       },
-      [PermissionAction.RESEND]: {
+      [PermissionAction.LIST]: {
         admin: () => true,
-        manager: (user, invitation) => {
-          // Managers can resend invitations they created
-          return invitation.createdBy?.toString() === user.sub;
+        manager: () => true,
+        staff: () => true,
+        default: () => false,
+      },
+      [PermissionAction.CREATE]: {
+        admin: () => true,
+        manager: () => true,
+        staff: () => true,
+        default: () => false,
+      },
+      [PermissionAction.UPDATE]: {
+        admin: () => true,
+        manager: (user, report) => {
+          // Managers can update reports they created
+          return report.createdBy?.toString() === user.sub;
         },
+        default: () => false,
+      },
+      [PermissionAction.DELETE]: {
+        admin: () => true,
+        default: () => false,
+      },
+    });
+  }
+}
+
+// Tenant resource strategy
+export class TenantAccessStrategy extends ResourceAccessStrategy {
+  constructor() {
+    super({
+      [PermissionAction.READ]: {
+        admin: () => true,
+        manager: () => true,
+        staff: () => true,
+        tenant: (user, target) => {
+          // Tenants can only read themselves
+          return user.sub === target._id?.toString();
+        },
+        default: () => false,
+      },
+      [PermissionAction.LIST]: {
+        admin: () => true,
+        manager: () => true,
+        staff: () => true,
+        default: () => false,
+      },
+      [PermissionAction.CREATE]: {
+        admin: () => true,
+        manager: () => true,
+        default: () => false,
+      },
+      [PermissionAction.UPDATE]: {
+        admin: () => true,
+        manager: () => true,
+        tenant: (user, target) => {
+          // Tenants can update themselves
+          return user.sub === target._id?.toString();
+        },
+        default: () => false,
+      },
+      [PermissionAction.DELETE]: {
+        admin: () => true,
         default: () => false,
       },
     });

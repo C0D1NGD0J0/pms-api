@@ -44,6 +44,7 @@ export enum PermissionResource {
   PROPERTY = 'property',
   PAYMENT = 'payment',
   CLIENT = 'client',
+  TENANT = 'tenant',
   VENDOR = 'vendor',
   REPORT = 'report',
   LEASE = 'lease',
@@ -52,6 +53,7 @@ export enum PermissionResource {
 
 export enum ResourceContext {
   SERVICE_REQUEST = 'service-request',
+  TENANT_PROFILE = 'tenant-profile',
   USER_PROFILE = 'user-profile',
   MAINTENANCE = 'maintenance',
   PROPERTY = 'property',
@@ -144,12 +146,11 @@ export interface IRequestContext {
 
 export interface RateLimitOptions {
   delayMs?: number | ((numRequests: number) => number); // delay in ms to add
+  keyGenerator?: (req: any) => string; // custom key generator for tracking (e.g., by token, user ID, or IP)
+  skip?: (req: any) => boolean; // function to skip rate limiting for certain requests
   enableSpeedLimit?: boolean;
   enableRateLimit?: boolean;
-
-  // speed limiting params
   delayAfter?: number; // number of requests before adding delay
-  // rate limiting params
   windowMs?: number; // time window in milliseconds
   message?: string; // custom message on rate limit exceeded
   max?: number; // max requests per window

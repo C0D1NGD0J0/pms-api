@@ -1,19 +1,18 @@
 import { Types } from 'mongoose';
 import { faker } from '@faker-js/faker';
-import {
-  INotificationDocument,
-  INotification,
-  INotificationResponse,
-  ICreateNotificationRequest,
-  INotificationListResponse,
-  INotificationUnreadCountResponse,
-  NotificationTypeEnum,
-  NotificationPriorityEnum,
-  RecipientTypeEnum,
-} from '@interfaces/notification.interface';
 import { ResourceContext } from '@interfaces/utils.interface';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
-import { createObjectId } from '../mockFactories';
+import {
+  INotificationUnreadCountResponse,
+  ICreateNotificationRequest,
+  INotificationListResponse,
+  NotificationPriorityEnum,
+  INotificationDocument,
+  INotificationResponse,
+  NotificationTypeEnum,
+  RecipientTypeEnum,
+  INotification,
+} from '@interfaces/notification.interface';
 
 /**
  * Create a mock notification document

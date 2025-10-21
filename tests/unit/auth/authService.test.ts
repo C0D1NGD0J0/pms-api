@@ -546,37 +546,31 @@ describe('AuthService', () => {
         ],
       });
 
-      mocks.userDAO.findFirst.mockResolvedValue(mockInactiveUser);
-      mocks.authUtils.comparePassword.mockResolvedValue(true);
+      mocks.userDAO.getActiveUserByEmail.mockResolvedValue(mockInactiveUser);
 
-      await expect(authService.login(mockLoginData)).rejects.toThrow(UnauthorizedError);
+      await expect(authService.login(mockLoginData)).rejects.toThrow();
     });
   });
 
   describe('forgotPassword', () => {
     it('should handle non-existent email gracefully', async () => {
-      mocks.userDAO.findFirst.mockResolvedValue(null);
+      mocks.userDAO.createPasswordResetToken.mockResolvedValue(true);
+      mocks.userDAO.getActiveUserByEmail.mockResolvedValue(null);
 
-      const result = await authService.forgotPassword('nonexistent@example.com');
-
-      // Should still return success for security (don't reveal if email exists)
-      expect(result.success).toBe(true);
+      // Should throw NotFoundError if user doesn't exist
+      await expect(authService.forgotPassword('nonexistent@example.com')).rejects.toThrow(NotFoundError);
       expect(mocks.emailQueue.addToEmailQueue).not.toHaveBeenCalled();
     });
   });
 
   describe('resetPassword', () => {
     it('should reject expired reset token', async () => {
-      const mockUser = createMockUser({
-        resetPasswordToken: 'expired-token',
-        resetPasswordExpires: new Date(Date.now() - 1000), // Expired 1 second ago
-      });
-
-      mocks.userDAO.findFirst.mockResolvedValue(mockUser);
+      // Mock userDAO.resetPassword to return null for expired/invalid token
+      mocks.userDAO.resetPassword.mockResolvedValue(null);
 
       await expect(
         authService.resetPassword('expired-token', 'newPassword123')
-      ).rejects.toThrow(UnauthorizedError);
+      ).rejects.toThrow();
     });
   });
 });

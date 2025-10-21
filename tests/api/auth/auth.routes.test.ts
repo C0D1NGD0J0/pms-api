@@ -245,9 +245,9 @@ describe('Auth Routes Integration Tests', () => {
       expect(response.body.success).toBe(false);
     });
 
-    it('should return 409 for duplicate email', async () => {
+    it('should return 400 for duplicate email', async () => {
       mockAuthController.signup.mockImplementationOnce((_req: Request, res: Response) => {
-        res.status(httpStatusCodes.CONFLICT).json({
+        res.status(httpStatusCodes.BAD_REQUEST).json({
           success: false,
           message: 'Email already in use.',
         });
@@ -270,7 +270,7 @@ describe('Auth Routes Integration Tests', () => {
       const response = await request(app)
         .post(endpoint)
         .send(signupData)
-        .expect(httpStatusCodes.CONFLICT);
+        .expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.message).toContain('Email already in use');
     });

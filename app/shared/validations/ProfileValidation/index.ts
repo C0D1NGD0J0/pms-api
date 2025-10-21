@@ -7,7 +7,7 @@ const userInfoSchema = z
     password: z.string().min(8).max(20).optional(),
     cpassword: z.string().min(8).max(20).optional(),
   })
-  .refine((data) => data.password === data.cpassword, {
+  .refine((data) => !data.password || !data.cpassword || data.password === data.cpassword, {
     message: 'Passwords do not match',
   });
 

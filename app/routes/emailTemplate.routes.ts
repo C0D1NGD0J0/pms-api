@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
-import { requirePermission, isAuthenticated } from '@shared/middlewares';
-// import { validateRequest } from '@shared/validations/index';
+import { validateRequest } from '@shared/validations';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
-// import { EmailTemplateValidations } from '@shared/validations/EmailTemplateValidation';
+import { requirePermission, isAuthenticated, basicLimiter } from '@shared/middlewares';
+import { EmailTemplateValidations } from '@shared/validations/EmailTemplateValidation';
 
 const router = Router();
+router.use(basicLimiter());
 
 /**
  * @route   GET /api/email-templates
@@ -32,7 +33,7 @@ router.get(
   '/:cuid/:templateType',
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.READ),
-  // validateRequest({ params: EmailTemplateValidations.templateType }),
+  validateRequest({ params: EmailTemplateValidations.templateType }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<EmailTemplateController>('emailTemplateController');
     return controller.getTemplateMetadata(req, res);

@@ -25,6 +25,7 @@ const router = Router();
 
 router.get(
   '/:cuid/users',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
@@ -38,6 +39,7 @@ router.get(
 
 router.get(
   '/:cuid/filtered-users',
+  basicLimiter(),
   isAuthenticated,
   basicLimiter(),
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
@@ -53,6 +55,7 @@ router.get(
 
 router.get(
   '/:cuid/users/stats',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
@@ -67,6 +70,7 @@ router.get(
 
 router.get(
   '/:cuid/users/by-role',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
@@ -80,6 +84,7 @@ router.get(
 
 router.get(
   '/:cuid/users/:uid/roles',
+  basicLimiter(),
   isAuthenticated,
   requireUserManagement(),
   validateRequest({
@@ -93,6 +98,7 @@ router.get(
 
 router.post(
   '/:cuid/users/:uid/roles',
+  basicLimiter(),
   isAuthenticated,
   requireUserManagement(),
   validateRequest({
@@ -107,6 +113,7 @@ router.post(
 
 router.delete(
   '/:cuid/users/:uid/roles/:role',
+  basicLimiter(),
   isAuthenticated,
   requireUserManagement(),
   validateRequest({
@@ -120,9 +127,9 @@ router.delete(
 
 router.get(
   '/:cuid/property_managers',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
-  basicLimiter(),
   validateRequest({
     params: PropertyValidations.validatecuid,
     query: PropertyValidations.getAssignableUsers,
@@ -135,6 +142,7 @@ router.get(
 
 router.get(
   '/:cuid/profile_details',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.READ),
   validateRequest({
@@ -149,6 +157,7 @@ router.get(
 
 router.get(
   '/:cuid/user_details/:uid',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.READ),
   validateRequest({
@@ -162,6 +171,7 @@ router.get(
 
 router.patch(
   '/:cuid/update_profile',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
   diskUpload(['documents.items[*].file', 'personalInfo.avatar.file']),
@@ -177,6 +187,7 @@ router.patch(
 
 router.get(
   '/:cuid/notification-preferences',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.READ),
   validateRequest({
@@ -191,6 +202,7 @@ router.get(
 
 router.get(
   '/:cuid/filtered-tenants',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
@@ -218,6 +230,7 @@ router.get(
 
 router.get(
   '/:cuid/client_tenant/:uid',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.READ),
   validateRequest({
@@ -233,6 +246,7 @@ router.get(
 router
   .route('/:cuid/tenant_details/:uid')
   .get(
+    basicLimiter(),
     isAuthenticated,
     requirePermission(PermissionResource.USER, PermissionAction.READ),
     validateRequest({
@@ -244,6 +258,7 @@ router
     })
   )
   .patch(
+    basicLimiter(),
     isAuthenticated,
     requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
     diskUpload(['documents.items[*].file', 'personalInfo.avatar.file']),
@@ -258,6 +273,7 @@ router
     })
   )
   .delete(
+    basicLimiter(),
     isAuthenticated,
     requirePermission(PermissionResource.USER, PermissionAction.DELETE),
     validateRequest({
@@ -271,6 +287,7 @@ router
 
 router.delete(
   '/:cuid/:uid',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.DELETE),
   validateRequest({

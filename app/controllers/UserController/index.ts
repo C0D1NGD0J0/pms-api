@@ -183,10 +183,22 @@ export class UserController {
 
   getClientTenantDetails = async (req: AppRequest, res: Response) => {
     const { cuid, uid } = req.params;
+    const { include } = req.query;
+
+    let includeOptions: string[] | undefined;
+    if (include) {
+      if (Array.isArray(include)) {
+        includeOptions = include as string[];
+      } else if (typeof include === 'string') {
+        includeOptions = [include];
+      }
+    }
+
     const result = await this.userService.getClientTenantDetails(
       cuid,
       uid,
-      req.context.currentuser
+      req.context.currentuser,
+      includeOptions
     );
 
     res.status(httpStatusCodes.OK).json(result);

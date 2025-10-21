@@ -1280,18 +1280,11 @@ export class UserService {
     }
   }
 
-  /**
-   * Get detailed tenant information for property management view
-   * Returns comprehensive tenant data including metrics, history, and property management context
-   * @param cuid - Client unique identifier
-   * @param tenantUid - Tenant user unique identifier
-   * @param currentUser - Current user context for permissions
-   * @returns Promise resolving to detailed tenant management information
-   */
   async getClientTenantDetails(
     cuid: string,
     tenantUid: string,
-    currentUser?: ICurrentUser
+    currentUser?: ICurrentUser,
+    include?: string[]
   ): Promise<ISuccessReturnData<import('@interfaces/user.interface').IClientTenantDetails>> {
     try {
       if (!cuid || !tenantUid) {
@@ -1300,13 +1293,11 @@ export class UserService {
         });
       }
 
-      // Validate client exists
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
-      // Optional permission check if currentUser is provided
       if (currentUser && currentUser.client.cuid !== cuid) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
@@ -1316,8 +1307,7 @@ export class UserService {
         });
       }
 
-      // Get tenant details from DAO
-      const rawTenantDetails = await this.userDAO.getClientTenantDetails(cuid, tenantUid);
+      const rawTenantDetails = await this.userDAO.getClientTenantDetails(cuid, tenantUid, include);
 
       if (!rawTenantDetails) {
         throw new NotFoundError({
@@ -1325,9 +1315,6 @@ export class UserService {
         });
       }
 
-      // Transform to match IClientTenantDetails interface structure
-      // This ensures consistency with employee/vendor detail responses
-      // Historical data is now nested within tenantInfo for better encapsulation
       const transformedResponse: import('@interfaces/user.interface').IClientTenantDetails = {
         profile: {
           firstName: (rawTenantDetails as any).firstName || '',
@@ -1345,19 +1332,10 @@ export class UserService {
         status: (rawTenantDetails as any).isActive ? ('Active' as const) : ('Inactive' as const),
         userType: 'tenant' as const,
         roles: ['tenant'],
-
-        // Tenant-specific data (includes historical data nested within)
         tenantInfo: rawTenantDetails.tenantInfo,
         tenantMetrics: rawTenantDetails.tenantMetrics,
         joinedDate: (rawTenantDetails as any).joinedDate || (rawTenantDetails as any).createdAt,
       };
-
-      // TODO: Integrate with other services to get details as needed
-      // - Recent payment history from payment service
-      // - Active maintenance requests from maintenance service
-      // - Communication history from messaging service
-      // - Document attachments from document service
-      // - Lease documents and amendments
 
       this.log.info('Tenant details retrieved', {
         cuid,

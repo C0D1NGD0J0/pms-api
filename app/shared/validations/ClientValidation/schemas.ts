@@ -112,6 +112,19 @@ export const FilteredUsersQuerySchema = z.object({
   sort: z.enum(['asc', 'desc']).optional(),
 });
 
+export const TenantDetailsIncludeQuerySchema = z.object({
+  include: z
+    .union([
+      z.enum(['lease', 'payments', 'maintenance', 'documents', 'notes', 'all']),
+      z.array(z.enum(['lease', 'payments', 'maintenance', 'documents', 'notes', 'all'])),
+      z
+        .string()
+        .transform((val) => val.split(',').map((item) => item.trim()))
+        .pipe(z.array(z.enum(['lease', 'payments', 'maintenance', 'documents', 'notes', 'all']))),
+    ])
+    .optional(),
+});
+
 export const UpdateClientDetailsSchema = z
   .object({
     identification: ClientIdentificationSchema.partial().optional(),

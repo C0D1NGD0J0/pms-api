@@ -222,8 +222,7 @@ router.get(
   requirePermission(PermissionResource.USER, PermissionAction.READ),
   validateRequest({
     params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
-    // Query params: ?include=lease,payments,maintenance,documents,notes
-    // ?include=all for everything
+    query: ClientValidations.tenantDetailsIncludeQuery,
   }),
   asyncWrapper((req, res) => {
     const userController = req.container.resolve<UserController>('userController');

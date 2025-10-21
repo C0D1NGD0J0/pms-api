@@ -1207,17 +1207,18 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Get detailed tenant information for property management view
-   * @param cuid - Client unique identifier
-   * @param tenantUid - Tenant user unique identifier
-   * @returns Promise resolving to detailed tenant information or null
-   */
   async getClientTenantDetails(
     cuid: string,
-    tenantUid: string
+    tenantUid: string,
+    include?: string[]
   ): Promise<import('@interfaces/user.interface').IClientTenantDetails | null> {
     try {
+      const includeAll = !include || include.includes('all');
+      const includeLeaseHistory = includeAll || include.includes('lease');
+      const includePaymentHistory = includeAll || include.includes('payments');
+      const includeMaintenanceRequests = includeAll || include.includes('maintenance');
+      const includeNotes = includeAll || include.includes('notes');
+
       const pipeline: PipelineStage[] = [
         {
           $match: {
@@ -1237,13 +1238,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           },
         },
         { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
-
-        // TODO: When lease feature is implemented, add lookups for:
-        // - Property information from properties collection
-        // - Unit information from units collection
-        // These will be based on leaseId -> lease entity -> propertyId/unitId
-
-        // Project the final structure
         {
           $project: {
             _id: 1,
@@ -1275,10 +1269,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             phoneNumber: '$profile.personalInfo.phoneNumber',
             avatar: '$profile.personalInfo.avatar',
             joinedDate: '$createdAt',
-
-            // Tenant-specific information (filtered by current client's cuid)
             tenantInfo: {
-              // Client-specific arrays (filtered by cuid)
               employerInfo: {
                 $filter: {
                   input: { $ifNull: ['$profile.tenantInfo.employerInfo', []] },
@@ -1300,36 +1291,29 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
                   cond: { $eq: ['$$check.cuid', cuid] },
                 },
               },
-
-              // Shared tenant information (not filtered)
               rentalReferences: '$profile.tenantInfo.rentalReferences',
               pets: '$profile.tenantInfo.pets',
               emergencyContact: '$profile.tenantInfo.emergencyContact',
-
-              // Historical/relationship data (nested in tenantInfo for better encapsulation)
-              // These would come from other collections/services when implemented
-              leaseHistory: [],
-              paymentHistory: [],
-              maintenanceRequests: [],
-              notes: [],
+              ...(includeLeaseHistory && { leaseHistory: [] }),
+              ...(includePaymentHistory && { paymentHistory: [] }),
+              ...(includeMaintenanceRequests && { maintenanceRequests: [] }),
+              ...(includeNotes && { notes: [] }),
             },
-
-            // Calculate basic metrics
             tenantMetrics: {
-              onTimePaymentRate: 100, // Placeholder - needs payment data
-              averagePaymentDelay: { $literal: 0 }, // Placeholder - needs payment data
-              totalMaintenanceRequests: { $literal: 0 }, // Placeholder - needs maintenance data
+              onTimePaymentRate: 100,
+              averagePaymentDelay: { $literal: 0 },
+              totalMaintenanceRequests: { $literal: 0 },
               currentRentStatus: {
                 $cond: [
                   {
                     $gt: [{ $size: { $ifNull: ['$profile.tenantInfo.activeLeases', []] } }, 0],
                   },
-                  'current', // This would need payment data to be accurate
+                  'current',
                   'no_lease',
                 ],
               },
-              daysCurrentLease: { $literal: 0 }, // Placeholder - needs lease start date from lease entity
-              totalRentPaid: { $literal: 0 }, // Placeholder - needs payment history
+              daysCurrentLease: { $literal: 0 },
+              totalRentPaid: { $literal: 0 },
             },
           },
         },

@@ -1,6 +1,6 @@
-import { AuthTokenService } from '@services/auth/authToken.service';
-import { Request } from 'express';
 import jwt from 'jsonwebtoken';
+import { Request } from 'express';
+import { AuthTokenService } from '@services/auth/authToken.service';
 
 // Mock jwt module
 jest.mock('jsonwebtoken');

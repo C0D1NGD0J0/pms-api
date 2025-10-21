@@ -1,9 +1,9 @@
 import { Response } from 'express';
-import { VendorController } from '@controllers/VendorController';
-import { VendorService } from '@services/vendor/vendor.service';
 import { httpStatusCodes } from '@utils/constants';
-import { AppRequest } from '@interfaces/utils.interface';
 import { createMockCurrentUser } from '@tests/helpers';
+import { AppRequest } from '@interfaces/utils.interface';
+import { VendorService } from '@services/vendor/vendor.service';
+import { VendorController } from '@controllers/VendorController';
 
 describe('VendorController', () => {
   let vendorController: VendorController;

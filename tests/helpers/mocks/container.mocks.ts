@@ -1,43 +1,40 @@
-// Auth mocks
-import {
-  createMockAuthService,
-  createMockAuthTokenService,
-  createMockAuthCache,
-  createMockUserDAO,
-  createMockProfileDAO,
-  createMockPermissionService,
-} from './auth.mocks';
-
-// Property mocks
-import {
-  createMockPropertyDAO,
-  createMockPropertyUnitDAO,
-  createMockPropertyService,
-  createMockPropertyUnitService,
-} from './property.mocks';
-
 // Client mocks
 import {
-  createMockClientDAO,
+  createMockInvitationService,
   createMockInvitationDAO,
   createMockClientService,
-  createMockInvitationService,
+  createMockClientDAO,
 } from './client.mocks';
-
+// Property mocks
+import {
+  createMockPropertyUnitService,
+  createMockPropertyUnitDAO,
+  createMockPropertyService,
+  createMockPropertyDAO,
+} from './property.mocks';
+// Auth mocks
+import {
+  createMockPermissionService,
+  createMockAuthTokenService,
+  createMockAuthService,
+  createMockProfileDAO,
+  createMockAuthCache,
+  createMockUserDAO,
+} from './auth.mocks';
 // Infrastructure mocks
 import {
-  createMockRedisService,
-  createMockS3Service,
-  createMockEmailQueue,
-  createMockDatabaseService,
-  createMockLogger,
-  createMockInvitationQueue,
-  createMockPropertyQueue,
-  createMockPropertyUnitQueue,
-  createMockUploadQueue,
   createMockDocumentProcessingQueue,
-  createMockEventBusQueue,
+  createMockPropertyUnitQueue,
+  createMockDatabaseService,
+  createMockInvitationQueue,
   createMockEmitterService,
+  createMockPropertyQueue,
+  createMockEventBusQueue,
+  createMockRedisService,
+  createMockUploadQueue,
+  createMockEmailQueue,
+  createMockS3Service,
+  createMockLogger,
 } from './infrastructure.mocks';
 
 // Awilix Container Mock

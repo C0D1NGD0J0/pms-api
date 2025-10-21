@@ -1,6 +1,7 @@
-import { faker } from '@faker-js/faker';
 import { Types } from 'mongoose';
-import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
+import { faker } from '@faker-js/faker';
+import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
+
 import { createMockMulterFile } from '../testUtils';
 
 // Property Data Factory

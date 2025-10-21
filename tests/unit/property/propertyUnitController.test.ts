@@ -1,9 +1,9 @@
 import { Response } from 'express';
-import { PropertyUnitController } from '@controllers/PropertyUnitController';
-import { PropertyUnitService } from '@services/property';
 import { httpStatusCodes } from '@utils/constants';
-import { AppRequest } from '@interfaces/utils.interface';
 import { createMockCurrentUser } from '@tests/helpers';
+import { PropertyUnitService } from '@services/property';
+import { AppRequest } from '@interfaces/utils.interface';
+import { PropertyUnitController } from '@controllers/PropertyUnitController';
 
 describe('PropertyUnitController', () => {
   let propertyUnitController: PropertyUnitController;

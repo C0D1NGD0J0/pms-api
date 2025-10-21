@@ -250,10 +250,22 @@ router
     scanFile,
     validateRequest({
       params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+      body: ClientValidations.updateTenantProfile,
     }),
     asyncWrapper((req, res) => {
       const userController = req.container.resolve<UserController>('userController');
       return userController.updateTenantProfile(req, res);
+    })
+  )
+  .delete(
+    isAuthenticated,
+    requirePermission(PermissionResource.USER, PermissionAction.DELETE),
+    validateRequest({
+      params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+    }),
+    asyncWrapper((req, res) => {
+      const userController = req.container.resolve<UserController>('userController');
+      return userController.deactivateTenant(req, res);
     })
   );
 

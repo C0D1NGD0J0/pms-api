@@ -1,11 +1,11 @@
 import { Response } from 'express';
+import { httpStatusCodes } from '@utils/constants';
+import { createMockCurrentUser } from '@tests/helpers';
+import { AppRequest } from '@interfaces/utils.interface';
+import { AuthService } from '@services/auth/auth.service';
+import { ROLES } from '@shared/constants/roles.constants';
 import { InvitationController } from '@controllers/InvitationController';
 import { InvitationService } from '@services/invitation/invitation.service';
-import { AuthService } from '@services/auth/auth.service';
-import { httpStatusCodes } from '@utils/constants';
-import { AppRequest } from '@interfaces/utils.interface';
-import { createMockCurrentUser } from '@tests/helpers';
-import { ROLES } from '@shared/constants/roles.constants';
 
 describe('InvitationController', () => {
   let invitationController: InvitationController;

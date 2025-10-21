@@ -1758,4 +1758,139 @@ export class UserService {
       throw error;
     }
   }
+
+  /**
+   * Deactivate (soft delete) a tenant
+   * Handles:
+   * - Soft delete user with deletedAt timestamp
+   * - Mark user as inactive
+   * - Disconnect tenant from client
+   * - Cache invalidation
+   *
+   * TODO: When lease/maintenance features are added:
+   * - Check for active leases (prevent deactivation if active)
+   * - Check for pending maintenance requests
+   * - Check for pending service requests
+   *
+   * @param cuid - Client unique identifier
+   * @param uid - User unique identifier (tenant)
+   * @param context - Request context with current user
+   * @returns Promise resolving to success response with deactivation summary
+   */
+  async deactivateTenant(
+    cuid: string,
+    uid: string,
+    context: IRequestContext
+  ): Promise<ISuccessReturnData<any>> {
+    try {
+      if (!cuid || !uid) {
+        throw new BadRequestError({
+          message: t('client.errors.missingParameters'),
+        });
+      }
+
+      const user = await this.userDAO.getUserByUId(uid, {
+        populate: [{ path: 'profile' }],
+      });
+
+      if (!user) {
+        throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      }
+
+      const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
+      if (!clientConnection) {
+        throw new NotFoundError({ message: t('client.errors.userNotFoundInClient') });
+      }
+
+      const roles: string[] = clientConnection.roles || [];
+
+      if (!roles.includes('tenant')) {
+        throw new BadRequestError({
+          message: 'User is not a tenant',
+        });
+      }
+
+      if (!this.permissionService.canUserAccessUser(context.currentuser, user as any)) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'deactivate',
+            resource: 'tenant',
+          }),
+        });
+      }
+
+      if (uid === context.currentuser.uid) {
+        throw new BadRequestError({
+          message: 'Cannot deactivate yourself',
+        });
+      }
+
+      const deactivationSummary: any = {
+        uid,
+        deactivatedAt: new Date(),
+        deactivatedBy: context.currentuser.uid,
+        actions: [],
+      };
+
+      // TODO: Check for active leases when lease feature is implemented
+      // const activeLeases = await this.leaseDAO.getActiveLeasesByTenant(uid);
+      // if (activeLeases.length > 0) {
+      //   throw new BadRequestError({
+      //     message: 'Cannot deactivate tenant with active leases',
+      //   });
+      // }
+
+      // 1. Soft delete the user
+      await this.userDAO.updateById(user._id.toString(), {
+        deletedAt: new Date(),
+        isActive: false,
+      });
+
+      deactivationSummary.actions.push({
+        action: 'user_soft_deleted',
+        timestamp: new Date(),
+      });
+
+      // 2. Disconnect tenant from this client
+      await this.userDAO.updateById(
+        user._id.toString(),
+        {
+          $set: { 'cuids.$[elem].isConnected': false },
+        },
+        {
+          arrayFilters: [{ 'elem.cuid': cuid }],
+        } as any
+      );
+
+      deactivationSummary.actions.push({
+        action: 'tenant_disconnected_from_client',
+        cuid,
+        timestamp: new Date(),
+      });
+
+      // 3. Invalidate caches
+      await this.userCache.invalidateUserDetail(cuid, uid);
+      await this.userCache.invalidateUserLists(cuid);
+
+      this.log.info('Tenant deactivated successfully', {
+        cuid,
+        uid,
+        deactivatedBy: context.currentuser.uid,
+        summary: deactivationSummary,
+      });
+
+      return {
+        success: true,
+        data: deactivationSummary,
+        message: 'Tenant deactivated successfully',
+      };
+    } catch (error) {
+      this.log.error('Error deactivating tenant:', {
+        cuid,
+        uid,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
 }

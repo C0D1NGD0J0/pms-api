@@ -1,14 +1,14 @@
 import { Types } from 'mongoose';
 import { AuthService } from '@services/auth/auth.service';
-import { ROLES, ROLE_GROUPS } from '@shared/constants/roles.constants';
+import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { UnauthorizedError, NotFoundError } from '@shared/customErrors';
+import { createAuthServiceDependencies, createServiceWithMocks } from '@tests/helpers/mocks/services.mocks';
 import {
+  createMockCompanyProfile,
   createMockCurrentUser,
   createMockSignupData,
   createMockUser,
-  createMockCompanyProfile,
 } from '@tests/helpers';
-import { createAuthServiceDependencies, createServiceWithMocks } from '@tests/helpers/mocks/services.mocks';
 
 describe('AuthService', () => {
   let authService: AuthService;

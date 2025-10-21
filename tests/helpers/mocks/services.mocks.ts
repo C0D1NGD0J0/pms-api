@@ -4,34 +4,34 @@
  */
 
 import {
-  createMockAuthCache,
-  createMockAuthTokenService,
-  createMockClientDAO,
-  createMockProfileDAO,
-  createMockUserDAO,
-  createMockEmailQueue,
-  createMockVendorService,
-  createMockPropertyDAO,
-  createMockPropertyUnitDAO,
-  createMockInvitationDAO,
-  createMockGeoCoderService,
-  createMockPropertyCache,
-  createMockPropertyQueue,
-  createMockUploadQueue,
   createMockPropertyCsvProcessor,
   createMockEventEmitterService,
+  createMockAuthTokenService,
+  createMockPropertyUnitDAO,
+  createMockGeoCoderService,
   createMockNotificationDAO,
+  createMockVendorService,
+  createMockInvitationDAO,
+  createMockPropertyCache,
+  createMockPropertyQueue,
+  createMockPropertyDAO,
+  createMockUploadQueue,
+  createMockProfileDAO,
+  createMockEmailQueue,
+  createMockAuthCache,
+  createMockClientDAO,
+  createMockUserDAO,
 } from '../index';
 
 /**
  * Common service dependencies that appear in multiple services
  */
 export interface CommonServiceDependencies {
-  userDAO?: any;
-  clientDAO?: any;
+  emitterService?: any;
   profileDAO?: any;
   emailQueue?: any;
-  emitterService?: any;
+  clientDAO?: any;
+  userDAO?: any;
 }
 
 /**

@@ -1,12 +1,12 @@
 import { Response } from 'express';
-import { UserController } from '@controllers/UserController';
+import { httpStatusCodes } from '@utils/constants';
+import { createMockCurrentUser } from '@tests/helpers';
+import { AppRequest } from '@interfaces/utils.interface';
 import { UserService } from '@services/user/user.service';
+import { ROLES } from '@shared/constants/roles.constants';
+import { UserController } from '@controllers/UserController';
 import { ProfileService } from '@services/profile/profile.service';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
-import { httpStatusCodes } from '@utils/constants';
-import { AppRequest } from '@interfaces/utils.interface';
-import { createMockCurrentUser } from '@tests/helpers';
-import { ROLES } from '@shared/constants/roles.constants';
 
 describe('UserController', () => {
   let userController: UserController;
@@ -417,11 +417,7 @@ describe('UserController', () => {
       const mockResult = {
         success: true,
         data: {
-          users: [
-            { uid: 'user-1' },
-            { uid: 'user-2' },
-            { uid: 'user-3' },
-          ],
+          users: [{ uid: 'user-1' }, { uid: 'user-2' }, { uid: 'user-3' }],
           pagination: { page: 1, limit: 10, total: 3 },
         },
       };

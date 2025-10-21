@@ -3,6 +3,7 @@ import {
   TenantDetailsIncludeQuerySchema,
   ClientIdentificationSchema,
   UpdateClientDetailsSchema,
+  UpdateTenantProfileSchema,
   ClientSubscriptionSchema,
   FilteredUsersQuerySchema,
   ClientDisplayNameSchema,
@@ -26,4 +27,5 @@ export class ClientValidations {
   static updateClientDetails = UpdateClientDetailsSchema;
   static filteredUsersQuery = FilteredUsersQuerySchema;
   static tenantDetailsIncludeQuery = TenantDetailsIncludeQuerySchema;
+  static updateTenantProfile = UpdateTenantProfileSchema;
 }

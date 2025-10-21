@@ -160,13 +160,6 @@ export class UserController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  updateTenantProfile = async (req: AppRequest, res: Response) => {
-    const { cuid, uid } = req.params;
-    const result = await this.userService.updateTenantProfile(cuid, uid, req.body, req.context);
-
-    res.status(httpStatusCodes.OK).json(result);
-  };
-
   archiveUser = async (req: AppRequest, res: Response) => {
     const { cuid, uid } = req.params;
     const result = await this.userService.archiveUser(cuid, uid, req.context.currentuser);
@@ -200,6 +193,31 @@ export class UserController {
       req.context.currentuser,
       includeOptions
     );
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  updateTenantProfile = async (req: AppRequest, res: Response): Promise<void> => {
+    const { cuid, uid } = req.params;
+    const uploadResult = await this.mediaUploadService.handleFiles(req, {
+      primaryResourceId: uid,
+      uploadedBy: req.context.currentuser?.sub as string,
+      resourceContext: ResourceContext.USER_PROFILE,
+    });
+
+    const result = await this.userService.updateTenantProfile(cuid, uid, req.body, req.context);
+
+    const response = uploadResult.hasFiles
+      ? { ...result, fileUpload: uploadResult.message, processedFiles: uploadResult.processedFiles }
+      : result;
+
+    res.status(httpStatusCodes.OK).json(response);
+  };
+
+  deactivateTenant = async (req: AppRequest, res: Response): Promise<void> => {
+    const { cuid, uid } = req.params;
+
+    const result = await this.userService.deactivateTenant(cuid, uid, req.context);
 
     res.status(httpStatusCodes.OK).json(result);
   };

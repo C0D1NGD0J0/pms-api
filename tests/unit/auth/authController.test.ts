@@ -1,9 +1,9 @@
-import { Request, Response } from 'express';
-import { AuthController } from '@controllers/AuthController';
-import { AuthService } from '@services/auth/auth.service';
-import { httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
-import { AppRequest } from '@interfaces/utils.interface';
+import { Response, Request } from 'express';
 import { createMockCurrentUser } from '@tests/helpers';
+import { AppRequest } from '@interfaces/utils.interface';
+import { AuthService } from '@services/auth/auth.service';
+import { AuthController } from '@controllers/AuthController';
+import { httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
 
 describe('AuthController', () => {
   let authController: AuthController;

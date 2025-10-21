@@ -1,9 +1,9 @@
 import { Types } from 'mongoose';
-import { VendorService } from '@services/vendor/vendor.service';
 import { VendorDAO } from '@dao/vendorDAO';
-import { ROLES, ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
-import { BadRequestError, NotFoundError, ForbiddenError } from '@shared/customErrors';
+import { VendorService } from '@services/vendor/vendor.service';
+import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { IVendorDocument, NewVendor } from '@interfaces/vendor.interface';
+import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 
 describe('VendorService', () => {
   let vendorService: VendorService;

@@ -43,9 +43,11 @@ export const createMockVendorDAO = () => ({
   aggregate: jest.fn().mockResolvedValue([]),
   withTransaction: jest
     .fn()
-    .mockImplementation(async (session: ClientSession, callback: (session: ClientSession) => Promise<any>) => {
-      return callback(session);
-    }),
+    .mockImplementation(
+      async <T>(session: ClientSession, callback: (session: ClientSession) => Promise<T>): Promise<T> => {
+        return callback(session);
+      }
+    ),
 });
 
 // VendorService Mock with all business methods

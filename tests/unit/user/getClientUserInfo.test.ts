@@ -1,6 +1,6 @@
 import { UserService } from '@services/user/user.service';
+import { ROLES } from '@shared/constants/roles.constants';
 import { IRequestContext } from '@interfaces/utils.interface';
-import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 
 describe('UserService - getClientUserInfo', () => {
   let userService: UserService;

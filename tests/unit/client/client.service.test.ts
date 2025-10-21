@@ -1,5 +1,5 @@
+import { ROLES } from '@shared/constants/roles.constants';
 import { ClientService } from '@services/client/client.service';
-import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {
   createMockRequestContext,

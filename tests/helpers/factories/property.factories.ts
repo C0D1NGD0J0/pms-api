@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { faker } from '@faker-js/faker';
-import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
+import { ROLES } from '@shared/constants/roles.constants';
 
 import { createMockMulterFile } from '../testUtils';
 

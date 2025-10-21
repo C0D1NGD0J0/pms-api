@@ -14,8 +14,6 @@ import {
   INotification,
 } from '@interfaces/notification.interface';
 
-import { createObjectId } from '../mockFactories';
-
 /**
  * Create a mock notification document
  */

@@ -192,7 +192,7 @@ describe('InvitationService', () => {
     });
 
     it('should successfully create draft invitation without sending email', async () => {
-      const { mockInvitation } = setupMocks('draft');
+      setupMocks('draft');
       const invitationData = createMockInvitationData({
         inviteeEmail: testEmail,
         personalInfo: { firstName: 'Jane', lastName: 'Smith' },

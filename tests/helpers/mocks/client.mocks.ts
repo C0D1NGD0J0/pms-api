@@ -1,7 +1,7 @@
 import { ClientSession } from 'mongoose';
+import { ROLES } from '@shared/constants/roles.constants';
 import { IUserDocument } from '@interfaces/user.interface';
 import { IClientDocument } from '@interfaces/client.interface';
-import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 
 export const createMockClientDAO = () => ({
   findFirst: jest.fn(),

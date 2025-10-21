@@ -1,8 +1,8 @@
-import { ClientSession, Types } from 'mongoose';
+import { ClientSession } from 'mongoose';
+import { IVendorDocument } from '@interfaces/vendor.interface';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
-import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
 
-import { createMockVendorDocument, createMockNewVendor } from '../mockFactories';
+import { createMockVendorDocument } from '../mockFactories';
 
 // VendorDAO Mock with all required methods
 export const createMockVendorDAO = () => ({
@@ -43,7 +43,7 @@ export const createMockVendorDAO = () => ({
   aggregate: jest.fn().mockResolvedValue([]),
   withTransaction: jest
     .fn()
-    .mockImplementation(async (session: ClientSession, callback: Function) => {
+    .mockImplementation(async (session: ClientSession, callback: (session: ClientSession) => Promise<any>) => {
       return callback(session);
     }),
 });

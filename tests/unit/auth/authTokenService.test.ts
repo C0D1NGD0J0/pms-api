@@ -38,12 +38,10 @@ jest.mock('@utils/index', () => ({
 
 describe('AuthTokenService', () => {
   let authTokenService: AuthTokenService;
-  let mockLogger: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
     authTokenService = new AuthTokenService();
-    mockLogger = authTokenService['logger'];
   });
 
   describe('createJwtTokens', () => {

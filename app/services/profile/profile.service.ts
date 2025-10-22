@@ -472,6 +472,8 @@ export class ProfileService {
         identification: profileDoc.personalInfo.identification,
         settings: {
           ...profileDoc.settings,
+          timeZone: profileDoc.settings.timeZone || 'UTC',
+          lang: profileDoc.settings.lang || 'en',
         },
         userType: userDoc.data.profile.userType as
           | 'employee'

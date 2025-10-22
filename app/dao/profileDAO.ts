@@ -96,9 +96,10 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   ): Promise<IProfileDocument | null> {
     try {
       const updateFields: Record<string, any> = {};
-
-      for (const [key, value] of Object.entries(gdprSettings)) {
-        updateFields[`settings.gdprSettings.${key}`] = value;
+      if (gdprSettings) {
+        for (const [key, value] of Object.entries(gdprSettings)) {
+          updateFields[`settings.gdprSettings.${key}`] = value;
+        }
       }
 
       return await this.updateById(profileId, { $set: updateFields });

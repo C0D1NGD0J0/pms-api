@@ -43,6 +43,8 @@ const personalInfoSchema = z.object({
 });
 
 const settingsSchema = z.object({
+  lang: z.string().min(2).max(5).optional(), // e.g., 'en', 'fr'
+  timeZone: z.string().optional(),
   theme: z.enum(['light', 'dark']).optional(),
   loginType: z.enum(['otp', 'password']).optional(),
   notifications: z

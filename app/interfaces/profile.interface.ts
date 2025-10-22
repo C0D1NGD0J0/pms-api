@@ -127,6 +127,15 @@ export interface Profile {
     phoneNumber?: string;
     identification?: IdentificationType;
   };
+  settings: {
+    lang: string;
+    timeZone: string;
+    gdprSettings: GDPRSettings;
+    loginType: 'otp' | 'password';
+    notifications: NotificationSettings;
+    theme: 'light' | 'dark';
+  };
+
   policies: {
     tos: {
       acceptedOn: Date | null;
@@ -138,20 +147,11 @@ export interface Profile {
     };
   };
 
-  settings: {
-    gdprSettings: GDPRSettings;
-    loginType: 'otp' | 'password';
-    notifications: NotificationSettings;
-    theme: 'light' | 'dark';
-  };
-
   employeeInfo?: EmployeeInfo;
   tenantInfo?: TenantInfo;
   vendorInfo?: VendorInfo;
 
   user: Types.ObjectId;
-  timeZone: string;
-  lang: string;
 }
 
 /**

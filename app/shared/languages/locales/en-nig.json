@@ -44,6 +44,8 @@
   "client": {
     "errors": {
       "clientNotFound": "Client no dey found",
+      "notFound": "Client no dey found",
+      "insufficientPermissions": "You no get enough permission to do dis action",
       "idNumberRequired": "ID number dey needed when you dey update identification type",
       "issuingAuthorityRequired": "Issuing authority dey needed when you dey update identification type",
       "idTypeRequired": "ID type dey needed when you dey update identification number",
@@ -58,13 +60,17 @@
       "profileUpdated": "Client profile don update successfully",
       "detailsUpdated": "Client details don update successfully",
       "detailsRetrieved": "Client details don retrieve successfully",
+      "userRetrieved": "User information don retrieve successfully",
+      "userStatsRetrieved": "User statistics don retrieve successfully",
+      "tenantsRetrieved": "Tenants don retrieve successfully",
       "retrieved": "Client details don retrieve successfully"
     }
   },
   "property": {
     "logging": {
       "cleaningUp": "Dey clean property resources and event listeners",
-      "eventListenersRemoved": "Property event listeners don remove successfully"
+      "eventListenersRemoved": "Property event listeners don remove successfully",
+      "ignoringUploadEvent": "Dey ignore upload event for non-property resource"
     },
     "errors": {
       "noCsvFileUploaded": "No CSV file upload",
@@ -107,6 +113,7 @@
   },
   "propertyUnit": {
     "errors": {
+      "noCsvFileUploaded": "No CSV file upload",
       "noDocumentFileUploaded": "No document file upload",
       "unableToAddUnit": "We no fit add unit to property.",
       "propertyNotFound": "We no fit add unit to property, property no dey found.",
@@ -359,6 +366,7 @@
       "reactivated": "Invitation don reactivate and send to {{email}}",
       "revoked": "Invitation don revoke successfully",
       "accepted": "Invitation don accept successfully",
+      "declined": "Invitation don decline successfully",
       "retrieved": "Invitation don retrieve successfully",
       "listed": "Invitations don list successfully",
       "updated": "Invitation don update for {{email}}",
@@ -376,6 +384,8 @@
     },
     "errors": {
       "notFound": "Invitation no dey found",
+      "invalidClient": "Client wey dem specify for invitation no correct",
+      "invalidOrExpired": "Invitation no correct or don expire",
       "cannotResend": "We no fit resend dis invitation",
       "expired": "Invitation don expire",
       "noCsvFileUploaded": "No CSV file upload. Please select file to continue.",
@@ -413,6 +423,30 @@
       "propertyTypeMinUnits": "{{propertyType}} properties typically need at least {{minUnits}} units",
       "fieldMinLengthRequired": "{{fieldName}} must be at least {{minLength}} characters",
       "fieldMaxLengthExceeded": "{{fieldName}} no fit exceed {{maxLength}} characters"
+    }
+  },
+  "profile": {
+    "success": {
+      "roleInitialized": "User role don initialize successfully",
+      "profileRetrieved": "Profile don retrieve successfully",
+      "profileUpdated": "Profile don update successfully"
+    },
+    "errors": {
+      "notFound": "Profile no dey found"
+    }
+  },
+  "vendor": {
+    "success": {
+      "statsRetrieved": "Vendor statistics don retrieve successfully",
+      "teamMembersRetrieved": "Team members don retrieve successfully"
+    },
+    "errors": {
+      "notPrimaryVendor": "Access denied. Only primary vendor account holders fit do dis action"
+    }
+  },
+  "tenant": {
+    "success": {
+      "detailsRetrieved": "Tenant details don retrieve successfully"
     }
   }
 }

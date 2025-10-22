@@ -472,8 +472,6 @@ export class ProfileService {
         identification: profileDoc.personalInfo.identification,
         settings: {
           ...profileDoc.settings,
-          timeZone: profileDoc.timeZone,
-          lang: profileDoc.lang,
         },
         userType: userDoc.data.profile.userType as
           | 'employee'
@@ -604,7 +602,16 @@ export class ProfileService {
           message: `Profile meta validation failed: ${metaValidation.error.issues.map((i) => i.message).join(', ')}`,
         });
       }
-      validatedData.profileMeta = metaValidation.data;
+      // Map profileMeta fields to settings for backward compatibility
+      if (!validatedData.settings) {
+        validatedData.settings = {};
+      }
+      if (metaValidation.data.lang) {
+        validatedData.settings.lang = metaValidation.data.lang;
+      }
+      if (metaValidation.data.timeZone) {
+        validatedData.settings.timeZone = metaValidation.data.timeZone;
+      }
       hasUpdates = true;
     }
 

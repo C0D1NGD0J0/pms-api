@@ -73,6 +73,8 @@
   "client": {
     "errors": {
       "clientNotFound": "Client not found",
+      "notFound": "Client not found",
+      "insufficientPermissions": "Insufficient permissions to perform this action",
       "idNumberRequired": "ID number is required when updating identification type",
       "issuingAuthorityRequired": "Issuing authority is required when updating identification type",
       "idTypeRequired": "ID type is required when updating identification number",
@@ -94,6 +96,9 @@
       "profileUpdated": "Client profile updated successfully",
       "detailsUpdated": "Client details updated successfully",
       "detailsRetrieved": "Client details retrieved successfully",
+      "userRetrieved": "User information retrieved successfully",
+      "userStatsRetrieved": "User statistics retrieved successfully",
+      "tenantsRetrieved": "Tenants retrieved successfully",
       "roleAssigned": "Role {{role}} assigned successfully",
       "roleRemoved": "Role {{role}} removed successfully",
       "rolesRetrieved": "User roles retrieved successfully",
@@ -107,7 +112,8 @@
   "property": {
     "logging": {
       "cleaningUp": "Cleaning up property resources and event listeners",
-      "eventListenersRemoved": "Property event listeners removed successfully"
+      "eventListenersRemoved": "Property event listeners removed successfully",
+      "ignoringUploadEvent": "Ignoring upload event for non-property resource"
     },
     "errors": {
       "noCsvFileUploaded": "No CSV file uploaded",
@@ -436,6 +442,7 @@
       "reactivated": "Invitation reactivated and sent to {{email}}",
       "revoked": "Invitation revoked successfully",
       "accepted": "Invitation accepted successfully",
+      "declined": "Invitation declined successfully",
       "retrieved": "Invitation retrieved successfully",
       "listed": "Invitations listed successfully",
       "updated": "Invitation updated for {{email}}",
@@ -453,10 +460,73 @@
     },
     "errors": {
       "notFound": "Invitation not found",
+      "invalidClient": "Invalid client specified for invitation",
+      "invalidOrExpired": "Invitation is invalid or has expired",
       "cannotResend": "Cannot resend this invitation",
       "expired": "Invitation has expired",
       "noCsvFileUploaded": "No CSV file uploaded. Please select a file to continue.",
       "pendingInvitationExists": "An active invitation already exists for this email address"
+    }
+  },
+  "profile": {
+    "success": {
+      "roleInitialized": "User role initialized successfully",
+      "profileRetrieved": "Profile retrieved successfully",
+      "profileUpdated": "Profile updated successfully"
+    },
+    "errors": {
+      "notFound": "Profile not found"
+    }
+  },
+  "propertyUnit": {
+    "errors": {
+      "noCsvFileUploaded": "No CSV file uploaded",
+      "noDocumentFileUploaded": "No document file uploaded",
+      "unableToAddUnit": "Unable to add unit to property.",
+      "propertyNotFound": "Unable to add unit to property, property not found.",
+      "unableToGetDetails": "Unable to get property unit details.",
+      "unableToGetUnitFromProperty": "Unable to get unit from property, property not found.",
+      "unitNotFound": "Unable to get unit from property, unit not found.",
+      "unableToGetUnits": "Unable to get property units.",
+      "unableToGetUnitsFromProperty": "Unable to get units from property, property not found.",
+      "unableToUpdateUnit": "Unable to update property unit.",
+      "cannotUpdateDueToStatus": "Cannot update unit, due to property status of {{status}}.",
+      "rentalAmountMustBeNonNegative": "Rental amount must be a non-negative number",
+      "securityDepositMustBeNonNegative": "Security deposit must be a non-negative number",
+      "cannotSetOccupiedWhenProperty": "Cannot set unit as occupied when property is {{status}}",
+      "occupiedUnitsMustHaveRental": "Occupied units must have a rental amount",
+      "validationFailed": "Validation failed",
+      "documentDeletionNotImplemented": "Document deletion functionality needs to be implemented",
+      "maxCapacityReached": "Unable to add units to property, maximum capacity reached.",
+      "exceedsLimit": "Cannot add {{count}} units. Property has {{current}}/{{max}} units (including archived). Adding these units would exceed the limit.",
+      "duplicateUnitNumbers": "Duplicate unit numbers found in batch: {{unitNumbers}}",
+      "patternInconsistency": "Pattern inconsistency detected: {{recommendation}}",
+      "unitNumberAlreadyExists": "A unit with number '{{unitNumber}}' already exists for this property",
+      "unitSuggestion": "Suggested unit number: {{suggestion}}"
+    },
+    "success": {
+      "unitRetrieved": "Unit retrieved successfully.",
+      "unitsRetrieved": "Units retrieved successfully.",
+      "unitUpdated": "Unit updated successfully",
+      "unitCreationQueued": "Unit creation job queued successfully",
+      "unitsCreated": "{{created}} units created successfully, {{failed}} failed",
+      "allUnitsCreated": "All {{count}} units created successfully",
+      "csvValidated": "Property units CSV file validated successfully",
+      "csvImported": "Property units imported successfully from CSV file"
+    }
+  },
+  "vendor": {
+    "success": {
+      "statsRetrieved": "Vendor statistics retrieved successfully",
+      "teamMembersRetrieved": "Team members retrieved successfully"
+    },
+    "errors": {
+      "notPrimaryVendor": "Access denied. Only primary vendor account holders can perform this action"
+    }
+  },
+  "tenant": {
+    "success": {
+      "detailsRetrieved": "Tenant details retrieved successfully"
     }
   }
 }

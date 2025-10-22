@@ -74,6 +74,40 @@ export async function createVendor(vendorData: any, client: any) {
         url: faker.image.avatar(),
       },
     },
+    settings: {
+      lang: 'en',
+      timeZone: 'UTC',
+      theme: 'light',
+      loginType: 'password',
+      notifications: {
+        emailNotifications: true,
+        inAppNotifications: true,
+        emailFrequency: 'daily',
+        propertyUpdates: true,
+        announcements: true,
+        maintenance: true,
+        comments: true,
+        messages: true,
+        payments: true,
+        system: true,
+      },
+      gdprSettings: {
+        dataRetentionPolicy: 'standard',
+        dataProcessingConsent: true,
+        processingConsentDate: new Date(),
+        retentionExpiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      },
+    },
+    policies: {
+      tos: {
+        accepted: true,
+        acceptedOn: new Date(),
+      },
+      marketing: {
+        accepted: false,
+        acceptedOn: null,
+      },
+    },
     vendorInfo: {
       companyName: vendorData.companyName,
       businessType: vendorData.businessType,
@@ -119,6 +153,40 @@ export async function createVendor(vendorData: any, client: any) {
           url: faker.image.avatar(),
         },
       },
+      settings: {
+        lang: 'en',
+        timeZone: 'UTC',
+        theme: 'light',
+        loginType: 'password',
+        notifications: {
+          emailNotifications: true,
+          inAppNotifications: true,
+          emailFrequency: 'daily',
+          propertyUpdates: true,
+          announcements: true,
+          maintenance: true,
+          comments: true,
+          messages: true,
+          payments: true,
+          system: true,
+        },
+        gdprSettings: {
+          dataRetentionPolicy: 'standard',
+          dataProcessingConsent: true,
+          processingConsentDate: new Date(),
+          retentionExpiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+        },
+      },
+      policies: {
+        tos: {
+          accepted: true,
+          acceptedOn: new Date(),
+        },
+        marketing: {
+          accepted: false,
+          acceptedOn: null,
+        },
+      },
       vendorInfo: {
         companyName: vendorData.companyName,
         businessType: vendorData.businessType,
@@ -129,6 +197,70 @@ export async function createVendor(vendorData: any, client: any) {
   }
 
   return { vendor, primaryUser, employees };
+}
+
+/**
+ * Create units for multi-tenant property
+ */
+export async function createUnits(property: any, count: number, currency: string, createdBy: any) {
+  const units = [];
+
+  // Create 3-7 units as requested
+  const numUnits = Math.max(3, Math.min(count, 7));
+
+  for (let i = 1; i <= numUnits; i++) {
+    // Generate floor number (0-5 for variety)
+    const floor = i <= 2 ? 1 : Math.floor((i - 1) / 2) + 1; // Units 1-2 on floor 1, then 2 per floor
+    const unitNumber = `${floor}0${i % 2 === 0 ? 2 : 1}`; // 101, 102, 201, 202, 301, 302, 401
+
+    const bedrooms = faker.number.int({ min: 1, max: 3 }); // 1-3 bedrooms
+    const bathrooms = faker.number.int({ min: 1, max: 2 }); // 1-2 bathrooms
+    const totalArea = faker.number.int({ min: 650, max: 1200 }); // 650-1200 sq ft
+
+    const rentAmount =
+      property.fees.rentalAmount * 0.7 + Math.random() * property.fees.rentalAmount * 0.3; // 70-100% of property base rent
+
+    units.push({
+      propertyId: property._id,
+      cuid: property.cuid,
+      unitNumber,
+      unitType: 'residential',
+      status: i % 4 === 0 ? 'occupied' : 'available', // Every 4th unit is occupied
+      floor,
+      specifications: {
+        bedrooms,
+        bathrooms,
+        totalArea,
+        maxOccupants: bedrooms * 2, // 2 people per bedroom
+      },
+      fees: {
+        currency,
+        rentAmount: Math.floor(rentAmount),
+        securityDeposit: Math.floor(rentAmount), // Security deposit = 1 month rent
+      },
+      utilities: {
+        water: faker.datatype.boolean(),
+        gas: faker.datatype.boolean(),
+        heating: faker.datatype.boolean(),
+        trash: faker.datatype.boolean(),
+        centralAC: faker.datatype.boolean(),
+      },
+      amenities: {
+        airConditioning: faker.datatype.boolean(),
+        washerDryer: faker.datatype.boolean(),
+        dishwasher: faker.datatype.boolean(),
+        parking: faker.datatype.boolean(),
+        storage: faker.datatype.boolean(),
+        cableTV: faker.datatype.boolean(),
+        internet: faker.datatype.boolean(),
+      },
+      isActive: true,
+      createdBy: createdBy._id,
+    });
+  }
+
+  await UnitModel.insertMany(units);
+  return units;
 }
 
 /**
@@ -182,46 +314,6 @@ export async function createProperty(
 }
 
 /**
- * Create units for multi-tenant property
- */
-export async function createUnits(property: any, count: number, currency: string, createdBy: any) {
-  const units = [];
-
-  for (let i = 1; i <= count; i++) {
-    const unitNumber = (100 + i).toString(); // 101, 102, ..., 115
-    const rentAmount =
-      property.fees.rentalAmount * 0.6 + Math.random() * property.fees.rentalAmount * 0.4; // 60-100% of property base rent
-
-    units.push({
-      propertyId: property._id,
-      cuid: property.cuid,
-      unitNumber,
-      unitType: 'residential',
-      status: i % 3 === 0 ? 'occupied' : 'available', // Every 3rd unit is occupied
-      occupancyStatus: i % 3 === 0 ? 'occupied' : 'vacant',
-      specifications: {
-        bedrooms: Math.floor(Math.random() * 2) + 1, // 1-2 bedrooms
-        bathrooms: 1,
-        totalArea: 650 + Math.random() * 300, // 650-950 sq ft
-        floors: 1,
-      },
-      fees: {
-        currency,
-        rentAmount: Math.floor(rentAmount),
-        managementFees: Math.floor(property.fees.managementFees * 0.1),
-        taxAmount: Math.floor(property.fees.taxAmount * 0.1),
-      },
-      utilities: property.utilities,
-      interiorAmenities: property.interiorAmenities,
-      createdBy: createdBy._id,
-    });
-  }
-
-  await UnitModel.insertMany(units);
-  return units;
-}
-
-/**
  * Create staff user
  */
 export async function createStaffUser(
@@ -260,6 +352,40 @@ export async function createStaffUser(
       phoneNumber: staffData.phoneNumber,
       avatar: {
         url: faker.image.avatar(),
+      },
+    },
+    settings: {
+      lang: region.lang || 'en',
+      timeZone: region.timezone || 'UTC',
+      theme: 'light',
+      loginType: 'password',
+      notifications: {
+        emailNotifications: true,
+        inAppNotifications: true,
+        emailFrequency: 'daily',
+        propertyUpdates: true,
+        announcements: true,
+        maintenance: true,
+        comments: true,
+        messages: true,
+        payments: true,
+        system: true,
+      },
+      gdprSettings: {
+        dataRetentionPolicy: 'standard',
+        dataProcessingConsent: true,
+        processingConsentDate: new Date(),
+        retentionExpiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      },
+    },
+    policies: {
+      tos: {
+        accepted: true,
+        acceptedOn: new Date(),
+      },
+      marketing: {
+        accepted: false,
+        acceptedOn: null,
       },
     },
     employeeInfo: {
@@ -306,6 +432,40 @@ export async function createAdminUser(adminData: any, client: any, region: any) 
       phoneNumber: adminData.phoneNumber,
       avatar: {
         url: faker.image.avatar(),
+      },
+    },
+    settings: {
+      lang: region.lang || 'en',
+      timeZone: region.timezone || 'UTC',
+      theme: 'light',
+      loginType: 'password',
+      notifications: {
+        emailNotifications: true,
+        inAppNotifications: true,
+        emailFrequency: 'daily',
+        propertyUpdates: true,
+        announcements: true,
+        maintenance: true,
+        comments: true,
+        messages: true,
+        payments: true,
+        system: true,
+      },
+      gdprSettings: {
+        dataRetentionPolicy: 'standard',
+        dataProcessingConsent: true,
+        processingConsentDate: new Date(),
+        retentionExpiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      },
+    },
+    policies: {
+      tos: {
+        accepted: true,
+        acceptedOn: new Date(),
+      },
+      marketing: {
+        accepted: false,
+        acceptedOn: null,
       },
     },
   });

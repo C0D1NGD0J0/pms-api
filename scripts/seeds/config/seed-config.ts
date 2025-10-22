@@ -93,7 +93,7 @@ export const DEFAULT_CONFIG: SeedConfig = {
     vendorEmployeesPerVendor: 5,
     propertiesPerClient: 6,
     multiTenantProperties: 3, // 3 out of 6 will be multi-tenant
-    unitsPerMultiTenant: 15,
+    unitsPerMultiTenant: 7, // Will create 3-7 units per property with varied floors
   },
 };
 
@@ -110,7 +110,7 @@ export const PRESETS = {
       vendorEmployeesPerVendor: 2,
       propertiesPerClient: 2,
       multiTenantProperties: 1,
-      unitsPerMultiTenant: 5,
+      unitsPerMultiTenant: 5, // Will create 3-5 units with varied floors
     },
   },
 

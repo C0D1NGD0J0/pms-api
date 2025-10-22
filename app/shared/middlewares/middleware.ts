@@ -284,7 +284,7 @@ export const detectLanguage = async (req: Request, _res: Response, next: NextFun
 
 /**
  * set language from user preferences (after authentication)
- * order of choice: user.preferences.lang > client.settings.lang > profile.lang > request.lang > default
+ * order of choice: user.preferences.lang > client.settings.lang > profile.settings.lang > request.lang > default
  * Automatically skips if no authenticated user (for public routes)
  */
 export const setUserLanguage = async (req: Request, _res: Response, next: NextFunction) => {
@@ -300,10 +300,6 @@ export const setUserLanguage = async (req: Request, _res: Response, next: NextFu
 
     if (currentUser.preferences?.lang) {
       userLanguage = currentUser.preferences.lang;
-    } else if ((currentUser as any).clientSettings?.lang) {
-      userLanguage = (currentUser as any).clientSettings.lang;
-    } else if ((currentUser as any).profile?.lang) {
-      userLanguage = (currentUser as any).profile.lang;
     }
 
     const supportedLanguages = languageService.getAvailableLanguages();

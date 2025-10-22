@@ -73,6 +73,8 @@
   "client": {
     "errors": {
       "clientNotFound": "Client introuvable",
+      "notFound": "Client introuvable",
+      "insufficientPermissions": "Permissions insuffisantes pour effectuer cette action",
       "idNumberRequired": "Numéro d'identification requis lors de la mise à jour du type d'identification",
       "issuingAuthorityRequired": "Autorité d'émission requise lors de la mise à jour du type d'identification",
       "idTypeRequired": "Type d'identification requis lors de la mise à jour du numéro d'identification",
@@ -87,13 +89,17 @@
       "profileUpdated": "Profil client mis à jour avec succès",
       "detailsUpdated": "Détails du client mis à jour avec succès",
       "detailsRetrieved": "Détails du client récupérés avec succès",
+      "userRetrieved": "Informations utilisateur récupérées avec succès",
+      "userStatsRetrieved": "Statistiques utilisateur récupérées avec succès",
+      "tenantsRetrieved": "Locataires récupérés avec succès",
       "retrieved": "Détails du client récupérés avec succès"
     }
   },
   "property": {
     "logging": {
       "cleaningUp": "Nettoyage des ressources de propriété et des écouteurs d'événements",
-      "eventListenersRemoved": "Écouteurs d'événements de propriété supprimés avec succès"
+      "eventListenersRemoved": "Écouteurs d'événements de propriété supprimés avec succès",
+      "ignoringUploadEvent": "Ignorer l'événement de téléchargement pour une ressource non-propriété"
     },
     "errors": {
       "noCsvFileUploaded": "Aucun fichier CSV téléchargé",
@@ -136,6 +142,7 @@
   },
   "propertyUnit": {
     "errors": {
+      "noCsvFileUploaded": "Aucun fichier CSV téléchargé",
       "noDocumentFileUploaded": "Aucun fichier de document téléchargé",
       "unableToAddUnit": "Impossible d'ajouter une unité à la propriété.",
       "propertyNotFound": "Impossible d'ajouter une unité à la propriété, propriété introuvable.",
@@ -365,6 +372,7 @@
       "reactivated": "Invitation réactivée et envoyée à {{email}}",
       "revoked": "Invitation révoquée avec succès",
       "accepted": "Invitation acceptée avec succès",
+      "declined": "Invitation déclinée avec succès",
       "retrieved": "Invitation récupérée avec succès",
       "listed": "Invitations listées avec succès",
       "updated": "Invitation mise à jour pour {{email}}",
@@ -382,6 +390,8 @@
     },
     "errors": {
       "notFound": "Invitation introuvable",
+      "invalidClient": "Client invalide spécifié pour l'invitation",
+      "invalidOrExpired": "L'invitation est invalide ou a expiré",
       "cannotResend": "Impossible de renvoyer cette invitation",
       "expired": "L'invitation a expiré",
       "noCsvFileUploaded": "Aucun fichier CSV téléchargé. Veuillez sélectionner un fichier pour continuer.",
@@ -442,6 +452,30 @@
       "propertyTypeMinUnits": "Les propriétés {{propertyType}} nécessitent généralement au moins {{minUnits}} unités",
       "fieldMinLengthRequired": "{{fieldName}} doit contenir au moins {{minLength}} caractères",
       "fieldMaxLengthExceeded": "{{fieldName}} ne peut pas dépasser {{maxLength}} caractères"
+    }
+  },
+  "profile": {
+    "success": {
+      "roleInitialized": "Rôle utilisateur initialisé avec succès",
+      "profileRetrieved": "Profil récupéré avec succès",
+      "profileUpdated": "Profil mis à jour avec succès"
+    },
+    "errors": {
+      "notFound": "Profil introuvable"
+    }
+  },
+  "vendor": {
+    "success": {
+      "statsRetrieved": "Statistiques du fournisseur récupérées avec succès",
+      "teamMembersRetrieved": "Membres de l'équipe récupérés avec succès"
+    },
+    "errors": {
+      "notPrimaryVendor": "Accès refusé. Seuls les détenteurs de compte fournisseur principal peuvent effectuer cette action"
+    }
+  },
+  "tenant": {
+    "success": {
+      "detailsRetrieved": "Détails du locataire récupérés avec succès"
     }
   }
 }

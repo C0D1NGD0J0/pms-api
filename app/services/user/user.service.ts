@@ -897,8 +897,30 @@ export class UserService {
         phoneNumber: invitation.personalInfo.phoneNumber || '',
         location: userData.location || 'Unknown',
       },
-      lang: userData.lang || 'en',
-      timeZone: userData.timeZone || 'UTC',
+      settings: {
+        lang: userData.lang || 'en',
+        timeZone: userData.timeZone || 'UTC',
+        theme: 'light',
+        loginType: 'password',
+        notifications: {
+          emailNotifications: true,
+          inAppNotifications: true,
+          emailFrequency: 'daily',
+          propertyUpdates: true,
+          announcements: true,
+          maintenance: true,
+          comments: true,
+          messages: true,
+          payments: true,
+          system: true,
+        },
+        gdprSettings: {
+          dataRetentionPolicy: 'standard',
+          dataProcessingConsent: true,
+          processingConsentDate: new Date(),
+          retentionExpiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+        },
+      },
       policies: {
         tos: {
           accepted: userData.termsAccepted || false,

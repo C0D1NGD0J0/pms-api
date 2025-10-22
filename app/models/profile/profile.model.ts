@@ -109,6 +109,8 @@ const ProfileSchema = new Schema<IProfileDocument>(
       ref: 'User',
     },
     settings: {
+      lang: { type: String, default: 'en' },
+      timeZone: { type: String, default: 'UTC' },
       theme: {
         type: String,
         default: 'light',
@@ -155,8 +157,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
     },
 
     puid: { type: String, required: true, index: true },
-    timeZone: { type: String, default: 'UTC' },
-    lang: { type: String, default: 'en' },
 
     vendorInfo: {
       vendorId: {

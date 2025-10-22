@@ -214,11 +214,11 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
       const updateFields: Record<string, string> = {};
 
       if (settings.timeZone) {
-        updateFields.timeZone = settings.timeZone;
+        updateFields['settings.timeZone'] = settings.timeZone;
       }
 
       if (settings.lang) {
-        updateFields.lang = settings.lang;
+        updateFields['settings.lang'] = settings.lang;
       }
 
       return await this.updateById(profileId, { $set: updateFields });

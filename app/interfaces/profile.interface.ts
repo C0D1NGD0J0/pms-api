@@ -17,7 +17,7 @@ export enum BackgroundCheckStatus {
   FAILED = 'failed',
 }
 
-enum DataRetentionPolicy {
+export enum DataRetentionPolicy {
   STANDARD = 'standard',
   EXTENDED = 'extended',
   MINIMAL = 'minimal',
@@ -129,11 +129,11 @@ export interface Profile {
   };
   settings: {
     lang: string;
-    timeZone: string;
-    gdprSettings: GDPRSettings;
-    loginType: 'otp' | 'password';
-    notifications: NotificationSettings;
-    theme: 'light' | 'dark';
+    timeZone?: string;
+    gdprSettings?: GDPRSettings;
+    loginType?: 'otp' | 'password';
+    notifications?: NotificationSettings;
+    theme?: 'light' | 'dark';
   };
 
   policies: {

@@ -245,8 +245,11 @@ export class AuthService {
             location: getLocationDetails(signupData.location) || 'Unknown',
             phoneNumber: signupData.phoneNumber,
           },
-          lang: signupData.lang,
-          timeZone: signupData.timeZone,
+          settings: {
+            lang: signupData.lang,
+            loginType: 'password',
+            timeZone: signupData.timeZone,
+          },
         },
         session
       );

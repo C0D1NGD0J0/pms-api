@@ -289,11 +289,10 @@ ProfileSchema.methods.getGravatarUrl = function (email: string): string {
   return `https://gravatar.com/avatar/${hash}?s=200`;
 };
 
-// automatically set retention date based on policy
 ProfileSchema.pre('save', function (this: IProfileDocument, next) {
   if (this.isModified('settings.dataRetentionPolicy')) {
     const today = new Date();
-    switch (this.settings.gdprSettings.dataRetentionPolicy) {
+    switch (this.settings?.gdprSettings?.dataRetentionPolicy) {
       case 'extended':
         this.settings.gdprSettings.retentionExpiryDate = new Date(
           today.setFullYear(today.getFullYear() + 10)
@@ -305,15 +304,17 @@ ProfileSchema.pre('save', function (this: IProfileDocument, next) {
         );
         break;
       default:
-        this.settings.gdprSettings.retentionExpiryDate = new Date(
-          today.setFullYear(today.getFullYear() + 7)
-        );
+        if (this.settings.gdprSettings)
+          this.settings.gdprSettings.retentionExpiryDate = new Date(
+            today.setFullYear(today.getFullYear() + 7)
+          );
         break;
     }
   }
 
   next();
 });
+
 const ProfileModel = model<IProfileDocument>('Profile', ProfileSchema);
 
 ProfileModel.syncIndexes();

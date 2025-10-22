@@ -16,19 +16,16 @@ const getContainer = async () => {
 };
 
 export const ValidatecuidSchema = z.object({
-  cuid: z
-    .string()
-    .optional()
-    .refine(
-      async (cuid) => {
-        const { clientDAO }: { clientDAO: ClientDAO } = (await getContainer()).cradle;
-        const client = await clientDAO.findFirst({ cuid });
-        return !!client;
-      },
-      {
-        message: 'Invalid params detected in the request.',
-      }
-    ),
+  cuid: z.string().refine(
+    async (cuid) => {
+      const { clientDAO }: { clientDAO: ClientDAO } = (await getContainer()).cradle;
+      const client = await clientDAO.findFirst({ cuid });
+      return !!client;
+    },
+    {
+      message: 'Invalid params detected in the request.',
+    }
+  ),
 });
 
 export const ValidatevuidSchema = z.object({

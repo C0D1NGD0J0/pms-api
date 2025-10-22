@@ -1,0 +1,461 @@
+/**
+ * Canada (Toronto) - BASIC TIER
+ * Test free tier limitations
+ */
+
+export const canadaClient = {
+  displayName: 'TorProp Management Inc.',
+  legalEntityName: 'Toronto Property Management Incorporated',
+  tradingName: 'TorProp Management',
+  companyEmail: 'info@torprop.ca',
+  companyPhone: '+1-416-555-0001',
+  industry: 'Real Estate Management',
+  website: 'https://torprop.ca',
+  registrationNumber: 'ON-123456789',
+  timeZone: 'America/Toronto',
+  currency: 'CAD',
+  lang: 'en',
+  // Account type - BASIC
+  planId: 'basic',
+  planName: 'Basic Plan',
+  isEnterpriseAccount: false,
+};
+
+export const canadaAdmins = [
+  {
+    firstName: 'Sarah',
+    lastName: 'Mitchell',
+    email: 'sarah.mitchell@torprop.ca',
+    phoneNumber: '+1-416-555-0101',
+  },
+  {
+    firstName: 'David',
+    lastName: 'Chen',
+    email: 'david.chen@torprop.ca',
+    phoneNumber: '+1-416-555-0102',
+  },
+];
+
+export const canadaStaff = [
+  // 3 in operations/management
+  {
+    firstName: 'Emily',
+    lastName: 'Rodriguez',
+    email: 'emily.rodriguez@torprop.ca',
+    phoneNumber: '+1-416-555-0201',
+    department: 'operations',
+    jobTitle: 'Property Manager',
+  },
+  {
+    firstName: 'Michael',
+    lastName: 'Brown',
+    email: 'michael.brown@torprop.ca',
+    phoneNumber: '+1-416-555-0202',
+    department: 'management',
+    jobTitle: 'Operations Manager',
+  },
+  {
+    firstName: 'Jessica',
+    lastName: 'Lee',
+    email: 'jessica.lee@torprop.ca',
+    phoneNumber: '+1-416-555-0203',
+    department: 'operations',
+    jobTitle: 'Assistant Property Manager',
+  },
+  // 2 general staff
+  {
+    firstName: 'Thomas',
+    lastName: 'Anderson',
+    email: 'thomas.anderson@torprop.ca',
+    phoneNumber: '+1-416-555-0204',
+    department: 'general',
+    jobTitle: 'Administrative Assistant',
+  },
+  {
+    firstName: 'Rachel',
+    lastName: 'Green',
+    email: 'rachel.green@torprop.ca',
+    phoneNumber: '+1-416-555-0205',
+    department: 'general',
+    jobTitle: 'Customer Service Representative',
+  },
+];
+
+export const canadaVendors = [
+  {
+    companyName: 'Northern HVAC Solutions',
+    businessType: 'HVAC Services',
+    email: 'contact@northernhvac.ca',
+    phone: '+1-416-555-0301',
+    servicesOffered: {
+      hvac: true,
+      heating: true,
+      cooling: true,
+    },
+    primaryContact: {
+      firstName: 'Robert',
+      lastName: 'Johnson',
+      jobTitle: 'Lead Technician',
+    },
+    yearsInBusiness: 12,
+    taxId: 'CA-HVAC-123456',
+    registrationNumber: 'HVAC-ON-001',
+    employees: [
+      { firstName: 'James', lastName: 'Wilson', email: 'james.wilson@northernhvac.ca' },
+      { firstName: 'Patricia', lastName: 'Moore', email: 'patricia.moore@northernhvac.ca' },
+      { firstName: 'Christopher', lastName: 'Taylor', email: 'chris.taylor@northernhvac.ca' },
+      { firstName: 'Linda', lastName: 'Anderson', email: 'linda.anderson@northernhvac.ca' },
+      { firstName: 'Daniel', lastName: 'Thomas', email: 'daniel.thomas@northernhvac.ca' },
+    ],
+  },
+  {
+    companyName: 'Toronto Plumbing Pros',
+    businessType: 'Plumbing Services',
+    email: 'service@torontoplumbing.ca',
+    phone: '+1-416-555-0302',
+    servicesOffered: {
+      plumbing: true,
+      maintenance: true,
+    },
+    primaryContact: {
+      firstName: 'William',
+      lastName: 'Martinez',
+      jobTitle: 'Master Plumber',
+    },
+    yearsInBusiness: 8,
+    taxId: 'CA-PLUMB-789012',
+    registrationNumber: 'PLUMB-ON-002',
+    employees: [
+      { firstName: 'Jennifer', lastName: 'Garcia', email: 'jennifer.garcia@torontoplumbing.ca' },
+      { firstName: 'Richard', lastName: 'Rodriguez', email: 'richard.rodriguez@torontoplumbing.ca' },
+      { firstName: 'Susan', lastName: 'Hernandez', email: 'susan.hernandez@torontoplumbing.ca' },
+      { firstName: 'Joseph', lastName: 'Lopez', email: 'joseph.lopez@torontoplumbing.ca' },
+      { firstName: 'Margaret', lastName: 'Gonzalez', email: 'margaret.gonzalez@torontoplumbing.ca' },
+    ],
+  },
+  {
+    companyName: 'GreenScape Landscaping',
+    businessType: 'Landscaping Services',
+    email: 'info@greenscape.ca',
+    phone: '+1-416-555-0303',
+    servicesOffered: {
+      landscaping: true,
+      maintenance: true,
+      cleaning: true,
+    },
+    primaryContact: {
+      firstName: 'Charles',
+      lastName: 'White',
+      jobTitle: 'Landscape Architect',
+    },
+    yearsInBusiness: 15,
+    taxId: 'CA-LAND-345678',
+    registrationNumber: 'LAND-ON-003',
+    employees: [
+      { firstName: 'Karen', lastName: 'Harris', email: 'karen.harris@greenscape.ca' },
+      { firstName: 'Steven', lastName: 'Clark', email: 'steven.clark@greenscape.ca' },
+      { firstName: 'Nancy', lastName: 'Lewis', email: 'nancy.lewis@greenscape.ca' },
+      { firstName: 'Kevin', lastName: 'Robinson', email: 'kevin.robinson@greenscape.ca' },
+      { firstName: 'Betty', lastName: 'Walker', email: 'betty.walker@greenscape.ca' },
+    ],
+  },
+];
+
+export const canadaProperties = [
+  {
+    name: 'Harbourfront Towers',
+    propertyType: 'apartment',
+    status: 'available',
+    occupancyStatus: 'vacant',
+    address: {
+      street: '10 York Street',
+      streetNumber: '10',
+      city: 'Toronto',
+      state: 'ON',
+      country: 'Canada',
+      postCode: 'M5J 2R8',
+    },
+    coordinates: [-79.377, 43.641], // [longitude, latitude]
+    isMultiUnit: true,
+    maxAllowedUnits: 15,
+    specifications: {
+      totalArea: 8500,
+      floors: 12,
+    },
+    fees: {
+      rentalAmount: 250000, // $2500/month in cents
+      managementFees: 25000, // $250 (10%)
+      taxAmount: 5000,
+    },
+    yearBuilt: 2015,
+    description: {
+      text: 'Modern luxury apartment building in the heart of downtown Toronto with stunning waterfront views.',
+      html: '<p>Modern luxury apartment building in the heart of downtown Toronto with stunning waterfront views.</p>',
+    },
+    utilities: {
+      water: true,
+      electricity: true,
+      gas: true,
+      internet: true,
+      cableTV: false,
+    },
+    communityAmenities: {
+      swimmingPool: true,
+      fitnessCenter: true,
+      elevator: true,
+      parking: true,
+      securitySystem: true,
+      laundryFacility: true,
+      petFriendly: true,
+      doorman: true,
+    },
+  },
+  {
+    name: 'Yorkville Residences',
+    propertyType: 'condominium',
+    status: 'available',
+    occupancyStatus: 'partially_occupied',
+    address: {
+      street: '1 Bloor Street East',
+      streetNumber: '1',
+      city: 'Toronto',
+      state: 'ON',
+      country: 'Canada',
+      postCode: 'M4W 1A9',
+    },
+    coordinates: [-79.387, 43.670],
+    isMultiUnit: true,
+    maxAllowedUnits: 15,
+    specifications: {
+      totalArea: 9200,
+      floors: 15,
+    },
+    fees: {
+      rentalAmount: 300000, // $3000/month
+      managementFees: 30000,
+      taxAmount: 6000,
+    },
+    yearBuilt: 2018,
+    description: {
+      text: 'Upscale condominium in Yorkville with premium finishes and world-class amenities.',
+      html: '<p>Upscale condominium in Yorkville with premium finishes and world-class amenities.</p>',
+    },
+    utilities: {
+      water: true,
+      electricity: true,
+      gas: true,
+      internet: true,
+      cableTV: true,
+    },
+    communityAmenities: {
+      swimmingPool: true,
+      fitnessCenter: true,
+      elevator: true,
+      parking: true,
+      securitySystem: true,
+      laundryFacility: false,
+      petFriendly: false,
+      doorman: true,
+    },
+  },
+  {
+    name: 'Liberty Village Lofts',
+    propertyType: 'townhouse',
+    status: 'available',
+    occupancyStatus: 'occupied',
+    address: {
+      street: '75 East Liberty Street',
+      streetNumber: '75',
+      city: 'Toronto',
+      state: 'ON',
+      country: 'Canada',
+      postCode: 'M6K 3R1',
+    },
+    coordinates: [-79.419, 43.638],
+    isMultiUnit: true,
+    maxAllowedUnits: 15,
+    specifications: {
+      totalArea: 7800,
+      floors: 3,
+    },
+    fees: {
+      rentalAmount: 280000, // $2800/month
+      managementFees: 28000,
+      taxAmount: 5500,
+    },
+    yearBuilt: 2012,
+    description: {
+      text: 'Trendy townhouse community in Liberty Village with modern design and private outdoor spaces.',
+      html: '<p>Trendy townhouse community in Liberty Village with modern design and private outdoor spaces.</p>',
+    },
+    utilities: {
+      water: true,
+      electricity: true,
+      gas: true,
+      internet: true,
+      cableTV: false,
+    },
+    communityAmenities: {
+      swimmingPool: false,
+      fitnessCenter: true,
+      elevator: false,
+      parking: true,
+      securitySystem: true,
+      laundryFacility: false,
+      petFriendly: true,
+      doorman: false,
+    },
+  },
+  {
+    name: 'Downtown Self-Storage',
+    propertyType: 'commercial',
+    status: 'available',
+    occupancyStatus: 'vacant',
+    address: {
+      street: '455 Adelaide Street West',
+      streetNumber: '455',
+      city: 'Toronto',
+      state: 'ON',
+      country: 'Canada',
+      postCode: 'M5V 1T1',
+    },
+    coordinates: [-79.398, 43.647],
+    isMultiUnit: false,
+    maxAllowedUnits: 0,
+    specifications: {
+      totalArea: 12000,
+      floors: 4,
+    },
+    fees: {
+      rentalAmount: 800000, // $8000/month
+      managementFees: 80000,
+      taxAmount: 15000,
+    },
+    yearBuilt: 2010,
+    description: {
+      text: 'Climate-controlled self-storage facility in downtown Toronto with 24/7 access.',
+      html: '<p>Climate-controlled self-storage facility in downtown Toronto with 24/7 access.</p>',
+    },
+    utilities: {
+      water: false,
+      electricity: true,
+      gas: false,
+      internet: true,
+      cableTV: false,
+    },
+    communityAmenities: {
+      swimmingPool: false,
+      fitnessCenter: false,
+      elevator: true,
+      parking: true,
+      securitySystem: true,
+      laundryFacility: false,
+      petFriendly: false,
+      doorman: false,
+    },
+  },
+  {
+    name: 'North York Family Home',
+    propertyType: 'house',
+    status: 'available',
+    occupancyStatus: 'vacant',
+    address: {
+      street: '100 Sheppard Avenue East',
+      streetNumber: '100',
+      city: 'Toronto',
+      state: 'ON',
+      country: 'Canada',
+      postCode: 'M2N 6S8',
+    },
+    coordinates: [-79.409, 43.761],
+    isMultiUnit: false,
+    maxAllowedUnits: 0,
+    specifications: {
+      totalArea: 2200,
+      bedrooms: 4,
+      bathrooms: 3,
+      floors: 2,
+      garageSpaces: 2,
+      lotSize: 4500,
+    },
+    fees: {
+      rentalAmount: 350000, // $3500/month
+      managementFees: 35000,
+      taxAmount: 7000,
+      securityDeposit: 350000,
+    },
+    yearBuilt: 2008,
+    description: {
+      text: 'Spacious single-family home in North York with large backyard and modern updates.',
+      html: '<p>Spacious single-family home in North York with large backyard and modern updates.</p>',
+    },
+    utilities: {
+      water: true,
+      electricity: true,
+      gas: true,
+      internet: false,
+      cableTV: false,
+    },
+    interiorAmenities: {
+      airConditioning: true,
+      heating: true,
+      washerDryer: true,
+      dishwasher: true,
+      fridge: true,
+      furnished: false,
+      storageSpace: true,
+    },
+  },
+  {
+    name: 'Etobicoke Villa',
+    propertyType: 'house',
+    status: 'available',
+    occupancyStatus: 'occupied',
+    address: {
+      street: '50 Bloor Street West',
+      streetNumber: '50',
+      city: 'Etobicoke',
+      state: 'ON',
+      country: 'Canada',
+      postCode: 'M9A 3E9',
+    },
+    coordinates: [-79.525, 43.645],
+    isMultiUnit: false,
+    maxAllowedUnits: 0,
+    specifications: {
+      totalArea: 1800,
+      bedrooms: 3,
+      bathrooms: 2,
+      floors: 1,
+      garageSpaces: 1,
+      lotSize: 3500,
+    },
+    fees: {
+      rentalAmount: 280000, // $2800/month
+      managementFees: 28000,
+      taxAmount: 5600,
+      securityDeposit: 280000,
+    },
+    yearBuilt: 1998,
+    description: {
+      text: 'Charming bungalow in Etobicoke with renovated kitchen and quiet neighborhood.',
+      html: '<p>Charming bungalow in Etobicoke with renovated kitchen and quiet neighborhood.</p>',
+    },
+    utilities: {
+      water: true,
+      electricity: true,
+      gas: true,
+      internet: false,
+      cableTV: false,
+    },
+    interiorAmenities: {
+      airConditioning: true,
+      heating: true,
+      washerDryer: true,
+      dishwasher: true,
+      fridge: true,
+      furnished: false,
+      storageSpace: true,
+    },
+  },
+];

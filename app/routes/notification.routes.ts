@@ -10,7 +10,7 @@ router.use(isAuthenticated);
 
 router.patch(
   '/:cuid/mark-read/:nuid',
-  basicLimiter,
+  basicLimiter(),
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.nuid),
   }),

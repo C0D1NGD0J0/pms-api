@@ -73,7 +73,7 @@ router.post(
 
 router.get(
   '/:cuid/client_properties',
-  basicLimiter,
+  basicLimiter(),
   validateRequest({
     params: PropertyValidations.validatecuid,
   }),

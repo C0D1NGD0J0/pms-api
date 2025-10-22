@@ -20,7 +20,9 @@
     "test:coverage": "cross-env NODE_ENV=test jest --coverage",
     "test:unit": "cross-env NODE_ENV=test jest --testPathPattern=\"tests/unit/${npm_config_path:-}\"",
     "test:api": "cross-env NODE_ENV=test jest --testPathPattern=\"tests/api/${npm_config_path:-}\"",
-    "test:routes": "cross-env NODE_ENV=test jest --config jest.config.routes.ts"
+    "test:routes": "cross-env NODE_ENV=test jest --config jest.config.routes.ts",
+    "seed:db": "ts-node -r tsconfig-paths/register scripts/seeds/seed-database.ts",
+    "seed:clean": "ts-node -r tsconfig-paths/register scripts/seeds/seed-database.ts --clean"
   },
   "keywords": [
     "property-management-system",

@@ -5,8 +5,8 @@ import * as nanoid from 'nanoid';
 import { Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
-import { PhoneNumber } from 'libphonenumber-js';
 import { Country, City } from 'country-state-city';
+import { parsePhoneNumber } from 'libphonenumber-js';
 import { NextFunction, Response, Request } from 'express';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
@@ -257,8 +257,7 @@ export function isValidPhoneNumber(phoneNumber: string): boolean {
     return false;
   }
   try {
-    // const parsedNumber = parsePhoneNumberWithError(phoneNumber);
-    const parsedNumber = new PhoneNumber(phoneNumber as any);
+    const parsedNumber = parsePhoneNumber(phoneNumber);
     return !!parsedNumber && parsedNumber.isValid();
   } catch (error) {
     return false;

@@ -248,20 +248,6 @@ export interface ILeaseDocumentItem {
 }
 
 /**
- * E-Signature Interface
- * Tracks electronic signature provider details
- */
-export interface ILeaseESignature {
-  status?: 'draft' | 'sent' | 'signed' | 'declined' | 'voided';
-  provider: 'hellosign' | 'docusign' | 'pandadoc';
-  declinedReason?: string;
-  envelopeId?: string;
-  signingUrl?: string;
-  completedAt?: Date;
-  sentAt?: Date;
-}
-
-/**
  * E-Signature Request Data Interface
  * Used when sending lease for signature
  */
@@ -291,6 +277,20 @@ export interface ILeaseSignature {
 }
 
 /**
+ * E-Signature Interface
+ * Tracks electronic signature provider details
+ */
+export interface ILeaseESignature {
+  status?: 'draft' | 'sent' | 'signed' | 'declined' | 'voided';
+  provider: 'hellosign' | 'boldsign';
+  declinedReason?: string;
+  envelopeId?: string;
+  signingUrl?: string;
+  completedAt?: Date;
+  sentAt?: Date;
+}
+
+/**
  * Last Modified By Interface
  * Audit trail entry
  */
@@ -299,19 +299,6 @@ export interface ILastModifiedBy {
   userId: Types.ObjectId | string;
   name: string;
   date: Date;
-}
-
-/**
- * Pet Policy Interface
- * Defines pet rules and associated fees
- */
-export interface IPetPolicy {
-  weightLimit?: number;
-  monthlyFee?: number;
-  allowed: boolean;
-  deposit?: number;
-  types?: string[];
-  maxPets?: number;
 }
 
 /**
@@ -347,6 +334,18 @@ export interface ILeaseDuration {
   moveInDate?: Date;
   startDate: Date;
   endDate: Date;
+}
+
+/**
+ * Pet Policy Interface
+ * Defines pet rules and associated fees
+ */
+export interface IPetPolicy {
+  monthlyFee?: number;
+  allowed: boolean;
+  deposit?: number;
+  types?: string[];
+  maxPets?: number;
 }
 
 /**

@@ -36,8 +36,8 @@ export interface IProperty {
   interiorAmenities?: InteriorAmenities;
   computedLocation?: ComputedLocation;
   financialDetails?: FinancialDetails;
-  documents?: PropertyDocumentItem[];
   occupancyStatus: OccupancyStatus;
+  documents?: MediaDocumentItem[];
   images?: PropertyImageItem[];
   utilities: PropertyUtilities;
   managedBy?: Types.ObjectId;
@@ -119,10 +119,18 @@ export interface PropertyTypeRule {
 }
 
 /**
- * Property Document Item Type
+ * Media Document Item Type
  */
-export interface PropertyDocumentItem {
-  documentType?: 'deed' | 'tax' | 'insurance' | 'inspection' | 'other' | 'lease' | 'unknown';
+export interface MediaDocumentItem {
+  documentType?:
+    | 'deed'
+    | 'tax'
+    | 'insurance'
+    | 'inspection'
+    | 'other'
+    | 'lease'
+    | 'unknown'
+    | 'legal';
   status: 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
   uploadedBy: Types.ObjectId;
   description?: string;

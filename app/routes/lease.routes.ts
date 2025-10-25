@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
-import { UtilsValidations, validateRequest } from '@shared/validations/index';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
+import { UtilsValidations, LeaseValidations, validateRequest } from '@shared/validations/index';
 import {
   requirePermission,
   isAuthenticated,
@@ -13,17 +13,15 @@ import {
 const router = Router();
 router.use(isAuthenticated, basicLimiter());
 
-// Core CRUD Routes
 router
   .route('/:cuid')
   .post(
-    // Create new lease
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     diskUpload(['document']),
     scanFile,
     validateRequest({
       params: UtilsValidations.cuid,
-      // body: LeaseValidations.createLease, // TODO: Add when validation schemas are created
+      body: LeaseValidations.createLease,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       // const controller = req.container.resolve<LeaseController>('leaseController');
@@ -36,7 +34,7 @@ router
     requirePermission(PermissionResource.LEASE, PermissionAction.READ),
     validateRequest({
       params: UtilsValidations.cuid,
-      // query: LeaseValidations.filterLeases, // TODO: Add when validation schemas are created
+      query: LeaseValidations.filterLeases,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       // const controller = req.container.resolve<LeaseController>('leaseController');
@@ -66,7 +64,7 @@ router
     scanFile,
     validateRequest({
       params: UtilsValidations.cuid,
-      // body: LeaseValidations.updateLease, // TODO: Add when validation schemas are created
+      body: LeaseValidations.updateLease,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       // const controller = req.container.resolve<LeaseController>('leaseController');
@@ -94,7 +92,7 @@ router.post(
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   validateRequest({
     params: UtilsValidations.cuid,
-    // body: LeaseValidations.activateLease, // TODO: Add when validation schemas are created
+    body: LeaseValidations.activateLease,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     // const controller = req.container.resolve<LeaseController>('leaseController');
@@ -109,7 +107,7 @@ router.post(
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   validateRequest({
     params: UtilsValidations.cuid,
-    // body: LeaseValidations.terminateLease, // TODO: Add when validation schemas are created
+    body: LeaseValidations.terminateLease,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     // const controller = req.container.resolve<LeaseController>('leaseController');
@@ -171,7 +169,7 @@ router
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     validateRequest({
       params: UtilsValidations.cuid,
-      // body: LeaseValidations.signatureAction, // TODO: Add when validation schemas are created
+      body: LeaseValidations.signatureAction,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       // const controller = req.container.resolve<LeaseController>('leaseController');
@@ -242,48 +240,17 @@ router.get(
   })
 );
 
-// Reporting Routes
-router.get(
-  '/:cuid/expiring',
-  // Get leases expiring soon (default: 30 days, configurable via query param)
-  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
-  validateRequest({
-    params: UtilsValidations.cuid,
-    // query: LeaseValidations.expiringQuery, // TODO: Add when validation schemas are created
-  }),
-  asyncWrapper(async (req: AppRequest, res) => {
-    // const controller = req.container.resolve<LeaseController>('leaseController');
-    // return controller.getExpiringLeases(req, res);
-    res.status(501).json({ message: 'Not implemented yet' });
-  })
-);
-
 router.get(
   '/:cuid/stats',
   // Get lease statistics (active/pending/expired counts, occupancy rates)
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   validateRequest({
     params: UtilsValidations.cuid,
-    // query: LeaseValidations.statsQuery, // TODO: Add when validation schemas are created
+    query: LeaseValidations.statsQuery,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     // const controller = req.container.resolve<LeaseController>('leaseController');
     // return controller.getLeaseStats(req, res);
-    res.status(501).json({ message: 'Not implemented yet' });
-  })
-);
-
-router.get(
-  '/:cuid/export',
-  // Export leases to CSV/Excel
-  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
-  validateRequest({
-    params: UtilsValidations.cuid,
-    // query: LeaseValidations.exportQuery, // TODO: Add when validation schemas are created
-  }),
-  asyncWrapper(async (req: AppRequest, res) => {
-    // const controller = req.container.resolve<LeaseController>('leaseController');
-    // return controller.exportLeases(req, res);
     res.status(501).json({ message: 'Not implemented yet' });
   })
 );

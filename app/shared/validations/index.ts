@@ -6,6 +6,7 @@ export * from './ProfileValidation';
 export * from './ClientValidation';
 export * from './VendorValidation';
 export * from './UtilsValidation';
+export * from './LeaseValidation';
 export * from './AuthValidation';
 export * from './UserValidation';
 export * from './setup';

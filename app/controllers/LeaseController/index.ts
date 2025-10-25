@@ -17,24 +17,14 @@ export class LeaseController {
 
   createLease = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-    // const { uid } = req.context.currentuser!;
-    // const leaseData = req.body;
+    const result = await this.leaseService.createLease(cuid, req.body, req.context);
 
-    this.log.info(`Creating lease for client ${cuid}`);
-
-    // TODO: Implement lease creation logic
-    // const result = await this.leaseService.createLease(cuid, leaseData, uid);
-
-    res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
-      success: false,
-      message: 'Lease creation not yet implemented',
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: result,
     });
   };
 
-  /**
-   * Get all leases with optional filters
-   * GET /:cuid
-   */
   getFilteredLeases = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     // const filters = req.query;

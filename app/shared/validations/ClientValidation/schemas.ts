@@ -91,6 +91,17 @@ export const AssignRoleSchema = z.object({
   }),
 });
 
+export const AssignDepartmentSchema = z.object({
+  department: z
+    .enum(['maintenance', 'operations', 'accounting', 'management'], {
+      errorMap: () => ({
+        message:
+          'Invalid department. Must be one of: maintenance, operations, accounting, management',
+      }),
+    })
+    .describe('Department to assign to the employee'),
+});
+
 export const FilteredUsersQuerySchema = z.object({
   role: z
     .union([

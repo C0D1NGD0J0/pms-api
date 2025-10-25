@@ -4,7 +4,7 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { IVendorDocument } from '@interfaces/vendor.interface';
 import { IPropertyDocument } from '@interfaces/property.interface';
 import permissionConfig from '@shared/permissions/permissions.json';
-import { IUserRoleType, ROLES } from '@shared/constants/roles.constants';
+import { IUserRoleType, RoleHelpers, ROLES } from '@shared/constants/roles.constants';
 import {
   PermissionResource,
   IPermissionConfig,
@@ -226,9 +226,9 @@ export class PermissionService {
 
       const permissions: Record<string, string[]> = {};
 
-      // Extract permissions directly from permissions.json
+      // Extract permissions directly from permissions.json (exclude $extend and departments)
       Object.entries(roleConfig).forEach(([resource, perms]) => {
-        if (resource !== '$extend') {
+        if (resource !== '$extend' && resource !== 'departments') {
           permissions[resource] = perms as string[];
         }
       });
@@ -236,6 +236,25 @@ export class PermissionService {
       return permissions;
     } catch (error) {
       this.log.error(`Error getting role permissions for ${role}:`, error);
+      return {};
+    }
+  }
+
+  /**
+   * Get department-specific permissions for a role
+   * @param role - The user's role
+   * @param department - The user's department
+   * @returns Permission object for the department or empty object if not found
+   */
+  private getDepartmentPermissions(role: string, department: string): Record<string, string[]> {
+    try {
+      const roleConfig = this.permissionConfig.roles[role];
+      if (!roleConfig?.departments) {
+        return {};
+      }
+      return roleConfig.departments[department] || {};
+    } catch (error) {
+      this.log.error(`Error getting department permissions for ${role}:${department}`, error);
       return {};
     }
   }
@@ -653,25 +672,45 @@ export class PermissionService {
 
   /**
    * Update user permissions in ICurrentUser object
+   * Applies department-specific permissions for employee roles if department is assigned
    */
   async populateUserPermissions(currentUser: ICurrentUser): Promise<ICurrentUser> {
     try {
-      const rolePermissions = this.getRolePermissions(currentUser.client.role);
+      const role = currentUser.client.role;
+      const department = currentUser.employeeInfo?.department;
+
+      // Get base role permissions
+      let rolePermissions = this.getRolePermissions(role);
+
+      // Override with department-specific permissions for employees
+      if (RoleHelpers.isEmployeeRole(role) && department) {
+        const deptPermissions = this.getDepartmentPermissions(role, department);
+        if (deptPermissions && Object.keys(deptPermissions).length > 0) {
+          rolePermissions = deptPermissions;
+          this.log.info(`Applied department permissions for ${role}:${department}`);
+        } else {
+          this.log.warn(
+            `No department permissions found for ${role}:${department}, using role defaults`
+          );
+        }
+      } else if (RoleHelpers.isEmployeeRole(role) && !department) {
+        // Warn when employee has no department assigned - they'll have very restricted access
+        this.log.warn(
+          `⚠️  Employee user ${currentUser.uid} (${currentUser.email}) has role '${role}' but no department assigned. Access is restricted to own resources only. Assign a department to grant appropriate permissions.`
+        );
+      }
+
       const permissions: string[] = [];
 
       // Create both backend format (action:scope) and frontend format (resource:action)
       Object.entries(rolePermissions).forEach(([resource, resourcePermissions]) => {
         resourcePermissions.forEach((permission: string) => {
-          // Add backend format (existing)
           permissions.push(permission);
-
-          // Add frontend format for compatibility
           const [action, scope] = permission.split(':');
           if (action && resource) {
-            // Add flat permission format for frontend: "property:read", "user:create", etc.
             permissions.push(`${resource}:${action}`);
 
-            // Also add scoped format if scope exists: "property:read:any", "property:update:mine"
+            // also add scoped format if scope exists: "property:read:any", "property:update:mine"
             if (scope) {
               permissions.push(`${resource}:${action}:${scope}`);
             }

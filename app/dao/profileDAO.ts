@@ -432,8 +432,27 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               },
             },
 
-            // permissions array to be filled later
-            // permissions: [],
+            employeeInfo: {
+              $cond: {
+                if: '$employeeInfo',
+                then: {
+                  department: '$employeeInfo.department',
+                  jobTitle: '$employeeInfo.jobTitle',
+                  employeeId: '$employeeInfo.employeeId',
+                  startDate: '$employeeInfo.startDate',
+                },
+                else: '$$REMOVE',
+              },
+            },
+
+            // NOTE: Permissions are intentionally NOT populated here.
+            // They are dynamically generated in the authentication middleware
+            // via PermissionService.populateUserPermissions() based on the user's
+            // current role and department. This allows permissions to be refreshed
+            // on each request and maintains separation of concerns between data
+            // access and authorization.
+            // See: app/shared/middlewares/middleware.ts:100-105
+            // permissions: [], // DO NOT UNCOMMENT - see note above
           },
         },
       ];

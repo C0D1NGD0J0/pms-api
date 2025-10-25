@@ -143,6 +143,12 @@ export interface ICurrentUser {
     linkedVendorUid?: string;
     role: IUserRoleType;
   };
+  employeeInfo?: {
+    department?: string;
+    jobTitle?: string;
+    employeeId?: string;
+    startDate?: Date;
+  };
   preferences: {
     lang?: string;
     theme?: 'light' | 'dark';
@@ -153,7 +159,6 @@ export interface ICurrentUser {
   permissions: string[];
   displayName: string;
   gdpr?: GDPRSettings;
-  employeeInfo?: any;
   avatarUrl: string;
   isActive: boolean;
   vendorInfo?: any;

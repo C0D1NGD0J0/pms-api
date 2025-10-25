@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
+import { LeaseController } from '@controllers/LeaseController';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import { UtilsValidations, LeaseValidations, validateRequest } from '@shared/validations/index';
 import {
@@ -24,9 +25,8 @@ router
       body: LeaseValidations.createLease,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
-      // const controller = req.container.resolve<LeaseController>('leaseController');
-      // return controller.createLease(req, res);
-      res.status(501).json({ message: 'Not implemented yet' });
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.createLease(req, res);
     })
   )
   .get(
@@ -37,9 +37,8 @@ router
       query: LeaseValidations.filterLeases,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
-      // const controller = req.container.resolve<LeaseController>('leaseController');
-      // return controller.getFilteredLeases(req, res);
-      res.status(501).json({ message: 'Not implemented yet' });
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.getFilteredLeases(req, res);
     })
   );
 
@@ -52,12 +51,11 @@ router
       params: UtilsValidations.cuid,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
-      // const controller = req.container.resolve<LeaseController>('leaseController');
-      // return controller.getLeaseById(req, res);
-      res.status(501).json({ message: 'Not implemented yet' });
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.getLeaseById(req, res);
     })
   )
-  .put(
+  .patch(
     // Update existing lease
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     diskUpload(['document']),
@@ -67,9 +65,8 @@ router
       body: LeaseValidations.updateLease,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
-      // const controller = req.container.resolve<LeaseController>('leaseController');
-      // return controller.updateLease(req, res);
-      res.status(501).json({ message: 'Not implemented yet' });
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.updateLease(req, res);
     })
   )
   .delete(
@@ -79,9 +76,8 @@ router
       params: UtilsValidations.cuid,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
-      // const controller = req.container.resolve<LeaseController>('leaseController');
-      // return controller.deleteLease(req, res);
-      res.status(501).json({ message: 'Not implemented yet' });
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.deleteLease(req, res);
     })
   );
 
@@ -95,9 +91,8 @@ router.post(
     body: LeaseValidations.activateLease,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
-    // const controller = req.container.resolve<LeaseController>('leaseController');
-    // return controller.activateLease(req, res);
-    res.status(501).json({ message: 'Not implemented yet' });
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.activateLease(req, res);
   })
 );
 
@@ -110,9 +105,8 @@ router.post(
     body: LeaseValidations.terminateLease,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
-    // const controller = req.container.resolve<LeaseController>('leaseController');
-    // return controller.terminateLease(req, res);
-    res.status(501).json({ message: 'Not implemented yet' });
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.terminateLease(req, res);
   })
 );
 
@@ -128,9 +122,8 @@ router
       params: UtilsValidations.cuid,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
-      // const controller = req.container.resolve<LeaseController>('leaseController');
-      // return controller.uploadLeaseDocument(req, res);
-      res.status(501).json({ message: 'Not implemented yet' });
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.uploadLeaseDocument(req, res);
     })
   )
   .get(
@@ -140,9 +133,8 @@ router
       params: UtilsValidations.cuid,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
-      // const controller = req.container.resolve<LeaseController>('leaseController');
-      // return controller.getLeaseDocument(req, res);
-      res.status(501).json({ message: 'Not implemented yet' });
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.getLeaseDocument(req, res);
     })
   )
   .delete(
@@ -152,9 +144,8 @@ router
       params: UtilsValidations.cuid,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
-      // const controller = req.container.resolve<LeaseController>('leaseController');
-      // return controller.removeLeaseDocument(req, res);
-      res.status(501).json({ message: 'Not implemented yet' });
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.removeLeaseDocument(req, res);
     })
   );
 
@@ -163,24 +154,19 @@ router
   .route('/:cuid/:leaseId/signature')
   .post(
     // Send for e-signature OR mark as manually signed OR cancel signing
-    // Body: { action: 'send', signers: [...] } → Send to BoldSign
-    // Body: { action: 'manual', signedBy: [...] } → Mark manually signed
-    // Body: { action: 'cancel' } → Cancel BoldSign request
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     validateRequest({
       params: UtilsValidations.cuid,
       body: LeaseValidations.signatureAction,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
-      // const controller = req.container.resolve<LeaseController>('leaseController');
+      const controller = req.container.resolve<LeaseController>('leaseController');
       // const { action } = req.body;
       // switch (action) {
       //   case 'send': return controller.sendLeaseForSignature(req, res);
       //   case 'manual': return controller.markAsManualySigned(req, res);
       //   case 'cancel': return controller.cancelSignature(req, res);
-      //   default: return res.status(400).json({ message: 'Invalid action' });
-      // }
-      res.status(501).json({ message: 'Not implemented yet' });
+      return controller.handleSignatureAction(req, res);
     })
   )
   .get(
@@ -191,9 +177,8 @@ router
       params: UtilsValidations.cuid,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
-      // const controller = req.container.resolve<LeaseController>('leaseController');
-      // return controller.getSignatureDetails(req, res);
-      res.status(501).json({ message: 'Not implemented yet' });
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.getSignatureDetails(req, res);
     })
   );
 
@@ -206,9 +191,8 @@ router.post(
     params: UtilsValidations.cuid,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
-    // const controller = req.container.resolve<LeaseController>('leaseController');
-    // return controller.generateLeasePDF(req, res);
-    res.status(501).json({ message: 'Not implemented yet' });
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.generateLeasePDF(req, res);
   })
 );
 
@@ -220,9 +204,8 @@ router.get(
     params: UtilsValidations.cuid,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
-    // const controller = req.container.resolve<LeaseController>('leaseController');
-    // return controller.previewLeaseHTML(req, res);
-    res.status(501).json({ message: 'Not implemented yet' });
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.previewLeaseHTML(req, res);
   })
 );
 
@@ -234,9 +217,8 @@ router.get(
     params: UtilsValidations.cuid,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
-    // const controller = req.container.resolve<LeaseController>('leaseController');
-    // return controller.downloadLeasePDF(req, res);
-    res.status(501).json({ message: 'Not implemented yet' });
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.downloadLeasePDF(req, res);
   })
 );
 
@@ -249,9 +231,8 @@ router.get(
     query: LeaseValidations.statsQuery,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
-    // const controller = req.container.resolve<LeaseController>('leaseController');
-    // return controller.getLeaseStats(req, res);
-    res.status(501).json({ message: 'Not implemented yet' });
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.getLeaseStats(req, res);
   })
 );
 

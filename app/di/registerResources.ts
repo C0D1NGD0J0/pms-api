@@ -20,17 +20,6 @@ import {
   UserCache,
 } from '@caching/index';
 import {
-  NotificationModel,
-  PropertyUnit,
-  Invitation,
-  Property,
-  Profile,
-  Client,
-  Vendor,
-  Asset,
-  User,
-} from '@models/index';
-import {
   PropertyUnitDAO,
   NotificationDAO,
   InvitationDAO,
@@ -40,6 +29,18 @@ import {
   VendorDAO,
   UserDAO,
 } from '@dao/index';
+import {
+  NotificationModel,
+  PropertyUnit,
+  Invitation,
+  Property,
+  Profile,
+  Client,
+  Vendor,
+  Lease,
+  Asset,
+  User,
+} from '@models/index';
 import {
   DocumentProcessingWorker,
   PropertyUnitWorker,
@@ -64,6 +65,7 @@ import {
   PropertyController,
   ClientController,
   VendorController,
+  LeaseController,
   UserController,
   AuthController,
 } from '@controllers/index';
@@ -88,6 +90,7 @@ import {
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
   userController: asClass(UserController).scoped(),
+  leaseController: asClass(LeaseController).scoped(),
   clientController: asClass(ClientController).scoped(),
   vendorController: asClass(VendorController).scoped(),
   propertyController: asClass(PropertyController).scoped(),
@@ -100,6 +103,7 @@ const ControllerResources = {
 const ModelResources = {
   userModel: asValue(User),
   assetModel: asValue(Asset),
+  leaseModel: asValue(Lease),
   vendorModel: asValue(Vendor),
   clientModel: asValue(Client),
   profileModel: asValue(Profile),

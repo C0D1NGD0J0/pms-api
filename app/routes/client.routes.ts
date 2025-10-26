@@ -60,4 +60,18 @@ router.post(
   })
 );
 
+router.patch(
+  '/:cuid/users/:uid/department',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  validateRequest({
+    params: ClientValidations.userIdParam,
+    body: ClientValidations.assignDepartment,
+  }),
+  asyncWrapper((req, res) => {
+    const clientController = req.container.resolve<ClientController>('clientController');
+    return clientController.assignDepartment(req, res);
+  })
+);
+
 export default router;

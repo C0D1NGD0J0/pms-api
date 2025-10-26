@@ -4,5 +4,6 @@ export * from './propertyDAO.interface';
 export * from './profileDAO.interface';
 export * from './clientDAO.interface';
 export * from './vendorDAO.interface';
+export * from './leaseDAO.interface';
 export * from './baseDAO.interface';
 export * from './userDAO.interface';

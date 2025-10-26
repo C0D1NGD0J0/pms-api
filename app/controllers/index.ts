@@ -4,5 +4,6 @@ export * from './InvitationController';
 export * from './PropertyController';
 export * from './ClientController';
 export * from './VendorController';
+export * from './LeaseController';
 export * from './UserController';
 export * from './AuthController';

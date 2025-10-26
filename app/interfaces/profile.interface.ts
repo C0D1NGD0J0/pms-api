@@ -231,7 +231,6 @@ export type IProfileDocument = {
 export interface EmployeeInfo {
   department?: EmployeeDepartment;
   clientSpecificSettings?: any;
-  permissions?: string[];
   employeeId?: string;
   reportsTo?: string;
   jobTitle?: string;

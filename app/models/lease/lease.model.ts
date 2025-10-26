@@ -5,10 +5,6 @@ import { ILeaseDocument, LeaseStatus, LeaseType } from '@interfaces/lease.interf
 
 const logger = createLogger('LeaseModel');
 
-/**
- * Main Lease Schema
- * Comprehensive lease management with multi-tenant support
- */
 const LeaseSchema = new Schema<ILeaseDocument>(
   {
     luid: {
@@ -308,7 +304,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
     eSignature: {
       provider: {
         type: String,
-        enum: ['hellosign', 'docusign', 'pandadoc'],
+        enum: ['hellosign', 'docusign', 'pandadoc', 'boldsign', 'signwell', 'zoho'],
         required: true,
       },
       envelopeId: {
@@ -420,9 +416,6 @@ const LeaseSchema = new Schema<ILeaseDocument>(
   }
 );
 
-/**
- * Indexes for optimal query performance
- */
 LeaseSchema.index({ cuid: 1, status: 1 });
 LeaseSchema.index({ cuid: 1, tenantId: 1 });
 LeaseSchema.index({ cuid: 1, 'property.id': 1 });
@@ -432,8 +425,7 @@ LeaseSchema.index({ cuid: 1, 'duration.startDate': 1, 'duration.endDate': 1 });
 LeaseSchema.index({ cuid: 1, createdAt: -1 });
 
 /**
- * Virtual: daysUntilExpiry
- * Calculates remaining days until lease expiration
+ * remaining days until lease expiration
  */
 LeaseSchema.virtual('daysUntilExpiry').get(function (this: ILeaseDocument) {
   if (!this.duration?.endDate) return null;
@@ -445,8 +437,7 @@ LeaseSchema.virtual('daysUntilExpiry').get(function (this: ILeaseDocument) {
 });
 
 /**
- * Virtual: durationMonths
- * Calculates lease duration in months
+ * lease duration in months
  */
 LeaseSchema.virtual('durationMonths').get(function (this: ILeaseDocument) {
   if (!this.duration?.startDate || !this.duration?.endDate) return null;
@@ -458,25 +449,19 @@ LeaseSchema.virtual('durationMonths').get(function (this: ILeaseDocument) {
 });
 
 /**
- * Virtual: isExpiringSoon
- * Returns true if lease expires within 60 days
+ * returns true if lease expires within 60 days
  */
 LeaseSchema.virtual('isExpiringSoon').get(function (this: ILeaseDocument) {
   const daysUntilExpiry = this.daysUntilExpiry;
   return daysUntilExpiry !== null && daysUntilExpiry > 0 && daysUntilExpiry <= 60;
 });
 
-/**
- * Virtual: isActive
- * Returns true if lease is currently active
- */
 LeaseSchema.virtual('isActive').get(function (this: ILeaseDocument) {
   return this.status === LeaseStatus.ACTIVE;
 });
 
 /**
- * Virtual: totalMonthlyFees
- * Calculates total monthly fees including rent and pet fees
+ * calculates total monthly fees including rent and pet fees
  */
 LeaseSchema.virtual('totalMonthlyFees').get(function (this: ILeaseDocument) {
   let total = this.fees?.monthlyRent || 0;
@@ -521,9 +506,6 @@ LeaseSchema.pre('save', async function (this: ILeaseDocument, next) {
   }
 });
 
-/**
- * Pre-validation hook: Additional business logic validation
- */
 LeaseSchema.pre('validate', function (this: ILeaseDocument, next) {
   try {
     // Validate that active/pending_signature leases have required documents
@@ -533,12 +515,39 @@ LeaseSchema.pre('validate', function (this: ILeaseDocument, next) {
       }
     }
 
-    // Validate signed date for active leases
-    if (this.status === LeaseStatus.ACTIVE && !this.signedDate) {
-      throw new Error('Signed date is required for active leases');
+    if (this.status === LeaseStatus.ACTIVE) {
+      if (!this.signedDate) {
+        throw new Error('Signed date is required for active leases');
+      }
+
+      // Must have signing method set (not 'pending')
+      if (!this.signingMethod || this.signingMethod === 'pending') {
+        throw new Error(
+          'Signing method must be set to manual or electronic before activating lease'
+        );
+      }
+
+      // If electronic signing, must have completed e-signature
+      if (this.signingMethod === 'electronic') {
+        if (!this.eSignature?.status || this.eSignature.status !== 'signed') {
+          throw new Error(
+            'Electronic signature must be completed (status: signed) before activating lease'
+          );
+        }
+      }
+
+      if (!this.signatures || this.signatures.length === 0) {
+        throw new Error('At least one signature (tenant) is required to activate lease');
+      }
+
+      const tenantSigned = this.signatures.some(
+        (sig) => sig.userId.toString() === this.tenantId.toString() && sig.role === 'tenant'
+      );
+      if (!tenantSigned) {
+        throw new Error('Tenant must sign the lease before it can be activated');
+      }
     }
 
-    // Validate termination data
     if (this.status === LeaseStatus.TERMINATED) {
       if (!this.duration?.terminationDate) {
         throw new Error('Termination date is required for terminated leases');
@@ -550,13 +559,12 @@ LeaseSchema.pre('validate', function (this: ILeaseDocument, next) {
 
     next();
   } catch (error) {
-    logger.error('Pre-validation error:', error);
     next(error as Error);
   }
 });
 
 /**
- * Instance method: Check for overlapping leases
+ * checks for overlapping leases
  */
 LeaseSchema.methods.hasOverlap = function (startDate: Date, endDate: Date): boolean {
   if (!this.duration?.startDate || !this.duration?.endDate) return false;
@@ -565,9 +573,6 @@ LeaseSchema.methods.hasOverlap = function (startDate: Date, endDate: Date): bool
   return leaseStart <= endDate && leaseEnd >= startDate;
 };
 
-/**
- * Plugin: Unique validator
- */
 LeaseSchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',
 });

@@ -9,6 +9,7 @@ export * from './property';
 export * from './profile';
 export * from './client';
 export * from './vendor';
+export * from './lease';
 export * from './asset';
 export * from './auth';
 export * from './user';

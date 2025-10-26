@@ -27,19 +27,10 @@ import {
   Profile,
   Client,
   Vendor,
+  Lease,
   Asset,
   User,
 } from '@models/index';
-import {
-  PropertyUnitDAO,
-  NotificationDAO,
-  InvitationDAO,
-  PropertyDAO,
-  ProfileDAO,
-  ClientDAO,
-  VendorDAO,
-  UserDAO,
-} from '@dao/index';
 import {
   DocumentProcessingWorker,
   PropertyUnitWorker,
@@ -48,6 +39,17 @@ import {
   UploadWorker,
   EmailWorker,
 } from '@workers/index';
+import {
+  PropertyUnitDAO,
+  NotificationDAO,
+  InvitationDAO,
+  PropertyDAO,
+  ProfileDAO,
+  ClientDAO,
+  VendorDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   DocumentProcessingQueue,
   PropertyUnitQueue,
@@ -64,6 +66,7 @@ import {
   PropertyController,
   ClientController,
   VendorController,
+  LeaseController,
   UserController,
   AuthController,
 } from '@controllers/index';
@@ -80,6 +83,7 @@ import {
   ProfileService,
   ClientService,
   VendorService,
+  LeaseService,
   UserService,
   AuthService,
   SSEService,
@@ -88,6 +92,7 @@ import {
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
   userController: asClass(UserController).scoped(),
+  leaseController: asClass(LeaseController).scoped(),
   clientController: asClass(ClientController).scoped(),
   vendorController: asClass(VendorController).scoped(),
   propertyController: asClass(PropertyController).scoped(),
@@ -100,6 +105,7 @@ const ControllerResources = {
 const ModelResources = {
   userModel: asValue(User),
   assetModel: asValue(Asset),
+  leaseModel: asValue(Lease),
   vendorModel: asValue(Vendor),
   clientModel: asValue(Client),
   profileModel: asValue(Profile),
@@ -115,6 +121,7 @@ const ServiceResources = {
   userService: asClass(UserService).singleton(),
   assetService: asClass(AssetService).singleton(),
   mailerService: asClass(MailService).singleton(),
+  leaseService: asClass(LeaseService).singleton(),
   clientService: asClass(ClientService).singleton(),
   vendorService: asClass(VendorService).singleton(),
   profileService: asClass(ProfileService).singleton(),
@@ -135,6 +142,7 @@ const ServiceResources = {
 const DAOResources = {
   userDAO: asClass(UserDAO).singleton(),
   assetDAO: asClass(AssetDAO).singleton(),
+  leaseDAO: asClass(LeaseDAO).singleton(),
   clientDAO: asClass(ClientDAO).singleton(),
   vendorDAO: asClass(VendorDAO).singleton(),
   profileDAO: asClass(ProfileDAO).singleton(),

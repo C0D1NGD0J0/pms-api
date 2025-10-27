@@ -7,6 +7,7 @@ import {
   PropertyDAO,
   ClientDAO,
   VendorDAO,
+  LeaseDAO,
   UserDAO,
 } from '@dao/index';
 

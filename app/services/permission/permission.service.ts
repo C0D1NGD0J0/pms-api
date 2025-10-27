@@ -38,7 +38,7 @@ export class PermissionService {
     this.log = createLogger('PermissionService');
 
     try {
-      this.permissionConfig = permissionConfig as IPermissionConfig;
+      this.permissionConfig = permissionConfig as unknown as IPermissionConfig;
       this.initializeResourceStrategies();
       this.log.debug('PermissionService initialized successfully');
     } catch (error) {
@@ -148,8 +148,8 @@ export class PermissionService {
       }
 
       // Check direct permissions
-      const rolePermissions = roleConfig[resource] || [];
-      if (rolePermissions.includes(permission)) {
+      const rolePermissions = roleConfig[resource];
+      if (Array.isArray(rolePermissions) && rolePermissions.includes(permission)) {
         return true;
       }
 
@@ -678,31 +678,30 @@ export class PermissionService {
     try {
       const role = currentUser.client.role;
       const department = currentUser.employeeInfo?.department;
-
-      // Get base role permissions
       let rolePermissions = this.getRolePermissions(role);
 
-      // Override with department-specific permissions for employees
-      if (RoleHelpers.isEmployeeRole(role) && department) {
-        const deptPermissions = this.getDepartmentPermissions(role, department);
-        if (deptPermissions && Object.keys(deptPermissions).length > 0) {
-          rolePermissions = deptPermissions;
-          this.log.info(`Applied department permissions for ${role}:${department}`);
+      // Admin/Manager already have full access via their base role permissions
+      if (RoleHelpers.isEmployeeRole(role) && !RoleHelpers.isManagementRole(role)) {
+        if (department) {
+          const deptPermissions = this.getDepartmentPermissions(role, department);
+          if (deptPermissions && Object.keys(deptPermissions).length > 0) {
+            rolePermissions = deptPermissions;
+            this.log.info(`Applied department permissions for ${role}:${department}`);
+          } else {
+            this.log.warn(
+              `No department permissions found for ${role}:${department}, using role defaults`
+            );
+          }
         } else {
           this.log.warn(
-            `No department permissions found for ${role}:${department}, using role defaults`
+            `⚠️  Staff user ${currentUser.uid} (${currentUser.email}) has no department assigned. Access is restricted to own resources only. Assign a department to grant appropriate permissions.`
           );
         }
-      } else if (RoleHelpers.isEmployeeRole(role) && !department) {
-        // Warn when employee has no department assigned - they'll have very restricted access
-        this.log.warn(
-          `⚠️  Employee user ${currentUser.uid} (${currentUser.email}) has role '${role}' but no department assigned. Access is restricted to own resources only. Assign a department to grant appropriate permissions.`
-        );
       }
 
       const permissions: string[] = [];
 
-      // Create both backend format (action:scope) and frontend format (resource:action)
+      // create both backend format (action:scope) and frontend format (resource:action)
       Object.entries(rolePermissions).forEach(([resource, resourcePermissions]) => {
         resourcePermissions.forEach((permission: string) => {
           permissions.push(permission);
@@ -718,7 +717,7 @@ export class PermissionService {
         });
       });
 
-      currentUser.permissions = [...new Set(permissions)]; // Remove duplicates
+      currentUser.permissions = [...new Set(permissions)]; // remove duplicates
 
       return currentUser;
     } catch (error) {

@@ -395,7 +395,7 @@ export interface ComputedLocation {
   coordinates: number[];
 }
 
-export type IPropertyDocumentItem = PropertyDocumentItem;
+export type IPropertyDocumentItem = MediaDocumentItem;
 export type ICommunityAmenities = CommunityAmenities;
 export type ISpecifications = PropertySpecifications;
 export type IInteriorAmenities = InteriorAmenities;

@@ -1,10 +1,11 @@
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { IPropertyDocument } from '@interfaces/property.interface';
-import { EventEmitterService, AssetService } from '@services/index';
 import { ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import { EventEmitterService, NotificationService, AssetService } from '@services/index';
 import { ValidationRequestError, InvalidRequestError, BadRequestError } from '@shared/customErrors';
 import {
   UploadCompletedPayload,
@@ -29,10 +30,12 @@ import {
   IPromiseReturnedData,
   ISuccessReturnData,
   IRequestContext,
+  ResourceContext,
   UploadResult,
 } from '@interfaces/utils.interface';
 
 interface IConstructor {
+  notificationService: NotificationService;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   assetService: AssetService;
@@ -44,6 +47,7 @@ interface IConstructor {
 }
 
 export class LeaseService {
+  private readonly notificationService: NotificationService;
   private readonly log: Logger;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
@@ -55,6 +59,7 @@ export class LeaseService {
   private readonly emitterService: EventEmitterService;
 
   constructor({
+    notificationService,
     emitterService,
     propertyUnitDAO,
     clientDAO,
@@ -64,6 +69,7 @@ export class LeaseService {
     leaseDAO,
     userDAO,
   }: IConstructor) {
+    this.notificationService = notificationService;
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
     this.clientDAO = clientDAO;
@@ -75,26 +81,6 @@ export class LeaseService {
     this.log = createLogger('LeaseService');
 
     this.setupEventListeners();
-  }
-
-  /**
-   * Setup event listeners for upload completion and failures
-   */
-  private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
-    this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
-
-    this.log.info('Lease service event listeners initialized');
-  }
-
-  /**
-   * Cleanup event listeners
-   */
-  cleanupEventListeners(): void {
-    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
-    this.emitterService.off(EventTypes.UPLOAD_FAILED, this.handleUploadFailed);
-
-    this.log.info('Lease service event listeners removed');
   }
 
   async createLease(
@@ -131,13 +117,12 @@ export class LeaseService {
       });
     }
 
-    // Determine approval status based on user role
     let approvalStatus: 'approved' | 'pending' = 'pending';
     let message = 'Lease submitted for approval';
     const approvalDetails: any[] = [];
 
     if (PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)) {
-      // Admin/Manager - auto-approve
+      //admin/manager - auto-approve
       approvalStatus = 'approved';
       approvalDetails.push({
         action: 'created',
@@ -146,21 +131,13 @@ export class LeaseService {
         notes: 'Auto-approved by admin/manager',
       });
       message = 'Lease created and approved successfully';
-      this.log.info('Lease auto-approved for admin/manager', {
-        userId: currentuser.sub,
-        role: currentuser.client.role,
-      });
     } else if (PROPERTY_STAFF_ROLES.includes(userRoleEnum)) {
-      // Staff - pending approval
+      // staff - pending approval
       approvalStatus = 'pending';
       approvalDetails.push({
         action: 'created',
         actor: currentuser.sub,
         timestamp: new Date(),
-      });
-      this.log.info('Lease pending approval for staff', {
-        userId: currentuser.sub,
-        department: currentuser.client.role,
       });
     }
 
@@ -178,7 +155,29 @@ export class LeaseService {
       return { lease };
     });
 
-    // TODO: Send notifications to approvers if status is pending
+    if (approvalStatus === 'pending') {
+      try {
+        await this.notificationService.handlePropertyUpdateNotifications({
+          userRole: currentuser.client.role,
+          updatedProperty: result.lease as any,
+          propertyName: `Lease ${result.lease.leaseNumber}`,
+          actorUserId: currentuser.sub,
+          actorDisplayName: currentuser.displayName,
+          cuid,
+          updateData: leaseData,
+          resource: {
+            resourceType: ResourceContext.LEASE,
+            resourceId: result.lease._id.toString(),
+            resourceUid: result.lease.luid,
+          },
+        });
+      } catch (notificationError) {
+        this.log.error('Failed to send lease approval notification', {
+          error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+          leaseId: result.lease.luid,
+        });
+      }
+    }
 
     this.log.info(`Lease created successfully: ${result.lease.luid}`, {
       approvalStatus,
@@ -209,9 +208,50 @@ export class LeaseService {
     throw new Error('updateLease not yet implemented');
   }
 
-  async deleteLease(cuid: string, leaseId: string, _userId: string): IPromiseReturnedData<boolean> {
+  async deleteLease(cuid: string, leaseId: string, userId: string): IPromiseReturnedData<boolean> {
     this.log.info(`Deleting lease ${leaseId} for client ${cuid}`);
-    throw new Error('deleteLease not yet implemented');
+
+    // Get the lease
+    const lease = await this.leaseDAO.findFirst({
+      luid: leaseId,
+      cuid,
+      deletedAt: null,
+    });
+
+    if (!lease) {
+      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+    }
+
+    // Business Rule: Only DRAFT and CANCELLED leases can be deleted
+    if (lease.status !== LeaseStatus.DRAFT && lease.status !== LeaseStatus.CANCELLED) {
+      throw new ValidationRequestError({
+        message: `Cannot delete ${lease.status} lease`,
+        errorInfo: {
+          status: [
+            `Only DRAFT and CANCELLED leases can be deleted. This lease has status: ${lease.status}. Please cancel the lease first if you want to remove it.`,
+          ],
+        },
+      });
+    }
+
+    // Perform soft delete
+    const deleted = await lease.softDelete(new Types.ObjectId(userId));
+
+    if (!deleted) {
+      throw new BadRequestError({ message: 'Failed to delete lease' });
+    }
+
+    this.log.info('Lease deleted successfully', {
+      leaseId: lease.luid,
+      status: lease.status,
+      deletedBy: userId,
+    });
+
+    return {
+      success: true,
+      data: true,
+      message: 'Lease deleted successfully',
+    };
   }
 
   async activateLease(
@@ -221,6 +261,21 @@ export class LeaseService {
     _userId: string
   ): IPromiseReturnedData<ILeaseDocument> {
     this.log.info(`Activating lease ${leaseId} for client ${cuid}`);
+
+    // Get the lease first
+    const lease = await this.leaseDAO.findFirst({
+      luid: leaseId,
+      cuid,
+      deletedAt: null,
+    });
+
+    if (!lease) {
+      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+    }
+
+    // Enforce approval requirement before activation
+    this.enforceLeaseApprovalRequirement(lease, 'activate');
+
     throw new Error('activateLease not yet implemented');
   }
 
@@ -259,13 +314,28 @@ export class LeaseService {
   }
 
   async sendLeaseForSignature(
-    _cuid: string,
+    cuid: string,
     leaseId: string,
     _signers: any[],
     provider: string,
     _userId: string
   ): IPromiseReturnedData<ILeaseDocument> {
     this.log.info(`Sending lease ${leaseId} for signature via ${provider}`);
+
+    // Get the lease first
+    const lease = await this.leaseDAO.findFirst({
+      luid: leaseId,
+      cuid,
+      deletedAt: null,
+    });
+
+    if (!lease) {
+      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+    }
+
+    // Enforce approval requirement
+    this.enforceLeaseApprovalRequirement(lease, 'send for signature');
+
     throw new Error('sendLeaseForSignature not yet implemented');
   }
 
@@ -333,6 +403,412 @@ export class LeaseService {
   async exportLeases(cuid: string, format: string, filters?: any): IPromiseReturnedData<any> {
     this.log.info(`Exporting leases for client ${cuid} as ${format}`, { filters });
     throw new Error('exportLeases not yet implemented');
+  }
+
+  /**
+   * Update lease with uploaded document information
+   */
+  async updateLeaseDocuments(
+    leaseId: string,
+    uploadResults: UploadResult[],
+    userId: string
+  ): Promise<ISuccessReturnData> {
+    if (!leaseId) {
+      throw new BadRequestError({ message: 'Lease ID is required' });
+    }
+
+    if (!uploadResults || uploadResults.length === 0) {
+      throw new BadRequestError({ message: 'Upload results are required' });
+    }
+
+    const lease = await this.leaseDAO.findFirst({
+      luid: leaseId,
+      deletedAt: null,
+    });
+
+    if (!lease) {
+      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+    }
+
+    const updatedLease = await this.leaseDAO.updateLeaseDocuments(leaseId, uploadResults, userId);
+
+    if (!updatedLease) {
+      throw new BadRequestError({ message: 'Unable to update lease documents' });
+    }
+
+    return {
+      success: true,
+      data: updatedLease,
+      message: 'Lease documents updated successfully',
+    };
+  }
+
+  /**
+   * Get pending lease approvals (admin/manager only)
+   */
+  async getPendingLeaseApprovals(
+    cuid: string,
+    currentuser: any,
+    pagination: any
+  ): Promise<ISuccessReturnData> {
+    const userRole = currentuser.client.role;
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
+      throw new InvalidRequestError({
+        message: 'You are not authorized to view pending approvals.',
+      });
+    }
+
+    const filters = { approvalStatus: 'pending' as const };
+    const leases = await this.leaseDAO.getFilteredLeases(cuid, filters, pagination);
+
+    return {
+      success: true,
+      data: {
+        items: leases.items,
+        pagination: leases.pagination,
+      },
+      message: 'Pending lease approvals retrieved successfully',
+    };
+  }
+
+  /**
+   * Approve a pending lease
+   */
+  async approveLease(
+    cuid: string,
+    leaseId: string,
+    currentuser: any,
+    notes?: string
+  ): Promise<ISuccessReturnData> {
+    const userRole = currentuser.client.role;
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
+      throw new InvalidRequestError({
+        message: 'You are not authorized to approve leases.',
+      });
+    }
+
+    const lease = await this.leaseDAO.findFirst({
+      luid: leaseId,
+      cuid,
+      deletedAt: null,
+    });
+
+    if (!lease) {
+      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+    }
+
+    if (lease.approvalStatus === 'approved' && !lease.pendingChanges) {
+      throw new InvalidRequestError({
+        message: 'Lease is already approved and has no pending changes.',
+      });
+    }
+
+    const approvalEntry = {
+      action: 'approved' as const,
+      actor: currentuser.sub,
+      timestamp: new Date(),
+      ...(notes && { notes }),
+    };
+
+    const updateData: any = {
+      $push: { approvalDetails: approvalEntry },
+      $set: {
+        approvalStatus: 'approved',
+        lastModifiedBy: [
+          {
+            userId: currentuser.sub,
+            name: currentuser.fullname,
+            date: new Date(),
+            action: 'updated',
+          },
+        ],
+      },
+    };
+
+    // Apply pending changes if they exist
+    if (lease.pendingChanges) {
+      Object.keys(lease.pendingChanges).forEach((key) => {
+        if (key !== 'updatedBy' && key !== 'updatedAt' && key !== 'displayName') {
+          updateData.$set[key] = lease.pendingChanges![key];
+        }
+      });
+      updateData.$set.pendingChanges = null;
+    }
+
+    const updatedLease = await this.leaseDAO.update(
+      { luid: leaseId, cuid, deletedAt: null },
+      updateData
+    );
+
+    // Send notification to staff who created the lease
+    const originalRequesterId = (lease.createdBy as Types.ObjectId).toString();
+    if (originalRequesterId && originalRequesterId !== currentuser.sub) {
+      try {
+        await this.notificationService.notifyApprovalDecision(
+          {
+            resourceId: updatedLease!._id.toString(),
+            resourceUid: updatedLease!.luid,
+            resourceName: `Lease ${updatedLease!.leaseNumber}`,
+          },
+          currentuser.sub,
+          cuid,
+          'approved',
+          originalRequesterId,
+          notes,
+          {
+            tenantId: lease.tenantId?.toString(),
+            propertyAddress: lease.property?.address,
+            hadPendingChanges: !!lease.pendingChanges,
+          }
+        );
+        this.log.info('Lease approval notification sent to creator', {
+          leaseId,
+          originalRequesterId,
+        });
+      } catch (notificationError) {
+        this.log.error('Failed to send lease approval notification', {
+          error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+          leaseId,
+        });
+      }
+    }
+
+    this.log.info('Lease approved successfully', {
+      leaseId,
+      approvedBy: currentuser.sub,
+    });
+
+    return {
+      success: true,
+      data: updatedLease,
+      message: 'Lease approved successfully',
+    };
+  }
+
+  /**
+   * Reject a pending lease
+   */
+  async rejectLease(
+    cuid: string,
+    leaseId: string,
+    currentuser: any,
+    reason: string
+  ): Promise<ISuccessReturnData> {
+    const userRole = currentuser.client.role;
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
+      throw new InvalidRequestError({
+        message: 'You are not authorized to reject leases.',
+      });
+    }
+
+    if (!reason) {
+      throw new BadRequestError({ message: 'Rejection reason is required' });
+    }
+
+    const lease = await this.leaseDAO.findFirst({
+      luid: leaseId,
+      cuid,
+      deletedAt: null,
+    });
+
+    if (!lease) {
+      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+    }
+
+    const approvalEntry = {
+      action: 'rejected' as const,
+      actor: currentuser.sub,
+      timestamp: new Date(),
+      notes: reason,
+    };
+
+    const updatedLease = await this.leaseDAO.update(
+      { luid: leaseId, cuid, deletedAt: null },
+      {
+        $push: { approvalDetails: approvalEntry },
+        $set: {
+          approvalStatus: 'rejected',
+          pendingChanges: null,
+        },
+      }
+    );
+
+    // Send notification to staff with rejection reason
+    const originalRequesterId = (lease.createdBy as Types.ObjectId).toString();
+    if (originalRequesterId && originalRequesterId !== currentuser.sub) {
+      try {
+        await this.notificationService.notifyApprovalDecision(
+          {
+            resourceId: updatedLease!._id.toString(),
+            resourceUid: updatedLease!.luid,
+            resourceName: `Lease ${updatedLease!.leaseNumber}`,
+          },
+          currentuser.sub,
+          cuid,
+          'rejected',
+          originalRequesterId,
+          reason,
+          {
+            tenantId: lease.tenantId?.toString(),
+            propertyAddress: lease.property?.address,
+            hadPendingChanges: !!lease.pendingChanges,
+          }
+        );
+        this.log.info('Lease rejection notification sent to creator', {
+          leaseId,
+          originalRequesterId,
+        });
+      } catch (notificationError) {
+        this.log.error('Failed to send lease rejection notification', {
+          error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+          leaseId,
+        });
+      }
+    }
+
+    this.log.info('Lease rejected', {
+      leaseId,
+      rejectedBy: currentuser.sub,
+      reason,
+    });
+
+    return {
+      success: true,
+      data: updatedLease,
+      message: 'Lease rejected',
+    };
+  }
+
+  /**
+   * Bulk approve leases
+   */
+  async bulkApproveLeases(
+    cuid: string,
+    leaseIds: string[],
+    currentuser: any
+  ): Promise<ISuccessReturnData> {
+    const userRole = currentuser.client.role;
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
+      throw new InvalidRequestError({
+        message: 'You are not authorized to bulk approve leases.',
+      });
+    }
+
+    const approvalEntry = {
+      action: 'approved' as const,
+      actor: currentuser.sub,
+      timestamp: new Date(),
+      notes: 'Bulk approved',
+    };
+
+    const updateData = {
+      $push: { approvalDetails: approvalEntry },
+      $set: {
+        approvalStatus: 'approved',
+        pendingChanges: null,
+      },
+    };
+
+    const result = await this.leaseDAO.updateMany(
+      {
+        luid: { $in: leaseIds },
+        cuid,
+        deletedAt: null,
+        approvalStatus: 'pending',
+      },
+      updateData
+    );
+
+    this.log.info('Leases bulk approved', {
+      count: result.modifiedCount,
+      approvedBy: currentuser.sub,
+    });
+
+    return {
+      success: true,
+      data: { modifiedCount: result.modifiedCount },
+      message: `${result.modifiedCount} lease(s) approved successfully`,
+    };
+  }
+
+  /**
+   * Bulk reject leases
+   */
+  async bulkRejectLeases(
+    cuid: string,
+    leaseIds: string[],
+    currentuser: any,
+    reason: string
+  ): Promise<ISuccessReturnData> {
+    const userRole = currentuser.client.role;
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
+      throw new InvalidRequestError({
+        message: 'You are not authorized to bulk reject leases.',
+      });
+    }
+
+    if (!reason) {
+      throw new BadRequestError({ message: 'Rejection reason is required' });
+    }
+
+    const approvalEntry = {
+      action: 'rejected' as const,
+      actor: currentuser.sub,
+      timestamp: new Date(),
+      notes: reason,
+    };
+
+    const updateData = {
+      $push: { approvalDetails: approvalEntry },
+      $set: {
+        approvalStatus: 'rejected',
+        pendingChanges: null,
+      },
+    };
+
+    const result = await this.leaseDAO.updateMany(
+      {
+        luid: { $in: leaseIds },
+        cuid,
+        deletedAt: null,
+        approvalStatus: 'pending',
+      },
+      updateData
+    );
+
+    this.log.info('Leases bulk rejected', {
+      count: result.modifiedCount,
+      rejectedBy: currentuser.sub,
+      reason,
+    });
+
+    return {
+      success: true,
+      data: { modifiedCount: result.modifiedCount },
+      message: `${result.modifiedCount} lease(s) rejected`,
+    };
+  }
+
+  /**
+   * Setup event listeners for upload completion and failures
+   */
+  private setupEventListeners(): void {
+    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
+    this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
+
+    this.log.info('Lease service event listeners initialized');
+  }
+
+  /**
+   * Mark lease documents as failed with error message
+   */
+  private async markLeaseDocumentsAsFailed(leaseId: string, errorMessage: string): Promise<void> {
+    this.log.warn('Marking lease documents as failed', {
+      leaseId,
+      errorMessage,
+    });
+
+    await this.leaseDAO.updateLeaseDocumentStatus(leaseId, 'failed', errorMessage);
   }
 
   /**
@@ -501,6 +977,133 @@ export class LeaseService {
   }
 
   /**
+   * Validate status transition is allowed
+   * @param currentStatus - Current lease status
+   * @param newStatus - Desired new status
+   * @throws ValidationRequestError if transition is not allowed
+   */
+  private validateStatusTransition(currentStatus: LeaseStatus, newStatus: LeaseStatus): void {
+    // Define allowed transitions
+    const allowedTransitions: Record<LeaseStatus, LeaseStatus[]> = {
+      [LeaseStatus.DRAFT]: [
+        LeaseStatus.PENDING_SIGNATURE,
+        LeaseStatus.ACTIVE,
+        LeaseStatus.CANCELLED,
+      ],
+      [LeaseStatus.PENDING_SIGNATURE]: [LeaseStatus.ACTIVE, LeaseStatus.CANCELLED],
+      [LeaseStatus.ACTIVE]: [LeaseStatus.TERMINATED, LeaseStatus.EXPIRED],
+      [LeaseStatus.EXPIRED]: [], // Terminal state
+      [LeaseStatus.TERMINATED]: [], // Terminal state
+      [LeaseStatus.CANCELLED]: [], // Terminal state
+    };
+
+    // If status is not changing, allow it
+    if (currentStatus === newStatus) {
+      return;
+    }
+
+    const allowed = allowedTransitions[currentStatus] || [];
+    if (!allowed.includes(newStatus)) {
+      throw new ValidationRequestError({
+        message: `Invalid status transition from '${currentStatus}' to '${newStatus}'`,
+        errorInfo: {
+          status: [
+            `Cannot transition from ${currentStatus} to ${newStatus}. Allowed transitions: ${allowed.join(', ') || 'none (terminal state)'}`,
+          ],
+        },
+      });
+    }
+
+    this.log.info('Status transition validated', {
+      from: currentStatus,
+      to: newStatus,
+    });
+  }
+
+  /**
+   * Validate lease update - prevent changes to immutable fields on active leases
+   * @param lease - Current lease document
+   * @param updateData - Proposed update data
+   * @throws ValidationRequestError if trying to modify immutable fields
+   */
+  private validateLeaseUpdate(lease: ILeaseDocument, updateData: Partial<ILeaseFormData>): void {
+    // Only enforce field locking for ACTIVE leases
+    if (lease.status !== LeaseStatus.ACTIVE) {
+      return;
+    }
+
+    // Define fields that cannot be modified on ACTIVE leases
+    const immutableFields = [
+      'tenantId',
+      'property.id',
+      'property.unitId',
+      'duration.startDate',
+      'duration.endDate',
+      'fees.monthlyRent',
+      'fees.securityDeposit',
+      'fees.currency',
+      'type',
+    ];
+
+    const attemptedChanges = Object.keys(updateData);
+    const blockedChanges: string[] = [];
+
+    attemptedChanges.forEach((field) => {
+      // Check if this field or any parent field is immutable
+      const isBlocked = immutableFields.some((immutable) => {
+        // Check exact match or nested field match
+        return field === immutable || field.startsWith(immutable + '.');
+      });
+
+      if (isBlocked) {
+        blockedChanges.push(field);
+      }
+    });
+
+    if (blockedChanges.length > 0) {
+      throw new ValidationRequestError({
+        message: 'Cannot modify immutable fields on active lease',
+        errorInfo: {
+          fields: [
+            `The following fields cannot be modified on an ACTIVE lease: ${blockedChanges.join(', ')}. These fields are locked to maintain lease integrity.`,
+          ],
+        },
+      });
+    }
+
+    this.log.info('Lease update validation passed for active lease', {
+      leaseId: lease.luid,
+      fieldsToUpdate: attemptedChanges,
+    });
+  }
+
+  /**
+   * Enforce lease approval requirement for sensitive operations
+   * @param lease - The lease document to check
+   * @param operation - The operation being attempted (for error messaging)
+   * @throws InvalidRequestError if lease is not approved
+   */
+  private enforceLeaseApprovalRequirement(lease: ILeaseDocument, operation: string): void {
+    if (lease.approvalStatus !== 'approved') {
+      const statusMessage =
+        lease.approvalStatus === 'pending'
+          ? 'This lease is pending approval'
+          : lease.approvalStatus === 'rejected'
+            ? 'This lease has been rejected'
+            : 'This lease is in draft status';
+
+      throw new InvalidRequestError({
+        message: `Cannot ${operation}. ${statusMessage}. Only approved leases can ${operation}.`,
+      });
+    }
+
+    this.log.info(`Lease approval requirement satisfied for ${operation}`, {
+      leaseId: lease.luid,
+      approvalStatus: lease.approvalStatus,
+    });
+  }
+
+  /**
    * Handle upload completed event for lease documents
    */
   private async handleUploadCompleted(payload: UploadCompletedPayload): Promise<void> {
@@ -564,336 +1167,12 @@ export class LeaseService {
   }
 
   /**
-   * Update lease with uploaded document information
+   * Cleanup event listeners
    */
-  async updateLeaseDocuments(
-    leaseId: string,
-    uploadResults: UploadResult[],
-    userId: string
-  ): Promise<ISuccessReturnData> {
-    if (!leaseId) {
-      throw new BadRequestError({ message: 'Lease ID is required' });
-    }
+  cleanupEventListeners(): void {
+    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
+    this.emitterService.off(EventTypes.UPLOAD_FAILED, this.handleUploadFailed);
 
-    if (!uploadResults || uploadResults.length === 0) {
-      throw new BadRequestError({ message: 'Upload results are required' });
-    }
-
-    const lease = await this.leaseDAO.findFirst({
-      luid: leaseId,
-      deletedAt: null,
-    });
-
-    if (!lease) {
-      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
-    }
-
-    const updatedLease = await this.leaseDAO.updateLeaseDocuments(leaseId, uploadResults, userId);
-
-    if (!updatedLease) {
-      throw new BadRequestError({ message: 'Unable to update lease documents' });
-    }
-
-    return {
-      success: true,
-      data: updatedLease,
-      message: 'Lease documents updated successfully',
-    };
-  }
-
-  /**
-   * Mark lease documents as failed with error message
-   */
-  private async markLeaseDocumentsAsFailed(leaseId: string, errorMessage: string): Promise<void> {
-    this.log.warn('Marking lease documents as failed', {
-      leaseId,
-      errorMessage,
-    });
-
-    await this.leaseDAO.updateLeaseDocumentStatus(leaseId, 'failed', errorMessage);
-  }
-
-  /**
-   * Get pending lease approvals (admin/manager only)
-   */
-  async getPendingLeaseApprovals(
-    cuid: string,
-    currentuser: any,
-    pagination: any
-  ): Promise<ISuccessReturnData> {
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: 'You are not authorized to view pending approvals.',
-      });
-    }
-
-    const filters = { approvalStatus: 'pending' as const };
-    const leases = await this.leaseDAO.getFilteredLeases(cuid, filters, pagination);
-
-    return {
-      success: true,
-      data: {
-        items: leases.items,
-        pagination: leases.pagination,
-      },
-      message: 'Pending lease approvals retrieved successfully',
-    };
-  }
-
-  /**
-   * Approve a pending lease
-   */
-  async approveLease(
-    cuid: string,
-    leaseId: string,
-    currentuser: any,
-    notes?: string
-  ): Promise<ISuccessReturnData> {
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: 'You are not authorized to approve leases.',
-      });
-    }
-
-    const lease = await this.leaseDAO.findFirst({
-      luid: leaseId,
-      cuid,
-      deletedAt: null,
-    });
-
-    if (!lease) {
-      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
-    }
-
-    if (lease.approvalStatus === 'approved' && !lease.pendingChanges) {
-      throw new InvalidRequestError({
-        message: 'Lease is already approved and has no pending changes.',
-      });
-    }
-
-    const approvalEntry = {
-      action: 'approved' as const,
-      actor: currentuser.sub,
-      timestamp: new Date(),
-      ...(notes && { notes }),
-    };
-
-    const updateData: any = {
-      $push: { approvalDetails: approvalEntry },
-      $set: {
-        approvalStatus: 'approved',
-        lastModifiedBy: [
-          {
-            userId: currentuser.sub,
-            name: currentuser.fullname,
-            date: new Date(),
-            action: 'updated',
-          },
-        ],
-      },
-    };
-
-    // Apply pending changes if they exist
-    if (lease.pendingChanges) {
-      Object.keys(lease.pendingChanges).forEach((key) => {
-        if (key !== 'updatedBy' && key !== 'updatedAt' && key !== 'displayName') {
-          updateData.$set[key] = lease.pendingChanges![key];
-        }
-      });
-      updateData.$set.pendingChanges = null;
-    }
-
-    const updatedLease = await this.leaseDAO.update(
-      { luid: leaseId, cuid, deletedAt: null },
-      updateData
-    );
-
-    // TODO: Send notification to staff who created the lease
-
-    this.log.info('Lease approved successfully', {
-      leaseId,
-      approvedBy: currentuser.sub,
-    });
-
-    return {
-      success: true,
-      data: updatedLease,
-      message: 'Lease approved successfully',
-    };
-  }
-
-  /**
-   * Reject a pending lease
-   */
-  async rejectLease(
-    cuid: string,
-    leaseId: string,
-    currentuser: any,
-    reason: string
-  ): Promise<ISuccessReturnData> {
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: 'You are not authorized to reject leases.',
-      });
-    }
-
-    if (!reason) {
-      throw new BadRequestError({ message: 'Rejection reason is required' });
-    }
-
-    const lease = await this.leaseDAO.findFirst({
-      luid: leaseId,
-      cuid,
-      deletedAt: null,
-    });
-
-    if (!lease) {
-      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
-    }
-
-    const approvalEntry = {
-      action: 'rejected' as const,
-      actor: currentuser.sub,
-      timestamp: new Date(),
-      notes: reason,
-    };
-
-    const updatedLease = await this.leaseDAO.update(
-      { luid: leaseId, cuid, deletedAt: null },
-      {
-        $push: { approvalDetails: approvalEntry },
-        $set: {
-          approvalStatus: 'rejected',
-          pendingChanges: null,
-        },
-      }
-    );
-
-    // TODO: Send notification to staff with rejection reason
-
-    this.log.info('Lease rejected', {
-      leaseId,
-      rejectedBy: currentuser.sub,
-      reason,
-    });
-
-    return {
-      success: true,
-      data: updatedLease,
-      message: 'Lease rejected',
-    };
-  }
-
-  /**
-   * Bulk approve leases
-   */
-  async bulkApproveLeases(
-    cuid: string,
-    leaseIds: string[],
-    currentuser: any
-  ): Promise<ISuccessReturnData> {
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: 'You are not authorized to bulk approve leases.',
-      });
-    }
-
-    const approvalEntry = {
-      action: 'approved' as const,
-      actor: currentuser.sub,
-      timestamp: new Date(),
-      notes: 'Bulk approved',
-    };
-
-    const updateData = {
-      $push: { approvalDetails: approvalEntry },
-      $set: {
-        approvalStatus: 'approved',
-        pendingChanges: null,
-      },
-    };
-
-    const result = await this.leaseDAO.updateMany(
-      {
-        luid: { $in: leaseIds },
-        cuid,
-        deletedAt: null,
-        approvalStatus: 'pending',
-      },
-      updateData
-    );
-
-    this.log.info('Leases bulk approved', {
-      count: result.modifiedCount,
-      approvedBy: currentuser.sub,
-    });
-
-    return {
-      success: true,
-      data: { modifiedCount: result.modifiedCount },
-      message: `${result.modifiedCount} lease(s) approved successfully`,
-    };
-  }
-
-  /**
-   * Bulk reject leases
-   */
-  async bulkRejectLeases(
-    cuid: string,
-    leaseIds: string[],
-    currentuser: any,
-    reason: string
-  ): Promise<ISuccessReturnData> {
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: 'You are not authorized to bulk reject leases.',
-      });
-    }
-
-    if (!reason) {
-      throw new BadRequestError({ message: 'Rejection reason is required' });
-    }
-
-    const approvalEntry = {
-      action: 'rejected' as const,
-      actor: currentuser.sub,
-      timestamp: new Date(),
-      notes: reason,
-    };
-
-    const updateData = {
-      $push: { approvalDetails: approvalEntry },
-      $set: {
-        approvalStatus: 'rejected',
-        pendingChanges: null,
-      },
-    };
-
-    const result = await this.leaseDAO.updateMany(
-      {
-        luid: { $in: leaseIds },
-        cuid,
-        deletedAt: null,
-        approvalStatus: 'pending',
-      },
-      updateData
-    );
-
-    this.log.info('Leases bulk rejected', {
-      count: result.modifiedCount,
-      rejectedBy: currentuser.sub,
-      reason,
-    });
-
-    return {
-      success: true,
-      data: { modifiedCount: result.modifiedCount },
-      message: `${result.modifiedCount} lease(s) rejected`,
-    };
+    this.log.info('Lease service event listeners removed');
   }
 }

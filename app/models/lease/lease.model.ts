@@ -539,6 +539,15 @@ LeaseSchema.pre('save', async function (this: ILeaseDocument, next) {
 
 LeaseSchema.pre('validate', function (this: ILeaseDocument, next) {
   try {
+    // Validate that active/pending_signature leases are approved
+    if ([LeaseStatus.PENDING_SIGNATURE, LeaseStatus.ACTIVE].includes(this.status)) {
+      if (this.approvalStatus !== 'approved') {
+        throw new Error(
+          `Cannot set lease status to '${this.status}'. Lease must be approved first. Current approval status: '${this.approvalStatus || 'draft'}'`
+        );
+      }
+    }
+
     // Validate that active/pending_signature leases have required documents
     if ([LeaseStatus.PENDING_SIGNATURE, LeaseStatus.ACTIVE].includes(this.status)) {
       if (!this.leaseDocument || this.leaseDocument.length === 0) {

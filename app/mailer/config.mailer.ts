@@ -220,6 +220,8 @@ export class MailService {
       [MailType.USER_REGISTRATION]: defaultText,
       [MailType.PASSWORD_RESET]: 'Password Reset Request',
       [MailType.ACCOUNT_UPDATE]: 'Account recently updated.',
+      [MailType.LEASE_APPLICATION_UPDATE]: 'Lease Application Update',
+      [MailType.LEASE_SIGNOFF_REQUEST]: 'Lease Sign-off Request',
     };
 
     return subjectMap[mailType] || subjectMap.default;

@@ -12,7 +12,7 @@ import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { IVendorFilterOptions } from '@dao/interfaces/vendorDAO.interface';
 import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
-import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
+import { ISuccessReturnData, IRequestContext, IPaginateResult } from '@interfaces/utils.interface';
 import {
   FilteredUserTableData,
   IUserDetailResponse,
@@ -281,7 +281,7 @@ export class VendorService {
     cuid: string,
     filterOptions: IVendorFilterOptions,
     paginationOpts: IFindOptions
-  ): Promise<ISuccessReturnData<{ items: FilteredUserTableData[]; pagination: PaginateResult }>> {
+  ): Promise<ISuccessReturnData<{ items: FilteredUserTableData[]; pagination: IPaginateResult }>> {
     try {
       if (!cuid) {
         throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
@@ -387,7 +387,7 @@ export class VendorService {
   ): Promise<
     ISuccessReturnData<{
       items: IVendorTeamMember[];
-      pagination: PaginateResult | undefined;
+      pagination: IPaginateResult | undefined;
     }>
   > {
     const currentuser = cxt.currentuser!;

@@ -701,6 +701,7 @@ export const MoneyUtils = {
 
     return {
       ...moneyData,
+      // Property-related fields
       ...(moneyData.taxAmount !== undefined && {
         taxAmount: MoneyUtils.centsToString(moneyData.taxAmount),
       }),
@@ -712,6 +713,13 @@ export const MoneyUtils = {
       }),
       ...(moneyData.securityDeposit !== undefined && {
         securityDeposit: MoneyUtils.centsToString(moneyData.securityDeposit),
+      }),
+      // Lease fee fields
+      ...(moneyData.monthlyRent !== undefined && {
+        monthlyRent: MoneyUtils.centsToString(moneyData.monthlyRent),
+      }),
+      ...(moneyData.lateFeeAmount !== undefined && {
+        lateFeeAmount: MoneyUtils.centsToString(moneyData.lateFeeAmount),
       }),
     };
   },
@@ -726,6 +734,7 @@ export const MoneyUtils = {
 
     return {
       ...moneyData,
+      // Property-related fields
       ...(moneyData.taxAmount !== undefined && {
         taxAmount: MoneyUtils.stringToCents(moneyData.taxAmount),
       }),
@@ -737,6 +746,13 @@ export const MoneyUtils = {
       }),
       ...(moneyData.securityDeposit !== undefined && {
         securityDeposit: MoneyUtils.stringToCents(moneyData.securityDeposit),
+      }),
+      // Lease fee fields
+      ...(moneyData.monthlyRent !== undefined && {
+        monthlyRent: MoneyUtils.stringToCents(moneyData.monthlyRent),
+      }),
+      ...(moneyData.lateFeeAmount !== undefined && {
+        lateFeeAmount: MoneyUtils.stringToCents(moneyData.lateFeeAmount),
       }),
     };
   },
@@ -759,5 +775,41 @@ export const MoneyUtils = {
     }
 
     return false;
+  },
+
+  /**
+   * Formats lease fees object from database format (cents) to display format (strings)
+   * @param fees - The ILeaseFees object from database
+   * @returns Formatted lease fees object for frontend display
+   */
+  formatLeaseFees: (fees: any): any => {
+    if (!fees || typeof fees !== 'object') return fees;
+
+    return {
+      ...fees,
+      monthlyRent: MoneyUtils.centsToString(fees.monthlyRent),
+      securityDeposit: MoneyUtils.centsToString(fees.securityDeposit),
+      ...(fees.lateFeeAmount !== undefined && {
+        lateFeeAmount: MoneyUtils.centsToString(fees.lateFeeAmount),
+      }),
+    };
+  },
+
+  /**
+   * Parses lease fees object from frontend format (strings) to database format (cents)
+   * @param fees - The lease fees object from frontend
+   * @returns Parsed lease fees object for database storage
+   */
+  parseLeaseFees: (fees: any): any => {
+    if (!fees || typeof fees !== 'object') return fees;
+
+    return {
+      ...fees,
+      monthlyRent: MoneyUtils.stringToCents(fees.monthlyRent),
+      securityDeposit: MoneyUtils.stringToCents(fees.securityDeposit),
+      ...(fees.lateFeeAmount !== undefined && {
+        lateFeeAmount: MoneyUtils.stringToCents(fees.lateFeeAmount),
+      }),
+    };
   },
 };

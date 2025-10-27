@@ -117,6 +117,19 @@ export const LegalTermsSchema = z.object({
   url: z.string().url('Invalid URL format for legal terms').optional(),
 });
 
+export const LeaseDocumentItemSchema = z.object({
+  documentType: z
+    .enum(['lease_agreement', 'addendum', 'amendment', 'renewal', 'termination', 'other'])
+    .optional(),
+  filename: z.string().min(1, 'Filename is required'),
+  url: z.string().url('Document URL must be valid'),
+  key: z.string().min(1, 'Document key is required'),
+  mimeType: z.string().optional(),
+  size: z.number().int().positive('File size must be positive').optional(),
+  uploadedBy: z.string().optional(),
+  uploadedAt: z.coerce.date().optional(),
+});
+
 // Base Lease Schema Object (without refinements)
 const BaseLeaseSchemaObject = z.object({
   cuid: z.string().min(1, 'Client ID is required'),
@@ -152,6 +165,7 @@ const BaseLeaseSchemaObject = z.object({
   renewalOptions: RenewalOptionsSchema.optional(),
   legalTerms: LegalTermsSchema.optional(),
   internalNotes: z.string().max(2000, 'Internal notes must be at most 2000 characters').optional(),
+  leaseDocument: z.array(LeaseDocumentItemSchema).optional(),
 });
 
 // Create Lease Schema - Base object with refinements

@@ -4,14 +4,22 @@ import { Response } from 'express';
 import { createLogger } from '@utils/index';
 import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
-import { LeaseService } from '@services/lease/lease.service';
+import { MediaUploadService, LeaseService } from '@services/index';
 
 export class LeaseController {
   private readonly log: Logger;
   private readonly leaseService: LeaseService;
+  private readonly mediaUploadService: MediaUploadService;
 
-  constructor({ leaseService }: { leaseService: LeaseService }) {
+  constructor({
+    leaseService,
+    mediaUploadService,
+  }: {
+    leaseService: LeaseService;
+    mediaUploadService: MediaUploadService;
+  }) {
     this.log = createLogger('LeaseController');
+    this.mediaUploadService = mediaUploadService;
     this.leaseService = leaseService;
   }
 
@@ -19,6 +27,11 @@ export class LeaseController {
     const { cuid } = req.params;
     const result = await this.leaseService.createLease(cuid, req.body, req.context);
 
+    // const uploadResult = await this.mediaUploadService.handleFiles(req, {
+    //   primaryResourceId: result.data.id,
+    //   uploadedBy: req.context.currentuser!.sub,
+    //   resourceContext: ResourceContext.LEASE,
+    // });
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: result,

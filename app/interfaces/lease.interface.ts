@@ -76,30 +76,37 @@ export interface ILease {
  * Used for creating/updating leases via API
  */
 export interface ILeaseFormData {
-  lateFeeType?: 'fixed' | 'percentage';
-  acceptedPaymentMethods?: string[];
+  fees: {
+    monthlyRent: number;
+    securityDeposit: number;
+    rentDueDay: number;
+    currency?: string;
+    lateFeeAmount?: number;
+    lateFeeDays?: number;
+    lateFeeType?: 'fixed' | 'percentage';
+    lateFeePercentage?: number;
+    acceptedPaymentMethods?: string[];
+  };
+  duration: {
+    startDate: Date | string;
+    endDate: Date | string;
+    moveInDate?: Date | string;
+  };
+  property: {
+    id: string;
+    unitId?: string;
+    address: string;
+  };
+  leaseDocument?: ILeaseDocumentItem[];
   renewalOptions?: IRenewalOptions;
   utilitiesIncluded?: string[];
-  moveInDate?: Date | string;
-  lateFeePercentage?: number;
-  startDate: Date | string;
   legalTerms?: ILegalTerms;
-  propertyAddress: string;
-  securityDeposit: number;
   coTenants?: ICoTenant[];
-  endDate: Date | string;
-  lateFeeAmount?: number;
   petPolicy?: IPetPolicy;
   internalNotes?: string;
-  lateFeeDays?: number;
   leaseNumber: string;
-  monthlyRent: number;
-  propertyId: string;
-  rentDueDay: number;
-  currency?: string;
   tenantId: string;
   type: LeaseType;
-  unitId?: string;
 }
 
 /**

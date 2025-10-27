@@ -135,7 +135,6 @@ export interface Profile {
     notifications?: NotificationSettings;
     theme?: 'light' | 'dark';
   };
-
   policies: {
     tos: {
       acceptedOn: Date | null;
@@ -146,11 +145,9 @@ export interface Profile {
       accepted: boolean;
     };
   };
-
   employeeInfo?: EmployeeInfo;
   tenantInfo?: TenantInfo;
   vendorInfo?: VendorInfo;
-
   user: Types.ObjectId;
 }
 

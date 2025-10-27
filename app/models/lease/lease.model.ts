@@ -471,17 +471,13 @@ LeaseSchema.virtual('totalMonthlyFees').get(function (this: ILeaseDocument) {
   return total;
 });
 
-/**
- * Pre-save hook: Generate LUID and validate data
- */
 LeaseSchema.pre('save', async function (this: ILeaseDocument, next) {
   try {
-    // Generate LUID on new document
-    if (this.isNew && !this.luid) {
+    // Generate lease number on new document
+    if (this.isNew && !this.leaseNumber) {
       const year = new Date().getFullYear();
-      const shortId = generateShortUID(8);
-      this.luid = `L-${year}-${shortId}`;
-      logger.debug(`Generated LUID: ${this.luid}`);
+      const shortId = generateShortUID(5);
+      this.leaseNumber = `L${year}-${shortId}`;
     }
 
     // Validate late fee configuration

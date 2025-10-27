@@ -403,6 +403,40 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         _id: false,
       },
     ],
+    approvalStatus: {
+      type: String,
+      enum: ['approved', 'rejected', 'pending', 'draft'],
+      default: 'draft',
+      index: true,
+    },
+    approvalDetails: [
+      {
+        action: {
+          type: String,
+          enum: ['created', 'submitted', 'approved', 'rejected', 'updated', 'overridden'],
+          required: true,
+        },
+        actor: {
+          type: Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+        timestamp: {
+          type: Date,
+          required: true,
+          default: Date.now,
+        },
+        notes: {
+          type: String,
+          trim: true,
+        },
+        _id: false,
+      },
+    ],
+    pendingChanges: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
     deletedAt: {
       type: Date,
       default: null,
@@ -423,6 +457,7 @@ LeaseSchema.index({ cuid: 1, 'property.unitId': 1 });
 LeaseSchema.index({ cuid: 1, 'duration.endDate': 1, status: 1 });
 LeaseSchema.index({ cuid: 1, 'duration.startDate': 1, 'duration.endDate': 1 });
 LeaseSchema.index({ cuid: 1, createdAt: -1 });
+LeaseSchema.index({ cuid: 1, approvalStatus: 1 });
 
 /**
  * remaining days until lease expiration

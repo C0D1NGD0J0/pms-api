@@ -22,6 +22,7 @@ describe('LeaseDAO', () => {
 
   describe('createLease', () => {
     it('should create lease successfully', async () => {
+      const createdBy = new Types.ObjectId();
       const mockLeaseData = {
         leaseNumber: 'LEASE-2025-001',
         type: LeaseType.FIXED_TERM,
@@ -40,9 +41,8 @@ describe('LeaseDAO', () => {
           rentDueDay: 1,
           currency: 'USD',
         },
+        createdBy,
       };
-
-      const createdBy = new Types.ObjectId();
 
       const mockCreatedLease = {
         ...mockLeaseData,
@@ -50,12 +50,11 @@ describe('LeaseDAO', () => {
         luid: 'L-2025-ABC123',
         cuid: 'C123',
         status: LeaseStatus.DRAFT,
-        createdBy,
       };
 
       mockLeaseModel.create.mockResolvedValue([mockCreatedLease]);
 
-      const result = await leaseDAO.createLease('C123', mockLeaseData as any, createdBy);
+      const result = await leaseDAO.createLease('C123', mockLeaseData as any);
 
       expect(result).toEqual(mockCreatedLease);
       expect(mockLeaseModel.create).toHaveBeenCalledWith(
@@ -65,6 +64,7 @@ describe('LeaseDAO', () => {
     });
 
     it('should enforce client isolation (cuid)', async () => {
+      const createdBy = new Types.ObjectId();
       const mockLeaseData = {
         leaseNumber: 'LEASE-2025-001',
         type: LeaseType.FIXED_TERM,
@@ -83,12 +83,12 @@ describe('LeaseDAO', () => {
           rentDueDay: 1,
           currency: 'USD',
         },
+        createdBy,
       };
-      const createdBy = new Types.ObjectId();
 
       mockLeaseModel.create.mockResolvedValue([{ ...mockLeaseData, cuid: 'C123' }]);
 
-      await leaseDAO.createLease('C123', mockLeaseData as any, createdBy);
+      await leaseDAO.createLease('C123', mockLeaseData as any);
 
       expect(mockLeaseModel.create).toHaveBeenCalledWith(
         [expect.objectContaining({ cuid: 'C123' })],
@@ -98,6 +98,7 @@ describe('LeaseDAO', () => {
 
     it('should support transaction session', async () => {
       const mockSession = { id: 'session-123' } as any;
+      const createdBy = new Types.ObjectId();
       const mockLeaseData = {
         leaseNumber: 'LEASE-2025-001',
         type: LeaseType.FIXED_TERM,
@@ -116,12 +117,12 @@ describe('LeaseDAO', () => {
           rentDueDay: 1,
           currency: 'USD',
         },
+        createdBy,
       };
-      const createdBy = new Types.ObjectId();
 
       mockLeaseModel.create.mockResolvedValue([{ ...mockLeaseData, cuid: 'C123' }]);
 
-      await leaseDAO.createLease('C123', mockLeaseData as any, createdBy, mockSession);
+      await leaseDAO.createLease('C123', mockLeaseData as any, mockSession);
 
       expect(mockLeaseModel.create).toHaveBeenCalledWith(expect.any(Array), {
         session: mockSession,
@@ -129,6 +130,7 @@ describe('LeaseDAO', () => {
     });
 
     it('should handle lease with documents', async () => {
+      const createdBy = new Types.ObjectId();
       const mockLeaseData = {
         leaseNumber: 'LEASE-2025-001',
         type: LeaseType.FIXED_TERM,
@@ -147,6 +149,7 @@ describe('LeaseDAO', () => {
           rentDueDay: 1,
           currency: 'USD',
         },
+        createdBy,
         leaseDocument: [
           {
             documentType: 'lease_agreement' as const,
@@ -155,11 +158,11 @@ describe('LeaseDAO', () => {
             key: 's3-key-123',
             mimeType: 'application/pdf',
             size: 102400,
+            uploadedBy: createdBy,
+            uploadedAt: new Date(),
           },
         ],
       };
-
-      const createdBy = new Types.ObjectId();
 
       const mockCreatedLease = {
         ...mockLeaseData,
@@ -167,12 +170,11 @@ describe('LeaseDAO', () => {
         luid: 'L-2025-ABC123',
         cuid: 'C123',
         status: LeaseStatus.DRAFT,
-        createdBy,
       };
 
       mockLeaseModel.create.mockResolvedValue([mockCreatedLease]);
 
-      const result = await leaseDAO.createLease('C123', mockLeaseData as any, createdBy);
+      const result = await leaseDAO.createLease('C123', mockLeaseData as any);
 
       expect(result).toEqual(mockCreatedLease);
       expect(mockLeaseModel.create).toHaveBeenCalledWith(
@@ -194,6 +196,7 @@ describe('LeaseDAO', () => {
     });
 
     it('should set uploadedBy and uploadedAt for documents', async () => {
+      const createdBy = new Types.ObjectId();
       const mockLeaseData = {
         leaseNumber: 'LEASE-2025-001',
         type: LeaseType.FIXED_TERM,
@@ -212,22 +215,23 @@ describe('LeaseDAO', () => {
           rentDueDay: 1,
           currency: 'USD',
         },
+        createdBy,
         leaseDocument: [
           {
             filename: 'doc1.pdf',
             url: 'https://s3.amazonaws.com/doc1.pdf',
             key: 'key1',
+            uploadedBy: createdBy,
+            uploadedAt: new Date(),
           },
         ],
       };
-
-      const createdBy = new Types.ObjectId();
 
       mockLeaseModel.create.mockResolvedValue([
         { ...mockLeaseData, _id: new Types.ObjectId(), cuid: 'C123' },
       ]);
 
-      await leaseDAO.createLease('C123', mockLeaseData as any, createdBy);
+      await leaseDAO.createLease('C123', mockLeaseData as any);
 
       const callArg = mockLeaseModel.create.mock.calls[0][0][0];
       expect(callArg.leaseDocument[0].uploadedBy).toEqual(createdBy);

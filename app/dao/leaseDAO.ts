@@ -1,7 +1,12 @@
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { ClientSession, FilterQuery, Model } from 'mongoose';
-import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
+import {
+  ListResultWithPagination,
+  IPaginationQuery,
+  UploadResult,
+} from '@interfaces/utils.interface';
 import {
   ILeaseFilterOptions,
   ILeaseDocument,
@@ -31,7 +36,12 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     session?: ClientSession
   ): Promise<ILeaseDocument> {
     try {
-      const [lease] = await this.leaseModel.create([data], { session });
+      const leaseData: any = {
+        ...data,
+        cuid,
+      };
+
+      const [lease] = await this.leaseModel.create([leaseData], { session });
       return lease;
     } catch (error: any) {
       this.log.error('Error creating lease:', error);
@@ -53,16 +63,10 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         deletedAt: null,
       };
 
-      let dbQuery = this.leaseModel.findOne(query);
+      let dbQuery: any = this.leaseModel.findOne(query);
 
       if (opts?.populate) {
-        if (Array.isArray(opts.populate)) {
-          dbQuery = dbQuery.populate(opts.populate);
-        } else if (typeof opts.populate === 'string') {
-          dbQuery = dbQuery.populate(opts.populate);
-        } else {
-          dbQuery = dbQuery.populate(opts.populate);
-        }
+        dbQuery = dbQuery.populate(opts.populate);
       }
 
       if (opts?.select) {
@@ -85,6 +89,12 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
 
       const query: FilterQuery<ILeaseDocument> = { cuid, deletedAt: null };
+
+      if (filters.approvalStatus) {
+        query.approvalStatus = Array.isArray(filters.approvalStatus)
+          ? { $in: filters.approvalStatus }
+          : filters.approvalStatus;
+      }
 
       if (filters.status) {
         query.status = Array.isArray(filters.status) ? { $in: filters.status } : filters.status;
@@ -617,6 +627,103 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       return rentRoll;
     } catch (error: any) {
       this.log.error('Error getting rent roll data:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update lease with uploaded document information
+   */
+  async updateLeaseDocuments(
+    leaseId: string,
+    uploadResults: UploadResult[],
+    userId: string
+  ): Promise<ILeaseDocument | null> {
+    try {
+      if (!leaseId || !uploadResults.length) {
+        throw new Error('Lease ID and upload results are required');
+      }
+
+      const lease = await this.findFirst({ luid: leaseId, deletedAt: null });
+      if (!lease) {
+        throw new Error('Lease not found');
+      }
+
+      // Process lease document uploads
+      const processedDocuments = uploadResults.map((upload) => {
+        // Derive mimeType from filename extension
+        const ext = upload.filename.split('.').pop()?.toLowerCase();
+        let mimeType = 'application/pdf'; // default
+        if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+        else if (ext === 'png') mimeType = 'image/png';
+        else if (ext === 'doc') mimeType = 'application/msword';
+        else if (ext === 'docx')
+          mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+        return {
+          documentType: (upload as any).documentType || 'lease_agreement',
+          filename: upload.filename,
+          url: upload.url,
+          key: upload.key,
+          mimeType,
+          size: upload.size,
+          uploadedBy: new Types.ObjectId((upload as any).actorId || userId),
+          uploadedAt: new Date(),
+        };
+      });
+
+      const updateOperation: any = {
+        $push: {
+          leaseDocument: { $each: processedDocuments },
+        },
+        $set: {
+          lastModifiedBy: [
+            {
+              userId: new Types.ObjectId(userId),
+              timestamp: new Date(),
+            },
+          ],
+        },
+      };
+
+      this.log.info('Updating lease documents', {
+        leaseId,
+        documentCount: processedDocuments.length,
+      });
+
+      return await this.update({ luid: leaseId, deletedAt: null }, updateOperation);
+    } catch (error: any) {
+      this.log.error('Error updating lease documents:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update lease document status (active, failed, deleted)
+   */
+  async updateLeaseDocumentStatus(
+    leaseId: string,
+    status: 'active' | 'failed' | 'deleted',
+    errorMessage?: string
+  ): Promise<ILeaseDocument | null> {
+    try {
+      const updateData: any = {
+        'leaseDocument.$[].status': status,
+      };
+
+      if (errorMessage) {
+        updateData['leaseDocument.$[].error'] = errorMessage;
+      }
+
+      this.log.info('Updating lease document status', {
+        leaseId,
+        status,
+        hasError: !!errorMessage,
+      });
+
+      return await this.update({ luid: leaseId, deletedAt: null }, { $set: updateData });
+    } catch (error: any) {
+      this.log.error('Error updating lease document status:', error);
       throw error;
     }
   }

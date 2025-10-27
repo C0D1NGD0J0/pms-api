@@ -118,3 +118,33 @@ export const OPERATIONAL_UNIT_FIELDS = [
   'amenities',
   'utilities',
 ];
+
+/**
+ * Lease fields that require approval when modified (high-impact changes)
+ */
+export const HIGH_IMPACT_LEASE_FIELDS = [
+  'fees.monthlyRent',
+  'fees.securityDeposit',
+  'fees.rentDueDay',
+  'fees.lateFeeAmount',
+  'fees.lateFeePercentage',
+  'duration.startDate',
+  'duration.endDate',
+  'status',
+  'type',
+  'tenantId',
+  'property.id',
+  'property.unitId',
+];
+
+/**
+ * Lease fields that can be modified without approval (operational changes)
+ */
+export const OPERATIONAL_LEASE_FIELDS = [
+  'internalNotes',
+  'petPolicy',
+  'utilitiesIncluded',
+  'legalTerms',
+  'renewalOptions',
+  'coTenants',
+];

@@ -176,8 +176,8 @@ export interface IAWSFileUploadResponse {
 }
 
 export interface ResourceInfo {
+  resourceName: 'property' | 'profile' | 'client' | 'lease'; //name of the resource
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
-  resourceName: 'property' | 'profile' | 'client'; //name of the resource
   resourceId: string; //id of the resource
   fieldName: string; //name of the field
   actorId: string; //user who uploaded the file

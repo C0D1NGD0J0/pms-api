@@ -47,7 +47,10 @@ export interface ILease {
     | 'heating'
     | 'cooling'
   )[];
+  pendingChanges?: IPendingLeaseChanges | null;
+  approvalDetails?: ILeaseApprovalEntry[];
   signingMethod: SigningMethod | string;
+  approvalStatus?: LeaseApprovalStatus;
   leaseDocument?: ILeaseDocumentItem[];
   createdBy: Types.ObjectId | string;
   lastModifiedBy?: ILastModifiedBy[];
@@ -114,6 +117,7 @@ export interface ILeaseFormData {
  * Used for querying leases
  */
 export interface ILeaseFilterOptions {
+  approvalStatus?: LeaseApprovalStatus | LeaseApprovalStatus[];
   signingMethod?: SigningMethod | string;
   status?: LeaseStatus | LeaseStatus[];
   propertyId?: Types.ObjectId | string;
@@ -298,6 +302,17 @@ export interface ILeaseESignature {
 }
 
 /**
+ * Lease Approval Entry Interface
+ * Tracks individual approval actions
+ */
+export interface ILeaseApprovalEntry {
+  action: 'created' | 'submitted' | 'approved' | 'rejected' | 'updated' | 'overridden';
+  actor: Types.ObjectId | string;
+  timestamp: Date;
+  notes?: string;
+}
+
+/**
  * Last Modified By Interface
  * Audit trail entry
  */
@@ -329,6 +344,17 @@ export interface ILeaseQueryOptions {
   sortBy?: string;
   limit?: number;
   page?: number;
+}
+
+/**
+ * Pending Lease Changes Interface
+ * Stores lease changes awaiting approval
+ */
+export interface IPendingLeaseChanges {
+  updatedBy: Types.ObjectId | string;
+  displayName?: string;
+  [key: string]: any;
+  updatedAt: Date;
 }
 
 /**
@@ -405,3 +431,9 @@ export interface ILegalTerms {
   html?: string;
   url?: string;
 }
+
+/**
+ * Lease Approval Status Type
+ * Tracks the approval state of a lease
+ */
+export type LeaseApprovalStatus = 'approved' | 'rejected' | 'pending' | 'draft';

@@ -12,7 +12,7 @@ import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
   AsyncRequestHandler,
   ExtractedMediaFile,
-  PaginateResult,
+  IPaginateResult,
   MulterFile,
   FileType,
 } from '@interfaces/utils.interface';
@@ -352,7 +352,7 @@ export function generateShortUID(length = 12): string {
  * @returns An object containing pagination metadata
  * @throws Error if negative values are provided
  */
-export const paginateResult = (count: number, skip = 0, limit = 10): PaginateResult => {
+export const paginateResult = (count: number, skip = 0, limit = 10): IPaginateResult => {
   if (count < 0 || skip < 0 || limit <= 0) {
     throw new Error(
       'Invalid pagination parameters: count and skip must be non-negative, limit must be positive'
@@ -363,7 +363,7 @@ export const paginateResult = (count: number, skip = 0, limit = 10): PaginateRes
   const totalPages = Math.max(1, Math.ceil(count / normalizedLimit));
   const currentPage = Math.min(totalPages, Math.max(1, Math.floor(skip / normalizedLimit) + 1));
 
-  const result: PaginateResult = {
+  const result: IPaginateResult = {
     total: count,
     perPage: normalizedLimit,
     totalPages,

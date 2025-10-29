@@ -10,7 +10,7 @@ import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
-import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
+import { ISuccessReturnData, IRequestContext, IPaginateResult } from '@interfaces/utils.interface';
 import {
   IUserPopulatedDocument,
   FilteredUserTableData,
@@ -211,7 +211,7 @@ export class UserService {
     cuid: string,
     filterOptions: IUserFilterOptions,
     paginationOpts: IFindOptions
-  ): Promise<ISuccessReturnData<{ items: FilteredUserTableData[]; pagination: PaginateResult }>> {
+  ): Promise<ISuccessReturnData<{ items: FilteredUserTableData[]; pagination: IPaginateResult }>> {
     try {
       if (!cuid) {
         throw new BadRequestError({ message: t('client.errors.clientIdRequired') });

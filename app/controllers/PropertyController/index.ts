@@ -354,4 +354,21 @@ export class PropertyController {
     const result = await this.propertyService.getMyPropertyRequests(cuid, currentuser, filters);
     res.status(httpStatusCodes.OK).json(result);
   };
+
+  getLeaseableProperties = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const { currentuser } = req.context;
+
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+
+    const fetchUnits = req.query.fetchUnits === 'true';
+
+    const result = await this.propertyService.getLeaseableProperties(cuid, currentuser, fetchUnits);
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

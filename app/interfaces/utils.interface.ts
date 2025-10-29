@@ -260,6 +260,14 @@ export interface IPaginateResult {
   total: number;
 }
 
+export interface IPaginationQuery {
+  sort?: string | Record<string, 1 | -1 | { $meta: 'textScore' }>;
+  sortBy?: string;
+  limit?: number;
+  page?: number;
+  skip?: number;
+}
+
 export type ISuccessReturnData<T = any> = {
   errors?: [{ path: string; message: string }];
   success: boolean;

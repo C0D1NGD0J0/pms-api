@@ -54,6 +54,19 @@ export interface ILeaseDAO {
   ): Promise<ILeaseDocument[]>;
 
   /**
+   * Get tenant information for a lease (handles both invitation and user)
+   * @param lease - Lease document
+   * @returns Tenant information object with type, email, name, and data
+   */
+  getTenantInfo(lease: ILeaseDocument): Promise<{
+    type: 'invitation' | 'user';
+    email: string;
+    name: string;
+    isActive: boolean;
+    data: any;
+  }>;
+
+  /**
    * Update lease document status (active, failed, deleted)
    * @param leaseId - Lease ID (luid)
    * @param status - New status for documents
@@ -171,6 +184,13 @@ export interface ILeaseDAO {
    * @returns Array of rent roll items with joined property/unit/tenant data
    */
   getRentRollData(cuid: string, propertyId?: string): Promise<IRentRollItem[]>;
+
+  /**
+   * Get leases pending tenant acceptance (using invitation as temporary tenant)
+   * @param cuid - Client ID
+   * @returns Array of leases awaiting tenant acceptance
+   */
+  getLeasesPendingTenantAcceptance(cuid: string): Promise<ILeaseDocument[]>;
 
   /**
    * Soft delete a lease

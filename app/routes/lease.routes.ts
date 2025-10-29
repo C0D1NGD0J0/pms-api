@@ -222,6 +222,33 @@ router.get(
   })
 );
 
+router.post(
+  '/:cuid/preview',
+  // Preview lease document HTML with provided data
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid,
+    body: LeaseValidations.previewLease,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.previewLease(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/templates',
+  // Get list of available lease templates
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.getLeaseTemplates(req, res);
+  })
+);
+
 router.get(
   '/:cuid/stats',
   // Get lease statistics (active/pending/expired counts, occupancy rates)

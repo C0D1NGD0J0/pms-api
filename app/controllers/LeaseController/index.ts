@@ -5,11 +5,15 @@ import { createLogger } from '@utils/index';
 import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
 import { MediaUploadService, LeaseService } from '@services/index';
+import { LeaseTemplateService } from '@services/lease/leaseTemplateService';
+import { LeaseTemplateDataMapper } from '@services/lease/leaseTemplateDataMapper';
 
 export class LeaseController {
   private readonly log: Logger;
   private readonly leaseService: LeaseService;
   private readonly mediaUploadService: MediaUploadService;
+  private readonly leaseTemplateService: LeaseTemplateService;
+  private readonly leaseTemplateDataMapper: LeaseTemplateDataMapper;
 
   constructor({
     leaseService,
@@ -21,6 +25,8 @@ export class LeaseController {
     this.log = createLogger('LeaseController');
     this.mediaUploadService = mediaUploadService;
     this.leaseService = leaseService;
+    this.leaseTemplateService = new LeaseTemplateService();
+    this.leaseTemplateDataMapper = new LeaseTemplateDataMapper();
   }
 
   createLease = async (req: AppRequest, res: Response) => {
@@ -239,10 +245,6 @@ export class LeaseController {
     });
   };
 
-  /**
-   * Generate PDF from lease JSON data
-   * POST /:cuid/:leaseId/pdf
-   */
   generateLeasePDF = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
     // const { uid } = req.context.currentuser!;
@@ -258,10 +260,6 @@ export class LeaseController {
     });
   };
 
-  /**
-   * Preview HTML template before PDF generation
-   * GET /:cuid/:leaseId/pdf/preview
-   */
   previewLeaseHTML = async (req: AppRequest, res: Response) => {
     const { leaseId } = req.params;
 
@@ -276,10 +274,6 @@ export class LeaseController {
     });
   };
 
-  /**
-   * Download generated PDF
-   * GET /:cuid/:leaseId/pdf/download
-   */
   downloadLeasePDF = async (req: AppRequest, res: Response) => {
     const { leaseId } = req.params;
 
@@ -294,11 +288,6 @@ export class LeaseController {
     });
   };
 
-  // Reporting
-  /**
-   * Get leases expiring soon
-   * GET /:cuid/expiring
-   */
   getExpiringLeases = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     // const { daysThreshold = 30 } = req.query;
@@ -314,10 +303,6 @@ export class LeaseController {
     });
   };
 
-  /**
-   * Get lease statistics
-   * GET /:cuid/stats
-   */
   getLeaseStats = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     // const filters = req.query;
@@ -333,10 +318,6 @@ export class LeaseController {
     });
   };
 
-  /**
-   * Export leases to CSV/Excel
-   * GET /:cuid/export
-   */
   exportLeases = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     const { format = 'csv' } = req.query;
@@ -350,5 +331,66 @@ export class LeaseController {
       success: false,
       message: 'Export leases not yet implemented',
     });
+  };
+
+  previewLease = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const previewData = req.body;
+    const templateType = previewData.templateType || 'residential-single-family';
+
+    this.log.info(`Generating lease preview for client ${cuid} using template ${templateType}`);
+
+    try {
+      // Transform request data to template format
+      const templateData = this.leaseTemplateDataMapper.transformForTemplate(previewData);
+
+      // Render template to HTML
+      const html = await this.leaseTemplateService.renderLeasePreview(templateData, templateType);
+
+      res.status(httpStatusCodes.OK).json({
+        success: true,
+        data: {
+          html,
+          templateUsed: templateType,
+          renderedAt: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      this.log.error({ error, cuid, templateType }, 'Failed to generate lease preview');
+
+      res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to generate lease preview',
+      });
+    }
+  };
+
+  /**
+   * Get list of available lease templates
+   * GET /:cuid/templates
+   */
+  getLeaseTemplates = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+
+    this.log.info(`Getting available lease templates for client ${cuid}`);
+
+    try {
+      const templates = await this.leaseTemplateService.getAvailableTemplates();
+
+      res.status(httpStatusCodes.OK).json({
+        success: true,
+        data: {
+          templates,
+          totalCount: templates.length,
+        },
+      });
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Failed to get lease templates');
+
+      res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to get lease templates',
+      });
+    }
   };
 }

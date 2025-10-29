@@ -3,8 +3,9 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
-import { IPropertyDocument } from '@interfaces/property.interface';
-import { ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
+import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
+import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { EventEmitterService, NotificationService, AssetService } from '@services/index';
 import { ValidationRequestError, InvalidRequestError, BadRequestError } from '@shared/customErrors';
 import {
@@ -38,6 +39,7 @@ interface IConstructor {
   notificationService: NotificationService;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
+  invitationDAO: InvitationDAO;
   assetService: AssetService;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
@@ -55,12 +57,14 @@ export class LeaseService {
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly assetService: AssetService;
+  private readonly invitationDAO: InvitationDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
 
   constructor({
     notificationService,
     emitterService,
+    invitationDAO,
     propertyUnitDAO,
     clientDAO,
     assetService,
@@ -69,23 +73,24 @@ export class LeaseService {
     leaseDAO,
     userDAO,
   }: IConstructor) {
-    this.notificationService = notificationService;
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
     this.assetService = assetService;
+    this.invitationDAO = invitationDAO;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
     this.log = createLogger('LeaseService');
+    this.notificationService = notificationService;
 
     this.setupEventListeners();
   }
 
   async createLease(
     cuid: string,
-    leaseData: ILeaseFormData,
+    data: ILeaseFormData,
     ctx: IRequestContext
   ): IPromiseReturnedData<ILeaseDocument> {
     const currentuser = ctx.currentuser!;
@@ -101,20 +106,31 @@ export class LeaseService {
       throw new BadRequestError({ message: t('common.errors.clientNotFound') });
     }
 
+    // Validate all lease data (including property, unit, tenant, dates, fees)
+    const { hasErrors, errors, tenantInfo, propertyInfo } = await this.validateLeaseData(
+      cuid,
+      data
+    );
+    if (hasErrors) {
+      throw new ValidationRequestError({
+        message: t('lease.errors.validationFailed') || 'Lease validation failed',
+        errorInfo: errors,
+      });
+    }
+
+    if (!tenantInfo || !tenantInfo.tenantId) {
+      throw new BadRequestError({
+        message:
+          'Tenant information is required. Please provide either a valid tenant ID or email address with an existing invitation.',
+      });
+    }
+
     const userRoleEnum = convertUserRoleToEnum(currentuser.client.role);
     if (
       !PROPERTY_STAFF_ROLES.includes(userRoleEnum) &&
       !PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)
     ) {
       throw new InvalidRequestError({ message: 'You are not authorized to create leases.' });
-    }
-
-    const { hasErrors, errors } = await this.validateLeaseData(cuid, leaseData);
-    if (hasErrors) {
-      throw new ValidationRequestError({
-        message: t('lease.errors.validationFailed') || 'Lease validation failed',
-        errorInfo: errors,
-      });
     }
 
     let approvalStatus: 'approved' | 'pending' = 'pending';
@@ -144,14 +160,35 @@ export class LeaseService {
     const session = await this.leaseDAO.startSession();
     const result = await this.leaseDAO.withTransaction(session, async (session) => {
       const parsedLeaseData = {
-        ...leaseData,
-        createdBy: currentuser.uid,
-        fees: MoneyUtils.parseLeaseFees(leaseData.fees),
+        ...data,
+        cuid,
+        tenantId: tenantInfo.tenantId,
+        createdBy: currentuser.sub,
+        fees: MoneyUtils.parseLeaseFees(data.fees),
+        property: {
+          id: data.property.id,
+          address: propertyInfo?.address || 'REQUIRED',
+          unitId: data.property.unitId,
+          propertyType: propertyInfo?.propertyType,
+          name: propertyInfo?.name,
+          unitNumber: propertyInfo?.unitNumber,
+          specifications: propertyInfo?.specifications,
+        },
         approvalStatus,
         approvalDetails,
+        useInvitationIdAsTenantId: tenantInfo.useInvitationIdAsTenantId,
       };
 
       const lease = await this.leaseDAO.createLease(cuid, parsedLeaseData, session);
+
+      // Log if using invitation as temporary tenant
+      if (tenantInfo.useInvitationIdAsTenantId) {
+        this.log.warn('Lease created with invitation as temporary tenant', {
+          leaseId: lease.luid,
+          invitationId: tenantInfo.tenantId.toString(),
+        });
+      }
+
       return { lease };
     });
 
@@ -164,7 +201,7 @@ export class LeaseService {
           actorUserId: currentuser.sub,
           actorDisplayName: currentuser.displayName,
           cuid,
-          updateData: leaseData,
+          updateData: data,
           resource: {
             resourceType: ResourceContext.LEASE,
             resourceId: result.lease._id.toString(),
@@ -192,11 +229,6 @@ export class LeaseService {
   ): ListResultWithPagination<ILeaseDocument> {
     this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
     throw new Error('getFilteredLeases not yet implemented');
-  }
-
-  async getLeaseById(cuid: string, leaseId: string): IPromiseReturnedData<ILeaseDocument> {
-    this.log.info(`Getting lease ${leaseId} for client ${cuid}`);
-    throw new Error('getLeaseById not yet implemented');
   }
 
   async updateLease(
@@ -821,67 +853,166 @@ export class LeaseService {
   private async validateLeaseData(
     cuid: string,
     leaseData: ILeaseFormData
-  ): Promise<{ hasErrors: boolean; errors: Record<string, string[]> }> {
-    let property: IPropertyDocument | null = null;
+  ): Promise<{
+    hasErrors: boolean;
+    errors: Record<string, string[]>;
+    tenantInfo?: {
+      tenantId: Types.ObjectId;
+      useInvitationIdAsTenantId: boolean;
+    } | null;
+    propertyInfo?: {
+      id: string;
+      address: string;
+      unitId: string | null;
+      propertyType?: string;
+      name?: string;
+      unitNumber?: string;
+      specifications?: {
+        totalArea?: number;
+        bedrooms?: number;
+        bathrooms?: number;
+        parkingSpaces?: number;
+        floors?: number;
+      };
+    };
+  }> {
     const validationErrors: Record<string, string[]> = {};
+    let tenantInfo: { tenantId: Types.ObjectId; useInvitationIdAsTenantId: boolean } | null = null;
 
-    // 1. Validate property exists and is active
-    if (leaseData.property) {
-      property = await this.propertyDAO.findFirst({
-        id: leaseData.property.id,
-        deletedAt: null,
-        cuid,
-      });
+    // tenant validation - support both ID and email lookup
+    if (leaseData.tenantInfo.id) {
+      // tenant ID provided (existing user)
+      const user = await this.userDAO.getUserById(leaseData.tenantInfo.id);
 
-      if (!property) {
-        if (!validationErrors['property.id']) validationErrors['property.id'] = [];
-        validationErrors['property.id'].push(t('common.errors.propertyNotFound'));
-      } else if (property.status !== 'available') {
-        if (!validationErrors['property.id']) validationErrors['property.id'] = [];
-        validationErrors['property.id'].push(t('lease.errors.propertyNotActive'));
-      }
-
-      // 2. Validate unit if provided
-      if (leaseData.property.unitId && property) {
-        const unit = await this.propertyUnitDAO.findFirst({
-          unitId: leaseData.property.unitId,
-          deletedAt: null,
-          propertyId: property._id,
-        });
-        if (!unit || unit.propertyId.toString() !== property._id.toString()) {
-          if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
-          validationErrors['property.unitId'].push(t('lease.errors.unitNotFound'));
-        } else if (unit.status !== 'available') {
-          if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
-          validationErrors['property.unitId'].push(t('lease.errors.unitNotAvailable'));
-        }
-      }
-    }
-
-    if (!leaseData.tenantId) {
-      if (!validationErrors['tenantId']) validationErrors['tenantId'] = [];
-      validationErrors['tenantId'].push(t('lease.errors.tenantIdRequired'));
-    } else {
-      const tenant = await this.profileDAO.findFirst({
-        user: leaseData.tenantId,
-        cuid,
-        deletedAt: null,
-      });
-      if (!tenant) {
-        if (!validationErrors['tenantId']) validationErrors['tenantId'] = [];
-        validationErrors['tenantId'].push(t('lease.errors.tenantNotFound'));
+      if (!user) {
+        if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
+        validationErrors['tenantInfo.id'].push(t('lease.errors.tenantNotFound'));
       } else {
-        const tenantCurrentUserProfile = await this.profileDAO.generateCurrentUserInfo(
-          tenant.user.toString()
-        );
-        if (tenantCurrentUserProfile!.client.role !== 'tenant') {
-          if (!validationErrors['tenantId']) validationErrors['tenantId'] = [];
-          validationErrors['tenantId'].push(t('common.errors.invalidUserRole'));
+        // verify tenant has 'tenant' role for this client
+        const clientAccess = user.cuids.find((c) => c.cuid === cuid);
+        if (!clientAccess || !clientAccess.roles.includes('tenant')) {
+          if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
+          validationErrors['tenantInfo.id'].push(t('common.errors.invalidUserRole'));
+        } else {
+          tenantInfo = {
+            tenantId: user._id,
+            useInvitationIdAsTenantId: false,
+          };
+        }
+      }
+    } else if (leaseData.tenantInfo.email) {
+      // email is provided instead of id, so we search invitation
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        if (!validationErrors['client']) validationErrors['client'] = [];
+        validationErrors['client'].push(t('common.errors.clientNotFound'));
+      } else {
+        const invitation = await this.invitationDAO.findFirst({
+          inviteeEmail: leaseData.tenantInfo.email.toLowerCase(),
+          clientId: client.id,
+          role: 'tenant',
+        });
+
+        if (!invitation) {
+          if (!validationErrors['tenantInfo.email']) validationErrors['tenantInfo.email'] = [];
+          validationErrors['tenantInfo.email'].push(
+            `No tenant record found for '${leaseData.tenantInfo.email}'`
+          );
+        } else if (invitation.status === 'accepted') {
+          // Invitation accepted - use user ID
+          const user = await this.userDAO.getActiveUserByEmail(leaseData.tenantInfo.email);
+          if (!user) {
+            if (!validationErrors['tenantInfo.email']) validationErrors['tenantInfo.email'] = [];
+            validationErrors['tenantInfo.email'].push(
+              'Invitation accepted but user account not found'
+            );
+          } else {
+            tenantInfo = {
+              tenantId: user._id,
+              useInvitationIdAsTenantId: false,
+            };
+          }
+        } else if (['pending', 'draft', 'sent'].includes(invitation.status)) {
+          // use invitation ID as temporary tenant!
+          tenantInfo = {
+            tenantId: invitation._id,
+            useInvitationIdAsTenantId: true,
+          };
+
+          this.log.info('Lease using invitation ID as temporary tenant', {
+            email: leaseData.tenantInfo.email,
+            invitationId: invitation._id.toString(),
+            invitationStatus: invitation.status,
+          });
+        } else {
+          if (!validationErrors['tenantInfo.email']) validationErrors['tenantInfo.email'] = [];
+          validationErrors['tenantInfo.email'].push(
+            `Invitation status is '${invitation.status}'. Cannot create lease.`
+          );
+        }
+      }
+    } else {
+      if (!validationErrors['tenantInfo']) validationErrors['tenantInfo'] = [];
+      validationErrors['tenantInfo'].push('Either tenant ID or email is required');
+    }
+
+    // Validate property exists and check unitId requirement for multi-unit properties
+    const property = await this.propertyDAO.findFirst({
+      _id: new Types.ObjectId(leaseData.property.id),
+      cuid,
+      approvalStatus: 'approved',
+      deletedAt: null,
+    });
+
+    let unit = null;
+
+    if (!property) {
+      if (!validationErrors['property.id']) validationErrors['property.id'] = [];
+      validationErrors['property.id'].push(t('property.errors.notFound'));
+    } else {
+      // Check if property type requires unit specification
+      const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
+
+      if (isMultiUnit) {
+        if (!leaseData.property.unitId) {
+          if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
+          validationErrors['property.unitId'].push(
+            `Unit ID is required for ${property.propertyType} properties`
+          );
+        } else {
+          // Validate unit exists, belongs to property, and is available
+          unit = await this.propertyUnitDAO.findFirst({
+            _id: leaseData.property.unitId,
+            propertyId: property._id,
+            cuid,
+          });
+
+          if (!unit) {
+            if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
+            validationErrors['property.unitId'].push(
+              'Unit not found or does not belong to this property'
+            );
+          } else {
+            // Check unit availability
+            if (unit.status === PropertyUnitStatusEnum.OCCUPIED) {
+              if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
+              validationErrors['property.unitId'].push(
+                'Unit is currently occupied and cannot be leased'
+              );
+            } else if (
+              unit.status === PropertyUnitStatusEnum.MAINTENANCE ||
+              unit.status === PropertyUnitStatusEnum.INACTIVE
+            ) {
+              if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
+              validationErrors['property.unitId'].push(
+                'Unit status indicates it cannot be leased at this time'
+              );
+            }
+          }
         }
       }
     }
 
-    // 4. Validate dates
     if (
       leaseData.duration.endDate &&
       new Date(leaseData.duration.endDate) <= new Date(leaseData.duration.startDate)
@@ -899,7 +1030,6 @@ export class LeaseService {
       );
     }
 
-    // 5. Validate financial terms
     if (leaseData.fees.monthlyRent <= 0 || isNaN(leaseData.fees.monthlyRent)) {
       if (!validationErrors['fees.monthlyRent']) validationErrors['fees.monthlyRent'] = [];
       validationErrors['fees.monthlyRent'].push(t('lease.errors.rentMustBePositive'));
@@ -920,60 +1050,40 @@ export class LeaseService {
       );
     }
 
-    // 6. Check for overlapping leases
-    if (property) {
-      const overlappingLeases = await this.leaseDAO.checkOverlappingLeases(
-        cuid,
-        leaseData.property.id,
-        leaseData.property.unitId,
-        new Date(leaseData.duration.startDate),
-        leaseData.duration.endDate ? new Date(leaseData.duration.endDate) : new Date('2099-12-31')
-      );
-      if (overlappingLeases.length > 0) {
-        if (!validationErrors['lease']) validationErrors['lease'] = [];
-        validationErrors['lease'].push(t('lease.errors.overlappingLease'));
-      }
+    const overlappingLeases = await this.leaseDAO.checkOverlappingLeases(
+      cuid,
+      leaseData.property.id,
+      leaseData.property.unitId,
+      new Date(leaseData.duration.startDate),
+      leaseData.duration.endDate ? new Date(leaseData.duration.endDate) : new Date('2099-12-31')
+    );
+    if (overlappingLeases.length > 0) {
+      if (!validationErrors['lease']) validationErrors['lease'] = [];
+      validationErrors['lease'].push(t('lease.errors.overlappingLease'));
     }
 
-    // 7. Mongoose schema validation
-    try {
-      const leaseInstance = this.leaseDAO.createInstance({
-        cuid,
-        type: leaseData.type,
-        tenantId: leaseData.tenantId,
-        property: {
-          id: leaseData.property.id,
-          unitId: leaseData.property.unitId,
-          address: leaseData.property.address,
-        },
-        duration: {
-          startDate: new Date(leaseData.duration.startDate),
-          endDate: new Date(leaseData.duration.endDate),
-          moveInDate: leaseData.duration.moveInDate
-            ? new Date(leaseData.duration.moveInDate)
-            : undefined,
-        },
-        fees: MoneyUtils.parseLeaseFees(leaseData.fees),
-        renewalOptions: leaseData.renewalOptions,
-        petPolicy: leaseData.petPolicy,
-        legalTerms: leaseData.legalTerms,
-        coTenants: leaseData.coTenants,
-        status: LeaseStatus.DRAFT,
-      });
-
-      const mongooseErrors = leaseInstance.validateSync();
-      if (mongooseErrors) {
-        Object.keys(mongooseErrors.errors).forEach((key) => {
-          if (!validationErrors[key]) validationErrors[key] = [];
-          validationErrors[key].push(mongooseErrors.errors[key].message);
-        });
-      }
-    } catch (error: any) {
-      if (!validationErrors['schema']) validationErrors['schema'] = [];
-      validationErrors['schema'].push(error.message || 'Schema validation failed');
-    }
-
-    return { hasErrors: Object.keys(validationErrors).length > 0, errors: validationErrors };
+    return {
+      hasErrors: Object.keys(validationErrors).length > 0,
+      errors: validationErrors,
+      tenantInfo: tenantInfo || null,
+      propertyInfo: {
+        id: leaseData.property.id,
+        unitId: leaseData.property.unitId || null,
+        address: property?.address.fullAddress || '',
+        propertyType: property?.propertyType,
+        name: property?.name,
+        unitNumber: unit?.unitNumber,
+        specifications: property
+          ? {
+              totalArea: unit?.specifications?.totalArea || property.specifications?.totalArea,
+              bedrooms: unit?.specifications?.bedrooms || property.specifications?.bedrooms,
+              bathrooms: unit?.specifications?.bathrooms || property.specifications?.bathrooms,
+              parkingSpaces: property.specifications?.parkingSpaces,
+              floors: property.specifications?.floors,
+            }
+          : undefined,
+      },
+    };
   }
 
   /**

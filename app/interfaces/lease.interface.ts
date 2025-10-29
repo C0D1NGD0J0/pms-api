@@ -52,6 +52,7 @@ export interface ILease {
   signingMethod: SigningMethod | string;
   approvalStatus?: LeaseApprovalStatus;
   leaseDocument?: ILeaseDocumentItem[];
+  useInvitationIdAsTenantId?: boolean;
   createdBy: Types.ObjectId | string;
   lastModifiedBy?: ILastModifiedBy[];
   tenantId: Types.ObjectId | string;
@@ -88,7 +89,11 @@ export interface ILeaseFormData {
     lateFeeDays?: number;
     lateFeeType?: 'fixed' | 'percentage';
     lateFeePercentage?: number;
-    acceptedPaymentMethods?: string[];
+    acceptedPaymentMethod?: string;
+  };
+  tenantInfo: {
+    id: string | null; // if existing tenant
+    email?: string; // assuming invitation was sent and tenant hasn't accepted yet we search via email to look up tenant
   };
   duration: {
     startDate: Date | string;
@@ -108,7 +113,6 @@ export interface ILeaseFormData {
   petPolicy?: IPetPolicy;
   internalNotes?: string;
   leaseNumber: string;
-  tenantId: string;
   type: LeaseType;
 }
 
@@ -134,6 +138,28 @@ export interface ILeaseFilterOptions {
   minRent?: number;
   maxRent?: number;
   search?: string; // For lease number or tenant name search
+}
+
+/**
+ * Property Reference Interface
+ * Links lease to property and unit
+ * Includes essential property information for lease documents
+ */
+export interface ILeaseProperty {
+  specifications?: {
+    totalArea?: number; // Square footage
+    bedrooms?: number;
+    bathrooms?: number;
+    parkingSpaces?: number;
+    floors?: number;
+  };
+  // Property information for lease templates
+  propertyType?: 'apartment' | 'house' | 'condominium' | 'townhouse' | 'commercial' | 'industrial';
+  unitId?: Types.ObjectId | string;
+  id: Types.ObjectId | string;
+  unitNumber?: string; // Unit/Suite number from property unit
+  address: string;
+  name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
 }
 
 /**
@@ -164,14 +190,13 @@ export interface ILeaseDocument extends Document, ILease {
  * All financial terms of the lease
  */
 export interface ILeaseFees {
-  acceptedPaymentMethods?: (
+  acceptedPaymentMethod?:
     | 'bank_transfer'
     | 'check'
     | 'cash'
     | 'credit_card'
     | 'debit_card'
-    | 'mobile_payment'
-  )[];
+    | 'mobile_payment';
   lateFeeType?: 'fixed' | 'percentage';
   lateFeePercentage?: number;
   securityDeposit: number;
@@ -379,16 +404,6 @@ export interface IPetPolicy {
   deposit?: number;
   types?: string[];
   maxPets?: number;
-}
-
-/**
- * Property Reference Interface
- * Links lease to property and unit
- */
-export interface ILeaseProperty {
-  unitId?: Types.ObjectId | string;
-  id: Types.ObjectId | string;
-  address: string;
 }
 
 /**

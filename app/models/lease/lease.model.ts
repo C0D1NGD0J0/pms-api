@@ -23,7 +23,6 @@ const LeaseSchema = new Schema<ILeaseDocument>(
     },
     leaseNumber: {
       type: String,
-      required: [true, 'Lease number is required'],
       unique: true,
       trim: true,
       index: true,
@@ -46,6 +45,11 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'Tenant ID is required'],
+      index: true,
+    },
+    useInvitationIdAsTenantId: {
+      type: Boolean,
+      default: false,
       index: true,
     },
     property: {
@@ -151,12 +155,10 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         min: 0,
         max: 100,
       },
-      acceptedPaymentMethods: [
-        {
-          type: String,
-          enum: ['bank_transfer', 'check', 'cash', 'credit_card', 'debit_card', 'mobile_payment'],
-        },
-      ],
+      acceptedPaymentMethod: {
+        type: String,
+        enum: ['e-transfer', 'credit_card', 'crypto'],
+      },
     },
     coTenants: [
       {
@@ -305,7 +307,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       provider: {
         type: String,
         enum: ['hellosign', 'docusign', 'pandadoc', 'boldsign', 'signwell', 'zoho'],
-        required: true,
+        required: false,
       },
       envelopeId: {
         type: String,
@@ -452,6 +454,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
 
 LeaseSchema.index({ cuid: 1, status: 1 });
 LeaseSchema.index({ cuid: 1, tenantId: 1 });
+LeaseSchema.index({ cuid: 1, useInvitationIdAsTenantId: 1, tenantId: 1 });
 LeaseSchema.index({ cuid: 1, 'property.id': 1 });
 LeaseSchema.index({ cuid: 1, 'property.unitId': 1 });
 LeaseSchema.index({ cuid: 1, 'duration.endDate': 1, status: 1 });
@@ -539,6 +542,15 @@ LeaseSchema.pre('save', async function (this: ILeaseDocument, next) {
 
 LeaseSchema.pre('validate', function (this: ILeaseDocument, next) {
   try {
+    // Validate eSignature provider is required when signingMethod is 'electronic'
+    if (this.signingMethod === 'electronic') {
+      if (!this.eSignature?.provider) {
+        throw new Error(
+          'E-signature provider is required when signing method is electronic. Please specify a provider (boldsign, hellosign, docusign, etc.)'
+        );
+      }
+    }
+
     // Validate that active/pending_signature leases are approved
     if ([LeaseStatus.PENDING_SIGNATURE, LeaseStatus.ACTIVE].includes(this.status)) {
       if (this.approvalStatus !== 'approved') {

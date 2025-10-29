@@ -46,11 +46,22 @@
   "property": {
     "logging": {
       "ignoringUploadEvent": "property.logging.ignoringUploadEvent"
+    },
+    "errors": {
+      "notFound": "property.errors.notFound"
+    },
+    "success": {
+      "propertiesRetrieved": "property.success.propertiesRetrieved"
     }
   },
   "tenant": {
     "success": {
       "detailsRetrieved": "tenant.success.detailsRetrieved"
+    }
+  },
+  "lease": {
+    "errors": {
+      "validationFailed": "lease.errors.validationFailed"
     }
   }
 }

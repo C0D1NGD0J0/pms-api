@@ -22,12 +22,10 @@ import { IFindOptions } from './interfaces/baseDAO.interface';
 
 export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
   private readonly log: Logger;
-  private readonly leaseModel: Model<ILeaseDocument>;
 
   constructor({ leaseModel }: { leaseModel: Model<ILeaseDocument> }) {
     super(leaseModel);
     this.log = createLogger('LeaseDAO');
-    this.leaseModel = leaseModel;
   }
 
   async createLease(
@@ -41,7 +39,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         cuid,
       };
 
-      const [lease] = await this.leaseModel.create([leaseData], { session });
+      const lease = await this.insert(leaseData, session);
       return lease;
     } catch (error: any) {
       this.log.error('Error creating lease:', error);
@@ -63,17 +61,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         deletedAt: null,
       };
 
-      let dbQuery: any = this.leaseModel.findOne(query);
-
-      if (opts?.populate) {
-        dbQuery = dbQuery.populate(opts.populate);
-      }
-
-      if (opts?.select) {
-        dbQuery = dbQuery.select(opts.select);
-      }
-
-      return await dbQuery.exec();
+      return await this.findFirst(query, opts);
     } catch (error: any) {
       this.log.error('Error getting lease by ID:', error);
       throw error;
@@ -191,17 +179,20 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         sortOption = { [field]: order === 'desc' ? -1 : 1 };
       }
 
-      const [leases, totalCount] = await Promise.all([
-        this.leaseModel
-          .find(query)
-          .sort(sortOption)
-          .skip(skip)
-          .limit(limit)
-          .populate('tenantId', 'firstName lastName email')
-          .populate('property.id', 'name address')
-          .exec(),
-        this.leaseModel.countDocuments(query),
+      const [result, totalCount] = await Promise.all([
+        this.list(query, {
+          sort: sortOption,
+          skip,
+          limit,
+          populate: [
+            { path: 'tenantId', select: 'firstName lastName email' },
+            { path: 'property.id', select: 'name address' },
+          ],
+        }),
+        this.countDocuments(query),
       ]);
+
+      const leases = result.items;
 
       return {
         items: leases,
@@ -227,7 +218,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     try {
       this.log.info(`Updating lease ${leaseId} for client ${cuid}`);
 
-      const lease = await this.leaseModel.findOneAndUpdate(
+      const lease = await this.update(
         { _id: leaseId, cuid, deletedAt: null },
         { $set: data },
         { new: true, runValidators: true }
@@ -244,12 +235,12 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     try {
       this.log.info(`Soft deleting lease ${leaseId} for client ${cuid}`);
 
-      const result = await this.leaseModel.updateOne(
+      const lease = await this.update(
         { _id: leaseId, cuid, deletedAt: null },
         { $set: { deletedAt: new Date() } }
       );
 
-      return result.modifiedCount > 0;
+      return lease !== null;
     } catch (error: any) {
       this.log.error('Error deleting lease:', error);
       throw error;
@@ -293,7 +284,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         query._id = { $ne: excludeLeaseId };
       }
 
-      return await this.leaseModel.find(query).exec();
+      const result = await this.list(query, {}, true);
+      return result.items;
     } catch (error: any) {
       this.log.error('Error checking overlapping leases:', error);
       throw error;
@@ -304,15 +296,17 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     try {
       this.log.info(`Getting active lease for tenant ${tenantId}`);
 
-      return await this.leaseModel
-        .findOne({
+      return await this.findFirst(
+        {
           cuid,
           tenantId,
           status: LeaseStatus.ACTIVE,
           deletedAt: null,
-        })
-        .populate('property.id', 'name address')
-        .exec();
+        },
+        {
+          populate: { path: 'property.id', select: 'name address' },
+        }
+      );
     } catch (error: any) {
       this.log.error('Error getting active lease by tenant:', error);
       throw error;
@@ -323,15 +317,17 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     try {
       this.log.info(`Getting active lease for unit ${unitId}`);
 
-      return await this.leaseModel
-        .findOne({
+      return await this.findFirst(
+        {
           cuid,
           'property.unitId': unitId,
           status: LeaseStatus.ACTIVE,
           deletedAt: null,
-        })
-        .populate('tenantId', 'firstName lastName email')
-        .exec();
+        },
+        {
+          populate: { path: 'tenantId', select: 'firstName lastName email' },
+        }
+      );
     } catch (error: any) {
       this.log.error('Error getting active lease by unit:', error);
       throw error;
@@ -346,8 +342,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       const futureDate = new Date();
       futureDate.setDate(today.getDate() + daysAhead);
 
-      return await this.leaseModel
-        .find({
+      const result = await this.list(
+        {
           cuid,
           status: LeaseStatus.ACTIVE,
           deletedAt: null,
@@ -355,11 +351,17 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
             $gte: today,
             $lte: futureDate,
           },
-        })
-        .populate('tenantId', 'firstName lastName email')
-        .populate('property.id', 'name address')
-        .sort({ 'duration.endDate': 1 })
-        .exec();
+        },
+        {
+          populate: [
+            { path: 'tenantId', select: 'firstName lastName email' },
+            { path: 'property.id', select: 'name address' },
+          ],
+          sort: { 'duration.endDate': 1 },
+        }
+      );
+
+      return result.items;
     } catch (error: any) {
       this.log.error('Error getting expiring leases:', error);
       throw error;
@@ -370,12 +372,12 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     try {
       this.log.info(`Updating status for lease ${leaseId} to ${status}`);
 
-      const result = await this.leaseModel.updateOne(
+      const lease = await this.update(
         { _id: leaseId, cuid, deletedAt: null },
         { $set: { status } }
       );
 
-      return result.modifiedCount > 0;
+      return lease !== null;
     } catch (error: any) {
       this.log.error('Error updating lease status:', error);
       throw error;
@@ -409,7 +411,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         updateData.internalNotes = terminationData.notes;
       }
 
-      return await this.leaseModel.findOneAndUpdate(
+      return await this.update(
         { _id: leaseId, cuid, deletedAt: null },
         { $set: updateData },
         { new: true }
@@ -445,12 +447,9 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         totalUnits,
         occupiedUnits,
       ] = await Promise.all([
-        this.leaseModel.countDocuments(baseQuery),
-        this.leaseModel.aggregate([
-          { $match: baseQuery },
-          { $group: { _id: '$status', count: { $sum: 1 } } },
-        ]),
-        this.leaseModel.aggregate([
+        this.countDocuments(baseQuery),
+        this.aggregate([{ $match: baseQuery }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+        this.aggregate([
           { $match: { ...baseQuery, status: LeaseStatus.ACTIVE } },
           {
             $project: {
@@ -466,7 +465,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
             },
           },
         ]),
-        this.leaseModel.aggregate([
+        this.aggregate([
           { $match: { ...baseQuery, status: LeaseStatus.ACTIVE } },
           {
             $group: {
@@ -475,23 +474,23 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
             },
           },
         ]),
-        this.leaseModel.countDocuments({
+        this.countDocuments({
           ...baseQuery,
           status: LeaseStatus.ACTIVE,
           'duration.endDate': { $gte: today, $lte: thirtyDaysFromNow },
         }),
-        this.leaseModel.countDocuments({
+        this.countDocuments({
           ...baseQuery,
           status: LeaseStatus.ACTIVE,
           'duration.endDate': { $gte: today, $lte: sixtyDaysFromNow },
         }),
-        this.leaseModel.countDocuments({
+        this.countDocuments({
           ...baseQuery,
           status: LeaseStatus.ACTIVE,
           'duration.endDate': { $gte: today, $lte: ninetyDaysFromNow },
         }),
-        this.leaseModel.countDocuments({ ...baseQuery, 'property.unitId': { $exists: true } }),
-        this.leaseModel.countDocuments({
+        this.countDocuments({ ...baseQuery, 'property.unitId': { $exists: true } }),
+        this.countDocuments({
           ...baseQuery,
           status: LeaseStatus.ACTIVE,
           'property.unitId': { $exists: true },
@@ -512,9 +511,11 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       });
 
       const averageLeaseDuration =
-        avgDuration.length > 0 ? avgDuration[0].avgDurationMs / (1000 * 60 * 60 * 24 * 30) : 0;
+        avgDuration.length > 0
+          ? (avgDuration[0] as any).avgDurationMs / (1000 * 60 * 60 * 24 * 30)
+          : 0;
 
-      const totalMonthlyRent = totalRent.length > 0 ? totalRent[0].totalRent : 0;
+      const totalMonthlyRent = totalRent.length > 0 ? (totalRent[0] as any).totalRent : 0;
 
       const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
 
@@ -548,83 +549,78 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         matchQuery['property.id'] = propertyId;
       }
 
-      const rentRoll = await this.leaseModel
-        .aggregate([
-          { $match: matchQuery },
-          {
-            $lookup: {
-              from: 'users',
-              localField: 'tenantId',
-              foreignField: '_id',
-              as: 'tenant',
-            },
+      const rentRoll = await this.aggregate([
+        { $match: matchQuery },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'tenantId',
+            foreignField: '_id',
+            as: 'tenant',
           },
-          { $unwind: '$tenant' },
-          {
-            $lookup: {
-              from: 'properties',
-              localField: 'property.id',
-              foreignField: '_id',
-              as: 'propertyDetails',
-            },
+        },
+        { $unwind: '$tenant' },
+        {
+          $lookup: {
+            from: 'properties',
+            localField: 'property.id',
+            foreignField: '_id',
+            as: 'propertyDetails',
           },
-          { $unwind: '$propertyDetails' },
-          {
-            $lookup: {
-              from: 'propertyunits',
-              localField: 'property.unitId',
-              foreignField: '_id',
-              as: 'unitDetails',
-            },
+        },
+        { $unwind: '$propertyDetails' },
+        {
+          $lookup: {
+            from: 'propertyunits',
+            localField: 'property.unitId',
+            foreignField: '_id',
+            as: 'unitDetails',
           },
-          {
-            $addFields: {
-              unitNumber: {
-                $cond: {
-                  if: { $gt: [{ $size: '$unitDetails' }, 0] },
-                  then: { $arrayElemAt: ['$unitDetails.unitNumber', 0] },
-                  else: null,
+        },
+        {
+          $addFields: {
+            unitNumber: {
+              $cond: {
+                if: { $gt: [{ $size: '$unitDetails' }, 0] },
+                then: { $arrayElemAt: ['$unitDetails.unitNumber', 0] },
+                else: null,
+              },
+            },
+            daysUntilExpiry: {
+              $cond: {
+                if: { $ne: ['$duration.endDate', null] },
+                then: {
+                  $divide: [{ $subtract: ['$duration.endDate', new Date()] }, 1000 * 60 * 60 * 24],
                 },
-              },
-              daysUntilExpiry: {
-                $cond: {
-                  if: { $ne: ['$duration.endDate', null] },
-                  then: {
-                    $divide: [
-                      { $subtract: ['$duration.endDate', new Date()] },
-                      1000 * 60 * 60 * 24,
-                    ],
-                  },
-                  else: null,
-                },
+                else: null,
               },
             },
           },
-          {
-            $project: {
-              leaseId: '$_id',
-              luid: 1,
-              leaseNumber: 1,
-              status: 1,
-              tenantName: {
-                $concat: ['$tenant.firstName', ' ', '$tenant.lastName'],
-              },
-              tenantEmail: '$tenant.email',
-              propertyName: '$propertyDetails.name',
-              propertyAddress: '$property.address',
-              unitNumber: 1,
-              monthlyRent: '$fees.monthlyRent',
-              securityDeposit: '$fees.securityDeposit',
-              startDate: '$duration.startDate',
-              endDate: '$duration.endDate',
-              daysUntilExpiry: { $ceil: '$daysUntilExpiry' },
+        },
+        {
+          $project: {
+            leaseId: '$_id',
+            luid: 1,
+            leaseNumber: 1,
+            status: 1,
+            tenantName: {
+              $concat: ['$tenant.firstName', ' ', '$tenant.lastName'],
             },
+            tenantEmail: '$tenant.email',
+            propertyName: '$propertyDetails.name',
+            propertyAddress: '$property.address',
+            unitNumber: 1,
+            monthlyRent: '$fees.monthlyRent',
+            securityDeposit: '$fees.securityDeposit',
+            startDate: '$duration.startDate',
+            endDate: '$duration.endDate',
+            daysUntilExpiry: { $ceil: '$daysUntilExpiry' },
           },
-          { $sort: { 'propertyDetails.name': 1, unitNumber: 1 } },
-        ])
-        .exec();
+        },
+        { $sort: { 'propertyDetails.name': 1, unitNumber: 1 } },
+      ]);
 
-      return rentRoll;
+      return rentRoll as unknown as IRentRollItem[];
     } catch (error: any) {
       this.log.error('Error getting rent roll data:', error);
       throw error;
@@ -724,6 +720,68 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       return await this.update({ luid: leaseId, deletedAt: null }, { $set: updateData });
     } catch (error: any) {
       this.log.error('Error updating lease document status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get tenant information for a lease (handles both invitation and user)
+   */
+  async getTenantInfo(lease: ILeaseDocument): Promise<{
+    type: 'invitation' | 'user';
+    email: string;
+    name: string;
+    isActive: boolean;
+    data: any;
+  }> {
+    try {
+      if (lease.useInvitationIdAsTenantId) {
+        const InvitationModel = (await import('@models/invitation/invitation.model')).default;
+        const invitation = await InvitationModel.findById(lease.tenantId);
+
+        return {
+          type: 'invitation',
+          email: invitation?.inviteeEmail || '',
+          name: invitation?.inviteeFullName || '',
+          isActive: false,
+          data: invitation,
+        };
+      } else {
+        const UserModel = (await import('@models/user/user.model')).default;
+        const user = await UserModel.findById(lease.tenantId).populate('profile');
+
+        return {
+          type: 'user',
+          email: user?.email || '',
+          name: (user as any)?.profile?.fullname || user?.email || '',
+          isActive: user?.isActive || false,
+          data: user,
+        };
+      }
+    } catch (error: any) {
+      this.log.error('Error getting tenant info:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get leases pending tenant acceptance (using invitation as temporary tenant)
+   */
+  async getLeasesPendingTenantAcceptance(cuid: string): Promise<ILeaseDocument[]> {
+    try {
+      const result = await this.list(
+        {
+          cuid,
+          useInvitationIdAsTenantId: true,
+          deletedAt: null,
+        },
+        {
+          sort: { createdAt: -1 },
+        }
+      );
+      return result.items;
+    } catch (error: any) {
+      this.log.error('Error getting leases pending tenant acceptance:', error);
       throw error;
     }
   }

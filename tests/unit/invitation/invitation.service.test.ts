@@ -296,6 +296,11 @@ describe('InvitationService', () => {
         BadRequestError
       );
     });
+
+    it.todo('should migrate leases from invitation ID to user ID when tenant accepts invitation');
+    it.todo('should update leases with useInvitationIdAsTenantId=true to use new user ID');
+    it.todo('should set useInvitationIdAsTenantId to false after migration');
+    it.todo('should not fail invitation acceptance if lease migration fails');
   });
 
   describe('validateInvitationByToken', () => {

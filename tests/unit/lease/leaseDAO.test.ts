@@ -2,14 +2,33 @@ import { Types } from 'mongoose';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 
+// Create chainable query mock
+const createQueryMock = (returnValue: any) => {
+  const queryMock = {
+    exec: jest.fn().mockResolvedValue(returnValue),
+    session: jest.fn().mockReturnThis(),
+    populate: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    sort: jest.fn().mockReturnThis(),
+    skip: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
+    lean: jest.fn().mockReturnThis(),
+  };
+  return queryMock;
+};
+
 const mockLeaseModel = {
   create: jest.fn(),
   findOne: jest.fn(),
   find: jest.fn(),
   findOneAndUpdate: jest.fn(),
   updateOne: jest.fn(),
-  countDocuments: jest.fn(),
-  aggregate: jest.fn(),
+  countDocuments: jest.fn(() => ({
+    exec: jest.fn().mockResolvedValue(0),
+  })),
+  aggregate: jest.fn(() => ({
+    exec: jest.fn().mockResolvedValue([]),
+  })),
 };
 
 describe('LeaseDAO', () => {
@@ -52,6 +71,7 @@ describe('LeaseDAO', () => {
         status: LeaseStatus.DRAFT,
       };
 
+      // BaseDAO.insert() returns single document, not array
       mockLeaseModel.create.mockResolvedValue([mockCreatedLease]);
 
       const result = await leaseDAO.createLease('C123', mockLeaseData as any);
@@ -59,7 +79,7 @@ describe('LeaseDAO', () => {
       expect(result).toEqual(mockCreatedLease);
       expect(mockLeaseModel.create).toHaveBeenCalledWith(
         [expect.objectContaining({ cuid: 'C123', createdBy })],
-        { session: undefined }
+        { session: null }
       );
     });
 
@@ -191,7 +211,7 @@ describe('LeaseDAO', () => {
             ]),
           }),
         ],
-        { session: undefined }
+        { session: null }
       );
     });
 
@@ -349,32 +369,35 @@ describe('LeaseDAO', () => {
 
   describe('getFilteredLeases', () => {
     beforeEach(() => {
-      const mockQuery = {
-        sort: jest.fn().mockReturnThis(),
-        skip: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockReturnThis(),
-        populate: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue([]),
-      };
-
+      const mockQuery = createQueryMock([]);
       mockLeaseModel.find.mockReturnValue(mockQuery);
-      mockLeaseModel.countDocuments.mockResolvedValue(0);
+      mockLeaseModel.countDocuments.mockImplementation(() => ({
+        exec: jest.fn().mockResolvedValue(0),
+      }));
     });
 
     it('should apply status filter', async () => {
-      await leaseDAO.getFilteredLeases(
+      const mockLeases = [{ _id: 'L1', status: LeaseStatus.ACTIVE }];
+      const mockQuery = createQueryMock(mockLeases);
+      mockLeaseModel.find.mockReturnValue(mockQuery);
+
+      const result = await leaseDAO.getFilteredLeases(
         'C123',
         { status: LeaseStatus.ACTIVE },
         { page: 1, limit: 10 }
       );
 
+      expect(result.items).toEqual(mockLeases);
       expect(mockLeaseModel.find).toHaveBeenCalledWith(
-        expect.objectContaining({ status: LeaseStatus.ACTIVE })
+        expect.objectContaining({ status: LeaseStatus.ACTIVE, cuid: 'C123', deletedAt: null })
       );
     });
 
     it('should apply propertyId filter', async () => {
       const propertyId = new Types.ObjectId();
+      const mockQuery = createQueryMock([]);
+      mockLeaseModel.find.mockReturnValue(mockQuery);
+
       await leaseDAO.getFilteredLeases('C123', { propertyId }, { page: 1, limit: 10 });
 
       expect(mockLeaseModel.find).toHaveBeenCalledWith(
@@ -384,6 +407,9 @@ describe('LeaseDAO', () => {
 
     it('should apply unitId filter', async () => {
       const unitId = new Types.ObjectId();
+      const mockQuery = createQueryMock([]);
+      mockLeaseModel.find.mockReturnValue(mockQuery);
+
       await leaseDAO.getFilteredLeases('C123', { unitId }, { page: 1, limit: 10 });
 
       expect(mockLeaseModel.find).toHaveBeenCalledWith(
@@ -393,6 +419,9 @@ describe('LeaseDAO', () => {
 
     it('should apply tenantId filter', async () => {
       const tenantId = new Types.ObjectId();
+      const mockQuery = createQueryMock([]);
+      mockLeaseModel.find.mockReturnValue(mockQuery);
+
       await leaseDAO.getFilteredLeases('C123', { tenantId }, { page: 1, limit: 10 });
 
       expect(mockLeaseModel.find).toHaveBeenCalledWith(
@@ -401,6 +430,9 @@ describe('LeaseDAO', () => {
     });
 
     it('should apply rent range filters', async () => {
+      const mockQuery = createQueryMock([]);
+      mockLeaseModel.find.mockReturnValue(mockQuery);
+
       await leaseDAO.getFilteredLeases(
         'C123',
         { minRent: 1000, maxRent: 2000 },
@@ -415,6 +447,9 @@ describe('LeaseDAO', () => {
     });
 
     it('should apply search filter', async () => {
+      const mockQuery = createQueryMock([]);
+      mockLeaseModel.find.mockReturnValue(mockQuery);
+
       await leaseDAO.getFilteredLeases('C123', { search: 'LEASE-001' }, { page: 1, limit: 10 });
 
       expect(mockLeaseModel.find).toHaveBeenCalledWith(
@@ -427,6 +462,12 @@ describe('LeaseDAO', () => {
     });
 
     it('should return paginated results', async () => {
+      const mockQuery = createQueryMock([]);
+      mockLeaseModel.find.mockReturnValue(mockQuery);
+      mockLeaseModel.countDocuments.mockImplementation(() => ({
+        exec: jest.fn().mockResolvedValue(50),
+      }));
+
       const result = await leaseDAO.getFilteredLeases('C123', {}, { page: 2, limit: 20 });
 
       expect(result).toHaveProperty('items');
@@ -436,6 +477,9 @@ describe('LeaseDAO', () => {
     });
 
     it('should enforce client isolation', async () => {
+      const mockQuery = createQueryMock([]);
+      mockLeaseModel.find.mockReturnValue(mockQuery);
+
       await leaseDAO.getFilteredLeases('C123', {}, { page: 1, limit: 10 });
 
       expect(mockLeaseModel.find).toHaveBeenCalledWith(
@@ -444,6 +488,9 @@ describe('LeaseDAO', () => {
     });
 
     it('should exclude soft-deleted leases', async () => {
+      const mockQuery = createQueryMock([]);
+      mockLeaseModel.find.mockReturnValue(mockQuery);
+
       await leaseDAO.getFilteredLeases('C123', {}, { page: 1, limit: 10 });
 
       expect(mockLeaseModel.find).toHaveBeenCalledWith(
@@ -457,8 +504,9 @@ describe('LeaseDAO', () => {
       const leaseId = new Types.ObjectId().toString();
       const updateData = { status: LeaseStatus.ACTIVE };
       const mockUpdatedLease = { _id: leaseId, ...updateData };
+      const mockQuery = createQueryMock(mockUpdatedLease);
 
-      mockLeaseModel.findOneAndUpdate.mockResolvedValue(mockUpdatedLease);
+      mockLeaseModel.findOneAndUpdate.mockReturnValue(mockQuery);
 
       const result = await leaseDAO.updateLease('C123', leaseId, updateData);
 
@@ -466,13 +514,15 @@ describe('LeaseDAO', () => {
       expect(mockLeaseModel.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: leaseId, cuid: 'C123', deletedAt: null },
         { $set: updateData },
-        { new: true, runValidators: true }
+        expect.objectContaining({ new: true, runValidators: true })
       );
     });
 
     it('should enforce client isolation', async () => {
       const leaseId = new Types.ObjectId().toString();
-      mockLeaseModel.findOneAndUpdate.mockResolvedValue(null);
+      const mockQuery = createQueryMock(null);
+
+      mockLeaseModel.findOneAndUpdate.mockReturnValue(mockQuery);
 
       await leaseDAO.updateLease('C123', leaseId, {});
 
@@ -485,7 +535,9 @@ describe('LeaseDAO', () => {
 
     it('should return null if lease not found', async () => {
       const leaseId = new Types.ObjectId().toString();
-      mockLeaseModel.findOneAndUpdate.mockResolvedValue(null);
+      const mockQuery = createQueryMock(null);
+
+      mockLeaseModel.findOneAndUpdate.mockReturnValue(mockQuery);
 
       const result = await leaseDAO.updateLease('C123', leaseId, {});
 
@@ -496,20 +548,26 @@ describe('LeaseDAO', () => {
   describe('deleteLease', () => {
     it('should perform soft delete', async () => {
       const leaseId = new Types.ObjectId().toString();
-      mockLeaseModel.updateOne.mockResolvedValue({ modifiedCount: 1 });
+      const mockUpdatedLease = { _id: leaseId, cuid: 'C123', deletedAt: new Date() };
+      const mockQuery = createQueryMock(mockUpdatedLease);
+
+      mockLeaseModel.findOneAndUpdate.mockReturnValue(mockQuery);
 
       const result = await leaseDAO.deleteLease('C123', leaseId);
 
       expect(result).toBe(true);
-      expect(mockLeaseModel.updateOne).toHaveBeenCalledWith(
+      expect(mockLeaseModel.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: leaseId, cuid: 'C123', deletedAt: null },
-        { $set: { deletedAt: expect.any(Date) } }
+        { $set: { deletedAt: expect.any(Date) } },
+        expect.objectContaining({ new: true })
       );
     });
 
     it('should return false if lease not found', async () => {
       const leaseId = new Types.ObjectId().toString();
-      mockLeaseModel.updateOne.mockResolvedValue({ modifiedCount: 0 });
+      const mockQuery = createQueryMock(null);
+
+      mockLeaseModel.findOneAndUpdate.mockReturnValue(mockQuery);
 
       const result = await leaseDAO.deleteLease('C123', leaseId);
 
@@ -518,12 +576,16 @@ describe('LeaseDAO', () => {
 
     it('should enforce client isolation', async () => {
       const leaseId = new Types.ObjectId().toString();
-      mockLeaseModel.updateOne.mockResolvedValue({ modifiedCount: 1 });
+      const mockUpdatedLease = { _id: leaseId, cuid: 'C123', deletedAt: new Date() };
+      const mockQuery = createQueryMock(mockUpdatedLease);
+
+      mockLeaseModel.findOneAndUpdate.mockReturnValue(mockQuery);
 
       await leaseDAO.deleteLease('C123', leaseId);
 
-      expect(mockLeaseModel.updateOne).toHaveBeenCalledWith(
+      expect(mockLeaseModel.findOneAndUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ cuid: 'C123' }),
+        expect.any(Object),
         expect.any(Object)
       );
     });
@@ -531,10 +593,7 @@ describe('LeaseDAO', () => {
 
   describe('checkOverlappingLeases', () => {
     it('should return empty array when no overlap', async () => {
-      const mockQuery = {
-        exec: jest.fn().mockResolvedValue([]),
-      };
-
+      const mockQuery = createQueryMock([]);
       mockLeaseModel.find.mockReturnValue(mockQuery);
 
       const result = await leaseDAO.checkOverlappingLeases(
@@ -558,10 +617,7 @@ describe('LeaseDAO', () => {
         status: LeaseStatus.ACTIVE,
       };
 
-      const mockQuery = {
-        exec: jest.fn().mockResolvedValue([mockOverlappingLease]),
-      };
-
+      const mockQuery = createQueryMock([mockOverlappingLease]);
       mockLeaseModel.find.mockReturnValue(mockQuery);
 
       const result = await leaseDAO.checkOverlappingLeases(
@@ -578,10 +634,7 @@ describe('LeaseDAO', () => {
 
     it('should exclude specified lease ID', async () => {
       const excludeLeaseId = 'L123';
-      const mockQuery = {
-        exec: jest.fn().mockResolvedValue([]),
-      };
-
+      const mockQuery = createQueryMock([]);
       mockLeaseModel.find.mockReturnValue(mockQuery);
 
       await leaseDAO.checkOverlappingLeases(
@@ -599,10 +652,7 @@ describe('LeaseDAO', () => {
     });
 
     it('should only check active/pending_signature/draft leases', async () => {
-      const mockQuery = {
-        exec: jest.fn().mockResolvedValue([]),
-      };
-
+      const mockQuery = createQueryMock([]);
       mockLeaseModel.find.mockReturnValue(mockQuery);
 
       await leaseDAO.checkOverlappingLeases(
@@ -623,10 +673,7 @@ describe('LeaseDAO', () => {
     });
 
     it('should enforce client isolation', async () => {
-      const mockQuery = {
-        exec: jest.fn().mockResolvedValue([]),
-      };
-
+      const mockQuery = createQueryMock([]);
       mockLeaseModel.find.mockReturnValue(mockQuery);
 
       await leaseDAO.checkOverlappingLeases(
@@ -643,10 +690,7 @@ describe('LeaseDAO', () => {
     });
 
     it('should check for unit-level lease overlaps when unitId is provided', async () => {
-      const mockQuery = {
-        exec: jest.fn().mockResolvedValue([]),
-      };
-
+      const mockQuery = createQueryMock([]);
       mockLeaseModel.find.mockReturnValue(mockQuery);
 
       await leaseDAO.checkOverlappingLeases(
@@ -665,10 +709,7 @@ describe('LeaseDAO', () => {
     });
 
     it('should check for property-level lease overlaps when unitId is undefined', async () => {
-      const mockQuery = {
-        exec: jest.fn().mockResolvedValue([]),
-      };
-
+      const mockQuery = createQueryMock([]);
       mockLeaseModel.find.mockReturnValue(mockQuery);
 
       await leaseDAO.checkOverlappingLeases(
@@ -765,12 +806,7 @@ describe('LeaseDAO', () => {
         { _id: 'L2', duration: { endDate: new Date('2025-01-20') } },
       ];
 
-      const mockQuery = {
-        populate: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(mockLeases),
-      };
-
+      const mockQuery = createQueryMock(mockLeases);
       mockLeaseModel.find.mockReturnValue(mockQuery);
 
       const result = await leaseDAO.getExpiringLeases('C123', 30);
@@ -780,12 +816,7 @@ describe('LeaseDAO', () => {
     });
 
     it('should only return active leases', async () => {
-      const mockQuery = {
-        populate: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue([]),
-      };
-
+      const mockQuery = createQueryMock([]);
       mockLeaseModel.find.mockReturnValue(mockQuery);
 
       await leaseDAO.getExpiringLeases('C123', 30);
@@ -799,20 +830,26 @@ describe('LeaseDAO', () => {
   describe('updateLeaseStatus', () => {
     it('should update lease status', async () => {
       const leaseId = new Types.ObjectId().toString();
-      mockLeaseModel.updateOne.mockResolvedValue({ modifiedCount: 1 });
+      const mockUpdatedLease = { _id: leaseId, status: LeaseStatus.ACTIVE };
+      const mockQuery = createQueryMock(mockUpdatedLease);
+
+      mockLeaseModel.findOneAndUpdate.mockReturnValue(mockQuery);
 
       const result = await leaseDAO.updateLeaseStatus('C123', leaseId, LeaseStatus.ACTIVE);
 
       expect(result).toBe(true);
-      expect(mockLeaseModel.updateOne).toHaveBeenCalledWith(
+      expect(mockLeaseModel.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: leaseId, cuid: 'C123', deletedAt: null },
-        { $set: { status: LeaseStatus.ACTIVE } }
+        { $set: { status: LeaseStatus.ACTIVE } },
+        expect.any(Object)
       );
     });
 
     it('should return false if lease not found', async () => {
       const leaseId = new Types.ObjectId().toString();
-      mockLeaseModel.updateOne.mockResolvedValue({ modifiedCount: 0 });
+      const mockQuery = createQueryMock(null);
+
+      mockLeaseModel.findOneAndUpdate.mockReturnValue(mockQuery);
 
       const result = await leaseDAO.updateLeaseStatus('C123', leaseId, LeaseStatus.ACTIVE);
 
@@ -836,7 +873,8 @@ describe('LeaseDAO', () => {
         duration: { terminationDate: terminationData.terminationDate },
       };
 
-      mockLeaseModel.findOneAndUpdate.mockResolvedValue(mockUpdatedLease);
+      const mockQuery = createQueryMock(mockUpdatedLease);
+      mockLeaseModel.findOneAndUpdate.mockReturnValue(mockQuery);
 
       const result = await leaseDAO.terminateLease('C123', leaseId, terminationData);
 
@@ -850,26 +888,34 @@ describe('LeaseDAO', () => {
             terminationReason: terminationData.terminationReason,
           }),
         },
-        { new: true }
+        expect.objectContaining({ new: true })
       );
     });
   });
 
   describe('getLeaseStats', () => {
     it('should return comprehensive statistics', async () => {
-      mockLeaseModel.countDocuments.mockResolvedValue(10);
-      mockLeaseModel.aggregate.mockResolvedValueOnce([
-        { _id: 'active', count: 7 },
-        { _id: 'draft', count: 2 },
-        { _id: 'expired', count: 1 },
-      ]);
-      mockLeaseModel.aggregate.mockResolvedValueOnce([{ avgDurationMs: 31536000000 }]);
-      mockLeaseModel.aggregate.mockResolvedValueOnce([{ totalRent: 15000 }]);
-      mockLeaseModel.countDocuments.mockResolvedValue(2);
-      mockLeaseModel.countDocuments.mockResolvedValue(4);
-      mockLeaseModel.countDocuments.mockResolvedValue(6);
-      mockLeaseModel.countDocuments.mockResolvedValue(10);
-      mockLeaseModel.countDocuments.mockResolvedValue(8);
+      // Mock countDocuments to return chainable query
+      let countCallCount = 0;
+      const countValues = [10, 2, 4, 6, 10, 8];
+      mockLeaseModel.countDocuments.mockImplementation(() => ({
+        exec: jest.fn().mockResolvedValue(countValues[countCallCount++] || 0),
+      }));
+
+      // Mock aggregate to return chainable query
+      let aggCallCount = 0;
+      const aggValues = [
+        [
+          { _id: 'active', count: 7 },
+          { _id: 'draft', count: 2 },
+          { _id: 'expired', count: 1 },
+        ],
+        [{ avgDurationMs: 31536000000 }],
+        [{ totalRent: 15000 }],
+      ];
+      mockLeaseModel.aggregate.mockImplementation(() => ({
+        exec: jest.fn().mockResolvedValue(aggValues[aggCallCount++] || []),
+      }));
 
       const result = await leaseDAO.getLeaseStats('C123');
 
@@ -927,13 +973,11 @@ describe('LeaseDAO', () => {
 
       await leaseDAO.getRentRollData('C123', propertyId);
 
-      expect(mockLeaseModel.aggregate).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({
-            $match: expect.objectContaining({ 'property.id': propertyId }),
-          }),
-        ])
-      );
+      const aggregateCall = mockLeaseModel.aggregate.mock.calls[0][0];
+      const matchStage = aggregateCall.find((stage: any) => stage.$match);
+
+      expect(matchStage).toBeDefined();
+      expect(matchStage.$match['property.id']).toBe(propertyId);
     });
   });
 
@@ -955,7 +999,8 @@ describe('LeaseDAO', () => {
     });
 
     it('should not allow updates to other clients leases', async () => {
-      mockLeaseModel.findOneAndUpdate.mockResolvedValue(null);
+      const mockQuery = createQueryMock(null);
+      mockLeaseModel.findOneAndUpdate.mockReturnValue(mockQuery);
 
       await leaseDAO.updateLease('C123', 'L999', {});
 
@@ -967,12 +1012,14 @@ describe('LeaseDAO', () => {
     });
 
     it('should not allow deletion of other clients leases', async () => {
-      mockLeaseModel.updateOne.mockResolvedValue({ modifiedCount: 0 });
+      const mockQuery = createQueryMock(null);
+      mockLeaseModel.findOneAndUpdate.mockReturnValue(mockQuery);
 
       await leaseDAO.deleteLease('C123', 'L999');
 
-      expect(mockLeaseModel.updateOne).toHaveBeenCalledWith(
+      expect(mockLeaseModel.findOneAndUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ cuid: 'C123' }),
+        expect.any(Object),
         expect.any(Object)
       );
     });

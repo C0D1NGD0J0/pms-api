@@ -22,6 +22,8 @@ const createMockDependencies = () => ({
     startSession: jest.fn(),
     withTransaction: jest.fn(),
     update: jest.fn(),
+    getTenantInfo: jest.fn(),
+    getLeasesPendingTenantAcceptance: jest.fn(),
   },
   propertyDAO: {
     findFirst: jest.fn(),
@@ -31,6 +33,8 @@ const createMockDependencies = () => ({
   },
   userDAO: {
     findFirst: jest.fn(),
+    getUserById: jest.fn(),
+    getUserByEmail: jest.fn(),
   },
   profileDAO: {
     findFirst: jest.fn(),
@@ -38,6 +42,11 @@ const createMockDependencies = () => ({
   },
   clientDAO: {
     getClientByCuid: jest.fn(),
+  },
+  invitationDAO: {
+    findFirst: jest.fn(),
+    findOne: jest.fn(),
+    findPendingInvitation: jest.fn(),
   },
   assetService: {
     createAssets: jest.fn(),
@@ -73,6 +82,7 @@ const createMockLease = (overrides?: any) => ({
   type: LeaseType.FIXED_TERM,
   status: LeaseStatus.DRAFT,
   tenantId: new Types.ObjectId(),
+  useInvitationIdAsTenantId: false,
   property: {
     id: new Types.ObjectId(),
     address: '123 Main St',
@@ -86,12 +96,64 @@ const createMockLease = (overrides?: any) => ({
     securityDeposit: 300000, // cents
     rentDueDay: 1,
     currency: 'USD',
+    acceptedPaymentMethod: 'bank_transfer',
   },
   createdBy: new Types.ObjectId(),
   approvalStatus: 'draft',
   approvalDetails: [],
   deletedAt: null,
   softDelete: jest.fn().mockResolvedValue(true),
+  ...overrides,
+});
+
+const createMockProperty = (overrides?: any) => ({
+  _id: new Types.ObjectId(),
+  pid: 'P-2025-ABC',
+  cuid: 'C123',
+  propertyType: 'apartment',
+  name: 'Test Apartment Complex',
+  address: {
+    fullAddress: '123 Main St',
+    city: 'San Francisco',
+    state: 'CA',
+  },
+  fees: {
+    rentalAmount: 150000,
+    securityDeposit: 300000,
+    currency: 'USD',
+  },
+  approvalStatus: 'approved',
+  maxAllowedUnits: 10,
+  deletedAt: null,
+  ...overrides,
+});
+
+const createMockUnit = (overrides?: any) => ({
+  _id: new Types.ObjectId(),
+  puid: 'U-2025-001',
+  cuid: 'C123',
+  propertyId: new Types.ObjectId(),
+  unitNumber: '101',
+  status: 'available',
+  fees: {
+    rentAmount: 150000,
+    securityDeposit: 300000,
+    currency: 'USD',
+  },
+  specifications: {
+    bedrooms: 2,
+    bathrooms: 2,
+    totalArea: 1000,
+  },
+  ...overrides,
+});
+
+const createMockInvitation = (overrides?: any) => ({
+  _id: new Types.ObjectId(),
+  inviteeEmail: 'tenant@example.com',
+  clientId: new Types.ObjectId(),
+  role: 'tenant',
+  status: 'pending',
   ...overrides,
 });
 
@@ -116,6 +178,10 @@ describe('LeaseService', () => {
     it.todo('should throw error if overlapping lease exists');
     it.todo('should set status to draft by default');
     it.todo('should emit LEASE_CREATED event');
+    it.todo('should create lease with pending invitation using email');
+    it.todo('should use invitation ID as temporary tenantId when tenant not accepted');
+    it.todo('should set useInvitationIdAsTenantId to true for pending invitations');
+    it.todo('should use user ID when invitation already accepted');
 
     // Example test structure (uncomment when implementing):
     // it('should create a lease successfully', async () => {
@@ -156,6 +222,272 @@ describe('LeaseService', () => {
     //     expect.any(Object)
     //   );
     // });
+
+    describe('multi-unit property validation', () => {
+      it('should require unitId for apartment properties', async () => {
+        const mockProperty = createMockProperty({ propertyType: 'apartment' });
+        const mockClient = { id: new Types.ObjectId(), cuid: 'C123' };
+        const mockUser = createMockUser(IUserRole.MANAGER);
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.userDAO.getUserById.mockResolvedValue({
+          _id: new Types.ObjectId(),
+          cuids: [{ cuid: 'C123', roles: ['tenant'] }],
+        });
+        mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
+
+        const leaseData = {
+          tenantInfo: { id: 'T123', email: null },
+          property: {
+            id: mockProperty._id.toString(),
+            address: '123 Main St',
+            // unitId missing!
+          },
+          duration: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2026-01-01'),
+          },
+          fees: {
+            monthlyRent: 1500,
+            securityDeposit: 1500,
+            rentDueDay: 1,
+            currency: 'USD',
+          },
+          type: 'fixed_term',
+        };
+
+        await expect(
+          leaseService.createLease('C123', leaseData, { currentuser: mockUser } as any)
+        ).rejects.toThrow(ValidationRequestError);
+      });
+
+      it('should validate unit exists and belongs to property', async () => {
+        const mockProperty = createMockProperty({ propertyType: 'apartment' });
+        const mockClient = { id: new Types.ObjectId(), cuid: 'C123' };
+        const mockUser = createMockUser(IUserRole.MANAGER);
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.propertyUnitDAO.findFirst.mockResolvedValue(null); // Unit not found!
+        mockDependencies.userDAO.getUserById.mockResolvedValue({
+          _id: new Types.ObjectId(),
+          cuids: [{ cuid: 'C123', roles: ['tenant'] }],
+        });
+        mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
+
+        const leaseData = {
+          tenantInfo: { id: 'T123', email: null },
+          property: {
+            id: mockProperty._id.toString(),
+            unitId: 'INVALID-UNIT-ID',
+            address: '123 Main St',
+          },
+          duration: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2026-01-01'),
+          },
+          fees: {
+            monthlyRent: 1500,
+            securityDeposit: 1500,
+            rentDueDay: 1,
+            currency: 'USD',
+          },
+          type: 'fixed_term',
+        };
+
+        await expect(
+          leaseService.createLease('C123', leaseData, { currentuser: mockUser } as any)
+        ).rejects.toThrow(ValidationRequestError);
+      });
+
+      it('should reject occupied units', async () => {
+        const mockProperty = createMockProperty({ propertyType: 'apartment' });
+        const mockUnit = createMockUnit({
+          status: 'occupied', // OCCUPIED!
+          propertyId: mockProperty._id,
+        });
+        const mockClient = { id: new Types.ObjectId(), cuid: 'C123' };
+        const mockUser = createMockUser(IUserRole.MANAGER);
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.propertyUnitDAO.findFirst.mockResolvedValue(mockUnit);
+        mockDependencies.userDAO.getUserById.mockResolvedValue({
+          _id: new Types.ObjectId(),
+          cuids: [{ cuid: 'C123', roles: ['tenant'] }],
+        });
+        mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
+
+        const leaseData = {
+          tenantInfo: { id: 'T123', email: null },
+          property: {
+            id: mockProperty._id.toString(),
+            unitId: mockUnit._id.toString(),
+            address: '123 Main St',
+          },
+          duration: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2026-01-01'),
+          },
+          fees: {
+            monthlyRent: 1500,
+            securityDeposit: 1500,
+            rentDueDay: 1,
+            currency: 'USD',
+          },
+          type: 'fixed_term',
+        };
+
+        await expect(
+          leaseService.createLease('C123', leaseData, { currentuser: mockUser } as any)
+        ).rejects.toThrow(ValidationRequestError);
+      });
+
+      it('should NOT require unitId for single-unit properties', async () => {
+        const mockProperty = createMockProperty({
+          propertyType: 'house', // Single-unit property
+          maxAllowedUnits: 1,
+        });
+        const mockClient = { id: new Types.ObjectId(), cuid: 'C123' };
+        const mockUser = createMockUser(IUserRole.MANAGER);
+        const mockLease = createMockLease();
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.userDAO.getUserById.mockResolvedValue({
+          _id: new Types.ObjectId(),
+          cuids: [{ cuid: 'C123', roles: ['tenant'] }],
+        });
+        mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
+        mockDependencies.leaseDAO.startSession.mockResolvedValue({});
+        mockDependencies.leaseDAO.withTransaction.mockImplementation(
+          async (session, callback) => {
+            return callback(session);
+          }
+        );
+        mockDependencies.leaseDAO.createLease.mockResolvedValue(mockLease);
+
+        const leaseData = {
+          tenantInfo: { id: 'T123', email: null },
+          property: {
+            id: mockProperty._id.toString(),
+            // NO unitId for house - should be fine!
+            address: '456 Oak St',
+          },
+          duration: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2026-01-01'),
+          },
+          fees: {
+            monthlyRent: 2500,
+            securityDeposit: 2500,
+            rentDueDay: 1,
+            currency: 'USD',
+          },
+          type: 'fixed_term',
+        };
+
+        const result = await leaseService.createLease('C123', leaseData, {
+          currentuser: mockUser,
+        } as any);
+
+        expect(result.success).toBe(true);
+        expect(mockDependencies.leaseDAO.createLease).toHaveBeenCalled();
+      });
+    });
+
+    describe('invitation-based tenant creation', () => {
+      it('should create lease with pending invitation using email', async () => {
+        const mockInvitation = createMockInvitation({ status: 'pending' });
+        const mockProperty = createMockProperty({ propertyType: 'house' });
+        const mockClient = { id: mockInvitation.clientId, cuid: 'C123' };
+        const mockUser = createMockUser(IUserRole.MANAGER);
+        const mockLease = createMockLease({
+          tenantId: mockInvitation._id,
+          useInvitationIdAsTenantId: true,
+        });
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.invitationDAO.findFirst.mockResolvedValue(mockInvitation);
+        mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
+        mockDependencies.leaseDAO.startSession.mockResolvedValue({});
+        mockDependencies.leaseDAO.withTransaction.mockImplementation(
+          async (session, callback) => {
+            return callback(session);
+          }
+        );
+        mockDependencies.leaseDAO.createLease.mockResolvedValue(mockLease);
+
+        const leaseData = {
+          tenantInfo: {
+            id: null,
+            email: 'tenant@example.com', // Using email!
+          },
+          property: {
+            id: mockProperty._id.toString(),
+            address: '456 Oak St',
+          },
+          duration: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2026-01-01'),
+          },
+          fees: {
+            monthlyRent: 2500,
+            securityDeposit: 2500,
+            rentDueDay: 1,
+            currency: 'USD',
+          },
+          type: 'fixed_term',
+        };
+
+        const result = await leaseService.createLease('C123', leaseData, {
+          currentuser: mockUser,
+        } as any);
+
+        expect(result.success).toBe(true);
+        expect(result.data.tenantId).toBe(mockInvitation._id);
+        expect(result.data.useInvitationIdAsTenantId).toBe(true);
+      });
+
+      it('should reject lease for tenant with no invitation', async () => {
+        const mockProperty = createMockProperty({ propertyType: 'house' });
+        const mockClient = { id: new Types.ObjectId(), cuid: 'C123' };
+        const mockUser = createMockUser(IUserRole.MANAGER);
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.invitationDAO.findFirst.mockResolvedValue(null); // No invitation!
+        mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
+
+        const leaseData = {
+          tenantInfo: {
+            id: null,
+            email: 'noinvite@example.com',
+          },
+          property: {
+            id: mockProperty._id.toString(),
+            address: '456 Oak St',
+          },
+          duration: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2026-01-01'),
+          },
+          fees: {
+            monthlyRent: 2500,
+            securityDeposit: 2500,
+            rentDueDay: 1,
+            currency: 'USD',
+          },
+          type: 'fixed_term',
+        };
+
+        await expect(
+          leaseService.createLease('C123', leaseData, { currentuser: mockUser } as any)
+        ).rejects.toThrow(ValidationRequestError);
+      });
+    });
   });
 
   describe('getFilteredLeases', () => {

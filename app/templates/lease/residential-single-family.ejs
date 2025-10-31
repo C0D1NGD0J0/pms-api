@@ -588,7 +588,7 @@
 
       <div class="party-grid">
         <div class="party-block">
-          <div class="party-heading">Landlord (Lessor)</div>
+          <div class="party-heading">Landlord (Property Owner)</div>
           <div class="party-details">
             <strong><%= landlordName %></strong><br>
             <%= landlordAddress %><br>
@@ -606,6 +606,19 @@
           </div>
         </div>
       </div>
+
+      <% if (isExternalOwner && managementCompanyName) { %>
+      <div style="margin-top: 25px; padding: 20px; background: white; border: 2px solid #2c3e50; border-radius: 4px;">
+        <div class="party-heading">Property Management Company (Authorized Agent)</div>
+        <div class="party-details" style="margin-top: 12px;">
+          <strong><%= managementCompanyName %></strong><br>
+          <%= managementCompanyAddress %><br>
+          Email: <%= managementCompanyEmail %><br>
+          Telephone: <%= managementCompanyPhone %><br>
+          <em style="color: #666; font-size: 9.5pt; margin-top: 8px; display: block;">Acting as Authorized Agent for Property Owner</em>
+        </div>
+      </div>
+      <% } %>
 
       <% if (coTenants && coTenants.length > 0) { %>
       <div style="margin-top: 25px; padding: 20px; background: white; border: 1px solid #dee2e6;">
@@ -905,7 +918,13 @@
             <% } %>
           </div>
           <div class="signature-name"><strong><%= landlordName %></strong></div>
-          <div class="signature-title">Property Owner / Authorized Agent</div>
+          <div class="signature-title">
+            <% if (isExternalOwner) { %>
+              Property Owner (or Authorized Agent)
+            <% } else { %>
+              Property Owner
+            <% } %>
+          </div>
           <div class="signature-date-row">
             <span class="date-label">Date Signed:</span>
             <div class="date-line"><%= signedDate %></div>

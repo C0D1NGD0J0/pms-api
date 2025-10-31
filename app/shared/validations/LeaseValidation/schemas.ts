@@ -455,7 +455,7 @@ export const LeasePreviewSchema = z.object({
     .object({
       allowed: z.boolean(),
       maxPets: z.number().int().min(1).optional(),
-      types: z.string().optional(),
+      types: z.union([z.string(), z.array(z.string())]).optional(),
       deposit: z.number().min(0).optional(),
     })
     .optional(),
@@ -472,7 +472,7 @@ export const LeasePreviewSchema = z.object({
       text: z.string().optional(),
     })
     .optional(),
-  utilitiesIncluded: z.string().optional(),
+  utilitiesIncluded: z.union([z.string(), z.array(z.string())]).optional(),
 
   // Signature Information
   signingMethod: z.enum(['electronic', 'manual', 'pending']).optional(),

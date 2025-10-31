@@ -460,6 +460,44 @@ export const PropertyCsvSchema = z.object({
     .union([z.boolean(), z.string(), z.number()])
     .optional()
     .transform(BaseCSVProcessorService.parseBoolean),
+
+  // Owner fields
+  owner_type: z
+    .enum(['company_owned', 'external_owner', 'self_owned'])
+    .optional()
+    .default('company_owned'),
+  owner_name: z.string().trim().max(200, 'Owner name must be at most 200 characters').optional(),
+  owner_email: z
+    .string()
+    .trim()
+    .email('Invalid email format for owner email')
+    .lowercase()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val === '' ? undefined : val)),
+  owner_phone: z.string().trim().max(20, 'Owner phone must be at most 20 characters').optional(),
+  owner_taxId: z.string().trim().max(50, 'Owner tax ID must be at most 50 characters').optional(),
+  owner_notes: z.string().trim().max(500, 'Owner notes must be at most 500 characters').optional(),
+  owner_bankDetails_accountName: z
+    .string()
+    .trim()
+    .max(200, 'Bank account name must be at most 200 characters')
+    .optional(),
+  owner_bankDetails_accountNumber: z
+    .string()
+    .trim()
+    .max(50, 'Bank account number must be at most 50 characters')
+    .optional(),
+  owner_bankDetails_routingNumber: z
+    .string()
+    .trim()
+    .max(50, 'Bank routing number must be at most 50 characters')
+    .optional(),
+  owner_bankDetails_bankName: z
+    .string()
+    .trim()
+    .max(200, 'Bank name must be at most 200 characters')
+    .optional(),
 });
 
 export const AddressValidationSchema = z.object({

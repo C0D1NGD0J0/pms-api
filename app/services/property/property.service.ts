@@ -2029,8 +2029,8 @@ export class PropertyService {
     currentuser: ICurrentUser,
     fetchUnits: boolean = false
   ): Promise<
-    ISuccessReturnData<
-      Array<{
+    ISuccessReturnData<{
+      items: Array<{
         id: string;
         name: string;
         address: string;
@@ -2050,30 +2050,53 @@ export class PropertyService {
             currency?: string;
           };
         }>;
-      }>
-    >
+      }>;
+      metadata: {
+        totalProperties: number;
+        filteredCount: number;
+        filteredProperties?: Array<{
+          id: string;
+          name: string;
+          propertyType: string;
+          reason: string;
+        }>;
+      } | null;
+    }>
   > {
     try {
       if (!cuid) {
         throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
       }
 
-      // Verify client exists
+      const cachedResult = await this.propertyCache.getLeaseableProperties(cuid, fetchUnits);
+      if (cachedResult.success && cachedResult.data) {
+        this.log.info('Returning leaseable properties from cache', { cuid, fetchUnits });
+        return {
+          success: true,
+          data: {
+            items: cachedResult.data,
+            metadata: {
+              totalProperties: cachedResult.data.length,
+              filteredCount: 0,
+            },
+          },
+          message: t('property.success.propertiesRetrieved'),
+        };
+      }
+
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         this.log.error(`Client with cuid ${cuid} not found`);
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
-      // Build filter for available properties only
       const filter: FilterQuery<IPropertyDocument> = {
         cuid,
         deletedAt: null,
-        status: 'available', // Only available properties
-        approvalStatus: PropertyApprovalStatusEnum.APPROVED, // Only approved properties
+        status: 'available',
+        approvalStatus: PropertyApprovalStatusEnum.APPROVED,
       };
 
-      // Fetch properties with financial info
       const properties = await this.propertyDAO.list(filter, {
         limit: 1000,
         sort: { name: 1 },
@@ -2083,88 +2106,124 @@ export class PropertyService {
       if (!properties.items.length) {
         return {
           success: true,
-          data: [],
+          data: { items: [], metadata: null },
           message: t('property.success.propertiesRetrieved'),
         };
       }
 
-      // Map properties to simplified format
-      const leaseableProperties = await Promise.all(
-        properties.items.map(async (property) => {
-          const propertyObj = property.toObject ? property.toObject() : property;
-          const result: any = {
-            id: propertyObj._id.toString(),
-            name: propertyObj.name,
-            address: propertyObj.address?.fullAddress || '',
-            propertyType: propertyObj.propertyType,
-          };
+      // Map properties to simplified format and filter multi-unit properties without units
+      const leaseableProperties: any[] = [];
+      const filteredProperties: Array<{
+        id: string;
+        name: string;
+        propertyType: string;
+        reason: string;
+      }> = [];
 
-          // Add financial info if available
-          if (propertyObj.fees) {
-            result.financialInfo = {
-              monthlyRent: propertyObj.fees.monthlyRent,
-              securityDeposit: propertyObj.fees.securityDeposit,
-              currency: propertyObj.fees.currency || 'USD',
-            };
-          }
+      for (const property of properties.items) {
+        const propertyObj = property.toObject ? property.toObject() : property;
+        const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(propertyObj.propertyType);
 
-          // Fetch available units if requested and property supports units
-          if (fetchUnits) {
-            const supportsUnits = PropertyTypeManager.supportsMultipleUnits(
-              propertyObj.propertyType
+        // Check if multi-unit property has units
+        if (isMultiUnit) {
+          const unitsResult = await this.propertyUnitDAO.findAvailableUnits(
+            propertyObj._id.toString()
+          );
+
+          // Filter out multi-unit properties with no units
+          if (!unitsResult.items || unitsResult.items.length === 0) {
+            filteredProperties.push({
+              id: propertyObj._id.toString(),
+              name: propertyObj.name,
+              propertyType: propertyObj.propertyType,
+              reason: 'requires_units',
+            });
+            this.log.debug(
+              `Filtered out property ${propertyObj.name} - multi-unit property with no units`
             );
-
-            if (supportsUnits) {
-              const unitsResult = await this.propertyUnitDAO.findAvailableUnits(
-                propertyObj._id.toString()
-              );
-
-              if (unitsResult.items && unitsResult.items.length > 0) {
-                result.units = unitsResult.items.map((unit) => {
-                  const unitObj = unit.toObject ? unit.toObject() : unit;
-                  const unitData: any = {
-                    id: unitObj._id.toString(),
-                    unitNumber: unitObj.unitNumber,
-                    status: unitObj.status,
-                  };
-
-                  // Add unit financial info if available (units can override property fees)
-                  if (unitObj.fees) {
-                    unitData.financialInfo = {
-                      monthlyRent: unitObj.fees.monthlyRent,
-                      securityDeposit: unitObj.fees.securityDeposit,
-                      currency: unitObj.fees.currency || propertyObj.fees?.currency || 'USD',
-                    };
-                  } else if (propertyObj.fees) {
-                    // Use property fees as fallback
-                    unitData.financialInfo = {
-                      monthlyRent: propertyObj.fees.monthlyRent,
-                      securityDeposit: propertyObj.fees.securityDeposit,
-                      currency: propertyObj.fees.currency || 'USD',
-                    };
-                  }
-
-                  return unitData;
-                });
-              }
-            }
+            continue; // Skip this property
           }
+        }
 
-          return result;
-        })
-      );
+        // Build leaseable property object
+        const result: any = {
+          id: propertyObj._id.toString(),
+          name: propertyObj.name,
+          address: propertyObj.address?.fullAddress || '',
+          propertyType: propertyObj.propertyType,
+        };
+
+        // Add financial info if available
+        if (propertyObj.fees) {
+          result.financialInfo = {
+            monthlyRent: propertyObj.fees.monthlyRent,
+            securityDeposit: propertyObj.fees.securityDeposit,
+            currency: propertyObj.fees.currency || 'USD',
+          };
+        }
+
+        // Fetch and attach units if requested
+        if (fetchUnits && isMultiUnit) {
+          const unitsResult = await this.propertyUnitDAO.findAvailableUnits(
+            propertyObj._id.toString()
+          );
+
+          if (unitsResult.items && unitsResult.items.length > 0) {
+            result.units = unitsResult.items.map((unit) => {
+              const unitObj = unit.toObject ? unit.toObject() : unit;
+              const unitData: any = {
+                id: unitObj._id.toString(),
+                unitNumber: unitObj.unitNumber,
+                status: unitObj.status,
+              };
+
+              // Add unit financial info if available (units can override property fees)
+              if (unitObj.fees) {
+                unitData.financialInfo = {
+                  monthlyRent: unitObj.fees.monthlyRent,
+                  securityDeposit: unitObj.fees.securityDeposit,
+                  currency: unitObj.fees.currency || propertyObj.fees?.currency || 'USD',
+                };
+              } else if (propertyObj.fees) {
+                // Use property fees as fallback
+                unitData.financialInfo = {
+                  monthlyRent: propertyObj.fees.monthlyRent,
+                  securityDeposit: propertyObj.fees.securityDeposit,
+                  currency: propertyObj.fees.currency || 'USD',
+                };
+              }
+
+              return unitData;
+            });
+          }
+        }
+
+        leaseableProperties.push(result);
+      }
+
+      // Cache the result (5 minutes TTL)
+      await this.propertyCache.cacheLeaseableProperties(cuid, fetchUnits, leaseableProperties);
 
       this.log.info(
         `Retrieved ${leaseableProperties.length} lease-able properties for client ${cuid}`,
         {
           fetchUnits,
           totalUnits: leaseableProperties.reduce((sum, p) => sum + (p.units?.length || 0), 0),
+          filteredCount: filteredProperties.length,
+          cached: true,
         }
       );
 
       return {
         success: true,
-        data: leaseableProperties,
+        data: {
+          items: leaseableProperties,
+          metadata: {
+            totalProperties: properties.items.length,
+            filteredCount: filteredProperties.length,
+            filteredProperties: filteredProperties.length > 0 ? filteredProperties : undefined,
+          },
+        },
         message: t('property.success.propertiesRetrieved'),
       };
     } catch (error) {

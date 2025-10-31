@@ -34,6 +34,11 @@ export const CompanyProfileSchema = z.object({
   legalEntityName: z.string().trim().min(1, 'Legal entity name is required').optional(),
   tradingName: z.string().trim().min(1, 'Trading name is required').optional(),
   companyEmail: z.string().email('Invalid email format').optional(),
+  companyAddress: z
+    .string()
+    .trim()
+    .min(5, 'Company address must be at least 5 characters')
+    .optional(),
   registrationNumber: z.string().trim().optional(),
   website: z.string().url('Invalid website URL').optional(),
   companyPhone: z
@@ -174,6 +179,22 @@ export const UpdateClientDetailsSchema = z
       path: ['companyProfile', 'companyEmail'],
     }
   );
+
+// Schema for validating enterprise client requirements
+export const EnterpriseClientValidationSchema = z.object({
+  companyProfile: z.object({
+    legalEntityName: z
+      .string()
+      .trim()
+      .min(1, 'Legal entity name is required for enterprise clients'),
+    companyEmail: z.string().email('Valid company email is required for enterprise clients'),
+    companyAddress: z.string().trim().min(5, 'Company address is required for enterprise clients'),
+    registrationNumber: z
+      .string()
+      .trim()
+      .min(1, 'Registration number is required for enterprise clients'),
+  }),
+});
 
 export const UpdateTenantProfileSchema = z.object({
   personalInfo: z

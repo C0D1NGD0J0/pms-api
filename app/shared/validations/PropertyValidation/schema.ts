@@ -471,7 +471,7 @@ export const PropertyCsvSchema = z.object({
     .string()
     .trim()
     .email('Invalid email format for owner email')
-    .lowercase()
+    .transform((val) => val.toLowerCase())
     .optional()
     .or(z.literal(''))
     .transform((val) => (val === '' ? undefined : val)),

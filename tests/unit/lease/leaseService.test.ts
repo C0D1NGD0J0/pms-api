@@ -48,6 +48,9 @@ const createMockDependencies = () => ({
     findOne: jest.fn(),
     findPendingInvitation: jest.fn(),
   },
+  invitationService: {
+    sendInvitation: jest.fn(),
+  },
   assetService: {
     createAssets: jest.fn(),
     getAssetsByResource: jest.fn(),
@@ -125,6 +128,14 @@ const createMockProperty = (overrides?: any) => ({
   approvalStatus: 'approved',
   maxAllowedUnits: 10,
   deletedAt: null,
+  owner: {
+    type: 'company_owned',
+  },
+  authorization: {
+    isActive: true,
+  },
+  isManagementAuthorized: jest.fn().mockReturnValue(true),
+  getAuthorizationStatus: jest.fn().mockReturnValue({ isAuthorized: true }),
   ...overrides,
 });
 
@@ -1270,6 +1281,335 @@ describe('LeaseService', () => {
         const result = await leaseService.activateLease('C123', 'L-2025-ABC123', 'U123');
 
         expect(result.success).toBe(true);
+      });
+      */
+    });
+  });
+
+  describe('Property Ownership Integration', () => {
+    describe('buildLandlordInfo', () => {
+      const propertyId = new Types.ObjectId().toString();
+      const cuid = 'C123';
+
+      it('should return external owner as landlord with management company for external_owner type', async () => {
+        const mockClient = {
+          _id: new Types.ObjectId(),
+          cuid,
+          email: 'client@example.com',
+          accountType: { isCorporate: true },
+          companyProfile: {
+            legalEntityName: 'ABC Property Management',
+            companyAddress: '456 Business Ave',
+            companyEmail: 'contact@abcproperty.com',
+            companyPhone: '555-0123',
+          },
+        };
+
+        const mockProperty = {
+          _id: new Types.ObjectId(propertyId),
+          cuid,
+          owner: {
+            type: 'external_owner',
+            name: 'John Property Owner',
+            email: 'john@owner.com',
+            phone: '555-9999',
+            notes: '789 Owner Street',
+          },
+          authorization: {
+            isActive: true,
+          },
+          isManagementAuthorized: jest.fn().mockReturnValue(true),
+        };
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+
+        const result = await (leaseService as any).buildLandlordInfo(cuid, propertyId);
+
+        expect(result).toEqual({
+          landlordName: 'John Property Owner',
+          landlordAddress: '789 Owner Street',
+          landlordEmail: 'john@owner.com',
+          landlordPhone: '555-9999',
+          managementCompanyName: 'ABC Property Management',
+          managementCompanyAddress: '456 Business Ave',
+          managementCompanyEmail: 'contact@abcproperty.com',
+          managementCompanyPhone: '555-0123',
+          isExternalOwner: true,
+        });
+      });
+
+      it('should return client as landlord for company_owned type', async () => {
+        const mockClient = {
+          _id: new Types.ObjectId(),
+          cuid,
+          firstName: 'Jane',
+          lastName: 'Manager',
+          email: 'jane@company.com',
+          phone: '555-0100',
+          address: '123 Company Blvd',
+          accountType: { isCorporate: true },
+          companyProfile: {
+            legalEntityName: 'XYZ Property LLC',
+            companyAddress: '123 Company Blvd',
+            companyEmail: 'info@xyzproperty.com',
+            companyPhone: '555-0100',
+          },
+        };
+
+        const mockProperty = {
+          _id: new Types.ObjectId(propertyId),
+          cuid,
+          owner: {
+            type: 'company_owned',
+          },
+          authorization: {
+            isActive: true,
+          },
+          isManagementAuthorized: jest.fn().mockReturnValue(true),
+        };
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+
+        const result = await (leaseService as any).buildLandlordInfo(cuid, propertyId);
+
+        expect(result).toEqual({
+          landlordName: 'XYZ Property LLC',
+          landlordAddress: '123 Company Blvd',
+          landlordEmail: 'info@xyzproperty.com',
+          landlordPhone: '555-0100',
+          isExternalOwner: false,
+        });
+      });
+
+      it('should return property owner as landlord for self_owned type', async () => {
+        const mockClient = {
+          _id: new Types.ObjectId(),
+          cuid,
+          email: 'client@example.com',
+          accountType: { isCorporate: false },
+        };
+
+        const mockProperty = {
+          _id: new Types.ObjectId(propertyId),
+          cuid,
+          owner: {
+            type: 'self_owned',
+            name: 'Self Owner Bob',
+            email: 'bob@selfowned.com',
+            phone: '555-7777',
+            notes: '999 Self Street',
+          },
+          authorization: {
+            isActive: true,
+          },
+          isManagementAuthorized: jest.fn().mockReturnValue(true),
+        };
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+
+        const result = await (leaseService as any).buildLandlordInfo(cuid, propertyId);
+
+        expect(result).toEqual({
+          landlordName: 'Self Owner Bob',
+          landlordAddress: '999 Self Street',
+          landlordEmail: 'bob@selfowned.com',
+          landlordPhone: '555-7777',
+          isExternalOwner: false,
+        });
+      });
+
+      it('should throw error if property is not authorized for management', async () => {
+        const mockClient = {
+          _id: new Types.ObjectId(),
+          cuid,
+          email: 'client@example.com',
+          accountType: { isCorporate: true },
+        };
+
+        const mockProperty = {
+          _id: new Types.ObjectId(propertyId),
+          cuid,
+          owner: {
+            type: 'external_owner',
+            name: 'Owner',
+          },
+          authorization: {
+            isActive: false,
+          },
+          isManagementAuthorized: jest.fn().mockReturnValue(false),
+        };
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+
+        await expect((leaseService as any).buildLandlordInfo(cuid, propertyId)).rejects.toThrow(
+          'Property has not been authorized for management.'
+        );
+      });
+
+      it('should throw error if property not found', async () => {
+        const mockClient = {
+          _id: new Types.ObjectId(),
+          cuid,
+          email: 'client@example.com',
+        };
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(null);
+
+        await expect((leaseService as any).buildLandlordInfo(cuid, propertyId)).rejects.toThrow(
+          'Property not found'
+        );
+      });
+
+      it('should throw error if client not found', async () => {
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(null);
+
+        await expect((leaseService as any).buildLandlordInfo(cuid, propertyId)).rejects.toThrow(
+          'Client not found'
+        );
+      });
+    });
+
+    describe('generateLeasePreview with landlord info', () => {
+      it('should include landlord info in preview data', async () => {
+        const cuid = 'C123';
+        const propertyId = new Types.ObjectId().toString();
+        const previewData = {
+          propertyId,
+          templateType: 'residential-single-family',
+          monthlyRent: 1500,
+        };
+
+        const mockClient = {
+          _id: new Types.ObjectId(),
+          cuid,
+          email: 'client@example.com',
+          accountType: { isCorporate: true },
+          companyProfile: {
+            legalEntityName: 'Test Property LLC',
+            companyAddress: '123 Test St',
+            companyEmail: 'info@test.com',
+            companyPhone: '555-0001',
+          },
+        };
+
+        const mockProperty = {
+          _id: new Types.ObjectId(propertyId),
+          cuid,
+          owner: {
+            type: 'company_owned',
+          },
+          authorization: {
+            isActive: true,
+          },
+          isManagementAuthorized: jest.fn().mockReturnValue(true),
+        };
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+
+        const result = await leaseService.generateLeasePreview(cuid, previewData);
+
+        expect(result).toMatchObject({
+          propertyId,
+          templateType: 'residential-single-family',
+          monthlyRent: 1500,
+          landlordName: 'Test Property LLC',
+          landlordAddress: '123 Test St',
+          landlordEmail: 'info@test.com',
+          landlordPhone: '555-0001',
+          isExternalOwner: false,
+        });
+      });
+    });
+
+    describe('createLease with metadata storage', () => {
+      it.todo('should store landlord info in lease metadata');
+      /*
+      it('should store landlord info in lease metadata', async () => {
+        const mockUser = createMockUser(IUserRole.ADMIN);
+        const propertyId = new Types.ObjectId();
+        const mockProperty = createMockProperty({
+          _id: propertyId,
+          owner: {
+            type: 'company_owned',
+          },
+          authorization: {
+            isActive: true,
+          },
+          isManagementAuthorized: jest.fn().mockReturnValue(true),
+        });
+
+        const mockClient = {
+          _id: new Types.ObjectId(),
+          cuid: 'C123',
+          email: 'client@example.com',
+          firstName: 'Test',
+          lastName: 'Client',
+          accountType: { isCorporate: true },
+          companyProfile: {
+            legalEntityName: 'Test Company',
+            companyAddress: '123 Test St',
+            companyEmail: 'info@testcompany.com',
+            companyPhone: '555-0000',
+          },
+        };
+
+        const leaseData: any = {
+          property: {
+            id: propertyId.toString(),
+          },
+          tenantInfo: {
+            id: new Types.ObjectId().toString(),
+            email: 'tenant@example.com',
+          },
+          duration: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2026-01-01'),
+          },
+          fees: {
+            monthlyRent: 1500,
+            securityDeposit: 3000,
+            rentDueDay: 1,
+            currency: 'USD',
+          },
+          type: LeaseType.FIXED_TERM,
+        };
+
+        const mockLease = createMockLease({
+          metadata: {
+            landlordName: 'Test Company',
+            landlordAddress: '123 Test St',
+            landlordEmail: 'info@testcompany.com',
+            landlordPhone: '555-0000',
+            isExternalOwner: false,
+          },
+        });
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.userDAO.findFirst.mockResolvedValue({ _id: leaseData.tenantInfo.id });
+        mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue(false);
+        mockDependencies.leaseDAO.startSession.mockResolvedValue({});
+        mockDependencies.leaseDAO.withTransaction.mockImplementation(async (_session, callback) => {
+          return await callback({});
+        });
+        mockDependencies.leaseDAO.createLease.mockResolvedValue(mockLease);
+
+        const result = await leaseService.createLease('C123', leaseData, {
+          currentuser: mockUser,
+        } as any);
+
+        expect(result.success).toBe(true);
+        expect(mockDependencies.leaseDAO.createLease).toHaveBeenCalled();
+        const createLeaseCall = mockDependencies.leaseDAO.createLease.mock.calls[0][1];
+        expect(createLeaseCall.metadata).toBeDefined();
+        expect(createLeaseCall.metadata.landlordName).toBe('Test Company');
+        expect(createLeaseCall.metadata.isExternalOwner).toBe(false);
       });
       */
     });

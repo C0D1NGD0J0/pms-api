@@ -31,6 +31,65 @@ export enum LeaseType {
   FIXED_TERM = 'fixed_term',
 }
 
+export interface LeasePreviewData {
+  // Additional Provisions
+  petPolicy?: {
+    allowed: boolean;
+    maxPets?: number;
+    types?: string | string[];
+    deposit?: number;
+  };
+  renewalOptions?: {
+    autoRenew: boolean;
+    renewalTermMonths?: number;
+    noticePeriodDays?: number;
+  };
+  coTenants?: Array<{
+    name: string;
+    email: string;
+    phone: string;
+    occupation?: string;
+  }>;
+  legalTerms?: {
+    html?: string;
+    text?: string;
+  };
+
+  utilitiesIncluded?: string | string[];
+  requiresNotarization?: boolean;
+  landlordSignatureUrl?: string;
+  tenantSignatureUrl?: string;
+
+  startDate?: string | Date;
+  landlordAddress?: string;
+  propertyAddress?: string;
+  securityDeposit?: number;
+  endDate?: string | Date;
+  landlordEmail?: string;
+  landlordPhone?: string;
+
+  signingMethod?: string;
+  propertyName?: string;
+  propertyType?: string;
+  jurisdiction?: string;
+  landlordName?: string;
+  leaseNumber?: string;
+  currentDate?: string;
+  tenantEmail?: string;
+
+  tenantPhone?: string;
+  monthlyRent?: number;
+  unitNumber?: string;
+  signedDate?: string;
+
+  // Tenant Information
+  tenantName?: string;
+  rentDueDay?: number;
+  // Lease Terms
+  leaseType?: string;
+  currency?: string;
+}
+
 /**
  * Main Lease Interface
  * Core lease data structure
@@ -58,6 +117,7 @@ export interface ILease {
   tenantId: Types.ObjectId | string;
   renewalOptions?: IRenewalOptions;
   signatures?: ILeaseSignature[];
+  metadata?: Record<string, any>; // Store enriched data for lease generation
   eSignature?: ILeaseESignature;
   terminationReason?: string;
   property: ILeaseProperty;
@@ -93,7 +153,9 @@ export interface ILeaseFormData {
   };
   tenantInfo: {
     id: string | null; // if existing tenant
-    email?: string; // assuming invitation was sent and tenant hasn't accepted yet we search via email to look up tenant
+    email?: string; // required when inviting new tenant
+    firstName?: string; // required when inviting new tenant
+    lastName?: string; // required when inviting new tenant
   };
   duration: {
     startDate: Date | string;
@@ -107,11 +169,13 @@ export interface ILeaseFormData {
   };
   leaseDocument?: ILeaseDocumentItem[];
   renewalOptions?: IRenewalOptions;
+  signingMethod?: SigningMethod;
   utilitiesIncluded?: string[];
   legalTerms?: ILegalTerms;
   coTenants?: ICoTenant[];
   petPolicy?: IPetPolicy;
   internalNotes?: string;
+  templateType?: string;
   leaseNumber: string;
   type: LeaseType;
 }

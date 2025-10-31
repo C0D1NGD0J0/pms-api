@@ -3,10 +3,11 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { IUserRole } from '@shared/constants/roles.constants';
+import { IPropertyDocument, OwnershipType } from '@interfaces/index';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
-import { EventEmitterService, NotificationService, AssetService } from '@services/index';
 import { ValidationRequestError, InvalidRequestError, BadRequestError } from '@shared/customErrors';
 import {
   UploadCompletedPayload,
@@ -14,9 +15,16 @@ import {
   EventTypes,
 } from '@interfaces/events.interface';
 import {
+  EventEmitterService,
+  NotificationService,
+  InvitationService,
+  AssetService,
+} from '@services/index';
+import {
   ILeaseFilterOptions,
   ILeaseDocument,
   ILeaseFormData,
+  SigningMethod,
   LeaseStatus,
 } from '@interfaces/lease.interface';
 import {
@@ -37,6 +45,7 @@ import {
 
 interface IConstructor {
   notificationService: NotificationService;
+  invitationService: InvitationService;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   invitationDAO: InvitationDAO;
@@ -50,6 +59,7 @@ interface IConstructor {
 
 export class LeaseService {
   private readonly notificationService: NotificationService;
+  private readonly invitationService: InvitationService;
   private readonly log: Logger;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
@@ -63,6 +73,7 @@ export class LeaseService {
 
   constructor({
     notificationService,
+    invitationService,
     emitterService,
     invitationDAO,
     propertyUnitDAO,
@@ -80,6 +91,7 @@ export class LeaseService {
     this.propertyDAO = propertyDAO;
     this.assetService = assetService;
     this.invitationDAO = invitationDAO;
+    this.invitationService = invitationService;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
     this.log = createLogger('LeaseService');
@@ -106,10 +118,35 @@ export class LeaseService {
       throw new BadRequestError({ message: t('common.errors.clientNotFound') });
     }
 
-    // Validate all lease data (including property, unit, tenant, dates, fees)
+    // Fetch property with owner information to determine landlord
+    const property = await this.propertyDAO.findFirst(
+      {
+        _id: new Types.ObjectId(data.property.id),
+        cuid,
+        approvalStatus: 'approved',
+        deletedAt: null,
+      },
+      {
+        select: '+owner +authorization',
+      }
+    );
+
+    if (!property) {
+      this.log.error(`Property with id ${data.property.id} not found for client ${cuid}`);
+      throw new BadRequestError({ message: t('property.errors.notFound') });
+    }
+
+    if (!property.isManagementAuthorized()) {
+      this.log.error(
+        `Property with id ${data.property.id} is not authorized for management by client ${cuid}`
+      );
+      throw new BadRequestError({ message: t('property.errors.managementNotAuthorized') });
+    }
+
     const { hasErrors, errors, tenantInfo, propertyInfo } = await this.validateLeaseData(
       cuid,
-      data
+      data,
+      property
     );
     if (hasErrors) {
       throw new ValidationRequestError({
@@ -123,6 +160,47 @@ export class LeaseService {
         message:
           'Tenant information is required. Please provide either a valid tenant ID or email address with an existing invitation.',
       });
+    }
+
+    // handles tenant invitation if email + firstName + lastName provided without existing invitation
+    if (
+      data.tenantInfo.email &&
+      data.tenantInfo.firstName &&
+      data.tenantInfo.lastName &&
+      !data.tenantInfo.id &&
+      tenantInfo.useInvitationIdAsTenantId
+    ) {
+      try {
+        const invitationResult = await this.invitationService.sendInvitation(
+          currentuser.sub,
+          cuid,
+          {
+            inviteeEmail: data.tenantInfo.email,
+            personalInfo: {
+              firstName: data.tenantInfo.firstName,
+              lastName: data.tenantInfo.lastName,
+            },
+            role: IUserRole.TENANT,
+            status: 'pending',
+          }
+        );
+
+        if (invitationResult.success && invitationResult.data.invitation) {
+          // temporarily use invitation ID as tenant ID until they accept
+          tenantInfo.tenantId = invitationResult.data.invitation._id;
+        } else {
+          throw new Error('Failed to create invitation: No invitation returned');
+        }
+      } catch (invitationError) {
+        this.log.error('Failed to create tenant invitation', {
+          error: invitationError instanceof Error ? invitationError.message : 'Unknown error',
+          email: data.tenantInfo.email,
+        });
+
+        throw new BadRequestError({
+          message: `Failed to create tenant invitation: ${invitationError instanceof Error ? invitationError.message : 'Unknown error'}`,
+        });
+      }
     }
 
     const userRoleEnum = convertUserRoleToEnum(currentuser.client.role);
@@ -156,6 +234,7 @@ export class LeaseService {
         timestamp: new Date(),
       });
     }
+    const landlordInfo = await this.buildLandlordInfo(cuid, data.property.id);
 
     const session = await this.leaseDAO.startSession();
     const result = await this.leaseDAO.withTransaction(session, async (session) => {
@@ -164,6 +243,9 @@ export class LeaseService {
         cuid,
         tenantId: tenantInfo.tenantId,
         createdBy: currentuser.sub,
+        signingMethod: data.signingMethod || SigningMethod.PENDING,
+        templateType: data.templateType || 'residential-single-family',
+        landlordName: landlordInfo.landlordName,
         fees: MoneyUtils.parseLeaseFees(data.fees),
         property: {
           id: data.property.id,
@@ -177,6 +259,7 @@ export class LeaseService {
         approvalStatus,
         approvalDetails,
         useInvitationIdAsTenantId: tenantInfo.useInvitationIdAsTenantId,
+        metadata: landlordInfo, // Store landlord/management info for lease generation
       };
 
       const lease = await this.leaseDAO.createLease(cuid, parsedLeaseData, session);
@@ -407,6 +490,121 @@ export class LeaseService {
   ): IPromiseReturnedData<any> {
     this.log.info(`Generating PDF for lease ${leaseId}`);
     throw new Error('generateLeasePDF not yet implemented');
+  }
+
+  /**
+   * Helper method to build landlord and management company info based on property ownership
+   */
+  private async buildLandlordInfo(
+    cuid: string,
+    propertyId: string
+  ): Promise<{
+    landlordName: string;
+    landlordAddress: string;
+    landlordEmail: string;
+    landlordPhone: string;
+    isExternalOwner: boolean;
+    managementCompanyName?: string;
+    managementCompanyAddress?: string;
+    managementCompanyEmail?: string;
+    managementCompanyPhone?: string;
+  }> {
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      throw new BadRequestError({ message: 'Client not found' });
+    }
+
+    const property = await this.propertyDAO.findFirst(
+      { _id: propertyId, cuid, deletedAt: null },
+      {
+        select: '+owner +authorization',
+      }
+    );
+
+    if (!property) {
+      throw new BadRequestError({ message: 'Property not found' });
+    }
+
+    if (!property.isManagementAuthorized()) {
+      throw new BadRequestError({
+        message: 'Property has not been authorized for management.',
+      });
+    }
+
+    // Handle external owner - property owner becomes landlord
+    if (
+      client.accountType.isCorporate &&
+      property.owner?.type === OwnershipType.EXTERNAL_OWNER &&
+      property.owner.name
+    ) {
+      return {
+        landlordName: property.owner.name,
+        landlordAddress: property.owner.notes || 'N/A',
+        landlordEmail: property.owner.email || 'N/A',
+        landlordPhone: property.owner.phone || 'N/A',
+        managementCompanyName: client.companyProfile?.legalEntityName,
+        managementCompanyAddress: client.companyProfile?.companyAddress || 'N/A',
+        managementCompanyEmail: client.companyProfile?.companyEmail || 'N/A',
+        managementCompanyPhone: client.companyProfile?.companyPhone || 'N/A',
+        isExternalOwner: true,
+      };
+    }
+
+    // Handle company owned - client is landlord
+    if (property.owner?.type === OwnershipType.COMPANY_OWNED) {
+      return {
+        landlordName: client.companyProfile?.legalEntityName || 'N/A',
+        landlordAddress: client.companyProfile?.companyAddress || 'N/A',
+        landlordEmail: client.companyProfile?.companyEmail || 'N/A',
+        landlordPhone: client.companyProfile?.companyPhone || 'N/A',
+        isExternalOwner: false,
+      };
+    }
+
+    // Handle self owned - property owner is landlord
+    if (property.owner?.type === OwnershipType.SELF_OWNED && property.owner.name) {
+      return {
+        landlordName: property.owner.name,
+        landlordAddress: property.owner.notes || 'N/A',
+        landlordEmail: property.owner.email || 'N/A',
+        landlordPhone: property.owner.phone || 'N/A',
+        isExternalOwner: false,
+      };
+    }
+
+    // Fallback - use client as landlord
+    return {
+      landlordName: client.companyProfile?.legalEntityName || 'N/A',
+      landlordAddress: client.companyProfile?.companyAddress || 'N/A',
+      landlordEmail: client.companyProfile?.companyEmail || 'N/A',
+      landlordPhone: client.companyProfile?.companyPhone || 'N/A',
+      isExternalOwner: false,
+    };
+  }
+
+  async generateLeasePreview(
+    cuid: string,
+    previewData: any
+  ): Promise<{
+    landlordName: string;
+    landlordAddress: string;
+    landlordEmail: string;
+    landlordPhone: string;
+    jurisdiction: string;
+    [key: string]: any;
+  }> {
+    this.log.info(`Generating lease preview for client ${cuid}`);
+
+    try {
+      const landlordInfo = await this.buildLandlordInfo(cuid, previewData.propertyId);
+      return {
+        ...previewData,
+        ...landlordInfo,
+      };
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Failed to generate lease preview data');
+      throw error;
+    }
   }
 
   async previewLeaseHTML(cuid: string, leaseId: string): IPromiseReturnedData<string> {
@@ -852,7 +1050,8 @@ export class LeaseService {
    */
   private async validateLeaseData(
     cuid: string,
-    leaseData: ILeaseFormData
+    leaseData: ILeaseFormData,
+    propertyRecord: IPropertyDocument
   ): Promise<{
     hasErrors: boolean;
     errors: Record<string, string[]>;
@@ -914,23 +1113,23 @@ export class LeaseService {
         });
 
         if (!invitation) {
-          if (!validationErrors['tenantInfo.email']) validationErrors['tenantInfo.email'] = [];
-          validationErrors['tenantInfo.email'].push(
-            `No tenant record found for '${leaseData.tenantInfo.email}'`
-          );
-        } else if (invitation.status === 'accepted') {
-          // Invitation accepted - use user ID
-          const user = await this.userDAO.getActiveUserByEmail(leaseData.tenantInfo.email);
-          if (!user) {
+          // No invitation exists - check if firstName and lastName are provided to create new invitation
+          if (leaseData.tenantInfo.firstName && leaseData.tenantInfo.lastName) {
+            // Will create new invitation during lease creation
+            // For now, create a placeholder tenantInfo that will be replaced with invitation ID
+            this.log.info('No existing invitation found, will create new tenant invitation', {
+              email: leaseData.tenantInfo.email,
+            });
+            // Set useInvitationIdAsTenantId to true as signal to send invitation
+            tenantInfo = {
+              tenantId: new Types.ObjectId(), // Temporary placeholder, will be updated after invitation is sent
+              useInvitationIdAsTenantId: true,
+            };
+          } else {
             if (!validationErrors['tenantInfo.email']) validationErrors['tenantInfo.email'] = [];
             validationErrors['tenantInfo.email'].push(
-              'Invitation accepted but user account not found'
+              `No tenant record found for '${leaseData.tenantInfo.email}'. Please provide firstName and lastName to send an invitation.`
             );
-          } else {
-            tenantInfo = {
-              tenantId: user._id,
-              useInvitationIdAsTenantId: false,
-            };
           }
         } else if (['pending', 'draft', 'sent'].includes(invitation.status)) {
           // use invitation ID as temporary tenant!
@@ -956,34 +1155,26 @@ export class LeaseService {
       validationErrors['tenantInfo'].push('Either tenant ID or email is required');
     }
 
-    // Validate property exists and check unitId requirement for multi-unit properties
-    const property = await this.propertyDAO.findFirst({
-      _id: new Types.ObjectId(leaseData.property.id),
-      cuid,
-      approvalStatus: 'approved',
-      deletedAt: null,
-    });
-
     let unit = null;
 
-    if (!property) {
+    if (!propertyRecord) {
       if (!validationErrors['property.id']) validationErrors['property.id'] = [];
       validationErrors['property.id'].push(t('property.errors.notFound'));
     } else {
       // Check if property type requires unit specification
-      const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
+      const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(propertyRecord.propertyType);
 
       if (isMultiUnit) {
         if (!leaseData.property.unitId) {
           if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
           validationErrors['property.unitId'].push(
-            `Unit ID is required for ${property.propertyType} properties`
+            `Unit ID is required for ${propertyRecord.propertyType} properties`
           );
         } else {
           // Validate unit exists, belongs to property, and is available
           unit = await this.propertyUnitDAO.findFirst({
             _id: leaseData.property.unitId,
-            propertyId: property._id,
+            propertyId: propertyRecord._id,
             cuid,
           });
 
@@ -1069,17 +1260,19 @@ export class LeaseService {
       propertyInfo: {
         id: leaseData.property.id,
         unitId: leaseData.property.unitId || null,
-        address: property?.address.fullAddress || '',
-        propertyType: property?.propertyType,
-        name: property?.name,
+        address: propertyRecord?.address.fullAddress || '',
+        propertyType: propertyRecord?.propertyType,
+        name: propertyRecord?.name,
         unitNumber: unit?.unitNumber,
-        specifications: property
+        specifications: propertyRecord
           ? {
-              totalArea: unit?.specifications?.totalArea || property.specifications?.totalArea,
-              bedrooms: unit?.specifications?.bedrooms || property.specifications?.bedrooms,
-              bathrooms: unit?.specifications?.bathrooms || property.specifications?.bathrooms,
-              parkingSpaces: property.specifications?.parkingSpaces,
-              floors: property.specifications?.floors,
+              totalArea:
+                unit?.specifications?.totalArea || propertyRecord.specifications?.totalArea,
+              bedrooms: unit?.specifications?.bedrooms || propertyRecord.specifications?.bedrooms,
+              bathrooms:
+                unit?.specifications?.bathrooms || propertyRecord.specifications?.bathrooms,
+              parkingSpaces: propertyRecord.specifications?.parkingSpaces,
+              floors: propertyRecord.specifications?.floors,
             }
           : undefined,
       },

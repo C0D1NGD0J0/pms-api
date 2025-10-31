@@ -29,6 +29,7 @@ export interface ICompanyProfile {
   contactInfo?: IContactInfoType;
   registrationNumber?: string;
   legalEntityName?: string;
+  companyAddress?: string;
   companyPhone?: string;
   companyEmail?: string;
   tradingName?: string;

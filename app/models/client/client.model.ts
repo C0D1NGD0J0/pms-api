@@ -136,6 +136,12 @@ const ClientSchema = new Schema<IClientDocument>(
           message: 'Please enter a valid email address',
         },
       },
+      companyAddress: {
+        type: String,
+        trim: true,
+        minlength: 5,
+        lowercase: true,
+      },
       registrationNumber: {
         type: String,
         trim: true,

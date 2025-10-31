@@ -215,6 +215,20 @@ router.get(
 );
 
 router.get(
+  '/:cuid/available-tenants',
+  basicLimiter(),
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.LIST),
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getAvailableTenantsForLease(req, res);
+  })
+);
+
+router.get(
   '/:cuid/stats',
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),

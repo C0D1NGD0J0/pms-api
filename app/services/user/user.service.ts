@@ -1147,6 +1147,87 @@ export class UserService {
    * @param currentUser - Current user context for permissions
    * @returns Promise resolving to paginated tenant users with tenant-specific data
    */
+  /**
+   * Get available tenants for lease assignment
+   * Returns tenants who don't have any active leases for this client
+   */
+  async getAvailableTenantsForLease(cuid: string): Promise<
+    ISuccessReturnData<
+      Array<{
+        uid: string;
+        email: string;
+        fullName: string;
+        phoneNumber?: string;
+        avatar?: { url: string; filename: string };
+      }>
+    >
+  > {
+    try {
+      if (!cuid) {
+        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+      }
+
+      // Validate client exists
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      // Get all tenants for this client
+      const result = await this.userDAO.getTenantsByClient(
+        cuid,
+        undefined,
+        { limit: 1000, skip: 0 } // Get all tenants
+      );
+
+      // Filter tenants without active leases
+      const availableTenants = result.items
+        .filter((tenant: any) => {
+          const tenantInfo = tenant.profile?.tenantInfo;
+          if (!tenantInfo) return true; // No tenant info means no leases
+
+          // Get active leases for this specific client
+          const activeLeases =
+            tenantInfo.activeLeases?.filter(
+              (lease: any) => lease.cuid === cuid && lease.confirmed
+            ) || [];
+
+          return activeLeases.length === 0;
+        })
+        .map((tenant: any) => {
+          const personalInfo = tenant.profile?.personalInfo || {};
+
+          return {
+            uid: tenant.uid,
+            email: tenant.email,
+            fullName:
+              `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim() ||
+              tenant.email,
+            phoneNumber: personalInfo.phoneNumber,
+            avatar: personalInfo.avatar,
+          };
+        });
+
+      this.log.info('Available tenants retrieved', {
+        cuid,
+        total: result.items.length,
+        available: availableTenants.length,
+      });
+
+      return {
+        success: true,
+        data: availableTenants,
+        message: t('client.success.tenantsRetrieved'),
+      };
+    } catch (error: any) {
+      this.log.error('Error getting available tenants:', {
+        cuid,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
   async getTenantsByClient(
     cuid: string,
     filters?: import('@interfaces/user.interface').ITenantFilterOptions,

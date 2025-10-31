@@ -444,6 +444,10 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       default: null,
       index: true,
     },
+    metadata: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
   },
   {
     timestamps: true,

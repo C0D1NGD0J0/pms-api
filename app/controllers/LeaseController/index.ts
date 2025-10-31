@@ -104,9 +104,6 @@ export class LeaseController {
     });
   };
 
-  /**
-   * activate lease (after signatures complete)
-   */
   activateLease = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
     // const { uid } = req.context.currentuser!;
@@ -123,10 +120,6 @@ export class LeaseController {
     });
   };
 
-  /**
-   * Terminate lease early
-   * POST /:cuid/:leaseId/terminate
-   */
   terminateLease = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
     // const { uid } = req.context.currentuser!;
@@ -143,10 +136,6 @@ export class LeaseController {
     });
   };
 
-  /**
-   * Upload lease document
-   * POST /:cuid/:leaseId/document
-   */
   uploadLeaseDocument = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
     // const { uid } = req.context.currentuser!;
@@ -163,10 +152,6 @@ export class LeaseController {
     });
   };
 
-  /**
-   * Get/download lease document
-   * GET /:cuid/:leaseId/document
-   */
   getLeaseDocument = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
 
@@ -181,10 +166,6 @@ export class LeaseController {
     });
   };
 
-  /**
-   * Remove lease document
-   * DELETE /:cuid/:leaseId/document
-   */
   removeLeaseDocument = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
     // const { uid } = req.context.currentuser!;
@@ -200,10 +181,6 @@ export class LeaseController {
     });
   };
 
-  /**
-   * Send for signature OR mark as manually signed OR cancel signing
-   * POST /:cuid/:leaseId/signature
-   */
   handleSignatureAction = async (req: AppRequest, res: Response) => {
     // const { cuid, leaseId } = req.params;
     // const { uid } = req.context.currentuser!;
@@ -227,10 +204,6 @@ export class LeaseController {
     });
   };
 
-  /**
-   * Get signature status + signing URL
-   * GET /:cuid/:leaseId/signature
-   */
   getSignatureDetails = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
 
@@ -257,20 +230,6 @@ export class LeaseController {
     res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
       success: false,
       message: 'Generate PDF not yet implemented',
-    });
-  };
-
-  previewLeaseHTML = async (req: AppRequest, res: Response) => {
-    const { leaseId } = req.params;
-
-    this.log.info(`Previewing HTML for lease ${leaseId}`);
-
-    // TODO: Implement HTML preview
-    // const result = await this.leaseService.previewLeaseHTML(cuid, leaseId);
-
-    res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
-      success: false,
-      message: 'Preview HTML not yet implemented',
     });
   };
 
@@ -338,37 +297,20 @@ export class LeaseController {
     const previewData = req.body;
     const templateType = previewData.templateType || 'residential-single-family';
 
-    this.log.info(`Generating lease preview for client ${cuid} using template ${templateType}`);
+    const enrichedData = await this.leaseService.generateLeasePreview(cuid, previewData);
+    const templateData = this.leaseTemplateDataMapper.transformForTemplate(enrichedData);
+    const html = await this.leaseTemplateService.renderLeasePreview(templateData, templateType);
 
-    try {
-      // Transform request data to template format
-      const templateData = this.leaseTemplateDataMapper.transformForTemplate(previewData);
-
-      // Render template to HTML
-      const html = await this.leaseTemplateService.renderLeasePreview(templateData, templateType);
-
-      res.status(httpStatusCodes.OK).json({
-        success: true,
-        data: {
-          html,
-          templateUsed: templateType,
-          renderedAt: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      this.log.error({ error, cuid, templateType }, 'Failed to generate lease preview');
-
-      res.status(httpStatusCodes.BAD_REQUEST).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Failed to generate lease preview',
-      });
-    }
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: {
+        html,
+        templateUsed: templateType,
+        renderedAt: new Date().toISOString(),
+      },
+    });
   };
 
-  /**
-   * Get list of available lease templates
-   * GET /:cuid/templates
-   */
   getLeaseTemplates = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
 

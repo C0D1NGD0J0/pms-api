@@ -1,76 +1,12 @@
 import { createLogger } from '@utils/index';
-
-export interface LeasePreviewData {
-  renewalOptions?: {
-    autoRenew: boolean;
-    renewalTermMonths?: number;
-    noticePeriodDays?: number;
-  };
-  coTenants?: Array<{
-    name: string;
-    email: string;
-    phone: string;
-    occupation?: string;
-  }>;
-  // Additional Provisions
-  petPolicy?: {
-    allowed: boolean;
-    maxPets?: number;
-    types?: string;
-    deposit?: number;
-  };
-  legalTerms?: {
-    html?: string;
-    text?: string;
-  };
-
-  requiresNotarization?: boolean;
-  landlordSignatureUrl?: string;
-  tenantSignatureUrl?: string;
-  utilitiesIncluded?: string;
-
-  startDate?: string | Date;
-  landlordAddress?: string;
-  // Property Information
-  propertyAddress?: string;
-  securityDeposit?: number;
-
-  endDate?: string | Date;
-
-  landlordEmail?: string;
-  landlordPhone?: string;
-  // Signature Information
-  signingMethod?: string;
-  jurisdiction?: string;
-  // Landlord Information
-  landlordName?: string;
-  // Basic Information
-  leaseNumber?: string;
-  currentDate?: string;
-
-  tenantEmail?: string;
-  tenantPhone?: string;
-  monthlyRent?: number;
-  signedDate?: string;
-
-  // Tenant Information
-  tenantName?: string;
-  rentDueDay?: number;
-  // Lease Terms
-  leaseType?: string;
-  currency?: string;
-}
+import { LeasePreviewData } from '@interfaces/lease.interface';
 
 export class LeaseTemplateDataMapper {
   private readonly log = createLogger('LeaseTemplateDataMapper');
 
-  /**
-   * Transform raw preview data into template-compatible format
-   */
   public transformForTemplate(previewData: LeasePreviewData): Record<string, any> {
     try {
       const templateData: Record<string, any> = {
-        // Basic Information
         leaseNumber: previewData.leaseNumber || 'LEASE-DRAFT',
         currentDate: this.formatDate(previewData.currentDate || new Date().toISOString()),
         jurisdiction: previewData.jurisdiction || 'State/Province',
@@ -90,6 +26,16 @@ export class LeaseTemplateDataMapper {
 
         // Property Information
         propertyAddress: previewData.propertyAddress || '[Property Address]',
+        propertyName: previewData.propertyName || null,
+        propertyType: previewData.propertyType || null,
+        unitNumber: previewData.unitNumber || null,
+
+        // Ownership and Management Company Info
+        isExternalOwner: previewData.isExternalOwner || false,
+        managementCompanyName: previewData.managementCompanyName || null,
+        managementCompanyAddress: previewData.managementCompanyAddress || null,
+        managementCompanyEmail: previewData.managementCompanyEmail || null,
+        managementCompanyPhone: previewData.managementCompanyPhone || null,
 
         // Lease Terms
         leaseType: previewData.leaseType || 'Fixed Term Residential Lease',
@@ -103,7 +49,7 @@ export class LeaseTemplateDataMapper {
         petPolicy: this.transformPetPolicy(previewData.petPolicy, previewData.currency),
         renewalOptions: previewData.renewalOptions || null,
         legalTerms: previewData.legalTerms || null,
-        utilitiesIncluded: previewData.utilitiesIncluded || null,
+        utilitiesIncluded: this.transformArrayToString(previewData.utilitiesIncluded),
 
         // Signature Information
         signingMethod: previewData.signingMethod || 'manual',
@@ -122,9 +68,6 @@ export class LeaseTemplateDataMapper {
     }
   }
 
-  /**
-   * Format date to readable string
-   */
   private formatDate(date: string | Date | undefined): string {
     if (!date) {
       return new Date().toLocaleDateString('en-US', {
@@ -146,9 +89,6 @@ export class LeaseTemplateDataMapper {
     }
   }
 
-  /**
-   * Format currency amount
-   */
   private formatCurrency(amount: number | undefined, currency?: string): string {
     if (amount === undefined || amount === null) {
       return '$0.00';
@@ -164,9 +104,6 @@ export class LeaseTemplateDataMapper {
     }
   }
 
-  /**
-   * Get ordinal suffix for day of month
-   */
   private getOrdinalSuffix(day: number): string {
     const j = day % 10;
     const k = day % 100;
@@ -183,9 +120,6 @@ export class LeaseTemplateDataMapper {
     return `${day}th`;
   }
 
-  /**
-   * Transform pet policy with currency formatting
-   */
   private transformPetPolicy(petPolicy: LeasePreviewData['petPolicy'], currency?: string): any {
     if (!petPolicy || !petPolicy.allowed) {
       return null;
@@ -194,8 +128,20 @@ export class LeaseTemplateDataMapper {
     return {
       allowed: true,
       maxPets: petPolicy.maxPets || 1,
-      types: petPolicy.types || 'Pets',
+      types: this.transformArrayToString(petPolicy.types) || 'Pets',
       deposit: this.formatCurrency(petPolicy.deposit, currency),
     };
+  }
+
+  private transformArrayToString(value: string | string[] | undefined): string | null {
+    if (!value) {
+      return null;
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0 ? value.join(', ') : null;
+    }
+
+    return value;
   }
 }

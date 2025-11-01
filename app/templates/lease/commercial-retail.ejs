@@ -652,9 +652,25 @@
     <!-- RECITALS -->
     <div class="recitals">
       <div class="recital">
-        <strong>WHEREAS,</strong> the Landlord is the lawful owner and possessor of commercial office space
-        designated as Suite <strong><%= suiteNumber %></strong> comprising approximately <strong><%= squareFootage %></strong>
-        square feet located at <strong><%= propertyAddress %></strong> (hereinafter referred to as the "Premises");
+        <strong>WHEREAS,</strong>
+        <% if (isUnitLease) { %>
+          the Landlord has the legal right to lease commercial retail space designated as
+          <% if (unitNumber) { %>Suite <strong><%= unitNumber %></strong><% } else { %>a commercial unit<% } %>
+          <% if (propertySpecs && propertySpecs.totalArea) { %>comprising approximately <strong><%= propertySpecs.totalArea %></strong> square feet<% } %>
+          within the property located at <strong><%= propertyAddress %></strong>
+          (hereinafter referred to as the "Premises");
+        <% } else if (isExternalOwner) { %>
+          the Landlord, as authorized owner/manager, has the legal right to lease commercial retail space
+          <% if (propertySpecs && propertySpecs.totalArea) { %>comprising approximately <strong><%= propertySpecs.totalArea %></strong> square feet<% } %>
+          located at <strong><%= propertyAddress %></strong>
+          (hereinafter referred to as the "Premises");
+        <% } else { %>
+          the Landlord is the lawful owner and possessor of commercial retail space
+          <% if (unitNumber) { %>designated as Suite <strong><%= unitNumber %></strong><% } %>
+          <% if (propertySpecs && propertySpecs.totalArea) { %>comprising approximately <strong><%= propertySpecs.totalArea %></strong> square feet<% } %>
+          located at <strong><%= propertyAddress %></strong>
+          (hereinafter referred to as the "Premises");
+        <% } %>
       </div>
       <div class="recital">
         <strong>WHEREAS,</strong> the Tenant desires to lease the Premises from the Landlord for the purpose

@@ -168,6 +168,42 @@ const createMockInvitation = (overrides?: any) => ({
   ...overrides,
 });
 
+const createMockClient = (overrides?: any) => ({
+  id: new Types.ObjectId(),
+  cuid: 'C123',
+  accountType: {
+    isCorporate: true,
+  },
+  accountAdmin: new Types.ObjectId(),
+  companyProfile: {
+    legalEntityName: 'Test Property Management LLC',
+    companyAddress: '123 Business Ave, San Francisco, CA 94102',
+    companyEmail: 'admin@testpm.com',
+    companyPhone: '+1-555-0100',
+  },
+  ...overrides,
+});
+
+const createMockProfile = (overrides?: any) => ({
+  _id: new Types.ObjectId(),
+  user: {
+    _id: new Types.ObjectId(),
+    uid: 'U123',
+    email: 'admin@testpm.com',
+    isActive: true,
+    activecuid: 'C123',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  personalInfo: {
+    firstName: 'John',
+    lastName: 'Doe',
+    phoneNumber: '+1-555-0100',
+    location: '123 Business Ave, San Francisco, CA 94102',
+  },
+  ...overrides,
+});
+
 describe('LeaseService', () => {
   let leaseService: LeaseService;
   let mockDependencies: ReturnType<typeof createMockDependencies>;
@@ -360,12 +396,14 @@ describe('LeaseService', () => {
           propertyType: 'house', // Single-unit property
           maxAllowedUnits: 1,
         });
-        const mockClient = { id: new Types.ObjectId(), cuid: 'C123' };
+        const mockClient = createMockClient();
+        const mockProfile = createMockProfile();
         const mockUser = createMockUser(IUserRole.MANAGER);
         const mockLease = createMockLease();
 
         mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
         mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.profileDAO.findFirst.mockResolvedValue(mockProfile);
         mockDependencies.userDAO.getUserById.mockResolvedValue({
           _id: new Types.ObjectId(),
           cuids: [{ cuid: 'C123', roles: ['tenant'] }],
@@ -412,7 +450,8 @@ describe('LeaseService', () => {
       it('should create lease with pending invitation using email', async () => {
         const mockInvitation = createMockInvitation({ status: 'pending' });
         const mockProperty = createMockProperty({ propertyType: 'house' });
-        const mockClient = { id: mockInvitation.clientId, cuid: 'C123' };
+        const mockClient = createMockClient({ id: mockInvitation.clientId });
+        const mockProfile = createMockProfile();
         const mockUser = createMockUser(IUserRole.MANAGER);
         const mockLease = createMockLease({
           tenantId: mockInvitation._id,
@@ -421,6 +460,7 @@ describe('LeaseService', () => {
 
         mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
         mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.profileDAO.findFirst.mockResolvedValue(mockProfile);
         mockDependencies.invitationDAO.findFirst.mockResolvedValue(mockInvitation);
         mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
         mockDependencies.leaseDAO.startSession.mockResolvedValue({});
@@ -1489,6 +1529,7 @@ describe('LeaseService', () => {
           cuid,
           email: 'client@example.com',
           accountType: { isCorporate: true },
+          accountAdmin: new Types.ObjectId(),
           companyProfile: {
             legalEntityName: 'Test Property LLC',
             companyAddress: '123 Test St',
@@ -1509,8 +1550,19 @@ describe('LeaseService', () => {
           isManagementAuthorized: jest.fn().mockReturnValue(true),
         };
 
+        const mockProfile = createMockProfile();
+
+        // Mock property needs address field for generateLeasePreview
+        mockProperty.address = {
+          fullAddress: '123 Test St',
+          city: 'San Francisco',
+          state: 'CA',
+          country: 'USA',
+        };
+
         mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
         mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.profileDAO.findFirst.mockResolvedValue(mockProfile);
 
         const result = await leaseService.generateLeasePreview(cuid, previewData);
 
@@ -1524,6 +1576,109 @@ describe('LeaseService', () => {
           landlordPhone: '555-0001',
           isExternalOwner: false,
         });
+      });
+
+      it('should set hasUnitOwner=true for external_owner with unit number', async () => {
+        const cuid = 'C123';
+        const propertyId = new Types.ObjectId().toString();
+        const previewData = {
+          propertyId,
+          templateType: 'residential-apartment',
+          unitNumber: '101',
+          monthlyRent: 1500,
+        };
+
+        const mockClient = createMockClient();
+        const mockProfile = createMockProfile();
+
+        const mockProperty = {
+          _id: new Types.ObjectId(propertyId),
+          cuid,
+          name: 'Test Apartment Complex',
+          propertyType: 'apartment',
+          maxAllowedUnits: 10,
+          address: {
+            fullAddress: '123 Test St',
+            city: 'San Francisco',
+            state: 'CA',
+            country: 'USA',
+          },
+          owner: {
+            type: 'external_owner',
+            name: 'John Smith',
+            email: 'john@example.com',
+            phone: '555-1234',
+          },
+          authorization: {
+            isActive: true,
+          },
+          isManagementAuthorized: jest.fn().mockReturnValue(true),
+        };
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.profileDAO.findFirst.mockResolvedValue(mockProfile);
+        mockDependencies.propertyUnitDAO.findFirst.mockResolvedValue({
+          unitNumber: '101',
+        });
+
+        const result = await leaseService.generateLeasePreview(cuid, previewData as any);
+
+        expect(result.hasUnitOwner).toBe(true);
+        expect(result.isMultiUnit).toBe(true);
+        expect(result.ownershipType).toBe('external_owner');
+        expect(result.landlordName).toBe('John Smith');
+        expect(result.isExternalOwner).toBe(true);
+      });
+
+      it('should set hasUnitOwner=false for company_owned with unit number', async () => {
+        const cuid = 'C123';
+        const propertyId = new Types.ObjectId().toString();
+        const previewData = {
+          propertyId,
+          templateType: 'residential-apartment',
+          unitNumber: '101',
+          monthlyRent: 1500,
+        };
+
+        const mockClient = createMockClient();
+        const mockProfile = createMockProfile();
+
+        const mockProperty = {
+          _id: new Types.ObjectId(propertyId),
+          cuid,
+          name: 'Test Apartment Complex',
+          propertyType: 'apartment',
+          maxAllowedUnits: 10,
+          address: {
+            fullAddress: '123 Test St',
+            city: 'San Francisco',
+            state: 'CA',
+            country: 'USA',
+          },
+          owner: {
+            type: 'company_owned',
+          },
+          authorization: {
+            isActive: true,
+          },
+          isManagementAuthorized: jest.fn().mockReturnValue(true),
+        };
+
+        mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.profileDAO.findFirst.mockResolvedValue(mockProfile);
+        mockDependencies.propertyUnitDAO.findFirst.mockResolvedValue({
+          unitNumber: '101',
+        });
+
+        const result = await leaseService.generateLeasePreview(cuid, previewData as any);
+
+        expect(result.hasUnitOwner).toBe(false);
+        expect(result.isMultiUnit).toBe(true);
+        expect(result.ownershipType).toBe('company_owned');
+        expect(result.landlordName).toBe('Test Property Management LLC');
+        expect(result.isExternalOwner).toBe(false);
       });
     });
 

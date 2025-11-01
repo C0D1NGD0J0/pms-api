@@ -650,11 +650,29 @@
     <!-- RECITALS -->
     <div class="recitals">
       <div class="recital">
-        <strong>WHEREAS,</strong> the Landlord is the lawful owner and possessor of rental property
-        located at <strong><%= propertyAddress %></strong> (hereinafter referred to as the "Property");
+        <strong>WHEREAS,</strong>
+        <% if (hasUnitOwner) { %>
+          the Landlord is the lawful owner of <% if (unitNumber) { %>Unit <strong><%= unitNumber %></strong><% } else { %>a residential unit<% } %>
+          located within <% if (propertyName) { %><strong><%= propertyName %></strong>,<% } %> a property located at <strong><%= propertyAddress %></strong>
+          (hereinafter referred to as the "Property");
+        <% } else if (isExternalOwner) { %>
+          the Landlord, as authorized owner/manager<% if (propertyName) { %> of <strong><%= propertyName %></strong><% } %>,
+          has the legal right to lease rental property located at <strong><%= propertyAddress %></strong>
+          (hereinafter referred to as the "Property");
+        <% } else { %>
+          the Landlord is the lawful owner and possessor of rental property
+          <% if (propertyName) { %><strong><%= propertyName %></strong> <% } %>located at <strong><%= propertyAddress %></strong>
+          (hereinafter referred to as the "Property");
+        <% } %>
       </div>
       <div class="recital">
-        <strong>WHEREAS,</strong> the Tenant desires to rent the Property from the Landlord for short-term
+        <strong>WHEREAS,</strong> the Tenant desires to rent
+        <% if (hasUnitOwner && unitNumber) { %>
+          Unit <strong><%= unitNumber %></strong> at the Property
+        <% } else { %>
+          the Property
+        <% } %>
+        from the Landlord for short-term
         purposes from <strong><%= startDate %></strong> to <strong><%= endDate %></strong>
         in accordance with the terms and conditions hereinafter set forth;
       </div>

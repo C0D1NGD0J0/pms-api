@@ -37,6 +37,12 @@ export class LeaseTemplateDataMapper {
         managementCompanyEmail: previewData.managementCompanyEmail || null,
         managementCompanyPhone: previewData.managementCompanyPhone || null,
 
+        // Ownership Context (for template logic)
+        hasUnitOwner: previewData.hasUnitOwner || false,
+        isMultiUnit: previewData.isMultiUnit || false,
+        ownershipType: previewData.ownershipType || 'company_owned',
+        isUnitLease: !!(previewData.unitNumber && previewData.isMultiUnit),
+
         // Lease Terms
         leaseType: previewData.leaseType || 'Fixed Term Residential Lease',
         startDate: this.formatDate(previewData.startDate),

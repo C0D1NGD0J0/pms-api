@@ -651,12 +651,22 @@
     <!-- RECITALS -->
     <div class="recitals">
       <div class="recital">
-        <strong>WHEREAS,</strong> the Landlord is the lawful owner and possessor of a residential apartment building
-        <% if (propertyName) { %>known as <strong><%= propertyName %></strong><% } %>
-        located at <strong><%= propertyAddress %></strong>;
+        <strong>WHEREAS,</strong>
+        <% if (hasUnitOwner) { %>
+          the Landlord is the lawful owner of <% if (unitNumber) { %>Unit <strong><%= unitNumber %></strong><% } else { %>a residential unit<% } %>
+          located within <% if (propertyName) { %><strong><%= propertyName %></strong>,<% } %> a property located at <strong><%= propertyAddress %></strong>;
+        <% } else if (isExternalOwner) { %>
+          the Landlord, as authorized owner/manager<% if (propertyName) { %> of <strong><%= propertyName %></strong><% } %>,
+          has the legal right to lease residential units located at <strong><%= propertyAddress %></strong>;
+        <% } else { %>
+          the Landlord is the lawful owner and possessor of
+          <% if (propertyName) { %><strong><%= propertyName %></strong>, <% } %>
+          a residential <% if (isMultiUnit) { %>apartment building<% } else { %>property<% } %>
+          located at <strong><%= propertyAddress %></strong>;
+        <% } %>
       </div>
       <div class="recital">
-        <strong>WHEREAS,</strong> the Tenant desires to lease <% if (unitNumber) { %>Unit <strong><%= unitNumber %></strong><% } else { %>the apartment unit<% } %>
+        <strong>WHEREAS,</strong> the Tenant desires to lease <% if (unitNumber) { %>Unit <strong><%= unitNumber %></strong><% } else { %>the residential unit<% } %>
         (hereinafter referred to as the "Unit") from the Landlord for the purpose of residential occupancy in accordance with the terms and conditions hereinafter set forth;
       </div>
       <div class="recital">

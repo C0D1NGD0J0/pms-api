@@ -2,7 +2,7 @@ import Logger from 'bunyan';
 import { envVariables } from '@shared/config';
 import { handleMongoError } from '@shared/customErrors';
 import { paginateResult, createLogger } from '@utils/index';
-import { IPaginationQuery } from '@interfaces/utils.interface';
+import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
 import {
   UpdateWriteOpResult,
   AggregateOptions,
@@ -97,7 +97,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       populate?: string | Array<string | PopulateOptions> | PopulateOptions;
     } & IPaginationQuery,
     useLean = false
-  ) {
+  ): ListResultWithPagination<T[]> {
     try {
       let query: any = this.model.find(filter);
 
@@ -113,7 +113,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
 
       if (options?.populate) {
         if (Array.isArray(options.populate)) {
-          options.populate.forEach((option) => {
+          options.populate.forEach((option: any) => {
             query = query.populate(option);
           });
         } else {

@@ -23,7 +23,6 @@ const LeaseSchema = new Schema<ILeaseDocument>(
     },
     leaseNumber: {
       type: String,
-      required: [true, 'Lease number is required'],
       unique: true,
       trim: true,
       index: true,
@@ -46,6 +45,11 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'Tenant ID is required'],
+      index: true,
+    },
+    useInvitationIdAsTenantId: {
+      type: Boolean,
+      default: false,
       index: true,
     },
     property: {
@@ -151,12 +155,10 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         min: 0,
         max: 100,
       },
-      acceptedPaymentMethods: [
-        {
-          type: String,
-          enum: ['bank_transfer', 'check', 'cash', 'credit_card', 'debit_card', 'mobile_payment'],
-        },
-      ],
+      acceptedPaymentMethod: {
+        type: String,
+        enum: ['e-transfer', 'credit_card', 'crypto'],
+      },
     },
     coTenants: [
       {
@@ -304,8 +306,9 @@ const LeaseSchema = new Schema<ILeaseDocument>(
     eSignature: {
       provider: {
         type: String,
-        enum: ['hellosign', 'docusign', 'pandadoc', 'boldsign', 'signwell', 'zoho'],
-        required: true,
+        enum: ['hellosign', 'docusign', 'boldsign'],
+        default: 'boldsign',
+        required: false,
       },
       envelopeId: {
         type: String,
@@ -403,10 +406,48 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         _id: false,
       },
     ],
+    approvalStatus: {
+      type: String,
+      enum: ['approved', 'rejected', 'pending', 'draft'],
+      default: 'draft',
+      index: true,
+    },
+    approvalDetails: [
+      {
+        action: {
+          type: String,
+          enum: ['created', 'submitted', 'approved', 'rejected', 'updated', 'overridden'],
+          required: true,
+        },
+        actor: {
+          type: Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+        timestamp: {
+          type: Date,
+          required: true,
+          default: Date.now,
+        },
+        notes: {
+          type: String,
+          trim: true,
+        },
+        _id: false,
+      },
+    ],
+    pendingChanges: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
     deletedAt: {
       type: Date,
       default: null,
       index: true,
+    },
+    metadata: {
+      type: Schema.Types.Mixed,
+      default: {},
     },
   },
   {
@@ -418,11 +459,13 @@ const LeaseSchema = new Schema<ILeaseDocument>(
 
 LeaseSchema.index({ cuid: 1, status: 1 });
 LeaseSchema.index({ cuid: 1, tenantId: 1 });
+LeaseSchema.index({ cuid: 1, useInvitationIdAsTenantId: 1, tenantId: 1 });
 LeaseSchema.index({ cuid: 1, 'property.id': 1 });
 LeaseSchema.index({ cuid: 1, 'property.unitId': 1 });
 LeaseSchema.index({ cuid: 1, 'duration.endDate': 1, status: 1 });
 LeaseSchema.index({ cuid: 1, 'duration.startDate': 1, 'duration.endDate': 1 });
 LeaseSchema.index({ cuid: 1, createdAt: -1 });
+LeaseSchema.index({ cuid: 1, approvalStatus: 1 });
 
 /**
  * remaining days until lease expiration
@@ -471,17 +514,13 @@ LeaseSchema.virtual('totalMonthlyFees').get(function (this: ILeaseDocument) {
   return total;
 });
 
-/**
- * Pre-save hook: Generate LUID and validate data
- */
 LeaseSchema.pre('save', async function (this: ILeaseDocument, next) {
   try {
-    // Generate LUID on new document
-    if (this.isNew && !this.luid) {
+    // Generate lease number on new document
+    if (this.isNew && !this.leaseNumber) {
       const year = new Date().getFullYear();
-      const shortId = generateShortUID(8);
-      this.luid = `L-${year}-${shortId}`;
-      logger.debug(`Generated LUID: ${this.luid}`);
+      const shortId = generateShortUID(5);
+      this.leaseNumber = `L${year}-${shortId}`;
     }
 
     // Validate late fee configuration
@@ -508,6 +547,24 @@ LeaseSchema.pre('save', async function (this: ILeaseDocument, next) {
 
 LeaseSchema.pre('validate', function (this: ILeaseDocument, next) {
   try {
+    // Validate eSignature provider is required when signingMethod is 'electronic'
+    if (this.signingMethod === 'electronic') {
+      if (!this.eSignature?.provider) {
+        throw new Error(
+          'E-signature provider is required when signing method is electronic. Please specify a provider (boldsign, hellosign, docusign, etc.)'
+        );
+      }
+    }
+
+    // Validate that active/pending_signature leases are approved
+    if ([LeaseStatus.PENDING_SIGNATURE, LeaseStatus.ACTIVE].includes(this.status)) {
+      if (this.approvalStatus !== 'approved') {
+        throw new Error(
+          `Cannot set lease status to '${this.status}'. Lease must be approved first. Current approval status: '${this.approvalStatus || 'draft'}'`
+        );
+      }
+    }
+
     // Validate that active/pending_signature leases have required documents
     if ([LeaseStatus.PENDING_SIGNATURE, LeaseStatus.ACTIVE].includes(this.status)) {
       if (!this.leaseDocument || this.leaseDocument.length === 0) {

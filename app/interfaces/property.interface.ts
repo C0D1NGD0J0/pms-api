@@ -14,6 +14,12 @@ export enum PropertyApprovalStatusEnum {
   DRAFT = 'draft',
 }
 
+export enum OwnershipType {
+  EXTERNAL_OWNER = 'external_owner',
+  COMPANY_OWNED = 'company_owned',
+  SELF_OWNED = 'self_owned',
+}
+
 /**
  * Main Property Interface
  */
@@ -33,6 +39,7 @@ export interface IProperty {
   communityAmenities?: CommunityAmenities;
   pendingChanges?: IPendingChanges | null;
   specifications: PropertySpecifications;
+  authorization?: IPropertyAuthorization;
   interiorAmenities?: InteriorAmenities;
   computedLocation?: ComputedLocation;
   financialDetails?: FinancialDetails;
@@ -46,6 +53,7 @@ export interface IProperty {
   maxAllowedUnits?: number;
   address: AddressDetails;
   status: PropertyStatus;
+  owner: IPropertyOwner;
   yearBuilt?: number;
   cuid: string;
   name: string;
@@ -140,6 +148,37 @@ export interface MediaDocumentItem {
   key?: string;
   url: string;
 }
+/**
+ * Property Document Interface (extends Mongoose Document)
+ */
+export interface IPropertyDocument extends IProperty, Document {
+  getAuthorizationStatus(): {
+    isAuthorized: boolean;
+    reason?: string;
+    daysUntilExpiry?: number;
+  };
+  isManagementAuthorized(): boolean;
+  lastModifiedBy?: Types.ObjectId;
+  _id: Types.ObjectId;
+  deletedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+
+  pid: string;
+  id: string;
+}
+
+/**
+ * Simple authorization tracking for external properties
+ */
+export interface IPropertyAuthorization {
+  authorizedBy?: Types.ObjectId; // User who authorized
+  documentUrl?: string; // S3 link to management agreement
+  authorizedAt?: Date; // When authorization was given
+  isActive: boolean; // Simple on/off switch
+  expiresAt?: Date; // When authorization expires (optional)
+  notes?: string; // Internal notes
+}
 
 /**
  * Financial Details Type
@@ -155,6 +194,21 @@ export interface FinancialDetails {
   marketValue?: number;
   propertyTax?: number;
   purchaseDate?: Date;
+}
+
+export interface IPropertyOwner {
+  bankDetails?: {
+    accountName?: string;
+    accountNumber?: string;
+    routingNumber?: string;
+    bankName?: string;
+  };
+  type: OwnershipType;
+  email?: string;
+  phone?: string;
+  taxId?: string;
+  notes?: string;
+  name?: string;
 }
 
 /**
@@ -253,19 +307,6 @@ export interface IAssignableUsersFilter {
   search?: string;
   limit?: number;
   page?: number;
-}
-
-/**
- * Property Document Interface (extends Mongoose Document)
- */
-export interface IPropertyDocument extends IProperty, Document {
-  lastModifiedBy?: Types.ObjectId;
-  _id: Types.ObjectId;
-  deletedAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-  pid: string;
-  id: string;
 }
 
 /**
@@ -395,7 +436,7 @@ export interface ComputedLocation {
   coordinates: number[];
 }
 
-export type IPropertyDocumentItem = PropertyDocumentItem;
+export type IPropertyDocumentItem = MediaDocumentItem;
 export type ICommunityAmenities = CommunityAmenities;
 export type ISpecifications = PropertySpecifications;
 export type IInteriorAmenities = InteriorAmenities;

@@ -4,7 +4,7 @@ import {
   ISuccessReturnData,
   IPaginationQuery,
   ResourceContext,
-  PaginateResult,
+  IPaginateResult,
 } from './utils.interface';
 
 /**
@@ -272,7 +272,7 @@ export interface IBulkNotificationResponse {
 
 export interface INotificationListResponse {
   notifications: INotificationResponse[];
-  pagination?: PaginateResult;
+  pagination?: IPaginateResult;
   unreadCount: number;
 }
 

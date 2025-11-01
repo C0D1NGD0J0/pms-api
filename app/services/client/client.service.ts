@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import ProfileDAO from '@dao/profileDAO';
 import { AuthCache } from '@caching/auth.cache';
+import { ClientValidations } from '@shared/validations';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { getRequestDuration, createLogger } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
@@ -129,6 +130,52 @@ export class ClientService {
 
     if (requiresReVerification) {
       updateData.isVerified = false;
+    }
+
+    // Enterprise client validation
+    if (client.accountType?.isCorporate) {
+      // Create merged company profile data (existing + updates)
+      const mergedCompanyProfile = {
+        ...client.companyProfile,
+        ...updateData.companyProfile,
+      };
+
+      try {
+        // Validate enterprise requirements using the validation schema
+        ClientValidations.enterpriseValidation.parse({
+          companyProfile: mergedCompanyProfile,
+        });
+      } catch (error: any) {
+        const enterpriseErrors: string[] = [];
+        if (error.errors) {
+          error.errors.forEach((err: any) => {
+            enterpriseErrors.push(err.message);
+          });
+        }
+
+        if (enterpriseErrors.length > 0) {
+          this.log.error(
+            {
+              cuid,
+              userId: currentuser.sub,
+              enterpriseErrors,
+              companyProfile: mergedCompanyProfile,
+            },
+            'Enterprise client validation failed'
+          );
+          throw new BadRequestError({
+            message: 'Enterprise clients must have complete company profile information',
+          });
+        }
+      }
+
+      this.log.info(
+        {
+          cuid,
+          userId: currentuser.sub,
+        },
+        'Enterprise client validation passed'
+      );
     }
 
     const changedFields = Object.keys(updateData);

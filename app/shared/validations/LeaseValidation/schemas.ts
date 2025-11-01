@@ -14,14 +14,7 @@ export const LeaseTypeEnum = z.enum(['fixed_term', 'month_to_month']);
 
 export const SigningMethodEnum = z.enum(['electronic', 'manual', 'pending']);
 
-export const PaymentMethodEnum = z.enum([
-  'bank_transfer',
-  'credit_card',
-  'debit_card',
-  'mobile_payment',
-  'check',
-  'cash',
-]);
+export const PaymentMethodEnum = z.enum(['e-transfer', 'credit_card', 'crypto']);
 
 export const UtilityEnum = z.enum([
   'water',
@@ -45,10 +38,10 @@ export const ESignatureStatusEnum = z.enum(['draft', 'sent', 'signed', 'declined
 
 // Nested Object Schemas
 export const LeaseFeesSchema = z.object({
-  monthlyRent: z.number().positive('Monthly rent must be a positive number'),
+  monthlyRent: z.coerce.number().positive('Monthly rent must be a positive number'),
   currency: z.string().length(3, 'Currency must be a 3-letter code').default('USD'),
-  rentDueDay: z.number().int().min(1, 'Rent due day must be between 1-31').max(31),
-  securityDeposit: z.number().min(0, 'Security deposit must be non-negative'),
+  rentDueDay: z.coerce.number().int().min(1, 'Rent due day must be between 1-31').max(31),
+  securityDeposit: z.coerce.number().min(0, 'Security deposit must be non-negative'),
   lateFeeAmount: z.number().min(0, 'Late fee amount must be non-negative').optional(),
   lateFeeDays: z.number().int().min(1, 'Late fee days must be at least 1').optional(),
   lateFeeType: z.enum(['fixed', 'percentage']).optional(),
@@ -57,7 +50,7 @@ export const LeaseFeesSchema = z.object({
     .min(0, 'Late fee percentage must be non-negative')
     .max(100, 'Late fee percentage cannot exceed 100')
     .optional(),
-  acceptedPaymentMethods: z.array(PaymentMethodEnum).optional(),
+  acceptedPaymentMethod: PaymentMethodEnum.optional(),
 });
 
 export const LeaseDurationSchema = z.object({
@@ -86,7 +79,7 @@ export const LeaseDurationSchema = z.object({
 
 export const LeasePropertySchema = z.object({
   id: z.string().min(1, 'Property ID is required'),
-  address: z.string().min(5, 'Property address must be at least 5 characters'),
+  address: z.string().min(5, 'Property address must be at least 5 characters').optional(),
   unitId: z.string().optional(),
 });
 
@@ -117,101 +110,124 @@ export const LegalTermsSchema = z.object({
   url: z.string().url('Invalid URL format for legal terms').optional(),
 });
 
-// Base Lease Schema Object (without refinements)
+export const TenantInfoSchema = z.object({
+  id: z.string().min(1, 'Tenant ID must be provided').nullable().optional(),
+  email: z.string().email('Invalid email format').nullable().optional(),
+});
+
+export const LeaseDocumentItemSchema = z.object({
+  documentType: z
+    .enum(['lease_agreement', 'addendum', 'amendment', 'renewal', 'termination', 'other'])
+    .optional(),
+  filename: z.string().min(1, 'Filename is required'),
+  url: z.string().url('Document URL must be valid'),
+  key: z.string().min(1, 'Document key is required'),
+  mimeType: z.string().optional(),
+  size: z.number().int().positive('File size must be positive').optional(),
+  uploadedBy: z.string().optional(),
+  uploadedAt: z.coerce.date().optional(),
+});
+
+// E-Signature Schema
+export const ESignatureSchema = z.object({
+  provider: ESignatureProviderEnum.optional(),
+  envelopeId: z.string().optional(),
+  status: ESignatureStatusEnum.optional(),
+  sentAt: z.coerce.date().optional(),
+  completedAt: z.coerce.date().optional(),
+  signingUrl: z.string().url('Signing URL must be valid').optional(),
+  declinedReason: z.string().max(500, 'Declined reason must be at most 500 characters').optional(),
+});
+
 const BaseLeaseSchemaObject = z.object({
   cuid: z.string().min(1, 'Client ID is required'),
-  tenantId: z.string().min(1, 'Tenant ID is required'),
-  propertyId: z.string().min(1, 'Property ID is required'),
-  unitId: z.string().optional(),
-  propertyAddress: z.string().min(5, 'Property address is required'),
-  leaseNumber: z.string().min(1, 'Lease number is required'),
+  tenantInfo: TenantInfoSchema,
+  property: LeasePropertySchema,
+  duration: LeaseDurationSchema,
+  fees: LeaseFeesSchema,
   type: LeaseTypeEnum,
-  startDate: z.coerce.date({
-    errorMap: () => ({ message: 'Start date must be a valid date' }),
-  }),
-  endDate: z.coerce.date({
-    errorMap: () => ({ message: 'End date must be a valid date' }),
-  }),
-  moveInDate: z.coerce
-    .date({
-      errorMap: () => ({ message: 'Move-in date must be a valid date' }),
-    })
-    .optional(),
-  monthlyRent: z.number().positive('Monthly rent must be a positive number'),
-  currency: z.string().length(3, 'Currency must be a 3-letter code').default('USD'),
-  rentDueDay: z.number().int().min(1).max(31),
-  securityDeposit: z.number().min(0, 'Security deposit must be non-negative'),
-  lateFeeAmount: z.number().min(0).optional(),
-  lateFeeDays: z.number().int().min(1).optional(),
-  lateFeeType: z.enum(['fixed', 'percentage']).optional(),
-  lateFeePercentage: z.number().min(0).max(100).optional(),
-  acceptedPaymentMethods: z.array(PaymentMethodEnum).optional(),
+  signingMethod: SigningMethodEnum.optional(),
+  eSignature: ESignatureSchema.optional(),
   utilitiesIncluded: z.array(UtilityEnum).optional(),
   coTenants: z.array(CoTenantSchema).optional(),
   petPolicy: PetPolicySchema.optional(),
   renewalOptions: RenewalOptionsSchema.optional(),
   legalTerms: LegalTermsSchema.optional(),
   internalNotes: z.string().max(2000, 'Internal notes must be at most 2000 characters').optional(),
+  leaseDocument: z.array(LeaseDocumentItemSchema).optional(),
 });
 
-// Create Lease Schema - Base object with refinements
-export const CreateLeaseSchema = BaseLeaseSchemaObject.refine(
-  (data) => {
-    const start = new Date(data.startDate);
-    const end = new Date(data.endDate);
-    return end > start;
-  },
-  {
-    message: 'End date must be after start date',
-    path: ['endDate'],
-  }
-).refine(
-  (data) => {
-    if (data.moveInDate) {
-      const start = new Date(data.startDate);
-      const moveIn = new Date(data.moveInDate);
-      return moveIn >= start;
-    }
-    return true;
-  },
-  {
-    message: 'Move-in date cannot be before start date',
-    path: ['moveInDate'],
-  }
-);
-
-// Update Lease Schema - Apply transformations to base object, then add refinements
-export const UpdateLeaseSchema = BaseLeaseSchemaObject.partial()
-  .omit({ cuid: true, tenantId: true })
-  .extend({
-    status: LeaseStatusEnum.optional(),
-  })
+export const CreateLeaseSchema = BaseLeaseSchemaObject.omit({ cuid: true })
   .refine(
     (data) => {
-      if (data.startDate && data.endDate) {
-        const start = new Date(data.startDate);
-        const end = new Date(data.endDate);
-        return end > start;
-      }
-      return true;
+      return (
+        (data.tenantInfo.id && data.tenantInfo.id.trim() !== '') ||
+        (data.tenantInfo.email && data.tenantInfo.email.trim() !== '')
+      );
     },
     {
-      message: 'End date must be after start date',
-      path: ['endDate'],
+      message: 'Either tenant ID or email is required',
+      path: ['tenantInfo'],
     }
   )
   .refine(
     (data) => {
-      if (data.moveInDate && data.startDate) {
-        const start = new Date(data.startDate);
-        const moveIn = new Date(data.moveInDate);
+      const start = new Date(data.duration.startDate);
+      const end = new Date(data.duration.endDate);
+      return end > start;
+    },
+    {
+      message: 'End date must be after start date',
+      path: ['duration', 'endDate'],
+    }
+  )
+  .refine(
+    (data) => {
+      if (data.duration.moveInDate) {
+        const start = new Date(data.duration.startDate);
+        const moveIn = new Date(data.duration.moveInDate);
         return moveIn >= start;
       }
       return true;
     },
     {
       message: 'Move-in date cannot be before start date',
-      path: ['moveInDate'],
+      path: ['duration', 'moveInDate'],
+    }
+  );
+
+// Update Lease Schema - Apply transformations to base object, then add refinements
+export const UpdateLeaseSchema = BaseLeaseSchemaObject.partial()
+  .omit({ cuid: true, tenantInfo: true })
+  .extend({
+    status: LeaseStatusEnum.optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.duration?.startDate && data.duration?.endDate) {
+        const start = new Date(data.duration.startDate);
+        const end = new Date(data.duration.endDate);
+        return end > start;
+      }
+      return true;
+    },
+    {
+      message: 'End date must be after start date',
+      path: ['duration', 'endDate'],
+    }
+  )
+  .refine(
+    (data) => {
+      if (data.duration?.moveInDate && data.duration?.startDate) {
+        const start = new Date(data.duration.startDate);
+        const moveIn = new Date(data.duration.moveInDate);
+        return moveIn >= start;
+      }
+      return true;
+    },
+    {
+      message: 'Move-in date cannot be before start date',
+      path: ['duration', 'moveInDate'],
     }
   );
 
@@ -367,4 +383,91 @@ export const ExportLeasesQuerySchema = z.object({
   propertyId: z.string().optional(),
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
+});
+
+// Lease Preview Schema - All fields optional since this is for preview only
+export const LeasePreviewSchema = z.object({
+  // Template Selection
+  templateType: z
+    .enum([
+      'residential-single-family',
+      'residential-apartment',
+      'commercial-office',
+      'commercial-retail',
+      'short-term-rental',
+    ])
+    .optional(),
+
+  // Basic Information
+  leaseNumber: z.string().optional(),
+  currentDate: z.string().optional(),
+  jurisdiction: z.string().optional(),
+  signedDate: z.string().optional(),
+
+  // Landlord Information
+  landlordName: z.string().optional(),
+  landlordAddress: z.string().optional(),
+  landlordEmail: z.string().email('Invalid landlord email').optional().or(z.literal('')),
+  landlordPhone: z.string().optional(),
+
+  // Tenant Information
+  tenantName: z.string().optional(),
+  tenantEmail: z.string().email('Invalid tenant email').optional().or(z.literal('')),
+  tenantPhone: z.string().optional(),
+  coTenants: z
+    .array(
+      z.object({
+        name: z.string(),
+        email: z.string().email('Invalid co-tenant email'),
+        phone: z.string(),
+        occupation: z.string().optional(),
+      })
+    )
+    .optional(),
+
+  // Property Information
+  propertyAddress: z.string().optional(),
+
+  // Lease Terms
+  leaseType: z.string().optional(),
+  startDate: z.union([z.string(), z.coerce.date()]).optional(),
+  endDate: z.union([z.string(), z.coerce.date()]).optional(),
+  monthlyRent: z.number().min(0).optional(),
+  securityDeposit: z.number().min(0).optional(),
+  rentDueDay: z.number().int().min(1).max(31).optional(),
+  currency: z.string().length(3).optional(),
+
+  // Additional Provisions
+  petPolicy: z
+    .object({
+      allowed: z.boolean(),
+      maxPets: z.number().int().min(1).optional(),
+      types: z.union([z.string(), z.array(z.string())]).optional(),
+      deposit: z.number().min(0).optional(),
+    })
+    .optional(),
+  renewalOptions: z
+    .object({
+      autoRenew: z.boolean(),
+      renewalTermMonths: z.number().int().min(1).optional(),
+      noticePeriodDays: z.number().int().min(1).optional(),
+    })
+    .optional(),
+  legalTerms: z
+    .object({
+      html: z.string().optional(),
+      text: z.string().optional(),
+    })
+    .optional(),
+  utilitiesIncluded: z.union([z.string(), z.array(z.string())]).optional(),
+
+  // Signature Information
+  signingMethod: z.enum(['electronic', 'manual', 'pending']).optional(),
+  landlordSignatureUrl: z
+    .string()
+    .url('Invalid landlord signature URL')
+    .optional()
+    .or(z.literal('')),
+  tenantSignatureUrl: z.string().url('Invalid tenant signature URL').optional().or(z.literal('')),
+  requiresNotarization: z.boolean().optional(),
 });

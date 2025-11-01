@@ -1,121 +1,788 @@
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { ClientSession, FilterQuery, Model } from 'mongoose';
-import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
+import {
+  ListResultWithPagination,
+  IPaginationQuery,
+  UploadResult,
+} from '@interfaces/utils.interface';
 import {
   ILeaseFilterOptions,
   ILeaseDocument,
+  ILeaseFormData,
   IRentRollItem,
   ILeaseStats,
   LeaseStatus,
 } from '@interfaces/lease.interface';
 
+import { BaseDAO } from './baseDAO';
 import { ILeaseDAO } from './interfaces/leaseDAO.interface';
 import { IFindOptions } from './interfaces/baseDAO.interface';
 
-export class LeaseDAO implements ILeaseDAO {
+export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
   private readonly log: Logger;
-  private readonly leaseModel: Model<ILeaseDocument>;
 
   constructor({ leaseModel }: { leaseModel: Model<ILeaseDocument> }) {
+    super(leaseModel);
     this.log = createLogger('LeaseDAO');
-    this.leaseModel = leaseModel;
   }
 
   async createLease(
     cuid: string,
-    _data: Partial<ILeaseDocument>,
-    _session?: ClientSession
+    data: ILeaseFormData,
+    session?: ClientSession
   ): Promise<ILeaseDocument> {
-    this.log.info(`Creating lease for client ${cuid}`);
-    throw new Error('createLease not yet implemented');
+    try {
+      const leaseData: any = {
+        ...data,
+        cuid,
+      };
+
+      const lease = await this.insert(leaseData, session);
+      return lease;
+    } catch (error: any) {
+      this.log.error('Error creating lease:', error);
+      throw error;
+    }
   }
 
   async getLeaseById(
     cuid: string,
     leaseId: string,
-    _opts?: IFindOptions
+    opts?: IFindOptions
   ): Promise<ILeaseDocument | null> {
-    this.log.info(`Getting lease ${leaseId} for client ${cuid}`);
-    throw new Error('getLeaseById not yet implemented');
+    try {
+      this.log.info(`Getting lease ${leaseId} for client ${cuid}`);
+
+      const query: FilterQuery<ILeaseDocument> = {
+        _id: leaseId,
+        cuid,
+        deletedAt: null,
+      };
+
+      return await this.findFirst(query, opts);
+    } catch (error: any) {
+      this.log.error('Error getting lease by ID:', error);
+      throw error;
+    }
   }
 
   async getFilteredLeases(
     cuid: string,
     filters: ILeaseFilterOptions,
-    _pagination: IPaginationQuery
+    pagination: IPaginationQuery
   ): ListResultWithPagination<ILeaseDocument[]> {
-    this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
-    throw new Error('getFilteredLeases not yet implemented');
+    try {
+      this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
+
+      const query: FilterQuery<ILeaseDocument> = { cuid, deletedAt: null };
+
+      if (filters.approvalStatus) {
+        query.approvalStatus = Array.isArray(filters.approvalStatus)
+          ? { $in: filters.approvalStatus }
+          : filters.approvalStatus;
+      }
+
+      if (filters.status) {
+        query.status = Array.isArray(filters.status) ? { $in: filters.status } : filters.status;
+      }
+
+      if (filters.propertyId) {
+        query['property.id'] = filters.propertyId;
+      }
+
+      if (filters.unitId) {
+        query['property.unitId'] = filters.unitId;
+      }
+
+      if (filters.tenantId) {
+        query.tenantId = filters.tenantId;
+      }
+
+      if (filters.type) {
+        query.type = Array.isArray(filters.type) ? { $in: filters.type } : filters.type;
+      }
+
+      if (filters.signingMethod) {
+        query.signingMethod = filters.signingMethod;
+      }
+
+      if (filters.startDateFrom || filters.startDateTo) {
+        query['duration.startDate'] = {};
+        if (filters.startDateFrom) {
+          query['duration.startDate'].$gte = filters.startDateFrom;
+        }
+        if (filters.startDateTo) {
+          query['duration.startDate'].$lte = filters.startDateTo;
+        }
+      }
+
+      if (filters.endDateFrom || filters.endDateTo) {
+        query['duration.endDate'] = {};
+        if (filters.endDateFrom) {
+          query['duration.endDate'].$gte = filters.endDateFrom;
+        }
+        if (filters.endDateTo) {
+          query['duration.endDate'].$lte = filters.endDateTo;
+        }
+      }
+
+      if (filters.minRent || filters.maxRent) {
+        query['fees.monthlyRent'] = {};
+        if (filters.minRent) {
+          query['fees.monthlyRent'].$gte = filters.minRent;
+        }
+        if (filters.maxRent) {
+          query['fees.monthlyRent'].$lte = filters.maxRent;
+        }
+      }
+
+      if (filters.createdAfter || filters.createdBefore) {
+        query.createdAt = {};
+        if (filters.createdAfter) {
+          query.createdAt.$gte = filters.createdAfter;
+        }
+        if (filters.createdBefore) {
+          query.createdAt.$lte = filters.createdBefore;
+        }
+      }
+
+      if (filters.isExpiringSoon) {
+        const today = new Date();
+        const sixtyDaysFromNow = new Date();
+        sixtyDaysFromNow.setDate(today.getDate() + 60);
+
+        query['duration.endDate'] = {
+          $gte: today,
+          $lte: sixtyDaysFromNow,
+        };
+        query.status = LeaseStatus.ACTIVE;
+      }
+
+      if (filters.search) {
+        query.$or = [
+          { leaseNumber: { $regex: filters.search, $options: 'i' } },
+          { 'property.address': { $regex: filters.search, $options: 'i' } },
+        ];
+      }
+
+      const page = Math.max(1, pagination.page || 1);
+      const limit = Math.max(1, Math.min(pagination.limit || 10, 100));
+      const skip = (page - 1) * limit;
+
+      let sortOption: Record<string, 1 | -1> = { createdAt: -1 };
+      if (pagination.sort && typeof pagination.sort === 'string') {
+        const sortParts = pagination.sort.split(':');
+        const field = sortParts[0];
+        const order = sortParts[1];
+        sortOption = { [field]: order === 'desc' ? -1 : 1 };
+      }
+
+      const [result, totalCount] = await Promise.all([
+        this.list(query, {
+          sort: sortOption,
+          skip,
+          limit,
+          populate: [
+            { path: 'tenantId', select: 'firstName lastName email' },
+            { path: 'property.id', select: 'name address' },
+          ],
+        }),
+        this.countDocuments(query),
+      ]);
+
+      const leases = result.items;
+
+      return {
+        items: leases,
+        pagination: {
+          currentPage: page,
+          perPage: limit,
+          total: totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+          hasMoreResource: page < Math.ceil(totalCount / limit),
+        },
+      };
+    } catch (error: any) {
+      this.log.error('Error getting filtered leases:', error);
+      throw error;
+    }
   }
 
   async updateLease(
     cuid: string,
     leaseId: string,
-    _data: Partial<ILeaseDocument>
+    data: Partial<ILeaseDocument>
   ): Promise<ILeaseDocument | null> {
-    this.log.info(`Updating lease ${leaseId} for client ${cuid}`);
-    throw new Error('updateLease not yet implemented');
+    try {
+      this.log.info(`Updating lease ${leaseId} for client ${cuid}`);
+
+      const lease = await this.update(
+        { _id: leaseId, cuid, deletedAt: null },
+        { $set: data },
+        { new: true, runValidators: true }
+      );
+
+      return lease;
+    } catch (error: any) {
+      this.log.error('Error updating lease:', error);
+      throw error;
+    }
   }
 
   async deleteLease(cuid: string, leaseId: string): Promise<boolean> {
-    this.log.info(`Deleting lease ${leaseId} for client ${cuid}`);
-    throw new Error('deleteLease not yet implemented');
+    try {
+      this.log.info(`Soft deleting lease ${leaseId} for client ${cuid}`);
+
+      const lease = await this.update(
+        { _id: leaseId, cuid, deletedAt: null },
+        { $set: { deletedAt: new Date() } }
+      );
+
+      return lease !== null;
+    } catch (error: any) {
+      this.log.error('Error deleting lease:', error);
+      throw error;
+    }
   }
 
   async checkOverlappingLeases(
-    _cuid: string,
-    _propertyId: string,
-    unitId: string,
-    _startDate: Date,
-    _endDate: Date,
-    _excludeLeaseId?: string
+    cuid: string,
+    propertyId: string,
+    unitId: string | undefined,
+    startDate: Date,
+    endDate: Date,
+    excludeLeaseId?: string
   ): Promise<ILeaseDocument[]> {
-    this.log.info(`Checking overlapping leases for unit ${unitId}`);
-    throw new Error('checkOverlappingLeases not yet implemented');
+    try {
+      this.log.info(
+        `Checking overlapping leases for property ${propertyId}${unitId ? `, unit ${unitId}` : ' (property-level)'}`
+      );
+
+      const query: FilterQuery<ILeaseDocument> = {
+        cuid,
+        deletedAt: null,
+        status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT] },
+        $and: [
+          { 'duration.startDate': { $lte: endDate } },
+          { 'duration.endDate': { $gte: startDate } },
+        ],
+      };
+
+      // Handle unit-level vs property-level leases
+      if (unitId) {
+        // Checking for unit-level lease: find leases on this specific unit
+        query['property.unitId'] = unitId;
+      } else {
+        // Checking for property-level lease: find other property-level leases only
+        query['property.id'] = propertyId;
+        query['property.unitId'] = { $exists: false };
+      }
+
+      if (excludeLeaseId) {
+        query._id = { $ne: excludeLeaseId };
+      }
+
+      const result = await this.list(query, {}, true);
+      return result.items;
+    } catch (error: any) {
+      this.log.error('Error checking overlapping leases:', error);
+      throw error;
+    }
   }
 
   async getActiveLeaseByTenant(cuid: string, tenantId: string): Promise<ILeaseDocument | null> {
-    this.log.info(`Getting active lease for tenant ${tenantId}`);
-    throw new Error('getActiveLeaseByTenant not yet implemented');
+    try {
+      this.log.info(`Getting active lease for tenant ${tenantId}`);
+
+      return await this.findFirst(
+        {
+          cuid,
+          tenantId,
+          status: LeaseStatus.ACTIVE,
+          deletedAt: null,
+        },
+        {
+          populate: { path: 'property.id', select: 'name address' },
+        }
+      );
+    } catch (error: any) {
+      this.log.error('Error getting active lease by tenant:', error);
+      throw error;
+    }
   }
 
   async getActiveLeaseByUnit(cuid: string, unitId: string): Promise<ILeaseDocument | null> {
-    this.log.info(`Getting active lease for unit ${unitId}`);
-    throw new Error('getActiveLeaseByUnit not yet implemented');
+    try {
+      this.log.info(`Getting active lease for unit ${unitId}`);
+
+      return await this.findFirst(
+        {
+          cuid,
+          'property.unitId': unitId,
+          status: LeaseStatus.ACTIVE,
+          deletedAt: null,
+        },
+        {
+          populate: { path: 'tenantId', select: 'firstName lastName email' },
+        }
+      );
+    } catch (error: any) {
+      this.log.error('Error getting active lease by unit:', error);
+      throw error;
+    }
   }
 
   async getExpiringLeases(cuid: string, daysAhead: number): Promise<ILeaseDocument[]> {
-    this.log.info(`Getting leases expiring within ${daysAhead} days for client ${cuid}`);
-    throw new Error('getExpiringLeases not yet implemented');
+    try {
+      this.log.info(`Getting leases expiring within ${daysAhead} days for client ${cuid}`);
+
+      const today = new Date();
+      const futureDate = new Date();
+      futureDate.setDate(today.getDate() + daysAhead);
+
+      const result = await this.list(
+        {
+          cuid,
+          status: LeaseStatus.ACTIVE,
+          deletedAt: null,
+          'duration.endDate': {
+            $gte: today,
+            $lte: futureDate,
+          },
+        },
+        {
+          populate: [
+            { path: 'tenantId', select: 'firstName lastName email' },
+            { path: 'property.id', select: 'name address' },
+          ],
+          sort: { 'duration.endDate': 1 },
+        }
+      );
+
+      return result.items;
+    } catch (error: any) {
+      this.log.error('Error getting expiring leases:', error);
+      throw error;
+    }
   }
 
   async updateLeaseStatus(cuid: string, leaseId: string, status: LeaseStatus): Promise<boolean> {
-    this.log.info(`Updating status for lease ${leaseId} to ${status}`);
-    throw new Error('updateLeaseStatus not yet implemented');
+    try {
+      this.log.info(`Updating status for lease ${leaseId} to ${status}`);
+
+      const lease = await this.update(
+        { _id: leaseId, cuid, deletedAt: null },
+        { $set: { status } }
+      );
+
+      return lease !== null;
+    } catch (error: any) {
+      this.log.error('Error updating lease status:', error);
+      throw error;
+    }
   }
 
   async terminateLease(
     cuid: string,
     leaseId: string,
-    _terminationData: {
+    terminationData: {
       terminationDate: Date;
       terminationReason: string;
       moveOutDate?: Date;
       notes?: string;
     }
   ): Promise<ILeaseDocument | null> {
-    this.log.info(`Terminating lease ${leaseId} for client ${cuid}`);
-    throw new Error('terminateLease not yet implemented');
+    try {
+      this.log.info(`Terminating lease ${leaseId} for client ${cuid}`);
+
+      const updateData: any = {
+        status: LeaseStatus.TERMINATED,
+        'duration.terminationDate': terminationData.terminationDate,
+        terminationReason: terminationData.terminationReason,
+      };
+
+      if (terminationData.moveOutDate) {
+        updateData['duration.moveOutDate'] = terminationData.moveOutDate;
+      }
+
+      if (terminationData.notes) {
+        updateData.internalNotes = terminationData.notes;
+      }
+
+      return await this.update(
+        { _id: leaseId, cuid, deletedAt: null },
+        { $set: updateData },
+        { new: true }
+      );
+    } catch (error: any) {
+      this.log.error('Error terminating lease:', error);
+      throw error;
+    }
   }
 
   async getLeaseStats(cuid: string, filters?: FilterQuery<ILeaseDocument>): Promise<ILeaseStats> {
-    this.log.info(`Getting lease stats for client ${cuid}`, { filters });
-    throw new Error('getLeaseStats not yet implemented');
+    try {
+      this.log.info(`Getting lease stats for client ${cuid}`, { filters });
+
+      const baseQuery: FilterQuery<ILeaseDocument> = { cuid, deletedAt: null, ...filters };
+
+      const today = new Date();
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(today.getDate() + 30);
+      const sixtyDaysFromNow = new Date();
+      sixtyDaysFromNow.setDate(today.getDate() + 60);
+      const ninetyDaysFromNow = new Date();
+      ninetyDaysFromNow.setDate(today.getDate() + 90);
+
+      const [
+        totalLeases,
+        leasesByStatus,
+        avgDuration,
+        totalRent,
+        expiring30,
+        expiring60,
+        expiring90,
+        totalUnits,
+        occupiedUnits,
+      ] = await Promise.all([
+        this.countDocuments(baseQuery),
+        this.aggregate([{ $match: baseQuery }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+        this.aggregate([
+          { $match: { ...baseQuery, status: LeaseStatus.ACTIVE } },
+          {
+            $project: {
+              durationMs: {
+                $subtract: ['$duration.endDate', '$duration.startDate'],
+              },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              avgDurationMs: { $avg: '$durationMs' },
+            },
+          },
+        ]),
+        this.aggregate([
+          { $match: { ...baseQuery, status: LeaseStatus.ACTIVE } },
+          {
+            $group: {
+              _id: null,
+              totalRent: { $sum: '$fees.monthlyRent' },
+            },
+          },
+        ]),
+        this.countDocuments({
+          ...baseQuery,
+          status: LeaseStatus.ACTIVE,
+          'duration.endDate': { $gte: today, $lte: thirtyDaysFromNow },
+        }),
+        this.countDocuments({
+          ...baseQuery,
+          status: LeaseStatus.ACTIVE,
+          'duration.endDate': { $gte: today, $lte: sixtyDaysFromNow },
+        }),
+        this.countDocuments({
+          ...baseQuery,
+          status: LeaseStatus.ACTIVE,
+          'duration.endDate': { $gte: today, $lte: ninetyDaysFromNow },
+        }),
+        this.countDocuments({ ...baseQuery, 'property.unitId': { $exists: true } }),
+        this.countDocuments({
+          ...baseQuery,
+          status: LeaseStatus.ACTIVE,
+          'property.unitId': { $exists: true },
+        }),
+      ]);
+
+      const statusMap: any = {
+        draft: 0,
+        pending_signature: 0,
+        active: 0,
+        expired: 0,
+        terminated: 0,
+        cancelled: 0,
+      };
+
+      leasesByStatus.forEach((item: any) => {
+        statusMap[item._id] = item.count;
+      });
+
+      const averageLeaseDuration =
+        avgDuration.length > 0
+          ? (avgDuration[0] as any).avgDurationMs / (1000 * 60 * 60 * 24 * 30)
+          : 0;
+
+      const totalMonthlyRent = totalRent.length > 0 ? (totalRent[0] as any).totalRent : 0;
+
+      const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
+
+      return {
+        totalLeases,
+        leasesByStatus: statusMap,
+        averageLeaseDuration: Math.round(averageLeaseDuration),
+        totalMonthlyRent,
+        expiringIn30Days: expiring30,
+        expiringIn60Days: expiring60,
+        expiringIn90Days: expiring90,
+        occupancyRate: Math.round(occupancyRate * 100) / 100,
+      };
+    } catch (error: any) {
+      this.log.error('Error getting lease stats:', error);
+      throw error;
+    }
   }
 
   async getRentRollData(cuid: string, propertyId?: string): Promise<IRentRollItem[]> {
-    this.log.info(`Getting rent roll data for client ${cuid}`, { propertyId });
-    throw new Error('getRentRollData not yet implemented');
+    try {
+      this.log.info(`Getting rent roll data for client ${cuid}`, { propertyId });
+
+      const matchQuery: FilterQuery<ILeaseDocument> = {
+        cuid,
+        deletedAt: null,
+        status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
+      };
+
+      if (propertyId) {
+        matchQuery['property.id'] = propertyId;
+      }
+
+      const rentRoll = await this.aggregate([
+        { $match: matchQuery },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'tenantId',
+            foreignField: '_id',
+            as: 'tenant',
+          },
+        },
+        { $unwind: '$tenant' },
+        {
+          $lookup: {
+            from: 'properties',
+            localField: 'property.id',
+            foreignField: '_id',
+            as: 'propertyDetails',
+          },
+        },
+        { $unwind: '$propertyDetails' },
+        {
+          $lookup: {
+            from: 'propertyunits',
+            localField: 'property.unitId',
+            foreignField: '_id',
+            as: 'unitDetails',
+          },
+        },
+        {
+          $addFields: {
+            unitNumber: {
+              $cond: {
+                if: { $gt: [{ $size: '$unitDetails' }, 0] },
+                then: { $arrayElemAt: ['$unitDetails.unitNumber', 0] },
+                else: null,
+              },
+            },
+            daysUntilExpiry: {
+              $cond: {
+                if: { $ne: ['$duration.endDate', null] },
+                then: {
+                  $divide: [{ $subtract: ['$duration.endDate', new Date()] }, 1000 * 60 * 60 * 24],
+                },
+                else: null,
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            leaseId: '$_id',
+            luid: 1,
+            leaseNumber: 1,
+            status: 1,
+            tenantName: {
+              $concat: ['$tenant.firstName', ' ', '$tenant.lastName'],
+            },
+            tenantEmail: '$tenant.email',
+            propertyName: '$propertyDetails.name',
+            propertyAddress: '$property.address',
+            unitNumber: 1,
+            monthlyRent: '$fees.monthlyRent',
+            securityDeposit: '$fees.securityDeposit',
+            startDate: '$duration.startDate',
+            endDate: '$duration.endDate',
+            daysUntilExpiry: { $ceil: '$daysUntilExpiry' },
+          },
+        },
+        { $sort: { 'propertyDetails.name': 1, unitNumber: 1 } },
+      ]);
+
+      return rentRoll as unknown as IRentRollItem[];
+    } catch (error: any) {
+      this.log.error('Error getting rent roll data:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update lease with uploaded document information
+   */
+  async updateLeaseDocuments(
+    leaseId: string,
+    uploadResults: UploadResult[],
+    userId: string
+  ): Promise<ILeaseDocument | null> {
+    try {
+      if (!leaseId || !uploadResults.length) {
+        throw new Error('Lease ID and upload results are required');
+      }
+
+      const lease = await this.findFirst({ luid: leaseId, deletedAt: null });
+      if (!lease) {
+        throw new Error('Lease not found');
+      }
+
+      // Process lease document uploads
+      const processedDocuments = uploadResults.map((upload) => {
+        // Derive mimeType from filename extension
+        const ext = upload.filename.split('.').pop()?.toLowerCase();
+        let mimeType = 'application/pdf'; // default
+        if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+        else if (ext === 'png') mimeType = 'image/png';
+        else if (ext === 'doc') mimeType = 'application/msword';
+        else if (ext === 'docx')
+          mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+        return {
+          documentType: (upload as any).documentType || 'lease_agreement',
+          filename: upload.filename,
+          url: upload.url,
+          key: upload.key,
+          mimeType,
+          size: upload.size,
+          uploadedBy: new Types.ObjectId((upload as any).actorId || userId),
+          uploadedAt: new Date(),
+        };
+      });
+
+      const updateOperation: any = {
+        $push: {
+          leaseDocument: { $each: processedDocuments },
+        },
+        $set: {
+          lastModifiedBy: [
+            {
+              userId: new Types.ObjectId(userId),
+              timestamp: new Date(),
+            },
+          ],
+        },
+      };
+
+      this.log.info('Updating lease documents', {
+        leaseId,
+        documentCount: processedDocuments.length,
+      });
+
+      return await this.update({ luid: leaseId, deletedAt: null }, updateOperation);
+    } catch (error: any) {
+      this.log.error('Error updating lease documents:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update lease document status (active, failed, deleted)
+   */
+  async updateLeaseDocumentStatus(
+    leaseId: string,
+    status: 'active' | 'failed' | 'deleted',
+    errorMessage?: string
+  ): Promise<ILeaseDocument | null> {
+    try {
+      const updateData: any = {
+        'leaseDocument.$[].status': status,
+      };
+
+      if (errorMessage) {
+        updateData['leaseDocument.$[].error'] = errorMessage;
+      }
+
+      this.log.info('Updating lease document status', {
+        leaseId,
+        status,
+        hasError: !!errorMessage,
+      });
+
+      return await this.update({ luid: leaseId, deletedAt: null }, { $set: updateData });
+    } catch (error: any) {
+      this.log.error('Error updating lease document status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get tenant information for a lease (handles both invitation and user)
+   */
+  async getTenantInfo(lease: ILeaseDocument): Promise<{
+    type: 'invitation' | 'user';
+    email: string;
+    name: string;
+    isActive: boolean;
+    data: any;
+  }> {
+    try {
+      if (lease.useInvitationIdAsTenantId) {
+        const InvitationModel = (await import('@models/invitation/invitation.model')).default;
+        const invitation = await InvitationModel.findById(lease.tenantId);
+
+        return {
+          type: 'invitation',
+          email: invitation?.inviteeEmail || '',
+          name: invitation?.inviteeFullName || '',
+          isActive: false,
+          data: invitation,
+        };
+      } else {
+        const UserModel = (await import('@models/user/user.model')).default;
+        const user = await UserModel.findById(lease.tenantId).populate('profile');
+
+        return {
+          type: 'user',
+          email: user?.email || '',
+          name: (user as any)?.profile?.fullname || user?.email || '',
+          isActive: user?.isActive || false,
+          data: user,
+        };
+      }
+    } catch (error: any) {
+      this.log.error('Error getting tenant info:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get leases pending tenant acceptance (using invitation as temporary tenant)
+   */
+  async getLeasesPendingTenantAcceptance(cuid: string): Promise<ILeaseDocument[]> {
+    try {
+      const result = await this.list(
+        {
+          cuid,
+          useInvitationIdAsTenantId: true,
+          deletedAt: null,
+        },
+        {
+          sort: { createdAt: -1 },
+        }
+      );
+      return result.items;
+    } catch (error: any) {
+      this.log.error('Error getting leases pending tenant acceptance:', error);
+      throw error;
+    }
   }
 }

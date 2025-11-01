@@ -85,7 +85,7 @@ export class UserController {
 
     const paginationOpts = {
       page: page ? parseInt(page as string, 10) : 1,
-      limit: limit ? parseInt(limit as string, 10) : 10,
+      limit: limit ? parseInt(page as string, 10) : 10,
       sortBy: sortBy as string | undefined,
       sort: sort as 'asc' | 'desc' | undefined,
       skip:
@@ -98,6 +98,14 @@ export class UserController {
       filterOptions,
       paginationOpts
     );
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getAvailableTenantsForLease = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+
+    const result = await this.userService.getAvailableTenantsForLease(cuid as string);
 
     res.status(httpStatusCodes.OK).json(result);
   };

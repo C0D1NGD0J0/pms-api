@@ -8,6 +8,28 @@ import {
   PropertyUnitTypeEnum,
 } from '@interfaces/propertyUnit.interface';
 
+// Unit Owner Schema - for condo ownership tracking
+const UnitOwnerSchema = new Schema(
+  {
+    name: { type: String, trim: true },
+    email: { type: String, trim: true, lowercase: true },
+    phone: { type: String, trim: true },
+    notes: { type: String, trim: true, maxlength: 500 },
+  },
+  { _id: false }
+);
+
+// Unit Authorization Schema - for unit-level management authorization
+const UnitAuthorizationSchema = new Schema(
+  {
+    isActive: { type: Boolean, default: true },
+    documentUrl: { type: String, trim: true },
+    expiresAt: { type: Date },
+    notes: { type: String, trim: true, maxlength: 500 },
+  },
+  { _id: false }
+);
+
 const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
   {
     puid: {
@@ -179,6 +201,14 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
       default: null,
       index: true,
     },
+    unitOwner: {
+      type: UnitOwnerSchema,
+      select: false,
+    },
+    unitAuthorization: {
+      type: UnitAuthorizationSchema,
+      select: false,
+    },
   },
   {
     timestamps: true,
@@ -294,6 +324,79 @@ PropertyUnitSchema.methods.softDelete = async function (userId: string) {
   this.deletedAt = new Date();
   this.lastModifiedBy = userId;
   return this;
+};
+
+/**
+ * Check if unit management is authorized
+ * If unit has its own authorization, check that first
+ * Otherwise, this should be checked at property level
+ */
+PropertyUnitSchema.methods.isManagementAuthorized = function (
+  this: IPropertyUnitDocument
+): boolean {
+  // If no unit-specific authorization, delegate to property level
+  if (!this.unitAuthorization) {
+    return true; // Property-level check will handle this
+  }
+
+  // Check if active
+  if (!this.unitAuthorization.isActive) {
+    return false;
+  }
+
+  // Check expiry
+  if (this.unitAuthorization.expiresAt && new Date(this.unitAuthorization.expiresAt) < new Date()) {
+    return false;
+  }
+
+  return true;
+};
+
+/**
+ * Get unit authorization status with detailed message
+ */
+PropertyUnitSchema.methods.getAuthorizationStatus = function (this: IPropertyUnitDocument): {
+  isAuthorized: boolean;
+  reason?: string;
+  daysUntilExpiry?: number;
+} {
+  // No unit-specific authorization
+  if (!this.unitAuthorization) {
+    return { isAuthorized: true }; // Defer to property-level authorization
+  }
+
+  // Inactive authorization
+  if (!this.unitAuthorization.isActive) {
+    return {
+      isAuthorized: false,
+      reason: 'Unit management authorization is inactive.',
+    };
+  }
+
+  // Check expiry
+  if (this.unitAuthorization.expiresAt) {
+    const expiryDate = new Date(this.unitAuthorization.expiresAt);
+    const today = new Date();
+
+    if (expiryDate < today) {
+      return {
+        isAuthorized: false,
+        reason: `Unit management authorization expired on ${expiryDate.toLocaleDateString()}.`,
+      };
+    }
+
+    // Calculate days until expiry
+    const daysUntilExpiry = Math.ceil(
+      (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    return {
+      isAuthorized: true,
+      daysUntilExpiry,
+    };
+  }
+
+  return { isAuthorized: true };
 };
 
 const PropertyUnitModel = model<IPropertyUnitDocument>('PropertyUnit', PropertyUnitSchema);

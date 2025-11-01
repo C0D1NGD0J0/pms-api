@@ -32,6 +32,131 @@ export enum LeaseType {
 }
 
 /**
+ * @deprecated Use ILeasePreviewRequest instead
+ * Legacy interface - keeping for backward compatibility
+ */
+export interface LeasePreviewData {
+  // Additional Provisions
+  petPolicy?: {
+    allowed: boolean;
+    maxPets?: number;
+    types?: string | string[];
+    deposit?: number;
+  };
+  renewalOptions?: {
+    autoRenew: boolean;
+    renewalTermMonths?: number;
+    noticePeriodDays?: number;
+  };
+  coTenants?: Array<{
+    name: string;
+    email: string;
+    phone: string;
+    occupation?: string;
+  }>;
+  legalTerms?: {
+    html?: string;
+    text?: string;
+  };
+
+  utilitiesIncluded?: string | string[];
+  requiresNotarization?: boolean;
+  landlordSignatureUrl?: string;
+  tenantSignatureUrl?: string;
+
+  startDate?: string | Date;
+  landlordAddress?: string;
+  propertyAddress?: string;
+  securityDeposit?: number;
+  endDate?: string | Date;
+  landlordEmail?: string;
+  landlordPhone?: string;
+
+  signingMethod?: string;
+  propertyName?: string;
+  propertyType?: string;
+  jurisdiction?: string;
+  landlordName?: string;
+  leaseNumber?: string;
+  currentDate?: string;
+  tenantEmail?: string;
+
+  tenantPhone?: string;
+  monthlyRent?: number;
+  unitNumber?: string;
+  signedDate?: string;
+
+  // Tenant Information
+  tenantName?: string;
+  rentDueDay?: number;
+  // Lease Terms
+  leaseType?: string;
+  currency?: string;
+}
+
+/**
+ * Lease preview request data from frontend
+ * Used to generate lease document preview before actual lease creation
+ */
+export interface ILeasePreviewRequest {
+  // Template
+  templateType:
+    | 'residential-single-family'
+    | 'residential-apartment'
+    | 'commercial-office'
+    | 'commercial-retail'
+    | 'short-term-rental';
+
+  renewalOptions?: {
+    autoRenew: boolean;
+    renewalTermMonths?: number;
+    noticePeriodDays?: number;
+  };
+  // Optional Provisions
+  coTenants?: Array<{
+    name: string;
+    email: string;
+    phone: string;
+    occupation?: string;
+  }>;
+  petPolicy?: {
+    allowed: boolean;
+    maxPets?: number;
+    types?: string[];
+    deposit?: number;
+  };
+
+  // Signing
+  signingMethod: SigningMethod | string;
+  // Additional Terms
+  utilitiesIncluded?: string[];
+  startDate: Date | string;
+
+  propertyAddress: string;
+  securityDeposit: number;
+  endDate: Date | string;
+
+  // Lease Duration
+  leaseType: LeaseType;
+  unitNumber?: string;
+  tenantEmail: string;
+  tenantPhone: string;
+
+  // Financial Terms
+  monthlyRent: number;
+
+  // Property Information
+  propertyId: string;
+
+  // Tenant Information (placeholders for invited tenants)
+  tenantName: string;
+
+  rentDueDay: number;
+
+  currency: string;
+}
+
+/**
  * Main Lease Interface
  * Core lease data structure
  */
@@ -47,13 +172,18 @@ export interface ILease {
     | 'heating'
     | 'cooling'
   )[];
+  pendingChanges?: IPendingLeaseChanges | null;
+  approvalDetails?: ILeaseApprovalEntry[];
   signingMethod: SigningMethod | string;
+  approvalStatus?: LeaseApprovalStatus;
   leaseDocument?: ILeaseDocumentItem[];
+  useInvitationIdAsTenantId?: boolean;
   createdBy: Types.ObjectId | string;
   lastModifiedBy?: ILastModifiedBy[];
   tenantId: Types.ObjectId | string;
   renewalOptions?: IRenewalOptions;
   signatures?: ILeaseSignature[];
+  metadata?: Record<string, any>; // Store enriched data for lease generation
   eSignature?: ILeaseESignature;
   terminationReason?: string;
   property: ILeaseProperty;
@@ -76,30 +206,44 @@ export interface ILease {
  * Used for creating/updating leases via API
  */
 export interface ILeaseFormData {
-  lateFeeType?: 'fixed' | 'percentage';
-  acceptedPaymentMethods?: string[];
+  fees: {
+    monthlyRent: number;
+    securityDeposit: number;
+    rentDueDay: number;
+    currency?: string;
+    lateFeeAmount?: number;
+    lateFeeDays?: number;
+    lateFeeType?: 'fixed' | 'percentage';
+    lateFeePercentage?: number;
+    acceptedPaymentMethod?: string;
+  };
+  tenantInfo: {
+    id: string | null; // if existing tenant
+    email?: string; // required when inviting new tenant
+    firstName?: string; // required when inviting new tenant
+    lastName?: string; // required when inviting new tenant
+  };
+  duration: {
+    startDate: Date | string;
+    endDate: Date | string;
+    moveInDate?: Date | string;
+  };
+  property: {
+    id: string;
+    unitId?: string;
+    address: string;
+  };
+  leaseDocument?: ILeaseDocumentItem[];
   renewalOptions?: IRenewalOptions;
+  signingMethod?: SigningMethod;
   utilitiesIncluded?: string[];
-  moveInDate?: Date | string;
-  lateFeePercentage?: number;
-  startDate: Date | string;
   legalTerms?: ILegalTerms;
-  propertyAddress: string;
-  securityDeposit: number;
   coTenants?: ICoTenant[];
-  endDate: Date | string;
-  lateFeeAmount?: number;
   petPolicy?: IPetPolicy;
   internalNotes?: string;
-  lateFeeDays?: number;
+  templateType?: string;
   leaseNumber: string;
-  monthlyRent: number;
-  propertyId: string;
-  rentDueDay: number;
-  currency?: string;
-  tenantId: string;
   type: LeaseType;
-  unitId?: string;
 }
 
 /**
@@ -107,6 +251,7 @@ export interface ILeaseFormData {
  * Used for querying leases
  */
 export interface ILeaseFilterOptions {
+  approvalStatus?: LeaseApprovalStatus | LeaseApprovalStatus[];
   signingMethod?: SigningMethod | string;
   status?: LeaseStatus | LeaseStatus[];
   propertyId?: Types.ObjectId | string;
@@ -123,6 +268,52 @@ export interface ILeaseFilterOptions {
   minRent?: number;
   maxRent?: number;
   search?: string; // For lease number or tenant name search
+}
+
+/**
+ * Property Reference Interface
+ * Links lease to property and unit
+ * Includes essential property information for lease documents
+ */
+export interface ILeaseProperty {
+  specifications?: {
+    totalArea?: number; // Square footage
+    bedrooms?: number;
+    bathrooms?: number;
+    parkingSpaces?: number;
+    floors?: number;
+  };
+  // Property information for lease templates
+  propertyType?: 'apartment' | 'house' | 'condominium' | 'townhouse' | 'commercial' | 'industrial';
+  unitId?: Types.ObjectId | string;
+  id: Types.ObjectId | string;
+  unitNumber?: string; // Unit/Suite number from property unit
+  address: string;
+  name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
+}
+
+/**
+ * Enriched lease preview data with landlord/management info
+ * Returned from backend after processing preview request
+ */
+export interface ILeasePreviewResponse extends ILeasePreviewRequest {
+  managementCompanyAddress?: string;
+  managementCompanyEmail?: string;
+  managementCompanyPhone?: string;
+  // Management Company (if applicable)
+  managementCompanyName?: string;
+  isExternalOwner: boolean;
+
+  landlordAddress: string;
+  landlordEmail: string;
+  landlordPhone: string;
+  // Additional computed fields
+  propertyName?: string;
+
+  propertyType?: string;
+  jurisdiction?: string;
+  // Landlord Information (added by backend based on property ownership)
+  landlordName: string;
 }
 
 /**
@@ -153,14 +344,13 @@ export interface ILeaseDocument extends Document, ILease {
  * All financial terms of the lease
  */
 export interface ILeaseFees {
-  acceptedPaymentMethods?: (
+  acceptedPaymentMethod?:
     | 'bank_transfer'
     | 'check'
     | 'cash'
     | 'credit_card'
     | 'debit_card'
-    | 'mobile_payment'
-  )[];
+    | 'mobile_payment';
   lateFeeType?: 'fixed' | 'percentage';
   lateFeePercentage?: number;
   securityDeposit: number;
@@ -291,6 +481,17 @@ export interface ILeaseESignature {
 }
 
 /**
+ * Lease Approval Entry Interface
+ * Tracks individual approval actions
+ */
+export interface ILeaseApprovalEntry {
+  action: 'created' | 'submitted' | 'approved' | 'rejected' | 'updated' | 'overridden';
+  actor: Types.ObjectId | string;
+  timestamp: Date;
+  notes?: string;
+}
+
+/**
  * Last Modified By Interface
  * Audit trail entry
  */
@@ -325,6 +526,17 @@ export interface ILeaseQueryOptions {
 }
 
 /**
+ * Pending Lease Changes Interface
+ * Stores lease changes awaiting approval
+ */
+export interface IPendingLeaseChanges {
+  updatedBy: Types.ObjectId | string;
+  displayName?: string;
+  [key: string]: any;
+  updatedAt: Date;
+}
+
+/**
  * Duration Interface
  * All date-related information
  */
@@ -346,16 +558,6 @@ export interface IPetPolicy {
   deposit?: number;
   types?: string[];
   maxPets?: number;
-}
-
-/**
- * Property Reference Interface
- * Links lease to property and unit
- */
-export interface ILeaseProperty {
-  unitId?: Types.ObjectId | string;
-  id: Types.ObjectId | string;
-  address: string;
 }
 
 /**
@@ -398,3 +600,9 @@ export interface ILegalTerms {
   html?: string;
   url?: string;
 }
+
+/**
+ * Lease Approval Status Type
+ * Tracks the approval state of a lease
+ */
+export type LeaseApprovalStatus = 'approved' | 'rejected' | 'pending' | 'draft';

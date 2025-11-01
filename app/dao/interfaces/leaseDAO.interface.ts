@@ -1,8 +1,13 @@
 import { ClientSession, FilterQuery } from 'mongoose';
-import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
+import {
+  ListResultWithPagination,
+  IPaginationQuery,
+  UploadResult,
+} from '@interfaces/utils.interface';
 import {
   ILeaseFilterOptions,
   ILeaseDocument,
+  ILeaseFormData,
   IRentRollItem,
   ILeaseStats,
   LeaseStatus,
@@ -42,11 +47,37 @@ export interface ILeaseDAO {
   checkOverlappingLeases(
     cuid: string,
     propertyId: string,
-    unitId: string,
+    unitId: string | undefined,
     startDate: Date,
     endDate: Date,
     excludeLeaseId?: string
   ): Promise<ILeaseDocument[]>;
+
+  /**
+   * Get tenant information for a lease (handles both invitation and user)
+   * @param lease - Lease document
+   * @returns Tenant information object with type, email, name, and data
+   */
+  getTenantInfo(lease: ILeaseDocument): Promise<{
+    type: 'invitation' | 'user';
+    email: string;
+    name: string;
+    isActive: boolean;
+    data: any;
+  }>;
+
+  /**
+   * Update lease document status (active, failed, deleted)
+   * @param leaseId - Lease ID (luid)
+   * @param status - New status for documents
+   * @param errorMessage - Optional error message if status is 'failed'
+   * @returns Updated lease document or null
+   */
+  updateLeaseDocumentStatus(
+    leaseId: string,
+    status: 'active' | 'failed' | 'deleted',
+    errorMessage?: string
+  ): Promise<ILeaseDocument | null>;
 
   /**
    * Get filtered leases with pagination
@@ -62,17 +93,17 @@ export interface ILeaseDAO {
   ): ListResultWithPagination<ILeaseDocument[]>;
 
   /**
-   * Create a new lease
-   * @param cuid - Client ID
-   * @param data - Lease data
-   * @param session - Optional MongoDB session for transactions
-   * @returns Created lease document
+   * Update lease with uploaded document information
+   * @param leaseId - Lease ID (luid)
+   * @param uploadResults - Array of upload results from S3
+   * @param userId - User ID who uploaded the documents
+   * @returns Updated lease document or null
    */
-  createLease(
-    cuid: string,
-    data: Partial<ILeaseDocument>,
-    session?: ClientSession
-  ): Promise<ILeaseDocument>;
+  updateLeaseDocuments(
+    leaseId: string,
+    uploadResults: UploadResult[],
+    userId: string
+  ): Promise<ILeaseDocument | null>;
 
   /**
    * Update lease fields
@@ -86,6 +117,15 @@ export interface ILeaseDAO {
     leaseId: string,
     data: Partial<ILeaseDocument>
   ): Promise<ILeaseDocument | null>;
+
+  /**
+   * Create a new lease
+   * @param cuid - Client ID
+   * @param data - Lease form data (should include createdBy field)
+   * @param session - Optional MongoDB session for transactions
+   * @returns Created lease document
+   */
+  createLease(cuid: string, data: ILeaseFormData, session?: ClientSession): Promise<ILeaseDocument>;
 
   /**
    * Get lease by ID with client isolation
@@ -144,6 +184,13 @@ export interface ILeaseDAO {
    * @returns Array of rent roll items with joined property/unit/tenant data
    */
   getRentRollData(cuid: string, propertyId?: string): Promise<IRentRollItem[]>;
+
+  /**
+   * Get leases pending tenant acceptance (using invitation as temporary tenant)
+   * @param cuid - Client ID
+   * @returns Array of leases awaiting tenant acceptance
+   */
+  getLeasesPendingTenantAcceptance(cuid: string): Promise<ILeaseDocument[]>;
 
   /**
    * Soft delete a lease

@@ -85,6 +85,12 @@ export class DiskStorage {
       maxSize: 5 * 1024 * 1024, // 5MB
       fileTypes: ['jpeg', 'jpg', 'png'],
     },
+    {
+      name: 'leaseDocument[*].file',
+      maxCount: 10,
+      maxSize: 20 * 1024 * 1024,
+      fileTypes: ['pdf', 'doc', 'docx'],
+    },
   ];
 
   constructor() {

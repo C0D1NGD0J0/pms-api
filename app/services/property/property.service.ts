@@ -25,7 +25,7 @@ import {
   IPaginationQuery,
   IRequestContext,
   ResourceContext,
-  PaginateResult,
+  IPaginateResult,
   UploadResult,
 } from '@interfaces/utils.interface';
 import {
@@ -488,7 +488,7 @@ export class PropertyService {
   ): Promise<
     ISuccessReturnData<{
       items: IPropertyDocument[];
-      pagination: PaginateResult | undefined;
+      pagination: IPaginateResult | undefined;
     }>
   > {
     if (!cuid) {
@@ -945,7 +945,7 @@ export class PropertyService {
     cuid: string,
     currentuser: ICurrentUser,
     pagination: IPaginationQuery
-  ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: PaginateResult }>> {
+  ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: IPaginateResult }>> {
     const userRole = currentuser.client.role;
     if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
@@ -1337,7 +1337,7 @@ export class PropertyService {
       approvalStatus?: 'pending' | 'approved' | 'rejected';
       pagination: IPaginationQuery;
     }
-  ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: PaginateResult }>> {
+  ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: IPaginateResult }>> {
     const filter: FilterQuery<IPropertyDocument> = {
       cuid,
       deletedAt: null,
@@ -1868,7 +1868,7 @@ export class PropertyService {
     cuid: string,
     currentuser: ICurrentUser,
     filters: IAssignableUsersFilter
-  ): Promise<ISuccessReturnData<{ items: IAssignableUser[]; pagination?: PaginateResult }>> {
+  ): Promise<ISuccessReturnData<{ items: IAssignableUser[]; pagination?: IPaginateResult }>> {
     try {
       this.log.info('Fetching assignable users for client', { cuid, filters });
 
@@ -2010,6 +2010,226 @@ export class PropertyService {
       this.log.error('Failed to get assignable users', {
         cuid,
         filters,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get lease-able properties (available properties only)
+   * Optionally fetch available units for properties that support units
+   * @param cuid - Client unique identifier
+   * @param currentuser - Current user making the request
+   * @param fetchUnits - Whether to fetch available units for properties
+   * @returns Properties with optional unit information
+   */
+  async getLeaseableProperties(
+    cuid: string,
+    currentuser: ICurrentUser,
+    fetchUnits: boolean = false
+  ): Promise<
+    ISuccessReturnData<{
+      items: Array<{
+        id: string;
+        name: string;
+        address: string;
+        propertyType: string;
+        financialInfo?: {
+          monthlyRent?: number;
+          securityDeposit?: number;
+          currency?: string;
+        };
+        units?: Array<{
+          id: string;
+          unitNumber: string;
+          status: string;
+          financialInfo?: {
+            monthlyRent?: number;
+            securityDeposit?: number;
+            currency?: string;
+          };
+        }>;
+      }>;
+      metadata: {
+        totalProperties: number;
+        filteredCount: number;
+        filteredProperties?: Array<{
+          id: string;
+          name: string;
+          propertyType: string;
+          reason: string;
+        }>;
+      } | null;
+    }>
+  > {
+    try {
+      if (!cuid) {
+        throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
+      }
+
+      const cachedResult = await this.propertyCache.getLeaseableProperties(cuid, fetchUnits);
+      if (cachedResult.success && cachedResult.data) {
+        this.log.info('Returning leaseable properties from cache', { cuid, fetchUnits });
+        return {
+          success: true,
+          data: {
+            items: cachedResult.data,
+            metadata: {
+              totalProperties: cachedResult.data.length,
+              filteredCount: 0,
+            },
+          },
+          message: t('property.success.propertiesRetrieved'),
+        };
+      }
+
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        this.log.error(`Client with cuid ${cuid} not found`);
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      const filter: FilterQuery<IPropertyDocument> = {
+        cuid,
+        deletedAt: null,
+        status: 'available',
+        approvalStatus: PropertyApprovalStatusEnum.APPROVED,
+      };
+
+      const properties = await this.propertyDAO.list(filter, {
+        limit: 1000,
+        sort: { name: 1 },
+        projection: '_id name address propertyType fees',
+      });
+
+      if (!properties.items.length) {
+        return {
+          success: true,
+          data: { items: [], metadata: null },
+          message: t('property.success.propertiesRetrieved'),
+        };
+      }
+
+      // Map properties to simplified format and filter multi-unit properties without units
+      const leaseableProperties: any[] = [];
+      const filteredProperties: Array<{
+        id: string;
+        name: string;
+        propertyType: string;
+        reason: string;
+      }> = [];
+
+      for (const property of properties.items) {
+        const propertyObj = property.toObject ? property.toObject() : property;
+        const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(propertyObj.propertyType);
+
+        // Check if multi-unit property has units
+        if (isMultiUnit) {
+          const unitsResult = await this.propertyUnitDAO.findAvailableUnits(
+            propertyObj._id.toString()
+          );
+
+          // Filter out multi-unit properties with no units
+          if (!unitsResult.items || unitsResult.items.length === 0) {
+            filteredProperties.push({
+              id: propertyObj._id.toString(),
+              name: propertyObj.name,
+              propertyType: propertyObj.propertyType,
+              reason: 'requires_units',
+            });
+            this.log.debug(
+              `Filtered out property ${propertyObj.name} - multi-unit property with no units`
+            );
+            continue; // Skip this property
+          }
+        }
+
+        // Build leaseable property object
+        const result: any = {
+          id: propertyObj._id.toString(),
+          name: propertyObj.name,
+          address: propertyObj.address?.fullAddress || '',
+          propertyType: propertyObj.propertyType,
+        };
+
+        // Add financial info if available
+        if (propertyObj.fees) {
+          result.financialInfo = {
+            monthlyRent: propertyObj.fees.monthlyRent,
+            securityDeposit: propertyObj.fees.securityDeposit,
+            currency: propertyObj.fees.currency || 'USD',
+          };
+        }
+
+        // Fetch and attach units if requested
+        if (fetchUnits && isMultiUnit) {
+          const unitsResult = await this.propertyUnitDAO.findAvailableUnits(
+            propertyObj._id.toString()
+          );
+
+          if (unitsResult.items && unitsResult.items.length > 0) {
+            result.units = unitsResult.items.map((unit) => {
+              const unitObj = unit.toObject ? unit.toObject() : unit;
+              const unitData: any = {
+                id: unitObj._id.toString(),
+                unitNumber: unitObj.unitNumber,
+                status: unitObj.status,
+              };
+
+              // Add unit financial info if available (units can override property fees)
+              if (unitObj.fees) {
+                unitData.financialInfo = {
+                  monthlyRent: unitObj.fees.monthlyRent,
+                  securityDeposit: unitObj.fees.securityDeposit,
+                  currency: unitObj.fees.currency || propertyObj.fees?.currency || 'USD',
+                };
+              } else if (propertyObj.fees) {
+                // Use property fees as fallback
+                unitData.financialInfo = {
+                  monthlyRent: propertyObj.fees.monthlyRent,
+                  securityDeposit: propertyObj.fees.securityDeposit,
+                  currency: propertyObj.fees.currency || 'USD',
+                };
+              }
+
+              return unitData;
+            });
+          }
+        }
+
+        leaseableProperties.push(result);
+      }
+
+      // Cache the result (5 minutes TTL)
+      await this.propertyCache.cacheLeaseableProperties(cuid, fetchUnits, leaseableProperties);
+
+      this.log.info(
+        `Retrieved ${leaseableProperties.length} lease-able properties for client ${cuid}`,
+        {
+          fetchUnits,
+          totalUnits: leaseableProperties.reduce((sum, p) => sum + (p.units?.length || 0), 0),
+          filteredCount: filteredProperties.length,
+          cached: true,
+        }
+      );
+
+      return {
+        success: true,
+        data: {
+          items: leaseableProperties,
+          metadata: {
+            totalProperties: properties.items.length,
+            filteredCount: filteredProperties.length,
+            filteredProperties: filteredProperties.length > 0 ? filteredProperties : undefined,
+          },
+        },
+        message: t('property.success.propertiesRetrieved'),
+      };
+    } catch (error) {
+      this.log.error('Failed to get lease-able properties', {
+        cuid,
+        fetchUnits,
         error: error.message,
       });
       throw error;

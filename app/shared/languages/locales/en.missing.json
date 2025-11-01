@@ -63,5 +63,10 @@
     "errors": {
       "validationFailed": "lease.errors.validationFailed"
     }
+  },
+  "common": {
+    "errors": {
+      "invalidUserRole": "common.errors.invalidUserRole"
+    }
   }
 }

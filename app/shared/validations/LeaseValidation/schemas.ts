@@ -38,10 +38,10 @@ export const ESignatureStatusEnum = z.enum(['draft', 'sent', 'signed', 'declined
 
 // Nested Object Schemas
 export const LeaseFeesSchema = z.object({
-  monthlyRent: z.number().positive('Monthly rent must be a positive number'),
+  monthlyRent: z.coerce.number().positive('Monthly rent must be a positive number'),
   currency: z.string().length(3, 'Currency must be a 3-letter code').default('USD'),
-  rentDueDay: z.number().int().min(1, 'Rent due day must be between 1-31').max(31),
-  securityDeposit: z.number().min(0, 'Security deposit must be non-negative'),
+  rentDueDay: z.coerce.number().int().min(1, 'Rent due day must be between 1-31').max(31),
+  securityDeposit: z.coerce.number().min(0, 'Security deposit must be non-negative'),
   lateFeeAmount: z.number().min(0, 'Late fee amount must be non-negative').optional(),
   lateFeeDays: z.number().int().min(1, 'Late fee days must be at least 1').optional(),
   lateFeeType: z.enum(['fixed', 'percentage']).optional(),
@@ -193,19 +193,6 @@ export const CreateLeaseSchema = BaseLeaseSchemaObject.omit({ cuid: true })
     {
       message: 'Move-in date cannot be before start date',
       path: ['duration', 'moveInDate'],
-    }
-  )
-  .refine(
-    (data) => {
-      // If signingMethod is 'electronic', eSignature.provider is required
-      if (data.signingMethod === 'electronic') {
-        return data.eSignature?.provider !== undefined && data.eSignature.provider !== null;
-      }
-      return true;
-    },
-    {
-      message: 'E-signature provider is required when signing method is electronic',
-      path: ['eSignature', 'provider'],
     }
   );
 

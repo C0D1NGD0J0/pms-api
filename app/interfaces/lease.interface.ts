@@ -31,6 +31,10 @@ export enum LeaseType {
   FIXED_TERM = 'fixed_term',
 }
 
+/**
+ * @deprecated Use ILeasePreviewRequest instead
+ * Legacy interface - keeping for backward compatibility
+ */
 export interface LeasePreviewData {
   // Additional Provisions
   petPolicy?: {
@@ -88,6 +92,68 @@ export interface LeasePreviewData {
   // Lease Terms
   leaseType?: string;
   currency?: string;
+}
+
+/**
+ * Lease preview request data from frontend
+ * Used to generate lease document preview before actual lease creation
+ */
+export interface ILeasePreviewRequest {
+  // Template
+  templateType:
+    | 'residential-single-family'
+    | 'residential-apartment'
+    | 'commercial-office'
+    | 'commercial-retail'
+    | 'short-term-rental';
+
+  renewalOptions?: {
+    autoRenew: boolean;
+    renewalTermMonths?: number;
+    noticePeriodDays?: number;
+  };
+  // Optional Provisions
+  coTenants?: Array<{
+    name: string;
+    email: string;
+    phone: string;
+    occupation?: string;
+  }>;
+  petPolicy?: {
+    allowed: boolean;
+    maxPets?: number;
+    types?: string[];
+    deposit?: number;
+  };
+
+  // Signing
+  signingMethod: SigningMethod | string;
+  // Additional Terms
+  utilitiesIncluded?: string[];
+  startDate: Date | string;
+
+  propertyAddress: string;
+  securityDeposit: number;
+  endDate: Date | string;
+
+  // Lease Duration
+  leaseType: LeaseType;
+  unitNumber?: string;
+  tenantEmail: string;
+  tenantPhone: string;
+
+  // Financial Terms
+  monthlyRent: number;
+
+  // Property Information
+  propertyId: string;
+
+  // Tenant Information (placeholders for invited tenants)
+  tenantName: string;
+
+  rentDueDay: number;
+
+  currency: string;
 }
 
 /**
@@ -224,6 +290,30 @@ export interface ILeaseProperty {
   unitNumber?: string; // Unit/Suite number from property unit
   address: string;
   name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
+}
+
+/**
+ * Enriched lease preview data with landlord/management info
+ * Returned from backend after processing preview request
+ */
+export interface ILeasePreviewResponse extends ILeasePreviewRequest {
+  managementCompanyAddress?: string;
+  managementCompanyEmail?: string;
+  managementCompanyPhone?: string;
+  // Management Company (if applicable)
+  managementCompanyName?: string;
+  isExternalOwner: boolean;
+
+  landlordAddress: string;
+  landlordEmail: string;
+  landlordPhone: string;
+  // Additional computed fields
+  propertyName?: string;
+
+  propertyType?: string;
+  jurisdiction?: string;
+  // Landlord Information (added by backend based on property ownership)
+  landlordName: string;
 }
 
 /**

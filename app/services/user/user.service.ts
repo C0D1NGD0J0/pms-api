@@ -14,10 +14,12 @@ import { ISuccessReturnData, IRequestContext, IPaginateResult } from '@interface
 import {
   IUserPopulatedDocument,
   FilteredUserTableData,
+  ITenantFilterOptions,
   IUserDetailResponse,
   IEmployeeDetailInfo,
   IVendorDetailInfo,
   ITenantDetailInfo,
+  IPaginatedResult,
   IUserProperty,
   ICurrentUser,
   IUserStats,
@@ -1154,7 +1156,7 @@ export class UserService {
   async getAvailableTenantsForLease(cuid: string): Promise<
     ISuccessReturnData<
       Array<{
-        uid: string;
+        id: string;
         email: string;
         fullName: string;
         phoneNumber?: string;
@@ -1198,7 +1200,7 @@ export class UserService {
           const personalInfo = tenant.profile?.personalInfo || {};
 
           return {
-            uid: tenant.uid,
+            id: tenant._id,
             email: tenant.email,
             fullName:
               `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim() ||
@@ -1230,10 +1232,10 @@ export class UserService {
 
   async getTenantsByClient(
     cuid: string,
-    filters?: import('@interfaces/user.interface').ITenantFilterOptions,
+    filters?: ITenantFilterOptions,
     pagination?: IFindOptions,
     currentUser?: ICurrentUser
-  ): Promise<ISuccessReturnData<import('@interfaces/user.interface').IPaginatedResult<any[]>>> {
+  ): Promise<ISuccessReturnData<IPaginatedResult<any[]>>> {
     try {
       if (!cuid) {
         throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
@@ -1265,7 +1267,7 @@ export class UserService {
           const tenantInfo = tenant.profile?.tenantInfo || {};
 
           return {
-            uid: tenant.uid,
+            id: tenant.user,
             email: tenant.email,
             isActive: tenant.isActive,
             fullName: `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim(),

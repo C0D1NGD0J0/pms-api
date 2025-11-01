@@ -4,10 +4,10 @@ import { t } from '@shared/languages';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { IPropertyDocument, OwnershipType } from '@interfaces/index';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import { IPropertyDocument, IProfileWithUser, OwnershipType } from '@interfaces/index';
 import { ValidationRequestError, InvalidRequestError, BadRequestError } from '@shared/customErrors';
 import {
   UploadCompletedPayload,
@@ -21,19 +21,20 @@ import {
   AssetService,
 } from '@services/index';
 import {
-  ILeaseFilterOptions,
-  ILeaseDocument,
-  ILeaseFormData,
-  SigningMethod,
-  LeaseStatus,
-} from '@interfaces/lease.interface';
-import {
   PROPERTY_APPROVAL_ROLES,
   convertUserRoleToEnum,
   PROPERTY_STAFF_ROLES,
   createLogger,
   MoneyUtils,
 } from '@utils/index';
+import {
+  ILeasePreviewRequest,
+  ILeaseFilterOptions,
+  ILeaseDocument,
+  ILeaseFormData,
+  SigningMethod,
+  LeaseStatus,
+} from '@interfaces/lease.interface';
 import {
   ListResultWithPagination,
   IPromiseReturnedData,
@@ -236,6 +237,15 @@ export class LeaseService {
     }
     const landlordInfo = await this.buildLandlordInfo(cuid, data.property.id);
 
+    // Determine ownership context for template logic
+    const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
+    const hasUnitNumber = !!data.property.unitId;
+    const ownershipType = property.owner?.type || 'company_owned';
+
+    // If external_owner/self_owned AND has unit number, the landlord owns just the unit
+    const hasUnitOwner =
+      hasUnitNumber && (ownershipType === 'external_owner' || ownershipType === 'self_owned');
+
     const session = await this.leaseDAO.startSession();
     const result = await this.leaseDAO.withTransaction(session, async (session) => {
       const parsedLeaseData = {
@@ -259,7 +269,14 @@ export class LeaseService {
         approvalStatus,
         approvalDetails,
         useInvitationIdAsTenantId: tenantInfo.useInvitationIdAsTenantId,
-        metadata: landlordInfo, // Store landlord/management info for lease generation
+        metadata: {
+          ...landlordInfo,
+          hasUnitOwner,
+          isMultiUnit,
+          ownershipType,
+          propertyName: property.name,
+          propertyType: property.propertyType,
+        },
       };
 
       const lease = await this.leaseDAO.createLease(cuid, parsedLeaseData, session);
@@ -531,60 +548,78 @@ export class LeaseService {
       });
     }
 
-    // Handle external owner - property owner becomes landlord
-    if (
-      client.accountType.isCorporate &&
-      property.owner?.type === OwnershipType.EXTERNAL_OWNER &&
-      property.owner.name
-    ) {
-      return {
-        landlordName: property.owner.name,
-        landlordAddress: property.owner.notes || 'N/A',
-        landlordEmail: property.owner.email || 'N/A',
-        landlordPhone: property.owner.phone || 'N/A',
+    let managementInfo;
+    if (client.accountType.isCorporate && client.companyProfile) {
+      managementInfo = {
         managementCompanyName: client.companyProfile?.legalEntityName,
-        managementCompanyAddress: client.companyProfile?.companyAddress || 'N/A',
-        managementCompanyEmail: client.companyProfile?.companyEmail || 'N/A',
-        managementCompanyPhone: client.companyProfile?.companyPhone || 'N/A',
-        isExternalOwner: true,
+        managementCompanyAddress: client.companyProfile?.companyAddress,
+        managementCompanyEmail: client.companyProfile?.companyEmail,
+        managementCompanyPhone: client.companyProfile?.companyPhone,
       };
+
+      // Handle external owner - property owner becomes landlord
+      if (property.owner?.type === OwnershipType.EXTERNAL_OWNER && property.owner.name) {
+        return {
+          ...managementInfo,
+          landlordName: property.owner.name,
+          landlordAddress: property.owner.notes || 'N/A',
+          landlordEmail: property.owner.email || 'N/A',
+          landlordPhone: property.owner.phone || 'N/A',
+          isExternalOwner: true,
+        };
+      }
+
+      // Handle company owned - client is landlord
+      if (property.owner?.type === OwnershipType.COMPANY_OWNED) {
+        return {
+          landlordName: client.companyProfile?.legalEntityName || 'N/A',
+          landlordAddress: client.companyProfile?.companyAddress || 'N/A',
+          landlordEmail: client.companyProfile?.companyEmail || 'N/A',
+          landlordPhone: client.companyProfile?.companyPhone || 'N/A',
+          isExternalOwner: false,
+        };
+      }
     }
 
-    // Handle company owned - client is landlord
-    if (property.owner?.type === OwnershipType.COMPANY_OWNED) {
-      return {
-        landlordName: client.companyProfile?.legalEntityName || 'N/A',
-        landlordAddress: client.companyProfile?.companyAddress || 'N/A',
-        landlordEmail: client.companyProfile?.companyEmail || 'N/A',
-        landlordPhone: client.companyProfile?.companyPhone || 'N/A',
-        isExternalOwner: false,
-      };
+    if (!client.accountType.isCorporate) {
+      // Handle self owned - assuming client is individual landlord
+      if (
+        (property.owner?.type === OwnershipType.SELF_OWNED ||
+          property.owner?.type === OwnershipType.EXTERNAL_OWNER) &&
+        property.owner.name
+      ) {
+        return {
+          landlordName: property.owner.name,
+          landlordAddress: property.owner.notes || 'N/A',
+          landlordEmail: property.owner.email || 'N/A',
+          landlordPhone: property.owner.phone || 'N/A',
+          isExternalOwner: false,
+        };
+      }
     }
 
-    // Handle self owned - property owner is landlord
-    if (property.owner?.type === OwnershipType.SELF_OWNED && property.owner.name) {
-      return {
-        landlordName: property.owner.name,
-        landlordAddress: property.owner.notes || 'N/A',
-        landlordEmail: property.owner.email || 'N/A',
-        landlordPhone: property.owner.phone || 'N/A',
-        isExternalOwner: false,
-      };
-    }
+    const profile = (await this.profileDAO.findFirst(
+      { user: client.accountAdmin.toString() },
+      { populate: 'user' }
+    )) as unknown as IProfileWithUser;
 
     // Fallback - use client as landlord
     return {
-      landlordName: client.companyProfile?.legalEntityName || 'N/A',
-      landlordAddress: client.companyProfile?.companyAddress || 'N/A',
-      landlordEmail: client.companyProfile?.companyEmail || 'N/A',
-      landlordPhone: client.companyProfile?.companyPhone || 'N/A',
+      landlordName:
+        client.companyProfile?.legalEntityName ||
+        `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`,
+      landlordAddress:
+        client.companyProfile?.companyAddress || profile.personalInfo.location || 'N/A',
+      landlordEmail: client.companyProfile?.companyEmail || `${profile.user.email || 'N/A'}`,
+      landlordPhone:
+        client.companyProfile?.companyPhone || `${profile.personalInfo.phoneNumber || 'N/A'}`,
       isExternalOwner: false,
     };
   }
 
   async generateLeasePreview(
     cuid: string,
-    previewData: any
+    previewData: ILeasePreviewRequest
   ): Promise<{
     landlordName: string;
     landlordAddress: string;
@@ -594,22 +629,64 @@ export class LeaseService {
     [key: string]: any;
   }> {
     this.log.info(`Generating lease preview for client ${cuid}`);
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      throw new BadRequestError({ message: 'Client not found' });
+    }
 
+    const property = await this.propertyDAO.findFirst(
+      { _id: previewData.propertyId, cuid, deletedAt: null },
+      {
+        select: '+owner +authorization',
+      }
+    );
+
+    if (!property) {
+      throw new BadRequestError({ message: 'Property not found' });
+    }
+
+    if (previewData.unitNumber) {
+      const unit = await this.propertyUnitDAO.findFirst({
+        _id: previewData.unitNumber,
+        propertyId: previewData.propertyId,
+      });
+      previewData.unitNumber = unit ? unit.unitNumber : previewData.unitNumber;
+    }
     try {
       const landlordInfo = await this.buildLandlordInfo(cuid, previewData.propertyId);
+
+      // Determine ownership context for template logic
+      const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
+      const hasUnitNumber = !!previewData.unitNumber;
+      const ownershipType = property.owner?.type || 'company_owned';
+
+      // If external_owner/self_owned AND has unit number, the landlord owns just the unit
+      const hasUnitOwner =
+        hasUnitNumber && (ownershipType === 'external_owner' || ownershipType === 'self_owned');
+
+      this.log.debug('Ownership context for lease preview', {
+        propertyId: previewData.propertyId,
+        hasUnitNumber,
+        unitNumber: previewData.unitNumber,
+        ownershipType,
+        isMultiUnit,
+        hasUnitOwner,
+      });
+
       return {
         ...previewData,
         ...landlordInfo,
+        jurisdiction: property.address.country || property.address.city || 'State/Province',
+        hasUnitOwner,
+        isMultiUnit,
+        ownershipType,
+        propertyName: property.name,
+        propertyType: property.propertyType,
       };
     } catch (error) {
       this.log.error({ error, cuid }, 'Failed to generate lease preview data');
       throw error;
     }
-  }
-
-  async previewLeaseHTML(cuid: string, leaseId: string): IPromiseReturnedData<string> {
-    this.log.info(`Previewing HTML for lease ${leaseId}`);
-    throw new Error('previewLeaseHTML not yet implemented');
   }
 
   async downloadLeasePDF(cuid: string, leaseId: string): IPromiseReturnedData<any> {
@@ -1078,10 +1155,12 @@ export class LeaseService {
     const validationErrors: Record<string, string[]> = {};
     let tenantInfo: { tenantId: Types.ObjectId; useInvitationIdAsTenantId: boolean } | null = null;
 
-    // tenant validation - support both ID and email lookup
     if (leaseData.tenantInfo.id) {
-      // tenant ID provided (existing user)
-      const user = await this.userDAO.getUserById(leaseData.tenantInfo.id);
+      const user = await this.userDAO.findFirst({
+        _id: new Types.ObjectId(leaseData.tenantInfo.id),
+        activecuid: cuid,
+        deletedAt: null,
+      });
 
       if (!user) {
         if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];

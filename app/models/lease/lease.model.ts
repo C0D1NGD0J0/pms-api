@@ -306,7 +306,8 @@ const LeaseSchema = new Schema<ILeaseDocument>(
     eSignature: {
       provider: {
         type: String,
-        enum: ['hellosign', 'docusign', 'pandadoc', 'boldsign', 'signwell', 'zoho'],
+        enum: ['hellosign', 'docusign', 'boldsign'],
+        default: 'boldsign',
         required: false,
       },
       envelopeId: {

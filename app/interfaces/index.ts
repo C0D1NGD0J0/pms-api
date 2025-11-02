@@ -1,4 +1,5 @@
 export * from './propertyUnit.interface';
+export * from './pdfGenerator.interface';
 export * from './invitation.interface';
 export * from './unit-patterns.types';
 export * from './property.interface';
@@ -6,6 +7,7 @@ export * from './profile.interface';
 export * from './service.interface';
 export * from './client.interface';
 export * from './events.interface';
+export * from './lease.interface';
 export * from './utils.interface';
 export * from './user.interface';
 export * from './csv.interface';

@@ -15,6 +15,7 @@
     "luid",
     "maxlength",
     "mediatype",
+    "networkidle",
     "nuid",
     "publicuid",
     "puid",

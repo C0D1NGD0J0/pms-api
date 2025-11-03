@@ -1,5 +1,7 @@
 import { PDFOptions } from 'puppeteer';
 
+import { ResourceInfo } from './utils.interface';
+
 export interface PdfGenerationOptions extends Partial<PDFOptions> {
   /**
    * Page margins
@@ -71,9 +73,6 @@ export interface BrowserLaunchConfig {
   args?: string[];
 }
 
-/**
- * Service health statistics
- */
 export interface PdfGeneratorStats {
   lastError?: {
     message: string;
@@ -85,9 +84,6 @@ export interface PdfGeneratorStats {
   totalErrors: number;
 }
 
-/**
- * Result of PDF generation
- */
 export interface PdfGenerationResult {
   metadata?: {
     pageCount?: number;
@@ -97,4 +93,20 @@ export interface PdfGenerationResult {
   success: boolean;
   buffer?: Buffer;
   error?: string;
+}
+
+export interface PdfJobResult {
+  generationTime?: number;
+  fileSize?: number;
+  success: boolean;
+  leaseId: string;
+  pdfUrl?: string;
+  s3Key?: string;
+  error?: string;
+}
+
+export interface PdfJobData {
+  resource: ResourceInfo;
+  templateType?: string;
+  cuid: string;
 }

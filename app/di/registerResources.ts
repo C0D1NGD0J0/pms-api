@@ -73,6 +73,7 @@ import {
 import {
   InvitationCsvProcessor,
   PropertyCsvProcessor,
+  PdfGeneratorService,
   NotificationService,
   EventEmitterService,
   PropertyUnitService,
@@ -134,6 +135,7 @@ const ServiceResources = {
   mediaUploadService: asClass(MediaUploadService).singleton(),
   propertyUnitService: asClass(PropertyUnitService).singleton(),
   notificationService: asClass(NotificationService).singleton(),
+  pdfGeneratorService: asClass(PdfGeneratorService).singleton(),
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),

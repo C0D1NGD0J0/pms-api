@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
+import { PdfQueue } from '@queues/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { IUserRole } from '@shared/constants/roles.constants';
@@ -10,24 +11,6 @@ import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/in
 import { IPropertyDocument, IProfileWithUser, OwnershipType } from '@interfaces/index';
 import { ValidationRequestError, InvalidRequestError, BadRequestError } from '@shared/customErrors';
 import {
-  UploadCompletedPayload,
-  UploadFailedPayload,
-  EventTypes,
-} from '@interfaces/events.interface';
-import {
-  EventEmitterService,
-  NotificationService,
-  InvitationService,
-  AssetService,
-} from '@services/index';
-import {
-  PROPERTY_APPROVAL_ROLES,
-  convertUserRoleToEnum,
-  PROPERTY_STAFF_ROLES,
-  createLogger,
-  MoneyUtils,
-} from '@utils/index';
-import {
   ILeasePreviewRequest,
   ILeaseFilterOptions,
   ILeaseDocument,
@@ -36,6 +19,22 @@ import {
   LeaseStatus,
 } from '@interfaces/lease.interface';
 import {
+  PROPERTY_APPROVAL_ROLES,
+  convertUserRoleToEnum,
+  determineTemplateType,
+  PROPERTY_STAFF_ROLES,
+  createLogger,
+  MoneyUtils,
+} from '@utils/index';
+import {
+  EventEmitterService,
+  NotificationService,
+  PdfGeneratorService,
+  MediaUploadService,
+  InvitationService,
+  AssetService,
+} from '@services/index';
+import {
   ListResultWithPagination,
   IPromiseReturnedData,
   ISuccessReturnData,
@@ -43,13 +42,27 @@ import {
   ResourceContext,
   UploadResult,
 } from '@interfaces/utils.interface';
+import {
+  PdfGenerationRequestedPayload,
+  PdfGenerationFailedPayload,
+  UploadCompletedPayload,
+  UploadFailedPayload,
+  PdfGeneratedPayload,
+  EventTypes,
+} from '@interfaces/events.interface';
+
+import { LeaseTemplateService } from './leaseTemplateService';
+import { LeaseTemplateDataMapper } from './leaseTemplateDataMapper';
 
 interface IConstructor {
   notificationService: NotificationService;
+  pdfGeneratorService: PdfGeneratorService;
+  mediaUploadService: MediaUploadService;
   invitationService: InvitationService;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   invitationDAO: InvitationDAO;
+  pdfGeneratorQueue: PdfQueue;
   assetService: AssetService;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
@@ -59,8 +72,6 @@ interface IConstructor {
 }
 
 export class LeaseService {
-  private readonly notificationService: NotificationService;
-  private readonly invitationService: InvitationService;
   private readonly log: Logger;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
@@ -68,20 +79,30 @@ export class LeaseService {
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly assetService: AssetService;
+  private readonly pdfGeneratorQueue: PdfQueue;
   private readonly invitationDAO: InvitationDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly invitationService: InvitationService;
+  private readonly mediaUploadService: MediaUploadService;
+  private readonly pdfGeneratorService: PdfGeneratorService;
+  private readonly notificationService: NotificationService;
+  leaseTemplateService: LeaseTemplateService;
+  leaseTemplateDataMapper: LeaseTemplateDataMapper;
 
   constructor({
     notificationService,
+    pdfGeneratorService,
+    mediaUploadService,
+    pdfGeneratorQueue,
     invitationService,
+    propertyUnitDAO,
     emitterService,
     invitationDAO,
-    propertyUnitDAO,
-    clientDAO,
     assetService,
     propertyDAO,
     profileDAO,
+    clientDAO,
     leaseDAO,
     userDAO,
   }: IConstructor) {
@@ -92,12 +113,16 @@ export class LeaseService {
     this.propertyDAO = propertyDAO;
     this.assetService = assetService;
     this.invitationDAO = invitationDAO;
-    this.invitationService = invitationService;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
     this.log = createLogger('LeaseService');
+    this.invitationService = invitationService;
+    this.pdfGeneratorQueue = pdfGeneratorQueue;
+    this.mediaUploadService = mediaUploadService;
+    this.pdfGeneratorService = pdfGeneratorService;
     this.notificationService = notificationService;
-
+    this.leaseTemplateService = new LeaseTemplateService();
+    this.leaseTemplateDataMapper = new LeaseTemplateDataMapper();
     this.setupEventListeners();
   }
 
@@ -386,6 +411,189 @@ export class LeaseService {
     };
   }
 
+  async generateLeasePDF(
+    cuid: string,
+    leaseId: string,
+    templateType?: string
+  ): Promise<{
+    success: boolean;
+    pdfUrl?: string;
+    s3Key?: string;
+    error?: string;
+    metadata?: { fileSize?: number; generationTime?: number };
+  }> {
+    try {
+      this.log.info(`Generating PDF for lease ${leaseId} of client ${cuid}`);
+
+      // 1. Fetch lease with all necessary relations
+      const lease = await this.leaseDAO.findFirst(
+        { _id: new Types.ObjectId(leaseId), cuid, deletedAt: null },
+        {
+          populate: [
+            { path: 'property.id', select: '+owner +authorization' },
+            { path: 'property.unitId' },
+            { path: 'tenantId' },
+          ],
+        }
+      );
+
+      if (!lease) {
+        throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+      }
+
+      // Validate tenant data exists
+      if (!lease.tenantId) {
+        throw new BadRequestError({
+          message: 'Lease tenant information is incomplete. Cannot generate PDF.',
+        });
+      }
+
+      // 2. Build preview request from complete lease data (NO PLACEHOLDERS)
+      const previewRequest: ILeasePreviewRequest = {
+        propertyId: lease.property.id._id.toString(),
+        unitNumber: lease.property.unitId?.unitNumber || 'N/A',
+        leaseNumber: lease.leaseNumber,
+
+        // Real tenant data from saved lease
+        tenantName: `${lease.tenantId.firstName} ${lease.tenantId.lastName}`,
+        tenantEmail: lease.tenantId.email,
+        tenantPhone: lease.tenantId.phone || '',
+        coTenants: [],
+
+        // Lease terms
+        startDate: lease.duration.startDate.toISOString(),
+        endDate: lease.duration.endDate.toISOString(),
+        monthlyRent: lease.fees.monthlyRent,
+        rentDueDay: lease.fees.rentDueDay,
+        securityDeposit: lease.fees.securityDeposit,
+        currency: lease.fees.currency,
+
+        // Additional provisions
+        petPolicy: lease.petPolicy,
+        renewalOptions: lease.renewalOptions,
+        legalTerms: lease.legalTerms,
+        utilitiesIncluded: lease.utilitiesIncluded,
+
+        // Signature info
+        signingMethod: lease.signingMethod || SigningMethod.MANUAL,
+        requiresNotarization: false,
+      };
+
+      // 3. Generate preview data WITHOUT placeholders (usePlaceholders = false)
+      const previewData = await this.generateLeasePreview(cuid, previewRequest, false);
+
+      // 4. Transform data for template
+      const templateData = this.leaseTemplateDataMapper.transformForTemplate(previewData);
+
+      // 5. Determine template type based on property type if not provided
+      const finalTemplateType =
+        templateType || determineTemplateType(lease.property.propertyType || '');
+
+      this.log.debug(`Rendering template: ${finalTemplateType}`, { leaseId });
+
+      // 6. Render HTML from template
+      const html = await this.leaseTemplateService.renderLeasePreview(
+        templateData,
+        finalTemplateType
+      );
+
+      // 7. Generate PDF from HTML
+      const pdfResult = await this.pdfGeneratorService.generatePdf(html, {
+        format: 'Letter',
+        printBackground: true,
+      });
+
+      if (!pdfResult.success || !pdfResult.buffer) {
+        throw new Error(pdfResult.error || 'PDF generation failed');
+      }
+
+      // 8. Upload PDF to S3 use the mediaupload service
+      const fileName = `${Date.now()}_${lease.leaseNumber}.pdf`;
+
+      const uploadResult = await this.mediaUploadService.handleBuffer(pdfResult.buffer, fileName, {
+        primaryResourceId: leaseId,
+        uploadedBy: lease.createdBy?.toString() || 'system',
+        resourceContext: ResourceContext.LEASE,
+      });
+
+      this.log.info(`PDF upload queued for lease ${leaseId}`, {
+        totalQueued: uploadResult.totalQueued,
+        fileSize: pdfResult.metadata?.fileSize,
+        generationTime: pdfResult.metadata?.generationTime,
+      });
+
+      return {
+        success: true,
+        pdfUrl: 'pending',
+        s3Key: 'pending',
+        metadata: {
+          fileSize: pdfResult.metadata?.fileSize,
+          generationTime: pdfResult.metadata?.generationTime,
+        },
+      };
+    } catch (error) {
+      this.log.error({ error, leaseId, cuid }, 'Failed to generate lease PDF');
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
+
+  /**
+   * Queue lease PDF generation (called by controller)
+   * Adds job to queue and returns immediately
+   */
+  async queueLeasePdfGeneration(
+    leaseId: string,
+    cuid: string,
+    ctx: IRequestContext,
+    templateType?: string
+  ): Promise<{ success: boolean; jobId?: string | number; error?: string }> {
+    try {
+      this.log.info(`Queuing PDF generation for lease ${leaseId}`);
+
+      // Validate lease exists
+      const lease = await this.leaseDAO.findFirst({
+        _id: new Types.ObjectId(leaseId),
+        cuid,
+        deletedAt: null,
+      });
+      if (!lease) {
+        throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+      }
+
+      // Add to queue
+      const job = this.pdfGeneratorQueue.addToPdfQueue({
+        resource: {
+          resourceId: leaseId,
+          resourceName: 'lease',
+          actorId: ctx.currentuser?.sub || 'system',
+          resourceType: 'document',
+          fieldName: 'leaseDocument',
+        },
+        cuid,
+        templateType,
+      });
+
+      this.log.info('PDF generation queued successfully', {
+        leaseId,
+        jobId: job.id,
+      });
+
+      return {
+        success: true,
+        jobId: job.id,
+      };
+    } catch (error) {
+      this.log.error({ error, leaseId }, 'Failed to queue PDF generation');
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
   async activateLease(
     cuid: string,
     leaseId: string,
@@ -500,15 +708,6 @@ export class LeaseService {
     throw new Error('handleSignatureWebhook not yet implemented');
   }
 
-  async generateLeasePDF(
-    cuid: string,
-    leaseId: string,
-    _userId: string
-  ): IPromiseReturnedData<any> {
-    this.log.info(`Generating PDF for lease ${leaseId}`);
-    throw new Error('generateLeasePDF not yet implemented');
-  }
-
   /**
    * Helper method to build landlord and management company info based on property ownership
    */
@@ -619,7 +818,8 @@ export class LeaseService {
 
   async generateLeasePreview(
     cuid: string,
-    previewData: ILeasePreviewRequest
+    previewData: ILeasePreviewRequest,
+    usePlaceholders: boolean = true
   ): Promise<{
     landlordName: string;
     landlordAddress: string;
@@ -645,13 +845,16 @@ export class LeaseService {
       throw new BadRequestError({ message: 'Property not found' });
     }
 
-    if (previewData.unitNumber) {
+    if (previewData.unitNumber && Types.ObjectId.isValid(previewData.unitNumber)) {
+      // Only query if unitNumber looks like an ObjectId
       const unit = await this.propertyUnitDAO.findFirst({
         _id: previewData.unitNumber,
         propertyId: previewData.propertyId,
       });
       previewData.unitNumber = unit ? unit.unitNumber : previewData.unitNumber;
     }
+    // If unitNumber is already a string (not ObjectId), use it as-is
+
     try {
       const landlordInfo = await this.buildLandlordInfo(cuid, previewData.propertyId);
 
@@ -682,6 +885,12 @@ export class LeaseService {
         ownershipType,
         propertyName: property.name,
         propertyType: property.propertyType,
+        propertyAddress: property.address.fullAddress,
+
+        // Apply placeholders only when usePlaceholders is true (creation flow)
+        tenantName: previewData.tenantName || (usePlaceholders ? '[Tenant Name]' : ''),
+        tenantEmail: previewData.tenantEmail || (usePlaceholders ? '[Tenant Email]' : ''),
+        tenantPhone: previewData.tenantPhone || (usePlaceholders ? '[Tenant Phone]' : ''),
       };
     } catch (error) {
       this.log.error({ error, cuid }, 'Failed to generate lease preview data');
@@ -729,20 +938,16 @@ export class LeaseService {
     }
 
     const lease = await this.leaseDAO.findFirst({
-      luid: leaseId,
+      _id: new Types.ObjectId(leaseId),
       deletedAt: null,
     });
-
     if (!lease) {
       throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
     }
-
     const updatedLease = await this.leaseDAO.updateLeaseDocuments(leaseId, uploadResults, userId);
-
     if (!updatedLease) {
       throw new BadRequestError({ message: 'Unable to update lease documents' });
     }
-
     return {
       success: true,
       data: updatedLease,
@@ -1102,6 +1307,8 @@ export class LeaseService {
   private setupEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
+
+    this.emitterService.on(EventTypes.PDF_GENERATION_REQUESTED, this.handlePdfGenerationRequest);
 
     this.log.info('Lease service event listeners initialized');
   }
@@ -1547,6 +1754,49 @@ export class LeaseService {
       });
     }
   }
+
+  private handlePdfGenerationRequest = async (
+    payload: PdfGenerationRequestedPayload
+  ): Promise<void> => {
+    const { templateType, jobId, resource, cuid } = payload;
+
+    try {
+      this.log.info(
+        `Handling PDF generation request for lease ${resource.resourceId}, job ${jobId}`
+      );
+
+      // Call your existing generateLeasePDF method
+      const result = await this.generateLeasePDF(cuid, resource.resourceId, templateType);
+
+      if (result.success && result.pdfUrl) {
+        this.emitterService.emit(EventTypes.PDF_GENERATED, {
+          jobId,
+          leaseId: resource.resourceId,
+          pdfUrl: result.pdfUrl,
+          s3Key: result.s3Key || '',
+          fileSize: result.metadata?.fileSize,
+          generationTime: result.metadata?.generationTime,
+        } as PdfGeneratedPayload);
+
+        this.log.info(`PDF generated successfully for lease ${resource.resourceId}`, {
+          jobId,
+          pdfUrl: result.pdfUrl,
+        });
+      } else {
+        throw new Error(result.error || 'PDF generation failed');
+      }
+    } catch (error) {
+      this.log.error(
+        { error, resourceId: resource.resourceId, jobId },
+        'Failed to handle PDF generation request'
+      );
+      this.emitterService.emit(EventTypes.PDF_GENERATION_FAILED, {
+        jobId,
+        resourceId: resource.resourceId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      } as PdfGenerationFailedPayload);
+    }
+  };
 
   /**
    * Cleanup event listeners

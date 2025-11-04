@@ -61,7 +61,8 @@
   },
   "lease": {
     "errors": {
-      "validationFailed": "lease.errors.validationFailed"
+      "validationFailed": "lease.errors.validationFailed",
+      "leaseNotFound": "lease.errors.leaseNotFound"
     }
   },
   "common": {

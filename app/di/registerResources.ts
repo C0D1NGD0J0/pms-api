@@ -32,14 +32,6 @@ import {
   User,
 } from '@models/index';
 import {
-  DocumentProcessingWorker,
-  PropertyUnitWorker,
-  InvitationWorker,
-  PropertyWorker,
-  UploadWorker,
-  EmailWorker,
-} from '@workers/index';
-import {
   PropertyUnitDAO,
   NotificationDAO,
   InvitationDAO,
@@ -51,6 +43,15 @@ import {
   UserDAO,
 } from '@dao/index';
 import {
+  DocumentProcessingWorker,
+  PropertyUnitWorker,
+  InvitationWorker,
+  PropertyWorker,
+  UploadWorker,
+  EmailWorker,
+  PdfWorker,
+} from '@workers/index';
+import {
   DocumentProcessingQueue,
   PropertyUnitQueue,
   InvitationQueue,
@@ -58,6 +59,7 @@ import {
   PropertyQueue,
   UploadQueue,
   EmailQueue,
+  PdfQueue,
 } from '@queues/index';
 import {
   NotificationController,
@@ -181,6 +183,7 @@ const CacheResources = {
 const WorkerResources = {
   emailWorker: asClass(EmailWorker).singleton(),
   uploadWorker: asClass(UploadWorker).singleton(),
+  pdfGeneratorWorker: asClass(PdfWorker).singleton(),
   propertyWorker: asClass(PropertyWorker).singleton(),
   invitationWorker: asClass(InvitationWorker).singleton(),
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
@@ -190,8 +193,9 @@ const WorkerResources = {
 const QueuesResources = {
   emailQueue: asClass(EmailQueue).singleton(),
   uploadQueue: asClass(UploadQueue).singleton(),
-  eventBusQueue: asClass(EventBusQueue).singleton(),
+  pdfGeneratorQueue: asClass(PdfQueue).singleton(),
   propertyQueue: asClass(PropertyQueue).singleton(),
+  eventBusQueue: asClass(EventBusQueue).singleton(),
   invitationQueue: asClass(InvitationQueue).singleton(),
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
   documentProcessingQueue: asClass(DocumentProcessingQueue).singleton(),

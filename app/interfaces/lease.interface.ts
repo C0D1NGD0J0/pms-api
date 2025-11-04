@@ -125,34 +125,25 @@ export interface ILeasePreviewRequest {
     types?: string[];
     deposit?: number;
   };
-
-  // Signing
   signingMethod: SigningMethod | string;
-  // Additional Terms
   utilitiesIncluded?: string[];
   startDate: Date | string;
-
   propertyAddress: string;
   securityDeposit: number;
   endDate: Date | string;
-
   // Lease Duration
   leaseType: LeaseType;
+  leaseNumber?: string;
   unitNumber?: string;
   tenantEmail: string;
   tenantPhone: string;
-
   // Financial Terms
   monthlyRent: number;
-
   // Property Information
   propertyId: string;
-
   // Tenant Information (placeholders for invited tenants)
   tenantName: string;
-
   rentDueDay: number;
-
   currency: string;
 }
 

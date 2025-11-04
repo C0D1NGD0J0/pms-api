@@ -1,7 +1,7 @@
 import { Job } from 'bull';
 
-import { MailType } from './utils.interface';
 import { UploadResult } from './utils.interface';
+import { ResourceInfo, MailType } from './utils.interface';
 
 export enum EventTypes {
   PROPERTY_DOCUMENTS_UPDATE = 'update:property:documents',
@@ -42,6 +42,9 @@ export type EventPayloadMap = {
   [EventTypes.JOB_COMPLETED]: JobNotificationPayload;
   [EventTypes.JOB_FAILED]: JobNotificationPayload;
   [EventTypes.JOB_STARTED]: JobNotificationPayload;
+  [EventTypes.PDF_GENERATED]: PdfGeneratedPayload;
+  [EventTypes.PDF_GENERATION_FAILED]: PdfGenerationFailedPayload;
+  [EventTypes.PDF_GENERATION_REQUESTED]: PdfGenerationRequestedPayload;
   [EventTypes.PROPERTY_CREATED]: any;
   [EventTypes.PROPERTY_DELETED]: any;
   [EventTypes.PROPERTY_DOCUMENTS_UPDATE]: PropertyUpdatedPayload;
@@ -178,9 +181,8 @@ export interface UploadFailedPayload {
 
 export interface PdfGenerationRequestedPayload {
   jobId: string | number;
+  resource: ResourceInfo;
   templateType?: string;
-  leaseId: string;
-  actorId: string;
   cuid: string;
 }
 
@@ -204,7 +206,7 @@ export interface EventPayload<T = unknown> {
 }
 export interface PdfGenerationFailedPayload {
   jobId: string | number;
-  leaseId: string;
+  resourceId: string;
   error: string;
 }
 

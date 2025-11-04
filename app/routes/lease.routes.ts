@@ -42,6 +42,30 @@ router
     })
   );
 
+// PDF Generation Routes (MUST be before /:cuid/:leaseId to avoid route conflicts)
+router.post(
+  '/:cuid/:leaseId/pdf',
+  // Generate PDF from lease JSON data using Puppeteer + EJS template
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuidAndLeaseId,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.generateLeasePDF(req, res);
+  })
+);
+
+router.get(
+  '/pdf-status/:jobId',
+  // Get PDF generation job status
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.getPdfJobStatus(req, res);
+  })
+);
+
 router
   .route('/:cuid/:leaseId')
   .get(
@@ -182,32 +206,21 @@ router
     })
   );
 
-// PDF Generation Routes
-router.post(
-  '/:cuid/:leaseId/pdf',
-  // Generate PDF from lease JSON data using Puppeteer + EJS template
-  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
-  validateRequest({
-    params: UtilsValidations.cuid,
-  }),
-  asyncWrapper(async (req: AppRequest, res) => {
-    const controller = req.container.resolve<LeaseController>('leaseController');
-    return controller.generateLeasePDF(req, res);
-  })
-);
-
-router.get(
-  '/:cuid/:leaseId/pdf/preview',
-  // Preview HTML template before PDF generation (for debugging/testing)
-  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
-  validateRequest({
-    params: UtilsValidations.cuid,
-  }),
-  asyncWrapper(async (req: AppRequest, res) => {
-    const controller = req.container.resolve<LeaseController>('leaseController');
-    return controller.previewLeaseHTML(req, res);
-  })
-);
+// Note: This route is commented out - previewLease expects POST with body data
+// If you need to preview an existing lease, implement a new controller method
+// router.get(
+//   '/:cuid/:leaseId/preview',
+//   // Preview HTML template before PDF generation (for debugging/testing)
+//   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+//   validateRequest({
+//     params: UtilsValidations.cuid,
+//   }),
+//   asyncWrapper(async (req: AppRequest, res) => {
+//     const controller = req.container.resolve<LeaseController>('leaseController');
+//     // TODO: Create controller.previewExistingLease(req, res) method
+//     return controller.previewLease(req, res);
+//   })
+// );
 
 router.get(
   '/:cuid/:leaseId/pdf/download',

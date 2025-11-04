@@ -96,10 +96,10 @@ export interface PdfGenerationResult {
 }
 
 export interface PdfJobResult {
+  resource?: PdfJobData['resource'];
   generationTime?: number;
   fileSize?: number;
   success: boolean;
-  leaseId: string;
   pdfUrl?: string;
   s3Key?: string;
   error?: string;

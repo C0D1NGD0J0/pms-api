@@ -4,7 +4,9 @@ import { LeasePreviewData } from '@interfaces/lease.interface';
 export class LeaseTemplateDataMapper {
   private readonly log = createLogger('LeaseTemplateDataMapper');
 
-  public transformForTemplate(previewData: LeasePreviewData): Record<string, any> {
+  public transformForTemplate(
+    previewData: Record<string, any> & LeasePreviewData
+  ): Record<string, any> {
     try {
       const templateData: Record<string, any> = {
         leaseNumber: previewData.leaseNumber || 'LEASE-DRAFT',

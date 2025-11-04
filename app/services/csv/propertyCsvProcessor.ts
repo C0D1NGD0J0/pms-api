@@ -228,32 +228,34 @@ export class PropertyCsvProcessor {
         },
       }),
 
-      ...(this.hasAnyOwnerField(row) && {
-        owner: {
-          type: row.owner_type || 'company_owned',
-          ...(row.owner_name && { name: row.owner_name.trim() }),
-          ...(row.owner_email && { email: row.owner_email.trim().toLowerCase() }),
-          ...(row.owner_phone && { phone: row.owner_phone.trim() }),
-          ...(row.owner_taxId && { taxId: row.owner_taxId.trim() }),
-          ...(row.owner_notes && { notes: row.owner_notes.trim() }),
-          ...(this.hasAnyBankDetails(row) && {
-            bankDetails: {
-              ...(row.owner_bankDetails_accountName && {
-                accountName: row.owner_bankDetails_accountName.trim(),
-              }),
-              ...(row.owner_bankDetails_accountNumber && {
-                accountNumber: row.owner_bankDetails_accountNumber.trim(),
-              }),
-              ...(row.owner_bankDetails_routingNumber && {
-                routingNumber: row.owner_bankDetails_routingNumber.trim(),
-              }),
-              ...(row.owner_bankDetails_bankName && {
-                bankName: row.owner_bankDetails_bankName.trim(),
-              }),
-            },
-          }),
-        },
-      }),
+      owner: this.hasAnyOwnerField(row)
+        ? {
+            type: row.owner_type || 'company_owned',
+            ...(row.owner_name && { name: row.owner_name.trim() }),
+            ...(row.owner_email && { email: row.owner_email.trim().toLowerCase() }),
+            ...(row.owner_phone && { phone: row.owner_phone.trim() }),
+            ...(row.owner_taxId && { taxId: row.owner_taxId.trim() }),
+            ...(row.owner_notes && { notes: row.owner_notes.trim() }),
+            ...(this.hasAnyBankDetails(row) && {
+              bankDetails: {
+                ...(row.owner_bankDetails_accountName && {
+                  accountName: row.owner_bankDetails_accountName.trim(),
+                }),
+                ...(row.owner_bankDetails_accountNumber && {
+                  accountNumber: row.owner_bankDetails_accountNumber.trim(),
+                }),
+                ...(row.owner_bankDetails_routingNumber && {
+                  routingNumber: row.owner_bankDetails_routingNumber.trim(),
+                }),
+                ...(row.owner_bankDetails_bankName && {
+                  bankName: row.owner_bankDetails_bankName.trim(),
+                }),
+              },
+            }),
+          }
+        : {
+            type: 'company_owned',
+          },
 
       managedBy,
       cuid: context.cuid,

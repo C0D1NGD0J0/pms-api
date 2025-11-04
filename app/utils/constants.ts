@@ -12,6 +12,7 @@ export const httpStatusCodes = {
   EXPIRED_AUTH_TOKEN: 419,
   SERVICE_UNAVAILABLE: 503,
   INTERNAL_SERVER_ERROR: 500,
+  NOT_IMPLEMENTED: 501,
 };
 
 export const JWT_KEY_NAMES = {

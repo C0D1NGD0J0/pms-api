@@ -423,16 +423,12 @@ export class LeaseService {
     metadata?: { fileSize?: number; generationTime?: number };
   }> {
     try {
-      this.log.info(`Generating PDF for lease ${leaseId} of client ${cuid}`);
-
-      // 1. Fetch lease with all necessary relations
       const lease = await this.leaseDAO.findFirst(
         { _id: new Types.ObjectId(leaseId), cuid, deletedAt: null },
         {
           populate: [
             { path: 'property.id', select: '+owner +authorization' },
             { path: 'property.unitId' },
-            { path: 'tenantId' },
           ],
         }
       );
@@ -441,63 +437,55 @@ export class LeaseService {
         throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
       }
 
-      // Validate tenant data exists
       if (!lease.tenantId) {
         throw new BadRequestError({
           message: 'Lease tenant information is incomplete. Cannot generate PDF.',
         });
       }
 
-      // 2. Build preview request from complete lease data (NO PLACEHOLDERS)
-      const previewRequest: ILeasePreviewRequest = {
-        propertyId: lease.property.id._id.toString(),
-        unitNumber: lease.property.unitId?.unitNumber || 'N/A',
+      const tenantDetails = await this.profileDAO.findFirst(
+        { user: lease.tenantId },
+        { populate: [{ path: 'user', select: 'email' }] }
+      );
+
+      if (!tenantDetails) {
+        throw new BadRequestError({
+          message: 'Tenant information is incomplete. Cannot generate PDF.',
+        });
+      }
+
+      const previewRequest = {
+        propertyId: (lease.property.id as any)._id.toString(),
+        unitNumber: (lease.property.unitId as any).unitNumber || 'N/A',
         leaseNumber: lease.leaseNumber,
-
-        // Real tenant data from saved lease
-        tenantName: `${lease.tenantId.firstName} ${lease.tenantId.lastName}`,
-        tenantEmail: lease.tenantId.email,
-        tenantPhone: lease.tenantId.phone || '',
-        coTenants: [],
-
-        // Lease terms
+        tenantName:
+          `${tenantDetails.personalInfo.firstName} ${tenantDetails.personalInfo.lastName}` || '',
+        tenantEmail: (tenantDetails.user as any).email || '',
+        tenantPhone: tenantDetails.personalInfo.phoneNumber || '',
+        coTenants: lease.coTenants || [],
         startDate: lease.duration.startDate.toISOString(),
         endDate: lease.duration.endDate.toISOString(),
         monthlyRent: lease.fees.monthlyRent,
         rentDueDay: lease.fees.rentDueDay,
         securityDeposit: lease.fees.securityDeposit,
         currency: lease.fees.currency,
-
-        // Additional provisions
         petPolicy: lease.petPolicy,
         renewalOptions: lease.renewalOptions,
         legalTerms: lease.legalTerms,
         utilitiesIncluded: lease.utilitiesIncluded,
-
-        // Signature info
         signingMethod: lease.signingMethod || SigningMethod.MANUAL,
-        requiresNotarization: false,
+        requiresNotarization: true,
       };
 
-      // 3. Generate preview data WITHOUT placeholders (usePlaceholders = false)
       const previewData = await this.generateLeasePreview(cuid, previewRequest, false);
-
-      // 4. Transform data for template
       const templateData = this.leaseTemplateDataMapper.transformForTemplate(previewData);
-
-      // 5. Determine template type based on property type if not provided
       const finalTemplateType =
         templateType || determineTemplateType(lease.property.propertyType || '');
-
-      this.log.debug(`Rendering template: ${finalTemplateType}`, { leaseId });
-
-      // 6. Render HTML from template
       const html = await this.leaseTemplateService.renderLeasePreview(
         templateData,
         finalTemplateType
       );
 
-      // 7. Generate PDF from HTML
       const pdfResult = await this.pdfGeneratorService.generatePdf(html, {
         format: 'Letter',
         printBackground: true,
@@ -507,19 +495,11 @@ export class LeaseService {
         throw new Error(pdfResult.error || 'PDF generation failed');
       }
 
-      // 8. Upload PDF to S3 use the mediaupload service
       const fileName = `${Date.now()}_${lease.leaseNumber}.pdf`;
-
-      const uploadResult = await this.mediaUploadService.handleBuffer(pdfResult.buffer, fileName, {
+      this.mediaUploadService.handleBuffer(pdfResult.buffer, fileName, {
         primaryResourceId: leaseId,
         uploadedBy: lease.createdBy?.toString() || 'system',
         resourceContext: ResourceContext.LEASE,
-      });
-
-      this.log.info(`PDF upload queued for lease ${leaseId}`, {
-        totalQueued: uploadResult.totalQueued,
-        fileSize: pdfResult.metadata?.fileSize,
-        generationTime: pdfResult.metadata?.generationTime,
       });
 
       return {
@@ -551,9 +531,6 @@ export class LeaseService {
     templateType?: string
   ): Promise<{ success: boolean; jobId?: string | number; error?: string }> {
     try {
-      this.log.info(`Queuing PDF generation for lease ${leaseId}`);
-
-      // Validate lease exists
       const lease = await this.leaseDAO.findFirst({
         _id: new Types.ObjectId(leaseId),
         cuid,
@@ -563,8 +540,7 @@ export class LeaseService {
         throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
       }
 
-      // Add to queue
-      const job = this.pdfGeneratorQueue.addToPdfQueue({
+      const job = await this.pdfGeneratorQueue.addToPdfQueue({
         resource: {
           resourceId: leaseId,
           resourceName: 'lease',
@@ -576,14 +552,9 @@ export class LeaseService {
         templateType,
       });
 
-      this.log.info('PDF generation queued successfully', {
-        leaseId,
-        jobId: job.id,
-      });
-
       return {
         success: true,
-        jobId: job.id,
+        jobId: job?.id,
       };
     } catch (error) {
       this.log.error({ error, leaseId }, 'Failed to queue PDF generation');
@@ -818,7 +789,7 @@ export class LeaseService {
 
   async generateLeasePreview(
     cuid: string,
-    previewData: ILeasePreviewRequest,
+    previewData: Partial<ILeasePreviewRequest>,
     usePlaceholders: boolean = true
   ): Promise<{
     landlordName: string;
@@ -856,7 +827,7 @@ export class LeaseService {
     // If unitNumber is already a string (not ObjectId), use it as-is
 
     try {
-      const landlordInfo = await this.buildLandlordInfo(cuid, previewData.propertyId);
+      const landlordInfo = await this.buildLandlordInfo(cuid, previewData?.propertyId || '');
 
       // Determine ownership context for template logic
       const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
@@ -937,10 +908,12 @@ export class LeaseService {
       throw new BadRequestError({ message: 'Upload results are required' });
     }
 
-    const lease = await this.leaseDAO.findFirst({
-      _id: new Types.ObjectId(leaseId),
-      deletedAt: null,
-    });
+    // Flexible query - supports both ObjectId and luid
+    const query = Types.ObjectId.isValid(leaseId)
+      ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
+      : { luid: leaseId, deletedAt: null };
+
+    const lease = await this.leaseDAO.findFirst(query);
     if (!lease) {
       throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
     }
@@ -1765,9 +1738,7 @@ export class LeaseService {
         `Handling PDF generation request for lease ${resource.resourceId}, job ${jobId}`
       );
 
-      // Call your existing generateLeasePDF method
       const result = await this.generateLeasePDF(cuid, resource.resourceId, templateType);
-
       if (result.success && result.pdfUrl) {
         this.emitterService.emit(EventTypes.PDF_GENERATED, {
           jobId,

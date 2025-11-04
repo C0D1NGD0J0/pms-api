@@ -445,6 +445,31 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               },
             },
 
+            vendorInfo: {
+              $cond: {
+                if: '$vendorInfo',
+                then: {
+                  vendorId: { $toString: '$vendorInfo.vendorId' },
+                  linkedVendorUid: '$vendorInfo.linkedVendorUid',
+                  isPrimaryVendor: '$vendorInfo.isPrimaryVendor',
+                  isLinkedAccount: '$vendorInfo.isLinkedAccount',
+                },
+                else: '$$REMOVE',
+              },
+            },
+
+            tenantInfo: {
+              $cond: {
+                if: '$tenantInfo',
+                then: {
+                  hasActiveLease: { $ifNull: ['$tenantInfo.hasActiveLease', false] },
+                  backgroundCheckStatus: '$tenantInfo.backgroundCheckStatus',
+                  activeLease: { $ifNull: ['$tenantInfo.activeLease', null] },
+                },
+                else: '$$REMOVE',
+              },
+            },
+
             // NOTE: Permissions are intentionally NOT populated here.
             // They are dynamically generated in the authentication middleware
             // via PermissionService.populateUserPermissions() based on the user's

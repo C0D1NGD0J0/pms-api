@@ -18,6 +18,48 @@ export enum IUserRelationshipsEnum {
   other = 'other',
 }
 
+export interface ICurrentUser {
+  client: {
+    clientSettings?: any;
+    cuid: string;
+    displayname: string;
+    linkedVendorUid?: string;
+    role: IUserRoleType;
+  };
+  vendorInfo?: {
+    vendorId?: string;
+    linkedVendorUid?: string;
+    isPrimaryVendor?: boolean;
+    isLinkedAccount?: boolean;
+  };
+  tenantInfo?: {
+    hasActiveLease?: boolean;
+    backgroundCheckStatus?: string;
+    activeLease?: Record<string, any> | null;
+  };
+  employeeInfo?: {
+    department?: string;
+    jobTitle?: string;
+    employeeId?: string;
+    startDate?: Date;
+  };
+  preferences: {
+    lang?: string;
+    theme?: 'light' | 'dark';
+    timezone?: string;
+  };
+  clients: IClientUserConnections[];
+  fullname: string | null;
+  permissions: string[];
+  displayName: string;
+  gdpr?: GDPRSettings;
+  avatarUrl: string;
+  isActive: boolean;
+  email: string;
+  sub: string;
+  uid: string;
+}
+
 /**
  * Comprehensive tenant details for property management view
  * Used by getTenantManagementDetails endpoint - includes user info, metrics, and history
@@ -133,38 +175,6 @@ export interface IEmployeeDetailInfo {
   skills: string[];
   tags: string[];
   tenure: string;
-}
-
-export interface ICurrentUser {
-  client: {
-    clientSettings?: any;
-    cuid: string;
-    displayname: string;
-    linkedVendorUid?: string;
-    role: IUserRoleType;
-  };
-  employeeInfo?: {
-    department?: string;
-    jobTitle?: string;
-    employeeId?: string;
-    startDate?: Date;
-  };
-  preferences: {
-    lang?: string;
-    theme?: 'light' | 'dark';
-    timezone?: string;
-  };
-  clients: IClientUserConnections[];
-  fullname: string | null;
-  permissions: string[];
-  displayName: string;
-  gdpr?: GDPRSettings;
-  avatarUrl: string;
-  isActive: boolean;
-  vendorInfo?: any;
-  email: string;
-  sub: string;
-  uid: string;
 }
 
 /**

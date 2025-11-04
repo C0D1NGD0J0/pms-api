@@ -106,7 +106,6 @@ export interface ILeasePreviewRequest {
     | 'commercial-office'
     | 'commercial-retail'
     | 'short-term-rental';
-
   renewalOptions?: {
     autoRenew: boolean;
     renewalTermMonths?: number;
@@ -125,7 +124,12 @@ export interface ILeasePreviewRequest {
     types?: string[];
     deposit?: number;
   };
+  legalTerms?: {
+    html?: string;
+    text?: string;
+  };
   signingMethod: SigningMethod | string;
+  requiresNotarization: boolean;
   utilitiesIncluded?: string[];
   startDate: Date | string;
   propertyAddress: string;
@@ -173,6 +177,7 @@ export interface ILease {
   lastModifiedBy?: ILastModifiedBy[];
   tenantId: Types.ObjectId | string;
   renewalOptions?: IRenewalOptions;
+  requiresNotarization?: boolean;
   signatures?: ILeaseSignature[];
   metadata?: Record<string, any>; // Store enriched data for lease generation
   eSignature?: ILeaseESignature;
@@ -226,6 +231,7 @@ export interface ILeaseFormData {
   };
   leaseDocument?: ILeaseDocumentItem[];
   renewalOptions?: IRenewalOptions;
+  requiresNotarization?: boolean;
   signingMethod?: SigningMethod;
   utilitiesIncluded?: string[];
   legalTerms?: ILegalTerms;

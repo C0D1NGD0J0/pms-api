@@ -88,6 +88,22 @@ export const NotificationMessages = {
       message: '{{vendorName}} has been disconnected from your account',
     },
   },
+
+  lease: {
+    pdfGenerationStarted: {
+      title: 'Lease PDF Generation Started',
+      message: "Generating PDF for lease {{leaseNumber}}. You will be notified when it's ready.",
+    },
+    pdfGenerated: {
+      title: 'Lease PDF Ready',
+      message:
+        'PDF for lease {{leaseNumber}} has been generated and is now available for download.',
+    },
+    pdfGenerationFailed: {
+      title: 'Lease PDF Generation Failed',
+      message: 'Failed to generate PDF for lease {{leaseNumber}}: {{errorMessage}}',
+    },
+  },
 } as const;
 
 /**
@@ -111,7 +127,10 @@ export type NotificationMessageKey =
   | 'system.announcement'
   | 'system.serverUpdate'
   | 'vendor.connected'
-  | 'vendor.disconnected';
+  | 'vendor.disconnected'
+  | 'lease.pdfGenerationStarted'
+  | 'lease.pdfGenerated'
+  | 'lease.pdfGenerationFailed';
 
 /**
  * Get notification message template by dot notation key

@@ -1299,6 +1299,88 @@ export class LeaseService {
   }
 
   /**
+   * Send PDF generation status notification to lease creator
+   * @param lease - Lease document
+   * @param cuid - Client ID
+   * @param status - Generation status: 'started', 'completed', or 'failed'
+   * @param errorMessage - Error message if status is 'failed'
+   */
+  async notifyPdfGenerationStatus(
+    lease: ILeaseDocument,
+    cuid: string,
+    status: 'started' | 'completed' | 'failed',
+    errorMessage?: string
+  ): Promise<void> {
+    try {
+      const createdById = lease.createdBy as Types.ObjectId;
+      const leaseNumber = lease.leaseNumber || `Lease-${lease._id}`;
+
+      let messageKey:
+        | 'lease.pdfGenerationStarted'
+        | 'lease.pdfGenerated'
+        | 'lease.pdfGenerationFailed';
+      let notificationType: import('@interfaces/notification.interface').NotificationTypeEnum;
+      let notificationPriority: import('@interfaces/notification.interface').NotificationPriorityEnum;
+
+      const { NotificationTypeEnum, NotificationPriorityEnum } = await import(
+        '@interfaces/notification.interface'
+      );
+
+      if (status === 'started') {
+        messageKey = 'lease.pdfGenerationStarted';
+        notificationType = NotificationTypeEnum.INFO;
+        notificationPriority = NotificationPriorityEnum.LOW;
+      } else if (status === 'completed') {
+        messageKey = 'lease.pdfGenerated';
+        notificationType = NotificationTypeEnum.SUCCESS;
+        notificationPriority = NotificationPriorityEnum.MEDIUM;
+      } else {
+        messageKey = 'lease.pdfGenerationFailed';
+        notificationType = NotificationTypeEnum.ERROR;
+        notificationPriority = NotificationPriorityEnum.HIGH;
+      }
+
+      const variables: Record<string, any> = {
+        leaseNumber,
+        ...(errorMessage && { errorMessage }),
+      };
+
+      await this.notificationService.createNotificationFromTemplate(
+        messageKey,
+        variables,
+        createdById.toString(),
+        notificationType,
+        notificationPriority,
+        cuid,
+        createdById.toString(),
+        {
+          resourceName: ResourceContext.LEASE,
+          resourceUid: lease.luid,
+          resourceId: lease._id.toString(),
+          metadata: {
+            leaseNumber,
+            status,
+          },
+        }
+      );
+
+      this.log.info(`Sent PDF generation ${status} notification for lease ${lease._id}`, {
+        leaseId: lease._id,
+        leaseNumber,
+        recipientId: createdById,
+        status,
+      });
+    } catch (error) {
+      this.log.error('Failed to send PDF generation notification', {
+        leaseId: lease._id,
+        status,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      // Don't throw - notification failure shouldn't break PDF generation flow
+    }
+  }
+
+  /**
    * Validates lease data and collects all validation errors
    * @param cuid - Client ID
    * @param leaseData - Lease form data to validate

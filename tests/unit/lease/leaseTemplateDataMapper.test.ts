@@ -1,5 +1,5 @@
-import { LeaseTemplateDataMapper } from '@services/lease/leaseTemplateDataMapper';
 import { LeaseType } from '@interfaces/lease.interface';
+import { LeaseTemplateDataMapper } from '@services/lease/leaseTemplateDataMapper';
 
 describe('LeaseTemplateDataMapper', () => {
   let mapper: LeaseTemplateDataMapper;

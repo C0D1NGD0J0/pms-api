@@ -1,7 +1,7 @@
 import { PropertyCsvProcessor } from '@services/csv/propertyCsvProcessor';
 
 describe('PropertyCsvProcessor - Owner Fields', () => {
-  let processor: PropertyCsvProcessor;
+  let _processor: PropertyCsvProcessor;
   let mockDependencies: any;
 
   beforeEach(() => {
@@ -21,7 +21,7 @@ describe('PropertyCsvProcessor - Owner Fields', () => {
       },
     };
 
-    processor = new PropertyCsvProcessor(mockDependencies as any);
+    _processor = new PropertyCsvProcessor(mockDependencies as any);
   });
 
   describe('Owner Field Validation', () => {
@@ -79,12 +79,9 @@ describe('PropertyCsvProcessor - Owner Fields', () => {
       };
 
       // Simulate transformation
-      const hasOwnerFields = [
-        'owner_type',
-        'owner_name',
-        'owner_email',
-        'owner_phone',
-      ].some((field) => csvRow[field as keyof typeof csvRow] !== undefined);
+      const hasOwnerFields = ['owner_type', 'owner_name', 'owner_email', 'owner_phone'].some(
+        (field) => csvRow[field as keyof typeof csvRow] !== undefined
+      );
 
       const hasBankDetails = [
         'owner_bankDetails_accountName',
@@ -181,13 +178,7 @@ describe('PropertyCsvProcessor - Owner Fields', () => {
     });
 
     it('should not include authorization headers (not supported in CSV)', () => {
-      const csvHeaders = [
-        'name',
-        'fullAddress',
-        'propertyType',
-        'owner_type',
-        'owner_name',
-      ];
+      const csvHeaders = ['name', 'fullAddress', 'propertyType', 'owner_type', 'owner_name'];
 
       const hasAuthorizationHeaders = csvHeaders.some((h) => h.includes('authorization'));
       expect(hasAuthorizationHeaders).toBe(false);
@@ -305,7 +296,7 @@ describe('PropertyCsvProcessor - Owner Fields', () => {
         owner_bankDetails_bankName: 200,
       };
 
-      Object.entries(constraints).forEach(([field, maxLength]) => {
+      Object.entries(constraints).forEach(([_field, maxLength]) => {
         const longValue = 'a'.repeat(maxLength + 10);
         expect(longValue.length).toBeGreaterThan(maxLength);
       });

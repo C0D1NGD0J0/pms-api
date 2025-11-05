@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
 import { LeaseService } from '@services/lease/lease.service';
+import { IUserRole } from '@shared/constants/roles.constants';
 import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
-import { IUserRole } from '@shared/constants/roles.constants';
 
 const createMockDependencies = () => ({
   leaseDAO: {
@@ -404,8 +404,9 @@ describe('LeaseService', () => {
         mockDependencies.clientDAO.getClientByCuid.mockResolvedValue(mockClient);
         mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
         mockDependencies.profileDAO.findFirst.mockResolvedValue(mockProfile);
-        mockDependencies.userDAO.getUserById.mockResolvedValue({
-          _id: new Types.ObjectId(),
+        const tenantId = new Types.ObjectId();
+        mockDependencies.userDAO.findFirst.mockResolvedValue({
+          _id: tenantId,
           cuids: [{ cuid: 'C123', roles: ['tenant'] }],
         });
         mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
@@ -418,7 +419,7 @@ describe('LeaseService', () => {
         mockDependencies.leaseDAO.createLease.mockResolvedValue(mockLease);
 
         const leaseData = {
-          tenantInfo: { id: 'T123', email: null },
+          tenantInfo: { id: tenantId.toString(), email: null },
           property: {
             id: mockProperty._id.toString(),
             // NO unitId for house - should be fine!

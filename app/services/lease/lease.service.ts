@@ -1156,26 +1156,31 @@ export class LeaseService {
     let tenantInfo: { tenantId: Types.ObjectId; useInvitationIdAsTenantId: boolean } | null = null;
 
     if (leaseData.tenantInfo.id) {
-      const user = await this.userDAO.findFirst({
-        _id: new Types.ObjectId(leaseData.tenantInfo.id),
-        activecuid: cuid,
-        deletedAt: null,
-      });
-
-      if (!user) {
+      if (!Types.ObjectId.isValid(leaseData.tenantInfo.id)) {
         if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
-        validationErrors['tenantInfo.id'].push(t('lease.errors.tenantNotFound'));
+        validationErrors['tenantInfo.id'].push('Invalid tenant ID format');
       } else {
-        // verify tenant has 'tenant' role for this client
-        const clientAccess = user.cuids.find((c) => c.cuid === cuid);
-        if (!clientAccess || !clientAccess.roles.includes('tenant')) {
+        const user = await this.userDAO.findFirst({
+          _id: new Types.ObjectId(leaseData.tenantInfo.id),
+          activecuid: cuid,
+          deletedAt: null,
+        });
+
+        if (!user) {
           if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
-          validationErrors['tenantInfo.id'].push(t('common.errors.invalidUserRole'));
+          validationErrors['tenantInfo.id'].push(t('lease.errors.tenantNotFound'));
         } else {
-          tenantInfo = {
-            tenantId: user._id,
-            useInvitationIdAsTenantId: false,
-          };
+          // verify tenant has 'tenant' role for this client
+          const clientAccess = user.cuids.find((c) => c.cuid === cuid);
+          if (!clientAccess || !clientAccess.roles.includes('tenant')) {
+            if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
+            validationErrors['tenantInfo.id'].push(t('common.errors.invalidUserRole'));
+          } else {
+            tenantInfo = {
+              tenantId: user._id,
+              useInvitationIdAsTenantId: false,
+            };
+          }
         }
       }
     } else if (leaseData.tenantInfo.email) {

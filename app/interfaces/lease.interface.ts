@@ -58,25 +58,33 @@ export interface LeasePreviewData {
     html?: string;
     text?: string;
   };
-
+  managementCompanyAddress: string | null;
+  managementCompanyEmail: string | null;
+  managementCompanyPhone: string | null;
   utilitiesIncluded?: string | string[];
+  managementCompanyName: string | null;
   requiresNotarization?: boolean;
   landlordSignatureUrl?: string;
   tenantSignatureUrl?: string;
 
   startDate?: string | Date;
+  isExternalOwner: boolean;
   landlordAddress?: string;
   propertyAddress?: string;
+
   securityDeposit?: number;
   endDate?: string | Date;
   landlordEmail?: string;
   landlordPhone?: string;
-
   signingMethod?: string;
+  hasUnitOwner: boolean;
+  ownershipType: string;
+
   propertyName?: string;
   propertyType?: string;
   jurisdiction?: string;
   landlordName?: string;
+  isMultiUnit: boolean;
   leaseNumber?: string;
   currentDate?: string;
   tenantEmail?: string;

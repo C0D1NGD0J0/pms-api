@@ -1,14 +1,17 @@
 // Set Jest timeout to prevent hanging tests
 jest.setTimeout(10000);
 
-import request from 'supertest';
-import { faker } from '@faker-js/faker';
+import _request from 'supertest';
 import { httpStatusCodes } from '@utils/index';
+import { faker as _faker } from '@faker-js/faker';
 import { Application, Response, Request } from 'express';
-import { createMockCurrentUser, createApiTestHelper } from '@tests/helpers';
+import {
+  createMockCurrentUser as _createMockCurrentUser,
+  createApiTestHelper,
+} from '@tests/helpers';
 
 // Mock Lease Controller
-const mockLeaseController = {
+const _mockLeaseController = {
   createLease: jest.fn((_req: Request, res: Response) => {
     res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
       success: false,
@@ -137,10 +140,10 @@ const mockLeaseController = {
 };
 
 describe('Lease Routes - API Integration Tests', () => {
-  let app: Application;
-  let testHelper: ReturnType<typeof createApiTestHelper>;
-  const testCuid = 'test-client-123';
-  const testLeaseId = 'L-2025-001';
+  let _app: Application;
+  let _testHelper: ReturnType<typeof createApiTestHelper>;
+  const _testCuid = 'test-client-123';
+  const _testLeaseId = 'L-2025-001';
 
   beforeAll(async () => {
     // TODO: Initialize test app when routes are connected

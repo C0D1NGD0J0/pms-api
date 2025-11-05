@@ -32,10 +32,10 @@ export enum LeaseType {
 }
 
 /**
- * @deprecated Use ILeasePreviewRequest instead
+ * Use ILeasePreviewRequest or LeasePreviewData (will delete one later)
  * Legacy interface - keeping for backward compatibility
  */
-export interface LeasePreviewData {
+export type LeasePreviewData = {
   // Additional Provisions
   petPolicy?: {
     allowed: boolean;
@@ -58,25 +58,33 @@ export interface LeasePreviewData {
     html?: string;
     text?: string;
   };
-
+  managementCompanyAddress?: string | null;
+  managementCompanyEmail?: string | null;
+  managementCompanyPhone?: string | null;
   utilitiesIncluded?: string | string[];
+  managementCompanyName?: string | null;
   requiresNotarization?: boolean;
   landlordSignatureUrl?: string;
   tenantSignatureUrl?: string;
 
   startDate?: string | Date;
+  isExternalOwner: boolean;
   landlordAddress?: string;
   propertyAddress?: string;
+
   securityDeposit?: number;
   endDate?: string | Date;
   landlordEmail?: string;
   landlordPhone?: string;
-
   signingMethod?: string;
+  hasUnitOwner: boolean;
+  ownershipType: string;
+
   propertyName?: string;
   propertyType?: string;
   jurisdiction?: string;
   landlordName?: string;
+  isMultiUnit: boolean;
   leaseNumber?: string;
   currentDate?: string;
   tenantEmail?: string;
@@ -92,8 +100,7 @@ export interface LeasePreviewData {
   // Lease Terms
   leaseType?: string;
   currency?: string;
-}
-
+};
 /**
  * Lease preview request data from frontend
  * Used to generate lease document preview before actual lease creation

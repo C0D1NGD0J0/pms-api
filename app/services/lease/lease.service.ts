@@ -1156,7 +1156,6 @@ export class LeaseService {
     let tenantInfo: { tenantId: Types.ObjectId; useInvitationIdAsTenantId: boolean } | null = null;
 
     if (leaseData.tenantInfo.id) {
-      // Validate that the tenantInfo.id is a valid ObjectId
       if (!Types.ObjectId.isValid(leaseData.tenantInfo.id)) {
         if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
         validationErrors['tenantInfo.id'].push('Invalid tenant ID format');

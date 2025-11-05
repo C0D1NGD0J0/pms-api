@@ -249,10 +249,25 @@ export class PermissionService {
   private getDepartmentPermissions(role: string, department: string): Record<string, string[]> {
     try {
       const roleConfig = this.permissionConfig.roles[role];
-      if (!roleConfig?.departments) {
+      if (!roleConfig) {
+        this.log.debug(`No role config found for role: ${role}`);
         return {};
       }
-      return roleConfig.departments[department] || {};
+
+      // Access departments explicitly from the config
+      const departments = (roleConfig as any).departments;
+      if (!departments || typeof departments !== 'object') {
+        this.log.debug(`No departments config found for role: ${role}`);
+        return {};
+      }
+
+      const deptPerms = departments[department];
+      if (!deptPerms || typeof deptPerms !== 'object') {
+        this.log.debug(`No permissions found for ${role}:${department}`);
+        return {};
+      }
+
+      return deptPerms as Record<string, string[]>;
     } catch (error) {
       this.log.error(`Error getting department permissions for ${role}:${department}`, error);
       return {};

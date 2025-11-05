@@ -11,7 +11,7 @@ import {
   UserDAO,
 } from '@dao/index';
 
-const getContainer = async () => {
+export const getContainer = async () => {
   const { container } = await import('@di/setup');
   return container;
 };

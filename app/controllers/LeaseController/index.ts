@@ -30,27 +30,50 @@ export class LeaseController {
   }
 
   createLease = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-      success: false,
-      message: 'Create lease not yet implemented',
+    const { cuid } = req.params;
+    const result = await this.leaseService.createLease(cuid, req.body, req.context);
+
+    // const uploadResult = await this.mediaUploadService.handleFiles(req, {
+    //   primaryResourceId: result.data.id,
+    //   uploadedBy: req.context.currentuser!.sub,
+    //   resourceContext: ResourceContext.LEASE,
+    // });
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: result,
     });
   };
 
   getFilteredLeases = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-    this.log.info(`Getting filtered leases for client ${cuid}`);
+    const { status, propertyId, tenantId, search, page, limit, sort } = req.query;
 
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-      success: false,
-      message: 'Get filtered leases not yet implemented',
-    });
+    const filters = {
+      status: status as any,
+      propertyId: propertyId as string | undefined,
+      tenantId: tenantId as string | undefined,
+      search: search as string | undefined,
+    };
+
+    const paginationOpts = {
+      page: page ? parseInt(page as string, 10) : 1,
+      limit: limit ? parseInt(limit as string, 10) : 10,
+      sort: sort as string | undefined,
+    };
+
+    const result = await this.leaseService.getFilteredLeases(cuid, filters, paginationOpts);
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   getLeaseById = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
+
     this.log.info(`Getting lease ${leaseId} for client ${cuid}`);
 
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
+    // TODO: Implement get lease by ID
+    // const result = await this.leaseService.getLeaseById(cuid, leaseId);
+
+    res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
       success: false,
       message: 'Get lease by ID not yet implemented',
     });
@@ -58,9 +81,15 @@ export class LeaseController {
 
   updateLease = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
+    // const { uid } = req.context.currentuser!;
+    // const updateData = req.body;
+
     this.log.info(`Updating lease ${leaseId} for client ${cuid}`);
 
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
+    // TODO: Implement lease update
+    // const result = await this.leaseService.updateLease(cuid, leaseId, updateData, uid);
+
+    res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
       success: false,
       message: 'Update lease not yet implemented',
     });
@@ -68,9 +97,14 @@ export class LeaseController {
 
   deleteLease = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
+    // const { uid } = req.context.currentuser!;
+
     this.log.info(`Deleting lease ${leaseId} for client ${cuid}`);
 
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
+    // TODO: Implement lease deletion
+    // const result = await this.leaseService.deleteLease(cuid, leaseId, uid);
+
+    res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
       success: false,
       message: 'Delete lease not yet implemented',
     });
@@ -127,7 +161,23 @@ export class LeaseController {
   };
 
   handleSignatureAction = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
+    // const { cuid, leaseId } = req.params;
+    // const { uid } = req.context.currentuser!;
+    // const { action, signers, signedBy, provider, message, testMode } = req.body;
+
+    // this.log.info(`Handling signature action '${action}' for lease ${leaseId}`);
+
+    // TODO: Implement signature actions based on action type
+    // switch (action) {
+    //   case 'send':
+    //     return await this.leaseService.sendLeaseForSignature(cuid, leaseId, signers, provider, uid);
+    //   case 'manual':
+    //     return await this.leaseService.markAsManualySigned(cuid, leaseId, signedBy, uid);
+    //   case 'cancel':
+    //     return await this.leaseService.cancelSignature(cuid, leaseId, uid);
+    // }
+
+    res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
       success: false,
       message: 'Signature actions not yet implemented',
     });
@@ -153,16 +203,9 @@ export class LeaseController {
     });
   };
 
-  previewLeaseHTML = async (req: AppRequest, res: Response) => {
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-      success: false,
-      message: 'Preview lease HTML not yet implemented',
-    });
-  };
-
   downloadLeasePDF = async (req: AppRequest, res: Response) => {
-    const { leaseId } = req.params;
-    this.log.info(`Downloading PDF for lease ${leaseId}`);
+    const { cuid, leaseId } = req.params;
+    this.log.info(`Downloading PDF for lease ${leaseId}, client ${cuid}`);
 
     res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
       success: false,
@@ -187,17 +230,6 @@ export class LeaseController {
     res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
       success: false,
       message: 'Get lease stats not yet implemented',
-    });
-  };
-
-  exportLeases = async (req: AppRequest, res: Response) => {
-    const { cuid } = req.params;
-    const { format = 'csv' } = req.query;
-    this.log.info(`Exporting leases for client ${cuid} as ${format}`);
-
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-      success: false,
-      message: 'Export leases not yet implemented',
     });
   };
 

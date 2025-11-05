@@ -202,8 +202,22 @@ describe('Lease Routes - API Integration Tests', () => {
     it.todo('should filter by status');
     it.todo('should filter by property');
     it.todo('should filter by tenant');
-    it.todo('should return paginated results');
+    it.todo('should return paginated results with sentForSignature and tenantActivated fields');
     it.todo('should require authentication');
+
+    // Example test (uncomment when implementing):
+    // it('should return leases with sentForSignature and tenantActivated', async () => {
+    //   const response = await request(app)
+    //     .get(`/api/v1/leases/${testCuid}?status=active&page=1&limit=10`)
+    //     .set('Authorization', `Bearer ${testHelper.getAuthToken()}`)
+    //     .expect(httpStatusCodes.OK);
+    //
+    //   expect(response.body.items).toBeDefined();
+    //   expect(response.body.items[0]).toHaveProperty('sentForSignature');
+    //   expect(response.body.items[0]).toHaveProperty('tenantActivated');
+    //   expect(typeof response.body.items[0].sentForSignature).toBe('boolean');
+    //   expect(typeof response.body.items[0].tenantActivated).toBe('boolean');
+    // });
   });
 
   describe('GET /:cuid/:leaseId - Get Lease By ID', () => {

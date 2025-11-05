@@ -97,26 +97,82 @@ describe('LeaseController', () => {
   });
 
   describe('getFilteredLeases', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
+    it('should return filtered leases with pagination', async () => {
+      const mockFilters = { status: 'active', page: '1', limit: '10' };
+      mockRequest.query = mockFilters;
+      mockServices.leaseService.getFilteredLeases.mockResolvedValue({
+        items: [
+          {
+            luid: 'L-2025-001',
+            leaseNumber: 'LEASE-001',
+            tenantName: 'John Doe',
+            propertyAddress: '123 Main St',
+            unitNumber: '101',
+            monthlyRent: 1500,
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2026-01-01'),
+            status: 'active',
+            sentForSignature: true,
+            tenantActivated: true,
+          },
+        ],
+        pagination: { total: 1, currentPage: 1, totalPages: 1, perPage: 10 },
+      });
+
       await leaseController.getFilteredLeases(mockRequest, mockResponse);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+      expect(mockServices.leaseService.getFilteredLeases).toHaveBeenCalledWith(
+        'test-cuid',
+        expect.objectContaining({ status: 'active' }),
+        expect.objectContaining({ page: 1, limit: 10 })
+      );
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.OK);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              sentForSignature: true,
+              tenantActivated: true,
+            }),
+          ]),
+        })
+      );
     });
 
-    // TODO: Add test cases for implemented functionality
-    // it('should get filtered leases with pagination', async () => {
-    //   const mockFilters = { status: 'active', page: 1, limit: 10 };
-    //   mockRequest.query = mockFilters;
-    //   mockServices.leaseService.getFilteredLeases.mockResolvedValue({
-    //     success: true,
-    //     data: [],
-    //     pagination: { total: 0, page: 1, pages: 0, limit: 10 },
-    //   });
-    //
-    //   await leaseController.getFilteredLeases(mockRequest, mockResponse);
-    //
-    //   expect(mockServices.leaseService.getFilteredLeases).toHaveBeenCalledWith('test-cuid', mockFilters);
-    // });
+    it('should handle sentForSignature=false when not sent electronically', async () => {
+      mockRequest.query = {};
+      mockServices.leaseService.getFilteredLeases.mockResolvedValue({
+        items: [
+          {
+            luid: 'L-2025-002',
+            leaseNumber: 'LEASE-002',
+            tenantName: 'Jane Smith',
+            propertyAddress: '456 Oak Ave',
+            unitNumber: null,
+            monthlyRent: 2000,
+            startDate: new Date('2025-02-01'),
+            endDate: new Date('2026-02-01'),
+            status: 'draft',
+            sentForSignature: false,
+            tenantActivated: false,
+          },
+        ],
+        pagination: { total: 1, currentPage: 1, totalPages: 1, perPage: 10 },
+      });
+
+      await leaseController.getFilteredLeases(mockRequest, mockResponse);
+
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              sentForSignature: false,
+              tenantActivated: false,
+            }),
+          ]),
+        })
+      );
+    });
   });
 
   describe('getLeaseById', () => {

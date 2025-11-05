@@ -1,4 +1,56 @@
 import { z } from 'zod';
+import { Types } from 'mongoose';
+import { UserDAO } from '@dao/userDAO';
+import { PropertyDAO } from '@dao/propertyDAO';
+
+import { getContainer } from '../UtilsValidation';
+
+const isValidProperty = async (propertyId: string, cuid: string) => {
+  try {
+    if (!propertyId || !Types.ObjectId.isValid(propertyId)) {
+      return false;
+    }
+
+    const { propertyDAO }: { propertyDAO: PropertyDAO } = (await getContainer()).cradle;
+    const property = await propertyDAO.findFirst({
+      _id: new Types.ObjectId(propertyId),
+      cuid,
+      deletedAt: null,
+    });
+
+    return !!property;
+  } catch (error) {
+    console.error('Error validating property:', error);
+    return false;
+  }
+};
+
+// Helper: Validate if tenant exists for client
+const isValidTenant = async (tenantId: string, cuid: string) => {
+  try {
+    if (!tenantId || !Types.ObjectId.isValid(tenantId)) {
+      return false;
+    }
+
+    const { userDAO }: { userDAO: UserDAO } = (await getContainer()).cradle;
+    const user = await userDAO.findFirst({
+      _id: new Types.ObjectId(tenantId),
+      activecuid: cuid,
+      deletedAt: null,
+    });
+
+    if (!user) {
+      return false;
+    }
+
+    // Verify user has 'tenant' role for this client
+    const clientAccess = user.cuids.find((c: any) => c.cuid === cuid);
+    return clientAccess && clientAccess.roles.includes('tenant');
+  } catch (error) {
+    console.error('Error validating tenant:', error);
+    return false;
+  }
+};
 
 // Enum Schemas
 export const LeaseStatusEnum = z.enum([
@@ -231,31 +283,41 @@ export const UpdateLeaseSchema = BaseLeaseSchemaObject.partial()
     }
   );
 
-export const FilterLeasesSchema = z.object({
-  status: z.union([LeaseStatusEnum, z.array(LeaseStatusEnum)]).optional(),
-  type: z.union([LeaseTypeEnum, z.array(LeaseTypeEnum)]).optional(),
-  signingMethod: SigningMethodEnum.optional(),
-  propertyId: z.string().optional(),
-  unitId: z.string().optional(),
-  tenantId: z.string().optional(),
-  isExpiringSoon: z
-    .union([z.boolean(), z.string()])
-    .optional()
-    .transform((val) => (typeof val === 'string' ? val === 'true' : val)),
-  startDateFrom: z.coerce.date().optional(),
-  startDateTo: z.coerce.date().optional(),
-  endDateFrom: z.coerce.date().optional(),
-  endDateTo: z.coerce.date().optional(),
-  createdAfter: z.coerce.date().optional(),
-  createdBefore: z.coerce.date().optional(),
-  minRent: z.coerce.number().positive().optional(),
-  maxRent: z.coerce.number().positive().optional(),
-  search: z.string().max(100, 'Search term must be less than 100 characters').optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(10),
-  sortBy: z.string().optional(),
-  sortOrder: z.enum(['asc', 'desc']).optional(),
-});
+export const FilterLeasesSchema = z
+  .object({
+    status: z.union([LeaseStatusEnum, z.array(LeaseStatusEnum)]).optional(),
+    propertyId: z.string().optional(),
+    tenantId: z.string().optional(),
+    search: z.string().max(100, 'Search term must be less than 100 characters').optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(10),
+    sort: z.string().optional(), // Format: "field:asc" or "field:desc"
+    _cuid: z.string().optional(), // Injected from params for validation
+  })
+  .refine(
+    async (data) => {
+      if (data.propertyId && data._cuid) {
+        return await isValidProperty(data.propertyId, data._cuid);
+      }
+      return true;
+    },
+    {
+      message: 'Property not found or does not belong to this client',
+      path: ['propertyId'],
+    }
+  )
+  .refine(
+    async (data) => {
+      if (data.tenantId && data._cuid) {
+        return await isValidTenant(data.tenantId, data._cuid);
+      }
+      return true;
+    },
+    {
+      message: 'Tenant not found or does not have access to this client',
+      path: ['tenantId'],
+    }
+  );
 
 // Activate Lease Schema
 export const ActivateLeaseSchema = z.object({

@@ -31,7 +31,12 @@ router
   )
   .get(
     // Get all leases (with optional filters via query params)
-    requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+    requirePermission(PermissionResource.LEASE, PermissionAction.LIST),
+    // Inject cuid into query for validation
+    (req: AppRequest, _res, next) => {
+      req.query._cuid = req.params.cuid;
+      next();
+    },
     validateRequest({
       params: UtilsValidations.cuid,
       query: LeaseValidations.filterLeases,
@@ -197,19 +202,6 @@ router.post(
 );
 
 router.get(
-  '/:cuid/:leaseId/pdf/preview',
-  // Preview HTML template before PDF generation (for debugging/testing)
-  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
-  validateRequest({
-    params: UtilsValidations.cuid,
-  }),
-  asyncWrapper(async (req: AppRequest, res) => {
-    const controller = req.container.resolve<LeaseController>('leaseController');
-    return controller.previewLease(req, res);
-  })
-);
-
-router.get(
   '/:cuid/:leaseId/pdf/download',
   // Download generated PDF (triggers browser download)
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
@@ -222,12 +214,12 @@ router.get(
   })
 );
 
-router.post(
-  '/:cuid/preview',
+router.get(
+  '/:cuid/:luid/preview_lease',
   // Preview lease document HTML with provided data
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   validateRequest({
-    params: UtilsValidations.cuid,
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     body: LeaseValidations.previewLease,
   }),
   asyncWrapper(async (req: AppRequest, res) => {

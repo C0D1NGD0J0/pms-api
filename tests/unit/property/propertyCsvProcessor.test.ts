@@ -296,7 +296,7 @@ describe('PropertyCsvProcessor - Owner Fields', () => {
         owner_bankDetails_bankName: 200,
       };
 
-      Object.entries(constraints).forEach(([_field, maxLength]) => {
+      Object.entries(constraints).forEach(([_, maxLength]) => {
         const longValue = 'a'.repeat(maxLength + 10);
         expect(longValue.length).toBeGreaterThan(maxLength);
       });

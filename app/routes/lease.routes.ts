@@ -205,7 +205,7 @@ router.get(
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<LeaseController>('leaseController');
-    return controller.previewLeaseHTML(req, res);
+    return controller.previewLease(req, res);
   })
 );
 

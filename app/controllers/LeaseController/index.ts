@@ -215,22 +215,25 @@ export class LeaseController {
 
   getExpiringLeases = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
+    const { days } = req.query;
+    const daysThreshold = days ? parseInt(days as string, 10) : 30;
+
     this.log.info(`Getting expiring leases for client ${cuid}`);
 
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-      success: false,
-      message: 'Get expiring leases not yet implemented',
-    });
+    const result = await this.leaseService.getExpiringLeases(cuid, daysThreshold);
+
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   getLeaseStats = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
+    const filters = req.query;
+
     this.log.info(`Getting lease statistics for client ${cuid}`);
 
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-      success: false,
-      message: 'Get lease stats not yet implemented',
-    });
+    const result = await this.leaseService.getLeaseStats(cuid, filters);
+
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   previewLease = async (req: AppRequest, res: Response) => {

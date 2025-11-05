@@ -727,13 +727,38 @@ export class LeaseService {
     cuid: string,
     daysThreshold: number = 30
   ): IPromiseReturnedData<ILeaseDocument[]> {
-    this.log.info(`Getting leases expiring within ${daysThreshold} days for client ${cuid}`);
-    throw new Error('getExpiringLeases not yet implemented');
+    if (!cuid) {
+      throw new BadRequestError({ message: 'Client ID is required' });
+    }
+
+    if (daysThreshold <= 0 || !Number.isInteger(daysThreshold) || daysThreshold > 365) {
+      throw new BadRequestError({ message: 'Invalid days threshold provided.' });
+    }
+
+    const leases = await this.leaseDAO.getExpiringLeases(cuid, daysThreshold);
+
+    return {
+      success: true,
+      message: `Found ${leases.length} lease(s) expiring within ${daysThreshold} days`,
+      data: leases,
+    };
   }
 
   async getLeaseStats(cuid: string, filters?: any): IPromiseReturnedData<any> {
     this.log.info(`Getting lease statistics for client ${cuid}`, { filters });
-    throw new Error('getLeaseStats not yet implemented');
+
+    try {
+      const stats = await this.leaseDAO.getLeaseStats(cuid, filters);
+
+      return {
+        success: true,
+        message: 'Lease statistics retrieved successfully',
+        data: stats,
+      };
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Failed to get lease statistics');
+      throw error;
+    }
   }
 
   /**

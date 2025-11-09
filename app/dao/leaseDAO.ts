@@ -75,7 +75,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     pagination: IPaginationQuery
   ): ListResultWithPagination<ILeaseListItem[]> {
     try {
-      this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
+      this.log.info(`Getting filtered leases for client ${cuid}`, { filters, pagination });
 
       const query: FilterQuery<ILeaseDocument> = { cuid, deletedAt: null };
 
@@ -173,11 +173,10 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       const skip = (page - 1) * limit;
 
       let sortOption: Record<string, 1 | -1> = { createdAt: -1 };
-      if (pagination.sort && typeof pagination.sort === 'string') {
-        const sortParts = pagination.sort.split(':');
-        const field = sortParts[0];
-        const order = sortParts[1];
-        sortOption = { [field]: order === 'desc' ? -1 : 1 };
+
+      if (pagination.sortBy && pagination.sort) {
+        const sortDirection = pagination.sort === 'asc' ? 1 : -1;
+        sortOption = { [pagination.sortBy]: sortDirection };
       }
 
       const [result, totalCount] = await Promise.all([
@@ -539,6 +538,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         terminated: 0,
         cancelled: 0,
       };
+
+      this.log.info('leasesByStatus aggregation result:', { leasesByStatus, baseQuery });
 
       leasesByStatus.forEach((item: any) => {
         statusMap[item._id] = item.count;

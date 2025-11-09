@@ -337,7 +337,6 @@ export class LeaseService {
     this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
 
     try {
-      // Try to get from cache first
       // const cachedResult = await this.leaseCache.getClientLeases(cuid, options, filters as any);
 
       // if (cachedResult.success && cachedResult.data) {

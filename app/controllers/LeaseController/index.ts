@@ -46,22 +46,25 @@ export class LeaseController {
 
   getFilteredLeases = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-    const { status, propertyId, tenantId, search, page, limit, sort } = req.query;
 
-    const filters = {
-      status: status as any,
-      propertyId: propertyId as string | undefined,
-      tenantId: tenantId as string | undefined,
-      search: search as string | undefined,
-    };
+    this.log.info('Raw query params:', req.query);
+
+    const pagination = (req.query.pagination as any) || {};
+    const filter = (req.query.filter as any) || {};
 
     const paginationOpts = {
-      page: page ? parseInt(page as string, 10) : 1,
-      limit: limit ? parseInt(limit as string, 10) : 10,
-      sort: sort as string | undefined,
+      page: pagination.page ? parseInt(pagination.page, 10) : 1,
+      limit: pagination.limit ? parseInt(pagination.limit, 10) : 10,
+      sort: pagination.order as string | undefined,
+      sortBy: pagination.sortBy as string | undefined,
     };
 
-    const result = await this.leaseService.getFilteredLeases(cuid, filters, paginationOpts);
+    const filterOpts = {
+      status: filter.status as any,
+      search: filter.search as string | undefined,
+    };
+
+    const result = await this.leaseService.getFilteredLeases(cuid, filterOpts, paginationOpts);
     res.status(httpStatusCodes.OK).json(result);
   };
 

@@ -159,101 +159,110 @@ const ProfileSchema = new Schema<IProfileDocument>(
     puid: { type: String, required: true, index: true },
 
     vendorInfo: {
-      vendorId: {
-        type: Schema.Types.ObjectId,
-        ref: 'Vendor',
+      type: {
+        vendorId: {
+          type: Schema.Types.ObjectId,
+          ref: 'Vendor',
+        },
+        linkedVendorUid: {
+          // this is the primary vendor (user -> uid)
+          type: String,
+          trim: true,
+        },
+        isLinkedAccount: {
+          type: Boolean,
+          default: false,
+        },
       },
-      linkedVendorUid: {
-        // this is the primary vendor (user -> uid)
-        type: String,
-        trim: true,
-      },
-      isLinkedAccount: {
-        type: Boolean,
-        default: false,
-      },
+      default: null,
     },
     employeeInfo: {
-      department: { type: String, trim: true },
-      jobTitle: { type: String, trim: true },
-      employeeId: { type: String, trim: true, sparse: true, select: false },
-      reportsTo: {
-        required: function (this: IProfileDocument) {
-          // Not required for vendor linked accounts
-          if (this.vendorInfo?.isLinkedAccount) {
-            return false;
-          }
-          // Not required if employeeInfo doesn't exist or is being set
-          if (!this.employeeInfo || Object.keys(this.employeeInfo).length === 0) {
-            return false;
-          }
-          // Only required for actual employees (when employeeInfo is present and not a vendor)
-          return !!(this.employeeInfo.department || this.employeeInfo.jobTitle);
+      type: {
+        department: { type: String, trim: true },
+        jobTitle: { type: String, trim: true },
+        employeeId: { type: String, trim: true, sparse: true, select: false },
+        reportsTo: {
+          required: function (this: IProfileDocument) {
+            // Not required for vendor linked accounts
+            if (this.vendorInfo?.isLinkedAccount) {
+              return false;
+            }
+            // Not required if employeeInfo doesn't exist or is being set
+            if (!this.employeeInfo || Object.keys(this.employeeInfo).length === 0) {
+              return false;
+            }
+            // Only required for actual employees (when employeeInfo is present and not a vendor)
+            return !!(this.employeeInfo.department || this.employeeInfo.jobTitle);
+          },
+          type: Schema.Types.ObjectId,
+          ref: 'User',
         },
-        type: Schema.Types.ObjectId,
-        ref: 'User',
+        startDate: { type: Date },
+        permissions: [{ type: String }],
+        clientSpecificSettings: { type: Schema.Types.Mixed },
       },
-      startDate: { type: Date },
-      permissions: [{ type: String }],
-      clientSpecificSettings: { type: Schema.Types.Mixed },
+      default: null,
     },
 
     tenantInfo: {
-      employerInfo: [
-        {
-          cuid: { type: String, trim: true, required: true },
-          companyName: { type: String, trim: true, required: true },
-          position: { type: String, trim: true, required: true },
-          monthlyIncome: { type: Number, min: 0, required: true },
-          contactPerson: { type: String, trim: true, required: true },
-          companyAddress: { type: String, trim: true, required: true },
-          contactEmail: { type: String, trim: true, lowercase: true, required: true },
-        },
-      ],
-      activeLeases: [
-        {
-          confirmedDate: { type: Date },
-          confirmed: { type: Boolean, default: false },
-          cuid: { type: String, trim: true, required: true },
-          leaseId: { type: Schema.Types.ObjectId, ref: 'Lease', required: true },
-        },
-      ],
-      backgroundChecks: [
-        {
-          cuid: { type: String, trim: true, required: true },
-          status: {
-            type: String,
-            enum: Object.values(BackgroundCheckStatus),
-            required: true,
+      type: {
+        employerInfo: [
+          {
+            cuid: { type: String, trim: true, required: true },
+            companyName: { type: String, trim: true, required: true },
+            position: { type: String, trim: true, required: true },
+            monthlyIncome: { type: Number, min: 0, required: true },
+            contactPerson: { type: String, trim: true, required: true },
+            companyAddress: { type: String, trim: true, required: true },
+            contactEmail: { type: String, trim: true, lowercase: true, required: true },
           },
-          checkedDate: { type: Date, required: true },
-          expiryDate: { type: Date },
-          notes: { type: String, trim: true },
+        ],
+        activeLeases: [
+          {
+            confirmedDate: { type: Date },
+            confirmed: { type: Boolean, default: false },
+            cuid: { type: String, trim: true, required: true },
+            leaseId: { type: Schema.Types.ObjectId, ref: 'Lease', required: true },
+          },
+        ],
+        backgroundChecks: [
+          {
+            cuid: { type: String, trim: true, required: true },
+            status: {
+              type: String,
+              enum: Object.values(BackgroundCheckStatus),
+              required: true,
+            },
+            checkedDate: { type: Date, required: true },
+            expiryDate: { type: Date },
+            notes: { type: String, trim: true },
+          },
+        ],
+        rentalReferences: [
+          {
+            landlordName: { type: String, required: true, trim: true },
+            landlordEmail: { type: String, trim: true },
+            landlordContact: { type: String, required: true, trim: true },
+            durationMonths: { type: Number, min: 1, max: 120 },
+            reasonForLeaving: { type: String, trim: true },
+            propertyAddress: { type: String, required: true, trim: true },
+          },
+        ],
+        pets: [
+          {
+            type: { type: String, required: true, trim: true },
+            breed: { type: String, required: true, trim: true },
+            isServiceAnimal: { type: Boolean, default: false },
+          },
+        ],
+        emergencyContact: {
+          name: { type: String, trim: true },
+          phone: { type: String, trim: true },
+          relationship: { type: String, trim: true },
+          email: { type: String, trim: true, lowercase: true },
         },
-      ],
-      rentalReferences: [
-        {
-          landlordName: { type: String, required: true, trim: true },
-          landlordEmail: { type: String, trim: true },
-          landlordContact: { type: String, required: true, trim: true },
-          durationMonths: { type: Number, min: 1, max: 120 },
-          reasonForLeaving: { type: String, trim: true },
-          propertyAddress: { type: String, required: true, trim: true },
-        },
-      ],
-      pets: [
-        {
-          type: { type: String, required: true, trim: true },
-          breed: { type: String, required: true, trim: true },
-          isServiceAnimal: { type: Boolean, default: false },
-        },
-      ],
-      emergencyContact: {
-        name: { type: String, trim: true },
-        phone: { type: String, trim: true },
-        relationship: { type: String, trim: true },
-        email: { type: String, trim: true, lowercase: true },
       },
+      default: null,
     },
 
     policies: {

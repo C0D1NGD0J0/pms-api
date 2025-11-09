@@ -352,41 +352,44 @@ export const revokeInvitationSchema = z.object({
 });
 
 export const getInvitationsQuerySchema = z.object({
-  status: z
-    .enum(['draft', 'pending', 'accepted', 'expired', 'revoked', 'sent'], {
-      errorMap: () => ({ message: 'Invalid status value' }),
+  pagination: z
+    .object({
+      page: z
+        .string()
+        .regex(/^\d+$/, 'Page must be a positive number')
+        .transform((str) => parseInt(str, 10))
+        .refine((num) => num > 0, 'Page must be greater than 0')
+        .optional(),
+      limit: z
+        .string()
+        .regex(/^\d+$/, 'Limit must be a positive number')
+        .transform((str) => parseInt(str, 10))
+        .refine((num) => num > 0 && num <= 100, 'Limit must be between 1 and 100')
+        .optional(),
+      sortBy: z
+        .enum(['createdAt', 'inviteeEmail', 'status'], {
+          errorMap: () => ({ message: 'Invalid sortBy value' }),
+        })
+        .optional(),
+      order: z
+        .enum(['asc', 'desc'], {
+          errorMap: () => ({ message: 'Invalid sortOrder value' }),
+        })
+        .optional(),
     })
     .optional(),
-
-  role: z
-    .enum(ROLE_VALIDATION.ALL_ROLES, {
-      errorMap: () => ({ message: 'Invalid role value' }),
-    })
-    .optional(),
-
-  page: z
-    .string()
-    .regex(/^\d+$/, 'Page must be a positive number')
-    .transform((str) => parseInt(str, 10))
-    .refine((num) => num > 0, 'Page must be greater than 0')
-    .optional(),
-
-  limit: z
-    .string()
-    .regex(/^\d+$/, 'Limit must be a positive number')
-    .transform((str) => parseInt(str, 10))
-    .refine((num) => num > 0 && num <= 100, 'Limit must be between 1 and 100')
-    .optional(),
-
-  sortBy: z
-    .enum(['createdAt', 'inviteeEmail', 'status'], {
-      errorMap: () => ({ message: 'Invalid sortBy value' }),
-    })
-    .optional(),
-
-  sort: z
-    .enum(['asc', 'desc'], {
-      errorMap: () => ({ message: 'Invalid sortOrder value' }),
+  filter: z
+    .object({
+      status: z
+        .enum(['draft', 'pending', 'accepted', 'expired', 'revoked', 'sent'], {
+          errorMap: () => ({ message: 'Invalid status value' }),
+        })
+        .optional(),
+      role: z
+        .enum(ROLE_VALIDATION.ALL_ROLES, {
+          errorMap: () => ({ message: 'Invalid role value' }),
+        })
+        .optional(),
     })
     .optional(),
 });

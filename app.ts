@@ -3,6 +3,7 @@ dotenv.config();
 if (process.env.NODE_ENV !== 'test') {
   require('@di/index');
 }
+import qs from 'qs';
 import hpp from 'hpp';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -76,6 +77,12 @@ export class App implements IAppSetup {
     app.use(cookieParser());
     app.use(compression());
     app.use(scopedMiddleware);
+    app.set('query parser', (str: string) =>
+      qs.parse(str, {
+        allowDots: true,
+        parseArrays: true,
+      })
+    );
   }
 
   private routes(app: Application) {

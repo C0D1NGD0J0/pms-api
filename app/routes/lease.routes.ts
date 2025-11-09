@@ -14,9 +14,62 @@ import {
 const router = Router();
 router.use(isAuthenticated, basicLimiter());
 
+router.get(
+  '/:cuid/stats',
+  // Get lease statistics (active/pending/expired counts, occupancy rates)
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid,
+    query: LeaseValidations.statsQuery,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.getLeaseStats(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/expiring',
+  // Get leases expiring within X days
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.getExpiringLeases(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/templates',
+  // Get list of available lease templates
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.getLeaseTemplates(req, res);
+  })
+);
+
 router
   .route('/:cuid')
+  .get(
+    // Get filtered leases with pagination
+    requirePermission(PermissionResource.LEASE, PermissionAction.LIST),
+    validateRequest({
+      params: UtilsValidations.cuid,
+      query: LeaseValidations.filterLeases,
+    }),
+    asyncWrapper(async (req: AppRequest, res) => {
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.getFilteredLeases(req, res);
+    })
+  )
   .post(
+    // Create new lease
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     diskUpload(['document']),
     scanFile,
@@ -27,23 +80,6 @@ router
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<LeaseController>('leaseController');
       return controller.createLease(req, res);
-    })
-  )
-  .get(
-    // Get all leases (with optional filters via query params)
-    requirePermission(PermissionResource.LEASE, PermissionAction.LIST),
-    // Inject cuid into query for validation
-    (req: AppRequest, _res, next) => {
-      req.query._cuid = req.params.cuid;
-      next();
-    },
-    validateRequest({
-      params: UtilsValidations.cuid,
-      query: LeaseValidations.filterLeases,
-    }),
-    asyncWrapper(async (req: AppRequest, res) => {
-      const controller = req.container.resolve<LeaseController>('leaseController');
-      return controller.getFilteredLeases(req, res);
     })
   );
 
@@ -225,33 +261,6 @@ router.get(
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<LeaseController>('leaseController');
     return controller.previewLease(req, res);
-  })
-);
-
-router.get(
-  '/:cuid/templates',
-  // Get list of available lease templates
-  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
-  validateRequest({
-    params: UtilsValidations.cuid,
-  }),
-  asyncWrapper(async (req: AppRequest, res) => {
-    const controller = req.container.resolve<LeaseController>('leaseController');
-    return controller.getLeaseTemplates(req, res);
-  })
-);
-
-router.get(
-  '/:cuid/stats',
-  // Get lease statistics (active/pending/expired counts, occupancy rates)
-  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
-  validateRequest({
-    params: UtilsValidations.cuid,
-    query: LeaseValidations.statsQuery,
-  }),
-  asyncWrapper(async (req: AppRequest, res) => {
-    const controller = req.container.resolve<LeaseController>('leaseController');
-    return controller.getLeaseStats(req, res);
   })
 );
 

@@ -25,7 +25,7 @@ export const UserFilterQuerySchema = z.object({
         .optional(),
       department: z.string().optional(),
       status: z.enum(['active', 'inactive']).optional(),
-      search: z.string().max(100, 'Search term must be less than 100 characters').optional(),
+      search: z.string().max(100, 'Search term must be 100 characters or less').optional(),
     })
     .optional(),
   pagination: z

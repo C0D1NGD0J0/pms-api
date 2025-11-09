@@ -445,6 +445,24 @@ export interface ILeaseDocumentItem {
 }
 
 /**
+ * Lease List Item Interface
+ * Simplified lease data for list views
+ */
+export interface ILeaseListItem {
+  sentForSignature: boolean;
+  tenantActivated: boolean;
+  propertyAddress: string;
+  leaseNumber: string;
+  monthlyRent: number;
+  status: LeaseStatus;
+  unitNumber?: string;
+  tenantName: string;
+  startDate: Date;
+  endDate: Date;
+  luid: string;
+}
+
+/**
  * E-Signature Request Data Interface
  * Used when sending lease for signature
  */

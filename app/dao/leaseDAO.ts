@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { createLogger } from '@utils/index';
+import { paginateResult, createLogger } from '@utils/index';
 import { ClientSession, FilterQuery, Model } from 'mongoose';
 import {
   ListResultWithPagination,
@@ -11,6 +11,7 @@ import {
   ILeaseFilterOptions,
   ILeaseDocument,
   ILeaseFormData,
+  ILeaseListItem,
   IRentRollItem,
   ILeaseStats,
   LeaseStatus,
@@ -72,9 +73,9 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     cuid: string,
     filters: ILeaseFilterOptions,
     pagination: IPaginationQuery
-  ): ListResultWithPagination<ILeaseDocument[]> {
+  ): ListResultWithPagination<ILeaseListItem[]> {
     try {
-      this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
+      this.log.info(`Getting filtered leases for client ${cuid}`, { filters, pagination });
 
       const query: FilterQuery<ILeaseDocument> = { cuid, deletedAt: null };
 
@@ -172,11 +173,10 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       const skip = (page - 1) * limit;
 
       let sortOption: Record<string, 1 | -1> = { createdAt: -1 };
-      if (pagination.sort && typeof pagination.sort === 'string') {
-        const sortParts = pagination.sort.split(':');
-        const field = sortParts[0];
-        const order = sortParts[1];
-        sortOption = { [field]: order === 'desc' ? -1 : 1 };
+
+      if (pagination.sortBy && pagination.sort) {
+        const sortDirection = pagination.sort === 'asc' ? 1 : -1;
+        sortOption = { [pagination.sortBy]: sortDirection };
       }
 
       const [result, totalCount] = await Promise.all([
@@ -184,25 +184,58 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           sort: sortOption,
           skip,
           limit,
+          projection:
+            'luid leaseNumber status duration.startDate duration.endDate fees.monthlyRent property.unitId tenantId signingMethod eSignature.status',
           populate: [
-            { path: 'tenantId', select: 'firstName lastName email' },
-            { path: 'property.id', select: 'name address' },
+            {
+              path: 'tenantId',
+              select: 'email',
+              populate: {
+                path: 'profile',
+                select: 'personalInfo.firstName personalInfo.lastName',
+              },
+            },
+            { path: 'property.id', select: 'address.fullAddress' },
+            { path: 'property.unitId', select: 'unitNumber' },
           ],
         }),
         this.countDocuments(query),
       ]);
 
-      const leases = result.items;
+      const transformedList = result.items.map((lease: any) => {
+        const leaseObj = lease.toObject ? lease.toObject() : lease;
+
+        const tenant = leaseObj.tenantId;
+        const profile = tenant?.profile;
+        const tenantName =
+          profile?.personalInfo?.firstName && profile?.personalInfo?.lastName
+            ? `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`
+            : tenant?.email || 'N/A';
+
+        const propertyAddress = leaseObj.property?.id?.address?.fullAddress || 'N/A';
+        const unitNumber = leaseObj.property?.unitId?.unitNumber || null;
+
+        return {
+          luid: leaseObj.luid,
+          leaseNumber: leaseObj.leaseNumber,
+          tenantName,
+          propertyAddress,
+          unitNumber,
+          monthlyRent: leaseObj.fees?.monthlyRent,
+          startDate: leaseObj.duration?.startDate,
+          endDate: leaseObj.duration?.endDate,
+          status: leaseObj.status,
+          sentForSignature:
+            leaseObj.signingMethod === 'electronic' && leaseObj.eSignature?.status === 'sent',
+          tenantActivated: leaseObj.status === 'active',
+        };
+      });
+
+      const paginationInfo = paginateResult(totalCount, skip, limit);
 
       return {
-        items: leases,
-        pagination: {
-          currentPage: page,
-          perPage: limit,
-          total: totalCount,
-          totalPages: Math.ceil(totalCount / limit),
-          hasMoreResource: page < Math.ceil(totalCount / limit),
-        },
+        items: transformedList,
+        pagination: paginationInfo,
       };
     } catch (error: any) {
       this.log.error('Error getting filtered leases:', error);
@@ -505,6 +538,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         terminated: 0,
         cancelled: 0,
       };
+
+      this.log.info('leasesByStatus aggregation result:', { leasesByStatus, baseQuery });
 
       leasesByStatus.forEach((item: any) => {
         statusMap[item._id] = item.count;

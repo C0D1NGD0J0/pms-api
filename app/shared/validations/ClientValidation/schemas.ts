@@ -108,24 +108,32 @@ export const AssignDepartmentSchema = z.object({
 });
 
 export const FilteredUsersQuerySchema = z.object({
-  role: z
-    .union([
-      z.enum(ROLE_VALIDATION.ALL_ROLES),
-      z.array(z.enum(ROLE_VALIDATION.ALL_ROLES)),
-      // Comma-separated string that gets transformed to array
-      z
-        .string()
-        .transform((val) => val.split(',').map((r) => r.trim()))
-        .pipe(z.array(z.enum(ROLE_VALIDATION.ALL_ROLES))),
-    ])
+  pagination: z
+    .object({
+      page: z.string().regex(/^\d+$/).transform(Number).optional(),
+      limit: z.string().regex(/^\d+$/).transform(Number).optional(),
+      sort: z.string().optional(),
+      order: z.enum(['asc', 'desc']).optional(),
+    })
     .optional(),
-  department: z.string().optional(),
-  status: z.enum(['active', 'inactive']).optional(),
-  search: z.string().optional(),
-  page: z.string().regex(/^\d+$/).transform(Number).optional(),
-  limit: z.string().regex(/^\d+$/).transform(Number).optional(),
-  sortBy: z.string().optional(),
-  sort: z.enum(['asc', 'desc']).optional(),
+  filter: z
+    .object({
+      role: z
+        .union([
+          z.enum(ROLE_VALIDATION.ALL_ROLES),
+          z.array(z.enum(ROLE_VALIDATION.ALL_ROLES)),
+          // Comma-separated string that gets transformed to array
+          z
+            .string()
+            .transform((val) => val.split(',').map((r) => r.trim()))
+            .pipe(z.array(z.enum(ROLE_VALIDATION.ALL_ROLES))),
+        ])
+        .optional(),
+      department: z.string().optional(),
+      status: z.enum(['active', 'inactive']).optional(),
+      search: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const TenantDetailsIncludeQuerySchema = z.object({

@@ -3,7 +3,6 @@ import { createLogger } from '@utils/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IVendorDocument } from '@interfaces/vendor.interface';
 import { IPropertyDocument } from '@interfaces/property.interface';
-import permissionConfig from '@shared/permissions/permissions.json';
 import { IUserRoleType, RoleHelpers, ROLES } from '@shared/constants/roles.constants';
 import {
   PermissionResource,
@@ -14,6 +13,7 @@ import {
   PermissionScope,
 } from '@interfaces/utils.interface';
 
+import permissionConfig from './permissions.json';
 import {
   NotificationAccessStrategy,
   MaintenanceAccessStrategy,

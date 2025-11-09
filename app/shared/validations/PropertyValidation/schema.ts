@@ -471,10 +471,9 @@ export const PropertyCsvSchema = z.object({
     .string()
     .trim()
     .email('Invalid email format for owner email')
-    .transform((val) => val.toLowerCase())
+    .transform((val) => (val === '' ? undefined : val))
     .optional()
-    .or(z.literal(''))
-    .transform((val) => (val === '' ? undefined : val)),
+    .transform((val: string | undefined) => val?.toLowerCase()),
   owner_phone: z.string().trim().max(20, 'Owner phone must be at most 20 characters').optional(),
   owner_taxId: z.string().trim().max(50, 'Owner tax ID must be at most 50 characters').optional(),
   owner_notes: z.string().trim().max(500, 'Owner notes must be at most 500 characters').optional(),

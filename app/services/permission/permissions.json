@@ -3,6 +3,7 @@
     "admin": {
       "$extend": ["manager"],
       "property": ["create:any", "read:any", "update:any", "delete:any"],
+      "lease": ["create:any", "list:any", "read:any", "update:any"],
       "user": ["remove:any", "assign_roles:any"],
       "client": ["read:mine", "settings:mine", "manage_users:mine"],
       "invitation": [
@@ -18,7 +19,7 @@
     "manager": {
       "$extend": ["staff"],
       "user": ["list:any", "read:any", "update:any"],
-      "lease": ["create:any", "delete:mine", "list:any", "read:any", "update:any"],
+      "lease": ["create:any", "list:any", "read:any", "update:any"],
       "property": ["create:mine", "delete:mine", "list:any", "read:any", "update:any"],
       "maintenance": ["create:mine", "delete:mine", "list:any", "read:any", "update:any"],
       "invitation": [

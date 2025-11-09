@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
+import { LeaseCache } from '@caching/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { IUserRole } from '@shared/constants/roles.constants';
@@ -52,6 +53,7 @@ interface IConstructor {
   invitationDAO: InvitationDAO;
   assetService: AssetService;
   propertyDAO: PropertyDAO;
+  leaseCache: LeaseCache;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
@@ -59,18 +61,19 @@ interface IConstructor {
 }
 
 export class LeaseService {
-  private readonly notificationService: NotificationService;
-  private readonly invitationService: InvitationService;
   private readonly log: Logger;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
+  private readonly leaseCache: LeaseCache;
   private readonly propertyDAO: PropertyDAO;
   private readonly assetService: AssetService;
   private readonly invitationDAO: InvitationDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly invitationService: InvitationService;
+  private readonly notificationService: NotificationService;
 
   constructor({
     notificationService,
@@ -84,6 +87,7 @@ export class LeaseService {
     profileDAO,
     leaseDAO,
     userDAO,
+    leaseCache,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
@@ -91,6 +95,7 @@ export class LeaseService {
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
     this.assetService = assetService;
+    this.leaseCache = leaseCache;
     this.invitationDAO = invitationDAO;
     this.invitationService = invitationService;
     this.emitterService = emitterService;
@@ -107,7 +112,6 @@ export class LeaseService {
     ctx: IRequestContext
   ): IPromiseReturnedData<ILeaseDocument> {
     const currentuser = ctx.currentuser!;
-    this.log.info(`Creating lease for client ${cuid}`);
 
     if (!cuid) {
       throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
@@ -119,7 +123,6 @@ export class LeaseService {
       throw new BadRequestError({ message: t('common.errors.clientNotFound') });
     }
 
-    // Fetch property with owner information to determine landlord
     const property = await this.propertyDAO.findFirst(
       {
         _id: new Types.ObjectId(data.property.id),
@@ -319,16 +322,62 @@ export class LeaseService {
     this.log.info(`Lease created successfully: ${result.lease.luid}`, {
       approvalStatus,
     });
+
+    // Invalidate lease cache for this client
+    await this.leaseCache.invalidateLeaseLists(cuid);
+
     return { success: true, data: result.lease, message };
   }
 
   async getFilteredLeases(
     cuid: string,
     filters: ILeaseFilterOptions,
-    _options: any
+    options: any
   ): ListResultWithPagination<ILeaseDocument> {
     this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
-    throw new Error('getFilteredLeases not yet implemented');
+
+    try {
+      // const cachedResult = await this.leaseCache.getClientLeases(cuid, options, filters as any);
+
+      // if (cachedResult.success && cachedResult.data) {
+      //   this.log.info('Returning leases from cache', {
+      //     cuid,
+      //     count: cachedResult.data.leases?.length || 0,
+      //   });
+
+      //   return {
+      //     success: true,
+      //     data: cachedResult.data.leases,
+      //     message: 'Leases retrieved successfully (cached)',
+      //     pagination: {
+      //       currentPage: options.page || 1,
+      //       perPage: options.limit || 10,
+      //       total: cachedResult.data.pagination.total,
+      //       totalPages: Math.ceil(cachedResult.data.pagination.total / (options.limit || 10)),
+      //       hasMoreResource:
+      //         (options.page || 1) <
+      //         Math.ceil(cachedResult.data.pagination.total / (options.limit || 10)),
+      //     },
+      //   } as any;
+      // }
+      const result = await this.leaseDAO.getFilteredLeases(cuid, filters, options);
+
+      await this.leaseCache.saveClientLeases(cuid, result.items, {
+        pagination: options,
+        filter: filters as any,
+        totalCount: result.pagination?.total,
+      });
+
+      return {
+        success: true,
+        data: result.items,
+        message: 'Leases retrieved successfully',
+        pagination: result.pagination,
+      } as any;
+    } catch (error) {
+      this.log.error('Error getting filtered leases:', error);
+      throw error;
+    }
   }
 
   async updateLease(
@@ -343,7 +392,6 @@ export class LeaseService {
   async deleteLease(cuid: string, leaseId: string, userId: string): IPromiseReturnedData<boolean> {
     this.log.info(`Deleting lease ${leaseId} for client ${cuid}`);
 
-    // Get the lease
     const lease = await this.leaseDAO.findFirst({
       luid: leaseId,
       cuid,
@@ -378,6 +426,10 @@ export class LeaseService {
       status: lease.status,
       deletedBy: userId,
     });
+
+    // Invalidate lease cache
+    await this.leaseCache.invalidateLease(cuid, leaseId);
+    await this.leaseCache.invalidateLeaseLists(cuid);
 
     return {
       success: true,
@@ -516,11 +568,11 @@ export class LeaseService {
     cuid: string,
     propertyId: string
   ): Promise<{
-    landlordName: string;
-    landlordAddress: string;
-    landlordEmail: string;
-    landlordPhone: string;
-    isExternalOwner: boolean;
+    landlordName?: string;
+    landlordAddress?: string;
+    landlordEmail?: string;
+    landlordPhone?: string;
+    isExternalOwner?: boolean;
     managementCompanyName?: string;
     managementCompanyAddress?: string;
     managementCompanyEmail?: string;
@@ -617,17 +669,7 @@ export class LeaseService {
     };
   }
 
-  async generateLeasePreview(
-    cuid: string,
-    previewData: ILeasePreviewRequest
-  ): Promise<{
-    landlordName: string;
-    landlordAddress: string;
-    landlordEmail: string;
-    landlordPhone: string;
-    jurisdiction: string;
-    [key: string]: any;
-  }> {
+  async generateLeasePreview(cuid: string, previewData: ILeasePreviewRequest) {
     this.log.info(`Generating lease preview for client ${cuid}`);
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
@@ -664,15 +706,6 @@ export class LeaseService {
       const hasUnitOwner =
         hasUnitNumber && (ownershipType === 'external_owner' || ownershipType === 'self_owned');
 
-      this.log.debug('Ownership context for lease preview', {
-        propertyId: previewData.propertyId,
-        hasUnitNumber,
-        unitNumber: previewData.unitNumber,
-        ownershipType,
-        isMultiUnit,
-        hasUnitOwner,
-      });
-
       return {
         ...previewData,
         ...landlordInfo,
@@ -689,27 +722,42 @@ export class LeaseService {
     }
   }
 
-  async downloadLeasePDF(cuid: string, leaseId: string): IPromiseReturnedData<any> {
-    this.log.info(`Downloading PDF for lease ${leaseId}`);
-    throw new Error('downloadLeasePDF not yet implemented');
-  }
-
   async getExpiringLeases(
     cuid: string,
     daysThreshold: number = 30
   ): IPromiseReturnedData<ILeaseDocument[]> {
-    this.log.info(`Getting leases expiring within ${daysThreshold} days for client ${cuid}`);
-    throw new Error('getExpiringLeases not yet implemented');
+    if (!cuid) {
+      throw new BadRequestError({ message: 'Client ID is required' });
+    }
+
+    if (daysThreshold <= 0 || !Number.isInteger(daysThreshold) || daysThreshold > 365) {
+      throw new BadRequestError({ message: 'Invalid days threshold provided.' });
+    }
+
+    const leases = await this.leaseDAO.getExpiringLeases(cuid, daysThreshold);
+
+    return {
+      success: true,
+      message: `Found ${leases.length} lease(s) expiring within ${daysThreshold} days`,
+      data: leases,
+    };
   }
 
   async getLeaseStats(cuid: string, filters?: any): IPromiseReturnedData<any> {
     this.log.info(`Getting lease statistics for client ${cuid}`, { filters });
-    throw new Error('getLeaseStats not yet implemented');
-  }
 
-  async exportLeases(cuid: string, format: string, filters?: any): IPromiseReturnedData<any> {
-    this.log.info(`Exporting leases for client ${cuid} as ${format}`, { filters });
-    throw new Error('exportLeases not yet implemented');
+    try {
+      const stats = await this.leaseDAO.getLeaseStats(cuid, filters);
+
+      return {
+        success: true,
+        message: 'Lease statistics retrieved successfully',
+        data: stats,
+      };
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Failed to get lease statistics');
+      throw error;
+    }
   }
 
   /**
@@ -885,6 +933,10 @@ export class LeaseService {
       approvedBy: currentuser.sub,
     });
 
+    // Invalidate lease cache
+    await this.leaseCache.invalidateLease(cuid, leaseId);
+    await this.leaseCache.invalidateLeaseLists(cuid);
+
     return {
       success: true,
       data: updatedLease,
@@ -979,6 +1031,10 @@ export class LeaseService {
       reason,
     });
 
+    // Invalidate lease cache
+    await this.leaseCache.invalidateLease(cuid, leaseId);
+    await this.leaseCache.invalidateLeaseLists(cuid);
+
     return {
       success: true,
       data: updatedLease,
@@ -1030,6 +1086,9 @@ export class LeaseService {
       count: result.modifiedCount,
       approvedBy: currentuser.sub,
     });
+
+    // Invalidate all lease lists for this client
+    await this.leaseCache.invalidateLeaseLists(cuid);
 
     return {
       success: true,
@@ -1088,6 +1147,9 @@ export class LeaseService {
       rejectedBy: currentuser.sub,
       reason,
     });
+
+    // Invalidate all lease lists for this client
+    await this.leaseCache.invalidateLeaseLists(cuid);
 
     return {
       success: true,

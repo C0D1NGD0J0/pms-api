@@ -16,6 +16,7 @@ import {
   EventsRegistryCache,
   PropertyCache,
   VendorCache,
+  LeaseCache,
   AuthCache,
   UserCache,
 } from '@caching/index';
@@ -161,6 +162,10 @@ const CacheResources = {
 
   propertyCache: asFunction(() => {
     return new PropertyCache();
+  }).singleton(),
+
+  leaseCache: asFunction(() => {
+    return new LeaseCache();
   }).singleton(),
 
   eventsRegistry: asFunction(() => {

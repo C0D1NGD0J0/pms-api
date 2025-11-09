@@ -8,6 +8,7 @@ import {
   ILeaseFilterOptions,
   ILeaseDocument,
   ILeaseFormData,
+  ILeaseListItem,
   IRentRollItem,
   ILeaseStats,
   LeaseStatus,
@@ -90,7 +91,7 @@ export interface ILeaseDAO {
     cuid: string,
     filters: ILeaseFilterOptions,
     pagination: IPaginationQuery
-  ): ListResultWithPagination<ILeaseDocument[]>;
+  ): ListResultWithPagination<ILeaseListItem[]>;
 
   /**
    * Update lease with uploaded document information

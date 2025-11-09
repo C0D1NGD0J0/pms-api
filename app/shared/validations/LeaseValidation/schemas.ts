@@ -1,4 +1,55 @@
 import { z } from 'zod';
+import { Types } from 'mongoose';
+import { UserDAO } from '@dao/userDAO';
+import { PropertyDAO } from '@dao/propertyDAO';
+
+import { getContainer } from '../UtilsValidation';
+
+export const isValidProperty = async (propertyId: string, cuid: string) => {
+  try {
+    if (!propertyId || !Types.ObjectId.isValid(propertyId)) {
+      return false;
+    }
+
+    const { propertyDAO }: { propertyDAO: PropertyDAO } = (await getContainer()).cradle;
+    const property = await propertyDAO.findFirst({
+      _id: new Types.ObjectId(propertyId),
+      cuid,
+      deletedAt: null,
+    });
+
+    return !!property;
+  } catch (error) {
+    console.error('Error validating property:', error);
+    return false;
+  }
+};
+
+export const isValidTenant = async (tenantId: string, cuid: string) => {
+  try {
+    if (!tenantId || !Types.ObjectId.isValid(tenantId)) {
+      return false;
+    }
+
+    const { userDAO }: { userDAO: UserDAO } = (await getContainer()).cradle;
+    const user = await userDAO.findFirst({
+      _id: new Types.ObjectId(tenantId),
+      activecuid: cuid,
+      deletedAt: null,
+    });
+
+    if (!user) {
+      return false;
+    }
+
+    // Verify user has 'tenant' role for this client
+    const clientAccess = user.cuids.find((c: any) => c.cuid === cuid);
+    return clientAccess && clientAccess.roles.includes('tenant');
+  } catch (error) {
+    console.error('Error validating tenant:', error);
+    return false;
+  }
+};
 
 // Enum Schemas
 export const LeaseStatusEnum = z.enum([
@@ -196,7 +247,6 @@ export const CreateLeaseSchema = BaseLeaseSchemaObject.omit({ cuid: true })
     }
   );
 
-// Update Lease Schema - Apply transformations to base object, then add refinements
 export const UpdateLeaseSchema = BaseLeaseSchemaObject.partial()
   .omit({ cuid: true, tenantInfo: true })
   .extend({
@@ -232,29 +282,21 @@ export const UpdateLeaseSchema = BaseLeaseSchemaObject.partial()
   );
 
 export const FilterLeasesSchema = z.object({
-  status: z.union([LeaseStatusEnum, z.array(LeaseStatusEnum)]).optional(),
-  type: z.union([LeaseTypeEnum, z.array(LeaseTypeEnum)]).optional(),
-  signingMethod: SigningMethodEnum.optional(),
-  propertyId: z.string().optional(),
-  unitId: z.string().optional(),
-  tenantId: z.string().optional(),
-  isExpiringSoon: z
-    .union([z.boolean(), z.string()])
-    .optional()
-    .transform((val) => (typeof val === 'string' ? val === 'true' : val)),
-  startDateFrom: z.coerce.date().optional(),
-  startDateTo: z.coerce.date().optional(),
-  endDateFrom: z.coerce.date().optional(),
-  endDateTo: z.coerce.date().optional(),
-  createdAfter: z.coerce.date().optional(),
-  createdBefore: z.coerce.date().optional(),
-  minRent: z.coerce.number().positive().optional(),
-  maxRent: z.coerce.number().positive().optional(),
-  search: z.string().max(100, 'Search term must be less than 100 characters').optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(10),
-  sortBy: z.string().optional(),
-  sortOrder: z.enum(['asc', 'desc']).optional(),
+  filter: z
+    .object({
+      status: z.string().optional(),
+      cuid: z.string().optional(),
+      search: z.string().max(100, 'Search term must be less than 100 characters').optional(),
+    })
+    .optional(),
+  pagination: z
+    .object({
+      page: z.coerce.number().int().min(1).default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(10),
+      order: z.string().optional(),
+      sortBy: z.string().optional(),
+    })
+    .optional(),
 });
 
 // Activate Lease Schema

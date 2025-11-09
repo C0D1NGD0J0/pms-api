@@ -89,47 +89,48 @@ export class PropertyController {
   };
 
   getClientProperties = async (req: AppRequest, res: Response) => {
-    const { page, limit, sort, sortBy } = req.query;
     const { cuid } = req.params;
     const currentuser = req.context.currentuser;
+    const pagination = (req.query.pagination as any) || {};
+    const filter = (req.query.filter as any) || {};
 
     const queryParams: IPropertyFilterQuery = {
       pagination: {
-        page: parseInt(page as string) || 1,
-        limit: parseInt(limit as string) || 10,
-        sortBy: sortBy as string,
-        sort: sort as string,
+        page: pagination.page ? parseInt(pagination.page, 10) : 1,
+        limit: pagination.limit ? parseInt(pagination.limit, 10) : 10,
+        sortBy: pagination.sortBy as string,
+        sort: pagination.order as string,
       },
       filters: {},
     };
 
     if (queryParams.filters) {
-      if (req.query.propertyType) {
-        queryParams.filters.propertyType = req.query.propertyType as PropertyType;
+      if (filter.propertyType) {
+        queryParams.filters.propertyType = filter.propertyType as PropertyType;
       }
 
-      if (req.query.status) {
-        queryParams.filters.status = req.query.status as any;
+      if (filter.status) {
+        queryParams.filters.status = filter.status as any;
       }
 
-      if (req.query.occupancyStatus) {
-        queryParams.filters.occupancyStatus = req.query.occupancyStatus as any;
+      if (filter.occupancyStatus) {
+        queryParams.filters.occupancyStatus = filter.occupancyStatus as any;
       }
 
-      if (req.query.minPrice || req.query.maxPrice) {
+      if (filter.minPrice || filter.maxPrice) {
         queryParams.filters.priceRange = {};
 
-        if (req.query.minPrice) {
-          queryParams.filters.priceRange.min = parseInt(req.query.minPrice as string);
+        if (filter.minPrice) {
+          queryParams.filters.priceRange.min = parseInt(filter.minPrice, 10);
         }
 
-        if (req.query.maxPrice) {
-          queryParams.filters.priceRange.max = parseInt(req.query.maxPrice as string);
+        if (filter.maxPrice) {
+          queryParams.filters.priceRange.max = parseInt(filter.maxPrice, 10);
         }
       }
 
-      if (req.query.searchTerm) {
-        queryParams.filters.searchTerm = req.query.searchTerm as string;
+      if (filter.searchTerm) {
+        queryParams.filters.searchTerm = filter.searchTerm as string;
       }
     }
 

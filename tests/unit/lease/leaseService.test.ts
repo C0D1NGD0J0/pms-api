@@ -543,7 +543,74 @@ describe('LeaseService', () => {
   });
 
   describe('getFilteredLeases', () => {
-    it.todo('should get leases with filters');
+    it('should get leases with filters and include sentForSignature/tenantActivated', async () => {
+      const mockFilters = { status: LeaseStatus.ACTIVE };
+      const mockPaginationOpts = { page: 1, limit: 10 };
+      const mockLeaseData = {
+        items: [
+          {
+            luid: 'L-2025-001',
+            leaseNumber: 'LEASE-001',
+            tenantName: 'John Doe',
+            propertyAddress: '123 Main St',
+            unitNumber: '101',
+            monthlyRent: 1500,
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2026-01-01'),
+            status: LeaseStatus.ACTIVE,
+            sentForSignature: true,
+            tenantActivated: true,
+          },
+        ],
+        pagination: { total: 1, currentPage: 1, totalPages: 1, perPage: 10 },
+      };
+
+      mockDependencies.leaseDAO.getFilteredLeases.mockResolvedValue(mockLeaseData);
+
+      const result = await leaseService.getFilteredLeases('C123', mockFilters, mockPaginationOpts);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        sentForSignature: true,
+        tenantActivated: true,
+      });
+      expect(mockDependencies.leaseDAO.getFilteredLeases).toHaveBeenCalledWith(
+        'C123',
+        mockFilters,
+        mockPaginationOpts
+      );
+    });
+
+    it('should return sentForSignature=false for non-electronic leases', async () => {
+      const mockLeaseData = {
+        items: [
+          {
+            luid: 'L-2025-002',
+            leaseNumber: 'LEASE-002',
+            tenantName: 'Jane Smith',
+            propertyAddress: '456 Oak Ave',
+            unitNumber: null,
+            monthlyRent: 2000,
+            startDate: new Date('2025-02-01'),
+            endDate: new Date('2026-02-01'),
+            status: LeaseStatus.DRAFT,
+            sentForSignature: false,
+            tenantActivated: false,
+          },
+        ],
+        pagination: { total: 1, currentPage: 1, totalPages: 1, perPage: 10 },
+      };
+
+      mockDependencies.leaseDAO.getFilteredLeases.mockResolvedValue(mockLeaseData);
+
+      const result = await leaseService.getFilteredLeases('C123', {}, { page: 1, limit: 10 });
+
+      expect(result.items[0]).toMatchObject({
+        sentForSignature: false,
+        tenantActivated: false,
+      });
+    });
+
     it.todo('should apply status filter');
     it.todo('should apply date range filters');
     it.todo('should apply property/unit filters');

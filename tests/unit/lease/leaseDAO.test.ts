@@ -376,6 +376,62 @@ describe('LeaseDAO', () => {
       }));
     });
 
+    it('should return leases with sentForSignature and tenantActivated fields', async () => {
+      const mockLeases = [
+        {
+          luid: 'L-2025-001',
+          leaseNumber: 'LEASE-001',
+          status: LeaseStatus.ACTIVE,
+          duration: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2026-01-01'),
+          },
+          fees: { monthlyRent: 1500 },
+          property: { unitId: { unitNumber: '101' }, id: { address: { fullAddress: '123 Main St' } } },
+          tenantId: {
+            email: 'tenant@example.com',
+            profile: { personalInfo: { firstName: 'John', lastName: 'Doe' } },
+          },
+          signingMethod: 'electronic',
+          eSignature: { status: 'sent' },
+          toObject: () => ({
+            luid: 'L-2025-001',
+            leaseNumber: 'LEASE-001',
+            status: LeaseStatus.ACTIVE,
+            duration: {
+              startDate: new Date('2025-01-01'),
+              endDate: new Date('2026-01-01'),
+            },
+            fees: { monthlyRent: 1500 },
+            property: { unitId: { unitNumber: '101' }, id: { address: { fullAddress: '123 Main St' } } },
+            tenantId: {
+              email: 'tenant@example.com',
+              profile: { personalInfo: { firstName: 'John', lastName: 'Doe' } },
+            },
+            signingMethod: 'electronic',
+            eSignature: { status: 'sent' },
+          }),
+        },
+      ];
+      const mockQuery = createQueryMock(mockLeases);
+      mockLeaseModel.find.mockReturnValue(mockQuery);
+      mockLeaseModel.countDocuments.mockImplementation(() => ({
+        exec: jest.fn().mockResolvedValue(1),
+      }));
+
+      const result = await leaseDAO.getFilteredLeases(
+        'C123',
+        { status: LeaseStatus.ACTIVE },
+        { page: 1, limit: 10 }
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        sentForSignature: true,
+        tenantActivated: true,
+      });
+    });
+
     it('should apply status filter', async () => {
       const mockLeases = [{ _id: 'L1', status: LeaseStatus.ACTIVE }];
       const mockQuery = createQueryMock(mockLeases);

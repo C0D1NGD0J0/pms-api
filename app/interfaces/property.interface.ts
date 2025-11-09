@@ -95,7 +95,6 @@ export interface IPropertyFilterQuery {
     };
   } | null;
   pagination: IPaginationQuery;
-  currentUser?: any;
 }
 
 /**

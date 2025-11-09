@@ -228,21 +228,21 @@ export class UserService {
         filterOptions.role = [filterOptions.role as IUserRoleType];
       }
 
-      const cachedResult = await this.userCache.getFilteredUsers(
-        cuid,
-        filterOptions,
-        paginationOpts
-      );
-      if (cachedResult.success && cachedResult.data) {
-        return {
-          success: true,
-          data: {
-            items: cachedResult.data.items,
-            pagination: cachedResult.data.pagination,
-          },
-          message: t('client.success.filteredUsersRetrieved'),
-        };
-      }
+      // const cachedResult = await this.userCache.getFilteredUsers(
+      //   cuid,
+      //   filterOptions,
+      //   paginationOpts
+      // );
+      // if (cachedResult.success && cachedResult.data) {
+      //   return {
+      //     success: true,
+      //     data: {
+      //       items: cachedResult.data.items,
+      //       pagination: cachedResult.data.pagination,
+      //     },
+      //     message: t('client.success.filteredUsersRetrieved'),
+      //   };
+      // }
 
       const result = await this.userDAO.getUsersByFilteredType(cuid, filterOptions, paginationOpts);
       const users: FilteredUserTableData[] = await Promise.all(

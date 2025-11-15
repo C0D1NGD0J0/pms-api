@@ -621,6 +621,276 @@ describe('LeaseService', () => {
     it.todo('should get lease by ID');
     it.todo('should throw error if lease not found');
     it.todo('should populate tenant/property references');
+
+    describe('constructActivityFeed', () => {
+      it('should construct activity feed with lastModifiedBy events', async () => {
+        const mockUser = createMockUser(IUserRole.MANAGER);
+        const modifiedById = new Types.ObjectId();
+        const mockLease = createMockLease({
+          createdAt: new Date('2025-01-01'),
+          lastModifiedBy: [
+            {
+              userId: modifiedById,
+              name: 'John Manager',
+              date: new Date('2025-01-15'),
+              action: 'updated',
+            },
+            {
+              userId: modifiedById,
+              name: 'John Manager',
+              date: new Date('2025-01-20'),
+              action: 'activated',
+            },
+          ],
+        });
+
+        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+
+        const result = await leaseService.getLeaseById(
+          'C123',
+          mockLease._id.toString(),
+          { currentuser: mockUser } as any,
+          ['activity']
+        );
+
+        expect(result.success).toBe(true);
+        // Activity feed should include creation + 2 modification events
+        expect(result.data.activity).toHaveLength(3);
+        expect(result.data.activity[0].type).toBe('activated'); // Most recent first
+        expect(result.data.activity[1].type).toBe('updated');
+        expect(result.data.activity[2].type).toBe('created');
+      });
+
+      it('should construct activity feed with approvalDetails events', async () => {
+        const mockUser = createMockUser(IUserRole.MANAGER);
+        const actorId = new Types.ObjectId();
+        const mockLease = createMockLease({
+          createdAt: new Date('2025-01-01'),
+          approvalDetails: [
+            {
+              action: 'created',
+              actor: actorId,
+              timestamp: new Date('2025-01-01'),
+              notes: 'Initial creation',
+            },
+            {
+              action: 'submitted',
+              actor: actorId,
+              timestamp: new Date('2025-01-02'),
+              notes: 'Submitted for approval',
+            },
+            {
+              action: 'approved',
+              actor: actorId,
+              timestamp: new Date('2025-01-03'),
+              notes: 'Approved by manager',
+            },
+          ],
+        });
+
+        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+
+        const result = await leaseService.getLeaseById(
+          'C123',
+          mockLease._id.toString(),
+          { currentuser: mockUser } as any,
+          ['activity']
+        );
+
+        expect(result.success).toBe(true);
+        // Activity feed should include general creation event + 3 approval events = 4 total
+        expect(result.data.activity.length).toBe(4);
+        const approvalEvents = result.data.activity.filter((a: any) =>
+          ['created', 'submitted', 'approved'].includes(a.type)
+        );
+        // 'created' appears twice: once from createdAt, once from approvalDetails
+        expect(approvalEvents.length).toBe(4);
+      });
+
+      it('should include rejection reason in activity feed when lease is rejected', async () => {
+        const mockUser = createMockUser(IUserRole.MANAGER);
+        const actorId = new Types.ObjectId();
+        const mockLease = createMockLease({
+          createdAt: new Date('2025-01-01'),
+          approvalDetails: [
+            {
+              action: 'rejected',
+              actor: actorId,
+              timestamp: new Date('2025-01-05'),
+              notes: 'Additional review needed',
+              rejectionReason: 'Missing tenant documentation',
+            },
+          ],
+        });
+
+        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+
+        const result = await leaseService.getLeaseById(
+          'C123',
+          mockLease._id.toString(),
+          { currentuser: mockUser } as any,
+          ['activity']
+        );
+
+        expect(result.success).toBe(true);
+        const rejectionEvent = result.data.activity.find((a: any) => a.type === 'rejected');
+        expect(rejectionEvent).toBeDefined();
+        expect(rejectionEvent.description).toContain('Missing tenant documentation');
+        expect(rejectionEvent.rejectionReason).toBe('Missing tenant documentation');
+      });
+
+      it('should construct activity feed with signature events', async () => {
+        const mockUser = createMockUser(IUserRole.MANAGER);
+        const tenantId = new Types.ObjectId();
+        const landlordId = new Types.ObjectId();
+        const mockLease = createMockLease({
+          createdAt: new Date('2025-01-01'),
+          signatures: [
+            {
+              userId: tenantId,
+              role: 'tenant',
+              signatureMethod: 'electronic',
+              signedAt: new Date('2025-01-10'),
+            },
+            {
+              userId: landlordId,
+              role: 'landlord',
+              signatureMethod: 'electronic',
+              signedAt: new Date('2025-01-11'),
+            },
+          ],
+        });
+
+        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+
+        const result = await leaseService.getLeaseById(
+          'C123',
+          mockLease._id.toString(),
+          { currentuser: mockUser } as any,
+          ['activity']
+        );
+
+        expect(result.success).toBe(true);
+        const signatureEvents = result.data.activity.filter((a: any) => a.type === 'signed');
+        expect(signatureEvents).toHaveLength(2);
+        expect(signatureEvents[0].role).toBe('landlord'); // Most recent first
+        expect(signatureEvents[1].role).toBe('tenant');
+      });
+
+      it('should construct activity feed with termination event', async () => {
+        const mockUser = createMockUser(IUserRole.MANAGER);
+        const mockLease = createMockLease({
+          createdAt: new Date('2025-01-01'),
+          status: LeaseStatus.TERMINATED,
+          terminationReason: 'Tenant requested early termination',
+          duration: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2026-01-01'),
+            terminationDate: new Date('2025-06-15'),
+          },
+        });
+
+        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+
+        const result = await leaseService.getLeaseById(
+          'C123',
+          mockLease._id.toString(),
+          { currentuser: mockUser } as any,
+          ['activity']
+        );
+
+        expect(result.success).toBe(true);
+        const terminationEvent = result.data.activity.find((a: any) => a.type === 'terminated');
+        expect(terminationEvent).toBeDefined();
+        expect(terminationEvent.description).toContain('Tenant requested early termination');
+      });
+
+      it('should sort activity feed by timestamp descending', async () => {
+        const mockUser = createMockUser(IUserRole.MANAGER);
+        const mockLease = createMockLease({
+          createdAt: new Date('2025-01-01'),
+          lastModifiedBy: [
+            {
+              userId: new Types.ObjectId(),
+              name: 'Manager',
+              date: new Date('2025-01-10'),
+              action: 'updated',
+            },
+          ],
+          approvalDetails: [
+            {
+              action: 'approved',
+              actor: new Types.ObjectId(),
+              timestamp: new Date('2025-01-05'),
+            },
+          ],
+          signatures: [
+            {
+              userId: new Types.ObjectId(),
+              role: 'tenant',
+              signatureMethod: 'electronic',
+              signedAt: new Date('2025-01-15'),
+            },
+          ],
+        });
+
+        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+
+        const result = await leaseService.getLeaseById(
+          'C123',
+          mockLease._id.toString(),
+          { currentuser: mockUser } as any,
+          ['activity']
+        );
+
+        expect(result.success).toBe(true);
+        const timestamps = result.data.activity.map((a: any) =>
+          new Date(a.timestamp).getTime()
+        );
+
+        // Verify descending order (most recent first)
+        for (let i = 0; i < timestamps.length - 1; i++) {
+          expect(timestamps[i]).toBeGreaterThanOrEqual(timestamps[i + 1]);
+        }
+      });
+
+      it('should include metadata in approval events when provided', async () => {
+        const mockUser = createMockUser(IUserRole.MANAGER);
+        const actorId = new Types.ObjectId();
+        const mockLease = createMockLease({
+          createdAt: new Date('2025-01-01'),
+          approvalDetails: [
+            {
+              action: 'approved',
+              actor: actorId,
+              timestamp: new Date('2025-01-03'),
+              notes: 'Approved',
+              metadata: {
+                approverRole: 'regional_manager',
+                approvalLevel: 'level2',
+                previousApprovers: ['manager1', 'manager2'],
+              },
+            },
+          ],
+        });
+
+        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+
+        const result = await leaseService.getLeaseById(
+          'C123',
+          mockLease._id.toString(),
+          { currentuser: mockUser } as any,
+          ['activity']
+        );
+
+        expect(result.success).toBe(true);
+        const approvalEvent = result.data.activity.find((a: any) => a.type === 'approved');
+        expect(approvalEvent).toBeDefined();
+        expect(approvalEvent.metadata).toBeDefined();
+        expect(approvalEvent.metadata.approverRole).toBe('regional_manager');
+        expect(approvalEvent.metadata.previousApprovers).toHaveLength(2);
+      });
+    });
   });
 
   describe('updateLease', () => {
@@ -1835,6 +2105,289 @@ describe('LeaseService', () => {
         expect(createLeaseCall.metadata.isExternalOwner).toBe(false);
       });
       */
+    });
+  });
+
+  describe('Pending Changes Preview', () => {
+    describe('shouldShowPendingChanges', () => {
+      it('should return false if lease has no pending changes', () => {
+        const lease = createMockLease({ pendingChanges: null });
+        const currentUser = { client: { role: 'admin' }, sub: 'user123' } as any;
+
+        const result = (leaseService as any).shouldShowPendingChanges(currentUser, lease);
+
+        expect(result).toBe(false);
+      });
+
+      it('should return true for admin/manager roles', () => {
+        const lease = createMockLease({ pendingChanges: { updatedBy: 'user456', fees: {} } });
+        const adminUser = { client: { role: 'admin' }, sub: 'user123' } as any;
+        const managerUser = { client: { role: 'manager' }, sub: 'user123' } as any;
+
+        expect((leaseService as any).shouldShowPendingChanges(adminUser, lease)).toBe(true);
+        expect((leaseService as any).shouldShowPendingChanges(managerUser, lease)).toBe(true);
+      });
+
+      it('should return true for staff viewing their own pending changes', () => {
+        const lease = createMockLease({ pendingChanges: { updatedBy: 'user123', fees: {} } });
+        const staffUser = { client: { role: 'staff' }, sub: 'user123' } as any;
+
+        const result = (leaseService as any).shouldShowPendingChanges(staffUser, lease);
+
+        expect(result).toBe(true);
+      });
+
+      it('should return false for staff viewing other staff pending changes', () => {
+        const lease = createMockLease({ pendingChanges: { updatedBy: 'user456', fees: {} } });
+        const staffUser = { client: { role: 'staff' }, sub: 'user123' } as any;
+
+        const result = (leaseService as any).shouldShowPendingChanges(staffUser, lease);
+
+        expect(result).toBe(false);
+      });
+
+      it('should return false for tenant role', () => {
+        const lease = createMockLease({ pendingChanges: { updatedBy: 'user123', fees: {} } });
+        const tenantUser = { client: { role: 'tenant' }, sub: 'user123' } as any;
+
+        const result = (leaseService as any).shouldShowPendingChanges(tenantUser, lease);
+
+        expect(result).toBe(false);
+      });
+    });
+
+    describe('generateChangesSummary', () => {
+      it('should return "No changes" for empty array', () => {
+        const result = (leaseService as any).generateChangesSummary([]);
+
+        expect(result).toBe('No changes');
+      });
+
+      it('should format single field change', () => {
+        const result = (leaseService as any).generateChangesSummary(['monthlyRent']);
+
+        expect(result).toBe('Modified Monthly Rent');
+      });
+
+      it('should format two field changes', () => {
+        const result = (leaseService as any).generateChangesSummary(['monthlyRent', 'securityDeposit']);
+
+        expect(result).toBe('Modified Monthly Rent and Security Deposit');
+      });
+
+      it('should format multiple field changes', () => {
+        const result = (leaseService as any).generateChangesSummary([
+          'monthlyRent',
+          'securityDeposit',
+          'rentDueDay',
+        ]);
+
+        expect(result).toBe('Modified Monthly Rent, Security Deposit, and Rent Due Day');
+      });
+
+      it('should format nested fields correctly', () => {
+        const result = (leaseService as any).generateChangesSummary(['fees.monthlyRent']);
+
+        expect(result).toBe('Modified Fees > Monthly Rent');
+      });
+    });
+
+    describe('generatePendingChangesPreview', () => {
+      it('should return undefined if no pending changes', () => {
+        const lease = createMockLease({ pendingChanges: null });
+        const currentUser = { client: { role: 'admin' }, sub: 'user123' } as any;
+
+        const result = (leaseService as any).generatePendingChangesPreview(lease, currentUser);
+
+        expect(result).toBeUndefined();
+      });
+
+      it('should return undefined if user cannot see pending changes', () => {
+        const lease = createMockLease({ pendingChanges: { updatedBy: 'user456', fees: {} } });
+        const tenantUser = { client: { role: 'tenant' }, sub: 'user123' } as any;
+
+        const result = (leaseService as any).generatePendingChangesPreview(lease, tenantUser);
+
+        expect(result).toBeUndefined();
+      });
+
+      it('should return formatted preview for admin user', () => {
+        const lease = createMockLease({
+          pendingChanges: {
+            updatedBy: 'user123',
+            updatedAt: new Date('2025-01-15'),
+            displayName: 'John Doe',
+            fees: { monthlyRent: 300000 },
+          },
+          fees: { currency: 'USD' },
+        });
+        const adminUser = { client: { role: 'admin' }, sub: 'user123' } as any;
+
+        const result = (leaseService as any).generatePendingChangesPreview(lease, adminUser);
+
+        expect(result).toBeDefined();
+        expect(result.updatedFields).toEqual(['fees']);
+        expect(result.updatedBy).toBe('user123');
+        expect(result.displayName).toBe('John Doe');
+        expect(result.summary).toBe('Modified Fees');
+        expect(result.changes.fees).toBeDefined();
+      });
+    });
+  });
+
+  describe('Generate Preview From Existing Lease', () => {
+    it('should throw error if lease not found', async () => {
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(null);
+
+      await expect(
+        leaseService.generatePreviewFromExistingLease('C123', 'L123')
+      ).rejects.toThrow('Lease not found');
+    });
+
+    it('should throw error if property not found', async () => {
+      const mockLease = createMockLease();
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+      mockDependencies.propertyDAO.findFirst.mockResolvedValue(null);
+
+      await expect(
+        leaseService.generatePreviewFromExistingLease('C123', 'L123')
+      ).rejects.toThrow('Property not found');
+    });
+
+    it('should generate preview data from existing lease', async () => {
+      const mockLease = createMockLease();
+      const mockProperty = {
+        _id: 'P123',
+        name: 'Test Property',
+        propertyType: 'apartment',
+        address: {
+          street: '123 Main St',
+          city: 'Boston',
+          state: 'MA',
+          postCode: '02101',
+          country: 'USA',
+        },
+        owner: { type: 'company_owned' },
+      };
+
+      const mockLeaseWithVirtuals = {
+        ...mockLease,
+        property: { id: 'P123' },
+        tenantInfo: {
+          fullname: 'John Doe',
+          email: 'john@example.com',
+          phoneNumber: '555-1234',
+        },
+        createdAt: new Date('2025-01-01'),
+        signedDate: new Date('2025-01-15'),
+      };
+
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLeaseWithVirtuals);
+      mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+      mockDependencies.profileDAO.findFirst.mockResolvedValue({
+        personalInfo: {
+          firstName: 'Owner',
+          lastName: 'Name',
+          phoneNumber: '555-5678',
+        },
+        user: { email: 'owner@example.com' },
+      });
+
+      const result = await leaseService.generatePreviewFromExistingLease('C123', 'L123');
+
+      expect(result).toBeDefined();
+      expect(result.leaseNumber).toBe(mockLease.leaseNumber);
+      expect(result.tenantName).toBe('John Doe');
+      expect(result.tenantEmail).toBe('john@example.com');
+      expect(result.propertyAddress).toContain('123 Main St');
+      expect(result.monthlyRent).toBe(mockLease.fees.monthlyRent);
+      expect(result.templateType).toBe('residential-apartment');
+    });
+
+    it('should use correct template type based on property type', async () => {
+      const mockLease = createMockLease();
+      const testCases = [
+        { propertyType: 'single_family', expected: 'residential-single-family' },
+        { propertyType: 'apartment', expected: 'residential-apartment' },
+        { propertyType: 'office', expected: 'commercial-office' },
+        { propertyType: 'retail', expected: 'commercial-retail' },
+        { propertyType: 'short_term', expected: 'short-term-rental' },
+        { propertyType: 'unknown', expected: 'residential-single-family' },
+      ];
+
+      for (const { propertyType, expected } of testCases) {
+        const mockProperty = {
+          _id: 'P123',
+          name: 'Test Property',
+          propertyType,
+          address: { street: '123 Main St', city: 'Boston', state: 'MA', country: 'USA' },
+          owner: { type: 'company_owned' },
+        };
+
+        const mockLeaseWithVirtuals = {
+          ...mockLease,
+          property: { id: 'P123' },
+          tenantInfo: { fullname: 'John Doe', email: 'john@example.com' },
+        };
+
+        mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLeaseWithVirtuals);
+        mockDependencies.propertyDAO.findFirst.mockResolvedValue(mockProperty);
+        mockDependencies.profileDAO.findFirst.mockResolvedValue({
+          personalInfo: { firstName: 'Owner', lastName: 'Name' },
+          user: { email: 'owner@example.com' },
+        });
+
+        const result = await leaseService.generatePreviewFromExistingLease('C123', 'L123');
+
+        expect(result.templateType).toBe(expected);
+      }
+    });
+  });
+
+  describe('Calculate Financial Summary with Pet Fees', () => {
+    it('should calculate total monthly rent including pet fees', () => {
+      const leaseWithPetFee = createMockLease({
+        fees: { monthlyRent: 250000, securityDeposit: 500000, currency: 'USD', rentDueDay: 1 },
+        petPolicy: { allowed: true, monthlyFee: 5000 },
+        duration: { startDate: new Date('2025-01-01') },
+        totalMonthlyFees: 255000, // virtual field: 250000 + 5000
+      });
+
+      const result = (leaseService as any).calculateFinancialSummary(leaseWithPetFee);
+
+      expect(result.monthlyRentRaw).toBe(255000); // Total including pet fee
+      expect(result.baseRentRaw).toBe(250000);
+      expect(result.petFeeRaw).toBe(5000);
+      expect(result.petFee).toBeDefined();
+    });
+
+    it('should not include pet fee if no pet policy', () => {
+      const leaseWithoutPets = createMockLease({
+        fees: { monthlyRent: 250000, securityDeposit: 500000, currency: 'USD', rentDueDay: 1 },
+        petPolicy: null,
+        duration: { startDate: new Date('2025-01-01') },
+      });
+
+      const result = (leaseService as any).calculateFinancialSummary(leaseWithoutPets);
+
+      expect(result.monthlyRentRaw).toBe(250000);
+      expect(result.petFeeRaw).toBe(0);
+      expect(result.petFee).toBeUndefined();
+    });
+
+    it('should calculate totalExpected using total monthly rent with pet fees', () => {
+      const leaseWithPetFee = createMockLease({
+        fees: { monthlyRent: 250000, securityDeposit: 500000, currency: 'USD', rentDueDay: 1 },
+        petPolicy: { allowed: true, monthlyFee: 5000 },
+        duration: { startDate: new Date('2024-01-01') }, // 1+ year ago
+        totalMonthlyFees: 255000,
+      });
+
+      const result = (leaseService as any).calculateFinancialSummary(leaseWithPetFee);
+
+      // totalExpected should use total rent (255000) not just base rent (250000)
+      expect(result.totalExpected).toBeGreaterThan(250000);
+      expect(result.totalExpected % 255000).toBe(0); // Should be multiple of total rent
     });
   });
 });

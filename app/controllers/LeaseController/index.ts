@@ -69,17 +69,13 @@ export class LeaseController {
   };
 
   getLeaseById = async (req: AppRequest, res: Response) => {
-    const { cuid, leaseId } = req.params;
+    const { luid } = req.params;
+    const { meta } = req.query as { meta?: { includeFormattedData?: boolean } };
+    const cxt = req.context;
 
-    this.log.info(`Getting lease ${leaseId} for client ${cuid}`);
+    const result = await this.leaseService.getLeaseById(cxt, luid, meta?.includeFormattedData);
 
-    // TODO: Implement get lease by ID
-    // const result = await this.leaseService.getLeaseById(cuid, leaseId);
-
-    res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
-      success: false,
-      message: 'Get lease by ID not yet implemented',
-    });
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   updateLease = async (req: AppRequest, res: Response) => {
@@ -239,7 +235,7 @@ export class LeaseController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  previewLease = async (req: AppRequest, res: Response) => {
+  generateLeasePreview = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     const previewData = req.body;
     const templateType = previewData.templateType || 'residential-single-family';
@@ -258,27 +254,33 @@ export class LeaseController {
     });
   };
 
+  previewLeaseContract = async (req: AppRequest, res: Response) => {
+    const { cuid, luid } = req.params;
+
+    const enrichedData = await this.leaseService.generatePreviewFromExistingLease(cuid, luid);
+    const templateData = this.leaseTemplateDataMapper.transformForTemplate(enrichedData);
+    const templateType = enrichedData.templateType || 'residential-single-family';
+    const html = await this.leaseTemplateService.renderLeasePreview(templateData, templateType);
+
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: {
+        html,
+        templateUsed: templateType,
+        renderedAt: new Date().toISOString(),
+      },
+    });
+  };
+
   getLeaseTemplates = async (req: AppRequest, res: Response) => {
-    const { cuid } = req.params;
-    this.log.info(`Getting available lease templates for client ${cuid}`);
+    const templates = await this.leaseTemplateService.getAvailableTemplates();
 
-    try {
-      const templates = await this.leaseTemplateService.getAvailableTemplates();
-
-      res.status(httpStatusCodes.OK).json({
-        success: true,
-        data: {
-          templates,
-          totalCount: templates.length,
-        },
-      });
-    } catch (error) {
-      this.log.error({ error, cuid }, 'Failed to get lease templates');
-
-      res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Failed to get lease templates',
-      });
-    }
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: {
+        templates,
+        totalCount: templates.length,
+      },
+    });
   };
 }

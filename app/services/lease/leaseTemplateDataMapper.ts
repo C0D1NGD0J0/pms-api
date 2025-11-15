@@ -10,7 +10,7 @@ export class LeaseTemplateDataMapper {
         leaseNumber: previewData.leaseNumber || 'LEASE-DRAFT',
         currentDate: this.formatDate(previewData.currentDate || new Date().toISOString()),
         jurisdiction: previewData.jurisdiction || 'State/Province',
-        signedDate: this.formatDate(previewData.signedDate || new Date().toISOString()),
+        signedDate: previewData.signedDate ? this.formatDate(previewData.signedDate) : null,
 
         // Landlord Information
         landlordName: previewData.landlordName || '[Landlord Name]',
@@ -101,12 +101,16 @@ export class LeaseTemplateDataMapper {
     }
 
     try {
+      // Convert cents to dollars (all monetary values in DB are stored in cents)
+      const dollars = amount / 100;
+
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: currency || 'USD',
-      }).format(amount);
+      }).format(dollars);
     } catch {
-      return `${currency || '$'}${amount.toFixed(2)}`;
+      const dollars = amount / 100;
+      return `${currency || '$'}${dollars.toFixed(2)}`;
     }
   }
 

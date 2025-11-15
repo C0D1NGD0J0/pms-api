@@ -4,6 +4,7 @@ import { t } from '@shared/languages';
 import { LeaseCache } from '@caching/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
@@ -166,7 +167,6 @@ export class LeaseService {
       });
     }
 
-    // handles tenant invitation if email + firstName + lastName provided without existing invitation
     if (
       data.tenantInfo.email &&
       data.tenantInfo.firstName &&
@@ -190,7 +190,6 @@ export class LeaseService {
         );
 
         if (invitationResult.success && invitationResult.data.invitation) {
-          // temporarily use invitation ID as tenant ID until they accept
           tenantInfo.tenantId = invitationResult.data.invitation._id;
         } else {
           throw new Error('Failed to create invitation: No invitation returned');
@@ -220,7 +219,6 @@ export class LeaseService {
     const approvalDetails: any[] = [];
 
     if (PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)) {
-      //admin/manager - auto-approve
       approvalStatus = 'approved';
       approvalDetails.push({
         action: 'created',
@@ -230,7 +228,6 @@ export class LeaseService {
       });
       message = 'Lease created and approved successfully';
     } else if (PROPERTY_STAFF_ROLES.includes(userRoleEnum)) {
-      // staff - pending approval
       approvalStatus = 'pending';
       approvalDetails.push({
         action: 'created',
@@ -240,7 +237,6 @@ export class LeaseService {
     }
     const landlordInfo = await this.buildLandlordInfo(cuid, data.property.id);
 
-    // Determine ownership context for template logic
     const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
     const hasUnitNumber = !!data.property.unitId;
     const ownershipType = property.owner?.type || 'company_owned';
@@ -284,7 +280,6 @@ export class LeaseService {
 
       const lease = await this.leaseDAO.createLease(cuid, parsedLeaseData, session);
 
-      // Log if using invitation as temporary tenant
       if (tenantInfo.useInvitationIdAsTenantId) {
         this.log.warn('Lease created with invitation as temporary tenant', {
           leaseId: lease.luid,
@@ -323,7 +318,6 @@ export class LeaseService {
       approvalStatus,
     });
 
-    // Invalidate lease cache for this client
     await this.leaseCache.invalidateLeaseLists(cuid);
 
     return { success: true, data: result.lease, message };
@@ -337,29 +331,29 @@ export class LeaseService {
     this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
 
     try {
-      // const cachedResult = await this.leaseCache.getClientLeases(cuid, options, filters as any);
+      const cachedResult = await this.leaseCache.getClientLeases(cuid, options, filters as any);
 
-      // if (cachedResult.success && cachedResult.data) {
-      //   this.log.info('Returning leases from cache', {
-      //     cuid,
-      //     count: cachedResult.data.leases?.length || 0,
-      //   });
+      if (cachedResult.success && cachedResult.data) {
+        this.log.info('Returning leases from cache', {
+          cuid,
+          count: cachedResult.data.leases?.length || 0,
+        });
 
-      //   return {
-      //     success: true,
-      //     data: cachedResult.data.leases,
-      //     message: 'Leases retrieved successfully (cached)',
-      //     pagination: {
-      //       currentPage: options.page || 1,
-      //       perPage: options.limit || 10,
-      //       total: cachedResult.data.pagination.total,
-      //       totalPages: Math.ceil(cachedResult.data.pagination.total / (options.limit || 10)),
-      //       hasMoreResource:
-      //         (options.page || 1) <
-      //         Math.ceil(cachedResult.data.pagination.total / (options.limit || 10)),
-      //     },
-      //   } as any;
-      // }
+        return {
+          success: true,
+          data: cachedResult.data.leases,
+          message: 'Leases retrieved successfully (cached)',
+          pagination: {
+            currentPage: options.page || 1,
+            perPage: options.limit || 10,
+            total: cachedResult.data.pagination.total,
+            totalPages: Math.ceil(cachedResult.data.pagination.total / (options.limit || 10)),
+            hasMoreResource:
+              (options.page || 1) <
+              Math.ceil(cachedResult.data.pagination.total / (options.limit || 10)),
+          },
+        } as any;
+      }
       const result = await this.leaseDAO.getFilteredLeases(cuid, filters, options);
 
       await this.leaseCache.saveClientLeases(cuid, result.items, {
@@ -377,6 +371,405 @@ export class LeaseService {
     } catch (error) {
       this.log.error('Error getting filtered leases:', error);
       throw error;
+    }
+  }
+
+  async getLeaseById(
+    cxt: IRequestContext,
+    luid: string,
+    includeFormattedData: boolean = true
+  ): Promise<ISuccessReturnData<any>> {
+    try {
+      const { cuid } = cxt.request.params;
+
+      if (!cuid || !luid) {
+        throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
+      }
+
+      const lease = await this.leaseDAO.findFirst(
+        { luid },
+        includeFormattedData
+          ? {
+              populate: ['tenantInfo', 'propertyInfo', 'propertyUnitInfo'],
+            }
+          : undefined
+      );
+
+      if (!lease) {
+        throw new InvalidRequestError({ message: t('lease.not_found') });
+      }
+
+      if (lease.cuid !== cuid) {
+        throw new InvalidRequestError({ message: t('lease.invalid_access') });
+      }
+
+      if (!includeFormattedData) {
+        return {
+          success: true,
+          message: t('lease.retrieved_successfully'),
+          data: { lease },
+        };
+      }
+
+      const userRole = convertUserRoleToEnum(cxt.currentuser!.client.role);
+
+      if (userRole === IUserRole.TENANT) {
+        const tenantIdStr =
+          typeof lease.tenantId === 'object' && lease.tenantId !== null
+            ? (lease.tenantId as any)._id?.toString()
+            : lease.tenantId?.toString();
+
+        if (tenantIdStr !== cxt.currentuser!.sub) {
+          throw new InvalidRequestError({ message: t('lease.access_denied') });
+        }
+      }
+
+      const filteredLease = this.filterLeaseByRole(lease, cxt.currentuser!.sub, userRole);
+      const createdBy = await this.profileDAO.findFirst(
+        { user: lease.createdBy },
+        {
+          select:
+            'personalInfo.firstName personalInfo.lastName personalInfo.phoneNumber personalInfo.avatar.url',
+        }
+      );
+
+      const response: any = {
+        lease: {
+          ...filteredLease,
+          createdBy,
+          tenant: {
+            id: lease.tenantId,
+            fullname: lease.tenantInfo?.fullname,
+            email: (lease.tenantInfo as any).user.email,
+            phone: (lease.tenantInfo as any).personalInfo.phoneNumber,
+            avatar: (lease.tenantInfo as any).personalInfo.avatar,
+          },
+        },
+        property: lease.propertyInfo || lease.property,
+        unit: {
+          unitId: lease.propertyUnitInfo?._id,
+          unitNumber: lease.propertyUnitInfo?.unitNumber,
+          status: lease.propertyUnitInfo?.status,
+          floor: lease.propertyUnitInfo?.floor,
+          specifications: lease.propertyUnitInfo?.specifications,
+        },
+      };
+
+      response.payments = [];
+      response.documents = this.filterDocumentsByRole(lease.leaseDocument || [], userRole);
+      response.activity = this.constructActivityFeed(lease);
+      response.timeline = this.buildLeaseTimeline(lease);
+      response.permissions = this.getUserPermissions(lease, cxt.currentuser!);
+      response.financialSummary = this.calculateFinancialSummary(lease);
+
+      const pendingChangesPreview = this.generatePendingChangesPreview(lease, cxt.currentuser!);
+      if (pendingChangesPreview) {
+        response.pendingChangesPreview = pendingChangesPreview;
+      }
+
+      return {
+        success: true,
+        message: t('lease.retrieved_successfully'),
+        data: response,
+      };
+    } catch (error: any) {
+      this.log.error('Error getting lease by ID:', error);
+      throw error;
+    }
+  }
+
+  private filterLeaseByRole(
+    lease: ILeaseDocument,
+    userId: string,
+    role: IUserRole
+  ): Partial<ILeaseDocument> {
+    const baseLease: any = {
+      _id: lease._id,
+      leaseNumber: lease.leaseNumber,
+      status: lease.status,
+      type: lease.type,
+      duration: lease.duration,
+      fees: lease.fees,
+      luid: lease.luid,
+      property: lease.property,
+      signingMethod: lease.signingMethod,
+      signedDate: lease.signedDate,
+      renewalOptions: lease.renewalOptions,
+      petPolicy: lease.petPolicy,
+      coTenants: lease.coTenants,
+      utilitiesIncluded: lease.utilitiesIncluded,
+      legalTerms: lease.legalTerms,
+      createdAt: lease.createdAt,
+      updatedAt: lease.updatedAt,
+    };
+
+    if (role === IUserRole.TENANT) {
+      return baseLease;
+    }
+
+    if (role === IUserRole.ADMIN || role === IUserRole.MANAGER || role === IUserRole.STAFF) {
+      return {
+        ...baseLease,
+        internalNotes: lease.internalNotes,
+        approvalStatus: lease.approvalStatus,
+        approvalDetails: lease.approvalDetails,
+        pendingChanges: lease.pendingChanges,
+        terminationReason: lease.terminationReason,
+        createdBy: lease.createdBy,
+        lastModifiedBy: lease.lastModifiedBy,
+        eSignature: lease.eSignature,
+        signatures: lease.signatures,
+      };
+    }
+
+    return baseLease;
+  }
+
+  private filterDocumentsByRole(documents: any[], role: IUserRole): any[] {
+    if (role === IUserRole.ADMIN || role === IUserRole.MANAGER || role === IUserRole.STAFF) {
+      return documents;
+    }
+
+    return documents.filter((doc) => !doc.isInternal);
+  }
+
+  private constructActivityFeed(lease: ILeaseDocument): any[] {
+    const activities: any[] = [];
+
+    activities.push({
+      type: 'created',
+      description: 'Lease created',
+      timestamp: lease.createdAt,
+      user: lease.createdBy,
+    });
+
+    if (lease.lastModifiedBy && lease.lastModifiedBy.length > 0) {
+      lease.lastModifiedBy.forEach((mod) => {
+        activities.push({
+          type: mod.action,
+          description: `Lease ${mod.action}`,
+          timestamp: mod.date,
+          user: mod.userId,
+          userName: mod.name,
+        });
+      });
+    }
+
+    if (lease.approvalDetails && lease.approvalDetails.length > 0) {
+      lease.approvalDetails.forEach((approval) => {
+        const description =
+          approval.action === 'rejected' && approval.rejectionReason
+            ? `Lease ${approval.action}: ${approval.rejectionReason}`
+            : `Lease ${approval.action}`;
+
+        activities.push({
+          type: approval.action,
+          description,
+          timestamp: approval.timestamp,
+          user: approval.actor,
+          notes: approval.notes,
+          rejectionReason: approval.rejectionReason,
+          metadata: approval.metadata,
+        });
+      });
+    }
+
+    if (lease.signatures && lease.signatures.length > 0) {
+      lease.signatures.forEach((signature) => {
+        activities.push({
+          type: 'signed',
+          description: `Lease signed by ${signature.role}`,
+          timestamp: signature.signedAt,
+          user: signature.userId,
+          role: signature.role,
+          signatureMethod: signature.signatureMethod,
+        });
+      });
+    }
+
+    if (lease.signedDate && (!lease.signatures || lease.signatures.length === 0)) {
+      activities.push({
+        type: 'signed',
+        description: 'Lease signed by all parties',
+        timestamp: lease.signedDate,
+      });
+    }
+
+    if (lease.status === LeaseStatus.TERMINATED && lease.duration.terminationDate) {
+      activities.push({
+        type: 'terminated',
+        description: lease.terminationReason
+          ? `Lease terminated: ${lease.terminationReason}`
+          : 'Lease terminated',
+        timestamp: lease.duration.terminationDate,
+      });
+    }
+
+    return activities.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  }
+
+  private buildLeaseTimeline(lease: ILeaseDocument): any {
+    const now = new Date();
+    const startDate = new Date(lease.duration.startDate);
+    const endDate = new Date(lease.duration.endDate);
+
+    const daysRemaining = Math.max(
+      0,
+      Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    );
+    const daysElapsed = Math.max(
+      0,
+      Math.ceil((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+    );
+
+    return {
+      created: lease.createdAt,
+      signed: lease.signedDate,
+      startDate: lease.duration.startDate,
+      endDate: lease.duration.endDate,
+      moveInDate: lease.duration.moveInDate,
+      daysRemaining,
+      daysElapsed,
+      isActive: lease.status === LeaseStatus.ACTIVE,
+      isExpiringSoon: daysRemaining > 0 && daysRemaining <= 60,
+      progress: (daysElapsed / (daysElapsed + daysRemaining)) * 100,
+    };
+  }
+
+  private calculateFinancialSummary(lease: ILeaseDocument): any {
+    const totalMonthlyRent = (lease as any).totalMonthlyFees || lease.fees.monthlyRent;
+    const petMonthlyFee = lease.petPolicy?.monthlyFee || 0;
+    const securityDeposit = lease.fees.securityDeposit;
+
+    const now = new Date();
+    const startDate = new Date(lease.duration.startDate);
+    const monthsElapsed = Math.max(
+      0,
+      Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30))
+    );
+
+    // TODO: Integrate with payments service to get actual paid/owed amounts
+    return {
+      monthlyRent: MoneyUtils.formatCurrency(totalMonthlyRent, lease.fees.currency || 'USD'),
+      monthlyRentRaw: totalMonthlyRent,
+      petFee:
+        petMonthlyFee > 0
+          ? MoneyUtils.formatCurrency(petMonthlyFee, lease.fees.currency || 'USD')
+          : undefined,
+      petFeeRaw: petMonthlyFee,
+      securityDeposit: MoneyUtils.formatCurrency(securityDeposit, lease.fees.currency || 'USD'),
+      securityDepositRaw: securityDeposit,
+      currency: lease.fees.currency || 'USD',
+      rentDueDay: lease.fees.rentDueDay,
+      lateFeeAmount: lease.fees.lateFeeAmount,
+      lateFeeDays: lease.fees.lateFeeDays,
+      lateFeeType: lease.fees.lateFeeType,
+      acceptedPaymentMethod: lease.fees.acceptedPaymentMethod,
+      totalExpected: totalMonthlyRent * monthsElapsed,
+      totalPaid: 0,
+      totalOwed: 0,
+      lastPaymentDate: null,
+      nextPaymentDate: this.calculateNextPaymentDate(lease.fees.rentDueDay),
+    };
+  }
+
+  private calculateNextPaymentDate(rentDueDay: number): Date {
+    const now = new Date();
+    const nextPayment = new Date(now.getFullYear(), now.getMonth(), rentDueDay);
+
+    if (nextPayment < now) {
+      nextPayment.setMonth(nextPayment.getMonth() + 1);
+    }
+
+    return nextPayment;
+  }
+
+  private getUserPermissions(lease: ILeaseDocument, user: any): any {
+    const role = convertUserRoleToEnum(user.client.role);
+
+    const isAdmin = role === IUserRole.ADMIN;
+    const isManager = role === IUserRole.MANAGER;
+    const isStaff = role === IUserRole.STAFF;
+
+    return {
+      canEdit: isAdmin || isManager,
+      canDelete: isAdmin,
+      canTerminate: isAdmin || isManager,
+      canActivate: isAdmin || isManager,
+      canDownload: true,
+      canViewDocuments: true,
+      canUploadDocuments: isAdmin || isManager || isStaff,
+      canViewActivity: isAdmin || isManager || isStaff,
+      canViewFinancials: true,
+      canManageSignatures: isAdmin || isManager,
+      canGeneratePDF: true,
+    };
+  }
+
+  private shouldShowPendingChanges(currentUser: ICurrentUser, lease: ILeaseDocument): boolean {
+    if (!lease.pendingChanges) {
+      return false;
+    }
+
+    const userRole = currentUser.client.role;
+
+    if (PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
+      return true;
+    }
+
+    if (PROPERTY_STAFF_ROLES.includes(convertUserRoleToEnum(userRole))) {
+      const pendingChanges = lease.pendingChanges as any;
+      return pendingChanges.updatedBy?.toString() === currentUser.sub;
+    }
+
+    return false;
+  }
+
+  private generatePendingChangesPreview(lease: ILeaseDocument, currentUser: ICurrentUser): any {
+    if (!lease.pendingChanges || !this.shouldShowPendingChanges(currentUser, lease)) {
+      return undefined;
+    }
+
+    const pendingChanges = lease.pendingChanges as any;
+    const { updatedBy, updatedAt, displayName, ...changes } = pendingChanges;
+
+    const formattedChanges = { ...changes };
+    if (formattedChanges.fees) {
+      formattedChanges.fees = MoneyUtils.formatMoneyDisplay(formattedChanges.fees);
+    }
+
+    const updatedFields = Object.keys(changes);
+    const summary = this.generateChangesSummary(updatedFields);
+
+    return {
+      updatedFields,
+      updatedAt,
+      updatedBy,
+      displayName,
+      summary,
+      changes: formattedChanges,
+    };
+  }
+
+  private generateChangesSummary(updatedFields: string[]): string {
+    if (updatedFields.length === 0) return 'No changes';
+
+    const fieldNames = updatedFields.map((field) => {
+      return field
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (str) => str.toUpperCase())
+        .replace(/\./g, ' > ');
+    });
+
+    if (fieldNames.length === 1) {
+      return `Modified ${fieldNames[0]}`;
+    } else if (fieldNames.length === 2) {
+      return `Modified ${fieldNames[0]} and ${fieldNames[1]}`;
+    } else {
+      const lastField = fieldNames.pop();
+      return `Modified ${fieldNames.join(', ')}, and ${lastField}`;
     }
   }
 
@@ -457,7 +850,6 @@ export class LeaseService {
       throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
     }
 
-    // Enforce approval requirement before activation
     this.enforceLeaseApprovalRequirement(lease, 'activate');
 
     throw new Error('activateLease not yet implemented');
@@ -506,7 +898,6 @@ export class LeaseService {
   ): IPromiseReturnedData<ILeaseDocument> {
     this.log.info(`Sending lease ${leaseId} for signature via ${provider}`);
 
-    // Get the lease first
     const lease = await this.leaseDAO.findFirst({
       luid: leaseId,
       cuid,
@@ -517,7 +908,6 @@ export class LeaseService {
       throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
     }
 
-    // Enforce approval requirement
     this.enforceLeaseApprovalRequirement(lease, 'send for signature');
 
     throw new Error('sendLeaseForSignature not yet implemented');
@@ -561,9 +951,6 @@ export class LeaseService {
     throw new Error('generateLeasePDF not yet implemented');
   }
 
-  /**
-   * Helper method to build landlord and management company info based on property ownership
-   */
   private async buildLandlordInfo(
     cuid: string,
     propertyId: string
@@ -609,7 +996,6 @@ export class LeaseService {
         managementCompanyPhone: client.companyProfile?.companyPhone,
       };
 
-      // Handle external owner - property owner becomes landlord
       if (property.owner?.type === OwnershipType.EXTERNAL_OWNER && property.owner.name) {
         return {
           ...managementInfo,
@@ -621,7 +1007,6 @@ export class LeaseService {
         };
       }
 
-      // Handle company owned - client is landlord
       if (property.owner?.type === OwnershipType.COMPANY_OWNED) {
         return {
           landlordName: client.companyProfile?.legalEntityName || 'N/A',
@@ -634,7 +1019,6 @@ export class LeaseService {
     }
 
     if (!client.accountType.isCorporate) {
-      // Handle self owned - assuming client is individual landlord
       if (
         (property.owner?.type === OwnershipType.SELF_OWNED ||
           property.owner?.type === OwnershipType.EXTERNAL_OWNER) &&
@@ -655,7 +1039,6 @@ export class LeaseService {
       { populate: 'user' }
     )) as unknown as IProfileWithUser;
 
-    // Fallback - use client as landlord
     return {
       landlordName:
         client.companyProfile?.legalEntityName ||
@@ -697,7 +1080,6 @@ export class LeaseService {
     try {
       const landlordInfo = await this.buildLandlordInfo(cuid, previewData.propertyId);
 
-      // Determine ownership context for template logic
       const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
       const hasUnitNumber = !!previewData.unitNumber;
       const ownershipType = property.owner?.type || 'company_owned';
@@ -720,6 +1102,96 @@ export class LeaseService {
       this.log.error({ error, cuid }, 'Failed to generate lease preview data');
       throw error;
     }
+  }
+
+  async generatePreviewFromExistingLease(cuid: string, luid: string) {
+    this.log.info(`Generating preview from existing lease ${luid} for client ${cuid}`);
+
+    const lease = await this.leaseDAO.findFirst(
+      { luid, cuid, deletedAt: null },
+      {
+        populate: ['tenantInfo', 'propertyInfo', 'propertyUnitInfo'],
+      }
+    );
+
+    if (!lease) {
+      throw new BadRequestError({ message: 'Lease not found' });
+    }
+
+    const property = await this.propertyDAO.findFirst(
+      { _id: lease.property.id, cuid, deletedAt: null },
+      {
+        select: '+owner +authorization',
+      }
+    );
+
+    if (!property) {
+      throw new BadRequestError({ message: 'Property not found' });
+    }
+
+    const propertyId =
+      typeof lease.property.id === 'string' ? lease.property.id : lease.property.id.toString();
+    const landlordInfo = await this.buildLandlordInfo(cuid, propertyId);
+
+    // const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
+    // const ownershipType = property.owner?.type || 'company_owned';
+
+    const previewData: ILeasePreviewRequest = {
+      templateType: this.mapPropertyTypeToTemplate(property.propertyType),
+      leaseNumber: lease.leaseNumber,
+      currentDate: new Date().toISOString(),
+      jurisdiction: property.address.country || property.address.city || 'State/Province',
+      signedDate: lease.signedDate?.toISOString(),
+
+      tenantName: lease.tenantInfo?.fullname || 'Tenant Name',
+      tenantEmail: lease.tenantInfo?.email || '',
+      tenantPhone: lease.tenantInfo?.phoneNumber || '',
+
+      coTenants: lease.coTenants?.map((ct) => ({
+        name: ct.name,
+        email: ct.email,
+        phone: ct.phone,
+        occupation: ct.occupation,
+      })),
+
+      propertyAddress: property.address
+        ? `${property.address.street}, ${property.address.city}, ${property.address.state} ${property.address.postCode || ''}`
+        : '',
+
+      leaseType: lease.type,
+      startDate: lease.duration.startDate,
+      endDate: lease.duration.endDate,
+      monthlyRent: lease.fees.monthlyRent,
+      securityDeposit: lease.fees.securityDeposit,
+      rentDueDay: lease.fees.rentDueDay,
+      currency: lease.fees.currency,
+
+      petPolicy: lease.petPolicy,
+      renewalOptions: lease.renewalOptions,
+      legalTerms: lease.legalTerms,
+      utilitiesIncluded: lease.utilitiesIncluded,
+
+      signingMethod: lease.signingMethod,
+
+      ...landlordInfo,
+      propertyName: property.name,
+      propertyType: property.propertyType,
+    } as any;
+
+    return previewData;
+  }
+
+  private mapPropertyTypeToTemplate(propertyType: string): ILeasePreviewRequest['templateType'] {
+    const mapping: Record<string, ILeasePreviewRequest['templateType']> = {
+      single_family: 'residential-single-family',
+      apartment: 'residential-apartment',
+      condo: 'residential-apartment',
+      townhouse: 'residential-single-family',
+      office: 'commercial-office',
+      retail: 'commercial-retail',
+      short_term: 'short-term-rental',
+    };
+    return mapping[propertyType] || 'residential-single-family';
   }
 
   async getExpiringLeases(
@@ -880,7 +1352,6 @@ export class LeaseService {
       },
     };
 
-    // Apply pending changes if they exist
     if (lease.pendingChanges) {
       Object.keys(lease.pendingChanges).forEach((key) => {
         if (key !== 'updatedBy' && key !== 'updatedAt' && key !== 'displayName') {
@@ -895,7 +1366,6 @@ export class LeaseService {
       updateData
     );
 
-    // Send notification to staff who created the lease
     const originalRequesterId = (lease.createdBy as Types.ObjectId).toString();
     if (originalRequesterId && originalRequesterId !== currentuser.sub) {
       try {
@@ -1031,7 +1501,6 @@ export class LeaseService {
       reason,
     });
 
-    // Invalidate lease cache
     await this.leaseCache.invalidateLease(cuid, leaseId);
     await this.leaseCache.invalidateLeaseLists(cuid);
 
@@ -1042,9 +1511,6 @@ export class LeaseService {
     };
   }
 
-  /**
-   * Bulk approve leases
-   */
   async bulkApproveLeases(
     cuid: string,
     leaseIds: string[],
@@ -1087,7 +1553,6 @@ export class LeaseService {
       approvedBy: currentuser.sub,
     });
 
-    // Invalidate all lease lists for this client
     await this.leaseCache.invalidateLeaseLists(cuid);
 
     return {
@@ -1097,9 +1562,6 @@ export class LeaseService {
     };
   }
 
-  /**
-   * Bulk reject leases
-   */
   async bulkRejectLeases(
     cuid: string,
     leaseIds: string[],
@@ -1148,7 +1610,6 @@ export class LeaseService {
       reason,
     });
 
-    // Invalidate all lease lists for this client
     await this.leaseCache.invalidateLeaseLists(cuid);
 
     return {
@@ -1158,9 +1619,6 @@ export class LeaseService {
     };
   }
 
-  /**
-   * Setup event listeners for upload completion and failures
-   */
   private setupEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
@@ -1168,9 +1626,6 @@ export class LeaseService {
     this.log.info('Lease service event listeners initialized');
   }
 
-  /**
-   * Mark lease documents as failed with error message
-   */
   private async markLeaseDocumentsAsFailed(leaseId: string, errorMessage: string): Promise<void> {
     this.log.warn('Marking lease documents as failed', {
       leaseId,
@@ -1180,13 +1635,6 @@ export class LeaseService {
     await this.leaseDAO.updateLeaseDocumentStatus(leaseId, 'failed', errorMessage);
   }
 
-  /**
-   * Validates lease data and collects all validation errors
-   * @param cuid - Client ID
-   * @param leaseData - Lease form data to validate
-   * @param validationErrors - Object to collect validation errors
-   * @returns Object with hasErrors boolean and errors record
-   */
   private async validateLeaseData(
     cuid: string,
     leaseData: ILeaseFormData,
@@ -1232,7 +1680,6 @@ export class LeaseService {
           if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
           validationErrors['tenantInfo.id'].push(t('lease.errors.tenantNotFound'));
         } else {
-          // verify tenant has 'tenant' role for this client
           const clientAccess = user.cuids.find((c) => c.cuid === cuid);
           if (!clientAccess || !clientAccess.roles.includes('tenant')) {
             if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
@@ -1246,7 +1693,6 @@ export class LeaseService {
         }
       }
     } else if (leaseData.tenantInfo.email) {
-      // email is provided instead of id, so we search invitation
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         if (!validationErrors['client']) validationErrors['client'] = [];
@@ -1259,16 +1705,12 @@ export class LeaseService {
         });
 
         if (!invitation) {
-          // No invitation exists - check if firstName and lastName are provided to create new invitation
           if (leaseData.tenantInfo.firstName && leaseData.tenantInfo.lastName) {
-            // Will create new invitation during lease creation
-            // For now, create a placeholder tenantInfo that will be replaced with invitation ID
             this.log.info('No existing invitation found, will create new tenant invitation', {
               email: leaseData.tenantInfo.email,
             });
-            // Set useInvitationIdAsTenantId to true as signal to send invitation
             tenantInfo = {
-              tenantId: new Types.ObjectId(), // Temporary placeholder, will be updated after invitation is sent
+              tenantId: new Types.ObjectId(),
               useInvitationIdAsTenantId: true,
             };
           } else {
@@ -1278,7 +1720,6 @@ export class LeaseService {
             );
           }
         } else if (['pending', 'draft', 'sent'].includes(invitation.status)) {
-          // use invitation ID as temporary tenant!
           tenantInfo = {
             tenantId: invitation._id,
             useInvitationIdAsTenantId: true,
@@ -1307,7 +1748,6 @@ export class LeaseService {
       if (!validationErrors['property.id']) validationErrors['property.id'] = [];
       validationErrors['property.id'].push(t('property.errors.notFound'));
     } else {
-      // Check if property type requires unit specification
       const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(propertyRecord.propertyType);
 
       if (isMultiUnit) {
@@ -1317,7 +1757,6 @@ export class LeaseService {
             `Unit ID is required for ${propertyRecord.propertyType} properties`
           );
         } else {
-          // Validate unit exists, belongs to property, and is available
           unit = await this.propertyUnitDAO.findFirst({
             _id: leaseData.property.unitId,
             propertyId: propertyRecord._id,
@@ -1330,7 +1769,6 @@ export class LeaseService {
               'Unit not found or does not belong to this property'
             );
           } else {
-            // Check unit availability
             if (unit.status === PropertyUnitStatusEnum.OCCUPIED) {
               if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
               validationErrors['property.unitId'].push(
@@ -1425,14 +1863,7 @@ export class LeaseService {
     };
   }
 
-  /**
-   * Validate status transition is allowed
-   * @param currentStatus - Current lease status
-   * @param newStatus - Desired new status
-   * @throws ValidationRequestError if transition is not allowed
-   */
   private validateStatusTransition(currentStatus: LeaseStatus, newStatus: LeaseStatus): void {
-    // Define allowed transitions
     const allowedTransitions: Record<LeaseStatus, LeaseStatus[]> = {
       [LeaseStatus.DRAFT]: [
         LeaseStatus.PENDING_SIGNATURE,
@@ -1441,12 +1872,11 @@ export class LeaseService {
       ],
       [LeaseStatus.PENDING_SIGNATURE]: [LeaseStatus.ACTIVE, LeaseStatus.CANCELLED],
       [LeaseStatus.ACTIVE]: [LeaseStatus.TERMINATED, LeaseStatus.EXPIRED],
-      [LeaseStatus.EXPIRED]: [], // Terminal state
-      [LeaseStatus.TERMINATED]: [], // Terminal state
-      [LeaseStatus.CANCELLED]: [], // Terminal state
+      [LeaseStatus.EXPIRED]: [],
+      [LeaseStatus.TERMINATED]: [],
+      [LeaseStatus.CANCELLED]: [],
     };
 
-    // If status is not changing, allow it
     if (currentStatus === newStatus) {
       return;
     }
@@ -1469,19 +1899,11 @@ export class LeaseService {
     });
   }
 
-  /**
-   * Validate lease update - prevent changes to immutable fields on active leases
-   * @param lease - Current lease document
-   * @param updateData - Proposed update data
-   * @throws ValidationRequestError if trying to modify immutable fields
-   */
   private validateLeaseUpdate(lease: ILeaseDocument, updateData: Partial<ILeaseFormData>): void {
-    // Only enforce field locking for ACTIVE leases
     if (lease.status !== LeaseStatus.ACTIVE) {
       return;
     }
 
-    // Define fields that cannot be modified on ACTIVE leases
     const immutableFields = [
       'tenantId',
       'property.id',
@@ -1498,9 +1920,7 @@ export class LeaseService {
     const blockedChanges: string[] = [];
 
     attemptedChanges.forEach((field) => {
-      // Check if this field or any parent field is immutable
       const isBlocked = immutableFields.some((immutable) => {
-        // Check exact match or nested field match
         return field === immutable || field.startsWith(immutable + '.');
       });
 
@@ -1526,12 +1946,6 @@ export class LeaseService {
     });
   }
 
-  /**
-   * Enforce lease approval requirement for sensitive operations
-   * @param lease - The lease document to check
-   * @param operation - The operation being attempted (for error messaging)
-   * @throws InvalidRequestError if lease is not approved
-   */
   private enforceLeaseApprovalRequirement(lease: ILeaseDocument, operation: string): void {
     if (lease.approvalStatus !== 'approved') {
       const statusMessage =
@@ -1552,9 +1966,6 @@ export class LeaseService {
     });
   }
 
-  /**
-   * Handle upload completed event for lease documents
-   */
   private async handleUploadCompleted(payload: UploadCompletedPayload): Promise<void> {
     const { results, resourceName, resourceId, actorId } = payload;
 
@@ -1590,9 +2001,6 @@ export class LeaseService {
     }
   }
 
-  /**
-   * Handle upload failed event for lease documents
-   */
   private async handleUploadFailed(payload: UploadFailedPayload): Promise<void> {
     const { error, resourceId } = payload;
 
@@ -1615,9 +2023,6 @@ export class LeaseService {
     }
   }
 
-  /**
-   * Cleanup event listeners
-   */
   cleanupEventListeners(): void {
     this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
     this.emitterService.off(EventTypes.UPLOAD_FAILED, this.handleUploadFailed);

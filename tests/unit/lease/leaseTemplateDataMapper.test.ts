@@ -408,5 +408,166 @@ describe('LeaseTemplateDataMapper', () => {
         expect(result.utilitiesIncluded).toBeNull();
       });
     });
+
+    describe('signedDate handling', () => {
+      it('should return null for signedDate when not provided', () => {
+        const previewData = {
+          landlordName: 'Test Landlord',
+          tenantName: 'Test Tenant',
+          propertyAddress: '123 Main St',
+          startDate: '2025-01-01',
+          endDate: '2026-01-01',
+          monthlyRent: 250000, // cents
+          securityDeposit: 500000, // cents
+          rentDueDay: 1,
+        };
+
+        const result = mapper.transformForTemplate(previewData as any);
+
+        expect(result.signedDate).toBeNull();
+      });
+
+      it('should format signedDate when provided', () => {
+        const previewData = {
+          landlordName: 'Test Landlord',
+          tenantName: 'Test Tenant',
+          propertyAddress: '123 Main St',
+          startDate: '2025-01-01',
+          endDate: '2026-01-01',
+          monthlyRent: 250000,
+          securityDeposit: 500000,
+          rentDueDay: 1,
+          signedDate: '2025-01-15T10:00:00Z',
+        };
+
+        const result = mapper.transformForTemplate(previewData as any);
+
+        expect(result.signedDate).not.toBeNull();
+        expect(result.signedDate).toContain('2025');
+        expect(result.signedDate).toContain('January');
+      });
+
+      it('should format signedDate as Date object', () => {
+        const previewData = {
+          landlordName: 'Test Landlord',
+          tenantName: 'Test Tenant',
+          propertyAddress: '123 Main St',
+          startDate: '2025-01-01',
+          endDate: '2026-01-01',
+          monthlyRent: 250000,
+          securityDeposit: 500000,
+          rentDueDay: 1,
+          signedDate: new Date('2025-01-20'),
+        };
+
+        const result = mapper.transformForTemplate(previewData as any);
+
+        expect(result.signedDate).not.toBeNull();
+        expect(result.signedDate).toContain('2025');
+      });
+    });
+
+    describe('currency formatting with cents', () => {
+      it('should convert cents to dollars for monthlyRent', () => {
+        const previewData = {
+          landlordName: 'Test Landlord',
+          tenantName: 'Test Tenant',
+          propertyAddress: '123 Main St',
+          startDate: '2025-01-01',
+          endDate: '2026-01-01',
+          monthlyRent: 250000, // 250000 cents = $2,500.00
+          securityDeposit: 500000, // 500000 cents = $5,000.00
+          rentDueDay: 1,
+          currency: 'USD',
+        };
+
+        const result = mapper.transformForTemplate(previewData as any);
+
+        expect(result.monthlyRent).toBe('$2,500.00');
+        expect(result.securityDeposit).toBe('$5,000.00');
+      });
+
+      it('should handle zero values correctly', () => {
+        const previewData = {
+          landlordName: 'Test Landlord',
+          tenantName: 'Test Tenant',
+          propertyAddress: '123 Main St',
+          startDate: '2025-01-01',
+          endDate: '2026-01-01',
+          monthlyRent: 0,
+          securityDeposit: 0,
+          rentDueDay: 1,
+          currency: 'USD',
+        };
+
+        const result = mapper.transformForTemplate(previewData as any);
+
+        expect(result.monthlyRent).toBe('$0.00');
+        expect(result.securityDeposit).toBe('$0.00');
+      });
+
+      it('should handle large amounts in cents correctly', () => {
+        const previewData = {
+          landlordName: 'Test Landlord',
+          tenantName: 'Test Tenant',
+          propertyAddress: '123 Main St',
+          startDate: '2025-01-01',
+          endDate: '2026-01-01',
+          monthlyRent: 1234567, // $12,345.67
+          securityDeposit: 9876543, // $98,765.43
+          rentDueDay: 1,
+          currency: 'USD',
+        };
+
+        const result = mapper.transformForTemplate(previewData as any);
+
+        expect(result.monthlyRent).toBe('$12,345.67');
+        expect(result.securityDeposit).toBe('$98,765.43');
+      });
+
+      it('should handle CAD currency correctly', () => {
+        const previewData = {
+          landlordName: 'Test Landlord',
+          tenantName: 'Test Tenant',
+          propertyAddress: '123 Main St',
+          startDate: '2025-01-01',
+          endDate: '2026-01-01',
+          monthlyRent: 250000,
+          securityDeposit: 500000,
+          rentDueDay: 1,
+          currency: 'CAD',
+        };
+
+        const result = mapper.transformForTemplate(previewData as any);
+
+        expect(result.monthlyRent).toContain('2,500.00');
+        expect(result.securityDeposit).toContain('5,000.00');
+      });
+
+      it('should handle pet policy deposit in cents', () => {
+        const previewData = {
+          landlordName: 'Test Landlord',
+          tenantName: 'Test Tenant',
+          propertyAddress: '123 Main St',
+          startDate: '2025-01-01',
+          endDate: '2026-01-01',
+          monthlyRent: 250000,
+          securityDeposit: 500000,
+          rentDueDay: 1,
+          currency: 'USD',
+          petPolicy: {
+            allowed: true,
+            maxPets: 2,
+            types: ['dogs', 'cats'],
+            deposit: 50000, // 50000 cents = $500.00
+          },
+        };
+
+        const result = mapper.transformForTemplate(previewData as any);
+
+        expect(result.petPolicy).toBeDefined();
+        expect(result.petPolicy.deposit).toBe('$500.00');
+      });
+    });
   });
 });

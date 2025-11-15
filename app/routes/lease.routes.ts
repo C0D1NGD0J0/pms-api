@@ -16,7 +16,6 @@ router.use(isAuthenticated, basicLimiter());
 
 router.get(
   '/:cuid/stats',
-  // Get lease statistics (active/pending/expired counts, occupancy rates)
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   validateRequest({
     params: UtilsValidations.cuid,
@@ -43,7 +42,6 @@ router.get(
 
 router.get(
   '/:cuid/templates',
-  // Get list of available lease templates
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   validateRequest({
     params: UtilsValidations.cuid,
@@ -57,7 +55,6 @@ router.get(
 router
   .route('/:cuid')
   .get(
-    // Get filtered leases with pagination
     requirePermission(PermissionResource.LEASE, PermissionAction.LIST),
     validateRequest({
       params: UtilsValidations.cuid,
@@ -69,7 +66,6 @@ router
     })
   )
   .post(
-    // Create new lease
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     diskUpload(['document']),
     scanFile,
@@ -84,12 +80,12 @@ router
   );
 
 router
-  .route('/:cuid/:leaseId')
+  .route('/:cuid/:luid')
   .get(
-    // Get single lease by ID
     requirePermission(PermissionResource.LEASE, PermissionAction.READ),
     validateRequest({
-      params: UtilsValidations.cuid,
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+      query: LeaseValidations.filterLeases,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<LeaseController>('leaseController');
@@ -97,12 +93,11 @@ router
     })
   )
   .patch(
-    // Update existing lease
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     diskUpload(['document']),
     scanFile,
     validateRequest({
-      params: UtilsValidations.cuid,
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
       body: LeaseValidations.updateLease,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
@@ -111,10 +106,9 @@ router
     })
   )
   .delete(
-    // Soft delete lease
     requirePermission(PermissionResource.LEASE, PermissionAction.DELETE),
     validateRequest({
-      params: UtilsValidations.cuid,
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<LeaseController>('leaseController');
@@ -124,11 +118,11 @@ router
 
 // Lifecycle Management Routes
 router.post(
-  '/:cuid/:leaseId/activate',
+  '/:cuid/:luid/activate',
   // Activate lease (after all signatures complete, marks unit as occupied)
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   validateRequest({
-    params: UtilsValidations.cuid,
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     body: LeaseValidations.activateLease,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
@@ -138,11 +132,11 @@ router.post(
 );
 
 router.post(
-  '/:cuid/:leaseId/terminate',
+  '/:cuid/:luid/terminate',
   // Terminate lease early (tenant moves out before end date)
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   validateRequest({
-    params: UtilsValidations.cuid,
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     body: LeaseValidations.terminateLease,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
@@ -153,14 +147,14 @@ router.post(
 
 // Document Management Routes
 router
-  .route('/:cuid/:leaseId/document')
+  .route('/:cuid/:luid/document')
   .post(
     // Upload additional lease document (e.g., addendum, manual signed copy)
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     diskUpload(['document']),
     scanFile,
     validateRequest({
-      params: UtilsValidations.cuid,
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<LeaseController>('leaseController');
@@ -192,12 +186,12 @@ router
 
 // Signature Management Routes
 router
-  .route('/:cuid/:leaseId/signature')
+  .route('/:cuid/:luid/signature')
   .post(
     // Send for e-signature OR mark as manually signed OR cancel signing
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     validateRequest({
-      params: UtilsValidations.cuid,
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
       body: LeaseValidations.signatureAction,
     }),
     asyncWrapper(async (req: AppRequest, res) => {
@@ -215,7 +209,7 @@ router
     // Returns: { status, signUrl, signers, completedAt, sentAt }
     requirePermission(PermissionResource.LEASE, PermissionAction.READ),
     validateRequest({
-      params: UtilsValidations.cuid,
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<LeaseController>('leaseController');
@@ -225,11 +219,11 @@ router
 
 // PDF Generation Routes
 router.post(
-  '/:cuid/:leaseId/pdf',
+  '/:cuid/:luid/pdf',
   // Generate PDF from lease JSON data using Puppeteer + EJS template
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   validateRequest({
-    params: UtilsValidations.cuid,
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<LeaseController>('leaseController');
@@ -238,11 +232,11 @@ router.post(
 );
 
 router.get(
-  '/:cuid/:leaseId/pdf/download',
+  '/:cuid/:luid/pdf/download',
   // Download generated PDF (triggers browser download)
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   validateRequest({
-    params: UtilsValidations.cuid,
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<LeaseController>('leaseController');
@@ -260,7 +254,7 @@ router.get(
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<LeaseController>('leaseController');
-    return controller.previewLease(req, res);
+    return controller.previewLeaseContract(req, res);
   })
 );
 

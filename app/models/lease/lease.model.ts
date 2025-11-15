@@ -432,6 +432,15 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         notes: {
           type: String,
           trim: true,
+          maxlength: 500,
+        },
+        rejectionReason: {
+          type: String,
+          trim: true,
+          maxlength: 500,
+        },
+        metadata: {
+          type: Schema.Types.Mixed,
         },
         _id: false,
       },
@@ -512,6 +521,53 @@ LeaseSchema.virtual('totalMonthlyFees').get(function (this: ILeaseDocument) {
     total += this.petPolicy.monthlyFee;
   }
   return total;
+});
+
+/**
+ * Virtual populate: Tenant information with only safe fields
+ * Automatically populates user and profile data without exposing sensitive fields
+ */
+LeaseSchema.virtual('tenantInfo', {
+  ref: 'Profile',
+  localField: 'tenantId',
+  foreignField: 'user',
+  justOne: true,
+  options: {
+    select:
+      'personalInfo.firstName personalInfo.lastName personalInfo.phoneNumber personalInfo.avatar.url',
+    populate: {
+      path: 'user',
+      select: 'uid email activecuid',
+    },
+  },
+});
+
+/**
+ * Virtual populate: Property information with only public fields
+ * Excludes internal metadata and sensitive property details
+ */
+LeaseSchema.virtual('propertyInfo', {
+  ref: 'Property',
+  localField: 'property.id',
+  foreignField: '_id',
+  justOne: true,
+  options: {
+    select: 'pid name address propertyType specifications owner maxAllowedUnits totalUnits',
+  },
+});
+
+/**
+ * Virtual populate: Unit information with only public fields
+ * Only populates if property.unitId exists
+ */
+LeaseSchema.virtual('propertyUnitInfo', {
+  ref: 'PropertyUnit',
+  localField: 'property.unitId',
+  foreignField: '_id',
+  justOne: true,
+  options: {
+    select: 'puid unitNumber floor specifications amenities status fees',
+  },
 });
 
 LeaseSchema.pre('save', async function (this: ILeaseDocument, next) {

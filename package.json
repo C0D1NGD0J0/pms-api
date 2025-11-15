@@ -9,7 +9,7 @@
   "scripts": {
     "prettier:check": "prettier --check './app/**/*.{ts,json,js}' './tests/**/*.{ts,json,js}'",
     "prettier:write": "prettier --write './app/**/*.{ts,json,js}' './tests/**/*.{ts,json,js}'",
-    "build": "rm -rf ./dist && tsc -p ./tsconfig.build.json && tsc-alias",
+    "build": "rm -rf ./dist && tsc -p ./tsconfig.build.json && tsc-alias && mkdir -p dist/app/templates/lease && cp -r app/templates/lease/* dist/app/templates/lease/",
     "lint:fix": "eslint './app/**/*.{ts,js}' './tests/**/*.{ts,js}' --fix",
     "dev": "nodemon | ./node_modules/.bin/bunyan",
     "lint": "eslint './app/**/*.{ts,js}' './tests/**/*.{ts,js}'",

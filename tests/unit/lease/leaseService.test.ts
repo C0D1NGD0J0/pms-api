@@ -86,6 +86,16 @@ const createMockLease = (overrides?: any) => ({
   status: LeaseStatus.DRAFT,
   tenantId: new Types.ObjectId(),
   useInvitationIdAsTenantId: false,
+  tenantInfo: {
+    fullname: 'Test Tenant',
+    user: {
+      email: 'tenant@example.com',
+    },
+    personalInfo: {
+      phoneNumber: '555-1234',
+      avatar: null,
+    },
+  },
   property: {
     id: new Types.ObjectId(),
     address: '123 Main St',
@@ -644,13 +654,11 @@ describe('LeaseService', () => {
           ],
         });
 
-        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+        mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
         const result = await leaseService.getLeaseById(
-          'C123',
-          mockLease._id.toString(),
-          { currentuser: mockUser } as any,
-          ['activity']
+          { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+          mockLease.luid
         );
 
         expect(result.success).toBe(true);
@@ -688,13 +696,11 @@ describe('LeaseService', () => {
           ],
         });
 
-        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+        mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
         const result = await leaseService.getLeaseById(
-          'C123',
-          mockLease._id.toString(),
-          { currentuser: mockUser } as any,
-          ['activity']
+          { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+          mockLease.luid
         );
 
         expect(result.success).toBe(true);
@@ -723,13 +729,11 @@ describe('LeaseService', () => {
           ],
         });
 
-        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+        mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
         const result = await leaseService.getLeaseById(
-          'C123',
-          mockLease._id.toString(),
-          { currentuser: mockUser } as any,
-          ['activity']
+          { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+          mockLease.luid
         );
 
         expect(result.success).toBe(true);
@@ -761,13 +765,11 @@ describe('LeaseService', () => {
           ],
         });
 
-        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+        mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
         const result = await leaseService.getLeaseById(
-          'C123',
-          mockLease._id.toString(),
-          { currentuser: mockUser } as any,
-          ['activity']
+          { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+          mockLease.luid
         );
 
         expect(result.success).toBe(true);
@@ -790,13 +792,11 @@ describe('LeaseService', () => {
           },
         });
 
-        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+        mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
         const result = await leaseService.getLeaseById(
-          'C123',
-          mockLease._id.toString(),
-          { currentuser: mockUser } as any,
-          ['activity']
+          { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+          mockLease.luid
         );
 
         expect(result.success).toBe(true);
@@ -834,13 +834,11 @@ describe('LeaseService', () => {
           ],
         });
 
-        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+        mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
         const result = await leaseService.getLeaseById(
-          'C123',
-          mockLease._id.toString(),
-          { currentuser: mockUser } as any,
-          ['activity']
+          { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+          mockLease.luid
         );
 
         expect(result.success).toBe(true);
@@ -874,13 +872,11 @@ describe('LeaseService', () => {
           ],
         });
 
-        mockDependencies.leaseDAO.getLeaseById.mockResolvedValue(mockLease);
+        mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
         const result = await leaseService.getLeaseById(
-          'C123',
-          mockLease._id.toString(),
-          { currentuser: mockUser } as any,
-          ['activity']
+          { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+          mockLease.luid
         );
 
         expect(result.success).toBe(true);

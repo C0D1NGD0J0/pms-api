@@ -433,7 +433,7 @@ describe('LeaseDAO', () => {
     });
 
     it('should apply status filter', async () => {
-      const mockLeases = [{ _id: 'L1', status: LeaseStatus.ACTIVE }];
+      const mockLeases = [{ _id: 'L1', status: LeaseStatus.ACTIVE, luid: 'L-2025-001', leaseNumber: 'LEASE-001', fees: { monthlyRent: 1500 }, duration: { startDate: new Date(), endDate: new Date() }, property: {}, tenantId: null, signingMethod: 'manual' }];
       const mockQuery = createQueryMock(mockLeases);
       mockLeaseModel.find.mockReturnValue(mockQuery);
 
@@ -443,7 +443,15 @@ describe('LeaseDAO', () => {
         { page: 1, limit: 10 }
       );
 
-      expect(result.items).toEqual(mockLeases);
+      expect(result.items).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          luid: 'L-2025-001',
+          leaseNumber: 'LEASE-001',
+          status: LeaseStatus.ACTIVE,
+          sentForSignature: false,
+          tenantActivated: true,
+        })
+      ]));
       expect(mockLeaseModel.find).toHaveBeenCalledWith(
         expect.objectContaining({ status: LeaseStatus.ACTIVE, cuid: 'C123', deletedAt: null })
       );

@@ -288,8 +288,8 @@ describe('LeaseTemplateDataMapper', () => {
           propertyAddress: '123 Main St',
           startDate: '2025-01-01',
           endDate: '2026-01-01',
-          monthlyRent: 1500,
-          securityDeposit: 3000,
+          monthlyRent: 150000, // cents
+          securityDeposit: 300000, // cents
           rentDueDay: 1,
           currency: 'USD',
         };

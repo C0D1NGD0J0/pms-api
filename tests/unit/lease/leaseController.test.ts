@@ -24,7 +24,10 @@ const createMockServices = () => ({
     downloadLeasePDF: jest.fn(),
     getExpiringLeases: jest.fn(),
     getLeaseStats: jest.fn(),
-    exportLeases: jest.fn(),
+    generatePreviewFromExistingLease: jest.fn(),
+  },
+  mediaUploadService: {
+    handleFiles: jest.fn(),
   },
 });
 
@@ -98,10 +101,13 @@ describe('LeaseController', () => {
 
   describe('getFilteredLeases', () => {
     it('should return filtered leases with pagination', async () => {
-      const mockFilters = { status: 'active', page: '1', limit: '10' };
-      mockRequest.query = mockFilters;
+      mockRequest.query = {
+        pagination: { page: '1', limit: '10' },
+        filter: { status: 'active' },
+      };
       mockServices.leaseService.getFilteredLeases.mockResolvedValue({
-        items: [
+        success: true,
+        data: [
           {
             luid: 'L-2025-001',
             leaseNumber: 'LEASE-001',
@@ -129,7 +135,8 @@ describe('LeaseController', () => {
       expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.OK);
       expect(mockResponse.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          items: expect.arrayContaining([
+          success: true,
+          data: expect.arrayContaining([
             expect.objectContaining({
               sentForSignature: true,
               tenantActivated: true,
@@ -140,9 +147,13 @@ describe('LeaseController', () => {
     });
 
     it('should handle sentForSignature=false when not sent electronically', async () => {
-      mockRequest.query = {};
+      mockRequest.query = {
+        pagination: {},
+        filter: {},
+      };
       mockServices.leaseService.getFilteredLeases.mockResolvedValue({
-        items: [
+        success: true,
+        data: [
           {
             luid: 'L-2025-002',
             leaseNumber: 'LEASE-002',
@@ -164,7 +175,8 @@ describe('LeaseController', () => {
 
       expect(mockResponse.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          items: expect.arrayContaining([
+          success: true,
+          data: expect.arrayContaining([
             expect.objectContaining({
               sentForSignature: false,
               tenantActivated: false,
@@ -176,13 +188,47 @@ describe('LeaseController', () => {
   });
 
   describe('getLeaseById', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
+    it('should return lease data successfully', async () => {
+      const mockLeaseData = {
+        lease: {
+          luid: 'L-2025-001',
+          leaseNumber: 'LEASE-001',
+          status: 'active',
+          type: 'fixed_term',
+          fees: { monthlyRent: 1500, securityDeposit: 1500, currency: 'USD', rentDueDay: 1 },
+          duration: { startDate: new Date(), endDate: new Date() },
+        },
+        property: { id: 'P123', address: '123 Main St' },
+        unit: null,
+        payments: [],
+        documents: [],
+        activity: [],
+        timeline: {},
+        permissions: {},
+        financialSummary: {},
+      };
+
+      mockRequest.params = { ...mockRequest.params, luid: 'L-2025-001' };
+      mockServices.leaseService.getLeaseById.mockResolvedValue({
+        success: true,
+        data: mockLeaseData,
+      });
+
       await leaseController.getLeaseById(mockRequest, mockResponse);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+      expect(mockServices.leaseService.getLeaseById).toHaveBeenCalledWith(
+        mockRequest.context,
+        'L-2025-001',
+        undefined
+      );
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.OK);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.any(Object),
+        })
+      );
     });
-
-    // TODO: Add test cases for implemented functionality
   });
 
   describe('updateLease', () => {
@@ -206,50 +252,50 @@ describe('LeaseController', () => {
   });
 
   describe('activateLease', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
+    it('should return NOT_IMPLEMENTED status', async () => {
       await leaseController.activateLease(mockRequest, mockResponse);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.NOT_IMPLEMENTED);
     });
 
     // TODO: Add test cases for implemented functionality
   });
 
   describe('terminateLease', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
+    it('should return NOT_IMPLEMENTED status', async () => {
       await leaseController.terminateLease(mockRequest, mockResponse);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.NOT_IMPLEMENTED);
     });
 
     // TODO: Add test cases for implemented functionality
   });
 
   describe('uploadLeaseDocument', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
+    it('should return NOT_IMPLEMENTED status', async () => {
       await leaseController.uploadLeaseDocument(mockRequest, mockResponse);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.NOT_IMPLEMENTED);
     });
 
     // TODO: Add test cases for implemented functionality
   });
 
   describe('getLeaseDocument', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
+    it('should return NOT_IMPLEMENTED status', async () => {
       await leaseController.getLeaseDocument(mockRequest, mockResponse);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.NOT_IMPLEMENTED);
     });
 
     // TODO: Add test cases for implemented functionality
   });
 
   describe('removeLeaseDocument', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
+    it('should return NOT_IMPLEMENTED status', async () => {
       await leaseController.removeLeaseDocument(mockRequest, mockResponse);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.NOT_IMPLEMENTED);
     });
 
     // TODO: Add test cases for implemented functionality
@@ -277,26 +323,26 @@ describe('LeaseController', () => {
   });
 
   describe('getSignatureDetails', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
+    it('should return NOT_IMPLEMENTED status', async () => {
       await leaseController.getSignatureDetails(mockRequest, mockResponse);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.NOT_IMPLEMENTED);
     });
 
     // TODO: Add test cases for implemented functionality
   });
 
   describe('generateLeasePDF', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
+    it('should return NOT_IMPLEMENTED status', async () => {
       await leaseController.generateLeasePDF(mockRequest, mockResponse);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.NOT_IMPLEMENTED);
     });
 
     // TODO: Add test cases for implemented functionality
   });
 
-  describe('previewLease', () => {
+  describe('generateLeasePreview', () => {
     it('should return preview HTML successfully', async () => {
       const mockPreviewData = {
         tenantInfo: { id: 'T123' },
@@ -312,7 +358,7 @@ describe('LeaseController', () => {
         leaseNumber: 'L-2025-001',
       });
 
-      await leaseController.previewLease(mockRequest, mockResponse);
+      await leaseController.generateLeasePreview(mockRequest, mockResponse);
 
       expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.OK);
       expect(mockResponse.json).toHaveBeenCalledWith(
@@ -344,42 +390,83 @@ describe('LeaseController', () => {
   });
 
   describe('downloadLeasePDF', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
+    it('should return NOT_IMPLEMENTED status', async () => {
       await leaseController.downloadLeasePDF(mockRequest, mockResponse);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.NOT_IMPLEMENTED);
     });
 
     // TODO: Add test cases for implemented functionality
   });
 
   describe('getExpiringLeases', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
+    it('should return expiring leases successfully', async () => {
+      const mockExpiringLeases = [
+        {
+          luid: 'L-2025-001',
+          leaseNumber: 'LEASE-001',
+          tenantName: 'John Doe',
+          endDate: new Date('2025-06-01'),
+        },
+      ];
+
+      mockServices.leaseService.getExpiringLeases.mockResolvedValue({
+        success: true,
+        data: mockExpiringLeases,
+        message: 'Found 1 lease(s) expiring within 30 days',
+      });
+
+      mockRequest.query = { days: '30' };
+
       await leaseController.getExpiringLeases(mockRequest, mockResponse);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+      expect(mockServices.leaseService.getExpiringLeases).toHaveBeenCalledWith('test-cuid', 30);
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.OK);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.any(Array),
+        })
+      );
     });
-
-    // TODO: Add test cases for implemented functionality
   });
 
   describe('getLeaseStats', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
+    it('should return lease statistics successfully', async () => {
+      const mockStats = {
+        totalLeases: 10,
+        activeLeases: 5,
+        expiredLeases: 2,
+        pendingLeases: 3,
+        totalMonthlyRevenue: 15000,
+      };
+
+      mockServices.leaseService.getLeaseStats.mockResolvedValue({
+        success: true,
+        data: mockStats,
+        message: 'Lease statistics retrieved successfully',
+      });
+
       await leaseController.getLeaseStats(mockRequest, mockResponse);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+      expect(mockServices.leaseService.getLeaseStats).toHaveBeenCalledWith(
+        'test-cuid',
+        expect.any(Object)
+      );
+      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.OK);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.any(Object),
+        })
+      );
     });
-
-    // TODO: Add test cases for implemented functionality
   });
 
   describe('exportLeases', () => {
-    it('should return SERVICE_UNAVAILABLE status', async () => {
-      await leaseController.exportLeases(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(httpStatusCodes.SERVICE_UNAVAILABLE);
+    // exportLeases method doesn't exist in the controller - remove or skip this test
+    it.skip('should return SERVICE_UNAVAILABLE status', async () => {
+      // This method is not implemented in the controller
     });
-
-    // TODO: Add test cases for implemented functionality
   });
 });

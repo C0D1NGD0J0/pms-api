@@ -314,7 +314,7 @@ describe('LeaseService', () => {
         mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
 
         const leaseData = {
-          tenantInfo: { id: 'T123', email: null },
+          tenantInfo: { id: 'T123', email: undefined },
           property: {
             id: mockProperty._id.toString(),
             address: '123 Main St',
@@ -330,7 +330,8 @@ describe('LeaseService', () => {
             rentDueDay: 1,
             currency: 'USD',
           },
-          type: 'fixed_term',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: 'LEASE-TEST-001',
         };
 
         await expect(
@@ -353,7 +354,7 @@ describe('LeaseService', () => {
         mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
 
         const leaseData = {
-          tenantInfo: { id: 'T123', email: null },
+          tenantInfo: { id: 'T123', email: undefined },
           property: {
             id: mockProperty._id.toString(),
             unitId: 'INVALID-UNIT-ID',
@@ -369,7 +370,8 @@ describe('LeaseService', () => {
             rentDueDay: 1,
             currency: 'USD',
           },
-          type: 'fixed_term',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: 'LEASE-TEST-002',
         };
 
         await expect(
@@ -396,7 +398,7 @@ describe('LeaseService', () => {
         mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
 
         const leaseData = {
-          tenantInfo: { id: 'T123', email: null },
+          tenantInfo: { id: 'T123', email: undefined },
           property: {
             id: mockProperty._id.toString(),
             unitId: mockUnit._id.toString(),
@@ -412,7 +414,8 @@ describe('LeaseService', () => {
             rentDueDay: 1,
             currency: 'USD',
           },
-          type: 'fixed_term',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: 'LEASE-TEST-003',
         };
 
         await expect(
@@ -446,7 +449,7 @@ describe('LeaseService', () => {
         mockDependencies.leaseDAO.createLease.mockResolvedValue(mockLease);
 
         const leaseData = {
-          tenantInfo: { id: tenantId.toString(), email: null },
+          tenantInfo: { id: tenantId.toString(), email: undefined },
           property: {
             id: mockProperty._id.toString(),
             // NO unitId for house - should be fine!
@@ -462,7 +465,8 @@ describe('LeaseService', () => {
             rentDueDay: 1,
             currency: 'USD',
           },
-          type: 'fixed_term',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: 'LEASE-TEST-004',
         };
 
         const result = await leaseService.createLease('C123', leaseData, {
@@ -516,7 +520,8 @@ describe('LeaseService', () => {
             rentDueDay: 1,
             currency: 'USD',
           },
-          type: 'fixed_term',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: 'LEASE-TEST-005',
         };
 
         const result = await leaseService.createLease('C123', leaseData, {
@@ -557,7 +562,8 @@ describe('LeaseService', () => {
             rentDueDay: 1,
             currency: 'USD',
           },
-          type: 'fixed_term',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: 'LEASE-TEST-006',
         };
 
         await expect(
@@ -641,7 +647,7 @@ describe('LeaseService', () => {
 
       const result = await leaseService.getFilteredLeases('C123', {}, { page: 1, limit: 10 });
 
-      expect(result.data[0]).toMatchObject({
+      expect((result as any).items[0]).toMatchObject({
         sentForSignature: false,
         tenantActivated: false,
       });
@@ -1226,7 +1232,7 @@ describe('LeaseService', () => {
         mockDependencies.leaseDAO.findFirst.mockResolvedValue(null);
 
         await expect(
-          leaseService.approveLease('C123', 'L-2025-ABC123', mockUser)
+          leaseService.approveLease('C123', 'L-2025-ABC123', mockUser, '')
         ).rejects.toThrow();
       });
     });
@@ -1623,9 +1629,9 @@ describe('LeaseService', () => {
 
         mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
-        await expect(leaseService.activateLease('C123', 'L-2025-ABC123', 'U123')).rejects.toThrow(
-          'pending approval'
-        );
+        await expect(
+          leaseService.activateLease('C123', 'L-2025-ABC123', 'U123', '')
+        ).rejects.toThrow('pending approval');
       });
 
       it('should block activating lease with rejected approval status', async () => {
@@ -1636,9 +1642,9 @@ describe('LeaseService', () => {
 
         mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
-        await expect(leaseService.activateLease('C123', 'L-2025-ABC123', 'U123')).rejects.toThrow(
-          'has been rejected'
-        );
+        await expect(
+          leaseService.activateLease('C123', 'L-2025-ABC123', 'U123', '')
+        ).rejects.toThrow('has been rejected');
       });
 
       it('should block activating lease with draft approval status', async () => {
@@ -1649,9 +1655,9 @@ describe('LeaseService', () => {
 
         mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
-        await expect(leaseService.activateLease('C123', 'L-2025-ABC123', 'U123')).rejects.toThrow(
-          'draft status'
-        );
+        await expect(
+          leaseService.activateLease('C123', 'L-2025-ABC123', 'U123', '')
+        ).rejects.toThrow('draft status');
       });
 
       it.todo('should allow activating approved lease');
@@ -1876,8 +1882,19 @@ describe('LeaseService', () => {
         const propertyId = new Types.ObjectId().toString();
         const previewData = {
           propertyId,
-          templateType: 'residential-single-family',
+          templateType: 'residential-single-family' as const,
+          signingMethod: 'electronic' as const,
+          startDate: new Date('2025-01-01'),
+          propertyAddress: '123 Test St',
+          securityDeposit: 1500,
+          endDate: new Date('2026-01-01'),
+          leaseType: LeaseType.FIXED_TERM,
+          tenantEmail: 'test@example.com',
+          tenantPhone: '555-1234',
           monthlyRent: 1500,
+          tenantName: 'Test Tenant',
+          rentDueDay: 1,
+          currency: 'USD',
         };
 
         const mockClient = {
@@ -1909,7 +1926,7 @@ describe('LeaseService', () => {
         const mockProfile = createMockProfile();
 
         // Mock property needs address field for generateLeasePreview
-        mockProperty.address = {
+        (mockProperty as any).address = {
           fullAddress: '123 Test St',
           city: 'San Francisco',
           state: 'CA',
@@ -1939,9 +1956,20 @@ describe('LeaseService', () => {
         const propertyId = new Types.ObjectId().toString();
         const previewData = {
           propertyId,
-          templateType: 'residential-apartment',
+          templateType: 'residential-apartment' as const,
+          signingMethod: 'electronic' as const,
+          startDate: new Date('2025-01-01'),
+          propertyAddress: '123 Test St',
+          securityDeposit: 1500,
+          endDate: new Date('2026-01-01'),
+          leaseType: LeaseType.FIXED_TERM,
+          tenantEmail: 'test@example.com',
+          tenantPhone: '555-1234',
           unitNumber: '101',
           monthlyRent: 1500,
+          tenantName: 'Test Tenant',
+          rentDueDay: 1,
+          currency: 'USD',
         };
 
         const mockClient = createMockClient();
@@ -1992,9 +2020,20 @@ describe('LeaseService', () => {
         const propertyId = new Types.ObjectId().toString();
         const previewData = {
           propertyId,
-          templateType: 'residential-apartment',
+          templateType: 'residential-apartment' as const,
+          signingMethod: 'electronic' as const,
+          startDate: new Date('2025-01-01'),
+          propertyAddress: '123 Test St',
+          securityDeposit: 1500,
+          endDate: new Date('2026-01-01'),
+          leaseType: LeaseType.FIXED_TERM,
+          tenantEmail: 'test@example.com',
+          tenantPhone: '555-1234',
           unitNumber: '101',
           monthlyRent: 1500,
+          tenantName: 'Test Tenant',
+          rentDueDay: 1,
+          currency: 'USD',
         };
 
         const mockClient = createMockClient();
@@ -2323,7 +2362,7 @@ describe('LeaseService', () => {
       const result = await leaseService.generatePreviewFromExistingLease('C123', 'L123');
 
       expect(result).toBeDefined();
-      expect(result.leaseNumber).toBe(mockLease.leaseNumber);
+      expect((result as any).leaseNumber).toBe(mockLease.leaseNumber);
       expect(result.tenantName).toBe('John Doe');
       expect(result.tenantEmail).toBe('john@example.com');
       expect(result.propertyAddress).toContain('123 Main St');

@@ -1241,13 +1241,11 @@ export class UserService {
         throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
       }
 
-      // Validate client exists
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
-      // Optional permission check if currentUser is provided
       if (currentUser && currentUser.client.cuid !== cuid) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
@@ -1257,10 +1255,7 @@ export class UserService {
         });
       }
 
-      // Get tenants from DAO
       const result = await this.userDAO.getTenantsByClient(cuid, filters, pagination);
-
-      // Transform the result to include additional tenant-specific data
       const enrichedTenants = await Promise.all(
         result.items.map(async (tenant: any) => {
           const personalInfo = tenant.profile?.personalInfo || {};

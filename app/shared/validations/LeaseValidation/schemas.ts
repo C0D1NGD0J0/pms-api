@@ -297,6 +297,13 @@ export const FilterLeasesSchema = z.object({
       sortBy: z.string().optional(),
     })
     .optional(),
+  meta: z
+    .object({
+      includeFormattedData: z
+        .union([z.boolean(), z.string().transform((val) => val === 'true')])
+        .optional(),
+    })
+    .optional(),
 });
 
 // Activate Lease Schema
@@ -402,7 +409,6 @@ export const SignatureActionSchema = z
     }
   );
 
-// Expiring Leases Query Schema
 export const ExpiringLeasesQuerySchema = z.object({
   daysThreshold: z.coerce.number().int().min(1).max(365).default(30),
   status: z.array(LeaseStatusEnum).optional(),
@@ -411,14 +417,12 @@ export const ExpiringLeasesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(10),
 });
 
-// Lease Stats Query Schema
 export const LeaseStatsQuerySchema = z.object({
   propertyId: z.string().optional(),
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
 });
 
-// Export Leases Query Schema
 export const ExportLeasesQuerySchema = z.object({
   format: z.enum(['csv', 'excel']).default('csv'),
   status: z.array(LeaseStatusEnum).optional(),
@@ -439,20 +443,14 @@ export const LeasePreviewSchema = z.object({
       'short-term-rental',
     ])
     .optional(),
-
-  // Basic Information
   leaseNumber: z.string().optional(),
   currentDate: z.string().optional(),
   jurisdiction: z.string().optional(),
   signedDate: z.string().optional(),
-
-  // Landlord Information
   landlordName: z.string().optional(),
   landlordAddress: z.string().optional(),
   landlordEmail: z.string().email('Invalid landlord email').optional().or(z.literal('')),
   landlordPhone: z.string().optional(),
-
-  // Tenant Information
   tenantName: z.string().optional(),
   tenantEmail: z.string().email('Invalid tenant email').optional().or(z.literal('')),
   tenantPhone: z.string().optional(),
@@ -466,11 +464,7 @@ export const LeasePreviewSchema = z.object({
       })
     )
     .optional(),
-
-  // Property Information
   propertyAddress: z.string().optional(),
-
-  // Lease Terms
   leaseType: z.string().optional(),
   startDate: z.union([z.string(), z.coerce.date()]).optional(),
   endDate: z.union([z.string(), z.coerce.date()]).optional(),
@@ -478,8 +472,6 @@ export const LeasePreviewSchema = z.object({
   securityDeposit: z.number().min(0).optional(),
   rentDueDay: z.number().int().min(1).max(31).optional(),
   currency: z.string().length(3).optional(),
-
-  // Additional Provisions
   petPolicy: z
     .object({
       allowed: z.boolean(),
@@ -503,7 +495,6 @@ export const LeasePreviewSchema = z.object({
     .optional(),
   utilitiesIncluded: z.union([z.string(), z.array(z.string())]).optional(),
 
-  // Signature Information
   signingMethod: z.enum(['electronic', 'manual', 'pending']).optional(),
   landlordSignatureUrl: z
     .string()
@@ -512,4 +503,23 @@ export const LeasePreviewSchema = z.object({
     .or(z.literal('')),
   tenantSignatureUrl: z.string().url('Invalid tenant signature URL').optional().or(z.literal('')),
   requiresNotarization: z.boolean().optional(),
+});
+
+export const GetLeaseByIdQuerySchema = z.object({
+  include: z
+    .union([
+      z.enum(['payments', 'documents', 'activity', 'timeline', 'all']),
+      z.array(z.enum(['payments', 'documents', 'activity', 'timeline', 'all'])),
+      z
+        .string()
+        .transform((val) => val.split(',').map((item) => item.trim()))
+        .pipe(z.array(z.enum(['payments', 'documents', 'activity', 'timeline', 'all']))),
+    ])
+    .optional(),
+});
+
+export const LeaseIdParamSchema = z.object({
+  leaseId: z.string().refine((id) => Types.ObjectId.isValid(id), {
+    message: 'Invalid lease ID format',
+  }),
 });

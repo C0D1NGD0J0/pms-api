@@ -15,9 +15,17 @@ export const validateRequest = (schema: {
     try {
       if (schema.query) {
         req.query = await schema.query.parseAsync(req.query);
+        // Sync validated query to context
+        if (req.context?.request) {
+          req.context.request.query = req.query;
+        }
       }
       if (schema.params) {
         req.params = await schema.params.parseAsync(req.params);
+        // Sync validated params to context
+        if (req.context?.request) {
+          req.context.request.params = req.params;
+        }
       }
       // parse nested JSON fields in the body if multipart/form-data
       req.body = parseJsonFields(req);

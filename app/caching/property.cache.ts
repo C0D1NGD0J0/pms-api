@@ -406,9 +406,10 @@ export class PropertyCache extends BaseCache {
       const result = await this.getItem<string>(key);
 
       if (result.success && result.data) {
+        const data = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
         return {
           success: true,
-          data: JSON.parse(result.data as any),
+          data,
         };
       }
 

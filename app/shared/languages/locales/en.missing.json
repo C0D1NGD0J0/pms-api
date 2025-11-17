@@ -65,7 +65,9 @@
   "lease": {
     "errors": {
       "validationFailed": "lease.errors.validationFailed"
-    }
+    },
+    "invalid_access": "lease.invalid_access",
+    "retrieved_successfully": "lease.retrieved_successfully"
   },
   "common": {
     "errors": {

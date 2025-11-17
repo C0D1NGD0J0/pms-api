@@ -254,6 +254,62 @@ export interface ILeaseFormData {
 }
 
 /**
+ * Lease Financial Summary Interface
+ * Financial information and payment tracking
+ */
+export interface ILeaseFinancialSummary {
+  acceptedPaymentMethod?:
+    | 'bank_transfer'
+    | 'check'
+    | 'cash'
+    | 'credit_card'
+    | 'debit_card'
+    | 'mobile_payment';
+  lateFeeType?: 'fixed' | 'percentage';
+  lastPaymentDate: Date | null;
+  securityDepositRaw: number; // Raw amount in cents
+  securityDeposit: string; // Formatted currency string
+  monthlyRentRaw: number; // Raw amount in cents
+  lateFeeAmount?: number;
+  totalExpected: number;
+  nextPaymentDate: Date;
+  lateFeeDays?: number;
+  monthlyRent: string; // Formatted currency string
+  rentDueDay: number; // 1-31
+  totalPaid: number;
+  totalOwed: number;
+  currency: string;
+}
+
+/**
+ * Lease Document Interface with Mongoose Document
+ * Extends ILease with MongoDB document properties and methods
+ */
+export interface ILeaseDocument extends Document, ILease {
+  // Instance methods
+  softDelete(userId: Types.ObjectId): Promise<ILeaseDocument>;
+  hasOverlap(startDate: Date, endDate: Date): boolean;
+  propertyInfo?: ILeasePropertyInfo;
+  propertyUnitInfo?: ILeaseUnitInfo;
+  // Virtual properties (computed)
+  daysUntilExpiry: number | null;
+  durationMonths: number | null;
+  // Virtual populate fields (secure field selection)
+  tenantInfo?: ILeaseTenantInfo;
+
+  totalMonthlyFees: number;
+  isExpiringSoon: boolean;
+  _id: Types.ObjectId;
+
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+
+  luid: string;
+  id: string;
+}
+
+/**
  * Lease Filter Options Interface
  * Used for querying leases
  */
@@ -323,27 +379,51 @@ export interface ILeasePreviewResponse extends ILeasePreviewRequest {
   landlordName: string;
 }
 
+export interface ILeaseDetailResponse {
+  financialSummary: ILeaseFinancialSummary;
+
+  // Always included computed fields
+  permissions: ILeaseUserPermissions;
+  documents?: ILeaseDocumentItem[];
+
+  activity?: ILeaseActivityEvent[];
+  // Populated related data
+  property: ILeasePropertyInfo;
+  timeline?: ILeaseTimeline;
+  tenant: ILeaseTenantInfo;
+
+  // Core lease data (filtered by user role)
+  lease: ILeaseDocument;
+  // Optional enrichments (based on includes parameter)
+  payments?: any[]; // TODO: Define payment interface when payments service is ready
+}
+
 /**
- * Lease Document Interface with Mongoose Document
- * Extends ILease with MongoDB document properties and methods
+ * Lease Activity Event Interface
+ * Individual activity/audit event in lease history
  */
-export interface ILeaseDocument extends Document, ILease {
-  // Instance methods
-  softDelete(userId: Types.ObjectId): Promise<ILeaseDocument>;
-  hasOverlap(startDate: Date, endDate: Date): boolean;
-  // Virtual properties
-  daysUntilExpiry: number | null;
-  durationMonths: number | null;
-  totalMonthlyFees: number;
-
-  isExpiringSoon: boolean;
-  _id: Types.ObjectId;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-
-  luid: string;
-  id: string;
+export interface ILeaseActivityEvent {
+  type:
+    | 'created'
+    | 'updated'
+    | 'activated'
+    | 'terminated'
+    | 'cancelled'
+    | 'renewed'
+    | 'submitted'
+    | 'approved'
+    | 'rejected'
+    | 'overridden'
+    | 'signed';
+  role?: 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
+  signatureMethod?: 'manual' | 'electronic';
+  user?: Types.ObjectId | string;
+  metadata?: Record<string, any>;
+  rejectionReason?: string;
+  description: string;
+  userName?: string;
+  timestamp: Date;
+  notes?: string;
 }
 
 /**
@@ -412,6 +492,24 @@ export interface IRentRollItem {
 }
 
 /**
+ * Lease User Permissions Interface
+ * User-specific permissions for lease operations
+ */
+export interface ILeaseUserPermissions {
+  canManageSignatures: boolean;
+  canUploadDocuments: boolean;
+  canViewFinancials: boolean;
+  canViewDocuments: boolean;
+  canViewActivity: boolean;
+  canGeneratePDF: boolean;
+  canTerminate: boolean;
+  canActivate: boolean;
+  canDownload: boolean;
+  canDelete: boolean;
+  canEdit: boolean;
+}
+
+/**
  * Rent Roll Report Interface
  * Complete rent roll with summary
  */
@@ -463,6 +561,36 @@ export interface ILeaseListItem {
 }
 
 /**
+ * Lease Timeline Interface
+ * Key milestone dates and progress tracking
+ */
+export interface ILeaseTimeline {
+  isExpiringSoon: boolean;
+  daysRemaining: number;
+  daysElapsed: number;
+  moveInDate?: Date;
+  isActive: boolean;
+  progress: number; // 0-100 percentage
+  startDate: Date;
+  created: Date;
+  signed?: Date;
+  endDate: Date;
+}
+
+/**
+ * Lease Approval Entry Interface
+ * Tracks individual approval actions
+ */
+export interface ILeaseApprovalEntry {
+  action: 'created' | 'submitted' | 'approved' | 'rejected' | 'updated' | 'overridden';
+  actor: Types.ObjectId | string;
+  metadata?: Record<string, any>;
+  rejectionReason?: string;
+  timestamp: Date;
+  notes?: string;
+}
+
+/**
  * E-Signature Request Data Interface
  * Used when sending lease for signature
  */
@@ -506,14 +634,58 @@ export interface ILeaseESignature {
 }
 
 /**
- * Lease Approval Entry Interface
- * Tracks individual approval actions
+ * Populated Property Info Interface
+ * Property details returned in lease response
  */
-export interface ILeaseApprovalEntry {
-  action: 'created' | 'submitted' | 'approved' | 'rejected' | 'updated' | 'overridden';
-  actor: Types.ObjectId | string;
-  timestamp: Date;
-  notes?: string;
+export interface ILeasePropertyInfo extends ILeaseProperty {
+  propertyType?: 'apartment' | 'house' | 'condominium' | 'townhouse' | 'commercial' | 'industrial';
+  availableUnits?: number;
+  totalUnits?: number;
+  name?: string;
+  pid?: string;
+}
+
+/**
+ * Populated Tenant Info Interface
+ * Tenant details returned in lease response
+ */
+export interface ILeaseTenantInfo {
+  _id: Types.ObjectId | string;
+  phoneNumber?: string;
+  firstName?: string;
+  lastName?: string;
+  fullname?: string;
+  avatar?: string;
+  email: string;
+  uid?: string;
+}
+
+/**
+ * Pending Changes Preview Interface
+ * Preview of pending changes awaiting approval
+ */
+export interface ILeasePendingChangesPreview {
+  updatedBy: Types.ObjectId | string;
+  changes: Record<string, any>;
+  updatedFields: string[];
+  displayName?: string;
+  updatedAt: Date;
+  summary: string;
+}
+
+/**
+ * Populated Unit Info Interface
+ * Unit details returned in lease response (secure field selection)
+ */
+export interface ILeaseUnitInfo {
+  _id: Types.ObjectId | string;
+  specifications?: any;
+  amenities?: string[];
+  unitNumber: string;
+  status?: string;
+  floor?: number;
+  puid: string;
+  fees?: any;
 }
 
 /**

@@ -440,9 +440,9 @@ export class LeaseService {
           tenant: {
             id: lease.tenantId,
             fullname: lease.tenantInfo?.fullname,
-            email: (lease.tenantInfo as any).user.email,
-            phone: (lease.tenantInfo as any).personalInfo.phoneNumber,
-            avatar: (lease.tenantInfo as any).personalInfo.avatar,
+            email: (lease.tenantInfo as any).user?.email,
+            phone: (lease.tenantInfo as any).personalInfo?.phoneNumber,
+            avatar: (lease.tenantInfo as any).personalInfo?.avatar,
           },
         },
         property: lease.propertyInfo || lease.property,

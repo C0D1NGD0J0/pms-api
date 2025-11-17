@@ -440,11 +440,9 @@ describe('LeaseService', () => {
         });
         mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
         mockDependencies.leaseDAO.startSession.mockResolvedValue({});
-        mockDependencies.leaseDAO.withTransaction.mockImplementation(
-          async (session, callback) => {
-            return callback(session);
-          }
-        );
+        mockDependencies.leaseDAO.withTransaction.mockImplementation(async (session, callback) => {
+          return callback(session);
+        });
         mockDependencies.leaseDAO.createLease.mockResolvedValue(mockLease);
 
         const leaseData = {
@@ -494,11 +492,9 @@ describe('LeaseService', () => {
         mockDependencies.invitationDAO.findFirst.mockResolvedValue(mockInvitation);
         mockDependencies.leaseDAO.checkOverlappingLeases.mockResolvedValue([]);
         mockDependencies.leaseDAO.startSession.mockResolvedValue({});
-        mockDependencies.leaseDAO.withTransaction.mockImplementation(
-          async (session, callback) => {
-            return callback(session);
-          }
-        );
+        mockDependencies.leaseDAO.withTransaction.mockImplementation(async (session, callback) => {
+          return callback(session);
+        });
         mockDependencies.leaseDAO.createLease.mockResolvedValue(mockLease);
 
         const leaseData = {
@@ -594,7 +590,6 @@ describe('LeaseService', () => {
         pagination: { total: 1, currentPage: 1, totalPages: 1, perPage: 10 },
       };
 
-      // Mock cache miss
       mockDependencies.leaseCache.getClientLeases.mockResolvedValue({
         success: false,
         data: null,
@@ -604,8 +599,8 @@ describe('LeaseService', () => {
 
       const result = await leaseService.getFilteredLeases('C123', mockFilters, mockPaginationOpts);
 
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0]).toMatchObject({
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
         sentForSignature: true,
         tenantActivated: true,
       });
@@ -735,12 +730,10 @@ describe('LeaseService', () => {
         );
 
         expect(result.success).toBe(true);
-        // Activity feed should include general creation event + 3 approval events = 4 total
         expect(result.data.activity.length).toBe(4);
         const approvalEvents = result.data.activity.filter((a: any) =>
-          ['created', 'submitted', 'approved'].includes(a.type)
+          ['submitted', 'approved', 'created'].includes(a.type)
         );
-        // 'created' appears twice: once from createdAt, once from approvalDetails
         expect(approvalEvents.length).toBe(4);
       });
 
@@ -873,9 +866,7 @@ describe('LeaseService', () => {
         );
 
         expect(result.success).toBe(true);
-        const timestamps = result.data.activity.map((a: any) =>
-          new Date(a.timestamp).getTime()
-        );
+        const timestamps = result.data.activity.map((a: any) => new Date(a.timestamp).getTime());
 
         // Verify descending order (most recent first)
         for (let i = 0; i < timestamps.length - 1; i++) {
@@ -1441,13 +1432,13 @@ describe('LeaseService', () => {
 
         mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
-        await expect(
-          leaseService.deleteLease('C123', 'L-2025-ABC123', 'U123')
-        ).rejects.toThrow(ValidationRequestError);
+        await expect(leaseService.deleteLease('C123', 'L-2025-ABC123', 'U123')).rejects.toThrow(
+          ValidationRequestError
+        );
 
-        await expect(
-          leaseService.deleteLease('C123', 'L-2025-ABC123', 'U123')
-        ).rejects.toThrow('Cannot delete active lease');
+        await expect(leaseService.deleteLease('C123', 'L-2025-ABC123', 'U123')).rejects.toThrow(
+          'Cannot delete active lease'
+        );
       });
 
       it('should block deletion of PENDING_SIGNATURE lease', async () => {
@@ -1455,9 +1446,9 @@ describe('LeaseService', () => {
 
         mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
-        await expect(
-          leaseService.deleteLease('C123', 'L-2025-ABC123', 'U123')
-        ).rejects.toThrow(ValidationRequestError);
+        await expect(leaseService.deleteLease('C123', 'L-2025-ABC123', 'U123')).rejects.toThrow(
+          ValidationRequestError
+        );
       });
 
       it('should block deletion of TERMINATED lease', async () => {
@@ -1465,9 +1456,9 @@ describe('LeaseService', () => {
 
         mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
-        await expect(
-          leaseService.deleteLease('C123', 'L-2025-ABC123', 'U123')
-        ).rejects.toThrow(ValidationRequestError);
+        await expect(leaseService.deleteLease('C123', 'L-2025-ABC123', 'U123')).rejects.toThrow(
+          ValidationRequestError
+        );
       });
 
       it('should block deletion of EXPIRED lease', async () => {
@@ -1475,17 +1466,17 @@ describe('LeaseService', () => {
 
         mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
-        await expect(
-          leaseService.deleteLease('C123', 'L-2025-ABC123', 'U123')
-        ).rejects.toThrow(ValidationRequestError);
+        await expect(leaseService.deleteLease('C123', 'L-2025-ABC123', 'U123')).rejects.toThrow(
+          ValidationRequestError
+        );
       });
 
       it('should throw error if lease not found for deletion', async () => {
         mockDependencies.leaseDAO.findFirst.mockResolvedValue(null);
 
-        await expect(
-          leaseService.deleteLease('C123', 'L-2025-ABC123', 'U123')
-        ).rejects.toThrow(BadRequestError);
+        await expect(leaseService.deleteLease('C123', 'L-2025-ABC123', 'U123')).rejects.toThrow(
+          BadRequestError
+        );
       });
     });
 
@@ -2197,7 +2188,10 @@ describe('LeaseService', () => {
       });
 
       it('should format two field changes', () => {
-        const result = (leaseService as any).generateChangesSummary(['monthlyRent', 'securityDeposit']);
+        const result = (leaseService as any).generateChangesSummary([
+          'monthlyRent',
+          'securityDeposit',
+        ]);
 
         expect(result).toBe('Modified Monthly Rent and Security Deposit');
       });
@@ -2266,9 +2260,9 @@ describe('LeaseService', () => {
     it('should throw error if lease not found', async () => {
       mockDependencies.leaseDAO.findFirst.mockResolvedValue(null);
 
-      await expect(
-        leaseService.generatePreviewFromExistingLease('C123', 'L123')
-      ).rejects.toThrow('Lease not found');
+      await expect(leaseService.generatePreviewFromExistingLease('C123', 'L123')).rejects.toThrow(
+        'Lease not found'
+      );
     });
 
     it('should throw error if property not found', async () => {
@@ -2276,9 +2270,9 @@ describe('LeaseService', () => {
       mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
       mockDependencies.propertyDAO.findFirst.mockResolvedValue(null);
 
-      await expect(
-        leaseService.generatePreviewFromExistingLease('C123', 'L123')
-      ).rejects.toThrow('Property not found');
+      await expect(leaseService.generatePreviewFromExistingLease('C123', 'L123')).rejects.toThrow(
+        'Property not found'
+      );
     });
 
     it('should generate preview data from existing lease', async () => {
@@ -2427,7 +2421,9 @@ describe('LeaseService', () => {
       // Since the lease started in 2024, it should have accumulated several months of rent
       expect(result.totalExpected).toBeGreaterThan(0);
       // The total should be a multiple of the total monthly rent (base + pet fee)
-      const monthsElapsed = Math.floor((new Date().getTime() - new Date('2024-01-01').getTime()) / (1000 * 60 * 60 * 24 * 30));
+      const monthsElapsed = Math.floor(
+        (new Date().getTime() - new Date('2024-01-01').getTime()) / (1000 * 60 * 60 * 24 * 30)
+      );
       expect(result.totalExpected).toBe(255000 * monthsElapsed);
     });
   });

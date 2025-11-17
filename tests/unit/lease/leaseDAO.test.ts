@@ -433,7 +433,19 @@ describe('LeaseDAO', () => {
     });
 
     it('should apply status filter', async () => {
-      const mockLeases = [{ _id: 'L1', status: LeaseStatus.ACTIVE, luid: 'L-2025-001', leaseNumber: 'LEASE-001', fees: { monthlyRent: 1500 }, duration: { startDate: new Date(), endDate: new Date() }, property: {}, tenantId: null, signingMethod: 'manual' }];
+      const mockLeases = [
+        {
+          _id: 'L1',
+          status: LeaseStatus.ACTIVE,
+          luid: 'L-2025-001',
+          leaseNumber: 'LEASE-001',
+          fees: { monthlyRent: 1500 },
+          duration: { startDate: new Date(), endDate: new Date() },
+          property: {},
+          tenantId: null,
+          signingMethod: 'manual',
+        }
+      ];
       const mockQuery = createQueryMock(mockLeases);
       mockLeaseModel.find.mockReturnValue(mockQuery);
 

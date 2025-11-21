@@ -848,10 +848,8 @@ export class LeaseService {
     const sanitized = { ...updateData };
 
     // Handle property.unitId - convert empty string to undefined to explicitly unset it
-    if (sanitized.property) {
-      if (sanitized.property.unitId === '' || sanitized.property.unitId === null) {
-        sanitized.property.unitId = undefined;
-      }
+    if (sanitized.property?.unitId === '' || sanitized.property?.unitId === null) {
+      sanitized.property.unitId = undefined;
     }
 
     return sanitized;

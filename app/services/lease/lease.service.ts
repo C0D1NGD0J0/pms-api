@@ -774,18 +774,18 @@ export class LeaseService {
     let requiresApproval = false;
 
     if (isApprovalRole) {
-      if (lease.pendingChanges && lease.pendingChanges.requestedBy !== currentUser.sub) {
+      if (lease.pendingChanges && lease.pendingChanges.updatedBy !== currentUser.sub) {
         updatedLease = await this.applyDirectUpdateWithOverride(lease, updateData, currentUser.sub);
       } else {
         updatedLease = await this.applyDirectUpdate(lease, updateData, currentUser.sub);
       }
     } else {
-      if (lease.pendingChanges && lease.pendingChanges.requestedBy !== currentUser.sub) {
+      if (lease.pendingChanges && lease.pendingChanges.updatedBy !== currentUser.sub) {
         throw new ValidationRequestError({
           message: 'Another staff member has pending changes for this lease',
           errorInfo: {
-            requestedBy: [lease.pendingChanges.requestedBy],
-            requestedAt: [lease.pendingChanges.requestedAt.toISOString()],
+            requestedBy: [lease.pendingChanges.updatedBy?.toString()],
+            requestedAt: [lease.pendingChanges.updatedAt.toISOString()],
           },
         });
       }
@@ -896,7 +896,7 @@ export class LeaseService {
     userId: string
   ): Promise<ILeaseDocument> {
     // Admin overriding staff pending changes
-    const overriddenUserId = lease.pendingChanges?.requestedBy;
+    const overriddenUserId = lease.pendingChanges?.updatedBy;
 
     // Sanitize empty strings and null values for nested ObjectId fields
     const sanitizedData = this.sanitizeUpdateData(updateData);
@@ -915,7 +915,6 @@ export class LeaseService {
           ...sanitizedData,
           updatedAt: new Date(),
           updatedBy: userId,
-          pendingChanges: null, // Clear pending changes
         },
         $push: { modifications: modificationEvent },
       },

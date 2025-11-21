@@ -149,7 +149,6 @@ export const OPERATIONAL_LEASE_FIELDS = [
  */
 export const IMMUTABLE_LEASE_FIELDS = [
   'tenantId',
-  // 'property',
   'cuid',
   'luid',
   'leaseNumber',

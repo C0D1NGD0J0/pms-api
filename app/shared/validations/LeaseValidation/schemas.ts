@@ -247,11 +247,84 @@ export const CreateLeaseSchema = BaseLeaseSchemaObject.omit({ cuid: true })
     }
   );
 
-export const UpdateLeaseSchema = BaseLeaseSchemaObject.partial()
-  .omit({ cuid: true, tenantInfo: true })
-  .extend({
-    status: LeaseStatusEnum.optional(),
+// Update-specific fee schema with coercion for partial updates
+const UpdateLeaseFeesSchema = z
+  .object({
+    monthlyRent: z.coerce.number().positive('Monthly rent must be a positive number').optional(),
+    currency: z.string().length(3, 'Currency must be a 3-letter code').optional(),
+    rentDueDay: z.coerce.number().int().min(1).max(31).optional(),
+    securityDeposit: z.coerce.number().min(0, 'Security deposit must be non-negative').optional(),
+    lateFeeAmount: z.coerce.number().min(0, 'Late fee amount must be non-negative').optional(),
+    lateFeeDays: z.coerce.number().int().min(1, 'Late fee days must be at least 1').optional(),
+    lateFeeType: z.enum(['fixed', 'percentage']).optional(),
+    lateFeePercentage: z.coerce.number().min(0).max(100).optional(),
+    acceptedPaymentMethod: PaymentMethodEnum.optional(),
   })
+  .optional();
+
+// Update-specific pet policy schema with coercion
+const UpdatePetPolicySchema = z
+  .object({
+    allowed: z.boolean().optional(),
+    types: z.array(z.string()).optional(),
+    maxPets: z.coerce.number().int().min(0).optional(),
+    deposit: z.coerce.number().min(0, 'Pet deposit must be non-negative').optional(),
+    monthlyFee: z.coerce.number().min(0, 'Pet monthly fee must be non-negative').optional(),
+  })
+  .optional();
+
+// Update-specific renewal options schema with coercion
+const UpdateRenewalOptionsSchema = z
+  .object({
+    autoRenew: z.boolean().optional(),
+    noticePeriodDays: z.coerce.number().int().min(1).optional(),
+    renewalTermMonths: z.coerce.number().int().min(1).optional(),
+  })
+  .optional();
+
+export const UpdateLeaseSchema = z
+  .object({
+    status: LeaseStatusEnum.optional(),
+    property: LeasePropertySchema.partial().optional(),
+    duration: LeaseDurationSchema.partial().optional(),
+    fees: UpdateLeaseFeesSchema,
+    type: LeaseTypeEnum.optional(),
+    signingMethod: SigningMethodEnum.optional(),
+    eSignature: ESignatureSchema.optional(),
+    utilitiesIncluded: z.array(UtilityEnum).optional(),
+    coTenants: z.array(CoTenantSchema).optional(),
+    petPolicy: UpdatePetPolicySchema,
+    renewalOptions: UpdateRenewalOptionsSchema,
+    legalTerms: LegalTermsSchema.optional(),
+    internalNotes: z
+      .string()
+      .max(2000, 'Internal notes must be at most 2000 characters')
+      .optional(),
+    leaseDocument: z.array(LeaseDocumentItemSchema).optional(),
+    templateType: z
+      .enum([
+        'residential-single-family',
+        'residential-apartment',
+        'commercial-office',
+        'commercial-retail',
+        'short-term-rental',
+      ])
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      // Prevent modification of immutable fields
+      const immutableFields = ['tenantId', 'cuid', 'luid', 'leaseNumber', 'createdAt', 'createdBy'];
+      const providedFields = Object.keys(data);
+      const attemptedImmutable = providedFields.filter((field) => immutableFields.includes(field));
+
+      return attemptedImmutable.length === 0;
+    },
+    {
+      message: 'Cannot modify immutable fields (tenant, identifiers, creation data)',
+      path: ['immutableFields'],
+    }
+  )
   .refine(
     (data) => {
       if (data.duration?.startDate && data.duration?.endDate) {
@@ -278,6 +351,22 @@ export const UpdateLeaseSchema = BaseLeaseSchemaObject.partial()
     {
       message: 'Move-in date cannot be before start date',
       path: ['duration', 'moveInDate'],
+    }
+  )
+  .refine(
+    (data) => {
+      // Validate fee changes are reasonable
+      if (data.fees?.monthlyRent !== undefined && data.fees.monthlyRent <= 0) {
+        return false;
+      }
+      if (data.fees?.securityDeposit !== undefined && data.fees.securityDeposit < 0) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'Fee amounts must be valid (monthly rent > 0, security deposit >= 0)',
+      path: ['fees'],
     }
   );
 

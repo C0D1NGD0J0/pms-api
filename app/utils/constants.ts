@@ -124,18 +124,12 @@ export const OPERATIONAL_UNIT_FIELDS = [
  * Lease fields that require approval when modified (high-impact changes)
  */
 export const HIGH_IMPACT_LEASE_FIELDS = [
-  'fees.monthlyRent',
-  'fees.securityDeposit',
-  'fees.rentDueDay',
-  'fees.lateFeeAmount',
-  'fees.lateFeePercentage',
-  'duration.startDate',
-  'duration.endDate',
+  'fees',
+  'duration',
   'status',
   'type',
   'tenantId',
-  'property.id',
-  'property.unitId',
+  'property',
 ];
 
 /**
@@ -149,3 +143,35 @@ export const OPERATIONAL_LEASE_FIELDS = [
   'renewalOptions',
   'coTenants',
 ];
+
+/**
+ * Immutable lease fields that cannot be changed after creation (top-level only)
+ */
+export const IMMUTABLE_LEASE_FIELDS = [
+  'tenantId',
+  // 'property',
+  'cuid',
+  'luid',
+  'leaseNumber',
+  'createdAt',
+  'createdBy',
+  'tenantInfo',
+];
+
+/**
+ * Fields that when modified invalidate existing signatures (top-level only)
+ */
+export const SIGNATURE_INVALIDATING_LEASE_FIELDS = ['fees', 'duration', 'petPolicy', 'type'];
+
+/**
+ * Editable fields by lease status (top-level only)
+ * Note: If a field is in the list, the ENTIRE field object can be updated
+ */
+export const EDITABLE_FIELDS_BY_LEASE_STATUS: Record<string, string[]> = {
+  draft: ['*'], // All fields editable in draft
+  pending_signature: ['internalNotes'],
+  active: ['internalNotes', 'renewalOptions'],
+  expired: ['internalNotes'], // Admin/Manager only
+  terminated: ['internalNotes'], // Admin/Manager only
+  cancelled: ['internalNotes'], // Admin/Manager only
+};

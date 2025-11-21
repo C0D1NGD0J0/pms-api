@@ -79,19 +79,14 @@ export class LeaseController {
   };
 
   updateLease = async (req: AppRequest, res: Response) => {
-    const { cuid, leaseId } = req.params;
-    // const { uid } = req.context.currentuser!;
-    // const updateData = req.body;
+    const { luid } = req.params;
+    const updateData = req.body;
+    const cxt = req.context;
 
-    this.log.info(`Updating lease ${leaseId} for client ${cuid}`);
+    this.log.info(`Updating lease ${luid}`);
+    const result = await this.leaseService.updateLease(cxt, luid, updateData);
 
-    // TODO: Implement lease update
-    // const result = await this.leaseService.updateLease(cuid, leaseId, updateData, uid);
-
-    res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
-      success: false,
-      message: 'Update lease not yet implemented',
-    });
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   deleteLease = async (req: AppRequest, res: Response) => {
@@ -235,29 +230,10 @@ export class LeaseController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
-  generateLeasePreview = async (req: AppRequest, res: Response) => {
-    const { cuid } = req.params;
-    const previewData = req.body;
-    const templateType = previewData.templateType || 'residential-single-family';
-
-    const enrichedData = await this.leaseService.generateLeasePreview(cuid, previewData);
-    const templateData = this.leaseTemplateDataMapper.transformForTemplate(enrichedData);
-    const html = await this.leaseTemplateService.renderLeasePreview(templateData, templateType);
-
-    res.status(httpStatusCodes.OK).json({
-      success: true,
-      data: {
-        html,
-        templateUsed: templateType,
-        renderedAt: new Date().toISOString(),
-      },
-    });
-  };
-
   previewLeaseContract = async (req: AppRequest, res: Response) => {
     const { cuid, luid } = req.params;
 
-    const enrichedData = await this.leaseService.generatePreviewFromExistingLease(cuid, luid);
+    const enrichedData = await this.leaseService.generateLeasePreview(cuid, luid);
     const templateData = this.leaseTemplateDataMapper.transformForTemplate(enrichedData);
     const templateType = enrichedData.templateType || 'residential-single-family';
     const html = await this.leaseTemplateService.renderLeasePreview(templateData, templateType);

@@ -49,6 +49,11 @@ import {
 } from '@utils/index';
 
 import { PropertyValidationService } from './propertyValidation.service';
+import {
+  generatePendingChangesPreview,
+  validateOccupancyStatusChange,
+  getOriginalRequesterId,
+} from './propertyHelpers';
 
 interface IConstructor {
   propertyCsvProcessor: PropertyCsvProcessor;
@@ -615,7 +620,7 @@ export class PropertyService {
 
     const itemsWithPreview = properties.items.map((property) => {
       const propertyObj = property.toObject ? property.toObject() : property;
-      const pendingChangesPreview = this.generatePendingChangesPreview(property, currentuser);
+      const pendingChangesPreview = generatePendingChangesPreview(property, currentuser);
 
       return {
         ...propertyObj,
@@ -666,7 +671,7 @@ export class PropertyService {
     const unitInfo = await this.getUnitInfoForProperty(property);
 
     const propertyObj = property.toObject ? property.toObject() : property;
-    const pendingChangesPreview = this.generatePendingChangesPreview(property, currentUser);
+    const pendingChangesPreview = generatePendingChangesPreview(property, currentUser);
 
     const propertyWithPreview = {
       ...propertyObj,
@@ -756,7 +761,7 @@ export class PropertyService {
 
     // Validate occupancy status change
     if (cleanUpdateData.occupancyStatus) {
-      this.validateOccupancyStatusChange(property, cleanUpdateData);
+      validateOccupancyStatusChange(property, cleanUpdateData);
     }
 
     // Smart Approval Workflow Logic
@@ -866,6 +871,7 @@ export class PropertyService {
         throw new BadRequestError({ message: 'Unable to update property.' });
       }
 
+      await this.propertyCache.invalidateProperty(ctx.cuid, result.id);
       await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
 
       // notify staff if their pending changes were overridden
@@ -914,7 +920,6 @@ export class PropertyService {
     isDirectUpdate: boolean
   ): Promise<void> {
     try {
-      await this.propertyCache.invalidateProperty(ctx.cuid, updatedProperty.id);
       await this.notificationService.handlePropertyUpdateNotifications({
         userRole: ctx.currentuser.client.role,
         updatedProperty,
@@ -1071,7 +1076,7 @@ export class PropertyService {
     try {
       const originalRequesterId =
         property.pendingChanges?.updatedBy?.toString() ||
-        this.getOriginalRequesterId(
+        getOriginalRequesterId(
           Array.isArray(property.approvalDetails) ? property.approvalDetails : []
         );
 
@@ -1188,7 +1193,7 @@ export class PropertyService {
     try {
       const originalRequesterId =
         property.pendingChanges?.updatedBy?.toString() ||
-        this.getOriginalRequesterId(
+        getOriginalRequesterId(
           Array.isArray(property.approvalDetails) ? property.approvalDetails : []
         );
 
@@ -1371,120 +1376,6 @@ export class PropertyService {
   /**
    * Helper method to find the original requester from approvalDetails array
    */
-  private getOriginalRequesterId(approvalDetails: any[]): string | undefined {
-    if (!Array.isArray(approvalDetails) || approvalDetails.length === 0) {
-      return undefined;
-    }
-
-    // Find the first 'created' action which contains the original requester
-    const createdEntry = approvalDetails.find((entry) => entry.action === 'created');
-    return createdEntry?.actor?.toString();
-  }
-
-  private shouldShowPendingChanges(
-    currentUser: ICurrentUser,
-    property: IPropertyDocument
-  ): boolean {
-    if (!property.pendingChanges) {
-      return false;
-    }
-
-    const userRole = currentUser.client.role;
-
-    // Admin/managers can see all pending changes
-    if (PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      return true;
-    }
-
-    // Staff can only see their own pending changes
-    if (PROPERTY_STAFF_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      const pendingChanges = property.pendingChanges as any;
-      return pendingChanges.updatedBy?.toString() === currentUser.sub;
-    }
-
-    return false;
-  }
-
-  private generatePendingChangesPreview(
-    property: IPropertyDocument,
-    currentUser: ICurrentUser
-  ): any {
-    if (!property.pendingChanges || !this.shouldShowPendingChanges(currentUser, property)) {
-      return undefined;
-    }
-
-    const pendingChanges = property.pendingChanges as any;
-    const { updatedBy, updatedAt, ...changes } = pendingChanges;
-
-    const formattedChanges = { ...changes };
-    if (formattedChanges.fees) {
-      formattedChanges.fees = MoneyUtils.formatMoneyDisplay(formattedChanges.fees);
-    }
-
-    const updatedFields = Object.keys(changes);
-    const summary = this.generateChangesSummary(updatedFields);
-
-    return {
-      updatedFields,
-      updatedAt,
-      updatedBy,
-      summary,
-      changes: formattedChanges,
-    };
-  }
-
-  private generateChangesSummary(updatedFields: string[]): string {
-    if (updatedFields.length === 0) return 'No changes';
-
-    const fieldNames = updatedFields.map((field) => {
-      // Convert camelCase and nested fields to readable names
-      return field
-        .replace(/([A-Z])/g, ' $1')
-        .replace(/^./, (str) => str.toUpperCase())
-        .replace(/\./g, ' > ');
-    });
-
-    if (fieldNames.length === 1) {
-      return `Modified ${fieldNames[0]}`;
-    } else if (fieldNames.length === 2) {
-      return `Modified ${fieldNames[0]} and ${fieldNames[1]}`;
-    } else {
-      const lastField = fieldNames.pop();
-      return `Modified ${fieldNames.join(', ')}, and ${lastField}`;
-    }
-  }
-
-  private validateOccupancyStatusChange(
-    existingProperty: IPropertyDocument,
-    updateData: Partial<IPropertyDocument>
-  ): void {
-    const errors: string[] = [];
-
-    if (
-      updateData.occupancyStatus === 'occupied' &&
-      existingProperty.occupancyStatus !== 'occupied'
-    ) {
-      // Check if rental amount is set
-      const hasRentalAmount = existingProperty.fees?.rentalAmount || updateData.fees?.rentalAmount;
-      if (!hasRentalAmount) {
-        errors.push('Occupied properties must have a rental amount');
-      }
-    }
-
-    if (updateData.occupancyStatus === 'partially_occupied') {
-      const maxAllowedUnits = updateData.maxAllowedUnits || existingProperty.maxAllowedUnits || 1;
-      if (maxAllowedUnits <= 1) {
-        errors.push('Single-unit properties cannot be partially occupied');
-      }
-    }
-
-    if (errors.length > 0) {
-      throw new ValidationRequestError({
-        message: t('property.errors.occupancyValidationFailed'),
-        errorInfo: { occupancyStatus: errors },
-      });
-    }
-  }
 
   async archiveClientProperty(
     cuid: string,

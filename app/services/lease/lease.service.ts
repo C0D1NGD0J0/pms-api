@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
+import sanitizeHtml from 'sanitize-html';
 import { LeaseCache } from '@caching/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
@@ -10,7 +11,6 @@ import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { IPropertyDocument, IProfileWithUser, OwnershipType } from '@interfaces/index';
-import { ValidationRequestError, InvalidRequestError, BadRequestError } from '@shared/customErrors';
 import {
   UploadCompletedPayload,
   UploadFailedPayload,
@@ -22,6 +22,12 @@ import {
   InvitationService,
   AssetService,
 } from '@services/index';
+import {
+  ValidationRequestError,
+  InvalidRequestError,
+  BadRequestError,
+  ForbiddenError,
+} from '@shared/customErrors';
 import {
   PROPERTY_APPROVAL_ROLES,
   convertUserRoleToEnum,
@@ -45,6 +51,19 @@ import {
   ResourceContext,
   UploadResult,
 } from '@interfaces/utils.interface';
+
+import {
+  hasSignatureInvalidatingChanges,
+  calculateFinancialSummary,
+  mapPropertyTypeToTemplate,
+  validateImmutableFields,
+  validateAllowedFields,
+  filterDocumentsByRole,
+  constructActivityFeed,
+  hasHighImpactChanges,
+  getUserPermissions,
+  buildLeaseTimeline,
+} from './leaseHelpers';
 
 interface IConstructor {
   notificationService: NotificationService;
@@ -256,6 +275,7 @@ export class LeaseService {
         templateType: data.templateType || 'residential-single-family',
         landlordName: landlordInfo.landlordName,
         fees: MoneyUtils.parseLeaseFees(data.fees),
+        internalNotes: data.internalNotes ? sanitizeHtml(data.internalNotes) : undefined,
         property: {
           id: data.property.id,
           address: propertyInfo?.address || 'REQUIRED',
@@ -456,11 +476,11 @@ export class LeaseService {
       };
 
       response.payments = [];
-      response.documents = this.filterDocumentsByRole(lease.leaseDocument || [], userRole);
-      response.activity = this.constructActivityFeed(lease);
-      response.timeline = this.buildLeaseTimeline(lease);
-      response.permissions = this.getUserPermissions(lease, cxt.currentuser!);
-      response.financialSummary = this.calculateFinancialSummary(lease);
+      response.documents = filterDocumentsByRole(lease.leaseDocument || [], userRole);
+      response.activity = constructActivityFeed(lease);
+      response.timeline = buildLeaseTimeline(lease);
+      response.permissions = getUserPermissions(lease, cxt.currentuser!);
+      response.financialSummary = calculateFinancialSummary(lease);
 
       const pendingChangesPreview = this.generatePendingChangesPreview(lease, cxt.currentuser!);
       if (pendingChangesPreview) {
@@ -523,189 +543,6 @@ export class LeaseService {
     }
 
     return baseLease;
-  }
-
-  private filterDocumentsByRole(documents: any[], role: IUserRole): any[] {
-    if (role === IUserRole.ADMIN || role === IUserRole.MANAGER || role === IUserRole.STAFF) {
-      return documents;
-    }
-
-    return documents.filter((doc) => !doc.isInternal);
-  }
-
-  private constructActivityFeed(lease: ILeaseDocument): any[] {
-    const activities: any[] = [];
-
-    activities.push({
-      type: 'created',
-      description: 'Lease created',
-      timestamp: lease.createdAt,
-      user: lease.createdBy,
-    });
-
-    if (lease.lastModifiedBy && lease.lastModifiedBy.length > 0) {
-      lease.lastModifiedBy.forEach((mod) => {
-        activities.push({
-          type: mod.action,
-          description: `Lease ${mod.action}`,
-          timestamp: mod.date,
-          user: mod.userId,
-          userName: mod.name,
-        });
-      });
-    }
-
-    if (lease.approvalDetails && lease.approvalDetails.length > 0) {
-      lease.approvalDetails.forEach((approval) => {
-        const description =
-          approval.action === 'rejected' && approval.rejectionReason
-            ? `Lease ${approval.action}: ${approval.rejectionReason}`
-            : `Lease ${approval.action}`;
-
-        activities.push({
-          type: approval.action,
-          description,
-          timestamp: approval.timestamp,
-          user: approval.actor,
-          notes: approval.notes,
-          rejectionReason: approval.rejectionReason,
-          metadata: approval.metadata,
-        });
-      });
-    }
-
-    if (lease.signatures && lease.signatures.length > 0) {
-      lease.signatures.forEach((signature) => {
-        activities.push({
-          type: 'signed',
-          description: `Lease signed by ${signature.role}`,
-          timestamp: signature.signedAt,
-          user: signature.userId,
-          role: signature.role,
-          signatureMethod: signature.signatureMethod,
-        });
-      });
-    }
-
-    if (lease.signedDate && (!lease.signatures || lease.signatures.length === 0)) {
-      activities.push({
-        type: 'signed',
-        description: 'Lease signed by all parties',
-        timestamp: lease.signedDate,
-      });
-    }
-
-    if (lease.status === LeaseStatus.TERMINATED && lease.duration.terminationDate) {
-      activities.push({
-        type: 'terminated',
-        description: lease.terminationReason
-          ? `Lease terminated: ${lease.terminationReason}`
-          : 'Lease terminated',
-        timestamp: lease.duration.terminationDate,
-      });
-    }
-
-    return activities.sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-  }
-
-  private buildLeaseTimeline(lease: ILeaseDocument): any {
-    const now = new Date();
-    const startDate = new Date(lease.duration.startDate);
-    const endDate = new Date(lease.duration.endDate);
-
-    const daysRemaining = Math.max(
-      0,
-      Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-    );
-    const daysElapsed = Math.max(
-      0,
-      Math.ceil((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-    );
-
-    return {
-      created: lease.createdAt,
-      signed: lease.signedDate,
-      startDate: lease.duration.startDate,
-      endDate: lease.duration.endDate,
-      moveInDate: lease.duration.moveInDate,
-      daysRemaining,
-      daysElapsed,
-      isActive: lease.status === LeaseStatus.ACTIVE,
-      isExpiringSoon: daysRemaining > 0 && daysRemaining <= 60,
-      progress: (daysElapsed / (daysElapsed + daysRemaining)) * 100,
-    };
-  }
-
-  private calculateFinancialSummary(lease: ILeaseDocument): any {
-    const totalMonthlyRent = (lease as any).totalMonthlyFees || lease.fees.monthlyRent;
-    const petMonthlyFee = lease.petPolicy?.monthlyFee || 0;
-    const securityDeposit = lease.fees.securityDeposit;
-
-    const now = new Date();
-    const startDate = new Date(lease.duration.startDate);
-    const monthsElapsed = Math.max(
-      0,
-      Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30))
-    );
-
-    // TODO: Integrate with payments service to get actual paid/owed amounts
-    return {
-      monthlyRent: MoneyUtils.formatCurrency(totalMonthlyRent, lease.fees.currency || 'USD'),
-      monthlyRentRaw: totalMonthlyRent,
-      petFee:
-        petMonthlyFee > 0
-          ? MoneyUtils.formatCurrency(petMonthlyFee, lease.fees.currency || 'USD')
-          : undefined,
-      petFeeRaw: petMonthlyFee,
-      securityDeposit: MoneyUtils.formatCurrency(securityDeposit, lease.fees.currency || 'USD'),
-      securityDepositRaw: securityDeposit,
-      currency: lease.fees.currency || 'USD',
-      rentDueDay: lease.fees.rentDueDay,
-      lateFeeAmount: lease.fees.lateFeeAmount,
-      lateFeeDays: lease.fees.lateFeeDays,
-      lateFeeType: lease.fees.lateFeeType,
-      acceptedPaymentMethod: lease.fees.acceptedPaymentMethod,
-      totalExpected: totalMonthlyRent * monthsElapsed,
-      totalPaid: 0,
-      totalOwed: 0,
-      lastPaymentDate: null,
-      nextPaymentDate: this.calculateNextPaymentDate(lease.fees.rentDueDay),
-    };
-  }
-
-  private calculateNextPaymentDate(rentDueDay: number): Date {
-    const now = new Date();
-    const nextPayment = new Date(now.getFullYear(), now.getMonth(), rentDueDay);
-
-    if (nextPayment < now) {
-      nextPayment.setMonth(nextPayment.getMonth() + 1);
-    }
-
-    return nextPayment;
-  }
-
-  private getUserPermissions(lease: ILeaseDocument, user: any): any {
-    const role = convertUserRoleToEnum(user.client.role);
-
-    const isAdmin = role === IUserRole.ADMIN;
-    const isManager = role === IUserRole.MANAGER;
-    const isStaff = role === IUserRole.STAFF;
-
-    return {
-      canEdit: isAdmin || isManager,
-      canDelete: isAdmin,
-      canTerminate: isAdmin || isManager,
-      canActivate: isAdmin || isManager,
-      canDownload: true,
-      canViewDocuments: true,
-      canUploadDocuments: isAdmin || isManager || isStaff,
-      canViewActivity: isAdmin || isManager || isStaff,
-      canViewFinancials: true,
-      canManageSignatures: isAdmin || isManager,
-      canGeneratePDF: true,
-    };
   }
 
   private shouldShowPendingChanges(currentUser: ICurrentUser, lease: ILeaseDocument): boolean {
@@ -774,12 +611,367 @@ export class LeaseService {
   }
 
   async updateLease(
-    cuid: string,
-    leaseId: string,
-    _updateData: Partial<ILeaseFormData>
-  ): IPromiseReturnedData<ILeaseDocument> {
-    this.log.info(`Updating lease ${leaseId} for client ${cuid}`);
-    throw new Error('updateLease not yet implemented');
+    cxt: IRequestContext,
+    luid: string,
+    updateData: Partial<ILeaseFormData>
+  ): Promise<ISuccessReturnData<any>> {
+    try {
+      const { cuid } = cxt.request.params;
+      const currentUser = cxt.currentuser!;
+
+      const userRole = convertUserRoleToEnum(currentUser.client.role);
+      if (!PROPERTY_STAFF_ROLES.includes(userRole) && !PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+        throw new ForbiddenError({ message: 'You are not authorized to update leases.' });
+      }
+
+      const lease = await this.leaseDAO.findFirst({ luid, cuid, deletedAt: null });
+      if (!lease) {
+        throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+      }
+
+      const cleanUpdateData = { ...updateData };
+      const isApprovalRole = PROPERTY_APPROVAL_ROLES.includes(userRole);
+
+      if (cleanUpdateData.fees) {
+        cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
+      }
+
+      if (cleanUpdateData.internalNotes) {
+        cleanUpdateData.internalNotes = sanitizeHtml(cleanUpdateData.internalNotes);
+      }
+
+      validateImmutableFields(cleanUpdateData);
+
+      switch (lease.status) {
+        case LeaseStatus.PENDING_SIGNATURE:
+          return await this.handlePendingSignatureUpdate(
+            cxt,
+            lease,
+            cleanUpdateData,
+            currentUser,
+            isApprovalRole
+          );
+        case LeaseStatus.TERMINATED:
+        case LeaseStatus.CANCELLED:
+        case LeaseStatus.EXPIRED:
+          return await this.handleClosedStatusUpdate(
+            cxt,
+            lease,
+            cleanUpdateData,
+            currentUser,
+            isApprovalRole
+          );
+        case LeaseStatus.ACTIVE: {
+          return await this.handleActiveUpdate(
+            cxt,
+            lease,
+            cleanUpdateData,
+            currentUser,
+            isApprovalRole
+          );
+        }
+        case LeaseStatus.DRAFT:
+          return await this.handleDraftUpdate(cxt, lease, cleanUpdateData, currentUser);
+        default:
+          throw new ValidationRequestError({
+            message: `Cannot update lease with status: ${lease.status}`,
+          });
+      }
+    } catch (error: any) {
+      this.log.error('Error updating lease:', error);
+      throw error;
+    }
+  }
+
+  private async handleDraftUpdate(
+    cxt: IRequestContext,
+    lease: ILeaseDocument,
+    updateData: Partial<ILeaseFormData>,
+    currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData<any>> {
+    validateAllowedFields(updateData, LeaseStatus.DRAFT);
+
+    const userRole = convertUserRoleToEnum(currentUser.client.role);
+    const isApprovalRole = PROPERTY_APPROVAL_ROLES.includes(userRole);
+    const hasHighImpact = hasHighImpactChanges(updateData);
+
+    let updatedLease: ILeaseDocument;
+    let requiresApproval = false;
+
+    if (isApprovalRole) {
+      // Admin/Manager: Direct update without approval
+      updatedLease = await this.applyDirectUpdate(lease, updateData, currentUser.sub);
+    } else {
+      // Staff: Check if high-impact changes require approval
+      if (hasHighImpact) {
+        updatedLease = await this.storePendingChanges(lease, updateData, currentUser);
+        requiresApproval = true;
+      } else {
+        updatedLease = await this.applyDirectUpdate(lease, updateData, currentUser.sub);
+      }
+    }
+
+    const { cuid } = cxt.request.params;
+    await this.leaseCache.invalidateLease(cuid, lease.luid);
+
+    return {
+      success: true,
+      message: requiresApproval
+        ? t('lease.updateSubmittedForApproval')
+        : t('lease.updatedSuccessfully'),
+      data: {
+        lease: updatedLease,
+        requiresApproval,
+        ...(requiresApproval && { pendingChanges: updatedLease.pendingChanges }),
+      },
+    };
+  }
+
+  private async handlePendingSignatureUpdate(
+    cxt: IRequestContext,
+    lease: ILeaseDocument,
+    updateData: Partial<ILeaseFormData>,
+    currentUser: ICurrentUser,
+    isApprovalRole: boolean
+  ): Promise<ISuccessReturnData<any>> {
+    if (!isApprovalRole) {
+      throw new ForbiddenError({
+        message: 'Only administrators can modify leases pending signature',
+      });
+    }
+
+    const hasSignatureInvalidating = hasSignatureInvalidatingChanges(updateData);
+    if (hasSignatureInvalidating) {
+      throw new ValidationRequestError({
+        message: 'Cannot modify lease fields that invalidate signatures while pending signature',
+        errorInfo: {
+          status: ['Changes require canceling current signature process first'],
+        },
+      });
+    }
+
+    const updatedLease = await this.applyDirectUpdate(lease, updateData, currentUser.sub);
+
+    const { cuid } = cxt.request.params;
+    await this.leaseCache.invalidateLease(cuid, lease.luid);
+
+    return {
+      success: true,
+      message: t('lease.updatedSuccessfully'),
+      data: { lease: updatedLease },
+    };
+  }
+
+  private async handleActiveUpdate(
+    cxt: IRequestContext,
+    lease: ILeaseDocument,
+    updateData: Partial<ILeaseFormData>,
+    currentUser: ICurrentUser,
+    isApprovalRole: boolean
+  ): Promise<ISuccessReturnData<any>> {
+    const hasHighImpact = hasHighImpactChanges(updateData);
+    let updatedLease: ILeaseDocument;
+    let requiresApproval = false;
+
+    if (isApprovalRole) {
+      if (lease.pendingChanges && lease.pendingChanges.updatedBy !== currentUser.sub) {
+        updatedLease = await this.applyDirectUpdateWithOverride(lease, updateData, currentUser.sub);
+      } else {
+        updatedLease = await this.applyDirectUpdate(lease, updateData, currentUser.sub);
+      }
+    } else {
+      if (lease.pendingChanges && lease.pendingChanges.updatedBy !== currentUser.sub) {
+        throw new ValidationRequestError({
+          message: 'Another staff member has pending changes for this lease',
+          errorInfo: {
+            requestedBy: [lease.pendingChanges.updatedBy?.toString()],
+            requestedAt: [lease.pendingChanges.updatedAt.toISOString()],
+          },
+        });
+      }
+
+      if (hasHighImpact) {
+        updatedLease = await this.storePendingChanges(lease, updateData, currentUser);
+        requiresApproval = true;
+      } else {
+        updatedLease = await this.applyDirectUpdate(lease, updateData, currentUser.sub);
+      }
+    }
+
+    const { cuid } = cxt.request.params;
+    await this.leaseCache.invalidateLease(cuid, lease.luid);
+
+    return {
+      success: true,
+      message: requiresApproval
+        ? t('lease.updateSubmittedForApproval')
+        : t('lease.updatedSuccessfully'),
+      data: {
+        lease: updatedLease,
+        requiresApproval,
+        ...(requiresApproval && { pendingChanges: updatedLease.pendingChanges }),
+      },
+    };
+  }
+
+  private async handleClosedStatusUpdate(
+    cxt: IRequestContext,
+    lease: ILeaseDocument,
+    updateData: Partial<ILeaseFormData>,
+    currentUser: ICurrentUser,
+    isApprovalRole: boolean
+  ): Promise<ISuccessReturnData<any>> {
+    if (!isApprovalRole) {
+      throw new ForbiddenError({
+        message: `Cannot update lease with status: ${lease.status}. Contact an administrator.`,
+      });
+    }
+
+    const updatedLease = await this.applyDirectUpdate(lease, updateData, currentUser.sub);
+
+    const { cuid } = cxt.request.params;
+    await this.leaseCache.invalidateLease(cuid, lease.luid);
+
+    return {
+      success: true,
+      message: t('lease.updatedSuccessfully'),
+      data: { lease: updatedLease },
+    };
+  }
+
+  /**
+   * Sanitize update data by converting empty strings to undefined for optional ObjectId fields
+   * This prevents MongoDB from trying to cast empty strings to ObjectId
+   * Setting to undefined allows Mongoose to unset the field in the database
+   */
+  private sanitizeUpdateData(updateData: Partial<ILeaseFormData>): Partial<ILeaseFormData> {
+    const sanitized = { ...updateData };
+
+    // Handle property.unitId - convert empty string to undefined to explicitly unset it
+    if (sanitized.property?.unitId === '' || sanitized.property?.unitId === null) {
+      sanitized.property.unitId = undefined;
+    }
+
+    return sanitized;
+  }
+
+  private async applyDirectUpdate(
+    lease: ILeaseDocument,
+    updateData: Partial<ILeaseFormData>,
+    userId: string
+  ): Promise<ILeaseDocument> {
+    // Sanitize empty strings and null values for nested ObjectId fields
+    const sanitizedData = this.sanitizeUpdateData(updateData);
+
+    const modificationEvent = {
+      type: 'modified',
+      date: new Date(),
+      performedBy: userId,
+      changes: Object.keys(sanitizedData),
+    };
+
+    const updated = await this.leaseDAO.update(
+      { _id: new Types.ObjectId(lease._id) },
+      {
+        $set: {
+          ...sanitizedData,
+          updatedAt: new Date(),
+          updatedBy: userId,
+        },
+        $push: { modifications: modificationEvent },
+      },
+      { new: true }
+    );
+
+    if (!updated) {
+      throw new BadRequestError({ message: 'Failed to update lease' });
+    }
+
+    return updated;
+  }
+
+  private async applyDirectUpdateWithOverride(
+    lease: ILeaseDocument,
+    updateData: Partial<ILeaseFormData>,
+    userId: string
+  ): Promise<ILeaseDocument> {
+    // Admin overriding staff pending changes
+    const overriddenUserId = lease.pendingChanges?.updatedBy;
+
+    // Sanitize empty strings and null values for nested ObjectId fields
+    const sanitizedData = this.sanitizeUpdateData(updateData);
+
+    const modificationEvent = {
+      type: 'modified',
+      date: new Date(),
+      performedBy: userId,
+      changes: Object.keys(sanitizedData),
+    };
+
+    const updated = await this.leaseDAO.update(
+      { _id: lease._id },
+      {
+        $set: {
+          ...sanitizedData,
+          updatedAt: new Date(),
+          updatedBy: userId,
+        },
+        $push: { modifications: modificationEvent },
+      },
+      { new: true }
+    );
+
+    if (!updated) {
+      throw new BadRequestError({ message: 'Failed to update lease' });
+    }
+
+    // TODO: Notify the original staff member that their pending changes were overridden
+    // This will be handled by NotificationService.notifyLeaseUpdate() later
+    this.log.info(
+      `Admin ${userId} overrode pending changes from ${overriddenUserId} for lease ${lease.luid}`
+    );
+
+    return updated;
+  }
+
+  private async storePendingChanges(
+    lease: ILeaseDocument,
+    updateData: Partial<ILeaseFormData>,
+    currentUser: ICurrentUser
+  ): Promise<ILeaseDocument> {
+    const profileData = await this.profileDAO.findFirst(
+      { user: currentUser.sub },
+      { select: 'personalInfo.firstName personalInfo.lastName' }
+    );
+
+    const displayName = profileData
+      ? `${profileData.personalInfo?.firstName} ${profileData.personalInfo?.lastName}`.trim()
+      : 'Unknown User';
+
+    const pendingChanges = {
+      ...updateData,
+      updatedBy: currentUser.sub,
+      updatedAt: new Date(),
+      displayName,
+    };
+
+    const updated = await this.leaseDAO.update(
+      { _id: lease._id },
+      {
+        $set: {
+          pendingChanges,
+          updatedAt: new Date(),
+          updatedBy: currentUser.sub,
+        },
+      },
+      { new: true }
+    );
+
+    if (!updated) {
+      throw new BadRequestError({ message: 'Failed to store pending changes' });
+    }
+
+    return updated;
   }
 
   async deleteLease(cuid: string, leaseId: string, userId: string): IPromiseReturnedData<boolean> {
@@ -1052,59 +1244,7 @@ export class LeaseService {
     };
   }
 
-  async generateLeasePreview(cuid: string, previewData: ILeasePreviewRequest) {
-    this.log.info(`Generating lease preview for client ${cuid}`);
-    const client = await this.clientDAO.getClientByCuid(cuid);
-    if (!client) {
-      throw new BadRequestError({ message: 'Client not found' });
-    }
-
-    const property = await this.propertyDAO.findFirst(
-      { _id: previewData.propertyId, cuid, deletedAt: null },
-      {
-        select: '+owner +authorization',
-      }
-    );
-
-    if (!property) {
-      throw new BadRequestError({ message: 'Property not found' });
-    }
-
-    if (previewData.unitNumber) {
-      const unit = await this.propertyUnitDAO.findFirst({
-        _id: previewData.unitNumber,
-        propertyId: previewData.propertyId,
-      });
-      previewData.unitNumber = unit ? unit.unitNumber : previewData.unitNumber;
-    }
-    try {
-      const landlordInfo = await this.buildLandlordInfo(cuid, previewData.propertyId);
-
-      const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
-      const hasUnitNumber = !!previewData.unitNumber;
-      const ownershipType = property.owner?.type || 'company_owned';
-
-      // If external_owner/self_owned AND has unit number, the landlord owns just the unit
-      const hasUnitOwner =
-        hasUnitNumber && (ownershipType === 'external_owner' || ownershipType === 'self_owned');
-
-      return {
-        ...previewData,
-        ...landlordInfo,
-        jurisdiction: property.address.country || property.address.city || 'State/Province',
-        hasUnitOwner,
-        isMultiUnit,
-        ownershipType,
-        propertyName: property.name,
-        propertyType: property.propertyType,
-      };
-    } catch (error) {
-      this.log.error({ error, cuid }, 'Failed to generate lease preview data');
-      throw error;
-    }
-  }
-
-  async generatePreviewFromExistingLease(cuid: string, luid: string) {
+  async generateLeasePreview(cuid: string, luid: string) {
     this.log.info(`Generating preview from existing lease ${luid} for client ${cuid}`);
 
     const lease = await this.leaseDAO.findFirst(
@@ -1137,7 +1277,7 @@ export class LeaseService {
     // const ownershipType = property.owner?.type || 'company_owned';
 
     const previewData: ILeasePreviewRequest = {
-      templateType: this.mapPropertyTypeToTemplate(property.propertyType),
+      templateType: mapPropertyTypeToTemplate(property.propertyType),
       leaseNumber: lease.leaseNumber,
       currentDate: new Date().toISOString(),
       jurisdiction: property.address.country || property.address.city || 'State/Province',
@@ -1179,19 +1319,6 @@ export class LeaseService {
     } as any;
 
     return previewData;
-  }
-
-  private mapPropertyTypeToTemplate(propertyType: string): ILeasePreviewRequest['templateType'] {
-    const mapping: Record<string, ILeasePreviewRequest['templateType']> = {
-      single_family: 'residential-single-family',
-      apartment: 'residential-apartment',
-      condo: 'residential-apartment',
-      townhouse: 'residential-single-family',
-      office: 'commercial-office',
-      retail: 'commercial-retail',
-      short_term: 'short-term-rental',
-    };
-    return mapping[propertyType] || 'residential-single-family';
   }
 
   async getExpiringLeases(

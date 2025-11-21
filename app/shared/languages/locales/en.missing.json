@@ -64,10 +64,12 @@
   },
   "lease": {
     "errors": {
-      "validationFailed": "lease.errors.validationFailed"
+      "validationFailed": "lease.errors.validationFailed",
+      "overlappingLease": "lease.errors.overlappingLease"
     },
     "invalid_access": "lease.invalid_access",
-    "retrieved_successfully": "lease.retrieved_successfully"
+    "retrieved_successfully": "lease.retrieved_successfully",
+    "updatedSuccessfully": "lease.updatedSuccessfully"
   },
   "common": {
     "errors": {

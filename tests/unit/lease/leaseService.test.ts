@@ -2466,4 +2466,162 @@ describe('LeaseService', () => {
       expect(result.totalExpected).toBe(255000 * monthsElapsed);
     });
   });
+
+  describe('updateLease', () => {
+    it('should reject unauthorized users', async () => {
+      const mockUser = createMockUser('VIEWER' as any);
+      const mockLease = createMockLease();
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+
+      await expect(
+        leaseService.updateLease(
+          { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+          'L123',
+          { internalNotes: 'Test' }
+        )
+      ).rejects.toThrow(ForbiddenError);
+    });
+
+    it('should allow admin to update DRAFT lease directly', async () => {
+      const mockUser = createMockUser(IUserRole.ADMIN);
+      const mockLease = createMockLease({ status: LeaseStatus.DRAFT });
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+      mockDependencies.leaseDAO.update.mockResolvedValue({ ...mockLease, fees: { monthlyRent: 1500 } });
+
+      const result = await leaseService.updateLease(
+        { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+        'L123',
+        { fees: { monthlyRent: 1500 } } as any
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.requiresApproval).toBe(false);
+    });
+
+    it('should require approval for staff high-impact changes in DRAFT', async () => {
+      const mockUser = createMockUser(IUserRole.STAFF);
+      const mockLease = createMockLease({ status: LeaseStatus.DRAFT });
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+      mockDependencies.leaseDAO.update.mockResolvedValue({ ...mockLease, pendingChanges: {} });
+      mockDependencies.profileDAO.findFirst.mockResolvedValue({
+        personalInfo: { firstName: 'Test', lastName: 'User' },
+      });
+
+      const result = await leaseService.updateLease(
+        { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+        'L123',
+        { property: { id: new Types.ObjectId().toString(), address: 'Test Address' } } as any
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.requiresApproval).toBe(true);
+    });
+
+    it('should allow staff low-impact changes in DRAFT directly', async () => {
+      const mockUser = createMockUser(IUserRole.STAFF);
+      const mockLease = createMockLease({ status: LeaseStatus.DRAFT });
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+      mockDependencies.leaseDAO.update.mockResolvedValue({ ...mockLease, internalNotes: 'Staff note' });
+
+      const result = await leaseService.updateLease(
+        { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+        'L123',
+        { internalNotes: 'Staff note' }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.requiresApproval).toBe(false);
+    });
+
+    it('should reject staff updates on PENDING_SIGNATURE', async () => {
+      const mockUser = createMockUser(IUserRole.STAFF);
+      const mockLease = createMockLease({ status: LeaseStatus.PENDING_SIGNATURE });
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+
+      await expect(
+        leaseService.updateLease(
+          { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+          'L123',
+          { internalNotes: 'Test' }
+        )
+      ).rejects.toThrow(ForbiddenError);
+    });
+
+    it('should reject staff updates on EXPIRED leases', async () => {
+      const mockUser = createMockUser(IUserRole.STAFF);
+      const mockLease = createMockLease({ status: LeaseStatus.EXPIRED });
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+
+      await expect(
+        leaseService.updateLease(
+          { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+          'L123',
+          { internalNotes: 'Test' }
+        )
+      ).rejects.toThrow(ForbiddenError);
+    });
+
+    it('should require approval for staff high-impact changes in ACTIVE', async () => {
+      const mockUser = createMockUser(IUserRole.STAFF);
+      const mockLease = createMockLease({ status: LeaseStatus.ACTIVE });
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+      mockDependencies.leaseDAO.update.mockResolvedValue({ ...mockLease, pendingChanges: {} });
+      mockDependencies.profileDAO.findFirst.mockResolvedValue({
+        personalInfo: { firstName: 'Test', lastName: 'User' },
+      });
+
+      const result = await leaseService.updateLease(
+        { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+        'L123',
+        { fees: { monthlyRent: 1500 } } as any
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.requiresApproval).toBe(true);
+    });
+
+    it('should sanitize empty unitId to undefined', async () => {
+      const mockUser = createMockUser(IUserRole.ADMIN);
+      const mockLease = createMockLease({ status: LeaseStatus.DRAFT });
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+      mockDependencies.leaseDAO.update.mockResolvedValue(mockLease);
+
+      await leaseService.updateLease(
+        { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+        'L123',
+        { property: { id: mockLease.property.id.toString(), unitId: '', address: 'Test Address' } } as any
+      );
+
+      const updateCall = mockDependencies.leaseDAO.update.mock.calls[0];
+      expect(updateCall[1].$set.property.unitId).toBeUndefined();
+    });
+
+    it('should invalidate cache after update', async () => {
+      const mockUser = createMockUser(IUserRole.ADMIN);
+      const mockLease = createMockLease({ status: LeaseStatus.DRAFT });
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+      mockDependencies.leaseDAO.update.mockResolvedValue(mockLease);
+
+      await leaseService.updateLease(
+        { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+        'L123',
+        { internalNotes: 'Test' }
+      );
+
+      expect(mockDependencies.leaseCache.invalidateLease).toHaveBeenCalledWith('C123', 'L123');
+    });
+
+    it('should throw error if lease not found', async () => {
+      const mockUser = createMockUser(IUserRole.ADMIN);
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(null);
+
+      await expect(
+        leaseService.updateLease(
+          { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
+          'L123',
+          { internalNotes: 'Test' }
+        )
+      ).rejects.toThrow(BadRequestError);
+    });
+  });
 });

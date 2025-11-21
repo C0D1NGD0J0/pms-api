@@ -1,11 +1,11 @@
+import { LeaseStatus } from '@interfaces/lease.interface';
+import { ValidationRequestError } from '@shared/customErrors';
 import {
+  hasSignatureInvalidatingChanges,
   validateImmutableFields,
   validateAllowedFields,
   hasHighImpactChanges,
-  hasSignatureInvalidatingChanges,
 } from '@services/lease/leaseHelpers';
-import { LeaseStatus } from '@interfaces/lease.interface';
-import { ValidationRequestError } from '@shared/customErrors';
 
 describe('Lease Helpers', () => {
   describe('validateImmutableFields', () => {
@@ -34,7 +34,9 @@ describe('Lease Helpers', () => {
     });
 
     it('should allow internalNotes for ACTIVE status', () => {
-      expect(() => validateAllowedFields({ internalNotes: 'Test' }, LeaseStatus.ACTIVE)).not.toThrow();
+      expect(() =>
+        validateAllowedFields({ internalNotes: 'Test' }, LeaseStatus.ACTIVE)
+      ).not.toThrow();
     });
   });
 

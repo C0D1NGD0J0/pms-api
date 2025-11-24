@@ -207,6 +207,7 @@ class Server {
         'redisService',
         'propertyUnitService',
         'authService',
+        'leaseService',
         'clientService',
       ];
 
@@ -218,6 +219,9 @@ class Server {
             if (service && typeof service.destroy === 'function') {
               await service.destroy();
               this.log.info(`Cleaned up ${serviceName}`);
+            } else if (service && typeof service.cleanupEventListeners === 'function') {
+              service.cleanupEventListeners();
+              this.log.info(`Cleaned up event listeners for ${serviceName}`);
             }
           }
         } catch (error) {
@@ -226,7 +230,9 @@ class Server {
       }
 
       // Clean up queues - dynamically discover all registered queues
-      const queueNames = Object.keys(container.registrations).filter(name => name.endsWith('Queue'));
+      const queueNames = Object.keys(container.registrations).filter((name) =>
+        name.endsWith('Queue')
+      );
       let queueCount = 0;
       for (const queueName of queueNames) {
         try {

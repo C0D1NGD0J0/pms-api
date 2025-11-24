@@ -41,6 +41,19 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       required: [true, 'Lease type is required'],
       index: true,
     },
+    templateType: {
+      type: String,
+      enum: [
+        'residential-single-family',
+        'residential-apartment',
+        'commercial-office',
+        'commercial-retail',
+        'short-term-rental',
+      ],
+      default: 'residential-single-family',
+      required: [true, 'Template type is required'],
+      index: true,
+    },
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -157,6 +170,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       },
       acceptedPaymentMethod: {
         type: String,
+        required: true,
         enum: ['e-transfer', 'credit_card', 'crypto'],
       },
     },
@@ -254,11 +268,11 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         default: 30,
       },
     },
-    leaseDocument: [
+    leaseDocuments: [
       {
         documentType: {
           type: String,
-          enum: ['lease_agreement', 'addendum', 'amendment', 'renewal', 'termination', 'other'],
+          enum: ['lease_agreement', 'other'],
           default: 'lease_agreement',
         },
         url: {
@@ -290,6 +304,11 @@ const LeaseSchema = new Schema<ILeaseDocument>(
           ref: 'User',
           required: true,
         },
+        status: {
+          type: String,
+          enum: ['active', 'inactive'],
+          default: 'active',
+        },
         _id: false,
       },
     ],
@@ -308,7 +327,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         type: String,
         enum: ['hellosign', 'docusign', 'boldsign'],
         default: 'boldsign',
-        required: false,
+        select: false,
       },
       envelopeId: {
         type: String,
@@ -316,8 +335,8 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       },
       status: {
         type: String,
-        enum: ['draft', 'sent', 'signed', 'declined', 'voided'],
-        default: 'draft',
+        enum: ['not-sent', 'sent', 'signed', 'declined', 'voided'],
+        default: 'not-sent',
       },
       sentAt: {
         type: Date,
@@ -381,6 +400,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       required: [true, 'Creator user ID is required'],
       index: true,
     },
+
     lastModifiedBy: [
       {
         userId: {
@@ -623,7 +643,7 @@ LeaseSchema.pre('validate', function (this: ILeaseDocument, next) {
 
     // Validate that active/pending_signature leases have required documents
     if ([LeaseStatus.PENDING_SIGNATURE, LeaseStatus.ACTIVE].includes(this.status)) {
-      if (!this.leaseDocument || this.leaseDocument.length === 0) {
+      if (!this.leaseDocuments || this.leaseDocuments.length === 0) {
         throw new Error('Lease document is required for active or pending signature leases');
       }
     }

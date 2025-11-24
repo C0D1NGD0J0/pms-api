@@ -13,6 +13,14 @@ export enum LeaseStatus {
   DRAFT = 'draft',
 }
 
+export enum ILeaseESignatureStatusEnum {
+  DECLINED = 'declined',
+  SIGNED = 'signed',
+  VOIDED = 'voided',
+  DRAFT = 'draft',
+  SENT = 'sent',
+}
+
 /**
  * Signing Method Enum
  */
@@ -30,7 +38,6 @@ export enum LeaseType {
   MONTH_TO_MONTH = 'month_to_month',
   FIXED_TERM = 'fixed_term',
 }
-
 /**
  * Use ILeasePreviewRequest or LeasePreviewData (will delete one later)
  * Legacy interface - keeping for backward compatibility
@@ -101,6 +108,58 @@ export type LeasePreviewData = {
   leaseType?: string;
   currency?: string;
 };
+
+/**
+ * Main Lease Interface
+ * Core lease data structure
+ */
+export interface ILease {
+  utilitiesIncluded?: (
+    | 'water'
+    | 'gas'
+    | 'electricity'
+    | 'internet'
+    | 'cable'
+    | 'trash'
+    | 'sewer'
+    | 'heating'
+    | 'cooling'
+  )[];
+  templateType:
+    | 'residential-single-family'
+    | 'residential-apartment'
+    | 'commercial-office'
+    | 'commercial-retail'
+    | 'short-term-rental';
+  pendingChanges?: IPendingLeaseChanges | null;
+  approvalDetails?: ILeaseApprovalEntry[];
+  signingMethod: SigningMethod | string;
+  leaseDocuments?: ILeaseDocumentItem[];
+  approvalStatus?: LeaseApprovalStatus;
+  useInvitationIdAsTenantId?: boolean;
+  createdBy: Types.ObjectId | string;
+  lastModifiedBy?: ILastModifiedBy[];
+  tenantId: Types.ObjectId | string;
+  renewalOptions?: IRenewalOptions;
+  signatures?: ILeaseSignature[];
+  metadata?: Record<string, any>; // Store enriched data for lease generation
+  eSignature?: ILeaseESignature;
+  terminationReason?: string;
+  property: ILeaseProperty;
+  duration: ILeaseDuration;
+  legalTerms?: ILegalTerms;
+  coTenants?: ICoTenant[];
+  petPolicy?: IPetPolicy;
+  internalNotes?: string;
+  leaseNumber: string;
+  status: LeaseStatus;
+  signedDate?: Date;
+  fees: ILeaseFees;
+  deletedAt?: Date;
+  type: LeaseType;
+  cuid: string;
+}
+
 /**
  * Lease preview request data from frontend
  * Used to generate lease document preview before actual lease creation
@@ -161,51 +220,6 @@ export interface ILeasePreviewRequest {
   rentDueDay: number;
 
   currency: string;
-}
-
-/**
- * Main Lease Interface
- * Core lease data structure
- */
-export interface ILease {
-  utilitiesIncluded?: (
-    | 'water'
-    | 'gas'
-    | 'electricity'
-    | 'internet'
-    | 'cable'
-    | 'trash'
-    | 'sewer'
-    | 'heating'
-    | 'cooling'
-  )[];
-  pendingChanges?: IPendingLeaseChanges | null;
-  approvalDetails?: ILeaseApprovalEntry[];
-  signingMethod: SigningMethod | string;
-  approvalStatus?: LeaseApprovalStatus;
-  leaseDocument?: ILeaseDocumentItem[];
-  useInvitationIdAsTenantId?: boolean;
-  createdBy: Types.ObjectId | string;
-  lastModifiedBy?: ILastModifiedBy[];
-  tenantId: Types.ObjectId | string;
-  renewalOptions?: IRenewalOptions;
-  signatures?: ILeaseSignature[];
-  metadata?: Record<string, any>; // Store enriched data for lease generation
-  eSignature?: ILeaseESignature;
-  terminationReason?: string;
-  property: ILeaseProperty;
-  duration: ILeaseDuration;
-  legalTerms?: ILegalTerms;
-  coTenants?: ICoTenant[];
-  petPolicy?: IPetPolicy;
-  internalNotes?: string;
-  leaseNumber: string;
-  status: LeaseStatus;
-  signedDate?: Date;
-  fees: ILeaseFees;
-  deletedAt?: Date;
-  type: LeaseType;
-  cuid: string;
 }
 
 /**
@@ -528,21 +542,6 @@ export interface IRentRollReport {
 }
 
 /**
- * Lease Document Item Interface
- * Tracks uploaded lease documents
- */
-export interface ILeaseDocumentItem {
-  documentType?: 'lease_agreement' | 'addendum' | 'amendment' | 'renewal' | 'termination' | 'other';
-  uploadedBy: Types.ObjectId | string;
-  mimeType?: string;
-  uploadedAt?: Date;
-  filename: string;
-  size?: number;
-  url: string;
-  key: string;
-}
-
-/**
  * Lease List Item Interface
  * Simplified lease data for list views
  */
@@ -558,6 +557,22 @@ export interface ILeaseListItem {
   startDate: Date;
   endDate: Date;
   luid: string;
+}
+
+/**
+ * Lease Document Item Interface
+ * Tracks uploaded lease documents
+ */
+export interface ILeaseDocumentItem {
+  documentType?: 'lease_agreement' | 'other';
+  uploadedBy: Types.ObjectId | string;
+  status: 'active' | 'inactive';
+  mimeType?: string;
+  uploadedAt?: Date;
+  filename: string;
+  size?: number;
+  url: string;
+  key: string;
 }
 
 /**
@@ -620,20 +635,6 @@ export interface ILeaseSignature {
 }
 
 /**
- * E-Signature Interface
- * Tracks electronic signature provider details
- */
-export interface ILeaseESignature {
-  status?: 'draft' | 'sent' | 'signed' | 'declined' | 'voided';
-  provider: 'hellosign' | 'boldsign';
-  declinedReason?: string;
-  envelopeId?: string;
-  signingUrl?: string;
-  completedAt?: Date;
-  sentAt?: Date;
-}
-
-/**
  * Populated Property Info Interface
  * Property details returned in lease response
  */
@@ -643,6 +644,20 @@ export interface ILeasePropertyInfo extends ILeaseProperty {
   totalUnits?: number;
   name?: string;
   pid?: string;
+}
+
+/**
+ * E-Signature Interface
+ * Tracks electronic signature provider details
+ */
+export interface ILeaseESignature {
+  status?: ILeaseESignatureStatusEnum;
+  provider: 'hellosign' | 'boldsign';
+  declinedReason?: string;
+  envelopeId?: string;
+  signingUrl?: string;
+  completedAt?: Date;
+  sentAt?: Date;
 }
 
 /**

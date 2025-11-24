@@ -155,26 +155,28 @@ export class LeaseController {
   };
 
   handleSignatureAction = async (req: AppRequest, res: Response) => {
-    // const { cuid, leaseId } = req.params;
-    // const { uid } = req.context.currentuser!;
-    // const { action, signers, signedBy, provider, message, testMode } = req.body;
+    const { action } = req.body;
+    let result;
 
-    // this.log.info(`Handling signature action '${action}' for lease ${leaseId}`);
+    switch (action) {
+      case 'manual':
+        // result = await this.leaseService.markAsManualySigned(req.context, cuid, leaseId);
+        break;
+      case 'cancel':
+        // result = await this.leaseService.cancelSignature(req.context, cuid, leaseId);
+        break;
+      case 'send':
+        result = await this.leaseService.sendLeaseForSignature(req.context);
+        break;
+      default:
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'Invalid action for signature handling',
+        });
+        return;
+    }
 
-    // TODO: Implement signature actions based on action type
-    // switch (action) {
-    //   case 'send':
-    //     return await this.leaseService.sendLeaseForSignature(cuid, leaseId, signers, provider, uid);
-    //   case 'manual':
-    //     return await this.leaseService.markAsManualySigned(cuid, leaseId, signedBy, uid);
-    //   case 'cancel':
-    //     return await this.leaseService.cancelSignature(cuid, leaseId, uid);
-    // }
-
-    res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
-      success: false,
-      message: 'Signature actions not yet implemented',
-    });
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   getSignatureDetails = async (req: AppRequest, res: Response) => {

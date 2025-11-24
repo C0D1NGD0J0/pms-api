@@ -106,6 +106,42 @@ export class S3Service {
     }
   }
 
+  async getFileBuffer(s3Key: string): Promise<Buffer> {
+    if (!s3Key) {
+      throw new Error('S3 key is required');
+    }
+
+    try {
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: s3Key,
+      });
+
+      const response = await this.s3.send(command);
+
+      if (!response.Body) {
+        throw new Error('Empty response body from S3');
+      }
+
+      // Convert stream to buffer
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of response.Body as any) {
+        chunks.push(chunk);
+      }
+
+      const buffer = Buffer.concat(chunks);
+
+      this.log.info(`Downloaded file buffer from S3: ${s3Key}`, {
+        size: buffer.length,
+      });
+
+      return buffer;
+    } catch (error: any) {
+      this.log.error(`Error downloading file buffer from S3: ${s3Key}`, error);
+      throw new Error(`Failed to download file from S3: ${error.message}`);
+    }
+  }
+
   async deleteFiles(s3Keys: string[]): Promise<boolean> {
     if (!s3Keys || s3Keys.length === 0) {
       return true;

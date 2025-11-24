@@ -18,6 +18,85 @@ export enum IUserRelationshipsEnum {
   other = 'other',
 }
 
+export interface ICurrentUser {
+  tenantInfo?: {
+    employerInfo?: Array<{
+      cuid: string;
+      companyName: string;
+      position: string;
+      monthlyIncome: number;
+      contactPerson: string;
+      companyAddress: string;
+      contactEmail: string;
+    }>;
+    activeLeases?: Array<{
+      cuid: string;
+      confirmedDate: Date;
+      confirmed: boolean;
+      leaseId: string;
+    }>;
+    backgroundChecks?: Array<{
+      cuid: string;
+      status: string;
+      checkedDate: Date;
+      expiryDate?: Date;
+      notes?: string;
+    }>;
+    maintenanceRequests?: Array<{
+      requestId: string;
+      date: Date;
+      type: string;
+      status: string;
+      description: string;
+      priority: string;
+    }>;
+    leaseHistory?: Array<any>;
+    paymentHistory?: Array<any>;
+    notes?: Array<any>;
+    rentalReferences?: Array<any>;
+    pets?: Array<any>;
+    emergencyContact?: {
+      name: string;
+      phone: string;
+      relationship: string;
+      email: string;
+    };
+  };
+  client: {
+    clientSettings?: any;
+    cuid: string;
+    displayname: string;
+    linkedVendorUid?: string;
+    role: IUserRoleType;
+  };
+  employeeInfo?: {
+    department?: string;
+    jobTitle?: string;
+    employeeId?: string;
+    startDate?: Date;
+  };
+  vendorInfo?: {
+    vendorId?: string;
+    isLinkedAccount?: boolean;
+    linkedVendorUid?: string;
+  };
+  preferences: {
+    lang?: string;
+    theme?: 'light' | 'dark';
+    timezone?: string;
+  };
+  clients: IClientUserConnections[];
+  fullname: string | null;
+  permissions: string[];
+  displayName: string;
+  gdpr?: GDPRSettings;
+  avatarUrl: string;
+  isActive: boolean;
+  email: string;
+  sub: string;
+  uid: string;
+}
+
 /**
  * Comprehensive tenant details for property management view
  * Used by getTenantManagementDetails endpoint - includes user info, metrics, and history
@@ -133,38 +212,6 @@ export interface IEmployeeDetailInfo {
   skills: string[];
   tags: string[];
   tenure: string;
-}
-
-export interface ICurrentUser {
-  client: {
-    clientSettings?: any;
-    cuid: string;
-    displayname: string;
-    linkedVendorUid?: string;
-    role: IUserRoleType;
-  };
-  employeeInfo?: {
-    department?: string;
-    jobTitle?: string;
-    employeeId?: string;
-    startDate?: Date;
-  };
-  preferences: {
-    lang?: string;
-    theme?: 'light' | 'dark';
-    timezone?: string;
-  };
-  clients: IClientUserConnections[];
-  fullname: string | null;
-  permissions: string[];
-  displayName: string;
-  gdpr?: GDPRSettings;
-  avatarUrl: string;
-  isActive: boolean;
-  vendorInfo?: any;
-  email: string;
-  sub: string;
-  uid: string;
 }
 
 /**

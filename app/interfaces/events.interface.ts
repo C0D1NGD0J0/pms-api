@@ -4,6 +4,7 @@ import { MailType } from './utils.interface';
 import { UploadResult } from './utils.interface';
 
 export enum EventTypes {
+  LEASE_SENT_FOR_SIGNATURE = 'update:lease:sent_for_signature',
   PROPERTY_DOCUMENTS_UPDATE = 'update:property:documents',
   DELETE_ASSET_COMPLETED = 'delete:asset:completed',
   PROPERTY_UPDATE_FAILED = 'update:property:failed',

@@ -343,6 +343,31 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
           },
         },
 
+        // Add active client role as a field for easier access
+        {
+          $addFields: {
+            activeClientRole: {
+              $let: {
+                vars: {
+                  activeClientData: {
+                    $arrayElemAt: [
+                      {
+                        $filter: {
+                          input: '$userData.cuids',
+                          as: 'client',
+                          cond: { $eq: ['$$client.cuid', '$userData.activecuid'] },
+                        },
+                      },
+                      0,
+                    ],
+                  },
+                },
+                in: { $arrayElemAt: ['$$activeClientData.roles', 0] },
+              },
+            },
+          },
+        },
+
         // transform data into ICurrentUser structure
         {
           $project: {
@@ -432,14 +457,79 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               },
             },
 
+            // Role-specific information - only include data relevant to the user's active role
             employeeInfo: {
               $cond: {
-                if: '$employeeInfo',
+                if: {
+                  $and: [
+                    '$employeeInfo',
+                    {
+                      $in: ['$activeClientRole', [ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF]],
+                    },
+                  ],
+                },
                 then: {
                   department: '$employeeInfo.department',
                   jobTitle: '$employeeInfo.jobTitle',
                   employeeId: '$employeeInfo.employeeId',
                   startDate: '$employeeInfo.startDate',
+                },
+                else: '$$REMOVE',
+              },
+            },
+
+            vendorInfo: {
+              $cond: {
+                if: {
+                  $and: ['$vendorInfo', { $eq: ['$activeClientRole', ROLES.VENDOR] }],
+                },
+                then: {
+                  vendorId: '$vendorInfo.vendorId',
+                  isLinkedAccount: '$vendorInfo.isLinkedAccount',
+                  linkedVendorUid: '$vendorInfo.linkedVendorUid',
+                },
+                else: '$$REMOVE',
+              },
+            },
+
+            tenantInfo: {
+              $cond: {
+                if: {
+                  $and: ['$tenantInfo', { $eq: ['$activeClientRole', ROLES.TENANT] }],
+                },
+                then: {
+                  // Filter client-specific arrays by active cuid
+                  employerInfo: {
+                    $filter: {
+                      input: { $ifNull: ['$tenantInfo.employerInfo', []] },
+                      as: 'employer',
+                      cond: { $eq: ['$$employer.cuid', '$userData.activecuid'] },
+                    },
+                  },
+                  activeLeases: {
+                    $filter: {
+                      input: { $ifNull: ['$tenantInfo.activeLeases', []] },
+                      as: 'lease',
+                      cond: { $eq: ['$$lease.cuid', '$userData.activecuid'] },
+                    },
+                  },
+                  backgroundChecks: {
+                    $filter: {
+                      input: { $ifNull: ['$tenantInfo.backgroundChecks', []] },
+                      as: 'check',
+                      cond: { $eq: ['$$check.cuid', '$userData.activecuid'] },
+                    },
+                  },
+                  // Shared tenant information (not client-specific)
+                  maintenanceRequests: {
+                    $ifNull: ['$tenantInfo.maintenanceRequests', []],
+                  },
+                  leaseHistory: { $ifNull: ['$tenantInfo.leaseHistory', []] },
+                  paymentHistory: { $ifNull: ['$tenantInfo.paymentHistory', []] },
+                  notes: { $ifNull: ['$tenantInfo.notes', []] },
+                  rentalReferences: { $ifNull: ['$tenantInfo.rentalReferences', []] },
+                  pets: { $ifNull: ['$tenantInfo.pets', []] },
+                  emergencyContact: '$tenantInfo.emergencyContact',
                 },
                 else: '$$REMOVE',
               },

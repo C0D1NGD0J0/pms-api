@@ -17,32 +17,26 @@ import {
   EventTypes,
 } from '@interfaces/events.interface';
 import {
-  EventEmitterService,
-  NotificationService,
-  InvitationService,
-  AssetService,
-} from '@services/index';
-import {
   ValidationRequestError,
   InvalidRequestError,
   BadRequestError,
   ForbiddenError,
 } from '@shared/customErrors';
 import {
+  EventEmitterService,
+  NotificationService,
+  InvitationService,
+  BoldSignService,
+  S3Service,
+} from '@services/index';
+import {
   PROPERTY_APPROVAL_ROLES,
   convertUserRoleToEnum,
+  createSafeMongoUpdate,
   PROPERTY_STAFF_ROLES,
   createLogger,
   MoneyUtils,
 } from '@utils/index';
-import {
-  ILeasePreviewRequest,
-  ILeaseFilterOptions,
-  ILeaseDocument,
-  ILeaseFormData,
-  SigningMethod,
-  LeaseStatus,
-} from '@interfaces/lease.interface';
 import {
   ListResultWithPagination,
   IPromiseReturnedData,
@@ -51,6 +45,15 @@ import {
   ResourceContext,
   UploadResult,
 } from '@interfaces/utils.interface';
+import {
+  ILeaseESignatureStatusEnum,
+  ILeasePreviewRequest,
+  ILeaseFilterOptions,
+  ILeaseDocument,
+  ILeaseFormData,
+  SigningMethod,
+  LeaseStatus,
+} from '@interfaces/lease.interface';
 
 import {
   hasSignatureInvalidatingChanges,
@@ -70,11 +73,12 @@ interface IConstructor {
   invitationService: InvitationService;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
+  boldSignService: BoldSignService;
   invitationDAO: InvitationDAO;
-  assetService: AssetService;
   propertyDAO: PropertyDAO;
   leaseCache: LeaseCache;
   profileDAO: ProfileDAO;
+  s3Service: S3Service;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
@@ -88,8 +92,9 @@ export class LeaseService {
   private readonly profileDAO: ProfileDAO;
   private readonly leaseCache: LeaseCache;
   private readonly propertyDAO: PropertyDAO;
-  private readonly assetService: AssetService;
+  private readonly s3Service: S3Service;
   private readonly invitationDAO: InvitationDAO;
+  private readonly boldSignService: BoldSignService;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
   private readonly invitationService: InvitationService;
@@ -102,7 +107,8 @@ export class LeaseService {
     invitationDAO,
     propertyUnitDAO,
     clientDAO,
-    assetService,
+    boldSignService,
+    s3Service,
     propertyDAO,
     profileDAO,
     leaseDAO,
@@ -112,15 +118,16 @@ export class LeaseService {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
     this.clientDAO = clientDAO;
+    this.s3Service = s3Service;
     this.profileDAO = profileDAO;
-    this.propertyDAO = propertyDAO;
-    this.assetService = assetService;
     this.leaseCache = leaseCache;
+    this.propertyDAO = propertyDAO;
     this.invitationDAO = invitationDAO;
-    this.invitationService = invitationService;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
+    this.boldSignService = boldSignService;
     this.log = createLogger('LeaseService');
+    this.invitationService = invitationService;
     this.notificationService = notificationService;
 
     this.setupEventListeners();
@@ -476,7 +483,7 @@ export class LeaseService {
       };
 
       response.payments = [];
-      response.documents = filterDocumentsByRole(lease.leaseDocument || [], userRole);
+      response.documents = filterDocumentsByRole(lease.leaseDocuments || [], userRole);
       response.activity = constructActivityFeed(lease);
       response.timeline = buildLeaseTimeline(lease);
       response.permissions = getUserPermissions(lease, cxt.currentuser!);
@@ -841,6 +848,7 @@ export class LeaseService {
 
   /**
    * Sanitize update data by converting empty strings to undefined for optional ObjectId fields
+   * and returns a safe mongo update object  e.g. { 'property.unitId': 101 }
    * This prevents MongoDB from trying to cast empty strings to ObjectId
    * Setting to undefined allows Mongoose to unset the field in the database
    */
@@ -852,7 +860,7 @@ export class LeaseService {
       sanitized.property.unitId = undefined;
     }
 
-    return sanitized;
+    return createSafeMongoUpdate(sanitized);
   }
 
   private async applyDirectUpdate(
@@ -862,6 +870,9 @@ export class LeaseService {
   ): Promise<ILeaseDocument> {
     // Sanitize empty strings and null values for nested ObjectId fields
     const sanitizedData = this.sanitizeUpdateData(updateData);
+
+    // Use safe mongo update to prevent nested object overwrites
+    const safeUpdateData = createSafeMongoUpdate(sanitizedData);
 
     const modificationEvent = {
       type: 'modified',
@@ -874,7 +885,7 @@ export class LeaseService {
       { _id: new Types.ObjectId(lease._id) },
       {
         $set: {
-          ...sanitizedData,
+          ...safeUpdateData,
           updatedAt: new Date(),
           updatedBy: userId,
         },
@@ -901,6 +912,9 @@ export class LeaseService {
     // Sanitize empty strings and null values for nested ObjectId fields
     const sanitizedData = this.sanitizeUpdateData(updateData);
 
+    // Use safe mongo update to prevent nested object overwrites
+    const safeUpdateData = createSafeMongoUpdate(sanitizedData);
+
     const modificationEvent = {
       type: 'modified',
       date: new Date(),
@@ -912,7 +926,7 @@ export class LeaseService {
       { _id: lease._id },
       {
         $set: {
-          ...sanitizedData,
+          ...safeUpdateData,
           updatedAt: new Date(),
           updatedBy: userId,
         },
@@ -1081,28 +1095,129 @@ export class LeaseService {
     throw new Error('removeLeaseDocument not yet implemented');
   }
 
-  async sendLeaseForSignature(
-    cuid: string,
-    leaseId: string,
-    _signers: any[],
-    provider: string,
-    _userId: string
-  ): IPromiseReturnedData<ILeaseDocument> {
-    this.log.info(`Sending lease ${leaseId} for signature via ${provider}`);
+  async sendLeaseForSignature(cxt: IRequestContext): Promise<ISuccessReturnData> {
+    const { cuid, luid } = cxt.request.params;
+    const currentuser = cxt.currentuser!;
+
+    const userRole = convertUserRoleToEnum(currentuser.client.role);
+    if (!PROPERTY_STAFF_ROLES.includes(userRole) && !PROPERTY_APPROVAL_ROLES.includes(userRole)) {
+      throw new ForbiddenError({ message: 'You are not authorized to update leases.' });
+    }
 
     const lease = await this.leaseDAO.findFirst({
-      luid: leaseId,
+      luid,
       cuid,
       deletedAt: null,
     });
 
     if (!lease) {
-      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+      throw new BadRequestError({ message: t('lease.errors.notFound') });
     }
 
-    this.enforceLeaseApprovalRequirement(lease, 'send for signature');
+    if (![LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT].includes(lease.status)) {
+      throw new ValidationRequestError({
+        message: 'Lease must be in DRAFT or PENDING_SIGNATURE state to send for signature',
+      });
+    }
 
-    throw new Error('sendLeaseForSignature not yet implemented');
+    if (
+      lease.eSignature?.status === ILeaseESignatureStatusEnum.SENT &&
+      lease.eSignature?.envelopeId
+    ) {
+      throw new ValidationRequestError({
+        message: 'Lease has already been sent for signatures',
+      });
+    }
+
+    const leasePDF = lease.leaseDocuments?.find(
+      (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
+    );
+    if (!leasePDF || !leasePDF.key) {
+      throw new ValidationRequestError({
+        message: 'Lease PDF must be uploaded before sending for signature',
+      });
+    }
+
+    const pdfBuffer = await this.s3Service.getFileBuffer(leasePDF.key);
+    if (!pdfBuffer) {
+      throw new ValidationRequestError({
+        message: 'Lease PDF must be generated before sending for signature',
+      });
+    }
+
+    const tenant = await this.profileDAO.findFirst({ _id: lease.tenantId }, { populate: 'user' });
+    if (!tenant || !tenant.user) {
+      throw new BadRequestError({ message: 'Tenant information not found' });
+    }
+    const tenantUser = typeof tenant.user === 'object' ? tenant.user : null;
+    if (!tenantUser || !(tenantUser as any).email) {
+      throw new BadRequestError({ message: 'Tenant email not found' });
+    }
+
+    // Get property manager/owner
+    const property = await this.propertyDAO.findFirst({ _id: lease.property.id, deletedAt: null });
+    if (!property) {
+      throw new BadRequestError({ message: 'Property not found' });
+    }
+
+    if (property.status !== 'available') {
+      throw new BadRequestError({
+        message: 'Cannot send lease for signatures, as the selected property is not available.',
+      });
+    }
+
+    let propertyUnit = null;
+    if (lease.property.unitId) {
+      propertyUnit = await this.propertyUnitDAO.findFirst({ _id: lease.property.unitId });
+      if (!propertyUnit) {
+        throw new BadRequestError({
+          message: 'Property unit not found, unable to proceed with sending lease for signature.',
+        });
+      }
+
+      if (propertyUnit.status !== 'available') {
+        throw new BadRequestError({
+          message: 'Cannot send lease for signatures, as the selected unit is not available.',
+        });
+      }
+    }
+
+    const propertyManager = await this.profileDAO.findFirst(
+      { user: property.managedBy },
+      { populate: 'user' }
+    );
+    if (!propertyManager || !propertyManager.user) {
+      throw new BadRequestError({ message: 'Property manager information not found' });
+    }
+    const pmUser = typeof propertyManager.user === 'object' ? propertyManager.user : null;
+    if (!pmUser || !(pmUser as any)?.email) {
+      throw new BadRequestError({ message: 'Property manager email not found' });
+    }
+
+    const signers = [
+      {
+        name:
+          `${tenant.personalInfo?.firstName || ''} ${tenant.personalInfo?.lastName || ''}`.trim() ||
+          'Tenant',
+        email: (tenantUser as any).email,
+        role: 'tenant' as const,
+        userId: (tenantUser as any)._id,
+      },
+      {
+        name:
+          `${propertyManager.personalInfo?.firstName || ''} ${propertyManager.personalInfo?.lastName || ''}`.trim() ||
+          'Property Manager',
+        email: (pmUser as any).email,
+        role: 'property_manager' as const,
+        userId: (pmUser as any)._id,
+      },
+    ];
+
+    return {
+      success: true,
+      message: 'sendLeaseForSignature not yet implemented',
+      data: { signers },
+    };
   }
 
   async markAsManualySigned(

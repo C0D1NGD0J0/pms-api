@@ -186,7 +186,7 @@ router
 
 // Signature Management Routes
 router
-  .route('/:cuid/:luid/signature')
+  .route('/:cuid/:luid/signatures_request')
   .post(
     // Send for e-signature OR mark as manually signed OR cancel signing
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
@@ -196,11 +196,7 @@ router
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<LeaseController>('leaseController');
-      // const { action } = req.body;
-      // switch (action) {
-      //   case 'send': return controller.sendLeaseForSignature(req, res);
-      //   case 'manual': return controller.markAsManualySigned(req, res);
-      //   case 'cancel': return controller.cancelSignature(req, res);
+
       return controller.handleSignatureAction(req, res);
     })
   )

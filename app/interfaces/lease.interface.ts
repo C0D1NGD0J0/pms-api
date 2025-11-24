@@ -172,7 +172,6 @@ export interface ILeasePreviewRequest {
     | 'commercial-office'
     | 'commercial-retail'
     | 'short-term-rental';
-
   renewalOptions?: {
     autoRenew: boolean;
     renewalTermMonths?: number;
@@ -191,35 +190,77 @@ export interface ILeasePreviewRequest {
     types?: string[];
     deposit?: number;
   };
-
-  // Signing
+  legalTerms?: {
+    html?: string;
+    text?: string;
+  };
   signingMethod: SigningMethod | string;
-  // Additional Terms
+  requiresNotarization: boolean;
   utilitiesIncluded?: string[];
   startDate: Date | string;
-
   propertyAddress: string;
   securityDeposit: number;
   endDate: Date | string;
-
   // Lease Duration
   leaseType: LeaseType;
+  leaseNumber?: string;
   unitNumber?: string;
   tenantEmail: string;
   tenantPhone: string;
-
   // Financial Terms
   monthlyRent: number;
-
   // Property Information
   propertyId: string;
-
   // Tenant Information (placeholders for invited tenants)
   tenantName: string;
-
   rentDueDay: number;
-
   currency: string;
+}
+
+/**
+ * Main Lease Interface
+ * Core lease data structure
+ */
+export interface ILease {
+  utilitiesIncluded?: (
+    | 'water'
+    | 'gas'
+    | 'electricity'
+    | 'internet'
+    | 'cable'
+    | 'trash'
+    | 'sewer'
+    | 'heating'
+    | 'cooling'
+  )[];
+  pendingChanges?: IPendingLeaseChanges | null;
+  approvalDetails?: ILeaseApprovalEntry[];
+  signingMethod: SigningMethod | string;
+  approvalStatus?: LeaseApprovalStatus;
+  leaseDocument?: ILeaseDocumentItem[];
+  useInvitationIdAsTenantId?: boolean;
+  createdBy: Types.ObjectId | string;
+  lastModifiedBy?: ILastModifiedBy[];
+  tenantId: Types.ObjectId | string;
+  renewalOptions?: IRenewalOptions;
+  requiresNotarization?: boolean;
+  signatures?: ILeaseSignature[];
+  metadata?: Record<string, any>; // Store enriched data for lease generation
+  eSignature?: ILeaseESignature;
+  terminationReason?: string;
+  property: ILeaseProperty;
+  duration: ILeaseDuration;
+  legalTerms?: ILegalTerms;
+  coTenants?: ICoTenant[];
+  petPolicy?: IPetPolicy;
+  internalNotes?: string;
+  leaseNumber: string;
+  status: LeaseStatus;
+  signedDate?: Date;
+  fees: ILeaseFees;
+  deletedAt?: Date;
+  type: LeaseType;
+  cuid: string;
 }
 
 /**
@@ -256,6 +297,7 @@ export interface ILeaseFormData {
   };
   leaseDocument?: ILeaseDocumentItem[];
   renewalOptions?: IRenewalOptions;
+  requiresNotarization?: boolean;
   signingMethod?: SigningMethod;
   utilitiesIncluded?: string[];
   legalTerms?: ILegalTerms;
@@ -606,22 +648,6 @@ export interface ILeaseApprovalEntry {
 }
 
 /**
- * E-Signature Request Data Interface
- * Used when sending lease for signature
- */
-export interface IESignatureRequestData {
-  signers: {
-    email: string;
-    name: string;
-    role: 'tenant' | 'co_tenant' | 'landlord';
-    order?: number;
-  }[];
-  provider: 'hellosign' | 'docusign' | 'pandadoc';
-  testMode?: boolean;
-  message?: string;
-}
-
-/**
  * Signature Interface
  * Individual signature tracking
  */
@@ -632,6 +658,22 @@ export interface ILeaseSignature {
   providerSignatureId?: string;
   ipAddress?: string;
   signedAt: Date;
+}
+
+/**
+ * E-Signature Request Data Interface
+ * Used when sending lease for signature
+ */
+export interface IESignatureRequestData {
+  signers: {
+    email: string;
+    name: string;
+    role: 'tenant' | 'co_tenant' | 'landlord';
+    order?: number;
+  }[];
+  provider: 'boldsign' | 'pandadoc';
+  testMode?: boolean;
+  message?: string;
 }
 
 /**

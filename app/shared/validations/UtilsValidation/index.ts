@@ -166,6 +166,20 @@ export const ValidateInvitationIuidSchema = z
     }
   });
 
+export const ValidateCuidAndLeaseIdSchema = z.object({
+  cuid: z.string().refine(
+    async (cuid) => {
+      const { clientDAO }: { clientDAO: ClientDAO } = (await getContainer()).cradle;
+      const client = await clientDAO.findFirst({ cuid });
+      return !!client;
+    },
+    {
+      message: 'Invalid params detected in the request.',
+    }
+  ),
+  leaseId: z.string().min(1, 'Lease ID is required'),
+});
+
 export const UtilsValidations = {
   cuid: ValidateCuidSchema,
   nuid: ValidateNuidSchema,
@@ -175,4 +189,5 @@ export const UtilsValidations = {
   vuid: ValidateVuidSchema,
   luid: ValidateLuidSchema,
   invitationuid: ValidateInvitationIuidSchema,
+  cuidAndLeaseId: ValidateCuidAndLeaseIdSchema,
 };

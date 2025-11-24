@@ -19,49 +19,6 @@ export enum IUserRelationshipsEnum {
 }
 
 export interface ICurrentUser {
-  tenantInfo?: {
-    employerInfo?: Array<{
-      cuid: string;
-      companyName: string;
-      position: string;
-      monthlyIncome: number;
-      contactPerson: string;
-      companyAddress: string;
-      contactEmail: string;
-    }>;
-    activeLeases?: Array<{
-      cuid: string;
-      confirmedDate: Date;
-      confirmed: boolean;
-      leaseId: string;
-    }>;
-    backgroundChecks?: Array<{
-      cuid: string;
-      status: string;
-      checkedDate: Date;
-      expiryDate?: Date;
-      notes?: string;
-    }>;
-    maintenanceRequests?: Array<{
-      requestId: string;
-      date: Date;
-      type: string;
-      status: string;
-      description: string;
-      priority: string;
-    }>;
-    leaseHistory?: Array<any>;
-    paymentHistory?: Array<any>;
-    notes?: Array<any>;
-    rentalReferences?: Array<any>;
-    pets?: Array<any>;
-    emergencyContact?: {
-      name: string;
-      phone: string;
-      relationship: string;
-      email: string;
-    };
-  };
   client: {
     clientSettings?: any;
     cuid: string;
@@ -69,16 +26,22 @@ export interface ICurrentUser {
     linkedVendorUid?: string;
     role: IUserRoleType;
   };
+  vendorInfo?: {
+    vendorId?: string;
+    linkedVendorUid?: string;
+    isPrimaryVendor?: boolean;
+    isLinkedAccount?: boolean;
+  };
+  tenantInfo?: {
+    hasActiveLease?: boolean;
+    backgroundCheckStatus?: string;
+    activeLease?: Record<string, any> | null;
+  };
   employeeInfo?: {
     department?: string;
     jobTitle?: string;
     employeeId?: string;
     startDate?: Date;
-  };
-  vendorInfo?: {
-    vendorId?: string;
-    isLinkedAccount?: boolean;
-    linkedVendorUid?: string;
   };
   preferences: {
     lang?: string;

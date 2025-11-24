@@ -675,7 +675,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         throw new Error('Lease ID and upload results are required');
       }
 
-      const lease = await this.findFirst({ luid: leaseId, deletedAt: null });
+      const lease = await this.findFirst({ _id: new Types.ObjectId(leaseId), deletedAt: null });
       if (!lease) {
         throw new Error('Lease not found');
       }
@@ -722,7 +722,10 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         documentCount: processedDocuments.length,
       });
 
-      return await this.update({ luid: leaseId, deletedAt: null }, updateOperation);
+      return await this.update(
+        { _id: new Types.ObjectId(leaseId), deletedAt: null },
+        updateOperation
+      );
     } catch (error: any) {
       this.log.error('Error updating lease documents:', error);
       throw error;
@@ -752,7 +755,12 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         hasError: !!errorMessage,
       });
 
-      return await this.update({ luid: leaseId, deletedAt: null }, { $set: updateData });
+      // leaseId could be either luid or _id, try to determine which
+      const query = Types.ObjectId.isValid(leaseId)
+        ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
+        : { luid: leaseId, deletedAt: null };
+
+      return await this.update(query, { $set: updateData });
     } catch (error: any) {
       this.log.error('Error updating lease document status:', error);
       throw error;

@@ -1,4 +1,5 @@
 export * from './documentProcessing.queue';
+export * from './pdfGenerator.queue';
 export * from './propertyUnit.queue';
 export * from './invitation.queue';
 export * from './eventbus.queue';

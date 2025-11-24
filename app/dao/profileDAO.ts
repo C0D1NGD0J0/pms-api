@@ -480,13 +480,12 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
 
             vendorInfo: {
               $cond: {
-                if: {
-                  $and: ['$vendorInfo', { $eq: ['$activeClientRole', ROLES.VENDOR] }],
-                },
+                if: '$vendorInfo',
                 then: {
-                  vendorId: '$vendorInfo.vendorId',
-                  isLinkedAccount: '$vendorInfo.isLinkedAccount',
+                  vendorId: { $toString: '$vendorInfo.vendorId' },
                   linkedVendorUid: '$vendorInfo.linkedVendorUid',
+                  isPrimaryVendor: '$vendorInfo.isPrimaryVendor',
+                  isLinkedAccount: '$vendorInfo.isLinkedAccount',
                 },
                 else: '$$REMOVE',
               },
@@ -494,42 +493,11 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
 
             tenantInfo: {
               $cond: {
-                if: {
-                  $and: ['$tenantInfo', { $eq: ['$activeClientRole', ROLES.TENANT] }],
-                },
+                if: '$tenantInfo',
                 then: {
-                  // Filter client-specific arrays by active cuid
-                  employerInfo: {
-                    $filter: {
-                      input: { $ifNull: ['$tenantInfo.employerInfo', []] },
-                      as: 'employer',
-                      cond: { $eq: ['$$employer.cuid', '$userData.activecuid'] },
-                    },
-                  },
-                  activeLeases: {
-                    $filter: {
-                      input: { $ifNull: ['$tenantInfo.activeLeases', []] },
-                      as: 'lease',
-                      cond: { $eq: ['$$lease.cuid', '$userData.activecuid'] },
-                    },
-                  },
-                  backgroundChecks: {
-                    $filter: {
-                      input: { $ifNull: ['$tenantInfo.backgroundChecks', []] },
-                      as: 'check',
-                      cond: { $eq: ['$$check.cuid', '$userData.activecuid'] },
-                    },
-                  },
-                  // Shared tenant information (not client-specific)
-                  maintenanceRequests: {
-                    $ifNull: ['$tenantInfo.maintenanceRequests', []],
-                  },
-                  leaseHistory: { $ifNull: ['$tenantInfo.leaseHistory', []] },
-                  paymentHistory: { $ifNull: ['$tenantInfo.paymentHistory', []] },
-                  notes: { $ifNull: ['$tenantInfo.notes', []] },
-                  rentalReferences: { $ifNull: ['$tenantInfo.rentalReferences', []] },
-                  pets: { $ifNull: ['$tenantInfo.pets', []] },
-                  emergencyContact: '$tenantInfo.emergencyContact',
+                  hasActiveLease: { $ifNull: ['$tenantInfo.hasActiveLease', false] },
+                  backgroundCheckStatus: '$tenantInfo.backgroundCheckStatus',
+                  activeLease: { $ifNull: ['$tenantInfo.activeLease', null] },
                 },
                 else: '$$REMOVE',
               },

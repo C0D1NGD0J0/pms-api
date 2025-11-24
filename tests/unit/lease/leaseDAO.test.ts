@@ -1100,4 +1100,6 @@ describe('LeaseDAO', () => {
       );
     });
   });
+
+  // PDF document status updates are tested through integration tests
 });

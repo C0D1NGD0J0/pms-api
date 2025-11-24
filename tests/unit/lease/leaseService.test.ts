@@ -23,9 +23,9 @@ const createMockDependencies = () => ({
     withTransaction: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn(),
+    updateLeaseDocuments: jest.fn(),
     getTenantInfo: jest.fn(),
     getLeasesPendingTenantAcceptance: jest.fn(),
-    updateLeaseDocuments: jest.fn(),
     updateLeaseDocumentStatus: jest.fn(),
   },
   propertyDAO: {
@@ -2486,7 +2486,10 @@ describe('LeaseService', () => {
       const mockUser = createMockUser(IUserRole.ADMIN);
       const mockLease = createMockLease({ status: LeaseStatus.DRAFT });
       mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
-      mockDependencies.leaseDAO.update.mockResolvedValue({ ...mockLease, fees: { monthlyRent: 1500 } });
+      mockDependencies.leaseDAO.update.mockResolvedValue({
+        ...mockLease,
+        fees: { monthlyRent: 1500 },
+      });
 
       const result = await leaseService.updateLease(
         { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
@@ -2521,7 +2524,10 @@ describe('LeaseService', () => {
       const mockUser = createMockUser(IUserRole.STAFF);
       const mockLease = createMockLease({ status: LeaseStatus.DRAFT });
       mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
-      mockDependencies.leaseDAO.update.mockResolvedValue({ ...mockLease, internalNotes: 'Staff note' });
+      mockDependencies.leaseDAO.update.mockResolvedValue({
+        ...mockLease,
+        internalNotes: 'Staff note',
+      });
 
       const result = await leaseService.updateLease(
         { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
@@ -2589,7 +2595,9 @@ describe('LeaseService', () => {
       await leaseService.updateLease(
         { request: { params: { cuid: 'C123' } }, currentuser: mockUser } as any,
         'L123',
-        { property: { id: mockLease.property.id.toString(), unitId: '', address: 'Test Address' } } as any
+        {
+          property: { id: mockLease.property.id.toString(), unitId: '', address: 'Test Address' },
+        } as any
       );
 
       const updateCall = mockDependencies.leaseDAO.update.mock.calls[0];
@@ -2622,6 +2630,168 @@ describe('LeaseService', () => {
           { internalNotes: 'Test' }
         )
       ).rejects.toThrow(BadRequestError);
+    });
+  });
+});
+
+// ==================== PDF GENERATION TESTS ====================
+
+describe('LeaseService - PDF Generation', () => {
+  let leaseService: LeaseService;
+  let mockDependencies: any;
+  const mockUser = createMockUser();
+
+  beforeEach(() => {
+    mockDependencies = {
+      ...createMockDependencies(),
+      pdfGeneratorService: {
+        generatePdf: jest.fn(),
+      },
+      mediaUploadService: {
+        handleBuffer: jest.fn(),
+      },
+      pdfGeneratorQueue: {
+        addToPdfQueue: jest.fn(),
+      },
+    };
+    leaseService = new LeaseService(mockDependencies);
+  });
+
+  describe('queueLeasePdfGeneration', () => {
+    it('should queue PDF generation and return job ID', async () => {
+      const mockLease = createMockLease();
+      const mockJob = { id: '123' };
+
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+      mockDependencies.pdfGeneratorQueue.addToPdfQueue.mockResolvedValue(mockJob);
+
+      const result = await leaseService.queueLeasePdfGeneration(
+        mockLease._id.toString(),
+        'C123',
+        { currentuser: mockUser } as any,
+        'residential-single-family'
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.jobId).toBe('123');
+      expect(mockDependencies.pdfGeneratorQueue.addToPdfQueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cuid: 'C123',
+          templateType: 'residential-single-family',
+        })
+      );
+    });
+
+    it('should return error when lease not found', async () => {
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(null);
+
+      const result = await leaseService.queueLeasePdfGeneration(
+        new Types.ObjectId().toString(),
+        'C123',
+        { currentuser: mockUser } as any
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+
+    it('should handle queue errors gracefully', async () => {
+      const mockLease = createMockLease();
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+      mockDependencies.pdfGeneratorQueue.addToPdfQueue.mockRejectedValue(new Error('Queue full'));
+
+      const result = await leaseService.queueLeasePdfGeneration(mockLease._id.toString(), 'C123', {
+        currentuser: mockUser,
+      } as any);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Queue full');
+    });
+  });
+
+  describe('generateLeasePDF', () => {
+    // Complex integration test - tested via API/integration tests
+    it.todo('should generate PDF successfully with populated lease data');
+
+    it('should query lease by ObjectId when leaseId is ObjectId', async () => {
+      const objectId = new Types.ObjectId();
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(null);
+
+      try {
+        await leaseService.generateLeasePDF('C123', objectId.toString());
+      } catch (error) {
+        // Expected to fail
+      }
+
+      expect(mockDependencies.leaseDAO.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          _id: expect.any(Types.ObjectId),
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it.todo('should handle missing tenant gracefully');
+
+    it.todo('should handle PDF generation failure');
+  });
+
+  describe('updateLeaseDocuments', () => {
+    it('should update lease documents with ObjectId', async () => {
+      const objectId = new Types.ObjectId();
+      const mockLease = createMockLease();
+      const uploadResults = [
+        {
+          url: 'https://s3.amazonaws.com/test.pdf',
+          key: 'lease_test.pdf',
+          filename: 'test.pdf',
+        },
+      ];
+
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+      mockDependencies.leaseDAO.updateLeaseDocuments.mockResolvedValue(mockLease);
+
+      const result = await leaseService.updateLeaseDocuments(
+        objectId.toString(),
+        uploadResults as any,
+        'user123'
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockDependencies.leaseDAO.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          _id: expect.any(Types.ObjectId),
+        })
+      );
+    });
+
+    it('should update lease documents with luid', async () => {
+      const mockLease = createMockLease();
+      const uploadResults = [{ url: 'test.pdf', key: 'key', filename: 'test.pdf' }];
+
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(mockLease);
+      mockDependencies.leaseDAO.updateLeaseDocuments.mockResolvedValue(mockLease);
+
+      const result = await leaseService.updateLeaseDocuments(
+        'L-2025-ABC',
+        uploadResults as any,
+        'user123'
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockDependencies.leaseDAO.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          luid: 'L-2025-ABC',
+        })
+      );
+    });
+
+    it('should throw error when lease not found', async () => {
+      mockDependencies.leaseDAO.findFirst.mockResolvedValue(null);
+
+      await expect(
+        leaseService.updateLeaseDocuments('invalid-id', [] as any, 'user123')
+      ).rejects.toThrow();
     });
   });
 });

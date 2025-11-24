@@ -1134,7 +1134,7 @@ export class NotificationService {
   /**
    * Create notification using message template
    */
-  private async createNotificationFromTemplate(
+  public async createNotificationFromTemplate(
     messageKey: NotificationMessageKey,
     variables: Record<string, any>,
     recipientId: string,

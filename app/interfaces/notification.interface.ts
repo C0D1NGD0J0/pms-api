@@ -17,20 +17,24 @@ export enum NotificationTypeEnum {
   MESSAGE = 'message',
   COMMENT = 'comment',
   PAYMENT = 'payment',
+  SUCCESS = 'SUCCESS',
   SYSTEM = 'system',
+  ERROR = 'ERROR',
   TASK = 'task',
   USER = 'user',
+  INFO = 'INFO',
+}
+
+export enum NotificationPriorityEnum {
+  URGENT = 'urgent',
+  MEDIUM = 'medium',
+  HIGH = 'high',
+  LOW = 'low',
 }
 
 export enum RecipientTypeEnum {
   ANNOUNCEMENT = 'announcement',
   INDIVIDUAL = 'individual',
-}
-
-export enum NotificationPriorityEnum {
-  URGENT = 'urgent',
-  HIGH = 'high',
-  LOW = 'low',
 }
 
 /**

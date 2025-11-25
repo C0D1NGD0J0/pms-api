@@ -2,13 +2,24 @@ import { Job } from 'bull';
 
 import { UploadResult } from './utils.interface';
 import { ResourceInfo, MailType } from './utils.interface';
+import {
+  LeaseESignatureRequestedPayload,
+  LeaseESignatureCompletedPayload,
+  LeaseESignatureDeclinedPayload,
+  LeaseESignatureFailedPayload,
+  LeaseESignatureSentPayload,
+} from './lease.interface';
 
 export enum EventTypes {
-  LEASE_SENT_FOR_SIGNATURE = 'update:lease:sent_for_signature',
+  LEASE_ESIGNATURE_REQUESTED = 'lease:esignature:requested',
+  LEASE_ESIGNATURE_COMPLETED = 'lease:esignature:completed',
+  LEASE_ESIGNATURE_DECLINED = 'lease:esignature:declined',
   PROPERTY_DOCUMENTS_UPDATE = 'update:property:documents',
   PDF_GENERATION_REQUESTED = 'pdf:generation:requested',
+  LEASE_ESIGNATURE_FAILED = 'lease:esignature:failed',
   PROPERTY_UPDATE_FAILED = 'update:property:failed',
   DELETE_ASSET_COMPLETED = 'delete:asset:completed',
+  LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
   PDF_GENERATION_FAILED = 'pdf:generation:failed',
   DELETE_ASSET_FAILED = 'delete:asset:failed',
   DELETE_REMOTE_ASSET = 'delete:remote:asset',
@@ -34,6 +45,11 @@ export enum EventTypes {
 }
 
 export type EventPayloadMap = {
+  [EventTypes.LEASE_ESIGNATURE_REQUESTED]: LeaseESignatureRequestedPayload;
+  [EventTypes.LEASE_ESIGNATURE_SENT]: LeaseESignatureSentPayload;
+  [EventTypes.LEASE_ESIGNATURE_FAILED]: LeaseESignatureFailedPayload;
+  [EventTypes.LEASE_ESIGNATURE_COMPLETED]: LeaseESignatureCompletedPayload;
+  [EventTypes.LEASE_ESIGNATURE_DECLINED]: LeaseESignatureDeclinedPayload;
   [EventTypes.DELETE_ASSET_COMPLETED]: DeleteAssetCompletedPayload;
   [EventTypes.DELETE_ASSET_FAILED]: DeleteAssetFailedPayload;
   [EventTypes.DELETE_LOCAL_ASSET]: DeleteLocalAssetPayload;

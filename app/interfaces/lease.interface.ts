@@ -617,6 +617,20 @@ export interface ILeaseDocumentItem {
   key: string;
 }
 
+export interface LeaseESignatureSentPayload {
+  signers: Array<{
+    name: string;
+    email: string;
+    role: string;
+  }>;
+  jobId: string | number;
+  envelopeId: string; // BoldSign document ID
+  leaseId: string;
+  luid: string;
+  cuid: string;
+  sentAt: Date;
+}
+
 /**
  * Lease Timeline Interface
  * Key milestone dates and progress tracking
@@ -658,6 +672,20 @@ export interface ILeaseSignature {
   providerSignatureId?: string;
   ipAddress?: string;
   signedAt: Date;
+}
+
+export interface LeaseESignatureCompletedPayload {
+  signers: Array<{
+    name: string;
+    email: string;
+    role: string;
+    signedAt?: Date;
+  }>;
+  documentId: string;
+  completedAt: Date;
+  leaseId: string;
+  luid: string;
+  cuid: string;
 }
 
 /**
@@ -745,6 +773,16 @@ export interface ILeaseUnitInfo {
   fees?: any;
 }
 
+export interface LeaseESignatureDeclinedPayload {
+  declineReason?: string;
+  documentId: string;
+  declinedBy: string;
+  declinedAt: Date;
+  leaseId: string;
+  luid: string;
+  cuid: string;
+}
+
 /**
  * Last Modified By Interface
  * Audit trail entry
@@ -754,6 +792,23 @@ export interface ILastModifiedBy {
   userId: Types.ObjectId | string;
   name: string;
   date: Date;
+}
+
+export interface LeaseESignatureRequestedPayload {
+  jobId: string | number;
+  leaseId: string;
+  actorId: string; // User who requested signature
+  luid: string;
+  cuid: string;
+}
+
+export interface LeaseESignatureFailedPayload {
+  jobId: string | number;
+  errorDetails?: any;
+  leaseId: string;
+  error: string;
+  luid: string;
+  cuid: string;
 }
 
 /**

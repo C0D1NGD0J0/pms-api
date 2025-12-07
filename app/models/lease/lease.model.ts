@@ -690,7 +690,10 @@ LeaseSchema.pre('validate', function (this: ILeaseDocument, next) {
       }
 
       const tenantSigned = this.signatures.some(
-        (sig) => sig.userId.toString() === this.tenantId.toString() && sig.role === 'tenant'
+        (sig) =>
+          sig.userId?.toString() === this.tenantId.toString() &&
+          sig.role === 'tenant' &&
+          sig.signedAt
       );
       if (!tenantSigned) {
         throw new Error('Tenant must sign the lease before it can be activated');

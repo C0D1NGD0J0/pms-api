@@ -106,6 +106,10 @@ export interface PdfJobResult {
 }
 
 export interface PdfJobData {
+  senderInfo?: {
+    email: string;
+    name: string;
+  };
   resource: ResourceInfo;
   templateType?: string;
   cuid: string;

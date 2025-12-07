@@ -124,7 +124,6 @@ export class PropertyService {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
 
-    // Unit-related events for property occupancy sync
     this.emitterService.on(EventTypes.UNIT_CREATED, this.handleUnitChanged.bind(this));
     this.emitterService.on(EventTypes.UNIT_UPDATED, this.handleUnitChanged.bind(this));
     this.emitterService.on(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged.bind(this));
@@ -132,7 +131,71 @@ export class PropertyService {
     this.emitterService.on(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged.bind(this));
     this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged.bind(this));
 
+    this.emitterService.on(
+      EventTypes.LEASE_ESIGNATURE_COMPLETED,
+      this.handleLeaseActivated.bind(this)
+    );
+
     this.log.info(t('property.logging.eventListenersInitialized'));
+  }
+
+  private async handleLeaseActivated(payload: any): Promise<{
+    success: boolean;
+    message: string;
+    data: any;
+  }> {
+    try {
+      const { leaseId, propertyId, propertyUnitId } = payload;
+
+      if (propertyUnitId) {
+        this.log.info('Lease has propertyUnitId - skipping direct property update', {
+          leaseId,
+          propertyId,
+        });
+        return {
+          success: false,
+          message: 'Lease has propertyUnitId - skipping direct property update',
+          data: null,
+        };
+      }
+
+      let property = await this.propertyDAO.findById(propertyId);
+      if (!property) {
+        return {
+          success: false,
+          message: 'Property not found',
+          data: null,
+        };
+      }
+
+      if (property.occupancyStatus === 'occupied') {
+        return {
+          success: false,
+          message: 'Property already marked as occupied',
+          data: null,
+        };
+      }
+
+      property = await this.propertyDAO.update(
+        { _id: propertyId },
+        {
+          occupancyStatus: 'occupied',
+          updatedAt: new Date(),
+        }
+      );
+
+      return {
+        success: true,
+        data: property,
+        message: 'Property marked as occupied',
+      };
+    } catch (error) {
+      this.log.error('Error handling lease activation for property', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      });
+      return { success: false, message: 'Error handling lease activation', data: null };
+    }
   }
 
   async addProperty(

@@ -425,6 +425,14 @@ export interface ILinkedVendorUser {
   uid: string;
 }
 
+// USER
+export interface IAccountType {
+  isEnterpriseAccount: boolean;
+  isCorporate: boolean;
+  planName: string;
+  planId: string;
+}
+
 /**
  * Property info for user (minimal)
  */
@@ -464,13 +472,6 @@ export type IContactInfoType = {
 export interface IRefreshTokenDocument extends Document {
   user: Types.ObjectId;
   token: string;
-}
-
-// USER
-export interface IAccountType {
-  isCorporate: boolean;
-  planName: string;
-  planId: string;
 }
 
 /**

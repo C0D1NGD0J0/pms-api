@@ -3,6 +3,7 @@ import path from 'path';
 import Logger from 'bunyan';
 import { UploadQueue } from '@queues/upload.queue';
 import { createLogger, JOB_NAME } from '@utils/index';
+import { S3Service } from '@services/fileUpload/awsS3';
 import { AssetService } from '@services/asset/asset.service';
 import {
   ExtractedMediaFile,
@@ -21,16 +22,19 @@ interface MediaOperationResult {
 interface IConstructor {
   assetService: AssetService;
   uploadQueue: UploadQueue;
+  s3Service: S3Service;
 }
 
 export class MediaUploadService {
   private readonly assetService: AssetService;
   private readonly uploadQueue: UploadQueue;
+  private readonly s3Service: S3Service;
   private readonly logger: Logger;
 
-  constructor({ assetService, uploadQueue }: IConstructor) {
+  constructor({ assetService, uploadQueue, s3Service }: IConstructor) {
     this.assetService = assetService;
     this.uploadQueue = uploadQueue;
+    this.s3Service = s3Service;
     this.logger = createLogger('MediaUploadService');
   }
 
@@ -372,6 +376,9 @@ export class MediaUploadService {
         path: tempPath,
         mimeType: 'application/pdf',
         fileSize: buffer.length,
+        status: 'pending',
+        uploadedAt: new Date(),
+        uploadedBy: context.uploadedBy,
       };
 
       // Use existing grouping logic to determine resource routing
@@ -414,6 +421,26 @@ export class MediaUploadService {
       };
     } catch (error) {
       this.logger.error('Error handling buffer upload:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Download a file from S3 and return as Buffer
+   * Wraps S3Service.getFileBuffer for consistent file operations
+   * @param s3Key - The S3 key of the file to download
+   * @returns Buffer containing the file data
+   */
+  async downloadFileAsBuffer(s3Key: string): Promise<Buffer> {
+    try {
+      this.logger.info(`Downloading file from S3: ${s3Key}`);
+      const buffer = await this.s3Service.getFileBuffer(s3Key);
+      this.logger.info(
+        `Successfully downloaded file from S3: ${s3Key}, size: ${buffer.length} bytes`
+      );
+      return buffer;
+    } catch (error) {
+      this.logger.error(`Error downloading file from S3: ${s3Key}`, error);
       throw error;
     }
   }

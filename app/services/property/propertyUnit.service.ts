@@ -76,6 +76,63 @@ export class PropertyUnitService {
     this.propertyUnitQueue = propertyUnitQueue;
     this.unitNumberingService = unitNumberingService;
     this.log = createLogger('PropertyUnitService');
+
+    this.initializeEventListeners();
+  }
+
+  private initializeEventListeners(): void {
+    this.emitterService.on(
+      EventTypes.LEASE_ESIGNATURE_COMPLETED,
+      this.handleLeaseActivated.bind(this)
+    );
+
+    this.log.info('PropertyUnit service event listeners initialized');
+  }
+
+  private async handleLeaseActivated(payload: any): Promise<void> {
+    try {
+      const { leaseId, propertyUnitId, tenantId } = payload;
+
+      if (!propertyUnitId) {
+        this.log.info('No propertyUnitId in lease activation - skipping unit update', {
+          leaseId,
+        });
+        return;
+      }
+
+      this.log.info('Handling lease activation for property unit', {
+        leaseId,
+        propertyUnitId,
+        tenantId,
+      });
+
+      const unit = await this.propertyUnitDAO.findById(propertyUnitId);
+
+      if (!unit) {
+        this.log.warn('Property unit not found', { propertyUnitId });
+        return;
+      }
+
+      if (unit.status === 'occupied' && unit.currentLease?.toString() === leaseId) {
+        this.log.info('Property unit already marked as occupied with this lease', {
+          propertyUnitId,
+          leaseId,
+        });
+        return;
+      }
+
+      await unit.markUnitAsOccupied(leaseId, tenantId);
+
+      this.log.info('Property unit marked as occupied', {
+        propertyUnitId,
+        leaseId,
+      });
+    } catch (error) {
+      this.log.error('Error handling lease activation for property unit', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      });
+    }
   }
 
   /**

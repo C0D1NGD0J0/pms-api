@@ -443,60 +443,9 @@ export const TerminateLeaseSchema = z
   );
 
 // Signature Action Schema
-export const SignatureActionSchema = z
-  .object({
-    action: SignatureActionEnum,
-    signers: z
-      .array(
-        z.object({
-          name: z.string().min(2, 'Signer name must be at least 2 characters'),
-          email: z.string().email('Invalid email format'),
-          role: SignatureRoleEnum,
-          order: z.number().int().min(1).optional(),
-        })
-      )
-      .optional(),
-    signedBy: z
-      .array(
-        z.object({
-          userId: z.string().min(1, 'User ID is required'),
-          name: z.string().min(2, 'Name must be at least 2 characters'),
-          role: SignatureRoleEnum,
-          signedAt: z.coerce
-            .date()
-            .optional()
-            .default(() => new Date()),
-        })
-      )
-      .optional(),
-    provider: ESignatureProviderEnum.optional().default('boldsign'),
-    message: z.string().max(500, 'Message must be at most 500 characters').optional(),
-    testMode: z.boolean().optional().default(false),
-  })
-  .refine(
-    (data) => {
-      if (data.action === 'send' && (!data.signers || data.signers.length === 0)) {
-        return false;
-      }
-      return true;
-    },
-    {
-      message: 'Signers are required when action is "send"',
-      path: ['signers'],
-    }
-  )
-  .refine(
-    (data) => {
-      if (data.action === 'manual' && (!data.signedBy || data.signedBy.length === 0)) {
-        return false;
-      }
-      return true;
-    },
-    {
-      message: 'SignedBy is required when action is "manual"',
-      path: ['signedBy'],
-    }
-  );
+export const SignatureActionSchema = z.object({
+  action: SignatureActionEnum,
+});
 
 export const ExpiringLeasesQuerySchema = z.object({
   daysThreshold: z.coerce.number().int().min(1).max(365).default(30),

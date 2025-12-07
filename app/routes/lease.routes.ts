@@ -210,7 +210,7 @@ router
 
 // Signature Management Routes
 router
-  .route('/:cuid/:luid/signatures_request')
+  .route('/:cuid/:luid/signature_request')
   .post(
     // Send for e-signature OR mark as manually signed OR cancel signing
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),

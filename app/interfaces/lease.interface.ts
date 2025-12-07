@@ -14,6 +14,7 @@ export enum LeaseStatus {
 }
 
 export enum ILeaseESignatureStatusEnum {
+  COMPLETED = 'completed',
   DECLINED = 'declined',
   SIGNED = 'signed',
   VOIDED = 'voided',
@@ -547,6 +548,42 @@ export interface IRentRollItem {
   luid: string;
 }
 
+export interface LeaseESignatureCompletedPayload {
+  signers: Array<{
+    name: string;
+    email: string;
+    role: string;
+    signedAt?: Date;
+  }>;
+  propertyManagerId: string;
+  propertyUnitId?: string;
+  propertyId: string;
+  documentId: string;
+  completedAt: Date;
+  tenantId: string;
+  leaseId: string;
+  luid: string;
+  cuid: string;
+}
+
+/**
+ * Signature Interface
+ * Individual signature tracking
+ */
+export interface ILeaseSignature {
+  coTenantInfo?: {
+    name: string;
+    email: string;
+    phone: string;
+  };
+  role: 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
+  signatureMethod: 'manual' | 'electronic';
+  userId?: Types.ObjectId | string;
+  providerSignatureId?: string;
+  ipAddress?: string;
+  signedAt?: Date;
+}
+
 /**
  * Lease User Permissions Interface
  * User-specific permissions for lease operations
@@ -563,6 +600,21 @@ export interface ILeaseUserPermissions {
   canDownload: boolean;
   canDelete: boolean;
   canEdit: boolean;
+}
+
+export interface LeaseESignatureSentPayload {
+  signers: Array<{
+    name: string;
+    email: string;
+    role: string;
+  }>;
+  jobId: string | number;
+  envelopeId: string; // BoldSign document ID
+  leaseId: string;
+  actorId: string; // User who sent for signature
+  luid: string;
+  cuid: string;
+  sentAt: Date;
 }
 
 /**
@@ -602,6 +654,22 @@ export interface ILeaseListItem {
 }
 
 /**
+ * E-Signature Interface
+ * Tracks electronic signature provider details
+ */
+export interface ILeaseESignature {
+  status?: ILeaseESignatureStatusEnum;
+  provider: 'hellosign' | 'boldsign';
+  declinedReason?: string;
+  errorMessage?: string;
+  envelopeId?: string;
+  signingUrl?: string;
+  completedAt?: Date;
+  failedAt?: Date;
+  sentAt?: Date;
+}
+
+/**
  * Lease Document Item Interface
  * Tracks uploaded lease documents
  */
@@ -615,20 +683,6 @@ export interface ILeaseDocumentItem {
   size?: number;
   url: string;
   key: string;
-}
-
-export interface LeaseESignatureSentPayload {
-  signers: Array<{
-    name: string;
-    email: string;
-    role: string;
-  }>;
-  jobId: string | number;
-  envelopeId: string; // BoldSign document ID
-  leaseId: string;
-  luid: string;
-  cuid: string;
-  sentAt: Date;
 }
 
 /**
@@ -662,33 +716,6 @@ export interface ILeaseApprovalEntry {
 }
 
 /**
- * Signature Interface
- * Individual signature tracking
- */
-export interface ILeaseSignature {
-  role: 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
-  signatureMethod: 'manual' | 'electronic';
-  userId: Types.ObjectId | string;
-  providerSignatureId?: string;
-  ipAddress?: string;
-  signedAt: Date;
-}
-
-export interface LeaseESignatureCompletedPayload {
-  signers: Array<{
-    name: string;
-    email: string;
-    role: string;
-    signedAt?: Date;
-  }>;
-  documentId: string;
-  completedAt: Date;
-  leaseId: string;
-  luid: string;
-  cuid: string;
-}
-
-/**
  * E-Signature Request Data Interface
  * Used when sending lease for signature
  */
@@ -716,18 +743,14 @@ export interface ILeasePropertyInfo extends ILeaseProperty {
   pid?: string;
 }
 
-/**
- * E-Signature Interface
- * Tracks electronic signature provider details
- */
-export interface ILeaseESignature {
-  status?: ILeaseESignatureStatusEnum;
-  provider: 'hellosign' | 'boldsign';
-  declinedReason?: string;
-  envelopeId?: string;
-  signingUrl?: string;
-  completedAt?: Date;
-  sentAt?: Date;
+export interface LeaseESignatureFailedPayload {
+  jobId: string | number;
+  errorDetails?: any;
+  leaseId: string;
+  actorId: string; // User who attempted to send for signature
+  error: string;
+  luid: string;
+  cuid: string;
 }
 
 /**
@@ -798,15 +821,6 @@ export interface LeaseESignatureRequestedPayload {
   jobId: string | number;
   leaseId: string;
   actorId: string; // User who requested signature
-  luid: string;
-  cuid: string;
-}
-
-export interface LeaseESignatureFailedPayload {
-  jobId: string | number;
-  errorDetails?: any;
-  leaseId: string;
-  error: string;
   luid: string;
   cuid: string;
 }

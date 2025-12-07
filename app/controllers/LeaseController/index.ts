@@ -6,14 +6,12 @@ import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
 import { MediaUploadService, LeaseService } from '@services/index';
 import { LeaseTemplateService } from '@services/lease/leaseTemplateService';
-import { LeaseTemplateDataMapper } from '@services/lease/leaseTemplateDataMapper';
 
 export class LeaseController {
   private readonly log: Logger;
   private readonly leaseService: LeaseService;
   private readonly mediaUploadService: MediaUploadService;
   private readonly leaseTemplateService: LeaseTemplateService;
-  private readonly leaseTemplateDataMapper: LeaseTemplateDataMapper;
 
   constructor({
     leaseService,
@@ -26,7 +24,6 @@ export class LeaseController {
     this.mediaUploadService = mediaUploadService;
     this.leaseService = leaseService;
     this.leaseTemplateService = new LeaseTemplateService();
-    this.leaseTemplateDataMapper = new LeaseTemplateDataMapper();
   }
 
   createLease = async (req: AppRequest, res: Response) => {
@@ -293,9 +290,8 @@ export class LeaseController {
     const { cuid, luid } = req.params;
 
     const enrichedData = await this.leaseService.generateLeasePreview(cuid, luid);
-    const templateData = this.leaseTemplateDataMapper.transformForTemplate(enrichedData);
     const templateType = enrichedData.templateType || 'residential-single-family';
-    const html = await this.leaseTemplateService.renderLeasePreview(templateData, templateType);
+    const html = await this.leaseTemplateService.transformAndRender(enrichedData, templateType);
 
     res.status(httpStatusCodes.OK).json({
       success: true,

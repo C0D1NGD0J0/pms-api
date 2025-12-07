@@ -1,31 +1,33 @@
+/* eslint-disable no-case-declarations */
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
-import { PdfQueue } from '@queues/index';
 import sanitizeHtml from 'sanitize-html';
 import { LeaseCache } from '@caching/index';
+import { envVariables } from '@shared/config';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { ESignatureQueue, PdfQueue } from '@queues/index';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { PdfGeneratorService, MediaUploadService } from '@services/index';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
+import { ProcessedWebhookData } from '@services/esignature/boldSign.service';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { IPropertyDocument, IProfileWithUser, OwnershipType } from '@interfaces/index';
 import { NotificationPriorityEnum, NotificationTypeEnum } from '@interfaces/notification.interface';
+import {
+  EventEmitterService,
+  NotificationService,
+  InvitationService,
+  BoldSignService,
+} from '@services/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
   BadRequestError,
   ForbiddenError,
 } from '@shared/customErrors';
-import {
-  EventEmitterService,
-  NotificationService,
-  InvitationService,
-  BoldSignService,
-  S3Service,
-} from '@services/index';
 import {
   PROPERTY_APPROVAL_ROLES,
   determineTemplateType,
@@ -35,13 +37,12 @@ import {
   MoneyUtils,
 } from '@utils/index';
 import {
-  ILeaseESignatureStatusEnum,
-  ILeaseFilterOptions,
-  ILeaseDocument,
-  ILeaseFormData,
-  SigningMethod,
-  LeaseStatus,
-} from '@interfaces/lease.interface';
+  PdfGenerationRequestedPayload,
+  UploadCompletedPayload,
+  UploadFailedPayload,
+  PdfGeneratedPayload,
+  EventTypes,
+} from '@interfaces/events.interface';
 import {
   ListResultWithPagination,
   IPromiseReturnedData,
@@ -51,31 +52,39 @@ import {
   UploadResult,
 } from '@interfaces/utils.interface';
 import {
-  PdfGenerationRequestedPayload,
-  PdfGenerationFailedPayload,
-  UploadCompletedPayload,
-  UploadFailedPayload,
-  PdfGeneratedPayload,
-  EventTypes,
-} from '@interfaces/events.interface';
+  LeaseESignatureFailedPayload,
+  LeaseESignatureSentPayload,
+  ILeaseESignatureStatusEnum,
+  ILeaseFilterOptions,
+  ILeaseDocument,
+  ILeaseFormData,
+  SigningMethod,
+  LeaseStatus,
+} from '@interfaces/lease.interface';
 
 import { LeaseTemplateService } from './leaseTemplateService';
-import { LeaseTemplateDataMapper } from './leaseTemplateDataMapper';
-import { enforceLeaseApprovalRequirement } from './leaseValidators';
-import { generatePendingChangesPreview, filterLeaseByRole } from './leaseTransformers';
 import {
+  enforceLeaseApprovalRequirement,
+  validateLeaseReadyForSignature,
+  generatePendingChangesPreview,
+  validatePropertyUnitAvailable,
+  fetchPropertyManagerWithUser,
   handlePendingSignatureUpdate,
-  handleClosedStatusUpdate,
-  handleActiveUpdate,
-  handleDraftUpdate,
-} from './leaseUpdateHandlers';
-import {
+  validatePropertyAvailable,
   calculateFinancialSummary,
+  handleClosedStatusUpdate,
+  validateLeasePermissions,
   validateImmutableFields,
   constructActivityFeed,
   filterDocumentsByRole,
+  fetchTenantWithUser,
+  handleActiveUpdate,
   buildLeaseTimeline,
   getUserPermissions,
+  filterLeaseByRole,
+  fetchPropertyUnit,
+  handleDraftUpdate,
+  fetchLeaseByLuid,
 } from './leaseHelpers';
 
 interface IConstructor {
@@ -86,12 +95,12 @@ interface IConstructor {
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   boldSignService: BoldSignService;
+  eSignatureQueue: ESignatureQueue;
   invitationDAO: InvitationDAO;
   pdfGeneratorQueue: PdfQueue;
   propertyDAO: PropertyDAO;
   leaseCache: LeaseCache;
   profileDAO: ProfileDAO;
-  s3Service: S3Service;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
@@ -101,7 +110,6 @@ export class LeaseService {
   private readonly log: Logger;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
-  private readonly s3Service: S3Service;
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly leaseCache: LeaseCache;
@@ -109,6 +117,7 @@ export class LeaseService {
   private readonly pdfGeneratorQueue: PdfQueue;
   private readonly invitationDAO: InvitationDAO;
   private readonly boldSignService: BoldSignService;
+  private readonly esignatureQueue: ESignatureQueue;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
   private readonly invitationService: InvitationService;
@@ -116,7 +125,7 @@ export class LeaseService {
   private readonly pdfGeneratorService: PdfGeneratorService;
   private readonly notificationService: NotificationService;
   private readonly leaseTemplateService: LeaseTemplateService;
-  private readonly leaseTemplateDataMapper: LeaseTemplateDataMapper;
+  private readonly pendingSenderInfo: Map<string, { email: string; name: string }>;
 
   constructor({
     notificationService,
@@ -124,11 +133,11 @@ export class LeaseService {
     mediaUploadService,
     pdfGeneratorQueue,
     invitationService,
+    eSignatureQueue,
     emitterService,
     invitationDAO,
     propertyUnitDAO,
     boldSignService,
-    s3Service,
     propertyDAO,
     profileDAO,
     clientDAO,
@@ -139,14 +148,15 @@ export class LeaseService {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
     this.clientDAO = clientDAO;
-    this.s3Service = s3Service;
     this.profileDAO = profileDAO;
     this.leaseCache = leaseCache;
     this.propertyDAO = propertyDAO;
+    this.pendingSenderInfo = new Map();
     this.invitationDAO = invitationDAO;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
     this.boldSignService = boldSignService;
+    this.esignatureQueue = eSignatureQueue;
     this.log = createLogger('LeaseService');
     this.invitationService = invitationService;
     this.pdfGeneratorQueue = pdfGeneratorQueue;
@@ -154,7 +164,6 @@ export class LeaseService {
     this.pdfGeneratorService = pdfGeneratorService;
     this.notificationService = notificationService;
     this.leaseTemplateService = new LeaseTemplateService();
-    this.leaseTemplateDataMapper = new LeaseTemplateDataMapper();
     this.setupEventListeners();
   }
 
@@ -570,10 +579,10 @@ export class LeaseService {
       }
 
       validateImmutableFields(cleanUpdateData);
-
+      let result = null;
       switch (lease.status) {
         case LeaseStatus.PENDING_SIGNATURE:
-          return await handlePendingSignatureUpdate(
+          result = await handlePendingSignatureUpdate(
             cxt,
             lease,
             cleanUpdateData,
@@ -582,10 +591,11 @@ export class LeaseService {
             this.leaseDAO,
             this.leaseCache
           );
+          break;
         case LeaseStatus.TERMINATED:
         case LeaseStatus.CANCELLED:
         case LeaseStatus.EXPIRED:
-          return await handleClosedStatusUpdate(
+          result = await handleClosedStatusUpdate(
             cxt,
             lease,
             cleanUpdateData,
@@ -594,8 +604,9 @@ export class LeaseService {
             this.leaseDAO,
             this.leaseCache
           );
-        case LeaseStatus.ACTIVE: {
-          return await handleActiveUpdate(
+          break;
+        case LeaseStatus.ACTIVE:
+          result = await handleActiveUpdate(
             cxt,
             lease,
             cleanUpdateData,
@@ -605,9 +616,9 @@ export class LeaseService {
             this.profileDAO,
             this.leaseCache
           );
-        }
+          break;
         case LeaseStatus.DRAFT:
-          return await handleDraftUpdate(
+          result = await handleDraftUpdate(
             cxt,
             lease,
             cleanUpdateData,
@@ -616,15 +627,123 @@ export class LeaseService {
             this.profileDAO,
             this.leaseCache
           );
+          break;
         default:
           throw new ValidationRequestError({
             message: `Cannot update lease with status: ${lease.status}`,
           });
       }
+
+      return result
+        ? result
+        : { success: false, message: 'No updates were made to the lease.', data: null };
     } catch (error: any) {
       this.log.error('Error updating lease:', error);
       throw error;
     }
+  }
+
+  async sendLeaseForSignature(cxt: IRequestContext): Promise<ISuccessReturnData> {
+    const { cuid, luid } = cxt.request.params;
+    const currentuser = cxt.currentuser!;
+    validateLeasePermissions(currentuser, 'send leases for signature');
+
+    const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
+    if (!client) {
+      throw new BadRequestError({ message: 'Client not found' });
+    }
+
+    const lease = await fetchLeaseByLuid(this.leaseDAO, luid, cuid);
+    validateLeaseReadyForSignature(lease);
+    if (lease.signingMethod !== 'electronic') {
+      throw new BadRequestError({
+        message: 'Lease must be set to electronic signing method to use e-signature',
+      });
+    }
+
+    await fetchTenantWithUser(this.profileDAO, lease.tenantId);
+
+    const property = await this.propertyDAO.findFirst({ _id: lease.property.id, deletedAt: null });
+    if (!property) {
+      throw new BadRequestError({ message: 'Property not found' });
+    }
+    validatePropertyAvailable(property);
+    if (lease.property.unitId) {
+      const propertyUnit = await fetchPropertyUnit(
+        this.propertyUnitDAO,
+        lease.property.unitId as string
+      );
+      validatePropertyUnitAvailable(propertyUnit);
+    }
+
+    if (property.managedBy) {
+      await fetchPropertyManagerWithUser(this.profileDAO, property.managedBy);
+    }
+
+    let senderInfo: { email: string; name: string } = {
+      email: envVariables.BOLDSIGN.DEFAULT_SENDER_EMAIL,
+      name: envVariables.BOLDSIGN.DEFAULT_SENDER_NAME,
+    };
+    if (
+      client.accountType?.isEnterpriseAccount &&
+      client.companyProfile?.companyEmail &&
+      client.companyProfile?.legalEntityName
+    ) {
+      senderInfo = {
+        email: client.companyProfile.companyEmail,
+        name: client.companyProfile.legalEntityName,
+      };
+    }
+
+    const leasePDF = lease.leaseDocuments?.find(
+      (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
+    );
+    if (!leasePDF || !leasePDF.key) {
+      await this.pdfGeneratorQueue.addToPdfQueue({
+        resource: {
+          resourceId: lease._id.toString(),
+          resourceName: 'lease',
+          actorId: cxt.currentuser?.sub || 'system',
+          resourceType: 'document',
+          fieldName: 'leaseDocument',
+        },
+        cuid,
+        templateType: lease.property.propertyType || 'residential-single-family',
+        senderInfo,
+      });
+
+      return {
+        success: true,
+        message:
+          'PDF generation in progress. E-signature will be sent automatically when PDF is ready.',
+        data: {
+          status: 'pdf_generation_pending',
+          leaseId: luid,
+        },
+      };
+    }
+
+    const job = await this.esignatureQueue.addToESignatureRequestQueue({
+      resource: {
+        resourceId: lease._id.toString(),
+        resourceName: 'lease',
+        actorId: cxt.currentuser?.sub || 'system',
+        resourceType: 'document',
+        fieldName: 'eSignature',
+      },
+      cuid,
+      luid,
+      leaseId: lease._id.toString(),
+      senderInfo,
+    });
+
+    return {
+      success: true,
+      message: 'ESignature request queued for processing',
+      data: {
+        processId: job?.id,
+      },
+    };
   }
 
   async deleteLease(cuid: string, leaseId: string, userId: string): IPromiseReturnedData<boolean> {
@@ -726,11 +845,10 @@ export class LeaseService {
       }
 
       const previewData = await this.generateLeasePreview(cuid, lease.luid);
-      const templateData = this.leaseTemplateDataMapper.transformForTemplate(previewData);
       const finalTemplateType =
         templateType || determineTemplateType(lease.property.propertyType || '');
-      const html = await this.leaseTemplateService.renderLeasePreview(
-        templateData,
+      const html = await this.leaseTemplateService.transformAndRender(
+        previewData,
         finalTemplateType
       );
 
@@ -869,131 +987,6 @@ export class LeaseService {
   ): IPromiseReturnedData<ILeaseDocument> {
     this.log.info(`Removing document for lease ${leaseId}`);
     throw new Error('removeLeaseDocument not yet implemented');
-  }
-
-  async sendLeaseForSignature(cxt: IRequestContext): Promise<ISuccessReturnData> {
-    const { cuid, luid } = cxt.request.params;
-    const currentuser = cxt.currentuser!;
-
-    const userRole = convertUserRoleToEnum(currentuser.client.role);
-    if (!PROPERTY_STAFF_ROLES.includes(userRole) && !PROPERTY_APPROVAL_ROLES.includes(userRole)) {
-      throw new ForbiddenError({ message: 'You are not authorized to update leases.' });
-    }
-
-    const lease = await this.leaseDAO.findFirst({
-      luid,
-      cuid,
-      deletedAt: null,
-    });
-
-    if (!lease) {
-      throw new BadRequestError({ message: t('lease.errors.notFound') });
-    }
-
-    if (![LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT].includes(lease.status)) {
-      throw new ValidationRequestError({
-        message: 'Lease must be in DRAFT or PENDING_SIGNATURE state to send for signature',
-      });
-    }
-
-    if (
-      lease.eSignature?.status === ILeaseESignatureStatusEnum.SENT &&
-      lease.eSignature?.envelopeId
-    ) {
-      throw new ValidationRequestError({
-        message: 'Lease has already been sent for signatures',
-      });
-    }
-
-    const leasePDF = lease.leaseDocuments?.find(
-      (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
-    );
-    if (!leasePDF || !leasePDF.key) {
-      throw new ValidationRequestError({
-        message: 'Lease PDF must be uploaded before sending for signature',
-      });
-    }
-
-    const pdfBuffer = await this.s3Service.getFileBuffer(leasePDF.key);
-    if (!pdfBuffer) {
-      throw new ValidationRequestError({
-        message: 'Lease PDF must be generated before sending for signature',
-      });
-    }
-
-    const tenant = await this.profileDAO.findFirst({ _id: lease.tenantId }, { populate: 'user' });
-    if (!tenant || !tenant.user) {
-      throw new BadRequestError({ message: 'Tenant information not found' });
-    }
-    const tenantUser = typeof tenant.user === 'object' ? tenant.user : null;
-    if (!tenantUser || !(tenantUser as any).email) {
-      throw new BadRequestError({ message: 'Tenant email not found' });
-    }
-
-    // Get property manager/owner
-    const property = await this.propertyDAO.findFirst({ _id: lease.property.id, deletedAt: null });
-    if (!property) {
-      throw new BadRequestError({ message: 'Property not found' });
-    }
-
-    if (property.status !== 'available') {
-      throw new BadRequestError({
-        message: 'Cannot send lease for signatures, as the selected property is not available.',
-      });
-    }
-
-    let propertyUnit = null;
-    if (lease.property.unitId) {
-      propertyUnit = await this.propertyUnitDAO.findFirst({ _id: lease.property.unitId });
-      if (!propertyUnit) {
-        throw new BadRequestError({
-          message: 'Property unit not found, unable to proceed with sending lease for signature.',
-        });
-      }
-
-      if (propertyUnit.status !== 'available') {
-        throw new BadRequestError({
-          message: 'Cannot send lease for signatures, as the selected unit is not available.',
-        });
-      }
-    }
-
-    const propertyManager = await this.profileDAO.findFirst(
-      { user: property.managedBy },
-      { populate: 'user' }
-    );
-    if (!propertyManager || !propertyManager.user) {
-      throw new BadRequestError({ message: 'Property manager information not found' });
-    }
-    const pmUser = typeof propertyManager.user === 'object' ? propertyManager.user : null;
-    if (!pmUser || !(pmUser as any)?.email) {
-      throw new BadRequestError({ message: 'Property manager email not found' });
-    }
-
-    const signers = [
-      {
-        name:
-          `${tenant.personalInfo?.firstName || ''} ${tenant.personalInfo?.lastName || ''}`.trim() ||
-          'Tenant',
-        email: (tenantUser as any).email,
-        role: 'tenant' as const,
-        userId: (tenantUser as any)._id,
-      },
-      {
-        name:
-          `${propertyManager.personalInfo?.firstName || ''} ${propertyManager.personalInfo?.lastName || ''}`.trim() ||
-          'Property Manager',
-        email: (pmUser as any).email,
-        role: 'property_manager' as const,
-        userId: (pmUser as any)._id,
-      },
-    ];
-
-    return {
-      success: true,
-      message: 'sendLeaseForSignature not yet implemented',
-      data: { signers },
-    };
   }
 
   async markAsManualySigned(
@@ -1158,9 +1151,6 @@ export class LeaseService {
       typeof lease.property.id === 'string' ? lease.property.id : lease.property.id.toString();
     const landlordInfo = await this.buildLandlordInfo(cuid, propertyId);
 
-    // const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
-    // const ownershipType = property.owner?.type || 'company_owned';
-
     const baseData = {
       leaseNumber: lease.leaseNumber,
       templateType: lease.templateType,
@@ -1197,7 +1187,7 @@ export class LeaseService {
       propertyName: property.name,
       propertyType: property.propertyType,
       propertyAddress: lease.property.address,
-      unitNumber: (lease.property.unitId as any).unitNumber || 'N/A',
+      unitNumber: (lease as any).propertyUnitInfo?.unitNumber || 'N/A',
     };
 
     return baseData;
@@ -1630,25 +1620,44 @@ export class LeaseService {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
 
-    this.emitterService.on(EventTypes.PDF_GENERATION_REQUESTED, this.handlePdfGenerationRequest);
+    this.emitterService.on(
+      EventTypes.PDF_GENERATION_REQUESTED,
+      this.handlePdfGenerationRequest.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.PDF_GENERATED,
+      this.handlePdfGeneratedForESignature.bind(this)
+    );
 
+    this.emitterService.on(EventTypes.LEASE_ESIGNATURE_SENT, this.handleESignatureSent.bind(this));
+    this.emitterService.on(
+      EventTypes.LEASE_ESIGNATURE_FAILED,
+      this.handleESignatureFailed.bind(this)
+    );
     this.log.info('Lease service event listeners initialized');
   }
 
   private handlePdfGenerationRequest = async (
     payload: PdfGenerationRequestedPayload
   ): Promise<void> => {
-    const { templateType, jobId, resource, cuid } = payload;
-
     try {
-      this.log.info(
-        `Handling PDF generation request for lease ${resource.resourceId}, job ${jobId}`
-      );
+      const { jobId, resource, templateType, cuid, senderInfo } = payload;
 
-      // Call your existing generateLeasePDF method
+      this.log.info('Handling PDF generation request', { jobId, resourceId: resource.resourceId });
+
+      // Store senderInfo for later use when upload completes
+      if (senderInfo) {
+        this.pendingSenderInfo.set(resource.resourceId, senderInfo);
+      }
+
       const result = await this.generateLeasePDF(cuid, resource.resourceId, templateType);
 
-      if (result.success && result.pdfUrl) {
+      // Only emit PDF_GENERATED if PDF already existed (has real URL, not 'pending')
+      // Otherwise, wait for UPLOAD_COMPLETED event to emit PDF_GENERATED
+      if (result.success && result.pdfUrl?.startsWith('https://')) {
+        this.log.info('PDF already existed, emitting PDF_GENERATED immediately', {
+          leaseId: resource.resourceId,
+        });
         this.emitterService.emit(EventTypes.PDF_GENERATED, {
           jobId,
           leaseId: resource.resourceId,
@@ -1656,25 +1665,85 @@ export class LeaseService {
           s3Key: result.s3Key || '',
           fileSize: result.metadata?.fileSize,
           generationTime: result.metadata?.generationTime,
-        } as PdfGeneratedPayload);
-
-        this.log.info(`PDF generated successfully for lease ${resource.resourceId}`, {
-          jobId,
-          pdfUrl: result.pdfUrl,
+          senderInfo,
         });
+        // Clean up stored senderInfo
+        this.pendingSenderInfo.delete(resource.resourceId);
+      } else if (!result.success) {
+        this.emitterService.emit(EventTypes.PDF_GENERATION_FAILED, {
+          jobId,
+          resourceId: resource.resourceId,
+          error: result.error || 'PDF generation failed',
+        });
+        // Clean up stored senderInfo
+        this.pendingSenderInfo.delete(resource.resourceId);
       } else {
-        throw new Error(result.error || 'PDF generation failed');
+        // PDF is being uploaded, wait for UPLOAD_COMPLETED event
+        this.log.info('PDF upload in progress, waiting for UPLOAD_COMPLETED event', {
+          leaseId: resource.resourceId,
+        });
       }
     } catch (error) {
-      this.log.error(
-        { error, resourceId: resource.resourceId, jobId },
-        'Failed to handle PDF generation request'
-      );
-      this.emitterService.emit(EventTypes.PDF_GENERATION_FAILED, {
-        jobId,
-        resourceId: resource.resourceId,
+      this.log.error('Error handling PDF generation request', {
         error: error instanceof Error ? error.message : 'Unknown error',
-      } as PdfGenerationFailedPayload);
+        payload,
+      });
+
+      this.emitterService.emit(EventTypes.PDF_GENERATION_FAILED, {
+        jobId: payload.jobId,
+        resourceId: payload.resource.resourceId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      // Clean up stored senderInfo
+      this.pendingSenderInfo.delete(payload.resource.resourceId);
+    }
+  };
+
+  private handlePdfGeneratedForESignature = async (payload: PdfGeneratedPayload): Promise<void> => {
+    try {
+      const { leaseId, s3Key, senderInfo } = payload;
+
+      this.log.info('PDF generated, checking if e-signature is pending', { leaseId });
+
+      // Check if lease is waiting for e-signature
+      const lease = await this.leaseDAO.findById(leaseId);
+
+      if (!lease) {
+        this.log.warn('Lease not found for PDF generation event', { leaseId });
+        return;
+      }
+
+      // Only re-queue if lease status is DRAFT or PENDING and signingMethod is electronic
+      if (lease.signingMethod !== 'electronic' || !['pending', 'draft'].includes(lease.status)) {
+        this.log.info('Lease not waiting for e-signature, skipping', {
+          leaseId,
+          signingMethod: lease.signingMethod,
+          status: lease.status,
+        });
+        return;
+      }
+
+      // Re-queue e-signature job now that PDF is ready
+      this.log.info('Re-queueing e-signature job after PDF generation', { leaseId, s3Key });
+
+      await this.esignatureQueue.addToESignatureRequestQueue({
+        resource: {
+          resourceId: leaseId,
+          resourceName: 'lease',
+          actorId: lease.createdBy.toString(),
+          resourceType: 'document',
+          fieldName: 'eSignature',
+        },
+        cuid: lease.cuid,
+        luid: lease.luid,
+        leaseId,
+        senderInfo,
+      });
+    } catch (error) {
+      this.log.error('Error handling PDF generated event for e-signature', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      });
     }
   };
 
@@ -1969,6 +2038,7 @@ export class LeaseService {
       new Date(leaseData.duration.startDate),
       leaseData.duration.endDate ? new Date(leaseData.duration.endDate) : new Date('2099-12-31')
     );
+
     if (overlappingLeases.length > 0) {
       if (!validationErrors['lease']) validationErrors['lease'] = [];
       validationErrors['lease'].push(t('lease.errors.overlappingLease'));
@@ -2010,16 +2080,38 @@ export class LeaseService {
 
     try {
       await this.updateLeaseDocuments(resourceId, results, actorId);
+      const senderInfo = this.pendingSenderInfo.get(resourceId);
+      if (senderInfo) {
+        this.log.info('PDF upload completed, emitting PDF_GENERATED event', {
+          leaseId: resourceId,
+          hasSenderInfo: !!senderInfo,
+        });
 
-      this.log.info('Successfully processed lease upload completed event', {
-        leaseId: resourceId,
-        documentCount: results.length,
-      });
+        const pdfResult = results.find((r) => r.key && r.url);
+        if (pdfResult) {
+          this.emitterService.emit(EventTypes.PDF_GENERATED, {
+            jobId: 'upload-completed',
+            leaseId: resourceId,
+            pdfUrl: pdfResult.url,
+            s3Key: pdfResult.key || '',
+            fileSize: pdfResult.size,
+            senderInfo,
+          });
+
+          // Clean up stored senderInfo
+          this.pendingSenderInfo.delete(resourceId);
+        } else {
+          this.log.warn('No PDF result found in upload results', { resourceId });
+        }
+      }
     } catch (error) {
       this.log.error('Error processing lease upload completed event', {
         error: error instanceof Error ? error.message : 'Unknown error',
         leaseId: resourceId,
       });
+
+      // Clean up stored senderInfo on error
+      this.pendingSenderInfo.delete(resourceId);
 
       try {
         await this.markLeaseDocumentsAsFailed(
@@ -2045,15 +2137,299 @@ export class LeaseService {
 
     try {
       await this.markLeaseDocumentsAsFailed(resourceId, error.message);
-
-      this.log.info('Successfully marked lease documents as failed', {
-        leaseId: resourceId,
-      });
     } catch (markFailedError) {
       this.log.error('Failed to mark lease documents as failed', {
         error: markFailedError instanceof Error ? markFailedError.message : 'Unknown error',
         leaseId: resourceId,
       });
+    }
+  }
+
+  private async handleESignatureSent(payload: LeaseESignatureSentPayload): Promise<void> {
+    const { leaseId, luid, cuid, envelopeId, sentAt, actorId } = payload;
+
+    try {
+      const lease = await this.leaseDAO.update(
+        { _id: new Types.ObjectId(leaseId), cuid },
+        {
+          $set: {
+            status: LeaseStatus.PENDING_SIGNATURE,
+            'eSignature.envelopeId': envelopeId,
+            'eSignature.status': 'sent',
+            'eSignature.sentAt': sentAt,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      if (lease) {
+        // Send notifications to tenant and property manager
+        await this.notificationService.notifyLeaseESignatureSent({
+          leaseNumber: lease.leaseNumber,
+          leaseName: `Lease ${lease.leaseNumber}`,
+          tenantId: lease.tenantId.toString(),
+          propertyManagerId: lease.createdBy.toString(),
+          envelopeId,
+          actorId,
+          cuid,
+          resource: {
+            resourceId: leaseId,
+            resourceUid: luid,
+            resourceType: 'lease' as any,
+          },
+        });
+      }
+    } catch (error) {
+      this.log.error('Error handling LEASE_ESIGNATURE_SENT event', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        luid,
+      });
+    }
+  }
+
+  /**
+   * Handle failed e-signature send
+   */
+  private async handleESignatureFailed(payload: LeaseESignatureFailedPayload): Promise<void> {
+    const { leaseId, luid, cuid, error, actorId } = payload;
+
+    try {
+      const lease = await this.leaseDAO.update(
+        { _id: new Types.ObjectId(leaseId) },
+        {
+          $set: {
+            'eSignature.status': 'failed',
+            'eSignature.error': error,
+            updatedAt: new Date(),
+          },
+        }
+      );
+      await this.leaseCache.invalidateLease(cuid, luid);
+      if (lease) {
+        // Notify property manager about the failure
+        await this.notificationService.notifyLeaseESignatureFailed({
+          leaseNumber: lease.leaseNumber,
+          error,
+          propertyManagerId: lease.createdBy.toString(),
+          actorId,
+          cuid,
+          resource: {
+            resourceId: leaseId,
+            resourceUid: luid,
+            resourceType: 'lease' as any,
+          },
+        });
+      }
+
+      this.log.info('Successfully handled LEASE_ESIGNATURE_FAILED event', { luid });
+    } catch (error) {
+      this.log.error('Error handling LEASE_ESIGNATURE_FAILED event', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        luid,
+      });
+    }
+  }
+
+  /**
+   * Handle e-signature webhook events from BoldSign
+   * Processes all webhook event types in one method
+   */
+  async handleESignatureWebhook(
+    eventType: string,
+    documentId: string,
+    data: any,
+    processedData?: ProcessedWebhookData
+  ): Promise<void> {
+    try {
+      const { recentSigner } = processedData || {};
+      const lease = await this.leaseDAO.findFirst({ 'eSignature.envelopeId': documentId });
+      let result = null;
+
+      if (!lease) {
+        this.log.warn('Lease not found for envelope ID', { documentId });
+        throw new Error('Lease not found for envelope ID');
+      }
+
+      switch (eventType) {
+        case 'SendFailed':
+          result = await this.leaseDAO.update(lease._id, {
+            'eSignature.status': ILeaseESignatureStatusEnum.VOIDED,
+            'eSignature.errorMessage': data?.errorMessage || 'Send failed',
+            'eSignature.failedAt': new Date(),
+            status: LeaseStatus.DRAFT,
+            updatedAt: new Date(),
+          });
+          break;
+
+        case 'Completed':
+          result = await this.leaseDAO.update(
+            { _id: lease._id },
+            {
+              'eSignature.status': ILeaseESignatureStatusEnum.COMPLETED,
+              'eSignature.completedAt': new Date(data?.completedDate || Date.now()),
+              status: LeaseStatus.ACTIVE,
+              updatedAt: new Date(),
+            }
+          );
+
+          this.emitterService.emit(EventTypes.LEASE_ESIGNATURE_COMPLETED, {
+            leaseId: lease._id.toString(),
+            luid: lease.luid,
+            cuid: lease.cuid,
+            tenantId: lease.tenantId.toString(),
+            propertyId: lease.property.id.toString(),
+            propertyUnitId: lease.property.unitId?.toString(),
+            propertyManagerId: lease.createdBy.toString(),
+            documentId,
+            completedAt: new Date(data?.completedDate || Date.now()),
+            signers: data?.signers || [],
+          });
+          break;
+
+        case 'Declined':
+          result = await this.leaseDAO.update(
+            { _id: lease._id },
+            {
+              'eSignature.status': ILeaseESignatureStatusEnum.DECLINED,
+              'eSignature.declinedReason': data?.declineReason,
+              status: LeaseStatus.DRAFT,
+              updatedAt: new Date(),
+            }
+          );
+          break;
+
+        case 'Expired':
+          result = await this.leaseDAO.update(
+            { _id: lease._id },
+            {
+              'eSignature.status': ILeaseESignatureStatusEnum.VOIDED,
+              status: LeaseStatus.DRAFT,
+              updatedAt: new Date(),
+            }
+          );
+          break;
+
+        case 'Revoked':
+          result = await this.leaseDAO.update(lease._id, {
+            'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
+            status: LeaseStatus.DRAFT,
+            updatedAt: new Date(),
+          });
+          break;
+
+        case 'Signed':
+          if (!recentSigner) {
+            this.log.warn('No signer info provided in Signed event', {
+              leaseId: lease._id,
+              luid: lease.luid,
+            });
+            break;
+          }
+
+          let signerId: Types.ObjectId | undefined;
+          let signerRole: 'tenant' | 'co_tenant' | 'landlord' | 'property_manager' = 'tenant';
+          let coTenantInfo: { name: string; email: string } | undefined;
+
+          if (lease.tenantId) {
+            const tenant = await this.profileDAO.findFirst(
+              { user: lease.tenantId },
+              { populate: 'user' }
+            );
+            const tenantUser =
+              tenant?.user && typeof tenant.user === 'object' ? (tenant.user as any) : null;
+            if (tenantUser?.email === recentSigner.email) {
+              signerId = lease.tenantId as Types.ObjectId;
+              signerRole = 'tenant';
+            }
+          }
+
+          if (!signerId && lease.coTenants) {
+            const coTenant = lease.coTenants.find((ct) => ct.email === recentSigner.email);
+            if (coTenant) {
+              signerRole = 'co_tenant';
+              coTenantInfo = {
+                name: coTenant.name,
+                email: coTenant.email,
+              };
+            }
+          }
+
+          if (!signerId && lease.property?.id) {
+            const property = await this.propertyDAO.findFirst({ _id: lease.property.id });
+            if (property?.managedBy) {
+              const pm = await this.profileDAO.findFirst(
+                { user: property.managedBy },
+                { populate: 'user' }
+              );
+              const pmUser = pm?.user && typeof pm.user === 'object' ? (pm.user as any) : null;
+              if (pmUser?.email === recentSigner.email) {
+                signerId = property.managedBy as Types.ObjectId;
+                signerRole = 'property_manager';
+              }
+            }
+          }
+
+          const signatureEntry: any = {
+            role: signerRole,
+            signatureMethod: 'electronic',
+            signedAt: recentSigner.signedAt,
+            ...(signerId ? { userId: signerId } : {}),
+            ...(coTenantInfo ? { coTenantInfo } : {}),
+          };
+
+          // check if signature already exists to prevent duplicates
+          let signatureExists = false;
+          if (signerId) {
+            // For users with userId, check by userId
+            signatureExists =
+              lease.signatures?.some((sig) => sig.userId?.toString() === signerId.toString()) ||
+              false;
+          } else if (coTenantInfo) {
+            // For co-tenants without userId, check by email
+            signatureExists =
+              lease.signatures?.some((sig) => sig.coTenantInfo?.email === coTenantInfo.email) ||
+              false;
+          }
+
+          if (!signatureExists) {
+            await this.leaseDAO.update(
+              { _id: lease._id },
+              {
+                $push: { signatures: signatureEntry },
+              }
+            );
+          }
+          break;
+        default:
+          this.log.info('Unhandled webhook event type', { eventType, documentId });
+      }
+      this.log.info('Webhook event type', result ? 'processed successfully' : 'no changes made', {
+        eventType,
+        documentId,
+        result,
+      });
+    } catch (error: any) {
+      this.log.error('Error handling e-signature webhook', {
+        eventType,
+        documentId,
+        error: error.message,
+        stack: error.stack,
+      });
+      throw error;
+    }
+  }
+
+  async revokeLease(leaseId: string, reason: string): Promise<void> {
+    try {
+      const lease = await this.leaseDAO.findFirst({ luid: leaseId });
+      if (!lease) {
+        throw new Error('Lease not found');
+      }
+      await this.boldSignService.revokeDocument(lease.eSignature?.envelopeId ?? '', reason);
+      this.log.info('Lease revoked successfully', { leaseId, reason });
+    } catch (error: any) {
+      this.log.error('Error revoking lease', { leaseId, error: error.message });
+      throw error;
     }
   }
 
@@ -2063,7 +2439,8 @@ export class LeaseService {
   cleanupEventListeners(): void {
     this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
     this.emitterService.off(EventTypes.UPLOAD_FAILED, this.handleUploadFailed);
-
+    this.emitterService.off(EventTypes.LEASE_ESIGNATURE_SENT, this.handleESignatureSent);
+    this.emitterService.off(EventTypes.LEASE_ESIGNATURE_FAILED, this.handleESignatureFailed);
     this.log.info('Lease service event listeners removed');
   }
 }

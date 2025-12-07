@@ -39,6 +39,7 @@ export const QUEUE_NAMES = {
   PDF_GENERATION_QUEUE: 'pdfGenerationQueue',
   ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
   DOCUMENT_PROCESSING_QUEUE: 'documentProcessingQueue',
+  LEASE_SIGNATURE_REQUEST_QUEUE: 'leaseSignatureRequestQueue',
   PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
 };
 
@@ -50,10 +51,11 @@ export const JOB_NAME = {
   CSV_VALIDATION_JOB: 'csv_validation',
   MEDIA_REMOVAL_JOB: 'mediaRemovalJob',
   PDF_GENERATION_JOB: 'pdfGenerationJob',
-  PROPERTY_CREATE_JOB: 'propertyCreateJob',
+  REQUEST_SIGNATURE: 'request_signature',
   PROPERTY_UPDATE_JOB: 'propertyUpdateJob',
   PROPERTY_DELETE_JOB: 'propertyDeleteJob',
   DOCUMENT_UPDATE_JOB: 'documentUpdateJob',
+  PROPERTY_CREATE_JOB: 'propertyCreateJob',
   DOCUMENT_FAILURE_JOB: 'documentFailureJob',
   UNIT_BATCH_CREATION_JOB: 'unitBatchCreation',
   ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',

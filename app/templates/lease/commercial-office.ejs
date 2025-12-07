@@ -930,6 +930,8 @@
           <div class="signature-line">
             <% if (signingMethod === 'electronic' && landlordSignatureUrl) { %>
             <img src="<%= landlordSignatureUrl %>" alt="Landlord Signature">
+            <% } else if (signingMethod === 'electronic') { %>
+            <span style="color: white; text-transform: none;">{{sign|1|*}}</span>
             <% } %>
           </div>
           <div class="signature-name"><strong><%= landlordName %></strong></div>
@@ -942,7 +944,7 @@
           </div>
           <div class="signature-date-row">
             <span class="date-label">Date Signed:</span>
-            <div class="date-line"><%= signedDate %></div>
+            <div class="date-line"><% if (signingMethod === 'electronic') { %><span style="color: white; text-transform: none;">{{date|1|*}}</span><% } else { %><%= signedDate %><% } %></div>
           </div>
         </div>
 
@@ -953,33 +955,33 @@
             <% if (signingMethod === 'electronic' && tenantSignatureUrl) { %>
             <img src="<%= tenantSignatureUrl %>" alt="Tenant Signature">
             <% } else { %>
-            <span style="color: white;">{{sign|1|*|tenant_sig}}</span>
+            <span style="color: white; text-transform: none;">{{sign|2|*}}</span>
             <% } %>
           </div>
           <div class="signature-name"><strong><%= tenantName %></strong></div>
           <div class="signature-title">Primary Lessee</div>
           <div class="signature-date-row">
             <span class="date-label">Date Signed:</span>
-            <div class="date-line"><%= signedDate %></div>
+            <div class="date-line"><% if (signingMethod === 'electronic') { %><span style="color: white; text-transform: none;">{{date|2|*}}</span><% } else { %><%= signedDate %><% } %></div>
           </div>
         </div>
 
         <!-- Co-Tenant Signatures -->
         <% if (coTenants && coTenants.length > 0) { %>
-        <% coTenants.forEach((coTenant, coTenantIndex) => { %>
-        <div class="signature-block">
-          <div class="signature-label">Co-Tenant / Co-Lessee</div>
-          <div class="signature-line">
-            <span style="color: white;">{{sign|<%= 2 + coTenantIndex %>|*|cotenant_<%= coTenantIndex %>_sig}}</span>
-          </div>
-          <div class="signature-name"><strong><%= coTenant.name %></strong></div>
-          <div class="signature-title">Co-Lessee</div>
-          <div class="signature-date-row">
-            <span class="date-label">Date Signed:</span>
-            <div class="date-line">_____________________</div>
-          </div>
-        </div>
-        <% }); %>
+          <% coTenants.forEach((coTenant, coTenantIndex) => { %>
+            <div class="signature-block">
+              <div class="signature-label">Co-Tenant / Co-Lessee</div>
+              <div class="signature-line">
+                <span style="color: white; text-transform: none;">{{sign|<%= 3 + coTenantIndex %>|*}}</span>
+              </div>
+              <div class="signature-name"><strong><%= coTenant.name %></strong></div>
+              <div class="signature-title">Co-Lessee</div>
+              <div class="signature-date-row">
+                <span class="date-label">Date Signed:</span>
+                <div class="date-line"><span style="color: white; text-transform: none;">{{date|<%= 3 + coTenantIndex %>|*}}</span></div>
+              </div>
+            </div>
+          <% }); %>
         <% } %>
       </div>
     </div>

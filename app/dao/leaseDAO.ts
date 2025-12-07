@@ -687,9 +687,6 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         let mimeType = 'application/pdf'; // default
         if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
         else if (ext === 'png') mimeType = 'image/png';
-        else if (ext === 'doc') mimeType = 'application/msword';
-        else if (ext === 'docx')
-          mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
         return {
           documentType: (upload as any).documentType || 'lease_agreement',
@@ -703,9 +700,39 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         };
       });
 
+      // Check if any of the new documents is a lease_agreement
+      const hasLeaseAgreement = processedDocuments.some(
+        (doc) => doc.documentType === 'lease_agreement'
+      );
+
+      // If uploading a lease_agreement, mark existing active lease_agreements as inactive
+      if (hasLeaseAgreement) {
+        this.log.info('Marking existing active lease_agreement documents as inactive', {
+          leaseId,
+        });
+
+        await this.update(
+          { _id: new Types.ObjectId(leaseId), deletedAt: null },
+          {
+            $set: {
+              'leaseDocuments.$[elem].status': 'inactive',
+            },
+          },
+          {
+            arrayFilters: [
+              {
+                'elem.documentType': 'lease_agreement',
+                'elem.status': 'active',
+              },
+            ],
+          }
+        );
+      }
+
+      // Now push the new documents
       const updateOperation: any = {
         $push: {
-          leaseDocument: { $each: processedDocuments },
+          leaseDocuments: { $each: processedDocuments },
         },
         $set: {
           lastModifiedBy: [
@@ -720,6 +747,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       this.log.info('Updating lease documents', {
         leaseId,
         documentCount: processedDocuments.length,
+        hasLeaseAgreement,
       });
 
       return await this.update(

@@ -352,6 +352,13 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         type: String,
         trim: true,
       },
+      errorMessage: {
+        type: String,
+        trim: true,
+      },
+      failedAt: {
+        type: Date,
+      },
     },
     signatures: [
       {
@@ -360,6 +367,17 @@ const LeaseSchema = new Schema<ILeaseDocument>(
           ref: 'User',
           required: true,
         },
+        coTenantInfo: {
+          name: {
+            type: String,
+            trim: true,
+          },
+          email: {
+            type: String,
+            trim: true,
+            match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email address'],
+          },
+        },
         role: {
           type: String,
           enum: ['tenant', 'co_tenant', 'landlord', 'property_manager'],
@@ -367,8 +385,6 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         },
         signedAt: {
           type: Date,
-          required: true,
-          default: Date.now,
         },
         signatureMethod: {
           type: String,

@@ -113,6 +113,9 @@ const ClientSchema = new Schema<IClientDocument>(
         type: String,
         trim: true,
         index: true,
+        required: function (this: IClientDocument) {
+          return this.accountType?.isEnterpriseAccount === true;
+        },
       },
       tradingName: {
         type: String,
@@ -122,6 +125,9 @@ const ClientSchema = new Schema<IClientDocument>(
         type: String,
         trim: true,
         lowercase: true,
+        required: function (this: IClientDocument) {
+          return this.accountType?.isEnterpriseAccount === true;
+        },
         validate: {
           validator: function (v: string) {
             if (!v) return true;
@@ -141,6 +147,9 @@ const ClientSchema = new Schema<IClientDocument>(
         trim: true,
         minlength: 5,
         lowercase: true,
+        required: function (this: IClientDocument) {
+          return this.accountType?.isEnterpriseAccount === true;
+        },
       },
       registrationNumber: {
         type: String,
@@ -167,6 +176,9 @@ const ClientSchema = new Schema<IClientDocument>(
       companyPhone: {
         type: String,
         trim: true,
+        required: function (this: IClientDocument) {
+          return this.accountType?.isEnterpriseAccount === true;
+        },
         validate: {
           validator: function (v: string) {
             return isValidPhoneNumber(v);

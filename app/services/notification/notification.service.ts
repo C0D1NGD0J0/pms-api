@@ -2,11 +2,12 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/helpers';
 import { ICurrentUser } from '@interfaces/user.interface';
+import { EventTypes } from '@interfaces/events.interface';
 import { ResourceContext } from '@interfaces/utils.interface';
-import { ProfileService, UserService, SSEService } from '@services/index';
 import { NotificationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES } from '@utils/constants';
 import { ISuccessReturnData, IPaginationQuery } from '@interfaces/utils.interface';
+import { EventEmitterService, ProfileService, UserService, SSEService } from '@services/index';
 import {
   CreateNotificationWithRulesSchema,
   UpdateNotificationSchema,
@@ -24,6 +25,7 @@ import {
 import { getFormattedNotification, NotificationMessageKey } from './notificationMessages';
 
 interface IConstructor {
+  emitterService: EventEmitterService;
   notificationDAO: NotificationDAO;
   profileService: ProfileService;
   userService: UserService;
@@ -35,6 +37,7 @@ interface IConstructor {
 
 export class NotificationService {
   private readonly notificationDAO: NotificationDAO;
+  private readonly emitterService: EventEmitterService;
   private readonly userService: UserService;
   private readonly sseService: SSEService;
   private readonly profileService: ProfileService;
@@ -45,6 +48,7 @@ export class NotificationService {
 
   constructor({
     notificationDAO,
+    emitterService,
     profileDAO,
     clientDAO,
     userDAO,
@@ -53,14 +57,16 @@ export class NotificationService {
     profileService,
   }: IConstructor) {
     this.userDAO = userDAO;
-    this.setupEventListeners();
     this.clientDAO = clientDAO;
     this.sseService = sseService;
     this.profileDAO = profileDAO;
     this.userService = userService;
+    this.emitterService = emitterService;
     this.profileService = profileService;
     this.notificationDAO = notificationDAO;
     this.log = createLogger('NotificationService');
+
+    this.setupEventListeners();
   }
 
   async createNotification(
@@ -998,6 +1004,138 @@ export class NotificationService {
   }
 
   /**
+   * Notify relevant parties when lease is sent for e-signature
+   */
+  async notifyLeaseESignatureSent(params: {
+    leaseNumber: string;
+    leaseName: string;
+    tenantId: string;
+    propertyManagerId: string;
+    envelopeId: string;
+    actorId: string;
+    cuid: string;
+    resource: { resourceId: string; resourceUid: string; resourceType: ResourceContext };
+  }): Promise<void> {
+    const {
+      leaseNumber,
+      leaseName,
+      tenantId,
+      propertyManagerId,
+      envelopeId,
+      actorId,
+      cuid,
+      resource,
+    } = params;
+
+    try {
+      // Notify property manager/landlord
+      await this.createNotification(cuid, NotificationTypeEnum.LEASE, {
+        type: NotificationTypeEnum.LEASE,
+        priority: NotificationPriorityEnum.MEDIUM,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: propertyManagerId,
+        author: actorId,
+        title: 'Lease Sent for Signature',
+        message: `${leaseName} has been sent for e-signature.`,
+        metadata: {
+          leaseNumber,
+          envelopeId,
+          action: 'lease_esignature_sent',
+        },
+        resourceInfo: {
+          resourceId: resource.resourceId,
+          resourceUid: resource.resourceUid,
+          resourceName: resource.resourceType,
+        },
+        cuid,
+      });
+
+      // Notify tenant
+      await this.createNotification(cuid, NotificationTypeEnum.LEASE, {
+        type: NotificationTypeEnum.LEASE,
+        priority: NotificationPriorityEnum.HIGH,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: tenantId,
+        author: actorId,
+        title: 'Please Sign Your Lease',
+        message: `${leaseName} is ready for your signature. Please check your email for the signing link.`,
+        metadata: {
+          leaseNumber,
+          envelopeId,
+          action: 'lease_esignature_sent',
+        },
+        resourceInfo: {
+          resourceId: resource.resourceId,
+          resourceUid: resource.resourceUid,
+          resourceName: resource.resourceType,
+        },
+        cuid,
+      });
+
+      this.log.info('Lease e-signature sent notifications created', {
+        leaseNumber,
+        tenantId,
+        propertyManagerId,
+        envelopeId,
+      });
+    } catch (error) {
+      this.log.error('Failed to send lease e-signature sent notifications', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        leaseNumber,
+        envelopeId,
+      });
+    }
+  }
+
+  /**
+   * Notify property manager when lease e-signature request fails
+   */
+  async notifyLeaseESignatureFailed(params: {
+    leaseNumber: string;
+    error: string;
+    propertyManagerId: string;
+    actorId: string;
+    cuid: string;
+    resource: { resourceId: string; resourceUid: string; resourceType: ResourceContext };
+  }): Promise<void> {
+    const { leaseNumber, error, propertyManagerId, actorId, cuid, resource } = params;
+
+    try {
+      await this.createNotification(cuid, NotificationTypeEnum.LEASE, {
+        type: NotificationTypeEnum.LEASE,
+        priority: NotificationPriorityEnum.HIGH,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: propertyManagerId,
+        author: actorId,
+        title: 'Failed to Send Lease for Signature',
+        message: `Failed to send ${leaseNumber} for e-signature: ${error}`,
+        metadata: {
+          leaseNumber,
+          error,
+          action: 'lease_esignature_failed',
+        },
+        resourceInfo: {
+          resourceId: resource.resourceId,
+          resourceUid: resource.resourceUid,
+          resourceName: resource.resourceType,
+        },
+        cuid,
+      });
+
+      this.log.info('Lease e-signature failed notification created', {
+        leaseNumber,
+        propertyManagerId,
+        error,
+      });
+    } catch (notificationError) {
+      this.log.error('Failed to send lease e-signature failed notification', {
+        error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+        leaseNumber,
+      });
+    }
+  }
+
+  /**
    * Find user's supervisor - delegates to UserService
    */
   async findUserSupervisor(userId: string, cuid: string): Promise<string | null> {
@@ -1302,6 +1440,7 @@ export class NotificationService {
       const typeToPreferenceMap: Record<NotificationTypeEnum, keyof typeof preferences> = {
         [NotificationTypeEnum.ANNOUNCEMENT]: 'announcements',
         [NotificationTypeEnum.MAINTENANCE]: 'maintenance',
+        [NotificationTypeEnum.LEASE]: 'system', // Map LEASE to system notifications
         [NotificationTypeEnum.PROPERTY]: 'propertyUpdates',
         [NotificationTypeEnum.MESSAGE]: 'messages',
         [NotificationTypeEnum.COMMENT]: 'comments',
@@ -1309,6 +1448,9 @@ export class NotificationService {
         [NotificationTypeEnum.SYSTEM]: 'system',
         [NotificationTypeEnum.TASK]: 'system', // Map TASK to system notifications
         [NotificationTypeEnum.USER]: 'system', // Map USER to system notifications
+        [NotificationTypeEnum.SUCCESS]: 'system', // Map SUCCESS to system notifications
+        [NotificationTypeEnum.ERROR]: 'system', // Map ERROR to system notifications
+        [NotificationTypeEnum.INFO]: 'system', // Map INFO to system notifications
       };
 
       const preferenceField = typeToPreferenceMap[notificationType];
@@ -1344,7 +1486,63 @@ export class NotificationService {
     }
   }
 
-  private setupEventListeners(): void {}
+  private setupEventListeners(): void {
+    this.emitterService.on(
+      EventTypes.LEASE_ESIGNATURE_COMPLETED,
+      this.handleLeaseActivated.bind(this)
+    );
+
+    this.log.info('Notification service event listeners initialized');
+  }
+
+  private async handleLeaseActivated(payload: any): Promise<void> {
+    try {
+      const { leaseId, luid, cuid, tenantId, propertyManagerId } = payload;
+
+      this.log.info('Sending lease activation notifications', {
+        leaseId,
+        luid,
+      });
+
+      await this.createNotification(cuid, NotificationTypeEnum.LEASE, {
+        cuid,
+        type: NotificationTypeEnum.LEASE,
+        recipient: tenantId,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.HIGH,
+        title: 'Lease Activated',
+        message: `Your lease ${luid} has been fully signed and is now active.`,
+        metadata: {
+          leaseId,
+          luid,
+        },
+      });
+
+      await this.createNotification(cuid, NotificationTypeEnum.LEASE, {
+        cuid,
+        type: NotificationTypeEnum.LEASE,
+        recipient: propertyManagerId,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.MEDIUM,
+        title: 'Lease Activated',
+        message: `Lease ${luid} has been fully signed and activated.`,
+        metadata: {
+          leaseId,
+          luid,
+        },
+      });
+
+      this.log.info('Lease activation notifications sent', {
+        leaseId,
+        luid,
+      });
+    } catch (error) {
+      this.log.error('Error sending lease activation notifications', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      });
+    }
+  }
 
   async destroy(): Promise<void> {}
 }

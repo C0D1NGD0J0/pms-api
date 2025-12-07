@@ -17,12 +17,13 @@ export enum NotificationTypeEnum {
   MESSAGE = 'message',
   COMMENT = 'comment',
   PAYMENT = 'payment',
-  SUCCESS = 'SUCCESS',
+  SUCCESS = 'success',
   SYSTEM = 'system',
-  ERROR = 'ERROR',
+  LEASE = 'lease',
+  ERROR = 'error',
   TASK = 'task',
   USER = 'user',
-  INFO = 'INFO',
+  INFO = 'info',
 }
 
 export enum NotificationPriorityEnum {

@@ -129,7 +129,7 @@ const NotificationSchema = new Schema<INotificationDocument>(
     author: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      default: undefined,
     },
   },
   {

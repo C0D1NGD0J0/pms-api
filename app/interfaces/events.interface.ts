@@ -134,6 +134,32 @@ export interface UnitBatchChangedPayload {
   cuid: string; // Client ID
 }
 
+export interface UploadCompletedPayload {
+  senderInfo?: {
+    email: string;
+    name: string;
+  };
+  results: UploadResult[];
+  resourceName: string;
+  resourceType: string;
+  resourceId: string;
+  fieldName: string;
+  actorId: string;
+}
+
+export interface PdfGeneratedPayload {
+  senderInfo?: {
+    email: string;
+    name: string;
+  };
+  generationTime?: number;
+  jobId: string | number;
+  fileSize?: number;
+  leaseId: string;
+  pdfUrl: string;
+  s3Key: string;
+}
+
 export interface SystemErrorPayload {
   error: {
     message: string;
@@ -144,6 +170,17 @@ export interface SystemErrorPayload {
   resourceType?: string;
   resourceId?: string;
   context?: any;
+}
+
+export interface PdfGenerationRequestedPayload {
+  senderInfo?: {
+    email: string;
+    name: string;
+  };
+  jobId: string | number;
+  resource: ResourceInfo;
+  templateType?: string;
+  cuid: string;
 }
 
 // Generic background job notification payload
@@ -168,24 +205,6 @@ export interface EmailFailedPayload {
   to: string;
 }
 
-export interface UploadCompletedPayload {
-  results: UploadResult[];
-  resourceName: string;
-  resourceType: string;
-  resourceId: string;
-  fieldName: string;
-  actorId: string;
-}
-
-export interface PdfGeneratedPayload {
-  generationTime?: number;
-  jobId: string | number;
-  fileSize?: number;
-  leaseId: string;
-  pdfUrl: string;
-  s3Key: string;
-}
-
 export interface UploadFailedPayload {
   error: {
     message: string;
@@ -194,13 +213,6 @@ export interface UploadFailedPayload {
   };
   resourceType: string;
   resourceId: string;
-}
-
-export interface PdfGenerationRequestedPayload {
-  jobId: string | number;
-  resource: ResourceInfo;
-  templateType?: string;
-  cuid: string;
 }
 
 export interface PropertyUpdatedPayload {

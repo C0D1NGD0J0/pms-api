@@ -1,5 +1,7 @@
 import { Types } from 'mongoose';
 
+import { ResourceInfo } from './utils.interface';
+
 export interface IBoldSignWebhookPayload {
   signers: Array<{
     signerName: string;
@@ -32,6 +34,10 @@ export interface IDocumentStatus {
 }
 
 export interface ISendDocumentParams {
+  senderInfo?: {
+    email: string;
+    name: string;
+  };
   pdfFileName: string;
   expiryDays?: number;
   signers: ISigner[];
@@ -40,13 +46,26 @@ export interface ISendDocumentParams {
   title: string;
 }
 
-export interface IBoldSignDocumentResponse {
-  signers: Array<{
-    signerEmail: string;
-    signerOrder: number;
-    signLink: string;
+export interface BoldSignJobResult {
+  signers?: Array<{
+    name: string;
+    email: string;
+    signLink?: string;
   }>;
-  documentId: string;
+  documentId?: string; // BoldSign document ID
+  success: boolean;
+  error?: string;
+}
+
+export interface BoldSignJobData {
+  senderInfo?: {
+    email: string;
+    name: string;
+  };
+  resource: ResourceInfo;
+  leaseId: string;
+  cuid: string;
+  luid: string;
 }
 
 export interface ISigner {
@@ -54,4 +73,8 @@ export interface ISigner {
   userId?: Types.ObjectId;
   email: string;
   name: string;
+}
+
+export interface IBoldSignDocumentResponse {
+  documentId: string;
 }

@@ -47,6 +47,7 @@ import {
   DocumentProcessingWorker,
   PropertyUnitWorker,
   InvitationWorker,
+  ESignatureWorker,
   PropertyWorker,
   UploadWorker,
   EmailWorker,
@@ -56,6 +57,7 @@ import {
   DocumentProcessingQueue,
   PropertyUnitQueue,
   InvitationQueue,
+  ESignatureQueue,
   EventBusQueue,
   PropertyQueue,
   UploadQueue,
@@ -67,6 +69,7 @@ import {
   PropertyUnitController,
   InvitationController,
   PropertyController,
+  WebhookController,
   ClientController,
   VendorController,
   LeaseController,
@@ -105,6 +108,7 @@ const ControllerResources = {
   propertyUnitController: asClass(PropertyUnitController).scoped(),
   notificationController: asClass(NotificationController).scoped(),
   emailTemplateController: asClass(EmailTemplateController).scoped(),
+  webhookController: asClass(WebhookController).scoped(),
 };
 
 const ModelResources = {
@@ -192,6 +196,7 @@ const WorkerResources = {
   uploadWorker: asClass(UploadWorker).singleton(),
   pdfGeneratorWorker: asClass(PdfWorker).singleton(),
   propertyWorker: asClass(PropertyWorker).singleton(),
+  eSignatureWorker: asClass(ESignatureWorker).singleton(),
   invitationWorker: asClass(InvitationWorker).singleton(),
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
   documentProcessingWorker: asClass(DocumentProcessingWorker).singleton(),
@@ -203,6 +208,7 @@ const QueuesResources = {
   pdfGeneratorQueue: asClass(PdfQueue).singleton(),
   propertyQueue: asClass(PropertyQueue).singleton(),
   eventBusQueue: asClass(EventBusQueue).singleton(),
+  eSignatureQueue: asClass(ESignatureQueue).singleton(),
   invitationQueue: asClass(InvitationQueue).singleton(),
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
   documentProcessingQueue: asClass(DocumentProcessingQueue).singleton(),
@@ -250,6 +256,8 @@ export const initQueues = (container: AwilixContainer) => {
       'propertyUnitQueue',
       'uploadQueue',
       'invitationQueue',
+      'eSignatureQueue',
+      'pdfGeneratorQueue',
     ];
 
     // Initialize all workers
@@ -260,6 +268,8 @@ export const initQueues = (container: AwilixContainer) => {
       'propertyUnitWorker',
       'uploadWorker',
       'invitationWorker',
+      'eSignatureWorker',
+      'pdfGeneratorWorker',
     ];
 
     // Resolve queues

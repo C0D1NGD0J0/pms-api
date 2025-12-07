@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
-import { LeaseService } from '@services/lease/lease.service';
-import { LeaseStatus, LeaseType, ILeaseESignatureStatusEnum } from '@interfaces/lease.interface';
+import { BadRequestError } from '@shared/customErrors';
 import { EventTypes } from '@interfaces/events.interface';
-import { BadRequestError, ValidationRequestError } from '@shared/customErrors';
+import { LeaseService } from '@services/lease/lease.service';
+import { ILeaseESignatureStatusEnum, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 
 const createMockDependencies = () => ({
   leaseDAO: {
@@ -195,9 +195,9 @@ describe('LeaseService - Lifecycle Management', () => {
       it('should throw error when lease not found for envelope ID', async () => {
         mockDeps.leaseDAO.findFirst.mockResolvedValue(null);
 
-        await expect(
-          service.handleESignatureWebhook('Completed', documentId, {})
-        ).rejects.toThrow('Lease not found for envelope ID');
+        await expect(service.handleESignatureWebhook('Completed', documentId, {})).rejects.toThrow(
+          'Lease not found for envelope ID'
+        );
       });
 
       it('should handle activation with property-level lease (no unitId)', async () => {
@@ -295,9 +295,7 @@ describe('LeaseService - Lifecycle Management', () => {
       it('should validate lease exists before termination', async () => {
         mockDeps.leaseDAO.findFirst.mockResolvedValue(null);
 
-        await expect(
-          service.terminateLease(cuid, leaseId, {} as any, userId)
-        ).rejects.toThrow();
+        await expect(service.terminateLease(cuid, leaseId, {} as any, userId)).rejects.toThrow();
       });
 
       it('should validate lease is in terminatable status', async () => {
@@ -308,9 +306,7 @@ describe('LeaseService - Lifecycle Management', () => {
         mockDeps.leaseDAO.findFirst.mockResolvedValue(cancelledLease);
 
         // When implemented, should validate status is ACTIVE
-        await expect(
-          service.terminateLease(cuid, leaseId, {} as any, userId)
-        ).rejects.toThrow();
+        await expect(service.terminateLease(cuid, leaseId, {} as any, userId)).rejects.toThrow();
       });
     });
   });
@@ -478,17 +474,17 @@ describe('LeaseService - Lifecycle Management', () => {
 
       mockDeps.leaseDAO.findFirst.mockResolvedValue(mockLease);
 
-      await expect(
-        service.activateLease(cuid, leaseId, {}, userId)
-      ).rejects.toThrow('activateLease not yet implemented');
+      await expect(service.activateLease(cuid, leaseId, {}, userId)).rejects.toThrow(
+        'activateLease not yet implemented'
+      );
     });
 
     it('should validate lease exists', async () => {
       mockDeps.leaseDAO.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.activateLease(cuid, leaseId, {}, userId)
-      ).rejects.toThrow(BadRequestError);
+      await expect(service.activateLease(cuid, leaseId, {}, userId)).rejects.toThrow(
+        BadRequestError
+      );
     });
 
     it('should validate lease is approved before activation', async () => {
@@ -498,9 +494,9 @@ describe('LeaseService - Lifecycle Management', () => {
 
       mockDeps.leaseDAO.findFirst.mockResolvedValue(pendingLease);
 
-      await expect(
-        service.activateLease(cuid, leaseId, {}, userId)
-      ).rejects.toThrow(/Cannot activate.*pending approval.*Only approved leases can activate/);
+      await expect(service.activateLease(cuid, leaseId, {}, userId)).rejects.toThrow(
+        /Cannot activate.*pending approval.*Only approved leases can activate/
+      );
     });
   });
 });

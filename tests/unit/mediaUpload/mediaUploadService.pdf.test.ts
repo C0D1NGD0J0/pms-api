@@ -1,7 +1,6 @@
 import fs from 'fs';
-import path from 'path';
-import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { ResourceContext } from '@interfaces/utils.interface';
+import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 
 jest.mock('clamscan', () => {
   return jest.fn().mockImplementation(() => ({
@@ -55,10 +54,7 @@ describe('MediaUploadService - handleBuffer for PDF', () => {
       resourceContext: ResourceContext.LEASE,
     });
 
-    expect(fs.promises.writeFile).toHaveBeenCalledWith(
-      expect.stringContaining(fileName),
-      buffer
-    );
+    expect(fs.promises.writeFile).toHaveBeenCalledWith(expect.stringContaining(fileName), buffer);
   });
 
   it('should create uploads directory if not exists', async () => {
@@ -70,10 +66,9 @@ describe('MediaUploadService - handleBuffer for PDF', () => {
       uploadedBy: 'user123',
     });
 
-    expect(fs.mkdirSync).toHaveBeenCalledWith(
-      expect.stringContaining('uploads'),
-      { recursive: true }
-    );
+    expect(fs.mkdirSync).toHaveBeenCalledWith(expect.stringContaining('uploads'), {
+      recursive: true,
+    });
   });
 
   // These tests are too coupled to implementation details

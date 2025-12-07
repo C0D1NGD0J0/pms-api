@@ -1,6 +1,6 @@
+import { QUEUE_NAMES, JOB_NAME } from '@utils/index';
 import { PdfQueue } from '@queues/pdfGenerator.queue';
 import { PdfWorker } from '@workers/pdfGenerator.worker';
-import { QUEUE_NAMES, JOB_NAME } from '@utils/index';
 import { PdfJobData } from '@interfaces/pdfGenerator.interface';
 
 // Mock BaseQueue

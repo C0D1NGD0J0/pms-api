@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Types } from 'mongoose';
-import { PropertyService } from '@services/property/property.service';
 import { EventTypes } from '@interfaces/events.interface';
+import { PropertyService } from '@services/property/property.service';
 
 const createMockDependencies = () => ({
   propertyDAO: {

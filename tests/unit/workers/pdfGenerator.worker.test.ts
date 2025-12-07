@@ -1,8 +1,8 @@
 import { Job } from 'bull';
-import { PdfWorker } from '@workers/pdfGenerator.worker';
 import { EventEmitterService } from '@services/index';
-import { PdfJobData } from '@interfaces/pdfGenerator.interface';
+import { PdfWorker } from '@workers/pdfGenerator.worker';
 import { EventTypes } from '@interfaces/events.interface';
+import { PdfJobData } from '@interfaces/pdfGenerator.interface';
 
 describe('PdfWorker', () => {
   let pdfWorker: PdfWorker;

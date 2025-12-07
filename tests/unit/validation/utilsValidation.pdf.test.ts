@@ -1,5 +1,5 @@
-import { ValidateCuidAndLeaseIdSchema } from '@shared/validations/UtilsValidation';
 import { ClientDAO } from '@dao/index';
+import { ValidateCuidAndLeaseIdSchema } from '@shared/validations/UtilsValidation';
 
 // Mock the container
 jest.mock('@di/setup', () => ({

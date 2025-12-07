@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
-import { LeaseService } from '@services/lease/lease.service';
 import { EventTypes } from '@interfaces/events.interface';
-import { LeaseStatus, ILeaseESignatureStatusEnum } from '@interfaces/lease.interface';
+import { LeaseService } from '@services/lease/lease.service';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
+import { ILeaseESignatureStatusEnum, LeaseStatus } from '@interfaces/lease.interface';
 
 const createMockDependencies = () => ({
   leaseDAO: {
@@ -117,7 +117,7 @@ describe('LeaseService - BoldSign Integration', () => {
   describe('handleESignatureWebhook - Completed Event', () => {
     it('should update lease to ACTIVE status when signature is completed', async () => {
       const mockLease = createMockLease();
-      const mockUnit = createMockPropertyUnit();
+      const _mockUnit = createMockPropertyUnit();
       const completedDate = new Date('2025-01-15T10:00:00Z');
 
       mockDeps.leaseDAO.findFirst.mockResolvedValue(mockLease);
@@ -390,9 +390,7 @@ describe('LeaseService - BoldSign Integration', () => {
 
     it('should record co-tenant signature when co-tenant signs', async () => {
       const mockLease = createMockLease({
-        coTenants: [
-          { name: 'Co-Tenant Name', email: 'cotenant@test.com', phone: '555-0100' },
-        ],
+        coTenants: [{ name: 'Co-Tenant Name', email: 'cotenant@test.com', phone: '555-0100' }],
       });
 
       mockDeps.leaseDAO.findFirst.mockResolvedValue(mockLease);
@@ -518,9 +516,9 @@ describe('LeaseService - BoldSign Integration', () => {
     it('should throw error if lease not found', async () => {
       mockDeps.leaseDAO.findFirst.mockResolvedValue(null);
 
-      await expect(
-        leaseService.revokeLease('INVALID_LUID', 'Reason')
-      ).rejects.toThrow('Lease not found');
+      await expect(leaseService.revokeLease('INVALID_LUID', 'Reason')).rejects.toThrow(
+        'Lease not found'
+      );
 
       expect(mockDeps.boldSignService.revokeDocument).not.toHaveBeenCalled();
     });
@@ -533,9 +531,9 @@ describe('LeaseService - BoldSign Integration', () => {
         new Error('BoldSign API Error: Service unavailable')
       );
 
-      await expect(
-        leaseService.revokeLease(mockLease.luid, 'Reason')
-      ).rejects.toThrow('BoldSign API Error: Service unavailable');
+      await expect(leaseService.revokeLease(mockLease.luid, 'Reason')).rejects.toThrow(
+        'BoldSign API Error: Service unavailable'
+      );
     });
   });
 });

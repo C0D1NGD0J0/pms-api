@@ -1,6 +1,3 @@
-import request from 'supertest';
-import { Types } from 'mongoose';
-
 // API integration tests require full app initialization with DB, Redis, etc.
 // These should be run in a separate e2e test suite with proper infrastructure
 describe('Lease PDF Generation API', () => {

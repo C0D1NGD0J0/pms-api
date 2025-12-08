@@ -161,7 +161,10 @@ export class ESignatureWorker {
               name: coTenant.name || `Co-Tenant ${index + 1}`,
               email: coTenant.email,
               role: 'co_tenant',
+<<<<<<< HEAD
               userId: undefined, // Co-tenants may not have user accounts
+=======
+>>>>>>> f264752 (feat(esignature): implement ESignatureWorker for handling e-signature requests)
             });
           }
         });

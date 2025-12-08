@@ -35,7 +35,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    */
   throwErrorHandler(error: Error | MongooseError | any): never {
     const result = handleMongoError(error);
-    this.logger.error('uuu', error);
+    this.logger.error(result, 'uuu');
     throw result;
   }
 

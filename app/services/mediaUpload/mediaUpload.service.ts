@@ -1,6 +1,9 @@
+import fs from 'fs';
+import path from 'path';
 import Logger from 'bunyan';
 import { UploadQueue } from '@queues/upload.queue';
 import { createLogger, JOB_NAME } from '@utils/index';
+import { S3Service } from '@services/fileUpload/awsS3';
 import { AssetService } from '@services/asset/asset.service';
 import {
   ExtractedMediaFile,
@@ -19,16 +22,19 @@ interface MediaOperationResult {
 interface IConstructor {
   assetService: AssetService;
   uploadQueue: UploadQueue;
+  s3Service: S3Service;
 }
 
 export class MediaUploadService {
   private readonly assetService: AssetService;
   private readonly uploadQueue: UploadQueue;
+  private readonly s3Service: S3Service;
   private readonly logger: Logger;
 
-  constructor({ assetService, uploadQueue }: IConstructor) {
+  constructor({ assetService, uploadQueue, s3Service }: IConstructor) {
     this.assetService = assetService;
     this.uploadQueue = uploadQueue;
+    this.s3Service = s3Service;
     this.logger = createLogger('MediaUploadService');
   }
 
@@ -327,5 +333,115 @@ export class MediaUploadService {
       return 'document';
 
     return 'unknown';
+  }
+
+  /**
+   * Handle buffer uploads (e.g., generated PDFs)
+   * Saves buffer to temp file and queues for S3 upload
+   */
+  async handleBuffer(
+    buffer: Buffer,
+    fileName: string,
+    context: {
+      primaryResourceId: string;
+      uploadedBy: string;
+      resourceContext?: ResourceContext;
+    }
+  ): Promise<MediaOperationResult> {
+    try {
+      this.logger.info(`Handling buffer upload for ${fileName}`, {
+        resourceId: context.primaryResourceId,
+        resourceContext: context.resourceContext,
+        bufferSize: buffer.length,
+      });
+
+      // Save buffer to uploads directory (same as DiskStorage)
+      const uploadDir = path.join(process.cwd(), 'uploads');
+
+      // Ensure directory exists
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+
+      const tempPath = path.join(uploadDir, fileName);
+      await fs.promises.writeFile(tempPath, buffer);
+
+      this.logger.debug(`Buffer saved to temporary file: ${tempPath}`);
+
+      // Create ExtractedMediaFile object
+      const file: ExtractedMediaFile = {
+        fieldName: 'document',
+        originalFileName: fileName,
+        filename: fileName,
+        path: tempPath,
+        mimeType: 'application/pdf',
+        fileSize: buffer.length,
+        status: 'pending',
+        uploadedAt: new Date(),
+        uploadedBy: context.uploadedBy,
+      };
+
+      // Use existing grouping logic to determine resource routing
+      const groupedFiles = this.groupFilesByResource([file], context);
+
+      const processedFiles: Record<string, { queuedCount: number; message: string }> = {};
+      let totalQueued = 0;
+
+      // Queue upload using existing logic
+      for (const [resourceKey, { resourceInfo, fileGroup }] of Object.entries(groupedFiles)) {
+        if (fileGroup.length > 0) {
+          this.uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
+            resource: resourceInfo,
+            files: fileGroup,
+          });
+
+          processedFiles[resourceKey] = {
+            queuedCount: fileGroup.length,
+            message: `${fileGroup.length} ${resourceKey} file(s) queued for processing`,
+          };
+
+          totalQueued += fileGroup.length;
+
+          this.logger.info(
+            `Queued ${fileGroup.length} ${resourceKey} buffer file(s) for processing`,
+            {
+              resourceName: resourceInfo.resourceName,
+              resourceId: resourceInfo.resourceId,
+              fileName,
+            }
+          );
+        }
+      }
+
+      return {
+        hasFiles: true,
+        processedFiles,
+        totalQueued,
+        message: `${totalQueued} buffer file(s) queued for processing`,
+      };
+    } catch (error) {
+      this.logger.error('Error handling buffer upload:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Download a file from S3 and return as Buffer
+   * Wraps S3Service.getFileBuffer for consistent file operations
+   * @param s3Key - The S3 key of the file to download
+   * @returns Buffer containing the file data
+   */
+  async downloadFileAsBuffer(s3Key: string): Promise<Buffer> {
+    try {
+      this.logger.info(`Downloading file from S3: ${s3Key}`);
+      const buffer = await this.s3Service.getFileBuffer(s3Key);
+      this.logger.info(
+        `Successfully downloaded file from S3: ${s3Key}, size: ${buffer.length} bytes`
+      );
+      return buffer;
+    } catch (error) {
+      this.logger.error(`Error downloading file from S3: ${s3Key}`, error);
+      throw error;
+    }
   }
 }

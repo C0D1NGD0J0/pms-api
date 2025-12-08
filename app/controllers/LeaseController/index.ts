@@ -6,14 +6,12 @@ import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
 import { MediaUploadService, LeaseService } from '@services/index';
 import { LeaseTemplateService } from '@services/lease/leaseTemplateService';
-import { LeaseTemplateDataMapper } from '@services/lease/leaseTemplateDataMapper';
 
 export class LeaseController {
   private readonly log: Logger;
   private readonly leaseService: LeaseService;
   private readonly mediaUploadService: MediaUploadService;
   private readonly leaseTemplateService: LeaseTemplateService;
-  private readonly leaseTemplateDataMapper: LeaseTemplateDataMapper;
 
   constructor({
     leaseService,
@@ -26,7 +24,6 @@ export class LeaseController {
     this.mediaUploadService = mediaUploadService;
     this.leaseService = leaseService;
     this.leaseTemplateService = new LeaseTemplateService();
-    this.leaseTemplateDataMapper = new LeaseTemplateDataMapper();
   }
 
   createLease = async (req: AppRequest, res: Response) => {
@@ -155,26 +152,28 @@ export class LeaseController {
   };
 
   handleSignatureAction = async (req: AppRequest, res: Response) => {
-    // const { cuid, leaseId } = req.params;
-    // const { uid } = req.context.currentuser!;
-    // const { action, signers, signedBy, provider, message, testMode } = req.body;
+    const { action } = req.body;
+    let result;
 
-    // this.log.info(`Handling signature action '${action}' for lease ${leaseId}`);
+    switch (action) {
+      case 'manual':
+        // result = await this.leaseService.markAsManualySigned(req.context, cuid, leaseId);
+        break;
+      case 'cancel':
+        // result = await this.leaseService.cancelSignature(req.context, cuid, leaseId);
+        break;
+      case 'send':
+        result = await this.leaseService.sendLeaseForSignature(req.context);
+        break;
+      default:
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'Invalid action for signature handling',
+        });
+        return;
+    }
 
-    // TODO: Implement signature actions based on action type
-    // switch (action) {
-    //   case 'send':
-    //     return await this.leaseService.sendLeaseForSignature(cuid, leaseId, signers, provider, uid);
-    //   case 'manual':
-    //     return await this.leaseService.markAsManualySigned(cuid, leaseId, signedBy, uid);
-    //   case 'cancel':
-    //     return await this.leaseService.cancelSignature(cuid, leaseId, uid);
-    // }
-
-    res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
-      success: false,
-      message: 'Signature actions not yet implemented',
-    });
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   getSignatureDetails = async (req: AppRequest, res: Response) => {
@@ -189,12 +188,69 @@ export class LeaseController {
 
   generateLeasePDF = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
+    const { templateType } = req.body;
+
     this.log.info(`Generating PDF for lease ${leaseId}, client ${cuid}`);
 
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-      success: false,
-      message: 'Generate PDF not yet implemented',
-    });
+    const result = await this.leaseService.queueLeasePdfGeneration(
+      leaseId,
+      cuid,
+      req.context,
+      templateType
+    );
+
+    if (result.success) {
+      res.status(httpStatusCodes.OK).json({
+        success: true,
+        message: 'PDF generation queued successfully',
+        data: {
+          jobId: result.jobId,
+          status: 'queued',
+        },
+      });
+    } else {
+      res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: result.error || 'Failed to queue PDF generation',
+      });
+    }
+  };
+
+  getPdfJobStatus = async (req: AppRequest, res: Response) => {
+    const { jobId } = req.params;
+    const { pdfGeneratorQueue } = req.container.cradle;
+
+    this.log.info(`Getting PDF job status for job ${jobId}`);
+
+    try {
+      const jobStatus = await pdfGeneratorQueue.getJobStatus(jobId);
+
+      if (!jobStatus.exists) {
+        res.status(httpStatusCodes.NOT_FOUND).json({
+          success: false,
+          message: 'Job not found',
+        });
+        return;
+      }
+
+      res.status(httpStatusCodes.OK).json({
+        success: true,
+        data: {
+          jobId: jobStatus.id,
+          state: jobStatus.state,
+          progress: jobStatus.progress,
+          result: jobStatus.result,
+          completedOn: jobStatus.completedOn,
+          failedReason: jobStatus.failedReason,
+        },
+      });
+    } catch (error) {
+      this.log.error({ error, jobId }, 'Failed to get job status');
+      res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to get job status',
+      });
+    }
   };
 
   downloadLeasePDF = async (req: AppRequest, res: Response) => {
@@ -234,9 +290,8 @@ export class LeaseController {
     const { cuid, luid } = req.params;
 
     const enrichedData = await this.leaseService.generateLeasePreview(cuid, luid);
-    const templateData = this.leaseTemplateDataMapper.transformForTemplate(enrichedData);
     const templateType = enrichedData.templateType || 'residential-single-family';
-    const html = await this.leaseTemplateService.renderLeasePreview(templateData, templateType);
+    const html = await this.leaseTemplateService.transformAndRender(enrichedData, templateType);
 
     res.status(httpStatusCodes.OK).json({
       success: true,

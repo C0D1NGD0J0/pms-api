@@ -813,3 +813,15 @@ export const MoneyUtils = {
     };
   },
 };
+
+export const determineTemplateType = (propertyType: string): string => {
+  const typeMapping: Record<string, string> = {
+    house: 'residential-single-family',
+    townhouse: 'residential-single-family',
+    apartment: 'residential-apartment',
+    condominium: 'residential-apartment',
+    commercial: 'commercial-office',
+  };
+
+  return typeMapping[propertyType] || 'residential-single-family';
+};

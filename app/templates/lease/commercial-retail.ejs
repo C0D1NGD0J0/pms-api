@@ -394,13 +394,13 @@
 
     /* Signature Section */
     .signature-section {
-      margin-top: 60px;
+      margin-top: 40px;
       page-break-inside: avoid;
     }
 
     .signature-intro {
       text-align: center;
-      margin-bottom: 45px;
+      margin-bottom: 25px;
       font-style: italic;
       font-size: 11pt;
       padding: 20px;
@@ -410,11 +410,11 @@
     }
 
     .signature-blocks {
-      margin-top: 50px;
+      margin-top: 30px;
     }
 
     .signature-block {
-      margin-bottom: 65px;
+      margin-bottom: 40px;
       page-break-inside: avoid;
       padding: 25px;
       border: 1px solid #dee2e6;
@@ -433,8 +433,8 @@
     .signature-line {
       border-bottom: 2px solid #2c3e50;
       width: 400px;
-      height: 65px;
-      margin: 35px 0 12px 0;
+      height: 50px;
+      margin: 25px 0 12px 0;
       position: relative;
     }
 
@@ -442,7 +442,7 @@
       position: absolute;
       bottom: 5px;
       left: 0;
-      max-height: 55px;
+      max-height: 40px;
     }
 
     .signature-name {
@@ -462,7 +462,7 @@
       display: flex;
       align-items: center;
       gap: 15px;
-      margin-top: 20px;
+      margin-top: 15px;
     }
 
     .date-label {
@@ -479,8 +479,8 @@
 
     /* Notary Section */
     .notary-section {
-      margin-top: 55px;
-      padding: 30px;
+      margin-top: 35px;
+      padding: 20px;
       border: 4px double #2c3e50;
       background: #f8f9fa;
       page-break-inside: avoid;
@@ -962,6 +962,8 @@
           <div class="signature-line">
             <% if (signingMethod === 'electronic' && landlordSignatureUrl) { %>
             <img src="<%= landlordSignatureUrl %>" alt="Landlord Signature">
+            <% } else if (signingMethod === 'electronic') { %>
+            <span style="color: white; text-transform: none;">{{sign|1|*}}</span>
             <% } %>
           </div>
           <div class="signature-name"><strong><%= landlordName %></strong></div>
@@ -974,7 +976,7 @@
           </div>
           <div class="signature-date-row">
             <span class="date-label">Date Signed:</span>
-            <div class="date-line"><%= signedDate %></div>
+            <div class="date-line"><% if (signingMethod === 'electronic') { %><span style="color: white; text-transform: none;">{{date|1|*}}</span><% } else { %><%= signedDate %><% } %></div>
           </div>
         </div>
 
@@ -984,30 +986,34 @@
           <div class="signature-line">
             <% if (signingMethod === 'electronic' && tenantSignatureUrl) { %>
             <img src="<%= tenantSignatureUrl %>" alt="Tenant Signature">
+            <% } else { %>
+            <span style="color: white; text-transform: none;">{{sign|2|*}}</span>
             <% } %>
           </div>
           <div class="signature-name"><strong><%= tenantName %></strong></div>
           <div class="signature-title">Primary Lessee</div>
           <div class="signature-date-row">
             <span class="date-label">Date Signed:</span>
-            <div class="date-line"><%= signedDate %></div>
+            <div class="date-line"><% if (signingMethod === 'electronic') { %><span style="color: white; text-transform: none;">{{date|2|*}}</span><% } else { %><%= signedDate %><% } %></div>
           </div>
         </div>
 
         <!-- Co-Tenant Signatures -->
         <% if (coTenants && coTenants.length > 0) { %>
-        <% coTenants.forEach(coTenant => { %>
-        <div class="signature-block">
-          <div class="signature-label">Co-Tenant / Co-Lessee</div>
-          <div class="signature-line"></div>
-          <div class="signature-name"><strong><%= coTenant.name %></strong></div>
-          <div class="signature-title">Co-Lessee</div>
-          <div class="signature-date-row">
-            <span class="date-label">Date Signed:</span>
-            <div class="date-line">_____________________</div>
-          </div>
-        </div>
-        <% }); %>
+          <% coTenants.forEach((coTenant, coTenantIndex) => { %>
+            <div class="signature-block">
+              <div class="signature-label">Co-Tenant / Co-Lessee</div>
+              <div class="signature-line">
+                <span style="color: white; text-transform: none;">{{sign|<%= 3 + coTenantIndex %>|*}}</span>
+              </div>
+              <div class="signature-name"><strong><%= coTenant.name %></strong></div>
+              <div class="signature-title">Co-Lessee</div>
+              <div class="signature-date-row">
+                <span class="date-label">Date Signed:</span>
+                <div class="date-line"><span style="color: white; text-transform: none;">{{date|<%= 3 + coTenantIndex %>|*}}</span></div>
+              </div>
+            </div>
+          <% }); %>
         <% } %>
       </div>
     </div>

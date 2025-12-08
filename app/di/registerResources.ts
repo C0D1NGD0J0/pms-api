@@ -33,14 +33,6 @@ import {
   User,
 } from '@models/index';
 import {
-  DocumentProcessingWorker,
-  PropertyUnitWorker,
-  InvitationWorker,
-  PropertyWorker,
-  UploadWorker,
-  EmailWorker,
-} from '@workers/index';
-import {
   PropertyUnitDAO,
   NotificationDAO,
   InvitationDAO,
@@ -52,19 +44,32 @@ import {
   UserDAO,
 } from '@dao/index';
 import {
+  DocumentProcessingWorker,
+  PropertyUnitWorker,
+  InvitationWorker,
+  ESignatureWorker,
+  PropertyWorker,
+  UploadWorker,
+  EmailWorker,
+  PdfWorker,
+} from '@workers/index';
+import {
   DocumentProcessingQueue,
   PropertyUnitQueue,
   InvitationQueue,
+  ESignatureQueue,
   EventBusQueue,
   PropertyQueue,
   UploadQueue,
   EmailQueue,
+  PdfQueue,
 } from '@queues/index';
 import {
   NotificationController,
   PropertyUnitController,
   InvitationController,
   PropertyController,
+  WebhookController,
   ClientController,
   VendorController,
   LeaseController,
@@ -74,6 +79,7 @@ import {
 import {
   InvitationCsvProcessor,
   PropertyCsvProcessor,
+  PdfGeneratorService,
   NotificationService,
   EventEmitterService,
   PropertyUnitService,
@@ -81,6 +87,7 @@ import {
   InvitationService,
   AuthTokenService,
   PropertyService,
+  BoldSignService,
   ProfileService,
   ClientService,
   VendorService,
@@ -101,6 +108,7 @@ const ControllerResources = {
   propertyUnitController: asClass(PropertyUnitController).scoped(),
   notificationController: asClass(NotificationController).scoped(),
   emailTemplateController: asClass(EmailTemplateController).scoped(),
+  webhookController: asClass(WebhookController).scoped(),
 };
 
 const ModelResources = {
@@ -129,12 +137,14 @@ const ServiceResources = {
   tokenService: asClass(AuthTokenService).singleton(),
   languageService: asClass(LanguageService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
+  boldSignService: asClass(BoldSignService).singleton(),
   emitterService: asClass(EventEmitterService).singleton(),
   permissionService: asClass(PermissionService).singleton(),
   invitationService: asClass(InvitationService).singleton(),
   mediaUploadService: asClass(MediaUploadService).singleton(),
   propertyUnitService: asClass(PropertyUnitService).singleton(),
   notificationService: asClass(NotificationService).singleton(),
+  pdfGeneratorService: asClass(PdfGeneratorService).singleton(),
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
@@ -184,7 +194,9 @@ const CacheResources = {
 const WorkerResources = {
   emailWorker: asClass(EmailWorker).singleton(),
   uploadWorker: asClass(UploadWorker).singleton(),
+  pdfGeneratorWorker: asClass(PdfWorker).singleton(),
   propertyWorker: asClass(PropertyWorker).singleton(),
+  eSignatureWorker: asClass(ESignatureWorker).singleton(),
   invitationWorker: asClass(InvitationWorker).singleton(),
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
   documentProcessingWorker: asClass(DocumentProcessingWorker).singleton(),
@@ -193,8 +205,10 @@ const WorkerResources = {
 const QueuesResources = {
   emailQueue: asClass(EmailQueue).singleton(),
   uploadQueue: asClass(UploadQueue).singleton(),
-  eventBusQueue: asClass(EventBusQueue).singleton(),
+  pdfGeneratorQueue: asClass(PdfQueue).singleton(),
   propertyQueue: asClass(PropertyQueue).singleton(),
+  eventBusQueue: asClass(EventBusQueue).singleton(),
+  eSignatureQueue: asClass(ESignatureQueue).singleton(),
   invitationQueue: asClass(InvitationQueue).singleton(),
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
   documentProcessingQueue: asClass(DocumentProcessingQueue).singleton(),
@@ -242,6 +256,8 @@ export const initQueues = (container: AwilixContainer) => {
       'propertyUnitQueue',
       'uploadQueue',
       'invitationQueue',
+      'eSignatureQueue',
+      'pdfGeneratorQueue',
     ];
 
     // Initialize all workers
@@ -252,6 +268,8 @@ export const initQueues = (container: AwilixContainer) => {
       'propertyUnitWorker',
       'uploadWorker',
       'invitationWorker',
+      'eSignatureWorker',
+      'pdfGeneratorWorker',
     ];
 
     // Resolve queues

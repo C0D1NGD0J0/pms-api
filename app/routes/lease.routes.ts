@@ -79,6 +79,30 @@ router
     })
   );
 
+// PDF Generation Routes (MUST be before /:cuid/:leaseId to avoid route conflicts)
+router.post(
+  '/:cuid/:leaseId/pdf',
+  // Generate PDF from lease JSON data using Puppeteer + EJS template
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuidAndLeaseId,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.generateLeasePDF(req, res);
+  })
+);
+
+router.get(
+  '/pdf-status/:jobId',
+  // Get PDF generation job status
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.getPdfJobStatus(req, res);
+  })
+);
+
 router
   .route('/:cuid/:luid')
   .get(
@@ -186,7 +210,7 @@ router
 
 // Signature Management Routes
 router
-  .route('/:cuid/:luid/signature')
+  .route('/:cuid/:luid/signature_request')
   .post(
     // Send for e-signature OR mark as manually signed OR cancel signing
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
@@ -196,11 +220,7 @@ router
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<LeaseController>('leaseController');
-      // const { action } = req.body;
-      // switch (action) {
-      //   case 'send': return controller.sendLeaseForSignature(req, res);
-      //   case 'manual': return controller.markAsManualySigned(req, res);
-      //   case 'cancel': return controller.cancelSignature(req, res);
+
       return controller.handleSignatureAction(req, res);
     })
   )

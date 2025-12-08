@@ -4,16 +4,17 @@ export default async (): Promise<void> => {
   try {
     // Get the container from global if available
     const container = (global as any).__CONTAINER__;
-    
+
     if (container) {
       // Follow the same cleanup pattern as the main server
       // Clean up services that have destroy/cleanup methods
       const servicesWithCleanup = [
         'emitterService',
-        'propertyService', 
+        'propertyService',
         'redisService',
         'propertyUnitService',
         'authService',
+        'leaseService',
         'clientService',
       ];
 
@@ -24,6 +25,9 @@ export default async (): Promise<void> => {
             if (service && typeof service.destroy === 'function') {
               await service.destroy();
               console.log(`✅ Cleaned up ${serviceName}`);
+            } else if (service && typeof service.cleanupEventListeners === 'function') {
+              service.cleanupEventListeners();
+              console.log(`✅ Cleaned up event listeners for ${serviceName}`);
             }
           }
         } catch (error) {
@@ -35,7 +39,7 @@ export default async (): Promise<void> => {
       const queueNames = [
         'documentProcessingQueue',
         'emailQueue',
-        'eventBusQueue', 
+        'eventBusQueue',
         'invitationQueue',
         'propertyQueue',
         'propertyUnitQueue',

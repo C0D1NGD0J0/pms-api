@@ -82,6 +82,43 @@ export class S3Service {
     return results;
   }
 
+  async uploadBuffer(
+    buffer: Buffer,
+    s3Key: string,
+    contentType: string,
+    resourceId?: string
+  ): Promise<{ url: string; key: string }> {
+    try {
+      this.log.debug(`Uploading buffer to S3: ${s3Key}`);
+
+      const params = {
+        Bucket: this.bucketName,
+        Key: s3Key,
+        Body: buffer,
+        ContentType: contentType,
+        ...(resourceId && { Tagging: this.generateResourceTag(resourceId) }),
+      };
+
+      const upload = new Upload({
+        client: this.s3,
+        params,
+      });
+
+      const result = await upload.done();
+      this.log.info(`Successfully uploaded buffer to S3: ${s3Key}`);
+
+      return {
+        url: result.Location!,
+        key: result.Key!,
+      };
+    } catch (error) {
+      this.log.error('Error uploading buffer to S3:', error);
+      throw new Error(
+        `Failed to upload buffer: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
   async getSignedUrl(s3Key: string): Promise<string> {
     if (!s3Key) {
       throw new Error('S3 key is required');
@@ -102,7 +139,45 @@ export class S3Service {
       return url;
     } catch (error) {
       this.log.error(`Error generating signed URL for ${s3Key}:`, error);
-      throw new Error(`Failed to generate signed URL: ${error.message}`);
+      throw new Error(
+        `Failed to generate signed URL: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  async getFileBuffer(s3Key: string): Promise<Buffer> {
+    if (!s3Key) {
+      throw new Error('S3 key is required');
+    }
+
+    try {
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: s3Key,
+      });
+
+      const response = await this.s3.send(command);
+
+      if (!response.Body) {
+        throw new Error('Empty response body from S3');
+      }
+
+      // Convert stream to buffer
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of response.Body as any) {
+        chunks.push(chunk);
+      }
+
+      const buffer = Buffer.concat(chunks);
+
+      this.log.info(`Downloaded file buffer from S3: ${s3Key}`, {
+        size: buffer.length,
+      });
+
+      return buffer;
+    } catch (error: any) {
+      this.log.error(`Error downloading file buffer from S3: ${s3Key}`, error);
+      throw new Error(`Failed to download file from S3: ${error.message}`);
     }
   }
 

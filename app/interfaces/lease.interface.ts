@@ -13,6 +13,15 @@ export enum LeaseStatus {
   DRAFT = 'draft',
 }
 
+export enum ILeaseESignatureStatusEnum {
+  COMPLETED = 'completed',
+  DECLINED = 'declined',
+  SIGNED = 'signed',
+  VOIDED = 'voided',
+  DRAFT = 'draft',
+  SENT = 'sent',
+}
+
 /**
  * Signing Method Enum
  */
@@ -30,7 +39,6 @@ export enum LeaseType {
   MONTH_TO_MONTH = 'month_to_month',
   FIXED_TERM = 'fixed_term',
 }
-
 /**
  * Use ILeasePreviewRequest or LeasePreviewData (will delete one later)
  * Legacy interface - keeping for backward compatibility
@@ -101,6 +109,58 @@ export type LeasePreviewData = {
   leaseType?: string;
   currency?: string;
 };
+
+/**
+ * Main Lease Interface
+ * Core lease data structure
+ */
+export interface ILease {
+  utilitiesIncluded?: (
+    | 'water'
+    | 'gas'
+    | 'electricity'
+    | 'internet'
+    | 'cable'
+    | 'trash'
+    | 'sewer'
+    | 'heating'
+    | 'cooling'
+  )[];
+  templateType:
+    | 'residential-single-family'
+    | 'residential-apartment'
+    | 'commercial-office'
+    | 'commercial-retail'
+    | 'short-term-rental';
+  pendingChanges?: IPendingLeaseChanges | null;
+  approvalDetails?: ILeaseApprovalEntry[];
+  signingMethod: SigningMethod | string;
+  leaseDocuments?: ILeaseDocumentItem[];
+  approvalStatus?: LeaseApprovalStatus;
+  useInvitationIdAsTenantId?: boolean;
+  createdBy: Types.ObjectId | string;
+  lastModifiedBy?: ILastModifiedBy[];
+  tenantId: Types.ObjectId | string;
+  renewalOptions?: IRenewalOptions;
+  signatures?: ILeaseSignature[];
+  metadata?: Record<string, any>; // Store enriched data for lease generation
+  eSignature?: ILeaseESignature;
+  terminationReason?: string;
+  property: ILeaseProperty;
+  duration: ILeaseDuration;
+  legalTerms?: ILegalTerms;
+  coTenants?: ICoTenant[];
+  petPolicy?: IPetPolicy;
+  internalNotes?: string;
+  leaseNumber: string;
+  status: LeaseStatus;
+  signedDate?: Date;
+  fees: ILeaseFees;
+  deletedAt?: Date;
+  type: LeaseType;
+  cuid: string;
+}
+
 /**
  * Lease preview request data from frontend
  * Used to generate lease document preview before actual lease creation
@@ -113,7 +173,6 @@ export interface ILeasePreviewRequest {
     | 'commercial-office'
     | 'commercial-retail'
     | 'short-term-rental';
-
   renewalOptions?: {
     autoRenew: boolean;
     renewalTermMonths?: number;
@@ -132,34 +191,30 @@ export interface ILeasePreviewRequest {
     types?: string[];
     deposit?: number;
   };
-
-  // Signing
+  legalTerms?: {
+    html?: string;
+    text?: string;
+  };
   signingMethod: SigningMethod | string;
-  // Additional Terms
+  requiresNotarization: boolean;
   utilitiesIncluded?: string[];
   startDate: Date | string;
-
   propertyAddress: string;
   securityDeposit: number;
   endDate: Date | string;
-
   // Lease Duration
   leaseType: LeaseType;
+  leaseNumber?: string;
   unitNumber?: string;
   tenantEmail: string;
   tenantPhone: string;
-
   // Financial Terms
   monthlyRent: number;
-
   // Property Information
   propertyId: string;
-
   // Tenant Information (placeholders for invited tenants)
   tenantName: string;
-
   rentDueDay: number;
-
   currency: string;
 }
 
@@ -189,6 +244,7 @@ export interface ILease {
   lastModifiedBy?: ILastModifiedBy[];
   tenantId: Types.ObjectId | string;
   renewalOptions?: IRenewalOptions;
+  requiresNotarization?: boolean;
   signatures?: ILeaseSignature[];
   metadata?: Record<string, any>; // Store enriched data for lease generation
   eSignature?: ILeaseESignature;
@@ -242,6 +298,7 @@ export interface ILeaseFormData {
   };
   leaseDocument?: ILeaseDocumentItem[];
   renewalOptions?: IRenewalOptions;
+  requiresNotarization?: boolean;
   signingMethod?: SigningMethod;
   utilitiesIncluded?: string[];
   legalTerms?: ILegalTerms;
@@ -491,6 +548,42 @@ export interface IRentRollItem {
   luid: string;
 }
 
+export interface LeaseESignatureCompletedPayload {
+  signers: Array<{
+    name: string;
+    email: string;
+    role: string;
+    signedAt?: Date;
+  }>;
+  propertyManagerId: string;
+  propertyUnitId?: string;
+  propertyId: string;
+  documentId: string;
+  completedAt: Date;
+  tenantId: string;
+  leaseId: string;
+  luid: string;
+  cuid: string;
+}
+
+/**
+ * Signature Interface
+ * Individual signature tracking
+ */
+export interface ILeaseSignature {
+  coTenantInfo?: {
+    name: string;
+    email: string;
+    phone: string;
+  };
+  role: 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
+  signatureMethod: 'manual' | 'electronic';
+  userId?: Types.ObjectId | string;
+  providerSignatureId?: string;
+  ipAddress?: string;
+  signedAt?: Date;
+}
+
 /**
  * Lease User Permissions Interface
  * User-specific permissions for lease operations
@@ -507,6 +600,21 @@ export interface ILeaseUserPermissions {
   canDownload: boolean;
   canDelete: boolean;
   canEdit: boolean;
+}
+
+export interface LeaseESignatureSentPayload {
+  signers: Array<{
+    name: string;
+    email: string;
+    role: string;
+  }>;
+  jobId: string | number;
+  envelopeId: string; // BoldSign document ID
+  leaseId: string;
+  actorId: string; // User who sent for signature
+  luid: string;
+  cuid: string;
+  sentAt: Date;
 }
 
 /**
@@ -528,21 +636,6 @@ export interface IRentRollReport {
 }
 
 /**
- * Lease Document Item Interface
- * Tracks uploaded lease documents
- */
-export interface ILeaseDocumentItem {
-  documentType?: 'lease_agreement' | 'addendum' | 'amendment' | 'renewal' | 'termination' | 'other';
-  uploadedBy: Types.ObjectId | string;
-  mimeType?: string;
-  uploadedAt?: Date;
-  filename: string;
-  size?: number;
-  url: string;
-  key: string;
-}
-
-/**
  * Lease List Item Interface
  * Simplified lease data for list views
  */
@@ -558,6 +651,38 @@ export interface ILeaseListItem {
   startDate: Date;
   endDate: Date;
   luid: string;
+}
+
+/**
+ * E-Signature Interface
+ * Tracks electronic signature provider details
+ */
+export interface ILeaseESignature {
+  status?: ILeaseESignatureStatusEnum;
+  provider: 'hellosign' | 'boldsign';
+  declinedReason?: string;
+  errorMessage?: string;
+  envelopeId?: string;
+  signingUrl?: string;
+  completedAt?: Date;
+  failedAt?: Date;
+  sentAt?: Date;
+}
+
+/**
+ * Lease Document Item Interface
+ * Tracks uploaded lease documents
+ */
+export interface ILeaseDocumentItem {
+  documentType?: 'lease_agreement' | 'other';
+  uploadedBy: Types.ObjectId | string;
+  status: 'active' | 'inactive';
+  mimeType?: string;
+  uploadedAt?: Date;
+  filename: string;
+  size?: number;
+  url: string;
+  key: string;
 }
 
 /**
@@ -601,36 +726,9 @@ export interface IESignatureRequestData {
     role: 'tenant' | 'co_tenant' | 'landlord';
     order?: number;
   }[];
-  provider: 'hellosign' | 'docusign' | 'pandadoc';
+  provider: 'boldsign' | 'pandadoc';
   testMode?: boolean;
   message?: string;
-}
-
-/**
- * Signature Interface
- * Individual signature tracking
- */
-export interface ILeaseSignature {
-  role: 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
-  signatureMethod: 'manual' | 'electronic';
-  userId: Types.ObjectId | string;
-  providerSignatureId?: string;
-  ipAddress?: string;
-  signedAt: Date;
-}
-
-/**
- * E-Signature Interface
- * Tracks electronic signature provider details
- */
-export interface ILeaseESignature {
-  status?: 'draft' | 'sent' | 'signed' | 'declined' | 'voided';
-  provider: 'hellosign' | 'boldsign';
-  declinedReason?: string;
-  envelopeId?: string;
-  signingUrl?: string;
-  completedAt?: Date;
-  sentAt?: Date;
 }
 
 /**
@@ -643,6 +741,16 @@ export interface ILeasePropertyInfo extends ILeaseProperty {
   totalUnits?: number;
   name?: string;
   pid?: string;
+}
+
+export interface LeaseESignatureFailedPayload {
+  jobId: string | number;
+  errorDetails?: any;
+  leaseId: string;
+  actorId: string; // User who attempted to send for signature
+  error: string;
+  luid: string;
+  cuid: string;
 }
 
 /**
@@ -688,6 +796,16 @@ export interface ILeaseUnitInfo {
   fees?: any;
 }
 
+export interface LeaseESignatureDeclinedPayload {
+  declineReason?: string;
+  documentId: string;
+  declinedBy: string;
+  declinedAt: Date;
+  leaseId: string;
+  luid: string;
+  cuid: string;
+}
+
 /**
  * Last Modified By Interface
  * Audit trail entry
@@ -697,6 +815,14 @@ export interface ILastModifiedBy {
   userId: Types.ObjectId | string;
   name: string;
   date: Date;
+}
+
+export interface LeaseESignatureRequestedPayload {
+  jobId: string | number;
+  leaseId: string;
+  actorId: string; // User who requested signature
+  luid: string;
+  cuid: string;
 }
 
 /**

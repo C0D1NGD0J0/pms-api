@@ -1,0 +1,94 @@
+<table width="100%">
+  <tr>
+    <td class="content">
+      <h2>Lease Termination Notice</h2>
+      <p>Hello <%= tenantName %>,</p>
+      <p>
+        This email confirms that your lease agreement for <strong><%= propertyAddress %></strong> has been terminated.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="background-color: #fff3cd; padding: 20px; border-left: 4px solid #ffc107; border-radius: 4px;">
+      <h3 style="margin-top: 0; color: #856404;">Termination Details</h3>
+      <table width="100%" style="border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: #666; width: 40%;">Lease Number:</td>
+          <td style="padding: 8px 0; font-weight: 600;"><%= leaseNumber %></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Property:</td>
+          <td style="padding: 8px 0; font-weight: 600;"><%= propertyAddress %></td>
+        </tr>
+        <% if (unitNumber) { %>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Unit:</td>
+          <td style="padding: 8px 0; font-weight: 600;"><%= unitNumber %></td>
+        </tr>
+        <% } %>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Termination Date:</td>
+          <td style="padding: 8px 0; font-weight: 600; color: #e74c3c;"><%= new Date(terminationDate).toLocaleDateString() %></td>
+        </tr>
+        <% if (moveOutDate) { %>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Move-Out Date:</td>
+          <td style="padding: 8px 0; font-weight: 600;"><%= new Date(moveOutDate).toLocaleDateString() %></td>
+        </tr>
+        <% } %>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Reason:</td>
+          <td style="padding: 8px 0;"><%= terminationReason %></td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content cta">
+      <a href="<%= leaseUrl %>" class="btn" style="background-color: #6c757d;">View Lease Details</a>
+      <p style="font-size: 14px; color: #666; margin-top: 15px">
+        If the button doesn't work, copy and paste this link in your browser:<br />
+        <%= leaseUrl %>
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <h3>Important Move-Out Instructions</h3>
+      <ul style="color: #555; line-height: 1.8;">
+        <li><strong>Move-Out Date:</strong> You must vacate the property by <%= moveOutDate ? new Date(moveOutDate).toLocaleDateString() : new Date(terminationDate).toLocaleDateString() %></li>
+        <li><strong>Property Condition:</strong> The property must be returned in the same condition as move-in, minus normal wear and tear</li>
+        <li><strong>Final Inspection:</strong> Schedule a final walk-through inspection with your property manager</li>
+        <li><strong>Keys Return:</strong> All keys, access cards, and remotes must be returned</li>
+        <li><strong>Forwarding Address:</strong> Provide your new address for the security deposit refund</li>
+        <li><strong>Utilities:</strong> Cancel or transfer all utility services effective on your move-out date</li>
+      </ul>
+
+      <div style="background-color: #d1ecf1; padding: 15px; border-left: 4px solid #17a2b8; margin: 20px 0;">
+        <p style="margin: 0; color: #0c5460;">
+          <strong>💰 Security Deposit:</strong> Your security deposit will be processed according to state law. You will receive an itemized statement and any applicable refund within the legally required timeframe after move-out.
+        </p>
+      </div>
+
+      <% if (notes) { %>
+      <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #6c757d; margin: 20px 0;">
+        <p style="margin: 0; font-style: italic; color: #495057;">
+          <strong>Additional Notes:</strong><br />
+          <%= notes %>
+        </p>
+      </div>
+      <% } %>
+
+      <p style="margin-top: 20px;">
+        If you have any questions about the termination or move-out process, please contact your property manager immediately at <%= propertyManagerEmail %> or <%= propertyManagerPhone %>.
+      </p>
+
+      <p style="color: #666; font-size: 14px; margin-top: 30px; border-top: 1px solid #ddd; padding-top: 20px;">
+        This is an official notice. Please retain this email for your records.
+      </p>
+    </td>
+  </tr>
+</table>

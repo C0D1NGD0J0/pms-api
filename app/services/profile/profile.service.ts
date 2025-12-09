@@ -831,7 +831,7 @@ export class ProfileService {
           $addToSet: {
             'tenantInfo.activeLeases': {
               leaseId,
-              cuid: cuid,
+              cuid,
               confirmed: true,
               confirmedDate: new Date(),
             },

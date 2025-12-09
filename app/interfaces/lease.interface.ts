@@ -685,6 +685,19 @@ export interface ILeaseDocumentItem {
   key: string;
 }
 
+export interface LeaseTerminatedPayload {
+  terminationReason: string;
+  propertyUnitId?: string;
+  terminationDate: Date;
+  terminatedBy: string;
+  propertyId: string;
+  moveOutDate?: Date;
+  tenantId: string;
+  leaseId: string;
+  luid: string;
+  cuid: string;
+}
+
 /**
  * Lease Timeline Interface
  * Key milestone dates and progress tracking

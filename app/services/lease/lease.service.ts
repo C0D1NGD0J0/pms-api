@@ -4,6 +4,7 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import sanitizeHtml from 'sanitize-html';
 import { LeaseCache } from '@caching/index';
+import { MailService } from '@mailer/index';
 import { envVariables } from '@shared/config';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
@@ -50,6 +51,7 @@ import {
   IRequestContext,
   ResourceContext,
   UploadResult,
+  MailType,
 } from '@interfaces/utils.interface';
 import {
   LeaseESignatureFailedPayload,
@@ -65,15 +67,14 @@ import {
 import { LeaseTemplateService } from './leaseTemplateService';
 import {
   enforceLeaseApprovalRequirement,
+  validateLeaseReadyForActivation,
   validateLeaseReadyForSignature,
   generatePendingChangesPreview,
-  validatePropertyUnitAvailable,
   fetchPropertyManagerWithUser,
   handlePendingSignatureUpdate,
-  validatePropertyAvailable,
+  validateResourceAvailable,
   calculateFinancialSummary,
   handleClosedStatusUpdate,
-  validateLeasePermissions,
   validateImmutableFields,
   constructActivityFeed,
   filterDocumentsByRole,
@@ -84,6 +85,7 @@ import {
   filterLeaseByRole,
   fetchPropertyUnit,
   handleDraftUpdate,
+  validateUserRole,
   fetchLeaseByLuid,
 } from './leaseHelpers';
 
@@ -98,6 +100,7 @@ interface IConstructor {
   eSignatureQueue: ESignatureQueue;
   invitationDAO: InvitationDAO;
   pdfGeneratorQueue: PdfQueue;
+  mailerService: MailService;
   propertyDAO: PropertyDAO;
   leaseCache: LeaseCache;
   profileDAO: ProfileDAO;
@@ -114,6 +117,7 @@ export class LeaseService {
   private readonly profileDAO: ProfileDAO;
   private readonly leaseCache: LeaseCache;
   private readonly propertyDAO: PropertyDAO;
+  private readonly mailerService: MailService;
   private readonly pdfGeneratorQueue: PdfQueue;
   private readonly invitationDAO: InvitationDAO;
   private readonly boldSignService: BoldSignService;
@@ -141,6 +145,7 @@ export class LeaseService {
     propertyDAO,
     profileDAO,
     clientDAO,
+    mailerService,
     leaseDAO,
     userDAO,
     leaseCache,
@@ -151,6 +156,7 @@ export class LeaseService {
     this.profileDAO = profileDAO;
     this.leaseCache = leaseCache;
     this.propertyDAO = propertyDAO;
+    this.mailerService = mailerService;
     this.pendingSenderInfo = new Map();
     this.invitationDAO = invitationDAO;
     this.emitterService = emitterService;
@@ -646,7 +652,11 @@ export class LeaseService {
   async sendLeaseForSignature(cxt: IRequestContext): Promise<ISuccessReturnData> {
     const { cuid, luid } = cxt.request.params;
     const currentuser = cxt.currentuser!;
-    validateLeasePermissions(currentuser, 'send leases for signature');
+    validateUserRole(
+      currentuser,
+      [...PROPERTY_STAFF_ROLES, ...PROPERTY_APPROVAL_ROLES],
+      'send leases for signature'
+    );
 
     const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
     if (!client) {
@@ -667,13 +677,13 @@ export class LeaseService {
     if (!property) {
       throw new BadRequestError({ message: 'Property not found' });
     }
-    validatePropertyAvailable(property);
+    validateResourceAvailable(property, 'property');
     if (lease.property.unitId) {
       const propertyUnit = await fetchPropertyUnit(
         this.propertyUnitDAO,
         lease.property.unitId as string
       );
-      validatePropertyUnitAvailable(propertyUnit);
+      validateResourceAvailable(propertyUnit, 'unit');
     }
 
     if (property.managedBy) {
@@ -759,7 +769,6 @@ export class LeaseService {
       throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
     }
 
-    // Business Rule: Only DRAFT and CANCELLED leases can be deleted
     if (lease.status !== LeaseStatus.DRAFT && lease.status !== LeaseStatus.CANCELLED) {
       throw new ValidationRequestError({
         message: `Cannot delete ${lease.status} lease`,
@@ -771,18 +780,11 @@ export class LeaseService {
       });
     }
 
-    // Perform soft delete
     const deleted = await lease.softDelete(new Types.ObjectId(userId));
 
     if (!deleted) {
       throw new BadRequestError({ message: 'Failed to delete lease' });
     }
-
-    this.log.info('Lease deleted successfully', {
-      leaseId: lease.luid,
-      status: lease.status,
-      deletedBy: userId,
-    });
 
     // Invalidate lease cache
     await this.leaseCache.invalidateLease(cuid, leaseId);
@@ -792,6 +794,143 @@ export class LeaseService {
       success: true,
       data: true,
       message: 'Lease deleted successfully',
+    };
+  }
+
+  /**
+   * Terminate an active lease
+   */
+  async terminateLease(
+    cuid: string,
+    luid: string,
+    terminationData: {
+      terminationDate: Date;
+      terminationReason: string;
+      moveOutDate?: Date;
+      notes?: string;
+    },
+    ctx: IRequestContext
+  ): IPromiseReturnedData<ILeaseDocument> {
+    const currentUser = ctx.currentuser!;
+
+    const lease = await this.leaseDAO.findFirst(
+      { luid, cuid, deletedAt: null },
+      { populate: ['tenantId', 'property.id'] }
+    );
+
+    if (!lease) {
+      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+    }
+
+    if (lease.status !== LeaseStatus.ACTIVE) {
+      throw new ValidationRequestError({
+        message: `Cannot terminate ${lease.status} lease`,
+        errorInfo: {
+          status: [`Only ACTIVE leases can be terminated. Current status: ${lease.status}`],
+        },
+      });
+    }
+
+    const terminationDate = new Date(terminationData.terminationDate);
+
+    const { warnings } = validateLeaseTermination(
+      lease,
+      terminationDate,
+      terminationData.terminationReason
+    );
+
+    this.log.info(`Terminating lease ${luid}`, {
+      terminationDate,
+      reason: terminationData.terminationReason,
+      warnings,
+    });
+
+    const terminatedLease = await this.leaseDAO.terminateLease(cuid, lease._id.toString(), {
+      terminationDate,
+      terminationReason: terminationData.terminationReason,
+      moveOutDate: terminationData.moveOutDate,
+      notes: terminationData.notes,
+    });
+
+    if (!terminatedLease) {
+      throw new BadRequestError({ message: 'Failed to terminate lease' });
+    }
+
+    await this.leaseCache.invalidateLease(cuid, luid);
+    await this.leaseCache.invalidateLeaseLists(cuid);
+
+    this.emitterService.emit(EventTypes.LEASE_TERMINATED, {
+      leaseId: terminatedLease._id.toString(),
+      luid: terminatedLease.luid,
+      cuid,
+      tenantId: terminatedLease.tenantId.toString(),
+      propertyId: terminatedLease.property.id.toString(),
+      propertyUnitId: terminatedLease.property.unitId?.toString(),
+      terminationDate,
+      terminationReason: terminationData.terminationReason,
+      moveOutDate: terminationData.moveOutDate,
+      terminatedBy: currentUser.sub,
+    });
+
+    try {
+      const tenantProfile = await this.profileDAO.findFirst(
+        { user: new Types.ObjectId(lease.tenantId) },
+        { populate: 'user' }
+      );
+
+      if (tenantProfile && tenantProfile.user) {
+        const tenantUser =
+          typeof tenantProfile.user === 'object' ? (tenantProfile.user as any) : null;
+        if (tenantUser && tenantUser.email) {
+          const property = lease.property as any;
+          const tenantName =
+            `${tenantProfile.personalInfo?.firstName || ''} ${tenantProfile.personalInfo?.lastName || ''}`.trim() ||
+            'Tenant';
+
+          await this.mailerService.sendMail(
+            {
+              to: tenantUser.email,
+              subject: 'Lease Termination Notice',
+              data: {
+                tenantName,
+                leaseNumber: lease.leaseNumber,
+                propertyAddress: property?.id?.address?.fullAddress || property?.id?.name || 'N/A',
+                unitNumber: property?.unitId?.unitNumber || null,
+                terminationDate: terminationDate.toISOString(),
+                moveOutDate:
+                  terminationData.moveOutDate?.toISOString() || terminationDate.toISOString(),
+                terminationReason: terminationData.terminationReason,
+                notes: terminationData.notes || null,
+                leaseUrl: lease.leaseDocuments?.[0]?.url || '',
+                propertyManagerEmail: envVariables.EMAIL.APP_EMAIL_ADDRESS,
+                propertyManagerPhone: property?.id?.contactPhone || 'N/A',
+              },
+            },
+            MailType.LEASE_TERMINATED
+          );
+
+          this.log.info(`Termination email sent to tenant ${tenantUser.email}`);
+        } else {
+          this.log.warn('Tenant email not found for termination email', {
+            leaseId: lease._id,
+            tenantId: lease.tenantId,
+          });
+        }
+      } else {
+        this.log.warn('Tenant profile not found for termination email', {
+          leaseId: lease._id,
+          tenantId: lease.tenantId,
+        });
+      }
+    } catch (error) {
+      this.log.error('Failed to send termination email:', error);
+      // Don't fail the whole operation if email fails
+    }
+
+    return {
+      success: true,
+      data: terminatedLease,
+      message: 'Lease terminated successfully',
     };
   }
 
@@ -933,36 +1072,90 @@ export class LeaseService {
 
   async activateLease(
     cuid: string,
-    leaseId: string,
-    _activationData: any,
-    _userId: string
+    luid: string,
+    ctx: IRequestContext
   ): IPromiseReturnedData<ILeaseDocument> {
-    this.log.info(`Activating lease ${leaseId} for client ${cuid}`);
+    const currentUser = ctx.currentuser!;
 
-    // Get the lease first
-    const lease = await this.leaseDAO.findFirst({
-      luid: leaseId,
-      cuid,
-      deletedAt: null,
+    this.log.info(`Manually activating lease ${luid} for client ${cuid}`);
+
+    // Fetch lease with populated fields
+    const lease = await fetchLeaseByLuid(this.leaseDAO, luid, cuid, {
+      populate: ['tenantId', 'property.id'],
     });
 
-    if (!lease) {
-      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+    // Business Rule: Only DRAFT or PENDING_SIGNATURE leases can be manually activated
+    if (lease.status === LeaseStatus.ACTIVE) {
+      throw new ValidationRequestError({
+        message: 'Lease is already active',
+        errorInfo: {
+          status: ['This lease is already active. No action needed.'],
+        },
+      });
     }
 
+    if (
+      lease.status === LeaseStatus.TERMINATED ||
+      lease.status === LeaseStatus.CANCELLED ||
+      lease.status === LeaseStatus.EXPIRED
+    ) {
+      throw new ValidationRequestError({
+        message: `Cannot activate ${lease.status} lease`,
+        errorInfo: {
+          status: [
+            `Cannot activate a lease with status: ${lease.status}. Only DRAFT or PENDING_SIGNATURE leases can be activated.`,
+          ],
+        },
+      });
+    }
+
+    // Check approval requirements
     enforceLeaseApprovalRequirement(lease, 'activate');
 
-    throw new Error('activateLease not yet implemented');
-  }
+    // Validate lease has all required data
+    validateLeaseReadyForActivation(lease);
 
-  async terminateLease(
-    cuid: string,
-    leaseId: string,
-    _terminationData: any,
-    _userId: string
-  ): IPromiseReturnedData<ILeaseDocument> {
-    this.log.info(`Terminating lease ${leaseId} for client ${cuid}`);
-    throw new Error('terminateLease not yet implemented');
+    // Update lease status to ACTIVE (same as BoldSign webhook)
+    const activatedLease = await this.leaseDAO.update(
+      { _id: lease._id },
+      {
+        status: LeaseStatus.ACTIVE,
+        activatedAt: new Date(),
+        activatedBy: currentUser.sub,
+        updatedAt: new Date(),
+      }
+    );
+
+    if (!activatedLease) {
+      throw new BadRequestError({ message: 'Failed to activate lease' });
+    }
+
+    // Invalidate cache
+    await this.leaseCache.invalidateLease(cuid, luid);
+    await this.leaseCache.invalidateLeaseLists(cuid);
+
+    // Emit LEASE_ESIGNATURE_COMPLETED event (reuse existing event infrastructure)
+    // This triggers all existing listeners: PropertyService, PropertyUnitService, ProfileService, NotificationService
+    this.emitterService.emit(EventTypes.LEASE_ESIGNATURE_COMPLETED, {
+      leaseId: activatedLease._id.toString(),
+      luid: activatedLease.luid,
+      cuid: activatedLease.cuid,
+      tenantId: activatedLease.tenantId.toString(),
+      propertyId: activatedLease.property.id.toString(),
+      propertyUnitId: activatedLease.property.unitId?.toString(),
+      propertyManagerId: activatedLease.createdBy.toString(),
+      documentId: '', // Manual activation - no e-signature document
+      signers: [], // Manual activation - no e-signature signers
+      completedAt: new Date(),
+    });
+
+    this.log.info(`Lease ${luid} manually activated successfully`);
+
+    return {
+      success: true,
+      data: activatedLease,
+      message: 'Lease activated successfully',
+    };
   }
 
   async uploadLeaseDocument(
@@ -1634,6 +1827,10 @@ export class LeaseService {
       EventTypes.LEASE_ESIGNATURE_FAILED,
       this.handleESignatureFailed.bind(this)
     );
+    this.emitterService.on(
+      EventTypes.LEASE_ESIGNATURE_COMPLETED,
+      this.handleLeaseActivatedEmail.bind(this)
+    );
     this.log.info('Lease service event listeners initialized');
   }
 
@@ -2227,6 +2424,99 @@ export class LeaseService {
         error: error instanceof Error ? error.message : 'Unknown error',
         luid,
       });
+    }
+  }
+
+  /**
+   * Handle lease activation email sending
+   * Triggered by LEASE_ESIGNATURE_COMPLETED event (both e-signature and manual activation)
+   */
+  private async handleLeaseActivatedEmail(payload: {
+    leaseId: string;
+    luid: string;
+    cuid: string;
+  }): Promise<void> {
+    try {
+      const { leaseId, luid, cuid } = payload;
+      const lease = await this.leaseDAO.findFirst(
+        {
+          _id: new Types.ObjectId(leaseId),
+          cuid,
+          deletedAt: null,
+        },
+        {
+          populate: [{ path: 'property.id' }, { path: 'property.unitId' }],
+        }
+      );
+
+      if (!lease) {
+        this.log.warn('Lease not found for activation email', { leaseId, cuid });
+        return;
+      }
+
+      const tenantProfile = await this.profileDAO.findFirst(
+        { user: new Types.ObjectId(lease.tenantId) },
+        { populate: 'user' }
+      );
+
+      if (!tenantProfile || !tenantProfile.user) {
+        this.log.warn('Tenant profile not found for activation email', {
+          leaseId,
+          tenantId: lease.tenantId,
+        });
+        return;
+      }
+
+      const tenantUser =
+        typeof tenantProfile.user === 'object' ? (tenantProfile.user as any) : null;
+      if (!tenantUser || !tenantUser.email) {
+        this.log.warn('Tenant email not found for activation email', {
+          leaseId,
+          tenantId: lease.tenantId,
+        });
+        return;
+      }
+
+      const property = lease.property as any;
+      const tenantName =
+        `${tenantProfile.personalInfo?.firstName || ''} ${tenantProfile.personalInfo?.lastName || ''}`.trim() ||
+        'Tenant';
+
+      // Send activation email
+      await this.mailerService.sendMail(
+        {
+          to: tenantUser.email,
+          subject: 'Your Lease is Now Active!',
+          data: {
+            tenantName,
+            leaseNumber: lease.leaseNumber,
+            propertyAddress: property?.id?.address?.fullAddress || property?.id?.name || 'N/A',
+            unitNumber: property?.unitId?.unitNumber || null,
+            startDate: lease.duration.startDate.toISOString(),
+            endDate: lease.duration.endDate.toISOString(),
+            monthlyRent: MoneyUtils.formatCurrency(lease.fees.monthlyRent, lease.fees.currency),
+            firstPaymentDate: lease.duration.startDate.toLocaleDateString(),
+            securityDepositInfo: lease.fees.securityDeposit
+              ? MoneyUtils.formatCurrency(lease.fees.securityDeposit, lease.fees.currency)
+              : 'N/A',
+            leaseUrl: lease.leaseDocuments?.[0]?.url || '',
+            propertyManagerEmail: envVariables.EMAIL.APP_EMAIL_ADDRESS,
+            propertyManagerPhone: property?.id?.contactPhone || 'N/A',
+          },
+        },
+        MailType.LEASE_ACTIVATED
+      );
+
+      this.log.info(`Lease activation email sent successfully to ${tenantUser.email}`, {
+        leaseId,
+        luid,
+      });
+    } catch (error) {
+      this.log.error('Failed to send lease activation email', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      });
+      // Don't fail the whole operation if email fails
     }
   }
 

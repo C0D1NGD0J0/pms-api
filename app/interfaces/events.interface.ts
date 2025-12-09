@@ -8,6 +8,7 @@ import {
   LeaseESignatureDeclinedPayload,
   LeaseESignatureFailedPayload,
   LeaseESignatureSentPayload,
+  LeaseTerminatedPayload,
 } from './lease.interface';
 
 export enum EventTypes {
@@ -26,6 +27,7 @@ export enum EventTypes {
   UNIT_STATUS_CHANGED = 'unit:status:changed',
   DELETE_LOCAL_ASSET = 'delete:local:asset',
   UNIT_BATCH_CREATED = 'unit:batch:created',
+  LEASE_TERMINATED = 'lease:terminated',
   PROPERTY_CREATED = 'property:created',
   PROPERTY_DELETED = 'property:deleted',
   UPLOAD_COMPLETED = 'upload:completed',
@@ -50,6 +52,7 @@ export type EventPayloadMap = {
   [EventTypes.LEASE_ESIGNATURE_FAILED]: LeaseESignatureFailedPayload;
   [EventTypes.LEASE_ESIGNATURE_COMPLETED]: LeaseESignatureCompletedPayload;
   [EventTypes.LEASE_ESIGNATURE_DECLINED]: LeaseESignatureDeclinedPayload;
+  [EventTypes.LEASE_TERMINATED]: LeaseTerminatedPayload;
   [EventTypes.DELETE_ASSET_COMPLETED]: DeleteAssetCompletedPayload;
   [EventTypes.DELETE_ASSET_FAILED]: DeleteAssetFailedPayload;
   [EventTypes.DELETE_LOCAL_ASSET]: DeleteLocalAssetPayload;

@@ -770,10 +770,10 @@ export class LeaseService {
       throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
     }
 
+    // Only DRAFT and CANCELLED leases can be deleted
     if (
-      lease.status === LeaseStatus.ACTIVE ||
-      lease.status === LeaseStatus.PENDING_SIGNATURE ||
-      lease.status === LeaseStatus.TERMINATED
+      lease.status !== LeaseStatus.DRAFT &&
+      lease.status !== LeaseStatus.CANCELLED
     ) {
       throw new ValidationRequestError({
         message: `Cannot delete ${lease.status} lease`,

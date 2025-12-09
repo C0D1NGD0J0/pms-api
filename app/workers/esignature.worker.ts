@@ -53,12 +53,9 @@ export class ESignatureWorker {
 
   sendForSignature = async (job: Job<BoldSignJobData>): Promise<BoldSignJobResult> => {
     const { resource, cuid, luid, leaseId, senderInfo } = job.data;
-
-    this.log.info(`Processing BoldSign job ${job.id} for lease ${luid}`);
     job.progress(10);
 
     try {
-      // Emit request event
       this.emitterService.emit(EventTypes.LEASE_ESIGNATURE_REQUESTED, {
         jobId: job.id,
         leaseId,
@@ -161,7 +158,6 @@ export class ESignatureWorker {
               name: coTenant.name || `Co-Tenant ${index + 1}`,
               email: coTenant.email,
               role: 'co_tenant',
-              userId: undefined, // Co-tenants may not have user accounts
             });
           }
         });

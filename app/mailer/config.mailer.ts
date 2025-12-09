@@ -87,14 +87,26 @@ export class MailService {
     let template: EmailTemplate;
 
     switch (type) {
+      case MailType.LEASE_PAYMENT_REMINDER:
+        template = await this.buildTemplate('payment-reminder', emailData, 'lease');
+        break;
       case MailType.INVITATION_REMINDER:
         template = await this.buildTemplate('reminder', emailData, 'invitation');
         break;
       case MailType.ACCOUNT_ACTIVATION:
         template = await this.buildTemplate('registration', emailData);
         break;
+      case MailType.LEASE_ENDING_SOON:
+        template = await this.buildTemplate('lease-ending-soon', emailData, 'lease');
+        break;
+      case MailType.LEASE_TERMINATED:
+        template = await this.buildTemplate('lease-terminated', emailData, 'lease');
+        break;
       case MailType.FORGOT_PASSWORD:
         template = await this.buildTemplate('forgotPassword', emailData);
+        break;
+      case MailType.LEASE_ACTIVATED:
+        template = await this.buildTemplate('lease-activated', emailData, 'lease');
         break;
       case MailType.PASSWORD_RESET:
         template = await this.buildTemplate('resetPassword', emailData);
@@ -222,6 +234,10 @@ export class MailService {
       [MailType.ACCOUNT_UPDATE]: 'Account recently updated.',
       [MailType.LEASE_APPLICATION_UPDATE]: 'Lease Application Update',
       [MailType.LEASE_SIGNOFF_REQUEST]: 'Lease Sign-off Request',
+      [MailType.LEASE_ACTIVATED]: 'Your Lease is Now Active!',
+      [MailType.LEASE_TERMINATED]: 'Lease Termination Notice',
+      [MailType.LEASE_PAYMENT_REMINDER]: 'Rent Payment Reminder',
+      [MailType.LEASE_ENDING_SOON]: 'Your Lease is Ending Soon',
     };
 
     return subjectMap[mailType] || subjectMap.default;

@@ -293,25 +293,145 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         `Checking overlapping leases for property ${propertyId}${unitId ? `, unit ${unitId}` : ' (property-level)'}`
       );
 
+      const overlaps: ILeaseDocument[] = [];
+
+      if (unitId) {
+        const query: FilterQuery<ILeaseDocument> = {
+          cuid,
+          'property.unitId': unitId,
+          deletedAt: null,
+          status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT] },
+          $and: [
+            { 'duration.startDate': { $lte: endDate } },
+            { 'duration.endDate': { $gte: startDate } },
+          ],
+        };
+
+        if (excludeLeaseId) {
+          query._id = { $ne: excludeLeaseId };
+        }
+
+        const unitOverlaps = await this.list(query, {}, true);
+        overlaps.push(...unitOverlaps.items);
+
+        // Check 1b: Property-level lease exists (blocks all units)
+        const propertyLevelLease = await this.findPropertyLevelLease(
+          cuid,
+          propertyId,
+          startDate,
+          endDate,
+          excludeLeaseId
+        );
+
+        if (propertyLevelLease) {
+          overlaps.push(propertyLevelLease);
+        }
+      }
+      // Case 2: Creating PROPERTY-level lease (entire property)
+      else {
+        // Check 2a: Other property-level leases
+        const propertyQuery: FilterQuery<ILeaseDocument> = {
+          cuid,
+          'property.id': propertyId,
+          'property.unitId': { $exists: false },
+          deletedAt: null,
+          status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT] },
+          $and: [
+            { 'duration.startDate': { $lte: endDate } },
+            { 'duration.endDate': { $gte: startDate } },
+          ],
+        };
+
+        if (excludeLeaseId) {
+          propertyQuery._id = { $ne: excludeLeaseId };
+        }
+
+        const propertyOverlaps = await this.list(propertyQuery, {}, true);
+        overlaps.push(...propertyOverlaps.items);
+
+        // Check 2b: ANY unit-level leases exist (blocks property-level lease)
+        const unitLeases = await this.findActiveUnitLeases(
+          cuid,
+          propertyId,
+          startDate,
+          endDate,
+          excludeLeaseId
+        );
+
+        overlaps.push(...unitLeases);
+      }
+
+      return overlaps;
+    } catch (error: any) {
+      this.log.error('Error checking overlapping leases:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Find property-level lease (lease without unitId - entire property)
+   */
+  async findPropertyLevelLease(
+    cuid: string,
+    propertyId: string,
+    startDate: Date,
+    endDate: Date,
+    excludeLeaseId?: string
+  ): Promise<ILeaseDocument | null> {
+    try {
+      this.log.info(
+        `Checking for property-level lease on property ${propertyId} from ${startDate} to ${endDate}`
+      );
+
       const query: FilterQuery<ILeaseDocument> = {
         cuid,
-        deletedAt: null,
+        'property.id': propertyId,
+        $or: [{ 'property.unitId': { $exists: false } }, { 'property.unitId': null }],
         status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT] },
         $and: [
           { 'duration.startDate': { $lte: endDate } },
           { 'duration.endDate': { $gte: startDate } },
         ],
+        deletedAt: null,
       };
 
-      // Handle unit-level vs property-level leases
-      if (unitId) {
-        // Checking for unit-level lease: find leases on this specific unit
-        query['property.unitId'] = unitId;
-      } else {
-        // Checking for property-level lease: find other property-level leases only
-        query['property.id'] = propertyId;
-        query['property.unitId'] = { $exists: false };
+      if (excludeLeaseId) {
+        query._id = { $ne: excludeLeaseId };
       }
+
+      return await this.findFirst(query);
+    } catch (error: any) {
+      this.log.error('Error finding property-level lease:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Find all active unit-level leases on a property
+   */
+  async findActiveUnitLeases(
+    cuid: string,
+    propertyId: string,
+    startDate: Date,
+    endDate: Date,
+    excludeLeaseId?: string
+  ): Promise<ILeaseDocument[]> {
+    try {
+      this.log.info(
+        `Checking for active unit-level leases on property ${propertyId} from ${startDate} to ${endDate}`
+      );
+
+      const query: FilterQuery<ILeaseDocument> = {
+        cuid,
+        'property.id': propertyId,
+        'property.unitId': { $exists: true, $ne: null },
+        status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT] },
+        $and: [
+          { 'duration.startDate': { $lte: endDate } },
+          { 'duration.endDate': { $gte: startDate } },
+        ],
+        deletedAt: null,
+      };
 
       if (excludeLeaseId) {
         query._id = { $ne: excludeLeaseId };
@@ -320,7 +440,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       const result = await this.list(query, {}, true);
       return result.items;
     } catch (error: any) {
-      this.log.error('Error checking overlapping leases:', error);
+      this.log.error('Error finding active unit leases:', error);
       throw error;
     }
   }
@@ -425,30 +545,40 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       terminationReason: string;
       moveOutDate?: Date;
       notes?: string;
+    },
+    terminatedBy: {
+      userId: string;
+      name: string;
     }
   ): Promise<ILeaseDocument | null> {
     try {
       this.log.info(`Terminating lease ${leaseId} for client ${cuid}`);
 
       const updateData: any = {
-        status: LeaseStatus.TERMINATED,
-        'duration.terminationDate': terminationData.terminationDate,
-        terminationReason: terminationData.terminationReason,
+        $set: {
+          status: LeaseStatus.TERMINATED,
+          'duration.terminationDate': terminationData.terminationDate,
+          terminationReason: terminationData.terminationReason,
+        },
+        $push: {
+          lastModifiedBy: {
+            userId: new Types.ObjectId(terminatedBy.userId),
+            name: terminatedBy.name,
+            date: new Date(),
+            action: 'terminated',
+          },
+        },
       };
 
       if (terminationData.moveOutDate) {
-        updateData['duration.moveOutDate'] = terminationData.moveOutDate;
+        updateData.$set['duration.moveOutDate'] = terminationData.moveOutDate;
       }
 
       if (terminationData.notes) {
-        updateData.internalNotes = terminationData.notes;
+        updateData.$set.internalNotes = terminationData.notes;
       }
 
-      return await this.update(
-        { _id: leaseId, cuid, deletedAt: null },
-        { $set: updateData },
-        { new: true }
-      );
+      return await this.update({ _id: leaseId, cuid, deletedAt: null }, updateData, { new: true });
     } catch (error: any) {
       this.log.error('Error terminating lease:', error);
       throw error;

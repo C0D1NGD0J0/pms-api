@@ -1,0 +1,81 @@
+<table width="100%">
+  <tr>
+    <td class="content">
+      <h2>🎉 Your Lease is Now Active</h2>
+      <p>Hello <%= tenantName %>,</p>
+      <p>
+        Great news! Your lease agreement for <strong><%= propertyAddress %></strong> has been fully signed and is now active.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="background-color: #f8f9fa; padding: 20px; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #2c3e50;">Lease Details</h3>
+      <table width="100%" style="border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: #666; width: 40%;">Lease Number:</td>
+          <td style="padding: 8px 0; font-weight: 600;"><%= leaseNumber %></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Property:</td>
+          <td style="padding: 8px 0; font-weight: 600;"><%= propertyAddress %></td>
+        </tr>
+        <% if (unitNumber) { %>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Unit:</td>
+          <td style="padding: 8px 0; font-weight: 600;"><%= unitNumber %></td>
+        </tr>
+        <% } %>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Start Date:</td>
+          <td style="padding: 8px 0; font-weight: 600;"><%= new Date(startDate).toLocaleDateString() %></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">End Date:</td>
+          <td style="padding: 8px 0; font-weight: 600;"><%= new Date(endDate).toLocaleDateString() %></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Monthly Rent:</td>
+          <td style="padding: 8px 0; font-weight: 600; color: #2ecc71;"><%= monthlyRent %></td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content cta">
+      <a href="<%= leaseUrl %>" class="btn">View Your Lease</a>
+      <p style="font-size: 14px; color: #666; margin-top: 15px">
+        If the button doesn't work, copy and paste this link in your browser:<br />
+        <%= leaseUrl %>
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <h3>Important Next Steps</h3>
+      <ul style="color: #555; line-height: 1.8;">
+        <li><strong>Move-in Date:</strong> Your move-in date is <%= new Date(startDate).toLocaleDateString() %></li>
+        <li><strong>First Payment:</strong> Your first rent payment is due on <%= firstPaymentDate %></li>
+        <li><strong>Security Deposit:</strong> <%= securityDepositInfo %></li>
+        <li><strong>Keys & Access:</strong> Contact your property manager to arrange key pickup</li>
+      </ul>
+
+      <div style="background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0;">
+        <p style="margin: 0; color: #856404;">
+          <strong>📋 Reminder:</strong> Please complete your move-in inspection within 7 days of move-in and report any issues to your property manager.
+        </p>
+      </div>
+
+      <p style="margin-top: 20px;">
+        If you have any questions about your lease or move-in process, please contact your property manager at <%= propertyManagerEmail %> or <%= propertyManagerPhone %>.
+      </p>
+
+      <p style="color: #666; font-size: 14px; margin-top: 30px;">
+        Welcome to your new home! 🏡
+      </p>
+    </td>
+  </tr>
+</table>

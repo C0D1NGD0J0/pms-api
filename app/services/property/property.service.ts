@@ -9,9 +9,14 @@ import { PropertyQueue, UploadQueue } from '@queues/index';
 import { NotificationService } from '@services/notification';
 import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
-import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
-import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import {
+  UploadCompletedPayload,
+  UploadFailedPayload,
+  LeaseStatus,
+  EventTypes,
+} from '@interfaces/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -68,6 +73,7 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
+  leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
 
@@ -85,6 +91,7 @@ export class PropertyService {
   private readonly propertyCsvProcessor: PropertyCsvProcessor;
   private readonly mediaUploadService: MediaUploadService;
   private readonly userDAO: UserDAO;
+  private readonly leaseDAO: LeaseDAO;
   private readonly notificationService: NotificationService;
 
   constructor({
@@ -100,6 +107,7 @@ export class PropertyService {
     propertyCsvProcessor,
     mediaUploadService,
     userDAO,
+    leaseDAO,
     notificationService,
   }: IConstructor) {
     this.clientDAO = clientDAO;
@@ -115,6 +123,7 @@ export class PropertyService {
     this.propertyCsvProcessor = propertyCsvProcessor;
     this.mediaUploadService = mediaUploadService;
     this.userDAO = userDAO;
+    this.leaseDAO = leaseDAO;
     this.notificationService = notificationService;
 
     this.setupEventListeners();
@@ -135,6 +144,8 @@ export class PropertyService {
       EventTypes.LEASE_ESIGNATURE_COMPLETED,
       this.handleLeaseActivated.bind(this)
     );
+
+    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
 
     this.log.info(t('property.logging.eventListenersInitialized'));
   }
@@ -195,6 +206,60 @@ export class PropertyService {
         payload,
       });
       return { success: false, message: 'Error handling lease activation', data: null };
+    }
+  }
+
+  private async handleLeaseTerminated(payload: any): Promise<{
+    success: boolean;
+    message: string;
+    data: any;
+  }> {
+    try {
+      const { leaseId, propertyId, propertyUnitId } = payload;
+
+      // Skip if this is a unit-level lease (unit service handles it)
+      if (propertyUnitId) {
+        this.log.info('Lease has propertyUnitId - skipping direct property update', {
+          leaseId,
+          propertyId,
+        });
+        return {
+          success: false,
+          message: 'Lease has propertyUnitId - skipping direct property update',
+          data: null,
+        };
+      }
+
+      // This is a property-level lease termination
+      let property = await this.propertyDAO.findById(propertyId);
+      if (!property) {
+        return {
+          success: false,
+          message: 'Property not found',
+          data: null,
+        };
+      }
+
+      // Update property to vacant since property-level lease ended
+      property = await this.propertyDAO.update(
+        { _id: propertyId },
+        {
+          occupancyStatus: 'vacant',
+          updatedAt: new Date(),
+        }
+      );
+
+      return {
+        success: true,
+        data: property,
+        message: 'Property marked as vacant after lease termination',
+      };
+    } catch (error) {
+      this.log.error('Error handling lease termination for property', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      });
+      return { success: false, message: 'Error handling lease termination', data: null };
     }
   }
 
@@ -1463,6 +1528,29 @@ export class PropertyService {
     });
     if (!property) {
       throw new NotFoundError({ message: t('property.errors.notFound') });
+    }
+
+    // Business Rule: Cannot archive property with active leases
+    const activeLeases = await this.leaseDAO.list(
+      {
+        cuid,
+        'property.id': property._id,
+        status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
+        deletedAt: null,
+      },
+      {},
+      true
+    );
+
+    if (activeLeases.items.length > 0) {
+      throw new ValidationRequestError({
+        message: 'Cannot archive property with active or pending leases',
+        errorInfo: {
+          property: [
+            `This property has ${activeLeases.items.length} active or pending lease(s). Please terminate or cancel all leases before archiving the property.`,
+          ],
+        },
+      });
     }
 
     const archivedProperty = await this.propertyDAO.archiveProperty(property.id, currentUser.sub);

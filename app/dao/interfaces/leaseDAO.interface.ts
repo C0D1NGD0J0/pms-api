@@ -22,6 +22,7 @@ export interface ILeaseDAO {
    * @param cuid - Client ID
    * @param leaseId - Lease ID
    * @param terminationData - Termination details (date, reason, etc.)
+   * @param terminatedBy - User performing termination (userId and name)
    * @returns Updated lease document or null
    */
   terminateLease(
@@ -32,6 +33,10 @@ export interface ILeaseDAO {
       terminationReason: string;
       moveOutDate?: Date;
       notes?: string;
+    },
+    terminatedBy: {
+      userId: string;
+      name: string;
     }
   ): Promise<ILeaseDocument | null>;
 

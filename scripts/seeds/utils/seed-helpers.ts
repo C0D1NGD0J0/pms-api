@@ -264,56 +264,6 @@ export async function createUnits(property: any, count: number, currency: string
 }
 
 /**
- * Create property
- */
-export async function createProperty(
-  propertyData: any,
-  client: any,
-  managedBy: any,
-  createdBy: any
-) {
-  const property = await PropertyModel.create({
-    cuid: client.cuid,
-    name: propertyData.name,
-    propertyType: propertyData.propertyType,
-    status: propertyData.status,
-    occupancyStatus: propertyData.occupancyStatus,
-    address: {
-      street: propertyData.address.street,
-      streetNumber: propertyData.address.streetNumber,
-      city: propertyData.address.city,
-      state: propertyData.address.state,
-      country: propertyData.address.country,
-      postCode: propertyData.address.postCode,
-      fullAddress: `${propertyData.address.street}, ${propertyData.address.city}, ${propertyData.address.state}, ${propertyData.address.postCode}`,
-    },
-    computedLocation: {
-      type: 'Point',
-      coordinates: propertyData.coordinates,
-    },
-    specifications: propertyData.specifications,
-    fees: {
-      currency: client.companyProfile?.currency || 'USD',
-      rentalAmount: propertyData.fees.rentalAmount,
-      managementFees: propertyData.fees.managementFees,
-      taxAmount: propertyData.fees.taxAmount,
-      securityDeposit: propertyData.fees.securityDeposit || 0,
-    },
-    utilities: propertyData.utilities,
-    interiorAmenities: propertyData.interiorAmenities,
-    communityAmenities: propertyData.communityAmenities,
-    description: propertyData.description,
-    yearBuilt: propertyData.yearBuilt,
-    maxAllowedUnits: propertyData.maxAllowedUnits,
-    managedBy: managedBy._id,
-    createdBy: createdBy._id,
-    approvalStatus: 'approved',
-  });
-
-  return property;
-}
-
-/**
  * Create staff user
  */
 export async function createStaffUser(
@@ -471,6 +421,56 @@ export async function createAdminUser(adminData: any, client: any, region: any) 
   });
 
   return user;
+}
+
+/**
+ * Create property
+ */
+export async function createProperty(
+  propertyData: any,
+  client: any,
+  managedBy: any,
+  createdBy: any
+) {
+  const property = await PropertyModel.create({
+    cuid: client.cuid,
+    name: propertyData.name,
+    propertyType: propertyData.propertyType,
+    status: propertyData.status,
+    occupancyStatus: propertyData.occupancyStatus,
+    address: {
+      street: propertyData.address.street,
+      streetNumber: propertyData.address.streetNumber,
+      city: propertyData.address.city,
+      state: propertyData.address.state,
+      country: propertyData.address.country,
+      postCode: propertyData.address.postCode,
+      fullAddress: `${propertyData.address.street}, ${propertyData.address.city}, ${propertyData.address.state}, ${propertyData.address.postCode}`,
+    },
+    computedLocation: {
+      type: 'Point',
+      coordinates: propertyData.coordinates,
+    },
+    specifications: propertyData.specifications,
+    fees: {
+      currency: client.companyProfile?.currency || 'USD',
+      rentalAmount: propertyData.fees.rentalAmount,
+      managementFees: propertyData.fees.managementFees,
+      taxAmount: propertyData.fees.taxAmount,
+      securityDeposit: propertyData.fees.securityDeposit || 0,
+    },
+    utilities: propertyData.utilities,
+    interiorAmenities: propertyData.interiorAmenities,
+    communityAmenities: propertyData.communityAmenities,
+    description: propertyData.description,
+    yearBuilt: propertyData.yearBuilt,
+    maxAllowedUnits: propertyData.maxAllowedUnits,
+    managedBy: managedBy._id,
+    createdBy: createdBy._id,
+    approvalStatus: 'approved',
+  });
+
+  return property;
 }
 
 /**

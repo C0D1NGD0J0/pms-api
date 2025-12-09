@@ -942,6 +942,10 @@ describe('LeaseDAO', () => {
         moveOutDate: new Date('2025-05-31'),
         notes: 'Early termination',
       };
+      const terminatedBy = {
+        userId: new Types.ObjectId().toString(),
+        name: 'John Admin',
+      };
 
       const mockUpdatedLease = {
         _id: leaseId,
@@ -952,18 +956,25 @@ describe('LeaseDAO', () => {
       const mockQuery = createQueryMock(mockUpdatedLease);
       mockLeaseModel.findOneAndUpdate.mockReturnValue(mockQuery);
 
-      const result = await leaseDAO.terminateLease('C123', leaseId, terminationData);
+      const result = await leaseDAO.terminateLease('C123', leaseId, terminationData, terminatedBy);
 
       expect(result).toEqual(mockUpdatedLease);
       expect(mockLeaseModel.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: leaseId, cuid: 'C123', deletedAt: null },
-        {
+        expect.objectContaining({
           $set: expect.objectContaining({
             status: LeaseStatus.TERMINATED,
             'duration.terminationDate': terminationData.terminationDate,
             terminationReason: terminationData.terminationReason,
           }),
-        },
+          $push: expect.objectContaining({
+            lastModifiedBy: expect.objectContaining({
+              userId: expect.any(Types.ObjectId),
+              name: terminatedBy.name,
+              action: 'terminated',
+            }),
+          }),
+        }),
         expect.objectContaining({ new: true })
       );
     });

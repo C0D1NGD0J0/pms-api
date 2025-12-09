@@ -74,6 +74,7 @@ import {
   handlePendingSignatureUpdate,
   validateResourceAvailable,
   calculateFinancialSummary,
+  validateLeaseTermination,
   handleClosedStatusUpdate,
   validateImmutableFields,
   constructActivityFeed,
@@ -769,7 +770,11 @@ export class LeaseService {
       throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
     }
 
-    if (lease.status !== LeaseStatus.DRAFT && lease.status !== LeaseStatus.CANCELLED) {
+    if (
+      lease.status === LeaseStatus.ACTIVE ||
+      lease.status === LeaseStatus.PENDING_SIGNATURE ||
+      lease.status === LeaseStatus.TERMINATED
+    ) {
       throw new ValidationRequestError({
         message: `Cannot delete ${lease.status} lease`,
         errorInfo: {
@@ -781,7 +786,6 @@ export class LeaseService {
     }
 
     const deleted = await lease.softDelete(new Types.ObjectId(userId));
-
     if (!deleted) {
       throw new BadRequestError({ message: 'Failed to delete lease' });
     }
@@ -845,12 +849,29 @@ export class LeaseService {
       warnings,
     });
 
-    const terminatedLease = await this.leaseDAO.terminateLease(cuid, lease._id.toString(), {
-      terminationDate,
-      terminationReason: terminationData.terminationReason,
-      moveOutDate: terminationData.moveOutDate,
-      notes: terminationData.notes,
-    });
+    const currentUserProfile = await this.profileDAO.findFirst(
+      { user: new Types.ObjectId(currentUser.sub) },
+      { select: 'personalInfo.firstName personalInfo.lastName' }
+    );
+
+    const userName = currentUserProfile
+      ? `${currentUserProfile.personalInfo?.firstName || ''} ${currentUserProfile.personalInfo?.lastName || ''}`.trim()
+      : currentUser.email || 'Unknown User';
+
+    const terminatedLease = await this.leaseDAO.terminateLease(
+      cuid,
+      lease._id.toString(),
+      {
+        terminationDate,
+        terminationReason: terminationData.terminationReason,
+        moveOutDate: terminationData.moveOutDate,
+        notes: terminationData.notes,
+      },
+      {
+        userId: currentUser.sub,
+        name: userName,
+      }
+    );
 
     if (!terminatedLease) {
       throw new BadRequestError({ message: 'Failed to terminate lease' });

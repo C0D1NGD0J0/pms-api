@@ -545,30 +545,40 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       terminationReason: string;
       moveOutDate?: Date;
       notes?: string;
+    },
+    terminatedBy: {
+      userId: string;
+      name: string;
     }
   ): Promise<ILeaseDocument | null> {
     try {
       this.log.info(`Terminating lease ${leaseId} for client ${cuid}`);
 
       const updateData: any = {
-        status: LeaseStatus.TERMINATED,
-        'duration.terminationDate': terminationData.terminationDate,
-        terminationReason: terminationData.terminationReason,
+        $set: {
+          status: LeaseStatus.TERMINATED,
+          'duration.terminationDate': terminationData.terminationDate,
+          terminationReason: terminationData.terminationReason,
+        },
+        $push: {
+          lastModifiedBy: {
+            userId: new Types.ObjectId(terminatedBy.userId),
+            name: terminatedBy.name,
+            date: new Date(),
+            action: 'terminated',
+          },
+        },
       };
 
       if (terminationData.moveOutDate) {
-        updateData['duration.moveOutDate'] = terminationData.moveOutDate;
+        updateData.$set['duration.moveOutDate'] = terminationData.moveOutDate;
       }
 
       if (terminationData.notes) {
-        updateData.internalNotes = terminationData.notes;
+        updateData.$set.internalNotes = terminationData.notes;
       }
 
-      return await this.update(
-        { _id: leaseId, cuid, deletedAt: null },
-        { $set: updateData },
-        { new: true }
-      );
+      return await this.update({ _id: leaseId, cuid, deletedAt: null }, updateData, { new: true });
     } catch (error: any) {
       this.log.error('Error terminating lease:', error);
       throw error;

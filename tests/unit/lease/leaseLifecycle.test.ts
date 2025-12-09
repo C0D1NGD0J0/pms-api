@@ -52,6 +52,9 @@ const createMockDependencies = () => ({
   pdfGeneratorService: {
     generatePdf: jest.fn(),
   },
+  mailerService: {
+    sendMail: jest.fn(),
+  },
   emitterService: {
     emit: jest.fn(),
     on: jest.fn(),
@@ -455,25 +458,17 @@ describe('LeaseService - Lifecycle Management', () => {
   describe('activateLease method', () => {
     const cuid = 'C123';
     const leaseId = 'L-2025-ABC123';
-    const userId = new Types.ObjectId().toString();
-
-    it('should throw not implemented error', async () => {
-      const mockLease = createMockLease({
-        status: LeaseStatus.PENDING_SIGNATURE,
-        approvalStatus: 'approved',
-      });
-
-      mockDeps.leaseDAO.findFirst.mockResolvedValue(mockLease);
-
-      await expect(service.activateLease(cuid, leaseId, {}, userId)).rejects.toThrow(
-        'activateLease not yet implemented'
-      );
-    });
+    const ctx = {
+      currentuser: {
+        sub: new Types.ObjectId().toString(),
+        email: 'admin@test.com',
+      },
+    };
 
     it('should validate lease exists', async () => {
       mockDeps.leaseDAO.findFirst.mockResolvedValue(null);
 
-      await expect(service.activateLease(cuid, leaseId, {}, userId)).rejects.toThrow(
+      await expect(service.activateLease(cuid, leaseId, ctx as any)).rejects.toThrow(
         BadRequestError
       );
     });
@@ -485,7 +480,7 @@ describe('LeaseService - Lifecycle Management', () => {
 
       mockDeps.leaseDAO.findFirst.mockResolvedValue(pendingLease);
 
-      await expect(service.activateLease(cuid, leaseId, {}, userId)).rejects.toThrow(
+      await expect(service.activateLease(cuid, leaseId, ctx as any)).rejects.toThrow(
         /Cannot activate.*pending approval.*Only approved leases can activate/
       );
     });

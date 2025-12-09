@@ -3,7 +3,6 @@ import { t } from '@shared/languages';
 import { MediaUploadService } from '@services/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { IProfileDocument } from '@interfaces/profile.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, LeaseDAO } from '@dao/index';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { IPropertyUnitDocument, IPropertyDocument, IProfileWithUser } from '@interfaces/index';
@@ -32,9 +31,7 @@ import {
   MoneyUtils,
 } from '@utils/index';
 
-// ====================================================================
 // SECTION 1: FIELD VALIDATION
-// ====================================================================
 
 export const validateImmutableFields = (updateData: Partial<ILeaseFormData>): void => {
   const updateFields = Object.keys(updateData);
@@ -80,35 +77,19 @@ export const validateAllowedFields = (
 };
 
 /**
- * Validates both immutable fields and status-specific allowed fields
- */
-export const validateUpdatableFields = (
-  updateData: Partial<ILeaseFormData>,
-  leaseStatus: LeaseStatus
-): void => {
-  validateImmutableFields(updateData);
-  validateAllowedFields(updateData, leaseStatus);
-};
-
-/**
  * Check if update contains high-impact fields requiring approval
  */
 export const hasHighImpactChanges = (updateData: Partial<ILeaseFormData>): boolean => {
-  return hasFieldsInList(updateData, HIGH_IMPACT_LEASE_FIELDS);
+  return Object.keys(updateData).some((field) => HIGH_IMPACT_LEASE_FIELDS.includes(field));
 };
 
 /**
  * Check if update contains fields that invalidate signatures
  */
 export const hasSignatureInvalidatingChanges = (updateData: Partial<ILeaseFormData>): boolean => {
-  return hasFieldsInList(updateData, SIGNATURE_INVALIDATING_LEASE_FIELDS);
-};
-
-/**
- * Check if any fields in data match the provided field list
- */
-export const hasFieldsInList = (data: Partial<ILeaseFormData>, fieldList: string[]): boolean => {
-  return Object.keys(data).some((field) => fieldList.includes(field));
+  return Object.keys(updateData).some((field) =>
+    SIGNATURE_INVALIDATING_LEASE_FIELDS.includes(field)
+  );
 };
 
 /**
@@ -145,54 +126,6 @@ export const validateStatusTransition = (
 };
 
 /**
- * Validate lease update against business rules
- */
-export const validateLeaseUpdate = (
-  lease: ILeaseDocument,
-  updateData: Partial<ILeaseFormData>
-): void => {
-  if (lease.status !== LeaseStatus.ACTIVE) {
-    return;
-  }
-
-  const immutableFields = [
-    'tenantId',
-    'property.id',
-    'property.unitId',
-    'duration.startDate',
-    'duration.endDate',
-    'fees.monthlyRent',
-    'fees.securityDeposit',
-    'fees.currency',
-    'type',
-  ];
-
-  const attemptedChanges = Object.keys(updateData);
-  const blockedChanges: string[] = [];
-
-  attemptedChanges.forEach((field) => {
-    const isBlocked = immutableFields.some((immutable) => {
-      return field === immutable || field.startsWith(immutable + '.');
-    });
-
-    if (isBlocked) {
-      blockedChanges.push(field);
-    }
-  });
-
-  if (blockedChanges.length > 0) {
-    throw new ValidationRequestError({
-      message: 'Cannot modify immutable fields on active lease',
-      errorInfo: {
-        fields: [
-          `The following fields cannot be modified on an ACTIVE lease: ${blockedChanges.join(', ')}. These fields are locked to maintain lease integrity.`,
-        ],
-      },
-    });
-  }
-};
-
-/**
  * Enforce approval requirement for certain operations
  */
 export const enforceLeaseApprovalRequirement = (lease: ILeaseDocument, operation: string): void => {
@@ -210,26 +143,153 @@ export const enforceLeaseApprovalRequirement = (lease: ILeaseDocument, operation
   }
 };
 
-// ====================================================================
+/**
+ * Validate lease is ready for manual activation
+ */
+export const validateLeaseReadyForActivation = (lease: ILeaseDocument): void => {
+  const errors: Record<string, string[]> = {};
+
+  // Check tenant exists
+  if (!lease.tenantId) {
+    errors.tenantId = ['Tenant is required to activate lease'];
+  }
+
+  // Check property exists
+  if (!lease.property?.id) {
+    errors.property = ['Property is required to activate lease'];
+  }
+
+  // Check dates
+  if (!lease.duration?.startDate) {
+    errors.startDate = ['Start date is required to activate lease'];
+  }
+  if (!lease.duration?.endDate) {
+    errors.endDate = ['End date is required to activate lease'];
+  }
+
+  // Check rent amount
+  if (!lease.fees?.monthlyRent || lease.fees.monthlyRent <= 0) {
+    errors.rentAmount = ['Monthly rent amount is required and must be greater than 0'];
+  }
+
+  // Check lease type
+  if (!lease.type) {
+    errors.type = ['Lease type is required'];
+  }
+
+  if (Object.keys(errors).length > 0) {
+    throw new ValidationRequestError({
+      message: 'Lease is missing required information for activation',
+      errorInfo: errors,
+    });
+  }
+};
+
+/**
+ * Validate lease termination date with comprehensive business rules
+ */
+export const validateLeaseTermination = (
+  lease: ILeaseDocument,
+  terminationDate: Date,
+  terminationReason: string
+): { warnings: string[] } => {
+  const errors: Record<string, string[]> = {};
+  const warnings: string[] = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const leaseStartDate = new Date(lease.duration.startDate);
+  leaseStartDate.setHours(0, 0, 0, 0);
+
+  const leaseEndDate = new Date(lease.duration.endDate);
+  leaseEndDate.setHours(0, 0, 0, 0);
+
+  const termDate = new Date(terminationDate);
+  termDate.setHours(0, 0, 0, 0);
+
+  // Rule 1: No past dates
+  if (termDate < today) {
+    errors.terminationDate = [
+      'Termination date cannot be in the past. Please select today or a future date.',
+    ];
+  }
+
+  // Rule 2: Must be within lease timeline
+  if (termDate < leaseStartDate) {
+    errors.terminationDate = ['Termination date cannot be before lease start date'];
+  }
+
+  if (termDate > leaseEndDate) {
+    errors.terminationDate = [
+      'Termination date cannot be after lease end date. The lease will expire naturally on that date.',
+    ];
+  }
+
+  // Rule 3: Notice period requirement (with exceptions)
+  const reasonsAllowingImmediateTermination = [
+    'lease_violation',
+    'non_payment',
+    'property_sale',
+    'emergency',
+    'mutual_agreement',
+  ];
+
+  const requiresNotice = !reasonsAllowingImmediateTermination.includes(terminationReason);
+  const noticePeriodDays = lease.renewalOptions?.noticePeriodDays || 30;
+
+  if (requiresNotice) {
+    const minimumTerminationDate = new Date(today);
+    minimumTerminationDate.setDate(today.getDate() + noticePeriodDays);
+
+    if (termDate < minimumTerminationDate) {
+      errors.terminationDate = [
+        `Minimum ${noticePeriodDays}-day notice required for this termination reason. Earliest allowed date: ${minimumTerminationDate.toLocaleDateString()}`,
+      ];
+    }
+  }
+
+  // Rule 4: Minimum active duration (30 days)
+  const daysSinceStart = Math.floor(
+    (termDate.getTime() - leaseStartDate.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (daysSinceStart < 30 && terminationReason !== 'lease_violation') {
+    errors.terminationDate = [
+      `Lease must be active for at least 30 days before termination (currently ${daysSinceStart} days). Exception: lease violations.`,
+    ];
+  }
+
+  // Warning: Month-end alignment (not blocking)
+  const lastDayOfMonth = new Date(termDate.getFullYear(), termDate.getMonth() + 1, 0).getDate();
+  const isEndOfMonth = termDate.getDate() === lastDayOfMonth;
+
+  if (
+    !isEndOfMonth &&
+    terminationReason !== 'lease_violation' &&
+    terminationReason !== 'emergency'
+  ) {
+    const suggestedDate = new Date(termDate.getFullYear(), termDate.getMonth() + 1, 0);
+    warnings.push(
+      `Termination mid-month may complicate rent prorating. Consider ${suggestedDate.toLocaleDateString()} (end of month) for cleaner accounting.`
+    );
+  }
+
+  if (Object.keys(errors).length > 0) {
+    throw new ValidationRequestError({
+      message: 'Invalid termination date',
+      errorInfo: errors,
+    });
+  }
+
+  return { warnings };
+};
+
 // SECTION 2: PERMISSION & RESOURCE VALIDATION
-// ====================================================================
 
-interface LeaseDAOInterface {
-  update: (filter: any, update: any, options?: any) => Promise<ILeaseDocument | null>;
-}
-
-interface LeaseCacheInterface {
-  invalidateLease: (cuid: string, luid: string) => Promise<ISuccessReturnData>;
-}
-
-interface ProfileDAOInterface {
-  findFirst: (filter: any, options?: any) => Promise<IProfileDocument | null>;
-}
-
-export async function validateLeasePdfExists(
+export const validateLeasePdfExists = async (
   lease: ILeaseDocument,
   mediaUploadService: MediaUploadService
-): Promise<Buffer> {
+): Promise<Buffer> => {
   const leasePDF = lease.leaseDocuments?.find(
     (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
   );
@@ -248,9 +308,9 @@ export async function validateLeasePdfExists(
   }
 
   return pdfBuffer;
-}
+};
 
-export function validateLeaseReadyForSignature(lease: ILeaseDocument): void {
+export const validateLeaseReadyForSignature = (lease: ILeaseDocument): void => {
   // Check lease status
   if (![LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT].includes(lease.status)) {
     throw new ValidationRequestError({
@@ -267,57 +327,39 @@ export function validateLeaseReadyForSignature(lease: ILeaseDocument): void {
       message: 'Lease has already been sent for signatures',
     });
   }
-}
+};
 
-export function validateResourceAvailable(
+export const validateResourceAvailable = (
   resource: IPropertyDocument | IPropertyUnitDocument,
   resourceType: 'property' | 'unit'
-): void {
+): void => {
   if (resource.status !== 'available') {
     throw new BadRequestError({
       message: `Cannot send lease for signatures, as the selected ${resourceType} is not available.`,
     });
   }
-}
+};
 
-export function validateUserRole(
+export const validateUserRole = (
   user: any,
   allowedRoles: readonly string[],
   operation: string = 'perform this action'
-): void {
+): void => {
   const userRole = convertUserRoleToEnum(user.client.role);
   if (!allowedRoles.includes(userRole)) {
     throw new ForbiddenError({ message: `You are not authorized to ${operation}.` });
   }
-}
+};
 
-export function validateLeaseNotPendingSignature(lease: ILeaseDocument): void {
+export const validateLeaseNotPendingSignature = (lease: ILeaseDocument): void => {
   if (lease.status === LeaseStatus.PENDING_SIGNATURE) {
     throw new ValidationRequestError({
       message: 'Cannot edit lease while pending signature. Withdraw it first.',
     });
   }
-}
+};
 
-export function validateLeasePermissions(user: any, operation: string = 'update leases'): void {
-  validateUserRole(user, [...PROPERTY_STAFF_ROLES, ...PROPERTY_APPROVAL_ROLES], operation);
-}
-
-// ====================================================================
 // SECTION 3: UPDATE HANDLERS
-// ====================================================================
-
-export function validatePropertyApprovalRole(user: any): void {
-  validateUserRole(user, PROPERTY_APPROVAL_ROLES, 'perform this action');
-}
-
-export function validatePropertyAvailable(property: IPropertyDocument): void {
-  validateResourceAvailable(property, 'property');
-}
-
-export function validatePropertyUnitAvailable(unit: IPropertyUnitDocument): void {
-  validateResourceAvailable(unit, 'unit');
-}
 
 /**
  * Handle update for DRAFT lease
@@ -327,9 +369,9 @@ export const handleDraftUpdate = async (
   lease: ILeaseDocument,
   updateData: Partial<ILeaseFormData>,
   currentUser: ICurrentUser,
-  leaseDAO: LeaseDAOInterface,
-  profileDAO: ProfileDAOInterface,
-  leaseCache: LeaseCacheInterface
+  leaseDAO: LeaseDAO,
+  profileDAO: ProfileDAO,
+  leaseCache: any
 ): Promise<ISuccessReturnData<any>> => {
   validateAllowedFields(updateData, LeaseStatus.DRAFT);
 
@@ -384,8 +426,8 @@ export const handlePendingSignatureUpdate = async (
   updateData: Partial<ILeaseFormData>,
   currentUser: ICurrentUser,
   isApprovalRole: boolean,
-  leaseDAO: LeaseDAOInterface,
-  leaseCache: LeaseCacheInterface
+  leaseDAO: LeaseDAO,
+  leaseCache: any
 ): Promise<ISuccessReturnData<any>> => {
   if (!isApprovalRole) {
     throw new BadRequestError({
@@ -421,9 +463,9 @@ export const handleActiveUpdate = async (
   updateData: Partial<ILeaseFormData>,
   currentUser: ICurrentUser,
   isApprovalRole: boolean,
-  leaseDAO: LeaseDAOInterface,
-  profileDAO: ProfileDAOInterface,
-  leaseCache: LeaseCacheInterface
+  leaseDAO: LeaseDAO,
+  profileDAO: ProfileDAO,
+  leaseCache: any
 ): Promise<ISuccessReturnData<any>> => {
   const hasHighImpact = hasHighImpactChanges(updateData);
   let updatedLease: ILeaseDocument;
@@ -486,8 +528,8 @@ export const handleClosedStatusUpdate = async (
   updateData: Partial<ILeaseFormData>,
   currentUser: ICurrentUser,
   isApprovalRole: boolean,
-  leaseDAO: LeaseDAOInterface,
-  leaseCache: LeaseCacheInterface
+  leaseDAO: LeaseDAO,
+  leaseCache: any
 ): Promise<ISuccessReturnData<any>> => {
   if (!isApprovalRole) {
     throw new BadRequestError({
@@ -514,7 +556,7 @@ export const applyDirectUpdate = async (
   lease: ILeaseDocument,
   updateData: Partial<ILeaseFormData>,
   userId: string,
-  leaseDAO: LeaseDAOInterface
+  leaseDAO: LeaseDAO
 ): Promise<ILeaseDocument> => {
   // Sanitize empty strings and null values for nested ObjectId fields
   const sanitizedData = sanitizeUpdateData(updateData);
@@ -556,7 +598,7 @@ export const applyDirectUpdateWithOverride = async (
   lease: ILeaseDocument,
   updateData: Partial<ILeaseFormData>,
   userId: string,
-  leaseDAO: LeaseDAOInterface
+  leaseDAO: LeaseDAO
 ): Promise<ILeaseDocument> => {
   const sanitizedData = sanitizeUpdateData(updateData);
   const safeUpdateData = createSafeMongoUpdate(sanitizedData);
@@ -595,8 +637,8 @@ export const storePendingChanges = async (
   lease: ILeaseDocument,
   updateData: Partial<ILeaseFormData>,
   currentUser: ICurrentUser,
-  leaseDAO: LeaseDAOInterface,
-  profileDAO: ProfileDAOInterface
+  leaseDAO: LeaseDAO,
+  profileDAO: ProfileDAO
 ): Promise<ILeaseDocument> => {
   const profileData = await profileDAO.findFirst(
     { user: currentUser.sub },
@@ -633,9 +675,7 @@ export const storePendingChanges = async (
   return updated;
 };
 
-// ====================================================================
 // SECTION 4: TRANSFORMERS
-// ====================================================================
 
 /**
  * Filter lease data based on user role
@@ -783,17 +823,15 @@ export const shouldShowPendingChanges = (
   return false;
 };
 
-// ====================================================================
 // SECTION 5: DATA FETCHERS
-// ====================================================================
 
 /**
  * Fetch property manager with populated user and validate email exists
  */
-export async function fetchPropertyManagerWithUser(
+export const fetchPropertyManagerWithUser = async (
   profileDAO: ProfileDAO,
   managedById: Types.ObjectId | string
-): Promise<IProfileWithUser> {
+): Promise<IProfileWithUser> => {
   const propertyManager = await profileDAO.findFirst(
     { user: new Types.ObjectId(managedById) },
     { populate: 'user' }
@@ -809,17 +847,17 @@ export async function fetchPropertyManagerWithUser(
   }
 
   return propertyManager as unknown as IProfileWithUser;
-}
+};
 
 /**
  * Fetch property with owner/authorization and validate management authorization
  */
-export async function fetchPropertyWithAuthorization(
+export const fetchPropertyWithAuthorization = async (
   propertyDAO: PropertyDAO,
   propertyId: string,
   cuid: string,
   options?: { populate?: any[] }
-): Promise<IPropertyDocument> {
+): Promise<IPropertyDocument> => {
   const property = await propertyDAO.findFirst(
     { _id: new Types.ObjectId(propertyId), cuid, deletedAt: null },
     { select: '+owner +authorization', ...options }
@@ -836,15 +874,15 @@ export async function fetchPropertyWithAuthorization(
   }
 
   return property;
-}
+};
 
 /**
  * Fetch tenant with populated user and validate email exists
  */
-export async function fetchTenantWithUser(
+export const fetchTenantWithUser = async (
   profileDAO: ProfileDAO,
   tenantId: Types.ObjectId | string
-): Promise<IProfileWithUser> {
+): Promise<IProfileWithUser> => {
   const tenant = await profileDAO.findFirst(
     { user: new Types.ObjectId(tenantId) },
     { populate: 'user' }
@@ -860,17 +898,17 @@ export async function fetchTenantWithUser(
   }
 
   return tenant as unknown as IProfileWithUser;
-}
+};
 
 /**
  * Fetch and validate property unit exists
  */
-export async function fetchPropertyUnit(
+export const fetchPropertyUnit = async (
   propertyUnitDAO: PropertyUnitDAO,
   unitId: string,
   propertyId?: Types.ObjectId,
   cuid?: string
-): Promise<IPropertyUnitDocument> {
+): Promise<IPropertyUnitDocument> => {
   const query: any = { _id: unitId };
   if (propertyId) query.propertyId = propertyId;
   if (cuid) query.cuid = cuid;
@@ -884,17 +922,17 @@ export async function fetchPropertyUnit(
   }
 
   return unit;
-}
+};
 
 /**
  * Fetch lease by LUID and CUID with optional population
  */
-export async function fetchLeaseByLuid(
+export const fetchLeaseByLuid = async (
   leaseDAO: LeaseDAO,
   luid: string,
   cuid: string,
   options?: { populate?: string[] }
-): Promise<ILeaseDocument> {
+): Promise<ILeaseDocument> => {
   const lease = await leaseDAO.findFirst({ luid, cuid, deletedAt: null }, options);
 
   if (!lease) {
@@ -902,11 +940,9 @@ export async function fetchLeaseByLuid(
   }
 
   return lease;
-}
+};
 
-// ====================================================================
 // SECTION 6: CALCULATIONS & HELPERS
-// ====================================================================
 
 /**
  * Calculate financial summary for a lease

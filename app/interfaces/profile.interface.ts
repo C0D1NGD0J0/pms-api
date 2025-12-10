@@ -8,6 +8,7 @@ export enum EmployeeDepartment {
   OPERATIONS = 'operations', // Day-to-day property operations
   ACCOUNTING = 'accounting', // Financial operations and rent collection
   MANAGEMENT = 'management', // Executive and general management
+  OTHER = 'other', // Any other department not listed
 }
 
 export enum BackgroundCheckStatus {

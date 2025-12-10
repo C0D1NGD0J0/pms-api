@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EmployeeDepartment } from '@interfaces/index';
 
 // User model fields that can be updated
 const userInfoSchema = z
@@ -85,7 +86,7 @@ const profileMetaSchema = z.object({
 
 const employeeInfoSchema = z.object({
   jobTitle: z.string().min(2).max(100).optional(),
-  department: z.string().min(2).max(50).optional(),
+  department: z.nativeEnum(EmployeeDepartment).optional(),
   reportsTo: z.string().min(2).max(100).optional(),
   employeeId: z.string().min(3).max(20).optional(),
   startDate: z.date().optional(),

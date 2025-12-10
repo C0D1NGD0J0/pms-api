@@ -118,7 +118,21 @@ const documentSchema = z.object({
     'employment_verification',
     'other',
   ]),
-  file: z.any().optional(), // File object from multer
+  file: z
+    .custom<Express.Multer.File>(
+      (val) => {
+        if (!val) return true; // Optional field
+        return (
+          typeof val === 'object' &&
+          'fieldname' in val &&
+          'originalname' in val &&
+          'mimetype' in val &&
+          'size' in val
+        );
+      },
+      { message: 'Invalid file object' }
+    )
+    .optional(),
   filename: z.string().optional(),
   url: z.string().optional(),
   key: z.string().optional(),

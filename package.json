@@ -70,7 +70,6 @@
     "express-request-id": "^3.0.0",
     "express-slow-down": "^2.0.3",
     "express-validator": "^7.2.1",
-    "form-data": "^4.0.5",
     "helmet": "^8.0.0",
     "hpp": "^0.2.3",
     "i18next": "^25.2.1",

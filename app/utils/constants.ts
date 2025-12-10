@@ -30,6 +30,7 @@ export const EMAIL_TEMPLATES = {
 };
 
 export const QUEUE_NAMES = {
+  CRON_QUEUE: 'cronQueue',
   MEDIA_QUEUE: 'mediaQueue',
   EMAIL_QUEUE: 'emailQueue',
   PROPERTY_QUEUE: 'propertyQueue',

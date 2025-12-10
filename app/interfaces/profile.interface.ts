@@ -135,7 +135,6 @@ export interface Profile {
     notifications?: NotificationSettings;
     theme?: 'light' | 'dark';
   };
-
   policies: {
     tos: {
       acceptedOn: Date | null;
@@ -146,11 +145,9 @@ export interface Profile {
       accepted: boolean;
     };
   };
-
   employeeInfo?: EmployeeInfo;
   tenantInfo?: TenantInfo;
   vendorInfo?: VendorInfo;
-
   user: Types.ObjectId;
 }
 
@@ -210,6 +207,25 @@ export interface NotificationSettings {
   system: boolean;
 }
 
+/**
+ * Populated user data structure
+ */
+export interface IPopulatedUser {
+  cuids?: Array<{
+    cuid: string;
+    role: IUserRoleType;
+    addedAt: Date;
+  }>;
+  deletedAt?: Date | null;
+  _id: Types.ObjectId;
+  activecuid: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  email: string;
+  uid: string;
+}
+
 export interface VendorInfo {
   vendorId?: Types.ObjectId; // Reference to the vendor collection
   isLinkedAccount: boolean;
@@ -231,7 +247,6 @@ export type IProfileDocument = {
 export interface EmployeeInfo {
   department?: EmployeeDepartment;
   clientSpecificSettings?: any;
-  permissions?: string[];
   employeeId?: string;
   reportsTo?: string;
   jobTitle?: string;
@@ -245,6 +260,31 @@ export interface GDPRSettings {
   retentionExpiryDate: Date;
 }
 
+/**
+ * Profile with populated user information
+ * Used when you need both profile and user data together
+ */
+export interface IProfileWithUser extends Omit<IProfileDocument, 'user'> {
+  user: IPopulatedUser;
+}
+
 export interface ClientVendorInfo {
   linkedVendorUid?: Types.ObjectId;
+}
+
+/**
+ * Type guard to check if profile has populated user
+ */
+export function isProfileWithPopulatedUser(
+  profile: IProfileDocument | null
+): profile is { user: IPopulatedUser } & IProfileDocument {
+  if (!profile) return false;
+  const user = profile.user;
+  return (
+    user !== null &&
+    typeof user === 'object' &&
+    !(user instanceof Types.ObjectId) &&
+    'uid' in user &&
+    'email' in user
+  );
 }

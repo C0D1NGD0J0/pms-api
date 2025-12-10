@@ -46,22 +46,37 @@ export class UserController {
 
   getFilteredUsers = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-    const { role, department, status, page, limit, sortBy, sort } = req.query;
+    const pagination = (req.query.pagination as any) || {};
+    const filter = (req.query.filter as any) || {};
+
+    // Parse role - handle comma-separated string
+    let roles: IUserRoleType | IUserRoleType[] | undefined;
+    if (filter.role) {
+      if (typeof filter.role === 'string') {
+        // Split comma-separated string: "staff,manager" → ["staff", "manager"]
+        roles = filter.role.includes(',')
+          ? filter.role.split(',').map((r: string) => r.trim() as IUserRoleType)
+          : (filter.role as IUserRoleType);
+      } else {
+        roles = filter.role;
+      }
+    }
 
     const filterOptions: IUserFilterOptions = {
-      role: role as IUserRoleType | IUserRoleType[] | undefined,
-      department: department as string | undefined,
-      status: status as 'active' | 'inactive' | undefined,
+      role: roles,
+      department: filter.department as string | undefined,
+      status: filter.status as 'active' | 'inactive' | undefined,
     };
 
+    const page = pagination.page ? parseInt(pagination.page, 10) : 1;
+    const limit = pagination.limit ? parseInt(pagination.limit, 10) : 10;
+
     const paginationOpts = {
-      page: page ? parseInt(page as string, 10) : 1,
-      limit: limit ? parseInt(limit as string, 10) : 10,
-      sortBy: sortBy as string | undefined,
-      sort: sort as 'asc' | 'desc' | undefined,
-      skip:
-        ((page ? parseInt(page as string, 10) : 1) - 1) *
-        (limit ? parseInt(limit as string, 10) : 10),
+      page,
+      limit,
+      sortBy: pagination.sort as string | undefined,
+      sort: pagination.order as 'asc' | 'desc' | undefined,
+      skip: (page - 1) * limit,
     };
 
     const result = await this.userService.getFilteredUsers(
@@ -75,22 +90,35 @@ export class UserController {
 
   getFilteredTenants = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-    const { role, department, status, page, limit, sortBy, sort } = req.query;
+    const pagination = (req.query.pagination as any) || {};
+    const filter = (req.query.filter as any) || {};
+
+    let roles: IUserRoleType | IUserRoleType[] | undefined;
+    if (filter.role) {
+      if (typeof filter.role === 'string') {
+        roles = filter.role.includes(',')
+          ? filter.role.split(',').map((r: string) => r.trim() as IUserRoleType)
+          : (filter.role as IUserRoleType);
+      } else {
+        roles = filter.role;
+      }
+    }
 
     const filterOptions: IUserFilterOptions = {
-      role: role as IUserRoleType | IUserRoleType[] | undefined,
-      department: department as string | undefined,
-      status: status as 'active' | 'inactive' | undefined,
+      role: roles,
+      department: filter.department as string | undefined,
+      status: filter.status as 'active' | 'inactive' | undefined,
     };
 
+    const page = pagination.page ? parseInt(pagination.page, 10) : 1;
+    const limit = pagination.limit ? parseInt(pagination.limit, 10) : 10;
+
     const paginationOpts = {
-      page: page ? parseInt(page as string, 10) : 1,
-      limit: limit ? parseInt(limit as string, 10) : 10,
-      sortBy: sortBy as string | undefined,
-      sort: sort as 'asc' | 'desc' | undefined,
-      skip:
-        ((page ? parseInt(page as string, 10) : 1) - 1) *
-        (limit ? parseInt(limit as string, 10) : 10),
+      page,
+      limit,
+      sortBy: pagination.sort as string | undefined,
+      sort: pagination.order as 'asc' | 'desc' | undefined,
+      skip: (page - 1) * limit,
     };
 
     const result = await this.userService.getTenantsByClient(
@@ -98,6 +126,14 @@ export class UserController {
       filterOptions,
       paginationOpts
     );
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getAvailableTenantsForLease = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+
+    const result = await this.userService.getAvailableTenantsForLease(cuid as string);
 
     res.status(httpStatusCodes.OK).json(result);
   };

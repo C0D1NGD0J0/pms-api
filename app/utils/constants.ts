@@ -12,6 +12,7 @@ export const httpStatusCodes = {
   EXPIRED_AUTH_TOKEN: 419,
   SERVICE_UNAVAILABLE: 503,
   INTERNAL_SERVER_ERROR: 500,
+  NOT_IMPLEMENTED: 501,
 };
 
 export const JWT_KEY_NAMES = {
@@ -32,33 +33,37 @@ export const QUEUE_NAMES = {
   MEDIA_QUEUE: 'mediaQueue',
   EMAIL_QUEUE: 'emailQueue',
   PROPERTY_QUEUE: 'propertyQueue',
-  PROPERTY_UNIT_QUEUE: 'propertyUnitQueue',
   EVENT_BUS_QUEUE: 'eventBusQueue',
-  ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
-  PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
-  DOCUMENT_PROCESSING_QUEUE: 'documentProcessingQueue',
   INVITATION_QUEUE: 'invitationQueue',
+  PROPERTY_UNIT_QUEUE: 'propertyUnitQueue',
+  PDF_GENERATION_QUEUE: 'pdfGenerationQueue',
+  ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
+  DOCUMENT_PROCESSING_QUEUE: 'documentProcessingQueue',
+  LEASE_SIGNATURE_REQUEST_QUEUE: 'leaseSignatureRequestQueue',
+  PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
 };
 
 export const JOB_NAME = {
   CSV_IMPORT_JOB: 'csv_import',
+  INVITATION_JOB: 'invitationJob',
+  USER_CREATED_JOB: 'userCreatedJob',
   MEDIA_UPLOAD_JOB: 'mediaUploadJob',
   CSV_VALIDATION_JOB: 'csv_validation',
   MEDIA_REMOVAL_JOB: 'mediaRemovalJob',
-  PROPERTY_CREATE_JOB: 'propertyCreateJob',
+  PDF_GENERATION_JOB: 'pdfGenerationJob',
+  REQUEST_SIGNATURE: 'request_signature',
   PROPERTY_UPDATE_JOB: 'propertyUpdateJob',
   PROPERTY_DELETE_JOB: 'propertyDeleteJob',
-  ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
   DOCUMENT_UPDATE_JOB: 'documentUpdateJob',
+  PROPERTY_CREATE_JOB: 'propertyCreateJob',
   DOCUMENT_FAILURE_JOB: 'documentFailureJob',
   UNIT_BATCH_CREATION_JOB: 'unitBatchCreation',
-  INVITATION_JOB: 'invitationJob',
+  ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
   INVITATION_REMINDER_JOB: 'invitationReminderJob',
-  INVITATION_CSV_VALIDATION_JOB: 'invitation_csv_validation',
   INVITATION_CSV_IMPORT_JOB: 'invitation_csv_import',
-  INVITATION_BULK_USER_VALIDATION_JOB: 'invitation_bulk_user_validation',
+  INVITATION_CSV_VALIDATION_JOB: 'invitation_csv_validation',
   INVITATION_BULK_USER_IMPORT_JOB: 'invitation_bulk_user_import',
-  USER_CREATED_JOB: 'userCreatedJob',
+  INVITATION_BULK_USER_VALIDATION_JOB: 'invitation_bulk_user_validation',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {
@@ -118,3 +123,58 @@ export const OPERATIONAL_UNIT_FIELDS = [
   'amenities',
   'utilities',
 ];
+
+/**
+ * Lease fields that require approval when modified (high-impact changes)
+ */
+export const HIGH_IMPACT_LEASE_FIELDS = [
+  'fees',
+  'duration',
+  'status',
+  'type',
+  'tenantId',
+  'property',
+];
+
+/**
+ * Lease fields that can be modified without approval (operational changes)
+ */
+export const OPERATIONAL_LEASE_FIELDS = [
+  'internalNotes',
+  'petPolicy',
+  'utilitiesIncluded',
+  'legalTerms',
+  'renewalOptions',
+  'coTenants',
+];
+
+/**
+ * Immutable lease fields that cannot be changed after creation (top-level only)
+ */
+export const IMMUTABLE_LEASE_FIELDS = [
+  'tenantId',
+  'cuid',
+  'luid',
+  'leaseNumber',
+  'createdAt',
+  'createdBy',
+  'tenantInfo',
+];
+
+/**
+ * Fields that when modified invalidate existing signatures (top-level only)
+ */
+export const SIGNATURE_INVALIDATING_LEASE_FIELDS = ['fees', 'duration', 'petPolicy', 'type'];
+
+/**
+ * Editable fields by lease status (top-level only)
+ * Note: If a field is in the list, the ENTIRE field object can be updated
+ */
+export const EDITABLE_FIELDS_BY_LEASE_STATUS: Record<string, string[]> = {
+  draft: ['*'], // All fields editable in draft
+  pending_signature: ['internalNotes'],
+  active: ['internalNotes', 'renewalOptions'],
+  expired: ['internalNotes'], // Admin/Manager only
+  terminated: ['internalNotes'], // Admin/Manager only
+  cancelled: ['internalNotes'], // Admin/Manager only
+};

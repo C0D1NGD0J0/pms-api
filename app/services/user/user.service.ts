@@ -10,14 +10,16 @@ import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
-import { ISuccessReturnData, IRequestContext, PaginateResult } from '@interfaces/utils.interface';
+import { ISuccessReturnData, IRequestContext, IPaginateResult } from '@interfaces/utils.interface';
 import {
   IUserPopulatedDocument,
   FilteredUserTableData,
+  ITenantFilterOptions,
   IUserDetailResponse,
   IEmployeeDetailInfo,
   IVendorDetailInfo,
   ITenantDetailInfo,
+  IPaginatedResult,
   IUserProperty,
   ICurrentUser,
   IUserStats,
@@ -211,7 +213,7 @@ export class UserService {
     cuid: string,
     filterOptions: IUserFilterOptions,
     paginationOpts: IFindOptions
-  ): Promise<ISuccessReturnData<{ items: FilteredUserTableData[]; pagination: PaginateResult }>> {
+  ): Promise<ISuccessReturnData<{ items: FilteredUserTableData[]; pagination: IPaginateResult }>> {
     try {
       if (!cuid) {
         throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
@@ -226,21 +228,21 @@ export class UserService {
         filterOptions.role = [filterOptions.role as IUserRoleType];
       }
 
-      const cachedResult = await this.userCache.getFilteredUsers(
-        cuid,
-        filterOptions,
-        paginationOpts
-      );
-      if (cachedResult.success && cachedResult.data) {
-        return {
-          success: true,
-          data: {
-            items: cachedResult.data.items,
-            pagination: cachedResult.data.pagination,
-          },
-          message: t('client.success.filteredUsersRetrieved'),
-        };
-      }
+      // const cachedResult = await this.userCache.getFilteredUsers(
+      //   cuid,
+      //   filterOptions,
+      //   paginationOpts
+      // );
+      // if (cachedResult.success && cachedResult.data) {
+      //   return {
+      //     success: true,
+      //     data: {
+      //       items: cachedResult.data.items,
+      //       pagination: cachedResult.data.pagination,
+      //     },
+      //     message: t('client.success.filteredUsersRetrieved'),
+      //   };
+      // }
 
       const result = await this.userDAO.getUsersByFilteredType(cuid, filterOptions, paginationOpts);
       const users: FilteredUserTableData[] = await Promise.all(
@@ -1147,12 +1149,21 @@ export class UserService {
    * @param currentUser - Current user context for permissions
    * @returns Promise resolving to paginated tenant users with tenant-specific data
    */
-  async getTenantsByClient(
-    cuid: string,
-    filters?: import('@interfaces/user.interface').ITenantFilterOptions,
-    pagination?: IFindOptions,
-    currentUser?: ICurrentUser
-  ): Promise<ISuccessReturnData<import('@interfaces/user.interface').IPaginatedResult<any[]>>> {
+  /**
+   * Get available tenants for lease assignment
+   * Returns tenants who don't have any active leases for this client
+   */
+  async getAvailableTenantsForLease(cuid: string): Promise<
+    ISuccessReturnData<
+      Array<{
+        id: string;
+        email: string;
+        fullName: string;
+        phoneNumber?: string;
+        avatar?: { url: string; filename: string };
+      }>
+    >
+  > {
     try {
       if (!cuid) {
         throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
@@ -1164,7 +1175,77 @@ export class UserService {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
-      // Optional permission check if currentUser is provided
+      // Get all tenants for this client
+      const result = await this.userDAO.getTenantsByClient(
+        cuid,
+        undefined,
+        { limit: 1000, skip: 0 } // Get all tenants
+      );
+
+      // Filter tenants without active leases
+      const availableTenants = result.items
+        .filter((tenant: any) => {
+          const tenantInfo = tenant.profile?.tenantInfo;
+          if (!tenantInfo) return true; // No tenant info means no leases
+
+          // Get active leases for this specific client
+          const activeLeases =
+            tenantInfo.activeLeases?.filter(
+              (lease: any) => lease.cuid === cuid && lease.confirmed
+            ) || [];
+
+          return activeLeases.length === 0;
+        })
+        .map((tenant: any) => {
+          const personalInfo = tenant.profile?.personalInfo || {};
+
+          return {
+            id: tenant._id,
+            email: tenant.email,
+            fullName:
+              `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim() ||
+              tenant.email,
+            phoneNumber: personalInfo.phoneNumber,
+            avatar: personalInfo.avatar,
+          };
+        });
+
+      this.log.info('Available tenants retrieved', {
+        cuid,
+        total: result.items.length,
+        available: availableTenants.length,
+      });
+
+      return {
+        success: true,
+        data: availableTenants,
+        message: t('client.success.tenantsRetrieved'),
+      };
+    } catch (error: any) {
+      this.log.error('Error getting available tenants:', {
+        cuid,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
+  async getTenantsByClient(
+    cuid: string,
+    filters?: ITenantFilterOptions,
+    pagination?: IFindOptions,
+    currentUser?: ICurrentUser
+  ): Promise<ISuccessReturnData<IPaginatedResult<any[]>>> {
+    try {
+      if (!cuid) {
+        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+      }
+
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
       if (currentUser && currentUser.client.cuid !== cuid) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
@@ -1174,17 +1255,14 @@ export class UserService {
         });
       }
 
-      // Get tenants from DAO
       const result = await this.userDAO.getTenantsByClient(cuid, filters, pagination);
-
-      // Transform the result to include additional tenant-specific data
       const enrichedTenants = await Promise.all(
         result.items.map(async (tenant: any) => {
           const personalInfo = tenant.profile?.personalInfo || {};
           const tenantInfo = tenant.profile?.tenantInfo || {};
 
           return {
-            uid: tenant.uid,
+            id: tenant.user,
             email: tenant.email,
             isActive: tenant.isActive,
             fullName: `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim(),

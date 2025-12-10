@@ -775,6 +775,11 @@ export class ProfileService {
    */
   private setupEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
+    this.emitterService.on(
+      EventTypes.LEASE_ESIGNATURE_COMPLETED,
+      this.handleLeaseActivated.bind(this)
+    );
+    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
     this.logger.info('Profile service event listeners initialized');
   }
 
@@ -795,6 +800,101 @@ export class ProfileService {
       // Ignore other upload types - they're handled by other services
     } catch (error) {
       this.logger.error('Error handling upload completion in ProfileService:', error);
+    }
+  }
+
+  private async handleLeaseActivated(payload: any): Promise<void> {
+    try {
+      const { leaseId, tenantId, cuid, _coTenants } = payload;
+
+      const tenantProfile = await this.profileDAO.findFirst({ user: tenantId });
+      if (!tenantProfile) {
+        this.logger.warn('Tenant profile not found', { tenantId });
+        return;
+      }
+
+      const alreadyAdded = tenantProfile.tenantInfo?.activeLeases?.some(
+        (lease: any) => lease.leaseId?.toString() === leaseId
+      );
+
+      if (alreadyAdded) {
+        this.logger.info('Lease already added to tenant profile', {
+          tenantId,
+          leaseId,
+        });
+        return;
+      }
+
+      await this.profileDAO.update(
+        { user: tenantId },
+        {
+          $addToSet: {
+            'tenantInfo.activeLeases': {
+              leaseId,
+              cuid,
+              confirmed: true,
+              confirmedDate: new Date(),
+            },
+          },
+        }
+      );
+
+      this.logger.info('Lease added to tenant profile', {
+        tenantId,
+        leaseId,
+      });
+    } catch (error) {
+      this.logger.error('Error handling lease activation for profile', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      });
+    }
+  }
+
+  private async handleLeaseTerminated(payload: any): Promise<void> {
+    try {
+      const { leaseId, tenantId } = payload;
+
+      const tenantProfile = await this.profileDAO.findFirst({ user: tenantId });
+      if (!tenantProfile) {
+        this.logger.warn('Tenant profile not found', { tenantId });
+        return;
+      }
+
+      // Check if lease exists in activeLeases
+      const hasLease = tenantProfile.tenantInfo?.activeLeases?.some(
+        (lease: any) => lease.leaseId?.toString() === leaseId
+      );
+
+      if (!hasLease) {
+        this.logger.info('Lease not found in tenant profile activeLeases', {
+          tenantId,
+          leaseId,
+        });
+        return;
+      }
+
+      // Remove from activeLeases using leaseId field
+      await this.profileDAO.update(
+        { user: tenantId },
+        {
+          $pull: {
+            'tenantInfo.activeLeases': {
+              leaseId: leaseId,
+            },
+          },
+        }
+      );
+
+      this.logger.info('Lease removed from tenant profile activeLeases', {
+        tenantId,
+        leaseId,
+      });
+    } catch (error) {
+      this.logger.error('Error handling lease termination for profile', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      });
     }
   }
 

@@ -23,15 +23,17 @@ export class PropertyUnitController {
   };
 
   getPropertyUnits = async (req: AppRequest, res: Response) => {
-    const { page, limit, sort, sortBy } = req.query;
+    const pagination = (req.query.pagination as any) || {};
+    const filter = (req.query.filter as any) || {};
+
     const queryParams: IPropertyFilterQuery = {
       pagination: {
-        page: parseInt(page as string) || 1,
-        limit: parseInt(limit as string) || 10,
-        sortBy: sortBy as string,
-        sort: sort as string,
+        page: pagination.page ? parseInt(pagination.page, 10) : 1,
+        limit: pagination.limit ? parseInt(pagination.limit, 10) : 10,
+        sortBy: pagination.sort as string,
+        sort: pagination.order as string,
       },
-      filters: {},
+      filters: filter,
     };
 
     const result = await this.propertyUnitService.getPropertyUnits(

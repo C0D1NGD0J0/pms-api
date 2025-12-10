@@ -3,8 +3,9 @@
     "admin": {
       "$extend": ["manager"],
       "property": ["create:any", "read:any", "update:any", "delete:any"],
+      "lease": ["create:any", "list:any", "read:any", "update:any"],
       "user": ["remove:any", "assign_roles:any"],
-      "client": ["read:mine", "settings:any", "manage_users:any"],
+      "client": ["read:mine", "settings:mine", "manage_users:mine"],
       "invitation": [
         "send:any",
         "update:any",
@@ -17,10 +18,10 @@
     },
     "manager": {
       "$extend": ["staff"],
-      "user": ["read:any", "update:any"],
-      "lease": ["create:mine", "delete:mine"],
-      "property": ["create:mine", "delete:mine"],
-      "maintenance": ["create:mine", "delete:mine"],
+      "user": ["list:any", "read:any", "update:any"],
+      "lease": ["create:any", "list:any", "read:any", "update:any"],
+      "property": ["create:mine", "delete:mine", "list:any", "read:any", "update:any"],
+      "maintenance": ["create:mine", "delete:mine", "list:any", "read:any", "update:any"],
       "invitation": [
         "send:any",
         "revoke:any",
@@ -33,12 +34,44 @@
     },
     "staff": {
       "$extend": ["tenant"],
-      "property": ["read:any", "update:assigned"],
-      "user": ["list:any", "read:any"],
-      "maintenance": ["create:assigned", "read:any", "update:assigned", "list:any"],
-      "lease": ["read:any", "update:assigned", "list:any"],
-      "payment": ["read:any", "list:any"],
-      "report": ["read:any", "create:assigned"]
+      "user": ["read:mine", "update:mine"],
+      "client": ["read:mine"],
+      "departments": {
+        "accounting": {
+          "payment": ["read:any", "list:any", "create:any", "update:any"],
+          "report": ["read:any", "create:any", "list:any"],
+          "lease": ["read:any", "list:any"],
+          "tenant": ["read:any", "list:any"],
+          "user": ["read:any", "list:any"],
+          "client": ["read:mine"]
+        },
+        "maintenance": {
+          "maintenance": ["create:assigned", "read:assigned", "update:assigned", "list:assigned"],
+          "property": ["read:assigned"],
+          "user": ["read:mine", "update:mine"],
+          "client": ["read:mine"]
+        },
+        "operations": {
+          "property": ["read:any", "update:assigned", "list:any"],
+          "maintenance": ["read:any", "update:assigned", "list:any"],
+          "lease": ["read:any", "update:assigned", "list:any"],
+          "tenant": ["read:any", "list:any"],
+          "payment": ["read:any", "list:any"],
+          "user": ["read:any", "list:any"],
+          "report": ["read:any"],
+          "client": ["read:mine"]
+        },
+        "management": {
+          "property": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
+          "maintenance": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
+          "lease": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
+          "tenant": ["read:any", "update:any", "list:any"],
+          "payment": ["read:any", "list:any", "create:any"],
+          "user": ["read:any", "update:any", "list:any"],
+          "report": ["read:any", "create:any", "list:any"],
+          "client": ["read:mine", "settings:mine"]
+        }
+      }
     },
     "tenant": {
       "property": ["read:mine"],

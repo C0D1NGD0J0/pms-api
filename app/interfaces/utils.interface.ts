@@ -7,11 +7,17 @@ import { IProperty } from './property.interface';
 import { IInvalidCsvProperty } from './csv.interface';
 
 export enum MailType {
+  LEASE_APPLICATION_UPDATE = 'LEASE_APPLICATION_UPDATE',
+  LEASE_PAYMENT_REMINDER = 'LEASE_PAYMENT_REMINDER',
+  LEASE_SIGNOFF_REQUEST = 'LEASE_SIGNOFF_REQUEST',
   SUBSCRIPTION_UPDATE = 'SUBSCRIPTION_UPDATE',
   SUBSCRIPTION_CANCEL = 'SUBSCRIPTION_CANCEL',
   INVITATION_REMINDER = 'INVITATION_REMINDER',
   ACCOUNT_ACTIVATION = 'ACCOUNT_ACTIVATION',
+  LEASE_ENDING_SOON = 'LEASE_ENDING_SOON',
   USER_REGISTRATION = 'USER_REGISTRATION',
+  LEASE_TERMINATED = 'LEASE_TERMINATED',
+  LEASE_ACTIVATED = 'LEASE_ACTIVATED',
   FORGOT_PASSWORD = 'FORGOT_PASSWORD',
   PASSWORD_RESET = 'PASSWORD_RESET',
   ACCOUNT_UPDATE = 'ACCOUNT_UPDATE',
@@ -74,10 +80,7 @@ export enum CURRENCIES {
   USD = 'USD',
   EUR = 'EUR',
   GBP = 'GBP',
-  AUD = 'AUD',
   CAD = 'CAD',
-  NZD = 'NZD',
-  JPY = 'JPY',
   CNY = 'CNY',
   NGN = 'NGN',
 }
@@ -177,8 +180,8 @@ export interface IAWSFileUploadResponse {
 }
 
 export interface ResourceInfo {
+  resourceName: 'property' | 'profile' | 'client' | 'lease'; //name of the resource
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
-  resourceName: 'property' | 'profile' | 'client'; //name of the resource
   resourceId: string; //id of the resource
   fieldName: string; //name of the field
   actorId: string; //user who uploaded the file
@@ -213,6 +216,20 @@ export type ExtractedMediaFile = {
   uploadedBy: string;
 };
 
+export interface UploadResult {
+  mediatype?: 'image' | 'video' | 'document';
+  documentName?: string;
+  resourceName?: string;
+  resourceId: string;
+  fieldName: string;
+  publicuid: string;
+  actorId?: string;
+  filename: string;
+  size?: number;
+  key?: string;
+  url: string;
+}
+
 export interface IPermissionConfig {
   resources: Record<
     string,
@@ -228,24 +245,16 @@ export interface IPermissionConfig {
       description: string;
     }
   >;
-  roles: Record<string, Record<string, string[]>>;
+  roles: Record<string, IRoleConfig>;
 }
 
-export interface UploadResult {
-  mediatype?: 'image' | 'video' | 'document';
-  documentName?: string;
-  resourceName?: string;
-  resourceId: string;
-  fieldName: string;
-  publicuid: string;
-  actorId?: string;
-  filename: string;
-  size?: number;
-  key?: string;
-  url: string;
+export interface IRoleConfig {
+  [resource: string]: string[] | Record<string, Record<string, string[]>> | undefined;
+  departments?: Record<string, Record<string, string[]>>;
+  $extend?: string[];
 }
 
-export interface PaginateResult {
+export interface IPaginateResult {
   hasMoreResource: boolean;
   currentPage: number;
   totalPages: number;
@@ -320,7 +329,7 @@ export type CsvProcessReturnData = {
 
 export type ListResultWithPagination<T> = Promise<{
   items: T;
-  pagination?: PaginateResult;
+  pagination?: IPaginateResult;
 }>;
 
 export interface ICacheResponse<T = any> {

@@ -14,6 +14,12 @@ export enum PropertyApprovalStatusEnum {
   DRAFT = 'draft',
 }
 
+export enum OwnershipType {
+  EXTERNAL_OWNER = 'external_owner',
+  COMPANY_OWNED = 'company_owned',
+  SELF_OWNED = 'self_owned',
+}
+
 /**
  * Main Property Interface
  */
@@ -33,11 +39,12 @@ export interface IProperty {
   communityAmenities?: CommunityAmenities;
   pendingChanges?: IPendingChanges | null;
   specifications: PropertySpecifications;
+  authorization?: IPropertyAuthorization;
   interiorAmenities?: InteriorAmenities;
   computedLocation?: ComputedLocation;
   financialDetails?: FinancialDetails;
-  documents?: PropertyDocumentItem[];
   occupancyStatus: OccupancyStatus;
+  documents?: MediaDocumentItem[];
   images?: PropertyImageItem[];
   utilities: PropertyUtilities;
   managedBy?: Types.ObjectId;
@@ -46,6 +53,7 @@ export interface IProperty {
   maxAllowedUnits?: number;
   address: AddressDetails;
   status: PropertyStatus;
+  owner: IPropertyOwner;
   yearBuilt?: number;
   cuid: string;
   name: string;
@@ -87,7 +95,6 @@ export interface IPropertyFilterQuery {
     };
   } | null;
   pagination: IPaginationQuery;
-  currentUser?: any;
 }
 
 /**
@@ -119,10 +126,18 @@ export interface PropertyTypeRule {
 }
 
 /**
- * Property Document Item Type
+ * Media Document Item Type
  */
-export interface PropertyDocumentItem {
-  documentType?: 'deed' | 'tax' | 'insurance' | 'inspection' | 'other' | 'lease' | 'unknown';
+export interface MediaDocumentItem {
+  documentType?:
+    | 'deed'
+    | 'tax'
+    | 'insurance'
+    | 'inspection'
+    | 'other'
+    | 'lease'
+    | 'unknown'
+    | 'legal';
   status: 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
   uploadedBy: Types.ObjectId;
   description?: string;
@@ -131,6 +146,37 @@ export interface PropertyDocumentItem {
   uploadedAt: Date;
   key?: string;
   url: string;
+}
+/**
+ * Property Document Interface (extends Mongoose Document)
+ */
+export interface IPropertyDocument extends IProperty, Document {
+  getAuthorizationStatus(): {
+    isAuthorized: boolean;
+    reason?: string;
+    daysUntilExpiry?: number;
+  };
+  isManagementAuthorized(): boolean;
+  lastModifiedBy?: Types.ObjectId;
+  _id: Types.ObjectId;
+  deletedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+
+  pid: string;
+  id: string;
+}
+
+/**
+ * Simple authorization tracking for external properties
+ */
+export interface IPropertyAuthorization {
+  authorizedBy?: Types.ObjectId; // User who authorized
+  documentUrl?: string; // S3 link to management agreement
+  authorizedAt?: Date; // When authorization was given
+  isActive: boolean; // Simple on/off switch
+  expiresAt?: Date; // When authorization expires (optional)
+  notes?: string; // Internal notes
 }
 
 /**
@@ -147,6 +193,21 @@ export interface FinancialDetails {
   marketValue?: number;
   propertyTax?: number;
   purchaseDate?: Date;
+}
+
+export interface IPropertyOwner {
+  bankDetails?: {
+    accountName?: string;
+    accountNumber?: string;
+    routingNumber?: string;
+    bankName?: string;
+  };
+  type: OwnershipType;
+  email?: string;
+  phone?: string;
+  taxId?: string;
+  notes?: string;
+  name?: string;
 }
 
 /**
@@ -245,19 +306,6 @@ export interface IAssignableUsersFilter {
   search?: string;
   limit?: number;
   page?: number;
-}
-
-/**
- * Property Document Interface (extends Mongoose Document)
- */
-export interface IPropertyDocument extends IProperty, Document {
-  lastModifiedBy?: Types.ObjectId;
-  _id: Types.ObjectId;
-  deletedAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-  pid: string;
-  id: string;
 }
 
 /**
@@ -387,7 +435,7 @@ export interface ComputedLocation {
   coordinates: number[];
 }
 
-export type IPropertyDocumentItem = PropertyDocumentItem;
+export type IPropertyDocumentItem = MediaDocumentItem;
 export type ICommunityAmenities = CommunityAmenities;
 export type ISpecifications = PropertySpecifications;
 export type IInteriorAmenities = InteriorAmenities;

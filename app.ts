@@ -3,6 +3,7 @@ dotenv.config();
 if (process.env.NODE_ENV !== 'test') {
   require('@di/index');
 }
+import qs from 'qs';
 import hpp from 'hpp';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -76,6 +77,12 @@ export class App implements IAppSetup {
     app.use(cookieParser());
     app.use(compression());
     app.use(scopedMiddleware);
+    app.set('query parser', (str: string) =>
+      qs.parse(str, {
+        allowDots: true,
+        parseArrays: true,
+      })
+    );
   }
 
   private routes(app: Application) {
@@ -108,9 +115,10 @@ export class App implements IAppSetup {
     }
     app.use(`${BASE_PATH}/auth`, routes.authRoutes);
     app.use(`${BASE_PATH}/users`, routes.userRoutes);
+    app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
     app.use(`${BASE_PATH}/clients`, routes.clientRoutes);
     app.use(`${BASE_PATH}/vendors`, routes.vendorRoutes);
-    // app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
+    app.use(`${BASE_PATH}/webhooks`, routes.webhookRoutes);
     app.use(`${BASE_PATH}/invites`, routes.invitationRoutes);
     app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
     app.use(`${BASE_PATH}/notifications`, routes.notificationRoutes);

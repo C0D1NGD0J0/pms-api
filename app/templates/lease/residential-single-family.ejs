@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Custom Legal Lease Agreement</title>
+  <style>
+    /* PDF-Optimized Custom Legal Template */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    @page {
+      size: Letter;
+      margin: 1in;
+    }
+
+    body {
+      font-family: 'Garamond', 'Georgia', 'Times New Roman', serif;
+      font-size: 11.5pt;
+      line-height: 1.75;
+      color: #1a1a1a;
+      background: white;
+    }
+
+    .contract-container {
+      max-width: 8.5in;
+      margin: 0 auto;
+      background: white;
+    }
+
+    /* Elegant Header with Border */
+    .legal-header {
+      text-align: center;
+      margin-bottom: 45px;
+      padding: 30px;
+      border: 3px double #2c3e50;
+      background: #f8f9fa;
+    }
+
+    .legal-header h1 {
+      font-size: 22pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      letter-spacing: 3px;
+      color: #2c3e50;
+    }
+
+    .legal-header .subtitle {
+      font-size: 13pt;
+      font-style: italic;
+      margin-bottom: 15px;
+      color: #555555;
+    }
+
+    .legal-header .meta {
+      font-size: 10pt;
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid #2c3e50;
+    }
+
+    .meta-item {
+      display: inline-block;
+      margin: 0 20px;
+    }
+
+    /* Decorative Section Divider */
+    .section-divider {
+      text-align: center;
+      margin: 30px 0;
+      position: relative;
+    }
+
+    .section-divider::before,
+    .section-divider::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      width: 40%;
+      height: 1px;
+      background: #2c3e50;
+    }
+
+    .section-divider::before {
+      left: 0;
+    }
+
+    .section-divider::after {
+      right: 0;
+    }
+
+    .section-divider-text {
+      display: inline-block;
+      padding: 0 20px;
+      font-style: italic;
+      color: #555555;
+    }
+
+    /* Parties Section with Elegant Border */
+    .parties-section {
+      margin: 35px 0;
+      padding: 30px;
+      border: 2px solid #2c3e50;
+      border-radius: 4px;
+      background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%);
+    }
+
+    .parties-intro {
+      text-align: justify;
+      margin-bottom: 25px;
+      font-size: 11pt;
+      line-height: 1.8;
+    }
+
+    .party-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      margin: 25px 0;
+    }
+
+    .party-block {
+      padding: 20px;
+      border-left: 4px solid #2c3e50;
+      background: white;
+    }
+
+    .party-heading {
+      font-size: 11pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      color: #2c3e50;
+      letter-spacing: 1px;
+    }
+
+    .party-details {
+      padding-left: 15px;
+      line-height: 1.9;
+      font-size: 10.5pt;
+      color: #333333;
+    }
+
+    .parties-footer {
+      text-align: center;
+      margin-top: 25px;
+      padding-top: 20px;
+      border-top: 1px solid #cccccc;
+      font-style: italic;
+      color: #555555;
+    }
+
+    /* Section Headers with Roman Numerals */
+    .section {
+      margin-bottom: 35px;
+      page-break-inside: avoid;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #2c3e50;
+    }
+
+    .section-roman {
+      flex: 0 0 80px;
+      font-size: 18pt;
+      font-weight: 700;
+      font-style: italic;
+      color: #2c3e50;
+    }
+
+    .section-title {
+      flex: 1;
+      font-size: 14pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #2c3e50;
+    }
+
+    .subsection-header {
+      font-size: 11pt;
+      font-weight: 700;
+      margin: 20px 0 12px 0;
+      color: #333333;
+    }
+
+    /* Info Table with Elegant Styling */
+    .info-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin: 20px 0;
+      border: 1px solid #2c3e50;
+    }
+
+    .info-table tr:nth-child(odd) {
+      background: #f8f9fa;
+    }
+
+    .info-table tr:nth-child(even) {
+      background: white;
+    }
+
+    .info-table td {
+      padding: 12px 15px;
+      border-bottom: 1px solid #dee2e6;
+    }
+
+    .info-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .info-table .label-cell {
+      width: 35%;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 9pt;
+      letter-spacing: 0.5px;
+      color: #2c3e50;
+    }
+
+    .info-table .value-cell {
+      font-size: 10.5pt;
+      color: #1a1a1a;
+    }
+
+    /* Legal Paragraphs */
+    .legal-paragraph {
+      text-align: justify;
+      text-indent: 0.5in;
+      margin-bottom: 18px;
+      line-height: 1.9;
+    }
+
+    .legal-paragraph.no-indent {
+      text-indent: 0;
+    }
+
+    .legal-paragraph.centered {
+      text-align: center;
+      text-indent: 0;
+    }
+
+    /* Numbered Lists with Enhanced Styling */
+    .legal-list {
+      margin: 18px 0 18px 0.75in;
+      list-style-type: lower-alpha;
+    }
+
+    .legal-list.numbered {
+      list-style-type: decimal;
+    }
+
+    .legal-list.roman {
+      list-style-type: lower-roman;
+    }
+
+    .legal-list li {
+      margin-bottom: 12px;
+      padding-left: 12px;
+      line-height: 1.85;
+    }
+
+    /* Witnesseth with Ornamental Style */
+    .witnesseth {
+      text-align: center;
+      font-size: 16pt;
+      font-weight: 700;
+      font-variant: small-caps;
+      margin: 40px 0;
+      letter-spacing: 3px;
+      color: #2c3e50;
+      position: relative;
+    }
+
+    .witnesseth::before,
+    .witnesseth::after {
+      content: '◆';
+      margin: 0 20px;
+      color: #2c3e50;
+    }
+
+    /* Recitals with Elegant Formatting */
+    .recitals {
+      margin: 30px 0;
+      padding: 25px;
+      background: #f8f9fa;
+      border-left: 4px solid #2c3e50;
+      border-right: 4px solid #2c3e50;
+    }
+
+    .recital {
+      margin-bottom: 15px;
+      padding-left: 50px;
+      text-indent: -50px;
+      line-height: 1.85;
+      font-style: italic;
+    }
+
+    .recital strong {
+      font-style: normal;
+      font-weight: 700;
+      color: #2c3e50;
+    }
+
+    /* Custom Legal Content Area */
+    .custom-legal-content {
+      margin: 30px 0;
+      padding: 35px;
+      min-height: 400px;
+      background: white;
+      border: 2px dashed #2c3e50;
+      border-radius: 4px;
+    }
+
+    .custom-legal-content h1,
+    .custom-legal-content h2,
+    .custom-legal-content h3 {
+      font-weight: 700;
+      color: #2c3e50;
+      margin: 25px 0 15px 0;
+    }
+
+    .custom-legal-content h1 {
+      font-size: 16pt;
+      text-transform: uppercase;
+      border-bottom: 2px solid #2c3e50;
+      padding-bottom: 8px;
+    }
+
+    .custom-legal-content h2 {
+      font-size: 14pt;
+      border-bottom: 1px solid #dee2e6;
+      padding-bottom: 6px;
+    }
+
+    .custom-legal-content h3 {
+      font-size: 12pt;
+    }
+
+    .custom-legal-content p {
+      margin-bottom: 18px;
+      text-align: justify;
+      line-height: 1.85;
+    }
+
+    .custom-legal-content ul,
+    .custom-legal-content ol {
+      margin: 18px 0 18px 45px;
+    }
+
+    .custom-legal-content li {
+      margin-bottom: 10px;
+      line-height: 1.85;
+    }
+
+    /* Emphasis Styles */
+    .all-caps {
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .emphasis {
+      font-weight: 700;
+      text-decoration: underline;
+    }
+
+    /* Callout Box */
+    .legal-callout {
+      margin: 25px 0;
+      padding: 20px 25px;
+      background: #fff9e6;
+      border: 2px solid #d4af37;
+      border-radius: 4px;
+    }
+
+    .legal-callout-title {
+      font-weight: 700;
+      font-size: 11pt;
+      margin-bottom: 10px;
+      color: #2c3e50;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Signature Section */
+    .signature-section {
+      margin-top: 40px;
+      page-break-inside: avoid;
+    }
+
+    .signature-intro {
+      text-align: center;
+      margin-bottom: 25px;
+      font-style: italic;
+      font-size: 11pt;
+      padding: 20px;
+      background: #f8f9fa;
+      border-top: 2px solid #2c3e50;
+      border-bottom: 2px solid #2c3e50;
+    }
+
+    .signature-blocks {
+      margin-top: 30px;
+    }
+
+    .signature-block {
+      margin-bottom: 40px;
+      page-break-inside: avoid;
+      padding: 25px;
+      border: 1px solid #dee2e6;
+      background: #fafbfc;
+    }
+
+    .signature-label {
+      font-size: 10pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 5px;
+      color: #2c3e50;
+    }
+
+    .signature-line {
+      border-bottom: 2px solid #2c3e50;
+      width: 400px;
+      height: 50px;
+      margin: 20px 0 8px 0;
+      position: relative;
+    }
+
+    .signature-line img {
+      position: absolute;
+      bottom: 5px;
+      left: 0;
+      max-height: 40px;
+    }
+
+    .signature-name {
+      font-size: 11pt;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .signature-title {
+      font-size: 10pt;
+      font-style: italic;
+      color: #555555;
+      margin-bottom: 18px;
+    }
+
+    .signature-date-row {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-top: 12px;
+    }
+
+    .date-label {
+      font-size: 10pt;
+      font-weight: 700;
+    }
+
+    .date-line {
+      border-bottom: 1px solid #2c3e50;
+      width: 220px;
+      padding: 6px 0;
+      text-align: center;
+    }
+
+    /* Notary Section */
+    .notary-section {
+      margin-top: 55px;
+      padding: 30px;
+      border: 4px double #2c3e50;
+      background: #f8f9fa;
+      page-break-inside: avoid;
+    }
+
+    .notary-title {
+      text-align: center;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 13pt;
+      margin-bottom: 25px;
+      color: #2c3e50;
+      letter-spacing: 2px;
+    }
+
+    .notary-text {
+      line-height: 2.2;
+      margin-bottom: 35px;
+      font-size: 10.5pt;
+    }
+
+    .notary-seal-area {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-top: 40px;
+    }
+
+    .notary-seal {
+      width: 160px;
+      height: 160px;
+      border: 3px solid #2c3e50;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 10pt;
+      font-weight: 700;
+      background: white;
+    }
+
+    .notary-signature-area {
+      flex: 1;
+      margin-left: 30px;
+    }
+
+    /* Footer */
+    .legal-footer {
+      margin-top: 55px;
+      padding: 25px;
+      border-top: 3px double #2c3e50;
+      text-align: center;
+      font-size: 10pt;
+      line-height: 1.9;
+      background: #f8f9fa;
+    }
+
+    .legal-footer .emphasis-text {
+      font-weight: 700;
+      font-size: 11pt;
+      margin-bottom: 10px;
+    }
+
+    /* Print Optimizations */
+    @media print {
+      body {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+    }
+
+    /* Utility Classes */
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .text-justify { text-align: justify; }
+    .bold { font-weight: 700; }
+    .italic { font-style: italic; }
+    .underline { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="contract-container">
+    <!-- ELEGANT HEADER -->
+    <div class="legal-header">
+      <h1>Residential Lease Agreement</h1>
+      <div class="subtitle">A Binding Legal Contract Between Landlord and Tenant</div>
+      <div class="meta">
+        <span class="meta-item"><strong>Lease No:</strong> <%= leaseNumber %></span>
+        <span class="meta-item"><strong>Date:</strong> <%= currentDate %></span>
+        <span class="meta-item"><strong>Jurisdiction:</strong> <%= jurisdiction %></span>
+      </div>
+    </div>
+
+    <!-- PARTIES SECTION -->
+    <div class="parties-section">
+      <p class="parties-intro">
+        <span class="all-caps">This Lease Agreement</span> (hereinafter referred to as the "Agreement"),
+        made and entered into on this <strong><%= signedDate %></strong>, is by and between the parties
+        identified below:
+      </p>
+
+      <div class="party-grid">
+        <div class="party-block">
+          <div class="party-heading">Landlord (Property Owner)</div>
+          <div class="party-details">
+            <strong><%= landlordName %></strong><br>
+            <%= landlordAddress %><br>
+            Email: <%= landlordEmail %><br>
+            Telephone: <%= landlordPhone %>
+          </div>
+        </div>
+
+        <div class="party-block">
+          <div class="party-heading">Tenant (Lessee)</div>
+          <div class="party-details">
+            <strong><%= tenantName %></strong><br>
+            Email: <%= tenantEmail %><br>
+            Telephone: <%= tenantPhone %>
+          </div>
+        </div>
+      </div>
+
+      <% if (isExternalOwner && managementCompanyName) { %>
+      <div style="margin-top: 25px; padding: 20px; background: white; border: 2px solid #2c3e50; border-radius: 4px;">
+        <div class="party-heading">Property Management Company (Authorized Agent)</div>
+        <div class="party-details" style="margin-top: 12px;">
+          <strong><%= managementCompanyName %></strong><br>
+          <%= managementCompanyAddress %><br>
+          Email: <%= managementCompanyEmail %><br>
+          Telephone: <%= managementCompanyPhone %><br>
+          <em style="color: #666; font-size: 9.5pt; margin-top: 8px; display: block;">Acting as Authorized Agent for Property Owner</em>
+        </div>
+      </div>
+      <% } %>
+
+      <% if (coTenants && coTenants.length > 0) { %>
+      <div style="margin-top: 25px; padding: 20px; background: white; border: 1px solid #dee2e6;">
+        <div class="party-heading">Additional Co-Tenants</div>
+        <div style="margin-top: 15px;">
+          <% coTenants.forEach(coTenant => { %>
+          <div style="padding: 12px; margin-bottom: 10px; border-left: 3px solid #2c3e50; background: #f8f9fa;">
+            <strong><%= coTenant.name %></strong><br>
+            <span style="font-size: 10pt; color: #555555;">
+              Email: <%= coTenant.email %> | Phone: <%= coTenant.phone %>
+              <% if (coTenant.occupation) { %><br>Occupation: <%= coTenant.occupation %><% } %>
+            </span>
+          </div>
+          <% }); %>
+        </div>
+      </div>
+      <% } %>
+
+      <p class="parties-footer">
+        The Landlord and Tenant are hereinafter collectively referred to as the "Parties"
+        and individually as a "Party."
+      </p>
+    </div>
+
+    <!-- WITNESSETH -->
+    <div class="witnesseth">Witnesseth</div>
+
+    <!-- RECITALS -->
+    <div class="recitals">
+      <div class="recital">
+        <strong>WHEREAS,</strong> the Landlord is the lawful owner and possessor of certain real property
+        located at <strong><%= propertyAddress %></strong> (hereinafter referred to as the "Premises");
+      </div>
+      <div class="recital">
+        <strong>WHEREAS,</strong> the Tenant desires to lease the Premises from the Landlord for the purpose
+        of residential occupancy in accordance with the terms and conditions hereinafter set forth;
+      </div>
+      <div class="recital">
+        <strong>WHEREAS,</strong> the Landlord is willing to lease the Premises to the Tenant upon the terms,
+        covenants, and conditions contained in this Agreement;
+      </div>
+      <div class="recital" style="margin-bottom: 0;">
+        <strong>WHEREAS,</strong> both Parties wish to set forth in writing the terms and conditions of their agreement.
+      </div>
+    </div>
+
+    <p class="legal-paragraph centered" style="font-weight: 700; font-size: 12pt; margin: 35px 0;">
+      NOW, THEREFORE, in consideration of the mutual covenants, promises, and agreements herein contained,
+      and for other good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged,
+      the Parties hereto agree as follows:
+    </p>
+
+    <!-- SECTION I: BASIC INFORMATION -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-roman">I.</div>
+        <div class="section-title">Fundamental Lease Information</div>
+      </div>
+
+      <table class="info-table">
+        <tr>
+          <td class="label-cell">Lease Classification:</td>
+          <td class="value-cell"><%= leaseType %></td>
+        </tr>
+        <tr>
+          <td class="label-cell">Commencement Date:</td>
+          <td class="value-cell"><%= startDate %></td>
+        </tr>
+        <tr>
+          <td class="label-cell">Termination Date:</td>
+          <td class="value-cell"><%= endDate %></td>
+        </tr>
+        <tr>
+          <td class="label-cell">Monthly Rental Amount:</td>
+          <td class="value-cell"><strong><%= monthlyRent %></strong></td>
+        </tr>
+        <tr>
+          <td class="label-cell">Security Deposit:</td>
+          <td class="value-cell"><%= securityDeposit %></td>
+        </tr>
+        <tr>
+          <td class="label-cell">Rent Payment Due Date:</td>
+          <td class="value-cell"><%= rentDueDayOrdinal %> day of each calendar month</td>
+        </tr>
+        <% if (petPolicy && petPolicy.allowed) { %>
+        <tr>
+          <td class="label-cell">Pet Deposit:</td>
+          <td class="value-cell"><%= petPolicy.deposit %></td>
+        </tr>
+        <% } %>
+      </table>
+
+      <% if (renewalOptions && renewalOptions.autoRenew) { %>
+      <div class="legal-callout">
+        <div class="legal-callout-title">⚠ Automatic Renewal Provision</div>
+        <p style="margin: 0; line-height: 1.8;">
+          This Agreement contains an automatic renewal clause. Unless either Party provides written notice
+          of termination at least <strong><%= renewalOptions.noticePeriodDays %> days</strong> prior to the
+          expiration date, this Agreement shall automatically renew for an additional term of
+          <strong><%= renewalOptions.renewalTermMonths %> months</strong> under the same terms and conditions.
+        </p>
+      </div>
+      <% } %>
+    </div>
+
+    <!-- SECTION II: CUSTOM LEGAL TERMS -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-roman">II.</div>
+        <div class="section-title">Terms, Covenants, and Conditions</div>
+      </div>
+
+      <% if (legalTerms && legalTerms.html) { %>
+      <!-- User-Provided HTML Content -->
+      <div class="custom-legal-content">
+        <%- legalTerms.html %>
+      </div>
+      <% } else if (legalTerms && legalTerms.text) { %>
+      <!-- User-Provided Plain Text Content -->
+      <div class="custom-legal-content">
+        <p class="legal-paragraph">
+          <%= legalTerms.text %>
+        </p>
+      </div>
+      <% } else { %>
+      <!-- Default Legal Terms -->
+      <div class="subsection-header">2.1 Leased Premises</div>
+      <p class="legal-paragraph">
+        The Landlord hereby agrees to lease to the Tenant, and the Tenant hereby agrees to lease from the Landlord,
+        the Premises located at <strong><%= propertyAddress %></strong>, together with all rights, privileges, and
+        appurtenances thereto belonging, for the term and subject to the covenants and conditions hereinafter set forth.
+      </p>
+
+      <div class="subsection-header">2.2 Use and Occupancy</div>
+      <p class="legal-paragraph">
+        The Premises shall be used and occupied by the Tenant exclusively for residential dwelling purposes.
+        The Tenant shall not use or permit the use of the Premises for any unlawful purpose, or for any purpose
+        that would constitute waste or nuisance, or that would increase the insurance premiums on the Premises.
+      </p>
+
+      <div class="subsection-header">2.3 Rental Payment Obligations</div>
+      <p class="legal-paragraph">
+        The Tenant covenants and agrees to pay to the Landlord, without demand, offset, or deduction, the sum of
+        <strong><%= monthlyRent %></strong> per calendar month as rent for the Premises. Payment shall
+        be made in advance on the <strong><%= rentDueDayOrdinal %></strong> day of each month during the
+        term of this Agreement. All payments shall be made to the Landlord at the address specified above or at
+        such other place as the Landlord may designate in writing.
+      </p>
+
+      <div class="subsection-header">2.4 Security Deposit</div>
+      <p class="legal-paragraph">
+        Upon execution of this Agreement, the Tenant has deposited with the Landlord the sum of
+        <strong><%= securityDeposit %></strong> as security for the faithful performance and observance
+        by the Tenant of the terms, provisions, and conditions of this Agreement. Said deposit shall be returned
+        to the Tenant, without interest, within the time period required by applicable law following termination
+        of the tenancy, less any lawful deductions for damages beyond normal wear and tear, unpaid rent, or other
+        charges due under this Agreement.
+      </p>
+
+      <div class="subsection-header">2.5 Maintenance and Repair Obligations</div>
+      <p class="legal-paragraph">
+        The Landlord shall maintain the structural components of the Premises in good repair and shall comply with
+        all applicable building, housing, and health codes. The Tenant shall maintain the Premises in a clean and
+        sanitary condition, shall dispose of all garbage and waste in a proper manner, and shall be responsible
+        for any damage to the Premises caused by the Tenant's negligence or misuse.
+      </p>
+
+      <div class="subsection-header">2.6 Utilities and Services</div>
+      <p class="legal-paragraph">
+        <% if (utilitiesIncluded) { %>
+        The Landlord agrees to provide and pay for the following utilities and services: <%= utilitiesIncluded %>.
+        <% } %>
+        The Tenant shall be responsible for the payment of all other utilities and services furnished to the Premises
+        not expressly stated herein to be the responsibility of the Landlord.
+      </p>
+
+      <div class="subsection-header">2.7 Pet Provisions</div>
+      <p class="legal-paragraph">
+        <% if (petPolicy && petPolicy.allowed) { %>
+        The Tenant is permitted to keep a maximum of <strong><%= petPolicy.maxPets %></strong> pet(s) of the following
+        types: <strong><%= petPolicy.types %></strong>. The Tenant has paid a pet deposit of
+        <strong><%= petPolicy.deposit %></strong> and agrees to be responsible for all damages caused by
+        any pet(s). The Tenant further agrees to comply with all applicable laws and regulations regarding pet ownership.
+        <% } else { %>
+        No animals, birds, or pets of any kind shall be kept on or about the Premises without the prior written consent
+        of the Landlord, which consent may be withheld at the Landlord's sole discretion.
+        <% } %>
+      </p>
+
+      <div class="subsection-header">2.8 Assignment and Subletting Prohibition</div>
+      <p class="legal-paragraph">
+        The Tenant shall not assign this Agreement or sublet the whole or any part of the Premises without the prior
+        written consent of the Landlord. Any attempted assignment or subletting without such consent shall be void
+        and shall, at the option of the Landlord, terminate this Agreement.
+      </p>
+
+      <div class="subsection-header">2.9 Right of Entry</div>
+      <p class="legal-paragraph">
+        The Landlord and Landlord's agents shall have the right to enter the Premises at all reasonable times for
+        the purpose of examining or inspecting the Premises, making necessary repairs or alterations, or showing
+        the Premises to prospective tenants, purchasers, or lenders. Except in cases of emergency, the Landlord
+        shall provide the Tenant with reasonable advance notice of such entry.
+      </p>
+
+      <div class="subsection-header">2.10 Termination and Surrender</div>
+      <p class="legal-paragraph">
+        <% if (renewalOptions && renewalOptions.noticePeriodDays) { %>
+        Either Party may terminate this Agreement by providing written notice to the other Party at least
+        <strong><%= renewalOptions.noticePeriodDays %> days</strong> prior to the intended termination date.
+        <% } else { %>
+        Either Party may terminate this Agreement by providing written notice to the other Party at least
+        <strong>30 days</strong> prior to the intended termination date.
+        <% } %>
+        Upon termination, the Tenant shall surrender the Premises to the Landlord in the same condition as received,
+        ordinary wear and tear excepted, and shall remove all personal property belonging to the Tenant.
+      </p>
+      <% } %>
+    </div>
+
+    <!-- PAGE BREAK -->
+    <div class="page-break"></div>
+
+    <!-- SECTION III: GENERAL PROVISIONS -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-roman">III.</div>
+        <div class="section-title">General Provisions</div>
+      </div>
+
+      <div class="subsection-header">3.1 Entire Agreement</div>
+      <p class="legal-paragraph">
+        This Agreement contains the entire agreement between the Parties relating to the subject matter hereof
+        and supersedes all prior agreements, negotiations, representations, or proposals, whether written or oral.
+        This Agreement may not be amended or modified except by a written instrument executed by both Parties.
+      </p>
+
+      <div class="subsection-header">3.2 Severability</div>
+      <p class="legal-paragraph">
+        If any provision of this Agreement shall be held to be invalid or unenforceable for any reason, the
+        remaining provisions shall continue to be valid and enforceable. If a court finds that any provision
+        of this Agreement is invalid or unenforceable, but that by limiting such provision it would become
+        valid and enforceable, then such provision shall be deemed to be written, construed, and enforced as
+        so limited.
+      </p>
+
+      <div class="subsection-header">3.3 Waiver of Rights</div>
+      <p class="legal-paragraph">
+        The failure of either Party to enforce any provision of this Agreement shall not be construed as a
+        waiver or limitation of that Party's right to subsequently enforce and compel strict compliance with
+        every provision of this Agreement.
+      </p>
+
+      <div class="subsection-header">3.4 Governing Law and Venue</div>
+      <p class="legal-paragraph">
+        This Agreement shall be governed by, construed, and enforced in accordance with the laws of the
+        jurisdiction in which the Premises are located, without regard to conflicts of law principles.
+        Any legal action or proceeding arising out of or relating to this Agreement shall be brought
+        exclusively in the courts of competent jurisdiction in said location.
+      </p>
+
+      <div class="subsection-header">3.5 Notices</div>
+      <p class="legal-paragraph">
+        All notices, requests, demands, and other communications required or permitted to be given under this
+        Agreement shall be in writing and shall be deemed to have been duly given when delivered personally,
+        sent by certified or registered mail (return receipt requested), or sent by a nationally recognized
+        overnight courier service to the addresses set forth above or to such other address as either Party
+        may designate by written notice to the other.
+      </p>
+
+      <div class="subsection-header">3.6 Binding Effect</div>
+      <p class="legal-paragraph">
+        This Agreement shall be binding upon and inure to the benefit of the Parties hereto and their respective
+        heirs, executors, administrators, successors, and assigns, subject to the provisions herein regarding
+        assignment.
+      </p>
+    </div>
+
+    <!-- SECTION DIVIDER -->
+    <div class="section-divider">
+      <span class="section-divider-text">Signatures Follow</span>
+    </div>
+
+    <!-- SIGNATURES -->
+    <div class="signature-section">
+      <div class="signature-intro">
+        <strong>IN WITNESS WHEREOF,</strong> the Parties have executed this Residential Lease Agreement
+        as of the day and year first above written.
+      </div>
+
+      <div class="signature-blocks">
+        <!-- Landlord Signature -->
+        <div class="signature-block">
+          <div class="signature-label">Landlord / Lessor</div>
+          <div class="signature-line">
+            <% if (signingMethod === 'electronic' && landlordSignatureUrl) { %>
+            <img src="<%= landlordSignatureUrl %>" alt="Landlord Signature">
+            <% } else if (signingMethod === 'electronic') { %>
+            <span style="color: white; text-transform: none;">{{sign|1|*}}</span>
+            <% } %>
+          </div>
+          <div class="signature-name"><strong><%= landlordName %></strong></div>
+          <div class="signature-title">
+            <% if (isExternalOwner) { %>
+              Property Owner (or Authorized Agent)
+            <% } else { %>
+              Property Owner
+            <% } %>
+          </div>
+          <div class="signature-date-row">
+            <span class="date-label">Date Signed:</span>
+            <div class="date-line"><% if (signingMethod === 'electronic') { %><span style="color: white; text-transform: none;">{{date|1|*}}</span><% } else { %><%= signedDate %><% } %></div>
+          </div>
+        </div>
+
+        <!-- Tenant Signature -->
+        <div class="signature-block">
+          <div class="signature-label">Tenant / Lessee</div>
+          <div class="signature-line">
+            <% if (signingMethod === 'electronic' && tenantSignatureUrl) { %>
+            <img src="<%= tenantSignatureUrl %>" alt="Tenant Signature">
+            <% } else { %>
+            <span style="color: white; text-transform: none;">{{sign|2|*}}</span>
+            <% } %>
+          </div>
+          <div class="signature-name"><strong><%= tenantName %></strong></div>
+          <div class="signature-title">Primary Lessee</div>
+          <div class="signature-date-row">
+            <span class="date-label">Date Signed:</span>
+            <div class="date-line"><% if (signingMethod === 'electronic') { %><span style="color: white; text-transform: none;">{{date|2|*}}</span><% } else { %><%= signedDate %><% } %></div>
+          </div>
+        </div>
+
+        <!-- Co-Tenant Signatures -->
+        <% if (coTenants && coTenants.length > 0) { %>
+          <% coTenants.forEach((coTenant, coTenantIndex) => { %>
+            <div class="signature-block">
+              <div class="signature-label">Co-Tenant / Co-Lessee</div>
+              <div class="signature-line">
+                <span style="color: white; text-transform: none;">{{sign|<%= 3 + coTenantIndex %>|*}}</span>
+              </div>
+              <div class="signature-name"><strong><%= coTenant.name %></strong></div>
+              <div class="signature-title">Co-Lessee</div>
+              <div class="signature-date-row">
+                <span class="date-label">Date Signed:</span>
+                <div class="date-line"><span style="color: white; text-transform: none;">{{date|<%= 3 + coTenantIndex %>|*}}</span></div>
+              </div>
+            </div>
+          <% }); %>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- NOTARY SECTION (OPTIONAL) -->
+    <% if (requiresNotarization) { %>
+    <div class="notary-section">
+      <div class="notary-title">Acknowledgment of Notary Public</div>
+
+      <div class="notary-text">
+        <strong>State of:</strong> _________________________________________<br>
+        <strong>County of:</strong> ________________________________________<br><br>
+
+        On this ________ day of ____________________, 20_____, before me personally appeared
+        _________________________________, to me known to be the person described in and who executed
+        the foregoing instrument, and acknowledged that he/she executed the same as his/her free act and deed.
+      </div>
+
+      <div class="notary-seal-area">
+        <div class="notary-seal">
+          (Affix Official<br>Notary Seal Here)
+        </div>
+        <div class="notary-signature-area">
+          <div style="margin-bottom: 15px; font-weight: 700;">Signature of Notary Public:</div>
+          <div style="border-bottom: 2px solid #2c3e50; width: 100%; height: 60px; margin-bottom: 10px;"></div>
+          <div style="margin-bottom: 8px;">Print Name: _____________________________________</div>
+          <div>Commission Expiration: _____________________________________</div>
+        </div>
+      </div>
+    </div>
+    <% } %>
+
+    <!-- FOOTER -->
+    <div class="legal-footer">
+      <div class="emphasis-text">◆ END OF LEASE AGREEMENT ◆</div>
+      <p>Lease Agreement Reference Number: <strong><%= leaseNumber %></strong></p>
+      <p>This instrument constitutes the entire agreement between the parties and supersedes all prior understandings.</p>
+      <p style="font-style: italic; margin-top: 10px;">
+        Each party acknowledges receipt of a fully executed copy of this Agreement.
+      </p>
+    </div>
+  </div>
+</body>
+</html>

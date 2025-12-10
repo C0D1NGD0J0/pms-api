@@ -7,15 +7,16 @@ import {
   PropertyDAO,
   ClientDAO,
   VendorDAO,
+  LeaseDAO,
   UserDAO,
 } from '@dao/index';
 
-const getContainer = async () => {
+export const getContainer = async () => {
   const { container } = await import('@di/setup');
   return container;
 };
 
-export const ValidatecuidSchema = z.object({
+export const ValidateCuidSchema = z.object({
   cuid: z.string().refine(
     async (cuid) => {
       const { clientDAO }: { clientDAO: ClientDAO } = (await getContainer()).cradle;
@@ -28,7 +29,7 @@ export const ValidatecuidSchema = z.object({
   ),
 });
 
-export const ValidatevuidSchema = z.object({
+export const ValidateVuidSchema = z.object({
   vuid: z
     .string()
     .optional()
@@ -44,13 +45,26 @@ export const ValidatevuidSchema = z.object({
     ),
 });
 
-export const ValidatenuidSchema = z.object({
+export const ValidateNuidSchema = z.object({
   nuid: z.string().refine(
     async (nuid) => {
       const { notificationDAO }: { notificationDAO: NotificationDAO } = (await getContainer())
         .cradle;
       const notification = await notificationDAO.findFirst({ nuid });
       return !!notification;
+    },
+    {
+      message: 'Invalid params detected in the request.',
+    }
+  ),
+});
+
+export const ValidateLuidSchema = z.object({
+  luid: z.string().refine(
+    async (luid) => {
+      const { leaseDAO }: { leaseDAO: LeaseDAO } = (await getContainer()).cradle;
+      const lease = await leaseDAO.findFirst({ luid });
+      return !!lease;
     },
     {
       message: 'Invalid params detected in the request.',
@@ -152,12 +166,28 @@ export const ValidateInvitationIuidSchema = z
     }
   });
 
+export const ValidateCuidAndLeaseIdSchema = z.object({
+  cuid: z.string().refine(
+    async (cuid) => {
+      const { clientDAO }: { clientDAO: ClientDAO } = (await getContainer()).cradle;
+      const client = await clientDAO.findFirst({ cuid });
+      return !!client;
+    },
+    {
+      message: 'Invalid params detected in the request.',
+    }
+  ),
+  leaseId: z.string().min(1, 'Lease ID is required'),
+});
+
 export const UtilsValidations = {
-  cuid: ValidatecuidSchema,
-  nuid: ValidatenuidSchema,
+  cuid: ValidateCuidSchema,
+  nuid: ValidateNuidSchema,
   unitPuid: ValidateUnitPuid,
   isUniqueEmail: ValidateEmailSchema,
   propertyId: ValidatePropertyIdSchema,
-  vuid: ValidatevuidSchema,
+  vuid: ValidateVuidSchema,
+  luid: ValidateLuidSchema,
   invitationuid: ValidateInvitationIuidSchema,
+  cuidAndLeaseId: ValidateCuidAndLeaseIdSchema,
 };

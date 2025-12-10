@@ -335,6 +335,64 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
       ];
 
+      // Apply strict role filtering in aggregation pipeline
+      // if (role) {
+      //   const requestedRoles = Array.isArray(role) ? role : [role];
+      //   pipeline.push(
+      //     // Add a field to check if user's roles are strictly within requested roles
+      //     {
+      //       $addFields: {
+      //         clientConnection: {
+      //           $filter: {
+      //             input: '$cuids',
+      //             as: 'c',
+      //             cond: {
+      //               $and: [{ $eq: ['$$c.cuid', cuid] }, { $eq: ['$$c.isConnected', true] }],
+      //             },
+      //           },
+      //         },
+      //       },
+      //     },
+      //     {
+      //       $match: {
+      //         $expr: {
+      //           $and: [
+      //             // Must have the client connection
+      //             { $gt: [{ $size: '$clientConnection' }, 0] },
+      //             // All roles must be within requested roles (strict subset)
+      //             {
+      //               $setIsSubset: [
+      //                 { $arrayElemAt: ['$clientConnection.roles', 0] },
+      //                 requestedRoles,
+      //               ],
+      //             },
+      //             // Must have at least one of the requested roles
+      //             {
+      //               $gt: [
+      //                 {
+      //                   $size: {
+      //                     $setIntersection: [
+      //                       { $arrayElemAt: ['$clientConnection.roles', 0] },
+      //                       requestedRoles,
+      //                     ],
+      //                   },
+      //                 },
+      //                 0,
+      //               ],
+      //             },
+      //           ],
+      //         },
+      //       },
+      //     },
+      //     // Clean up the temporary field
+      //     {
+      //       $project: {
+      //         clientConnection: 0,
+      //       },
+      //     }
+      //   );
+      // }
+
       if (department) {
         pipeline.push({
           $match: {

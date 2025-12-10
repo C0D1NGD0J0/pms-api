@@ -104,6 +104,7 @@ export interface IPropertyUnit {
     photos: PropertyUnitPhoto[];
   };
   inspections?: PropertyUnitInspection[];
+  unitAuthorization?: IUnitAuthorization;
   documents?: PropertyUnitDocument[];
   lastModifiedBy?: Types.ObjectId;
   currentLease?: Types.ObjectId;
@@ -111,6 +112,7 @@ export interface IPropertyUnit {
   status: PropertyUnitStatus;
   unitType: PropertyUnitType;
   createdBy: Types.ObjectId;
+  unitOwner?: IUnitOwner;
   description?: string;
   unitNumber: string;
   isActive: boolean;
@@ -135,6 +137,11 @@ export interface IPropertyUnitDocument extends IPropertyUnit, Document {
     createdAt: Date;
     createdBy: Types.ObjectId;
   }>;
+  getAuthorizationStatus(): {
+    isAuthorized: boolean;
+    reason?: string;
+    daysUntilExpiry?: number;
+  };
   applyRentAdjustment: (percentage: number, userId: string) => Promise<IPropertyUnitDocument>;
   prepareForMaintenance: (reason: string, userId: string) => Promise<IPropertyUnitDocument>;
   markUnitAsOccupied: (leaseId: string, userId: string) => Promise<IPropertyUnitDocument>;
@@ -142,6 +149,9 @@ export interface IPropertyUnitDocument extends IPropertyUnit, Document {
   makeUnitAvailable: (userId: string) => Promise<IPropertyUnitDocument>;
   markUnitAsVacant: (userId: string) => Promise<IPropertyUnitDocument>;
   softDelete: (userId: string) => Promise<IPropertyUnitDocument>;
+  // Authorization methods
+  isManagementAuthorized(): boolean;
+
   lastInspectionDate?: Date;
   _id: Types.ObjectId;
   deletedAt?: Date;
@@ -187,6 +197,16 @@ export type PropertyUnitFilterQuery = {
     };
   };
 };
+
+/**
+ * Unit Authorization Interface - Same structure as property authorization
+ */
+export interface IUnitAuthorization {
+  documentUrl?: string; // S3 link to unit-specific management agreement
+  isActive: boolean; // Simple on/off switch
+  expiresAt?: Date; // When authorization expires (optional)
+  notes?: string; // Internal notes
+}
 
 /**
  * Property Unit Document Type
@@ -279,6 +299,16 @@ export type PropertyUnitInspectionAttachment = {
   key?: string;
   url: string;
 };
+
+/**
+ * Unit Owner Interface - Simpler than property owner, just contact info
+ */
+export interface IUnitOwner {
+  email?: string;
+  phone?: string;
+  notes?: string;
+  name?: string;
+}
 
 /**
  * Property Unit Status Types

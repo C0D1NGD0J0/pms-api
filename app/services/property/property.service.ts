@@ -9,9 +9,14 @@ import { PropertyQueue, UploadQueue } from '@queues/index';
 import { NotificationService } from '@services/notification';
 import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
-import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
-import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import {
+  UploadCompletedPayload,
+  UploadFailedPayload,
+  LeaseStatus,
+  EventTypes,
+} from '@interfaces/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -25,7 +30,7 @@ import {
   IPaginationQuery,
   IRequestContext,
   ResourceContext,
-  PaginateResult,
+  IPaginateResult,
   UploadResult,
 } from '@interfaces/utils.interface';
 import {
@@ -49,6 +54,11 @@ import {
 } from '@utils/index';
 
 import { PropertyValidationService } from './propertyValidation.service';
+import {
+  generatePendingChangesPreview,
+  validateOccupancyStatusChange,
+  getOriginalRequesterId,
+} from './propertyHelpers';
 
 interface IConstructor {
   propertyCsvProcessor: PropertyCsvProcessor;
@@ -63,6 +73,7 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
+  leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
 
@@ -80,6 +91,7 @@ export class PropertyService {
   private readonly propertyCsvProcessor: PropertyCsvProcessor;
   private readonly mediaUploadService: MediaUploadService;
   private readonly userDAO: UserDAO;
+  private readonly leaseDAO: LeaseDAO;
   private readonly notificationService: NotificationService;
 
   constructor({
@@ -95,6 +107,7 @@ export class PropertyService {
     propertyCsvProcessor,
     mediaUploadService,
     userDAO,
+    leaseDAO,
     notificationService,
   }: IConstructor) {
     this.clientDAO = clientDAO;
@@ -110,6 +123,7 @@ export class PropertyService {
     this.propertyCsvProcessor = propertyCsvProcessor;
     this.mediaUploadService = mediaUploadService;
     this.userDAO = userDAO;
+    this.leaseDAO = leaseDAO;
     this.notificationService = notificationService;
 
     this.setupEventListeners();
@@ -119,7 +133,6 @@ export class PropertyService {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
 
-    // Unit-related events for property occupancy sync
     this.emitterService.on(EventTypes.UNIT_CREATED, this.handleUnitChanged.bind(this));
     this.emitterService.on(EventTypes.UNIT_UPDATED, this.handleUnitChanged.bind(this));
     this.emitterService.on(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged.bind(this));
@@ -127,7 +140,127 @@ export class PropertyService {
     this.emitterService.on(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged.bind(this));
     this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged.bind(this));
 
+    this.emitterService.on(
+      EventTypes.LEASE_ESIGNATURE_COMPLETED,
+      this.handleLeaseActivated.bind(this)
+    );
+
+    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
+
     this.log.info(t('property.logging.eventListenersInitialized'));
+  }
+
+  private async handleLeaseActivated(payload: any): Promise<{
+    success: boolean;
+    message: string;
+    data: any;
+  }> {
+    try {
+      const { leaseId, propertyId, propertyUnitId } = payload;
+
+      if (propertyUnitId) {
+        this.log.info('Lease has propertyUnitId - skipping direct property update', {
+          leaseId,
+          propertyId,
+        });
+        return {
+          success: false,
+          message: 'Lease has propertyUnitId - skipping direct property update',
+          data: null,
+        };
+      }
+
+      let property = await this.propertyDAO.findById(propertyId);
+      if (!property) {
+        return {
+          success: false,
+          message: 'Property not found',
+          data: null,
+        };
+      }
+
+      if (property.occupancyStatus === 'occupied') {
+        return {
+          success: false,
+          message: 'Property already marked as occupied',
+          data: null,
+        };
+      }
+
+      property = await this.propertyDAO.update(
+        { _id: propertyId },
+        {
+          occupancyStatus: 'occupied',
+          updatedAt: new Date(),
+        }
+      );
+
+      return {
+        success: true,
+        data: property,
+        message: 'Property marked as occupied',
+      };
+    } catch (error) {
+      this.log.error('Error handling lease activation for property', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      });
+      return { success: false, message: 'Error handling lease activation', data: null };
+    }
+  }
+
+  private async handleLeaseTerminated(payload: any): Promise<{
+    success: boolean;
+    message: string;
+    data: any;
+  }> {
+    try {
+      const { leaseId, propertyId, propertyUnitId } = payload;
+
+      // Skip if this is a unit-level lease (unit service handles it)
+      if (propertyUnitId) {
+        this.log.info('Lease has propertyUnitId - skipping direct property update', {
+          leaseId,
+          propertyId,
+        });
+        return {
+          success: false,
+          message: 'Lease has propertyUnitId - skipping direct property update',
+          data: null,
+        };
+      }
+
+      // This is a property-level lease termination
+      let property = await this.propertyDAO.findById(propertyId);
+      if (!property) {
+        return {
+          success: false,
+          message: 'Property not found',
+          data: null,
+        };
+      }
+
+      // Update property to vacant since property-level lease ended
+      property = await this.propertyDAO.update(
+        { _id: propertyId },
+        {
+          occupancyStatus: 'vacant',
+          updatedAt: new Date(),
+        }
+      );
+
+      return {
+        success: true,
+        data: property,
+        message: 'Property marked as vacant after lease termination',
+      };
+    } catch (error) {
+      this.log.error('Error handling lease termination for property', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      });
+      return { success: false, message: 'Error handling lease termination', data: null };
+    }
   }
 
   async addProperty(
@@ -488,7 +621,7 @@ export class PropertyService {
   ): Promise<
     ISuccessReturnData<{
       items: IPropertyDocument[];
-      pagination: PaginateResult | undefined;
+      pagination: IPaginateResult | undefined;
     }>
   > {
     if (!cuid) {
@@ -615,7 +748,7 @@ export class PropertyService {
 
     const itemsWithPreview = properties.items.map((property) => {
       const propertyObj = property.toObject ? property.toObject() : property;
-      const pendingChangesPreview = this.generatePendingChangesPreview(property, currentuser);
+      const pendingChangesPreview = generatePendingChangesPreview(property, currentuser);
 
       return {
         ...propertyObj,
@@ -666,7 +799,7 @@ export class PropertyService {
     const unitInfo = await this.getUnitInfoForProperty(property);
 
     const propertyObj = property.toObject ? property.toObject() : property;
-    const pendingChangesPreview = this.generatePendingChangesPreview(property, currentUser);
+    const pendingChangesPreview = generatePendingChangesPreview(property, currentUser);
 
     const propertyWithPreview = {
       ...propertyObj,
@@ -756,7 +889,7 @@ export class PropertyService {
 
     // Validate occupancy status change
     if (cleanUpdateData.occupancyStatus) {
-      this.validateOccupancyStatusChange(property, cleanUpdateData);
+      validateOccupancyStatusChange(property, cleanUpdateData);
     }
 
     // Smart Approval Workflow Logic
@@ -866,6 +999,7 @@ export class PropertyService {
         throw new BadRequestError({ message: 'Unable to update property.' });
       }
 
+      await this.propertyCache.invalidateProperty(ctx.cuid, result.id);
       await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
 
       // notify staff if their pending changes were overridden
@@ -914,7 +1048,6 @@ export class PropertyService {
     isDirectUpdate: boolean
   ): Promise<void> {
     try {
-      await this.propertyCache.invalidateProperty(ctx.cuid, updatedProperty.id);
       await this.notificationService.handlePropertyUpdateNotifications({
         userRole: ctx.currentuser.client.role,
         updatedProperty,
@@ -945,7 +1078,7 @@ export class PropertyService {
     cuid: string,
     currentuser: ICurrentUser,
     pagination: IPaginationQuery
-  ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: PaginateResult }>> {
+  ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: IPaginateResult }>> {
     const userRole = currentuser.client.role;
     if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
@@ -1071,7 +1204,7 @@ export class PropertyService {
     try {
       const originalRequesterId =
         property.pendingChanges?.updatedBy?.toString() ||
-        this.getOriginalRequesterId(
+        getOriginalRequesterId(
           Array.isArray(property.approvalDetails) ? property.approvalDetails : []
         );
 
@@ -1188,7 +1321,7 @@ export class PropertyService {
     try {
       const originalRequesterId =
         property.pendingChanges?.updatedBy?.toString() ||
-        this.getOriginalRequesterId(
+        getOriginalRequesterId(
           Array.isArray(property.approvalDetails) ? property.approvalDetails : []
         );
 
@@ -1337,7 +1470,7 @@ export class PropertyService {
       approvalStatus?: 'pending' | 'approved' | 'rejected';
       pagination: IPaginationQuery;
     }
-  ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: PaginateResult }>> {
+  ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: IPaginateResult }>> {
     const filter: FilterQuery<IPropertyDocument> = {
       cuid,
       deletedAt: null,
@@ -1371,120 +1504,6 @@ export class PropertyService {
   /**
    * Helper method to find the original requester from approvalDetails array
    */
-  private getOriginalRequesterId(approvalDetails: any[]): string | undefined {
-    if (!Array.isArray(approvalDetails) || approvalDetails.length === 0) {
-      return undefined;
-    }
-
-    // Find the first 'created' action which contains the original requester
-    const createdEntry = approvalDetails.find((entry) => entry.action === 'created');
-    return createdEntry?.actor?.toString();
-  }
-
-  private shouldShowPendingChanges(
-    currentUser: ICurrentUser,
-    property: IPropertyDocument
-  ): boolean {
-    if (!property.pendingChanges) {
-      return false;
-    }
-
-    const userRole = currentUser.client.role;
-
-    // Admin/managers can see all pending changes
-    if (PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      return true;
-    }
-
-    // Staff can only see their own pending changes
-    if (PROPERTY_STAFF_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      const pendingChanges = property.pendingChanges as any;
-      return pendingChanges.updatedBy?.toString() === currentUser.sub;
-    }
-
-    return false;
-  }
-
-  private generatePendingChangesPreview(
-    property: IPropertyDocument,
-    currentUser: ICurrentUser
-  ): any {
-    if (!property.pendingChanges || !this.shouldShowPendingChanges(currentUser, property)) {
-      return undefined;
-    }
-
-    const pendingChanges = property.pendingChanges as any;
-    const { updatedBy, updatedAt, ...changes } = pendingChanges;
-
-    const formattedChanges = { ...changes };
-    if (formattedChanges.fees) {
-      formattedChanges.fees = MoneyUtils.formatMoneyDisplay(formattedChanges.fees);
-    }
-
-    const updatedFields = Object.keys(changes);
-    const summary = this.generateChangesSummary(updatedFields);
-
-    return {
-      updatedFields,
-      updatedAt,
-      updatedBy,
-      summary,
-      changes: formattedChanges,
-    };
-  }
-
-  private generateChangesSummary(updatedFields: string[]): string {
-    if (updatedFields.length === 0) return 'No changes';
-
-    const fieldNames = updatedFields.map((field) => {
-      // Convert camelCase and nested fields to readable names
-      return field
-        .replace(/([A-Z])/g, ' $1')
-        .replace(/^./, (str) => str.toUpperCase())
-        .replace(/\./g, ' > ');
-    });
-
-    if (fieldNames.length === 1) {
-      return `Modified ${fieldNames[0]}`;
-    } else if (fieldNames.length === 2) {
-      return `Modified ${fieldNames[0]} and ${fieldNames[1]}`;
-    } else {
-      const lastField = fieldNames.pop();
-      return `Modified ${fieldNames.join(', ')}, and ${lastField}`;
-    }
-  }
-
-  private validateOccupancyStatusChange(
-    existingProperty: IPropertyDocument,
-    updateData: Partial<IPropertyDocument>
-  ): void {
-    const errors: string[] = [];
-
-    if (
-      updateData.occupancyStatus === 'occupied' &&
-      existingProperty.occupancyStatus !== 'occupied'
-    ) {
-      // Check if rental amount is set
-      const hasRentalAmount = existingProperty.fees?.rentalAmount || updateData.fees?.rentalAmount;
-      if (!hasRentalAmount) {
-        errors.push('Occupied properties must have a rental amount');
-      }
-    }
-
-    if (updateData.occupancyStatus === 'partially_occupied') {
-      const maxAllowedUnits = updateData.maxAllowedUnits || existingProperty.maxAllowedUnits || 1;
-      if (maxAllowedUnits <= 1) {
-        errors.push('Single-unit properties cannot be partially occupied');
-      }
-    }
-
-    if (errors.length > 0) {
-      throw new ValidationRequestError({
-        message: t('property.errors.occupancyValidationFailed'),
-        errorInfo: { occupancyStatus: errors },
-      });
-    }
-  }
 
   async archiveClientProperty(
     cuid: string,
@@ -1509,6 +1528,29 @@ export class PropertyService {
     });
     if (!property) {
       throw new NotFoundError({ message: t('property.errors.notFound') });
+    }
+
+    // Business Rule: Cannot archive property with active leases
+    const activeLeases = await this.leaseDAO.list(
+      {
+        cuid,
+        'property.id': property._id,
+        status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
+        deletedAt: null,
+      },
+      {},
+      true
+    );
+
+    if (activeLeases.items.length > 0) {
+      throw new ValidationRequestError({
+        message: 'Cannot archive property with active or pending leases',
+        errorInfo: {
+          property: [
+            `This property has ${activeLeases.items.length} active or pending lease(s). Please terminate or cancel all leases before archiving the property.`,
+          ],
+        },
+      });
     }
 
     const archivedProperty = await this.propertyDAO.archiveProperty(property.id, currentUser.sub);
@@ -1868,7 +1910,7 @@ export class PropertyService {
     cuid: string,
     currentuser: ICurrentUser,
     filters: IAssignableUsersFilter
-  ): Promise<ISuccessReturnData<{ items: IAssignableUser[]; pagination?: PaginateResult }>> {
+  ): Promise<ISuccessReturnData<{ items: IAssignableUser[]; pagination?: IPaginateResult }>> {
     try {
       this.log.info('Fetching assignable users for client', { cuid, filters });
 
@@ -2010,6 +2052,226 @@ export class PropertyService {
       this.log.error('Failed to get assignable users', {
         cuid,
         filters,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get lease-able properties (available properties only)
+   * Optionally fetch available units for properties that support units
+   * @param cuid - Client unique identifier
+   * @param currentuser - Current user making the request
+   * @param fetchUnits - Whether to fetch available units for properties
+   * @returns Properties with optional unit information
+   */
+  async getLeaseableProperties(
+    cuid: string,
+    currentuser: ICurrentUser,
+    fetchUnits: boolean = false
+  ): Promise<
+    ISuccessReturnData<{
+      items: Array<{
+        id: string;
+        name: string;
+        address: string;
+        propertyType: string;
+        financialInfo?: {
+          monthlyRent?: number;
+          securityDeposit?: number;
+          currency?: string;
+        };
+        units?: Array<{
+          id: string;
+          unitNumber: string;
+          status: string;
+          financialInfo?: {
+            monthlyRent?: number;
+            securityDeposit?: number;
+            currency?: string;
+          };
+        }>;
+      }>;
+      metadata: {
+        totalProperties: number;
+        filteredCount: number;
+        filteredProperties?: Array<{
+          id: string;
+          name: string;
+          propertyType: string;
+          reason: string;
+        }>;
+      } | null;
+    }>
+  > {
+    try {
+      if (!cuid) {
+        throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
+      }
+
+      const cachedResult = await this.propertyCache.getLeaseableProperties(cuid, fetchUnits);
+      if (cachedResult.success && cachedResult.data) {
+        this.log.info('Returning leaseable properties from cache', { cuid, fetchUnits });
+        return {
+          success: true,
+          data: {
+            items: cachedResult.data,
+            metadata: {
+              totalProperties: cachedResult.data.length,
+              filteredCount: 0,
+            },
+          },
+          message: t('property.success.propertiesRetrieved'),
+        };
+      }
+
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        this.log.error(`Client with cuid ${cuid} not found`);
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      const filter: FilterQuery<IPropertyDocument> = {
+        cuid,
+        deletedAt: null,
+        status: 'available',
+        approvalStatus: PropertyApprovalStatusEnum.APPROVED,
+      };
+
+      const properties = await this.propertyDAO.list(filter, {
+        limit: 1000,
+        sort: { name: 1 },
+        projection: '_id name address propertyType fees',
+      });
+
+      if (!properties.items.length) {
+        return {
+          success: true,
+          data: { items: [], metadata: null },
+          message: t('property.success.propertiesRetrieved'),
+        };
+      }
+
+      // Map properties to simplified format and filter multi-unit properties without units
+      const leaseableProperties: any[] = [];
+      const filteredProperties: Array<{
+        id: string;
+        name: string;
+        propertyType: string;
+        reason: string;
+      }> = [];
+
+      for (const property of properties.items) {
+        const propertyObj = property.toObject ? property.toObject() : property;
+        const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(propertyObj.propertyType);
+
+        // Check if multi-unit property has units
+        if (isMultiUnit) {
+          const unitsResult = await this.propertyUnitDAO.findAvailableUnits(
+            propertyObj._id.toString()
+          );
+
+          // Filter out multi-unit properties with no units
+          if (!unitsResult.items || unitsResult.items.length === 0) {
+            filteredProperties.push({
+              id: propertyObj._id.toString(),
+              name: propertyObj.name,
+              propertyType: propertyObj.propertyType,
+              reason: 'requires_units',
+            });
+            this.log.debug(
+              `Filtered out property ${propertyObj.name} - multi-unit property with no units`
+            );
+            continue; // Skip this property
+          }
+        }
+
+        // Build leaseable property object
+        const result: any = {
+          id: propertyObj._id.toString(),
+          name: propertyObj.name,
+          address: propertyObj.address?.fullAddress || '',
+          propertyType: propertyObj.propertyType,
+        };
+
+        // Add financial info if available
+        if (propertyObj.fees) {
+          result.financialInfo = {
+            monthlyRent: propertyObj.fees.monthlyRent,
+            securityDeposit: propertyObj.fees.securityDeposit,
+            currency: propertyObj.fees.currency || 'USD',
+          };
+        }
+
+        // Fetch and attach units if requested
+        if (fetchUnits && isMultiUnit) {
+          const unitsResult = await this.propertyUnitDAO.findAvailableUnits(
+            propertyObj._id.toString()
+          );
+
+          if (unitsResult.items && unitsResult.items.length > 0) {
+            result.units = unitsResult.items.map((unit) => {
+              const unitObj = unit.toObject ? unit.toObject() : unit;
+              const unitData: any = {
+                id: unitObj._id.toString(),
+                unitNumber: unitObj.unitNumber,
+                status: unitObj.status,
+              };
+
+              // Add unit financial info if available (units can override property fees)
+              if (unitObj.fees) {
+                unitData.financialInfo = {
+                  monthlyRent: unitObj.fees.monthlyRent,
+                  securityDeposit: unitObj.fees.securityDeposit,
+                  currency: unitObj.fees.currency || propertyObj.fees?.currency || 'USD',
+                };
+              } else if (propertyObj.fees) {
+                // Use property fees as fallback
+                unitData.financialInfo = {
+                  monthlyRent: propertyObj.fees.monthlyRent,
+                  securityDeposit: propertyObj.fees.securityDeposit,
+                  currency: propertyObj.fees.currency || 'USD',
+                };
+              }
+
+              return unitData;
+            });
+          }
+        }
+
+        leaseableProperties.push(result);
+      }
+
+      // Cache the result (5 minutes TTL)
+      await this.propertyCache.cacheLeaseableProperties(cuid, fetchUnits, leaseableProperties);
+
+      this.log.info(
+        `Retrieved ${leaseableProperties.length} lease-able properties for client ${cuid}`,
+        {
+          fetchUnits,
+          totalUnits: leaseableProperties.reduce((sum, p) => sum + (p.units?.length || 0), 0),
+          filteredCount: filteredProperties.length,
+          cached: true,
+        }
+      );
+
+      return {
+        success: true,
+        data: {
+          items: leaseableProperties,
+          metadata: {
+            totalProperties: properties.items.length,
+            filteredCount: filteredProperties.length,
+            filteredProperties: filteredProperties.length > 0 ? filteredProperties : undefined,
+          },
+        },
+        message: t('property.success.propertiesRetrieved'),
+      };
+    } catch (error) {
+      this.log.error('Failed to get lease-able properties', {
+        cuid,
+        fetchUnits,
         error: error.message,
       });
       throw error;

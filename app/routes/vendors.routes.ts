@@ -18,7 +18,7 @@ router.get(
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
     params: ClientValidations.clientIdParam,
-    query: VendorValidations.vendorFilterQuery.pick({ status: true }),
+    query: VendorValidations.vendorFilterQuery,
   }),
   asyncWrapper((req, res) => {
     const vendorController = req.container.resolve<VendorController>('vendorController');

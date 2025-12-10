@@ -46,11 +46,34 @@
   "property": {
     "logging": {
       "ignoringUploadEvent": "property.logging.ignoringUploadEvent"
+    },
+    "errors": {
+      "notFound": "property.errors.notFound"
+    },
+    "success": {
+      "propertiesRetrieved": "property.success.propertiesRetrieved"
     }
   },
   "tenant": {
     "success": {
       "detailsRetrieved": "tenant.success.detailsRetrieved"
+    },
+    "errors": {
+      "notFound": "tenant.errors.notFound"
+    }
+  },
+  "lease": {
+    "errors": {
+      "validationFailed": "lease.errors.validationFailed",
+      "overlappingLease": "lease.errors.overlappingLease"
+    },
+    "invalid_access": "lease.invalid_access",
+    "retrieved_successfully": "lease.retrieved_successfully",
+    "updatedSuccessfully": "lease.updatedSuccessfully"
+  },
+  "common": {
+    "errors": {
+      "invalidUserRole": "common.errors.invalidUserRole"
     }
   }
 }

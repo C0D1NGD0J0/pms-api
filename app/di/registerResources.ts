@@ -16,6 +16,7 @@ import {
   EventsRegistryCache,
   PropertyCache,
   VendorCache,
+  LeaseCache,
   AuthCache,
   UserCache,
 } from '@caching/index';
@@ -27,6 +28,7 @@ import {
   Profile,
   Client,
   Vendor,
+  Lease,
   Asset,
   User,
 } from '@models/index';
@@ -38,38 +40,46 @@ import {
   ProfileDAO,
   ClientDAO,
   VendorDAO,
+  LeaseDAO,
   UserDAO,
 } from '@dao/index';
 import {
   DocumentProcessingWorker,
   PropertyUnitWorker,
   InvitationWorker,
+  ESignatureWorker,
   PropertyWorker,
   UploadWorker,
   EmailWorker,
+  PdfWorker,
 } from '@workers/index';
 import {
   DocumentProcessingQueue,
   PropertyUnitQueue,
   InvitationQueue,
+  ESignatureQueue,
   EventBusQueue,
   PropertyQueue,
   UploadQueue,
   EmailQueue,
+  PdfQueue,
 } from '@queues/index';
 import {
   NotificationController,
   PropertyUnitController,
   InvitationController,
   PropertyController,
+  WebhookController,
   ClientController,
   VendorController,
+  LeaseController,
   UserController,
   AuthController,
 } from '@controllers/index';
 import {
   InvitationCsvProcessor,
   PropertyCsvProcessor,
+  PdfGeneratorService,
   NotificationService,
   EventEmitterService,
   PropertyUnitService,
@@ -77,9 +87,11 @@ import {
   InvitationService,
   AuthTokenService,
   PropertyService,
+  BoldSignService,
   ProfileService,
   ClientService,
   VendorService,
+  LeaseService,
   UserService,
   AuthService,
   SSEService,
@@ -88,6 +100,7 @@ import {
 const ControllerResources = {
   authController: asClass(AuthController).scoped(),
   userController: asClass(UserController).scoped(),
+  leaseController: asClass(LeaseController).scoped(),
   clientController: asClass(ClientController).scoped(),
   vendorController: asClass(VendorController).scoped(),
   propertyController: asClass(PropertyController).scoped(),
@@ -95,11 +108,13 @@ const ControllerResources = {
   propertyUnitController: asClass(PropertyUnitController).scoped(),
   notificationController: asClass(NotificationController).scoped(),
   emailTemplateController: asClass(EmailTemplateController).scoped(),
+  webhookController: asClass(WebhookController).scoped(),
 };
 
 const ModelResources = {
   userModel: asValue(User),
   assetModel: asValue(Asset),
+  leaseModel: asValue(Lease),
   vendorModel: asValue(Vendor),
   clientModel: asValue(Client),
   profileModel: asValue(Profile),
@@ -115,18 +130,21 @@ const ServiceResources = {
   userService: asClass(UserService).singleton(),
   assetService: asClass(AssetService).singleton(),
   mailerService: asClass(MailService).singleton(),
+  leaseService: asClass(LeaseService).singleton(),
   clientService: asClass(ClientService).singleton(),
   vendorService: asClass(VendorService).singleton(),
   profileService: asClass(ProfileService).singleton(),
   tokenService: asClass(AuthTokenService).singleton(),
   languageService: asClass(LanguageService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
+  boldSignService: asClass(BoldSignService).singleton(),
   emitterService: asClass(EventEmitterService).singleton(),
   permissionService: asClass(PermissionService).singleton(),
   invitationService: asClass(InvitationService).singleton(),
   mediaUploadService: asClass(MediaUploadService).singleton(),
   propertyUnitService: asClass(PropertyUnitService).singleton(),
   notificationService: asClass(NotificationService).singleton(),
+  pdfGeneratorService: asClass(PdfGeneratorService).singleton(),
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
@@ -135,6 +153,7 @@ const ServiceResources = {
 const DAOResources = {
   userDAO: asClass(UserDAO).singleton(),
   assetDAO: asClass(AssetDAO).singleton(),
+  leaseDAO: asClass(LeaseDAO).singleton(),
   clientDAO: asClass(ClientDAO).singleton(),
   vendorDAO: asClass(VendorDAO).singleton(),
   profileDAO: asClass(ProfileDAO).singleton(),
@@ -155,6 +174,10 @@ const CacheResources = {
     return new PropertyCache();
   }).singleton(),
 
+  leaseCache: asFunction(() => {
+    return new LeaseCache();
+  }).singleton(),
+
   eventsRegistry: asFunction(() => {
     return new EventsRegistryCache();
   }).singleton(),
@@ -171,7 +194,9 @@ const CacheResources = {
 const WorkerResources = {
   emailWorker: asClass(EmailWorker).singleton(),
   uploadWorker: asClass(UploadWorker).singleton(),
+  pdfGeneratorWorker: asClass(PdfWorker).singleton(),
   propertyWorker: asClass(PropertyWorker).singleton(),
+  eSignatureWorker: asClass(ESignatureWorker).singleton(),
   invitationWorker: asClass(InvitationWorker).singleton(),
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
   documentProcessingWorker: asClass(DocumentProcessingWorker).singleton(),
@@ -180,8 +205,10 @@ const WorkerResources = {
 const QueuesResources = {
   emailQueue: asClass(EmailQueue).singleton(),
   uploadQueue: asClass(UploadQueue).singleton(),
-  eventBusQueue: asClass(EventBusQueue).singleton(),
+  pdfGeneratorQueue: asClass(PdfQueue).singleton(),
   propertyQueue: asClass(PropertyQueue).singleton(),
+  eventBusQueue: asClass(EventBusQueue).singleton(),
+  eSignatureQueue: asClass(ESignatureQueue).singleton(),
   invitationQueue: asClass(InvitationQueue).singleton(),
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
   documentProcessingQueue: asClass(DocumentProcessingQueue).singleton(),
@@ -229,6 +256,8 @@ export const initQueues = (container: AwilixContainer) => {
       'propertyUnitQueue',
       'uploadQueue',
       'invitationQueue',
+      'eSignatureQueue',
+      'pdfGeneratorQueue',
     ];
 
     // Initialize all workers
@@ -239,6 +268,8 @@ export const initQueues = (container: AwilixContainer) => {
       'propertyUnitWorker',
       'uploadWorker',
       'invitationWorker',
+      'eSignatureWorker',
+      'pdfGeneratorWorker',
     ];
 
     // Resolve queues

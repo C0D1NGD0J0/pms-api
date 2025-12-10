@@ -343,6 +343,31 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
           },
         },
 
+        // Add active client role as a field for easier access
+        {
+          $addFields: {
+            activeClientRole: {
+              $let: {
+                vars: {
+                  activeClientData: {
+                    $arrayElemAt: [
+                      {
+                        $filter: {
+                          input: '$userData.cuids',
+                          as: 'client',
+                          cond: { $eq: ['$$client.cuid', '$userData.activecuid'] },
+                        },
+                      },
+                      0,
+                    ],
+                  },
+                },
+                in: { $arrayElemAt: ['$$activeClientData.roles', 0] },
+              },
+            },
+          },
+        },
+
         // transform data into ICurrentUser structure
         {
           $project: {
@@ -432,8 +457,60 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               },
             },
 
-            // permissions array to be filled later
-            // permissions: [],
+            // Role-specific information - only include data relevant to the user's active role
+            employeeInfo: {
+              $cond: {
+                if: {
+                  $and: [
+                    '$employeeInfo',
+                    {
+                      $in: ['$activeClientRole', [ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF]],
+                    },
+                  ],
+                },
+                then: {
+                  department: '$employeeInfo.department',
+                  jobTitle: '$employeeInfo.jobTitle',
+                  employeeId: '$employeeInfo.employeeId',
+                  startDate: '$employeeInfo.startDate',
+                },
+                else: '$$REMOVE',
+              },
+            },
+
+            vendorInfo: {
+              $cond: {
+                if: '$vendorInfo',
+                then: {
+                  vendorId: { $toString: '$vendorInfo.vendorId' },
+                  linkedVendorUid: '$vendorInfo.linkedVendorUid',
+                  isPrimaryVendor: '$vendorInfo.isPrimaryVendor',
+                  isLinkedAccount: '$vendorInfo.isLinkedAccount',
+                },
+                else: '$$REMOVE',
+              },
+            },
+
+            tenantInfo: {
+              $cond: {
+                if: '$tenantInfo',
+                then: {
+                  hasActiveLease: { $ifNull: ['$tenantInfo.hasActiveLease', false] },
+                  backgroundCheckStatus: '$tenantInfo.backgroundCheckStatus',
+                  activeLease: { $ifNull: ['$tenantInfo.activeLease', null] },
+                },
+                else: '$$REMOVE',
+              },
+            },
+
+            // NOTE: Permissions are intentionally NOT populated here.
+            // They are dynamically generated in the authentication middleware
+            // via PermissionService.populateUserPermissions() based on the user's
+            // current role and department. This allows permissions to be refreshed
+            // on each request and maintains separation of concerns between data
+            // access and authorization.
+            // See: app/shared/middlewares/middleware.ts:100-105
+            // permissions: [], // DO NOT UNCOMMENT - see note above
           },
         },
       ];

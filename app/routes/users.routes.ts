@@ -39,8 +39,8 @@ router.get(
 
 router.get(
   '/:cuid/filtered-users',
-  basicLimiter(),
   isAuthenticated,
+  basicLimiter(),
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
     params: ClientValidations.clientIdParam,
@@ -211,6 +211,20 @@ router.get(
   asyncWrapper((req, res) => {
     const userController = req.container.resolve<UserController>('userController');
     return userController.getFilteredTenants(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/available-tenants',
+  basicLimiter(),
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.LIST),
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getAvailableTenantsForLease(req, res);
   })
 );
 

@@ -1,21 +1,38 @@
 import { Job } from 'bull';
 
-import { MailType } from './utils.interface';
 import { UploadResult } from './utils.interface';
+import { ResourceInfo, MailType } from './utils.interface';
+import {
+  LeaseESignatureRequestedPayload,
+  LeaseESignatureCompletedPayload,
+  LeaseESignatureDeclinedPayload,
+  LeaseESignatureFailedPayload,
+  LeaseESignatureSentPayload,
+  LeaseTerminatedPayload,
+} from './lease.interface';
 
 export enum EventTypes {
+  LEASE_ESIGNATURE_REQUESTED = 'lease:esignature:requested',
+  LEASE_ESIGNATURE_COMPLETED = 'lease:esignature:completed',
+  LEASE_ESIGNATURE_DECLINED = 'lease:esignature:declined',
   PROPERTY_DOCUMENTS_UPDATE = 'update:property:documents',
-  DELETE_ASSET_COMPLETED = 'delete:asset:completed',
+  PDF_GENERATION_REQUESTED = 'pdf:generation:requested',
+  LEASE_ESIGNATURE_FAILED = 'lease:esignature:failed',
   PROPERTY_UPDATE_FAILED = 'update:property:failed',
+  DELETE_ASSET_COMPLETED = 'delete:asset:completed',
+  LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
+  PDF_GENERATION_FAILED = 'pdf:generation:failed',
   DELETE_ASSET_FAILED = 'delete:asset:failed',
   DELETE_REMOTE_ASSET = 'delete:remote:asset',
   UNIT_STATUS_CHANGED = 'unit:status:changed',
   DELETE_LOCAL_ASSET = 'delete:local:asset',
   UNIT_BATCH_CREATED = 'unit:batch:created',
+  LEASE_TERMINATED = 'lease:terminated',
   PROPERTY_CREATED = 'property:created',
   PROPERTY_DELETED = 'property:deleted',
   UPLOAD_COMPLETED = 'upload:completed',
   UNIT_UNARCHIVED = 'unit:unarchived',
+  PDF_GENERATED = 'pdf:generated',
   UNIT_ARCHIVED = 'unit:archived',
   UPLOAD_FAILED = 'upload:failed',
   JOB_COMPLETED = 'job:completed',
@@ -30,6 +47,12 @@ export enum EventTypes {
 }
 
 export type EventPayloadMap = {
+  [EventTypes.LEASE_ESIGNATURE_REQUESTED]: LeaseESignatureRequestedPayload;
+  [EventTypes.LEASE_ESIGNATURE_SENT]: LeaseESignatureSentPayload;
+  [EventTypes.LEASE_ESIGNATURE_FAILED]: LeaseESignatureFailedPayload;
+  [EventTypes.LEASE_ESIGNATURE_COMPLETED]: LeaseESignatureCompletedPayload;
+  [EventTypes.LEASE_ESIGNATURE_DECLINED]: LeaseESignatureDeclinedPayload;
+  [EventTypes.LEASE_TERMINATED]: LeaseTerminatedPayload;
   [EventTypes.DELETE_ASSET_COMPLETED]: DeleteAssetCompletedPayload;
   [EventTypes.DELETE_ASSET_FAILED]: DeleteAssetFailedPayload;
   [EventTypes.DELETE_LOCAL_ASSET]: DeleteLocalAssetPayload;
@@ -39,6 +62,9 @@ export type EventPayloadMap = {
   [EventTypes.JOB_COMPLETED]: JobNotificationPayload;
   [EventTypes.JOB_FAILED]: JobNotificationPayload;
   [EventTypes.JOB_STARTED]: JobNotificationPayload;
+  [EventTypes.PDF_GENERATED]: PdfGeneratedPayload;
+  [EventTypes.PDF_GENERATION_FAILED]: PdfGenerationFailedPayload;
+  [EventTypes.PDF_GENERATION_REQUESTED]: PdfGenerationRequestedPayload;
   [EventTypes.PROPERTY_CREATED]: any;
   [EventTypes.PROPERTY_DELETED]: any;
   [EventTypes.PROPERTY_DOCUMENTS_UPDATE]: PropertyUpdatedPayload;
@@ -111,6 +137,32 @@ export interface UnitBatchChangedPayload {
   cuid: string; // Client ID
 }
 
+export interface UploadCompletedPayload {
+  senderInfo?: {
+    email: string;
+    name: string;
+  };
+  results: UploadResult[];
+  resourceName: string;
+  resourceType: string;
+  resourceId: string;
+  fieldName: string;
+  actorId: string;
+}
+
+export interface PdfGeneratedPayload {
+  senderInfo?: {
+    email: string;
+    name: string;
+  };
+  generationTime?: number;
+  jobId: string | number;
+  fileSize?: number;
+  leaseId: string;
+  pdfUrl: string;
+  s3Key: string;
+}
+
 export interface SystemErrorPayload {
   error: {
     message: string;
@@ -121,6 +173,17 @@ export interface SystemErrorPayload {
   resourceType?: string;
   resourceId?: string;
   context?: any;
+}
+
+export interface PdfGenerationRequestedPayload {
+  senderInfo?: {
+    email: string;
+    name: string;
+  };
+  jobId: string | number;
+  resource: ResourceInfo;
+  templateType?: string;
+  cuid: string;
 }
 
 // Generic background job notification payload
@@ -143,15 +206,6 @@ export interface EmailFailedPayload {
   emailType: MailType;
   subject: string;
   to: string;
-}
-
-export interface UploadCompletedPayload {
-  results: UploadResult[];
-  resourceName: string;
-  resourceType: string;
-  resourceId: string;
-  fieldName: string;
-  actorId: string;
 }
 
 export interface UploadFailedPayload {
@@ -182,6 +236,11 @@ export interface EventPayload<T = unknown> {
   eventType: EventTypes;
   payload: T;
 }
+export interface PdfGenerationFailedPayload {
+  jobId: string | number;
+  resourceId: string;
+  error: string;
+}
 
 // Generic email event payloads
 export interface EmailSentPayload {
@@ -195,6 +254,7 @@ export interface DeleteAssetFailedPayload {
   userId?: string;
   reason: string;
 }
+
 export interface DeleteAssetCompletedPayload {
   deletedKeys: string[];
   failedKeys?: string[];

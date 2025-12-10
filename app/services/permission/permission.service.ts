@@ -3,8 +3,7 @@ import { createLogger } from '@utils/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IVendorDocument } from '@interfaces/vendor.interface';
 import { IPropertyDocument } from '@interfaces/property.interface';
-import permissionConfig from '@shared/permissions/permissions.json';
-import { IUserRoleType, ROLES } from '@shared/constants/roles.constants';
+import { IUserRoleType, RoleHelpers, ROLES } from '@shared/constants/roles.constants';
 import {
   PermissionResource,
   IPermissionConfig,
@@ -14,6 +13,7 @@ import {
   PermissionScope,
 } from '@interfaces/utils.interface';
 
+import permissionConfig from './permissions.json';
 import {
   NotificationAccessStrategy,
   MaintenanceAccessStrategy,
@@ -38,7 +38,7 @@ export class PermissionService {
     this.log = createLogger('PermissionService');
 
     try {
-      this.permissionConfig = permissionConfig as IPermissionConfig;
+      this.permissionConfig = permissionConfig as unknown as IPermissionConfig;
       this.initializeResourceStrategies();
       this.log.debug('PermissionService initialized successfully');
     } catch (error) {
@@ -148,8 +148,8 @@ export class PermissionService {
       }
 
       // Check direct permissions
-      const rolePermissions = roleConfig[resource] || [];
-      if (rolePermissions.includes(permission)) {
+      const rolePermissions = roleConfig[resource];
+      if (Array.isArray(rolePermissions) && rolePermissions.includes(permission)) {
         return true;
       }
 
@@ -226,9 +226,9 @@ export class PermissionService {
 
       const permissions: Record<string, string[]> = {};
 
-      // Extract permissions directly from permissions.json
+      // Extract permissions directly from permissions.json (exclude $extend and departments)
       Object.entries(roleConfig).forEach(([resource, perms]) => {
-        if (resource !== '$extend') {
+        if (resource !== '$extend' && resource !== 'departments') {
           permissions[resource] = perms as string[];
         }
       });
@@ -236,6 +236,40 @@ export class PermissionService {
       return permissions;
     } catch (error) {
       this.log.error(`Error getting role permissions for ${role}:`, error);
+      return {};
+    }
+  }
+
+  /**
+   * Get department-specific permissions for a role
+   * @param role - The user's role
+   * @param department - The user's department
+   * @returns Permission object for the department or empty object if not found
+   */
+  private getDepartmentPermissions(role: string, department: string): Record<string, string[]> {
+    try {
+      const roleConfig = this.permissionConfig.roles[role];
+      if (!roleConfig) {
+        this.log.debug(`No role config found for role: ${role}`);
+        return {};
+      }
+
+      // Access departments explicitly from the config
+      const departments = (roleConfig as any).departments;
+      if (!departments || typeof departments !== 'object') {
+        this.log.debug(`No departments config found for role: ${role}`);
+        return {};
+      }
+
+      const deptPerms = departments[department];
+      if (!deptPerms || typeof deptPerms !== 'object') {
+        this.log.debug(`No permissions found for ${role}:${department}`);
+        return {};
+      }
+
+      return deptPerms as Record<string, string[]>;
+    } catch (error) {
+      this.log.error(`Error getting department permissions for ${role}:${department}`, error);
       return {};
     }
   }
@@ -653,25 +687,44 @@ export class PermissionService {
 
   /**
    * Update user permissions in ICurrentUser object
+   * Applies department-specific permissions for employee roles if department is assigned
    */
   async populateUserPermissions(currentUser: ICurrentUser): Promise<ICurrentUser> {
     try {
-      const rolePermissions = this.getRolePermissions(currentUser.client.role);
+      const role = currentUser.client.role;
+      const department = currentUser.employeeInfo?.department;
+      let rolePermissions = this.getRolePermissions(role);
+
+      // Admin/Manager already have full access via their base role permissions
+      if (RoleHelpers.isEmployeeRole(role) && !RoleHelpers.isManagementRole(role)) {
+        if (department) {
+          const deptPermissions = this.getDepartmentPermissions(role, department);
+          if (deptPermissions && Object.keys(deptPermissions).length > 0) {
+            rolePermissions = deptPermissions;
+            this.log.info(`Applied department permissions for ${role}:${department}`);
+          } else {
+            this.log.warn(
+              `No department permissions found for ${role}:${department}, using role defaults`
+            );
+          }
+        } else {
+          this.log.warn(
+            `⚠️  Staff user ${currentUser.uid} (${currentUser.email}) has no department assigned. Access is restricted to own resources only. Assign a department to grant appropriate permissions.`
+          );
+        }
+      }
+
       const permissions: string[] = [];
 
-      // Create both backend format (action:scope) and frontend format (resource:action)
+      // create both backend format (action:scope) and frontend format (resource:action)
       Object.entries(rolePermissions).forEach(([resource, resourcePermissions]) => {
         resourcePermissions.forEach((permission: string) => {
-          // Add backend format (existing)
           permissions.push(permission);
-
-          // Add frontend format for compatibility
           const [action, scope] = permission.split(':');
           if (action && resource) {
-            // Add flat permission format for frontend: "property:read", "user:create", etc.
             permissions.push(`${resource}:${action}`);
 
-            // Also add scoped format if scope exists: "property:read:any", "property:update:mine"
+            // also add scoped format if scope exists: "property:read:any", "property:update:mine"
             if (scope) {
               permissions.push(`${resource}:${action}:${scope}`);
             }
@@ -679,7 +732,7 @@ export class PermissionService {
         });
       });
 
-      currentUser.permissions = [...new Set(permissions)]; // Remove duplicates
+      currentUser.permissions = [...new Set(permissions)]; // remove duplicates
 
       return currentUser;
     } catch (error) {

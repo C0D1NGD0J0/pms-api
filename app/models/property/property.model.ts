@@ -1,7 +1,7 @@
 import { Schema, model } from 'mongoose';
 import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
-import { IPropertyDocument } from '@interfaces/property.interface';
+import { IPropertyDocument, OwnershipType } from '@interfaces/property.interface';
 
 const logger = createLogger('PropertyModel');
 
@@ -79,6 +79,37 @@ const CommunityAmenitiesSchema = new Schema(
     doorman: { type: Boolean, default: false },
   },
   { _id: false, strict: false }
+);
+
+const PropertyOwnerSchema = new Schema(
+  {
+    type: {
+      type: String,
+      enum: ['company_owned', 'external_owner', 'self_owned'],
+      default: 'company_owned',
+    },
+    name: { type: String, trim: true },
+    email: { type: String, trim: true, lowercase: true },
+    phone: { type: String, trim: true },
+    taxId: { type: String, trim: true },
+    notes: { type: String, trim: true, maxlength: 500 },
+    bankDetails: {
+      accountName: { type: String, trim: true },
+      accountNumber: { type: String, trim: true },
+      routingNumber: { type: String, trim: true },
+      bankName: { type: String, trim: true },
+    },
+  },
+  { _id: false }
+);
+const PropertyAuthorizationSchema = new Schema(
+  {
+    isActive: { type: Boolean, default: true },
+    documentUrl: { type: String, trim: true },
+    expiresAt: { type: Date },
+    notes: { type: String, trim: true, maxlength: 500 },
+  },
+  { _id: false }
 );
 
 const PropertySchema = new Schema<IPropertyDocument>(
@@ -337,6 +368,14 @@ const PropertySchema = new Schema<IPropertyDocument>(
       default: null,
       index: true,
     },
+    owner: {
+      type: PropertyOwnerSchema,
+      select: false,
+    },
+    authorization: {
+      type: PropertyAuthorizationSchema,
+      select: false,
+    },
   },
   {
     timestamps: true,
@@ -375,6 +414,83 @@ PropertySchema.virtual('maintenanceRequests', {
   localField: '_id',
   foreignField: 'propertyId',
 });
+
+/**
+ * Check if property management is authorized
+ * For company-owned properties, always returns true
+ * For external owners, checks authorization status and expiry
+ */
+PropertySchema.methods.isManagementAuthorized = function (this: IPropertyDocument): boolean {
+  if (this.owner?.type === OwnershipType.COMPANY_OWNED) {
+    return true;
+  }
+  if (!this.authorization || !this.authorization.isActive) {
+    return false;
+  }
+
+  if (this.authorization.expiresAt && new Date(this.authorization.expiresAt) < new Date()) {
+    return false;
+  }
+
+  return true;
+};
+
+/**
+ * Get authorization status with detailed message
+ * Useful for user-facing feedback
+ */
+PropertySchema.methods.getAuthorizationStatus = function (this: IPropertyDocument): {
+  isAuthorized: boolean;
+  reason?: string;
+  daysUntilExpiry?: number;
+} {
+  // Company-owned properties
+  if (this.owner?.type === 'company_owned') {
+    return { isAuthorized: true };
+  }
+
+  // No authorization record
+  if (!this.authorization) {
+    return {
+      isAuthorized: false,
+      reason:
+        'No management authorization on file. Upload management agreement to manage this property.',
+    };
+  }
+
+  // Inactive authorization
+  if (!this.authorization.isActive) {
+    return {
+      isAuthorized: false,
+      reason: 'Management authorization is inactive.',
+    };
+  }
+
+  // Check expiry
+  if (this.authorization.expiresAt) {
+    const expiryDate = new Date(this.authorization.expiresAt);
+    const today = new Date();
+
+    if (expiryDate < today) {
+      return {
+        isAuthorized: false,
+        reason: `Management authorization expired on ${expiryDate.toLocaleDateString()}.`,
+      };
+    }
+
+    // Calculate days until expiry
+    const daysUntilExpiry = Math.ceil(
+      (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    return {
+      isAuthorized: true,
+      daysUntilExpiry,
+    };
+  }
+
+  return { isAuthorized: true };
+};
 
 PropertySchema.pre('validate', async function (this: IPropertyDocument, next) {
   if (this.isModified('occupancyStatus')) {

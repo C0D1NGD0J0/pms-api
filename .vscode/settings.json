@@ -2,15 +2,22 @@
   "cSpell.words": [
     "activecuid",
     "Awilix",
+    "boldsign",
     "cuids",
     "currentuser",
+    "docusign",
     "dsphere",
+    "Financials",
     "IAWS",
     "invitationuid",
     "ISSE",
     "Iuid",
+    "Leaseable",
+    "luid",
+    "Manualy",
     "maxlength",
     "mediatype",
+    "networkidle",
     "nuid",
     "publicuid",
     "puid",
@@ -22,6 +29,7 @@
     "Validatenuid",
     "validatepuid",
     "Validatevuid",
+    "virtuals",
     "vuid"
   ]
 }

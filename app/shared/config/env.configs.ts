@@ -77,6 +77,13 @@ class EnvVariables {
     TEST_KEY: string;
     WEBHOOK_SECRET: string;
   };
+  public BOLDSIGN: {
+    API_KEY: string;
+    API_URL: string;
+    WEBHOOK_SECRET: string;
+    DEFAULT_SENDER_NAME: string;
+    DEFAULT_SENDER_EMAIL: string;
+  };
   public APP_NAME: string;
   public PLATFORM_FEE_PERCENTAGE: number;
 
@@ -155,6 +162,17 @@ class EnvVariables {
       TEST_KEY: process.env.STRIPE_TEST_KEY || '',
       REDIRECT_URL: process.env.STRIPE_REDIRECT_URL || '',
       WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
+    };
+    this.BOLDSIGN = {
+      API_KEY: process.env.BOLDSIGN_API_KEY || '',
+      API_URL: process.env.BOLDSIGN_API_URL || 'https://api.boldsign.com/v1',
+      WEBHOOK_SECRET: process.env.BOLDSIGN_WEBHOOK_SECRET || '',
+      DEFAULT_SENDER_NAME:
+        process.env.BOLDSIGN_DEFAULT_SENDER_NAME || this.APP_NAME || 'Property Management System',
+      DEFAULT_SENDER_EMAIL:
+        process.env.BOLDSIGN_DEFAULT_SENDER_EMAIL ||
+        process.env.APP_EMAIL_ADDRESS ||
+        'noreply@yourapp.com',
     };
     this.GEOCODER = {
       PROVIDER: process.env.GEOCODER_PROVIDER || '',

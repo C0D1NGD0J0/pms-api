@@ -45,6 +45,7 @@ interface IConstructor {
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
+  leaseDAO: any;
 }
 
 export class InvitationService {
@@ -59,6 +60,7 @@ export class InvitationService {
   private readonly profileService: ProfileService;
   private readonly vendorService: VendorService;
   private readonly userService: UserService;
+  private readonly leaseDAO: any;
 
   constructor({
     invitationDAO,
@@ -71,6 +73,7 @@ export class InvitationService {
     profileService,
     vendorService,
     userService,
+    leaseDAO,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -82,6 +85,7 @@ export class InvitationService {
     this.profileService = profileService;
     this.vendorService = vendorService;
     this.userService = userService;
+    this.leaseDAO = leaseDAO;
     this.log = createLogger('InvitationService');
     this.setupEventListeners();
   }
@@ -380,6 +384,12 @@ export class InvitationService {
       }
 
       await this.invitationDAO.acceptInvitation(invitationData.token, user._id.toString(), session);
+
+      // this fixes issue where leases created using invitationId as userId cause the userid hadn't been generated when the leases are created
+      if (invitation.role === 'tenant') {
+        await this.migrateLeasesFromInvitationToUser(invitation._id, user._id, session);
+      }
+
       return { user, invitation };
     });
 
@@ -1016,6 +1026,70 @@ export class InvitationService {
           this.log.error(`Failed to handle email failure for invitation ${invitationId}:`, error);
         }
       }
+    }
+  }
+
+  /**
+   * Migrate leases from invitation ID to user ID when tenant accepts invitation
+   * @param invitationId - The invitation ObjectId that was used as temporary tenantId
+   * @param userId - The new user ObjectId to replace the invitation ID
+   * @param session - MongoDB session for transaction
+   */
+  private async migrateLeasesFromInvitationToUser(
+    invitationId: any,
+    userId: any,
+    session: any
+  ): Promise<void> {
+    try {
+      // Find all leases using this invitation as temporary tenant
+      const leasesToMigrate = await this.leaseDAO.find(
+        {
+          tenantId: invitationId,
+          useInvitationIdAsTenantId: true,
+        },
+        { session }
+      );
+
+      if (leasesToMigrate.length === 0) {
+        this.log.info('No leases found to migrate from invitation', {
+          invitationId: invitationId.toString(),
+        });
+        return;
+      }
+
+      this.log.info(`Migrating ${leasesToMigrate.length} lease(s) from invitation to user`, {
+        invitationId: invitationId.toString(),
+        userId: userId.toString(),
+        leaseIds: leasesToMigrate.map((l: any) => l.luid),
+      });
+
+      // Bulk update all leases using DAO
+      const updateResult = await this.leaseDAO.updateMany(
+        {
+          tenantId: invitationId,
+          useInvitationIdAsTenantId: true,
+        },
+        {
+          $set: {
+            tenantId: userId,
+            useInvitationIdAsTenantId: false,
+          },
+        },
+        { session }
+      );
+
+      this.log.info('Leases migrated successfully', {
+        count: updateResult.modifiedCount || leasesToMigrate.length,
+        invitationId: invitationId.toString(),
+        userId: userId.toString(),
+      });
+    } catch (error) {
+      this.log.error('Error migrating leases from invitation to user', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        invitationId: invitationId.toString(),
+        userId: userId.toString(),
+      });
+      // don't throw - let invitation acceptance succeed even if lease migration fails
     }
   }
 

@@ -34,6 +34,11 @@ export const CompanyProfileSchema = z.object({
   legalEntityName: z.string().trim().min(1, 'Legal entity name is required').optional(),
   tradingName: z.string().trim().min(1, 'Trading name is required').optional(),
   companyEmail: z.string().email('Invalid email format').optional(),
+  companyAddress: z
+    .string()
+    .trim()
+    .min(5, 'Company address must be at least 5 characters')
+    .optional(),
   registrationNumber: z.string().trim().optional(),
   website: z.string().url('Invalid website URL').optional(),
   companyPhone: z
@@ -91,25 +96,44 @@ export const AssignRoleSchema = z.object({
   }),
 });
 
+export const AssignDepartmentSchema = z.object({
+  department: z
+    .enum(['maintenance', 'operations', 'accounting', 'management'], {
+      errorMap: () => ({
+        message:
+          'Invalid department. Must be one of: maintenance, operations, accounting, management',
+      }),
+    })
+    .describe('Department to assign to the employee'),
+});
+
 export const FilteredUsersQuerySchema = z.object({
-  role: z
-    .union([
-      z.enum(ROLE_VALIDATION.ALL_ROLES),
-      z.array(z.enum(ROLE_VALIDATION.ALL_ROLES)),
-      // Comma-separated string that gets transformed to array
-      z
-        .string()
-        .transform((val) => val.split(',').map((r) => r.trim()))
-        .pipe(z.array(z.enum(ROLE_VALIDATION.ALL_ROLES))),
-    ])
+  pagination: z
+    .object({
+      page: z.string().regex(/^\d+$/).transform(Number).optional(),
+      limit: z.string().regex(/^\d+$/).transform(Number).optional(),
+      sort: z.string().optional(),
+      order: z.enum(['asc', 'desc']).optional(),
+    })
     .optional(),
-  department: z.string().optional(),
-  status: z.enum(['active', 'inactive']).optional(),
-  search: z.string().optional(),
-  page: z.string().regex(/^\d+$/).transform(Number).optional(),
-  limit: z.string().regex(/^\d+$/).transform(Number).optional(),
-  sortBy: z.string().optional(),
-  sort: z.enum(['asc', 'desc']).optional(),
+  filter: z
+    .object({
+      role: z
+        .union([
+          z.enum(ROLE_VALIDATION.ALL_ROLES),
+          z.array(z.enum(ROLE_VALIDATION.ALL_ROLES)),
+          // Comma-separated string that gets transformed to array
+          z
+            .string()
+            .transform((val) => val.split(',').map((r) => r.trim()))
+            .pipe(z.array(z.enum(ROLE_VALIDATION.ALL_ROLES))),
+        ])
+        .optional(),
+      department: z.string().optional(),
+      status: z.enum(['active', 'inactive']).optional(),
+      search: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const TenantDetailsIncludeQuerySchema = z.object({
@@ -163,6 +187,22 @@ export const UpdateClientDetailsSchema = z
       path: ['companyProfile', 'companyEmail'],
     }
   );
+
+// Schema for validating enterprise client requirements
+export const EnterpriseClientValidationSchema = z.object({
+  companyProfile: z.object({
+    legalEntityName: z
+      .string()
+      .trim()
+      .min(1, 'Legal entity name is required for enterprise clients'),
+    companyEmail: z.string().email('Valid company email is required for enterprise clients'),
+    companyAddress: z.string().trim().min(5, 'Company address is required for enterprise clients'),
+    registrationNumber: z
+      .string()
+      .trim()
+      .min(1, 'Registration number is required for enterprise clients'),
+  }),
+});
 
 export const UpdateTenantProfileSchema = z.object({
   personalInfo: z

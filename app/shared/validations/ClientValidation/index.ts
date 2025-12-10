@@ -1,5 +1,6 @@
-import { ValidatecuidSchema } from '../UtilsValidation';
+import { ValidateCuidSchema } from '../UtilsValidation';
 import {
+  EnterpriseClientValidationSchema,
   TenantDetailsIncludeQuerySchema,
   ClientIdentificationSchema,
   UpdateClientDetailsSchema,
@@ -7,6 +8,7 @@ import {
   ClientSubscriptionSchema,
   FilteredUsersQuerySchema,
   ClientDisplayNameSchema,
+  AssignDepartmentSchema,
   ClientSettingsSchema,
   CompanyProfileSchema,
   UserIdParamSchema,
@@ -15,10 +17,11 @@ import {
 } from './schemas';
 
 export class ClientValidations {
-  static clientIdParam = ValidatecuidSchema;
+  static clientIdParam = ValidateCuidSchema;
   static userIdParam = UserIdParamSchema;
   static roleParam = RoleParamSchema;
   static assignRole = AssignRoleSchema;
+  static assignDepartment = AssignDepartmentSchema;
   static updateSettings = ClientSettingsSchema;
   static updateProfile = CompanyProfileSchema;
   static updateIdentification = ClientIdentificationSchema;
@@ -28,4 +31,5 @@ export class ClientValidations {
   static filteredUsersQuery = FilteredUsersQuerySchema;
   static tenantDetailsIncludeQuery = TenantDetailsIncludeQuerySchema;
   static updateTenantProfile = UpdateTenantProfileSchema;
+  static enterpriseValidation = EnterpriseClientValidationSchema;
 }

@@ -72,4 +72,11 @@ export class ClientController {
     const result = await this.clientService.reconnectUser(req.context, uid);
     res.status(httpStatusCodes.OK).json(result);
   };
+
+  assignDepartment = async (req: AppRequest, res: Response) => {
+    const { uid } = req.params;
+    const { department } = req.body;
+    const result = await this.clientService.assignDepartment(req.context, uid, department);
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

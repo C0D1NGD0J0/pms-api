@@ -1,15 +1,21 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
+import ProfileDAO from '@dao/profileDAO';
+import { AuthCache } from '@caching/auth.cache';
+import { ClientValidations } from '@shared/validations';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { getRequestDuration, createLogger } from '@utils/index';
+import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
-import { IUserRoleType, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
+import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { PopulatedAccountAdmin, IClientDocument, IClientStats } from '@interfaces/client.interface';
 
 interface IConstructor {
   propertyDAO: PropertyDAO;
+  profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
+  authCache: AuthCache;
   userDAO: UserDAO;
 }
 
@@ -18,12 +24,16 @@ export class ClientService {
   private readonly clientDAO: ClientDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly userDAO: UserDAO;
+  private readonly profileDAO: ProfileDAO;
+  private readonly authCache: AuthCache;
 
-  constructor({ clientDAO, propertyDAO, userDAO }: IConstructor) {
+  constructor({ clientDAO, propertyDAO, userDAO, profileDAO, authCache }: IConstructor) {
     this.log = createLogger('ClientService');
     this.clientDAO = clientDAO;
     this.propertyDAO = propertyDAO;
     this.userDAO = userDAO;
+    this.profileDAO = profileDAO;
+    this.authCache = authCache;
   }
 
   async updateClientDetails(
@@ -120,6 +130,52 @@ export class ClientService {
 
     if (requiresReVerification) {
       updateData.isVerified = false;
+    }
+
+    // Enterprise client validation
+    if (client.accountType?.isCorporate) {
+      // Create merged company profile data (existing + updates)
+      const mergedCompanyProfile = {
+        ...client.companyProfile,
+        ...updateData.companyProfile,
+      };
+
+      try {
+        // Validate enterprise requirements using the validation schema
+        ClientValidations.enterpriseValidation.parse({
+          companyProfile: mergedCompanyProfile,
+        });
+      } catch (error: any) {
+        const enterpriseErrors: string[] = [];
+        if (error.errors) {
+          error.errors.forEach((err: any) => {
+            enterpriseErrors.push(err.message);
+          });
+        }
+
+        if (enterpriseErrors.length > 0) {
+          this.log.error(
+            {
+              cuid,
+              userId: currentuser.sub,
+              enterpriseErrors,
+              companyProfile: mergedCompanyProfile,
+            },
+            'Enterprise client validation failed'
+          );
+          throw new BadRequestError({
+            message: 'Enterprise clients must have complete company profile information',
+          });
+        }
+      }
+
+      this.log.info(
+        {
+          cuid,
+          userId: currentuser.sub,
+        },
+        'Enterprise client validation passed'
+      );
     }
 
     const changedFields = Object.keys(updateData);
@@ -474,6 +530,66 @@ export class ClientService {
       success: true,
       data: null,
       message: t('client.success.userReconnected'),
+    };
+  }
+
+  /**
+   * Assign a department to a user (employee roles only)
+   * Departments provide fine-grained permission control within employee roles
+   */
+  async assignDepartment(
+    cxt: IRequestContext,
+    targetUserId: string,
+    department: EmployeeDepartment
+  ): Promise<ISuccessReturnData<{ department: EmployeeDepartment }>> {
+    const currentuser = cxt.currentuser!;
+    const clientId = currentuser.client.cuid;
+
+    // Get user and validate
+    const user = await this.userDAO.getUserById(targetUserId);
+    if (!user) {
+      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+    }
+
+    const clientConnection = user.cuids.find((c) => c.cuid === clientId);
+    if (!clientConnection) {
+      throw new NotFoundError({ message: t('client.errors.userNotInClient') });
+    }
+
+    // Validate user is an employee
+    const roles = clientConnection.roles;
+    if (!RoleHelpers.isEmployeeRole(roles[0])) {
+      throw new BadRequestError({
+        message: 'Departments can only be assigned to employee roles (admin/manager/staff)',
+      });
+    }
+
+    // Get profile
+    const profile = await this.profileDAO.getProfileByUserId(user._id);
+    if (!profile) {
+      throw new NotFoundError({ message: 'User profile not found' });
+    }
+
+    await this.profileDAO.updateCommonEmployeeInfo(profile._id.toString(), {
+      department: department,
+    });
+    await this.authCache.invalidateUserSession(user._id.toString());
+
+    this.log.info(
+      {
+        adminId: currentuser.sub,
+        targetUserId,
+        clientId,
+        department,
+        action: 'assignDepartment',
+      },
+      'Department assigned to user'
+    );
+
+    return {
+      success: true,
+      data: { department },
+      message: `Department '${department}' assigned successfully`,
     };
   }
 }

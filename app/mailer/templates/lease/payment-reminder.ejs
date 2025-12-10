@@ -1,0 +1,96 @@
+<table width="100%">
+  <tr>
+    <td class="content">
+      <h2>📅 Upcoming Rent Payment Reminder</h2>
+      <p>Hello <%= tenantName %>,</p>
+      <p>
+        This is a friendly reminder that your rent payment for <strong><%= propertyAddress %></strong> is due soon.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="background-color: #d1ecf1; padding: 20px; border-left: 4px solid #17a2b8; border-radius: 4px;">
+      <h3 style="margin-top: 0; color: #0c5460;">Payment Details</h3>
+      <table width="100%" style="border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: #666; width: 40%;">Property:</td>
+          <td style="padding: 8px 0; font-weight: 600;"><%= propertyAddress %></td>
+        </tr>
+        <% if (unitNumber) { %>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Unit:</td>
+          <td style="padding: 8px 0; font-weight: 600;"><%= unitNumber %></td>
+        </tr>
+        <% } %>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Amount Due:</td>
+          <td style="padding: 8px 0; font-weight: 600; font-size: 20px; color: #17a2b8;"><%= amountDue %></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Due Date:</td>
+          <td style="padding: 8px 0; font-weight: 600; color: #e74c3c;"><%= new Date(dueDate).toLocaleDateString() %></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Days Until Due:</td>
+          <td style="padding: 8px 0; font-weight: 600;"><%= daysUntilDue %> days</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <% if (paymentUrl) { %>
+  <tr>
+    <td class="content cta">
+      <a href="<%= paymentUrl %>" class="btn" style="background-color: #28a745;">Pay Now</a>
+      <p style="font-size: 14px; color: #666; margin-top: 15px">
+        If the button doesn't work, copy and paste this link in your browser:<br />
+        <%= paymentUrl %>
+      </p>
+    </td>
+  </tr>
+  <% } %>
+
+  <tr>
+    <td class="content">
+      <h3>Payment Methods</h3>
+      <p>You can make your rent payment using any of the following methods:</p>
+      <ul style="color: #555; line-height: 1.8;">
+        <% if (paymentMethods && paymentMethods.includes('online')) { %>
+        <li><strong>Online Payment:</strong> Log in to your tenant portal and pay securely online</li>
+        <% } %>
+        <% if (paymentMethods && paymentMethods.includes('check')) { %>
+        <li><strong>Check:</strong> Mail to <%= mailAddress %></li>
+        <% } %>
+        <% if (paymentMethods && paymentMethods.includes('bank')) { %>
+        <li><strong>Bank Transfer:</strong> <%= bankDetails %></li>
+        <% } %>
+        <% if (paymentMethods && paymentMethods.includes('cash')) { %>
+        <li><strong>In Person:</strong> Visit the property management office</li>
+        <% } %>
+      </ul>
+
+      <div style="background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0;">
+        <p style="margin: 0; color: #856404;">
+          <strong>⚠️ Late Fee Notice:</strong> A late fee of <%= lateFeeAmount %> will be applied if payment is not received by <%= new Date(lateFeeDate).toLocaleDateString() %>.
+        </p>
+      </div>
+
+      <% if (currentBalance && currentBalance !== amountDue) { %>
+      <div style="background-color: #f8d7da; padding: 15px; border-left: 4px solid #dc3545; margin: 20px 0;">
+        <p style="margin: 0; color: #721c24;">
+          <strong>Outstanding Balance:</strong> You have an outstanding balance of <%= currentBalance %>. Please contact your property manager to discuss payment arrangements.
+        </p>
+      </div>
+      <% } %>
+
+      <p style="margin-top: 20px;">
+        If you have already made this payment, please disregard this reminder. If you have any questions or need to discuss payment arrangements, please contact your property manager at <%= propertyManagerEmail %> or <%= propertyManagerPhone %>.
+      </p>
+
+      <p style="color: #666; font-size: 14px; margin-top: 30px;">
+        Thank you for your prompt payment! 🏡
+      </p>
+    </td>
+  </tr>
+</table>

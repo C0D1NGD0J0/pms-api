@@ -76,6 +76,113 @@ export class PropertyUnitService {
     this.propertyUnitQueue = propertyUnitQueue;
     this.unitNumberingService = unitNumberingService;
     this.log = createLogger('PropertyUnitService');
+
+    this.initializeEventListeners();
+  }
+
+  private initializeEventListeners(): void {
+    this.emitterService.on(
+      EventTypes.LEASE_ESIGNATURE_COMPLETED,
+      this.handleLeaseActivated.bind(this)
+    );
+
+    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
+
+    this.log.info('PropertyUnit service event listeners initialized');
+  }
+
+  private async handleLeaseActivated(payload: any): Promise<void> {
+    try {
+      const { leaseId, propertyUnitId, tenantId } = payload;
+
+      if (!propertyUnitId) {
+        this.log.info('No propertyUnitId in lease activation - skipping unit update', {
+          leaseId,
+        });
+        return;
+      }
+
+      this.log.info('Handling lease activation for property unit', {
+        leaseId,
+        propertyUnitId,
+        tenantId,
+      });
+
+      const unit = await this.propertyUnitDAO.findById(propertyUnitId);
+
+      if (!unit) {
+        this.log.warn('Property unit not found', { propertyUnitId });
+        return;
+      }
+
+      if (unit.status === 'occupied' && unit.currentLease?.toString() === leaseId) {
+        this.log.info('Property unit already marked as occupied with this lease', {
+          propertyUnitId,
+          leaseId,
+        });
+        return;
+      }
+
+      await unit.markUnitAsOccupied(leaseId, tenantId);
+
+      this.log.info('Property unit marked as occupied', {
+        propertyUnitId,
+        leaseId,
+      });
+    } catch (error) {
+      this.log.error('Error handling lease activation for property unit', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      });
+    }
+  }
+
+  private async handleLeaseTerminated(payload: any): Promise<void> {
+    try {
+      const { leaseId, propertyUnitId } = payload;
+
+      if (!propertyUnitId) {
+        this.log.info('No propertyUnitId in lease termination - skipping unit update', {
+          leaseId,
+        });
+        return;
+      }
+
+      const unit = await this.propertyUnitDAO.findById(propertyUnitId);
+      if (!unit) {
+        this.log.warn('Property unit not found', { propertyUnitId });
+        return;
+      }
+
+      // Check if this is the current lease for this unit
+      if (unit.currentLease?.toString() !== leaseId) {
+        this.log.info('Lease is not the current lease for this unit - skipping update', {
+          propertyUnitId,
+          leaseId,
+          currentLease: unit.currentLease?.toString(),
+        });
+        return;
+      }
+
+      await this.propertyUnitDAO.update(
+        { _id: propertyUnitId },
+        {
+          status: 'available',
+          currentLease: null,
+          updatedAt: new Date(),
+        }
+      );
+
+      this.log.info('Property unit marked as available after lease termination', {
+        propertyUnitId,
+        leaseId,
+      });
+    } catch (error) {
+      this.log.error('Error handling lease termination for property unit', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      });
+    }
   }
 
   /**
@@ -554,6 +661,29 @@ export class PropertyUnitService {
     const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
     if (!property) {
       throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
+    }
+
+    // Get the unit to find its _id
+    const unit = await this.propertyUnitDAO.findFirst({
+      unitId,
+      propertyId: property._id,
+      deletedAt: null,
+    });
+
+    if (!unit) {
+      throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
+    }
+
+    // Business Rule: Cannot archive unit with active lease
+    if (unit.currentLease) {
+      throw new ValidationRequestError({
+        message: 'Cannot archive unit with active lease',
+        errorInfo: {
+          unit: [
+            'This unit has an active lease. Please terminate or cancel the lease before archiving the unit.',
+          ],
+        },
+      });
     }
 
     const updateData = {

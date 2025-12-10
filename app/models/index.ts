@@ -1,4 +1,5 @@
 import User from '@models/user/user.model';
+import Lease from '@models/lease/lease.model';
 import Asset from '@models/asset/asset.model';
 import Client from '@models/client/client.model';
 import Vendor from '@models/vendor/vendor.model';
@@ -16,6 +17,7 @@ export {
   Profile,
   Client,
   Vendor,
+  Lease,
   Asset,
   User,
 };

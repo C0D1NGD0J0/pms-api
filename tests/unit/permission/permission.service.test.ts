@@ -17,14 +17,59 @@ jest.mock(
         user: ['read:any', 'update:mine'],
         $extend: ['user'],
       },
+      staff: {
+        user: ['read:mine', 'update:mine'],
+        client: ['read:mine'],
+        departments: {
+          accounting: {
+            payment: ['read:any', 'list:any', 'create:any', 'update:any'],
+            report: ['read:any', 'create:any', 'list:any'],
+            lease: ['read:any', 'list:any'],
+            tenant: ['read:any', 'list:any'],
+            user: ['read:any', 'list:any'],
+            client: ['read:mine'],
+          },
+          maintenance: {
+            maintenance: ['create:assigned', 'read:assigned', 'update:assigned', 'list:assigned'],
+            property: ['read:assigned'],
+            user: ['read:mine', 'update:mine'],
+            client: ['read:mine'],
+          },
+          operations: {
+            property: ['read:any', 'update:assigned', 'list:any'],
+            maintenance: ['read:any', 'update:assigned', 'list:any'],
+            lease: ['read:any', 'update:assigned', 'list:any'],
+            tenant: ['read:any', 'list:any'],
+            payment: ['read:any', 'list:any'],
+            user: ['read:any', 'list:any'],
+            report: ['read:any'],
+            client: ['read:mine'],
+          },
+          management: {
+            property: ['create:any', 'read:any', 'update:any', 'delete:any', 'list:any'],
+            maintenance: ['create:any', 'read:any', 'update:any', 'delete:any', 'list:any'],
+            lease: ['create:any', 'read:any', 'update:any', 'delete:any', 'list:any'],
+            tenant: ['read:any', 'update:any', 'list:any'],
+            payment: ['read:any', 'list:any', 'create:any'],
+            user: ['read:any', 'update:any', 'list:any'],
+            report: ['read:any', 'create:any', 'list:any'],
+            client: ['read:mine', 'settings:mine'],
+          },
+        },
+      },
       user: {
         property: ['read:mine'],
         client: ['read:mine'],
         user: ['read:mine', 'update:mine'],
       },
       tenant: {
-        property: ['read:assigned'],
+        property: ['read:mine'],
         user: ['read:mine', 'update:mine'],
+        client: ['read:mine'],
+        maintenance: ['create:mine', 'read:mine', 'update:mine', 'list:mine'],
+        lease: ['read:mine', 'update:mine'],
+        payment: ['read:mine', 'create:mine', 'list:mine'],
+        report: ['read:mine'],
       },
     },
     resources: {
@@ -237,6 +282,19 @@ describe('PermissionService', () => {
       const result = await permissionService.populateUserPermissions(userWithInvalidRole);
       expect(result).toBe(userWithInvalidRole); // Should return original user on error
     });
+
+    // Department-specific permissions not yet implemented in permission config
+    it.todo('should apply department-specific permissions for staff with accounting department');
+
+    it.todo('should apply department-specific permissions for staff with maintenance department');
+
+    it.todo('should apply department-specific permissions for staff with operations department');
+
+    it.todo('should apply department-specific permissions for staff with management department');
+
+    it.todo('should apply restrictive permissions when department is not specified');
+
+    it.todo('should not apply department permissions for non-employee roles');
   });
 
   describe('utility methods', () => {

@@ -348,4 +348,82 @@ export class PropertyCache extends BaseCache {
     const pstring = this.hashData(pagination);
     return `q:${pstring}`;
   }
+
+  /**
+   * Cache leaseable properties with TTL
+   * @param cuid - Client identifier
+   * @param fetchUnits - Whether units were included
+   * @param properties - Array of leaseable properties
+   * @param ttl - Time to live in seconds (default: 5 minutes)
+   */
+  async cacheLeaseableProperties(
+    cuid: string,
+    fetchUnits: boolean,
+    properties: any[],
+    ttl: number = 300
+  ): Promise<ISuccessReturnData> {
+    try {
+      if (!cuid) {
+        return {
+          success: false,
+          data: null,
+          error: 'Client ID is required',
+        };
+      }
+
+      const key = `leaseableProperties:${cuid}:units=${fetchUnits}`;
+      return await this.setItem(key, JSON.stringify(properties), ttl);
+    } catch (error) {
+      this.log.error('Failed to cache leaseable properties:', error);
+      return {
+        success: false,
+        data: null,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Get cached leaseable properties
+   * @param cuid - Client identifier
+   * @param fetchUnits - Whether units were included
+   * @returns Cached leaseable properties or null
+   */
+  async getLeaseableProperties(
+    cuid: string,
+    fetchUnits: boolean
+  ): Promise<ISuccessReturnData<any[] | null>> {
+    try {
+      if (!cuid) {
+        return {
+          success: false,
+          data: null,
+          error: 'Client ID is required',
+        };
+      }
+
+      const key = `leaseableProperties:${cuid}:units=${fetchUnits}`;
+      const result = await this.getItem<string>(key);
+
+      if (result.success && result.data) {
+        const data = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+        return {
+          success: true,
+          data,
+        };
+      }
+
+      return {
+        success: false,
+        data: null,
+      };
+    } catch (error) {
+      this.log.error('Failed to get leaseable properties from cache:', error);
+      return {
+        success: false,
+        data: null,
+        error: (error as Error).message,
+      };
+    }
+  }
 }

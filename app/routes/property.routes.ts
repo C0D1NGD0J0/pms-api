@@ -16,11 +16,10 @@ import propertyUnitRoutes from './propertyUnit.routes';
 
 export const router: Router = express.Router();
 
-router.use(isAuthenticated);
+router.use(isAuthenticated, basicLimiter());
 
 router.get(
   '/property_form_metadata',
-  basicLimiter,
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.getPropertyFormMetadata(req, res);
@@ -30,7 +29,6 @@ router.get(
 router.post(
   '/:cuid/add_property',
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
-  basicLimiter,
   diskUpload(['documents[*].file', 'images[*].file']),
   scanFile,
   validateRequest({
@@ -73,7 +71,6 @@ router.post(
 
 router.get(
   '/:cuid/client_properties',
-  basicLimiter(),
   validateRequest({
     params: PropertyValidations.validatecuid,
   }),
@@ -163,6 +160,18 @@ router.get(
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.getMyPropertyRequests(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/leaseable',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
+  validateRequest({
+    params: PropertyValidations.validatecuid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getLeaseableProperties(req, res);
   })
 );
 

@@ -6,3 +6,4 @@ export * from './invitation.worker';
 export * from './property.worker';
 export * from './upload.worker';
 export * from './email.worker';
+export * from './cron.worker';

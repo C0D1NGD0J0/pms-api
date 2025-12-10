@@ -166,15 +166,28 @@ export class PdfGeneratorService {
         '--disable-web-security',
       ];
 
+      // Use system Chrome if available (production), otherwise use bundled Chrome (local development)
+      const executablePath =
+        process.env.PUPPETEER_EXECUTABLE_PATH || config?.executablePath || undefined;
+
       this.browser = await puppeteer.launch({
-        headless: config?.headless ?? true, // ← Changed from 'new' to true
+        headless: true,
         args: config?.args ?? defaultArgs,
-        executablePath: config?.executablePath,
+        executablePath,
         timeout: config?.timeout ?? 30000,
       });
 
       this.browserLaunchTime = new Date();
-      this.logger.info('Browser initialized successfully');
+
+      // log which type of Chrome is being used for debugging
+      const chromeUsed = executablePath || 'bundled';
+      this.logger.info(
+        {
+          executablePath: chromeUsed,
+          browserVersion: await this.browser.version(),
+        },
+        'Browser initialized successfully'
+      );
 
       this.browser.on('disconnected', () => {
         this.logger.warn('Browser disconnected. Will reinitialize on next request.');
@@ -184,7 +197,13 @@ export class PdfGeneratorService {
 
       return this.browser;
     } catch (error) {
-      this.logger.error({ error }, 'Failed to initialize browser');
+      this.logger.error(
+        {
+          error,
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'not set',
+        },
+        'Failed to initialize browser'
+      );
       throw new Error(`Failed to launch Puppeteer browser: ${error}`);
     }
   }

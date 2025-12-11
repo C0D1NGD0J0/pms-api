@@ -771,10 +771,7 @@ export class LeaseService {
     }
 
     // Only DRAFT and CANCELLED leases can be deleted
-    if (
-      lease.status !== LeaseStatus.DRAFT &&
-      lease.status !== LeaseStatus.CANCELLED
-    ) {
+    if (lease.status !== LeaseStatus.DRAFT && lease.status !== LeaseStatus.CANCELLED) {
       throw new ValidationRequestError({
         message: `Cannot delete ${lease.status} lease`,
         errorInfo: {
@@ -1272,7 +1269,7 @@ export class LeaseService {
     }
 
     let managementInfo;
-    if (client.accountType.isCorporate && client.companyProfile) {
+    if (client.accountType.isEnterpriseAccount && client.companyProfile) {
       managementInfo = {
         managementCompanyName: client.companyProfile?.legalEntityName,
         managementCompanyAddress: client.companyProfile?.companyAddress,
@@ -1302,7 +1299,7 @@ export class LeaseService {
       }
     }
 
-    if (!client.accountType.isCorporate) {
+    if (!client.accountType.isEnterpriseAccount) {
       if (
         (property.owner?.type === OwnershipType.SELF_OWNED ||
           property.owner?.type === OwnershipType.EXTERNAL_OWNER) &&

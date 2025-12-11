@@ -25,7 +25,7 @@ const MetadataValueSchema = z.union([
   z.date(),
   z.null(),
   z.array(z.union([z.string(), z.number(), z.boolean()])),
-  z.record(z.string(), z.unknown()).passthrough(), // For nested objects
+  z.record(z.string(), z.unknown()),
 ]);
 
 export const NotificationMetadataSchema = z.record(z.string(), MetadataValueSchema).optional();

@@ -425,14 +425,6 @@ export interface ILinkedVendorUser {
   uid: string;
 }
 
-// USER
-export interface IAccountType {
-  isEnterpriseAccount: boolean;
-  isCorporate: boolean;
-  planName: string;
-  planId: string;
-}
-
 /**
  * Property info for user (minimal)
  */
@@ -460,6 +452,12 @@ export interface FilteredUserTenantInfo {
   leaseStatus?: string;
   rentStatus?: string;
   unitNumber?: string;
+}
+
+export interface IAccountType {
+  isEnterpriseAccount: boolean;
+  planName: string;
+  planId: string;
 }
 
 export type IContactInfoType = {

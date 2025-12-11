@@ -213,7 +213,7 @@ export class AuthService {
         throw new InvalidRequestError({ message: t('auth.errors.userNotCreated') });
       }
 
-      if (signupData.accountType.isCorporate) {
+      if (signupData.accountType.isEnterpriseAccount) {
         signupData.companyProfile = {
           ...signupData.companyProfile,
           contactInfo: {
@@ -228,7 +228,9 @@ export class AuthService {
           accountAdmin: _userId,
           displayName: signupData.displayName,
           accountType: signupData.accountType,
-          ...(signupData.accountType.isCorporate && { companyProfile: signupData?.companyProfile }),
+          ...(signupData.accountType.isEnterpriseAccount && {
+            companyProfile: signupData?.companyProfile,
+          }),
         },
         session
       );
@@ -255,7 +257,7 @@ export class AuthService {
       );
 
       // Create vendor for corporate accounts
-      if (signupData.accountType.isCorporate && signupData.companyProfile) {
+      if (signupData.accountType.isEnterpriseAccount && signupData.companyProfile) {
         try {
           await this.vendorService.createVendorFromCompanyProfile(
             clientId,

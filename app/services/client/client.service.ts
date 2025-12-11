@@ -133,7 +133,7 @@ export class ClientService {
     }
 
     // Enterprise client validation
-    if (client.accountType?.isCorporate) {
+    if (client.accountType?.isEnterpriseAccount) {
       // Create merged company profile data (existing + updates)
       const mergedCompanyProfile = {
         ...client.companyProfile,

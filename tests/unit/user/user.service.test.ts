@@ -1066,7 +1066,14 @@ describe('UserService', () => {
       const userId = new Types.ObjectId().toString();
       const mockUser = createMockUser({
         _id: userId,
-        cuids: [{ cuid: 'client-123', roles: [ROLES.EMPLOYEE] }],
+        cuids: [
+          {
+            cuid: 'client-123',
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            clientDisplayName: 'Test',
+          },
+        ],
         profile: { personalInfo: {} },
       });
 
@@ -1074,11 +1081,11 @@ describe('UserService', () => {
 
       const result = await userService.getUserAnnouncementFilters(userId, 'client-123');
 
-      expect(result.roles).toContain(ROLES.EMPLOYEE);
+      expect(result.roles).toContain(ROLES.STAFF);
     });
 
     it('should return vendorId for vendor users', async () => {
-      const userId = new Types.ObjectId().toString();
+      const userId = new Types.ObjectId();
       const mockUser = createMockUser({
         _id: userId,
         cuids: [
@@ -1095,7 +1102,7 @@ describe('UserService', () => {
       mockUserDAO.findFirst.mockResolvedValue(mockUser);
       mockVendorService.getVendorByUserId.mockResolvedValue({ vuid: 'vendor-123' });
 
-      const result = await userService.getUserAnnouncementFilters(userId, 'client-123');
+      const result = await userService.getUserAnnouncementFilters(userId.toString(), 'client-123');
 
       expect(result.vendorId).toBe('vendor-123');
     });

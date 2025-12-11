@@ -1,14 +1,13 @@
 import { Response } from 'express';
 import { httpStatusCodes } from '@utils/constants';
 import { createMockCurrentUser } from '@tests/helpers';
-import { PropertyUnitService } from '@services/property';
 import { AppRequest } from '@interfaces/utils.interface';
 import { PropertyUnitController } from '@controllers/PropertyUnitController';
 
 describe('PropertyUnitController', () => {
   let propertyUnitController: PropertyUnitController;
-  let mockPropertyUnitService: jest.Mocked<PropertyUnitService>;
-  let mockRequest: Partial<AppRequest>;
+  let mockPropertyUnitService: any;
+  let mockRequest: any;
   let mockResponse: Partial<Response>;
   let jsonMock: jest.Mock;
   let statusMock: jest.Mock;
@@ -41,7 +40,6 @@ describe('PropertyUnitController', () => {
     // Reset request with default context
     const mockCurrentUser = createMockCurrentUser({
       sub: 'user-123',
-      cuid: 'client-123',
     });
 
     mockRequest = {
@@ -50,9 +48,22 @@ describe('PropertyUnitController', () => {
       body: {},
       context: {
         currentuser: mockCurrentUser,
-        params: { pid: 'property-123' },
-      },
-    } as AppRequest;
+        request: {
+          params: { pid: 'property-123' },
+          path: '/properties/property-123/units',
+          method: 'GET',
+          url: '/properties/property-123/units',
+          query: {},
+        },
+        userAgent: { isMobile: false, isBot: false },
+        langSetting: { lang: 'en' },
+        timing: { startTime: Date.now() },
+        service: { env: 'test' },
+        source: 'web',
+        requestId: 'test-123',
+        timestamp: new Date(),
+      } as any,
+    };
   });
 
   afterEach(() => {
@@ -528,10 +539,7 @@ describe('PropertyUnitController', () => {
       mockPropertyUnitService.archiveUnit.mockResolvedValue(mockResult);
 
       // Act
-      await propertyUnitController.archiveUnit(
-        mockRequest as AppRequest,
-        mockResponse as Response
-      );
+      await propertyUnitController.archiveUnit(mockRequest as AppRequest, mockResponse as Response);
 
       // Assert
       expect(mockPropertyUnitService.archiveUnit).toHaveBeenCalledWith(mockRequest.context);
@@ -602,10 +610,7 @@ describe('PropertyUnitController', () => {
       mockPropertyUnitService.archiveUnit.mockResolvedValue(mockResult);
 
       // Act
-      await propertyUnitController.archiveUnit(
-        mockRequest as AppRequest,
-        mockResponse as Response
-      );
+      await propertyUnitController.archiveUnit(mockRequest as AppRequest, mockResponse as Response);
 
       // Assert
       expect(mockPropertyUnitService.archiveUnit).toHaveBeenCalled();

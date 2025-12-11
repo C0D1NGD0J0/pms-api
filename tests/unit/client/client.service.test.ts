@@ -2,13 +2,15 @@ import { ROLES } from '@shared/constants/roles.constants';
 import { ClientService } from '@services/client/client.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {
-  createMockRequestContext,
-  createMockCurrentUser,
-  createMockPropertyDAO,
-  createMockClientDAO,
-  createMockUserDAO,
+  createMockAuthCache,
   createMockClient,
+  createMockClientDAO,
+  createMockCurrentUser,
+  createMockProfileDAO,
+  createMockPropertyDAO,
+  createMockRequestContext,
   createMockUser,
+  createMockUserDAO,
 } from '@tests/helpers';
 
 describe('ClientService', () => {
@@ -16,15 +18,22 @@ describe('ClientService', () => {
   let mockClientDAO: any;
   let mockUserDAO: any;
   let mockPropertyDAO: any;
+  let mockProfileDAO: any;
+  let mockAuthCache: any;
+
   beforeEach(() => {
     mockClientDAO = createMockClientDAO();
     mockUserDAO = createMockUserDAO();
     mockPropertyDAO = createMockPropertyDAO();
+    mockProfileDAO = createMockProfileDAO();
+    mockAuthCache = createMockAuthCache();
 
     clientService = new ClientService({
       clientDAO: mockClientDAO,
       userDAO: mockUserDAO,
       propertyDAO: mockPropertyDAO,
+      profileDAO: mockProfileDAO,
+      authCache: mockAuthCache,
     });
   });
 
@@ -273,12 +282,22 @@ describe('ClientService', () => {
         items: [
           createMockUser({
             cuids: [
-              { cuid: clientId, roles: [ROLES.ADMIN], isConnected: true, clientDisplayName: 'Admin 1' },
+              {
+                cuid: clientId,
+                roles: [ROLES.ADMIN],
+                isConnected: true,
+                clientDisplayName: 'Admin 1',
+              },
             ],
           }),
           createMockUser({
             cuids: [
-              { cuid: clientId, roles: [ROLES.ADMIN], isConnected: true, clientDisplayName: 'Admin 2' },
+              {
+                cuid: clientId,
+                roles: [ROLES.ADMIN],
+                isConnected: true,
+                clientDisplayName: 'Admin 2',
+              },
             ],
           }),
         ],
@@ -312,7 +331,12 @@ describe('ClientService', () => {
       const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
-          { cuid: clientId, roles: [ROLES.ADMIN], isConnected: true, clientDisplayName: 'Admin User' },
+          {
+            cuid: clientId,
+            roles: [ROLES.ADMIN],
+            isConnected: true,
+            clientDisplayName: 'Admin User',
+          },
         ],
       });
       const mockAdminUsers = {
@@ -425,7 +449,12 @@ describe('ClientService', () => {
       const clientId = mockContext.currentuser.client.cuid;
       const mockUser = createMockUser({
         cuids: [
-          { cuid: clientId, roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'Test User' },
+          {
+            cuid: clientId,
+            roles: [ROLES.TENANT],
+            isConnected: true,
+            clientDisplayName: 'Test User',
+          },
         ],
       });
 

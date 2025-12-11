@@ -2,16 +2,14 @@ import { Response } from 'express';
 import { httpStatusCodes } from '@utils/constants';
 import { createMockCurrentUser } from '@tests/helpers';
 import { AppRequest } from '@interfaces/utils.interface';
-import { AuthService } from '@services/auth/auth.service';
 import { ROLES } from '@shared/constants/roles.constants';
 import { InvitationController } from '@controllers/InvitationController';
-import { InvitationService } from '@services/invitation/invitation.service';
 
 describe('InvitationController', () => {
   let invitationController: InvitationController;
-  let mockInvitationService: jest.Mocked<InvitationService>;
-  let mockAuthService: jest.Mocked<AuthService>;
-  let mockRequest: Partial<AppRequest>;
+  let mockInvitationService: any;
+  let mockAuthService: any;
+  let mockRequest: any;
   let mockResponse: Partial<Response>;
   let jsonMock: jest.Mock;
   let statusMock: jest.Mock;
@@ -53,7 +51,7 @@ describe('InvitationController', () => {
     // Reset request with default context
     const mockCurrentUser = createMockCurrentUser({
       sub: 'user-123',
-      cuid: 'client-123',
+      client: { cuid: 'client-123', role: ROLES.ADMIN, displayname: 'Test Client' },
     });
 
     mockRequest = {
@@ -63,7 +61,7 @@ describe('InvitationController', () => {
       context: {
         currentuser: mockCurrentUser,
       },
-    } as AppRequest;
+    } as any;
   });
 
   afterEach(() => {
@@ -75,7 +73,7 @@ describe('InvitationController', () => {
       // Arrange
       mockRequest.body = {
         inviteeEmail: 'newemployee@example.com',
-        role: ROLES.EMPLOYEE,
+        role: ROLES.STAFF,
         personalInfo: {
           firstName: 'Jane',
           lastName: 'Doe',
@@ -96,7 +94,7 @@ describe('InvitationController', () => {
           invitation: {
             iuid: 'inv-123',
             inviteeEmail: 'newemployee@example.com',
-            role: ROLES.EMPLOYEE,
+            role: ROLES.STAFF,
             status: 'pending',
             expiresAt: new Date('2025-11-04'),
           },
@@ -117,7 +115,7 @@ describe('InvitationController', () => {
         'client-123',
         expect.objectContaining({
           inviteeEmail: 'newemployee@example.com',
-          role: ROLES.EMPLOYEE,
+          role: ROLES.STAFF,
         })
       );
       expect(statusMock).toHaveBeenCalledWith(httpStatusCodes.OK);
@@ -135,7 +133,7 @@ describe('InvitationController', () => {
       // Arrange
       mockRequest.body = {
         inviteeEmail: 'existing@example.com',
-        role: ROLES.EMPLOYEE,
+        role: ROLES.STAFF,
       };
 
       const error = new Error('User with this email already exists');
@@ -259,9 +257,7 @@ describe('InvitationController', () => {
       };
 
       // Mock getInvitations (assuming this method exists on the service)
-      (mockInvitationService as any).getInvitations = jest
-        .fn()
-        .mockResolvedValue(mockInvitations);
+      (mockInvitationService as any).getInvitations = jest.fn().mockResolvedValue(mockInvitations);
 
       // Act
       if (mockInvitationService.getInvitations) {
@@ -289,9 +285,7 @@ describe('InvitationController', () => {
         },
       };
 
-      (mockInvitationService as any).getInvitations = jest
-        .fn()
-        .mockResolvedValue(mockInvitations);
+      (mockInvitationService as any).getInvitations = jest.fn().mockResolvedValue(mockInvitations);
 
       // Simulate call
       if (mockInvitationService.getInvitations) {
@@ -310,26 +304,24 @@ describe('InvitationController', () => {
       const mockInvitations = {
         success: true,
         data: {
-          invitations: [{ iuid: 'inv-1', role: ROLES.EMPLOYEE }],
+          invitations: [{ iuid: 'inv-1', role: ROLES.STAFF }],
           pagination: {},
         },
       };
 
-      (mockInvitationService as any).getInvitations = jest
-        .fn()
-        .mockResolvedValue(mockInvitations);
+      (mockInvitationService as any).getInvitations = jest.fn().mockResolvedValue(mockInvitations);
 
       // Simulate call
       if (mockInvitationService.getInvitations) {
         await mockInvitationService.getInvitations(mockRequest.context!, {
-          role: ROLES.EMPLOYEE,
+          role: ROLES.STAFF,
         });
       }
 
       // Assert
       expect(mockInvitationService.getInvitations).toHaveBeenCalledWith(
         mockRequest.context,
-        expect.objectContaining({ role: ROLES.EMPLOYEE })
+        expect.objectContaining({ role: ROLES.STAFF })
       );
     });
 
@@ -343,9 +335,7 @@ describe('InvitationController', () => {
         },
       };
 
-      (mockInvitationService as any).getInvitations = jest
-        .fn()
-        .mockResolvedValue(mockInvitations);
+      (mockInvitationService as any).getInvitations = jest.fn().mockResolvedValue(mockInvitations);
 
       // Simulate call
       if (mockInvitationService.getInvitations) {
@@ -450,7 +440,7 @@ describe('InvitationController', () => {
       // Arrange
       mockRequest.params = { cuid: 'client-123', iuid: 'nonexistent' };
       mockRequest.context!.params = { iuid: 'nonexistent' };
-      mockRequest.body = { role: ROLES.EMPLOYEE };
+      mockRequest.body = { role: ROLES.STAFF };
 
       const error = new Error('Invitation not found');
       (error as any).statusCode = 404;
@@ -466,7 +456,7 @@ describe('InvitationController', () => {
       // Arrange
       mockRequest.params = { cuid: 'client-123', iuid: 'inv-123' };
       mockRequest.context!.params = { iuid: 'inv-123' };
-      mockRequest.body = { role: ROLES.EMPLOYEE };
+      mockRequest.body = { role: ROLES.STAFF };
 
       const error = new Error('Permission denied');
       (error as any).statusCode = 403;

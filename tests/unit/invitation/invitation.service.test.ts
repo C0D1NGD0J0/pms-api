@@ -40,6 +40,7 @@ describe('InvitationService', () => {
   let mockInvitationQueue: any;
   let mockEventEmitterService: any;
   let mockVendorService: any;
+  let mockLeaseDAO: any;
 
   // Common test data
   const testUserId = '507f1f77bcf86cd799439011';
@@ -89,6 +90,10 @@ describe('InvitationService', () => {
       getVendorByUserId: jest.fn(),
       updateVendorInfo: jest.fn(),
     };
+    mockLeaseDAO = {
+      find: jest.fn().mockResolvedValue([]),
+      updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
+    };
 
     // Add missing methods to the mocks
     mockInvitationDAO.updateInvitation = jest.fn().mockResolvedValue(createMockInvitation());
@@ -119,6 +124,7 @@ describe('InvitationService', () => {
       emitterService: mockEventEmitterService,
       vendorService: mockVendorService,
       userService: mockUserService,
+      leaseDAO: mockLeaseDAO,
     });
   });
 
@@ -238,7 +244,14 @@ describe('InvitationService', () => {
       const invitationData = createMockInvitationData({ inviteeEmail: testEmail });
       const existingUser = createMockUser({
         email: testEmail,
-        cuids: [{ cuid: testCuid, roles: [ROLES.STAFF], isConnected: true }],
+        cuids: [
+          {
+            cuid: testCuid,
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            clientDisplayName: 'Test Client',
+          },
+        ],
       });
 
       mockUserDAO.getUserWithClientAccess.mockResolvedValue(existingUser);
@@ -1107,9 +1120,9 @@ describe('InvitationService', () => {
 
       mockInvitationDAO.findByToken.mockResolvedValue(mockInvitation);
 
-      await expect(
-        invitationService.declineInvitation(testCuid, { token })
-      ).rejects.toThrow(BadRequestError);
+      await expect(invitationService.declineInvitation(testCuid, { token })).rejects.toThrow(
+        BadRequestError
+      );
     });
 
     it('should throw BadRequestError when decline operation fails', async () => {

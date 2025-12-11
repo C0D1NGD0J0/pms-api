@@ -4,7 +4,7 @@ import { Types } from 'mongoose';
  * Generic Mongoose model mock factory
  * Provides consistent fluent interface and method mocking
  */
-export const createMockModel = (overrides: Record<string, any> = {}) => ({
+export const createMockModel = (overrides: Record<string, any> = {}): any => ({
   // Document creation
   create: jest.fn(),
   insertMany: jest.fn(),
@@ -42,6 +42,7 @@ export const createMockModel = (overrides: Record<string, any> = {}) => ({
   // Static methods
   cleanIndexes: jest.fn().mockResolvedValue(undefined),
   syncIndexes: jest.fn().mockResolvedValue(undefined),
+  cleanupDeleted: jest.fn().mockResolvedValue({ deletedCount: 0 }),
 
   // Database connection
   db: {
@@ -60,9 +61,9 @@ export const createMockModelWithDefaults = (overrides: Record<string, any> = {})
 
   // Configure default successful responses
   mockModel.exec.mockResolvedValue(null);
-  mockModel.create.mockImplementation((data) =>
+  mockModel.create.mockImplementation((data: any) =>
     Promise.resolve(Array.isArray(data)
-      ? data.map(item => ({ ...item, _id: new Types.ObjectId() }))
+      ? data.map((item: any) => ({ ...item, _id: new Types.ObjectId() }))
       : { ...data, _id: new Types.ObjectId() }
     )
   );
@@ -73,11 +74,8 @@ export const createMockModelWithDefaults = (overrides: Record<string, any> = {})
 /**
  * Create a notification-specific model mock
  */
-export const createMockNotificationModel = (overrides: Record<string, any> = {}) => {
+export const createMockNotificationModel = (overrides: Record<string, any> = {}): any => {
   const mockModel = createMockModelWithDefaults();
-
-  // Notification-specific methods
-  mockModel.cleanupDeleted = jest.fn().mockResolvedValue({ deletedCount: 0 });
 
   // Apply overrides
   Object.assign(mockModel, overrides);

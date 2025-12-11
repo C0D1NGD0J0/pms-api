@@ -70,6 +70,7 @@ export {
   createMockNotificationResponse,
   createMockNotificationService,
   createMockUnreadCountResponse,
+  createMockNotificationDAO,
   createMockSSEService,
   createMockSSESession,
   createMockSSEMessage,

@@ -8,6 +8,7 @@ export const createMockPropertyDAO = () => ({
   insert: jest.fn(),
   update: jest.fn(),
   updateById: jest.fn(),
+  updateMany: jest.fn(),
   deleteItem: jest.fn(),
   startSession: jest.fn(),
   withTransaction: jest

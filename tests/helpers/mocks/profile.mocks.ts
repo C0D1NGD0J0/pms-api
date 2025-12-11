@@ -27,6 +27,7 @@ export const createMockProfileDAO = () => ({
   // ProfileDAO specific methods
   createUserProfile: jest.fn().mockResolvedValue(createMockProfile()),
   getUserProfile: jest.fn().mockResolvedValue(createMockProfile()),
+  getProfileByUserId: jest.fn().mockResolvedValue(null),
   updateProfile: jest.fn().mockResolvedValue(createMockProfile()),
   generateCurrentUserInfo: jest.fn().mockResolvedValue({
     _id: new Types.ObjectId(),

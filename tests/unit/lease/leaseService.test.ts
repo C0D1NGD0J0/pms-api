@@ -4,7 +4,11 @@ import { IUserRole } from '@shared/constants/roles.constants';
 import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { calculateFinancialSummary } from '@services/lease/leaseHelpers';
 import { ValidationRequestError, BadRequestError, ForbiddenError } from '@shared/customErrors';
-import { generatePendingChangesPreview, shouldShowPendingChanges, generateChangesSummary } from '@services/lease/leaseHelpers';
+import {
+  generatePendingChangesPreview,
+  shouldShowPendingChanges,
+  generateChangesSummary,
+} from '@services/lease/leaseHelpers';
 
 const createMockDependencies = () => ({
   leaseDAO: {
@@ -203,7 +207,7 @@ const createMockClient = (overrides?: any) => ({
   id: new Types.ObjectId(),
   cuid: 'C123',
   accountType: {
-    isCorporate: true,
+    isEnterpriseAccount: true,
   },
   accountAdmin: new Types.ObjectId(),
   companyProfile: {
@@ -1700,7 +1704,7 @@ describe('LeaseService', () => {
           _id: new Types.ObjectId(),
           cuid,
           email: 'client@example.com',
-          accountType: { isCorporate: true },
+          accountType: { isEnterpriseAccount: true },
           companyProfile: {
             legalEntityName: 'ABC Property Management',
             companyAddress: '456 Business Ave',
@@ -1752,7 +1756,7 @@ describe('LeaseService', () => {
           email: 'jane@company.com',
           phone: '555-0100',
           address: '123 Company Blvd',
-          accountType: { isCorporate: true },
+          accountType: { isEnterpriseAccount: true },
           companyProfile: {
             legalEntityName: 'XYZ Property LLC',
             companyAddress: '123 Company Blvd',
@@ -1792,7 +1796,7 @@ describe('LeaseService', () => {
           _id: new Types.ObjectId(),
           cuid,
           email: 'client@example.com',
-          accountType: { isCorporate: false },
+          accountType: { isEnterpriseAccount: false },
         };
 
         const mockProperty = {
@@ -1830,7 +1834,7 @@ describe('LeaseService', () => {
           _id: new Types.ObjectId(),
           cuid,
           email: 'client@example.com',
-          accountType: { isCorporate: true },
+          accountType: { isEnterpriseAccount: true },
         };
 
         const mockProperty = {
@@ -1887,7 +1891,7 @@ describe('LeaseService', () => {
           _id: new Types.ObjectId(),
           cuid,
           email: 'client@example.com',
-          accountType: { isCorporate: true },
+          accountType: { isEnterpriseAccount: true },
           accountAdmin: new Types.ObjectId(),
           companyProfile: {
             legalEntityName: 'Test Property LLC',
@@ -2086,7 +2090,7 @@ describe('LeaseService', () => {
           email: 'client@example.com',
           firstName: 'Test',
           lastName: 'Client',
-          accountType: { isCorporate: true },
+          accountType: { isEnterpriseAccount: true },
           companyProfile: {
             legalEntityName: 'Test Company',
             companyAddress: '123 Test St',
@@ -2213,20 +2217,13 @@ describe('LeaseService', () => {
       });
 
       it('should format two field changes', () => {
-        const result = generateChangesSummary([
-          'monthlyRent',
-          'securityDeposit',
-        ]);
+        const result = generateChangesSummary(['monthlyRent', 'securityDeposit']);
 
         expect(result).toBe('Modified Monthly Rent and Security Deposit');
       });
 
       it('should format multiple field changes', () => {
-        const result = generateChangesSummary([
-          'monthlyRent',
-          'securityDeposit',
-          'rentDueDay',
-        ]);
+        const result = generateChangesSummary(['monthlyRent', 'securityDeposit', 'rentDueDay']);
 
         expect(result).toBe('Modified Monthly Rent, Security Deposit, and Rent Due Day');
       });
@@ -2605,7 +2602,10 @@ describe('LeaseService', () => {
         { internalNotes: 'Test' }
       );
 
-      expect(mockDependencies.leaseCache.invalidateLease).toHaveBeenCalledWith('C123', mockLease.luid);
+      expect(mockDependencies.leaseCache.invalidateLease).toHaveBeenCalledWith(
+        'C123',
+        mockLease.luid
+      );
     });
 
     it('should throw error if lease not found', async () => {

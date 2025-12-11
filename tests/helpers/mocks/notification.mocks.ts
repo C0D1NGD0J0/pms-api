@@ -64,6 +64,7 @@ export const createMockNotificationResponse = (
   recipientType: RecipientTypeEnum.INDIVIDUAL,
   recipient: faker.string.uuid(),
   cuid: faker.string.uuid(),
+  nuid: faker.string.uuid(),
   title: faker.lorem.sentence(),
   message: faker.lorem.paragraph(),
   type: faker.helpers.enumValue(NotificationTypeEnum),
@@ -78,7 +79,6 @@ export const createMockNotificationResponse = (
   isExpired: false,
   createdAt: faker.date.recent(),
   updatedAt: faker.date.recent(),
-  uid: faker.string.uuid(),
   ...overrides,
 });
 
@@ -132,15 +132,13 @@ export const createMockNotificationListResponse = (count = 5): INotificationList
   return {
     notifications,
     pagination: {
-      docs: notifications,
-      totalDocs: count,
-      limit: 10,
+      total: count,
+      perPage: 10,
       totalPages: 1,
-      pagingCounter: 1,
-      hasPrevPage: false,
-      hasNextPage: false,
-      prevPage: null,
-      nextPage: null,
+      currentPage: 1,
+      hasMoreResource: false,
+      prevPage: undefined,
+      nextPage: undefined,
     },
     unreadCount: faker.number.int({ min: 0, max: count }),
   };
@@ -161,6 +159,10 @@ export const createMockUnreadCountResponse = (): INotificationUnreadCountRespons
     [NotificationTypeEnum.SYSTEM]: faker.number.int({ min: 0, max: 10 }),
     [NotificationTypeEnum.TASK]: faker.number.int({ min: 0, max: 10 }),
     [NotificationTypeEnum.USER]: faker.number.int({ min: 0, max: 10 }),
+    [NotificationTypeEnum.SUCCESS]: faker.number.int({ min: 0, max: 10 }),
+    [NotificationTypeEnum.LEASE]: faker.number.int({ min: 0, max: 10 }),
+    [NotificationTypeEnum.ERROR]: faker.number.int({ min: 0, max: 10 }),
+    [NotificationTypeEnum.INFO]: faker.number.int({ min: 0, max: 10 }),
   },
 });
 

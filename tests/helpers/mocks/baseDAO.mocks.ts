@@ -67,8 +67,8 @@ export const createMockBaseDAOWithDefaults = () => ({
     .mockImplementation((data) => Promise.resolve({ ...data, _id: new Types.ObjectId() })),
   insertMany: jest
     .fn()
-    .mockImplementation((items) =>
-      Promise.resolve(items.map((item) => ({ ...item, _id: new Types.ObjectId() })))
+    .mockImplementation((items: any[]) =>
+      Promise.resolve(items.map((item: any) => ({ ...item, _id: new Types.ObjectId() })))
     ),
   findFirst: jest.fn().mockResolvedValue(null),
   findById: jest.fn().mockResolvedValue(null),

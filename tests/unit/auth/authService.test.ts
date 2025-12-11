@@ -2,7 +2,10 @@ import { Types } from 'mongoose';
 import { AuthService } from '@services/auth/auth.service';
 import { ROLES } from '@shared/constants/roles.constants';
 import { UnauthorizedError, NotFoundError } from '@shared/customErrors';
-import { createAuthServiceDependencies, createServiceWithMocks } from '@tests/helpers/mocks/services.mocks';
+import {
+  createAuthServiceDependencies,
+  createServiceWithMocks,
+} from '@tests/helpers/mocks/services.mocks';
 import {
   createMockCompanyProfile,
   createMockCurrentUser,
@@ -169,7 +172,12 @@ describe('AuthService', () => {
             clientDisplayName: 'Old Client',
             roles: [ROLES.ADMIN],
           },
-          { cuid: newCuid, isConnected: true, clientDisplayName: 'New Client', roles: [ROLES.TENANT] },
+          {
+            cuid: newCuid,
+            isConnected: true,
+            clientDisplayName: 'New Client',
+            roles: [ROLES.TENANT],
+          },
         ],
       });
 
@@ -250,7 +258,12 @@ describe('AuthService', () => {
       const clientId = 'test-cuid';
       const mockUser = createMockUser({
         cuids: [
-          { cuid: clientId, isConnected: true, clientDisplayName: 'Test Client', roles: [ROLES.ADMIN] },
+          {
+            cuid: clientId,
+            isConnected: true,
+            clientDisplayName: 'Test Client',
+            roles: [ROLES.ADMIN],
+          },
         ],
       });
       const mockClient = { cuid: clientId, displayName: 'Test Client' };
@@ -381,7 +394,7 @@ describe('AuthService', () => {
     it('should create vendor during corporate account signup', async () => {
       const signupData = createMockSignupData({
         accountType: {
-          isCorporate: true,
+          isEnterpriseAccount: true,
           planName: 'business',
           planId: 'business-plan',
         },
@@ -420,7 +433,7 @@ describe('AuthService', () => {
     it('should handle vendor creation failure gracefully during signup', async () => {
       const signupData = createMockSignupData({
         accountType: {
-          isCorporate: true,
+          isEnterpriseAccount: true,
           planName: 'business',
           planId: 'business-plan',
         },
@@ -454,7 +467,7 @@ describe('AuthService', () => {
     it('should skip vendor creation for non-corporate accounts', async () => {
       const signupData = createMockSignupData({
         accountType: {
-          isCorporate: false,
+          isEnterpriseAccount: false,
           planName: 'basic',
           planId: 'basic-plan',
         },
@@ -484,7 +497,7 @@ describe('AuthService', () => {
         firstName: 'John',
         lastName: 'Owner',
         accountType: {
-          isCorporate: true,
+          isEnterpriseAccount: true,
           planName: 'business',
           planId: 'business-plan',
         },
@@ -541,7 +554,8 @@ describe('AuthService', () => {
           {
             cuid: 'test-cuid',
             isConnected: true,
-            roles: [ROLES.EMPLOYEE],
+            roles: [ROLES.STAFF],
+            clientDisplayName: 'Test Client',
           },
         ],
       });
@@ -558,7 +572,9 @@ describe('AuthService', () => {
       mocks.userDAO.getActiveUserByEmail.mockResolvedValue(null);
 
       // Should throw NotFoundError if user doesn't exist
-      await expect(authService.forgotPassword('nonexistent@example.com')).rejects.toThrow(NotFoundError);
+      await expect(authService.forgotPassword('nonexistent@example.com')).rejects.toThrow(
+        NotFoundError
+      );
       expect(mocks.emailQueue.addToEmailQueue).not.toHaveBeenCalled();
     });
   });
@@ -568,9 +584,7 @@ describe('AuthService', () => {
       // Mock userDAO.resetPassword to return null for expired/invalid token
       mocks.userDAO.resetPassword.mockResolvedValue(null);
 
-      await expect(
-        authService.resetPassword('expired-token', 'newPassword123')
-      ).rejects.toThrow();
+      await expect(authService.resetPassword('expired-token', 'newPassword123')).rejects.toThrow();
     });
   });
 });

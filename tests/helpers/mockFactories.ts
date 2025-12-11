@@ -80,7 +80,7 @@ export const createMockSignupData = (overrides: Partial<ISignupData> = {}): ISig
   timeZone: 'UTC',
   termsAccepted: true,
   accountType: {
-    isCorporate: false,
+    isEnterpriseAccount: false,
     planName: 'basic',
     planId: 'basic-plan',
   } as IAccountType,
@@ -96,7 +96,7 @@ export const createMockClient = (overrides: any = {}) => {
     displayName: faker.company.name(),
     accountAdmin: new Types.ObjectId(),
     accountType: {
-      isCorporate: false,
+      isEnterpriseAccount: false,
       planName: 'basic',
       planId: 'basic-plan',
     },

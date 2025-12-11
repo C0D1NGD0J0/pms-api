@@ -76,8 +76,8 @@ describe('AuthController', () => {
           accessToken: 'mock-access-token',
           refreshToken: 'mock-refresh-token',
           rememberMe: false,
-          accounts: [{ cuid: 'client-1', name: 'Test Client' }],
-          activeAccount: { cuid: 'client-1', name: 'Test Client' },
+          accounts: [{ cuid: 'client-1', clientDisplayName: 'Test Client' }],
+          activeAccount: { cuid: 'client-1', clientDisplayName: 'Test Client' },
         },
       };
 
@@ -159,8 +159,8 @@ describe('AuthController', () => {
           accessToken: 'access-token-123',
           refreshToken: 'refresh-token-456',
           rememberMe: true,
-          accounts: [],
-          activeAccount: { cuid: 'client-1', name: 'Test Client' },
+          accounts: null,
+          activeAccount: { cuid: 'client-1', clientDisplayName: 'Test Client' },
         },
       };
 
@@ -304,7 +304,7 @@ describe('AuthController', () => {
         [JWT_KEY_NAMES.REFRESH_TOKEN]: mockRefreshToken,
       };
 
-      (mockAuthService.tokenService.decodeJwt as jest.Mock).mockReturnValue({
+      ((mockAuthService as any).tokenService.decodeJwt as jest.Mock).mockReturnValue({
         success: true,
         data: {
           data: { sub: mockUserId },
@@ -339,7 +339,7 @@ describe('AuthController', () => {
         [JWT_KEY_NAMES.REFRESH_TOKEN]: 'expired-token',
       };
 
-      (mockAuthService.tokenService.decodeJwt as jest.Mock).mockReturnValue({
+      ((mockAuthService as any).tokenService.decodeJwt as jest.Mock).mockReturnValue({
         success: true,
         data: { data: { sub: 'user-123' } },
       });
@@ -360,7 +360,7 @@ describe('AuthController', () => {
         [JWT_KEY_NAMES.REFRESH_TOKEN]: 'invalid-format-token',
       };
 
-      (mockAuthService.tokenService.decodeJwt as jest.Mock).mockReturnValue({
+      ((mockAuthService as any).tokenService.decodeJwt as jest.Mock).mockReturnValue({
         success: false,
       });
 
@@ -397,7 +397,7 @@ describe('AuthController', () => {
         [JWT_KEY_NAMES.REFRESH_TOKEN]: `Bearer ${mockToken}`,
       };
 
-      (mockAuthService.tokenService.decodeJwt as jest.Mock).mockReturnValue({
+      ((mockAuthService as any).tokenService.decodeJwt as jest.Mock).mockReturnValue({
         success: true,
         data: { data: { sub: 'user-123' } },
       });
@@ -432,6 +432,7 @@ describe('AuthController', () => {
       mockAuthService.forgotPassword.mockResolvedValue({
         success: true,
         message: 'Password reset email sent',
+        data: null,
       });
 
       // Act
@@ -453,6 +454,7 @@ describe('AuthController', () => {
       mockAuthService.forgotPassword.mockResolvedValue({
         success: true,
         message: 'If the email exists, a reset link will be sent',
+        data: null,
       });
 
       // Act
@@ -527,6 +529,7 @@ describe('AuthController', () => {
       mockAuthService.resetPassword.mockResolvedValue({
         success: true,
         message: 'Password reset successful',
+        data: null,
       });
 
       // Act
@@ -605,6 +608,7 @@ describe('AuthController', () => {
       mockAuthService.resetPassword.mockResolvedValue({
         success: true,
         message: 'Password reset successful',
+        data: null,
       });
 
       // Act
@@ -628,6 +632,7 @@ describe('AuthController', () => {
       mockAuthService.accountActivation.mockResolvedValue({
         success: true,
         message: 'Account activated successfully',
+        data: null,
       });
 
       // Act
@@ -678,6 +683,7 @@ describe('AuthController', () => {
       mockAuthService.accountActivation.mockResolvedValue({
         success: true,
         message: 'Account activated',
+        data: null,
       });
 
       // Act
@@ -710,7 +716,7 @@ describe('AuthController', () => {
       // Arrange
       const mockCurrentUser = createMockCurrentUser({
         sub: 'user-123',
-        cuid: 'old-client-id',
+        uid: 'old-client-id',
       });
 
       mockRequest = {
@@ -724,7 +730,7 @@ describe('AuthController', () => {
         data: {
           accessToken: 'new-access-token',
           refreshToken: 'new-refresh-token',
-          activeAccount: { cuid: 'new-client-id', name: 'New Client' },
+          activeAccount: { cuid: 'new-client-id', clientDisplayName: 'New Client' },
         },
       });
 
@@ -771,7 +777,7 @@ describe('AuthController', () => {
         data: {
           accessToken: 'new-access-token',
           refreshToken: 'new-refresh-token',
-          activeAccount: { cuid: 'new-client-id', name: 'New Client' },
+          activeAccount: { cuid: 'new-client-id', clientDisplayName: 'New Client' },
         },
       });
 
@@ -801,7 +807,7 @@ describe('AuthController', () => {
         data: {
           accessToken: 'new-access-token',
           refreshToken: 'new-refresh-token',
-          activeAccount: { cuid: 'new-client-id', name: 'New Client' },
+          activeAccount: { cuid: 'new-client-id', clientDisplayName: 'New Client' },
         },
       };
 
@@ -820,7 +826,7 @@ describe('AuthController', () => {
       mockRequest = {
         body: { clientId: 'new-client-id' },
         context: { currentuser: null },
-      } as AppRequest;
+      } as unknown as AppRequest;
 
       // Act
       await authController.switchClientAccount(mockRequest as AppRequest, mockResponse as Response);
@@ -845,6 +851,7 @@ describe('AuthController', () => {
       mockAuthService.logout.mockResolvedValue({
         success: true,
         message: 'Logout successful',
+        data: null,
       });
 
       // Act
@@ -880,6 +887,7 @@ describe('AuthController', () => {
       mockAuthService.logout.mockResolvedValue({
         success: true,
         message: 'Logged out',
+        data: null,
       });
 
       // Act
@@ -902,6 +910,7 @@ describe('AuthController', () => {
       mockAuthService.logout.mockResolvedValue({
         success: true,
         message: 'Logged out',
+        data: null,
       });
 
       // Act
@@ -920,6 +929,7 @@ describe('AuthController', () => {
       mockAuthService.logout.mockResolvedValue({
         success: true,
         message: 'Session invalidated',
+        data: null,
       });
 
       // Act

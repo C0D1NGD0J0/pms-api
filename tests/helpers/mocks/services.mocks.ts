@@ -68,10 +68,6 @@ export const createPropertyServiceDependencies = (overrides: any = {}) => {
   const mockUserDAO = createMockUserDAO();
   const mockProfileDAO = createMockProfileDAO();
 
-  // Add commonly needed methods that are often manually added in tests
-  mockPropertyDAO.updateMany = jest.fn().mockResolvedValue({ modifiedCount: 0 });
-  mockProfileDAO.getProfileByUserId = jest.fn().mockResolvedValue(null);
-
   return {
     propertyDAO: mockPropertyDAO,
     clientDAO: createMockClientDAO(),

@@ -193,6 +193,11 @@ export class BaseQueue<T extends JobData = JobData> {
     concurrency = 5,
     callback: Queue.ProcessCallbackFunction<T>
   ): void {
+    if (process.env.PROCESS_TYPE !== 'worker') {
+      throw new Error(
+        `Queue processing can only be started in worker processes. Current PROCESS_TYPE: ${process.env.PROCESS_TYPE}`
+      );
+    }
     this.queue.process(name, concurrency, callback);
   }
 

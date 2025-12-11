@@ -51,6 +51,7 @@ import {
   PropertyWorker,
   UploadWorker,
   EmailWorker,
+  CronWorker,
   PdfWorker,
 } from '@workers/index';
 import {
@@ -62,6 +63,7 @@ import {
   PropertyQueue,
   UploadQueue,
   EmailQueue,
+  CronQueue,
   PdfQueue,
 } from '@queues/index';
 import {
@@ -94,6 +96,7 @@ import {
   LeaseService,
   UserService,
   AuthService,
+  CronService,
   SSEService,
 } from '@services/index';
 
@@ -127,6 +130,7 @@ const ModelResources = {
 const ServiceResources = {
   sseService: asClass(SSEService).singleton(),
   authService: asClass(AuthService).singleton(),
+  cronService: asClass(CronService).singleton(),
   userService: asClass(UserService).singleton(),
   assetService: asClass(AssetService).singleton(),
   mailerService: asClass(MailService).singleton(),
@@ -192,6 +196,7 @@ const CacheResources = {
 };
 
 const WorkerResources = {
+  cronWorker: asClass(CronWorker).singleton(),
   emailWorker: asClass(EmailWorker).singleton(),
   uploadWorker: asClass(UploadWorker).singleton(),
   pdfGeneratorWorker: asClass(PdfWorker).singleton(),
@@ -203,6 +208,7 @@ const WorkerResources = {
 };
 
 const QueuesResources = {
+  cronQueue: asClass(CronQueue).singleton(),
   emailQueue: asClass(EmailQueue).singleton(),
   uploadQueue: asClass(UploadQueue).singleton(),
   pdfGeneratorQueue: asClass(PdfQueue).singleton(),

@@ -7,20 +7,28 @@
     "node": ">=22.0.0 <23.0.0"
   },
   "scripts": {
+    "build": "rm -rf ./dist && tsc -p ./tsconfig.build.json && tsc-alias && mkdir -p dist/app/templates/lease && cp -r app/templates/lease/* dist/app/templates/lease/",
+
     "prettier:check": "prettier --check './app/**/*.{ts,json,js}' './tests/**/*.{ts,json,js}'",
     "prettier:write": "prettier --write './app/**/*.{ts,json,js}' './tests/**/*.{ts,json,js}'",
-    "build": "rm -rf ./dist && tsc -p ./tsconfig.build.json && tsc-alias && mkdir -p dist/app/templates/lease && cp -r app/templates/lease/* dist/app/templates/lease/",
     "lint:fix": "eslint './app/**/*.{ts,js}' './tests/**/*.{ts,js}' --fix",
-    "dev": "nodemon | ./node_modules/.bin/bunyan",
     "lint": "eslint './app/**/*.{ts,js}' './tests/**/*.{ts,js}'",
-    "start": "node dist/server.js",
     "prepare": "husky",
+
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:worker\" | ./node_modules/.bin/bunyan",
+    "dev:api": "nodemon server.ts",
+    "dev:worker": "nodemon worker.ts",
+    "start:api": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
+    "start": "node dist/server.js",
+
     "test": "cross-env NODE_ENV=test jest",
     "test:watch": "cross-env NODE_ENV=test jest --watch",
     "test:coverage": "cross-env NODE_ENV=test jest --coverage",
     "test:unit": "cross-env NODE_ENV=test jest --testPathPattern=\"tests/unit/${npm_config_path:-}\"",
     "test:api": "cross-env NODE_ENV=test jest --testPathPattern=\"tests/api/${npm_config_path:-}\"",
     "test:routes": "cross-env NODE_ENV=test jest --config jest.config.routes.ts",
+
     "seed:db": "ts-node -r tsconfig-paths/register scripts/seeds/seed-database.ts",
     "seed:clean": "ts-node -r tsconfig-paths/register scripts/seeds/seed-database.ts --clean"
   },
@@ -136,6 +144,7 @@
     "@types/twilio": "^3.19.2",
     "@types/ua-parser-js": "^0.7.39",
     "@types/uuid": "^10.0.0",
+    "concurrently": "^9.2.1",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^10.0.2",
     "eslint-config-standard-with-typescript": "^43.0.1",

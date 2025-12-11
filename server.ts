@@ -18,6 +18,7 @@ interface IConstructor {
   dbService: DatabaseService;
 }
 
+process.env.PROCESS_TYPE = 'api';
 class Server {
   private app: IAppSetup;
   private expApp: Application;

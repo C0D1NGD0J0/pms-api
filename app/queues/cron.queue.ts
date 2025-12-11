@@ -19,4 +19,12 @@ export class CronQueue extends BaseQueue {
       cron: cronPattern,
     });
   }
+
+  /**
+   * Get repeatable jobs
+   * for getting next execution times
+   */
+  async getRepeatableJobs() {
+    return this.queue.getRepeatableJobs();
+  }
 }

@@ -33,6 +33,8 @@ const PRODUCTION_QUEUE_OPTIONS: BullQueueOptions = {
     keepAlive: 60000, // Reduced keep-alive frequency
     maxRetriesPerRequest: 3,
     commandTimeout: 15000,
+    enableOfflineQueue: false, // Fail fast instead of queueing commands when disconnected
+    enableReadyCheck: true, // Verify connection before processing
   },
 };
 
@@ -41,14 +43,14 @@ const DEVELOPMENT_QUEUE_OPTIONS: BullQueueOptions = {
   settings: {
     maxStalledCount: 3,
     lockDuration: 300000, // 5 minutes
-    stalledInterval: 30000, // 30 seconds for faster development feedback
+    stalledInterval: 120000, // 2 minutes - reduced polling to save CPU/battery
   },
   redis: {
     host: envVariables.REDIS.HOST,
     port: envVariables.REDIS.PORT,
     family: 0,
     connectTimeout: 10000,
-    keepAlive: 30000,
+    keepAlive: 120000, // 2 minutes - reduced keep-alive frequency
     maxRetriesPerRequest: 2,
   },
 };
@@ -194,9 +196,10 @@ export class BaseQueue<T extends JobData = JobData> {
     callback: Queue.ProcessCallbackFunction<T>
   ): void {
     if (process.env.PROCESS_TYPE !== 'worker') {
-      throw new Error(
-        `Queue processing can only be started in worker processes. Current PROCESS_TYPE: ${process.env.PROCESS_TYPE}`
-      );
+      // this.log.warn(
+      //   `Queue processing for ${this.queue.name} is disabled because PROCESS_TYPE is not 'worker'.`
+      // );
+      return;
     }
     this.queue.process(name, concurrency, callback);
   }

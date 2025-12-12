@@ -13,9 +13,9 @@ import cookieParser from 'cookie-parser';
 import { serverAdapter } from '@queues/index';
 import { envVariables } from '@shared/config';
 import sanitizer from 'perfect-express-sanitizer';
-import { DatabaseService } from '@database/index';
 import mongoSanitize from 'express-mongo-sanitize';
 import { httpStatusCodes, createLogger } from '@utils/index';
+import { DatabaseService, RedisService } from '@database/index';
 import express, { Application, urlencoded, Response, Request } from 'express';
 import {
   errorHandlerMiddleware,
@@ -90,13 +90,28 @@ export class App implements IAppSetup {
     app.use(contextBuilder);
     app.use(detectLanguage);
     app.use(setUserLanguage);
-    app.use(`${BASE_PATH}/healthcheck`, (req, res) => {
+    app.use(`${BASE_PATH}/healthcheck`, async (req, res) => {
       try {
+        const redisService = req.container.resolve<RedisService>('redisService');
+        const redisStats = await redisService.getConnectionStats();
+        const isHealthy = redisStats.success && !redisStats.total?.exceeded;
         const healthCheck = {
           uptime: process.uptime(),
-          message: 'OK',
+          message: isHealthy ? 'OK' : 'Unhealthy',
           timestamp: Date.now(),
+          environment: process.env.NODE_ENV,
+          processType: process.env.PROCESS_TYPE,
           database: this.db.isConnected() ? 'Connected' : 'Disconnected',
+          redis: redisStats.success
+            ? {
+                thisProcess: redisStats.thisProcess,
+                total: redisStats.total,
+                message: redisStats.message,
+              }
+            : {
+                error: 'Failed to fetch Redis statistics',
+                details: redisStats.error,
+              },
         };
         res.status(200).json(healthCheck);
       } catch (error) {
@@ -107,6 +122,7 @@ export class App implements IAppSetup {
           timestamp: Date.now(),
           database: 'Unknown',
           error: error.message,
+          redis: 'Unknown',
         });
       }
     });

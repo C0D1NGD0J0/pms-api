@@ -15,7 +15,7 @@ import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { ProcessedWebhookData } from '@services/esignature/boldSign.service';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
-import { IPropertyDocument, IProfileWithUser, OwnershipType } from '@interfaces/index';
+import { IPropertyDocument, IProfileWithUser, OwnershipType, ICronJob } from '@interfaces/index';
 import { NotificationPriorityEnum, NotificationTypeEnum } from '@interfaces/notification.interface';
 import {
   EventEmitterService,
@@ -1095,14 +1095,10 @@ export class LeaseService {
   ): IPromiseReturnedData<ILeaseDocument> {
     const currentUser = ctx.currentuser!;
 
-    this.log.info(`Manually activating lease ${luid} for client ${cuid}`);
-
-    // Fetch lease with populated fields
     const lease = await fetchLeaseByLuid(this.leaseDAO, luid, cuid, {
       populate: ['tenantId', 'property.id'],
     });
 
-    // Business Rule: Only DRAFT or PENDING_SIGNATURE leases can be manually activated
     if (lease.status === LeaseStatus.ACTIVE) {
       throw new ValidationRequestError({
         message: 'Lease is already active',
@@ -1127,13 +1123,9 @@ export class LeaseService {
       });
     }
 
-    // Check approval requirements
     enforceLeaseApprovalRequirement(lease, 'activate');
-
-    // Validate lease has all required data
     validateLeaseReadyForActivation(lease);
 
-    // Update lease status to ACTIVE (same as BoldSign webhook)
     const activatedLease = await this.leaseDAO.update(
       { _id: lease._id },
       {
@@ -1148,11 +1140,9 @@ export class LeaseService {
       throw new BadRequestError({ message: 'Failed to activate lease' });
     }
 
-    // Invalidate cache
     await this.leaseCache.invalidateLease(cuid, luid);
     await this.leaseCache.invalidateLeaseLists(cuid);
 
-    // Emit LEASE_ESIGNATURE_COMPLETED event (reuse existing event infrastructure)
     // This triggers all existing listeners: PropertyService, PropertyUnitService, ProfileService, NotificationService
     this.emitterService.emit(EventTypes.LEASE_ESIGNATURE_COMPLETED, {
       leaseId: activatedLease._id.toString(),
@@ -1162,12 +1152,10 @@ export class LeaseService {
       propertyId: activatedLease.property.id.toString(),
       propertyUnitId: activatedLease.property.unitId?.toString(),
       propertyManagerId: activatedLease.createdBy.toString(),
-      documentId: '', // Manual activation - no e-signature document
-      signers: [], // Manual activation - no e-signature signers
+      documentId: '', // manual activation - no e-signature document
+      signers: [], // manual activation - no e-signature signers
       completedAt: new Date(),
     });
-
-    this.log.info(`Lease ${luid} manually activated successfully`);
 
     return {
       success: true,
@@ -2739,6 +2727,28 @@ export class LeaseService {
       this.log.error('Error revoking lease', { leaseId, error: error.message });
       throw error;
     }
+  }
+
+  // CRON JOBS
+  getCronJobs(): ICronJob[] {
+    return [
+      {
+        name: 'test-cron-job',
+        schedule: '*/2 * * * *', // Every 2 minutes for testing
+        handler: this.testCronHandler.bind(this),
+        enabled: true,
+        service: 'LeaseService',
+        description: 'Test cron job to verify system is working',
+        timeout: 30000, // 30 seconds
+      },
+    ];
+  }
+
+  private async testCronHandler(): Promise<void> {
+    this.log.info('🎯 TEST CRON JOB EXECUTED!', {
+      timestamp: new Date().toISOString(),
+      service: 'LeaseService',
+    });
   }
 
   /**

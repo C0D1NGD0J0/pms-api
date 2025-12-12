@@ -249,9 +249,9 @@ const SocketIOResources = {
 export const initQueues = (container: AwilixContainer) => {
   // Always initialize ClamScanner as it's essential for file security
   container.resolve('clamScanner');
-  // Only initialize queues in development or when explicitly forced
-  if (process.env.NODE_ENV === 'development' || process.env.FORCE_INIT_QUEUES === 'true') {
-    console.log('🔧 Initializing all queues and workers for development/forced environment...');
+  // Only initialize queues in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🔧 Initializing all queues and workers for development environment...');
 
     // Initialize all queues
     const queueNames = [
@@ -278,29 +278,38 @@ export const initQueues = (container: AwilixContainer) => {
       'pdfGeneratorWorker',
     ];
 
-    // Resolve queues
-    queueNames.forEach((queueName) => {
-      try {
-        container.resolve(queueName);
-      } catch (error) {
-        console.error(`Failed to initialize queue ${queueName}:`, error);
-      }
-    });
+    // In API process: only initialize queues (for enqueueing jobs)
+    // In worker process: initialize both queues and workers (for processing jobs)
+    if (process.env.PROCESS_TYPE === 'worker') {
+      // Worker process: initialize both queues and workers
+      queueNames.forEach((queueName) => {
+        try {
+          container.resolve(queueName);
+        } catch (error) {
+          console.error(`Failed to initialize queue ${queueName}:`, error);
+        }
+      });
 
-    // Resolve workers
-    workerNames.forEach((workerName) => {
-      try {
-        container.resolve(workerName);
-      } catch (error) {
-        console.error(`Failed to initialize worker ${workerName}:`, error);
-      }
-    });
-
-    console.log('✅ All queues and workers initialized successfully');
+      workerNames.forEach((workerName) => {
+        try {
+          container.resolve(workerName);
+        } catch (error) {
+          console.error(`Failed to initialize worker ${workerName}:`, error);
+        }
+      });
+      console.log('✅ All queues and workers initialized successfully');
+    } else {
+      // API process: only initialize queues (no workers needed)
+      queueNames.forEach((queueName) => {
+        try {
+          container.resolve(queueName);
+        } catch (error) {
+          console.error(`Failed to initialize queue ${queueName}:`, error);
+        }
+      });
+      console.log('✅ All queues initialized successfully (workers skipped in API process)');
+    }
   } else {
-    console.log(
-      '⏸️  Queue initialization skipped (production environment - using lazy initialization)'
-    );
     console.log('💡 Queues will be initialized on-demand when first accessed');
   }
 };

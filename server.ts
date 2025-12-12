@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-namespace */
-
+process.env.PROCESS_TYPE = 'api';
 import http from 'http';
 import { asValue } from 'awilix';
 import { createClient } from 'redis';
@@ -8,6 +8,7 @@ import { IAppSetup, App } from '@root/app';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import express, { Application } from 'express';
+import { PidManager } from '@utils/pid-manager';
 import { Server as SocketIOServer } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { DatabaseService, Environments } from '@database/index';
@@ -18,25 +19,26 @@ interface IConstructor {
   dbService: DatabaseService;
 }
 
-process.env.PROCESS_TYPE = 'api';
 class Server {
   private app: IAppSetup;
   private expApp: Application;
   private initialized = false;
   private shuttingDown = false;
+  private pidManager: PidManager;
   private static instance: Server;
-  private static processHandlersRegistered = false;
   private dbService: DatabaseService;
   private PORT = envVariables.SERVER.PORT;
   private httpServer: http.Server | null = null;
+  private static processHandlersRegistered = false;
   private readonly log = createLogger('MainServer');
-  private readonly SERVER_ENV = envVariables.SERVER.ENV as Environments;
   private redisClients: { pub: any; sub: any } | null = null;
+  private readonly SERVER_ENV = envVariables.SERVER.ENV as Environments;
 
   constructor({ dbService }: IConstructor) {
     this.expApp = express();
     this.dbService = dbService;
     this.app = new App(this.expApp, this.dbService);
+    this.pidManager = new PidManager('api', this.log);
     this.setupProcessErrorHandlers();
   }
 
@@ -45,6 +47,9 @@ class Server {
       this.log.info('Server already initialized, skipping startup');
       return;
     }
+
+    // check for existing PID file to prevent duplicate processes
+    this.pidManager.check();
 
     await this.dbService.connect();
     this.app.initConfig();
@@ -145,6 +150,8 @@ class Server {
 
     this.shuttingDown = true;
     this.log.info('Server shutting down...');
+    // clean up PID file first
+    this.pidManager.cleanup();
 
     try {
       // close socket connections

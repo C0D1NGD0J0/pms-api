@@ -1,13 +1,18 @@
+import { container } from '@di/setup';
 import { QUEUE_NAMES } from '@utils/constants';
 
 import { BaseQueue } from './base.queue';
 
 export class CronQueue extends BaseQueue {
-  constructor({ cronWorker }: { cronWorker: any }) {
+  constructor() {
     super(QUEUE_NAMES.CRON_QUEUE);
 
     // process all cron jobs with a single worker
-    this.processQueueJobs('*', 1, cronWorker.executeCronJob);
+    // lazy load: gets cronWorker only when processing starts
+    this.processQueueJobs('*', 1, (job, done) => {
+      const cronWorker = container.resolve('cronWorker');
+      return cronWorker.executeCronJob(job, done);
+    });
   }
 
   /**

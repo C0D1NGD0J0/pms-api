@@ -26,7 +26,7 @@ export class CronService {
     this.log = createLogger('CronService');
     this.cronQueue = cronQueue;
 
-    // Collect cron jobs from all services
+    // collects cron jobs from all services
     const services: ICronProvider[] = [
       leaseService,
       notificationService,

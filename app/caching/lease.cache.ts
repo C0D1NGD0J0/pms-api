@@ -16,12 +16,7 @@ export class LeaseCache extends BaseCache {
 
   constructor(cacheName = 'LeaseCache') {
     super(cacheName);
-    this.initializeClient().then(() => {
-      // Only log in non-test environments to avoid Jest warnings
-      if (process.env.NODE_ENV !== 'test') {
-        console.info('LeaseCache connected to Redis');
-      }
-    });
+    this.initializeClient();
 
     this.LEASE_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;
     this.LIST_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;

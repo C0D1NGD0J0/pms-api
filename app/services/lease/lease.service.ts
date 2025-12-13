@@ -1837,7 +1837,6 @@ export class LeaseService {
       EventTypes.LEASE_ESIGNATURE_COMPLETED,
       this.handleLeaseActivatedEmail.bind(this)
     );
-    this.log.info('Lease service event listeners initialized');
   }
 
   private handlePdfGenerationRequest = async (

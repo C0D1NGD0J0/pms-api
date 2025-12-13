@@ -1491,8 +1491,6 @@ export class NotificationService {
       EventTypes.LEASE_ESIGNATURE_COMPLETED,
       this.handleLeaseActivated.bind(this)
     );
-
-    this.log.info('Notification service event listeners initialized');
   }
 
   private async handleLeaseActivated(payload: any): Promise<void> {

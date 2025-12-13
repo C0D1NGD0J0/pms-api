@@ -731,8 +731,6 @@ LeaseSchema.plugin(uniqueValidator, {
 
 const LeaseModel = model<ILeaseDocument>('Lease', LeaseSchema);
 
-LeaseModel.syncIndexes()
-  .then(() => logger.info('Lease model indexes synced successfully'))
-  .catch((err) => logger.error('Error syncing Lease model indexes:', err));
+LeaseModel.syncIndexes();
 
 export default LeaseModel;

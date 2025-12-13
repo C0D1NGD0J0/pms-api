@@ -17,11 +17,7 @@ export class UserCache extends BaseCache {
 
   constructor(cacheName = 'UserCache') {
     super(cacheName);
-    this.initializeClient().then(() => {
-      if (process.env.NODE_ENV !== 'test') {
-        console.info('UserCache connected to Redis');
-      }
-    });
+    this.initializeClient();
 
     this.USER_DETAIL_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;
     this.LIST_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;

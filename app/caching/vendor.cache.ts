@@ -17,11 +17,7 @@ export class VendorCache extends BaseCache {
 
   constructor(cacheName = 'VendorCache') {
     super(cacheName);
-    this.initializeClient().then(() => {
-      if (process.env.NODE_ENV !== 'test') {
-        console.info('VendorCache connected to Redis');
-      }
-    });
+    this.initializeClient();
 
     this.VENDOR_DETAIL_CACHE_TTL = convertTimeToSecondsAndMilliseconds('2h').seconds;
     this.LIST_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;

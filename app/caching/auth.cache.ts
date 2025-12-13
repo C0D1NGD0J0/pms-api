@@ -19,9 +19,7 @@ export class AuthCache extends BaseCache {
 
   constructor(cacheName = 'AuthCache') {
     super(cacheName);
-    this.initializeClient().then(() => {
-      console.info('AuthCache connected to Redis');
-    });
+    this.initializeClient();
     this.ACCESS_TOKEN_TTL = convertTimeToSecondsAndMilliseconds(envVariables.JWT.EXPIREIN).seconds;
     this.REFRESH_TOKEN_TTL = convertTimeToSecondsAndMilliseconds(
       envVariables.JWT.REFRESH.EXPIRESIN

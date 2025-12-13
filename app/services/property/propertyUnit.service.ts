@@ -87,8 +87,6 @@ export class PropertyUnitService {
     );
 
     this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
-
-    this.log.info('PropertyUnit service event listeners initialized');
   }
 
   private async handleLeaseActivated(payload: any): Promise<void> {

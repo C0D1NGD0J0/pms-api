@@ -780,7 +780,6 @@ export class ProfileService {
       this.handleLeaseActivated.bind(this)
     );
     this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
-    this.logger.info('Profile service event listeners initialized');
   }
 
   /**

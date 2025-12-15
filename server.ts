@@ -150,8 +150,7 @@ class Server {
 
     this.shuttingDown = true;
     this.log.info('Server shutting down...');
-    // clean up PID file first
-    this.pidManager.cleanup();
+    this.pidManager.killProcess();
 
     try {
       // close socket connections

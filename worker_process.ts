@@ -68,7 +68,7 @@ class WorkerProcess {
   private async shutdown(signal: string): Promise<void> {
     this.log.info(`🛑 ${signal} received, shutting down worker gracefully...`);
 
-    this.pidManager.cleanup();
+    this.pidManager.killProcess();
     setTimeout(() => {
       this.log.info('Force shutdown after timeout');
       process.exit(0);

@@ -42,6 +42,73 @@ export class PidManager {
   }
 
   /**
+   * Kill the process and clean up PID file
+   * Sends SIGTERM first for graceful shutdown, then SIGKILL if needed
+   */
+  killProcess(): void {
+    if (!fs.existsSync(this.pidFile)) {
+      this.log.info('No PID file found, nothing to kill');
+      return;
+    }
+
+    const pid = this.readPidFile();
+    if (pid <= 0) {
+      this.log.warn('Invalid PID in file, cleaning up');
+      this.cleanup();
+      return;
+    }
+
+    if (!this.isProcessRunning(pid)) {
+      this.log.info(`Process ${pid} is not running, cleaning up stale PID file`);
+      this.cleanup();
+      return;
+    }
+
+    try {
+      this.log.info(`Sending SIGTERM to process ${pid}...`);
+      process.kill(pid, 'SIGTERM');
+
+      // Wait a bit for graceful shutdown
+      const maxWait = 5000; // 5 seconds
+      const checkInterval = 100; // 100ms
+      let waited = 0;
+
+      const checkInterval_id = setInterval(() => {
+        waited += checkInterval;
+
+        if (!this.isProcessRunning(pid)) {
+          clearInterval(checkInterval_id);
+          this.log.info(`Process ${pid} terminated gracefully`);
+          this.cleanup();
+          return;
+        }
+
+        if (waited >= maxWait) {
+          clearInterval(checkInterval_id);
+          this.log.warn(`Process ${pid} did not terminate gracefully, sending SIGKILL...`);
+          try {
+            process.kill(pid, 'SIGKILL');
+            this.log.info(`Process ${pid} force killed`);
+          } catch (err: any) {
+            if (err.code !== 'ESRCH') {
+              this.log.error(`Failed to force kill process ${pid}:`, err);
+            }
+          }
+          this.cleanup();
+        }
+      }, checkInterval);
+    } catch (err: any) {
+      if (err.code === 'ESRCH') {
+        this.log.info(`Process ${pid} already terminated`);
+        this.cleanup();
+      } else {
+        this.log.error(`Failed to kill process ${pid}:`, err);
+        throw err;
+      }
+    }
+  }
+
+  /**
    * Clean up PID file on shutdown
    */
   cleanup(): void {

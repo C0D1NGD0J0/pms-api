@@ -6,8 +6,10 @@ import { Document, Types } from 'mongoose';
  */
 export enum LeaseStatus {
   PENDING_SIGNATURE = 'pending_signature',
+  DRAFT_RENEWAL = 'draft_renewal',
   TERMINATED = 'terminated',
   CANCELLED = 'cancelled',
+  RENEWED = 'renewed',
   EXPIRED = 'expired',
   ACTIVE = 'active',
   DRAFT = 'draft',
@@ -132,6 +134,11 @@ export interface ILease {
     | 'commercial-office'
     | 'commercial-retail'
     | 'short-term-rental';
+  autoSendInfo?: {
+    sent: boolean;
+    failedAt: Date;
+    failureReason: 'not_approved' | 'auto_send_disabled';
+  };
   pendingChanges?: IPendingLeaseChanges | null;
   approvalDetails?: ILeaseApprovalEntry[];
   signingMethod: SigningMethod | string;
@@ -142,8 +149,9 @@ export interface ILease {
   lastModifiedBy?: ILastModifiedBy[];
   tenantId: Types.ObjectId | string;
   renewalOptions?: IRenewalOptions;
+  internalNotes?: IInternalNote[];
   signatures?: ILeaseSignature[];
-  metadata?: Record<string, any>; // Store enriched data for lease generation
+  metadata?: Record<string, any>; // store enriched data for lease generation
   eSignature?: ILeaseESignature;
   terminationReason?: string;
   property: ILeaseProperty;
@@ -151,7 +159,6 @@ export interface ILease {
   legalTerms?: ILegalTerms;
   coTenants?: ICoTenant[];
   petPolicy?: IPetPolicy;
-  internalNotes?: string;
   leaseNumber: string;
   status: LeaseStatus;
   signedDate?: Date;
@@ -235,6 +242,7 @@ export interface ILease {
     | 'cooling'
   )[];
   pendingChanges?: IPendingLeaseChanges | null;
+  previousLeaseId?: Types.ObjectId | string;
   approvalDetails?: ILeaseApprovalEntry[];
   signingMethod: SigningMethod | string;
   approvalStatus?: LeaseApprovalStatus;
@@ -244,6 +252,7 @@ export interface ILease {
   lastModifiedBy?: ILastModifiedBy[];
   tenantId: Types.ObjectId | string;
   renewalOptions?: IRenewalOptions;
+  internalNotes?: IInternalNote[];
   requiresNotarization?: boolean;
   signatures?: ILeaseSignature[];
   metadata?: Record<string, any>; // Store enriched data for lease generation
@@ -254,7 +263,6 @@ export interface ILease {
   legalTerms?: ILegalTerms;
   coTenants?: ICoTenant[];
   petPolicy?: IPetPolicy;
-  internalNotes?: string;
   leaseNumber: string;
   status: LeaseStatus;
   signedDate?: Date;
@@ -729,6 +737,19 @@ export interface ILeaseApprovalEntry {
 }
 
 /**
+ * Renewal Options Interface
+ * Automatic renewal settings
+ */
+export interface IRenewalOptions {
+  daysBeforeExpiryToAutoSendSignature?: number;
+  daysBeforeExpiryToGenerateRenewal?: number;
+  enableAutoSendForSignature?: boolean;
+  renewalTermMonths?: number;
+  noticePeriodDays?: number;
+  autoRenew: boolean;
+}
+
+/**
  * E-Signature Request Data Interface
  * Used when sending lease for signature
  */
@@ -897,6 +918,17 @@ export interface IPetPolicy {
 }
 
 /**
+ * Internal Note Interface
+ * Audit trail for internal notes on a lease
+ */
+export interface IInternalNote {
+  authorId: Types.ObjectId | string;
+  timestamp: Date;
+  author: string;
+  note: string;
+}
+
+/**
  * Lease Activation Data Interface
  * Used when activating a lease
  */
@@ -904,16 +936,6 @@ export interface ILeaseActivationData {
   signedDate?: Date | string;
   moveInDate?: Date | string;
   notes?: string;
-}
-
-/**
- * Renewal Options Interface
- * Automatic renewal settings
- */
-export interface IRenewalOptions {
-  renewalTermMonths?: number;
-  noticePeriodDays?: number;
-  autoRenew: boolean;
 }
 
 /**

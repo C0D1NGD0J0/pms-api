@@ -41,6 +41,25 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       required: [true, 'Lease type is required'],
       index: true,
     },
+    previousLeaseId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Lease',
+      index: true,
+      required: false,
+    },
+    autoSendInfo: {
+      sent: {
+        type: Boolean,
+        default: false,
+      },
+      failureReason: {
+        type: String,
+        enum: ['not_approved', 'auto_send_disabled'],
+      },
+      failedAt: {
+        type: Date,
+      },
+    },
     templateType: {
       type: String,
       enum: [
@@ -267,6 +286,18 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         min: 1,
         default: 30,
       },
+      daysBeforeExpiryToGenerateRenewal: {
+        type: Number,
+        default: 14,
+      },
+      daysBeforeExpiryToAutoSendSignature: {
+        type: Number,
+        default: 7,
+      },
+      enableAutoSendForSignature: {
+        type: Boolean,
+        default: true,
+      },
     },
     leaseDocuments: [
       {
@@ -406,10 +437,30 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       type: String,
       trim: true,
     },
-    internalNotes: {
-      type: String,
-      trim: true,
-    },
+    internalNotes: [
+      {
+        note: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        author: {
+          type: String,
+          required: true,
+        },
+        authorId: {
+          type: Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+        timestamp: {
+          type: Date,
+          default: Date.now,
+          required: true,
+        },
+        _id: false,
+      },
+    ],
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',

@@ -121,6 +121,27 @@ export class LeaseController {
     });
   };
 
+  async renewLease(req: AppRequest, res: Response): Promise<void> {
+    const { cuid, luid } = req.params;
+    const renewalData = req.body;
+
+    if (!cuid || !luid) {
+      res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: 'Client ID and Lease ID are required for lease renewal',
+      });
+      return;
+    }
+
+    const result = await this.leaseService.renewLease(cuid, luid, renewalData, req.context);
+
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: result.data,
+      message: 'Lease renewal successfully initiated',
+    });
+  }
+
   uploadLeaseDocument = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
     this.log.info(`${cuid}, Uploading document for lease ${leaseId}`);

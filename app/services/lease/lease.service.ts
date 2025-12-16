@@ -1,4 +1,5 @@
 /* eslint-disable no-case-declarations */
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
@@ -10,13 +11,12 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { ESignatureQueue, PdfQueue } from '@queues/index';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { PdfGeneratorService, MediaUploadService } from '@services/index';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { ProcessedWebhookData } from '@services/esignature/boldSign.service';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import { PdfGeneratorService, MediaUploadService, UserService } from '@services/index';
 import { IPropertyDocument, IProfileWithUser, OwnershipType, ICronJob } from '@interfaces/index';
-import { NotificationPriorityEnum, NotificationTypeEnum } from '@interfaces/notification.interface';
 import {
   EventEmitterService,
   NotificationService,
@@ -29,6 +29,11 @@ import {
   BadRequestError,
   ForbiddenError,
 } from '@shared/customErrors';
+import {
+  NotificationPriorityEnum,
+  NotificationTypeEnum,
+  RecipientTypeEnum,
+} from '@interfaces/notification.interface';
 import {
   PROPERTY_APPROVAL_ROLES,
   determineTemplateType,
@@ -102,6 +107,7 @@ interface IConstructor {
   invitationDAO: InvitationDAO;
   pdfGeneratorQueue: PdfQueue;
   mailerService: MailService;
+  userService: UserService;
   propertyDAO: PropertyDAO;
   leaseCache: LeaseCache;
   profileDAO: ProfileDAO;
@@ -118,6 +124,7 @@ export class LeaseService {
   private readonly profileDAO: ProfileDAO;
   private readonly leaseCache: LeaseCache;
   private readonly propertyDAO: PropertyDAO;
+  private readonly userService: UserService;
   private readonly mailerService: MailService;
   private readonly pdfGeneratorQueue: PdfQueue;
   private readonly invitationDAO: InvitationDAO;
@@ -147,6 +154,7 @@ export class LeaseService {
     profileDAO,
     clientDAO,
     mailerService,
+    userService,
     leaseDAO,
     userDAO,
     leaseCache,
@@ -157,6 +165,7 @@ export class LeaseService {
     this.profileDAO = profileDAO;
     this.leaseCache = leaseCache;
     this.propertyDAO = propertyDAO;
+    this.userService = userService;
     this.mailerService = mailerService;
     this.pendingSenderInfo = new Map();
     this.invitationDAO = invitationDAO;
@@ -581,9 +590,18 @@ export class LeaseService {
         cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
       }
 
-      if (cleanUpdateData.internalNotes) {
-        cleanUpdateData.internalNotes = sanitizeHtml(cleanUpdateData.internalNotes);
-      }
+      // Handle internalNotes separately - will append as new note to array
+      // let noteToAdd = null;
+      // if (cleanUpdateData.internalNotes && typeof cleanUpdateData.internalNotes === 'string') {
+      //   noteToAdd = {
+      //     note: cleanUpdateData.internalNotes.trim(),
+      //     author: currentUser.fullname || 'Unknown',
+      //     authorId: currentUser.sub,
+      //     timestamp: new Date(),
+      //   };
+      //   // Remove from main update data
+      //   delete cleanUpdateData.internalNotes;
+      // }
 
       validateImmutableFields(cleanUpdateData);
       let result = null;
@@ -640,6 +658,25 @@ export class LeaseService {
             message: `Cannot update lease with status: ${lease.status}`,
           });
       }
+
+      // If there's a note to add, append it now after main update
+      // if (noteToAdd && result?.success) {
+      //   await this.leaseDAO.update(
+      //     { luid, cuid, deletedAt: null },
+      //     {
+      //       $push: { internalNotes: noteToAdd }
+      //     }
+      //   );
+
+      //   // Refetch the lease to include the new note in response
+      //   const updatedLease = await this.leaseDAO.findOne({
+      //     filter: { luid, cuid, deletedAt: null }
+      //   });
+
+      //   if (result.data && updatedLease) {
+      //     result.data = updatedLease;
+      //   }
+      // }
 
       return result
         ? result
@@ -1210,11 +1247,6 @@ export class LeaseService {
   async getSignatureDetails(cuid: string, leaseId: string): IPromiseReturnedData<any> {
     this.log.info(`Getting signature details for lease ${leaseId}`);
     throw new Error('getSignatureDetails not yet implemented');
-  }
-
-  async handleSignatureWebhook(event: any): IPromiseReturnedData<boolean> {
-    this.log.info('Handling signature webhook', { eventType: event.type });
-    throw new Error('handleSignatureWebhook not yet implemented');
   }
 
   /**
@@ -2729,25 +2761,313 @@ export class LeaseService {
   }
 
   // CRON JOBS
+  // getCronJobs(): ICronJob[] {
+  //   return [
+  //     {
+  //       name: 'process-auto-renewals',
+  //       schedule: '0 0 * * *', // daily at midnight UTC
+  //       handler: this.processAutoRenewals.bind(this),
+  //       enabled: true,
+  //       service: 'LeaseService',
+  //       description: 'Process automatic lease renewals for leases ending soon',
+  //       timeout: 600000, // 10 minutes
+  //     },
+  //     {
+  //       name: 'send-expiry-notices',
+  //       schedule: '0 9 * * *', // daily at 9 AM UTC
+  //       handler: this.sendExpiryNotices.bind(this),
+  //       enabled: true,
+  //       service: 'LeaseService',
+  //       description: 'Send expiry notices to tenants with leases ending in 30/60/90 days',
+  //       timeout: 600000, // 10 minutes
+  //     },
+  //     {
+  //       name: 'mark-expired-leases',
+  //       schedule: '0 1 * * *', // daily at 1 AM UTC
+  //       handler: this.markExpiredLeases.bind(this),
+  //       enabled: true,
+  //       service: 'LeaseService',
+  //       description: 'Mark leases as expired when end date has passed',
+  //       timeout: 300000, // 5 minutes
+  //     },
+  //   ];
+  // }
   getCronJobs(): ICronJob[] {
     return [
-      {
-        name: 'test-cron-job',
-        schedule: '*/2 * * * *', // Every 2 minutes for testing
-        handler: this.testCronHandler.bind(this),
-        enabled: true,
-        service: 'LeaseService',
-        description: 'Test cron job to verify system is working',
-        timeout: 30000, // 30 seconds
-      },
+      // {
+      //   name: 'process-auto-renewals',
+      //   schedule: '*/2 * * * *', // Every 2 minutes for testing
+      //   handler: this.processAutoRenewals.bind(this),
+      //   enabled: true,
+      //   service: 'LeaseService',
+      //   description: 'Process automatic lease renewals for leases ending soon',
+      //   timeout: 600000,
+      // },
+      // {
+      //   name: 'send-expiry-notices',
+      //   schedule: '*/2 * * * *', // Every 2 minutes for testing
+      //   handler: this.sendExpiryNotices.bind(this),
+      //   enabled: true,
+      //   service: 'LeaseService',
+      //   description: 'Send expiry notices to tenants with leases ending in 30/60/90 days',
+      //   timeout: 600000,
+      // },
+      // {
+      //   name: 'mark-expired-leases',
+      //   schedule: '*/2 * * * *', // Every 2 minutes for testing
+      //   handler: this.markExpiredLeases.bind(this),
+      //   enabled: true,
+      //   service: 'LeaseService',
+      //   description: 'Mark leases as expired when end date has passed',
+      //   timeout: 300000,
+      // },
     ];
   }
 
-  private async testCronHandler(): Promise<void> {
-    this.log.info('🎯 TEST CRON JOB EXECUTED!', {
-      timestamp: new Date().toISOString(),
-      service: 'LeaseService',
+  /**
+   * Create a renewal lease from an existing lease
+   * Creates a new lease with draft_renewal status that requires admin approval
+   */
+  async renewLease(
+    cuid: string,
+    luid: string,
+    renewalData: Partial<ILeaseFormData>,
+    ctx: IRequestContext | null = null
+  ): IPromiseReturnedData<ILeaseDocument> {
+    const userId = ctx?.currentuser.sub.toString() || 'system';
+    const userName = ctx?.currentuser?.fullname || 'System';
+    const userRole = ctx ? convertUserRoleToEnum(ctx.currentuser!.client.role) : null;
+
+    const isSystemCall = !ctx;
+
+    const existingLease = await this.leaseDAO.findFirst(
+      { luid, cuid, deletedAt: null },
+      {
+        populate: ['tenantInfo', 'propertyInfo', 'propertyUnitInfo'],
+      }
+    );
+
+    if (!existingLease) {
+      throw new InvalidRequestError({
+        message: t('lease.errors.notFound'),
+      });
+    }
+
+    if (!['active'].includes(existingLease.status)) {
+      throw new BadRequestError({
+        message: 'Only active or recently expired leases can be renewed',
+      });
+    }
+
+    const existingRenewal = await this.leaseDAO.findFirst({
+      previousLeaseId: existingLease._id,
+      cuid,
+      deletedAt: null,
+      status: { $in: ['draft_renewal', 'pending_signature', 'active'] },
     });
+
+    if (existingRenewal) {
+      if (isSystemCall) {
+        // for system calls (cron jobs), just return existing
+        return { data: existingRenewal, success: true };
+      }
+      throw new BadRequestError({
+        message: 'A renewal already exists for this lease',
+      });
+    }
+
+    const renewalTermMonths =
+      renewalData.renewalOptions?.renewalTermMonths ||
+      existingLease.renewalOptions?.renewalTermMonths ||
+      12;
+    const defaultStartDate = dayjs(existingLease.duration.endDate).add(1, 'day').toDate();
+    const defaultEndDate = dayjs(defaultStartDate).add(renewalTermMonths, 'month').toDate();
+
+    const cleanLease = existingLease.toObject();
+    delete cleanLease._id;
+    delete cleanLease.luid;
+    delete cleanLease.createdAt;
+    delete cleanLease.updatedAt;
+    delete cleanLease.__v;
+
+    const newLeaseData = {
+      ...cleanLease,
+      previousLeaseId: existingLease._id,
+      status: LeaseStatus.DRAFT_RENEWAL,
+      approvalStatus:
+        isSystemCall && existingLease.renewalOptions?.autoRenew ? 'pending' : 'approved',
+      duration: renewalData.duration || {
+        startDate: defaultStartDate,
+        endDate: defaultEndDate,
+        moveInDate: defaultStartDate,
+      },
+
+      fees: {
+        ...existingLease.fees,
+        ...renewalData.fees,
+      },
+
+      renewalOptions: renewalData.renewalOptions || existingLease.renewalOptions,
+      utilitiesIncluded: renewalData.utilitiesIncluded || existingLease.utilitiesIncluded,
+      petPolicy: renewalData.petPolicy || existingLease.petPolicy,
+      coTenants: renewalData.coTenants || existingLease.coTenants,
+      legalTerms: renewalData.legalTerms || existingLease.legalTerms,
+
+      // Copy existing notes and append new renewal note if provided
+      internalNotes: [
+        ...(existingLease.internalNotes || []),
+        ...(renewalData.internalNotes
+          ? [
+              {
+                note: renewalData.internalNotes,
+                author: userName,
+                authorId: userId,
+                timestamp: new Date(),
+              },
+            ]
+          : []),
+      ],
+
+      signatures: [],
+      eSignature: undefined,
+      signedDate: undefined,
+
+      createdBy: userId,
+      lastModifiedBy: [
+        {
+          action: 'created',
+          userId,
+          name: userName,
+          date: new Date(),
+        },
+      ],
+      approvalDetails: [
+        {
+          action: 'created',
+          timestamp: new Date(),
+          actor: isSystemCall ? 'system' : userId,
+          notes: isSystemCall ? 'Auto-renewal created by system' : 'Manual renewal created',
+        },
+      ],
+      pendingChanges: null,
+      cuid,
+    };
+
+    // For system-generated renewals, automatically approve if configured
+    const autoApprove = !ctx && existingLease.renewalOptions?.autoRenew;
+    if (autoApprove) {
+      newLeaseData.approvalStatus = 'approved';
+      newLeaseData.approvalDetails.push({
+        action: 'approved',
+        actor: 'system',
+        timestamp: new Date(),
+        notes: 'Auto-approved due to auto-renewal configuration',
+      });
+    }
+
+    const renewalLease = await this.leaseDAO.insert(newLeaseData);
+    this.log.info(`Created renewal lease: ${renewalLease.luid} from lease: ${luid}`);
+
+    this.emitterService.emit(EventTypes.LEASE_RENEWED, {
+      originalLeaseId: existingLease.luid,
+      renewalLeaseId: renewalLease.luid,
+      status: 'draft_renewal',
+      approvalStatus: renewalLease.approvalStatus,
+      startDate: renewalLease.duration.startDate,
+      endDate: renewalLease.duration.endDate,
+      monthlyRent: renewalLease.fees.monthlyRent,
+      tenantId: existingLease.tenantId.toString(),
+      propertyId: existingLease.property.id.toString(),
+      propertyUnitId: existingLease.property.unitId?.toString(),
+      cuid,
+    });
+
+    // Send in-app notification if manual renewal needs approval
+    if (renewalLease.approvalStatus === 'pending') {
+      try {
+        if (isSystemCall) {
+          // System renewal - notify the property manager/owner who created the original lease
+          if (existingLease.createdBy) {
+            await this.notificationService.createNotification(cuid, NotificationTypeEnum.LEASE, {
+              type: NotificationTypeEnum.LEASE,
+              cuid,
+              recipient: existingLease.createdBy.toString(),
+              recipientType: RecipientTypeEnum.INDIVIDUAL,
+              priority: NotificationPriorityEnum.HIGH,
+              title: 'Lease Renewal Pending Approval',
+              message: `Auto-renewal created for lease ${existingLease.leaseNumber} and requires your approval`,
+              metadata: {
+                leaseId: renewalLease.luid,
+                originalLeaseId: existingLease.luid,
+                renewalStartDate: renewalLease.duration.startDate,
+                renewalEndDate: renewalLease.duration.endDate,
+                monthlyRent: renewalLease.fees.monthlyRent,
+                isAutoRenewal: true,
+                actionRequired: true,
+                actionType: 'approve_renewal',
+              },
+            });
+          }
+        } else if (userRole === IUserRole.STAFF) {
+          // Staff created renewal - find and notify their supervisor
+          const supervisorId = await this.userService.getUserSupervisor(userId, cuid);
+
+          if (supervisorId) {
+            // Notify supervisor
+            await this.notificationService.createNotification(cuid, NotificationTypeEnum.LEASE, {
+              type: NotificationTypeEnum.LEASE,
+              cuid,
+              recipient: supervisorId,
+              recipientType: RecipientTypeEnum.INDIVIDUAL,
+              priority: NotificationPriorityEnum.HIGH,
+              title: 'Lease Renewal Pending Approval',
+              message: `${userName} created a renewal for lease ${existingLease.leaseNumber} that requires your approval`,
+              metadata: {
+                leaseId: renewalLease.luid,
+                originalLeaseId: existingLease.luid,
+                renewalStartDate: renewalLease.duration.startDate,
+                renewalEndDate: renewalLease.duration.endDate,
+                monthlyRent: renewalLease.fees.monthlyRent,
+                createdBy: userId,
+                createdByName: userName,
+                actionRequired: true,
+                actionType: 'approve_renewal',
+              },
+            });
+
+            // Confirmation to staff
+            await this.notificationService.createNotification(cuid, NotificationTypeEnum.LEASE, {
+              type: NotificationTypeEnum.LEASE,
+              cuid,
+              recipient: userId,
+              recipientType: RecipientTypeEnum.INDIVIDUAL,
+              priority: NotificationPriorityEnum.LOW,
+              title: 'Lease Renewal Submitted',
+              message: `Your renewal for lease ${existingLease.leaseNumber} has been submitted for approval`,
+              metadata: {
+                leaseId: renewalLease.luid,
+                originalLeaseId: existingLease.luid,
+                submittedTo: supervisorId,
+              },
+            });
+          } else {
+            // No supervisor found - log warning
+            this.log.warn('Staff member has no supervisor assigned for renewal approval', {
+              userId,
+              userName,
+              leaseId: renewalLease.luid,
+              cuid,
+            });
+          }
+        }
+        // Manager/Admin renewals don't need approval notifications (they can approve immediately)
+      } catch (error) {
+        this.log.error('Failed to send renewal notifications', { error, leaseId: luid });
+        // Don't fail the renewal if notification fails
+      }
+    }
+
+    return { data: renewalLease, success: true };
   }
 
   /**

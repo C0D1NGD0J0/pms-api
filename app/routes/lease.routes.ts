@@ -278,4 +278,17 @@ router.get(
   })
 );
 
+router.post(
+  '/:cuid/:luid/lease_renewal',
+  requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.renewLease,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.renewLease(req, res);
+  })
+);
+
 export default router;

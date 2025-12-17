@@ -1,3 +1,4 @@
+import { RedisService } from '@database/index';
 import { FilteredUserTableData } from '@interfaces/user.interface';
 import { convertTimeToSecondsAndMilliseconds } from '@utils/index';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
@@ -15,22 +16,11 @@ export class UserCache extends BaseCache {
   private readonly USER_DETAIL_CACHE_TTL: number;
   private readonly LIST_CACHE_TTL: number;
 
-  constructor(cacheName = 'UserCache') {
-    super(cacheName);
-    this.initializeClient();
+  constructor({ redisService }: { redisService: RedisService }) {
+    super({ redisService });
 
     this.USER_DETAIL_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;
     this.LIST_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;
-  }
-
-  private async initializeClient() {
-    try {
-      if (!this.client.isOpen) {
-        await this.client.connect();
-      }
-    } catch (error) {
-      this.log.error('Error connecting to Redis:', error);
-    }
   }
 
   /**

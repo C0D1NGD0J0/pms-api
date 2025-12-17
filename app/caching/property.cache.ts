@@ -1,4 +1,5 @@
 import { FilterQuery } from 'mongoose';
+import { RedisService } from '@database/index';
 import { convertTimeToSecondsAndMilliseconds } from '@utils/index';
 import { IPropertyDocument, IProperty } from '@interfaces/property.interface';
 import { ISuccessReturnData, IPaginationQuery } from '@interfaces/utils.interface';
@@ -14,22 +15,11 @@ export class PropertyCache extends BaseCache {
   private readonly PROPERTY_CACHE_TTL: number;
   private readonly LIST_CACHE_TTL: number;
 
-  constructor(cacheName = 'PropertyCache') {
-    super(cacheName);
-    this.initializeClient();
+  constructor({ redisService }: { redisService: RedisService }) {
+    super({ redisService });
 
     this.PROPERTY_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;
     this.LIST_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;
-  }
-
-  private async initializeClient() {
-    try {
-      if (!this.client.isOpen) {
-        await this.client.connect();
-      }
-    } catch (error) {
-      this.log.error('Error connecting to Redis:', error);
-    }
   }
 
   /**

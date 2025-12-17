@@ -1,4 +1,5 @@
 import { envVariables } from '@shared/config';
+import { RedisService } from '@database/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
 import { convertTimeToSecondsAndMilliseconds } from '@utils/index';
@@ -17,9 +18,8 @@ export class AuthCache extends BaseCache {
   private readonly REFRESH_TOKEN_TTL: number;
   private readonly USER_CACHE_TTL: number;
 
-  constructor(cacheName = 'AuthCache') {
-    super(cacheName);
-    this.initializeClient();
+  constructor({ redisService }: { redisService: RedisService }) {
+    super({ redisService });
     this.ACCESS_TOKEN_TTL = convertTimeToSecondsAndMilliseconds(envVariables.JWT.EXPIREIN).seconds;
     this.REFRESH_TOKEN_TTL = convertTimeToSecondsAndMilliseconds(
       envVariables.JWT.REFRESH.EXPIRESIN
@@ -40,16 +40,6 @@ export class AuthCache extends BaseCache {
   private isValidJwtFormat(token: string): boolean {
     const jwtRegex = /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$/;
     return jwtRegex.test(token);
-  }
-
-  private async initializeClient() {
-    try {
-      if (!this.client.isOpen) {
-        await this.client.connect();
-      }
-    } catch (error) {
-      this.log.error('Error connecting to Redis:', error);
-    }
   }
 
   /**

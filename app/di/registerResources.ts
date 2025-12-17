@@ -168,31 +168,12 @@ const DAOResources = {
 };
 
 const CacheResources = {
-  // Lazy-loaded cache services to reduce Redis connections and memory usage
-  authCache: asFunction(() => {
-    // Only initialize when authentication is actually used
-    return new AuthCache();
-  }).singleton(),
-
-  propertyCache: asFunction(() => {
-    return new PropertyCache();
-  }).singleton(),
-
-  leaseCache: asFunction(() => {
-    return new LeaseCache();
-  }).singleton(),
-
-  eventsRegistry: asFunction(() => {
-    return new EventsRegistryCache();
-  }).singleton(),
-
-  userCache: asFunction(() => {
-    return new UserCache();
-  }).singleton(),
-
-  vendorCache: asFunction(() => {
-    return new VendorCache();
-  }).singleton(),
+  authCache: asClass(AuthCache).singleton(),
+  propertyCache: asClass(PropertyCache).singleton(),
+  leaseCache: asClass(LeaseCache).singleton(),
+  eventsRegistry: asClass(EventsRegistryCache).singleton(),
+  userCache: asClass(UserCache).singleton(),
+  vendorCache: asClass(VendorCache).singleton(),
 };
 
 const WorkerResources = {
@@ -237,9 +218,7 @@ const UtilsResources = {
   diskStorage: asClass(DiskStorage).singleton(),
   propertyCsvService: asClass(PropertyCsvProcessor).singleton(),
 
-  queueFactory: asFunction(() => {
-    return QueueFactory.getInstance();
-  }).singleton(),
+  queueFactory: asClass(QueueFactory).singleton(),
 };
 
 const SocketIOResources = {
@@ -249,69 +228,15 @@ const SocketIOResources = {
 export const initQueues = (container: AwilixContainer) => {
   // Always initialize ClamScanner as it's essential for file security
   container.resolve('clamScanner');
-  // Only initialize queues in development
-  if (process.env.NODE_ENV === 'development') {
-    console.log('🔧 Initializing all queues and workers for development environment...');
 
-    // Initialize all queues
-    const queueNames = [
-      'documentProcessingQueue',
-      'emailQueue',
-      'eventBusQueue',
-      'propertyQueue',
-      'propertyUnitQueue',
-      'uploadQueue',
-      'invitationQueue',
-      'eSignatureQueue',
-      'pdfGeneratorQueue',
-    ];
+  // Queues and workers are now lazily initialized via QueueFactory when first accessed
+  // This reduces startup time and memory footprint
+  const processType = process.env.PROCESS_TYPE || 'api';
+  const environment = process.env.NODE_ENV || 'development';
 
-    // Initialize all workers
-    const workerNames = [
-      'documentProcessingWorker',
-      'emailWorker',
-      'propertyWorker',
-      'propertyUnitWorker',
-      'uploadWorker',
-      'invitationWorker',
-      'eSignatureWorker',
-      'pdfGeneratorWorker',
-    ];
-
-    // In API process: only initialize queues (for enqueueing jobs)
-    // In worker process: initialize both queues and workers (for processing jobs)
-    if (process.env.PROCESS_TYPE === 'worker') {
-      // Worker process: initialize both queues and workers
-      queueNames.forEach((queueName) => {
-        try {
-          container.resolve(queueName);
-        } catch (error) {
-          console.error(`Failed to initialize queue ${queueName}:`, error);
-        }
-      });
-
-      workerNames.forEach((workerName) => {
-        try {
-          container.resolve(workerName);
-        } catch (error) {
-          console.error(`Failed to initialize worker ${workerName}:`, error);
-        }
-      });
-      console.log('✅ All queues and workers initialized successfully');
-    } else {
-      // API process: only initialize queues (no workers needed)
-      queueNames.forEach((queueName) => {
-        try {
-          container.resolve(queueName);
-        } catch (error) {
-          console.error(`Failed to initialize queue ${queueName}:`, error);
-        }
-      });
-      console.log('✅ All queues initialized successfully (workers skipped in API process)');
-    }
-  } else {
-    console.log('💡 Queues will be initialized on-demand when first accessed');
-  }
+  console.log(
+    `💡 ${processType.toUpperCase()} process (${environment}): Queues will be initialized on-demand via QueueFactory`
+  );
 };
 
 export const registerResources = {

@@ -8,27 +8,23 @@
   },
   "scripts": {
     "build": "rm -rf ./dist && tsc -p ./tsconfig.build.json && tsc-alias && mkdir -p dist/app/templates/lease && cp -r app/templates/lease/* dist/app/templates/lease/",
-
     "prettier:check": "prettier --check './app/**/*.{ts,json,js}' './tests/**/*.{ts,json,js}'",
     "prettier:write": "prettier --write './app/**/*.{ts,json,js}' './tests/**/*.{ts,json,js}'",
     "lint:fix": "eslint './app/**/*.{ts,js}' './tests/**/*.{ts,js}' --fix",
     "lint": "eslint './app/**/*.{ts,js}' './tests/**/*.{ts,js}'",
     "prepare": "husky",
-
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:worker\" | ./node_modules/.bin/bunyan",
     "dev:api": "nodemon --exec 'node --inspect=9229 --expose-gc -r ts-node/register' server.ts",
     "dev:worker": "nodemon --exec 'node --inspect=9230 --expose-gc -r ts-node/register' worker_process.ts",
     "start:api": "node dist/server.js",
     "start:worker": "node dist/worker.js",
     "start": "node dist/server.js",
-
     "test": "cross-env NODE_ENV=test jest",
     "test:watch": "cross-env NODE_ENV=test jest --watch",
     "test:coverage": "cross-env NODE_ENV=test jest --coverage",
     "test:unit": "cross-env NODE_ENV=test jest --testPathPattern=\"tests/unit/${npm_config_path:-}\"",
     "test:api": "cross-env NODE_ENV=test jest --testPathPattern=\"tests/api/${npm_config_path:-}\"",
     "test:routes": "cross-env NODE_ENV=test jest --config jest.config.routes.ts",
-
     "seed:db": "ts-node -r tsconfig-paths/register scripts/seeds/seed-database.ts",
     "seed:clean": "ts-node -r tsconfig-paths/register scripts/seeds/seed-database.ts --clean"
   },
@@ -57,7 +53,6 @@
     "better-sse": "^0.15.1",
     "boldsign": "^3.0.0",
     "bull": "^4.16.5",
-    "bullmq": "^5.41.8",
     "bunyan": "^1.8.15",
     "clamscan": "^2.4.0",
     "colors": "^1.4.0",
@@ -83,6 +78,7 @@
     "i18next": "^25.2.1",
     "i18next-fs-backend": "^2.6.0",
     "i18next-http-middleware": "^3.7.4",
+    "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",
     "jwt-decode": "^4.0.0",
     "libphonenumber-js": "^1.12.6",

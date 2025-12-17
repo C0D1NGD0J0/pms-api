@@ -9,8 +9,10 @@ import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import express, { Application } from 'express';
 import { PidManager } from '@utils/pid-manager';
+import { initQueues } from '@di/registerResources';
 import { Server as SocketIOServer } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
+import { EventListenerSetup } from '@di/eventListenerSetup';
 import { DatabaseService, Environments } from '@database/index';
 
 (global as any).rootDir = __dirname;
@@ -52,6 +54,8 @@ class Server {
     this.pidManager.check();
 
     await this.dbService.connect();
+    initQueues(container);
+    EventListenerSetup.registerQueueListeners(container);
     this.app.initConfig();
     await this.startServers(this.expApp);
     this.initialized = true;
@@ -152,6 +156,12 @@ class Server {
     this.log.info('Server shutting down...');
     this.pidManager.killProcess();
 
+    // Set a timeout to force exit if graceful shutdown takes too long
+    const shutdownTimeout = setTimeout(() => {
+      this.log.warn('Shutdown timeout reached, forcing exit...');
+      process.exit(exitCode);
+    }, 10000); // 10 seconds timeout
+
     try {
       // close socket connections
       if (container.hasRegistration('ioServer')) {
@@ -194,11 +204,15 @@ class Server {
       // close database connection last
       await this.dbService.disconnect();
 
+      clearTimeout(shutdownTimeout);
+      this.log.info('Graceful shutdown completed');
+
       if (exitCode !== 0) {
         this.log.info(`Exiting with code ${exitCode}`);
         process.exit(exitCode);
       }
     } catch (error) {
+      clearTimeout(shutdownTimeout);
       this.log.error('Error during shutdown:', error);
       process.exit(1);
     }

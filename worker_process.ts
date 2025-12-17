@@ -1,6 +1,8 @@
 import { container } from '@di/index';
 import { createLogger } from '@utils/helpers';
 import { PidManager } from '@utils/pid-manager';
+import { initQueues } from '@di/registerResources';
+import { EventListenerSetup } from '@di/eventListenerSetup';
 
 process.env.PROCESS_TYPE = 'worker';
 
@@ -30,16 +32,10 @@ class WorkerProcess {
 
       const { dbService } = container.cradle;
       await dbService.connect();
-      container.resolve('cronService');
+      initQueues(container);
+      EventListenerSetup.registerQueueListeners(container);
 
-      // Resolve queues - they'll auto-start processing in worker mode
-      this.queueNames.forEach((queueName) => {
-        try {
-          container.resolve(queueName);
-        } catch (error: any) {
-          this.log.warn(`⚠ ${queueName} failed: ${error.message}`);
-        }
-      });
+      container.resolve('cronService');
       this.logRedisConnectionCount();
       this.registerShutdownHandlers();
     } catch (error) {

@@ -10,12 +10,12 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
-import { serverAdapter } from '@queues/index';
 import { envVariables } from '@shared/config';
 import sanitizer from 'perfect-express-sanitizer';
 import mongoSanitize from 'express-mongo-sanitize';
 import { httpStatusCodes, createLogger } from '@utils/index';
 import { DatabaseService, RedisService } from '@database/index';
+import { initBullBoardAdapter, serverAdapter } from '@queues/index';
 import express, { Application, urlencoded, Response, Request } from 'express';
 import {
   errorHandlerMiddleware,
@@ -43,6 +43,10 @@ export class App implements IAppSetup {
   initConfig = (): void => {
     this.securityMiddleware(this.expApp);
     this.standardMiddleware(this.expApp);
+    // Initialize Bull Board adapter before routes (for lazy-loaded queues)
+    if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
+      initBullBoardAdapter();
+    }
     this.routes(this.expApp);
     this.expApp.use(errorHandlerMiddleware);
   };

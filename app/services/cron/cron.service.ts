@@ -1,11 +1,12 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { CronQueue } from '@queues/cron.queue';
+import { QueueFactory } from '@services/queue';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 
 interface IConstructor {
+  queueFactory: QueueFactory;
   notificationService?: any;
-  cronQueue: CronQueue;
   // Services will be injected here
   leaseService?: any;
   // Add more as needed
@@ -19,12 +20,12 @@ interface IConstructor {
  */
 export class CronService {
   private log: Logger;
-  private cronQueue: CronQueue;
+  private queueFactory: QueueFactory;
   private cronJobs: Map<string, ICronJob> = new Map();
 
-  constructor({ cronQueue, leaseService, notificationService }: IConstructor) {
+  constructor({ queueFactory, leaseService, notificationService }: IConstructor) {
     this.log = createLogger('CronService');
-    this.cronQueue = cronQueue;
+    this.queueFactory = queueFactory;
 
     // collects cron jobs from all services
     const services: ICronProvider[] = [
@@ -85,7 +86,8 @@ export class CronService {
   }
 
   private scheduleCronJob(cronJob: ICronJob): void {
-    this.cronQueue.addJobToQueue(
+    const cronQueue = this.queueFactory.getQueue('cronQueue') as CronQueue;
+    cronQueue.addJobToQueue(
       cronJob.name,
       {
         jobName: cronJob.name,
@@ -143,17 +145,19 @@ export class CronService {
     }
 
     job.enabled = false;
-    await this.cronQueue.removeRepeatable(jobName, job.schedule);
+    const cronQueue = this.queueFactory.getQueue('cronQueue') as CronQueue;
+    await cronQueue.removeRepeatable(jobName, job.schedule);
     this.log.info(`Disabled cron job: ${jobName}`);
   }
 
   async getNextExecutions(): Promise<Array<{ job: string; nextRun: Date }>> {
     const executions: Array<{ job: string; nextRun: Date }> = [];
+    const cronQueue = this.queueFactory.getQueue('cronQueue') as CronQueue;
 
     for (const [jobName, job] of this.cronJobs.entries()) {
       if (job.enabled) {
         // get next run time from Bull queue
-        const repeatableJobs = await this.cronQueue.getRepeatableJobs();
+        const repeatableJobs = await cronQueue.getRepeatableJobs();
         const jobInfo = repeatableJobs.find((j) => j.id === `cron:${jobName}`);
 
         if (jobInfo?.next) {

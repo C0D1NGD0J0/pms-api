@@ -8,6 +8,7 @@ import { LeaseCache } from '@caching/index';
 import { MailService } from '@mailer/index';
 import { envVariables } from '@shared/config';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { QueueFactory } from '@services/queue';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { ESignatureQueue, PdfQueue } from '@queues/index';
 import { IUserRole } from '@shared/constants/roles.constants';
@@ -103,9 +104,8 @@ interface IConstructor {
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   boldSignService: BoldSignService;
-  eSignatureQueue: ESignatureQueue;
   invitationDAO: InvitationDAO;
-  pdfGeneratorQueue: PdfQueue;
+  queueFactory: QueueFactory;
   mailerService: MailService;
   userService: UserService;
   propertyDAO: PropertyDAO;
@@ -126,10 +126,9 @@ export class LeaseService {
   private readonly propertyDAO: PropertyDAO;
   private readonly userService: UserService;
   private readonly mailerService: MailService;
-  private readonly pdfGeneratorQueue: PdfQueue;
+  private readonly queueFactory: QueueFactory;
   private readonly invitationDAO: InvitationDAO;
   private readonly boldSignService: BoldSignService;
-  private readonly esignatureQueue: ESignatureQueue;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
   private readonly invitationService: InvitationService;
@@ -143,13 +142,12 @@ export class LeaseService {
     notificationService,
     pdfGeneratorService,
     mediaUploadService,
-    pdfGeneratorQueue,
     invitationService,
-    eSignatureQueue,
     emitterService,
     invitationDAO,
     propertyUnitDAO,
     boldSignService,
+    queueFactory,
     propertyDAO,
     profileDAO,
     clientDAO,
@@ -166,16 +164,15 @@ export class LeaseService {
     this.leaseCache = leaseCache;
     this.propertyDAO = propertyDAO;
     this.userService = userService;
+    this.queueFactory = queueFactory;
     this.mailerService = mailerService;
     this.pendingSenderInfo = new Map();
     this.invitationDAO = invitationDAO;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
     this.boldSignService = boldSignService;
-    this.esignatureQueue = eSignatureQueue;
     this.log = createLogger('LeaseService');
     this.invitationService = invitationService;
-    this.pdfGeneratorQueue = pdfGeneratorQueue;
     this.mediaUploadService = mediaUploadService;
     this.pdfGeneratorService = pdfGeneratorService;
     this.notificationService = notificationService;
@@ -747,7 +744,8 @@ export class LeaseService {
       (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
     );
     if (!leasePDF || !leasePDF.key) {
-      await this.pdfGeneratorQueue.addToPdfQueue({
+      const pdfGeneratorQueue = this.queueFactory.getQueue('pdfGeneratorQueue') as PdfQueue;
+      await pdfGeneratorQueue.addToPdfQueue({
         resource: {
           resourceId: lease._id.toString(),
           resourceName: 'lease',
@@ -771,7 +769,8 @@ export class LeaseService {
       };
     }
 
-    const job = await this.esignatureQueue.addToESignatureRequestQueue({
+    const eSignatureQueue = this.queueFactory.getQueue('eSignatureQueue') as ESignatureQueue;
+    const job = await eSignatureQueue.addToESignatureRequestQueue({
       resource: {
         resourceId: lease._id.toString(),
         resourceName: 'lease',
@@ -1100,7 +1099,8 @@ export class LeaseService {
         throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
       }
 
-      const job = await this.pdfGeneratorQueue.addToPdfQueue({
+      const pdfGeneratorQueue = this.queueFactory.getQueue('pdfGeneratorQueue') as PdfQueue;
+      const job = await pdfGeneratorQueue.addToPdfQueue({
         resource: {
           resourceId: leaseId,
           resourceName: 'lease',
@@ -1960,7 +1960,8 @@ export class LeaseService {
       // Re-queue e-signature job now that PDF is ready
       this.log.info('Re-queueing e-signature job after PDF generation', { leaseId, s3Key });
 
-      await this.esignatureQueue.addToESignatureRequestQueue({
+      const eSignatureQueue = this.queueFactory.getQueue('eSignatureQueue') as ESignatureQueue;
+      await eSignatureQueue.addToESignatureRequestQueue({
         resource: {
           resourceId: leaseId,
           resourceName: 'lease',
@@ -2972,7 +2973,7 @@ export class LeaseService {
       originalLeaseId: existingLease.luid,
       renewalLeaseId: renewalLease.luid,
       status: 'draft_renewal',
-      approvalStatus: renewalLease.approvalStatus,
+      approvalStatus: renewalLease.approvalStatus || 'pending',
       startDate: renewalLease.duration.startDate,
       endDate: renewalLease.duration.endDate,
       monthlyRent: renewalLease.fees.monthlyRent,

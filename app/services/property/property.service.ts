@@ -2,10 +2,11 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import sanitizeHtml from 'sanitize-html';
 import { FilterQuery, Types } from 'mongoose';
+import { PropertyQueue } from '@queues/index';
 import { PropertyCache } from '@caching/index';
+import { QueueFactory } from '@services/queue';
 import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
-import { PropertyQueue, UploadQueue } from '@queues/index';
 import { NotificationService } from '@services/notification';
 import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
@@ -68,8 +69,7 @@ interface IConstructor {
   geoCoderService: GeoCoderService;
   propertyUnitDAO: PropertyUnitDAO;
   propertyCache: PropertyCache;
-  propertyQueue: PropertyQueue;
-  uploadQueue: UploadQueue;
+  queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
@@ -79,12 +79,11 @@ interface IConstructor {
 
 export class PropertyService {
   private readonly log: Logger;
-  private uploadQueue: UploadQueue;
+  private readonly queueFactory: QueueFactory;
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
-  private readonly propertyQueue: PropertyQueue;
   private readonly propertyCache: PropertyCache;
   private readonly geoCoderService: GeoCoderService;
   private readonly emitterService: EventEmitterService;
@@ -99,10 +98,9 @@ export class PropertyService {
     profileDAO,
     propertyDAO,
     propertyUnitDAO,
-    uploadQueue,
+    queueFactory,
     propertyCache,
     emitterService,
-    propertyQueue,
     geoCoderService,
     propertyCsvProcessor,
     mediaUploadService,
@@ -114,8 +112,7 @@ export class PropertyService {
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
     this.propertyUnitDAO = propertyUnitDAO;
-    this.uploadQueue = uploadQueue;
-    this.propertyQueue = propertyQueue;
+    this.queueFactory = queueFactory;
     this.propertyCache = propertyCache;
     this.emitterService = emitterService;
     this.geoCoderService = geoCoderService;
@@ -540,7 +537,8 @@ export class PropertyService {
       clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
     };
 
-    const job = await this.propertyQueue.addCsvImportJob(jobData);
+    const propertyQueue = this.queueFactory.getQueue('propertyQueue') as PropertyQueue;
+    const job = await propertyQueue.addCsvImportJob(jobData);
     return {
       success: true,
       data: { processId: job.id },
@@ -606,7 +604,8 @@ export class PropertyService {
       csvFilePath: csvFile.path,
       clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
     };
-    const job = await this.propertyQueue.addCsvValidationJob(jobData);
+    const propertyQueue = this.queueFactory.getQueue('propertyQueue') as PropertyQueue;
+    const job = await propertyQueue.addCsvValidationJob(jobData);
     return {
       success: true,
       data: { processId: job.id },

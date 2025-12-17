@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
+import { QueueFactory } from '@services/queue';
 import { ProfileService } from '@services/profile';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { MailType } from '@interfaces/utils.interface';
@@ -36,12 +37,11 @@ import {
 
 interface IConstructor {
   emitterService: EventEmitterService;
-  invitationQueue: InvitationQueue;
   profileService: ProfileService;
   invitationDAO: InvitationDAO;
   vendorService: VendorService;
+  queueFactory: QueueFactory;
   userService: UserService;
-  emailQueue: EmailQueue;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
@@ -51,11 +51,10 @@ interface IConstructor {
 export class InvitationService {
   private readonly log: Logger;
   private readonly invitationDAO: InvitationDAO;
-  private readonly emailQueue: EmailQueue;
+  private readonly queueFactory: QueueFactory;
   private readonly userDAO: UserDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
-  private readonly invitationQueue: InvitationQueue;
   private readonly emitterService: EventEmitterService;
   private readonly profileService: ProfileService;
   private readonly vendorService: VendorService;
@@ -64,11 +63,10 @@ export class InvitationService {
 
   constructor({
     invitationDAO,
-    emailQueue,
+    queueFactory,
     userDAO,
     profileDAO,
     clientDAO,
-    invitationQueue,
     emitterService,
     profileService,
     vendorService,
@@ -77,11 +75,10 @@ export class InvitationService {
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
-    this.emailQueue = emailQueue;
+    this.queueFactory = queueFactory;
     this.profileDAO = profileDAO;
     this.invitationDAO = invitationDAO;
     this.emitterService = emitterService;
-    this.invitationQueue = invitationQueue;
     this.profileService = profileService;
     this.vendorService = vendorService;
     this.userService = userService;
@@ -172,7 +169,8 @@ export class InvitationService {
           },
         };
 
-        this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
+        const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
+        emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
           ...emailData,
           invitationId: invitation._id.toString(),
         } as any);
@@ -605,7 +603,8 @@ export class InvitationService {
         await this.invitationDAO.incrementReminderCount(data.iuid, invitation.clientId.toString());
       }
 
-      this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
+      const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
+      emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
         ...emailData,
         invitationId: invitation._id.toString(),
       } as any);
@@ -723,7 +722,8 @@ export class InvitationService {
         clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
       };
 
-      const job = await this.invitationQueue.addCsvValidationJob(jobData);
+      const invitationQueue = this.queueFactory.getQueue('invitationQueue') as InvitationQueue;
+      const job = await invitationQueue.addCsvValidationJob(jobData);
 
       return {
         success: true,
@@ -767,7 +767,8 @@ export class InvitationService {
         },
       };
 
-      const job = await this.invitationQueue.addCsvBulkUserValidationJob(jobData);
+      const invitationQueue = this.queueFactory.getQueue('invitationQueue') as InvitationQueue;
+      const job = await invitationQueue.addCsvBulkUserValidationJob(jobData);
 
       return {
         success: true,
@@ -804,7 +805,8 @@ export class InvitationService {
         clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
       };
 
-      const job = await this.invitationQueue.addCsvImportJob(jobData);
+      const invitationQueue = this.queueFactory.getQueue('invitationQueue') as InvitationQueue;
+      const job = await invitationQueue.addCsvImportJob(jobData);
 
       return {
         success: true,
@@ -846,7 +848,8 @@ export class InvitationService {
         },
       };
 
-      const job = await this.invitationQueue.addCsvBulkUserImportJob(jobData);
+      const invitationQueue = this.queueFactory.getQueue('invitationQueue') as InvitationQueue;
+      const job = await invitationQueue.addCsvBulkUserImportJob(jobData);
 
       return {
         success: true,

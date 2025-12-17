@@ -1,7 +1,7 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
-import { PropertyQueue } from '@queues/property.queue';
+import { QueueFactory } from '@services/queue';
 import { PropertyCache } from '@caching/property.cache';
 import { PropertyUnitCsvProcessor } from '@services/csv';
 import { EventTypes } from '@interfaces/events.interface';
@@ -27,11 +27,10 @@ import {
 
 interface IConstructor {
   unitNumberingService: UnitNumberingService;
-  propertyUnitQueue: PropertyUnitQueue;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   propertyCache: PropertyCache;
-  propertyQueue: PropertyQueue;
+  queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
@@ -48,8 +47,7 @@ export class PropertyUnitService {
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
-  private readonly propertyQueue: PropertyQueue;
-  private readonly propertyUnitQueue: PropertyUnitQueue;
+  private readonly queueFactory: QueueFactory;
   private readonly propertyCache: PropertyCache;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
@@ -60,8 +58,7 @@ export class PropertyUnitService {
     profileDAO,
     propertyDAO,
     propertyUnitDAO,
-    propertyQueue,
-    propertyUnitQueue,
+    queueFactory,
     propertyCache,
     emitterService,
     unitNumberingService,
@@ -70,10 +67,9 @@ export class PropertyUnitService {
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
     this.propertyCache = propertyCache;
-    this.propertyQueue = propertyQueue;
+    this.queueFactory = queueFactory;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
-    this.propertyUnitQueue = propertyUnitQueue;
     this.unitNumberingService = unitNumberingService;
     this.log = createLogger('PropertyUnitService');
 
@@ -885,7 +881,8 @@ export class PropertyUnitService {
   }
 
   private async createUnitsViaQueue(cxt: IRequestContext, data: BatchUnitData, userId: string) {
-    const jobId = await this.propertyUnitQueue.addUnitBatchCreationJob({
+    const propertyUnitQueue = this.queueFactory.getQueue('propertyUnitQueue') as PropertyUnitQueue;
+    const jobId = await propertyUnitQueue.addUnitBatchCreationJob({
       units: data.units,
       pid: data.pid,
       cuid: data.cuid,

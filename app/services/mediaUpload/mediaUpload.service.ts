@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import Logger from 'bunyan';
+import { QueueFactory } from '@services/queue';
 import { UploadQueue } from '@queues/upload.queue';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { S3Service } from '@services/fileUpload/awsS3';
@@ -21,19 +22,19 @@ interface MediaOperationResult {
 
 interface IConstructor {
   assetService: AssetService;
-  uploadQueue: UploadQueue;
+  queueFactory: QueueFactory;
   s3Service: S3Service;
 }
 
 export class MediaUploadService {
   private readonly assetService: AssetService;
-  private readonly uploadQueue: UploadQueue;
+  private readonly queueFactory: QueueFactory;
   private readonly s3Service: S3Service;
   private readonly logger: Logger;
 
-  constructor({ assetService, uploadQueue, s3Service }: IConstructor) {
+  constructor({ assetService, queueFactory, s3Service }: IConstructor) {
     this.assetService = assetService;
-    this.uploadQueue = uploadQueue;
+    this.queueFactory = queueFactory;
     this.s3Service = s3Service;
     this.logger = createLogger('MediaUploadService');
   }
@@ -75,7 +76,8 @@ export class MediaUploadService {
 
       for (const [resourceKey, { resourceInfo, fileGroup }] of Object.entries(groupedFiles)) {
         if (fileGroup.length > 0) {
-          this.uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
+          const uploadQueue = this.queueFactory.getQueue('uploadQueue') as UploadQueue;
+          uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
             resource: resourceInfo,
             files: fileGroup,
           });
@@ -144,7 +146,8 @@ export class MediaUploadService {
     newAvatar?: { key?: string }
   ): Promise<void> {
     if (currentAvatar?.key && (!newAvatar || currentAvatar.key !== newAvatar.key)) {
-      this.uploadQueue.addToRemovalQueue(JOB_NAME.MEDIA_REMOVAL_JOB, {
+      const uploadQueue = this.queueFactory.getQueue('uploadQueue') as UploadQueue;
+      uploadQueue.addToRemovalQueue(JOB_NAME.MEDIA_REMOVAL_JOB, {
         data: [currentAvatar.key],
       });
       this.logger.info('Queued old avatar for deletion', {
@@ -191,7 +194,8 @@ export class MediaUploadService {
 
     // Only queue S3 deletion if hardDelete is true
     if (keysToDelete.length > 0 && hardDelete) {
-      this.uploadQueue.addToRemovalQueue(JOB_NAME.MEDIA_REMOVAL_JOB, {
+      const uploadQueue = this.queueFactory.getQueue('uploadQueue') as UploadQueue;
+      uploadQueue.addToRemovalQueue(JOB_NAME.MEDIA_REMOVAL_JOB, {
         data: keysToDelete,
       });
       this.logger.info(`Hard deleted ${keysToDelete.length} files from S3`);
@@ -390,7 +394,8 @@ export class MediaUploadService {
       // Queue upload using existing logic
       for (const [resourceKey, { resourceInfo, fileGroup }] of Object.entries(groupedFiles)) {
         if (fileGroup.length > 0) {
-          this.uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
+          const uploadQueue = this.queueFactory.getQueue('uploadQueue') as UploadQueue;
+          uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
             resource: resourceInfo,
             files: fileGroup,
           });

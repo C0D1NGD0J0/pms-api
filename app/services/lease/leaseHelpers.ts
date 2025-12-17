@@ -101,8 +101,14 @@ export const validateStatusTransition = (
 ): void => {
   const allowedTransitions: Record<LeaseStatus, LeaseStatus[]> = {
     [LeaseStatus.DRAFT]: [LeaseStatus.PENDING_SIGNATURE, LeaseStatus.ACTIVE, LeaseStatus.CANCELLED],
+    [LeaseStatus.DRAFT_RENEWAL]: [
+      LeaseStatus.PENDING_SIGNATURE,
+      LeaseStatus.ACTIVE,
+      LeaseStatus.CANCELLED,
+    ],
     [LeaseStatus.PENDING_SIGNATURE]: [LeaseStatus.ACTIVE, LeaseStatus.CANCELLED],
-    [LeaseStatus.ACTIVE]: [LeaseStatus.TERMINATED, LeaseStatus.EXPIRED],
+    [LeaseStatus.ACTIVE]: [LeaseStatus.TERMINATED, LeaseStatus.EXPIRED, LeaseStatus.RENEWED],
+    [LeaseStatus.RENEWED]: [LeaseStatus.TERMINATED, LeaseStatus.EXPIRED],
     [LeaseStatus.EXPIRED]: [],
     [LeaseStatus.TERMINATED]: [],
     [LeaseStatus.CANCELLED]: [],

@@ -5,7 +5,7 @@ import { BaseQueue } from './base.queue';
 
 export class CronQueue extends BaseQueue {
   constructor() {
-    super(QUEUE_NAMES.CRON_QUEUE);
+    super({ queueName: QUEUE_NAMES.CRON_QUEUE });
 
     // process all cron jobs with a single worker
     // lazy load: gets cronWorker only when processing starts

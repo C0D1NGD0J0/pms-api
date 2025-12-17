@@ -23,7 +23,7 @@ export class DocumentProcessingQueue extends BaseQueue {
   }: {
     documentProcessingWorker: DocumentProcessingWorker;
   }) {
-    super(QUEUE_NAMES.DOCUMENT_PROCESSING_QUEUE);
+    super({ queueName: QUEUE_NAMES.DOCUMENT_PROCESSING_QUEUE });
     this.processQueueJobs(
       JOB_NAME.DOCUMENT_UPDATE_JOB,
       3,

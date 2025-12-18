@@ -8,10 +8,10 @@ import { EventTypes } from '@interfaces/events.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyUnitQueue } from '@queues/propertyUnit.queue';
-import { IPropertyUnit } from '@interfaces/propertyUnit.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
+import { IPropertyUnitDocument, IPropertyUnit } from '@interfaces/propertyUnit.interface';
 import { ValidationRequestError, BadRequestError, ForbiddenError } from '@shared/customErrors';
 import { ExtractedMediaFile, IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
 import {
@@ -213,7 +213,15 @@ export class PropertyUnitService {
    * Helper to check if nested property exists
    */
   private hasNestedProperty(obj: any, path: string): boolean {
-    return path.split('.').reduce((current, key) => current && current[key] !== undefined, obj);
+    try {
+      const value = path.split('.').reduce((current, key) => {
+        if (current === null || current === undefined) return undefined;
+        return current[key];
+      }, obj);
+      return value !== undefined;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -580,8 +588,10 @@ export class PropertyUnitService {
       updatedUnit = await this.propertyUnitDAO.update(
         { id: unitId, propertyId: property.id },
         {
-          ...operationalChanges,
-          lastModifiedBy: new Types.ObjectId(currentuser.sub),
+          $set: {
+            ...operationalChanges,
+            lastModifiedBy: new Types.ObjectId(currentuser.sub),
+          },
         }
       );
     }
@@ -1037,12 +1047,10 @@ export class PropertyUnitService {
    */
   private async submitUnitChangesForApproval(
     cxt: IRequestContext,
-    unit: any,
+    unit: IPropertyUnitDocument,
     highImpactChanges: any,
     currentuser: ICurrentUser
   ): Promise<any> {
-    const { unitId } = cxt.request.params;
-
     // Check for existing pending changes
     if (unit.pendingChanges) {
       const lockedByUserId = unit.pendingChanges.updatedBy?.toString();
@@ -1054,7 +1062,7 @@ export class PropertyUnitService {
     }
 
     return await this.propertyUnitDAO.update(
-      { id: unitId },
+      { _id: new Types.ObjectId(unit._id) },
       {
         $set: {
           pendingChanges: {
@@ -1078,7 +1086,6 @@ export class PropertyUnitService {
     highImpactChanges: any,
     currentuser: ICurrentUser
   ): Promise<{ unit: any; message: string }> {
-    const { unitId } = cxt.request.params;
     let overrideMessage = '';
     let _notifyStaffOfOverride = false;
 
@@ -1090,25 +1097,29 @@ export class PropertyUnitService {
     }
 
     const safeUpdateData = createSafeMongoUpdate(highImpactChanges);
-    const updatedUnit = await this.propertyUnitDAO.update(
-      { id: unitId },
-      {
-        $set: {
-          ...safeUpdateData,
-          approvalStatus: 'approved',
-          pendingChanges: null,
-          lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    const updateQuery: any = {
+      $set: {
+        ...safeUpdateData,
+        approvalStatus: 'approved',
+        pendingChanges: null,
+        lastModifiedBy: new Types.ObjectId(currentuser.sub),
+        updatedAt: new Date(),
+      },
+    };
+
+    // Only add $push if we want to track approval history
+    if (unit.approvalDetails || unit.pendingChanges) {
+      updateQuery.$push = {
+        approvalDetails: {
+          action: unit.pendingChanges ? 'overridden' : 'updated',
+          actor: new Types.ObjectId(currentuser.sub),
+          timestamp: new Date(),
+          ...(overrideMessage && { notes: `Direct update${overrideMessage}` }),
         },
-        $push: {
-          approvalDetails: {
-            action: unit.pendingChanges ? 'overridden' : 'updated',
-            actor: new Types.ObjectId(currentuser.sub),
-            timestamp: new Date(),
-            ...(overrideMessage && { notes: `Direct update${overrideMessage}` }),
-          },
-        },
-      }
-    );
+      };
+    }
+
+    const updatedUnit = await this.propertyUnitDAO.updateById(unit._id.toString(), updateQuery);
 
     const message = unit.pendingChanges
       ? `Unit updated successfully${overrideMessage}`

@@ -180,8 +180,7 @@ const tenantInfoSchema = z.object({
         .string()
         .min(2, 'Company name must be at least 2 characters')
         .max(100, 'Company name cannot exceed 100 characters')
-        .trim()
-        .optional(),
+        .trim(),
       position: z
         .string()
         .min(2, 'Position must be at least 2 characters')

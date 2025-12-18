@@ -105,7 +105,9 @@ export const HIGH_IMPACT_UNIT_FIELDS = [
   'fees.rentAmount',
   'fees.securityDeposit',
   'status',
+  'unitNumber',
   'specifications.bedrooms',
+  'specifications.rooms',
   'specifications.bathrooms',
   'specifications.totalArea',
   'currentLease',
@@ -123,6 +125,8 @@ export const OPERATIONAL_UNIT_FIELDS = [
   'media.photos',
   'amenities',
   'utilities',
+  'deletedAt',
+  'lastModifiedBy',
 ];
 
 /**

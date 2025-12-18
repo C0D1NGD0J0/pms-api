@@ -776,6 +776,12 @@ LeaseSchema.methods.hasOverlap = function (startDate: Date, endDate: Date): bool
   return leaseStart <= endDate && leaseEnd >= startDate;
 };
 
+LeaseSchema.methods.softDelete = async function (userId: any) {
+  this.deletedAt = new Date();
+  this.deletedBy = userId;
+  return await this.save();
+};
+
 LeaseSchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',
 });

@@ -388,9 +388,16 @@ export class ClientService {
     const clientId = currentuser.client.cuid;
 
     if (role === ROLES.ADMIN) {
-      const adminUsers = await this.userDAO.getUsersByClientId(clientId, {
-        'cuids.roles': ROLES.ADMIN,
-        'cuids.isConnected': true,
+      const adminUsers = await this.userDAO.list({
+        cuids: {
+          $elemMatch: {
+            cuid: clientId,
+            roles: ROLES.ADMIN,
+            isConnected: true,
+          },
+        },
+        deletedAt: null,
+        isActive: true,
       });
 
       if (adminUsers.items.length <= 1) {
@@ -465,9 +472,16 @@ export class ClientService {
     }
 
     if (clientConnection.roles.includes(IUserRole.ADMIN)) {
-      const connectedAdmins = await this.userDAO.getUsersByClientId(clientId, {
-        'cuids.roles': ROLES.ADMIN,
-        'cuids.isConnected': true,
+      const connectedAdmins = await this.userDAO.list({
+        cuids: {
+          $elemMatch: {
+            cuid: clientId,
+            roles: ROLES.ADMIN,
+            isConnected: true,
+          },
+        },
+        deletedAt: null,
+        isActive: true,
       });
 
       if (connectedAdmins.items.length <= 1) {

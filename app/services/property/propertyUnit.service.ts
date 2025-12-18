@@ -326,7 +326,10 @@ export class PropertyUnitService {
       });
     }
 
-    const unit = await this.propertyUnitDAO.findFirst({ id: unitId, propertyId: property.id });
+    const unit = await this.propertyUnitDAO.findFirst({
+      _id: new Types.ObjectId(unitId),
+      propertyId: property._id,
+    });
     if (!unit) {
       this.log.error(
         {
@@ -442,9 +445,9 @@ export class PropertyUnitService {
     }
 
     const unit = await this.propertyUnitDAO.findFirst({
-      id: unitId,
+      _id: new Types.ObjectId(unitId),
       deletedAt: null,
-      propertyId: property.id,
+      propertyId: property._id,
     });
 
     if (!unit) {
@@ -586,7 +589,7 @@ export class PropertyUnitService {
     // 1. Always apply operational changes directly
     if (Object.keys(operationalChanges).length > 0) {
       updatedUnit = await this.propertyUnitDAO.update(
-        { id: unitId, propertyId: property.id },
+        { _id: new Types.ObjectId(unitId), propertyId: property._id },
         {
           $set: {
             ...operationalChanges,
@@ -669,7 +672,7 @@ export class PropertyUnitService {
 
     // Get the unit to find its _id
     const unit = await this.propertyUnitDAO.findFirst({
-      unitId,
+      _id: new Types.ObjectId(unitId),
       propertyId: property._id,
       deletedAt: null,
     });

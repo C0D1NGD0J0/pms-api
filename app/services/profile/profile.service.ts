@@ -80,7 +80,7 @@ export class ProfileService {
         });
       }
 
-      const profile = await this.profileDAO.findFirst({ id: profileId });
+      const profile = await this.profileDAO.findFirst({ _id: new Types.ObjectId(profileId) });
       if (!profile) {
         throw new NotFoundError({
           message: t('profile.errors.notFound'),
@@ -123,7 +123,7 @@ export class ProfileService {
         });
       }
 
-      const profile = await this.profileDAO.findFirst({ id: profileId });
+      const profile = await this.profileDAO.findFirst({ _id: new Types.ObjectId(profileId) });
       if (!profile) {
         throw new NotFoundError({
           message: t('profile.errors.notFound'),
@@ -145,7 +145,9 @@ export class ProfileService {
       await this.ensureClientRoleInfo(profile.user.toString(), cuid);
 
       // Get the updated profile to return current data
-      const updatedProfile = await this.profileDAO.findFirst({ id: profileId });
+      const updatedProfile = await this.profileDAO.findFirst({
+        _id: new Types.ObjectId(profileId),
+      });
       if (!updatedProfile) {
         throw new NotFoundError({
           message: t('profile.errors.notFound'),
@@ -177,7 +179,7 @@ export class ProfileService {
           message: `Validation failed: ${validation.error.issues.map((i) => i.message).join(', ')}`,
         });
       }
-      const profile = await this.profileDAO.findFirst({ id: profileId });
+      const profile = await this.profileDAO.findFirst({ _id: new Types.ObjectId(profileId) });
       if (!profile) {
         throw new NotFoundError({
           message: t('profile.errors.notFound'),
@@ -654,7 +656,7 @@ export class ProfileService {
 
     // Get the final updated profile if we made updates but don't have the result yet
     if (hasUpdates && !result) {
-      result = await this.profileDAO.findFirst({ id: profileId });
+      result = await this.profileDAO.findFirst({ _id: new Types.ObjectId(profileId) });
     }
 
     return { result, hasUpdates };
@@ -682,7 +684,8 @@ export class ProfileService {
         userRole
       );
 
-      const finalProfile = result || (await this.profileDAO.findFirst({ id: profileId }));
+      const finalProfile =
+        result || (await this.profileDAO.findFirst({ _id: new Types.ObjectId(profileId) }));
 
       if (!finalProfile) {
         throw new NotFoundError({
@@ -725,7 +728,7 @@ export class ProfileService {
 
       // Get current avatar to handle deletion of old one
       const currentProfile = await this.profileDAO.findFirst({
-        id: userToUpdate.profile._id?.toString(),
+        _id: new Types.ObjectId(userToUpdate.profile._id?.toString()),
       });
       const currentAvatar = currentProfile?.personalInfo?.avatar;
 

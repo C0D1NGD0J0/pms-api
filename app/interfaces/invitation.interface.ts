@@ -71,6 +71,7 @@ export interface IInvitationListQuery {
   status?: 'draft' | 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent' | 'declined';
   sortBy?: 'createdAt' | 'expiresAt' | 'inviteeEmail';
   sortOrder?: 'asc' | 'desc';
+  clientId?: string; // Resolved from cuid by service before calling DAO
   role?: IUserRole;
   limit?: number;
   page?: number;

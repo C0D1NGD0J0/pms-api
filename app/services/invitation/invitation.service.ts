@@ -632,7 +632,15 @@ export class InvitationService {
     cxt: IRequestContext,
     query: IInvitationListQuery
   ): Promise<ISuccessReturnData<any>> {
-    const result = await this.invitationDAO.getInvitationsByClient(query);
+    // Lookup client by cuid to get clientId for querying
+    const client = await this.clientDAO.getClientByCuid(query.cuid);
+    if (!client) {
+      throw new NotFoundError({ message: t('client.errors.notFound') });
+    }
+
+    // Add clientId to query for DAO
+    const queryWithClientId = { ...query, clientId: client.id.toString() };
+    const result = await this.invitationDAO.getInvitationsByClient(queryWithClientId);
 
     return {
       success: true,
@@ -873,8 +881,15 @@ export class InvitationService {
     }
   ): Promise<ISuccessReturnData<any>> {
     try {
+      // Lookup client by cuid to get clientId for querying
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
       const query: IInvitationListQuery = {
         cuid,
+        clientId: client.id.toString(),
         status: 'pending',
         limit: filters.limit || 50,
       };

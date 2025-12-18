@@ -1,25 +1,14 @@
-/**
- * Test Factories
- *
- * Factory functions that create REAL data in the test database.
- * These replace mock factories - they create actual documents that can be queried.
- */
-
 import { Types } from 'mongoose';
 import { faker } from '@faker-js/faker';
-import { User, Client, Invitation, Property, PropertyUnit, Profile, Lease } from '@models/index';
-import { IUserDocument } from '@interfaces/user.interface';
-import { IClientDocument } from '@interfaces/client.interface';
-import { IInvitationDocument } from '@interfaces/invitation.interface';
-import { IPropertyDocument } from '@interfaces/property.interface';
-import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
-import { IProfileDocument } from '@interfaces/profile.interface';
-import { ILeaseDocument } from '@interfaces/lease.interface';
 import { ROLES } from '@shared/constants/roles.constants';
-
-// =============================================================================
-// Client Factory
-// =============================================================================
+import { IUserDocument } from '@interfaces/user.interface';
+import { ILeaseDocument } from '@interfaces/lease.interface';
+import { IClientDocument } from '@interfaces/client.interface';
+import { IProfileDocument } from '@interfaces/profile.interface';
+import { IPropertyDocument } from '@interfaces/property.interface';
+import { IInvitationDocument } from '@interfaces/invitation.interface';
+import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
+import { PropertyUnit, Invitation, Property, Profile, Client, Lease, User } from '@models/index';
 
 export interface CreateClientOptions {
   status?: 'active' | 'inactive' | 'suspended';
@@ -36,6 +25,12 @@ export const createTestClient = async (
     cuid,
     displayName: options.displayName || faker.company.name(),
     status: options.status || 'active',
+    accountAdmin: new Types.ObjectId(),
+    accountType: {
+      planName: 'test_plan',
+      planId: 'test_plan_id',
+      features: [],
+    },
     settings: {
       timezone: 'America/Toronto',
       currency: 'USD',
@@ -46,19 +41,17 @@ export const createTestClient = async (
   });
 };
 
-// =============================================================================
-// User Factory
-// =============================================================================
-
 export interface CreateUserOptions {
   isEmailVerified?: boolean;
   clientCuid?: string;
+  activecuid?: string; // Allow custom active cuid
   firstName?: string;
   isActive?: boolean;
   lastName?: string;
   password?: string;
   roles?: string[];
   email?: string;
+  cuids?: any[];
 }
 
 export const createTestUser = async (
@@ -68,13 +61,13 @@ export const createTestUser = async (
   const timestamp = Date.now();
 
   return User.create({
+    uid: `uid-${faker.string.alphanumeric(12)}`,
     email: options.email || `user-${timestamp}@test.com`,
     firstName: options.firstName || faker.person.firstName(),
     lastName: options.lastName || faker.person.lastName(),
     password: options.password || '$2b$10$hashedPasswordForTesting',
     isActive: options.isActive ?? true,
-    isEmailVerified: options.isEmailVerified ?? true,
-    cuids: [
+    cuids: options.cuids || [
       {
         cuid: clientCuid,
         roles: options.roles || [ROLES.STAFF],
@@ -82,36 +75,23 @@ export const createTestUser = async (
         clientDisplayName: faker.company.name(),
       },
     ],
-    activecuid: clientCuid,
+    activecuid: options.activecuid || clientCuid,
     createdAt: new Date(),
     updatedAt: new Date(),
   });
 };
 
-/**
- * Create an admin user for a client
- */
 export const createTestAdminUser = async (clientCuid: string): Promise<IUserDocument> => {
   return createTestUser(clientCuid, { roles: [ROLES.ADMIN] });
 };
 
-/**
- * Create a manager user for a client
- */
 export const createTestManagerUser = async (clientCuid: string): Promise<IUserDocument> => {
   return createTestUser(clientCuid, { roles: [ROLES.MANAGER] });
 };
 
-/**
- * Create a tenant user for a client
- */
 export const createTestTenantUser = async (clientCuid: string): Promise<IUserDocument> => {
   return createTestUser(clientCuid, { roles: [ROLES.TENANT] });
 };
-
-// =============================================================================
-// Invitation Factory
-// =============================================================================
 
 export interface CreateInvitationOptions {
   status?: 'draft' | 'pending' | 'accepted' | 'declined' | 'expired' | 'revoked';
@@ -121,21 +101,31 @@ export interface CreateInvitationOptions {
 }
 
 export const createTestInvitation = async (
-  clientId: string | Types.ObjectId,
+  clientIdOrDoc: string | Types.ObjectId | IClientDocument,
   invitedBy: string | Types.ObjectId,
   options: CreateInvitationOptions = {}
 ): Promise<IInvitationDocument> => {
   const timestamp = Date.now();
+
+  let clientId: Types.ObjectId;
+
+  if (typeof clientIdOrDoc === 'object' && '_id' in clientIdOrDoc) {
+    clientId = clientIdOrDoc._id;
+  } else if (typeof clientIdOrDoc === 'object' && clientIdOrDoc instanceof Types.ObjectId) {
+    clientId = clientIdOrDoc;
+  } else {
+    clientId = new Types.ObjectId(clientIdOrDoc as string);
+  }
 
   return Invitation.create({
     iuid: `inv-${faker.string.alphanumeric(12)}`,
     inviteeEmail: options.inviteeEmail || `invitee-${timestamp}@test.com`,
     role: options.role || ROLES.STAFF,
     status: options.status || 'pending',
-    clientId: typeof clientId === 'string' ? new Types.ObjectId(clientId) : clientId,
+    clientId,
     invitedBy: typeof invitedBy === 'string' ? new Types.ObjectId(invitedBy) : invitedBy,
     invitationToken: faker.string.alphanumeric(64),
-    expiresAt: options.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    expiresAt: options.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     personalInfo: {
       firstName: faker.person.firstName(),
       lastName: faker.person.lastName(),
@@ -148,10 +138,6 @@ export const createTestInvitation = async (
     updatedAt: new Date(),
   });
 };
-
-// =============================================================================
-// Property Factory
-// =============================================================================
 
 export interface CreatePropertyOptions {
   propertyType?: 'single_family' | 'apartment' | 'condo' | 'townhouse' | 'commercial';
@@ -184,10 +170,6 @@ export const createTestProperty = async (
     updatedAt: new Date(),
   });
 };
-
-// =============================================================================
-// Property Unit Factory
-// =============================================================================
 
 export interface CreatePropertyUnitOptions {
   status?: 'available' | 'occupied' | 'maintenance' | 'reserved';
@@ -224,10 +206,6 @@ export const createTestPropertyUnit = async (
   });
 };
 
-// =============================================================================
-// Profile Factory
-// =============================================================================
-
 export interface CreateProfileOptions {
   type?: 'tenant' | 'employee' | 'vendor';
 }
@@ -255,10 +233,6 @@ export const createTestProfile = async (
   });
 };
 
-// =============================================================================
-// Lease Factory
-// =============================================================================
-
 export interface CreateLeaseOptions {
   status?: 'draft' | 'pending' | 'active' | 'expired' | 'terminated';
   monthlyRent?: number;
@@ -273,7 +247,7 @@ export const createTestLease = async (
   options: CreateLeaseOptions = {}
 ): Promise<ILeaseDocument> => {
   const startDate = options.startDate || new Date();
-  const endDate = options.endDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year
+  const endDate = options.endDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
   return Lease.create({
     luid: `lease-${faker.string.alphanumeric(12)}`,
@@ -297,18 +271,11 @@ export const createTestLease = async (
   });
 };
 
-// =============================================================================
-// Composite Factories - Create related entities together
-// =============================================================================
-
 export interface TestClientWithAdmin {
   client: IClientDocument;
   admin: IUserDocument;
 }
 
-/**
- * Create a client with an admin user
- */
 export const createTestClientWithAdmin = async (): Promise<TestClientWithAdmin> => {
   const client = await createTestClient();
   const admin = await createTestAdminUser(client.cuid);
@@ -321,9 +288,6 @@ export interface TestPropertyWithUnit {
   client: IClientDocument;
 }
 
-/**
- * Create a property with a unit
- */
 export const createTestPropertyWithUnit = async (
   clientCuid?: string,
   clientId?: string | Types.ObjectId
@@ -350,9 +314,6 @@ export interface TestLeaseScenario {
   tenant: IUserDocument;
 }
 
-/**
- * Create a complete lease scenario with all related entities
- */
 export const createTestLeaseScenario = async (): Promise<TestLeaseScenario> => {
   const client = await createTestClient();
   const manager = await createTestManagerUser(client.cuid);
@@ -363,20 +324,10 @@ export const createTestLeaseScenario = async (): Promise<TestLeaseScenario> => {
   return { client, manager, property, tenant, unit };
 };
 
-// =============================================================================
-// Utility Functions
-// =============================================================================
-
-/**
- * Generate a unique email for testing
- */
 export const generateUniqueEmail = (): string => {
   return `test-${Date.now()}-${faker.string.alphanumeric(6)}@test.com`;
 };
 
-/**
- * Generate a unique identifier
- */
 export const generateUniqueId = (prefix = 'test'): string => {
   return `${prefix}-${Date.now()}-${faker.string.alphanumeric(6)}`;
 };

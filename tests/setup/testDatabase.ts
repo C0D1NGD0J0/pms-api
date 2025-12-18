@@ -3,39 +3,63 @@
  *
  * Provides MongoDB Memory Server connection for integration tests.
  * Uses the existing DatabaseService which already has test environment support.
+ *
+ * Set USE_LOCAL_MONGO=true to use local MongoDB instead (data persists for debugging)
  */
 
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 
-let mongoServer: MongoMemoryServer | null = null;
+let mongoServer: MongoMemoryReplSet | null = null;
+
+const USE_LOCAL_MONGO = process.env.USE_LOCAL_MONGO === 'true';
 
 /**
  * Connect to in-memory MongoDB for testing
+ * Supports transactions via replica set
  */
 export const connectTestDatabase = async (): Promise<void> => {
   if (mongoose.connection.readyState === 1) {
-    return; // Already connected
+    return;
   }
 
-  mongoServer = await MongoMemoryServer.create();
-  const uri = mongoServer.getUri();
+  let uri: string;
+
+  if (USE_LOCAL_MONGO) {
+    uri = 'mongodb://localhost:27017/pms-test-debug';
+    console.log('🔍 Using LOCAL MongoDB (dev mode):', uri);
+    console.log('   Data will persist - check with MongoDB Compass');
+  } else {
+    console.log('🔍 Using MongoDB Memory Server (CI mode)');
+    mongoServer = await MongoMemoryReplSet.create({
+      replSet: {
+        name: 'rs0',
+        count: 1,
+        storageEngine: 'wiredTiger',
+      },
+    });
+    uri = mongoServer.getUri();
+  }
 
   await mongoose.connect(uri, {
     maxPoolSize: 10,
     minPoolSize: 2,
-    socketTimeoutMS: 30000,
-    connectTimeoutMS: 10000,
-    serverSelectionTimeoutMS: 10000,
+    directConnection: !USE_LOCAL_MONGO,
   });
 };
+
+export const setupTestDatabase = connectTestDatabase;
 
 /**
  * Disconnect from test database and stop memory server
  */
 export const disconnectTestDatabase = async (): Promise<void> => {
   if (mongoose.connection.readyState !== 0) {
-    await mongoose.connection.dropDatabase();
+    if (!USE_LOCAL_MONGO) {
+      await mongoose.connection.dropDatabase();
+    } else {
+      console.log('   Test data preserved in: pms-test-debug');
+    }
     await mongoose.connection.close();
   }
 

@@ -493,15 +493,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       }
 
       return await session.withTransaction(async () => {
-        try {
-          return await operations(session);
-        } catch (operationError) {
-          // Ensure the transaction is aborted on error
-          if (session.inTransaction()) {
-            await session.abortTransaction();
-          }
-          throw operationError;
-        }
+        return await operations(session);
       });
     } catch (error: any) {
       if (

@@ -15,8 +15,8 @@ import {
   setupTestDatabase,
   createTestClient,
   createTestUser,
-  seedTestData,
   SeededTestData,
+  seedTestData,
 } from '@tests/helpers';
 
 const mockMediaUploadService = {

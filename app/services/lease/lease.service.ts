@@ -401,7 +401,7 @@ export class LeaseService {
     cuid: string,
     filters: ILeaseFilterOptions,
     options: any
-  ): ListResultWithPagination<ILeaseDocument> {
+  ): ListResultWithPagination<ILeaseDocument[]> {
     this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
 
     try {

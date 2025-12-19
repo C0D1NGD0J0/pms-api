@@ -21,11 +21,32 @@ export const createTestClient = async (
 ): Promise<IClientDocument> => {
   const cuid = options.cuid || `test-${faker.string.alphanumeric(8)}`;
 
-  return Client.create({
+  // Create an account admin user first
+  const adminUser = await User.create({
+    uid: `uid-${faker.string.alphanumeric(12)}`,
+    email: `admin-${Date.now()}@test.com`,
+    firstName: faker.person.firstName(),
+    lastName: faker.person.lastName(),
+    password: '$2b$10$hashedPasswordForTesting',
+    isActive: true,
+    cuids: [
+      {
+        cuid,
+        roles: [ROLES.ADMIN],
+        isConnected: true,
+        clientDisplayName: faker.company.name(),
+      },
+    ],
+    activecuid: cuid,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  const client = await Client.create({
     cuid,
     displayName: options.displayName || faker.company.name(),
     status: options.status || 'active',
-    accountAdmin: new Types.ObjectId(),
+    accountAdmin: adminUser._id,
     accountType: {
       planName: 'test_plan',
       planId: 'test_plan_id',
@@ -39,6 +60,11 @@ export const createTestClient = async (
     createdAt: new Date(),
     updatedAt: new Date(),
   });
+
+  // Create profile for the account admin
+  await createTestProfile(adminUser._id, client._id, { type: 'employee' });
+
+  return client;
 };
 
 export interface CreateUserOptions {
@@ -81,16 +107,31 @@ export const createTestUser = async (
   });
 };
 
-export const createTestAdminUser = async (clientCuid: string): Promise<IUserDocument> => {
-  return createTestUser(clientCuid, { roles: [ROLES.ADMIN] });
+export const createTestAdminUser = async (clientCuid: string, clientId?: string | Types.ObjectId): Promise<IUserDocument> => {
+  const user = await createTestUser(clientCuid, { roles: [ROLES.ADMIN] });
+  // Create profile for user
+  if (clientId) {
+    await createTestProfile(user._id, clientId, { type: 'employee' });
+  }
+  return user;
 };
 
-export const createTestManagerUser = async (clientCuid: string): Promise<IUserDocument> => {
-  return createTestUser(clientCuid, { roles: [ROLES.MANAGER] });
+export const createTestManagerUser = async (clientCuid: string, clientId?: string | Types.ObjectId): Promise<IUserDocument> => {
+  const user = await createTestUser(clientCuid, { roles: [ROLES.MANAGER] });
+  // Create profile for user
+  if (clientId) {
+    await createTestProfile(user._id, clientId, { type: 'employee' });
+  }
+  return user;
 };
 
-export const createTestTenantUser = async (clientCuid: string): Promise<IUserDocument> => {
-  return createTestUser(clientCuid, { roles: [ROLES.TENANT] });
+export const createTestTenantUser = async (clientCuid: string, clientId?: string | Types.ObjectId): Promise<IUserDocument> => {
+  const user = await createTestUser(clientCuid, { roles: [ROLES.TENANT] });
+  // Create profile for user
+  if (clientId) {
+    await createTestProfile(user._id, clientId, { type: 'tenant' });
+  }
+  return user;
 };
 
 export interface CreateInvitationOptions {
@@ -151,20 +192,39 @@ export const createTestProperty = async (
   clientId: string | Types.ObjectId,
   options: CreatePropertyOptions = {}
 ): Promise<IPropertyDocument> => {
+  const streetAddress = faker.location.streetAddress();
+  const city = faker.location.city();
+  const state = faker.location.state();
+  const postalCode = faker.location.zipCode();
+  const fullAddress = `${streetAddress}, ${city}, ${state} ${postalCode}`;
+
   return Property.create({
     pid: `prop-${faker.string.alphanumeric(12)}`,
     cuid,
     clientId: typeof clientId === 'string' ? new Types.ObjectId(clientId) : clientId,
     name: options.name || `${faker.location.street()} Property`,
     propertyType: options.propertyType || 'apartment',
-    status: options.status || 'active',
+    status: options.status || 'available',
     maxAllowedUnits: options.maxAllowedUnits || 20,
+    managedBy: new Types.ObjectId(), // Required field
+    createdBy: new Types.ObjectId(), // Required field
+    description: {
+      text: `Test property for ${faker.company.name()}`, // Required field
+    },
     address: {
-      streetAddress: faker.location.streetAddress(),
-      city: faker.location.city(),
-      state: faker.location.state(),
-      postalCode: faker.location.zipCode(),
+      street: streetAddress,
+      city,
+      state,
+      postCode: postalCode,
       country: 'USA',
+      fullAddress, // Required field
+    },
+    computedLocation: {
+      type: 'Point',
+      coordinates: [
+        parseFloat(faker.location.longitude()),
+        parseFloat(faker.location.latitude()),
+      ], // Required field
     },
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -185,22 +245,27 @@ export const createTestPropertyUnit = async (
   propertyId: string | Types.ObjectId,
   options: CreatePropertyUnitOptions = {}
 ): Promise<IPropertyUnitDocument> => {
+  const squareFeet = faker.number.int({ min: 500, max: 2000 });
+  const monthlyRent = options.monthlyRent || faker.number.int({ min: 1000, max: 3000 });
+
   return PropertyUnit.create({
     puid: `unit-${faker.string.alphanumeric(12)}`,
     cuid,
     propertyId: typeof propertyId === 'string' ? new Types.ObjectId(propertyId) : propertyId,
     unitNumber: options.unitNumber || faker.string.numeric(3),
+    unitType: 'residential', // Required field - enum: 'residential', 'commercial', 'storage', 'other'
     status: options.status || 'available',
     floor: options.floor || 1,
-    features: {
-      bedrooms: options.bedrooms || 2,
-      bathrooms: options.bathrooms || 1,
-      squareFeet: faker.number.int({ min: 500, max: 2000 }),
-    },
-    financials: {
-      monthlyRent: options.monthlyRent || faker.number.int({ min: 1000, max: 3000 }),
+    fees: {
+      rentAmount: monthlyRent, // Required field
       currency: 'USD',
     },
+    specifications: {
+      totalArea: squareFeet, // Required field
+      rooms: options.bedrooms || 2, // Note: 'rooms' is the actual field name in the model
+      bathrooms: options.bathrooms || 1,
+    },
+    createdBy: new Types.ObjectId(), // Required field
     createdAt: new Date(),
     updatedAt: new Date(),
   });
@@ -215,9 +280,18 @@ export const createTestProfile = async (
   clientId: string | Types.ObjectId,
   options: CreateProfileOptions = {}
 ): Promise<IProfileDocument> => {
+  const firstName = faker.person.firstName();
+  const lastName = faker.person.lastName();
+
   return Profile.create({
-    userId: typeof userId === 'string' ? new Types.ObjectId(userId) : userId,
-    clientId: typeof clientId === 'string' ? new Types.ObjectId(clientId) : clientId,
+    puid: `puid-${faker.string.alphanumeric(12)}`,
+    user: typeof userId === 'string' ? new Types.ObjectId(userId) : userId,
+    personalInfo: {
+      firstName,
+      lastName,
+      displayName: `${firstName} ${lastName}`,
+      location: faker.location.city(),
+    },
     type: options.type || 'employee',
     contactInfo: {
       phone: faker.phone.number(),

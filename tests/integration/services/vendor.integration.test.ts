@@ -51,14 +51,14 @@ const setupServices = () => {
 
 describe('VendorService Integration Tests - Write Operations', () => {
   let vendorService: VendorService;
-  let vendorDAO: VendorDAO;
+  let _vendorDAO: VendorDAO;
 
   beforeAll(async () => {
     await setupTestDatabase();
     setupAllExternalMocks();
     const services = setupServices();
     vendorService = services.vendorService;
-    vendorDAO = services.vendorDAO;
+    _vendorDAO = services.vendorDAO;
   });
 
   beforeEach(async () => {
@@ -372,9 +372,9 @@ describe('VendorService Integration Tests - Read Operations', () => {
     it('should successfully retrieve client vendors list', async () => {
       const result = await vendorService.getClientVendors(testClient.cuid);
 
-      expect(result).toBeInstanceOf(Array);
-      expect(result.length).toBeGreaterThan(0);
-      const vendor = result.find((v) => v.vuid === testVendor.vuid);
+      expect(result.items).toBeInstanceOf(Array);
+      expect(result.items.length).toBeGreaterThan(0);
+      const vendor = result.items.find((v) => v.vuid === testVendor.vuid);
       expect(vendor).toBeDefined();
       expect(vendor?.companyName).toBe('Test Vendor Company');
     });
@@ -397,8 +397,8 @@ describe('VendorService Integration Tests - Read Operations', () => {
 
       const result = await vendorService.getClientVendors(newClient.cuid);
 
-      expect(result).toBeInstanceOf(Array);
-      expect(result.length).toBe(0);
+      expect(result.items).toBeInstanceOf(Array);
+      expect(result.items.length).toBe(0);
     });
   });
 

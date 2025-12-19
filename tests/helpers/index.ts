@@ -12,7 +12,8 @@ export {
   clearTestDatabase,
 } from '../setup/testDatabase';
 
-export type { SeededTestData } from '../setup/seedTestData';
+export { mockUnauthenticatedContext, mockRequestContext } from './mockRequestContext';
 
+export type { SeededTestData } from '../setup/seedTestData';
 export { seedTestData } from '../setup/seedTestData';
 export * from '../setup/testFactories';

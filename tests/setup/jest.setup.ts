@@ -5,7 +5,7 @@
  * This file is executed by Jest before running test suites.
  */
 
-import { setupTestDatabase, disconnectTestDatabase } from './testDatabase';
+import { disconnectTestDatabase, setupTestDatabase } from './testDatabase';
 import { setupAllExternalMocks, resetAllExternalMocks } from './externalMocks';
 
 // =============================================================================

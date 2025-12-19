@@ -36,6 +36,12 @@ export const connectTestDatabase = async (): Promise<void> => {
     minPoolSize: 2,
     directConnection: !USE_LOCAL_MONGO,
   });
+
+  try {
+    await Promise.all(Object.values(mongoose.connection.models).map((model) => model.init()));
+  } catch (error) {
+    console.warn('Warning: Could not initialize all models:', error);
+  }
 };
 
 export const setupTestDatabase = connectTestDatabase;

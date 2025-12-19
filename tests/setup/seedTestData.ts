@@ -1,10 +1,3 @@
-/**
- * Test Data Seeding
- *
- * Pre-populates the test database with sample data for all resources.
- * This is more efficient than creating data in each test.
- */
-
 import { Types } from 'mongoose';
 import { faker } from '@faker-js/faker';
 import { ROLES } from '@shared/constants/roles.constants';
@@ -18,6 +11,14 @@ import { IInvitationDocument } from '@models/invitation/invitation.interface';
 import { IPropertyUnitDocument } from '@models/propertyUnit/propertyUnit.interface';
 
 export interface SeededTestData {
+  invitations: {
+    pending1: IInvitationDocument;
+    pending2: IInvitationDocument;
+    accepted1: IInvitationDocument;
+    declined1: IInvitationDocument;
+    revoked1: IInvitationDocument;
+  };
+
   users: {
     admin1: IUserDocument;
     staff1: IUserDocument;
@@ -25,14 +26,6 @@ export interface SeededTestData {
     staff2: IUserDocument;
     admin3: IUserDocument;
     multiClientUser: IUserDocument;
-  };
-
-  invitations: {
-    pending1: IInvitationDocument;
-    pending2: IInvitationDocument;
-    accepted1: IInvitationDocument;
-    declined1: IInvitationDocument;
-    revoked1: IInvitationDocument;
   };
 
   profiles: {

@@ -16,6 +16,7 @@ export class EmailQueue extends BaseQueue {
     this.emailWorker = emailWorker;
     this.processQueueJobs(JOB_NAME.ACCOUNT_ACTIVATION_JOB, 5, this.emailWorker.sendMail);
     this.processQueueJobs(JOB_NAME.INVITATION_JOB, 5, this.emailWorker.sendMail);
+    this.processQueueJobs(JOB_NAME.LEASE_ENDING_SOON_JOB, 5, this.emailWorker.sendMail);
   }
 
   addToEmailQueue(queuename: string, data: IEmailOptions<unknown>): void {

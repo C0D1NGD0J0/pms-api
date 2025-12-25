@@ -65,6 +65,7 @@ export const JOB_NAME = {
   INVITATION_CSV_VALIDATION_JOB: 'invitation_csv_validation',
   INVITATION_BULK_USER_IMPORT_JOB: 'invitation_bulk_user_import',
   INVITATION_BULK_USER_VALIDATION_JOB: 'invitation_bulk_user_validation',
+  LEASE_ENDING_SOON_JOB: 'leaseEndingSoonJob',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {

@@ -1359,6 +1359,72 @@ export class NotificationService {
     }
   }
 
+  /**
+   * Check if a notification has already been sent
+   * Used to prevent duplicate notifications (e.g., lease expiry reminders)
+   * @deprecated Use hasStageNotificationBeenSent() for stage-based notifications
+   */
+  async hasNotificationBeenSent(
+    leaseId: string,
+    daysThreshold: number,
+    notificationType: NotificationTypeEnum
+  ): Promise<boolean> {
+    try {
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+
+      const notification = await this.notificationDAO.findFirst({
+        'metadata.leaseId': leaseId,
+        'metadata.daysThreshold': daysThreshold,
+        type: notificationType,
+        createdAt: { $gte: twoDaysAgo },
+      });
+
+      const exists = !!notification;
+      return exists;
+    } catch (error) {
+      this.log.error('Error checking if notification was sent', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        leaseId,
+        daysThreshold,
+        notificationType,
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Check if lease expiry notification has already been sent for a specific threshold
+   * Used to prevent duplicate expiry notices (e.g., sending 30-day notice twice)
+   * Checks entire notification history (no time window restriction)
+   * @param leaseId - MongoDB ObjectId string of the lease
+   */
+  async hasLeaseExpiryNoticeBeenSent(
+    leaseId: string | Types.ObjectId,
+    expiryThreshold: string,
+    notificationType: NotificationTypeEnum
+  ): Promise<boolean> {
+    try {
+      const leaseIdStr = leaseId.toString();
+      const notification = await this.notificationDAO.findFirst({
+        'metadata.leaseId': leaseIdStr,
+        'metadata.leaseExpiryThreshold': expiryThreshold,
+        type: notificationType,
+      });
+
+      const exists = !!notification;
+      return exists;
+    } catch (error) {
+      this.log.error('Error checking if lease expiry notification was sent', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        leaseId: leaseId.toString(),
+        expiryThreshold,
+        notificationType,
+      });
+      return false;
+    }
+  }
+
   private async publishToSSE(notification: INotificationDocument): Promise<void> {
     try {
       // Check user preferences for individual notifications

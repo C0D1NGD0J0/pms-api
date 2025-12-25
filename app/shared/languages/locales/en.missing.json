@@ -45,7 +45,8 @@
   },
   "property": {
     "logging": {
-      "ignoringUploadEvent": "property.logging.ignoringUploadEvent"
+      "ignoringUploadEvent": "property.logging.ignoringUploadEvent",
+      "eventListenersInitialized": "property.logging.eventListenersInitialized"
     },
     "errors": {
       "notFound": "property.errors.notFound"

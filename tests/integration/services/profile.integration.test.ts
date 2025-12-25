@@ -599,4 +599,79 @@ describe('ProfileService Integration Tests - Read Operations', () => {
       });
     });
   });
+
+  describe('getUserBasicInfo (ProfileDAO)', () => {
+    it('should return complete basic user info for valid userId and cuid', async () => {
+      const { profileDAO } = setupServices();
+      const user = seededData.users.propertyManager1;
+      const client = seededData.clients.client1;
+
+      const result = await profileDAO.getUserBasicInfo(user._id.toString(), client.cuid);
+
+      expect(result).not.toBeNull();
+      expect(result).toMatchObject({
+        userId: user._id.toString(),
+        cuid: client.cuid,
+        role: expect.any(String),
+        firstName: expect.any(String),
+        lastName: expect.any(String),
+        name: expect.any(String),
+        email: user.email,
+      });
+      expect(result?.profileId).toBeDefined();
+    });
+
+    it('should return correct role for multi-tenant user', async () => {
+      const { profileDAO } = setupServices();
+      const user = seededData.users.admin1;
+      const client = seededData.clients.client1;
+
+      const result = await profileDAO.getUserBasicInfo(user._id.toString(), client.cuid);
+
+      expect(result).not.toBeNull();
+      expect(result?.role).toBe(ROLES.ADMIN);
+      expect(result?.cuid).toBe(client.cuid);
+    });
+
+    it('should return null for non-existent userId', async () => {
+      const { profileDAO } = setupServices();
+      const client = seededData.clients.client1;
+      const fakeUserId = new Types.ObjectId().toString();
+
+      const result = await profileDAO.getUserBasicInfo(fakeUserId, client.cuid);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null for non-existent cuid', async () => {
+      const { profileDAO } = setupServices();
+      const user = seededData.users.admin1;
+
+      const result = await profileDAO.getUserBasicInfo(user._id.toString(), 'INVALID_CUID');
+
+      expect(result).toBeNull();
+    });
+
+    it('should include phone number when available', async () => {
+      const { profileDAO } = setupServices();
+      const user = seededData.users.admin1;
+      const client = seededData.clients.client1;
+
+      const result = await profileDAO.getUserBasicInfo(user._id.toString(), client.cuid);
+
+      expect(result).not.toBeNull();
+      // Phone may be null or a string depending on test data
+      expect(result).toHaveProperty('phone');
+    });
+
+    it('should handle errors gracefully and return null', async () => {
+      const { profileDAO } = setupServices();
+      const client = seededData.clients.client1;
+
+      // Pass invalid ObjectId format
+      const result = await profileDAO.getUserBasicInfo('invalid-id', client.cuid);
+
+      expect(result).toBeNull();
+    });
+  });
 });

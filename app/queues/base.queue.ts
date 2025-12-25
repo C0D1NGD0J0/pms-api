@@ -29,10 +29,15 @@ const createSharedRedisConnection = (): Redis => {
       connectTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 10000,
       lazyConnect: false,
       keepAlive: envVariables.SERVER.ENV === 'production' ? 60000 : 120000,
-      maxRetriesPerRequest: envVariables.SERVER.ENV === 'production' ? 3 : 2,
-      commandTimeout: envVariables.SERVER.ENV === 'production' ? 15000 : 10000,
-      enableOfflineQueue: false,
-      enableReadyCheck: true,
+      // Bull requires maxRetriesPerRequest to be null for bclient/subscriber
+      // See: https://github.com/OptimalBits/bull/issues/1873
+      maxRetriesPerRequest: null,
+      // Increased timeout to handle queue operations during startup/high load
+      commandTimeout: 30000,
+      // Enable offline queue to buffer commands until Redis connects
+      enableOfflineQueue: true,
+      // Bull requires enableReadyCheck to be false
+      enableReadyCheck: false,
       retryStrategy: (times: number) => {
         const delay = Math.min(times * 50, 2000);
         return delay;

@@ -112,6 +112,7 @@ export interface IPropertyUnit {
   status: PropertyUnitStatus;
   unitType: PropertyUnitType;
   createdBy: Types.ObjectId;
+  managedBy: Types.ObjectId;
   unitOwner?: IUnitOwner;
   description?: string;
   unitNumber: string;

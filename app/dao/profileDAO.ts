@@ -8,7 +8,7 @@ import { ListResultWithPagination, ICurrentUser } from '@interfaces/index';
 import { PipelineStage, ClientSession, FilterQuery, Types, Model } from 'mongoose';
 
 import { BaseDAO } from './baseDAO';
-import { IFindOptions, IProfileDAO } from './interfaces/index';
+import { IUserBasicInfo, IFindOptions, IProfileDAO } from './interfaces/index';
 
 export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO {
   protected logger: Logger;
@@ -746,6 +746,52 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     } catch (error) {
       this.logger.error(`Error getting profile for user ID ${userId}:`, error);
       throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Get basic user information for a specific client context.
+   * Lightweight alternative to generateCurrentUserInfo() for cases where only
+   * basic contact/profile info is needed (e.g., email notifications, user lists).
+   *
+   * @param userId - The unique identifier for the user
+   * @param cuid - The client ID for multi-tenancy context
+   * @returns A promise that resolves to basic user info or null if not found
+   */
+  async getUserBasicInfo(userId: string, cuid: string): Promise<IUserBasicInfo | null> {
+    try {
+      const profile = await this.findFirst(
+        { user: new Types.ObjectId(userId), cuid },
+        { populate: 'user' }
+      );
+
+      if (!profile || !profile.user) {
+        return null;
+      }
+
+      const user = profile.user as any;
+      const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
+      const role = clientConnection?.roles?.[0] || 'unknown';
+
+      return {
+        userId: user._id.toString(),
+        profileId: profile._id.toString(),
+        cuid,
+        role,
+        firstName: profile.personalInfo.firstName,
+        lastName: profile.personalInfo.lastName,
+        fullName: `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`.trim(),
+        displayName: profile.personalInfo.displayName || null,
+        email: user.email,
+        phone: profile.personalInfo.phoneNumber || null,
+        avatar: profile.personalInfo?.avatar?.url || null,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error getting basic user info for user ID ${userId}, cuid ${cuid}:`,
+        error
+      );
+      return null;
     }
   }
 }

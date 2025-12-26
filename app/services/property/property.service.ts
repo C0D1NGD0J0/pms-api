@@ -732,19 +732,7 @@ export class PropertyService {
       skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
     };
 
-    const cachedResult = await this.propertyCache.getClientProperties(cuid, opts);
-    if (cachedResult.success && cachedResult.data) {
-      return {
-        success: true,
-        data: {
-          items: cachedResult.data.properties,
-          pagination: cachedResult.data.pagination,
-        },
-      };
-    }
-
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
-
     const itemsWithPreview = properties.items.map((property) => {
       const propertyObj = property.toObject ? property.toObject() : property;
       const pendingChangesPreview = generatePendingChangesPreview(property, currentuser);
@@ -754,12 +742,6 @@ export class PropertyService {
         ...(pendingChangesPreview && { pendingChangesPreview }),
         fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
       };
-    });
-
-    await this.propertyCache.saveClientProperties(cuid, properties.items, {
-      filter,
-      pagination: opts,
-      totalCount: properties.pagination?.total,
     });
 
     return {

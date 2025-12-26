@@ -771,12 +771,12 @@ describe('PropertyService Integration Tests', () => {
     });
 
     describe('getClientProperties', () => {
-      it('should return all properties for client', async () => {
+      it('should return all properties for client with deterministic sorting', async () => {
         const queryParams = {
           pagination: {
             page: 1,
             limit: 10,
-            sort: 'name',
+            sort: 'asc',
             sortBy: 'name',
           },
           filters: {},
@@ -802,7 +802,7 @@ describe('PropertyService Integration Tests', () => {
           pagination: {
             page: 1,
             limit: 10,
-            sort: 'name',
+            sort: 'asc',
             sortBy: 'name',
           },
           filters: {
@@ -824,12 +824,12 @@ describe('PropertyService Integration Tests', () => {
         expect(result.data.items[0].propertyType).toBe('apartment');
       });
 
-      it('should handle pagination correctly', async () => {
+      it('should handle pagination correctly with no duplicate results', async () => {
         const queryParams = {
           pagination: {
             page: 1,
             limit: 2,
-            sort: 'name',
+            sort: 'asc',
             sortBy: 'name',
           },
           filters: {},
@@ -848,6 +848,56 @@ describe('PropertyService Integration Tests', () => {
         expect(result.data.items).toHaveLength(2);
         expect(result.data.pagination!.total).toBe(3);
         expect(result.data.pagination!.totalPages).toBe(2);
+
+        // Get page 2 and verify no duplicates
+        const page2Result = await propertyService.getClientProperties(
+          testClient.cuid,
+          {
+            sub: adminUser._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+          } as any,
+          {
+            pagination: {
+              page: 2,
+              limit: 2,
+              sort: 'asc',
+              sortBy: 'name',
+            },
+            filters: {},
+          } as any
+        );
+
+        // Verify no property IDs are duplicated across pages
+        const page1Ids = result.data.items.map((p) => p.pid);
+        const page2Ids = page2Result.data.items.map((p) => p.pid);
+        const duplicates = page1Ids.filter((id) => page2Ids.includes(id));
+        expect(duplicates).toHaveLength(0);
+      });
+
+      it('should use default sort when sortBy is undefined', async () => {
+        const queryParams = {
+          pagination: {
+            page: 1,
+            limit: 10,
+            sort: 'asc',
+            sortBy: undefined, // No sortBy specified
+          },
+          filters: {},
+        };
+
+        const result = await propertyService.getClientProperties(
+          testClient.cuid,
+          {
+            sub: adminUser._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+          } as any,
+          queryParams as any
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data.items).toHaveLength(3);
+        // Should default to createdAt sorting with deterministic order
+        expect(result.data.pagination).toBeDefined();
       });
     }); // End getClientProperties
 

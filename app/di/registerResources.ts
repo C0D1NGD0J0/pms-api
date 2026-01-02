@@ -1,6 +1,8 @@
 import { BaseIO } from '@sockets/index';
 import { AssetDAO } from '@dao/assetDAO';
 import { MailService } from '@mailer/index';
+import { createLogger } from '@utils/index';
+import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { GeoCoderService } from '@services/external';
 import { ClamScannerService } from '@shared/config/index';
@@ -241,13 +243,31 @@ const SocketIOResources = {
 };
 
 export const initQueues = (container: AwilixContainer) => {
-  // Always initialize ClamScanner as it's essential for file security
-  container.resolve('clamScanner');
-  // Only initialize queues in development or when explicitly forced
-  if (process.env.NODE_ENV === 'development' || process.env.FORCE_INIT_QUEUES === 'true') {
-    console.log('🔧 Initializing all queues and workers for development/forced environment...');
+  const logger = createLogger('DIContainer');
+  const isDevelopment = envVariables.SERVER.ENV === 'development';
 
-    // Initialize all queues
+  // ClamAV initialization - simple check
+  const hasClamAVConfig =
+    envVariables.CLAMAV && (envVariables.CLAMAV.HOST || envVariables.CLAMAV.SOCKET);
+
+  if (!hasClamAVConfig) {
+    logger.info('ClamAV not configured - virus scanning disabled');
+  } else {
+    try {
+      container.resolve('clamScanner');
+      logger.info('ClamAV scanner initialized');
+    } catch (error) {
+      logger.error(
+        { error },
+        'Failed to initialize ClamAV - file uploads will proceed without scanning'
+      );
+    }
+  }
+
+  // Only initialize queues in development
+  if (isDevelopment || process.env.FORCE_INIT_QUEUES === 'true') {
+    logger.info('Initializing queues and workers for development environment...');
+
     const queueNames = [
       'documentProcessingQueue',
       'emailQueue',
@@ -260,7 +280,6 @@ export const initQueues = (container: AwilixContainer) => {
       'pdfGeneratorQueue',
     ];
 
-    // Initialize all workers
     const workerNames = [
       'documentProcessingWorker',
       'emailWorker',
@@ -272,30 +291,27 @@ export const initQueues = (container: AwilixContainer) => {
       'pdfGeneratorWorker',
     ];
 
-    // Resolve queues
+    // Initialize queues
     queueNames.forEach((queueName) => {
       try {
         container.resolve(queueName);
       } catch (error) {
-        console.error(`Failed to initialize queue ${queueName}:`, error);
+        logger.error({ queue: queueName, error }, `Failed to initialize queue: ${queueName}`);
       }
     });
 
-    // Resolve workers
+    // Initialize workers
     workerNames.forEach((workerName) => {
       try {
         container.resolve(workerName);
       } catch (error) {
-        console.error(`Failed to initialize worker ${workerName}:`, error);
+        logger.error({ worker: workerName, error }, `Failed to initialize worker: ${workerName}`);
       }
     });
 
-    console.log('✅ All queues and workers initialized successfully');
+    logger.info('Queue and worker initialization complete');
   } else {
-    console.log(
-      '⏸️  Queue initialization skipped (production environment - using lazy initialization)'
-    );
-    console.log('💡 Queues will be initialized on-demand when first accessed');
+    logger.info('Queue initialization skipped (production - lazy initialization)');
   }
 };
 

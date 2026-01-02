@@ -9,9 +9,9 @@ import { NextFunction, Response, Request } from 'express';
 import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { LanguageService } from '@shared/languages/language.service';
 import { PermissionService } from '@services/permission/permission.service';
-import { extractMulterFiles, generateShortUID, JWT_KEY_NAMES } from '@utils/index';
 import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
 import { InvalidRequestError, UnauthorizedError, ForbiddenError } from '@shared/customErrors';
+import { extractMulterFiles, generateShortUID, JWT_KEY_NAMES, createLogger } from '@utils/index';
 import { PermissionResource, PermissionAction, ICurrentUser, EventTypes } from '@interfaces/index';
 import {
   RateLimitOptions,
@@ -133,11 +133,8 @@ export const diskUpload =
   };
 
 export const scanFile = async (req: Request, res: Response, next: NextFunction) => {
-  const {
-    emitterService,
-    clamScanner,
-  }: { emitterService: EventEmitterService; clamScanner: ClamScannerService } =
-    req.container.cradle;
+  const logger = createLogger('ScanFileMiddleware');
+  const { emitterService }: { emitterService: EventEmitterService } = req.container.cradle;
 
   const files = req.files;
   if (!files) {
@@ -150,6 +147,18 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
   }
 
   try {
+    const hasClamScanner = req.container.hasRegistration('clamScanner');
+
+    if (!hasClamScanner) {
+      logger.warn(
+        { userId: req.context.currentuser.sub, fileCount: _files.length },
+        'ClamAV scanner unavailable - skipping virus scan'
+      );
+      req.body.scannedFiles = _files;
+      return next();
+    }
+
+    const clamScanner: ClamScannerService = req.container.resolve('clamScanner');
     const foundViruses: { fileName: string; viruses: string[]; createdAt: string }[] = [];
     const validFiles = [];
 
@@ -171,6 +180,7 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
         EventTypes.DELETE_LOCAL_ASSET,
         foundViruses.map((file) => file.fileName)
       );
+      logger.error({ viruses: foundViruses }, 'File upload rejected: Viruses detected');
       return next(new InvalidRequestError({ message: 'Error processing uploaded files.' }));
     }
 
@@ -180,11 +190,14 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
 
     return next();
   } catch (error) {
-    // delete files from disk when an error occurs regardless if its valid or infected file(memory saver)
+    logger.error({ error }, 'Error during file virus scanning');
+
+    // Delete files from disk when an error occurs
     if (req.files) {
       const filesToDelete = extractMulterFiles(req.files).map((file) => file.filename);
       emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, filesToDelete);
     }
+
     next(new InvalidRequestError({ message: 'Error processing uploaded files.' }));
   }
 };

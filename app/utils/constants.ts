@@ -184,3 +184,18 @@ export const EDITABLE_FIELDS_BY_LEASE_STATUS: Record<string, string[]> = {
   terminated: ['internalNotes'], // Admin/Manager only
   cancelled: ['internalNotes'], // Admin/Manager only
 };
+
+/**
+ * Constants for lease thresholds and configuration
+ */
+export const LEASE_CONSTANTS = {
+  EXPIRY_THRESHOLDS: [
+    { days: 30, name: '30_day_notice' },
+    { days: 14, name: '14_day_notice' },
+    { days: 7, name: '7_day_notice' },
+  ],
+  GRACE_PERIOD_DAYS: 7,
+  DEFAULT_RENEWAL_DAYS_BEFORE_EXPIRY: 30,
+  DEFAULT_SEND_FOR_SIGNATURE_DAYS: 14,
+  MINIMUM_ACTIVE_DURATION_DAYS: 30,
+} as const;

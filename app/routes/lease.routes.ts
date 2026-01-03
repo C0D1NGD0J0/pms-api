@@ -278,16 +278,89 @@ router.get(
   })
 );
 
+router
+  .route('/:cuid/:luid/lease_renewal')
+  .get(
+    // Get pre-calculated renewal form data for a lease
+    requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+    validateRequest({
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    }),
+    asyncWrapper(async (req: AppRequest, res) => {
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.getRenewalFormData(req, res);
+    })
+  )
+  .post(
+    requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
+    validateRequest({
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+      body: LeaseValidations.renewLease,
+    }),
+    asyncWrapper(async (req: AppRequest, res) => {
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.renewLease(req, res);
+    })
+  );
+
 router.post(
-  '/:cuid/:luid/lease_renewal',
-  requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
+  '/:cuid/trigger-expiry-notices',
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   validateRequest({
-    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
-    body: LeaseValidations.renewLease,
+    params: UtilsValidations.cuid,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<LeaseController>('leaseController');
-    return controller.renewLease(req, res);
+    return controller.triggerSendExpiryNotices(req, res);
+  })
+);
+
+// TEMPORARY TEST ENDPOINTS - DELETE AFTER TESTING
+router.post(
+  '/:cuid/test-cron/process-expiring-leases',
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.triggerProcessExpiringLeases(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/test-cron/process-auto-renewals',
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.triggerProcessAutoRenewals(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/test-cron/auto-send-renewals',
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.triggerAutoSendRenewals(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/test-cron/mark-expired-leases',
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.triggerMarkExpiredLeases(req, res);
   })
 );
 

@@ -360,7 +360,7 @@ export interface ILeaseProperty {
     floors?: number;
   };
   unitId?: Types.ObjectId | string;
-  propertyType?: PropertyType;
+  propertyType?: LeasePropertyType;
   id: Types.ObjectId | string;
   unitNumber?: string; // Unit/Suite number from property unit
   address: string;
@@ -709,6 +709,19 @@ export interface LeaseESignatureFailedPayload {
 }
 
 /**
+ * Populated Property Info Interface
+ * Property details returned in lease response
+ */
+export interface ILeasePropertyInfo extends ILeaseProperty {
+  managedBy?: Types.ObjectId | string;
+  propertyType?: LeasePropertyType;
+  availableUnits?: number;
+  totalUnits?: number;
+  name?: string;
+  pid?: string;
+}
+
+/**
  * Populated Unit Info Interface
  * Unit details returned in lease response (secure field selection)
  */
@@ -722,19 +735,6 @@ export interface ILeaseUnitInfo {
   puid: string;
   fees?: any;
   id: string;
-}
-
-/**
- * Populated Property Info Interface
- * Property details returned in lease response
- */
-export interface ILeasePropertyInfo extends ILeaseProperty {
-  managedBy?: Types.ObjectId | string;
-  propertyType?: PropertyType;
-  availableUnits?: number;
-  totalUnits?: number;
-  name?: string;
-  pid?: string;
 }
 
 /**
@@ -912,6 +912,17 @@ export type PaymentMethodType =
  */
 
 /**
+ * Property Types (for lease context)
+ */
+export type LeasePropertyType =
+  | 'apartment'
+  | 'house'
+  | 'condominium'
+  | 'townhouse'
+  | 'commercial'
+  | 'industrial';
+
+/**
  * Internal Note Interface
  * Audit trail for internal notes on a lease
  */
@@ -921,17 +932,6 @@ export interface IInternalNote {
   author: string;
   note: string;
 }
-
-/**
- * Property Types
- */
-export type PropertyType =
-  | 'apartment'
-  | 'house'
-  | 'condominium'
-  | 'townhouse'
-  | 'commercial'
-  | 'industrial';
 
 /**
  * Lease Activation Data Interface

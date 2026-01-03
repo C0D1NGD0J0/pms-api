@@ -121,7 +121,7 @@ export class LeaseController {
     });
   };
 
-  async renewLease(req: AppRequest, res: Response): Promise<void> {
+  renewLease = async (req: AppRequest, res: Response) => {
     const { cuid, luid } = req.params;
     const renewalData = req.body;
 
@@ -140,7 +140,7 @@ export class LeaseController {
       data: result.data,
       message: 'Lease renewal successfully initiated',
     });
-  }
+  };
 
   uploadLeaseDocument = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
@@ -334,5 +334,15 @@ export class LeaseController {
         totalCount: templates.length,
       },
     });
+  };
+
+  getRenewalFormData = async (req: AppRequest, res: Response) => {
+    const { luid } = req.params;
+    const cxt = req.context;
+
+    this.log.info(`Getting renewal form data for lease ${luid}`);
+    const result = await this.leaseService.getRenewalFormData(cxt, luid);
+
+    res.status(httpStatusCodes.OK).json(result);
   };
 }

@@ -1,23 +1,26 @@
 import { Job } from 'bull';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
-import { PropertyService } from '@services/index';
-import { DocumentFailureJobData, DocumentUpdateJobData } from '@queues/documentProcessing.queue';
+import { PropertyMediaService } from '@services/index';
+import {
+  PropertyMediaFailureJobData,
+  PropertyMediaUpdateJobData,
+} from '@queues/propertyMedia.queue';
 
 interface IConstructor {
-  propertyService: PropertyService;
+  propertyMediaService: PropertyMediaService;
 }
 
-export class DocumentProcessingWorker {
-  private readonly propertyService: PropertyService;
+export class PropertyMediaWorker {
+  private readonly propertyMediaService: PropertyMediaService;
   private log: Logger;
 
-  constructor({ propertyService }: IConstructor) {
-    this.log = createLogger('DocumentProcessingWorker');
-    this.propertyService = propertyService;
+  constructor({ propertyMediaService }: IConstructor) {
+    this.log = createLogger('PropertyMediaWorker');
+    this.propertyMediaService = propertyMediaService;
   }
 
-  updateDocuments = async (job: Job<DocumentUpdateJobData>): Promise<void> => {
+  updateDocuments = async (job: Job<PropertyMediaUpdateJobData>): Promise<void> => {
     const { propertyId, uploadResults, userId, resourceType } = job.data;
 
     this.log.info(`Processing document update for property ${propertyId}`, {
@@ -30,7 +33,7 @@ export class DocumentProcessingWorker {
     try {
       job.progress(20);
 
-      const result = await this.propertyService.updatePropertyDocuments(
+      const result = await this.propertyMediaService.updatePropertyDocuments(
         propertyId,
         uploadResults,
         userId
@@ -54,7 +57,7 @@ export class DocumentProcessingWorker {
       });
 
       try {
-        await this.propertyService.markDocumentsAsFailed(propertyId, error.message);
+        await this.propertyMediaService.markDocumentsAsFailed(propertyId, error.message);
       } catch (markFailedError: any) {
         this.log.error(`Failed to mark documents as failed for property ${propertyId}:`, {
           propertyId,
@@ -66,7 +69,7 @@ export class DocumentProcessingWorker {
     }
   };
 
-  markDocumentsAsFailed = async (job: Job<DocumentFailureJobData>): Promise<void> => {
+  markDocumentsAsFailed = async (job: Job<PropertyMediaFailureJobData>): Promise<void> => {
     const { propertyId, error, userId, resourceType } = job.data;
 
     this.log.info(`Marking documents as failed for property ${propertyId}`, {
@@ -79,7 +82,7 @@ export class DocumentProcessingWorker {
     try {
       job.progress(50);
 
-      await this.propertyService.markDocumentsAsFailed(propertyId, error);
+      await this.propertyMediaService.markDocumentsAsFailed(propertyId, error);
 
       job.progress(100);
       this.log.info(`Successfully marked documents as failed for property ${propertyId}`);

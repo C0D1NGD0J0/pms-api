@@ -1,4 +1,4 @@
-export * from './documentProcessing.worker';
+export * from './propertyMedia.worker';
 export * from './propertyUnit.worker';
 export * from './pdfGenerator.worker';
 export * from './esignature.worker';

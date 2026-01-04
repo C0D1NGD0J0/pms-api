@@ -39,7 +39,6 @@ export const QUEUE_NAMES = {
   PROPERTY_UNIT_QUEUE: 'propertyUnitQueue',
   PDF_GENERATION_QUEUE: 'pdfGenerationQueue',
   ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
-  DOCUMENT_PROCESSING_QUEUE: 'documentProcessingQueue',
   LEASE_SIGNATURE_REQUEST_QUEUE: 'leaseSignatureRequestQueue',
   PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
 };

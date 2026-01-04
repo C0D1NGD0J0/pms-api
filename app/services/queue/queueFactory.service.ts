@@ -72,7 +72,7 @@ export class QueueFactory {
    */
   public initializeAllQueues(): void {
     const queueNames = [
-      'documentProcessingQueue',
+      'propertyMediaQueue',
       'emailQueue',
       'eventBusQueue',
       'propertyQueue',
@@ -85,7 +85,7 @@ export class QueueFactory {
     ];
 
     const workerNames = [
-      'documentProcessingWorker',
+      'propertyMediaWorker',
       'emailWorker',
       'propertyWorker',
       'propertyUnitWorker',

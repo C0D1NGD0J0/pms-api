@@ -181,8 +181,8 @@ export const createTestInvitation = async (
 };
 
 export interface CreatePropertyOptions {
-  propertyType?: 'single_family' | 'apartment' | 'condo' | 'townhouse' | 'commercial';
-  status?: 'active' | 'inactive' | 'archived';
+  propertyType?: 'apartment' | 'house' | 'condominium' | 'townhouse' | 'commercial' | 'industrial';
+  status?: 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
   maxAllowedUnits?: number;
   name?: string;
 }
@@ -226,6 +226,13 @@ export const createTestProperty = async (
         parseFloat(faker.location.latitude()),
       ], // Required field
     },
+    approvalStatus: 'approved', // Required for lease validation
+    owner: {
+      type: 'company_owned', // Required for lease validation
+    },
+    authorization: {
+      isActive: true, // Required for lease validation
+    },
     createdAt: new Date(),
     updatedAt: new Date(),
   });
@@ -265,6 +272,7 @@ export const createTestPropertyUnit = async (
       rooms: options.bedrooms || 2, // Note: 'rooms' is the actual field name in the model
       bathrooms: options.bathrooms || 1,
     },
+    managedBy: new Types.ObjectId(), // Required field
     createdBy: new Types.ObjectId(), // Required field
     createdAt: new Date(),
     updatedAt: new Date(),

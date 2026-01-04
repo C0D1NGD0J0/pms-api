@@ -1,4 +1,4 @@
-export * from './documentProcessing.queue';
+export * from './propertyMedia.queue';
 export * from './pdfGenerator.queue';
 export * from './propertyUnit.queue';
 export * from './invitation.queue';

@@ -4,6 +4,7 @@ import { IUserRoleType } from '@shared/constants/roles.constants';
 import {
   IdentificationType,
   IContactInfoType,
+  IBaseUserProfile,
   IUserDocument,
   IAccountType,
 } from './user.interface';
@@ -79,6 +80,23 @@ export interface IClientUserConnections {
 }
 
 /**
+ * Populated Account Admin Type
+ * Essential user information for client admin
+ */
+export type PopulatedAccountAdmin = Pick<
+  IBaseUserProfile,
+  'email' | 'firstName' | 'lastName' | 'avatar'
+> & {
+  _id: Types.ObjectId;
+};
+
+/**
+ * ============================================================================
+ * POPULATED/ENRICHED INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Populated Client Document Type
  * Client document with fully populated account admin
  */
@@ -88,7 +106,7 @@ export type IPopulatedClientDocument = {
 
 /**
  * ============================================================================
- * POPULATED/ENRICHED INTERFACES
+ * DOCUMENT INTERFACES (Mongoose Extensions)
  * ============================================================================
  */
 
@@ -101,21 +119,6 @@ export interface IClientSettings {
   timeZone: string;
   lang: string;
 }
-
-/**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
-
-/**
- * Populated Account Admin Type
- * Essential user information for client admin
- */
-export type PopulatedAccountAdmin = Pick<
-  IUserDocument,
-  '_id' | 'email' | 'firstName' | 'lastName' | 'avatar'
->;
 
 /**
  * Simplified client info for passing around client context

@@ -44,7 +44,7 @@ import {
   UserDAO,
 } from '@dao/index';
 import {
-  DocumentProcessingWorker,
+  PropertyMediaWorker,
   PropertyUnitWorker,
   InvitationWorker,
   ESignatureWorker,
@@ -55,7 +55,7 @@ import {
   PdfWorker,
 } from '@workers/index';
 import {
-  DocumentProcessingQueue,
+  PropertyMediaQueue,
   PropertyUnitQueue,
   InvitationQueue,
   ESignatureQueue,
@@ -79,17 +79,24 @@ import {
   AuthController,
 } from '@controllers/index';
 import {
+  PropertyApprovalService,
   InvitationCsvProcessor,
+  LeaseSignatureService,
   PropertyCsvProcessor,
+  PropertyStatsService,
+  PropertyMediaService,
+  LeaseDocumentService,
   PdfGeneratorService,
   NotificationService,
   EventEmitterService,
   PropertyUnitService,
+  LeaseRenewalService,
   PermissionService,
   InvitationService,
   AuthTokenService,
   PropertyService,
   BoldSignService,
+  LeasePdfService,
   ProfileService,
   ClientService,
   VendorService,
@@ -134,6 +141,10 @@ const ServiceResources = {
   userService: asClass(UserService).singleton(),
   assetService: asClass(AssetService).singleton(),
   mailerService: asClass(MailService).singleton(),
+  leaseDocumentService: asClass(LeaseDocumentService).singleton(),
+  leasePdfService: asClass(LeasePdfService).singleton(),
+  leaseRenewalService: asClass(LeaseRenewalService).singleton(),
+  leaseSignatureService: asClass(LeaseSignatureService).singleton(),
   leaseService: asClass(LeaseService).singleton(),
   clientService: asClass(ClientService).singleton(),
   vendorService: asClass(VendorService).singleton(),
@@ -141,6 +152,9 @@ const ServiceResources = {
   tokenService: asClass(AuthTokenService).singleton(),
   languageService: asClass(LanguageService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
+  propertyApprovalService: asClass(PropertyApprovalService).singleton(),
+  propertyStatsService: asClass(PropertyStatsService).singleton(),
+  propertyMediaService: asClass(PropertyMediaService).singleton(),
   boldSignService: asClass(BoldSignService).singleton(),
   emitterService: asClass(EventEmitterService).singleton(),
   permissionService: asClass(PermissionService).singleton(),
@@ -185,7 +199,7 @@ const WorkerResources = {
   eSignatureWorker: asClass(ESignatureWorker).singleton(),
   invitationWorker: asClass(InvitationWorker).singleton(),
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
-  documentProcessingWorker: asClass(DocumentProcessingWorker).singleton(),
+  propertyMediaWorker: asClass(PropertyMediaWorker).singleton(),
 };
 
 const QueuesResources = {
@@ -198,7 +212,7 @@ const QueuesResources = {
   eSignatureQueue: asClass(ESignatureQueue).singleton(),
   invitationQueue: asClass(InvitationQueue).singleton(),
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
-  documentProcessingQueue: asClass(DocumentProcessingQueue).singleton(),
+  propertyMediaQueue: asClass(PropertyMediaQueue).singleton(),
 };
 
 const UtilsResources = {

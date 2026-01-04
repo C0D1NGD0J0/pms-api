@@ -266,7 +266,7 @@ export interface PropertySpecifications {
  * Media Document Item Interface
  */
 export interface MediaDocumentItem {
-  documentType?: DocumentType;
+  documentType?: PropertyDocumentType;
   status: MediaDocumentStatus;
   uploadedBy: Types.ObjectId;
   description?: string;
@@ -419,7 +419,7 @@ export interface UnitStats {
 /**
  * Document Type Classifications
  */
-export type DocumentType =
+export type PropertyDocumentType =
   | 'deed'
   | 'tax'
   | 'insurance'

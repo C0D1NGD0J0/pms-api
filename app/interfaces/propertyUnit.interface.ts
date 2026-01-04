@@ -398,11 +398,9 @@ export interface IPropertyUnitMedia {
  */
 
 /**
- * Unit Type Rules Collection
+ * @deprecated Use PropertyUnitDocumentType instead
  */
-export type UnitTypeRules = {
-  [unitType: string]: UnitTypeRule;
-};
+export type PropertyUnitDocumentTypeAlias = PropertyUnitDocumentType;
 
 /**
  * ============================================================================
@@ -411,15 +409,22 @@ export type UnitTypeRules = {
  */
 
 /**
- * Approval Status Types
+ * Unit Type Rules Collection
  */
-export type ApprovalStatus = 'approved' | 'pending' | 'rejected';
+export type UnitTypeRules = {
+  [unitType: string]: UnitTypeRule;
+};
 
 /**
  * ============================================================================
  * CONFIGURATION INTERFACES
  * ============================================================================
  */
+
+/**
+ * Approval Status Types
+ */
+export type ApprovalStatus = 'approved' | 'pending' | 'rejected';
 
 /**
  * Property Unit Document Status Types
@@ -430,11 +435,6 @@ export type PropertyUnitDocumentStatus = 'active' | 'inactive';
  * @deprecated Use PropertyUnitDocumentStatus instead
  */
 export type DocumentStatus = PropertyUnitDocumentStatus;
-
-/**
- * @deprecated Use PropertyUnitDocumentType instead
- */
-export type DocumentType = PropertyUnitDocumentType;
 
 /**
  * ============================================================================

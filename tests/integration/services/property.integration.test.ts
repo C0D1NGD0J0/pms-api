@@ -1,7 +1,10 @@
 import { ROLES } from '@shared/constants/roles.constants';
 import { disconnectTestDatabase } from '@tests/setup/testDatabase';
 import { PropertyService } from '@services/property/property.service';
+import { PropertyApprovalService } from '@services/property/propertyApproval.service';
+import { PropertyStatsService } from '@services/property/propertyStats.service';
 import { PropertyApprovalStatusEnum } from '@interfaces/property.interface';
+import { PropertyCache } from '@caching/property.cache';
 import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
 import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
 import { ValidationRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
@@ -56,8 +59,13 @@ const mockPropertyCsvProcessor = {
   processCsv: jest.fn().mockResolvedValue({ success: true }),
 } as any;
 
+// Remove mock services - we'll use real ones
+
 describe('PropertyService Integration Tests', () => {
   let propertyService: PropertyService;
+  let propertyApprovalService: PropertyApprovalService;
+  let propertyStatsService: PropertyStatsService;
+  let propertyCache: PropertyCache;
 
   let propertyDAO: PropertyDAO;
   let propertyUnitDAO: PropertyUnitDAO;
@@ -107,7 +115,22 @@ describe('PropertyService Integration Tests', () => {
     userDAO = new UserDAO({ userModel: User });
     leaseDAO = new LeaseDAO({ leaseModel: Lease });
 
-    // Initialize PropertyService with real DAOs and mocked external services
+    // Use mock PropertyCache (PropertyCache requires redisService)
+    propertyCache = mockPropertyCache;
+
+    // Initialize real extracted services
+    propertyApprovalService = new PropertyApprovalService({
+      propertyDAO,
+      propertyCache,
+      notificationService: mockNotificationService,
+    });
+
+    propertyStatsService = new PropertyStatsService({
+      propertyUnitDAO,
+      propertyDAO,
+    });
+
+    // Initialize PropertyService with real DAOs and real extracted services
     propertyService = new PropertyService({
       propertyDAO,
       propertyUnitDAO,
@@ -116,11 +139,13 @@ describe('PropertyService Integration Tests', () => {
       userDAO,
       leaseDAO,
       queueFactory: mockQueueFactory as any,
-      propertyCache: mockPropertyCache,
+      propertyCache,
       emitterService: mockEventEmitter as any,
       geoCoderService: mockGeoCoderService,
       propertyCsvProcessor: mockPropertyCsvProcessor,
       mediaUploadService: mockMediaUploadService,
+      propertyApprovalService,
+      propertyStatsService,
       notificationService: mockNotificationService,
     });
   });
@@ -384,7 +409,7 @@ describe('PropertyService Integration Tests', () => {
         // Create property first
         const property = await createTestProperty(testClient.cuid, testClient._id, {
           name: 'Original Name',
-          status: 'active',
+          status: 'available',
         });
 
         const updateData = {
@@ -422,7 +447,7 @@ describe('PropertyService Integration Tests', () => {
       it('should create pending changes for staff user', async () => {
         const property = await createTestProperty(testClient.cuid, testClient._id, {
           name: 'Staff Update Test',
-          status: 'active',
+          status: 'available',
         });
 
         // Ensure property is approved first
@@ -744,19 +769,19 @@ describe('PropertyService Integration Tests', () => {
       property1 = await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Apartment Complex A',
         propertyType: 'apartment',
-        status: 'active',
+        status: 'available',
       });
 
       property2 = await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Single Family Home',
-        propertyType: 'single_family',
-        status: 'active',
+        propertyType: 'house',
+        status: 'available',
       });
 
       _property3 = await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Commercial Building',
         propertyType: 'commercial',
-        status: 'active',
+        status: 'available',
       });
 
       // Ensure all are approved

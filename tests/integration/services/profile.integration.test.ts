@@ -4,9 +4,9 @@ import { UserService } from '@services/user/user.service';
 import { Profile, Client, Vendor, User } from '@models/index';
 import { VendorService } from '@services/vendor/vendor.service';
 import { ProfileService } from '@services/profile/profile.service';
-import { BackgroundCheckStatus } from '@interfaces/profile.interface';
 import { ProfileDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
+import { ProfileBackgroundCheckStatus } from '@interfaces/profile.interface';
 import { beforeEach, beforeAll, describe, afterAll, expect, it } from '@jest/globals';
 
 import {
@@ -370,7 +370,7 @@ describe('ProfileService Integration Tests - Write Operations', () => {
         backgroundChecks: [
           {
             cuid: client.cuid,
-            status: BackgroundCheckStatus.APPROVED,
+            status: ProfileBackgroundCheckStatus.APPROVED,
             checkedDate: new Date(),
           },
         ],

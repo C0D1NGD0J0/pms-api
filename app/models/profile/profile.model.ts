@@ -1,7 +1,7 @@
 import md5 from 'md5';
 import { Schema, model } from 'mongoose';
 import uniqueValidator from 'mongoose-unique-validator';
-import { BackgroundCheckStatus, IProfileDocument } from '@interfaces/profile.interface';
+import { ProfileBackgroundCheckStatus, IProfileDocument } from '@interfaces/profile.interface';
 
 const ProfileSchema = new Schema<IProfileDocument>(
   {
@@ -230,7 +230,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
             cuid: { type: String, trim: true, required: true },
             status: {
               type: String,
-              enum: Object.values(BackgroundCheckStatus),
+              enum: Object.values(ProfileBackgroundCheckStatus),
               required: true,
             },
             checkedDate: { type: Date, required: true },

@@ -2,6 +2,7 @@ import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
+import sanitizeHtml from 'sanitize-html';
 import { LeaseCache } from '@caching/index';
 import { UserService } from '@services/index';
 import { PropertyDAO } from '@dao/propertyDAO';
@@ -162,6 +163,15 @@ export class LeaseRenewalService {
     const userRole = ctx ? convertUserRoleToEnum(ctx.currentuser!.client.role) : null;
 
     const isSystemCall = !ctx;
+
+    // Sanitize legalTerms HTML/text content if provided
+    if (renewalData.legalTerms) {
+      renewalData.legalTerms = {
+        text: renewalData.legalTerms.text ? sanitizeHtml(renewalData.legalTerms.text) : undefined,
+        html: renewalData.legalTerms.html ? sanitizeHtml(renewalData.legalTerms.html) : undefined,
+        url: renewalData.legalTerms.url,
+      };
+    }
 
     const existingLease = await this.leaseDAO.findFirst(
       { luid, cuid, deletedAt: null },
@@ -897,6 +907,19 @@ export class LeaseRenewalService {
 
       // Apply renewalData updates if provided
       if (renewalData && Object.keys(renewalData).length > 0) {
+        // Sanitize legalTerms HTML/text content if provided
+        if (renewalData.legalTerms) {
+          renewalData.legalTerms = {
+            text: renewalData.legalTerms.text
+              ? sanitizeHtml(renewalData.legalTerms.text)
+              : undefined,
+            html: renewalData.legalTerms.html
+              ? sanitizeHtml(renewalData.legalTerms.html)
+              : undefined,
+            url: renewalData.legalTerms.url,
+          };
+        }
+
         // Validate renewal updates before applying
         // Check duration dates are valid
         if (renewalData.duration) {

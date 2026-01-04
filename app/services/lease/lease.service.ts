@@ -341,6 +341,13 @@ export class LeaseService {
         landlordName: landlordInfo.landlordName,
         fees: MoneyUtils.parseLeaseFees(data.fees),
         internalNotes: data.internalNotes ? sanitizeHtml(data.internalNotes) : undefined,
+        legalTerms: data.legalTerms
+          ? {
+              text: data.legalTerms.text ? sanitizeHtml(data.legalTerms.text) : undefined,
+              html: data.legalTerms.html ? sanitizeHtml(data.legalTerms.html) : undefined,
+              url: data.legalTerms.url,
+            }
+          : undefined,
         property: {
           id: data.property.id,
           address: propertyInfo?.address || 'REQUIRED',
@@ -605,6 +612,19 @@ export class LeaseService {
 
       if (cleanUpdateData.fees) {
         cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
+      }
+
+      // Sanitize legalTerms HTML/text content
+      if (cleanUpdateData.legalTerms) {
+        cleanUpdateData.legalTerms = {
+          text: cleanUpdateData.legalTerms.text
+            ? sanitizeHtml(cleanUpdateData.legalTerms.text)
+            : undefined,
+          html: cleanUpdateData.legalTerms.html
+            ? sanitizeHtml(cleanUpdateData.legalTerms.html)
+            : undefined,
+          url: cleanUpdateData.legalTerms.url,
+        };
       }
 
       // Handle internalNotes separately - will append as new note to array

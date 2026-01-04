@@ -1082,8 +1082,9 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
       unitId: lease.propertyUnitInfo?.id?.toString() || '',
       address: lease.propertyInfo?.address || '',
     },
-    tenantInfo: {
+    tenant: {
       id: lease.tenantInfo?._id?.toString() || lease.tenantId?.toString() || '',
+      fullname: lease.tenantInfo?.fullname || '',
     },
     duration: {
       startDate: renewalStartDate.toISOString().split('T')[0],
@@ -1114,18 +1115,20 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
       daysBeforeExpiryToAutoSendSignature:
         lease.renewalOptions?.daysBeforeExpiryToAutoSendSignature,
     },
+    status: lease.status,
     petPolicy: lease.petPolicy || {},
     utilitiesIncluded: lease.utilitiesIncluded || [],
     legalTerms: lease.legalTerms || '',
     coTenants: lease.coTenants || [],
-    leaseNumber: '',
+    templateType: lease.templateType || '',
+    leaseNumber: lease.leaseNumber || '',
   };
 
   return {
     daysUntilExpiry,
     renewalWindowDays,
     isEligible: isWithinWindow,
-    canRenew: isWithinWindow, // Additional checks (hasPendingRenewal) done in controller
+    canRenew: isWithinWindow,
     ineligibilityReason:
       daysUntilExpiry < 0
         ? 'Lease has already expired'

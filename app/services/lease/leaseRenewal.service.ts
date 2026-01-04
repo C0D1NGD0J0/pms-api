@@ -122,18 +122,12 @@ export class LeaseRenewalService {
 
       // Calculate renewal metadata to get form data
       const renewalMetadata = calculateRenewalMetadata(lease, true);
-
       if (!renewalMetadata) {
         throw new InvalidRequestError({
           message:
             'Unable to calculate renewal form data. Please ensure the lease has valid dates.',
         });
       }
-
-      this.log.info(
-        'Renewal form data keys:',
-        renewalMetadata.renewalFormData ? Object.keys(renewalMetadata.renewalFormData) : 'null'
-      );
 
       return {
         success: true,

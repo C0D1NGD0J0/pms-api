@@ -552,8 +552,9 @@ export class LeaseService {
         response.pendingChangesPreview = pendingChangesPreview;
       }
 
-      // Only calculate renewal metadata for active or draft_renewal leases
-      if (['draft_renewal', 'active'].includes(lease.status)) {
+      // Only calculate renewal metadata for active leases
+      // draft_renewal leases ARE the renewal, so calculating renewal metadata would be wrong
+      if (lease.status === 'active') {
         const renewalMetadata = calculateRenewalMetadata(lease);
         if (renewalMetadata) {
           response.renewalMetadata = renewalMetadata;

@@ -278,4 +278,29 @@ router.get(
   })
 );
 
+router
+  .route('/:cuid/:luid/lease_renewal')
+  .get(
+    // Get pre-calculated renewal form data for a lease
+    requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+    validateRequest({
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    }),
+    asyncWrapper(async (req: AppRequest, res) => {
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.getRenewalFormData(req, res);
+    })
+  )
+  .post(
+    requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
+    validateRequest({
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+      body: LeaseValidations.renewLease,
+    }),
+    asyncWrapper(async (req: AppRequest, res) => {
+      const controller = req.container.resolve<LeaseController>('leaseController');
+      return controller.renewLease(req, res);
+    })
+  );
+
 export default router;

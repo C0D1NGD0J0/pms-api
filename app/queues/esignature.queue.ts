@@ -6,7 +6,7 @@ import { BaseQueue } from './base.queue';
 
 export class ESignatureQueue extends BaseQueue<BoldSignJobData> {
   constructor({ eSignatureWorker }: { eSignatureWorker: ESignatureWorker }) {
-    super(QUEUE_NAMES.LEASE_SIGNATURE_REQUEST_QUEUE);
+    super({ queueName: QUEUE_NAMES.LEASE_SIGNATURE_REQUEST_QUEUE });
     this.processQueueJobs(JOB_NAME.REQUEST_SIGNATURE, 2, eSignatureWorker.sendForSignature);
   }
 

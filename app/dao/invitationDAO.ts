@@ -32,9 +32,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     super(Invitation);
   }
 
-  /**
-   * Create a new invitation
-   */
   async createInvitation(
     invitationData: IInvitationData,
     invitedBy: string,
@@ -73,9 +70,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Find an invitation by its token
-   */
   async findByToken(token: string): Promise<IInvitationDocument | null> {
     try {
       return await this.findFirst(
@@ -97,9 +91,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Find an invitation by its invitation ID
-   */
   async findByIuid(iuid: string, clientId: string): Promise<IInvitationDocument | null> {
     try {
       return await this.findFirst(
@@ -118,10 +109,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Find an invitation by its invitation ID (unsecured - for internal use only)
-   * @internal This method should only be used internally when clientId validation happens at service layer
-   */
   async findByIuidUnsecured(iuid: string): Promise<IInvitationDocument | null> {
     try {
       return await this.findFirst(
@@ -140,9 +127,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Find pending invitation for an email and client
-   */
   async findPendingInvitation(
     email: string,
     clientId: string
@@ -160,16 +144,15 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Get invitations for a client with filtering options
-   */
   async getInvitationsByClient(
     query: IInvitationListQuery
   ): ListResultWithPagination<IInvitationDocument[]> {
     try {
-      const filter: FilterQuery<IInvitationDocument> = {
-        cuid: query.cuid,
-      };
+      const filter: FilterQuery<IInvitationDocument> = {};
+
+      if (query.clientId) {
+        filter.clientId = new Types.ObjectId(query.clientId);
+      }
 
       if (query.status) {
         filter.status = query.status;
@@ -183,7 +166,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
       const limit = query.limit || 20;
       const skip = (page - 1) * limit;
 
-      // build sort object
       const sortBy = query.sortBy || 'createdAt';
       const sortOrder = query.sortOrder === 'asc' ? 1 : -1;
       const sort = { [sortBy]: sortOrder } as Record<string, 1 | -1>;
@@ -210,9 +192,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Update invitation details
-   */
   async updateInvitation(
     iuid: string,
     clientId: string,
@@ -237,7 +216,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
       if (invitationData.linkedVendorUid) {
         updateData.$set.linkedVendorUid = new Types.ObjectId(invitationData.linkedVendorUid);
       } else {
-        // If linkedVendorUid is explicitly set to null or undefined, remove the field
         updateData.$unset = { linkedVendorUid: 1 };
       }
 
@@ -248,9 +226,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Update invitation status
-   */
   async updateInvitationStatus(
     invitationId: string,
     clientId: string,
@@ -267,9 +242,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Revoke an invitation
-   */
   async revokeInvitation(
     iuid: string,
     clientId: string,
@@ -297,9 +269,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Decline an invitation
-   */
   async declineInvitation(
     iuid: string,
     clientId: string,
@@ -329,9 +298,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Accept an invitation
-   */
   async acceptInvitation(
     invitationToken: string,
     acceptedBy: string,
@@ -358,9 +324,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Mark expired invitations as expired
-   */
   async expireInvitations(): Promise<number> {
     try {
       const result = await this.updateMany(
@@ -379,14 +342,11 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Get invitation statistics for a client
-   */
   async getInvitationStats(clientId: string): Promise<IInvitationStats> {
     try {
       const pipeline = [
         {
-          $match: { clientId },
+          $match: { clientId: new Types.ObjectId(clientId) },
         },
         {
           $group: {
@@ -464,9 +424,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Update reminder count for an invitation
-   */
   async incrementReminderCount(
     invitationId: string,
     clientId: string,
@@ -487,9 +444,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Get invitations that need reminders
-   */
   async getInvitationsNeedingReminders(
     daysSinceCreated: number,
     maxReminders: number
@@ -515,9 +469,6 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  /**
-   * Get invitations by invitee email across all clients
-   */
   async getInvitationsByEmail(clientId: string, email: string): Promise<IInvitationDocument[]> {
     try {
       const result = await this.list(

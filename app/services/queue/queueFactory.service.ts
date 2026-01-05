@@ -3,18 +3,12 @@ import { createLogger } from '@utils/helpers';
 import { BaseQueue } from '@queues/base.queue';
 
 export class QueueFactory {
-  private static instance: QueueFactory;
   private initializedQueues: Set<string> = new Set();
   private initializedWorkers: Set<string> = new Set();
   private readonly log = createLogger('QueueFactory');
 
-  private constructor() {}
-
-  public static getInstance(): QueueFactory {
-    if (!QueueFactory.instance) {
-      QueueFactory.instance = new QueueFactory();
-    }
-    return QueueFactory.instance;
+  constructor() {
+    this.log.info('QueueFactory initialized');
   }
 
   /**
@@ -78,22 +72,28 @@ export class QueueFactory {
    */
   public initializeAllQueues(): void {
     const queueNames = [
-      'documentProcessingQueue',
+      'propertyMediaQueue',
       'emailQueue',
       'eventBusQueue',
       'propertyQueue',
       'propertyUnitQueue',
       'uploadQueue',
       'invitationQueue',
+      'eSignatureQueue',
+      'pdfGeneratorQueue',
+      'cronQueue',
     ];
 
     const workerNames = [
-      'documentProcessingWorker',
+      'propertyMediaWorker',
       'emailWorker',
       'propertyWorker',
       'propertyUnitWorker',
       'uploadWorker',
       'invitationWorker',
+      'eSignatureWorker',
+      'pdfGeneratorWorker',
+      'cronWorker',
     ];
 
     this.log.info('Force initializing all queues and workers');
@@ -123,5 +123,3 @@ export class QueueFactory {
     this.initializedWorkers.clear();
   }
 }
-
-export const queueFactory = QueueFactory.getInstance();

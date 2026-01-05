@@ -2,21 +2,17 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import sanitizeHtml from 'sanitize-html';
 import { FilterQuery, Types } from 'mongoose';
+import { PropertyQueue } from '@queues/index';
 import { PropertyCache } from '@caching/index';
+import { QueueFactory } from '@services/queue';
 import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
-import { PropertyQueue, UploadQueue } from '@queues/index';
+import { LeaseStatus, EventTypes } from '@interfaces/index';
 import { NotificationService } from '@services/notification';
 import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
-import {
-  UploadCompletedPayload,
-  UploadFailedPayload,
-  LeaseStatus,
-  EventTypes,
-} from '@interfaces/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -31,7 +27,6 @@ import {
   IRequestContext,
   ResourceContext,
   IPaginateResult,
-  UploadResult,
 } from '@interfaces/utils.interface';
 import {
   PropertyApprovalStatusEnum,
@@ -53,23 +48,22 @@ import {
   MoneyUtils,
 } from '@utils/index';
 
+import { PropertyStatsService } from './propertyStats.service';
+import { PropertyApprovalService } from './propertyApproval.service';
 import { PropertyValidationService } from './propertyValidation.service';
-import {
-  generatePendingChangesPreview,
-  validateOccupancyStatusChange,
-  getOriginalRequesterId,
-} from './propertyHelpers';
+import { generatePendingChangesPreview, validateOccupancyStatusChange } from './propertyHelpers';
 
 interface IConstructor {
+  propertyApprovalService: PropertyApprovalService;
   propertyCsvProcessor: PropertyCsvProcessor;
+  propertyStatsService: PropertyStatsService;
   notificationService: NotificationService;
   mediaUploadService: MediaUploadService;
   emitterService: EventEmitterService;
   geoCoderService: GeoCoderService;
   propertyUnitDAO: PropertyUnitDAO;
   propertyCache: PropertyCache;
-  propertyQueue: PropertyQueue;
-  uploadQueue: UploadQueue;
+  queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
@@ -79,17 +73,18 @@ interface IConstructor {
 
 export class PropertyService {
   private readonly log: Logger;
-  private uploadQueue: UploadQueue;
+  private readonly queueFactory: QueueFactory;
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
-  private readonly propertyQueue: PropertyQueue;
   private readonly propertyCache: PropertyCache;
   private readonly geoCoderService: GeoCoderService;
   private readonly emitterService: EventEmitterService;
   private readonly propertyCsvProcessor: PropertyCsvProcessor;
   private readonly mediaUploadService: MediaUploadService;
+  private readonly propertyApprovalService: PropertyApprovalService;
+  private readonly propertyStatsService: PropertyStatsService;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
   private readonly notificationService: NotificationService;
@@ -99,13 +94,14 @@ export class PropertyService {
     profileDAO,
     propertyDAO,
     propertyUnitDAO,
-    uploadQueue,
+    queueFactory,
     propertyCache,
     emitterService,
-    propertyQueue,
     geoCoderService,
     propertyCsvProcessor,
     mediaUploadService,
+    propertyApprovalService,
+    propertyStatsService,
     userDAO,
     leaseDAO,
     notificationService,
@@ -114,14 +110,15 @@ export class PropertyService {
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
     this.propertyUnitDAO = propertyUnitDAO;
-    this.uploadQueue = uploadQueue;
-    this.propertyQueue = propertyQueue;
+    this.queueFactory = queueFactory;
     this.propertyCache = propertyCache;
     this.emitterService = emitterService;
     this.geoCoderService = geoCoderService;
     this.log = createLogger('PropertyService');
     this.propertyCsvProcessor = propertyCsvProcessor;
     this.mediaUploadService = mediaUploadService;
+    this.propertyApprovalService = propertyApprovalService;
+    this.propertyStatsService = propertyStatsService;
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
     this.notificationService = notificationService;
@@ -130,9 +127,6 @@ export class PropertyService {
   }
 
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
-    this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
-
     this.emitterService.on(EventTypes.UNIT_CREATED, this.handleUnitChanged.bind(this));
     this.emitterService.on(EventTypes.UNIT_UPDATED, this.handleUnitChanged.bind(this));
     this.emitterService.on(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged.bind(this));
@@ -540,45 +534,13 @@ export class PropertyService {
       clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
     };
 
-    const job = await this.propertyQueue.addCsvImportJob(jobData);
+    const propertyQueue = this.queueFactory.getQueue('propertyQueue') as PropertyQueue;
+    const job = await propertyQueue.addCsvImportJob(jobData);
     return {
       success: true,
       data: { processId: job.id },
       message: t('property.success.csvImportStarted'),
     };
-  }
-
-  async updatePropertyDocuments(
-    propertyUid: string,
-    uploadResult: UploadResult[],
-    userid: string
-  ): Promise<ISuccessReturnData> {
-    if (!propertyUid) {
-      throw new BadRequestError({ message: t('property.errors.propertyIdRequired') });
-    }
-
-    if (!uploadResult || uploadResult.length === 0) {
-      throw new BadRequestError({ message: t('property.errors.uploadResultRequired') });
-    }
-    const property = await this.propertyDAO.findFirst({
-      pid: propertyUid,
-      deletedAt: null,
-    });
-    if (!property) {
-      throw new BadRequestError({ message: t('property.errors.unableToFind') });
-    }
-
-    const updatedProperty = await this.propertyDAO.updatePropertyDocument(
-      propertyUid,
-      uploadResult,
-      userid
-    );
-
-    if (!updatedProperty) {
-      throw new BadRequestError({ message: 'Unable to update property.' });
-    }
-
-    return { success: true, data: updatedProperty, message: 'Property updated successfully' };
   }
 
   async validateCsv(
@@ -606,7 +568,8 @@ export class PropertyService {
       csvFilePath: csvFile.path,
       clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
     };
-    const job = await this.propertyQueue.addCsvValidationJob(jobData);
+    const propertyQueue = this.queueFactory.getQueue('propertyQueue') as PropertyQueue;
+    const job = await propertyQueue.addCsvValidationJob(jobData);
     return {
       success: true,
       data: { processId: job.id },
@@ -733,19 +696,7 @@ export class PropertyService {
       skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
     };
 
-    const cachedResult = await this.propertyCache.getClientProperties(cuid, opts);
-    if (cachedResult.success && cachedResult.data) {
-      return {
-        success: true,
-        data: {
-          items: cachedResult.data.properties,
-          pagination: cachedResult.data.pagination,
-        },
-      };
-    }
-
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
-
     const itemsWithPreview = properties.items.map((property) => {
       const propertyObj = property.toObject ? property.toObject() : property;
       const pendingChangesPreview = generatePendingChangesPreview(property, currentuser);
@@ -755,12 +706,6 @@ export class PropertyService {
         ...(pendingChangesPreview && { pendingChangesPreview }),
         fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
       };
-    });
-
-    await this.propertyCache.saveClientProperties(cuid, properties.items, {
-      filter,
-      pagination: opts,
-      totalCount: properties.pagination?.total,
     });
 
     return {
@@ -1079,37 +1024,7 @@ export class PropertyService {
     currentuser: ICurrentUser,
     pagination: IPaginationQuery
   ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: IPaginateResult }>> {
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: 'You are not authorized to view pending approvals.',
-      });
-    }
-
-    const filter: FilterQuery<IPropertyDocument> = {
-      cuid,
-      deletedAt: null,
-      approvalStatus: 'pending',
-    };
-
-    const opts: IPaginationQuery = {
-      page: pagination.page || 1,
-      limit: Math.max(1, Math.min(pagination.limit || 10, 100)),
-      sort: pagination.sort || '-createdAt',
-      sortBy: pagination.sortBy || 'createdAt',
-      skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
-    };
-
-    const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
-
-    return {
-      success: true,
-      data: {
-        items: properties.items,
-        pagination: properties.pagination,
-      },
-      message: 'Pending approvals retrieved successfully',
-    };
+    return this.propertyApprovalService.getPendingApprovals(cuid, currentuser, pagination);
   }
 
   async approveProperty(
@@ -1118,129 +1033,7 @@ export class PropertyService {
     currentuser: ICurrentUser,
     notes?: string
   ): Promise<ISuccessReturnData> {
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: 'You are not authorized to approve properties.',
-      });
-    }
-
-    const property = await this.propertyDAO.findFirst({
-      pid,
-      cuid,
-      deletedAt: null,
-    });
-
-    if (!property) {
-      throw new NotFoundError({ message: t('property.errors.notFound') });
-    }
-
-    if (property.approvalStatus === 'approved' && !property.pendingChanges) {
-      throw new InvalidRequestError({
-        message: 'Property is already approved and has no pending changes.',
-      });
-    }
-
-    const approvalEntry = {
-      action: 'approved' as const,
-      actor: new Types.ObjectId(currentuser.sub),
-      timestamp: new Date(),
-      ...(notes && { notes }),
-    };
-
-    const updateData: any = {
-      approvalStatus: 'approved',
-      lastModifiedBy: new Types.ObjectId(currentuser.sub),
-    };
-
-    // Defensive check: Ensure approvalDetails is an array before $push
-    if (!property.approvalDetails || !Array.isArray(property.approvalDetails)) {
-      this.log.warn('Fixing approvalDetails type mismatch - initializing as empty array', {
-        propertyId: property.id,
-        pid: property.pid,
-        currentType: property.approvalDetails ? typeof property.approvalDetails : 'undefined',
-        wasArray: Array.isArray(property.approvalDetails),
-      });
-      updateData.approvalDetails = [approvalEntry];
-    } else {
-      updateData.$push = { approvalDetails: approvalEntry };
-    }
-
-    if (property.pendingChanges) {
-      const safeChanges = createSafeMongoUpdate(property.pendingChanges);
-
-      updateData.$set = {
-        ...safeChanges,
-        pendingChanges: null,
-        approvalStatus: 'approved',
-        lastModifiedBy: new Types.ObjectId(currentuser.sub),
-      };
-
-      this.log.info('Applying pending changes during approval with safe updates', {
-        propertyId: property.id,
-        pendingChanges: Object.keys(property.pendingChanges),
-        safeUpdateFields: Object.keys(safeChanges),
-      });
-    }
-
-    const updatedProperty = await this.propertyDAO.update(
-      { pid, cuid, deletedAt: null },
-      updateData
-    );
-
-    if (!updatedProperty) {
-      throw new BadRequestError({ message: 'Unable to approve property.' });
-    }
-
-    await this.propertyCache.invalidateProperty(cuid, property.id);
-    await this.propertyCache.invalidatePropertyLists(cuid);
-
-    this.log.info('Property approved', {
-      propertyId: property.id,
-      approvedBy: currentuser.sub,
-      hadPendingChanges: !!property.pendingChanges,
-    });
-
-    try {
-      const originalRequesterId =
-        property.pendingChanges?.updatedBy?.toString() ||
-        getOriginalRequesterId(
-          Array.isArray(property.approvalDetails) ? property.approvalDetails : []
-        );
-
-      if (originalRequesterId) {
-        await this.notificationService.notifyApprovalDecision(
-          {
-            resourceId: updatedProperty.id,
-            resourceUid: updatedProperty.pid,
-            resourceName: updatedProperty.name || property.name || 'Unknown Property',
-          },
-          currentuser.sub,
-          cuid,
-          'approved',
-          originalRequesterId,
-          notes,
-          {
-            address: updatedProperty.address?.fullAddress,
-            hadPendingChanges: !!property.pendingChanges,
-          }
-        );
-      }
-    } catch (notificationError) {
-      this.log.error('Failed to send approval notification', {
-        error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
-        propertyId: updatedProperty.pid,
-        approverId: currentuser.sub,
-      });
-    }
-
-    return {
-      success: true,
-      data: updatedProperty,
-      message: property.pendingChanges
-        ? 'Property changes approved and applied successfully'
-        : 'Property approved successfully',
-    };
+    return this.propertyApprovalService.approveProperty(cuid, pid, currentuser, notes);
   }
 
   async rejectProperty(
@@ -1249,115 +1042,7 @@ export class PropertyService {
     currentuser: ICurrentUser,
     reason: string
   ): Promise<ISuccessReturnData> {
-    if (!reason || reason.trim().length === 0) {
-      throw new BadRequestError({ message: 'Rejection reason is required.' });
-    }
-
-    // Check if user has permission
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: 'You are not authorized to reject properties.',
-      });
-    }
-
-    const property = await this.propertyDAO.findFirst({
-      pid,
-      cuid,
-      deletedAt: null,
-    });
-
-    if (!property) {
-      throw new NotFoundError({ message: t('property.errors.notFound') });
-    }
-
-    // Create new rejection entry for the array
-    const rejectionEntry = {
-      action: 'rejected' as const,
-      actor: new Types.ObjectId(currentuser.sub),
-      timestamp: new Date(),
-      rejectionReason: reason.trim(),
-    };
-
-    // Determine the appropriate status after rejection
-    const updateData: any = {
-      lastModifiedBy: new Types.ObjectId(currentuser.sub),
-    };
-
-    if (!property.approvalDetails || !Array.isArray(property.approvalDetails)) {
-      updateData.approvalDetails = [rejectionEntry];
-    } else {
-      updateData.$push = { approvalDetails: rejectionEntry };
-    }
-
-    // If property has pending changes, clear them and keep status as approved (using old data)
-    if (property.pendingChanges) {
-      updateData.pendingChanges = null;
-      // Keep approvalStatus as 'approved' since we're keeping the old approved data
-    } else {
-      // If no pending changes, this is a new property being rejected
-      updateData.approvalStatus = 'rejected';
-    }
-
-    const updatedProperty = await this.propertyDAO.update(
-      { pid, cuid, deletedAt: null },
-      { $set: updateData }
-    );
-
-    if (!updatedProperty) {
-      throw new BadRequestError({ message: 'Unable to reject property.' });
-    }
-
-    await this.propertyCache.invalidateProperty(cuid, property.id);
-    await this.propertyCache.invalidatePropertyLists(cuid);
-
-    this.log.info('Property rejected', {
-      propertyId: property.id,
-      rejectedBy: currentuser.sub,
-      reason,
-      hadPendingChanges: !!property.pendingChanges,
-    });
-
-    try {
-      const originalRequesterId =
-        property.pendingChanges?.updatedBy?.toString() ||
-        getOriginalRequesterId(
-          Array.isArray(property.approvalDetails) ? property.approvalDetails : []
-        );
-
-      if (originalRequesterId) {
-        await this.notificationService.notifyApprovalDecision(
-          {
-            resourceId: updatedProperty.id,
-            resourceUid: updatedProperty.pid,
-            resourceName: updatedProperty.name || property.name || 'Unknown Property',
-          },
-          currentuser.sub,
-          cuid,
-          'rejected',
-          originalRequesterId,
-          reason.trim(),
-          {
-            address: updatedProperty.address?.fullAddress || property.address?.fullAddress,
-            hadPendingChanges: !!property.pendingChanges,
-          }
-        );
-      }
-    } catch (notificationError) {
-      this.log.error('Failed to send rejection notification', {
-        error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
-        propertyId: updatedProperty.pid,
-        rejectorId: currentuser.sub,
-      });
-    }
-
-    return {
-      success: true,
-      data: updatedProperty,
-      message: property.pendingChanges
-        ? 'Property changes rejected. Original data preserved.'
-        : 'Property rejected',
-    };
+    return this.propertyApprovalService.rejectProperty(cuid, pid, currentuser, reason);
   }
 
   async bulkApproveProperties(
@@ -1365,47 +1050,7 @@ export class PropertyService {
     propertyIds: string[],
     currentuser: ICurrentUser
   ): Promise<ISuccessReturnData> {
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: 'You are not authorized to bulk approve properties.',
-      });
-    }
-
-    if (!propertyIds || propertyIds.length === 0) {
-      throw new BadRequestError({ message: 'Property IDs are required.' });
-    }
-
-    const updateData = {
-      approvalStatus: 'approved',
-      'approvalDetails.approvedBy': new Types.ObjectId(currentuser.sub),
-      'approvalDetails.approvedAt': new Date(),
-      'approvalDetails.requiresReapproval': false,
-      lastModifiedBy: new Types.ObjectId(currentuser.sub),
-    };
-
-    const result = await this.propertyDAO.updateMany(
-      {
-        pid: { $in: propertyIds },
-        cuid,
-        deletedAt: null,
-        approvalStatus: 'pending',
-      },
-      { $set: updateData }
-    );
-
-    await this.propertyCache.invalidatePropertyLists(cuid);
-
-    this.log.info('Properties bulk approved', {
-      count: result.modifiedCount,
-      approvedBy: currentuser.sub,
-    });
-
-    return {
-      success: true,
-      data: { approved: result.modifiedCount, total: propertyIds.length },
-      message: `${result.modifiedCount} properties approved successfully`,
-    };
+    return this.propertyApprovalService.bulkApproveProperties(cuid, propertyIds, currentuser);
   }
 
   async bulkRejectProperties(
@@ -1414,53 +1059,12 @@ export class PropertyService {
     currentuser: ICurrentUser,
     reason: string
   ): Promise<ISuccessReturnData> {
-    if (!reason || reason.trim().length === 0) {
-      throw new BadRequestError({ message: 'Rejection reason is required.' });
-    }
-
-    // Check if user has permission
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: 'You are not authorized to bulk reject properties.',
-      });
-    }
-
-    if (!propertyIds || propertyIds.length === 0) {
-      throw new BadRequestError({ message: 'Property IDs are required.' });
-    }
-
-    const updateData = {
-      approvalStatus: 'rejected',
-      'approvalDetails.rejectedBy': new Types.ObjectId(currentuser.sub),
-      'approvalDetails.rejectedAt': new Date(),
-      'approvalDetails.rejectionReason': reason.trim(),
-      lastModifiedBy: new Types.ObjectId(currentuser.sub),
-    };
-
-    const result = await this.propertyDAO.updateMany(
-      {
-        pid: { $in: propertyIds },
-        cuid,
-        deletedAt: null,
-        approvalStatus: 'pending',
-      },
-      { $set: updateData }
+    return this.propertyApprovalService.bulkRejectProperties(
+      cuid,
+      propertyIds,
+      currentuser,
+      reason
     );
-
-    await this.propertyCache.invalidatePropertyLists(cuid);
-
-    this.log.info('Properties bulk rejected', {
-      count: result.modifiedCount,
-      rejectedBy: currentuser.sub,
-      reason,
-    });
-
-    return {
-      success: true,
-      data: { rejected: result.modifiedCount, total: propertyIds.length },
-      message: `${result.modifiedCount} properties rejected`,
-    };
   }
 
   async getMyPropertyRequests(
@@ -1563,111 +1167,6 @@ export class PropertyService {
     await this.propertyCache.invalidatePropertyLists(cuid);
 
     return { success: true, data: null, message: t('property.success.archived') };
-  }
-
-  async markDocumentsAsFailed(propertyId: string, errorMessage: string): Promise<void> {
-    try {
-      const property = await this.propertyDAO.findById(propertyId);
-      if (!property || !property.documents) return;
-
-      const updateOperations: any = {};
-      const now = new Date();
-
-      property.documents.forEach((doc, index) => {
-        const isPending = doc.status === 'pending';
-
-        if (isPending) {
-          updateOperations[`documents.${index}.status`] = 'failed';
-          updateOperations[`documents.${index}.errorMessage`] = errorMessage;
-          updateOperations[`documents.${index}.processingCompleted`] = now;
-        }
-      });
-
-      if (Object.keys(updateOperations).length > 0) {
-        await this.propertyDAO.update(
-          { _id: new Types.ObjectId(propertyId) },
-          { $set: updateOperations }
-        );
-
-        this.log.warn(`Marked documents as failed for property ${propertyId}`, { errorMessage });
-      }
-    } catch (error) {
-      this.log.error(`Error marking documents as failed for property ${propertyId}:`, error);
-    }
-  }
-
-  private async handleUploadCompleted(payload: UploadCompletedPayload): Promise<void> {
-    const { results, resourceName, resourceId, actorId } = payload;
-
-    if (resourceName !== 'property') {
-      this.log.debug(t('property.logging.ignoringUploadEvent'), {
-        resourceName,
-      });
-      return;
-    }
-
-    try {
-      await this.updatePropertyDocuments(resourceId, results, actorId);
-
-      this.log.info(
-        {
-          propertyId: resourceId,
-        },
-        'Successfully processed upload completed event'
-      );
-    } catch (error) {
-      this.log.error(
-        {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          propertyId: resourceId,
-        },
-        'Error processing upload completed event'
-      );
-
-      try {
-        await this.markDocumentsAsFailed(
-          resourceId,
-          `Failed to process completed upload: ${error instanceof Error ? error.message : 'Unknown error'}`
-        );
-      } catch (markFailedError) {
-        this.log.error(
-          {
-            error:
-              markFailedError instanceof Error
-                ? markFailedError.message
-                : t('property.errors.unknownError'),
-            propertyId: resourceId,
-          },
-          'Failed to mark documents as failed after upload processing error'
-        );
-      }
-    }
-  }
-
-  private async handleUploadFailed(payload: UploadFailedPayload): Promise<void> {
-    const { error, resourceType, resourceId } = payload;
-
-    this.log.info(t('property.logging.receivedUploadFailedEvent'), {
-      resourceType,
-      resourceId,
-      error: error.message,
-    });
-
-    try {
-      await this.markDocumentsAsFailed(resourceId, error.message);
-
-      this.log.info(t('property.logging.processedUploadFailedEvent'), {
-        propertyId: resourceId,
-      });
-    } catch (markFailedError) {
-      this.log.error(t('property.logging.errorProcessingUploadFailed'), {
-        error:
-          markFailedError instanceof Error
-            ? markFailedError.message
-            : t('property.errors.unknownError'),
-        propertyId: resourceId,
-      });
-    }
   }
 
   private async handleUnitChanged(payload: any): Promise<void> {
@@ -1792,118 +1291,7 @@ export class PropertyService {
       inactive: number;
     };
   }> {
-    const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
-    const maxAllowedUnits = property.maxAllowedUnits || 1;
-
-    if (isMultiUnit) {
-      const unitData = await this.propertyUnitDAO.getPropertyUnitInfo(property._id.toString());
-      const canAddUnitResult = await this.propertyDAO.canAddUnitToProperty(property._id.toString());
-      const availableSpaces = Math.max(0, maxAllowedUnits - unitData.currentUnits);
-
-      let lastUnitNumber: string | undefined;
-      let suggestedNextUnitNumber: string | undefined;
-
-      if (unitData.currentUnits > 0) {
-        try {
-          const existingUnitNumbers = await this.propertyUnitDAO.getExistingUnitNumbers(
-            property._id.toString()
-          );
-
-          if (existingUnitNumbers.length > 0) {
-            // Find the highest numerical unit number
-            const numericUnits = existingUnitNumbers
-              .map((num) => {
-                const match = num.match(/(\d+)/);
-                return match ? parseInt(match[1], 10) : 0;
-              })
-              .filter((num) => num > 0);
-
-            if (numericUnits.length > 0) {
-              const highestNumber = Math.max(...numericUnits);
-              lastUnitNumber = highestNumber.toString();
-
-              // get suggested next unit number
-              suggestedNextUnitNumber = await this.propertyUnitDAO.getNextAvailableUnitNumber(
-                property._id.toString(),
-                'sequential'
-              );
-            } else {
-              // No numeric patterns found, get the last unit alphabetically
-              lastUnitNumber = existingUnitNumbers.sort().pop();
-              suggestedNextUnitNumber = await this.propertyUnitDAO.getNextAvailableUnitNumber(
-                property._id.toString(),
-                'custom'
-              );
-            }
-          }
-        } catch (error) {
-          this.log.warn(
-            `Error getting unit numbers for property ${property._id.toString()}:`,
-            error
-          );
-          // continue without unit numbering info
-        }
-      } else {
-        suggestedNextUnitNumber = this.propertyUnitDAO.getSuggestedStartingUnitNumber(
-          property.propertyType
-        );
-      }
-
-      return {
-        canAddUnit: canAddUnitResult.canAdd,
-        maxAllowedUnits,
-        currentUnits: unitData.currentUnits,
-        availableSpaces,
-        lastUnitNumber,
-        suggestedNextUnitNumber,
-        statistics: unitData.unitStats,
-        totalUnits: unitData.currentUnits,
-        unitStats: unitData.unitStats,
-      };
-    } else {
-      // Single-unit property: derive stats from property status
-      const unitStats = {
-        occupied: 0,
-        vacant: 0,
-        maintenance: 0,
-        available: 0,
-        reserved: 0,
-        inactive: 0,
-      };
-
-      // map property occupancy status to unit stats
-      switch (property.occupancyStatus) {
-        case 'partially_occupied':
-          unitStats.occupied = 1;
-          break;
-        case 'occupied':
-          unitStats.occupied = 1;
-          break;
-        case 'vacant':
-          unitStats.available = 1;
-          break;
-        default:
-          unitStats.available = 1;
-          break;
-      }
-
-      // For single-unit properties, suggest unit numbers if they want to convert to multi-unit
-      const suggestedNextUnitNumber =
-        property.propertyType === 'house' || property.propertyType === 'townhouse'
-          ? '2' // If converting house to duplex, start with unit 2
-          : this.propertyUnitDAO.getSuggestedStartingUnitNumber(property.propertyType);
-
-      return {
-        canAddUnit: false,
-        maxAllowedUnits: 1,
-        currentUnits: 1,
-        availableSpaces: 0,
-        suggestedNextUnitNumber,
-        statistics: unitStats,
-        totalUnits: 1,
-        unitStats,
-      };
-    }
+    return this.propertyStatsService.getUnitInfoForProperty(property);
   }
 
   async getAssignableUsers(
@@ -2282,8 +1670,7 @@ export class PropertyService {
     this.log.info(t('property.logging.cleaningUp'));
 
     // Remove all event listeners
-    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
-    this.emitterService.off(EventTypes.UPLOAD_FAILED, this.handleUploadFailed);
+    // Note: Upload event listeners are now managed by PropertyMediaService
     this.emitterService.off(EventTypes.UNIT_CREATED, this.handleUnitChanged);
     this.emitterService.off(EventTypes.UNIT_UPDATED, this.handleUnitChanged);
     this.emitterService.off(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged);

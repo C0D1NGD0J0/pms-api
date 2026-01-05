@@ -51,4 +51,7 @@ RUN npm run build
 # Expose port
 EXPOSE 3000
 
-CMD ["npm", "start"]
+# Support both API and Worker processes via START_COMMAND env var
+# API: START_COMMAND="npm run start:api"
+# Worker: START_COMMAND="npm run start:worker"
+CMD ["sh", "-c", "${START_COMMAND:-npm run start:api}"]

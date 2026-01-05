@@ -142,17 +142,37 @@ export const CoTenantSchema = z.object({
 });
 
 export const PetPolicySchema = z.object({
-  allowed: z.boolean().default(false),
+  allowed: z.boolean().optional(),
   types: z.array(z.string()).optional(),
-  maxPets: z.number().int().min(0).optional(),
-  deposit: z.number().min(0, 'Pet deposit must be non-negative').optional(),
-  monthlyFee: z.number().min(0, 'Pet monthly fee must be non-negative').optional(),
+  maxPets: z.coerce.number().int().min(0).optional(),
+  deposit: z.coerce.number().min(0, 'Pet deposit must be non-negative').optional(),
+  monthlyFee: z.coerce.number().min(0, 'Pet monthly fee must be non-negative').optional(),
 });
 
 export const RenewalOptionsSchema = z.object({
   autoRenew: z.boolean().default(false),
+  daysBeforeExpiryToGenerateRenewal: z.number().min(1).optional(),
+  daysBeforeExpiryToAutoSendSignature: z.number().min(1).optional(),
+  enableAutoSendForSignature: z.boolean().optional(),
   noticePeriodDays: z.number().int().min(1, 'Notice period must be at least 1 day').optional(),
   renewalTermMonths: z.number().int().min(1, 'Renewal term must be at least 1 month').optional(),
+});
+
+export const RenewLeaseSchema = z.object({
+  duration: z
+    .object({
+      startDate: z.coerce.date().optional(),
+      endDate: z.coerce.date().optional(),
+    })
+    .optional(),
+
+  fees: LeaseFeesSchema.partial().optional(),
+  renewalOptions: RenewalOptionsSchema.partial().optional(),
+  petPolicy: PetPolicySchema.partial().optional(),
+  utilitiesIncluded: z.array(UtilityEnum).optional(),
+
+  coTenants: z.array(CoTenantSchema).optional(),
+  internalNotes: z.string().optional(),
 });
 
 export const LegalTermsSchema = z.object({
@@ -247,54 +267,19 @@ export const CreateLeaseSchema = BaseLeaseSchemaObject.omit({ cuid: true })
     }
   );
 
-// Update-specific fee schema with coercion for partial updates
-const UpdateLeaseFeesSchema = z
-  .object({
-    monthlyRent: z.coerce.number().positive('Monthly rent must be a positive number').optional(),
-    currency: z.string().length(3, 'Currency must be a 3-letter code').optional(),
-    rentDueDay: z.coerce.number().int().min(1).max(31).optional(),
-    securityDeposit: z.coerce.number().min(0, 'Security deposit must be non-negative').optional(),
-    lateFeeAmount: z.coerce.number().min(0, 'Late fee amount must be non-negative').optional(),
-    lateFeeDays: z.coerce.number().int().min(1, 'Late fee days must be at least 1').optional(),
-    lateFeeType: z.enum(['fixed', 'percentage']).optional(),
-    lateFeePercentage: z.coerce.number().min(0).max(100).optional(),
-    acceptedPaymentMethod: PaymentMethodEnum.optional(),
-  })
-  .optional();
-
-// Update-specific pet policy schema with coercion
-const UpdatePetPolicySchema = z
-  .object({
-    allowed: z.boolean().optional(),
-    types: z.array(z.string()).optional(),
-    maxPets: z.coerce.number().int().min(0).optional(),
-    deposit: z.coerce.number().min(0, 'Pet deposit must be non-negative').optional(),
-    monthlyFee: z.coerce.number().min(0, 'Pet monthly fee must be non-negative').optional(),
-  })
-  .optional();
-
-// Update-specific renewal options schema with coercion
-const UpdateRenewalOptionsSchema = z
-  .object({
-    autoRenew: z.boolean().optional(),
-    noticePeriodDays: z.coerce.number().int().min(1).optional(),
-    renewalTermMonths: z.coerce.number().int().min(1).optional(),
-  })
-  .optional();
-
 export const UpdateLeaseSchema = z
   .object({
     status: LeaseStatusEnum.optional(),
     property: LeasePropertySchema.partial().optional(),
     duration: LeaseDurationSchema.partial().optional(),
-    fees: UpdateLeaseFeesSchema,
+    fees: LeaseFeesSchema.partial().optional(),
     type: LeaseTypeEnum.optional(),
     signingMethod: SigningMethodEnum.optional(),
     eSignature: ESignatureSchema.optional(),
     utilitiesIncluded: z.array(UtilityEnum).optional(),
     coTenants: z.array(CoTenantSchema).optional(),
-    petPolicy: UpdatePetPolicySchema,
-    renewalOptions: UpdateRenewalOptionsSchema,
+    petPolicy: PetPolicySchema.partial().optional(),
+    renewalOptions: RenewalOptionsSchema.partial().optional(),
     legalTerms: LegalTermsSchema.optional(),
     internalNotes: z
       .string()

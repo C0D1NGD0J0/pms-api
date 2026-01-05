@@ -84,6 +84,7 @@ export function createLogger(name: string) {
         const level = parsedRecord?.level || 30;
 
         let output = `${serviceName}: ${message}`;
+        // let output = '';
 
         switch (level) {
           case LOG_LEVELS.TRACE:
@@ -143,6 +144,7 @@ export function createLogger(name: string) {
 
   return logger;
 }
+
 /**
  * Sets an authentication cookie in the HTTP response
  * @param cookieName - The name of the JWT cookie

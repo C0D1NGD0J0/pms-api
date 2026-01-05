@@ -193,4 +193,52 @@ export class RedisService {
     }
     return envVariables.REDIS.URL;
   }
+
+  /**
+   * Get Redis connection statistics for monitoring
+   * Returns connection counts for current process and system-wide
+   */
+  async getConnectionStats() {
+    try {
+      const { exec } = await import('child_process');
+      const { promisify } = await import('util');
+      const execAsync = promisify(exec);
+
+      // Count Redis connections for this process
+      const { stdout } = await execAsync(
+        `lsof -i :6379 2>/dev/null | grep ESTABLISHED | grep ${process.pid} | wc -l`
+      );
+      const connectionCount = parseInt(stdout.trim(), 10);
+
+      // Get total Redis connections across all processes
+      const { stdout: totalStdout } = await execAsync(
+        'lsof -i :6379 2>/dev/null | grep ESTABLISHED | wc -l'
+      );
+      const totalConnections = parseInt(totalStdout.trim(), 10);
+
+      return {
+        success: true,
+        thisProcess: {
+          pid: process.pid,
+          connections: connectionCount,
+          processType: process.env.PROCESS_TYPE,
+        },
+        total: {
+          connections: totalConnections,
+          threshold: 100,
+          exceeded: totalConnections >= 100,
+        },
+        message:
+          totalConnections >= 100
+            ? 'High Redis connection count detected. Check for duplicate processes.'
+            : 'Connections within normal range',
+      };
+    } catch (error: any) {
+      this.log.warn({ error }, 'Failed to get Redis connection stats');
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
 }

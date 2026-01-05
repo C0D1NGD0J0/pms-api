@@ -6,7 +6,7 @@ import { BaseQueue } from './base.queue';
 
 export class UploadQueue extends BaseQueue {
   constructor({ uploadWorker }: { uploadWorker: UploadWorker }) {
-    super(QUEUE_NAMES.MEDIA_QUEUE);
+    super({ queueName: QUEUE_NAMES.MEDIA_QUEUE });
     this.processQueueJobs(JOB_NAME.MEDIA_UPLOAD_JOB, 5, uploadWorker.uploadAsset);
     this.processQueueJobs(JOB_NAME.MEDIA_REMOVAL_JOB, 15, uploadWorker.deleteAsset);
   }

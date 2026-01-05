@@ -1136,6 +1136,339 @@ export class NotificationService {
   }
 
   /**
+   * Notify about lease lifecycle events (renewal, expiry, completion, etc.)
+   * Flexible method for various lease state transitions
+   */
+  async notifyLeaseLifecycleEvent(params: {
+    eventType:
+      | 'renewal_created'
+      | 'renewal_approved'
+      | 'expiring'
+      | 'expired'
+      | 'completed'
+      | 'renewal_incomplete';
+    lease: {
+      luid: string;
+      leaseNumber: string;
+      cuid: string;
+      tenantId: string;
+      propertyAddress: string;
+      endDate: Date;
+      startDate?: Date;
+    };
+    recipients: {
+      tenant?: boolean;
+      propertyManager?: string; // managerId
+      createdBy?: string; // lease creator
+    };
+    metadata?: Record<string, any>;
+    customMessage?: { title?: string; message?: string };
+  }): Promise<void> {
+    const { eventType, lease, recipients, metadata = {}, customMessage } = params;
+
+    try {
+      const baseMetadata = {
+        leaseId: lease.luid,
+        leaseNumber: lease.leaseNumber,
+        propertyAddress: lease.propertyAddress,
+        endDate: lease.endDate.toISOString(),
+        eventType,
+        ...metadata,
+      };
+
+      // Notify tenant
+      if (recipients.tenant) {
+        const tenantNotification = this.getLeaseLifecycleNotificationContent(
+          eventType,
+          lease,
+          'tenant',
+          customMessage
+        );
+
+        await this.createNotification(lease.cuid, NotificationTypeEnum.LEASE, {
+          type: NotificationTypeEnum.LEASE,
+          priority: tenantNotification.priority,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: lease.tenantId,
+          title: tenantNotification.title,
+          message: tenantNotification.message,
+          metadata: {
+            ...baseMetadata,
+            recipientRole: 'tenant',
+          },
+          cuid: lease.cuid,
+        });
+      }
+
+      // Notify lease creator (admin/staff/manager who created the lease)
+      if (recipients.createdBy) {
+        const creatorNotification = this.getLeaseLifecycleNotificationContent(
+          eventType,
+          lease,
+          'creator',
+          customMessage
+        );
+
+        await this.createNotification(lease.cuid, NotificationTypeEnum.LEASE, {
+          type: NotificationTypeEnum.LEASE,
+          priority: creatorNotification.priority,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: recipients.createdBy,
+          title: creatorNotification.title,
+          message: creatorNotification.message,
+          metadata: {
+            ...baseMetadata,
+            recipientRole: 'creator',
+          },
+          cuid: lease.cuid,
+        });
+      }
+
+      // Notify property manager (only if different from creator)
+      if (recipients.propertyManager && recipients.propertyManager !== recipients.createdBy) {
+        const managerNotification = this.getLeaseLifecycleNotificationContent(
+          eventType,
+          lease,
+          'manager',
+          customMessage
+        );
+
+        await this.createNotification(lease.cuid, NotificationTypeEnum.LEASE, {
+          type: NotificationTypeEnum.LEASE,
+          priority: managerNotification.priority,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: recipients.propertyManager,
+          title: managerNotification.title,
+          message: managerNotification.message,
+          metadata: {
+            ...baseMetadata,
+            recipientRole: 'manager',
+          },
+          cuid: lease.cuid,
+        });
+      }
+
+      this.log.info(`Lease lifecycle event notifications sent: ${eventType}`, {
+        leaseNumber: lease.leaseNumber,
+        eventType,
+        recipients,
+      });
+    } catch (error) {
+      this.log.error('Failed to send lease lifecycle event notifications', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        eventType,
+        leaseNumber: lease.leaseNumber,
+      });
+    }
+  }
+
+  /**
+   * Generate notification content based on event type and recipient role
+   */
+  private getLeaseLifecycleNotificationContent(
+    eventType: string,
+    lease: any,
+    recipientRole: 'tenant' | 'manager' | 'creator',
+    customMessage?: { title?: string; message?: string }
+  ): { title: string; message: string; priority: NotificationPriorityEnum } {
+    // Use custom message if provided
+    if (customMessage?.title && customMessage?.message) {
+      return {
+        title: customMessage.title,
+        message: customMessage.message,
+        priority: NotificationPriorityEnum.MEDIUM,
+      };
+    }
+
+    const messages: Record<string, Record<string, any>> = {
+      renewal_created: {
+        tenant: {
+          title: 'Lease Renewal Prepared',
+          message: `Your lease renewal for ${lease.propertyAddress} is being prepared. You'll receive it for signature soon.`,
+          priority: NotificationPriorityEnum.MEDIUM,
+        },
+        manager: {
+          title: 'Lease Renewal Created',
+          message: `Auto-renewal created for lease ${lease.leaseNumber}. Please review and approve.`,
+          priority: NotificationPriorityEnum.HIGH,
+        },
+        creator: {
+          title: 'Lease Renewal Pending Approval',
+          message: `Auto-renewal for lease ${lease.leaseNumber} requires your approval.`,
+          priority: NotificationPriorityEnum.HIGH,
+        },
+      },
+      renewal_approved: {
+        tenant: {
+          title: 'Lease Renewal Approved',
+          message: "Your lease renewal has been approved. You'll receive it for signature soon.",
+          priority: NotificationPriorityEnum.MEDIUM,
+        },
+        manager: {
+          title: 'Lease Renewal Approved',
+          message: `Renewal for lease ${lease.leaseNumber} approved and ready for signature.`,
+          priority: NotificationPriorityEnum.LOW,
+        },
+      },
+      expiring: {
+        tenant: {
+          title: 'Lease Expiring Soon',
+          message: `Your lease for ${lease.propertyAddress} expires on ${lease.endDate.toLocaleDateString()}. Please contact your property manager.`,
+          priority: NotificationPriorityEnum.HIGH,
+        },
+        manager: {
+          title: 'Lease Expiring Soon',
+          message: `Lease ${lease.leaseNumber} expires on ${lease.endDate.toLocaleDateString()}.`,
+          priority: NotificationPriorityEnum.MEDIUM,
+        },
+      },
+      expired: {
+        tenant: {
+          title: 'Lease Expired',
+          message: `Your lease for ${lease.propertyAddress} has expired. Please contact your property manager immediately.`,
+          priority: NotificationPriorityEnum.URGENT,
+        },
+        manager: {
+          title: 'Tenant Lease Expired',
+          message: `Lease ${lease.leaseNumber} has expired. Property unit is now available.`,
+          priority: NotificationPriorityEnum.HIGH,
+        },
+      },
+      completed: {
+        tenant: {
+          title: 'Lease Renewed Successfully',
+          message: 'Your previous lease has been completed. Your new lease is now active.',
+          priority: NotificationPriorityEnum.LOW,
+        },
+        manager: {
+          title: 'Lease Transitioned to Renewal',
+          message: `Lease ${lease.leaseNumber} completed. Tenant transitioned to new lease.`,
+          priority: NotificationPriorityEnum.LOW,
+        },
+      },
+      renewal_incomplete: {
+        tenant: {
+          title: 'URGENT: Lease Expired - Renewal Incomplete',
+          message:
+            'Your lease expired but your renewal is not complete. Immediate action required.',
+          priority: NotificationPriorityEnum.URGENT,
+        },
+        manager: {
+          title: 'URGENT: Lease Expired - Renewal Incomplete',
+          message: `Lease ${lease.leaseNumber} expired with incomplete renewal. Property unit released.`,
+          priority: NotificationPriorityEnum.URGENT,
+        },
+      },
+    };
+
+    return (
+      messages[eventType]?.[recipientRole] || {
+        title: 'Lease Update',
+        message: `Update regarding lease ${lease.leaseNumber}`,
+        priority: NotificationPriorityEnum.MEDIUM,
+      }
+    );
+  }
+
+  /**
+   * Notify about system/cron errors
+   * Generic method for failed auto-renewals, auto-sends, etc.
+   */
+  async notifySystemError(params: {
+    cuid: string;
+    recipientIds: string[]; // Admin/manager IDs
+    errorType:
+      | 'auto_renewal_failed'
+      | 'auto_send_failed'
+      | 'expired_lease_processing_failed'
+      | 'general';
+    resourceType: 'lease' | 'property' | 'system';
+    resourceIdentifier: string; // lease number, property ID, etc.
+    errorMessage: string;
+    metadata?: Record<string, any>;
+  }): Promise<void> {
+    const {
+      cuid,
+      recipientIds,
+      errorType,
+      resourceType,
+      resourceIdentifier,
+      errorMessage,
+      metadata = {},
+    } = params;
+
+    try {
+      const notificationContent = this.getSystemErrorNotificationContent(
+        errorType,
+        resourceIdentifier,
+        errorMessage
+      );
+
+      for (const recipientId of recipientIds) {
+        await this.createNotification(cuid, NotificationTypeEnum.SYSTEM, {
+          type: NotificationTypeEnum.SYSTEM,
+          priority: NotificationPriorityEnum.HIGH,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: recipientId,
+          title: notificationContent.title,
+          message: notificationContent.message,
+          metadata: {
+            errorType,
+            resourceType,
+            resourceIdentifier,
+            error: errorMessage,
+            actionRequired: true,
+            ...metadata,
+          },
+          cuid,
+        });
+      }
+
+      this.log.info('System error notifications sent', {
+        errorType,
+        resourceIdentifier,
+        recipientCount: recipientIds.length,
+      });
+    } catch (error) {
+      this.log.error('Failed to send system error notifications', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        errorType,
+        resourceIdentifier,
+      });
+    }
+  }
+
+  /**
+   * Generate system error notification content
+   */
+  private getSystemErrorNotificationContent(
+    errorType: string,
+    resourceIdentifier: string,
+    errorMessage: string
+  ): { title: string; message: string } {
+    const messages: Record<string, { title: string; message: string }> = {
+      auto_renewal_failed: {
+        title: 'Auto-Renewal Creation Failed',
+        message: `Failed to create auto-renewal for lease ${resourceIdentifier}. Manual action required. Error: ${errorMessage}`,
+      },
+      auto_send_failed: {
+        title: 'Failed to Send Renewal for Signature',
+        message: `Auto-send failed for renewal ${resourceIdentifier}. Please send manually. Error: ${errorMessage}`,
+      },
+      expired_lease_processing_failed: {
+        title: 'Error Processing Expired Lease',
+        message: `Failed to mark lease ${resourceIdentifier} as expired. Manual review required. Error: ${errorMessage}`,
+      },
+      general: {
+        title: 'System Error',
+        message: `An error occurred with ${resourceIdentifier}: ${errorMessage}`,
+      },
+    };
+
+    return messages[errorType] || messages.general;
+  }
+
+  /**
    * Find user's supervisor - delegates to UserService
    */
   async findUserSupervisor(userId: string, cuid: string): Promise<string | null> {
@@ -1359,6 +1692,72 @@ export class NotificationService {
     }
   }
 
+  /**
+   * Check if a notification has already been sent
+   * Used to prevent duplicate notifications (e.g., lease expiry reminders)
+   * TODO: Consider introducing a stage-based notification check method for more granular control.
+   */
+  async hasNotificationBeenSent(
+    leaseId: string,
+    daysThreshold: number,
+    notificationType: NotificationTypeEnum
+  ): Promise<boolean> {
+    try {
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+
+      const notification = await this.notificationDAO.findFirst({
+        'metadata.leaseId': leaseId,
+        'metadata.daysThreshold': daysThreshold,
+        type: notificationType,
+        createdAt: { $gte: twoDaysAgo },
+      });
+
+      const exists = !!notification;
+      return exists;
+    } catch (error) {
+      this.log.error('Error checking if notification was sent', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        leaseId,
+        daysThreshold,
+        notificationType,
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Check if lease expiry notification has already been sent for a specific threshold
+   * Used to prevent duplicate expiry notices (e.g., sending 30-day notice twice)
+   * Checks entire notification history (no time window restriction)
+   * @param leaseId - MongoDB ObjectId string of the lease
+   */
+  async hasLeaseExpiryNoticeBeenSent(
+    leaseId: string | Types.ObjectId,
+    expiryThreshold: string,
+    notificationType: NotificationTypeEnum
+  ): Promise<boolean> {
+    try {
+      const leaseIdStr = leaseId.toString();
+      const notification = await this.notificationDAO.findFirst({
+        'metadata.leaseId': leaseIdStr,
+        'metadata.leaseExpiryThreshold': expiryThreshold,
+        type: notificationType,
+      });
+
+      const exists = !!notification;
+      return exists;
+    } catch (error) {
+      this.log.error('Error checking if lease expiry notification was sent', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        leaseId: leaseId.toString(),
+        expiryThreshold,
+        notificationType,
+      });
+      return false;
+    }
+  }
+
   private async publishToSSE(notification: INotificationDocument): Promise<void> {
     try {
       // Check user preferences for individual notifications
@@ -1491,8 +1890,6 @@ export class NotificationService {
       EventTypes.LEASE_ESIGNATURE_COMPLETED,
       this.handleLeaseActivated.bind(this)
     );
-
-    this.log.info('Notification service event listeners initialized');
   }
 
   private async handleLeaseActivated(payload: any): Promise<void> {

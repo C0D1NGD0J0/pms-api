@@ -6,7 +6,7 @@ import { BaseQueue } from './base.queue';
 
 export class PdfQueue extends BaseQueue<PdfJobData> {
   constructor({ pdfGeneratorWorker }: { pdfGeneratorWorker: PdfWorker }) {
-    super(QUEUE_NAMES.PDF_GENERATION_QUEUE);
+    super({ queueName: QUEUE_NAMES.PDF_GENERATION_QUEUE });
     this.processQueueJobs(JOB_NAME.PDF_GENERATION_JOB, 2, pdfGeneratorWorker.generatePdf);
   }
 

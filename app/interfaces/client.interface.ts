@@ -4,12 +4,20 @@ import { IUserRoleType } from '@shared/constants/roles.constants';
 import {
   IdentificationType,
   IContactInfoType,
+  IBaseUserProfile,
   IUserDocument,
   IAccountType,
 } from './user.interface';
 
 /**
+ * ============================================================================
+ * BASE TYPE DEFINITIONS (Single Source of Truth)
+ * ============================================================================
+ */
+
+/**
  * Main Client Interface
+ * Core client data structure
  */
 export interface IClient {
   accountAdmin: Types.ObjectId | PopulatedAccountAdmin;
@@ -23,7 +31,14 @@ export interface IClient {
 }
 
 /**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
+
+/**
  * Company Profile Interface
+ * Business entity information for corporate clients
  */
 export interface ICompanyProfile {
   contactInfo?: IContactInfoType;
@@ -39,6 +54,7 @@ export interface ICompanyProfile {
 
 /**
  * Client Document Interface (extends Mongoose Document)
+ * Extends IClient with MongoDB document properties
  */
 export interface IClientDocument extends Document, IClient {
   verifiedBy: string | Types.ObjectId;
@@ -64,40 +80,49 @@ export interface IClientUserConnections {
 }
 
 /**
- * Client Settings Interface
- */
-export interface IClientSettings {
-  notificationPreferences: {
-    email: boolean;
-    sms: boolean;
-    inApp: boolean;
-  };
-  timeZone: string;
-  lang: string;
-}
-
-/**
  * Populated Account Admin Type
+ * Essential user information for client admin
  */
-export type PopulatedAccountAdmin = {
+export type PopulatedAccountAdmin = Pick<
+  IBaseUserProfile,
+  'email' | 'firstName' | 'lastName' | 'avatar'
+> & {
   _id: Types.ObjectId;
-  email: string;
-  firstName: string;
-  lastName: string;
-  avatar?: string;
 };
 
 /**
+ * ============================================================================
+ * POPULATED/ENRICHED INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Populated Client Document Type
- * Using Omit to replace admin field type
+ * Client document with fully populated account admin
  */
 export type IPopulatedClientDocument = {
   accountAdmin: IUserDocument | Types.ObjectId;
 } & Omit<IClientDocument, 'accountAdmin'>;
 
 /**
+ * ============================================================================
+ * DOCUMENT INTERFACES (Mongoose Extensions)
+ * ============================================================================
+ */
+
+/**
+ * Client Settings Interface
+ * User preferences and configuration
+ */
+export interface IClientSettings {
+  notificationPreferences: NotificationPreferences;
+  timeZone: string;
+  lang: string;
+}
+
+/**
  * Simplified client info for passing around client context
- * Using Pick to select only needed fields
+ * Minimal client data for request context
  */
 export type IClientInfo = {
   clientDisplayName: string;
@@ -105,13 +130,36 @@ export type IClientInfo = {
 } & Pick<IClientDocument, 'cuid'>;
 
 /**
+ * ============================================================================
+ * RESPONSE INTERFACES
+ * ============================================================================
+ */
+
+/**
+ * Notification Preferences Type
+ * Defines all notification channel preferences
+ */
+export type NotificationPreferences = {
+  email: boolean;
+  sms: boolean;
+  inApp: boolean;
+};
+
+/**
  * Type for active account info (used in auth responses)
- * Already using Pick efficiently
+ * Essential info for user session management
  */
 export type IActiveAccountInfo = Pick<IClientUserConnections, 'cuid' | 'clientDisplayName'>;
 
 /**
+ * ============================================================================
+ * REPORTING INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Client Statistics Interface
+ * Aggregated metrics for client dashboard
  */
 export interface IClientStats {
   totalProperties: number;

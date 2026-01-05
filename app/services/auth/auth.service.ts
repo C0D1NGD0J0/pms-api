@@ -5,7 +5,6 @@ import { t } from '@shared/languages';
 import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
-import { QueueFactory } from '@services/queue';
 import { ISignupData } from '@interfaces/user.interface';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRole } from '@shared/constants/roles.constants';
@@ -31,8 +30,8 @@ import {
 interface IConstructor {
   tokenService: AuthTokenService;
   vendorService: VendorService;
-  queueFactory: QueueFactory;
   profileDAO: ProfileDAO;
+  emailQueue: EmailQueue;
   authCache: AuthCache;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
@@ -44,7 +43,7 @@ export class AuthService {
   private readonly clientDAO: ClientDAO;
   private readonly authCache: AuthCache;
   private readonly profileDAO: ProfileDAO;
-  private readonly queueFactory: QueueFactory;
+  private readonly emailQueue: EmailQueue;
   private readonly tokenService: AuthTokenService;
   private readonly vendorService: VendorService;
 
@@ -52,7 +51,7 @@ export class AuthService {
     userDAO,
     clientDAO,
     profileDAO,
-    queueFactory,
+    emailQueue,
     tokenService,
     authCache,
     vendorService,
@@ -61,7 +60,7 @@ export class AuthService {
     this.clientDAO = clientDAO;
     this.authCache = authCache;
     this.profileDAO = profileDAO;
-    this.queueFactory = queueFactory;
+    this.emailQueue = emailQueue;
     this.tokenService = tokenService;
     this.vendorService = vendorService;
     this.log = createLogger('AuthService');
@@ -214,7 +213,7 @@ export class AuthService {
         throw new InvalidRequestError({ message: t('auth.errors.userNotCreated') });
       }
 
-      if (signupData.accountType.isEnterpriseAccount) {
+      if (signupData.accountType.isCorporate) {
         signupData.companyProfile = {
           ...signupData.companyProfile,
           contactInfo: {
@@ -229,9 +228,7 @@ export class AuthService {
           accountAdmin: _userId,
           displayName: signupData.displayName,
           accountType: signupData.accountType,
-          ...(signupData.accountType.isEnterpriseAccount && {
-            companyProfile: signupData?.companyProfile,
-          }),
+          ...(signupData.accountType.isCorporate && { companyProfile: signupData?.companyProfile }),
         },
         session
       );
@@ -258,7 +255,7 @@ export class AuthService {
       );
 
       // Create vendor for corporate accounts
-      if (signupData.accountType.isEnterpriseAccount && signupData.companyProfile) {
+      if (signupData.accountType.isCorporate && signupData.companyProfile) {
         try {
           await this.vendorService.createVendorFromCompanyProfile(
             clientId,
@@ -284,8 +281,7 @@ export class AuthService {
       };
     });
 
-    const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
-    emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, result.emailData);
+    this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, result.emailData);
     return {
       data: null,
       success: true,
@@ -498,8 +494,7 @@ export class AuthService {
         activationUrl: `${envVariables.FRONTEND.URL}/${user.activecuid}/account_activation/?t=${user.activationToken}`,
       },
     };
-    const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
-    emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
+    this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
     return {
       success: true,
       data: emailData,
@@ -529,8 +524,7 @@ export class AuthService {
       emailType: MailType.FORGOT_PASSWORD,
     };
 
-    const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
-    emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
+    this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
     return {
       data: null,
       success: true,
@@ -562,8 +556,7 @@ export class AuthService {
       emailType: MailType.PASSWORD_RESET,
     };
 
-    const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
-    emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
+    this.emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
     return {
       data: null,
       success: true,

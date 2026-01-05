@@ -10,12 +10,12 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
+import { serverAdapter } from '@queues/index';
 import { envVariables } from '@shared/config';
 import sanitizer from 'perfect-express-sanitizer';
+import { DatabaseService } from '@database/index';
 import mongoSanitize from 'express-mongo-sanitize';
 import { httpStatusCodes, createLogger } from '@utils/index';
-import { DatabaseService, RedisService } from '@database/index';
-import { initBullBoardAdapter, serverAdapter } from '@queues/index';
 import express, { Application, urlencoded, Response, Request } from 'express';
 import {
   errorHandlerMiddleware,
@@ -43,10 +43,6 @@ export class App implements IAppSetup {
   initConfig = (): void => {
     this.securityMiddleware(this.expApp);
     this.standardMiddleware(this.expApp);
-    // Initialize Bull Board adapter before routes (for lazy-loaded queues)
-    if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
-      initBullBoardAdapter();
-    }
     this.routes(this.expApp);
     this.expApp.use(errorHandlerMiddleware);
   };
@@ -94,28 +90,13 @@ export class App implements IAppSetup {
     app.use(contextBuilder);
     app.use(detectLanguage);
     app.use(setUserLanguage);
-    app.use(`${BASE_PATH}/healthcheck`, async (req, res) => {
+    app.use(`${BASE_PATH}/healthcheck`, (req, res) => {
       try {
-        const redisService = req.container.resolve<RedisService>('redisService');
-        const redisStats = await redisService.getConnectionStats();
-        const isHealthy = redisStats.success && !redisStats.total?.exceeded;
         const healthCheck = {
           uptime: process.uptime(),
-          message: isHealthy ? 'OK' : 'Unhealthy',
+          message: 'OK',
           timestamp: Date.now(),
-          environment: process.env.NODE_ENV,
-          processType: process.env.PROCESS_TYPE,
           database: this.db.isConnected() ? 'Connected' : 'Disconnected',
-          redis: redisStats.success
-            ? {
-                thisProcess: redisStats.thisProcess,
-                total: redisStats.total,
-                message: redisStats.message,
-              }
-            : {
-                error: 'Failed to fetch Redis statistics',
-                details: redisStats.error,
-              },
         };
         res.status(200).json(healthCheck);
       } catch (error) {
@@ -126,7 +107,6 @@ export class App implements IAppSetup {
           timestamp: Date.now(),
           database: 'Unknown',
           error: error.message,
-          redis: 'Unknown',
         });
       }
     });

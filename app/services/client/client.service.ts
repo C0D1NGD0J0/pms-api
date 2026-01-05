@@ -133,7 +133,7 @@ export class ClientService {
     }
 
     // Enterprise client validation
-    if (client.accountType?.isEnterpriseAccount) {
+    if (client.accountType?.isCorporate) {
       // Create merged company profile data (existing + updates)
       const mergedCompanyProfile = {
         ...client.companyProfile,
@@ -388,16 +388,9 @@ export class ClientService {
     const clientId = currentuser.client.cuid;
 
     if (role === ROLES.ADMIN) {
-      const adminUsers = await this.userDAO.list({
-        cuids: {
-          $elemMatch: {
-            cuid: clientId,
-            roles: ROLES.ADMIN,
-            isConnected: true,
-          },
-        },
-        deletedAt: null,
-        isActive: true,
+      const adminUsers = await this.userDAO.getUsersByClientId(clientId, {
+        'cuids.roles': ROLES.ADMIN,
+        'cuids.isConnected': true,
       });
 
       if (adminUsers.items.length <= 1) {
@@ -472,16 +465,9 @@ export class ClientService {
     }
 
     if (clientConnection.roles.includes(IUserRole.ADMIN)) {
-      const connectedAdmins = await this.userDAO.list({
-        cuids: {
-          $elemMatch: {
-            cuid: clientId,
-            roles: ROLES.ADMIN,
-            isConnected: true,
-          },
-        },
-        deletedAt: null,
-        isActive: true,
+      const connectedAdmins = await this.userDAO.getUsersByClientId(clientId, {
+        'cuids.roles': ROLES.ADMIN,
+        'cuids.isConnected': true,
       });
 
       if (connectedAdmins.items.length <= 1) {

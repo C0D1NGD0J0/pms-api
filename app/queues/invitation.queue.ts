@@ -12,7 +12,7 @@ export class InvitationQueue extends BaseQueue {
   private readonly invitationWorker: InvitationWorker;
 
   constructor({ invitationWorker }: IConstructor) {
-    super({ queueName: QUEUE_NAMES.INVITATION_QUEUE });
+    super(QUEUE_NAMES.INVITATION_QUEUE);
     this.invitationWorker = invitationWorker;
     this.processQueueJobs(
       JOB_NAME.INVITATION_CSV_VALIDATION_JOB,

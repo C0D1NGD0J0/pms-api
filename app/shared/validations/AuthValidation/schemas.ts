@@ -67,7 +67,7 @@ export const UserSignupSchema = z
     accountType: z.object({
       planId: z.string(),
       planName: z.enum(['personal', 'business'], { message: 'Invalid plan name provided.' }),
-      isEnterpriseAccount: z.boolean(),
+      isCorporate: z.boolean(),
     }),
     cpassword: z.string().min(8, 'Confirm password must be at least 8 characters'),
     lang: z.string().optional(),
@@ -113,7 +113,7 @@ export const UserSignupSchema = z
   })
   .superRefine((data, ctx) => {
     // Make company information required for business accounts
-    if (data.accountType.isEnterpriseAccount) {
+    if (data.accountType.isCorporate) {
       if (!data.companyProfile) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

@@ -17,19 +17,6 @@ export const ResourceInfoSchema = z.object({
   displayName: z.string().optional(),
 });
 
-// Constrained metadata value types instead of any()
-const MetadataValueSchema = z.union([
-  z.string(),
-  z.number(),
-  z.boolean(),
-  z.date(),
-  z.null(),
-  z.array(z.union([z.string(), z.number(), z.boolean()])),
-  z.record(z.string(), z.unknown()),
-]);
-
-export const NotificationMetadataSchema = z.record(z.string(), MetadataValueSchema).optional();
-
 export const CreateNotificationSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200, 'Title too long'),
   message: z.string().min(1, 'Message is required').max(1000, 'Message too long'),
@@ -37,7 +24,7 @@ export const CreateNotificationSchema = z.object({
   recipient: z.union([z.string(), ObjectIdSchema]).optional(),
   priority: z.nativeEnum(NotificationPriorityEnum).default(NotificationPriorityEnum.LOW),
   actionUrl: z.string().url('Invalid action URL').optional(),
-  metadata: NotificationMetadataSchema,
+  metadata: z.record(z.any()).optional(),
   resourceInfo: ResourceInfoSchema.optional(),
   expiresAt: z.date().optional(),
   targetRoles: z.array(z.string()).optional(),
@@ -49,7 +36,7 @@ export const UpdateNotificationSchema = z.object({
   message: z.string().min(1, 'Message is required').max(1000, 'Message too long').optional(),
   priority: z.nativeEnum(NotificationPriorityEnum).optional(),
   actionUrl: z.string().url('Invalid action URL').optional(),
-  metadata: NotificationMetadataSchema,
+  metadata: z.record(z.any()).optional(),
   isRead: z.boolean().optional(),
   expiresAt: z.date().optional(),
 });
@@ -78,7 +65,7 @@ export const BulkNotificationSchema = z.object({
   recipients: z.array(z.string()).min(1, 'At least one recipient is required'),
   priority: z.nativeEnum(NotificationPriorityEnum).optional().default(NotificationPriorityEnum.LOW),
   actionUrl: z.string().url('Invalid action URL').optional(),
-  metadata: NotificationMetadataSchema,
+  metadata: z.record(z.any()).optional(),
   cuid: z.string().min(1, 'Client ID is required'),
 });
 

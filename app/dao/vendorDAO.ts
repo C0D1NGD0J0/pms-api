@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { ClientSession, Types, Model } from 'mongoose';
+import { ROLES } from '@shared/constants/roles.constants';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
 
@@ -136,18 +137,7 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
    */
   async getVendorById(vendorId: string | Types.ObjectId): Promise<IVendorDocument | null> {
     try {
-      const vendorIdStr = vendorId.toString();
-
-      // Check if it's a valid ObjectId format (24 hex characters)
-      const isObjectId = /^[0-9a-fA-F]{24}$/.test(vendorIdStr);
-
-      if (isObjectId) {
-        // Use _id directly
-        return await this.findById(vendorId);
-      } else {
-        // It's a vuid
-        return await this.findFirst({ vuid: vendorIdStr, deletedAt: null });
-      }
+      return await this.findById(vendorId);
     } catch (error) {
       this.logger.error(`Error getting vendor by ID ${vendorId}: ${error}`);
       throw error;
@@ -173,7 +163,7 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     userId: string | Types.ObjectId
   ): Promise<IVendorDocument | null> {
     try {
-      return await this.findFirst({ 'connectedClients.primaryAccountHolder': userId });
+      return await this.findFirst({ primaryAccountHolder: userId });
     } catch (error) {
       this.logger.error(`Error getting vendor by primary account holder ${userId}: ${error}`);
       throw error;
@@ -221,34 +211,18 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     session?: ClientSession
   ): Promise<IVendorDocument | null> {
     try {
-      // First try to find vendor by vuid (if it's a string that doesn't look like ObjectId)
-      const vendorIdStr = vendorId.toString();
-      let vendor: IVendorDocument | null = null;
+      const updatedVendor = await this.updateById(
+        vendorId.toString(),
+        { $set: updateData },
+        {},
+        session
+      );
 
-      // Check if it's a valid ObjectId format (24 hex characters)
-      const isObjectId = /^[0-9a-fA-F]{24}$/.test(vendorIdStr);
-
-      if (isObjectId) {
-        // Use _id directly
-        vendor = await this.updateById(vendorIdStr, { $set: updateData }, {}, session);
-      } else {
-        // It's a vuid, find vendor first
-        const existingVendor = await this.findFirst({ vuid: vendorIdStr, deletedAt: null });
-        if (existingVendor) {
-          vendor = await this.updateById(
-            existingVendor._id.toString(),
-            { $set: updateData },
-            {},
-            session
-          );
-        }
+      if (updatedVendor) {
+        this.logger.info(`Vendor updated successfully: ${updatedVendor.vuid}`);
       }
 
-      if (vendor) {
-        this.logger.info(`Vendor updated successfully: ${vendor.vuid}`);
-      }
-
-      return vendor;
+      return updatedVendor;
     } catch (error) {
       this.logger.error(`Error updating vendor ${vendorId}: ${error}`);
       throw error;
@@ -258,16 +232,37 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
   /**
    * Get all vendors for a client (similar to getFilteredUsers)
    */
-  async getClientVendors(cuid: string): Promise<ListResultWithPagination<IVendorDocument[]>> {
+  async getClientVendors(cuid: string): Promise<IVendorDocument[]> {
     try {
-      // Find vendors where connectedClients contains this cuid
-      const vendors = await this.list({
-        'connectedClients.cuid': cuid,
-        'connectedClients.isConnected': true,
-        deletedAt: null,
-      });
+      // First get all users with this cuid who have vendor role
+      const pipeline = [
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'primaryAccountHolder',
+            foreignField: '_id',
+            as: 'user',
+          },
+        },
+        {
+          $unwind: '$user',
+        },
+        {
+          $match: {
+            'user.cuids': {
+              $elemMatch: {
+                cuid: cuid,
+                roles: ROLES.VENDOR,
+              },
+            },
+            deletedAt: null,
+          },
+        },
+      ];
 
-      this.logger.info(`Retrieved ${vendors.items.length} vendors for client ${cuid}`);
+      const vendors = await this.aggregate(pipeline);
+
+      this.logger.info(`Retrieved ${vendors.length} vendors for client ${cuid}`);
       return vendors;
     } catch (error) {
       this.logger.error(`Error getting client vendors for ${cuid}: ${error}`);

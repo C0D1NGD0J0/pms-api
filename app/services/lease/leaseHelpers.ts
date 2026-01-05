@@ -1,8 +1,9 @@
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
+import { MediaUploadService } from '@services/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { PropertyUnitDAO, ProfileDAO, LeaseDAO } from '@dao/index';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, LeaseDAO } from '@dao/index';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { IPropertyUnitDocument, IPropertyDocument, IProfileWithUser } from '@interfaces/index';
 import {
@@ -13,6 +14,7 @@ import {
 } from '@shared/customErrors';
 import {
   ILeaseESignatureStatusEnum,
+  ILeasePreviewRequest,
   ILeaseDocument,
   ILeaseFormData,
   LeaseStatus,
@@ -88,6 +90,39 @@ export const hasSignatureInvalidatingChanges = (updateData: Partial<ILeaseFormDa
   return Object.keys(updateData).some((field) =>
     SIGNATURE_INVALIDATING_LEASE_FIELDS.includes(field)
   );
+};
+
+/**
+ * Validate lease status transitions
+ */
+export const validateStatusTransition = (
+  currentStatus: LeaseStatus,
+  newStatus: LeaseStatus
+): void => {
+  const allowedTransitions: Record<LeaseStatus, LeaseStatus[]> = {
+    [LeaseStatus.DRAFT]: [LeaseStatus.PENDING_SIGNATURE, LeaseStatus.ACTIVE, LeaseStatus.CANCELLED],
+    [LeaseStatus.PENDING_SIGNATURE]: [LeaseStatus.ACTIVE, LeaseStatus.CANCELLED],
+    [LeaseStatus.ACTIVE]: [LeaseStatus.TERMINATED, LeaseStatus.EXPIRED],
+    [LeaseStatus.EXPIRED]: [],
+    [LeaseStatus.TERMINATED]: [],
+    [LeaseStatus.CANCELLED]: [],
+  };
+
+  if (currentStatus === newStatus) {
+    return;
+  }
+
+  const allowed = allowedTransitions[currentStatus] || [];
+  if (!allowed.includes(newStatus)) {
+    throw new ValidationRequestError({
+      message: `Invalid status transition from '${currentStatus}' to '${newStatus}'`,
+      errorInfo: {
+        status: [
+          `Cannot transition from ${currentStatus} to ${newStatus}. Allowed transitions: ${allowed.join(', ') || 'none (terminal state)'}`,
+        ],
+      },
+    });
+  }
 };
 
 /**
@@ -251,11 +286,35 @@ export const validateLeaseTermination = (
 
 // SECTION 2: PERMISSION & RESOURCE VALIDATION
 
+export const validateLeasePdfExists = async (
+  lease: ILeaseDocument,
+  mediaUploadService: MediaUploadService
+): Promise<Buffer> => {
+  const leasePDF = lease.leaseDocuments?.find(
+    (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
+  );
+
+  if (!leasePDF || !leasePDF.key) {
+    throw new ValidationRequestError({
+      message: 'Lease PDF must be uploaded before sending for signature',
+    });
+  }
+
+  const pdfBuffer = await mediaUploadService.downloadFileAsBuffer(leasePDF.key);
+  if (!pdfBuffer) {
+    throw new ValidationRequestError({
+      message: 'Lease PDF must be generated before sending for signature',
+    });
+  }
+
+  return pdfBuffer;
+};
+
 export const validateLeaseReadyForSignature = (lease: ILeaseDocument): void => {
   // Check lease status
-  if (![LeaseStatus.READY_FOR_SIGNATURE].includes(lease.status)) {
+  if (![LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT].includes(lease.status)) {
     throw new ValidationRequestError({
-      message: 'Lease must be in READY_FOR_SIGNATURE state to send for signature',
+      message: 'Lease must be in DRAFT or PENDING_SIGNATURE state to send for signature',
     });
   }
 
@@ -289,6 +348,14 @@ export const validateUserRole = (
   const userRole = convertUserRoleToEnum(user.client.role);
   if (!allowedRoles.includes(userRole)) {
     throw new ForbiddenError({ message: `You are not authorized to ${operation}.` });
+  }
+};
+
+export const validateLeaseNotPendingSignature = (lease: ILeaseDocument): void => {
+  if (lease.status === LeaseStatus.PENDING_SIGNATURE) {
+    throw new ValidationRequestError({
+      message: 'Cannot edit lease while pending signature. Withdraw it first.',
+    });
   }
 };
 
@@ -783,6 +850,33 @@ export const fetchPropertyManagerWithUser = async (
 };
 
 /**
+ * Fetch property with owner/authorization and validate management authorization
+ */
+export const fetchPropertyWithAuthorization = async (
+  propertyDAO: PropertyDAO,
+  propertyId: string,
+  cuid: string,
+  options?: { populate?: any[] }
+): Promise<IPropertyDocument> => {
+  const property = await propertyDAO.findFirst(
+    { _id: new Types.ObjectId(propertyId), cuid, deletedAt: null },
+    { select: '+owner +authorization', ...options }
+  );
+
+  if (!property) {
+    throw new BadRequestError({ message: 'Property not found' });
+  }
+
+  if (!property.isManagementAuthorized()) {
+    throw new BadRequestError({
+      message: 'Property has not been authorized for management.',
+    });
+  }
+
+  return property;
+};
+
+/**
  * Fetch tenant with populated user and validate email exists
  */
 export const fetchTenantWithUser = async (
@@ -1041,122 +1135,17 @@ export const constructActivityFeed = (lease: ILeaseDocument): any[] => {
   );
 };
 
-/**
- * Calculates renewal-related metadata for a given lease, such as how many days remain
- * until expiry and whether the lease is within the renewal notification window.
- *
- * Only intended to be called for active or `draft_renewal` leases to avoid unnecessary
- * computation on leases that are not eligible for renewal.
- *
- * If the lease does not have a valid `duration.endDate`, or the end date cannot be
- * interpreted as a valid date, the function returns `null` to signal that renewal
- * metadata cannot be computed safely.
- *
- * @param lease - The lease document for which renewal metadata should be calculated.
- * @param includeFormData - Optional flag indicating whether to include additional
- *   form-related data in the returned metadata object. Defaults to `false`.
- * @returns An object containing computed renewal metadata (for example, days until
- *   expiry and flags indicating whether the lease is within the renewal window),
- *   or `null` if the metadata cannot be determined.
- */
-export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData = false) {
-  // Validate that lease has a duration and endDate
-  if (!lease.duration?.endDate) {
-    return null;
-  }
-
-  const endDate = new Date(lease.duration.endDate);
-
-  // Validate that endDate is a valid date
-  if (isNaN(endDate.getTime())) {
-    return null;
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  endDate.setHours(0, 0, 0, 0);
-
-  const daysUntilExpiry = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-  const renewalWindowDays = lease.renewalOptions?.noticePeriodDays || 60;
-  const isWithinWindow = daysUntilExpiry <= renewalWindowDays && daysUntilExpiry > 0;
-
-  // Calculate renewal dates - start 1 day after current lease end
-  const renewalStartDate = new Date(endDate);
-  renewalStartDate.setDate(endDate.getDate() + 1);
-
-  const renewalMonths = lease.renewalOptions?.renewalTermMonths || 12;
-  const renewalEndDate = new Date(renewalStartDate);
-  renewalEndDate.setMonth(renewalStartDate.getMonth() + renewalMonths);
-
-  // Pre-calculate form initial values for renewal
-  const renewalFormData = {
-    property: {
-      id: lease.propertyInfo?.id?.toString() || '',
-      unitId: lease.propertyUnitInfo?.id?.toString() || '',
-      address: lease.propertyInfo?.address || '',
-    },
-    tenant: {
-      id: lease.tenantInfo?._id?.toString() || lease.tenantId?.toString() || '',
-      fullname: lease.tenantInfo?.fullname || '',
-    },
-    duration: {
-      startDate: renewalStartDate.toISOString().split('T')[0],
-      endDate: renewalEndDate.toISOString().split('T')[0],
-      moveInDate: renewalStartDate.toISOString().split('T')[0],
-    },
-    fees: {
-      monthlyRent: lease.fees?.monthlyRent || 0,
-      currency: lease.fees?.currency || 'USD',
-      rentDueDay: lease.fees?.rentDueDay || 1,
-      securityDeposit: lease.fees?.securityDeposit || 0,
-      lateFeeAmount: lease.fees?.lateFeeAmount || 0,
-      lateFeeDays: lease.fees?.lateFeeDays || 5,
-      lateFeeType: lease.fees?.lateFeeType || 'fixed',
-      lateFeePercentage: lease.fees?.lateFeePercentage,
-      acceptedPaymentMethod: Array.isArray(lease.fees?.acceptedPaymentMethod)
-        ? lease.fees?.acceptedPaymentMethod?.[0]
-        : lease.fees?.acceptedPaymentMethod || '',
-    },
-    type: lease.type,
-    signingMethod: lease.signingMethod,
-    renewalOptions: {
-      autoRenew: lease.renewalOptions?.autoRenew || false,
-      renewalTermMonths: lease.renewalOptions?.renewalTermMonths || 12,
-      noticePeriodDays: lease.renewalOptions?.noticePeriodDays || 30,
-      requireApproval: lease.renewalOptions?.requireApproval,
-      daysBeforeExpiryToGenerateRenewal: lease.renewalOptions?.daysBeforeExpiryToGenerateRenewal,
-      daysBeforeExpiryToAutoSendSignature:
-        lease.renewalOptions?.daysBeforeExpiryToAutoSendSignature,
-    },
-    status: lease.status,
-    petPolicy: lease.petPolicy || {},
-    utilitiesIncluded: lease.utilitiesIncluded || [],
-    legalTerms: lease.legalTerms || '',
-    coTenants: lease.coTenants || [],
-    templateType: lease.templateType || '',
-    leaseNumber: lease.leaseNumber || '',
+export const mapPropertyTypeToTemplate = (
+  propertyType: string
+): ILeasePreviewRequest['templateType'] => {
+  const mapping: Record<string, ILeasePreviewRequest['templateType']> = {
+    single_family: 'residential-single-family',
+    apartment: 'residential-apartment',
+    condo: 'residential-apartment',
+    townhouse: 'residential-single-family',
+    office: 'commercial-office',
+    retail: 'commercial-retail',
+    short_term: 'short-term-rental',
   };
-
-  return {
-    daysUntilExpiry,
-    renewalWindowDays,
-    isEligible: isWithinWindow,
-    canRenew: isWithinWindow,
-    ineligibilityReason:
-      daysUntilExpiry < 0
-        ? 'Lease has already expired'
-        : daysUntilExpiry > renewalWindowDays
-          ? `Renewal not yet available. You can renew this lease ${renewalWindowDays} days before expiry (in ${
-              daysUntilExpiry - renewalWindowDays
-            } days)`
-          : null,
-    renewalDates: {
-      startDate: renewalStartDate.toISOString().split('T')[0],
-      endDate: renewalEndDate.toISOString().split('T')[0],
-      moveInDate: renewalStartDate.toISOString().split('T')[0],
-    },
-    // renewalFormData is now available via separate endpoint: GET /leases/:cuid/:luid/renewal-form-data
-    renewalFormData: includeFormData ? renewalFormData : undefined,
-  };
-}
+  return mapping[propertyType] || 'residential-single-family';
+};

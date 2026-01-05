@@ -6,7 +6,7 @@ import { BaseQueue } from './base.queue';
 
 export class EventBusQueue extends BaseQueue<EventPayload> implements IEventBus {
   constructor() {
-    super({ queueName: QUEUE_NAMES.EVENT_BUS_QUEUE });
+    super(QUEUE_NAMES.EVENT_BUS_QUEUE);
     this.setupQueueEvents();
   }
 

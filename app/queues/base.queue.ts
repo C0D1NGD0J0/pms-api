@@ -1,5 +1,4 @@
 import Logger from 'bunyan';
-import Redis from 'ioredis';
 import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
 import { createBullBoard } from '@bull-board/api';
@@ -16,53 +15,6 @@ export const DEFAULT_JOB_OPTIONS: BullJobOptions = {
   delay: 5000,
 };
 
-// Create a single shared ioredis connection for all Bull queues
-// This reduces Redis connections from ~60 to ~6-8 across API and Worker processes
-let sharedIORedisClient: Redis | null = null;
-
-const createSharedRedisConnection = (): Redis => {
-  if (!sharedIORedisClient) {
-    // Use same URL-based connection as node-redis for consistency
-    const redisUrl = envVariables.REDIS.URL;
-
-    const redisConfig = {
-      connectTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 10000,
-      lazyConnect: false,
-      keepAlive: envVariables.SERVER.ENV === 'production' ? 60000 : 120000,
-      // Bull requires maxRetriesPerRequest to be null for bclient/subscriber
-      // See: https://github.com/OptimalBits/bull/issues/1873
-      maxRetriesPerRequest: null,
-      // Increased timeout to handle queue operations during startup/high load
-      commandTimeout: 30000,
-      // Enable offline queue to buffer commands until Redis connects
-      enableOfflineQueue: true,
-      // Bull requires enableReadyCheck to be false
-      enableReadyCheck: false,
-      retryStrategy: (times: number) => {
-        const delay = Math.min(times * 50, 2000);
-        return delay;
-      },
-    };
-
-    // Create ioredis client using URL (supports redis:// or redis://user:pass@host:port format)
-    sharedIORedisClient = new Redis(redisUrl, redisConfig);
-
-    // Increase max listeners to prevent warning (9 queues + DLQ = 10+ listeners)
-    sharedIORedisClient.setMaxListeners(20);
-
-    sharedIORedisClient.on('error', (err) => {
-      const logger = createLogger('IORedis');
-      logger.error({ error: err }, 'IORedis connection error');
-    });
-
-    sharedIORedisClient.on('connect', () => {
-      const logger = createLogger('IORedis');
-      logger.info('IORedis client connected for Bull queues');
-    });
-  }
-  return sharedIORedisClient;
-};
-
 // Production-optimized queue options for reduced network traffic
 const PRODUCTION_QUEUE_OPTIONS: BullQueueOptions = {
   settings: {
@@ -70,20 +22,17 @@ const PRODUCTION_QUEUE_OPTIONS: BullQueueOptions = {
     lockDuration: 3600000, // 1hr
     stalledInterval: 300000, // 5 minutes - reduces Redis polling frequency
   },
-  createClient: (type) => {
-    switch (type) {
-      case 'subscriber':
-        // Create duplicate for pub/sub
-        return createSharedRedisConnection().duplicate();
-      case 'bclient':
-        // Create duplicate for blocking operations
-        return createSharedRedisConnection().duplicate();
-      case 'client':
-        // Use shared connection for commands
-        return createSharedRedisConnection();
-      default:
-        return createSharedRedisConnection();
-    }
+  redis: {
+    host: envVariables.REDIS.HOST,
+    port: envVariables.REDIS.PORT,
+    username: envVariables.REDIS.USERNAME,
+    password: envVariables.REDIS.PASSWORD,
+    family: 0,
+    connectTimeout: 30000,
+    lazyConnect: true,
+    keepAlive: 60000, // Reduced keep-alive frequency
+    maxRetriesPerRequest: 3,
+    commandTimeout: 15000,
   },
 };
 
@@ -92,22 +41,15 @@ const DEVELOPMENT_QUEUE_OPTIONS: BullQueueOptions = {
   settings: {
     maxStalledCount: 3,
     lockDuration: 300000, // 5 minutes
-    stalledInterval: 120000, // 2 minutes - reduced polling to save CPU/battery
+    stalledInterval: 30000, // 30 seconds for faster development feedback
   },
-  createClient: (type) => {
-    switch (type) {
-      case 'subscriber':
-        // Create duplicate for pub/sub
-        return createSharedRedisConnection().duplicate();
-      case 'bclient':
-        // Create duplicate for blocking operations
-        return createSharedRedisConnection().duplicate();
-      case 'client':
-        // Use shared connection for commands
-        return createSharedRedisConnection();
-      default:
-        return createSharedRedisConnection();
-    }
+  redis: {
+    host: envVariables.REDIS.HOST,
+    port: envVariables.REDIS.PORT,
+    family: 0,
+    connectTimeout: 10000,
+    keepAlive: 30000,
+    maxRetriesPerRequest: 2,
   },
 };
 
@@ -120,35 +62,18 @@ export let serverAdapter: ExpressAdapter;
 const bullMQAdapters: BullAdapter[] = [];
 let deadLetterQueue: Queue.Queue | null;
 
-/**
- * Initialize Bull Board server adapter for lazy-loaded queues
- * Must be called before app.routes() to ensure adapter exists
- */
-export const initBullBoardAdapter = (): void => {
-  if (!serverAdapter) {
-    serverAdapter = new ExpressAdapter();
-    serverAdapter.setBasePath(envVariables.BULL_BOARD.BASE_PATH);
-    createBullBoard({
-      serverAdapter,
-      queues: bullMQAdapters,
-    });
-  }
-};
-
 export class BaseQueue<T extends JobData = JobData> {
   protected log: Logger;
   protected dlq: Queue.Queue;
   protected queue: Queue.Queue;
 
-  constructor({ queueName }: { queueName: string }) {
+  constructor(queueName: string) {
     this.log = createLogger(queueName);
-    const queueOptions: BullQueueOptions = DEFAULT_QUEUE_OPTIONS;
-
-    this.queue = new Queue(queueName, queueOptions);
+    this.queue = new Queue(queueName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
 
     if (!deadLetterQueue) {
       const dlqName = `${queueName}-DLQ`;
-      deadLetterQueue = new Queue(dlqName, queueOptions);
+      deadLetterQueue = new Queue(dlqName, envVariables.REDIS.URL, DEFAULT_QUEUE_OPTIONS);
     }
     this.dlq = deadLetterQueue;
 
@@ -158,16 +83,12 @@ export class BaseQueue<T extends JobData = JobData> {
     }
 
     this.initializeQueueEvents();
+    this.autoResumeQueue();
 
     deadLetterQueue = null;
   }
 
   protected initializeQueueEvents(): void {
-    // Wait for Redis connection before attempting auto-resume
-    this.queue.once('ready', () => {
-      this.autoResumeQueue();
-    });
-
     this.queue.on('completed', (job, result) => {
       const processingTime = job.finishedOn ? job.finishedOn - job.processedOn! : 'N/A';
       this.log.info(
@@ -272,12 +193,6 @@ export class BaseQueue<T extends JobData = JobData> {
     concurrency = 5,
     callback: Queue.ProcessCallbackFunction<T>
   ): void {
-    if (process.env.PROCESS_TYPE !== 'worker') {
-      // this.log.warn(
-      //   `Queue processing for ${this.queue.name} is disabled because PROCESS_TYPE is not 'worker'.`
-      // );
-      return;
-    }
     this.queue.process(name, concurrency, callback);
   }
 
@@ -353,7 +268,7 @@ export class BaseQueue<T extends JobData = JobData> {
 
       if (isPaused) {
         await this.queue.resume();
-        // this.log.info(`⚠️ Resumed previously paused queue: ${this.queue.name}`);
+        this.log.info(`⚠️ Resumed previously paused queue: ${this.queue.name}`);
       }
     } catch (error) {
       this.log.warn({ error }, `Failed to auto-resume queue ${this.queue.name}: ${error.message}`);

@@ -103,11 +103,8 @@ const SpecificationsSchema = z.object({
 
 const FeesSchema = z.object({
   currency: z.enum(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY', 'NGN']).default('USD'),
-  rentAmount: z.coerce.number().min(0, 'Rent amount must be a non-negative number'),
-  securityDeposit: z.coerce
-    .number()
-    .min(0, 'Security deposit must be a non-negative number')
-    .default(0),
+  rentAmount: z.number().min(0, 'Rent amount must be a non-negative number'),
+  securityDeposit: z.number().min(0, 'Security deposit must be a non-negative number').default(0),
 });
 
 const UtilitiesSchema = z.object({

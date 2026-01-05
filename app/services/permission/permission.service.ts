@@ -40,6 +40,7 @@ export class PermissionService {
     try {
       this.permissionConfig = permissionConfig as unknown as IPermissionConfig;
       this.initializeResourceStrategies();
+      this.log.debug('PermissionService initialized successfully');
     } catch (error) {
       this.log.error('Failed to initialize PermissionService:', error);
       throw error;
@@ -60,6 +61,7 @@ export class PermissionService {
       [PermissionResource.LEASE, new LeaseAccessStrategy()],
       [PermissionResource.USER, new UserAccessStrategy()],
     ]);
+    this.log.debug('Resource access strategies initialized');
   }
 
   async checkPermission(permissionCheck: IPermissionCheck): Promise<IPermissionResult> {

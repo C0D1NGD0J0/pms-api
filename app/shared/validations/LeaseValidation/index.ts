@@ -9,7 +9,6 @@ import {
   LeaseIdParamSchema,
   CreateLeaseSchema,
   UpdateLeaseSchema,
-  RenewLeaseSchema,
 } from './schemas';
 
 export class LeaseValidations {
@@ -22,6 +21,5 @@ export class LeaseValidations {
   static expiringQuery = ExpiringLeasesQuerySchema;
   static statsQuery = LeaseStatsQuerySchema;
   static previewLease = LeasePreviewSchema;
-  static renewLease = RenewLeaseSchema;
   static leaseIdParam = LeaseIdParamSchema;
 }

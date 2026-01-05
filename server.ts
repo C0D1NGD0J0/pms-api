@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-namespace */
-process.env.PROCESS_TYPE = 'api';
+
 import http from 'http';
 import { asValue } from 'awilix';
 import { createClient } from 'redis';
@@ -8,7 +8,6 @@ import { IAppSetup, App } from '@root/app';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import express, { Application } from 'express';
-import { PidManager } from '@utils/pid-manager';
 import { Server as SocketIOServer } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { DatabaseService, Environments } from '@database/index';
@@ -24,21 +23,19 @@ class Server {
   private expApp: Application;
   private initialized = false;
   private shuttingDown = false;
-  private pidManager: PidManager;
   private static instance: Server;
+  private static processHandlersRegistered = false;
   private dbService: DatabaseService;
   private PORT = envVariables.SERVER.PORT;
   private httpServer: http.Server | null = null;
-  private static processHandlersRegistered = false;
   private readonly log = createLogger('MainServer');
-  private redisClients: { pub: any; sub: any } | null = null;
   private readonly SERVER_ENV = envVariables.SERVER.ENV as Environments;
+  private redisClients: { pub: any; sub: any } | null = null;
 
   constructor({ dbService }: IConstructor) {
     this.expApp = express();
     this.dbService = dbService;
     this.app = new App(this.expApp, this.dbService);
-    this.pidManager = new PidManager('api', this.log);
     this.setupProcessErrorHandlers();
   }
 
@@ -48,22 +45,7 @@ class Server {
       return;
     }
 
-    // check for existing PID file to prevent duplicate processes
-    this.pidManager.check();
-
     await this.dbService.connect();
-
-    // Queues/workers run in separate worker_process.ts
-    // Only load Bull Board UI (readonly) for monitoring via /admin/queues
-    const isWorkerProcess = process.env.PROCESS_TYPE === 'worker';
-    if (!isWorkerProcess) {
-      this.log.info('API process: Skipping queue/worker initialization to save memory');
-      this.log.info('Workers run in separate worker_process.ts (deploy pms-worker service)');
-    } else {
-      this.log.warn('⚠️  PROCESS_TYPE=worker detected in server.ts - this should not happen!');
-      this.log.warn('⚠️  Worker initialization should only happen in worker_process.ts');
-    }
-
     this.app.initConfig();
     await this.startServers(this.expApp);
     this.initialized = true;
@@ -162,13 +144,6 @@ class Server {
 
     this.shuttingDown = true;
     this.log.info('Server shutting down...');
-    this.pidManager.killProcess();
-
-    // Set a timeout to force exit if graceful shutdown takes too long
-    const shutdownTimeout = setTimeout(() => {
-      this.log.warn('Shutdown timeout reached, forcing exit...');
-      process.exit(exitCode);
-    }, 10000); // 10 seconds timeout
 
     try {
       // close socket connections
@@ -212,15 +187,11 @@ class Server {
       // close database connection last
       await this.dbService.disconnect();
 
-      clearTimeout(shutdownTimeout);
-      this.log.info('Graceful shutdown completed');
-
       if (exitCode !== 0) {
         this.log.info(`Exiting with code ${exitCode}`);
         process.exit(exitCode);
       }
     } catch (error) {
-      clearTimeout(shutdownTimeout);
       this.log.error('Error during shutdown:', error);
       process.exit(1);
     }

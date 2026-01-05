@@ -192,11 +192,6 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
       ref: 'User',
       required: true,
     },
-    managedBy: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
     lastModifiedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',

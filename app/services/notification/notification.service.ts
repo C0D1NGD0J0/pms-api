@@ -1695,7 +1695,7 @@ export class NotificationService {
   /**
    * Check if a notification has already been sent
    * Used to prevent duplicate notifications (e.g., lease expiry reminders)
-   * @deprecated Use hasStageNotificationBeenSent() for stage-based notifications
+   * TODO: Consider introducing a stage-based notification check method for more granular control.
    */
   async hasNotificationBeenSent(
     leaseId: string,

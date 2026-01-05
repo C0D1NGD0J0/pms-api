@@ -1,6 +1,8 @@
 import { BaseIO } from '@sockets/index';
 import { AssetDAO } from '@dao/assetDAO';
 import { MailService } from '@mailer/index';
+import { createLogger } from '@utils/index';
+import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { GeoCoderService } from '@services/external';
 import { ClamScannerService } from '@shared/config/index';
@@ -240,15 +242,33 @@ const SocketIOResources = {
 };
 
 export const initQueues = (container: AwilixContainer) => {
-  // Always initialize ClamScanner as it's essential for file security
-  container.resolve('clamScanner');
+  const logger = createLogger('DIContainer');
+
+  // ClamAV initialization with error handling
+  // Prevents crashes if ClamAV is not configured or fails to start
+  const hasClamAVConfig =
+    envVariables.CLAMAV && (envVariables.CLAMAV.HOST || envVariables.CLAMAV.SOCKET);
+
+  if (!hasClamAVConfig) {
+    logger.info('ClamAV not configured - virus scanning disabled');
+  } else {
+    try {
+      container.resolve('clamScanner');
+      logger.info('ClamAV scanner initialized');
+    } catch (error) {
+      logger.error(
+        { error },
+        'Failed to initialize ClamAV - file uploads will proceed without scanning'
+      );
+    }
+  }
 
   // Queues and workers are now lazily initialized via QueueFactory when first accessed
   // This reduces startup time and memory footprint
   const processType = process.env.PROCESS_TYPE || 'api';
   const environment = process.env.NODE_ENV || 'development';
 
-  console.log(
+  logger.info(
     `💡 ${processType.toUpperCase()} process (${environment}): Queues will be initialized on-demand via QueueFactory`
   );
 };

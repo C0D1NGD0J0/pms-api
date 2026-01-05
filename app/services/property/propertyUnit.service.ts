@@ -1,17 +1,17 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
-import { QueueFactory } from '@services/queue';
+import { PropertyQueue } from '@queues/property.queue';
 import { PropertyCache } from '@caching/property.cache';
 import { PropertyUnitCsvProcessor } from '@services/csv';
 import { EventTypes } from '@interfaces/events.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyUnitQueue } from '@queues/propertyUnit.queue';
+import { IPropertyUnit } from '@interfaces/propertyUnit.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
-import { IPropertyUnitDocument, IPropertyUnit } from '@interfaces/propertyUnit.interface';
 import { ValidationRequestError, BadRequestError, ForbiddenError } from '@shared/customErrors';
 import { ExtractedMediaFile, IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
 import {
@@ -27,10 +27,11 @@ import {
 
 interface IConstructor {
   unitNumberingService: UnitNumberingService;
+  propertyUnitQueue: PropertyUnitQueue;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   propertyCache: PropertyCache;
-  queueFactory: QueueFactory;
+  propertyQueue: PropertyQueue;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
@@ -47,7 +48,8 @@ export class PropertyUnitService {
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
-  private readonly queueFactory: QueueFactory;
+  private readonly propertyQueue: PropertyQueue;
+  private readonly propertyUnitQueue: PropertyUnitQueue;
   private readonly propertyCache: PropertyCache;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
@@ -58,7 +60,8 @@ export class PropertyUnitService {
     profileDAO,
     propertyDAO,
     propertyUnitDAO,
-    queueFactory,
+    propertyQueue,
+    propertyUnitQueue,
     propertyCache,
     emitterService,
     unitNumberingService,
@@ -67,9 +70,10 @@ export class PropertyUnitService {
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
     this.propertyCache = propertyCache;
-    this.queueFactory = queueFactory;
+    this.propertyQueue = propertyQueue;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
+    this.propertyUnitQueue = propertyUnitQueue;
     this.unitNumberingService = unitNumberingService;
     this.log = createLogger('PropertyUnitService');
 
@@ -83,6 +87,8 @@ export class PropertyUnitService {
     );
 
     this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
+
+    this.log.info('PropertyUnit service event listeners initialized');
   }
 
   private async handleLeaseActivated(payload: any): Promise<void> {
@@ -213,15 +219,7 @@ export class PropertyUnitService {
    * Helper to check if nested property exists
    */
   private hasNestedProperty(obj: any, path: string): boolean {
-    try {
-      const value = path.split('.').reduce((current, key) => {
-        if (current === null || current === undefined) return undefined;
-        return current[key];
-      }, obj);
-      return value !== undefined;
-    } catch {
-      return false;
-    }
+    return path.split('.').reduce((current, key) => current && current[key] !== undefined, obj);
   }
 
   /**
@@ -326,10 +324,7 @@ export class PropertyUnitService {
       });
     }
 
-    const unit = await this.propertyUnitDAO.findFirst({
-      _id: new Types.ObjectId(unitId),
-      propertyId: property._id,
-    });
+    const unit = await this.propertyUnitDAO.findFirst({ id: unitId, propertyId: property.id });
     if (!unit) {
       this.log.error(
         {
@@ -445,9 +440,9 @@ export class PropertyUnitService {
     }
 
     const unit = await this.propertyUnitDAO.findFirst({
-      _id: new Types.ObjectId(unitId),
+      id: unitId,
       deletedAt: null,
-      propertyId: property._id,
+      propertyId: property.id,
     });
 
     if (!unit) {
@@ -589,12 +584,10 @@ export class PropertyUnitService {
     // 1. Always apply operational changes directly
     if (Object.keys(operationalChanges).length > 0) {
       updatedUnit = await this.propertyUnitDAO.update(
-        { _id: new Types.ObjectId(unitId), propertyId: property._id },
+        { id: unitId, propertyId: property.id },
         {
-          $set: {
-            ...operationalChanges,
-            lastModifiedBy: new Types.ObjectId(currentuser.sub),
-          },
+          ...operationalChanges,
+          lastModifiedBy: new Types.ObjectId(currentuser.sub),
         }
       );
     }
@@ -672,7 +665,7 @@ export class PropertyUnitService {
 
     // Get the unit to find its _id
     const unit = await this.propertyUnitDAO.findFirst({
-      _id: new Types.ObjectId(unitId),
+      unitId,
       propertyId: property._id,
       deletedAt: null,
     });
@@ -894,8 +887,7 @@ export class PropertyUnitService {
   }
 
   private async createUnitsViaQueue(cxt: IRequestContext, data: BatchUnitData, userId: string) {
-    const propertyUnitQueue = this.queueFactory.getQueue('propertyUnitQueue') as PropertyUnitQueue;
-    const jobId = await propertyUnitQueue.addUnitBatchCreationJob({
+    const jobId = await this.propertyUnitQueue.addUnitBatchCreationJob({
       units: data.units,
       pid: data.pid,
       cuid: data.cuid,
@@ -1050,10 +1042,12 @@ export class PropertyUnitService {
    */
   private async submitUnitChangesForApproval(
     cxt: IRequestContext,
-    unit: IPropertyUnitDocument,
+    unit: any,
     highImpactChanges: any,
     currentuser: ICurrentUser
   ): Promise<any> {
+    const { unitId } = cxt.request.params;
+
     // Check for existing pending changes
     if (unit.pendingChanges) {
       const lockedByUserId = unit.pendingChanges.updatedBy?.toString();
@@ -1065,7 +1059,7 @@ export class PropertyUnitService {
     }
 
     return await this.propertyUnitDAO.update(
-      { _id: new Types.ObjectId(unit._id) },
+      { id: unitId },
       {
         $set: {
           pendingChanges: {
@@ -1089,6 +1083,7 @@ export class PropertyUnitService {
     highImpactChanges: any,
     currentuser: ICurrentUser
   ): Promise<{ unit: any; message: string }> {
+    const { unitId } = cxt.request.params;
     let overrideMessage = '';
     let _notifyStaffOfOverride = false;
 
@@ -1100,29 +1095,25 @@ export class PropertyUnitService {
     }
 
     const safeUpdateData = createSafeMongoUpdate(highImpactChanges);
-    const updateQuery: any = {
-      $set: {
-        ...safeUpdateData,
-        approvalStatus: 'approved',
-        pendingChanges: null,
-        lastModifiedBy: new Types.ObjectId(currentuser.sub),
-        updatedAt: new Date(),
-      },
-    };
-
-    // Only add $push if we want to track approval history
-    if (unit.approvalDetails || unit.pendingChanges) {
-      updateQuery.$push = {
-        approvalDetails: {
-          action: unit.pendingChanges ? 'overridden' : 'updated',
-          actor: new Types.ObjectId(currentuser.sub),
-          timestamp: new Date(),
-          ...(overrideMessage && { notes: `Direct update${overrideMessage}` }),
+    const updatedUnit = await this.propertyUnitDAO.update(
+      { id: unitId },
+      {
+        $set: {
+          ...safeUpdateData,
+          approvalStatus: 'approved',
+          pendingChanges: null,
+          lastModifiedBy: new Types.ObjectId(currentuser.sub),
         },
-      };
-    }
-
-    const updatedUnit = await this.propertyUnitDAO.updateById(unit._id.toString(), updateQuery);
+        $push: {
+          approvalDetails: {
+            action: unit.pendingChanges ? 'overridden' : 'updated',
+            actor: new Types.ObjectId(currentuser.sub),
+            timestamp: new Date(),
+            ...(overrideMessage && { notes: `Direct update${overrideMessage}` }),
+          },
+        },
+      }
+    );
 
     const message = unit.pendingChanges
       ? `Unit updated successfully${overrideMessage}`

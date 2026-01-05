@@ -19,7 +19,7 @@ export class PropertyUnitQueue extends BaseQueue {
   private readonly propertyUnitWorker: PropertyUnitWorker;
 
   constructor({ propertyUnitWorker }: IConstructor) {
-    super({ queueName: QUEUE_NAMES.PROPERTY_UNIT_QUEUE });
+    super(QUEUE_NAMES.PROPERTY_UNIT_QUEUE);
     this.propertyUnitWorker = propertyUnitWorker;
     this.processQueueJobs(
       JOB_NAME.UNIT_BATCH_CREATION_JOB,

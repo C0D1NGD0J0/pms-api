@@ -1,4 +1,3 @@
-import { RedisService } from '@database/index';
 import { convertTimeToSecondsAndMilliseconds } from '@utils/index';
 import { FilteredUserTableData } from '@interfaces/user.interface';
 import { IVendorFilterOptions } from '@dao/interfaces/vendorDAO.interface';
@@ -16,11 +15,26 @@ export class VendorCache extends BaseCache {
   private readonly VENDOR_DETAIL_CACHE_TTL: number;
   private readonly LIST_CACHE_TTL: number;
 
-  constructor({ redisService }: { redisService: RedisService }) {
-    super({ redisService });
+  constructor(cacheName = 'VendorCache') {
+    super(cacheName);
+    this.initializeClient().then(() => {
+      if (process.env.NODE_ENV !== 'test') {
+        console.info('VendorCache connected to Redis');
+      }
+    });
 
     this.VENDOR_DETAIL_CACHE_TTL = convertTimeToSecondsAndMilliseconds('2h').seconds;
     this.LIST_CACHE_TTL = convertTimeToSecondsAndMilliseconds('5m').seconds;
+  }
+
+  private async initializeClient() {
+    try {
+      if (!this.client.isOpen) {
+        await this.client.connect();
+      }
+    } catch (error) {
+      this.log.error('Error connecting to Redis:', error);
+    }
   }
 
   /**

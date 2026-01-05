@@ -41,28 +41,6 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       required: [true, 'Lease type is required'],
       index: true,
     },
-    previousLeaseId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Lease',
-      index: true,
-      required: false,
-    },
-    autoSendInfo: {
-      sent: {
-        type: Boolean,
-        default: false,
-      },
-      sentAt: {
-        type: Date,
-      },
-      failureReason: {
-        type: String,
-        enum: ['not_approved', 'auto_send_disabled'],
-      },
-      failedAt: {
-        type: Date,
-      },
-    },
     templateType: {
       type: String,
       enum: [
@@ -289,22 +267,6 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         min: 1,
         default: 30,
       },
-      requireApproval: {
-        type: Boolean,
-        default: true,
-      },
-      daysBeforeExpiryToGenerateRenewal: {
-        type: Number,
-        default: 14,
-      },
-      daysBeforeExpiryToAutoSendSignature: {
-        type: Number,
-        default: 7,
-      },
-      enableAutoSendForSignature: {
-        type: Boolean,
-        default: true,
-      },
     },
     leaseDocuments: [
       {
@@ -444,30 +406,10 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       type: String,
       trim: true,
     },
-    internalNotes: [
-      {
-        note: {
-          type: String,
-          required: true,
-          trim: true,
-        },
-        author: {
-          type: String,
-          required: true,
-        },
-        authorId: {
-          type: Schema.Types.ObjectId,
-          ref: 'User',
-          required: true,
-        },
-        timestamp: {
-          type: Date,
-          default: Date.now,
-          required: true,
-        },
-        _id: false,
-      },
-    ],
+    internalNotes: {
+      type: String,
+      trim: true,
+    },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -646,8 +588,7 @@ LeaseSchema.virtual('propertyInfo', {
   foreignField: '_id',
   justOne: true,
   options: {
-    select:
-      'pid name address propertyType specifications owner maxAllowedUnits totalUnits managedBy',
+    select: 'pid name address propertyType specifications owner maxAllowedUnits totalUnits',
   },
 });
 
@@ -661,7 +602,7 @@ LeaseSchema.virtual('propertyUnitInfo', {
   foreignField: '_id',
   justOne: true,
   options: {
-    select: 'puid unitNumber floor specifications amenities status fees managedBy',
+    select: 'puid unitNumber floor specifications amenities status fees',
   },
 });
 
@@ -784,29 +725,14 @@ LeaseSchema.methods.hasOverlap = function (startDate: Date, endDate: Date): bool
   return leaseStart <= endDate && leaseEnd >= startDate;
 };
 
-LeaseSchema.methods.softDelete = async function (userId: any) {
-  this.deletedAt = new Date();
-  this.deletedBy = userId;
-  return await this.save();
-};
-
 LeaseSchema.plugin(uniqueValidator, {
   message: '{PATH} must be unique.',
 });
 
-// Compound index to prevent duplicate renewals for the same lease
-// Uses partialFilterExpression to only apply to documents with previousLeaseId and not deleted
-LeaseSchema.index(
-  { previousLeaseId: 1, cuid: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { previousLeaseId: { $exists: true }, deletedAt: null },
-    name: 'unique_renewal_per_lease',
-  }
-);
-
 const LeaseModel = model<ILeaseDocument>('Lease', LeaseSchema);
 
-LeaseModel.syncIndexes();
+LeaseModel.syncIndexes()
+  .then(() => logger.info('Lease model indexes synced successfully'))
+  .catch((err) => logger.error('Error syncing Lease model indexes:', err));
 
 export default LeaseModel;

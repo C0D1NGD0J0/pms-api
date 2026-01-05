@@ -1,4 +1,3 @@
-import { RedisService } from '@database/index';
 import { EventTypes } from '@interfaces/events.interface';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
 
@@ -8,8 +7,19 @@ export class EventsRegistryCache extends BaseCache {
   private readonly KEY_PREFIX = 'events:registry';
   private readonly DEFAULT_TTL = 60 * 60 * 24 * 30; // 30 days
 
-  constructor({ redisService }: { redisService: RedisService }) {
-    super({ redisService });
+  constructor(cacheName = 'EventsCacheRegistry') {
+    super(cacheName);
+    this.initializeClient().then();
+  }
+
+  private async initializeClient() {
+    try {
+      if (!this.client.isOpen) {
+        await this.client.connect();
+      }
+    } catch (error) {
+      this.log.error('Error connecting to Redis:', error);
+    }
   }
 
   async registerEvent(eventType: EventTypes | string): Promise<ISuccessReturnData> {

@@ -11,29 +11,11 @@ type IBaseCache = {
   log: Logger;
 };
 
-export class BaseCache implements IBaseCache {
-  protected redisService: RedisService;
-  client: RedisClient;
+export class BaseCache extends RedisService implements IBaseCache {
   log: Logger;
 
-  constructor({ redisService }: { redisService: RedisService }) {
-    this.redisService = redisService;
-    this.client = redisService.client;
-    this.log = redisService.log;
-  }
-
-  /**
-   * Handle errors consistently across cache operations
-   */
-  protected handleError(error: unknown, operation = 'operation'): ISuccessReturnData {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    this.log.error({ error: error, operation }, `Cache ${operation} error: ${errorMessage}`);
-
-    return {
-      data: null,
-      success: false,
-      error: errorMessage || `Cache ${operation} error occurred.`,
-    };
+  constructor(cacheName = 'BaseCache') {
+    super(cacheName);
   }
 
   /**

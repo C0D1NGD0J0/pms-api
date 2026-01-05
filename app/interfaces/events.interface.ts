@@ -18,7 +18,6 @@ export enum EventTypes {
   PROPERTY_DOCUMENTS_UPDATE = 'update:property:documents',
   PDF_GENERATION_REQUESTED = 'pdf:generation:requested',
   LEASE_ESIGNATURE_FAILED = 'lease:esignature:failed',
-  LEASE_RENEWAL_REQUESTED = 'lease:renewal:requested',
   PROPERTY_UPDATE_FAILED = 'update:property:failed',
   DELETE_ASSET_COMPLETED = 'delete:asset:completed',
   LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
@@ -34,7 +33,6 @@ export enum EventTypes {
   UPLOAD_COMPLETED = 'upload:completed',
   UNIT_UNARCHIVED = 'unit:unarchived',
   PDF_GENERATED = 'pdf:generated',
-  LEASE_RENEWED = 'lease:renewed',
   UNIT_ARCHIVED = 'unit:archived',
   UPLOAD_FAILED = 'upload:failed',
   JOB_COMPLETED = 'job:completed',
@@ -81,8 +79,6 @@ export type EventPayloadMap = {
   [EventTypes.UPLOAD_ASSET]: any;
   [EventTypes.UPLOAD_COMPLETED]: UploadCompletedPayload;
   [EventTypes.UPLOAD_FAILED]: UploadFailedPayload;
-  [EventTypes.LEASE_RENEWED]: LeaseRenewedPayload;
-  [EventTypes.LEASE_RENEWAL_REQUESTED]: LeaseRenewalRequestedPayload;
 };
 
 export interface UnitChangedPayload {
@@ -141,20 +137,6 @@ export interface UnitBatchChangedPayload {
   cuid: string; // Client ID
 }
 
-export interface LeaseRenewedPayload {
-  originalLeaseId: string;
-  propertyUnitId?: string;
-  renewalLeaseId: string;
-  approvalStatus: string;
-  monthlyRent: number;
-  propertyId: string;
-  tenantId: string;
-  startDate: Date;
-  status: string;
-  endDate: Date;
-  cuid: string;
-}
-
 export interface UploadCompletedPayload {
   senderInfo?: {
     email: string;
@@ -179,17 +161,6 @@ export interface PdfGeneratedPayload {
   leaseId: string;
   pdfUrl: string;
   s3Key: string;
-}
-
-export interface LeaseRenewalRequestedPayload {
-  renewalTermMonths?: number;
-  propertyUnitId?: string;
-  requestedBy: string;
-  propertyId: string;
-  tenantId: string;
-  leaseId: string;
-  luid: string;
-  cuid: string;
 }
 
 export interface SystemErrorPayload {
@@ -252,6 +223,7 @@ export interface PropertyUpdatedPayload {
   propertyId: string;
   status: 'success';
 }
+
 export interface EventMetadata {
   requestId?: string;
   timestamp: number;
@@ -264,7 +236,6 @@ export interface EventPayload<T = unknown> {
   eventType: EventTypes;
   payload: T;
 }
-
 export interface PdfGenerationFailedPayload {
   jobId: string | number;
   resourceId: string;

@@ -30,7 +30,6 @@ export const EMAIL_TEMPLATES = {
 };
 
 export const QUEUE_NAMES = {
-  CRON_QUEUE: 'cronQueue',
   MEDIA_QUEUE: 'mediaQueue',
   EMAIL_QUEUE: 'emailQueue',
   PROPERTY_QUEUE: 'propertyQueue',
@@ -39,6 +38,7 @@ export const QUEUE_NAMES = {
   PROPERTY_UNIT_QUEUE: 'propertyUnitQueue',
   PDF_GENERATION_QUEUE: 'pdfGenerationQueue',
   ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
+  DOCUMENT_PROCESSING_QUEUE: 'documentProcessingQueue',
   LEASE_SIGNATURE_REQUEST_QUEUE: 'leaseSignatureRequestQueue',
   PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
 };
@@ -64,7 +64,6 @@ export const JOB_NAME = {
   INVITATION_CSV_VALIDATION_JOB: 'invitation_csv_validation',
   INVITATION_BULK_USER_IMPORT_JOB: 'invitation_bulk_user_import',
   INVITATION_BULK_USER_VALIDATION_JOB: 'invitation_bulk_user_validation',
-  LEASE_ENDING_SOON_JOB: 'leaseEndingSoonJob',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {
@@ -105,9 +104,7 @@ export const HIGH_IMPACT_UNIT_FIELDS = [
   'fees.rentAmount',
   'fees.securityDeposit',
   'status',
-  'unitNumber',
   'specifications.bedrooms',
-  'specifications.rooms',
   'specifications.bathrooms',
   'specifications.totalArea',
   'currentLease',
@@ -125,8 +122,6 @@ export const OPERATIONAL_UNIT_FIELDS = [
   'media.photos',
   'amenities',
   'utilities',
-  'deletedAt',
-  'lastModifiedBy',
 ];
 
 /**
@@ -183,18 +178,3 @@ export const EDITABLE_FIELDS_BY_LEASE_STATUS: Record<string, string[]> = {
   terminated: ['internalNotes'], // Admin/Manager only
   cancelled: ['internalNotes'], // Admin/Manager only
 };
-
-/**
- * Constants for lease thresholds and configuration
- */
-export const LEASE_CONSTANTS = {
-  EXPIRY_THRESHOLDS: [
-    { days: 30, name: '30_day_notice' },
-    { days: 14, name: '14_day_notice' },
-    { days: 7, name: '7_day_notice' },
-  ],
-  GRACE_PERIOD_DAYS: 7,
-  DEFAULT_RENEWAL_DAYS_BEFORE_EXPIRY: 30,
-  DEFAULT_SEND_FOR_SIGNATURE_DAYS: 14,
-  MINIMUM_ACTIVE_DURATION_DAYS: 30,
-} as const;

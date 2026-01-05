@@ -176,7 +176,7 @@ describe('Auth Routes Integration Tests', () => {
         accountType: {
           planId: faker.string.uuid(),
           planName: 'personal',
-          isEnterpriseAccount: false,
+          isCorporate: false,
         },
         lang: 'en',
         timeZone: 'America/New_York',
@@ -203,7 +203,7 @@ describe('Auth Routes Integration Tests', () => {
         accountType: {
           planId: faker.string.uuid(),
           planName: 'business',
-          isEnterpriseAccount: true,
+          isCorporate: true,
         },
         companyProfile: {
           tradingName: faker.company.name(),
@@ -263,7 +263,7 @@ describe('Auth Routes Integration Tests', () => {
         accountType: {
           planId: faker.string.uuid(),
           planName: 'personal',
-          isEnterpriseAccount: false,
+          isCorporate: false,
         },
       };
 
@@ -293,7 +293,7 @@ describe('Auth Routes Integration Tests', () => {
         accountType: {
           planId: faker.string.uuid(),
           planName: 'personal',
-          isEnterpriseAccount: false,
+          isCorporate: false,
         },
       };
 
@@ -323,7 +323,7 @@ describe('Auth Routes Integration Tests', () => {
         accountType: {
           planId: faker.string.uuid(),
           planName: 'personal',
-          isEnterpriseAccount: false,
+          isCorporate: false,
         },
       };
 
@@ -353,7 +353,7 @@ describe('Auth Routes Integration Tests', () => {
         accountType: {
           planId: faker.string.uuid(),
           planName: 'business',
-          isEnterpriseAccount: true,
+          isCorporate: true,
         },
         // Missing companyProfile
       };
@@ -498,7 +498,7 @@ describe('Auth Routes Integration Tests', () => {
       const mockUser = createMockCurrentUser();
 
       mockAuthController.getCurrentUser.mockImplementationOnce((req: Request, res: Response) => {
-        return res.status(httpStatusCodes.OK).json({
+        res.status(httpStatusCodes.OK).json({
           success: true,
           data: mockUser,
         });
@@ -513,7 +513,7 @@ describe('Auth Routes Integration Tests', () => {
 
     it('should return 401 when not authenticated', async () => {
       mockAuthController.getCurrentUser.mockImplementationOnce((_req: Request, res: Response) => {
-        return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        res.status(httpStatusCodes.UNAUTHORIZED).json({
           success: false,
           message: 'Unauthorized',
         });
@@ -531,7 +531,7 @@ describe('Auth Routes Integration Tests', () => {
       });
 
       mockAuthController.getCurrentUser.mockImplementationOnce((_req: Request, res: Response) => {
-        return res.status(httpStatusCodes.OK).json({
+        res.status(httpStatusCodes.OK).json({
           success: true,
           data: mockUser,
         });

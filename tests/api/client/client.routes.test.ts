@@ -16,7 +16,7 @@ const mockClientController = {
         cuid: faker.string.uuid(),
         displayName: faker.company.name(),
         accountType: {
-          isEnterpriseAccount: false,
+          isCorporate: false,
           planName: 'basic',
         },
         contactInfo: {
@@ -83,7 +83,10 @@ describe('Client Routes Integration Tests', () => {
       // Define client routes
       testApp.get(`${baseUrl}/:cuid/client_details`, mockClientController.getClient);
       testApp.patch(`${baseUrl}/:cuid/client_details`, mockClientController.updateClientProfile);
-      testApp.post(`${baseUrl}/:cuid/users/:uid/disconnect`, mockClientController.disconnectUser);
+      testApp.post(
+        `${baseUrl}/:cuid/users/:uid/disconnect`,
+        mockClientController.disconnectUser
+      );
       testApp.post(`${baseUrl}/:cuid/users/:uid/reconnect`, mockClientController.reconnectUser);
     });
   });
@@ -253,12 +256,14 @@ describe('Client Routes Integration Tests', () => {
     });
 
     it('should return 404 for non-existent user', async () => {
-      mockClientController.disconnectUser.mockImplementationOnce((_req: Request, res: Response) => {
-        res.status(httpStatusCodes.NOT_FOUND).json({
-          success: false,
-          message: 'User not found',
-        });
-      });
+      mockClientController.disconnectUser.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.NOT_FOUND).json({
+            success: false,
+            message: 'User not found',
+          });
+        }
+      );
 
       const response = await request(app).post(endpoint).expect(httpStatusCodes.NOT_FOUND);
 
@@ -266,12 +271,14 @@ describe('Client Routes Integration Tests', () => {
     });
 
     it('should return 400 for already disconnected user', async () => {
-      mockClientController.disconnectUser.mockImplementationOnce((_req: Request, res: Response) => {
-        res.status(httpStatusCodes.BAD_REQUEST).json({
-          success: false,
-          message: 'User is already disconnected',
-        });
-      });
+      mockClientController.disconnectUser.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.BAD_REQUEST).json({
+            success: false,
+            message: 'User is already disconnected',
+          });
+        }
+      );
 
       const response = await request(app).post(endpoint).expect(httpStatusCodes.BAD_REQUEST);
 
@@ -279,12 +286,14 @@ describe('Client Routes Integration Tests', () => {
     });
 
     it('should return 403 for insufficient permissions', async () => {
-      mockClientController.disconnectUser.mockImplementationOnce((_req: Request, res: Response) => {
-        res.status(httpStatusCodes.FORBIDDEN).json({
-          success: false,
-          message: 'Insufficient permissions to disconnect users',
-        });
-      });
+      mockClientController.disconnectUser.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.FORBIDDEN).json({
+            success: false,
+            message: 'Insufficient permissions to disconnect users',
+          });
+        }
+      );
 
       const response = await request(app).post(endpoint).expect(httpStatusCodes.FORBIDDEN);
 
@@ -292,12 +301,14 @@ describe('Client Routes Integration Tests', () => {
     });
 
     it('should prevent disconnecting primary account holder', async () => {
-      mockClientController.disconnectUser.mockImplementationOnce((_req: Request, res: Response) => {
-        res.status(httpStatusCodes.BAD_REQUEST).json({
-          success: false,
-          message: 'Cannot disconnect primary account holder',
-        });
-      });
+      mockClientController.disconnectUser.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.BAD_REQUEST).json({
+            success: false,
+            message: 'Cannot disconnect primary account holder',
+          });
+        }
+      );
 
       const response = await request(app).post(endpoint).expect(httpStatusCodes.BAD_REQUEST);
 
@@ -317,12 +328,14 @@ describe('Client Routes Integration Tests', () => {
     });
 
     it('should return 404 for non-existent user', async () => {
-      mockClientController.reconnectUser.mockImplementationOnce((_req: Request, res: Response) => {
-        res.status(httpStatusCodes.NOT_FOUND).json({
-          success: false,
-          message: 'User not found',
-        });
-      });
+      mockClientController.reconnectUser.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.NOT_FOUND).json({
+            success: false,
+            message: 'User not found',
+          });
+        }
+      );
 
       const response = await request(app).post(endpoint).expect(httpStatusCodes.NOT_FOUND);
 
@@ -330,12 +343,14 @@ describe('Client Routes Integration Tests', () => {
     });
 
     it('should return 400 for already connected user', async () => {
-      mockClientController.reconnectUser.mockImplementationOnce((_req: Request, res: Response) => {
-        res.status(httpStatusCodes.BAD_REQUEST).json({
-          success: false,
-          message: 'User is already connected',
-        });
-      });
+      mockClientController.reconnectUser.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.BAD_REQUEST).json({
+            success: false,
+            message: 'User is already connected',
+          });
+        }
+      );
 
       const response = await request(app).post(endpoint).expect(httpStatusCodes.BAD_REQUEST);
 
@@ -343,12 +358,14 @@ describe('Client Routes Integration Tests', () => {
     });
 
     it('should return 403 for insufficient permissions', async () => {
-      mockClientController.reconnectUser.mockImplementationOnce((_req: Request, res: Response) => {
-        res.status(httpStatusCodes.FORBIDDEN).json({
-          success: false,
-          message: 'Insufficient permissions to reconnect users',
-        });
-      });
+      mockClientController.reconnectUser.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.FORBIDDEN).json({
+            success: false,
+            message: 'Insufficient permissions to reconnect users',
+          });
+        }
+      );
 
       const response = await request(app).post(endpoint).expect(httpStatusCodes.FORBIDDEN);
 
@@ -356,16 +373,18 @@ describe('Client Routes Integration Tests', () => {
     });
 
     it('should restore user roles on reconnect', async () => {
-      mockClientController.reconnectUser.mockImplementationOnce((_req: Request, res: Response) => {
-        res.status(httpStatusCodes.OK).json({
-          success: true,
-          message: 'User reconnected successfully',
-          data: {
-            roles: ['staff', 'manager'],
-            isConnected: true,
-          },
-        });
-      });
+      mockClientController.reconnectUser.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.OK).json({
+            success: true,
+            message: 'User reconnected successfully',
+            data: {
+              roles: ['staff', 'manager'],
+              isConnected: true,
+            },
+          });
+        }
+      );
 
       const response = await request(app).post(endpoint).expect(httpStatusCodes.OK);
 

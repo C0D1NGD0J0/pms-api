@@ -469,36 +469,10 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    */
   async startSession(): Promise<ClientSession> {
     try {
-      // ensure connection is ready before starting session
-      if (this.model.db.readyState !== 1) {
-        this.logger.warn(
-          `MongoDB connection not ready (state: ${this.model.db.readyState}), waiting...`
-        );
-        // wait for connection to be ready with timeout
-        await this.waitForConnection(15000);
-      }
       return await this.model.db.startSession();
     } catch (error) {
       this.logger.error('Error starting MongoDB session:', error);
       throw error;
-    }
-  }
-
-  /**
-   * Verify MongoDB connection to be ready
-   * @param timeoutMs - Maximum time to wait in milliseconds
-   */
-  private async waitForConnection(timeoutMs: number = 10000): Promise<void> {
-    const startTime = Date.now();
-
-    while (this.model.db.readyState !== 1) {
-      if (Date.now() - startTime > timeoutMs) {
-        throw new Error(
-          `MongoDB connection timeout after ${timeoutMs}ms (state: ${this.model.db.readyState})`
-        );
-      }
-      // wait 100ms before checking again
-      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 
@@ -519,7 +493,15 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       }
 
       return await session.withTransaction(async () => {
-        return await operations(session);
+        try {
+          return await operations(session);
+        } catch (operationError) {
+          // Ensure the transaction is aborted on error
+          if (session.inTransaction()) {
+            await session.abortTransaction();
+          }
+          throw operationError;
+        }
       });
     } catch (error: any) {
       if (

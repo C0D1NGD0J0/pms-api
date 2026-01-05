@@ -12,12 +12,7 @@ import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { IVendorFilterOptions } from '@dao/interfaces/vendorDAO.interface';
 import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
-import {
-  ListResultWithPagination,
-  ISuccessReturnData,
-  IRequestContext,
-  IPaginateResult,
-} from '@interfaces/utils.interface';
+import { ISuccessReturnData, IRequestContext, IPaginateResult } from '@interfaces/utils.interface';
 import {
   FilteredUserTableData,
   IUserDetailResponse,
@@ -213,7 +208,7 @@ export class VendorService {
     }
   }
 
-  async getClientVendors(cuid: string): Promise<ListResultWithPagination<IVendorDocument[]>> {
+  async getClientVendors(cuid: string): Promise<IVendorDocument[]> {
     try {
       return await this.vendorDAO.getClientVendors(cuid);
     } catch (error) {

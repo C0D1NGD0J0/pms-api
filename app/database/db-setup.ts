@@ -69,8 +69,10 @@ export class DatabaseService implements IDatabaseService {
         serverSelectionTimeoutMS: 15000,
       });
 
-      await this.redisService.connect();
+      // Set up Redis connection
+      this.redisService.connect();
 
+      // Set up disconnect handler
       mongoose.connection.on('disconnected', () => {
         this.connected = false;
         this.log.error('MongoDB disconnected....');

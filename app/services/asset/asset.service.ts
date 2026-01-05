@@ -326,6 +326,7 @@ export class AssetService {
    */
   private setupEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
+    this.logger.info('Asset service event listeners initialized');
   }
 
   /**

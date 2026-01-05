@@ -26,9 +26,9 @@ export interface IVendorDAO {
   getVendorByPrimaryAccountHolder(userId: string | Types.ObjectId): Promise<IVendorDocument | null>;
   createVendor(vendorData: NewVendor, session?: ClientSession): Promise<IVendorDocument>;
   findByRegistrationNumber(registrationNumber: string): Promise<IVendorDocument | null>;
-  getClientVendors(cuid: string): Promise<ListResultWithPagination<IVendorDocument[]>>;
   getVendorById(vendorId: string | Types.ObjectId): Promise<IVendorDocument | null>;
   getVendorByVuid(vuid: string): Promise<IVendorDocument | null>;
+  getClientVendors(cuid: string): Promise<IVendorDocument[]>;
 }
 
 export interface IVendorFilterOptions {

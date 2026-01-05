@@ -1,7 +1,6 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
-import { QueueFactory } from '@services/queue';
 import { ProfileService } from '@services/profile';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { MailType } from '@interfaces/utils.interface';
@@ -37,11 +36,12 @@ import {
 
 interface IConstructor {
   emitterService: EventEmitterService;
+  invitationQueue: InvitationQueue;
   profileService: ProfileService;
   invitationDAO: InvitationDAO;
   vendorService: VendorService;
-  queueFactory: QueueFactory;
   userService: UserService;
+  emailQueue: EmailQueue;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
@@ -51,10 +51,11 @@ interface IConstructor {
 export class InvitationService {
   private readonly log: Logger;
   private readonly invitationDAO: InvitationDAO;
-  private readonly queueFactory: QueueFactory;
+  private readonly emailQueue: EmailQueue;
   private readonly userDAO: UserDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
+  private readonly invitationQueue: InvitationQueue;
   private readonly emitterService: EventEmitterService;
   private readonly profileService: ProfileService;
   private readonly vendorService: VendorService;
@@ -63,10 +64,11 @@ export class InvitationService {
 
   constructor({
     invitationDAO,
-    queueFactory,
+    emailQueue,
     userDAO,
     profileDAO,
     clientDAO,
+    invitationQueue,
     emitterService,
     profileService,
     vendorService,
@@ -75,10 +77,11 @@ export class InvitationService {
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
-    this.queueFactory = queueFactory;
+    this.emailQueue = emailQueue;
     this.profileDAO = profileDAO;
     this.invitationDAO = invitationDAO;
     this.emitterService = emitterService;
+    this.invitationQueue = invitationQueue;
     this.profileService = profileService;
     this.vendorService = vendorService;
     this.userService = userService;
@@ -169,8 +172,7 @@ export class InvitationService {
           },
         };
 
-        const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
-        emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
+        this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
           ...emailData,
           invitationId: invitation._id.toString(),
         } as any);
@@ -603,8 +605,7 @@ export class InvitationService {
         await this.invitationDAO.incrementReminderCount(data.iuid, invitation.clientId.toString());
       }
 
-      const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
-      emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
+      this.emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
         ...emailData,
         invitationId: invitation._id.toString(),
       } as any);
@@ -632,15 +633,7 @@ export class InvitationService {
     cxt: IRequestContext,
     query: IInvitationListQuery
   ): Promise<ISuccessReturnData<any>> {
-    // Lookup client by cuid to get clientId for querying
-    const client = await this.clientDAO.getClientByCuid(query.cuid);
-    if (!client) {
-      throw new NotFoundError({ message: t('client.errors.notFound') });
-    }
-
-    // Add clientId to query for DAO
-    const queryWithClientId = { ...query, clientId: client.id.toString() };
-    const result = await this.invitationDAO.getInvitationsByClient(queryWithClientId);
+    const result = await this.invitationDAO.getInvitationsByClient(query);
 
     return {
       success: true,
@@ -730,8 +723,7 @@ export class InvitationService {
         clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
       };
 
-      const invitationQueue = this.queueFactory.getQueue('invitationQueue') as InvitationQueue;
-      const job = await invitationQueue.addCsvValidationJob(jobData);
+      const job = await this.invitationQueue.addCsvValidationJob(jobData);
 
       return {
         success: true,
@@ -775,8 +767,7 @@ export class InvitationService {
         },
       };
 
-      const invitationQueue = this.queueFactory.getQueue('invitationQueue') as InvitationQueue;
-      const job = await invitationQueue.addCsvBulkUserValidationJob(jobData);
+      const job = await this.invitationQueue.addCsvBulkUserValidationJob(jobData);
 
       return {
         success: true,
@@ -813,8 +804,7 @@ export class InvitationService {
         clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
       };
 
-      const invitationQueue = this.queueFactory.getQueue('invitationQueue') as InvitationQueue;
-      const job = await invitationQueue.addCsvImportJob(jobData);
+      const job = await this.invitationQueue.addCsvImportJob(jobData);
 
       return {
         success: true,
@@ -856,8 +846,7 @@ export class InvitationService {
         },
       };
 
-      const invitationQueue = this.queueFactory.getQueue('invitationQueue') as InvitationQueue;
-      const job = await invitationQueue.addCsvBulkUserImportJob(jobData);
+      const job = await this.invitationQueue.addCsvBulkUserImportJob(jobData);
 
       return {
         success: true,
@@ -881,15 +870,8 @@ export class InvitationService {
     }
   ): Promise<ISuccessReturnData<any>> {
     try {
-      // Lookup client by cuid to get clientId for querying
-      const client = await this.clientDAO.getClientByCuid(cuid);
-      if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
-      }
-
       const query: IInvitationListQuery = {
         cuid,
-        clientId: client.id.toString(),
         status: 'pending',
         limit: filters.limit || 50,
       };

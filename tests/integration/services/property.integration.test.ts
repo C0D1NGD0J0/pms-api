@@ -1,12 +1,12 @@
+import { PropertyCache } from '@caching/property.cache';
 import { ROLES } from '@shared/constants/roles.constants';
 import { disconnectTestDatabase } from '@tests/setup/testDatabase';
 import { PropertyService } from '@services/property/property.service';
-import { PropertyApprovalService } from '@services/property/propertyApproval.service';
-import { PropertyStatsService } from '@services/property/propertyStats.service';
 import { PropertyApprovalStatusEnum } from '@interfaces/property.interface';
-import { PropertyCache } from '@caching/property.cache';
+import { PropertyStatsService } from '@services/property/propertyStats.service';
 import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
 import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
+import { PropertyApprovalService } from '@services/property/propertyApproval.service';
 import { ValidationRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import {

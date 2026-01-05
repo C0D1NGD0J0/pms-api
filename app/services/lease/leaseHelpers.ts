@@ -1042,8 +1042,22 @@ export const constructActivityFeed = (lease: ILeaseDocument): any[] => {
 };
 
 /**
- * Calculate renewal metadata for a lease
- * Only called for active or draft_renewal leases to avoid unnecessary computation
+ * Calculates renewal-related metadata for a given lease, such as how many days remain
+ * until expiry and whether the lease is within the renewal notification window.
+ *
+ * Only intended to be called for active or `draft_renewal` leases to avoid unnecessary
+ * computation on leases that are not eligible for renewal.
+ *
+ * If the lease does not have a valid `duration.endDate`, or the end date cannot be
+ * interpreted as a valid date, the function returns `null` to signal that renewal
+ * metadata cannot be computed safely.
+ *
+ * @param lease - The lease document for which renewal metadata should be calculated.
+ * @param includeFormData - Optional flag indicating whether to include additional
+ *   form-related data in the returned metadata object. Defaults to `false`.
+ * @returns An object containing computed renewal metadata (for example, days until
+ *   expiry and flags indicating whether the lease is within the renewal window),
+ *   or `null` if the metadata cannot be determined.
  */
 export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData = false) {
   // Validate that lease has a duration and endDate

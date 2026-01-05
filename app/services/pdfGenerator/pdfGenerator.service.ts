@@ -10,9 +10,13 @@ import {
 
 export class PdfGeneratorService {
   private browser: Browser | null = null; // singleton browser instance
+  private browserInitPromise: Promise<Browser> | null = null; // Track ongoing initialization
+  private lastUsed: Date | null = null; // Track last usage time
+  private cleanupTimer: NodeJS.Timeout | null = null; // Idle cleanup timer
   private readonly logger: Logger;
   private stats: PdfGeneratorStats;
   private browserLaunchTime: Date | null = null;
+  private readonly BROWSER_IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes idle timeout
 
   constructor() {
     this.logger = createLogger('PdfGeneratorService');
@@ -22,6 +26,9 @@ export class PdfGeneratorService {
       averageGenerationTime: 0,
       browserUptime: 0,
     };
+    this.logger.info(
+      `PdfGeneratorService initialized with ${this.BROWSER_IDLE_TIMEOUT / 1000}s idle timeout`
+    );
   }
 
   async generatePdf(html: string, options?: PdfGenerationOptions): Promise<PdfGenerationResult> {
@@ -116,17 +123,48 @@ export class PdfGeneratorService {
   }
 
   async cleanup(): Promise<void> {
+    // Clear any pending cleanup timer
+    if (this.cleanupTimer) {
+      clearTimeout(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+
     if (this.browser) {
       try {
-        this.logger.info('Closing browser...');
+        this.logger.info('Closing browser and freeing memory...');
         await this.browser.close();
         this.browser = null;
         this.browserLaunchTime = null;
-        this.logger.info('Browser closed successfully');
+        this.lastUsed = null;
+        this.logger.info('Browser closed successfully - memory freed');
       } catch (error) {
         this.logger.error({ error }, 'Failed to close browser');
       }
     }
+  }
+
+  /**
+   * Reset the idle cleanup timer
+   * Schedules browser cleanup after BROWSER_IDLE_TIMEOUT of inactivity
+   */
+  private resetCleanupTimer(): void {
+    // Clear existing timer
+    if (this.cleanupTimer) {
+      clearTimeout(this.cleanupTimer);
+    }
+
+    // Schedule cleanup after idle timeout
+    this.cleanupTimer = setTimeout(async () => {
+      if (this.browser && this.lastUsed) {
+        const idleTime = Date.now() - this.lastUsed.getTime();
+        if (idleTime >= this.BROWSER_IDLE_TIMEOUT) {
+          this.logger.info(
+            `Browser idle for ${idleTime / 1000}s (threshold: ${this.BROWSER_IDLE_TIMEOUT / 1000}s), closing to free memory...`
+          );
+          await this.cleanup();
+        }
+      }
+    }, this.BROWSER_IDLE_TIMEOUT);
   }
 
   private updateStats(success: boolean, generationTime: number, error?: unknown): void {
@@ -209,10 +247,32 @@ export class PdfGeneratorService {
   }
 
   private async getBrowser(): Promise<Browser> {
-    if (this.browser && this.browser.connected) {
+    // Update last used timestamp
+    this.lastUsed = new Date();
+
+    // Return existing browser if connected
+    if (this.browser?.connected) {
+      this.resetCleanupTimer();
       return this.browser;
     }
+
+    // If browser is being initialized, wait for it
+    if (this.browserInitPromise) {
+      this.logger.info('Browser initialization in progress, waiting...');
+      return this.browserInitPromise;
+    }
+
+    // Initialize new browser
     this.logger.info('Browser not initialized or disconnected. Creating new instance...');
-    return this.initBrowser();
+    this.browserInitPromise = this.initBrowser();
+
+    try {
+      this.browser = await this.browserInitPromise;
+      this.resetCleanupTimer();
+      return this.browser;
+    } finally {
+      // Clear the promise after initialization completes (success or failure)
+      this.browserInitPromise = null;
+    }
   }
 }

@@ -17,7 +17,7 @@
     "dev:api": "nodemon --exec 'node --inspect=9229 --expose-gc -r ts-node/register' server.ts",
     "dev:worker": "nodemon --exec 'node --inspect=9230 --expose-gc -r ts-node/register' worker_process.ts",
     "start:api": "node dist/server.js",
-    "start:worker": "node dist/worker.js",
+    "start:worker": "node dist/worker_process.js",
     "start": "node dist/server.js",
     "test": "cross-env NODE_ENV=test jest",
     "test:watch": "cross-env NODE_ENV=test jest --watch",

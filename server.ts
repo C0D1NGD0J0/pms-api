@@ -9,10 +9,8 @@ import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import express, { Application } from 'express';
 import { PidManager } from '@utils/pid-manager';
-import { initQueues } from '@di/registerResources';
 import { Server as SocketIOServer } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
-import { EventListenerSetup } from '@di/eventListenerSetup';
 import { DatabaseService, Environments } from '@database/index';
 
 (global as any).rootDir = __dirname;
@@ -54,8 +52,18 @@ class Server {
     this.pidManager.check();
 
     await this.dbService.connect();
-    initQueues(container);
-    EventListenerSetup.registerQueueListeners(container);
+
+    // Queues/workers run in separate worker_process.ts
+    // Only load Bull Board UI (readonly) for monitoring via /admin/queues
+    const isWorkerProcess = process.env.PROCESS_TYPE === 'worker';
+    if (!isWorkerProcess) {
+      this.log.info('API process: Skipping queue/worker initialization to save memory');
+      this.log.info('Workers run in separate worker_process.ts (deploy pms-worker service)');
+    } else {
+      this.log.warn('⚠️  PROCESS_TYPE=worker detected in server.ts - this should not happen!');
+      this.log.warn('⚠️  Worker initialization should only happen in worker_process.ts');
+    }
+
     this.app.initConfig();
     await this.startServers(this.expApp);
     this.initialized = true;

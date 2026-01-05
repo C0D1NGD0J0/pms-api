@@ -2667,13 +2667,7 @@ export class LeaseService {
     renewalData: Partial<ILeaseFormData>,
     ctx: IRequestContext
   ): IPromiseReturnedData<ILeaseDocument | null> {
-    return this.leaseRenewalService.approveRenewalForSignature(
-      cuid,
-      luid,
-      renewalData,
-      ctx,
-      this.validateLeaseData.bind(this)
-    );
+    return this.leaseRenewalService.approveRenewalForSignature(cuid, luid, renewalData, ctx);
   }
 
   async renewLease(

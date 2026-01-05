@@ -17,7 +17,7 @@ class WorkerProcess {
     'propertyQueue',
     'propertyUnitQueue',
     'invitationQueue',
-    'documentProcessingQueue',
+    'propertyMediaQueue',
     'eventBusQueue',
     'cronQueue',
   ];
@@ -53,7 +53,7 @@ class WorkerProcess {
         expectedConnections: `~${this.queueNames.length * 2}-${this.queueNames.length * 3} per worker (${this.queueNames.length} queues)`,
         alert: 'If connections > 100, check for duplicate processes or connection leaks',
       });
-    }, 2000); // Wait 2s for all queues to initialize
+    }, 2000);
   }
 
   private registerShutdownHandlers(): void {

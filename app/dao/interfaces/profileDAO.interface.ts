@@ -247,6 +247,17 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   getProfileByUserId(userId: string | Types.ObjectId): Promise<IProfileDocument | null>;
 
   /**
+   * Gets basic user information for a specific client context.
+   * Lightweight alternative to generateCurrentUserInfo() for cases where only
+   * basic contact/profile info is needed (e.g., email notifications, user lists).
+   *
+   * @param userId - The unique identifier for the user
+   * @param cuid - The client ID for multi-tenancy context
+   * @returns A promise that resolves to basic user info or null if not found
+   */
+  getUserBasicInfo(userId: string, cuid: string): Promise<IUserBasicInfo | null>;
+
+  /**
    * Retrieves the currently authenticated user along with their profile information.
    * Uses MongoDB aggregation to join user data with their profile data and formats it into a CurrentUser object.
    *
@@ -263,4 +274,18 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
    * @returns A promise that resolves to the user ID or null if profile not found
    */
   getProfileUserId(profileId: string): Promise<string | null>;
+}
+
+export interface IUserBasicInfo {
+  displayName: string | null;
+  avatar: string | null;
+  phone: string | null;
+  profileId: string;
+  firstName: string;
+  fullName: string;
+  lastName: string;
+  userId: string;
+  email: string;
+  cuid: string;
+  role: string;
 }

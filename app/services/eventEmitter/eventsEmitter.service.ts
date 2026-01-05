@@ -47,7 +47,7 @@ export class EventEmitterService {
     process.once('exit', cleanup);
   }
 
-  emit<T extends EventTypes>(eventType: T, payload: EventPayloadMap[T]): boolean {
+  emit<T extends keyof EventPayloadMap>(eventType: T, payload: EventPayloadMap[T]): boolean {
     this.log.debug(`Emitting local event: ${eventType}`);
 
     try {
@@ -58,7 +58,10 @@ export class EventEmitterService {
     }
   }
 
-  on<T extends EventTypes>(eventType: T, handler: (payload: EventPayloadMap[T]) => void): this {
+  on<T extends keyof EventPayloadMap>(
+    eventType: T,
+    handler: (payload: EventPayloadMap[T]) => void
+  ): this {
     const currentCount = this.listenerCounts.get(eventType) || 0;
 
     if (currentCount >= this.MAX_LISTENERS_PER_EVENT) {
@@ -88,7 +91,10 @@ export class EventEmitterService {
     return this;
   }
 
-  once<T extends EventTypes>(eventType: T, handler: (payload: EventPayloadMap[T]) => void): this {
+  once<T extends keyof EventPayloadMap>(
+    eventType: T,
+    handler: (payload: EventPayloadMap[T]) => void
+  ): this {
     // Wrap handler to catch errors and clean up
     const safeHandler = (payload: EventPayloadMap[T]) => {
       try {
@@ -107,7 +113,10 @@ export class EventEmitterService {
     return this;
   }
 
-  off<T extends EventTypes>(eventType: T, handler: (payload: EventPayloadMap[T]) => void): this {
+  off<T extends keyof EventPayloadMap>(
+    eventType: T,
+    handler: (payload: EventPayloadMap[T]) => void
+  ): this {
     // Get the wrapped handler
     const wrappedHandler = this.handlerMappings.get(handler);
     if (wrappedHandler) {

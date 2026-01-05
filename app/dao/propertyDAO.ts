@@ -192,7 +192,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Client ID is required');
       }
 
-      if (opts && opts.sort && opts.sortBy) {
+      if (opts) {
         const sortDirection = opts.sort === 'desc' ? -1 : 1;
 
         if (opts.sortBy) {
@@ -219,13 +219,12 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
               opts.sort = { 'specifications.totalArea': sortDirection };
               break;
             default:
-              opts.sort = undefined;
+              opts.sort = { createdAt: sortDirection };
           }
         } else {
-          opts.sort = { createdAt: -1 };
+          opts.sort = { createdAt: sortDirection };
         }
       }
-
       return await this.list(filter, opts);
     } catch (error) {
       this.logger.error('Error in getPropertiesByClientId:', error);

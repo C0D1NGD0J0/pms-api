@@ -1,8 +1,103 @@
+# =====================================================================
+# Railway Deployment Configuration - Multi-Service Architecture
+# =====================================================================
+#
+# ⚠️  CRITICAL: This file is ONLY PART 1 of the setup!
+# ⚠️  You MUST also configure environment variables in Railway Dashboard (Part 2)
+#
+# HOW THIS WORKS:
+# ---------------
+# 1. This railway.toml provides DEFAULT configuration for both services
+# 2. Railway Dashboard environment variables OVERRIDE these defaults
+# 3. This allows ONE file to serve TWO different services (API + Worker)
+#
+# WHEN YOU COME BACK IN 3 MONTHS:
+# --------------------------------
+# If deployments aren't working, remember:
+# - This TOML file is just the BASE configuration
+# - Each service needs SPECIFIC env vars set in Railway Dashboard
+# - See "PART 2: RAILWAY DASHBOARD SETUP" section below
+#
+# =====================================================================
+# PART 1: THIS FILE (railway.toml) - Base Configuration
+# =====================================================================
+#
+# This file defines:
+# - Build process (Dockerfile)
+# - Default start command (npm run start:api)
+# - Restart policies
+# - Default environment variables
+#
+# Both services (API and Worker) read this same file.
+#
+# =====================================================================
+# PART 2: RAILWAY DASHBOARD SETUP - Per-Service Overrides
+# =====================================================================
+#
+# ⚠️  AFTER pushing this file, you MUST configure each service separately!
+#
+# SERVICE 1: pms-api (Web/API) - Already Exists
+# ----------------------------------------------
+# Location: Railway Dashboard → pms-api → Settings → Variables
+#
+# REQUIRED Variables (override TOML defaults):
+#   START_COMMAND=npm run start:api
+#   PROCESS_TYPE=api
+#
+# OPTIONAL Variables:
+#   ENABLE_BULL_BOARD=true  (enables /admin/queues monitoring)
+#
+# SHARED Variables (same for both services):
+#   MONGODB_URI=mongodb+srv://...
+#   REDIS_URL=redis://...  (auto-provided by Railway Redis plugin)
+#   JWT_SECRET=your_secret_here
+#   AWS_ACCESS_KEY_ID=...
+#   AWS_SECRET_ACCESS_KEY=...
+#   AWS_S3_BUCKET=...
+#   STRIPE_SECRET_KEY=sk_...
+#   [plus all other app-specific env vars]
+#
+#
+# SERVICE 2: pms-worker (Background Jobs) - YOU NEED TO CREATE THIS
+# ------------------------------------------------------------------
+# Location: Railway Dashboard → + New → GitHub Repo → Same repo as API
+# Then: Settings → Variables
+#
+# CRITICAL Variables (MUST override TOML defaults):
+#   START_COMMAND=npm run start:worker  ⚠️  WITHOUT THIS, WORKER WON'T START!
+#   PROCESS_TYPE=worker                 ⚠️  REQUIRED FOR CORRECT BEHAVIOR!
+#
+# SHARED Variables (copy ALL from pms-api service):
+#   [Copy every single env var from pms-api service]
+#   MONGODB_URI, REDIS_URL, JWT_SECRET, AWS_*, STRIPE_*, etc.
+#
+# WHY THIS MATTERS:
+# -----------------
+# - Without START_COMMAND override, worker service will run "npm run start:api"
+# - Without PROCESS_TYPE=worker, cron jobs won't be initialized
+# - Without copied env vars, worker can't connect to database/redis
+#
+# =====================================================================
+# VERIFICATION CHECKLIST (After deployment)
+# =====================================================================
+#
+# [ ] Both services show "Deployment successful" in Railway
+# [ ] pms-api logs show: "API process: Skipping queue/worker initialization"
+# [ ] pms-worker logs show: "Starting worker process..."
+# [ ] pms-worker logs show: "Total cron jobs registered: 5"
+# [ ] Both services can connect to MongoDB and Redis
+# [ ] Bull Board UI works at: https://your-api.railway.app/admin/queues
+#
+# =====================================================================
+# DEFAULT CONFIG (Used by both services, overridden by env vars)
+# =====================================================================
+
 [build]
 builder = "dockerfile"
 
 [deploy]
-startCommand = "npm start"
+# Default to API service for backward compatibility
+startCommand = "npm run start:api"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 healthcheckPath = "/api/v1/healthcheck"
@@ -10,4 +105,5 @@ healthcheckTimeout = 300
 
 [env]
 NODE_ENV = "production"
+PROCESS_TYPE = "api"
 SKIP_REDIS_BINARY_DOWNLOAD = "true"

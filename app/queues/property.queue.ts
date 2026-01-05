@@ -12,7 +12,7 @@ export class PropertyQueue extends BaseQueue {
   private readonly propertyWorker: PropertyWorker;
 
   constructor({ propertyWorker }: IConstructor) {
-    super(QUEUE_NAMES.PROPERTY_QUEUE);
+    super({ queueName: QUEUE_NAMES.PROPERTY_QUEUE });
     this.propertyWorker = propertyWorker;
     this.processQueueJobs(JOB_NAME.CSV_VALIDATION_JOB, 2, this.propertyWorker.processCsvValidation);
     this.processQueueJobs(JOB_NAME.CSV_IMPORT_JOB, 1, this.propertyWorker.processCsvImport);

@@ -1,6 +1,8 @@
 import { BaseIO } from '@sockets/index';
 import { AssetDAO } from '@dao/assetDAO';
 import { MailService } from '@mailer/index';
+import { createLogger } from '@utils/index';
+import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { GeoCoderService } from '@services/external';
 import { ClamScannerService } from '@shared/config/index';
@@ -44,17 +46,18 @@ import {
   UserDAO,
 } from '@dao/index';
 import {
-  DocumentProcessingWorker,
+  PropertyMediaWorker,
   PropertyUnitWorker,
   InvitationWorker,
   ESignatureWorker,
   PropertyWorker,
   UploadWorker,
   EmailWorker,
+  CronWorker,
   PdfWorker,
 } from '@workers/index';
 import {
-  DocumentProcessingQueue,
+  PropertyMediaQueue,
   PropertyUnitQueue,
   InvitationQueue,
   ESignatureQueue,
@@ -62,6 +65,7 @@ import {
   PropertyQueue,
   UploadQueue,
   EmailQueue,
+  CronQueue,
   PdfQueue,
 } from '@queues/index';
 import {
@@ -77,23 +81,31 @@ import {
   AuthController,
 } from '@controllers/index';
 import {
+  PropertyApprovalService,
   InvitationCsvProcessor,
+  LeaseSignatureService,
   PropertyCsvProcessor,
+  PropertyStatsService,
+  PropertyMediaService,
+  LeaseDocumentService,
   PdfGeneratorService,
   NotificationService,
   EventEmitterService,
   PropertyUnitService,
+  LeaseRenewalService,
   PermissionService,
   InvitationService,
   AuthTokenService,
   PropertyService,
   BoldSignService,
+  LeasePdfService,
   ProfileService,
   ClientService,
   VendorService,
   LeaseService,
   UserService,
   AuthService,
+  CronService,
   SSEService,
 } from '@services/index';
 
@@ -127,9 +139,14 @@ const ModelResources = {
 const ServiceResources = {
   sseService: asClass(SSEService).singleton(),
   authService: asClass(AuthService).singleton(),
+  cronService: asClass(CronService).singleton(),
   userService: asClass(UserService).singleton(),
   assetService: asClass(AssetService).singleton(),
   mailerService: asClass(MailService).singleton(),
+  leaseDocumentService: asClass(LeaseDocumentService).singleton(),
+  leasePdfService: asClass(LeasePdfService).singleton(),
+  leaseRenewalService: asClass(LeaseRenewalService).singleton(),
+  leaseSignatureService: asClass(LeaseSignatureService).singleton(),
   leaseService: asClass(LeaseService).singleton(),
   clientService: asClass(ClientService).singleton(),
   vendorService: asClass(VendorService).singleton(),
@@ -137,6 +154,9 @@ const ServiceResources = {
   tokenService: asClass(AuthTokenService).singleton(),
   languageService: asClass(LanguageService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
+  propertyApprovalService: asClass(PropertyApprovalService).singleton(),
+  propertyStatsService: asClass(PropertyStatsService).singleton(),
+  propertyMediaService: asClass(PropertyMediaService).singleton(),
   boldSignService: asClass(BoldSignService).singleton(),
   emitterService: asClass(EventEmitterService).singleton(),
   permissionService: asClass(PermissionService).singleton(),
@@ -164,34 +184,16 @@ const DAOResources = {
 };
 
 const CacheResources = {
-  // Lazy-loaded cache services to reduce Redis connections and memory usage
-  authCache: asFunction(() => {
-    // Only initialize when authentication is actually used
-    return new AuthCache();
-  }).singleton(),
-
-  propertyCache: asFunction(() => {
-    return new PropertyCache();
-  }).singleton(),
-
-  leaseCache: asFunction(() => {
-    return new LeaseCache();
-  }).singleton(),
-
-  eventsRegistry: asFunction(() => {
-    return new EventsRegistryCache();
-  }).singleton(),
-
-  userCache: asFunction(() => {
-    return new UserCache();
-  }).singleton(),
-
-  vendorCache: asFunction(() => {
-    return new VendorCache();
-  }).singleton(),
+  authCache: asClass(AuthCache).singleton(),
+  propertyCache: asClass(PropertyCache).singleton(),
+  leaseCache: asClass(LeaseCache).singleton(),
+  eventsRegistry: asClass(EventsRegistryCache).singleton(),
+  userCache: asClass(UserCache).singleton(),
+  vendorCache: asClass(VendorCache).singleton(),
 };
 
 const WorkerResources = {
+  cronWorker: asClass(CronWorker).singleton(),
   emailWorker: asClass(EmailWorker).singleton(),
   uploadWorker: asClass(UploadWorker).singleton(),
   pdfGeneratorWorker: asClass(PdfWorker).singleton(),
@@ -199,10 +201,11 @@ const WorkerResources = {
   eSignatureWorker: asClass(ESignatureWorker).singleton(),
   invitationWorker: asClass(InvitationWorker).singleton(),
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
-  documentProcessingWorker: asClass(DocumentProcessingWorker).singleton(),
+  propertyMediaWorker: asClass(PropertyMediaWorker).singleton(),
 };
 
 const QueuesResources = {
+  cronQueue: asClass(CronQueue).singleton(),
   emailQueue: asClass(EmailQueue).singleton(),
   uploadQueue: asClass(UploadQueue).singleton(),
   pdfGeneratorQueue: asClass(PdfQueue).singleton(),
@@ -211,7 +214,7 @@ const QueuesResources = {
   eSignatureQueue: asClass(ESignatureQueue).singleton(),
   invitationQueue: asClass(InvitationQueue).singleton(),
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
-  documentProcessingQueue: asClass(DocumentProcessingQueue).singleton(),
+  propertyMediaQueue: asClass(PropertyMediaQueue).singleton(),
 };
 
 const UtilsResources = {
@@ -231,9 +234,7 @@ const UtilsResources = {
   diskStorage: asClass(DiskStorage).singleton(),
   propertyCsvService: asClass(PropertyCsvProcessor).singleton(),
 
-  queueFactory: asFunction(() => {
-    return QueueFactory.getInstance();
-  }).singleton(),
+  queueFactory: asClass(QueueFactory).singleton(),
 };
 
 const SocketIOResources = {
@@ -241,62 +242,35 @@ const SocketIOResources = {
 };
 
 export const initQueues = (container: AwilixContainer) => {
-  // Always initialize ClamScanner as it's essential for file security
-  container.resolve('clamScanner');
-  // Only initialize queues in development or when explicitly forced
-  if (process.env.NODE_ENV === 'development' || process.env.FORCE_INIT_QUEUES === 'true') {
-    console.log('🔧 Initializing all queues and workers for development/forced environment...');
+  const logger = createLogger('DIContainer');
 
-    // Initialize all queues
-    const queueNames = [
-      'documentProcessingQueue',
-      'emailQueue',
-      'eventBusQueue',
-      'propertyQueue',
-      'propertyUnitQueue',
-      'uploadQueue',
-      'invitationQueue',
-      'eSignatureQueue',
-      'pdfGeneratorQueue',
-    ];
+  // ClamAV initialization with error handling
+  // Prevents crashes if ClamAV is not configured or fails to start
+  const hasClamAVConfig =
+    envVariables.CLAMAV && (envVariables.CLAMAV.HOST || envVariables.CLAMAV.SOCKET);
 
-    // Initialize all workers
-    const workerNames = [
-      'documentProcessingWorker',
-      'emailWorker',
-      'propertyWorker',
-      'propertyUnitWorker',
-      'uploadWorker',
-      'invitationWorker',
-      'eSignatureWorker',
-      'pdfGeneratorWorker',
-    ];
-
-    // Resolve queues
-    queueNames.forEach((queueName) => {
-      try {
-        container.resolve(queueName);
-      } catch (error) {
-        console.error(`Failed to initialize queue ${queueName}:`, error);
-      }
-    });
-
-    // Resolve workers
-    workerNames.forEach((workerName) => {
-      try {
-        container.resolve(workerName);
-      } catch (error) {
-        console.error(`Failed to initialize worker ${workerName}:`, error);
-      }
-    });
-
-    console.log('✅ All queues and workers initialized successfully');
+  if (!hasClamAVConfig) {
+    logger.info('ClamAV not configured - virus scanning disabled');
   } else {
-    console.log(
-      '⏸️  Queue initialization skipped (production environment - using lazy initialization)'
-    );
-    console.log('💡 Queues will be initialized on-demand when first accessed');
+    try {
+      container.resolve('clamScanner');
+      logger.info('ClamAV scanner initialized');
+    } catch (error) {
+      logger.error(
+        { error },
+        'Failed to initialize ClamAV - file uploads will proceed without scanning'
+      );
+    }
   }
+
+  // Queues and workers are now lazily initialized via QueueFactory when first accessed
+  // This reduces startup time and memory footprint
+  const processType = process.env.PROCESS_TYPE || 'api';
+  const environment = process.env.NODE_ENV || 'development';
+
+  logger.info(
+    `💡 ${processType.toUpperCase()} process (${environment}): Queues will be initialized on-demand via QueueFactory`
+  );
 };
 
 export const registerResources = {

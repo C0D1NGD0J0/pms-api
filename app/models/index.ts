@@ -6,11 +6,13 @@ import Vendor from '@models/vendor/vendor.model';
 import Profile from '@models/profile/profile.model';
 import Property from '@models/property/property.model';
 import Invitation from '@models/invitation/invitation.model';
+import Subscription from '@models/subscription/subscription.model';
 import PropertyUnit from '@models/property-unit/propertyUnit.model';
 import NotificationModel from '@models/notification/notification.model';
 
 export {
   NotificationModel,
+  Subscription,
   PropertyUnit,
   Invitation,
   Property,

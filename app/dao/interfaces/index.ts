@@ -1,4 +1,5 @@
 export * from './propertyUnitDAO.interface';
+export * from './subscriptionDAO.interface';
 export * from './invitationDAO.interface';
 export * from './propertyDAO.interface';
 export * from './profileDAO.interface';

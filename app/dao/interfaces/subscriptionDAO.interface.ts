@@ -20,7 +20,7 @@ export interface ISubscriptionDAO {
   ): Promise<ISubscriptionDocument | null>;
   updateStatus(
     subscriptionId: string | Types.ObjectId,
-    status: ISubscriptionStatus
+    status: 'active' | 'inactive'
   ): Promise<ISubscriptionDocument | null>;
   cancelSubscription(
     subscriptionId: string | Types.ObjectId,

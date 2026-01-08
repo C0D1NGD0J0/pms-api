@@ -101,7 +101,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
    */
   async updateTier(
     subscriptionId: string | Types.ObjectId,
-    planName: 'free' | 'business' | 'enterprise' | 'individual'
+    planName: 'free' | 'starter' | 'professional' | 'enterprise'
   ): Promise<ISubscriptionDocument | null> {
     try {
       return await this.update(

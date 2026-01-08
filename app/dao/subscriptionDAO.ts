@@ -101,18 +101,17 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
    */
   async updateTier(
     subscriptionId: string | Types.ObjectId,
-    tier: 'free' | 'business' | 'enterprise' | 'individual',
-    planName: string
+    planName: 'free' | 'business' | 'enterprise' | 'individual'
   ): Promise<ISubscriptionDocument | null> {
     try {
       return await this.update(
         { _id: new Types.ObjectId(subscriptionId) },
         {
-          $set: { tier, planName },
+          $set: { planName },
         }
       );
     } catch (error) {
-      this.logger.error({ error, subscriptionId, tier }, 'Error updating subscription tier');
+      this.logger.error({ error, subscriptionId, planName }, 'Error updating subscription tier');
       this.throwErrorHandler(error);
     }
   }

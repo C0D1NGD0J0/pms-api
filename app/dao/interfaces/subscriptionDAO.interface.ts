@@ -2,7 +2,6 @@ import { Types } from 'mongoose';
 import {
   ISubscriptionDocument,
   ISubscriptionStatus,
-  ISubscriptionTier,
   IPaymentGateway,
 } from '@interfaces/subscription.interface';
 
@@ -13,11 +12,6 @@ export interface ISubscriptionDAO {
     subscriptionId: string | Types.ObjectId,
     paymentGateway: IPaymentGateway,
     paymentGatewayId?: string
-  ): Promise<ISubscriptionDocument | null>;
-  updateTier(
-    subscriptionId: string | Types.ObjectId,
-    tier: ISubscriptionTier,
-    planName: string
   ): Promise<ISubscriptionDocument | null>;
   updateUsage(
     subscriptionId: string | Types.ObjectId,
@@ -31,6 +25,10 @@ export interface ISubscriptionDAO {
   cancelSubscription(
     subscriptionId: string | Types.ObjectId,
     canceledAt?: Date
+  ): Promise<ISubscriptionDocument | null>;
+  updateTier(
+    subscriptionId: string | Types.ObjectId,
+    planName: string
   ): Promise<ISubscriptionDocument | null>;
   findByPaymentGatewayId(
     paymentGatewayId: string,

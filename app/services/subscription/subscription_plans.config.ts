@@ -1,7 +1,7 @@
-import { ISubscriptionPlansConfig, ISubscriptionTier } from '@interfaces/subscription.interface';
+import { ISubscriptionPlansConfig, PlanName } from '@interfaces/subscription.interface';
 
-const PLAN_CONFIGS: Record<string, ISubscriptionPlansConfig> = {
-  [ISubscriptionTier.FREE]: {
+const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
+  free: {
     name: 'Free',
     priceInCents: 0,
     transactionFeePercent: 3.5,
@@ -22,7 +22,7 @@ const PLAN_CONFIGS: Record<string, ISubscriptionPlansConfig> = {
       VisitorPassService: false,
     },
   },
-  [ISubscriptionTier.STARTER]: {
+  starter: {
     name: 'Starter',
     priceInCents: 2900, // $29.00/month base price
     transactionFeePercent: 3.0,
@@ -43,7 +43,7 @@ const PLAN_CONFIGS: Record<string, ISubscriptionPlansConfig> = {
       VisitorPassService: false,
     },
   },
-  [ISubscriptionTier.PROFESSIONAL]: {
+  professional: {
     name: 'Professional',
     priceInCents: 7900, // $79.00/month base price
     transactionFeePercent: 2.8,
@@ -64,7 +64,7 @@ const PLAN_CONFIGS: Record<string, ISubscriptionPlansConfig> = {
       VisitorPassService: true, // Only on Professional+
     },
   },
-  [ISubscriptionTier.ENTERPRISE]: {
+  enterprise: {
     name: 'Enterprise',
     priceInCents: 19900, // $199.00/month starting price (custom pricing available)
     transactionFeePercent: 2.5,
@@ -95,7 +95,7 @@ export type SubscriptionPlanName = keyof typeof PLAN_CONFIGS;
  */
 export class SubscriptionPlanConfig {
   private static instance: SubscriptionPlanConfig;
-  private configs: Record<string, ISubscriptionPlansConfig>;
+  private configs: Record<PlanName, ISubscriptionPlansConfig>;
 
   private constructor() {
     this.configs = PLAN_CONFIGS;
@@ -112,21 +112,21 @@ export class SubscriptionPlanConfig {
   }
 
   /**
-   * Get subscription plan configuration by tier
+   * Get subscription plan configuration by plan name
    */
-  public getConfig(tier: ISubscriptionTier): ISubscriptionPlansConfig {
-    const config = this.configs[tier];
+  public getConfig(planName: PlanName): ISubscriptionPlansConfig {
+    const config = this.configs[planName];
     if (!config) {
-      throw new Error(`Invalid subscription tier: ${tier}`);
+      throw new Error(`Invalid plan name: ${planName}`);
     }
     return config;
   }
 
   /**
-   * Get all available tier values
+   * Get all available plan names
    */
-  public getAllTiers(): ISubscriptionTier[] {
-    return Object.values(ISubscriptionTier);
+  public getAllPlans(): PlanName[] {
+    return Object.keys(this.configs) as PlanName[];
   }
 
   /**
@@ -135,9 +135,9 @@ export class SubscriptionPlanConfig {
   public canAddSeat(
     currentSeats: number,
     additionalSeatsCount: number,
-    tier: ISubscriptionTier
+    planName: PlanName
   ): boolean {
-    const config = this.getConfig(tier);
+    const config = this.getConfig(planName);
     const totalAllowedSeats =
       config.seatPricing.includedSeats +
       (config.seatPricing.maxAdditionalSeats === -1
@@ -150,11 +150,8 @@ export class SubscriptionPlanConfig {
   /**
    * Check if subscription can purchase additional seats
    */
-  public canPurchaseAdditionalSeats(
-    additionalSeatsCount: number,
-    tier: ISubscriptionTier
-  ): boolean {
-    const config = this.getConfig(tier);
+  public canPurchaseAdditionalSeats(additionalSeatsCount: number, planName: PlanName): boolean {
+    const config = this.getConfig(planName);
     if (config.seatPricing.additionalSeatPriceCents === 0) return false; // Can't buy more
     if (config.seatPricing.maxAdditionalSeats === -1) return true; // Unlimited
     return additionalSeatsCount < config.seatPricing.maxAdditionalSeats;
@@ -164,11 +161,11 @@ export class SubscriptionPlanConfig {
    * Calculate total monthly price for a subscription
    */
   public calculatePrice(
-    tier: ISubscriptionTier,
+    planName: PlanName,
     additionalSeatsCount: number = 0,
     customPriceInCents?: number
   ): number {
-    const config = this.getConfig(tier);
+    const config = this.getConfig(planName);
 
     // For Enterprise with custom pricing, use that instead of base price
     const basePrice =
@@ -183,19 +180,16 @@ export class SubscriptionPlanConfig {
   /**
    * Calculate additional seats cost only
    */
-  public calculateAdditionalSeatsCost(
-    tier: ISubscriptionTier,
-    additionalSeatsCount: number
-  ): number {
-    const config = this.getConfig(tier);
+  public calculateAdditionalSeatsCost(planName: PlanName, additionalSeatsCount: number): number {
+    const config = this.getConfig(planName);
     return additionalSeatsCount * config.seatPricing.additionalSeatPriceCents;
   }
 
   /**
    * Check if subscription can add a new property
    */
-  public canAddProperty(currentProperties: number, tier: ISubscriptionTier): boolean {
-    const config = this.getConfig(tier);
+  public canAddProperty(currentProperties: number, planName: PlanName): boolean {
+    const config = this.getConfig(planName);
     if (config.limits.maxProperties === -1) return true; // unlimited
     return currentProperties < config.limits.maxProperties;
   }
@@ -203,8 +197,8 @@ export class SubscriptionPlanConfig {
   /**
    * Check if subscription can add a new unit
    */
-  public canAddUnit(currentUnits: number, tier: ISubscriptionTier): boolean {
-    const config = this.getConfig(tier);
+  public canAddUnit(currentUnits: number, planName: PlanName): boolean {
+    const config = this.getConfig(planName);
     if (config.limits.maxUnits === -1) return true; // unlimited
     return currentUnits < config.limits.maxUnits;
   }
@@ -217,79 +211,79 @@ export class SubscriptionPlanConfig {
   }
 
   /**
-   * Check if a tier has a specific feature enabled
+   * Check if a plan has a specific feature enabled
    */
   public hasFeature(
-    tier: ISubscriptionTier,
+    planName: PlanName,
     feature: keyof ISubscriptionPlansConfig['features']
   ): boolean {
-    const config = this.getConfig(tier);
+    const config = this.getConfig(planName);
     return config.features[feature] === true;
   }
 
   /**
-   * Get transaction fee percentage for a tier
+   * Get transaction fee percentage for a plan
    */
-  public getTransactionFeePercent(tier: ISubscriptionTier): number {
-    const config = this.getConfig(tier);
+  public getTransactionFeePercent(planName: PlanName): number {
+    const config = this.getConfig(planName);
     return config.transactionFeePercent;
   }
 
   /**
    * Get formatted price for display
    */
-  public getFormattedPrice(tier: ISubscriptionTier): string {
-    const config = this.getConfig(tier);
+  public getFormattedPrice(planName: PlanName): string {
+    const config = this.getConfig(planName);
     if (config.priceInCents === 0) return 'Free';
     return `$${(config.priceInCents / 100).toFixed(2)}`;
   }
 
   /**
-   * Get total seat limit for a tier (included + max additional)
+   * Get total seat limit for a plan (included + max additional)
    */
-  public getSeatLimit(tier: ISubscriptionTier): number {
-    const config = this.getConfig(tier);
+  public getSeatLimit(planName: PlanName): number {
+    const config = this.getConfig(planName);
     if (config.seatPricing.maxAdditionalSeats === -1) return -1; // unlimited
     return config.seatPricing.includedSeats + config.seatPricing.maxAdditionalSeats;
   }
 
   /**
-   * Get included seats for a tier
+   * Get included seats for a plan
    */
-  public getIncludedSeats(tier: ISubscriptionTier): number {
-    const config = this.getConfig(tier);
+  public getIncludedSeats(planName: PlanName): number {
+    const config = this.getConfig(planName);
     return config.seatPricing.includedSeats;
   }
 
   /**
-   * Get additional seat price for a tier
+   * Get additional seat price for a plan
    */
-  public getAdditionalSeatPrice(tier: ISubscriptionTier): number {
-    const config = this.getConfig(tier);
+  public getAdditionalSeatPrice(planName: PlanName): number {
+    const config = this.getConfig(planName);
     return config.seatPricing.additionalSeatPriceCents;
   }
 
   /**
-   * Get property limit for a tier
+   * Get property limit for a plan
    */
-  public getPropertyLimit(tier: ISubscriptionTier): number {
-    const config = this.getConfig(tier);
+  public getPropertyLimit(planName: PlanName): number {
+    const config = this.getConfig(planName);
     return config.limits.maxProperties;
   }
 
   /**
-   * Get unit limit for a tier
+   * Get unit limit for a plan
    */
-  public getUnitLimit(tier: ISubscriptionTier): number {
-    const config = this.getConfig(tier);
+  public getUnitLimit(planName: PlanName): number {
+    const config = this.getConfig(planName);
     return config.limits.maxUnits;
   }
 
   /**
-   * Get plan name for a tier
+   * Get display name for a plan
    */
-  public getPlanName(tier: ISubscriptionTier): string {
-    const config = this.getConfig(tier);
+  public getDisplayName(planName: PlanName): string {
+    const config = this.getConfig(planName);
     return config.name;
   }
 }

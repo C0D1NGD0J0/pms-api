@@ -144,7 +144,7 @@ export class SubscriptionPlanConfig {
         ? Infinity
         : config.seatPricing.maxAdditionalSeats);
 
-    return currentSeats < totalAllowedSeats;
+    return currentSeats + additionalSeatsCount <= totalAllowedSeats;
   }
 
   /**

@@ -8,9 +8,9 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     client: { type: Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
     planName: {
       type: String,
-      enum: ['free', 'starter', 'professional', 'enterprise'],
+      enum: ['personal', 'starter', 'professional'],
       required: true,
-      default: 'free',
+      default: 'personal',
       index: true,
     },
     planId: { type: String, required: true }, // stripe-price ID

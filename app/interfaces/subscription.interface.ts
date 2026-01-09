@@ -17,8 +17,7 @@ export interface ISubscriptionPlansConfig {
     eSignature: boolean;
     RepairRequestService: boolean;
     VisitorPassService: boolean;
-    apiAccess?: boolean;
-    webhooks?: boolean;
+    reportingAnalytics: boolean;
     prioritySupport?: boolean;
   };
   seatPricing: {
@@ -65,4 +64,4 @@ export interface ISubscriptionDocument extends ISubscription, Document {
   updatedAt: Date;
 }
 
-export type PlanName = 'free' | 'starter' | 'professional' | 'enterprise';
+export type PlanName = 'personal' | 'starter' | 'professional';

@@ -1,8 +1,8 @@
 import { ISubscriptionPlansConfig, PlanName } from '@interfaces/subscription.interface';
 
 const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
-  free: {
-    name: 'Free',
+  personal: {
+    name: 'Personal',
     priceInCents: 0,
     transactionFeePercent: 3.5,
     isCustomPricing: false,
@@ -20,6 +20,7 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       eSignature: false,
       RepairRequestService: false,
       VisitorPassService: false,
+      reportingAnalytics: false,
     },
   },
   starter: {
@@ -28,61 +29,42 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     transactionFeePercent: 3.0,
     isCustomPricing: false,
     seatPricing: {
-      includedSeats: 20, // 20 seats included in $29 base
+      includedSeats: 10, // 10 seats included in $29 base
       additionalSeatPriceCents: 500, // $5/seat for additional
-      maxAdditionalSeats: 10, // Can buy up to 10 more (30 total max)
+      maxAdditionalSeats: 20, // Can buy up to 20 more (30 total max)
     },
     limits: {
-      maxProperties: 5,
-      maxUnits: 50,
+      maxProperties: 25,
+      maxUnits: 100,
       maxVendors: -1,
     },
     features: {
       eSignature: true,
       RepairRequestService: true,
-      VisitorPassService: false,
+      VisitorPassService: true,
+      reportingAnalytics: false,
     },
   },
   professional: {
     name: 'Professional',
-    priceInCents: 7900, // $79.00/month base price
+    priceInCents: 9900, // $99.00/month base price
     transactionFeePercent: 2.8,
     isCustomPricing: false,
     seatPricing: {
-      includedSeats: 35, // 35 seats included in $79 base
-      additionalSeatPriceCents: 800, // $8/seat for additional
-      maxAdditionalSeats: 15, // Can buy up to 15 more (50 total max)
+      includedSeats: -1, // Unlimited seats included
+      additionalSeatPriceCents: 0, // No additional seat cost
+      maxAdditionalSeats: -1, // Unlimited
     },
     limits: {
-      maxProperties: 25,
-      maxUnits: 100,
-      maxVendors: -1, // unlimited
-    },
-    features: {
-      eSignature: true,
-      RepairRequestService: true,
-      VisitorPassService: true, // Only on Professional+
-    },
-  },
-  enterprise: {
-    name: 'Enterprise',
-    priceInCents: 19900, // $199.00/month starting price (custom pricing available)
-    transactionFeePercent: 2.5,
-    isCustomPricing: true, // Contact sales for custom pricing
-    seatPricing: {
-      includedSeats: 60, // 60 seats included in base
-      additionalSeatPriceCents: 1000, // $10/seat for additional
-      maxAdditionalSeats: -1, // Unlimited additional seats
-    },
-    limits: {
-      maxProperties: -1, // unlimited
-      maxUnits: -1, // unlimited
+      maxProperties: 100,
+      maxUnits: 500,
       maxVendors: -1, // unlimited
     },
     features: {
       eSignature: true,
       RepairRequestService: true,
       VisitorPassService: true,
+      reportingAnalytics: true,
       prioritySupport: true,
     },
   },

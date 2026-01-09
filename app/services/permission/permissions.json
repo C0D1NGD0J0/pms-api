@@ -17,11 +17,15 @@
       ]
     },
     "manager": {
-      "$extend": ["staff"],
       "user": ["list:any", "read:any", "update:any"],
-      "lease": ["create:any", "list:any", "read:any", "update:any"],
+      "client": ["read:mine"],
       "property": ["create:mine", "delete:mine", "list:any", "read:any", "update:any"],
+      "tenant": ["create:any", "read:any", "update:any", "list:any"],
+      "vendor": ["create:any", "read:any", "update:any", "list:any"],
+      "lease": ["create:any", "list:any", "read:any", "update:any"],
       "maintenance": ["create:mine", "delete:mine", "list:any", "read:any", "update:any"],
+      "payment": ["read:any", "create:any", "list:any"],
+      "report": ["read:any", "create:any", "list:any"],
       "invitation": [
         "send:any",
         "revoke:any",
@@ -33,9 +37,15 @@
       ]
     },
     "staff": {
-      "$extend": ["tenant"],
       "user": ["read:mine", "update:mine"],
       "client": ["read:mine"],
+      "property": ["read:any", "list:any"],
+      "tenant": ["read:any", "list:any"],
+      "vendor": ["read:any", "list:any"],
+      "lease": ["read:any", "list:any"],
+      "maintenance": ["read:any", "list:any"],
+      "payment": ["read:any", "list:any"],
+      "report": ["read:any", "list:any"],
       "departments": {
         "accounting": {
           "payment": ["read:any", "list:any", "create:any", "update:any"],

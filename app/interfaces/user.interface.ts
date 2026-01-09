@@ -3,6 +3,7 @@ import { IUserRoleType } from '@shared/constants/roles.constants';
 
 import { IClientUserConnections, ICompanyProfile } from './client.interface';
 import {
+  EmployeeDepartment,
   IProfileDocument,
   GDPRSettings,
   EmployeeInfo,
@@ -48,7 +49,7 @@ export interface ICurrentUser {
     activeLease?: Record<string, any> | null;
   };
   employeeInfo?: {
-    department?: string;
+    department?: EmployeeDepartment;
     jobTitle?: string;
     employeeId?: string;
     startDate?: Date;

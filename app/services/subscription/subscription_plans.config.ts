@@ -270,5 +270,4 @@ export class SubscriptionPlanConfig {
   }
 }
 
-// Export singleton instance for easy access
 export const subscriptionPlanConfig = SubscriptionPlanConfig.getInstance();

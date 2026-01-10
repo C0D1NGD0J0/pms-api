@@ -2,7 +2,7 @@ import Logger from 'bunyan';
 import { Response, Request } from 'express';
 import { createLogger } from '@utils/index';
 import { LeaseService } from '@services/lease/lease.service';
-import { BoldSignService } from '@services/esignature/boldSign.service';
+import { BoldSignService } from '@services/external/esignature/boldSign.service';
 
 interface IConstructor {
   boldSignService: BoldSignService;

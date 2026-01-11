@@ -94,9 +94,9 @@ describe('SubscriptionService Integration Tests', () => {
       expect(starterPlan?.description).toBe('For growing property managers');
       expect(starterPlan?.isFeatured).toBe(true);
       expect(starterPlan?.featuredBadge).toBe('Most Popular');
-      expect(starterPlan?.limits.maxProperties).toBe(25);
+      expect(starterPlan?.limits.maxProperties).toBe(15);
       expect(starterPlan?.seatPricing.includedSeats).toBe(10);
-      expect(starterPlan?.featureList).toContain('Up to 25 properties');
+      expect(starterPlan?.featureList).toContain('Up to 15 properties');
     });
   });
 

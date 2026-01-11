@@ -2,7 +2,13 @@ import { ISubscriptionPlansConfig, PlanName } from '@interfaces/subscription.int
 
 const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
   personal: {
+    planName: 'personal',
     name: 'Personal',
+    description: 'Perfect for individual landlords',
+    trialDays: 0,
+    ctaText: 'Get Started Free',
+    isFeatured: false,
+    displayOrder: 1,
     priceInCents: 0,
     transactionFeePercent: 3.5,
     isCustomPricing: false,
@@ -12,7 +18,7 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       maxAdditionalSeats: 0, // Must upgrade to add seats
     },
     limits: {
-      maxProperties: 5,
+      maxProperties: 3,
       maxUnits: 10,
       maxVendors: -1, // unlimited
     },
@@ -22,20 +28,35 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       VisitorPassService: false,
       reportingAnalytics: false,
     },
+    featureList: [
+      'Up to 3 properties',
+      'Basic tenant management',
+      'Rent collection',
+      'Maintenance requests',
+      'Email support',
+    ],
+    disabledFeatures: ['Advanced reporting', 'Team members'],
   },
   starter: {
+    planName: 'starter',
     name: 'Starter',
-    priceInCents: 2900, // $29.00/month base price
+    description: 'For growing property managers',
+    trialDays: 14,
+    priceInCents: 0,
+    ctaText: 'Start 14-Day Free Trial',
+    isFeatured: true,
+    featuredBadge: 'Most Popular',
+    displayOrder: 2,
     transactionFeePercent: 3.0,
     isCustomPricing: false,
     seatPricing: {
-      includedSeats: 10, // 10 seats included in $29 base
-      additionalSeatPriceCents: 500, // $5/seat for additional
-      maxAdditionalSeats: 20, // Can buy up to 20 more (30 total max)
+      includedSeats: 10,
+      additionalSeatPriceCents: 500,
+      maxAdditionalSeats: 20,
     },
     limits: {
-      maxProperties: 25,
-      maxUnits: 100,
+      maxProperties: 15,
+      maxUnits: 75,
       maxVendors: -1,
     },
     features: {
@@ -44,20 +65,35 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       VisitorPassService: true,
       reportingAnalytics: false,
     },
+    featureList: [
+      'Up to 15 properties',
+      'Advanced tenant screening',
+      'Online payments & AutoPay',
+      'Vendor management',
+      'Financial reporting',
+      'Up to 10 team members',
+      'Priority support',
+    ],
   },
   professional: {
+    planName: 'professional',
     name: 'Professional',
-    priceInCents: 9900, // $99.00/month base price
+    description: 'For established businesses',
+    trialDays: 14,
+    ctaText: 'Start 14-Day Free Trial',
+    isFeatured: false,
+    displayOrder: 3,
+    priceInCents: 0,
     transactionFeePercent: 2.8,
     isCustomPricing: false,
     seatPricing: {
-      includedSeats: -1, // Unlimited seats included
-      additionalSeatPriceCents: 0, // No additional seat cost
-      maxAdditionalSeats: -1, // Unlimited
+      includedSeats: -1,
+      additionalSeatPriceCents: 0,
+      maxAdditionalSeats: -1,
     },
     limits: {
-      maxProperties: 100,
-      maxUnits: 500,
+      maxProperties: 25,
+      maxUnits: 250,
       maxVendors: -1, // unlimited
     },
     features: {
@@ -67,6 +103,15 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       reportingAnalytics: true,
       prioritySupport: true,
     },
+    featureList: [
+      'Up to 25 properties',
+      'Everything in Starter',
+      'Custom branding',
+      'API access',
+      'Advanced analytics',
+      'Unlimited team members',
+      'Phone support',
+    ],
   },
 };
 
@@ -83,9 +128,6 @@ export class SubscriptionPlanConfig {
     this.configs = PLAN_CONFIGS;
   }
 
-  /**
-   * Get singleton instance
-   */
   public static getInstance(): SubscriptionPlanConfig {
     if (!SubscriptionPlanConfig.instance) {
       SubscriptionPlanConfig.instance = new SubscriptionPlanConfig();
@@ -93,9 +135,6 @@ export class SubscriptionPlanConfig {
     return SubscriptionPlanConfig.instance;
   }
 
-  /**
-   * Get subscription plan configuration by plan name
-   */
   public getConfig(planName: PlanName): ISubscriptionPlansConfig {
     const config = this.configs[planName];
     if (!config) {
@@ -104,16 +143,10 @@ export class SubscriptionPlanConfig {
     return config;
   }
 
-  /**
-   * Get all available plan names
-   */
   public getAllPlans(): PlanName[] {
     return Object.keys(this.configs) as PlanName[];
   }
 
-  /**
-   * Check if subscription can add a new seat (employee: Admin, Manager, Staff)
-   */
   public canAddSeat(
     currentSeats: number,
     additionalSeatsCount: number,
@@ -129,9 +162,6 @@ export class SubscriptionPlanConfig {
     return currentSeats + additionalSeatsCount <= totalAllowedSeats;
   }
 
-  /**
-   * Check if subscription can purchase additional seats
-   */
   public canPurchaseAdditionalSeats(additionalSeatsCount: number, planName: PlanName): boolean {
     const config = this.getConfig(planName);
     if (config.seatPricing.additionalSeatPriceCents === 0) return false; // Can't buy more
@@ -139,9 +169,6 @@ export class SubscriptionPlanConfig {
     return additionalSeatsCount < config.seatPricing.maxAdditionalSeats;
   }
 
-  /**
-   * Calculate total monthly price for a subscription
-   */
   public calculatePrice(
     planName: PlanName,
     additionalSeatsCount: number = 0,
@@ -159,42 +186,26 @@ export class SubscriptionPlanConfig {
     return basePrice + additionalSeatsCost;
   }
 
-  /**
-   * Calculate additional seats cost only
-   */
   public calculateAdditionalSeatsCost(planName: PlanName, additionalSeatsCount: number): number {
     const config = this.getConfig(planName);
     return additionalSeatsCount * config.seatPricing.additionalSeatPriceCents;
   }
 
-  /**
-   * Check if subscription can add a new property
-   */
   public canAddProperty(currentProperties: number, planName: PlanName): boolean {
     const config = this.getConfig(planName);
     if (config.limits.maxProperties === -1) return true; // unlimited
     return currentProperties < config.limits.maxProperties;
   }
 
-  /**
-   * Check if subscription can add a new unit
-   */
   public canAddUnit(currentUnits: number, planName: PlanName): boolean {
     const config = this.getConfig(planName);
     if (config.limits.maxUnits === -1) return true; // unlimited
     return currentUnits < config.limits.maxUnits;
   }
-
-  /**
-   * Vendors are always unlimited for all tiers
-   */
   public canAddVendor(): boolean {
     return true;
   }
 
-  /**
-   * Check if a plan has a specific feature enabled
-   */
   public hasFeature(
     planName: PlanName,
     feature: keyof ISubscriptionPlansConfig['features']
@@ -203,26 +214,17 @@ export class SubscriptionPlanConfig {
     return config.features[feature] === true;
   }
 
-  /**
-   * Get transaction fee percentage for a plan
-   */
   public getTransactionFeePercent(planName: PlanName): number {
     const config = this.getConfig(planName);
     return config.transactionFeePercent;
   }
 
-  /**
-   * Get formatted price for display
-   */
   public getFormattedPrice(planName: PlanName): string {
     const config = this.getConfig(planName);
     if (config.priceInCents === 0) return 'Free';
     return `$${(config.priceInCents / 100).toFixed(2)}`;
   }
 
-  /**
-   * Get total seat limit for a plan (included + max additional)
-   */
   public getSeatLimit(planName: PlanName): number {
     const config = this.getConfig(planName);
     if (config.seatPricing.maxAdditionalSeats === -1) return -1; // unlimited

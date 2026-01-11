@@ -7,16 +7,19 @@ import webhookRoutes from './webhook.routes';
 import propertyRoutes from './property.routes';
 import invitationRoutes from './invitation.routes';
 import notificationRoutes from './notification.routes';
+import subscriptionRoutes from './subscription.routes';
 import emailTemplateRoutes from './emailTemplate.routes';
+
 export const routes = {
   authRoutes,
   userRoutes,
+  leaseRoutes,
   clientRoutes,
   vendorRoutes,
-  propertyRoutes,
-  leaseRoutes,
-  invitationRoutes,
-  emailTemplateRoutes,
-  notificationRoutes,
   webhookRoutes,
+  propertyRoutes,
+  invitationRoutes,
+  subscriptionRoutes,
+  notificationRoutes,
+  emailTemplateRoutes,
 };

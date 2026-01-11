@@ -25,6 +25,7 @@ import {
 import {
   NotificationModel,
   PropertyUnit,
+  Subscription,
   Invitation,
   Property,
   Profile,
@@ -37,6 +38,7 @@ import {
 import {
   PropertyUnitDAO,
   NotificationDAO,
+  SubscriptionDAO,
   InvitationDAO,
   PropertyDAO,
   ProfileDAO,
@@ -70,6 +72,7 @@ import {
 } from '@queues/index';
 import {
   NotificationController,
+  SubscriptionController,
   PropertyUnitController,
   InvitationController,
   PropertyController,
@@ -83,6 +86,7 @@ import {
 import {
   PropertyApprovalService,
   InvitationCsvProcessor,
+  subscriptionPlanConfig,
   LeaseSignatureService,
   PropertyCsvProcessor,
   PropertyStatsService,
@@ -93,6 +97,7 @@ import {
   EventEmitterService,
   PropertyUnitService,
   LeaseRenewalService,
+  SubscriptionService,
   PermissionService,
   InvitationService,
   AuthTokenService,
@@ -100,6 +105,7 @@ import {
   BoldSignService,
   LeasePdfService,
   ProfileService,
+  StripeService,
   ClientService,
   VendorService,
   LeaseService,
@@ -119,6 +125,7 @@ const ControllerResources = {
   invitationController: asClass(InvitationController).scoped(),
   propertyUnitController: asClass(PropertyUnitController).scoped(),
   notificationController: asClass(NotificationController).scoped(),
+  subscriptionController: asClass(SubscriptionController).scoped(),
   emailTemplateController: asClass(EmailTemplateController).scoped(),
   webhookController: asClass(WebhookController).scoped(),
 };
@@ -133,6 +140,7 @@ const ModelResources = {
   propertyModel: asValue(Property),
   invitationModel: asValue(Invitation),
   propertyUnitModel: asValue(PropertyUnit),
+  subscriptionModel: asValue(Subscription),
   notificationModel: asValue(NotificationModel),
 };
 
@@ -154,6 +162,7 @@ const ServiceResources = {
   tokenService: asClass(AuthTokenService).singleton(),
   languageService: asClass(LanguageService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
+  subscriptionService: asClass(SubscriptionService).singleton(),
   propertyApprovalService: asClass(PropertyApprovalService).singleton(),
   propertyStatsService: asClass(PropertyStatsService).singleton(),
   propertyMediaService: asClass(PropertyMediaService).singleton(),
@@ -167,6 +176,8 @@ const ServiceResources = {
   pdfGeneratorService: asClass(PdfGeneratorService).singleton(),
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
   unitNumberingService: asClass(UnitNumberingService).singleton(),
+  subscriptionPlanConfig: asValue(subscriptionPlanConfig),
+  stripeService: asClass(StripeService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
 };
 
@@ -180,6 +191,7 @@ const DAOResources = {
   propertyDAO: asClass(PropertyDAO).singleton(),
   invitationDAO: asClass(InvitationDAO).singleton(),
   propertyUnitDAO: asClass(PropertyUnitDAO).singleton(),
+  subscriptionDAO: asClass(SubscriptionDAO).singleton(),
   notificationDAO: asClass(NotificationDAO).singleton(),
 };
 

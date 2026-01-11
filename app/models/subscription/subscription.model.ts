@@ -46,10 +46,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
   }
 );
 
-SubscriptionSchema.index({ cuid: 1 });
-SubscriptionSchema.index({ suid: 1 });
-SubscriptionSchema.index({ client: 1 });
-SubscriptionSchema.index({ paymentGatewayId: 1 });
+// Composite index for filtering subscriptions by status and plan
 SubscriptionSchema.index({ status: 1, planName: 1 });
 
 const SubscriptionModel = model<ISubscriptionDocument>('Subscription', SubscriptionSchema);

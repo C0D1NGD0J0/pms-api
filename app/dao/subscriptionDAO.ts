@@ -101,7 +101,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
    */
   async updateTier(
     subscriptionId: string | Types.ObjectId,
-    planName: 'free' | 'starter' | 'professional' | 'enterprise'
+    planName: 'personal' | 'starter' | 'professional'
   ): Promise<ISubscriptionDocument | null> {
     try {
       return await this.update(
@@ -181,6 +181,120 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
       return result.modifiedCount;
     } catch (error) {
       this.logger.error({ error, expiredDate }, 'Error bulk expiring subscriptions');
+      this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update seat count (increment or decrement)
+   */
+  async updateSeatCount(
+    clientId: string | Types.ObjectId,
+    delta: number
+  ): Promise<ISubscriptionDocument | null> {
+    try {
+      return await this.update(
+        { client: new Types.ObjectId(clientId) },
+        {
+          $inc: { currentSeats: delta },
+        }
+      );
+    } catch (error) {
+      this.logger.error({ error, clientId, delta }, 'Error updating seat count');
+      this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update property count (increment or decrement)
+   */
+  async updatePropertyCount(
+    clientId: string | Types.ObjectId,
+    delta: number
+  ): Promise<ISubscriptionDocument | null> {
+    try {
+      return await this.update(
+        { client: new Types.ObjectId(clientId) },
+        {
+          $inc: { currentProperties: delta },
+        }
+      );
+    } catch (error) {
+      this.logger.error({ error, clientId, delta }, 'Error updating property count');
+      this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update unit count (increment or decrement)
+   */
+  async updateUnitCount(
+    clientId: string | Types.ObjectId,
+    delta: number
+  ): Promise<ISubscriptionDocument | null> {
+    try {
+      return await this.update(
+        { client: new Types.ObjectId(clientId) },
+        {
+          $inc: { currentUnits: delta },
+        }
+      );
+    } catch (error) {
+      this.logger.error({ error, clientId, delta }, 'Error updating unit count');
+      this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update plan and price
+   */
+  async updatePlanAndPrice(
+    clientId: string | Types.ObjectId,
+    planName: 'personal' | 'starter' | 'professional',
+    totalMonthlyPrice: number
+  ): Promise<ISubscriptionDocument | null> {
+    try {
+      return await this.update(
+        { client: new Types.ObjectId(clientId) },
+        {
+          $set: {
+            planName,
+            totalMonthlyPrice,
+          },
+        }
+      );
+    } catch (error) {
+      this.logger.error(
+        { error, clientId, planName, totalMonthlyPrice },
+        'Error updating plan and price'
+      );
+      this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Update additional seats
+   */
+  async updateAdditionalSeats(
+    clientId: string | Types.ObjectId,
+    additionalSeatsCount: number,
+    additionalSeatsCost: number
+  ): Promise<ISubscriptionDocument | null> {
+    try {
+      return await this.update(
+        { client: new Types.ObjectId(clientId) },
+        {
+          $set: {
+            additionalSeatsCount,
+            additionalSeatsCost,
+          },
+        }
+      );
+    } catch (error) {
+      this.logger.error(
+        { error, clientId, additionalSeatsCount, additionalSeatsCost },
+        'Error updating additional seats'
+      );
       this.throwErrorHandler(error);
     }
   }

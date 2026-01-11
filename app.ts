@@ -142,8 +142,8 @@ export class App implements IAppSetup {
     app.use(`${BASE_PATH}/invites`, routes.invitationRoutes);
     app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
     app.use(`${BASE_PATH}/notifications`, routes.notificationRoutes);
+    app.use(`${BASE_PATH}/subscriptions`, routes.subscriptionRoutes);
     app.use(`${BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
-    // app.use(`${BASE_PATH}/subscriptions`, routes.subscriptionsRoutes);
     // app.use(`${BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
     app.all('*', (req: Request, res: Response) => {
       res.status(httpStatusCodes.NOT_FOUND).json({ message: 'Invalid endpoint.' });

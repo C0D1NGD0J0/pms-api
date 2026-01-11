@@ -10,7 +10,13 @@ import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
-import { ISuccessReturnData, IRequestContext, IPaginateResult } from '@interfaces/utils.interface';
+import {
+  ISuccessReturnData,
+  PermissionResource,
+  PermissionAction,
+  IRequestContext,
+  IPaginateResult,
+} from '@interfaces/utils.interface';
 import {
   IUserPopulatedDocument,
   FilteredUserTableData,
@@ -89,7 +95,12 @@ export class UserService {
       profile: user.profile,
     };
 
-    if (!this.permissionService.canUserAccessUser(currentuser, targetUser)) {
+    const access = await this.permissionService.getResourceAccess(
+      currentuser,
+      PermissionResource.USER,
+      targetUser
+    );
+    if (!access.canRead) {
       throw new ForbiddenError({
         message: t('client.errors.insufficientPermissions', {
           action: 'view',
@@ -1567,7 +1578,13 @@ export class UserService {
       }
 
       // Check permissions
-      if (!this.permissionService.canUserAccessUser(currentUser, user as any)) {
+      const canAccess = await this.permissionService.canAccessResource(
+        currentUser,
+        PermissionResource.USER,
+        PermissionAction.READ,
+        user
+      );
+      if (!canAccess) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
             action: 'update',
@@ -1676,7 +1693,13 @@ export class UserService {
       }
 
       // Check permissions
-      if (!this.permissionService.canUserAccessUser(currentUser, user as any)) {
+      const canAccess = await this.permissionService.canAccessResource(
+        currentUser,
+        PermissionResource.USER,
+        PermissionAction.READ,
+        user
+      );
+      if (!canAccess) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
             action: 'delete',
@@ -1910,7 +1933,13 @@ export class UserService {
         });
       }
 
-      if (!this.permissionService.canUserAccessUser(context.currentuser, user as any)) {
+      const canAccess = await this.permissionService.canAccessResource(
+        context.currentuser,
+        PermissionResource.USER,
+        PermissionAction.READ,
+        user
+      );
+      if (!canAccess) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
             action: 'deactivate',

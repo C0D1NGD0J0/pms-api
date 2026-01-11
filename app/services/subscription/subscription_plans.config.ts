@@ -1,8 +1,14 @@
 import { ISubscriptionPlansConfig, PlanName } from '@interfaces/subscription.interface';
 
 const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
-  free: {
-    name: 'Free',
+  personal: {
+    planName: 'personal',
+    name: 'Personal',
+    description: 'Perfect for individual landlords',
+    trialDays: 0,
+    ctaText: 'Get Started Free',
+    isFeatured: false,
+    displayOrder: 1,
     priceInCents: 0,
     transactionFeePercent: 3.5,
     isCustomPricing: false,
@@ -12,7 +18,7 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       maxAdditionalSeats: 0, // Must upgrade to add seats
     },
     limits: {
-      maxProperties: 5,
+      maxProperties: 3,
       maxUnits: 10,
       maxVendors: -1, // unlimited
     },
@@ -20,71 +26,92 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       eSignature: false,
       RepairRequestService: false,
       VisitorPassService: false,
+      reportingAnalytics: false,
     },
+    featureList: [
+      'Up to 3 properties',
+      'Basic tenant management',
+      'Rent collection',
+      'Maintenance requests',
+      'Email support',
+    ],
+    disabledFeatures: ['Advanced reporting', 'Team members'],
   },
   starter: {
+    planName: 'starter',
     name: 'Starter',
-    priceInCents: 2900, // $29.00/month base price
+    description: 'For growing property managers',
+    trialDays: 14,
+    priceInCents: 0,
+    ctaText: 'Start 14-Day Free Trial',
+    isFeatured: true,
+    featuredBadge: 'Most Popular',
+    displayOrder: 2,
     transactionFeePercent: 3.0,
     isCustomPricing: false,
     seatPricing: {
-      includedSeats: 20, // 20 seats included in $29 base
-      additionalSeatPriceCents: 500, // $5/seat for additional
-      maxAdditionalSeats: 10, // Can buy up to 10 more (30 total max)
+      includedSeats: 10,
+      additionalSeatPriceCents: 500,
+      maxAdditionalSeats: 20,
     },
     limits: {
-      maxProperties: 5,
-      maxUnits: 50,
+      maxProperties: 15,
+      maxUnits: 75,
       maxVendors: -1,
     },
     features: {
       eSignature: true,
       RepairRequestService: true,
-      VisitorPassService: false,
+      VisitorPassService: true,
+      reportingAnalytics: false,
     },
+    featureList: [
+      'Up to 15 properties',
+      'Advanced tenant screening',
+      'Online payments & AutoPay',
+      'Vendor management',
+      'Financial reporting',
+      'Up to 10 team members',
+      'Priority support',
+    ],
   },
   professional: {
+    planName: 'professional',
     name: 'Professional',
-    priceInCents: 7900, // $79.00/month base price
+    description: 'For established businesses',
+    trialDays: 14,
+    ctaText: 'Start 14-Day Free Trial',
+    isFeatured: false,
+    displayOrder: 3,
+    priceInCents: 0,
     transactionFeePercent: 2.8,
     isCustomPricing: false,
     seatPricing: {
-      includedSeats: 35, // 35 seats included in $79 base
-      additionalSeatPriceCents: 800, // $8/seat for additional
-      maxAdditionalSeats: 15, // Can buy up to 15 more (50 total max)
+      includedSeats: -1,
+      additionalSeatPriceCents: 0,
+      maxAdditionalSeats: -1,
     },
     limits: {
       maxProperties: 25,
-      maxUnits: 100,
-      maxVendors: -1, // unlimited
-    },
-    features: {
-      eSignature: true,
-      RepairRequestService: true,
-      VisitorPassService: true, // Only on Professional+
-    },
-  },
-  enterprise: {
-    name: 'Enterprise',
-    priceInCents: 19900, // $199.00/month starting price (custom pricing available)
-    transactionFeePercent: 2.5,
-    isCustomPricing: true, // Contact sales for custom pricing
-    seatPricing: {
-      includedSeats: 60, // 60 seats included in base
-      additionalSeatPriceCents: 1000, // $10/seat for additional
-      maxAdditionalSeats: -1, // Unlimited additional seats
-    },
-    limits: {
-      maxProperties: -1, // unlimited
-      maxUnits: -1, // unlimited
+      maxUnits: 250,
       maxVendors: -1, // unlimited
     },
     features: {
       eSignature: true,
       RepairRequestService: true,
       VisitorPassService: true,
+      reportingAnalytics: true,
       prioritySupport: true,
     },
+    featureList: [
+      'Up to 25 properties',
+      'Everything in Starter',
+      'Custom branding',
+      'API access',
+      'Advanced analytics',
+      'Unlimited team members',
+      'Phone support',
+    ],
   },
 };
 
@@ -101,9 +128,6 @@ export class SubscriptionPlanConfig {
     this.configs = PLAN_CONFIGS;
   }
 
-  /**
-   * Get singleton instance
-   */
   public static getInstance(): SubscriptionPlanConfig {
     if (!SubscriptionPlanConfig.instance) {
       SubscriptionPlanConfig.instance = new SubscriptionPlanConfig();
@@ -111,9 +135,6 @@ export class SubscriptionPlanConfig {
     return SubscriptionPlanConfig.instance;
   }
 
-  /**
-   * Get subscription plan configuration by plan name
-   */
   public getConfig(planName: PlanName): ISubscriptionPlansConfig {
     const config = this.configs[planName];
     if (!config) {
@@ -122,16 +143,10 @@ export class SubscriptionPlanConfig {
     return config;
   }
 
-  /**
-   * Get all available plan names
-   */
   public getAllPlans(): PlanName[] {
     return Object.keys(this.configs) as PlanName[];
   }
 
-  /**
-   * Check if subscription can add a new seat (employee: Admin, Manager, Staff)
-   */
   public canAddSeat(
     currentSeats: number,
     additionalSeatsCount: number,
@@ -147,9 +162,6 @@ export class SubscriptionPlanConfig {
     return currentSeats + additionalSeatsCount <= totalAllowedSeats;
   }
 
-  /**
-   * Check if subscription can purchase additional seats
-   */
   public canPurchaseAdditionalSeats(additionalSeatsCount: number, planName: PlanName): boolean {
     const config = this.getConfig(planName);
     if (config.seatPricing.additionalSeatPriceCents === 0) return false; // Can't buy more
@@ -157,9 +169,6 @@ export class SubscriptionPlanConfig {
     return additionalSeatsCount < config.seatPricing.maxAdditionalSeats;
   }
 
-  /**
-   * Calculate total monthly price for a subscription
-   */
   public calculatePrice(
     planName: PlanName,
     additionalSeatsCount: number = 0,
@@ -177,42 +186,26 @@ export class SubscriptionPlanConfig {
     return basePrice + additionalSeatsCost;
   }
 
-  /**
-   * Calculate additional seats cost only
-   */
   public calculateAdditionalSeatsCost(planName: PlanName, additionalSeatsCount: number): number {
     const config = this.getConfig(planName);
     return additionalSeatsCount * config.seatPricing.additionalSeatPriceCents;
   }
 
-  /**
-   * Check if subscription can add a new property
-   */
   public canAddProperty(currentProperties: number, planName: PlanName): boolean {
     const config = this.getConfig(planName);
     if (config.limits.maxProperties === -1) return true; // unlimited
     return currentProperties < config.limits.maxProperties;
   }
 
-  /**
-   * Check if subscription can add a new unit
-   */
   public canAddUnit(currentUnits: number, planName: PlanName): boolean {
     const config = this.getConfig(planName);
     if (config.limits.maxUnits === -1) return true; // unlimited
     return currentUnits < config.limits.maxUnits;
   }
-
-  /**
-   * Vendors are always unlimited for all tiers
-   */
   public canAddVendor(): boolean {
     return true;
   }
 
-  /**
-   * Check if a plan has a specific feature enabled
-   */
   public hasFeature(
     planName: PlanName,
     feature: keyof ISubscriptionPlansConfig['features']
@@ -221,26 +214,17 @@ export class SubscriptionPlanConfig {
     return config.features[feature] === true;
   }
 
-  /**
-   * Get transaction fee percentage for a plan
-   */
   public getTransactionFeePercent(planName: PlanName): number {
     const config = this.getConfig(planName);
     return config.transactionFeePercent;
   }
 
-  /**
-   * Get formatted price for display
-   */
   public getFormattedPrice(planName: PlanName): string {
     const config = this.getConfig(planName);
     if (config.priceInCents === 0) return 'Free';
     return `$${(config.priceInCents / 100).toFixed(2)}`;
   }
 
-  /**
-   * Get total seat limit for a plan (included + max additional)
-   */
   public getSeatLimit(planName: PlanName): number {
     const config = this.getConfig(planName);
     if (config.seatPricing.maxAdditionalSeats === -1) return -1; // unlimited
@@ -288,5 +272,4 @@ export class SubscriptionPlanConfig {
   }
 }
 
-// Export singleton instance for easy access
 export const subscriptionPlanConfig = SubscriptionPlanConfig.getInstance();

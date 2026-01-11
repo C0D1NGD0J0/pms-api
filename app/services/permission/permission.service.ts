@@ -1,8 +1,7 @@
 import bunyan from 'bunyan';
 import { createLogger } from '@utils/index';
 import { ICurrentUser } from '@interfaces/user.interface';
-import { IVendorDocument } from '@interfaces/vendor.interface';
-import { IPropertyDocument } from '@interfaces/property.interface';
+import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { IUserRoleType, RoleHelpers, ROLES } from '@shared/constants/roles.constants';
 import {
   PermissionResource,
@@ -14,52 +13,20 @@ import {
 } from '@interfaces/utils.interface';
 
 import permissionConfig from './permissions.json';
-import {
-  NotificationAccessStrategy,
-  MaintenanceAccessStrategy,
-  InvitationAccessStrategy,
-  ResourceAccessStrategy,
-  PropertyAccessStrategy,
-  PaymentAccessStrategy,
-  ClientAccessStrategy,
-  VendorAccessStrategy,
-  TenantAccessStrategy,
-  ReportAccessStrategy,
-  LeaseAccessStrategy,
-  UserAccessStrategy,
-} from './resourceAccessStrategies';
 
 export class PermissionService {
   private readonly log: bunyan;
   private readonly permissionConfig: IPermissionConfig;
-  private resourceStrategies: Map<PermissionResource, ResourceAccessStrategy>;
 
   constructor() {
     this.log = createLogger('PermissionService');
 
     try {
       this.permissionConfig = permissionConfig as unknown as IPermissionConfig;
-      this.initializeResourceStrategies();
     } catch (error) {
       this.log.error('Failed to initialize PermissionService:', error);
       throw error;
     }
-  }
-
-  private initializeResourceStrategies(): void {
-    this.resourceStrategies = new Map([
-      [PermissionResource.NOTIFICATION, new NotificationAccessStrategy()],
-      [PermissionResource.MAINTENANCE, new MaintenanceAccessStrategy()],
-      [PermissionResource.INVITATION, new InvitationAccessStrategy()],
-      [PermissionResource.PROPERTY, new PropertyAccessStrategy()],
-      [PermissionResource.PAYMENT, new PaymentAccessStrategy()],
-      [PermissionResource.VENDOR, new VendorAccessStrategy()],
-      [PermissionResource.TENANT, new TenantAccessStrategy()],
-      [PermissionResource.REPORT, new ReportAccessStrategy()],
-      [PermissionResource.CLIENT, new ClientAccessStrategy()],
-      [PermissionResource.LEASE, new LeaseAccessStrategy()],
-      [PermissionResource.USER, new UserAccessStrategy()],
-    ]);
   }
 
   async checkPermission(permissionCheck: IPermissionCheck): Promise<IPermissionResult> {
@@ -244,7 +211,10 @@ export class PermissionService {
    * @param department - The user's department
    * @returns Permission object for the department or empty object if not found
    */
-  private getDepartmentPermissions(role: string, department: string): Record<string, string[]> {
+  private getDepartmentPermissions(
+    role: string,
+    department: EmployeeDepartment
+  ): Record<string, string[]> {
     try {
       const roleConfig = this.permissionConfig.roles[role];
       if (!roleConfig) {
@@ -588,14 +558,14 @@ export class PermissionService {
 
   /**
    * Generic method to check if user can access a resource
-   * This replaces all the individual canUserAccessX methods
+   * Simplified version that uses permissions.json and basic business rules
    */
-  canAccessResource(
+  async canAccessResource(
     currentUser: ICurrentUser,
     resource: PermissionResource,
     action: PermissionAction | string,
     resourceData: any
-  ): boolean {
+  ): Promise<boolean> {
     try {
       const activeConnection = currentUser.clients?.find(
         (c: any) => c.cuid === currentUser.client.cuid
@@ -606,81 +576,86 @@ export class PermissionService {
         return false;
       }
 
-      const strategy = this.resourceStrategies.get(resource);
-      if (!strategy) {
-        this.log.warn(`No access strategy defined for resource: ${resource}`);
-        return false;
-      }
-
-      return strategy.canAccess(currentUser, action, resourceData);
+      // Check user permissions via checkUserPermission
+      const result = await this.checkUserPermission(currentUser, resource, action, resourceData);
+      return result?.granted || false;
     } catch (error) {
       this.log.error(`Error checking access for resource ${resource}:`, error);
       return false;
     }
   }
 
-  // Backward compatibility methods - these now delegate to the generic method
-  canUserAccessUser(currentUser: ICurrentUser, targetUser: any): boolean {
-    return this.canAccessResource(
-      currentUser,
-      PermissionResource.USER,
-      PermissionAction.READ,
-      targetUser
-    );
+  /**
+   * Batch check multiple access permissions for a resource
+   * Returns an object with all common permission checks
+   *
+   * @example
+   * const access = await permissionService.getResourceAccess(currentUser, PermissionResource.PROPERTY, property);
+   * if (access.canRead) { ... }
+   * if (access.canUpdate) { ... }
+   * if (access.canDelete) { ... }
+   */
+  async getResourceAccess(
+    currentUser: ICurrentUser,
+    resource: PermissionResource,
+    resourceData: any
+  ): Promise<{
+    canRead: boolean;
+    canCreate: boolean;
+    canUpdate: boolean;
+    canDelete: boolean;
+    canList: boolean;
+  }> {
+    const [canRead, canCreate, canUpdate, canDelete, canList] = await Promise.all([
+      this.canAccessResource(currentUser, resource, PermissionAction.READ, resourceData),
+      this.canAccessResource(currentUser, resource, PermissionAction.CREATE, resourceData),
+      this.canAccessResource(currentUser, resource, PermissionAction.UPDATE, resourceData),
+      this.canAccessResource(currentUser, resource, PermissionAction.DELETE, resourceData),
+      this.canAccessResource(currentUser, resource, PermissionAction.LIST, resourceData),
+    ]);
+
+    return {
+      canRead,
+      canCreate,
+      canUpdate,
+      canDelete,
+      canList,
+    };
   }
 
-  canUserAccessProperty(currentUser: ICurrentUser, property: IPropertyDocument): boolean {
-    return this.canAccessResource(
-      currentUser,
-      PermissionResource.PROPERTY,
-      PermissionAction.READ,
-      property
-    );
-  }
+  /**
+   * Get effective permissions for a user based on role and department
+   * Centralizes logic for role inheritance and department overrides
+   */
+  private getEffectivePermissions(
+    role: IUserRoleType,
+    department?: EmployeeDepartment
+  ): Record<string, string[]> {
+    // Admin/Manager: Use base role permissions (no department override)
+    if (RoleHelpers.isManagementRole(role)) {
+      return this.getRolePermissions(role);
+    }
 
-  canUserModifyProperty(currentUser: ICurrentUser, property: IPropertyDocument): boolean {
-    return this.canAccessResource(
-      currentUser,
-      PermissionResource.PROPERTY,
-      PermissionAction.UPDATE,
-      property
-    );
-  }
+    // Staff with department: Use department permissions if found
+    if (role === ROLES.STAFF && department) {
+      const deptPermissions = this.getDepartmentPermissions(role, department);
+      if (deptPermissions && Object.keys(deptPermissions).length > 0) {
+        return deptPermissions;
+      }
+      this.log.warn(
+        `No department permissions found for ${role}:${department}, using base role permissions`
+      );
+    }
 
-  canUserDeleteProperty(currentUser: ICurrentUser, property: IPropertyDocument): boolean {
-    return this.canAccessResource(
-      currentUser,
-      PermissionResource.PROPERTY,
-      PermissionAction.DELETE,
-      property
-    );
-  }
+    // Staff without department: warn user (will use base role permissions below)
+    if (role === ROLES.STAFF && !department) {
+      this.log.warn(
+        '⚠️  Staff user has no department assigned. Using base role permissions (restricted access).'
+      );
+    }
 
-  canUserAccessMaintenance(currentUser: ICurrentUser, maintenance: any): boolean {
-    return this.canAccessResource(
-      currentUser,
-      PermissionResource.MAINTENANCE,
-      PermissionAction.READ,
-      maintenance
-    );
-  }
-
-  canUserAccessLease(currentUser: ICurrentUser, lease: any): boolean {
-    return this.canAccessResource(
-      currentUser,
-      PermissionResource.LEASE,
-      PermissionAction.READ,
-      lease
-    );
-  }
-
-  canUserAccessVendors(currentUser: ICurrentUser, vendor: IVendorDocument): boolean {
-    return this.canAccessResource(
-      currentUser,
-      PermissionResource.VENDOR,
-      PermissionAction.READ,
-      vendor
-    );
+    // Return base role permissions from permissions.json
+    return this.getRolePermissions(role);
   }
 
   /**
@@ -691,26 +666,9 @@ export class PermissionService {
     try {
       const role = currentUser.client.role;
       const department = currentUser.employeeInfo?.department;
-      let rolePermissions = this.getRolePermissions(role);
 
-      // Admin/Manager already have full access via their base role permissions
-      if (RoleHelpers.isEmployeeRole(role) && !RoleHelpers.isManagementRole(role)) {
-        if (department) {
-          const deptPermissions = this.getDepartmentPermissions(role, department);
-          if (deptPermissions && Object.keys(deptPermissions).length > 0) {
-            rolePermissions = deptPermissions;
-            this.log.info(`Applied department permissions for ${role}:${department}`);
-          } else {
-            this.log.warn(
-              `No department permissions found for ${role}:${department}, using role defaults`
-            );
-          }
-        } else {
-          this.log.warn(
-            `⚠️  Staff user ${currentUser.uid} (${currentUser.email}) has no department assigned. Access is restricted to own resources only. Assign a department to grant appropriate permissions.`
-          );
-        }
-      }
+      // Get effective permissions based on role and department
+      const rolePermissions = this.getEffectivePermissions(role, department);
 
       const permissions: string[] = [];
 

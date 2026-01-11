@@ -10,7 +10,7 @@ import { BadRequestError } from '@shared/customErrors';
 import { ESignatureQueue, PdfQueue } from '@queues/index';
 import { EventTypes } from '@interfaces/events.interface';
 import { ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
-import { ProcessedWebhookData } from '@services/esignature/boldSign.service';
+import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES, createLogger } from '@utils/index';
 import { EventEmitterService, NotificationService, BoldSignService } from '@services/index';
 import {

@@ -15,8 +15,8 @@ import { ESignatureQueue, PdfQueue } from '@queues/index';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
-import { ProcessedWebhookData } from '@services/esignature/boldSign.service';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
 import { PdfGeneratorService, MediaUploadService, UserService } from '@services/index';
 import { IPropertyDocument, IProfileWithUser, OwnershipType, ICronJob } from '@interfaces/index';
 import {

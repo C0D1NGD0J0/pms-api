@@ -8,9 +8,9 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     client: { type: Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
     planName: {
       type: String,
-      enum: ['free', 'starter', 'professional', 'enterprise'],
+      enum: ['personal', 'starter', 'professional'],
       required: true,
-      default: 'free',
+      default: 'personal',
       index: true,
     },
     planId: { type: String, required: true }, // stripe-price ID
@@ -46,10 +46,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
   }
 );
 
-SubscriptionSchema.index({ cuid: 1 });
-SubscriptionSchema.index({ suid: 1 });
-SubscriptionSchema.index({ client: 1 });
-SubscriptionSchema.index({ paymentGatewayId: 1 });
+// Composite index for filtering subscriptions by status and plan
 SubscriptionSchema.index({ status: 1, planName: 1 });
 
 const SubscriptionModel = model<ISubscriptionDocument>('Subscription', SubscriptionSchema);

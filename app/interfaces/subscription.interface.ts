@@ -17,8 +17,7 @@ export interface ISubscriptionPlansConfig {
     eSignature: boolean;
     RepairRequestService: boolean;
     VisitorPassService: boolean;
-    apiAccess?: boolean;
-    webhooks?: boolean;
+    reportingAnalytics: boolean;
     prioritySupport?: boolean;
   };
   seatPricing: {
@@ -32,8 +31,18 @@ export interface ISubscriptionPlansConfig {
     maxVendors: number;
   };
   transactionFeePercent: number;
+  disabledFeatures?: string[];
   isCustomPricing: boolean;
+  featuredBadge?: string;
+  featureList: string[];
+  displayOrder: number;
   priceInCents: number;
+  description: string;
+  isFeatured: boolean;
+  planName: PlanName;
+  trialDays: number;
+  priceId?: string;
+  ctaText: string;
   name: string;
 }
 
@@ -59,10 +68,26 @@ export interface ISubscription {
   suid: string;
 }
 
+export type ISubscriptionPlanResponse = {
+  pricing: {
+    lookUpKey: string | null;
+    id: string | null;
+    monthly: {
+      priceInCents: number;
+      displayPrice: string;
+    };
+    annual: {
+      priceInCents: number;
+      displayPrice: string;
+      savings: number;
+    };
+  };
+} & Omit<ISubscriptionPlansConfig, 'priceInCents' | 'priceId' | 'features'>;
+
 export interface ISubscriptionDocument extends ISubscription, Document {
   _id: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export type PlanName = 'free' | 'starter' | 'professional' | 'enterprise';
+export type PlanName = 'personal' | 'starter' | 'professional';

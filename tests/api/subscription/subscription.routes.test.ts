@@ -1,12 +1,12 @@
-import request from 'supertest';
 import express from 'express';
-import subscriptionRoutes from '@routes/subscription.routes';
+import request from 'supertest';
 import { container } from '@di/container';
 import { SubscriptionController } from '@controllers/index';
+import subscriptionRoutes from '@routes/subscription.routes';
 import {
+  disconnectTestDatabase,
   clearTestDatabase,
   setupTestDatabase,
-  disconnectTestDatabase,
 } from '@tests/helpers';
 
 describe('Subscription Routes API Tests', () => {

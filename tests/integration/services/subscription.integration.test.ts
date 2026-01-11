@@ -1,11 +1,11 @@
-import { SubscriptionService } from '@services/subscription/subscription.service';
-import { SubscriptionDAO } from '@dao/subscriptionDAO';
-import { Subscription } from '@models/index';
 import { Types } from 'mongoose';
+import { Subscription } from '@models/index';
+import { SubscriptionDAO } from '@dao/subscriptionDAO';
+import { SubscriptionService } from '@services/subscription/subscription.service';
 import {
+  disconnectTestDatabase,
   clearTestDatabase,
   setupTestDatabase,
-  disconnectTestDatabase,
 } from '@tests/helpers';
 
 describe('SubscriptionService Integration Tests', () => {
@@ -22,9 +22,9 @@ describe('SubscriptionService Integration Tests', () => {
     mockStripeService = {
       getProductsWithPrices: jest.fn().mockResolvedValue(
         new Map([
-          ['personal', { priceId: 'price_personal', amount: 0 }],
-          ['starter', { priceId: 'price_starter', amount: 2900 }],
           ['professional', { priceId: 'price_professional', amount: 9900 }],
+          ['starter', { priceId: 'price_starter', amount: 2900 }],
+          ['personal', { priceId: 'price_personal', amount: 0 }],
         ])
       ),
     };

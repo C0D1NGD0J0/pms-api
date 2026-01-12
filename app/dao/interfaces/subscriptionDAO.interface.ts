@@ -27,6 +27,10 @@ export interface ISubscriptionDAO {
     properties: number,
     units: number
   ): Promise<ISubscriptionDocument | null>;
+  setPendingDowngrade(
+    subscriptionId: string | Types.ObjectId,
+    pendingDowngradeAt: Date
+  ): Promise<ISubscriptionDocument | null>;
   updateStatus(
     subscriptionId: string | Types.ObjectId,
     status: ISubscriptionStatus
@@ -59,5 +63,9 @@ export interface ISubscriptionDAO {
     clientId: string | Types.ObjectId,
     delta: number
   ): Promise<ISubscriptionDocument | null>;
+  downgradeToPersonal(
+    subscriptionId: string | Types.ObjectId
+  ): Promise<ISubscriptionDocument | null>;
+  findPendingDowngrades(thresholdDate: Date): Promise<ISubscriptionDocument[]>;
   bulkExpireSubscriptions(expiredDate?: Date): Promise<number>;
 }

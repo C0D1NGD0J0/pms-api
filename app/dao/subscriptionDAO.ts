@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { Subscription } from '@models/index';
+import { ListResultWithPagination } from '@interfaces/index';
 import { ISubscriptionDocument, IPaymentGateway } from '@interfaces/subscription.interface';
 
 import { BaseDAO } from './baseDAO';
@@ -33,7 +34,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
    */
   async updateStatus(
     subscriptionId: string | Types.ObjectId,
-    status: 'active' | 'inactive'
+    status: 'active' | 'inactive' | 'pending_payment'
   ): Promise<ISubscriptionDocument | null> {
     try {
       return await this.update(
@@ -44,6 +45,32 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
       );
     } catch (error) {
       this.logger.error({ error, subscriptionId, status }, 'Error updating subscription status');
+      this.throwErrorHandler(error);
+    }
+  }
+
+  async downgradeToPersonal(
+    subscriptionId: string | Types.ObjectId
+  ): Promise<ISubscriptionDocument | null> {
+    try {
+      return await this.update(
+        { _id: new Types.ObjectId(subscriptionId) },
+        {
+          $set: {
+            planName: 'personal',
+            status: 'active',
+            totalMonthlyPrice: 0,
+            pendingDowngradeAt: null,
+            paymentGateway: {
+              id: 'none',
+              provider: 'none',
+              planId: 'none',
+            },
+          },
+        }
+      );
+    } catch (error) {
+      this.logger.error({ error, subscriptionId }, 'Error downgrading subscription');
       this.throwErrorHandler(error);
     }
   }
@@ -290,6 +317,42 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
         { error, clientId, additionalSeatsCount, additionalSeatsCost },
         'Error updating additional seats'
       );
+      this.throwErrorHandler(error);
+    }
+  }
+
+  async setPendingDowngrade(
+    subscriptionId: string | Types.ObjectId,
+    pendingDowngradeAt: Date
+  ): Promise<ISubscriptionDocument | null> {
+    try {
+      return await this.update(
+        { _id: new Types.ObjectId(subscriptionId) },
+        {
+          $set: { pendingDowngradeAt },
+        }
+      );
+    } catch (error) {
+      this.logger.error({ error, subscriptionId }, 'Error setting pending downgrade');
+      this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Find all subscriptions pending downgrade past the threshold
+   */
+  async findPendingDowngrades(
+    thresholdDate: Date
+  ): ListResultWithPagination<ISubscriptionDocument[]> {
+    try {
+      const result = await this.list({
+        status: 'pending_payment',
+        pendingDowngradeAt: { $lte: thresholdDate },
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error({ error, thresholdDate }, 'Error finding pending downgrades');
       this.throwErrorHandler(error);
     }
   }

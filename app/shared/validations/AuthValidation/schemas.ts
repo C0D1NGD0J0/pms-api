@@ -65,9 +65,12 @@ export const UserSignupSchema = z
       ),
     phoneNumber: z.string().optional(),
     accountType: z.object({
-      planId: z.string(),
-      planName: z.enum(['personal', 'business'], { message: 'Invalid plan name provided.' }),
+      planId: z.string().regex(/^price_[a-zA-Z0-9]{14,}$/, {
+        message: 'Invalid Stripe price ID format. Must follow pattern: price_xxxxx',
+      }),
+      lookUpKey: z.string().optional(),
       isEnterpriseAccount: z.boolean(),
+      planName: z.enum(['personal', 'business'], { message: 'Invalid plan name provided.' }),
     }),
     cpassword: z.string().min(8, 'Confirm password must be at least 8 characters'),
     lang: z.string().optional(),

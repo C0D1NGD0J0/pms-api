@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { Subscription } from '@models/index';
-import { ISubscriptionDocument } from '@interfaces/subscription.interface';
+import { ISubscriptionDocument, IPaymentGateway } from '@interfaces/subscription.interface';
 
 import { BaseDAO } from './baseDAO';
 import { IFindOptions } from './interfaces/baseDAO.interface';
@@ -14,14 +14,14 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
   }
 
   /**
-   * Find subscription by payment gateway ID (Stripe subscription ID, etc.)
+   * Find subscription by payment gateway ID (Stripe customer ID, etc.)
    */
   async findByPaymentGatewayId(
     paymentGatewayId: string,
     opts?: IFindOptions
   ): Promise<ISubscriptionDocument | null> {
     try {
-      return await this.findFirst({ paymentGatewayId }, opts);
+      return await this.findFirst({ 'paymentGateway.id': paymentGatewayId }, opts);
     } catch (error) {
       this.logger.error({ error, paymentGatewayId }, 'Error finding subscription by gateway ID');
       this.throwErrorHandler(error);
@@ -76,18 +76,13 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
    */
   async updatePaymentGateway(
     subscriptionId: string | Types.ObjectId,
-    paymentGateway: 'stripe' | 'paypal' | 'none' | 'paystack',
-    paymentGatewayId?: string
+    paymentGateway: IPaymentGateway
   ): Promise<ISubscriptionDocument | null> {
     try {
-      const updateData: any = { paymentGateway };
-      if (paymentGatewayId) {
-        updateData.paymentGatewayId = paymentGatewayId;
-      }
       return await this.update(
         { _id: new Types.ObjectId(subscriptionId) },
         {
-          $set: updateData,
+          $set: { paymentGateway },
         }
       );
     } catch (error) {

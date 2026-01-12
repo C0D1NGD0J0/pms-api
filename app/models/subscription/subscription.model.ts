@@ -13,7 +13,6 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       default: 'personal',
       index: true,
     },
-    planId: { type: String, required: true }, // stripe-price ID
     status: {
       type: String,
       enum: ['active', 'inactive'],
@@ -24,12 +23,16 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     startDate: { type: Date, required: true, default: Date.now },
     endDate: { type: Date, required: true },
     paymentGateway: {
-      type: String,
-      enum: ['stripe', 'paypal', 'none', 'paystack'],
-      required: true,
-      default: 'none',
+      id: { type: String, required: true, index: true },
+      provider: {
+        type: String,
+        enum: ['stripe', 'paypal', 'none', 'paystack'],
+        required: true,
+        default: 'none',
+      },
+      planId: { type: String, required: true },
+      planLookUpKey: { type: String },
     },
-    paymentGatewayId: { type: String, sparse: true, index: true },
     customPriceInCents: { type: Number }, // For Enterprise custom negotiated price
     additionalSeatsCount: { type: Number, default: 0 }, // Extra seats purchased beyond included
     additionalSeatsCost: { type: Number, default: 0 }, // Total cost for extra seats in cents

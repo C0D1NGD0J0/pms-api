@@ -1,6 +1,6 @@
 import { Document, Types } from 'mongoose';
 
-export enum IPaymentGateway {
+export enum IPaymentGatewayProvider {
   PAYSTACK = 'paystack',
   STRIPE = 'stripe',
   PAYPAL = 'paypal',
@@ -52,7 +52,6 @@ export interface ISubscription {
   status: ISubscriptionStatus;
   customPriceInCents?: number;
   additionalSeatsCost: number;
-  paymentGatewayId?: string;
   totalMonthlyPrice: number;
   currentProperties: number;
   client: Types.ObjectId;
@@ -61,10 +60,8 @@ export interface ISubscription {
   planName: PlanName;
   canceledAt?: Date;
   startDate: Date;
-  planId: string;
   endDate: Date;
   cuid: string;
-
   suid: string;
 }
 
@@ -83,6 +80,13 @@ export type ISubscriptionPlanResponse = {
     };
   };
 } & Omit<ISubscriptionPlansConfig, 'priceInCents' | 'priceId' | 'features'>;
+
+export interface IPaymentGateway {
+  provider: IPaymentGatewayProvider;
+  planLookUpKey?: string; // Lookup key for the plan
+  planId: string; // Stripe price ID or plan ID
+  id: string; // Stripe customer ID or payment gateway customer ID
+}
 
 export interface ISubscriptionDocument extends ISubscription, Document {
   _id: Types.ObjectId;

@@ -13,7 +13,7 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     transactionFeePercent: 3.5,
     isCustomPricing: false,
     seatPricing: {
-      includedSeats: 5, // 5 seats included
+      includedSeats: 3, // 5 seats included
       additionalSeatPriceCents: 0, // Can't buy more seats
       maxAdditionalSeats: 0, // Must upgrade to add seats
     },
@@ -51,12 +51,12 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     isCustomPricing: false,
     seatPricing: {
       includedSeats: 10,
-      additionalSeatPriceCents: 500,
+      additionalSeatPriceCents: 899,
       maxAdditionalSeats: 20,
     },
     limits: {
       maxProperties: 15,
-      maxUnits: 75,
+      maxUnits: 80,
       maxVendors: -1,
     },
     features: {
@@ -87,13 +87,13 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     transactionFeePercent: 2.8,
     isCustomPricing: false,
     seatPricing: {
-      includedSeats: -1,
-      additionalSeatPriceCents: 0,
-      maxAdditionalSeats: -1,
+      includedSeats: 25,
+      additionalSeatPriceCents: 799,
+      maxAdditionalSeats: 20,
     },
     limits: {
       maxProperties: 25,
-      maxUnits: 250,
+      maxUnits: 300,
       maxVendors: -1, // unlimited
     },
     features: {

@@ -13,15 +13,14 @@ export interface ISubscriptionDAO {
     planName: 'personal' | 'starter' | 'professional',
     totalMonthlyPrice: number
   ): Promise<ISubscriptionDocument | null>;
-  updatePaymentGateway(
-    subscriptionId: string | Types.ObjectId,
-    paymentGateway: IPaymentGateway,
-    paymentGatewayId?: string
-  ): Promise<ISubscriptionDocument | null>;
   updateAdditionalSeats(
     clientId: string | Types.ObjectId,
     additionalSeatsCount: number,
     additionalSeatsCost: number
+  ): Promise<ISubscriptionDocument | null>;
+  updatePaymentGateway(
+    subscriptionId: string | Types.ObjectId,
+    paymentGateway: IPaymentGateway
   ): Promise<ISubscriptionDocument | null>;
   updateUsage(
     subscriptionId: string | Types.ObjectId,

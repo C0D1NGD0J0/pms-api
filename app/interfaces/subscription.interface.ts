@@ -8,11 +8,23 @@ export enum IPaymentGatewayProvider {
 }
 
 export enum ISubscriptionStatus {
+  PENDING_PAYMENT = 'pending_payment',
   INACTIVE = 'inactive',
   ACTIVE = 'active',
 }
 
 export interface ISubscriptionPlansConfig {
+  pricing: {
+    monthly: {
+      priceId: string; // Stripe price ID for monthly billing
+      priceInCents: number;
+    };
+    annual: {
+      priceId: string; // Stripe price ID for annual billing
+      priceInCents: number;
+      savingsPercent: number;
+    };
+  };
   features: {
     eSignature: boolean;
     RepairRequestService: boolean;
@@ -36,17 +48,16 @@ export interface ISubscriptionPlansConfig {
   featuredBadge?: string;
   featureList: string[];
   displayOrder: number;
-  priceInCents: number;
   description: string;
   isFeatured: boolean;
   planName: PlanName;
   trialDays: number;
-  priceId?: string;
   ctaText: string;
   name: string;
 }
 
 export interface ISubscription {
+  billingInterval: 'monthly' | 'annual';
   paymentGateway: IPaymentGateway;
   additionalSeatsCount: number;
   status: ISubscriptionStatus;
@@ -54,6 +65,7 @@ export interface ISubscription {
   additionalSeatsCost: number;
   totalMonthlyPrice: number;
   currentProperties: number;
+  pendingDowngradeAt?: Date;
   client: Types.ObjectId;
   currentSeats: number;
   currentUnits: number;
@@ -67,19 +79,22 @@ export interface ISubscription {
 
 export type ISubscriptionPlanResponse = {
   pricing: {
-    lookUpKey: string | null;
-    id: string | null;
     monthly: {
+      priceId: string;
       priceInCents: number;
       displayPrice: string;
+      lookUpKey: string | null;
     };
     annual: {
+      priceId: string;
       priceInCents: number;
       displayPrice: string;
-      savings: number;
+      savingsPercent: number;
+      savingsDisplay: string;
+      lookUpKey: string | null;
     };
   };
-} & Omit<ISubscriptionPlansConfig, 'priceInCents' | 'priceId' | 'features'>;
+} & Omit<ISubscriptionPlansConfig, 'pricing' | 'features'>;
 
 export interface IPaymentGateway {
   provider: IPaymentGatewayProvider;

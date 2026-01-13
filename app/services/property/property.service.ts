@@ -1666,11 +1666,9 @@ export class PropertyService {
     }
   }
 
-  async destroy(): Promise<void> {
+  cleanupEventListeners(): void {
     this.log.info(t('property.logging.cleaningUp'));
 
-    // Remove all event listeners
-    // Note: Upload event listeners are now managed by PropertyMediaService
     this.emitterService.off(EventTypes.UNIT_CREATED, this.handleUnitChanged);
     this.emitterService.off(EventTypes.UNIT_UPDATED, this.handleUnitChanged);
     this.emitterService.off(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged);

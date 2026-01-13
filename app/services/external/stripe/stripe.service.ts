@@ -35,30 +35,68 @@ export class StripeService {
   }
 
   /**
-   * Get products with price mappings (name -> price ID and amount)
+   * Get products with all price mappings (monthly and annual)
    * This is the single source of truth for pricing
    */
   async getProductsWithPrices(): Promise<
-    Map<string, { priceId: string; amount: number; lookUpKey: string }>
+    Map<
+      string,
+      {
+        monthly: { priceId: string; amount: number; lookUpKey: string | null };
+        annual: { priceId: string; amount: number; lookUpKey: string | null };
+      }
+    >
   > {
     try {
       const products = await this.stripe.products.list({
         active: true,
-        expand: ['data.default_price'],
       });
 
-      const priceMap = new Map<string, { priceId: string; amount: number; lookUpKey: string }>();
+      const priceMap = new Map<
+        string,
+        {
+          monthly: { priceId: string; amount: number; lookUpKey: string | null };
+          annual: { priceId: string; amount: number; lookUpKey: string | null };
+        }
+      >();
 
-      products.data.forEach((product) => {
-        const price = product.default_price as Stripe.Price;
-        if (price && typeof price !== 'string' && price.unit_amount) {
+      // Fetch all prices for each product
+      for (const product of products.data) {
+        const prices = await this.stripe.prices.list({
+          product: product.id,
+          active: true,
+        });
+
+        const monthlyPrice = prices.data.find(
+          (p) =>
+            p.recurring?.interval === 'month' &&
+            p.unit_amount !== null &&
+            (p.lookup_key?.includes('_monthly') || p.lookup_key?.includes('monthly_price'))
+        );
+
+        const annualPrice = prices.data.find(
+          (p) =>
+            p.recurring?.interval === 'year' &&
+            p.unit_amount !== null &&
+            (p.lookup_key?.includes('_annual') || p.lookup_key?.includes('annual_price'))
+        );
+
+        // Only add if we have both monthly and annual prices
+        if (monthlyPrice && annualPrice) {
           priceMap.set(product.name.toLowerCase(), {
-            priceId: price.id,
-            lookUpKey: price.lookup_key || '',
-            amount: price.unit_amount, //in cents
+            monthly: {
+              priceId: monthlyPrice.id,
+              amount: monthlyPrice.unit_amount || 0,
+              lookUpKey: monthlyPrice.lookup_key || null,
+            },
+            annual: {
+              priceId: annualPrice.id,
+              amount: annualPrice.unit_amount || 0,
+              lookUpKey: annualPrice.lookup_key || null,
+            },
           });
         }
-      });
+      }
 
       return priceMap;
     } catch (error) {
@@ -67,7 +105,7 @@ export class StripeService {
     }
   }
 
-  async getPrice(priceId: string): Promise<Stripe.Price> {
+  async getProductPrice(priceId: string): Promise<Stripe.Price> {
     try {
       const price = await this.stripe.prices.retrieve(priceId);
       return price;

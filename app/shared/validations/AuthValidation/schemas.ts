@@ -71,6 +71,9 @@ export const UserSignupSchema = z
       lookUpKey: z.string().optional(),
       isEnterpriseAccount: z.boolean(),
       planName: z.enum(['personal', 'business'], { message: 'Invalid plan name provided.' }),
+      billingInterval: z.enum(['monthly', 'annual'], {
+        message: 'Invalid billing interval. Must be either monthly or annual',
+      }),
     }),
     cpassword: z.string().min(8, 'Confirm password must be at least 8 characters'),
     lang: z.string().optional(),

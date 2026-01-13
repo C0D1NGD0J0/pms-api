@@ -1,10 +1,17 @@
 import { Schema, model } from 'mongoose';
+import { generateShortUID } from '@utils/index';
 import { ISubscriptionDocument } from '@interfaces/index';
 
 const SubscriptionSchema = new Schema<ISubscriptionDocument>(
   {
-    cuid: { type: String, required: true, unique: true, index: true },
-    suid: { type: String, required: true, unique: true, index: true },
+    suid: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+      immutable: true,
+      default: () => generateShortUID(),
+    },
     client: { type: Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
     planName: {
       type: String,
@@ -15,13 +22,20 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     },
     status: {
       type: String,
-      enum: ['active', 'inactive'],
+      enum: ['active', 'inactive', 'pending_payment'],
       required: true,
       default: 'active',
       index: true,
     },
     startDate: { type: Date, required: true, default: Date.now },
     endDate: { type: Date, required: true },
+    billingInterval: {
+      type: String,
+      enum: ['monthly', 'annual'],
+      required: true,
+      default: 'monthly',
+      index: true,
+    },
     paymentGateway: {
       id: { type: String, required: true, index: true },
       provider: {
@@ -39,6 +53,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     totalMonthlyPrice: { type: Number, required: true }, // basePrice + additionalSeatsCost + customPrice
     currentSeats: { type: Number, default: 1 }, // Total seats in use (included + additional)
     currentProperties: { type: Number, default: 0 },
+    pendingDowngradeAt: { type: Date, index: true },
     currentUnits: { type: Number, default: 0 },
     canceledAt: { type: Date },
   },
@@ -49,8 +64,8 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
   }
 );
 
-// Composite index for filtering subscriptions by status and plan
 SubscriptionSchema.index({ status: 1, planName: 1 });
+SubscriptionSchema.index({ pendingDowngradeAt: 1, status: 1 });
 
 const SubscriptionModel = model<ISubscriptionDocument>('Subscription', SubscriptionSchema);
 SubscriptionModel.cleanIndexes();

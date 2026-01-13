@@ -1,5 +1,25 @@
 import { ISubscriptionPlansConfig, PlanName } from '@interfaces/subscription.interface';
 
+const FEATURES = {
+  coreFeatures: {
+    TENANT_MANAGEMENT: 'Tenant management',
+    RENT_COLLECTION: 'Rent collection',
+    MAINTENANCE_REQUESTS: 'Maintenance requests',
+    ONLINE_PAYMENTS: 'Online payments & AutoPay',
+    VENDOR_MANAGEMENT: 'Vendor management',
+  },
+  premiumFeatures: {
+    E_SIGNATURE: 'E-Signature',
+    GUEST_PASS: 'Guest Pass Service',
+    REPORTING: 'Advanced reporting & analytics',
+    CUSTOM_LEASES: 'Customizable lease agreements',
+    PRIORITY_SUPPORT: 'Priority support',
+  },
+  upgrades: {
+    EVERYTHING_IN_STARTER: 'Everything in Starter',
+  },
+} as const;
+
 const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
   personal: {
     planName: 'personal',
@@ -9,11 +29,21 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     ctaText: 'Get Started Free',
     isFeatured: false,
     displayOrder: 1,
-    priceInCents: 0,
+    pricing: {
+      monthly: {
+        priceId: 'price_personal_monthly',
+        priceInCents: 0,
+      },
+      annual: {
+        priceId: 'price_personal_annual',
+        priceInCents: 0,
+        savingsPercent: 0,
+      },
+    },
     transactionFeePercent: 3.5,
     isCustomPricing: false,
     seatPricing: {
-      includedSeats: 3, // 5 seats included
+      includedSeats: 3, // 3 seats included
       additionalSeatPriceCents: 0, // Can't buy more seats
       maxAdditionalSeats: 0, // Must upgrade to add seats
     },
@@ -29,20 +59,28 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       reportingAnalytics: false,
     },
     featureList: [
-      'Up to 3 properties',
-      'Basic tenant management',
-      'Rent collection',
-      'Maintenance requests',
-      'Email support',
+      FEATURES.coreFeatures.TENANT_MANAGEMENT,
+      FEATURES.coreFeatures.RENT_COLLECTION,
+      FEATURES.coreFeatures.MAINTENANCE_REQUESTS,
     ],
-    disabledFeatures: ['Advanced reporting', 'Team members'],
+    disabledFeatures: [FEATURES.premiumFeatures.E_SIGNATURE, FEATURES.premiumFeatures.GUEST_PASS],
   },
   starter: {
     planName: 'starter',
     name: 'Starter',
     description: 'For growing property managers',
     trialDays: 14,
-    priceInCents: 0,
+    pricing: {
+      monthly: {
+        priceId: 'price_starter_monthly',
+        priceInCents: 0, // $29/month
+      },
+      annual: {
+        priceId: 'price_starter_annual',
+        priceInCents: 0, // $278/year (20% discount)
+        savingsPercent: 20,
+      },
+    },
     ctaText: 'Start 14-Day Free Trial',
     isFeatured: true,
     featuredBadge: 'Most Popular',
@@ -52,47 +90,55 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     seatPricing: {
       includedSeats: 10,
       additionalSeatPriceCents: 899,
-      maxAdditionalSeats: 20,
+      maxAdditionalSeats: 25,
     },
     limits: {
       maxProperties: 15,
-      maxUnits: 80,
+      maxUnits: 100,
       maxVendors: -1,
     },
     features: {
       eSignature: true,
       RepairRequestService: true,
       VisitorPassService: true,
-      reportingAnalytics: false,
+      reportingAnalytics: true,
     },
     featureList: [
-      'Up to 15 properties',
-      'Advanced tenant screening',
-      'Online payments & AutoPay',
-      'Vendor management',
-      'Financial reporting',
-      'Up to 10 team members',
-      'Priority support',
+      FEATURES.coreFeatures.ONLINE_PAYMENTS,
+      FEATURES.coreFeatures.VENDOR_MANAGEMENT,
+      FEATURES.premiumFeatures.E_SIGNATURE,
+      FEATURES.premiumFeatures.GUEST_PASS,
     ],
+    disabledFeatures: [],
   },
   professional: {
     planName: 'professional',
     name: 'Professional',
     description: 'For established businesses',
     trialDays: 14,
+    pricing: {
+      monthly: {
+        priceId: 'price_professional_monthly',
+        priceInCents: 0,
+      },
+      annual: {
+        priceId: 'price_professional_annual',
+        priceInCents: 0,
+        savingsPercent: 20,
+      },
+    },
     ctaText: 'Start 14-Day Free Trial',
     isFeatured: false,
     displayOrder: 3,
-    priceInCents: 0,
     transactionFeePercent: 2.8,
     isCustomPricing: false,
     seatPricing: {
       includedSeats: 25,
       additionalSeatPriceCents: 799,
-      maxAdditionalSeats: 20,
+      maxAdditionalSeats: 40,
     },
     limits: {
-      maxProperties: 25,
+      maxProperties: 30,
       maxUnits: 300,
       maxVendors: -1, // unlimited
     },
@@ -104,14 +150,12 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       prioritySupport: true,
     },
     featureList: [
-      'Up to 25 properties',
-      'Everything in Starter',
-      'Custom branding',
-      'API access',
-      'Advanced analytics',
-      'Unlimited team members',
-      'Phone support',
+      FEATURES.upgrades.EVERYTHING_IN_STARTER,
+      FEATURES.premiumFeatures.REPORTING,
+      FEATURES.premiumFeatures.CUSTOM_LEASES,
+      FEATURES.premiumFeatures.PRIORITY_SUPPORT,
     ],
+    disabledFeatures: [],
   },
 };
 
@@ -171,6 +215,7 @@ export class SubscriptionPlanConfig {
 
   public calculatePrice(
     planName: PlanName,
+    billingInterval: 'monthly' | 'annual' = 'monthly',
     additionalSeatsCount: number = 0,
     customPriceInCents?: number
   ): number {
@@ -178,7 +223,9 @@ export class SubscriptionPlanConfig {
 
     // For Enterprise with custom pricing, use that instead of base price
     const basePrice =
-      config.isCustomPricing && customPriceInCents ? customPriceInCents : config.priceInCents;
+      config.isCustomPricing && customPriceInCents
+        ? customPriceInCents
+        : config.pricing[billingInterval].priceInCents;
 
     // Calculate additional seats cost
     const additionalSeatsCost = additionalSeatsCount * config.seatPricing.additionalSeatPriceCents;
@@ -219,10 +266,14 @@ export class SubscriptionPlanConfig {
     return config.transactionFeePercent;
   }
 
-  public getFormattedPrice(planName: PlanName): string {
+  public getFormattedPrice(
+    planName: PlanName,
+    billingInterval: 'monthly' | 'annual' = 'monthly'
+  ): string {
     const config = this.getConfig(planName);
-    if (config.priceInCents === 0) return 'Free';
-    return `$${(config.priceInCents / 100).toFixed(2)}`;
+    const priceInCents = config.pricing[billingInterval].priceInCents;
+    if (priceInCents === 0) return 'Free';
+    return `$${(priceInCents / 100).toFixed(2)}`;
   }
 
   public getSeatLimit(planName: PlanName): number {
@@ -269,6 +320,39 @@ export class SubscriptionPlanConfig {
   public getDisplayName(planName: PlanName): string {
     const config = this.getConfig(planName);
     return config.name;
+  }
+
+  public getFeatureListWithLimits(planName: PlanName): string[] {
+    const config = this.getConfig(planName);
+    const features: string[] = [];
+
+    // Add limits as first feature
+    const propertiesText =
+      config.limits.maxProperties === -1 ? 'Unlimited' : `Up to ${config.limits.maxProperties}`;
+    const unitsText = config.limits.maxUnits === -1 ? 'unlimited' : config.limits.maxUnits;
+    features.push(`${propertiesText} properties & ${unitsText} units`);
+
+    // Add team members as second feature
+    features.push(`Up to ${config.seatPricing.includedSeats} team members`);
+
+    // Add transaction fee
+    features.push(`${config.transactionFeePercent}% transaction fee`);
+
+    // Add the custom feature list
+    features.push(...config.featureList);
+
+    return features;
+  }
+
+  public getCompleteFeatureList(planName: PlanName): {
+    enabled: string[];
+    disabled: string[];
+  } {
+    const config = this.getConfig(planName);
+    return {
+      enabled: this.getFeatureListWithLimits(planName),
+      disabled: config.disabledFeatures || [],
+    };
   }
 }
 

@@ -21,9 +21,9 @@ const FEATURES = {
 } as const;
 
 const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
-  personal: {
-    planName: 'personal',
-    name: 'Personal',
+  starter: {
+    planName: 'starter',
+    name: 'Starter',
     description: 'Perfect for individual landlords',
     trialDays: 0,
     ctaText: 'Get Started Free',
@@ -31,11 +31,11 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     displayOrder: 1,
     pricing: {
       monthly: {
-        priceId: 'price_personal_monthly',
+        priceId: 'price_starter_monthly',
         priceInCents: 0,
       },
       annual: {
-        priceId: 'price_personal_annual',
+        priceId: 'price_starter_annual',
         priceInCents: 0,
         savingsPercent: 0,
       },
@@ -65,19 +65,19 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     ],
     disabledFeatures: [FEATURES.premiumFeatures.E_SIGNATURE, FEATURES.premiumFeatures.GUEST_PASS],
   },
-  starter: {
-    planName: 'starter',
-    name: 'Starter',
+  personal: {
+    planName: 'personal',
+    name: 'Personal',
     description: 'For growing property managers',
     trialDays: 14,
     pricing: {
       monthly: {
-        priceId: 'price_starter_monthly',
-        priceInCents: 0, // $29/month
+        priceId: 'price_personal_monthly',
+        priceInCents: 2900, // $29/month
       },
       annual: {
-        priceId: 'price_starter_annual',
-        priceInCents: 0, // $278/year (20% discount)
+        priceId: 'price_personal_annual',
+        priceInCents: 27800, // $278/year (20% discount)
         savingsPercent: 20,
       },
     },
@@ -119,11 +119,11 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     pricing: {
       monthly: {
         priceId: 'price_professional_monthly',
-        priceInCents: 0,
+        priceInCents: 9900, // $99/month
       },
       annual: {
         priceId: 'price_professional_annual',
-        priceInCents: 0,
+        priceInCents: 95000, // $950/year (20% discount)
         savingsPercent: 20,
       },
     },

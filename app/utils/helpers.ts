@@ -5,8 +5,8 @@ import * as nanoid from 'nanoid';
 import { Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
-import { Country, City } from 'country-state-city';
 import { parsePhoneNumber } from 'libphonenumber-js';
+import { Country, State, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
@@ -376,8 +376,9 @@ export const paginateResult = (count: number, skip = 0, limit = 10): IPaginateRe
   return result;
 };
 
-// Cache for city and country data to prevent memory leaks
+// Cache for city, state, and country data to prevent memory leaks
 let cachedCities: any[] | null = null;
+let cachedStates: any[] | null = null;
 let cachedCountries: any[] | null = null;
 
 const getCachedCities = (): any[] => {
@@ -385,6 +386,13 @@ const getCachedCities = (): any[] => {
     cachedCities = City.getAllCities();
   }
   return cachedCities;
+};
+
+const getCachedStates = (): any[] => {
+  if (!cachedStates) {
+    cachedStates = State.getAllStates();
+  }
+  return cachedStates;
 };
 
 const getCachedCountries = (): any[] => {
@@ -395,22 +403,68 @@ const getCachedCountries = (): any[] => {
 };
 
 /**
- * Validates if the provided name is a valid city or country
- * @param location The city or country name to validate
- * @returns {boolean} True if the location is a valid city or country name
+ * Validates location with flexible parsing
+ * Handles multiple formats:
+ * - "Loyalist, Ontario Canada" (comma-separated)
+ * - "Lagos Nigeria" (space-separated)
+ * - "New York" (single city)
+ * - "New York, NY" (city + state abbreviation)
+ * - "Toronto, ON" (city + state/province)
+ * - "Canada" (country only)
+ * @param location The location string to validate
+ * @returns {boolean} True if the location contains a valid city, state, or country
  */
 export const isValidLocation = (location: string): boolean => {
-  if (!location) return false;
+  if (!location || location.trim().length < 2) return false;
 
-  const normalizedLocation = location.trim().toLowerCase();
+  const normalized = location.trim().toLowerCase();
 
-  const isCity = getCachedCities().some((city) => city.name.toLowerCase() === normalizedLocation);
-  if (isCity) return true;
+  const isDirectCity = getCachedCities().some((city) => city.name.toLowerCase() === normalized);
+  if (isDirectCity) return true;
 
-  const isCountry = getCachedCountries().some(
-    (country) => country.name.toLowerCase() === normalizedLocation
+  const isDirectCountry = getCachedCountries().some(
+    (country) => country.name.toLowerCase() === normalized
   );
-  return isCountry;
+  if (isDirectCountry) return true;
+
+  const commaParts = normalized
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  for (const part of commaParts) {
+    const isCity = getCachedCities().some((city) => city.name.toLowerCase() === part);
+    if (isCity) return true;
+
+    // Check if it's a state (name or abbreviation like "NY", "CA")
+    const isState = getCachedStates().some(
+      (state) => state.name.toLowerCase() === part || state.isoCode.toLowerCase() === part
+    );
+    if (isState) return true;
+
+    const isCountry = getCachedCountries().some(
+      (country) => country.name.toLowerCase() === part || country.isoCode.toLowerCase() === part
+    );
+    if (isCountry) return true;
+  }
+
+  const spaceParts = normalized.split(/\s+/).filter((p) => p.length > 1);
+  for (const part of spaceParts) {
+    const isCity = getCachedCities().some((city) => city.name.toLowerCase() === part);
+    if (isCity) return true;
+
+    // Check if it's a state (name or abbreviation)
+    const isState = getCachedStates().some(
+      (state) => state.name.toLowerCase() === part || state.isoCode.toLowerCase() === part
+    );
+    if (isState) return true;
+
+    const isCountry = getCachedCountries().some(
+      (country) => country.name.toLowerCase() === part || country.isoCode.toLowerCase() === part
+    );
+    if (isCountry) return true;
+  }
+
+  return false;
 };
 
 /**

@@ -9,9 +9,10 @@ import { QueueFactory } from '@services/queue';
 import { ISignupData } from '@interfaces/user.interface';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { AuthTokenService, VendorService } from '@services/index';
+import { PlanName } from '@interfaces/subscription.interface';
 import { IActiveAccountInfo } from '@interfaces/client.interface';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
+import { SubscriptionService, AuthTokenService, VendorService } from '@services/index';
 import {
   getLocationDetails,
   generateShortUID,
@@ -29,6 +30,7 @@ import {
 } from '@shared/customErrors';
 
 interface IConstructor {
+  subscriptionService: SubscriptionService;
   tokenService: AuthTokenService;
   vendorService: VendorService;
   queueFactory: QueueFactory;
@@ -47,6 +49,7 @@ export class AuthService {
   private readonly queueFactory: QueueFactory;
   private readonly tokenService: AuthTokenService;
   private readonly vendorService: VendorService;
+  private readonly subscriptionService: SubscriptionService;
 
   constructor({
     userDAO,
@@ -56,6 +59,7 @@ export class AuthService {
     tokenService,
     authCache,
     vendorService,
+    subscriptionService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -64,6 +68,7 @@ export class AuthService {
     this.queueFactory = queueFactory;
     this.tokenService = tokenService;
     this.vendorService = vendorService;
+    this.subscriptionService = subscriptionService;
     this.log = createLogger('AuthService');
   }
 
@@ -257,21 +262,51 @@ export class AuthService {
         session
       );
 
-      // Create vendor for corporate accounts
-      if (signupData.accountType.isEnterpriseAccount && signupData.companyProfile) {
-        try {
-          await this.vendorService.createVendorFromCompanyProfile(
-            clientId,
-            user._id?.toString() || _userId.toString(),
-            signupData.companyProfile
-          );
-        } catch (error) {
-          // Log vendor creation failure but don't fail the entire signup
-          this.log.warn('Failed to create vendor during signup:', error);
-        }
+      const subscriptionResult = await this.subscriptionService.createSubscription(
+        client._id.toString(),
+        {
+          planLookUpKey: signupData.accountType.planLookUpKey || '',
+          planName: signupData.accountType.planName as PlanName,
+          billingInterval: signupData.accountType.billingInterval as 'monthly' | 'annual',
+          planId: signupData.accountType.planId,
+          totalMonthlyPrice: signupData.accountType.totalMonthlyPrice,
+        },
+        session
+      );
+
+      if (!subscriptionResult.success) {
+        throw new InvalidRequestError({
+          message: subscriptionResult.message || 'Encountered an error while creating subscription',
+        });
       }
 
+      // const isPaidPlan = signupData.accountType.planName !== 'starter';
+      // const checkoutUrl: string | null = null;
+
+      // For paid plans, create checkout session
+      // if (isPaidPlan && result.planLookUpKey) {
+      //   const checkoutResult = await this.subscriptionService.createCheckoutSession(
+      //     subscriptionResult.data._id.toString(),
+      //     result.email,
+      //     result.planLookUpKey,
+      //     `${envVariables.FRONTEND_URL}/signup/success`,
+      //     `${envVariables.FRONTEND_URL}/signup/cancel`
+      //   );
+
+      //   if (checkoutResult.success && checkoutResult.data) {
+      //     checkoutUrl = checkoutResult.data.checkoutUrl;
+      //   }
+      // }
+
       return {
+        userId: _userId.toString(),
+        clientId: client._id.toString(),
+        cuid: clientId,
+        email: user.email,
+        planName: signupData.accountType.planName,
+        planId: signupData.accountType.planId,
+        planLookUpKey: signupData.accountType.planLookUpKey,
+        billingInterval: signupData.accountType.billingInterval,
         emailData: {
           to: user.email,
           subject: t('email.registration.subject'),
@@ -286,6 +321,7 @@ export class AuthService {
 
     const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
     emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, result.emailData);
+
     return {
       data: null,
       success: true,

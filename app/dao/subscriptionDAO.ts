@@ -1,7 +1,6 @@
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { Subscription } from '@models/index';
-import { ListResultWithPagination } from '@interfaces/index';
 import { ISubscriptionDocument, IPaymentGateway } from '@interfaces/subscription.interface';
 
 import { BaseDAO } from './baseDAO';
@@ -341,16 +340,14 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
   /**
    * Find all subscriptions pending downgrade past the threshold
    */
-  async findPendingDowngrades(
-    thresholdDate: Date
-  ): ListResultWithPagination<ISubscriptionDocument[]> {
+  async findPendingDowngrades(thresholdDate: Date): Promise<ISubscriptionDocument[]> {
     try {
       const result = await this.list({
         status: 'pending_payment',
         pendingDowngradeAt: { $lte: thresholdDate },
       });
 
-      return result;
+      return result.items;
     } catch (error) {
       this.logger.error({ error, thresholdDate }, 'Error finding pending downgrades');
       this.throwErrorHandler(error);

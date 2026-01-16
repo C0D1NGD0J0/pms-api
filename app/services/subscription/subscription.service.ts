@@ -1,10 +1,11 @@
 import dayjs from 'dayjs';
+import { ClientSession } from 'mongodb';
 import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { StripeService } from '@services/external';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
+import { BadRequestError } from '@shared/customErrors';
 import { EventEmitterService } from '@services/eventEmitter';
-import { ValidationRequestError } from '@shared/customErrors';
 import {
   ISubscriptionPlanResponse,
   IPaymentGatewayProvider,
@@ -111,52 +112,49 @@ export class SubscriptionService {
         planId?: string;
         billingInterval?: 'monthly' | 'annual';
       } & ISubscription
-    >
+    >,
+    session?: ClientSession
   ): IPromiseReturnedData<ISubscriptionDocument | null> {
     try {
       const { planName, planId, planLookUpKey, billingInterval = 'monthly' } = data;
+      const isPaidPlan = planName !== 'starter';
 
-      if (!planName || !planId || !planLookUpKey) {
-        throw new ValidationRequestError({ message: 'Missing required subscription data' });
+      if (!planName || !planId) {
+        throw new BadRequestError({ message: 'Missing required subscription data' });
       }
 
       const client = await this.clientDAO.findById(clientId);
       if (!client) {
-        throw new ValidationRequestError({ message: 'Client not found for subscription' });
+        throw new BadRequestError({ message: 'Client not found for subscription' });
       }
 
-      const stripePrice = await this.stripeService.getProductPrice(planId);
       const config = subscriptionPlanConfig.getConfig(planName as PlanName);
-
-      let startDate, endDate;
-      if (billingInterval === 'monthly') {
-        startDate = new Date();
-        endDate = new Date();
-        endDate.setDate(endDate.getDate() + 30);
-      } else if (billingInterval === 'annual') {
-        startDate = new Date();
-        endDate = new Date();
-        endDate.setDate(endDate.getDate() + 365);
+      let actualBilledAmount: number = config.pricing[billingInterval].priceInCents;
+      if (planName !== 'starter') {
+        try {
+          const stripePrice = await this.stripeService.getProductPrice(planId);
+          actualBilledAmount = stripePrice.unit_amount || 0;
+        } catch (error) {
+          this.log.warn({ error, planId }, 'Failed to fetch Stripe price, using config fallback');
+        }
       }
 
-      const isPaidPlan = planName !== 'personal';
+      const monthlyEquivalent =
+        billingInterval === 'annual' ? Math.round(actualBilledAmount / 12) : actualBilledAmount;
+
       const status = isPaidPlan ? ISubscriptionStatus.PENDING_PAYMENT : ISubscriptionStatus.ACTIVE;
-
-      // Set pending downgrade for 48 hours from now if paid plan
       const pendingDowngradeAt = isPaidPlan ? dayjs().add(48, 'hour').toDate() : undefined;
+      const totalMonthlyPrice = monthlyEquivalent;
 
-      // Get price from config based on billing interval
-      const totalMonthlyPrice =
-        stripePrice.unit_amount || config.pricing[billingInterval].priceInCents;
-      const _subscriptionData = {
+      const subscriptionData = {
         client: client._id,
         planName,
         status,
-        startDate,
-        endDate,
+        startDate: new Date(),
+        endDate: undefined,
         billingInterval,
         paymentGateway: {
-          id: isPaidPlan ? '' : 'none', // filled after Stripe customer creation webhook
+          id: isPaidPlan ? '' : 'none',
           provider: isPaidPlan ? IPaymentGatewayProvider.STRIPE : IPaymentGatewayProvider.NONE,
           planId: planId || 'none',
           planLookUpKey: planLookUpKey,
@@ -166,14 +164,98 @@ export class SubscriptionService {
         pendingDowngradeAt,
       };
 
-      // const subscription = await this.subscriptionDAO.insert(subscriptionData);
+      const subscription = await this.subscriptionDAO.insert(subscriptionData, session);
 
-      return { data: null, success: true };
+      return { data: subscription, success: true };
     } catch (error) {
       this.log.error({ error, data }, 'Error creating subscription');
-      return { success: false, message: 'Failed to create subscription', data: null };
+      return { success: false, message: error.message, data: null };
     }
   }
+
+  // async createCheckoutSession(
+  //   subscriptionId: string,
+  //   email: string,
+  //   lookUpKey: string,
+  //   successUrl: string,
+  //   cancelUrl: string
+  // ): IPromiseReturnedData<{ checkoutUrl: string }> {
+  //   try {
+  //     const subscription = await this.subscriptionDAO.findById(subscriptionId);
+  //     if (!subscription) {
+  //       return { success: false, message: 'Subscription not found' };
+  //     }
+
+  //     const clientId = subscription.client.toString();
+
+  //     const session = await this.stripeService.createCheckoutSession(
+  //       lookUpKey,
+  //       clientId,
+  //       email,
+  //       successUrl,
+  //       cancelUrl
+  //     );
+
+  //     this.log.info(
+  //       { subscriptionId, sessionId: session.id, clientId },
+  //       'Created Stripe checkout session'
+  //     );
+
+  //     return {
+  //       data: { checkoutUrl: session.url || '' },
+  //       success: true,
+  //     };
+  //   } catch (error) {
+  //     this.log.error({ error, subscriptionId }, 'Error creating checkout session');
+  //     return { success: false, message: 'Failed to create checkout session' };
+  //   }
+  // }
+
+  // async handlePaymentSuccess(
+  //   stripeCustomerId: string,
+  //   stripeSubscriptionId: string,
+  //   clientId: string
+  // ): IPromiseReturnedData<ISubscriptionDocument> {
+  //   try {
+  //     // Find subscription by client ID
+  //     const subscription = await this.subscriptionDAO.findFirst({ client: clientId });
+  //     if (!subscription) {
+  //       this.log.error({ clientId }, 'Subscription not found for payment success');
+  //       return { success: false, message: 'Subscription not found' };
+  //     }
+
+  //     // Update subscription status and payment gateway info
+  //     const updatedSubscription = await this.subscriptionDAO.update(
+  //       { _id: subscription._id },
+  //       {
+  //         $set: {
+  //           status: 'active',
+  //           'paymentGateway.id': stripeCustomerId,
+  //           pendingDowngradeAt: null,
+  //         },
+  //       }
+  //     );
+
+  //     if (!updatedSubscription) {
+  //       return { success: false, message: 'Failed to update subscription' };
+  //     }
+
+  //     this.log.info(
+  //       {
+  //         subscriptionId: subscription._id,
+  //         stripeCustomerId,
+  //         stripeSubscriptionId,
+  //         clientId,
+  //       },
+  //       'Payment successful - subscription activated'
+  //     );
+
+  //     return { data: updatedSubscription, success: true };
+  //   } catch (error) {
+  //     this.log.error({ error, stripeCustomerId, clientId }, 'Error handling payment success');
+  //     return { success: false, message: 'Failed to handle payment success' };
+  //   }
+  // }
 
   private formatPrice(priceInCents: number): string {
     if (priceInCents === 0) return '$0';

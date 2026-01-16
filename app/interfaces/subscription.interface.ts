@@ -73,8 +73,6 @@ export interface ISubscription {
   canceledAt?: Date;
   startDate: Date;
   endDate: Date;
-  cuid: string;
-  suid: string;
 }
 
 export type ISubscriptionPlanResponse = {
@@ -107,6 +105,7 @@ export interface ISubscriptionDocument extends ISubscription, Document {
   _id: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
+  suid: string;
 }
 
 export type PlanName = 'personal' | 'starter' | 'professional';

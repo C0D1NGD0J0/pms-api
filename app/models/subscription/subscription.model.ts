@@ -27,8 +27,25 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       default: 'active',
       index: true,
     },
-    startDate: { type: Date, required: true, default: Date.now },
-    endDate: { type: Date, required: true },
+    startDate: { type: Date, required: true },
+    endDate: {
+      type: Date,
+      required: false,
+      validate: {
+        validator: function (this: ISubscriptionDocument, value: Date | undefined) {
+          if (this.planName === 'starter') return true;
+
+          // paid plans with active status must have endDate
+          if (this.status === 'active') {
+            return value !== undefined && value !== null;
+          }
+
+          // pending_payment: endDate can be undefined set later by Stripe webhook
+          return true;
+        },
+        message: 'End date is required for active paid subscriptions',
+      },
+    },
     billingInterval: {
       type: String,
       enum: ['monthly', 'annual'],

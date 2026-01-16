@@ -14,6 +14,10 @@ export class EventsRegistryCache extends BaseCache {
 
   async registerEvent(eventType: EventTypes | string): Promise<ISuccessReturnData> {
     try {
+      if (!this.client.isReady) {
+        return { success: false, data: null, error: 'Redis client not ready' };
+      }
+
       const key = `${this.KEY_PREFIX}:events`;
       await this.client.sAdd(key, eventType.toString());
       return { success: true, data: null };
@@ -25,6 +29,10 @@ export class EventsRegistryCache extends BaseCache {
 
   async getRegisteredEvents(): Promise<ISuccessReturnData<string[] | null>> {
     try {
+      if (!this.client.isReady) {
+        return { success: false, data: null, error: 'Redis client not ready' };
+      }
+
       const key = `${this.KEY_PREFIX}:events`;
       const events = await this.client.sMembers(key);
       return { success: true, data: events };
@@ -36,6 +44,10 @@ export class EventsRegistryCache extends BaseCache {
 
   async unregisteEvent(eventType: EventTypes | string): Promise<{ success: boolean }> {
     try {
+      if (!this.client.isReady) {
+        return { success: false };
+      }
+
       const key = `${this.KEY_PREFIX}:events`;
       await this.client.sRem(key, eventType.toString());
       return { success: true };
@@ -49,6 +61,10 @@ export class EventsRegistryCache extends BaseCache {
     eventType: EventTypes | string
   ): Promise<ISuccessReturnData<boolean | null>> {
     try {
+      if (!this.client.isReady) {
+        return { success: false, data: null, error: 'Redis client not ready' };
+      }
+
       const key = `${this.KEY_PREFIX}:events`;
       const exists = await this.client.sIsMember(key, eventType.toString());
       return { success: true, data: exists };

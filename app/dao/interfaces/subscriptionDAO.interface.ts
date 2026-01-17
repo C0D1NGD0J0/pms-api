@@ -63,7 +63,7 @@ export interface ISubscriptionDAO {
     clientId: string | Types.ObjectId,
     delta: number
   ): Promise<ISubscriptionDocument | null>;
-  downgradeToPersonal(
+  downgradeToStarter(
     subscriptionId: string | Types.ObjectId
   ): Promise<ISubscriptionDocument | null>;
   findPendingDowngrades(thresholdDate: Date): Promise<ISubscriptionDocument[]>;

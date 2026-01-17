@@ -55,20 +55,38 @@ export const UserSignupSchema = z
       ),
     location: z
       .string()
-      .max(35, 'Location(city) must be at most 35 characters')
-      .refine(
-        (cityName) => {
-          const normalizedCityName = cityName.trim().toLowerCase();
-          return isValidLocation(normalizedCityName);
-        },
-        { message: 'Please enter a valid city name' }
-      ),
+      .min(2, 'Location must be at least 2 characters')
+      .max(100, 'Location must be at most 100 characters')
+      .refine((location) => isValidLocation(location), {
+        message: 'Please enter a valid city or country',
+      }),
     phoneNumber: z.string().optional(),
-    accountType: z.object({
-      planId: z.string(),
-      planName: z.enum(['personal', 'business'], { message: 'Invalid plan name provided.' }),
-      isEnterpriseAccount: z.boolean(),
-    }),
+    accountType: z
+      .object({
+        planId: z.string(),
+        lookUpKey: z.string().optional(),
+        isEnterpriseAccount: z.boolean(),
+        planName: z.enum(['starter', 'personal', 'professional'], {
+          message: 'Invalid plan name provided.',
+        }),
+        billingInterval: z.enum(['monthly', 'annual'], {
+          message: 'Invalid billing interval. Must be either monthly or annual',
+        }),
+      })
+      .refine(
+        (data) => {
+          // Starter plan (free) doesn't need a valid Stripe price ID
+          if (data.planName === 'starter') {
+            return true;
+          }
+          // Paid plans must have a valid Stripe price ID
+          return /^price_[a-zA-Z0-9]{14,}$/.test(data.planId);
+        },
+        {
+          message: 'Invalid Stripe price ID format for paid plan. Must follow pattern: price_xxxxx',
+          path: ['planId'],
+        }
+      ),
     cpassword: z.string().min(8, 'Confirm password must be at least 8 characters'),
     lang: z.string().optional(),
     timeZone: z.string().optional(),

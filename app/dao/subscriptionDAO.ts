@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { Subscription } from '@models/index';
-import { ISubscriptionDocument } from '@interfaces/subscription.interface';
+import { ISubscriptionDocument, IPaymentGateway } from '@interfaces/subscription.interface';
 
 import { BaseDAO } from './baseDAO';
 import { IFindOptions } from './interfaces/baseDAO.interface';
@@ -14,14 +14,14 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
   }
 
   /**
-   * Find subscription by payment gateway ID (Stripe subscription ID, etc.)
+   * Find subscription by payment gateway ID (Stripe customer ID, etc.)
    */
   async findByPaymentGatewayId(
     paymentGatewayId: string,
     opts?: IFindOptions
   ): Promise<ISubscriptionDocument | null> {
     try {
-      return await this.findFirst({ paymentGatewayId }, opts);
+      return await this.findFirst({ 'paymentGateway.id': paymentGatewayId }, opts);
     } catch (error) {
       this.logger.error({ error, paymentGatewayId }, 'Error finding subscription by gateway ID');
       this.throwErrorHandler(error);
@@ -33,7 +33,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
    */
   async updateStatus(
     subscriptionId: string | Types.ObjectId,
-    status: 'active' | 'inactive'
+    status: 'active' | 'inactive' | 'pending_payment'
   ): Promise<ISubscriptionDocument | null> {
     try {
       return await this.update(
@@ -44,6 +44,32 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
       );
     } catch (error) {
       this.logger.error({ error, subscriptionId, status }, 'Error updating subscription status');
+      this.throwErrorHandler(error);
+    }
+  }
+
+  async downgradeToStarter(
+    subscriptionId: string | Types.ObjectId
+  ): Promise<ISubscriptionDocument | null> {
+    try {
+      return await this.update(
+        { _id: new Types.ObjectId(subscriptionId) },
+        {
+          $set: {
+            planName: 'starter',
+            status: 'active',
+            totalMonthlyPrice: 0,
+            pendingDowngradeAt: null,
+            paymentGateway: {
+              id: 'none',
+              provider: 'none',
+              planId: 'none',
+            },
+          },
+        }
+      );
+    } catch (error) {
+      this.logger.error({ error, subscriptionId }, 'Error downgrading subscription');
       this.throwErrorHandler(error);
     }
   }
@@ -76,18 +102,13 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
    */
   async updatePaymentGateway(
     subscriptionId: string | Types.ObjectId,
-    paymentGateway: 'stripe' | 'paypal' | 'none' | 'paystack',
-    paymentGatewayId?: string
+    paymentGateway: IPaymentGateway
   ): Promise<ISubscriptionDocument | null> {
     try {
-      const updateData: any = { paymentGateway };
-      if (paymentGatewayId) {
-        updateData.paymentGatewayId = paymentGatewayId;
-      }
       return await this.update(
         { _id: new Types.ObjectId(subscriptionId) },
         {
-          $set: updateData,
+          $set: { paymentGateway },
         }
       );
     } catch (error) {
@@ -295,6 +316,40 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
         { error, clientId, additionalSeatsCount, additionalSeatsCost },
         'Error updating additional seats'
       );
+      this.throwErrorHandler(error);
+    }
+  }
+
+  async setPendingDowngrade(
+    subscriptionId: string | Types.ObjectId,
+    pendingDowngradeAt: Date
+  ): Promise<ISubscriptionDocument | null> {
+    try {
+      return await this.update(
+        { _id: new Types.ObjectId(subscriptionId) },
+        {
+          $set: { pendingDowngradeAt },
+        }
+      );
+    } catch (error) {
+      this.logger.error({ error, subscriptionId }, 'Error setting pending downgrade');
+      this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Find all subscriptions pending downgrade past the threshold
+   */
+  async findPendingDowngrades(thresholdDate: Date): Promise<ISubscriptionDocument[]> {
+    try {
+      const result = await this.list({
+        status: 'pending_payment',
+        pendingDowngradeAt: { $lte: thresholdDate },
+      });
+
+      return result.items;
+    } catch (error) {
+      this.logger.error({ error, thresholdDate }, 'Error finding pending downgrades');
       this.throwErrorHandler(error);
     }
   }

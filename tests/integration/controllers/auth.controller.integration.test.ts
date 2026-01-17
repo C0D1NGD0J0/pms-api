@@ -162,11 +162,12 @@ describe('AuthController Integration Tests', () => {
         displayName: 'Test Company',
         phoneNumber: '+1234567890',
         lang: 'en',
-        location: 'US',
+        location: 'New York, NY',
         termsAccepted: true,
         accountType: {
           planName: 'starter',
           planId: 'plan_starter',
+          billingInterval: 'monthly',
           isEnterpriseAccount: false,
         },
       };
@@ -225,11 +226,12 @@ describe('AuthController Integration Tests', () => {
         displayName: 'Another Company',
         phoneNumber: '+1234567890',
         lang: 'en',
-        location: 'US',
+        location: 'Lagos, Nigeria',
         termsAccepted: true,
         accountType: {
           planName: 'starter',
           planId: 'plan_starter',
+          billingInterval: 'monthly',
           isEnterpriseAccount: false,
         },
       };
@@ -241,6 +243,92 @@ describe('AuthController Integration Tests', () => {
 
       expect(response.status).toBeGreaterThanOrEqual(400);
       expect(response.body.success).toBeFalsy();
+    });
+
+    it('should accept paid plan signup with valid Stripe price ID', async () => {
+      const signupData = {
+        email: `paid-${Date.now()}@example.com`,
+        password: 'SecurePassword123!',
+        firstName: 'Jane',
+        lastName: 'Smith',
+        displayName: 'Paid Company',
+        phoneNumber: '+1234567890',
+        lang: 'en',
+        location: 'Toronto, ON',
+        termsAccepted: true,
+        accountType: {
+          planName: 'personal',
+          planId: 'price_1234567890abcd',
+          billingInterval: 'annual',
+          isEnterpriseAccount: false,
+        },
+      };
+
+      const response = await request(app)
+        .post('/api/v1/auth/signup')
+        .send(signupData)
+        .expect('Content-Type', /json/)
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      const savedUser = await User.findOne({ email: signupData.email });
+      expect(savedUser).toBeDefined();
+    });
+
+    it('should reject paid plan with invalid Stripe price ID format', async () => {
+      const signupData = {
+        email: `invalid-${Date.now()}@example.com`,
+        password: 'SecurePassword123!',
+        firstName: 'John',
+        lastName: 'Invalid',
+        displayName: 'Invalid Plan',
+        phoneNumber: '+1234567890',
+        lang: 'en',
+        location: 'London',
+        termsAccepted: true,
+        accountType: {
+          planName: 'personal',
+          planId: 'invalid_price_id',
+          billingInterval: 'monthly',
+          isEnterpriseAccount: false,
+        },
+      };
+
+      const response = await request(app)
+        .post('/api/v1/auth/signup')
+        .send(signupData)
+        .expect('Content-Type', /json/);
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.body.success).toBeFalsy();
+    });
+
+    it('should accept location with state abbreviation', async () => {
+      const signupData = {
+        email: `state-${Date.now()}@example.com`,
+        password: 'SecurePassword123!',
+        firstName: 'State',
+        lastName: 'Test',
+        displayName: 'State Test Company',
+        phoneNumber: '+1234567890',
+        lang: 'en',
+        location: 'Los Angeles, CA',
+        termsAccepted: true,
+        accountType: {
+          planName: 'starter',
+          planId: 'plan_starter',
+          billingInterval: 'monthly',
+          isEnterpriseAccount: false,
+        },
+      };
+
+      const response = await request(app)
+        .post('/api/v1/auth/signup')
+        .send(signupData)
+        .expect('Content-Type', /json/)
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
     });
   });
 

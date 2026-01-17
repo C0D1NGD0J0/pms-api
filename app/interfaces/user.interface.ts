@@ -412,6 +412,19 @@ export interface IIdentificationType {
  */
 
 /**
+ * Account Type Interface
+ * Subscription/plan information
+ */
+export interface IAccountType {
+  billingInterval: 'monthly' | 'yearly';
+  isEnterpriseAccount: boolean;
+  totalMonthlyPrice?: number;
+  planLookUpKey: string;
+  planName: string;
+  planId: string;
+}
+
+/**
  * Base User Filter Options
  * Common filtering options for user queries
  */
@@ -436,6 +449,12 @@ export interface IExtendedPagination {
 }
 
 /**
+ * ============================================================================
+ * CURRENT USER & SESSION INTERFACES
+ * ============================================================================
+ */
+
+/**
  * User Statistics Interface
  * User statistics for filtered users response
  */
@@ -447,7 +466,7 @@ export interface IUserStats {
 
 /**
  * ============================================================================
- * CURRENT USER & SESSION INTERFACES
+ * DETAIL INFO INTERFACES (Role-Specific)
  * ============================================================================
  */
 
@@ -462,12 +481,6 @@ export interface IBasePagination {
   perPage: number;
   total: number;
 }
-
-/**
- * ============================================================================
- * DETAIL INFO INTERFACES (Role-Specific)
- * ============================================================================
- */
 
 /**
  * Extended Vendor Info Interface
@@ -488,6 +501,12 @@ export interface ILinkedVendorUser
 }
 
 /**
+ * ============================================================================
+ * RESPONSE INTERFACES
+ * ============================================================================
+ */
+
+/**
  * User Property Interface
  * Minimal property info for user context
  */
@@ -498,12 +517,6 @@ export interface IUserProperty {
   units: number;
   name: string;
 }
-
-/**
- * ============================================================================
- * RESPONSE INTERFACES
- * ============================================================================
- */
 
 /**
  * ID Type Union
@@ -536,27 +549,17 @@ export interface FilteredUserTenantInfo {
 }
 
 /**
- * Vendor Team Members Response with Pagination
- */
-export interface IVendorTeamMembersResponse {
-  pagination: IBasePagination;
-  items: IVendorTeamMember[];
-}
-
-/**
  * ============================================================================
  * FILTERED/LIGHTWEIGHT INTERFACES
  * ============================================================================
  */
 
 /**
- * Account Type Interface
- * Subscription/plan information
+ * Vendor Team Members Response with Pagination
  */
-export interface IAccountType {
-  isEnterpriseAccount: boolean;
-  planName: string;
-  planId: string;
+export interface IVendorTeamMembersResponse {
+  pagination: IBasePagination;
+  items: IVendorTeamMember[];
 }
 
 /**

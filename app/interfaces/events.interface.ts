@@ -21,6 +21,7 @@ export enum EventTypes {
   LEASE_RENEWAL_REQUESTED = 'lease:renewal:requested',
   PROPERTY_UPDATE_FAILED = 'update:property:failed',
   DELETE_ASSET_COMPLETED = 'delete:asset:completed',
+  USER_SIGNUP_INITIATED = 'user:signup:initiated',
   LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
   PDF_GENERATION_FAILED = 'pdf:generation:failed',
   DELETE_ASSET_FAILED = 'delete:asset:failed',
@@ -82,8 +83,20 @@ export type EventPayloadMap = {
   [EventTypes.UPLOAD_COMPLETED]: UploadCompletedPayload;
   [EventTypes.UPLOAD_FAILED]: UploadFailedPayload;
   [EventTypes.LEASE_RENEWED]: LeaseRenewedPayload;
+  [EventTypes.USER_SIGNUP_INITIATED]: UserSignupInitiatedPayload;
   [EventTypes.LEASE_RENEWAL_REQUESTED]: LeaseRenewalRequestedPayload;
 };
+
+export interface UserSignupInitiatedPayload {
+  billingInterval: 'monthly' | 'annual'; // Billing frequency
+  subscriptionId: string; // MongoDB ObjectId of created subscription
+  planLookUpKey: string; // Optional Stripe plan lookup key
+  planName: string; // 'personal' | 'starter' | 'professional'
+  clientId: string; // MongoDB ObjectId of client/organization
+  planId: string; // Stripe price ID (required for paid plans)
+  userId: string; // MongoDB ObjectId of user
+  email: string; // User email (required for Stripe customer creation)
+}
 
 export interface UnitChangedPayload {
   changeType: 'created' | 'updated' | 'archived' | 'unarchived' | 'status_changed';

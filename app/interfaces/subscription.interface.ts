@@ -1,6 +1,6 @@
 import { Document, Types } from 'mongoose';
 
-export enum IPaymentGateway {
+export enum IPaymentGatewayProvider {
   PAYSTACK = 'paystack',
   STRIPE = 'stripe',
   PAYPAL = 'paypal',
@@ -8,11 +8,23 @@ export enum IPaymentGateway {
 }
 
 export enum ISubscriptionStatus {
+  PENDING_PAYMENT = 'pending_payment',
   INACTIVE = 'inactive',
   ACTIVE = 'active',
 }
 
 export interface ISubscriptionPlansConfig {
+  pricing: {
+    monthly: {
+      priceId: string; // Stripe price ID for monthly billing
+      priceInCents: number;
+    };
+    annual: {
+      priceId: string; // Stripe price ID for annual billing
+      priceInCents: number;
+      savingsPercent: number;
+    };
+  };
   features: {
     eSignature: boolean;
     RepairRequestService: boolean;
@@ -36,58 +48,65 @@ export interface ISubscriptionPlansConfig {
   featuredBadge?: string;
   featureList: string[];
   displayOrder: number;
-  priceInCents: number;
   description: string;
   isFeatured: boolean;
   planName: PlanName;
   trialDays: number;
-  priceId?: string;
   ctaText: string;
   name: string;
 }
 
 export interface ISubscription {
+  billingInterval: 'monthly' | 'annual';
   paymentGateway: IPaymentGateway;
   additionalSeatsCount: number;
   status: ISubscriptionStatus;
   customPriceInCents?: number;
   additionalSeatsCost: number;
-  paymentGatewayId?: string;
   totalMonthlyPrice: number;
   currentProperties: number;
+  pendingDowngradeAt?: Date;
   client: Types.ObjectId;
   currentSeats: number;
   currentUnits: number;
   planName: PlanName;
   canceledAt?: Date;
   startDate: Date;
-  planId: string;
   endDate: Date;
   cuid: string;
-
-  suid: string;
 }
 
 export type ISubscriptionPlanResponse = {
   pricing: {
-    lookUpKey: string | null;
-    id: string | null;
     monthly: {
+      priceId: string;
       priceInCents: number;
       displayPrice: string;
+      lookUpKey: string | null;
     };
     annual: {
+      priceId: string;
       priceInCents: number;
       displayPrice: string;
-      savings: number;
+      savingsPercent: number;
+      savingsDisplay: string;
+      lookUpKey: string | null;
     };
   };
-} & Omit<ISubscriptionPlansConfig, 'priceInCents' | 'priceId' | 'features'>;
+} & Omit<ISubscriptionPlansConfig, 'pricing' | 'features'>;
+
+export interface IPaymentGateway {
+  provider: IPaymentGatewayProvider;
+  planLookUpKey?: string; // Lookup key for the plan
+  planId: string; // Stripe price ID or plan ID
+  id: string; // Stripe customer ID or payment gateway customer ID
+}
 
 export interface ISubscriptionDocument extends ISubscription, Document {
   _id: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
+  suid: string;
 }
 
 export type PlanName = 'personal' | 'starter' | 'professional';

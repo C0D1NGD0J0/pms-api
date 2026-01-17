@@ -27,6 +27,12 @@ describe('SubscriptionService Integration Tests', () => {
           ['personal', { priceId: 'price_personal', amount: 0 }],
         ])
       ),
+      getProductPrice: jest.fn().mockImplementation((priceId: string) => {
+        if (priceId.includes('annual')) {
+          return Promise.resolve({ unit_amount: 34800 }); // Annual pricing
+        }
+        return Promise.resolve({ unit_amount: 6500 }); // Monthly pricing
+      }),
     };
 
     subscriptionService = new SubscriptionService({
@@ -109,9 +115,12 @@ describe('SubscriptionService Integration Tests', () => {
         suid: 'test-suid',
         client: clientId,
         planName: 'personal',
-        planId: 'none',
         status: 'active',
-        paymentGateway: 'none',
+        paymentGateway: {
+          id: 'none',
+          provider: 'none',
+          planId: 'none',
+        },
         totalMonthlyPrice: 0,
         currentSeats: 1,
         startDate: new Date(),
@@ -139,9 +148,12 @@ describe('SubscriptionService Integration Tests', () => {
         suid: 'test-suid-2',
         client: clientId,
         planName: 'starter',
-        planId: 'plan_123',
         status: 'active',
-        paymentGateway: 'stripe',
+        paymentGateway: {
+          id: 'cus_stripe123',
+          provider: 'stripe',
+          planId: 'price_starter',
+        },
         totalMonthlyPrice: 2900,
         currentSeats: 10,
         startDate: new Date(),
@@ -167,9 +179,12 @@ describe('SubscriptionService Integration Tests', () => {
         suid: 'test-suid-3',
         client: clientId,
         planName: 'starter',
-        planId: 'plan_123',
         status: 'active',
-        paymentGateway: 'stripe',
+        paymentGateway: {
+          id: 'cus_stripe456',
+          provider: 'stripe',
+          planId: 'price_starter',
+        },
         totalMonthlyPrice: 2900,
         currentSeats: 10,
         currentProperties: 5,
@@ -191,6 +206,114 @@ describe('SubscriptionService Integration Tests', () => {
 
       const updated2 = await Subscription.findById(subscription._id);
       expect(updated2?.currentProperties).toBe(6);
+    });
+  });
+
+  describe('Subscription Date and Pricing Logic', () => {
+    it('should create free starter subscription with undefined endDate', async () => {
+      const subscription = await Subscription.create({
+        cuid: 'test-free',
+        suid: 'suid-free',
+        client: new Types.ObjectId(),
+        planName: 'starter',
+        status: 'active',
+        paymentGateway: {
+          id: 'none',
+          provider: 'none',
+          planId: 'plan_starter',
+        },
+        totalMonthlyPrice: 0,
+        currentSeats: 1,
+        startDate: new Date(),
+        endDate: undefined,
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+        currentProperties: 0,
+        currentUnits: 0,
+      });
+
+      expect(subscription.endDate).toBeUndefined();
+      expect(subscription.planName).toBe('starter');
+    });
+
+    it('should require endDate for active paid subscription', async () => {
+      await expect(
+        Subscription.create({
+          cuid: 'test-paid',
+          suid: 'suid-paid',
+          client: new Types.ObjectId(),
+          planName: 'personal',
+          status: 'active',
+          paymentGateway: {
+            id: 'cus_123',
+            provider: 'stripe',
+            planId: 'price_personal',
+          },
+          totalMonthlyPrice: 6500,
+          currentSeats: 5,
+          startDate: new Date(),
+          endDate: undefined,
+          additionalSeatsCount: 0,
+          additionalSeatsCost: 0,
+          currentProperties: 0,
+          currentUnits: 0,
+        })
+      ).rejects.toThrow();
+    });
+
+    it('should allow pending paid subscription without endDate', async () => {
+      const subscription = await Subscription.create({
+        cuid: 'test-pending',
+        suid: 'suid-pending',
+        client: new Types.ObjectId(),
+        planName: 'personal',
+        status: 'pending_payment',
+        paymentGateway: {
+          id: 'none',
+          provider: 'stripe',
+          planId: 'price_personal',
+        },
+        totalMonthlyPrice: 6500,
+        currentSeats: 5,
+        startDate: new Date(),
+        endDate: undefined,
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+        currentProperties: 0,
+        currentUnits: 0,
+      });
+
+      expect(subscription.endDate).toBeUndefined();
+      expect(subscription.status).toBe('pending_payment');
+    });
+
+    it('should calculate monthly equivalent for annual billing', async () => {
+      mockStripeService.getProductPrice.mockResolvedValueOnce({ unit_amount: 34800 });
+
+      const subscription = await Subscription.create({
+        cuid: 'test-annual',
+        suid: 'suid-annual',
+        client: new Types.ObjectId(),
+        planName: 'personal',
+        status: 'pending_payment',
+        paymentGateway: {
+          id: 'none',
+          provider: 'stripe',
+          planId: 'price_annual_123',
+        },
+        totalMonthlyPrice: 2900,
+        billingInterval: 'annual',
+        currentSeats: 5,
+        startDate: new Date(),
+        endDate: undefined,
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+        currentProperties: 0,
+        currentUnits: 0,
+      });
+
+      expect(subscription.totalMonthlyPrice).toBe(2900);
+      expect(subscription.billingInterval).toBe('annual');
     });
   });
 });

@@ -73,6 +73,7 @@ export interface ISubscription {
   canceledAt?: Date;
   startDate: Date;
   endDate: Date;
+  cuid: string;
 }
 
 export type ISubscriptionPlanResponse = {

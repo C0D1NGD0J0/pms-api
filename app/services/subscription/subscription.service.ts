@@ -148,6 +148,7 @@ export class SubscriptionService {
 
       const subscriptionData = {
         client: client._id,
+        cuid: client.cuid,
         planName,
         status,
         startDate: new Date(),

@@ -48,7 +48,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     }
   }
 
-  async downgradeToPersonal(
+  async downgradeToStarter(
     subscriptionId: string | Types.ObjectId
   ): Promise<ISubscriptionDocument | null> {
     try {
@@ -56,7 +56,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
         { _id: new Types.ObjectId(subscriptionId) },
         {
           $set: {
-            planName: 'personal',
+            planName: 'starter',
             status: 'active',
             totalMonthlyPrice: 0,
             pendingDowngradeAt: null,

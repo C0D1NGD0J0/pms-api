@@ -56,6 +56,38 @@ export interface ISubscriptionPlansConfig {
   name: string;
 }
 
+export interface ISubscriptionAccountAccess {
+  paymentFlow: {
+    requiresPayment: boolean;
+    reason: 'pending_signup' | 'expired' | 'grace_period' | null;
+    gracePeriodEndsAt: Date | null;
+    daysUntilDowngrade: number | null;
+  };
+  plan: {
+    name: PlanName;
+    status: ISubscriptionStatus;
+    billingInterval: 'monthly' | 'annual';
+    startDate: Date;
+    endDate: Date | null;
+  };
+  isLimitReached: {
+    properties: boolean;
+    units: boolean;
+    seats: boolean;
+  };
+  limits: {
+    properties: number;
+    units: number;
+    seats: number;
+  };
+  usage: {
+    properties: number;
+    units: number;
+    seats: number;
+  };
+  features: Record<string, boolean>;
+}
+
 export interface ISubscription {
   billingInterval: 'monthly' | 'annual';
   paymentGateway: IPaymentGateway;
@@ -98,8 +130,8 @@ export type ISubscriptionPlanResponse = {
 export interface IPaymentGateway {
   provider: IPaymentGatewayProvider;
   planLookUpKey?: string; // Lookup key for the plan
+  customerId: string; // Stripe customer ID or payment gateway customer ID
   planId: string; // Stripe price ID or plan ID
-  id: string; // Stripe customer ID or payment gateway customer ID
 }
 
 export interface ISubscriptionDocument extends ISubscription, Document {

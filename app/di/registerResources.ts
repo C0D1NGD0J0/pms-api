@@ -88,6 +88,7 @@ import {
   InvitationCsvProcessor,
   subscriptionPlanConfig,
   LeaseSignatureService,
+  PaymentGatewayService,
   PropertyCsvProcessor,
   PropertyStatsService,
   PropertyMediaService,
@@ -178,6 +179,7 @@ const ServiceResources = {
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   subscriptionPlanConfig: asValue(subscriptionPlanConfig),
   stripeService: asClass(StripeService).singleton(),
+  paymentGatewayService: asClass(PaymentGatewayService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
 };
 

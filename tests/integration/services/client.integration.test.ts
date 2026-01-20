@@ -409,7 +409,7 @@ describe('ClientService Integration Tests - Read Operations', () => {
   });
 
   describe('getClientDetails', () => {
-    it('should successfully retrieve client details with statistics', async () => {
+    it('should successfully retrieve client details with statistics for regular admin', async () => {
       const mockContext = {
         currentuser: {
           uid: seededData.users.admin1.uid,
@@ -436,6 +436,38 @@ describe('ClientService Integration Tests - Read Operations', () => {
       expect(result.data.cuid).toBe(seededData.clients.client1.cuid);
       expect(result.data.clientStats).toBeDefined();
       expect(result.data.clientStats.totalUsers).toBeGreaterThanOrEqual(0);
+      expect(result.data.subscription).toBeUndefined(); // Regular admin should NOT see subscription
+    });
+
+    it('should include subscription details for super-admin', async () => {
+      const mockContext = {
+        currentuser: {
+          uid: seededData.users.admin1.uid,
+          sub: seededData.users.admin1._id.toString(),
+          client: {
+            cuid: seededData.clients.client1.cuid,
+            role: ROLES.SUPER_ADMIN,
+          },
+        },
+        request: {
+          params: { cuid: seededData.clients.client1.cuid },
+          url: '/test',
+          method: 'GET',
+          path: '/client/details',
+          query: {},
+        },
+        requestId: 'req-123',
+      } as any;
+
+      const result = await clientService.getClientDetails(mockContext);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      expect(result.data.cuid).toBe(seededData.clients.client1.cuid);
+      expect(result.data.clientStats).toBeDefined();
+      expect(result.data.subscription).toBeDefined(); // Super-admin should see subscription
+      expect(result.data.subscription.planName).toBeDefined();
+      expect(result.data.subscription.status).toBeDefined();
     });
 
     it('should handle client not found', async () => {

@@ -3,15 +3,16 @@ import { t } from '@shared/languages';
 import ProfileDAO from '@dao/profileDAO';
 import { AuthCache } from '@caching/auth.cache';
 import { ClientValidations } from '@shared/validations';
-import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { getRequestDuration, createLogger } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
+import { SubscriptionDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { PopulatedAccountAdmin, IClientDocument, IClientStats } from '@interfaces/client.interface';
 
 interface IConstructor {
+  subscriptionDAO: SubscriptionDAO;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
@@ -26,14 +27,23 @@ export class ClientService {
   private readonly userDAO: UserDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly authCache: AuthCache;
+  private readonly subscriptionDAO: SubscriptionDAO;
 
-  constructor({ clientDAO, propertyDAO, userDAO, profileDAO, authCache }: IConstructor) {
+  constructor({
+    clientDAO,
+    propertyDAO,
+    userDAO,
+    profileDAO,
+    authCache,
+    subscriptionDAO,
+  }: IConstructor) {
     this.log = createLogger('ClientService');
     this.clientDAO = clientDAO;
     this.propertyDAO = propertyDAO;
     this.userDAO = userDAO;
     this.profileDAO = profileDAO;
     this.authCache = authCache;
+    this.subscriptionDAO = subscriptionDAO;
   }
 
   async updateClientDetails(
@@ -303,7 +313,10 @@ export class ClientService {
       throw new NotFoundError({ message: t('client.errors.detailsNotFound') });
     }
 
-    const clientWithStats = client.toObject() as { clientStats: IClientStats } & IClientDocument;
+    const clientWithStats = client.toObject() as {
+      clientStats: IClientStats;
+      subscription?: any;
+    } & IClientDocument;
     clientWithStats.clientStats = {
       totalProperties: propertiesResult,
       totalUsers: usersResult.pagination?.total || 0,
@@ -317,6 +330,15 @@ export class ClientService {
       phoneNumber: (client.accountAdmin as any)?.profile?.personalInfo?.phoneNumber || '',
       avatar: (client.accountAdmin as any)?.profile?.personalInfo?.avatar || '',
     } as unknown as PopulatedAccountAdmin;
+
+    // Include subscription details for super-admin only
+    const isSuperAdmin = currentuser.client?.role === 'super-admin';
+    if (isSuperAdmin) {
+      const subscription = await this.subscriptionDAO.findFirst({ cuid });
+      if (subscription) {
+        clientWithStats.subscription = subscription.toObject();
+      }
+    }
 
     return {
       data: clientWithStats,

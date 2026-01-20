@@ -109,6 +109,20 @@ export enum RequestSource {
   API = 'api',
 }
 export interface IRequestContext {
+  subscription?: {
+    plan: {
+      name: string;
+      status: string;
+      billingInterval: 'monthly' | 'annual';
+    };
+    features: Record<string, boolean>;
+    paymentFlow: {
+      requiresPayment: boolean;
+      reason: 'pending_signup' | 'expired' | 'grace_period' | null;
+      gracePeriodEndsAt: Date | null;
+      daysUntilDowngrade: number | null;
+    };
+  };
   userAgent: {
     browser?: string;
     version?: string;

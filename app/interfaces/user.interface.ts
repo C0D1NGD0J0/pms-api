@@ -30,6 +30,20 @@ export enum IUserRelationshipsEnum {
  * Authenticated user session data with all role-specific info
  */
 export interface ICurrentUser {
+  subscription?: {
+    plan: {
+      name: string;
+      status: string;
+      billingInterval: 'monthly' | 'annual';
+    };
+    features: Record<string, boolean>;
+    paymentFlow: {
+      requiresPayment: boolean;
+      reason: 'pending_signup' | 'expired' | 'grace_period' | null;
+      gracePeriodEndsAt: Date | null;
+      daysUntilDowngrade: number | null;
+    };
+  };
   client: {
     clientSettings?: any;
     cuid: string;

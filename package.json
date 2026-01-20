@@ -24,11 +24,7 @@
     "test:coverage": "cross-env NODE_ENV=test jest --coverage",
     "test:unit": "cross-env NODE_ENV=test jest --testPathPattern=\"tests/unit/${npm_config_path:-}\"",
     "test:integration": "cross-env NODE_ENV=test jest --config test.config.integration.ts",
-    "test:integration:watch": "cross-env NODE_ENV=test jest --config test.config.integration.ts --watch",
-    "seed:db": "ts-node -r tsconfig-paths/register scripts/seeds/seed-database.ts",
-    "seed:clean": "ts-node -r tsconfig-paths/register scripts/seeds/seed-database.ts --clean",
-    "migrate:add-subscriptions": "ts-node -r tsconfig-paths/register scripts/migrations/add-starter-subscriptions.ts",
-    "migrate:update-to-paid": "ts-node -r tsconfig-paths/register scripts/migrations/update-client-to-paid-plan.ts"
+    "test:integration:watch": "cross-env NODE_ENV=test jest --config test.config.integration.ts --watch"
   },
   "keywords": [
     "property-management-system",

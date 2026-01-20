@@ -1,5 +1,11 @@
 {
   "roles": {
+    "super-admin": {
+      "$extend": ["admin"],
+      "subscription": ["read:mine", "update:mine", "manage:mine"],
+      "billing": ["read:mine", "update:mine", "manage:mine"],
+      "payment": ["create:mine", "read:mine", "update:mine"]
+    },
     "admin": {
       "$extend": ["manager"],
       "property": ["create:any", "read:any", "update:any", "delete:any"],

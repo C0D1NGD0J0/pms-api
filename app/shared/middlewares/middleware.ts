@@ -362,7 +362,8 @@ export const subscriptionAccessControl = async (
     }
 
     const cuid = currentUser.client.cuid;
-    const result = await subscriptionService.getSubscriptionAccessControl(cuid);
+    const userRole = currentUser.client.role;
+    const result = await subscriptionService.getSubscriptionAccessControl(cuid, userRole);
     if (result.success && result.data) {
       req.context.subscription = result.data;
     }

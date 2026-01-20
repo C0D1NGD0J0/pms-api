@@ -137,6 +137,7 @@ random.ts
 .build/
 ./docs
 docs/
+scripts/
 *.md
 uploads/
 .vscode/*

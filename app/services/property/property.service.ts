@@ -12,7 +12,15 @@ import { NotificationService } from '@services/notification';
 import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
-import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import {
+  PropertyUnitDAO,
+  SubscriptionDAO,
+  PropertyDAO,
+  ProfileDAO,
+  ClientDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -51,6 +59,7 @@ import {
 import { PropertyStatsService } from './propertyStats.service';
 import { PropertyApprovalService } from './propertyApproval.service';
 import { PropertyValidationService } from './propertyValidation.service';
+import { subscriptionPlanConfig } from '../subscription/subscription_plans.config';
 import { generatePendingChangesPreview, validateOccupancyStatusChange } from './propertyHelpers';
 
 interface IConstructor {
@@ -62,6 +71,7 @@ interface IConstructor {
   emitterService: EventEmitterService;
   geoCoderService: GeoCoderService;
   propertyUnitDAO: PropertyUnitDAO;
+  subscriptionDAO: SubscriptionDAO;
   propertyCache: PropertyCache;
   queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
@@ -88,6 +98,7 @@ export class PropertyService {
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
   private readonly notificationService: NotificationService;
+  private readonly subscriptionDAO: SubscriptionDAO;
 
   constructor({
     clientDAO,
@@ -105,6 +116,7 @@ export class PropertyService {
     userDAO,
     leaseDAO,
     notificationService,
+    subscriptionDAO,
   }: IConstructor) {
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -122,6 +134,7 @@ export class PropertyService {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
     this.notificationService = notificationService;
+    this.subscriptionDAO = subscriptionDAO;
 
     this.setupEventListeners();
   }
@@ -402,8 +415,31 @@ export class PropertyService {
         : new Types.ObjectId(currentuser.sub); // last resort fallback
     }
 
+    // Get subscription and check limits
+    const subscription = await this.subscriptionDAO.findFirst({ cuid });
+    if (!subscription) {
+      throw new BadRequestError({ message: 'Subscription not found for client' });
+    }
+
+    const config = subscriptionPlanConfig.getConfig(subscription.planName);
+    const maxProperties = config.limits.maxProperties;
+
     const session = await this.propertyDAO.startSession();
-    const result = await this.propertyDAO.withTransaction(session, async (session) => {
+    const result = await this.propertyDAO.withTransaction(session, async (txSession) => {
+      // Atomically increment property count with limit check
+      const canAdd = await this.subscriptionDAO.updateResourceCount(
+        'property',
+        subscription.client,
+        maxProperties,
+        txSession
+      );
+
+      if (!canAdd) {
+        throw new BadRequestError({
+          message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties.`,
+        });
+      }
+
       const property = await this.propertyDAO.createProperty(
         {
           ...cleanPropertyData,
@@ -411,7 +447,7 @@ export class PropertyService {
           approvalStatus,
           approvalDetails,
         },
-        session
+        txSession
       );
 
       if (!property) {

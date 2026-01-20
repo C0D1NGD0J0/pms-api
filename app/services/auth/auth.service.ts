@@ -207,7 +207,7 @@ export class AuthService {
             {
               cuid: clientId,
               isConnected: true,
-              roles: [IUserRole.ADMIN],
+              roles: [IUserRole.SUPER_ADMIN],
               clientDisplayName: signupData.displayName,
             },
           ],

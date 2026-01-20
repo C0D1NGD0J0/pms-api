@@ -56,13 +56,27 @@ export interface ISubscriptionPlansConfig {
   name: string;
 }
 
-export interface ISubscriptionAccountAccess {
-  paymentFlow: {
-    requiresPayment: boolean;
-    reason: 'pending_signup' | 'expired' | 'grace_period' | null;
-    gracePeriodEndsAt: Date | null;
-    daysUntilDowngrade: number | null;
-  };
+export interface ISubscription {
+  billingInterval: 'monthly' | 'annual';
+  paymentGateway: IPaymentGateway;
+  additionalSeatsCount: number;
+  status: ISubscriptionStatus;
+  customPriceInCents?: number;
+  additionalSeatsCost: number;
+  totalMonthlyPrice: number;
+  currentProperties: number;
+  pendingDowngradeAt?: Date;
+  client: Types.ObjectId;
+  currentSeats: number;
+  currentUnits: number;
+  planName: PlanName;
+  canceledAt?: Date;
+  startDate: Date;
+  endDate: Date;
+  cuid: string;
+}
+
+export interface ISubscriptionPlanUsage {
   plan: {
     name: PlanName;
     status: ISubscriptionStatus;
@@ -85,27 +99,6 @@ export interface ISubscriptionAccountAccess {
     units: number;
     seats: number;
   };
-  features: Record<string, boolean>;
-}
-
-export interface ISubscription {
-  billingInterval: 'monthly' | 'annual';
-  paymentGateway: IPaymentGateway;
-  additionalSeatsCount: number;
-  status: ISubscriptionStatus;
-  customPriceInCents?: number;
-  additionalSeatsCost: number;
-  totalMonthlyPrice: number;
-  currentProperties: number;
-  pendingDowngradeAt?: Date;
-  client: Types.ObjectId;
-  currentSeats: number;
-  currentUnits: number;
-  planName: PlanName;
-  canceledAt?: Date;
-  startDate: Date;
-  endDate: Date;
-  cuid: string;
 }
 
 export type ISubscriptionPlanResponse = {
@@ -126,6 +119,21 @@ export type ISubscriptionPlanResponse = {
     };
   };
 } & Omit<ISubscriptionPlansConfig, 'pricing' | 'features'>;
+
+export interface ISubscriptionAccessControl {
+  paymentFlow: {
+    requiresPayment: boolean;
+    reason: 'pending_signup' | 'expired' | 'grace_period' | null;
+    gracePeriodEndsAt: Date | null;
+    daysUntilDowngrade: number | null;
+  };
+  plan: {
+    name: PlanName;
+    status: ISubscriptionStatus;
+    billingInterval: 'monthly' | 'annual';
+  };
+  features: Record<string, boolean>;
+}
 
 export interface IPaymentGateway {
   provider: IPaymentGatewayProvider;

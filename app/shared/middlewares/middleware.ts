@@ -9,10 +9,15 @@ import { NextFunction, Response, Request } from 'express';
 import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { LanguageService } from '@shared/languages/language.service';
 import { PermissionService } from '@services/permission/permission.service';
-import { EventEmitterService, AuthTokenService, DiskStorage } from '@services/index';
 import { InvalidRequestError, UnauthorizedError, ForbiddenError } from '@shared/customErrors';
 import { extractMulterFiles, generateShortUID, JWT_KEY_NAMES, createLogger } from '@utils/index';
 import { PermissionResource, PermissionAction, ICurrentUser, EventTypes } from '@interfaces/index';
+import {
+  EventEmitterService,
+  SubscriptionService,
+  AuthTokenService,
+  DiskStorage,
+} from '@services/index';
 import {
   RateLimitOptions,
   IPermissionCheck,
@@ -23,6 +28,7 @@ import {
 import { rateLimiterFactory } from './rateLimiterFactory';
 
 interface DIServices {
+  subscriptionService: SubscriptionService;
   permissionService: PermissionService;
   emitterService: EventEmitterService;
   tokenService: AuthTokenService;
@@ -330,6 +336,40 @@ export const setUserLanguage = async (req: Request, _res: Response, next: NextFu
     next();
   } catch (error) {
     console.error('Error in setUserLanguage middleware:', error);
+    next();
+  }
+};
+
+/**
+ * Attach lightweight subscription access control to request context
+ * Runs after isAuthenticated, provides feature flags and payment status
+ * All users (owner, staff, vendors, tenants) get the client's subscription
+ */
+export const subscriptionAccessControl = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+) => {
+  try {
+    const currentUser = req.context?.currentuser;
+    if (!currentUser || !currentUser.client?.cuid) {
+      return next(new UnauthorizedError({ message: 'Unauthorized action.' }));
+    }
+
+    const { subscriptionService }: DIServices = req.container.cradle;
+    if (!subscriptionService) {
+      return next(new UnauthorizedError({ message: 'Unauthorized action.' }));
+    }
+
+    const cuid = currentUser.client.cuid;
+    const result = await subscriptionService.getSubscriptionAccessControl(cuid);
+    if (result.success && result.data) {
+      req.context.subscription = result.data;
+    }
+
+    next();
+  } catch (error) {
+    console.error('Error in subscriptionAccessControl middleware:', error);
     next();
   }
 };

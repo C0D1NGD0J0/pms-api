@@ -2,14 +2,21 @@ import Stripe from 'stripe';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
+import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import {
+  ICreateCheckoutInput,
+  ICreateCustomerInput,
+  IPaymentProvider,
+  IPaymentCustomer,
+  ICheckoutSession,
+} from '@interfaces/paymentGateway.interface';
 
-export class StripeService {
+export class StripeService implements IPaymentProvider {
   private readonly log: Logger;
   private readonly stripe: Stripe;
 
   constructor() {
     this.log = createLogger('StripeService');
-
     if (!envVariables.STRIPE.SECRET_KEY) {
       throw new Error('STRIPE_SECRET_KEY is not defined in environment variables');
     }
@@ -17,8 +24,6 @@ export class StripeService {
       apiVersion: '2025-02-24.acacia',
       typescript: true,
     });
-
-    this.log.info('StripeService initialized');
   }
 
   async getProducts(): Promise<Stripe.Product[]> {
@@ -36,7 +41,6 @@ export class StripeService {
 
   /**
    * Get products with all price mappings (monthly and annual)
-   * This is the single source of truth for pricing
    */
   async getProductsWithPrices(): Promise<
     Map<
@@ -115,44 +119,38 @@ export class StripeService {
     }
   }
 
-  async createCheckoutSession(
-    lookUpKey: string,
-    clientId: string,
-    customerEmail: string,
-    successUrl: string,
-    cancelUrl: string
-  ): Promise<Stripe.Checkout.Session> {
+  async createCheckoutSession(data: ICreateCheckoutInput): Promise<ICheckoutSession> {
     try {
-      const prices = await this.stripe.prices.list({
-        lookup_keys: [lookUpKey],
-        expand: ['data.product'],
-      });
+      const { customerId, priceId, successUrl, cancelUrl, metadata } = data;
+
       const session = await this.stripe.checkout.sessions.create({
         mode: 'subscription',
+        customer: customerId,
         line_items: [
           {
-            price: prices.data[0].id,
+            price: priceId,
             quantity: 1,
           },
         ],
         success_url: successUrl,
         cancel_url: cancelUrl,
-        customer_email: customerEmail,
-        customer_creation: 'always', // Ensures customer is always created
-        metadata: {
-          clientId,
-        },
+        metadata,
         subscription_data: {
-          metadata: {
-            clientId,
-          },
+          metadata,
         },
       });
 
-      this.log.info({ sessionId: session.id, clientId }, 'Created checkout session');
-      return session;
+      this.log.info({ sessionId: session.id, customerId }, 'Created checkout session');
+
+      return {
+        sessionId: session.id,
+        redirectUrl: session.url || '',
+        customerId,
+        provider: IPaymentGatewayProvider.STRIPE,
+        metadata,
+      };
     } catch (error) {
-      this.log.error({ error, lookUpKey, clientId }, 'Error creating checkout session');
+      this.log.error({ error, data }, 'Error creating checkout session');
       throw error;
     }
   }
@@ -185,6 +183,17 @@ export class StripeService {
     }
   }
 
+  async cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
+    try {
+      const result = await this.stripe.subscriptions.cancel(subscriptionId);
+      this.log.info({ subscriptionId }, 'Canceled Stripe subscription');
+      return result;
+    } catch (error) {
+      this.log.error({ error, subscriptionId }, 'Error canceling Stripe subscription');
+      throw error;
+    }
+  }
+
   async getCustomer(customerId: string): Promise<Stripe.Customer> {
     try {
       const customer = await this.stripe.customers.retrieve(customerId);
@@ -195,22 +204,44 @@ export class StripeService {
     }
   }
 
-  async createCustomer(
-    email: string,
-    name: string,
-    metadata?: Record<string, string>
-  ): Promise<Stripe.Customer> {
+  async createCustomer(data: ICreateCustomerInput): Promise<IPaymentCustomer> {
     try {
+      const { email, metadata } = data;
+
       const customer = await this.stripe.customers.create({
         email,
-        name,
         metadata,
       });
 
       this.log.info({ customerId: customer.id, email }, 'Created Stripe customer');
-      return customer;
+
+      return {
+        customerId: customer.id,
+        email: customer.email || email,
+        provider: IPaymentGatewayProvider.STRIPE,
+        metadata,
+        createdAt: new Date(customer.created * 1000),
+      };
     } catch (error) {
-      this.log.error({ error, email }, 'Error creating Stripe customer');
+      this.log.error({ error, email: data.email }, 'Error creating Stripe customer');
+      throw error;
+    }
+  }
+
+  async verifyWebhookSignature(payload: string | Buffer, signature: string): Promise<any> {
+    try {
+      const webhookSecret = envVariables.STRIPE.WEBHOOK_SECRET;
+
+      if (!webhookSecret) {
+        throw new Error('STRIPE_WEBHOOK_SECRET is not configured');
+      }
+
+      const event = this.stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+      this.log.info({ eventType: event.type, eventId: event.id }, 'Webhook verified');
+
+      return event;
+    } catch (error) {
+      this.log.error({ error }, 'Error verifying webhook signature');
       throw error;
     }
   }

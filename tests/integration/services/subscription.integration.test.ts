@@ -316,4 +316,258 @@ describe('SubscriptionService Integration Tests', () => {
       expect(subscription.billingInterval).toBe('annual');
     });
   });
+
+  describe('Subscription Access Control (Lightweight)', () => {
+    it('should return access control for active subscription', async () => {
+      const client = new Types.ObjectId();
+      await Subscription.create({
+        cuid: 'client-active',
+        suid: 'suid-active',
+        client,
+        planName: 'personal',
+        status: 'active',
+        paymentGateway: {
+          customerId: 'cus_123',
+          provider: 'stripe',
+          planId: 'price_personal',
+        },
+        totalMonthlyPrice: 6500,
+        billingInterval: 'monthly',
+        currentSeats: 3,
+        currentProperties: 5,
+        currentUnits: 20,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+      });
+
+      const result = await subscriptionService.getSubscriptionAccessControl('client-active');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      expect(result.data?.plan.name).toBe('personal');
+      expect(result.data?.plan.status).toBe('active');
+      expect(result.data?.plan.billingInterval).toBe('monthly');
+      expect(result.data?.features).toBeDefined();
+      expect(result.data?.features.eSignature).toBe(true);
+      expect(result.data?.paymentFlow.requiresPayment).toBe(false);
+      expect(result.data?.paymentFlow.reason).toBeNull();
+    });
+
+    it('should return requiresPayment=true for pending_payment status', async () => {
+      const client = new Types.ObjectId();
+      const pendingDowngradeAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+      await Subscription.create({
+        cuid: 'client-pending',
+        suid: 'suid-pending',
+        client,
+        planName: 'professional',
+        status: 'pending_payment',
+        paymentGateway: {
+          customerId: '',
+          provider: 'stripe',
+          planId: 'price_professional',
+        },
+        totalMonthlyPrice: 9900,
+        billingInterval: 'monthly',
+        currentSeats: 1,
+        currentProperties: 0,
+        currentUnits: 0,
+        startDate: new Date(),
+        endDate: undefined,
+        pendingDowngradeAt,
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+      });
+
+      const result = await subscriptionService.getSubscriptionAccessControl('client-pending');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.paymentFlow.requiresPayment).toBe(true);
+      expect(result.data?.paymentFlow.reason).toBe('pending_signup');
+      expect(result.data?.paymentFlow.daysUntilDowngrade).toBe(2);
+    });
+
+    it('should return grace_period reason when < 24 hours until downgrade', async () => {
+      const client = new Types.ObjectId();
+      const pendingDowngradeAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+
+      await Subscription.create({
+        cuid: 'client-grace',
+        suid: 'suid-grace',
+        client,
+        planName: 'personal',
+        status: 'pending_payment',
+        paymentGateway: {
+          customerId: '',
+          provider: 'stripe',
+          planId: 'price_personal',
+        },
+        totalMonthlyPrice: 6500,
+        billingInterval: 'monthly',
+        currentSeats: 1,
+        currentProperties: 0,
+        currentUnits: 0,
+        startDate: new Date(),
+        endDate: undefined,
+        pendingDowngradeAt,
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+      });
+
+      const result = await subscriptionService.getSubscriptionAccessControl('client-grace');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.paymentFlow.requiresPayment).toBe(true);
+      expect(result.data?.paymentFlow.reason).toBe('grace_period');
+      expect(result.data?.paymentFlow.daysUntilDowngrade).toBeLessThanOrEqual(1);
+    });
+
+    it('should return expired reason when endDate has passed', async () => {
+      const client = new Types.ObjectId();
+      const expiredDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+
+      await Subscription.create({
+        cuid: 'client-expired',
+        suid: 'suid-expired',
+        client,
+        planName: 'personal',
+        status: 'active',
+        paymentGateway: {
+          customerId: 'cus_expired',
+          provider: 'stripe',
+          planId: 'price_personal',
+        },
+        totalMonthlyPrice: 6500,
+        billingInterval: 'monthly',
+        currentSeats: 5,
+        currentProperties: 10,
+        currentUnits: 50,
+        startDate: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000),
+        endDate: expiredDate,
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+      });
+
+      const result = await subscriptionService.getSubscriptionAccessControl('client-expired');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.paymentFlow.requiresPayment).toBe(true);
+      expect(result.data?.paymentFlow.reason).toBe('expired');
+    });
+
+    it('should not require payment for free starter plan', async () => {
+      const client = new Types.ObjectId();
+
+      await Subscription.create({
+        cuid: 'client-starter',
+        suid: 'suid-starter',
+        client,
+        planName: 'starter',
+        status: 'active',
+        paymentGateway: {
+          customerId: 'none',
+          provider: 'none',
+          planId: 'plan_starter',
+        },
+        totalMonthlyPrice: 0,
+        billingInterval: 'monthly',
+        currentSeats: 1,
+        currentProperties: 2,
+        currentUnits: 5,
+        startDate: new Date(),
+        endDate: undefined,
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+      });
+
+      const result = await subscriptionService.getSubscriptionAccessControl('client-starter');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.plan.name).toBe('starter');
+      expect(result.data?.paymentFlow.requiresPayment).toBe(false);
+    });
+  });
+
+  describe('Subscription Plan Usage (Detailed)', () => {
+    it('should return plan usage with limits and counts', async () => {
+      const client = new Types.ObjectId();
+      await Subscription.create({
+        cuid: 'client-usage',
+        suid: 'suid-usage',
+        client,
+        planName: 'personal',
+        status: 'active',
+        paymentGateway: {
+          customerId: 'cus_usage',
+          provider: 'stripe',
+          planId: 'price_personal',
+        },
+        totalMonthlyPrice: 6500,
+        billingInterval: 'monthly',
+        currentSeats: 3,
+        currentProperties: 5,
+        currentUnits: 20,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+      });
+
+      const ctx = {
+        request: { params: { cuid: 'client-usage' } },
+      } as any;
+
+      const result = await subscriptionService.getSubscriptionPlanUsage(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data?.plan.name).toBe('personal');
+      expect(result.data?.usage.properties).toBe(5);
+      expect(result.data?.usage.units).toBe(20);
+      expect(result.data?.usage.seats).toBe(3);
+      expect(result.data?.limits.properties).toBe(15);
+      expect(result.data?.limits.units).toBe(100);
+      expect(result.data?.isLimitReached.properties).toBe(false);
+      expect(result.data?.isLimitReached.units).toBe(false);
+      expect(result.data?.isLimitReached.seats).toBe(false);
+    });
+
+    it('should correctly identify when limits are reached', async () => {
+      const client = new Types.ObjectId();
+      await Subscription.create({
+        cuid: 'client-limits',
+        suid: 'suid-limits',
+        client,
+        planName: 'personal',
+        status: 'active',
+        paymentGateway: {
+          customerId: 'cus_limits',
+          provider: 'stripe',
+          planId: 'price_personal',
+        },
+        totalMonthlyPrice: 6500,
+        billingInterval: 'monthly',
+        currentSeats: 10,
+        currentProperties: 15,
+        currentUnits: 100,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        additionalSeatsCount: 5,
+        additionalSeatsCost: 2500,
+      });
+
+      const ctx = {
+        request: { params: { cuid: 'client-limits' } },
+      } as any;
+
+      const result = await subscriptionService.getSubscriptionPlanUsage(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data?.isLimitReached.properties).toBe(true);
+      expect(result.data?.isLimitReached.units).toBe(true);
+      expect(result.data?.isLimitReached.seats).toBe(true);
+    });
+  });
 });

@@ -17,7 +17,7 @@ router.get(
 );
 
 router.get(
-  '/plan-usage',
+  '/:cuid/plan-usage',
   isAuthenticated,
   subscriptionAccessControl,
   asyncWrapper((req, res) => {

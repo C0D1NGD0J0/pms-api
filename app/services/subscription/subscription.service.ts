@@ -355,7 +355,8 @@ export class SubscriptionService {
   }
 
   async getSubscriptionAccessControl(
-    cuid: string
+    cuid: string,
+    userRole?: string
   ): IPromiseReturnedData<ISubscriptionAccessControl | null> {
     try {
       const subscription = await this.subscriptionDAO.findFirst({
@@ -373,7 +374,9 @@ export class SubscriptionService {
       let gracePeriodEndsAt: Date | null = null;
       let daysUntilDowngrade: number | null = null;
 
-      if (subscription.status === ISubscriptionStatus.PENDING_PAYMENT) {
+      const isSuperAdmin = userRole === 'super-admin';
+
+      if (isSuperAdmin && subscription.status === ISubscriptionStatus.PENDING_PAYMENT) {
         requiresPayment = true;
         reason = 'pending_signup';
         gracePeriodEndsAt = subscription.pendingDowngradeAt || null;
@@ -389,6 +392,7 @@ export class SubscriptionService {
       }
 
       if (
+        isSuperAdmin &&
         subscription.status === ISubscriptionStatus.ACTIVE &&
         subscription.endDate &&
         subscription.endDate < now &&

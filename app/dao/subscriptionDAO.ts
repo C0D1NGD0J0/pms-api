@@ -247,6 +247,43 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
   }
 
   /**
+   * Atomically increment resource count with limit check (prevents race conditions)
+   * @param resourceName - The resource type ('property' or 'propertyUnit')
+   * @param clientId - The client ID
+   * @param maxLimit - The maximum allowed count for this resource
+   * @param session - Optional MongoDB session for transactions
+   * @returns true if successful, false if limit reached
+   */
+  async updateResourceCount(
+    resourceName: 'property' | 'propertyUnit',
+    clientId: string | Types.ObjectId,
+    maxLimit: number,
+    session?: any
+  ): Promise<boolean> {
+    try {
+      const fieldName = resourceName === 'property' ? 'currentProperties' : 'currentUnits';
+
+      const result = await this.update(
+        {
+          client: new Types.ObjectId(clientId),
+          [fieldName]: { $lt: maxLimit },
+        },
+        { $inc: { [fieldName]: 1 } },
+        { new: true },
+        session
+      );
+
+      return result !== null;
+    } catch (error) {
+      this.logger.error(
+        { error, resourceName, clientId, maxLimit },
+        'Error updating resource count'
+      );
+      this.throwErrorHandler(error);
+    }
+  }
+
+  /**
    * Update unit count (increment or decrement)
    */
   async updateUnitCount(

@@ -342,7 +342,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionAccessControl('client-active');
+      const result = await subscriptionService.getSubscriptionAccessControl('client-active', 'super-admin');
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
@@ -355,7 +355,7 @@ describe('SubscriptionService Integration Tests', () => {
       expect(result.data?.paymentFlow.reason).toBeNull();
     });
 
-    it('should return requiresPayment=true for pending_payment status', async () => {
+    it('should return requiresPayment=true for super-admin with pending_payment status', async () => {
       const client = new Types.ObjectId();
       const pendingDowngradeAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
@@ -382,7 +382,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionAccessControl('client-pending');
+      const result = await subscriptionService.getSubscriptionAccessControl('client-pending', 'super-admin');
 
       expect(result.success).toBe(true);
       expect(result.data?.paymentFlow.requiresPayment).toBe(true);
@@ -390,7 +390,41 @@ describe('SubscriptionService Integration Tests', () => {
       expect(result.data?.paymentFlow.daysUntilDowngrade).toBe(2);
     });
 
-    it('should return grace_period reason when < 24 hours until downgrade', async () => {
+    it('should NOT show payment requirements for regular admin', async () => {
+      const client = new Types.ObjectId();
+      const pendingDowngradeAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+      await Subscription.create({
+        cuid: 'client-admin',
+        suid: 'suid-admin',
+        client,
+        planName: 'professional',
+        status: 'pending_payment',
+        paymentGateway: {
+          customerId: '',
+          provider: 'stripe',
+          planId: 'price_professional',
+        },
+        totalMonthlyPrice: 9900,
+        billingInterval: 'monthly',
+        currentSeats: 1,
+        currentProperties: 0,
+        currentUnits: 0,
+        startDate: new Date(),
+        endDate: undefined,
+        pendingDowngradeAt,
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+      });
+
+      const result = await subscriptionService.getSubscriptionAccessControl('client-admin', 'admin');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.paymentFlow.requiresPayment).toBe(false); // Regular admin should NOT see payment requirements
+      expect(result.data?.paymentFlow.reason).toBeNull();
+    });
+
+    it('should return grace_period reason for super-admin when < 24 hours until downgrade', async () => {
       const client = new Types.ObjectId();
       const pendingDowngradeAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
 
@@ -417,7 +451,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionAccessControl('client-grace');
+      const result = await subscriptionService.getSubscriptionAccessControl('client-grace', 'super-admin');
 
       expect(result.success).toBe(true);
       expect(result.data?.paymentFlow.requiresPayment).toBe(true);
@@ -425,7 +459,7 @@ describe('SubscriptionService Integration Tests', () => {
       expect(result.data?.paymentFlow.daysUntilDowngrade).toBeLessThanOrEqual(1);
     });
 
-    it('should return expired reason when endDate has passed', async () => {
+    it('should return expired reason for super-admin when endDate has passed', async () => {
       const client = new Types.ObjectId();
       const expiredDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
 
@@ -451,7 +485,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionAccessControl('client-expired');
+      const result = await subscriptionService.getSubscriptionAccessControl('client-expired', 'super-admin');
 
       expect(result.success).toBe(true);
       expect(result.data?.paymentFlow.requiresPayment).toBe(true);
@@ -483,7 +517,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionAccessControl('client-starter');
+      const result = await subscriptionService.getSubscriptionAccessControl('client-starter', 'super-admin');
 
       expect(result.success).toBe(true);
       expect(result.data?.plan.name).toBe('starter');

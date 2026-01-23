@@ -1,5 +1,6 @@
 export * from './NotificationValidation';
 export * from './PropertyUnitValidation';
+export * from './SubscriptionValidation';
 export * from './InvitationValidation';
 export * from './PropertyValidation';
 export * from './ProfileValidation';

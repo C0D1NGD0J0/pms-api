@@ -28,7 +28,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
     await Subscription.create({
       client: testClientId,
       cuid: 'TEST_CLIENT',
-      planName: 'starter',
+      planName: 'growth',
       status: 'active',
       currentProperties: 2,
       currentUnits: 5,

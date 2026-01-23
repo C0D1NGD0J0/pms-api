@@ -16,9 +16,9 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     client: { type: Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
     planName: {
       type: String,
-      enum: ['personal', 'starter', 'professional'],
+      enum: ['essential', 'growth', 'portfolio'],
       required: true,
-      default: 'personal',
+      default: 'essential',
       index: true,
     },
     status: {
@@ -34,7 +34,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       required: false,
       validate: {
         validator: function (this: ISubscriptionDocument, value: Date | undefined) {
-          if (this.planName === 'starter') return true;
+          if (this.planName === 'essential') return true;
 
           // paid plans with active status must have endDate
           if (this.status === 'active') {

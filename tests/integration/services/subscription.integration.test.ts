@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { Subscription } from '@models/index';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
+import { BadRequestError } from '@shared/customErrors';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import {
   disconnectTestDatabase,
@@ -22,16 +23,29 @@ describe('SubscriptionService Integration Tests', () => {
     mockStripeService = {
       getProductsWithPrices: jest.fn().mockResolvedValue(
         new Map([
-          ['professional', { priceId: 'price_professional', amount: 9900 }],
-          ['starter', { priceId: 'price_starter', amount: 2900 }],
-          ['personal', { priceId: 'price_personal', amount: 0 }],
+          ['portfolio', {
+            monthly: { priceId: 'price_portfolio_monthly', amount: 9900 },
+            annual: { priceId: 'price_portfolio_annual', amount: 7920 }
+          }],
+          ['essential', {
+            monthly: { priceId: 'price_essential_monthly', amount: 0 },
+            annual: { priceId: 'price_essential_annual', amount: 0 }
+          }],
+          ['growth', {
+            monthly: { priceId: 'price_growth_monthly', amount: 2900 },
+            annual: { priceId: 'price_growth_annual', amount: 2320 }
+          }],
         ])
       ),
       getProductPrice: jest.fn().mockImplementation((priceId: string) => {
         if (priceId.includes('annual')) {
-          return Promise.resolve({ unit_amount: 34800 }); // Annual pricing
+          return Promise.resolve({ unit_amount: 34800 });
         }
-        return Promise.resolve({ unit_amount: 6500 }); // Monthly pricing
+        return Promise.resolve({ unit_amount: 6500 });
+      }),
+      createCheckoutSession: jest.fn().mockResolvedValue({
+        sessionId: 'cs_test_123',
+        checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_123',
       }),
     };
 
@@ -57,23 +71,23 @@ describe('SubscriptionService Integration Tests', () => {
       expect(result.success).toBe(true);
       expect(result.data).toHaveLength(3);
 
-      const personalPlan = result.data.find((p) => p.planName === 'personal');
+      const personalPlan = result.data.find((p) => p.planName === 'essential');
       expect(personalPlan).toBeDefined();
       expect(personalPlan?.pricing.monthly.priceInCents).toBe(0);
       expect(personalPlan?.pricing.monthly.displayPrice).toBe('$0');
 
-      const starterPlan = result.data.find((p) => p.planName === 'starter');
-      expect(starterPlan).toBeDefined();
-      expect(starterPlan?.pricing.monthly.priceInCents).toBe(2900);
-      expect(starterPlan?.pricing.monthly.displayPrice).toBe('$29');
+      const growthPlan = result.data.find((p) => p.planName === 'growth');
+      expect(growthPlan).toBeDefined();
+      expect(growthPlan?.pricing.monthly.priceInCents).toBe(2900);
+      expect(growthPlan?.pricing.monthly.displayPrice).toBe('$29');
     });
 
     it('should calculate annual pricing with 20% discount', async () => {
       const result = await subscriptionService.getSubscriptionPlans();
 
-      const starterPlan = result.data.find((p) => p.planName === 'starter');
-      expect(starterPlan?.pricing.annual.priceInCents).toBe(2320); // 2900 * 0.8
-      expect(starterPlan?.pricing.annual.savings).toBe(20);
+      const growthPlan = result.data.find((p) => p.planName === 'growth');
+      expect(growthPlan?.pricing.annual.priceInCents).toBe(2320);
+      expect(growthPlan?.pricing.annual.savingsPercent).toBe(20);
     });
 
     it('should fallback to config prices when Stripe fails', async () => {
@@ -87,22 +101,22 @@ describe('SubscriptionService Integration Tests', () => {
       expect(result.data).toHaveLength(3);
 
       // Should still return plans with config prices
-      const starterPlan = result.data.find((p) => p.planName === 'starter');
-      expect(starterPlan).toBeDefined();
-      expect(starterPlan?.pricing.monthly.priceInCents).toBe(2900); // From config
+      const growthPlan = result.data.find((p) => p.planName === 'growth');
+      expect(growthPlan).toBeDefined();
+      expect(growthPlan?.pricing.monthly.priceInCents).toBe(2900);
     });
 
     it('should include plan metadata and features', async () => {
       const result = await subscriptionService.getSubscriptionPlans();
 
-      const starterPlan = result.data.find((p) => p.planName === 'starter');
-      expect(starterPlan?.name).toBe('Starter');
-      expect(starterPlan?.description).toBe('For growing property managers');
-      expect(starterPlan?.isFeatured).toBe(true);
-      expect(starterPlan?.featuredBadge).toBe('Most Popular');
-      expect(starterPlan?.limits.maxProperties).toBe(15);
-      expect(starterPlan?.seatPricing.includedSeats).toBe(10);
-      expect(starterPlan?.featureList).toContain('Up to 15 properties');
+      const growthPlan = result.data.find((p) => p.planName === 'growth');
+      expect(growthPlan?.name).toBe('Growth');
+      expect(growthPlan?.description).toBe('For growing property managers');
+      expect(growthPlan?.isFeatured).toBe(true);
+      expect(growthPlan?.featuredBadge).toBe('Most Popular');
+      expect(growthPlan?.limits.maxProperties).toBe(15);
+      expect(growthPlan?.seatPricing.includedSeats).toBe(10);
+      expect(growthPlan?.featureList).toContain('Up to 15 properties');
     });
   });
 
@@ -114,10 +128,10 @@ describe('SubscriptionService Integration Tests', () => {
         cuid: 'test-cuid',
         suid: 'test-suid',
         client: clientId,
-        planName: 'personal',
+        planName: 'essential',
         status: 'active',
         paymentGateway: {
-          id: 'none',
+          customerId: 'none',
           provider: 'none',
           planId: 'none',
         },
@@ -132,12 +146,12 @@ describe('SubscriptionService Integration Tests', () => {
       });
 
       expect(subscription._id).toBeDefined();
-      expect(subscription.planName).toBe('personal');
+      expect(subscription.planName).toBe('essential');
 
       // Verify it's in the database
       const found = await Subscription.findById(subscription._id);
       expect(found).not.toBeNull();
-      expect(found?.planName).toBe('personal');
+      expect(found?.planName).toBe('essential');
     });
 
     it('should update seat count using DAO', async () => {
@@ -147,10 +161,10 @@ describe('SubscriptionService Integration Tests', () => {
         cuid: 'test-cuid-2',
         suid: 'test-suid-2',
         client: clientId,
-        planName: 'starter',
+        planName: 'growth',
         status: 'active',
         paymentGateway: {
-          id: 'cus_stripe123',
+          customerId: 'cus_stripe123',
           provider: 'stripe',
           planId: 'price_starter',
         },
@@ -178,10 +192,10 @@ describe('SubscriptionService Integration Tests', () => {
         cuid: 'test-cuid-3',
         suid: 'test-suid-3',
         client: clientId,
-        planName: 'starter',
+        planName: 'growth',
         status: 'active',
         paymentGateway: {
-          id: 'cus_stripe456',
+          customerId: 'cus_stripe456',
           provider: 'stripe',
           planId: 'price_starter',
         },
@@ -210,15 +224,15 @@ describe('SubscriptionService Integration Tests', () => {
   });
 
   describe('Subscription Date and Pricing Logic', () => {
-    it('should create free starter subscription with undefined endDate', async () => {
+    it('should create free essential subscription with undefined endDate', async () => {
       const subscription = await Subscription.create({
         cuid: 'test-free',
         suid: 'suid-free',
         client: new Types.ObjectId(),
-        planName: 'starter',
+        planName: 'growth',
         status: 'active',
         paymentGateway: {
-          id: 'none',
+          customerId: 'none',
           provider: 'none',
           planId: 'plan_starter',
         },
@@ -233,7 +247,7 @@ describe('SubscriptionService Integration Tests', () => {
       });
 
       expect(subscription.endDate).toBeUndefined();
-      expect(subscription.planName).toBe('starter');
+      expect(subscription.planName).toBe('growth');
     });
 
     it('should require endDate for active paid subscription', async () => {
@@ -242,14 +256,14 @@ describe('SubscriptionService Integration Tests', () => {
           cuid: 'test-paid',
           suid: 'suid-paid',
           client: new Types.ObjectId(),
-          planName: 'personal',
+          planName: 'growth',
           status: 'active',
           paymentGateway: {
-            id: 'cus_123',
+            customerId: 'cus_123',
             provider: 'stripe',
-            planId: 'price_personal',
+            planId: 'price_growth',
           },
-          totalMonthlyPrice: 6500,
+          totalMonthlyPrice: 2900,
           currentSeats: 5,
           startDate: new Date(),
           endDate: undefined,
@@ -266,12 +280,12 @@ describe('SubscriptionService Integration Tests', () => {
         cuid: 'test-pending',
         suid: 'suid-pending',
         client: new Types.ObjectId(),
-        planName: 'personal',
+        planName: 'essential',
         status: 'pending_payment',
         paymentGateway: {
-          id: 'none',
+          customerId: 'none',
           provider: 'stripe',
-          planId: 'price_personal',
+          planId: 'price_basic',
         },
         totalMonthlyPrice: 6500,
         currentSeats: 5,
@@ -294,10 +308,10 @@ describe('SubscriptionService Integration Tests', () => {
         cuid: 'test-annual',
         suid: 'suid-annual',
         client: new Types.ObjectId(),
-        planName: 'personal',
+        planName: 'essential',
         status: 'pending_payment',
         paymentGateway: {
-          id: 'none',
+          customerId: 'none',
           provider: 'stripe',
           planId: 'price_annual_123',
         },
@@ -324,12 +338,12 @@ describe('SubscriptionService Integration Tests', () => {
         cuid: 'client-active',
         suid: 'suid-active',
         client,
-        planName: 'personal',
+        planName: 'essential',
         status: 'active',
         paymentGateway: {
           customerId: 'cus_123',
           provider: 'stripe',
-          planId: 'price_personal',
+          planId: 'price_basic',
         },
         totalMonthlyPrice: 6500,
         billingInterval: 'monthly',
@@ -346,7 +360,7 @@ describe('SubscriptionService Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
-      expect(result.data?.plan.name).toBe('personal');
+      expect(result.data?.plan.name).toBe('essential');
       expect(result.data?.plan.status).toBe('active');
       expect(result.data?.plan.billingInterval).toBe('monthly');
       expect(result.data?.features).toBeDefined();
@@ -363,7 +377,7 @@ describe('SubscriptionService Integration Tests', () => {
         cuid: 'client-pending',
         suid: 'suid-pending',
         client,
-        planName: 'professional',
+        planName: 'portfolio',
         status: 'pending_payment',
         paymentGateway: {
           customerId: '',
@@ -398,7 +412,7 @@ describe('SubscriptionService Integration Tests', () => {
         cuid: 'client-admin',
         suid: 'suid-admin',
         client,
-        planName: 'professional',
+        planName: 'portfolio',
         status: 'pending_payment',
         paymentGateway: {
           customerId: '',
@@ -432,12 +446,12 @@ describe('SubscriptionService Integration Tests', () => {
         cuid: 'client-grace',
         suid: 'suid-grace',
         client,
-        planName: 'personal',
+        planName: 'essential',
         status: 'pending_payment',
         paymentGateway: {
           customerId: '',
           provider: 'stripe',
-          planId: 'price_personal',
+          planId: 'price_basic',
         },
         totalMonthlyPrice: 6500,
         billingInterval: 'monthly',
@@ -467,12 +481,12 @@ describe('SubscriptionService Integration Tests', () => {
         cuid: 'client-expired',
         suid: 'suid-expired',
         client,
-        planName: 'personal',
+        planName: 'essential',
         status: 'active',
         paymentGateway: {
           customerId: 'cus_expired',
           provider: 'stripe',
-          planId: 'price_personal',
+          planId: 'price_basic',
         },
         totalMonthlyPrice: 6500,
         billingInterval: 'monthly',
@@ -492,14 +506,14 @@ describe('SubscriptionService Integration Tests', () => {
       expect(result.data?.paymentFlow.reason).toBe('expired');
     });
 
-    it('should not require payment for free starter plan', async () => {
+    it('should not require payment for free essential plan', async () => {
       const client = new Types.ObjectId();
 
       await Subscription.create({
         cuid: 'client-starter',
         suid: 'suid-starter',
         client,
-        planName: 'starter',
+        planName: 'growth',
         status: 'active',
         paymentGateway: {
           customerId: 'none',
@@ -520,7 +534,7 @@ describe('SubscriptionService Integration Tests', () => {
       const result = await subscriptionService.getSubscriptionAccessControl('client-starter', 'super-admin');
 
       expect(result.success).toBe(true);
-      expect(result.data?.plan.name).toBe('starter');
+      expect(result.data?.plan.name).toBe('growth');
       expect(result.data?.paymentFlow.requiresPayment).toBe(false);
     });
   });
@@ -532,12 +546,12 @@ describe('SubscriptionService Integration Tests', () => {
         cuid: 'client-usage',
         suid: 'suid-usage',
         client,
-        planName: 'personal',
+        planName: 'essential',
         status: 'active',
         paymentGateway: {
           customerId: 'cus_usage',
           provider: 'stripe',
-          planId: 'price_personal',
+          planId: 'price_basic',
         },
         totalMonthlyPrice: 6500,
         billingInterval: 'monthly',
@@ -557,7 +571,7 @@ describe('SubscriptionService Integration Tests', () => {
       const result = await subscriptionService.getSubscriptionPlanUsage(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data?.plan.name).toBe('personal');
+      expect(result.data?.plan.name).toBe('essential');
       expect(result.data?.usage.properties).toBe(5);
       expect(result.data?.usage.units).toBe(20);
       expect(result.data?.usage.seats).toBe(3);
@@ -574,12 +588,12 @@ describe('SubscriptionService Integration Tests', () => {
         cuid: 'client-limits',
         suid: 'suid-limits',
         client,
-        planName: 'personal',
+        planName: 'essential',
         status: 'active',
         paymentGateway: {
           customerId: 'cus_limits',
           provider: 'stripe',
-          planId: 'price_personal',
+          planId: 'price_basic',
         },
         totalMonthlyPrice: 6500,
         billingInterval: 'monthly',
@@ -602,6 +616,168 @@ describe('SubscriptionService Integration Tests', () => {
       expect(result.data?.isLimitReached.properties).toBe(true);
       expect(result.data?.isLimitReached.units).toBe(true);
       expect(result.data?.isLimitReached.seats).toBe(true);
+    });
+  });
+
+  describe('initSubscriptionPayment', () => {
+    it('should create checkout session for pending_payment subscription', async () => {
+      const client = new Types.ObjectId();
+      const subscription = await Subscription.create({
+        cuid: 'client-payment',
+        suid: 'suid-payment',
+        client,
+        planName: 'portfolio',
+        status: 'pending_payment',
+        paymentGateway: {
+          customerId: '',
+          provider: 'stripe',
+          planId: 'price_professional_monthly',
+        },
+        totalMonthlyPrice: 9900,
+        billingInterval: 'monthly',
+        currentSeats: 1,
+        currentProperties: 0,
+        currentUnits: 0,
+        startDate: new Date(),
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+      });
+
+      const ctx = {
+        currentuser: {
+          sub: new Types.ObjectId().toString(),
+          email: 'owner@example.com',
+          client: {
+            cuid: 'client-payment',
+            role: 'super-admin',
+          },
+        },
+      } as any;
+
+      const result = await subscriptionService.initSubscriptionPayment(ctx, {
+        successUrl: 'https://app.example.com/success',
+        cancelUrl: 'https://app.example.com/cancel',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data?.sessionId).toBe('cs_test_123');
+      expect(result.data?.checkoutUrl).toBe('https://checkout.stripe.com/c/pay/cs_test_123');
+      expect(mockStripeService.createCheckoutSession).toHaveBeenCalledWith({
+        subscriptionId: subscription._id.toString(),
+        email: 'owner@example.com',
+        priceId: 'price_professional_monthly',
+        successUrl: 'https://app.example.com/success',
+        cancelUrl: 'https://app.example.com/cancel',
+      });
+    });
+
+    it('should use annual price for annual billing interval', async () => {
+      const client = new Types.ObjectId();
+      const _subscription = await Subscription.create({
+        cuid: 'client-annual',
+        suid: 'suid-annual',
+        client,
+        planName: 'portfolio',
+        status: 'pending_payment',
+        paymentGateway: {
+          customerId: '',
+          provider: 'stripe',
+          planId: 'price_professional_annual',
+        },
+        totalMonthlyPrice: 9900,
+        billingInterval: 'annual',
+        currentSeats: 1,
+        currentProperties: 0,
+        currentUnits: 0,
+        startDate: new Date(),
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+      });
+
+      const ctx = {
+        currentuser: {
+          sub: new Types.ObjectId().toString(),
+          email: 'owner@example.com',
+          client: {
+            cuid: 'client-annual',
+            role: 'super-admin',
+          },
+        },
+      } as any;
+
+      await subscriptionService.initSubscriptionPayment(ctx, {
+        successUrl: 'https://app.example.com/success',
+        cancelUrl: 'https://app.example.com/cancel',
+      });
+
+      expect(mockStripeService.createCheckoutSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          priceId: 'price_professional_annual',
+        })
+      );
+    });
+
+    it('should throw error when subscription is not in pending_payment status', async () => {
+      const client = new Types.ObjectId();
+      await Subscription.create({
+        cuid: 'client-active',
+        suid: 'suid-active',
+        client,
+        planName: 'portfolio',
+        status: 'active',
+        paymentGateway: {
+          customerId: 'cus_123',
+          provider: 'stripe',
+          planId: 'price_professional_monthly',
+        },
+        totalMonthlyPrice: 9900,
+        billingInterval: 'monthly',
+        currentSeats: 1,
+        currentProperties: 0,
+        currentUnits: 0,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+      });
+
+      const ctx = {
+        currentuser: {
+          sub: new Types.ObjectId().toString(),
+          email: 'owner@example.com',
+          client: {
+            cuid: 'client-active',
+            role: 'super-admin',
+          },
+        },
+      } as any;
+
+      await expect(
+        subscriptionService.initSubscriptionPayment(ctx, {
+          successUrl: 'https://app.example.com/success',
+          cancelUrl: 'https://app.example.com/cancel',
+        })
+      ).rejects.toThrow(BadRequestError);
+    });
+
+    it('should throw error when subscription does not exist', async () => {
+      const ctx = {
+        currentuser: {
+          sub: new Types.ObjectId().toString(),
+          email: 'owner@example.com',
+          client: {
+            cuid: 'non-existent',
+            role: 'super-admin',
+          },
+        },
+      } as any;
+
+      await expect(
+        subscriptionService.initSubscriptionPayment(ctx, {
+          successUrl: 'https://app.example.com/success',
+          cancelUrl: 'https://app.example.com/cancel',
+        })
+      ).rejects.toThrow();
     });
   });
 });

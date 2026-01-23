@@ -48,9 +48,8 @@ export const createTestClient = async (
     status: options.status || 'active',
     accountAdmin: adminUser._id,
     accountType: {
-      planName: 'test_plan',
-      planId: 'test_plan_id',
-      features: [],
+      category: 'individual',
+      isEnterpriseAccount: false,
     },
     settings: {
       timezone: 'America/Toronto',

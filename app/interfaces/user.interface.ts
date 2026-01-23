@@ -330,12 +330,28 @@ export interface FilteredUserTableData extends Pick<IUser, 'email'> {
 }
 
 /**
+ * Identification Type Interface
+ * User identification documents
+ */
+export interface IIdentificationType {
+  documents: IdentificationDocumentType[];
+  retentionExpiryDate: Date | string;
+  idType: IdentificationDocumentType;
+  dataProcessingConsent: boolean;
+  expiryDate: Date | string;
+  issueDate: Date | string;
+  issuingState: string;
+  authority: string;
+  idNumber: string;
+}
+
+/**
  * Signup Data Type
  * User registration form data
  */
 export type ISignupData = {
   companyProfile?: ICompanyProfile;
-  accountType: IAccountType;
+  accountType: ISignupAccountType;
   termsAccepted: boolean;
   phoneNumber: string;
   displayName: string;
@@ -407,33 +423,19 @@ export interface IUser {
 }
 
 /**
- * Identification Type Interface
- * User identification documents
- */
-export interface IIdentificationType {
-  idType: IdentificationDocumentType;
-  expiryDate: Date | string;
-  issueDate: Date | string;
-  issuingState: string;
-  authority: string;
-  idNumber: string;
-}
-
-/**
  * ============================================================================
  * DOCUMENT INTERFACES (Mongoose Extensions)
  * ============================================================================
  */
 
 /**
- * Account Type Interface
- * Subscription/plan information
+ * Signup Account Type Interface
+ * Extended account type for signup requests (includes plan selection)
  */
-export interface IAccountType {
-  billingInterval: 'monthly' | 'yearly';
-  isEnterpriseAccount: boolean;
+export interface ISignupAccountType extends IAccountType {
+  billingInterval: 'monthly' | 'annual';
   totalMonthlyPrice?: number;
-  planLookUpKey: string;
+  planLookUpKey?: string;
   planName: string;
   planId: string;
 }
@@ -463,12 +465,6 @@ export interface IExtendedPagination {
 }
 
 /**
- * ============================================================================
- * CURRENT USER & SESSION INTERFACES
- * ============================================================================
- */
-
-/**
  * User Statistics Interface
  * User statistics for filtered users response
  */
@@ -480,7 +476,7 @@ export interface IUserStats {
 
 /**
  * ============================================================================
- * DETAIL INFO INTERFACES (Role-Specific)
+ * CURRENT USER & SESSION INTERFACES
  * ============================================================================
  */
 
@@ -495,6 +491,12 @@ export interface IBasePagination {
   perPage: number;
   total: number;
 }
+
+/**
+ * ============================================================================
+ * DETAIL INFO INTERFACES (Role-Specific)
+ * ============================================================================
+ */
 
 /**
  * Extended Vendor Info Interface
@@ -515,12 +517,6 @@ export interface ILinkedVendorUser
 }
 
 /**
- * ============================================================================
- * RESPONSE INTERFACES
- * ============================================================================
- */
-
-/**
  * User Property Interface
  * Minimal property info for user context
  */
@@ -531,6 +527,12 @@ export interface IUserProperty {
   units: number;
   name: string;
 }
+
+/**
+ * ============================================================================
+ * RESPONSE INTERFACES
+ * ============================================================================
+ */
 
 /**
  * ID Type Union
@@ -563,17 +565,26 @@ export interface FilteredUserTenantInfo {
 }
 
 /**
+ * Vendor Team Members Response with Pagination
+ */
+export interface IVendorTeamMembersResponse {
+  pagination: IBasePagination;
+  items: IVendorTeamMember[];
+}
+
+/**
  * ============================================================================
  * FILTERED/LIGHTWEIGHT INTERFACES
  * ============================================================================
  */
 
 /**
- * Vendor Team Members Response with Pagination
+ * Account Type Interface
+ * Basic account categorization (plan details stored in Subscription)
  */
-export interface IVendorTeamMembersResponse {
-  pagination: IBasePagination;
-  items: IVendorTeamMember[];
+export interface IAccountType {
+  category: 'business' | 'individual';
+  isEnterpriseAccount: boolean;
 }
 
 /**

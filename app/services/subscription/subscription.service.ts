@@ -131,7 +131,7 @@ export class SubscriptionService {
   ): IPromiseReturnedData<ISubscriptionDocument | null> {
     try {
       const { planName, planId, planLookUpKey, billingInterval = 'monthly' } = data;
-      const isPaidPlan = planName !== 'starter';
+      const isPaidPlan = planName !== 'essential';
 
       if (!planName || !planId) {
         throw new BadRequestError({ message: 'Missing required subscription data' });
@@ -144,7 +144,7 @@ export class SubscriptionService {
 
       const config = subscriptionPlanConfig.getConfig(planName as PlanName);
       let actualBilledAmount: number = config.pricing[billingInterval].priceInCents;
-      if (planName !== 'starter') {
+      if (planName !== 'essential') {
         try {
           const stripePrice = await this.stripeService.getProductPrice(planId);
           actualBilledAmount = stripePrice.unit_amount || 0;
@@ -212,8 +212,6 @@ export class SubscriptionService {
         }
 
         const clientId = subscription.client.toString();
-
-        // Create customer via payment gateway (external API - before transaction commit)
         const customerResult = await this.paymentGatewayService.createCustomer({
           provider: IPaymentGatewayProvider.STRIPE,
           email,
@@ -396,7 +394,7 @@ export class SubscriptionService {
         subscription.status === ISubscriptionStatus.ACTIVE &&
         subscription.endDate &&
         subscription.endDate < now &&
-        subscription.planName !== 'starter'
+        subscription.planName !== 'essential'
       ) {
         requiresPayment = true;
         reason = 'expired';
@@ -470,6 +468,64 @@ export class SubscriptionService {
       return { data: planUsage, success: true };
     } catch (error) {
       this.log.error({ error }, 'Error getting subscription plan usage');
+      throw error;
+    }
+  }
+
+  async initSubscriptionPayment(
+    ctx: IRequestContext,
+    checkoutData: { successUrl: string; cancelUrl: string }
+  ): IPromiseReturnedData<{ checkoutUrl: string; sessionId: string }> {
+    try {
+      const { currentuser } = ctx;
+      const cuid = currentuser!.client.cuid;
+
+      // Get subscription
+      const subscription = await this.subscriptionDAO.findFirst({ cuid });
+      if (!subscription) {
+        throw new BadRequestError({ message: 'Subscription not found' });
+      }
+
+      // Validate status
+      if (subscription.status !== ISubscriptionStatus.PENDING_PAYMENT) {
+        throw new BadRequestError({
+          message: 'Payment already completed or subscription not in pending state',
+        });
+      }
+
+      // Get plan details
+      const config = subscriptionPlanConfig.getConfig(subscription.planName);
+      const priceId =
+        subscription.billingInterval === 'annual'
+          ? config.pricing.annual.priceId
+          : config.pricing.monthly.priceId;
+
+      if (!priceId) {
+        throw new BadRequestError({ message: 'Plan pricing not configured' });
+      }
+
+      // Create checkout session
+      const checkoutResult = await this.createCheckoutSession({
+        subscriptionId: subscription._id.toString(),
+        email: currentuser!.email,
+        priceId,
+        successUrl: checkoutData.successUrl,
+        cancelUrl: checkoutData.cancelUrl,
+      });
+
+      if (!checkoutResult.success || !checkoutResult.data) {
+        throw new BadRequestError({
+          message: checkoutResult.message || 'Failed to create checkout session',
+        });
+      }
+
+      return {
+        data: checkoutResult.data,
+        success: true,
+        message: 'Checkout session created successfully',
+      };
+    } catch (error) {
+      this.log.error({ error }, 'Error initiating subscription payment');
       throw error;
     }
   }

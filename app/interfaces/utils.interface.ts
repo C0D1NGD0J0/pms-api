@@ -37,6 +37,7 @@ export enum PermissionAction {
   RESEND = 'resend',
   REVOKE = 'revoke',
   UPDATE = 'update',
+  MANAGE = 'manage',
   STATS = 'stats',
   LIST = 'list',
   READ = 'read',
@@ -44,10 +45,12 @@ export enum PermissionAction {
 }
 
 export enum PermissionResource {
+  SUBSCRIPTION = 'subscription',
   NOTIFICATION = 'notification',
   MAINTENANCE = 'maintenance',
   INVITATION = 'invitation',
   PROPERTY = 'property',
+  BILLING = 'billing',
   PAYMENT = 'payment',
   CLIENT = 'client',
   TENANT = 'tenant',

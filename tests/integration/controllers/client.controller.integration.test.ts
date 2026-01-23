@@ -98,7 +98,9 @@ describe('ClientController Integration Tests', () => {
       userDAO,
       profileDAO,
       propertyDAO,
+      propertyUnitDAO,
       authCache,
+      subscriptionDAO: {} as any,
     });
 
     clientController = new ClientController({ clientService });

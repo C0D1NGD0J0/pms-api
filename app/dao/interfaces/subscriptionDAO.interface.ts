@@ -10,7 +10,7 @@ import { IFindOptions } from './baseDAO.interface';
 export interface ISubscriptionDAO {
   updatePlanAndPrice(
     clientId: string | Types.ObjectId,
-    planName: 'personal' | 'starter' | 'professional',
+    planName: 'basic' | 'starter' | 'professional',
     totalMonthlyPrice: number
   ): Promise<ISubscriptionDocument | null>;
   updateAdditionalSeats(

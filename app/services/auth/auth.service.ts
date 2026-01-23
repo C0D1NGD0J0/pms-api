@@ -219,7 +219,11 @@ export class AuthService {
         throw new InvalidRequestError({ message: t('auth.errors.userNotCreated') });
       }
 
-      if (signupData.accountType.isEnterpriseAccount) {
+      // Derive isEnterpriseAccount from category for consistency
+      const isEnterpriseAccount = signupData.accountType.category === 'business';
+      signupData.accountType.isEnterpriseAccount = isEnterpriseAccount;
+
+      if (isEnterpriseAccount) {
         signupData.companyProfile = {
           ...signupData.companyProfile,
           contactInfo: {
@@ -233,8 +237,11 @@ export class AuthService {
           cuid: clientId,
           accountAdmin: _userId,
           displayName: signupData.displayName,
-          accountType: signupData.accountType,
-          ...(signupData.accountType.isEnterpriseAccount && {
+          accountType: {
+            category: signupData.accountType.category,
+            isEnterpriseAccount: signupData.accountType.isEnterpriseAccount,
+          },
+          ...(isEnterpriseAccount && {
             companyProfile: signupData?.companyProfile,
           }),
         },
@@ -279,24 +286,6 @@ export class AuthService {
           message: subscriptionResult.message || 'Encountered an error while creating subscription',
         });
       }
-
-      // const isPaidPlan = signupData.accountType.planName !== 'starter';
-      // const checkoutUrl: string | null = null;
-
-      // For paid plans, create checkout session
-      // if (isPaidPlan && result.planLookUpKey) {
-      //   const checkoutResult = await this.subscriptionService.createCheckoutSession(
-      //     subscriptionResult.data._id.toString(),
-      //     result.email,
-      //     result.planLookUpKey,
-      //     `${envVariables.FRONTEND_URL}/signup/success`,
-      //     `${envVariables.FRONTEND_URL}/signup/cancel`
-      //   );
-
-      //   if (checkoutResult.success && checkoutResult.data) {
-      //     checkoutUrl = checkoutResult.data.checkoutUrl;
-      //   }
-      // }
 
       return {
         userId: _userId.toString(),

@@ -5,14 +5,15 @@ import { AuthCache } from '@caching/auth.cache';
 import { ClientValidations } from '@shared/validations';
 import { getRequestDuration, createLogger } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
-import { SubscriptionDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
+import { IClientDocument, IClientStats } from '@interfaces/client.interface';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
+import { SubscriptionDAO, PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
-import { PopulatedAccountAdmin, IClientDocument, IClientStats } from '@interfaces/client.interface';
 
 interface IConstructor {
   subscriptionDAO: SubscriptionDAO;
+  propertyUnitDAO: PropertyUnitDAO;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
@@ -24,6 +25,7 @@ export class ClientService {
   private readonly log: Logger;
   private readonly clientDAO: ClientDAO;
   private readonly propertyDAO: PropertyDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly userDAO: UserDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly authCache: AuthCache;
@@ -32,6 +34,7 @@ export class ClientService {
   constructor({
     clientDAO,
     propertyDAO,
+    propertyUnitDAO,
     userDAO,
     profileDAO,
     authCache,
@@ -40,6 +43,7 @@ export class ClientService {
     this.log = createLogger('ClientService');
     this.clientDAO = clientDAO;
     this.propertyDAO = propertyDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
     this.userDAO = userDAO;
     this.profileDAO = profileDAO;
     this.authCache = authCache;
@@ -281,7 +285,7 @@ export class ClientService {
       throw new BadRequestError({ message: t('client.errors.fetchFailed') });
     }
 
-    const [client, usersResult, propertiesResult] = await Promise.all([
+    const [client, usersResult, propertiesResult, subscription] = await Promise.all([
       this.clientDAO.getClientByCuid(cuid, {
         populate: {
           path: 'accountAdmin',
@@ -297,6 +301,7 @@ export class ClientService {
       }),
       this.userDAO.getUsersByClientId(cuid, {}, { limit: 1000, skip: 0 }),
       this.propertyDAO.countDocuments({ cuid, deletedAt: null }),
+      this.subscriptionDAO.findFirst({ cuid }),
     ]);
 
     if (!client) {
@@ -313,37 +318,78 @@ export class ClientService {
       throw new NotFoundError({ message: t('client.errors.detailsNotFound') });
     }
 
-    const clientWithStats = client.toObject() as {
-      clientStats: IClientStats;
-      subscription?: any;
-    } & IClientDocument;
-    clientWithStats.clientStats = {
-      totalProperties: propertiesResult,
-      totalUsers: usersResult.pagination?.total || 0,
+    const responseData: any = {
+      cuid: client.cuid,
+      displayName: client.displayName,
+      isVerified: client.isVerified,
+      accountType: {
+        category:
+          client.accountType.category ||
+          (client.accountType.isEnterpriseAccount ? 'business' : 'individual'),
+        plan: subscription?.planName || 'essential',
+        billingInterval: subscription?.billingInterval || 'monthly',
+      },
+      accountAdmin: {
+        email: (client.accountAdmin as any)?.email || '',
+        id: (client.accountAdmin as any)?._id?.toString() || '',
+        firstName: (client.accountAdmin as any)?.profile?.personalInfo?.firstName || '',
+        lastName: (client.accountAdmin as any)?.profile?.personalInfo?.lastName || '',
+        phoneNumber: (client.accountAdmin as any)?.profile?.personalInfo?.phoneNumber || '',
+        avatar: (client.accountAdmin as any)?.profile?.personalInfo?.avatar || '',
+      },
+      settings: {
+        notificationPreferences: client.settings.notificationPreferences,
+        timeZone: client.settings.timeZone,
+        lang: client.settings.lang,
+      },
+      clientStats: {
+        totalProperties: propertiesResult,
+        totalUsers: usersResult.pagination?.total || 0,
+      },
+      createdAt: client.createdAt,
+      updatedAt: client.updatedAt,
     };
 
-    clientWithStats.accountAdmin = {
-      email: (client.accountAdmin as any)?.email || '',
-      id: (client.accountAdmin as any)?._id?.toString() || '',
-      firstName: (client.accountAdmin as any)?.profile?.personalInfo?.firstName || '',
-      lastName: (client.accountAdmin as any)?.profile?.personalInfo?.lastName || '',
-      phoneNumber: (client.accountAdmin as any)?.profile?.personalInfo?.phoneNumber || '',
-      avatar: (client.accountAdmin as any)?.profile?.personalInfo?.avatar || '',
-    } as unknown as PopulatedAccountAdmin;
+    if (client.identification) {
+      responseData.identification = {
+        dataProcessingConsent: client.identification.dataProcessingConsent,
+        retentionExpiryDate: client.identification.retentionExpiryDate,
+      };
+    }
 
-    // Include subscription details for super-admin only
+    if (client.accountType.isEnterpriseAccount && client.companyProfile) {
+      responseData.companyProfile = {
+        legalEntityName: client.companyProfile.legalEntityName,
+        tradingName: client.companyProfile.tradingName,
+        website: client.companyProfile.website,
+        industry: client.companyProfile.industry,
+      };
+    }
+
     const isSuperAdmin = currentuser.client?.role === 'super-admin';
-    if (isSuperAdmin) {
-      const subscription = await this.subscriptionDAO.findFirst({ cuid });
-      if (subscription) {
-        clientWithStats.subscription = subscription.toObject();
-      }
+    if (isSuperAdmin && subscription) {
+      const unitCount = await this.propertyUnitDAO.countDocuments({ cuid, deletedAt: null });
+
+      responseData.subscription = {
+        subscriptionId: subscription._id.toString(),
+        suid: subscription.suid,
+        cuid: subscription.cuid,
+        planName: subscription.planName,
+        status: subscription.status,
+        billingInterval: subscription.billingInterval,
+        amount: subscription.totalMonthlyPrice,
+        nextBillingDate: subscription.endDate,
+        pendingDowngradeAt: subscription.pendingDowngradeAt || null,
+        currentSeats: usersResult.pagination?.total || 0,
+        currentProperties: propertiesResult,
+        currentUnits: unitCount,
+      };
     }
 
     return {
-      data: clientWithStats,
       success: true,
       message: t('client.success.retrieved'),
+      data: responseData,
     };
   }
 

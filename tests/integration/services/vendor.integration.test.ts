@@ -386,7 +386,7 @@ describe('VendorService Integration Tests - Read Operations', () => {
         status: 'active',
         accountAdmin: seededData.users.admin1._id,
         accountType: {
-          planName: 'starter',
+          planName: 'growth',
           planId: 'plan_starter',
         },
         contactInfo: {

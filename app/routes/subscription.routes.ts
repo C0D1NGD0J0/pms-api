@@ -1,7 +1,14 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/helpers';
 import { SubscriptionController } from '@controllers/index';
-import { subscriptionAccessControl, isAuthenticated, basicLimiter } from '@shared/middlewares';
+import { SubscriptionValidations, validateRequest } from '@shared/validations';
+import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
+import {
+  subscriptionAccessControl,
+  requirePermission,
+  isAuthenticated,
+  basicLimiter,
+} from '@shared/middlewares';
 
 export const router: Router = express.Router();
 
@@ -24,6 +31,18 @@ router.get(
     const subscriptionController =
       req.container.resolve<SubscriptionController>('subscriptionController');
     return subscriptionController.getPlanUsage(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/init-subscription-payment',
+  isAuthenticated,
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  validateRequest({ body: SubscriptionValidations.initiateCheckout }),
+  asyncWrapper((req, res) => {
+    const subscriptionController =
+      req.container.resolve<SubscriptionController>('subscriptionController');
+    return subscriptionController.initSubscriptionPayment(req, res);
   })
 );
 

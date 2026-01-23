@@ -2,31 +2,31 @@ import { subscriptionPlanConfig } from '@services/subscription/subscription_plan
 
 describe('SubscriptionPlanConfig Unit Tests', () => {
   describe('getConfig', () => {
-    it('should return correct config for personal plan', () => {
-      const config = subscriptionPlanConfig.getConfig('personal');
+    it('should return correct config for essential plan', () => {
+      const config = subscriptionPlanConfig.getConfig('essential');
 
-      expect(config.name).toBe('Personal');
+      expect(config.name).toBe('Essential');
       expect(config.transactionFeePercent).toBe(3.5);
       expect(config.limits.maxProperties).toBe(3);
       expect(config.features.eSignature).toBe(false);
     });
 
-    it('should return correct config for starter plan', () => {
-      const config = subscriptionPlanConfig.getConfig('starter');
+    it('should return correct config for growth plan', () => {
+      const config = subscriptionPlanConfig.getConfig('growth');
 
-      expect(config.name).toBe('Starter');
+      expect(config.name).toBe('Growth');
       expect(config.transactionFeePercent).toBe(3.0);
       expect(config.limits.maxProperties).toBe(15);
       expect(config.features.eSignature).toBe(true);
     });
 
-    it('should return correct config for professional plan', () => {
-      const config = subscriptionPlanConfig.getConfig('professional');
+    it('should return correct config for portfolio plan', () => {
+      const config = subscriptionPlanConfig.getConfig('portfolio');
 
-      expect(config.name).toBe('Professional');
+      expect(config.name).toBe('Portfolio');
       expect(config.transactionFeePercent).toBe(2.8);
-      expect(config.limits.maxProperties).toBe(25);
-      expect(config.seatPricing.includedSeats).toBe(-1); // unlimited
+      expect(config.limits.maxProperties).toBe(30);
+      expect(config.seatPricing.includedSeats).toBe(25);
     });
   });
 
@@ -35,69 +35,68 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
       const plans = subscriptionPlanConfig.getAllPlans();
 
       expect(plans).toHaveLength(3);
-      expect(plans).toContain('personal');
-      expect(plans).toContain('starter');
-      expect(plans).toContain('professional');
+      expect(plans).toContain('essential');
+      expect(plans).toContain('growth');
+      expect(plans).toContain('portfolio');
     });
   });
 
   describe('canAddProperty', () => {
     it('should allow adding property when under limit', () => {
-      const canAdd = subscriptionPlanConfig.canAddProperty(2, 'personal');
+      const canAdd = subscriptionPlanConfig.canAddProperty(2, 'essential');
       expect(canAdd).toBe(true);
     });
 
     it('should prevent adding property when at limit', () => {
-      const canAdd = subscriptionPlanConfig.canAddProperty(3, 'personal');
+      const canAdd = subscriptionPlanConfig.canAddProperty(3, 'essential');
       expect(canAdd).toBe(false);
     });
 
-    it('should respect property limit for professional', () => {
-      const canAdd = subscriptionPlanConfig.canAddProperty(24, 'professional');
+    it('should respect property limit for portfolio', () => {
+      const canAdd = subscriptionPlanConfig.canAddProperty(29, 'portfolio');
       expect(canAdd).toBe(true);
 
-      const cannotAdd = subscriptionPlanConfig.canAddProperty(25, 'professional');
+      const cannotAdd = subscriptionPlanConfig.canAddProperty(30, 'portfolio');
       expect(cannotAdd).toBe(false);
     });
   });
 
   describe('calculatePrice', () => {
-    it('should calculate personal plan with no additional seats', () => {
-      const price = subscriptionPlanConfig.calculatePrice('personal', 0);
+    it('should calculate essential plan with no additional seats', () => {
+      const price = subscriptionPlanConfig.calculatePrice('essential', 'monthly', 0);
       expect(price).toBe(0);
     });
 
-    it('should calculate starter plan with additional seats', () => {
-      const price = subscriptionPlanConfig.calculatePrice('starter', 5);
-      // Base: 0 + (5 * 500) = 2500
-      expect(price).toBe(2500);
+    it('should calculate growth plan with additional seats', () => {
+      const price = subscriptionPlanConfig.calculatePrice('growth', 'monthly', 5);
+      expect(price).toBe(5400);
     });
 
-    it('should calculate professional plan with no seat charges', () => {
-      const price = subscriptionPlanConfig.calculatePrice('professional', 100);
-      expect(price).toBe(0); // Unlimited seats, no charge
+    it('should calculate portfolio plan with additional seats', () => {
+      const price = subscriptionPlanConfig.calculatePrice('portfolio', 'monthly', 10);
+      expect(price).toBe(17890);
     });
   });
 
   describe('hasFeature', () => {
-    it('should return false for eSignature on personal plan', () => {
-      expect(subscriptionPlanConfig.hasFeature('personal', 'eSignature')).toBe(false);
+    it('should return false for eSignature on essential plan', () => {
+      expect(subscriptionPlanConfig.hasFeature('essential', 'eSignature')).toBe(false);
     });
 
-    it('should return true for eSignature on starter plan', () => {
-      expect(subscriptionPlanConfig.hasFeature('starter', 'eSignature')).toBe(true);
+    it('should return true for eSignature on growth plan', () => {
+      expect(subscriptionPlanConfig.hasFeature('growth', 'eSignature')).toBe(true);
     });
 
-    it('should return true for reportingAnalytics on professional plan', () => {
-      expect(subscriptionPlanConfig.hasFeature('professional', 'reportingAnalytics')).toBe(true);
+    it('should return true for reportingAnalytics on portfolio plan', () => {
+      expect(subscriptionPlanConfig.hasFeature('portfolio', 'reportingAnalytics')).toBe(true);
     });
   });
 
   describe('getTransactionFeePercent', () => {
     it('should return correct fees for each plan', () => {
-      expect(subscriptionPlanConfig.getTransactionFeePercent('personal')).toBe(3.5);
-      expect(subscriptionPlanConfig.getTransactionFeePercent('starter')).toBe(3.0);
-      expect(subscriptionPlanConfig.getTransactionFeePercent('professional')).toBe(2.8);
+      expect(subscriptionPlanConfig.getTransactionFeePercent('essential')).toBe(3.5);
+      expect(subscriptionPlanConfig.getTransactionFeePercent('growth')).toBe(3.0);
+      expect(subscriptionPlanConfig.getTransactionFeePercent('portfolio')).toBe(2.8);
     });
   });
 });

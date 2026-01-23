@@ -135,6 +135,20 @@ export interface ISubscriptionAccessControl {
   features: Record<string, boolean>;
 }
 
+export interface ISubscriptionSummary {
+  billingInterval: 'monthly' | 'annual';
+  status: ISubscriptionStatus;
+  currentProperties: number;
+  subscriptionId: string;
+  nextBillingDate?: Date;
+  currentSeats: number;
+  currentUnits: number;
+  planName: PlanName;
+  amount: number;
+  suid: string;
+  cuid: string;
+}
+
 export interface IPaymentGateway {
   provider: IPaymentGatewayProvider;
   planLookUpKey?: string; // Lookup key for the plan
@@ -149,4 +163,4 @@ export interface ISubscriptionDocument extends ISubscription, Document {
   suid: string;
 }
 
-export type PlanName = 'personal' | 'starter' | 'professional';
+export type PlanName = 'essential' | 'growth' | 'portfolio';

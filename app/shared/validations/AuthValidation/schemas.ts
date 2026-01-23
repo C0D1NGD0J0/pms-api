@@ -65,8 +65,11 @@ export const UserSignupSchema = z
       .object({
         planId: z.string(),
         lookUpKey: z.string().optional(),
-        isEnterpriseAccount: z.boolean(),
-        planName: z.enum(['starter', 'personal', 'professional'], {
+        category: z.enum(['business', 'individual'], {
+          message: 'Account category must be either "business" or "individual"',
+        }),
+        isEnterpriseAccount: z.boolean().optional(), // Will be derived from category
+        planName: z.enum(['essential', 'growth', 'portfolio'], {
           message: 'Invalid plan name provided.',
         }),
         billingInterval: z.enum(['monthly', 'annual'], {
@@ -75,8 +78,8 @@ export const UserSignupSchema = z
       })
       .refine(
         (data) => {
-          // Starter plan (free) doesn't need a valid Stripe price ID
-          if (data.planName === 'starter') {
+          // Essential plan (free) doesn't need a valid Stripe price ID
+          if (data.planName === 'essential') {
             return true;
           }
           // Paid plans must have a valid Stripe price ID

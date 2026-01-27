@@ -22,6 +22,7 @@ import {
   JOB_NAME,
 } from '@utils/index';
 import {
+  ValidationRequestError,
   InvalidRequestError,
   UnauthorizedError,
   BadRequestError,
@@ -193,12 +194,20 @@ export class AuthService {
       const _userId = new Types.ObjectId();
       const clientId = generateShortUID();
 
+      const alreadyExists = await this.userDAO.findFirst({ email: signupData.email });
+      if (alreadyExists) {
+        throw new ValidationRequestError({
+          message: 'Validation failed',
+          errorInfo: { email: ['An account with this email already exists.'] },
+        });
+      }
+
       const user = await this.userDAO.insert(
         {
           uid: generateShortUID(),
           _id: _userId,
-          activecuid: clientId,
           isActive: false,
+          activecuid: clientId,
           email: signupData.email,
           password: signupData.password,
           activationToken: hashGenerator({}),
@@ -208,7 +217,9 @@ export class AuthService {
               cuid: clientId,
               isConnected: true,
               roles: [IUserRole.SUPER_ADMIN],
-              clientDisplayName: signupData.displayName,
+              clientDisplayName: signupData.accountType.isEnterpriseAccount
+                ? signupData.companyProfile?.tradingName || signupData.displayName
+                : `${signupData.firstName} ${signupData.lastName}`,
             },
           ],
         },
@@ -219,7 +230,6 @@ export class AuthService {
         throw new InvalidRequestError({ message: t('auth.errors.userNotCreated') });
       }
 
-      // Derive isEnterpriseAccount from category for consistency
       const isEnterpriseAccount = signupData.accountType.category === 'business';
       signupData.accountType.isEnterpriseAccount = isEnterpriseAccount;
 
@@ -508,7 +518,7 @@ export class AuthService {
     }
 
     await this.userDAO.createActivationToken('', email)!;
-    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.findFirst({ email }, { populate: 'profile' });
 
     if (!user) {
       throw new NotFoundError({ message: t('auth.success.activationLinkSent', { email }) });
@@ -520,7 +530,7 @@ export class AuthService {
       emailType: MailType.ACCOUNT_ACTIVATION,
       data: {
         fullname: user.profile?.fullname,
-        activationUrl: `${envVariables.FRONTEND.URL}/${user.activecuid}/account_activation/?t=${user.activationToken}`,
+        activationUrl: `${envVariables.FRONTEND.URL}/account_activation/${user.activecuid}?t=${user.activationToken}`,
       },
     };
     const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;

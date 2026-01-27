@@ -144,7 +144,6 @@ export class UserService {
     }
 
     const userDetail = await this.buildUserDetailData(user, clientConnection, clientId, client);
-
     await this.userCache.cacheUserDetail(clientId, uid, userDetail);
     this.log.info('User detail cached', { clientId, uid });
 

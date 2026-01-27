@@ -40,7 +40,7 @@ export class AuthController {
   };
 
   getCurrentUser = async (req: AppRequest, res: Response) => {
-    const { currentuser, subscription } = req.context;
+    const { currentuser } = req.context;
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
@@ -48,14 +48,9 @@ export class AuthController {
       });
     }
 
-    const userWithSubscription = {
-      ...currentuser,
-      subscription: subscription || undefined,
-    };
-
     return res.status(httpStatusCodes.OK).json({
       success: 200,
-      data: userWithSubscription,
+      data: currentuser,
     });
   };
 

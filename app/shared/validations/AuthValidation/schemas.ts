@@ -133,7 +133,6 @@ export const UserSignupSchema = z
       .optional(),
   })
   .superRefine((data, ctx) => {
-    // Make company information required for business accounts
     if (data.accountType.isEnterpriseAccount) {
       if (!data.companyProfile) {
         ctx.addIssue({
@@ -144,12 +143,11 @@ export const UserSignupSchema = z
         return;
       }
 
-      // Validate company profile fields for business accounts
       if (!data.companyProfile.tradingName) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: 'Company name is required for business accounts',
-          path: ['companyProfile', 'companyName'],
+          path: ['companyProfile', 'tradingName'],
         });
       }
 

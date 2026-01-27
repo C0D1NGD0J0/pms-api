@@ -1,8 +1,8 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { AuthController } from '@controllers/index';
+import { isAuthenticated } from '@shared/middlewares';
 import { validateRequest, AuthValidations } from '@shared/validations';
-import { subscriptionAccessControl, isAuthenticated } from '@shared/middlewares';
 
 const router: Router = express.Router();
 
@@ -29,7 +29,6 @@ router.post(
 router.get(
   '/:cuid/me',
   isAuthenticated,
-  subscriptionAccessControl,
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.getCurrentUser(req, res);

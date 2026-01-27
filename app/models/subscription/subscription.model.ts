@@ -55,7 +55,8 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       index: true,
     },
     paymentGateway: {
-      customerId: { type: String, required: true, index: true },
+      customerId: { type: String },
+      subscriberId: { type: String },
       provider: {
         type: String,
         enum: ['stripe', 'paypal', 'none', 'paystack'],

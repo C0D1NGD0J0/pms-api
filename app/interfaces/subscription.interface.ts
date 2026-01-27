@@ -135,6 +135,14 @@ export interface ISubscriptionAccessControl {
   features: Record<string, boolean>;
 }
 
+export interface IPaymentGateway {
+  provider: IPaymentGatewayProvider;
+  planLookUpKey?: string; // Lookup key for the plan
+  subscriberId?: string; // Payment gateway subscription ID (e.g., Stripe sub_xxx) set after payment
+  customerId: string; // Payment gateway customer ID (e.g., Stripe customer ID)
+  planId: string; // Payment gateway price/plan ID (e.g., Stripe price ID)
+}
+
 export interface ISubscriptionSummary {
   billingInterval: 'monthly' | 'annual';
   status: ISubscriptionStatus;
@@ -147,13 +155,6 @@ export interface ISubscriptionSummary {
   amount: number;
   suid: string;
   cuid: string;
-}
-
-export interface IPaymentGateway {
-  provider: IPaymentGatewayProvider;
-  planLookUpKey?: string; // Lookup key for the plan
-  customerId: string; // Stripe customer ID or payment gateway customer ID
-  planId: string; // Stripe price ID or plan ID
 }
 
 export interface ISubscriptionDocument extends ISubscription, Document {

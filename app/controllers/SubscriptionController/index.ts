@@ -38,7 +38,6 @@ export class SubscriptionController {
   initSubscriptionPayment = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
     const { cuid } = req.params;
-    const { successUrl, cancelUrl } = req.body;
 
     if (!currentuser || currentuser.client.cuid !== cuid) {
       throw new UnauthorizedError({ message: 'Unauthorized access' });
@@ -48,10 +47,7 @@ export class SubscriptionController {
       throw new ForbiddenError({ message: 'Only account owner can manage billing' });
     }
 
-    const result = await this.subscriptionService.initSubscriptionPayment(req.context, {
-      successUrl,
-      cancelUrl,
-    });
+    const result = await this.subscriptionService.initSubscriptionPayment(req.context, req.body);
 
     res.status(httpStatusCodes.OK).json(result);
   };

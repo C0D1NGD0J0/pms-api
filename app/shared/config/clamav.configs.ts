@@ -16,10 +16,18 @@ export class ClamScannerService {
   private readonly options: Record<string, any>;
   private readonly log: Logger;
   private readonly isProductionFallback: boolean;
+  private readonly isDisabled: boolean;
 
   constructor() {
     this.log = createLogger('ClamAVScannerService');
+    this.isDisabled = !envVariables.CLAMAV.ENABLED;
     this.isProductionFallback = false;
+
+    if (this.isDisabled) {
+      this.log.info('ClamAV is disabled via ENABLE_CLAMAV environment variable');
+      this.isInitialized = true;
+      return;
+    }
 
     const devConfig = {
       clamdscan: {
@@ -48,9 +56,12 @@ export class ClamScannerService {
     this.options = {
       removeInfected: false,
       quarantineInfected: false,
-      scanLog: 'logs/clamav_scan.log',
-      scanRecursively: true,
+      scanLog: null, // Disable scan logging to reduce I/O
+      scanRecursively: false, // Don't scan recursively for better performance
       maxFileSize: 26214400, // 25MB
+      clamscan: {
+        active: false, // Disable fallback to clamscan binary
+      },
       ...envConfig,
     };
 
@@ -91,7 +102,9 @@ export class ClamScannerService {
   }
 
   isReady(): boolean {
-    return this.isInitialized && (this.isProductionFallback || this.clamscan !== null);
+    return (
+      this.isInitialized && (this.isDisabled || this.isProductionFallback || this.clamscan !== null)
+    );
   }
 
   async scanFile(filePath: string): Promise<ScanResult> {
@@ -105,7 +118,14 @@ export class ClamScannerService {
       throw new Error('No file path provided');
     }
 
-    // Production fallback - skip actual scanning
+    if (this.isDisabled) {
+      this.log.info(`ClamAV disabled: Skipping virus scan for ${filePath}`);
+      return {
+        isInfected: false,
+        viruses: [],
+      };
+    }
+
     if (this.isProductionFallback) {
       this.log.info(
         `Production fallback: Skipping virus scan for ${filePath} (ClamAV service unavailable)`

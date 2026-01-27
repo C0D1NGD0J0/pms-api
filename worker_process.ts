@@ -26,14 +26,21 @@ class WorkerProcess {
     try {
       this.pidManager.check();
 
-      this.log.info('🚀 Starting worker process...');
-      this.log.info(`Environment: ${process.env.NODE_ENV}`);
-      this.log.info(`Process Type: ${process.env.PROCESS_TYPE}`);
+      this.log.info(`🚀 Starting worker process... ${process.env.NODE_ENV}`);
 
       const { dbService } = container.cradle;
       await dbService.connect();
       initQueues(container);
       EventListenerSetup.registerQueueListeners(container);
+      const { queueFactory } = container.cradle;
+      const result = await queueFactory.initializeAllQueues();
+      this.log.info(
+        {
+          queues: result.queues.length,
+          failed: result.failed.length > 0 ? result.failed : undefined,
+        },
+        '✅ Initialized all queues for job processing'
+      );
 
       container.resolve('cronService');
       this.logRedisConnectionCount();
@@ -45,7 +52,6 @@ class WorkerProcess {
   }
 
   private logRedisConnectionCount(): void {
-    // Log Redis connection info after startup
     setTimeout(() => {
       this.log.info({
         message: 'Redis connection monitoring',
@@ -68,7 +74,7 @@ class WorkerProcess {
     setTimeout(() => {
       this.log.info('Force shutdown after timeout');
       process.exit(0);
-    }, 30000); // allows running jobs time to finish (max 30 seconds)
+    }, 10000); // allows running jobs time to finish (max 10 seconds)
 
     process.exit(0);
   }

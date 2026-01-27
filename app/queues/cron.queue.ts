@@ -13,6 +13,10 @@ export class CronQueue extends BaseQueue {
       const cronWorker = container.resolve('cronWorker');
       return cronWorker.executeCronJob(job, done);
     });
+
+    if (process.env.PROCESS_TYPE === 'worker') {
+      this.cleanupOrphanedRepeatKeys();
+    }
   }
 
   /**
@@ -31,5 +35,27 @@ export class CronQueue extends BaseQueue {
    */
   async getRepeatableJobs() {
     return this.queue.getRepeatableJobs();
+  }
+
+  /**
+   * Clean up orphaned repeat keys that accumulate over time
+   * This prevents Redis command timeouts caused by thousands of stale keys
+   */
+  private async cleanupOrphanedRepeatKeys(): Promise<void> {
+    try {
+      const client = await this.queue.client;
+      // Get all repeat:* keys (these are the job data keys)
+      const repeatKeys = await client.keys(`bull:${QUEUE_NAMES.CRON_QUEUE}:repeat:*`);
+      if (repeatKeys.length === 0) {
+        this.log.info('No orphaned repeat keys found');
+        return;
+      }
+
+      // Delete all repeat:* keys (Bull will recreate them for active jobs)
+      // The repeat sorted set contains the actual job definitions
+      await client.del(...repeatKeys);
+    } catch (error) {
+      this.log.error({ error }, 'Failed to cleanup orphaned repeat keys');
+    }
   }
 }

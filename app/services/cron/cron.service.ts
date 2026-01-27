@@ -2,14 +2,14 @@ import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { CronQueue } from '@queues/cron.queue';
 import { QueueFactory } from '@services/queue';
+import { LeaseService } from '@services/lease';
+import { NotificationService } from '@services/notification';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 
 interface IConstructor {
+  notificationService?: NotificationService;
+  leaseService: LeaseService;
   queueFactory: QueueFactory;
-  notificationService?: any;
-  // Services will be injected here
-  leaseService?: any;
-  // Add more as needed
 }
 
 /**
@@ -23,16 +23,12 @@ export class CronService {
   private queueFactory: QueueFactory;
   private cronJobs: Map<string, ICronJob> = new Map();
 
-  constructor({ queueFactory, leaseService, notificationService }: IConstructor) {
+  constructor({ queueFactory, leaseService }: IConstructor) {
     this.log = createLogger('CronService');
     this.queueFactory = queueFactory;
 
-    // collects cron jobs from all services
-    const services: ICronProvider[] = [
-      leaseService,
-      notificationService,
-      // Add more services as they implement ICronProvider
-    ].filter(Boolean);
+    // collects cron jobs from all services that implement ICronProvider
+    const services: ICronProvider[] = [leaseService].filter(Boolean);
 
     this.registerAllCronJobs(services);
   }
@@ -47,19 +43,15 @@ export class CronService {
       const serviceName = service.constructor.name;
 
       try {
-        // Check if service implements getCronJobs
         if (typeof service.getCronJobs !== 'function') {
           this.log.warn(`Service ${serviceName} does not implement getCronJobs()`);
           return;
         }
 
         const jobs = service.getCronJobs();
-
         jobs.forEach((job) => {
           this.registerCronJob(job);
         });
-
-        this.log.info(`Registered ${jobs.length} cron jobs from ${serviceName}`);
       } catch (error) {
         this.log.error(`Error registering cron jobs from ${serviceName}:`, error);
       }
@@ -79,9 +71,6 @@ export class CronService {
     this.cronJobs.set(cronJob.name, cronJob);
     if (cronJob.enabled) {
       this.scheduleCronJob(cronJob);
-      this.log.info(`✓ Scheduled cron job: ${cronJob.name} (${cronJob.schedule})`);
-    } else {
-      this.log.info(`○ Registered cron job: ${cronJob.name} (disabled)`);
     }
   }
 
@@ -147,7 +136,6 @@ export class CronService {
     job.enabled = false;
     const cronQueue = this.queueFactory.getQueue('cronQueue') as CronQueue;
     await cronQueue.removeRepeatable(jobName, job.schedule);
-    this.log.info(`Disabled cron job: ${jobName}`);
   }
 
   async getNextExecutions(): Promise<Array<{ job: string; nextRun: Date }>> {

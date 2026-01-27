@@ -81,11 +81,6 @@ export class PaymentGatewayService {
     try {
       const { provider, customerId, priceId, successUrl, cancelUrl, metadata } = input;
 
-      this.log.info(
-        { provider, customerId, priceId },
-        'Creating checkout session via payment gateway'
-      );
-
       const providerInstance = this.getProvider(provider);
       const session = await providerInstance.createCheckoutSession({
         customerId,
@@ -94,11 +89,6 @@ export class PaymentGatewayService {
         cancelUrl,
         metadata,
       });
-
-      this.log.info(
-        { provider, sessionId: session.sessionId, customerId },
-        'Checkout session created successfully'
-      );
 
       return { data: session, success: true };
     } catch (error) {

@@ -11,6 +11,7 @@ export class EventEmitterService {
   private readonly MAX_LISTENERS_PER_EVENT = 10;
   private memoryLeakDetectionInterval?: NodeJS.Timeout;
   private handlerMappings = new Map<(...args: any[]) => void, (...args: any[]) => void>();
+  private static processHandlersRegistered = false;
 
   constructor({ eventsRegistry }: { eventsRegistry: EventsRegistryCache }) {
     this.emitter = new EventEmitter();
@@ -37,6 +38,12 @@ export class EventEmitterService {
   }
 
   private setupProcessExitHandlers(): void {
+    // Prevent duplicate registration across multiple instances
+    if (EventEmitterService.processHandlersRegistered) {
+      return;
+    }
+    EventEmitterService.processHandlersRegistered = true;
+
     const cleanup = () => {
       this.log.info('Process exit detected, cleaning up EventEmitter...');
       this.destroy();

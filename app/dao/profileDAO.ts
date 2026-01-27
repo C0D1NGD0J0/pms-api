@@ -368,6 +368,27 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
           },
         },
 
+        // Add subscription lookup for active client
+        {
+          $lookup: {
+            from: 'subscriptions',
+            let: { activeCuid: '$userData.activecuid' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: ['$cuid', '$$activeCuid'] },
+                },
+              },
+            ],
+            as: 'subscriptionData',
+          },
+        },
+        {
+          $addFields: {
+            subscriptionInfo: { $arrayElemAt: ['$subscriptionData', 0] },
+          },
+        },
+
         // transform data into ICurrentUser structure
         {
           $project: {
@@ -498,6 +519,140 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   hasActiveLease: { $ifNull: ['$tenantInfo.hasActiveLease', false] },
                   backgroundCheckStatus: '$tenantInfo.backgroundCheckStatus',
                   activeLease: { $ifNull: ['$tenantInfo.activeLease', null] },
+                },
+                else: '$$REMOVE',
+              },
+            },
+
+            // Subscription information for active client
+            subscription: {
+              $cond: {
+                if: '$subscriptionInfo',
+                then: {
+                  $let: {
+                    vars: {
+                      sub: '$subscriptionInfo',
+                      now: new Date(),
+                      isSuperAdmin: { $eq: ['$activeClientRole', 'super-admin'] },
+                    },
+                    in: {
+                      plan: {
+                        name: '$$sub.planName',
+                        status: '$$sub.status',
+                        billingInterval: '$$sub.billingInterval',
+                      },
+                      features: {
+                        eSignature: {
+                          $in: ['eSignature', { $ifNull: ['$$sub.features', []] }],
+                        },
+                        propertyMedia: {
+                          $in: ['propertyMedia', { $ifNull: ['$$sub.features', []] }],
+                        },
+                        reportingAnalytics: {
+                          $in: ['reportingAnalytics', { $ifNull: ['$$sub.features', []] }],
+                        },
+                        maintenanceTracking: {
+                          $in: ['maintenanceTracking', { $ifNull: ['$$sub.features', []] }],
+                        },
+                      },
+                      paymentFlow: {
+                        requiresPayment: {
+                          $cond: {
+                            if: {
+                              $and: [
+                                '$$isSuperAdmin',
+                                { $eq: ['$$sub.status', 'pending_payment'] },
+                              ],
+                            },
+                            then: true,
+                            else: {
+                              $cond: {
+                                if: {
+                                  $and: [
+                                    '$$isSuperAdmin',
+                                    { $eq: ['$$sub.status', 'active'] },
+                                    { $ne: ['$$sub.planName', 'essential'] },
+                                    { $lt: [{ $ifNull: ['$$sub.endDate', '$$now'] }, '$$now'] },
+                                  ],
+                                },
+                                then: true,
+                                else: false,
+                              },
+                            },
+                          },
+                        },
+                        reason: {
+                          $cond: {
+                            if: {
+                              $and: [
+                                '$$isSuperAdmin',
+                                { $eq: ['$$sub.status', 'pending_payment'] },
+                              ],
+                            },
+                            then: {
+                              $cond: {
+                                if: {
+                                  $and: [
+                                    '$$sub.pendingDowngradeAt',
+                                    {
+                                      $lte: [
+                                        {
+                                          $divide: [
+                                            {
+                                              $subtract: ['$$sub.pendingDowngradeAt', '$$now'],
+                                            },
+                                            86400000,
+                                          ],
+                                        },
+                                        1,
+                                      ],
+                                    },
+                                  ],
+                                },
+                                then: 'grace_period',
+                                else: 'pending_signup',
+                              },
+                            },
+                            else: {
+                              $cond: {
+                                if: {
+                                  $and: [
+                                    '$$isSuperAdmin',
+                                    { $eq: ['$$sub.status', 'active'] },
+                                    { $ne: ['$$sub.planName', 'essential'] },
+                                    { $lt: [{ $ifNull: ['$$sub.endDate', '$$now'] }, '$$now'] },
+                                  ],
+                                },
+                                then: 'expired',
+                                else: null,
+                              },
+                            },
+                          },
+                        },
+                        gracePeriodEndsAt: {
+                          $cond: {
+                            if: '$$sub.pendingDowngradeAt',
+                            then: '$$sub.pendingDowngradeAt',
+                            else: null,
+                          },
+                        },
+                        daysUntilDowngrade: {
+                          $cond: {
+                            if: '$$sub.pendingDowngradeAt',
+                            then: {
+                              $ceil: {
+                                $divide: [
+                                  { $subtract: ['$$sub.pendingDowngradeAt', '$$now'] },
+                                  86400000,
+                                ],
+                              },
+                            },
+                            else: null,
+                          },
+                        },
+                      },
+                    },
+                  },
                 },
                 else: '$$REMOVE',
               },

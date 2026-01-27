@@ -2,9 +2,9 @@
   "roles": {
     "super-admin": {
       "$extend": ["admin"],
-      "subscription": ["read:mine", "update:mine", "manage:mine"],
-      "billing": ["read:mine", "update:mine", "manage:mine"],
-      "payment": ["create:mine", "read:mine", "update:mine"]
+      "subscription": ["read:any", "update:any", "manage:any"],
+      "billing": ["read:any", "update:any", "manage:any"],
+      "payment": ["create:any", "read:any", "update:any"]
     },
     "admin": {
       "$extend": ["manager"],
@@ -163,6 +163,16 @@
       "actions": ["create", "read", "update", "delete", "list"],
       "scopes": ["any", "mine", "assigned"],
       "description": "Report generation operations"
+    },
+    "subscription": {
+      "actions": ["read", "update", "manage"],
+      "scopes": ["any", "mine"],
+      "description": "Subscription plan management operations"
+    },
+    "billing": {
+      "actions": ["read", "update", "manage"],
+      "scopes": ["any", "mine"],
+      "description": "Billing and payment processing operations"
     }
   },
   "scopes": {

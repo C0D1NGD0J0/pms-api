@@ -230,6 +230,25 @@ export function convertUserRoleToEnum(userRole: string): IUserRole {
 }
 
 /**
+ * Validates if a string is a valid phone number across multiple formats
+ * @param phoneNumber - The phone number string to validate
+ * @returns Boolean indicating if the phone number is valid
+ */
+export function isValidPhoneNumber(phoneNumber: string): boolean {
+  if (!phoneNumber || phoneNumber.length > 17) {
+    return false;
+  }
+  try {
+    // Add '+' prefix if not present and starts with a digit
+    const normalizedNumber = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
+    const parsedNumber = parsePhoneNumber(normalizedNumber);
+    return !!parsedNumber && parsedNumber.isValid();
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
  * Generates a random hash string using SHA-256
  * @param opts - {
   byteLength?: number;
@@ -246,23 +265,6 @@ export function hashGenerator(hashOpts: { byteLength?: number; algorithm?: strin
     return crypto.createHash(algorithm).update(token).digest('hex');
   } catch (error) {
     throw new Error(`Failed to generate hash: ${error.message}`);
-  }
-}
-
-/**
- * Validates if a string is a valid phone number across multiple formats
- * @param phoneNumber - The phone number string to validate
- * @returns Boolean indicating if the phone number is valid
- */
-export function isValidPhoneNumber(phoneNumber: string): boolean {
-  if (!phoneNumber || phoneNumber.length > 17) {
-    return false;
-  }
-  try {
-    const parsedNumber = parsePhoneNumber(phoneNumber);
-    return !!parsedNumber && parsedNumber.isValid();
-  } catch (error) {
-    return false;
   }
 }
 

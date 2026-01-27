@@ -206,14 +206,15 @@ export class StripeService implements IPaymentProvider {
 
   async createCustomer(data: ICreateCustomerInput): Promise<IPaymentCustomer> {
     try {
-      const { email, metadata } = data;
+      const { email, metadata, name } = data;
 
       const customer = await this.stripe.customers.create({
         email,
+        name,
         metadata,
       });
 
-      this.log.info({ customerId: customer.id, email }, 'Created Stripe customer');
+      this.log.info({ customerId: customer.id, email, name }, 'Created Stripe customer');
 
       return {
         customerId: customer.id,

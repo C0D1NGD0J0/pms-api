@@ -56,7 +56,8 @@ export interface IPaymentCustomer {
 }
 
 export interface ICreateCustomerInput {
-  provider: IPaymentGatewayProvider;
   metadata?: Record<string, string>;
+  provider: IPaymentGatewayProvider;
   email: string;
+  name?: string;
 }

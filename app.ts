@@ -138,7 +138,11 @@ export class App implements IAppSetup {
     app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
     app.use(`${BASE_PATH}/clients`, routes.clientRoutes);
     app.use(`${BASE_PATH}/vendors`, routes.vendorRoutes);
-    app.use(`${BASE_PATH}/webhooks`, routes.webhookRoutes);
+    app.use(
+      `${BASE_PATH}/webhooks`,
+      express.raw({ type: 'application/json' }),
+      routes.webhookRoutes
+    );
     app.use(`${BASE_PATH}/invites`, routes.invitationRoutes);
     app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
     app.use(`${BASE_PATH}/notifications`, routes.notificationRoutes);

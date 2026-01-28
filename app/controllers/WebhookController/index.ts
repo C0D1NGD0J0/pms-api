@@ -76,7 +76,9 @@ export class WebhookController {
         return res.status(400).json({ success: false, message: 'Missing signature' });
       }
 
-      const event = await this.stripeService.verifyWebhookSignature(req.body, signature);
+      // Use rawBody for Stripe (Buffer), fallback to body for compatibility
+      const payload = (req as any).rawBody || req.body;
+      const event = await this.stripeService.verifyWebhookSignature(payload, signature);
 
       this.log.info({ type: event.type, id: event.id }, 'Processing Stripe webhook event');
 
@@ -177,12 +179,18 @@ export class WebhookController {
         return;
       }
 
+      // Extract subscription period from line items (not invoice period)
+      // Invoice period is when invoice was issued, line item period is subscription coverage
+      const subscriptionPeriod = invoice.lines?.data?.[0]?.period;
+
       this.log.info(
         {
           customerId,
           stripeSubscriptionId,
           clientId,
           invoiceId: invoice.id,
+          invoicePeriod: { start: invoice.period_start, end: invoice.period_end },
+          subscriptionPeriod,
         },
         'Processing initial subscription payment'
       );
@@ -190,8 +198,8 @@ export class WebhookController {
       const result = await this.subscriptionService.handlePaymentSuccess({
         stripeCustomerId: customerId,
         stripeSubscriptionId,
-        currentPeriodStart: invoice.period_start,
-        currentPeriodEnd: invoice.period_end,
+        currentPeriodStart: subscriptionPeriod?.start || invoice.period_start,
+        currentPeriodEnd: subscriptionPeriod?.end || invoice.period_end,
         clientId,
       });
 
@@ -227,20 +235,23 @@ export class WebhookController {
         return;
       }
 
+      // Extract subscription period from line items (not invoice period)
+      const subscriptionPeriod = invoice.lines?.data?.[0]?.period;
+
       this.log.info(
         {
           invoiceId: invoice.id,
           stripeSubscriptionId,
-          periodStart: invoice.period_start,
-          periodEnd: invoice.period_end,
+          invoicePeriod: { start: invoice.period_start, end: invoice.period_end },
+          subscriptionPeriod,
         },
         'Processing subscription renewal'
       );
 
       const result = await this.subscriptionService.handleSubscriptionRenewal({
         stripeSubscriptionId,
-        currentPeriodStart: invoice.period_start,
-        currentPeriodEnd: invoice.period_end,
+        currentPeriodStart: subscriptionPeriod?.start || invoice.period_start,
+        currentPeriodEnd: subscriptionPeriod?.end || invoice.period_end,
       });
 
       if (result.success) {

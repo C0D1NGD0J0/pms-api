@@ -119,6 +119,57 @@ describe('WebhookController - Stripe Webhooks', () => {
       });
     });
 
+    it('should use line item period for subscription dates (not invoice period)', async () => {
+      const mockEvent = {
+        id: 'evt_test123',
+        type: 'invoice.paid',
+        data: {
+          object: {
+            id: 'in_test123',
+            customer: 'cus_test123',
+            subscription: 'sub_test123',
+            billing_reason: 'subscription_create',
+            period_start: 1769609328, // Invoice period (same day)
+            period_end: 1769609328, // Invoice period (same day)
+            lines: {
+              data: [
+                {
+                  period: {
+                    start: 1769609328, // Subscription start
+                    end: 1772287728, // Subscription end (1 month later)
+                  },
+                  metadata: { clientId: 'client123' },
+                },
+              ],
+            },
+          },
+        },
+      };
+
+      mockRequest.headers = { 'stripe-signature': 'test_signature' };
+      mockStripeService.verifyWebhookSignature.mockResolvedValue(mockEvent);
+      mockSubscriptionService.handlePaymentSuccess.mockResolvedValue({
+        success: true,
+        data: {} as any,
+      });
+
+      await webhookController.handleStripeWebhook(
+        mockRequest as Request,
+        mockResponse as Response
+      );
+
+      // Verify it used LINE ITEM period (not invoice period)
+      expect(mockSubscriptionService.handlePaymentSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          currentPeriodStart: 1769609328, // Line item start
+          currentPeriodEnd: 1772287728, // Line item end (different from invoice!)
+          clientId: 'client123',
+        })
+      );
+
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
+    });
+
     it('should handle invoice.paid event for subscription renewal', async () => {
       const mockEvent = {
         id: 'evt_test123',

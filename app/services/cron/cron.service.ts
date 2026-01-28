@@ -5,9 +5,11 @@ import { QueueFactory } from '@services/queue';
 import { LeaseService } from '@services/lease';
 import { NotificationService } from '@services/notification';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
+import { SubscriptionService } from '@services/subscription/subscription.service';
 
 interface IConstructor {
   notificationService?: NotificationService;
+  subscriptionService: SubscriptionService;
   leaseService: LeaseService;
   queueFactory: QueueFactory;
 }
@@ -23,12 +25,12 @@ export class CronService {
   private queueFactory: QueueFactory;
   private cronJobs: Map<string, ICronJob> = new Map();
 
-  constructor({ queueFactory, leaseService }: IConstructor) {
+  constructor({ queueFactory, leaseService, subscriptionService }: IConstructor) {
     this.log = createLogger('CronService');
     this.queueFactory = queueFactory;
 
     // collects cron jobs from all services that implement ICronProvider
-    const services: ICronProvider[] = [leaseService].filter(Boolean);
+    const services: ICronProvider[] = [leaseService, subscriptionService].filter(Boolean);
 
     this.registerAllCronJobs(services);
   }

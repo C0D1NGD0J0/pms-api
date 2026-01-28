@@ -51,4 +51,21 @@ export class SubscriptionController {
 
     res.status(httpStatusCodes.OK).json(result);
   };
+
+  cancelSubscription = async (req: AppRequest, res: Response) => {
+    const { currentuser } = req.context;
+    const { cuid } = req.params;
+
+    if (!currentuser || currentuser.client.cuid !== cuid) {
+      throw new UnauthorizedError({ message: 'Unauthorized access' });
+    }
+
+    if (currentuser.client.role !== 'super-admin') {
+      throw new ForbiddenError({ message: 'Only account owner can cancel subscription' });
+    }
+
+    const result = await this.subscriptionService.cancelSubscription(req.context);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

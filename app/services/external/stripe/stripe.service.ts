@@ -185,8 +185,9 @@ export class StripeService implements IPaymentProvider {
 
   async cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
     try {
-      const result = await this.stripe.subscriptions.cancel(subscriptionId);
-      this.log.info({ subscriptionId }, 'Canceled Stripe subscription');
+      const result = await this.stripe.subscriptions.update(subscriptionId, {
+        cancel_at_period_end: true,
+      });
       return result;
     } catch (error) {
       this.log.error({ error, subscriptionId }, 'Error canceling Stripe subscription');
@@ -200,6 +201,15 @@ export class StripeService implements IPaymentProvider {
       return customer as Stripe.Customer;
     } catch (error) {
       this.log.error({ error, customerId }, 'Error fetching Stripe customer');
+      throw error;
+    }
+  }
+
+  async getCharge(chargeId: string): Promise<Stripe.Charge> {
+    try {
+      return await this.stripe.charges.retrieve(chargeId);
+    } catch (error) {
+      this.log.error({ error, chargeId }, 'Error fetching Stripe charge');
       throw error;
     }
   }

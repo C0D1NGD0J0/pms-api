@@ -46,4 +46,15 @@ router.post(
   })
 );
 
+router.delete(
+  '/:cuid/cancel-subscription',
+  isAuthenticated,
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  asyncWrapper((req, res) => {
+    const subscriptionController =
+      req.container.resolve<SubscriptionController>('subscriptionController');
+    return subscriptionController.cancelSubscription(req, res);
+  })
+);
+
 export default router;

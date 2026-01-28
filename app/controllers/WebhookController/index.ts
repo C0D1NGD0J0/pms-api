@@ -76,7 +76,6 @@ export class WebhookController {
         return res.status(400).json({ success: false, message: 'Missing signature' });
       }
 
-      // Use rawBody for Stripe (Buffer), fallback to body for compatibility
       const payload = (req as any).rawBody || req.body;
       const event = await this.stripeService.verifyWebhookSignature(payload, signature);
 
@@ -103,18 +102,8 @@ export class WebhookController {
 
         case 'invoice.paid': {
           const invoice = event.data.object as any;
-
-          // Extract subscription ID from correct location (Stripe changed API structure)
           const stripeSubscriptionId =
             invoice.subscription || invoice.parent?.subscription_details?.subscription;
-
-          this.log.info('Invoice paid event', {
-            invoiceId: invoice.id,
-            stripeSubscriptionId,
-            billingReason: invoice.billing_reason,
-            hasLineItems: !!invoice.lines?.data?.length,
-            lineItemMetadata: invoice.lines?.data?.[0]?.metadata || {},
-          });
 
           if (invoice.billing_reason === 'subscription_create' && stripeSubscriptionId) {
             await this.handleInitialSubscriptionPayment(invoice);
@@ -151,23 +140,12 @@ export class WebhookController {
     try {
       const customerId = invoice.customer;
 
-      // Extract subscription ID from correct location
       const stripeSubscriptionId =
         invoice.subscription || invoice.parent?.subscription_details?.subscription;
 
-      // Extract metadata from line items (Stripe sends it there, not in invoice.metadata)
       const lineItemMetadata = invoice.lines?.data?.[0]?.metadata || {};
       const clientId =
         lineItemMetadata.clientId || invoice.metadata?.clientId || invoice.customer_email;
-
-      this.log.info('Processing initial payment with extracted data:', {
-        customerId,
-        stripeSubscriptionId,
-        clientId,
-        lineItemMetadata,
-        invoiceMetadata: invoice.metadata,
-        hasParent: !!invoice.parent,
-      });
 
       if (!customerId || !stripeSubscriptionId) {
         this.log.warn('Missing required data', {
@@ -179,21 +157,22 @@ export class WebhookController {
         return;
       }
 
-      // Extract subscription period from line items (not invoice period)
-      // Invoice period is when invoice was issued, line item period is subscription coverage
       const subscriptionPeriod = invoice.lines?.data?.[0]?.period;
+      let cardLast4: string | undefined;
+      let cardBrand: string | undefined;
+      if (invoice.charge) {
+        try {
+          const chargeId = typeof invoice.charge === 'string' ? invoice.charge : invoice.charge.id;
+          const charge = await this.stripeService.getCharge(chargeId);
 
-      this.log.info(
-        {
-          customerId,
-          stripeSubscriptionId,
-          clientId,
-          invoiceId: invoice.id,
-          invoicePeriod: { start: invoice.period_start, end: invoice.period_end },
-          subscriptionPeriod,
-        },
-        'Processing initial subscription payment'
-      );
+          if (charge?.payment_method_details?.card) {
+            cardLast4 = charge.payment_method_details.card.last4 || undefined;
+            cardBrand = charge.payment_method_details.card.brand || undefined;
+          }
+        } catch (error) {
+          this.log.warn({ error }, 'Failed to fetch card details, continuing without payment info');
+        }
+      }
 
       const result = await this.subscriptionService.handlePaymentSuccess({
         stripeCustomerId: customerId,
@@ -201,6 +180,8 @@ export class WebhookController {
         currentPeriodStart: subscriptionPeriod?.start || invoice.period_start,
         currentPeriodEnd: subscriptionPeriod?.end || invoice.period_end,
         clientId,
+        cardLast4,
+        cardBrand,
       });
 
       if (result.success) {
@@ -222,7 +203,6 @@ export class WebhookController {
 
   private async handleSubscriptionRenewal(invoice: any): Promise<void> {
     try {
-      // Extract subscription ID from correct location
       const stripeSubscriptionId =
         invoice.subscription || invoice.parent?.subscription_details?.subscription;
 
@@ -235,33 +215,12 @@ export class WebhookController {
         return;
       }
 
-      // Extract subscription period from line items (not invoice period)
       const subscriptionPeriod = invoice.lines?.data?.[0]?.period;
-
-      this.log.info(
-        {
-          invoiceId: invoice.id,
-          stripeSubscriptionId,
-          invoicePeriod: { start: invoice.period_start, end: invoice.period_end },
-          subscriptionPeriod,
-        },
-        'Processing subscription renewal'
-      );
-
-      const result = await this.subscriptionService.handleSubscriptionRenewal({
+      await this.subscriptionService.handleSubscriptionRenewal({
         stripeSubscriptionId,
         currentPeriodStart: subscriptionPeriod?.start || invoice.period_start,
         currentPeriodEnd: subscriptionPeriod?.end || invoice.period_end,
       });
-
-      if (result.success) {
-        this.log.info({ invoiceId: invoice.id }, 'Subscription renewal processed successfully');
-      } else {
-        this.log.error(
-          { invoiceId: invoice.id, error: result.message },
-          'Failed to process renewal'
-        );
-      }
     } catch (error) {
       this.log.error('Error handling subscription renewal', { error, invoiceId: invoice.id });
       throw error;
@@ -270,7 +229,6 @@ export class WebhookController {
 
   private async handlePaymentFailed(invoice: any): Promise<void> {
     try {
-      // Extract subscription ID from correct location
       const stripeSubscriptionId =
         invoice.subscription || invoice.parent?.subscription_details?.subscription;
 
@@ -283,32 +241,11 @@ export class WebhookController {
         return;
       }
 
-      this.log.warn(
-        {
-          invoiceId: invoice.id,
-          stripeSubscriptionId,
-          attemptCount: invoice.attempt_count,
-        },
-        'Processing payment failure'
-      );
-
-      const result = await this.subscriptionService.handlePaymentFailed({
+      await this.subscriptionService.handlePaymentFailed({
         stripeSubscriptionId,
         invoiceId: invoice.id,
         attemptCount: invoice.attempt_count,
       });
-
-      if (result.success) {
-        this.log.warn(
-          { invoiceId: invoice.id },
-          'Payment failure processed - subscription deactivated'
-        );
-      } else {
-        this.log.error(
-          { invoiceId: invoice.id, error: result.message },
-          'Failed to process payment failure'
-        );
-      }
     } catch (error) {
       this.log.error('Error handling payment failure', { error, invoiceId: invoice.id });
       throw error;
@@ -323,29 +260,11 @@ export class WebhookController {
         return;
       }
 
-      this.log.info(
-        {
-          stripeSubscriptionId,
-          status: subscription.status,
-          currentPeriodEnd: subscription.current_period_end,
-        },
-        'Processing subscription update'
-      );
-
-      const result = await this.subscriptionService.handleSubscriptionUpdated({
+      await this.subscriptionService.handleSubscriptionUpdated({
         stripeSubscriptionId,
         status: subscription.status,
         currentPeriodEnd: subscription.current_period_end,
       });
-
-      if (result.success) {
-        this.log.info({ stripeSubscriptionId }, 'Subscription update processed successfully');
-      } else {
-        this.log.error(
-          { stripeSubscriptionId, error: result.message },
-          'Failed to process subscription update'
-        );
-      }
     } catch (error) {
       this.log.error('Error handling subscription update', {
         error,
@@ -363,27 +282,10 @@ export class WebhookController {
         return;
       }
 
-      this.log.info(
-        {
-          stripeSubscriptionId,
-          canceledAt: subscription.canceled_at,
-        },
-        'Processing subscription cancellation'
-      );
-
-      const result = await this.subscriptionService.handleSubscriptionCanceled({
+      await this.subscriptionService.handleSubscriptionCanceled({
         stripeSubscriptionId,
         canceledAt: subscription.canceled_at,
       });
-
-      if (result.success) {
-        this.log.info({ stripeSubscriptionId }, 'Subscription cancellation processed successfully');
-      } else {
-        this.log.error(
-          { stripeSubscriptionId, error: result.message },
-          'Failed to process cancellation'
-        );
-      }
     } catch (error) {
       this.log.error('Error handling subscription cancellation', {
         error,

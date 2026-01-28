@@ -56,6 +56,16 @@ export interface ISubscriptionPlansConfig {
   name: string;
 }
 
+export interface IPaymentGateway {
+  provider: IPaymentGatewayProvider;
+  planLookUpKey?: string; // Lookup key for the plan
+  subscriberId?: string; // Payment gateway subscription ID (e.g., Stripe sub_xxx) set after payment
+  customerId: string; // Payment gateway customer ID (e.g., Stripe customer ID)
+  cardLast4?: string; // Last 4 digits for UI display (PCI-compliant)
+  cardBrand?: string; // Card brand for UI display (visa, mastercard, etc.)
+  planId: string; // Payment gateway price/plan ID (e.g., Stripe price ID)
+}
+
 export interface ISubscription {
   billingInterval: 'monthly' | 'annual';
   paymentGateway: IPaymentGateway;
@@ -133,14 +143,6 @@ export interface ISubscriptionAccessControl {
     billingInterval: 'monthly' | 'annual';
   };
   features: Record<string, boolean>;
-}
-
-export interface IPaymentGateway {
-  provider: IPaymentGatewayProvider;
-  planLookUpKey?: string; // Lookup key for the plan
-  subscriberId?: string; // Payment gateway subscription ID (e.g., Stripe sub_xxx) set after payment
-  customerId: string; // Payment gateway customer ID (e.g., Stripe customer ID)
-  planId: string; // Payment gateway price/plan ID (e.g., Stripe price ID)
 }
 
 export interface ISubscriptionSummary {

@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
+import { Subscription } from '@models/index';
 import { AuthCache } from '@caching/index';
 import { ClientDAO } from '@dao/clientDAO';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
@@ -9,6 +10,12 @@ import { PaymentGatewayService } from '@services/paymentGateway';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { ISubscriptionStatus } from '@interfaces/subscription.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+
+jest.mock('@models/index', () => ({
+  Subscription: {
+    find: jest.fn(),
+  },
+}));
 
 describe('SubscriptionService - Webhook Handlers', () => {
   let subscriptionService: SubscriptionService;
@@ -501,6 +508,64 @@ describe('SubscriptionService - Webhook Handlers', () => {
           canceledAt: 1700000000,
         })
       ).rejects.toThrow('Failed to update subscription');
+    });
+  });
+
+  describe('processExpiredSubscriptions', () => {
+    it('should mark expired active subscriptions as inactive', async () => {
+      const now = new Date();
+      const pastDate = new Date(now.getTime() - 86400000); // 1 day ago
+
+      const expiredSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: 'client123',
+        planName: 'growth',
+        status: ISubscriptionStatus.ACTIVE,
+        endDate: pastDate,
+      };
+
+      (Subscription.find as jest.Mock).mockResolvedValue([expiredSubscription]);
+      mockSubscriptionDAO.update = jest.fn().mockResolvedValue({
+        ...expiredSubscription,
+        status: ISubscriptionStatus.INACTIVE,
+      });
+
+      await subscriptionService.processExpiredSubscriptions();
+
+      expect(Subscription.find).toHaveBeenCalledWith({
+        status: ISubscriptionStatus.ACTIVE,
+        endDate: { $lt: expect.any(Date) },
+        planName: { $ne: 'essential' },
+      });
+
+      expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
+        { _id: expiredSubscription._id },
+        { $set: { status: ISubscriptionStatus.INACTIVE } }
+      );
+
+      expect(mockSSEService.sendToUser).toHaveBeenCalled();
+    });
+
+    it('should skip essential plan (free tier)', async () => {
+      (Subscription.find as jest.Mock).mockResolvedValue([]);
+
+      await subscriptionService.processExpiredSubscriptions();
+
+      expect(Subscription.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          planName: { $ne: 'essential' },
+        })
+      );
+    });
+
+    it('should handle case when no expired subscriptions found', async () => {
+      (Subscription.find as jest.Mock).mockResolvedValue([]);
+
+      await subscriptionService.processExpiredSubscriptions();
+
+      expect(Subscription.find).toHaveBeenCalled();
+      expect(mockSubscriptionDAO.update).not.toHaveBeenCalled();
+      expect(mockSSEService.sendToUser).not.toHaveBeenCalled();
     });
   });
 });

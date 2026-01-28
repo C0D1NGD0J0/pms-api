@@ -379,10 +379,17 @@ export class ClientService {
         billingInterval: subscription.billingInterval,
         amount: subscription.totalMonthlyPrice,
         nextBillingDate: subscription.endDate,
+        canceledAt: subscription.canceledAt || null,
         pendingDowngradeAt: subscription.pendingDowngradeAt || null,
         currentSeats: usersResult.pagination?.total || 0,
         currentProperties: propertiesResult,
         currentUnits: unitCount,
+        paymentMethod: subscription.paymentGateway?.cardLast4
+          ? {
+              last4: subscription.paymentGateway.cardLast4,
+              brand: subscription.paymentGateway.cardBrand,
+            }
+          : null,
       };
     }
 

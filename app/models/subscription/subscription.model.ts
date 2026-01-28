@@ -65,6 +65,8 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       },
       planId: { type: String, required: true },
       planLookUpKey: { type: String },
+      cardLast4: { type: String },
+      cardBrand: { type: String },
     },
     customPriceInCents: { type: Number }, // For Enterprise custom negotiated price
     additionalSeatsCount: { type: Number, default: 0 }, // Extra seats purchased beyond included

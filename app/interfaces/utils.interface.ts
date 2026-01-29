@@ -112,7 +112,7 @@ export enum RequestSource {
   API = 'api',
 }
 export interface IRequestContext {
-  subscription?: {
+  entitlements?: {
     plan: {
       name: string;
       status: string;

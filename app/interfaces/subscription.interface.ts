@@ -130,7 +130,7 @@ export type ISubscriptionPlanResponse = {
   };
 } & Omit<ISubscriptionPlansConfig, 'pricing' | 'features'>;
 
-export interface ISubscriptionAccessControl {
+export interface ISubscriptionEntitlements {
   paymentFlow: {
     requiresPayment: boolean;
     reason: 'pending_signup' | 'expired' | 'grace_period' | null;

@@ -24,9 +24,12 @@ export interface IPaymentProvider {
     metadata?: Record<string, string>;
   }): Promise<IPaymentCustomer>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
+  updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
+  getCustomerInvoices(customerId: string, limit?: number): Promise<Stripe.Invoice[]>;
   cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
   getSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
   getCustomer(customerId: string): Promise<Stripe.Customer>;
+  getCharge(chargeId: string): Promise<Stripe.Charge>;
   getProducts(): Promise<Stripe.Product[]>;
 }
 

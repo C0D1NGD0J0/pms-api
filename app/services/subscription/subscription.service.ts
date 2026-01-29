@@ -12,7 +12,7 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { PaymentGatewayService } from '@services/paymentGateway';
 import { InternalServerError, UnauthorizedError, BadRequestError } from '@shared/customErrors';
 import {
-  ISubscriptionAccessControl,
+  ISubscriptionEntitlements,
   ISubscriptionPlanResponse,
   IPaymentGatewayProvider,
   ISubscriptionPlanUsage,
@@ -318,7 +318,6 @@ export class SubscriptionService {
           customerName = client.displayName;
         }
 
-        // Check if customer already exists in subscription to prevent duplicates
         let customerId = subscription.paymentGateway?.customerId;
         const hasValidCustomer = customerId && customerId !== 'none' && customerId !== '';
 
@@ -489,10 +488,10 @@ export class SubscriptionService {
     }
   }
 
-  async getSubscriptionAccessControl(
+  async getSubscriptionEntitlements(
     cuid: string,
     userRole?: string
-  ): IPromiseReturnedData<ISubscriptionAccessControl | null> {
+  ): IPromiseReturnedData<ISubscriptionEntitlements | null> {
     try {
       const subscription = await this.subscriptionDAO.findFirst({
         cuid,
@@ -537,7 +536,7 @@ export class SubscriptionService {
         reason = 'expired';
       }
 
-      const accessControl: ISubscriptionAccessControl = {
+      const entitlements: ISubscriptionEntitlements = {
         plan: {
           name: subscription.planName,
           status: subscription.status,
@@ -552,7 +551,7 @@ export class SubscriptionService {
         },
       };
 
-      return { data: accessControl, success: true };
+      return { data: entitlements, success: true };
     } catch (error) {
       this.log.error({ error }, 'Error getting subscription access control');
       return { data: null, success: false, error: error.message };
@@ -608,16 +607,69 @@ export class SubscriptionService {
     }
   }
 
+  async getBillingHistory(cuid: string): Promise<any[]> {
+    const cacheKey = `billing_history:${cuid}`;
+
+    try {
+      const cached = await this.authCache.client.GET(cacheKey);
+      if (cached) {
+        this.log.info({ cuid }, 'Returning cached billing history');
+        return JSON.parse(cached);
+      }
+
+      const subscription = await this.subscriptionDAO.findFirst({ cuid });
+      if (!subscription?.paymentGateway?.customerId || subscription.planName === 'essential') {
+        return [];
+      }
+
+      const result = await this.paymentGatewayService.getInvoices(
+        IPaymentGatewayProvider.STRIPE,
+        subscription.paymentGateway.customerId,
+        12
+      );
+
+      if (!result.success || !result.data) {
+        return [];
+      }
+
+      const billingHistory = result.data.map((inv) => ({
+        invoiceId: inv.id,
+        number: inv.number,
+        amountPaid: inv.amount_paid / 100,
+        currency: inv.currency.toUpperCase(),
+        paidAt: inv.status_transitions?.paid_at
+          ? new Date(inv.status_transitions.paid_at * 1000)
+          : null,
+        period: {
+          start: new Date(inv.period_start * 1000),
+          end: new Date(inv.period_end * 1000),
+        },
+        pdfUrl: inv.invoice_pdf,
+        hostedUrl: inv.hosted_invoice_url,
+      }));
+
+      // Cache for 2 hours
+      await this.authCache.client.SETEX(cacheKey, 7200, JSON.stringify(billingHistory));
+
+      this.log.info({ cuid, count: billingHistory.length }, 'Cached billing history for 2 hours');
+
+      return billingHistory;
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Error getting billing history');
+      return []; // Don't break response on error
+    }
+  }
+
   async initSubscriptionPayment(
     ctx: IRequestContext,
     checkoutData: {
-      successUrl: string;
-      cancelUrl: string;
+      successUrl?: string;
+      cancelUrl?: string;
       billingInterval?: 'monthly' | 'annual';
-      lookUpKey: string;
+      lookUpKey?: string;
       priceId: string;
     }
-  ): IPromiseReturnedData<{ checkoutUrl: string; sessionId: string }> {
+  ): IPromiseReturnedData<{ checkoutUrl?: string; sessionId?: string; message?: string }> {
     try {
       const { currentuser } = ctx;
       const cuid = currentuser!.client.cuid;
@@ -627,36 +679,115 @@ export class SubscriptionService {
         throw new BadRequestError({ message: 'Subscription not found' });
       }
 
-      if (subscription.status !== ISubscriptionStatus.PENDING_PAYMENT) {
-        throw new BadRequestError({
-          message: 'Payment already completed or subscription not in pending state',
-        });
+      // Block only inactive subscriptions
+      if (subscription.status === ISubscriptionStatus.INACTIVE) {
+        throw new BadRequestError({ message: 'Cannot update canceled/inactive subscription' });
       }
+
+      const isInitialPayment = subscription.status === ISubscriptionStatus.PENDING_PAYMENT;
+      const isUpdate = subscription.status === ISubscriptionStatus.ACTIVE;
 
       const priceId = checkoutData.priceId || subscription.paymentGateway.planId;
       if (!priceId) {
         throw new InternalServerError({ message: 'Plan pricing not configured' });
       }
 
-      const checkoutResult = await this.createCheckoutSession({
-        subscriptionId: subscription._id.toString(),
-        email: currentuser!.email,
-        priceId,
-        successUrl: checkoutData.successUrl,
-        cancelUrl: checkoutData.cancelUrl,
-      });
-
-      if (!checkoutResult.success || !checkoutResult.data) {
-        throw new BadRequestError({
-          message: checkoutResult.message || 'Failed to create checkout session',
+      if (isInitialPayment) {
+        const checkoutResult = await this.createCheckoutSession({
+          subscriptionId: subscription._id.toString(),
+          email: currentuser!.email,
+          priceId,
+          successUrl: checkoutData.successUrl!,
+          cancelUrl: checkoutData.cancelUrl!,
         });
+
+        if (!checkoutResult.success || !checkoutResult.data) {
+          throw new BadRequestError({
+            message: checkoutResult.message || 'Failed to create checkout session',
+          });
+        }
+
+        return {
+          data: checkoutResult.data,
+          success: true,
+          message: 'Checkout session created successfully',
+        };
       }
 
-      return {
-        data: checkoutResult.data,
-        success: true,
-        message: 'Checkout session created successfully',
-      };
+      if (isUpdate) {
+        const stripeSubscriptionId = subscription.paymentGateway?.subscriberId;
+        if (!stripeSubscriptionId) {
+          throw new BadRequestError({ message: 'No active Stripe subscription found' });
+        }
+
+        const session = await this.subscriptionDAO.startSession();
+        try {
+          const result = await this.subscriptionDAO.withTransaction(session, async (cxtsession) => {
+            const updateResult = await this.paymentGatewayService.updateSubscription(
+              IPaymentGatewayProvider.STRIPE,
+              stripeSubscriptionId,
+              priceId
+            );
+
+            if (!updateResult.success) {
+              throw new BadRequestError({
+                message: updateResult.message || 'Failed to update subscription in Stripe',
+              });
+            }
+
+            // Update local DB
+            const updatedSubscription = await this.subscriptionDAO.update(
+              { _id: subscription._id },
+              {
+                $set: {
+                  billingInterval: checkoutData.billingInterval,
+                  'paymentGateway.planId': priceId,
+                  'paymentGateway.planLookUpKey': checkoutData.lookUpKey,
+                },
+              },
+              undefined,
+              cxtsession
+            );
+
+            if (!updatedSubscription) {
+              throw new BadRequestError({ message: 'Failed to update subscription' });
+            }
+
+            return updatedSubscription;
+          });
+
+          // Invalidate cache
+          try {
+            const cacheKey = `billing_history:${result.cuid}`;
+            await this.authCache.client.DEL(cacheKey);
+          } catch (error) {
+            this.log.warn({ error }, 'Failed to invalidate billing history cache');
+          }
+
+          // Notify
+          await this.notifyAccountAdminViaSSE(result.cuid, {
+            type: 'subscription_updated',
+            subscription: {
+              plan: result.planName,
+              status: result.status,
+              endDate: result.endDate,
+            },
+            message:
+              'Subscription updated. You were charged immediately with credit for unused time.',
+          });
+
+          return {
+            data: { message: 'Subscription updated successfully' }, // NO checkoutUrl
+            success: true,
+            message: 'Subscription updated successfully',
+          };
+        } catch (error) {
+          this.log.error({ error }, 'Error updating subscription');
+          throw error;
+        }
+      }
+
+      throw new InternalServerError({ message: 'Unexpected subscription status' });
     } catch (error) {
       this.log.error({ error }, 'Error initiating subscription payment');
       throw error;
@@ -723,20 +854,15 @@ export class SubscriptionService {
           throw new BadRequestError({ message: 'Failed to update subscription' });
         }
 
-        this.log.info(
-          {
-            subscriptionId: subscription._id,
-            stripeCustomerId,
-            stripeSubscriptionId,
-            clientId,
-            startDate: new Date(currentPeriodStart * 1000),
-            endDate: new Date(currentPeriodEnd * 1000),
-          },
-          'Payment successful - subscription activated with Stripe billing period in transaction'
-        );
-
         return updatedSubscription;
       });
+
+      try {
+        const billingCacheKey = `billing_history:${result.cuid}`;
+        await this.authCache.client.DEL(billingCacheKey);
+      } catch (error) {
+        this.log.warn({ error }, 'Failed to invalidate billing history cache');
+      }
 
       await this.notifyAccountAdminViaSSE(result.cuid, {
         type: 'subscription_activated',
@@ -803,7 +929,6 @@ export class SubscriptionService {
         return updatedSubscription;
       });
 
-      // Notify account admin via SSE about subscription renewal
       await this.notifyAccountAdminViaSSE(result.cuid, {
         type: 'subscription_renewed',
         subscription: {
@@ -869,7 +994,6 @@ export class SubscriptionService {
         return updatedSubscription;
       });
 
-      // Notify account admin via SSE about payment failure
       await this.notifyAccountAdminViaSSE(result.cuid, {
         type: 'payment_failed',
         subscription: {
@@ -933,7 +1057,6 @@ export class SubscriptionService {
         'Subscription updated from Stripe'
       );
 
-      // Notify account admin via SSE about subscription update
       await this.notifyAccountAdminViaSSE(updatedSubscription.cuid, {
         type: 'subscription_updated',
         subscription: {

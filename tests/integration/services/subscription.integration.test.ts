@@ -356,7 +356,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionAccessControl('client-active', 'super-admin');
+      const result = await subscriptionService.getSubscriptionEntitlements('client-active', 'super-admin');
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
@@ -396,7 +396,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionAccessControl('client-pending', 'super-admin');
+      const result = await subscriptionService.getSubscriptionEntitlements('client-pending', 'super-admin');
 
       expect(result.success).toBe(true);
       expect(result.data?.paymentFlow.requiresPayment).toBe(true);
@@ -431,7 +431,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionAccessControl('client-admin', 'admin');
+      const result = await subscriptionService.getSubscriptionEntitlements('client-admin', 'admin');
 
       expect(result.success).toBe(true);
       expect(result.data?.paymentFlow.requiresPayment).toBe(false); // Regular admin should NOT see payment requirements
@@ -465,7 +465,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionAccessControl('client-grace', 'super-admin');
+      const result = await subscriptionService.getSubscriptionEntitlements('client-grace', 'super-admin');
 
       expect(result.success).toBe(true);
       expect(result.data?.paymentFlow.requiresPayment).toBe(true);
@@ -499,7 +499,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionAccessControl('client-expired', 'super-admin');
+      const result = await subscriptionService.getSubscriptionEntitlements('client-expired', 'super-admin');
 
       expect(result.success).toBe(true);
       expect(result.data?.paymentFlow.requiresPayment).toBe(true);
@@ -531,7 +531,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionAccessControl('client-starter', 'super-admin');
+      const result = await subscriptionService.getSubscriptionEntitlements('client-starter', 'super-admin');
 
       expect(result.success).toBe(true);
       expect(result.data?.plan.name).toBe('growth');

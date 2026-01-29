@@ -7,11 +7,13 @@ import { getRequestDuration, createLogger } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { IClientDocument, IClientStats } from '@interfaces/client.interface';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
+import { SubscriptionService } from '@services/subscription/subscription.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { SubscriptionDAO, PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
 
 interface IConstructor {
+  subscriptionService: SubscriptionService;
   subscriptionDAO: SubscriptionDAO;
   propertyUnitDAO: PropertyUnitDAO;
   propertyDAO: PropertyDAO;
@@ -30,6 +32,7 @@ export class ClientService {
   private readonly profileDAO: ProfileDAO;
   private readonly authCache: AuthCache;
   private readonly subscriptionDAO: SubscriptionDAO;
+  private readonly subscriptionService: SubscriptionService;
 
   constructor({
     clientDAO,
@@ -39,6 +42,7 @@ export class ClientService {
     profileDAO,
     authCache,
     subscriptionDAO,
+    subscriptionService,
   }: IConstructor) {
     this.log = createLogger('ClientService');
     this.clientDAO = clientDAO;
@@ -48,6 +52,7 @@ export class ClientService {
     this.profileDAO = profileDAO;
     this.authCache = authCache;
     this.subscriptionDAO = subscriptionDAO;
+    this.subscriptionService = subscriptionService;
   }
 
   async updateClientDetails(
@@ -89,15 +94,6 @@ export class ClientService {
         updateData.identification.idType !== client.identification.idType
       ) {
         requiresReVerification = true;
-        this.log.info(
-          {
-            cuid,
-            oldIdType: client.identification.idType,
-            newIdType: updateData.identification.idType,
-            userId: currentuser.sub,
-          },
-          t('client.logging.idTypeChanged')
-        );
       }
 
       if (updateData.identification.idType && !updateData.identification.idNumber) {
@@ -146,16 +142,13 @@ export class ClientService {
       updateData.isVerified = false;
     }
 
-    // Enterprise client validation
     if (client.accountType?.isEnterpriseAccount) {
-      // Create merged company profile data (existing + updates)
       const mergedCompanyProfile = {
         ...client.companyProfile,
         ...updateData.companyProfile,
       };
 
       try {
-        // Validate enterprise requirements using the validation schema
         ClientValidations.enterpriseValidation.parse({
           companyProfile: mergedCompanyProfile,
         });
@@ -168,28 +161,11 @@ export class ClientService {
         }
 
         if (enterpriseErrors.length > 0) {
-          this.log.error(
-            {
-              cuid,
-              userId: currentuser.sub,
-              enterpriseErrors,
-              companyProfile: mergedCompanyProfile,
-            },
-            'Enterprise client validation failed'
-          );
           throw new BadRequestError({
             message: 'Enterprise clients must have complete company profile information',
           });
         }
       }
-
-      this.log.info(
-        {
-          cuid,
-          userId: currentuser.sub,
-        },
-        'Enterprise client validation passed'
-      );
     }
 
     const changedFields = Object.keys(updateData);
@@ -369,6 +345,7 @@ export class ClientService {
     const isSuperAdmin = currentuser.client?.role === 'super-admin';
     if (isSuperAdmin && subscription) {
       const unitCount = await this.propertyUnitDAO.countDocuments({ cuid, deletedAt: null });
+      const billingHistory = await this.subscriptionService.getBillingHistory(cuid);
 
       responseData.subscription = {
         subscriptionId: subscription._id.toString(),
@@ -390,6 +367,7 @@ export class ClientService {
               brand: subscription.paymentGateway.cardBrand,
             }
           : null,
+        billingHistory,
       };
     }
 

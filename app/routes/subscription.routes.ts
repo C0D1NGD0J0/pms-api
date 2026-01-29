@@ -4,7 +4,7 @@ import { SubscriptionController } from '@controllers/index';
 import { SubscriptionValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
-  subscriptionAccessControl,
+  subscriptionEntitlements,
   requirePermission,
   isAuthenticated,
   basicLimiter,
@@ -26,7 +26,7 @@ router.get(
 router.get(
   '/:cuid/plan-usage',
   isAuthenticated,
-  subscriptionAccessControl,
+  subscriptionEntitlements,
   asyncWrapper((req, res) => {
     const subscriptionController =
       req.container.resolve<SubscriptionController>('subscriptionController');

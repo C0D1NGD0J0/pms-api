@@ -195,6 +195,34 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async updateSubscription(
+    subscriptionId: string,
+    newPriceId: string
+  ): Promise<Stripe.Subscription> {
+    try {
+      // Get current subscription to find subscription item ID
+      const subscription = await this.stripe.subscriptions.retrieve(subscriptionId);
+      const subscriptionItemId = subscription.items.data[0].id;
+
+      // Update to new price with proration (charges immediately)
+      const updated = await this.stripe.subscriptions.update(subscriptionId, {
+        items: [
+          {
+            id: subscriptionItemId,
+            price: newPriceId,
+          },
+        ],
+        proration_behavior: 'create_prorations', // Credit unused time
+      });
+
+      this.log.info({ subscriptionId, newPriceId }, 'Updated Stripe subscription');
+      return updated;
+    } catch (error) {
+      this.log.error({ error, subscriptionId, newPriceId }, 'Error updating Stripe subscription');
+      throw error;
+    }
+  }
+
   async getCustomer(customerId: string): Promise<Stripe.Customer> {
     try {
       const customer = await this.stripe.customers.retrieve(customerId);
@@ -210,6 +238,21 @@ export class StripeService implements IPaymentProvider {
       return await this.stripe.charges.retrieve(chargeId);
     } catch (error) {
       this.log.error({ error, chargeId }, 'Error fetching Stripe charge');
+      throw error;
+    }
+  }
+
+  async getCustomerInvoices(customerId: string, limit: number = 12): Promise<Stripe.Invoice[]> {
+    try {
+      const result = await this.stripe.invoices.list({
+        customer: customerId,
+        limit,
+        status: 'paid',
+      });
+      this.log.info({ customerId, count: result.data.length }, 'Fetched customer invoices');
+      return result.data;
+    } catch (error) {
+      this.log.error({ error, customerId }, 'Error fetching customer invoices');
       throw error;
     }
   }

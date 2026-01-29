@@ -345,7 +345,7 @@ export const setUserLanguage = async (req: Request, _res: Response, next: NextFu
  * Runs after isAuthenticated, provides feature flags and payment status
  * All users (owner, staff, vendors, tenants) get the client's subscription
  */
-export const subscriptionAccessControl = async (
+export const subscriptionEntitlements = async (
   req: Request,
   _res: Response,
   next: NextFunction
@@ -363,14 +363,14 @@ export const subscriptionAccessControl = async (
 
     const cuid = currentUser.client.cuid;
     const userRole = currentUser.client.role;
-    const result = await subscriptionService.getSubscriptionAccessControl(cuid, userRole);
+    const result = await subscriptionService.getSubscriptionEntitlements(cuid, userRole);
     if (result.success && result.data) {
-      req.context.subscription = result.data;
+      req.context.entitlements = result.data;
     }
 
     next();
   } catch (error) {
-    console.error('Error in subscriptionAccessControl middleware:', error);
+    console.error('Error in subscriptionEntitlements middleware:', error);
     next();
   }
 };

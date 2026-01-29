@@ -156,4 +156,65 @@ export class PaymentGatewayService {
       };
     }
   }
+
+  async getInvoices(
+    provider: IPaymentGatewayProvider,
+    customerId: string,
+    limit: number = 12
+  ): IPromiseReturnedData<any[]> {
+    try {
+      this.log.info({ provider, customerId, limit }, 'Fetching customer invoices');
+
+      const providerInstance = this.getProvider(provider);
+
+      if (!('getCustomerInvoices' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement getCustomerInvoices`);
+      }
+
+      const invoices = await (providerInstance as any).getCustomerInvoices(customerId, limit);
+
+      this.log.info(
+        { provider, customerId, count: invoices.length },
+        'Fetched invoices successfully'
+      );
+
+      return { success: true, data: invoices };
+    } catch (error) {
+      this.log.error({ error, provider, customerId }, 'Error fetching invoices');
+      return {
+        data: [],
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to fetch invoices',
+      };
+    }
+  }
+
+  async updateSubscription(
+    provider: IPaymentGatewayProvider,
+    subscriptionId: string,
+    newPriceId: string
+  ): IPromiseReturnedData<any> {
+    try {
+      this.log.info({ provider, subscriptionId, newPriceId }, 'Updating subscription');
+
+      const providerInstance = this.getProvider(provider);
+
+      if (!('updateSubscription' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement updateSubscription`);
+      }
+
+      const result = await (providerInstance as any).updateSubscription(subscriptionId, newPriceId);
+
+      this.log.info({ provider, subscriptionId }, 'Subscription updated successfully');
+
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider, subscriptionId }, 'Error updating subscription');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to update subscription',
+      };
+    }
+  }
 }

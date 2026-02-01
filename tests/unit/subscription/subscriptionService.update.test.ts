@@ -4,8 +4,7 @@ import { ClientDAO } from '@dao/clientDAO';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { PaymentGatewayService } from '@services/paymentGateway';
-import { StripeService } from '@services/external/stripe/stripe.service';
-import { ISubscriptionStatus, IPaymentGatewayProvider } from '@interfaces/index';
+import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/index';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 
 describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Changes)', () => {
@@ -121,6 +120,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
         {
           $set: {
             billingInterval: 'annual',
+            entitlements: expect.any(Object),
             'paymentGateway.planId': 'price_growth_annual',
             'paymentGateway.planLookUpKey': 'growth_annual',
           },
@@ -208,6 +208,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       const mockSubscription = {
         _id: new Types.ObjectId(),
         cuid: 'client123',
+        planName: 'growth',
         status: ISubscriptionStatus.ACTIVE,
         paymentGateway: {
           subscriberId: 'sub_stripe123',

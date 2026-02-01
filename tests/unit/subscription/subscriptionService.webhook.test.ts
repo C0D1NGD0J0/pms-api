@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
-import { Subscription } from '@models/index';
 import { AuthCache } from '@caching/index';
 import { ClientDAO } from '@dao/clientDAO';
+import { Subscription } from '@models/index';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { EventEmitterService } from '@services/eventEmitter';

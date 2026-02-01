@@ -32,8 +32,8 @@ const createSharedRedisConnection = (): Redis => {
       // Bull requires maxRetriesPerRequest to be null for bclient/subscriber
       // See: https://github.com/OptimalBits/bull/issues/1873
       maxRetriesPerRequest: null,
-      // Production uses 30s timeout, High timeout in development
-      commandTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 300000, // 5 min in dev
+      // Production uses 30s timeout, slightly higher timeout (60s) in development
+      commandTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 60000, // 60s in dev
       // Enable offline queue to buffer commands until Redis connects
       enableOfflineQueue: true,
       // Bull requires enableReadyCheck to be false

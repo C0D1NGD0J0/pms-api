@@ -74,9 +74,7 @@ class WorkerProcess {
     setTimeout(() => {
       this.log.info('Force shutdown after timeout');
       process.exit(0);
-    }, 10000); // allows running jobs time to finish (max 10 seconds)
-
-    process.exit(0);
+    }, 30000); // allows running jobs time to finish (max 30 seconds)
   }
 }
 

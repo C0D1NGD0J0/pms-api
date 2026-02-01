@@ -25,17 +25,18 @@ export interface ISubscriptionPlansConfig {
       savingsPercent: number;
     };
   };
+  seatPricing: {
+    includedSeats: number;
+    additionalSeatPriceCents: number;
+    maxAdditionalSeats: number;
+    lookUpKey: string; // Stripe price lookup key for additional seats (e.g., 'growth_seats')
+  };
   features: {
     eSignature: boolean;
     RepairRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
     prioritySupport?: boolean;
-  };
-  seatPricing: {
-    includedSeats: number;
-    additionalSeatPriceCents: number;
-    maxAdditionalSeats: number;
   };
   limits: {
     maxProperties: number;
@@ -56,17 +57,14 @@ export interface ISubscriptionPlansConfig {
   name: string;
 }
 
-export interface IPaymentGateway {
-  provider: IPaymentGatewayProvider;
-  planLookUpKey?: string; // Lookup key for the plan
-  subscriberId?: string; // Payment gateway subscription ID (e.g., Stripe sub_xxx) set after payment
-  customerId: string; // Payment gateway customer ID (e.g., Stripe customer ID)
-  cardLast4?: string; // Last 4 digits for UI display (PCI-compliant)
-  cardBrand?: string; // Card brand for UI display (visa, mastercard, etc.)
-  planId: string; // Payment gateway price/plan ID (e.g., Stripe price ID)
-}
-
 export interface ISubscription {
+  entitlements: {
+    eSignature: boolean;
+    RepairRequestService: boolean;
+    VisitorPassService: boolean;
+    reportingAnalytics: boolean;
+    prioritySupport?: boolean;
+  };
   billingInterval: 'monthly' | 'annual';
   paymentGateway: IPaymentGateway;
   additionalSeatsCount: number;
@@ -87,6 +85,14 @@ export interface ISubscription {
 }
 
 export interface ISubscriptionPlanUsage {
+  seatInfo: {
+    includedSeats: number;
+    additionalSeats: number;
+    totalAllowed: number;
+    maxAdditionalSeats: number;
+    additionalSeatPriceCents: number;
+    availableForPurchase: number;
+  };
   plan: {
     name: PlanName;
     status: ISubscriptionStatus;
@@ -111,6 +117,38 @@ export interface ISubscriptionPlanUsage {
   };
 }
 
+export interface IPaymentGateway {
+  provider: IPaymentGatewayProvider;
+  planLookUpKey?: string; // Lookup key for the plan
+  subscriberId?: string; // Payment gateway subscription ID (e.g., Stripe sub_xxx) set after payment
+  seatItemId?: string; // Subscription item ID for seats (e.g., Stripe si_xxx) - used for updating seat quantity
+  customerId: string; // Payment gateway customer ID (e.g., Stripe customer ID)
+  cardLast4?: string; // Last 4 digits for UI display (PCI-compliant)
+  cardBrand?: string; // Card brand for UI display (visa, mastercard, etc.)
+  planId: string; // Payment gateway price/plan ID (e.g., Stripe price ID)
+}
+
+export interface ISubscriptionEntitlements {
+  paymentFlow?: {
+    requiresPayment: boolean;
+    reason: 'pending_signup' | 'expired' | 'grace_period' | null;
+    gracePeriodEndsAt: Date | null;
+    daysUntilDowngrade: number | null;
+  };
+  entitlements: {
+    eSignature: boolean;
+    RepairRequestService: boolean;
+    VisitorPassService: boolean;
+    reportingAnalytics: boolean;
+    prioritySupport?: boolean;
+  };
+  plan: {
+    name: PlanName;
+    status: ISubscriptionStatus;
+    billingInterval: 'monthly' | 'annual';
+  };
+}
+
 export type ISubscriptionPlanResponse = {
   pricing: {
     monthly: {
@@ -129,21 +167,6 @@ export type ISubscriptionPlanResponse = {
     };
   };
 } & Omit<ISubscriptionPlansConfig, 'pricing' | 'features'>;
-
-export interface ISubscriptionEntitlements {
-  paymentFlow: {
-    requiresPayment: boolean;
-    reason: 'pending_signup' | 'expired' | 'grace_period' | null;
-    gracePeriodEndsAt: Date | null;
-    daysUntilDowngrade: number | null;
-  };
-  plan: {
-    name: PlanName;
-    status: ISubscriptionStatus;
-    billingInterval: 'monthly' | 'annual';
-  };
-  features: Record<string, boolean>;
-}
 
 export interface ISubscriptionSummary {
   billingInterval: 'monthly' | 'annual';

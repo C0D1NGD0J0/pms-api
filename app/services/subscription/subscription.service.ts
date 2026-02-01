@@ -21,6 +21,7 @@ import {
   ISubscriptionStatus,
   IRequestContext,
   ISubscription,
+  EventTypes,
   PlanName,
 } from '@interfaces/index';
 
@@ -83,11 +84,14 @@ export class SubscriptionService {
         | 'subscription_renewed'
         | 'payment_failed'
         | 'subscription_canceled'
-        | 'subscription_updated';
+        | 'subscription_updated'
+        | 'seats_purchased';
       subscription: {
         plan: string;
-        status: string;
+        status?: string;
         endDate?: Date;
+        additionalSeats?: number;
+        totalMonthlyCost?: number;
       };
       message: string;
     }
@@ -262,6 +266,7 @@ export class SubscriptionService {
         startDate: new Date(),
         endDate: undefined,
         billingInterval,
+        entitlements: config.features,
         paymentGateway: {
           customerId: isPaidPlan ? '' : 'none', // will be handle via webhook after payment
           provider: isPaidPlan ? IPaymentGatewayProvider.STRIPE : IPaymentGatewayProvider.NONE,
@@ -542,13 +547,15 @@ export class SubscriptionService {
           status: subscription.status,
           billingInterval: subscription.billingInterval,
         },
-        features: config.features,
-        paymentFlow: {
-          requiresPayment,
-          reason,
-          gracePeriodEndsAt,
-          daysUntilDowngrade,
-        },
+        entitlements: subscription.entitlements || config.features,
+        ...(requiresPayment && {
+          paymentFlow: {
+            requiresPayment,
+            reason,
+            gracePeriodEndsAt,
+            daysUntilDowngrade,
+          },
+        }),
       };
 
       return { data: entitlements, success: true };
@@ -570,13 +577,44 @@ export class SubscriptionService {
         throw new BadRequestError({ message: 'Subscription not found for client' });
       }
 
+      // Verify seat counter accuracy and auto-sync if needed
+      const actualEmployeeCount = await this.userDAO.list({
+        'cuids.cuid': cuid,
+        'cuids.isConnected': true,
+        'cuids.roles': {
+          $in: ['super-admin', 'admin', 'manager', 'staff'],
+        },
+        deletedAt: null,
+      });
+
+      const actualSeatCount = actualEmployeeCount.items?.length || 0;
+
+      // If counter is out of sync, correct it
+      if (actualSeatCount !== subscription.currentSeats) {
+        this.log.warn(
+          {
+            cuid,
+            storedCount: subscription.currentSeats,
+            actualCount: actualSeatCount,
+          },
+          'Seat counter out of sync - auto-correcting'
+        );
+
+        await this.subscriptionDAO.update(
+          { _id: subscription._id },
+          { $set: { currentSeats: actualSeatCount } }
+        );
+
+        // Update local object for response
+        subscription.currentSeats = actualSeatCount;
+      }
+
       const config = subscriptionPlanConfig.getConfig(subscription.planName);
+      const maxAllowedSeats = config.seatPricing.includedSeats + subscription.additionalSeatsCount;
       const isLimitReached = {
         properties: subscription.currentProperties >= config.limits.maxProperties,
         units: subscription.currentUnits >= config.limits.maxUnits,
-        seats:
-          subscription.currentSeats >=
-          config.seatPricing.includedSeats + config.seatPricing.maxAdditionalSeats,
+        seats: subscription.currentSeats >= maxAllowedSeats,
       };
 
       const planUsage: ISubscriptionPlanUsage = {
@@ -590,7 +628,7 @@ export class SubscriptionService {
         limits: {
           properties: config.limits.maxProperties,
           units: config.limits.maxUnits,
-          seats: config.seatPricing.includedSeats + config.seatPricing.maxAdditionalSeats,
+          seats: maxAllowedSeats,
         },
         usage: {
           properties: subscription.currentProperties,
@@ -598,6 +636,15 @@ export class SubscriptionService {
           seats: subscription.currentSeats,
         },
         isLimitReached,
+        seatInfo: {
+          includedSeats: config.seatPricing.includedSeats,
+          additionalSeats: subscription.additionalSeatsCount,
+          totalAllowed: maxAllowedSeats,
+          maxAdditionalSeats: config.seatPricing.maxAdditionalSeats,
+          additionalSeatPriceCents: config.seatPricing.additionalSeatPriceCents,
+          availableForPurchase:
+            config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
+        },
       };
 
       return { data: planUsage, success: true };
@@ -657,6 +704,282 @@ export class SubscriptionService {
     } catch (error) {
       this.log.error({ error, cuid }, 'Error getting billing history');
       return []; // Don't break response on error
+    }
+  }
+
+  /**
+   * Get available seats for a client's subscription
+   * Returns how many more seats can be used before hitting limit
+   */
+  async getAvailableSeats(cuid: string): Promise<{
+    availableSeats: number;
+    currentSeats: number;
+    totalAllowed: number;
+    includedSeats: number;
+    additionalSeats: number;
+    canPurchaseMore: boolean;
+    maxAdditionalSeats: number;
+  }> {
+    const subscription = await this.subscriptionDAO.findFirst({ cuid });
+    if (!subscription) {
+      throw new BadRequestError({ message: 'Subscription not found' });
+    }
+
+    const config = subscriptionPlanConfig.getConfig(subscription.planName);
+    const totalAllowed = config.seatPricing.includedSeats + subscription.additionalSeatsCount;
+    const availableSeats = totalAllowed - subscription.currentSeats;
+    const canPurchaseMore =
+      subscription.additionalSeatsCount < config.seatPricing.maxAdditionalSeats;
+
+    return {
+      availableSeats: Math.max(0, availableSeats),
+      currentSeats: subscription.currentSeats,
+      totalAllowed,
+      includedSeats: config.seatPricing.includedSeats,
+      additionalSeats: subscription.additionalSeatsCount,
+      canPurchaseMore,
+      maxAdditionalSeats: config.seatPricing.maxAdditionalSeats,
+    };
+  }
+
+  /**
+   * Update additional seat count (purchase or remove)
+   * Positive delta = purchase seats, negative delta = remove seats
+   *
+   * BILLING STRUCTURE:
+   * - Purchased seats are PERSISTENT (carry over month-to-month)
+   * - additionalSeatsCount is stored in subscription document
+   * - additionalSeatsCost and totalMonthlyPrice are updated
+   *
+   * STRIPE INTEGRATION:
+   * - Uses subscription items API (e.g., 'growth_seats', 'portfolio_seats')
+   * - First purchase: Creates new subscription item
+   * - Subsequent changes: Updates existing subscription item quantity
+   * - Delta to zero: Deletes subscription item entirely
+   * - Stripe handles automatic proration for current billing cycle
+   * - Future renewals automatically include seat costs
+   *
+   * @param cuid - Client unique identifier
+   * @param seatDelta - Number of seats to add (positive) or remove (negative)
+   * @returns Updated subscription with new seat count and pricing
+   */
+  async updateAdditionalSeats(
+    cuid: string,
+    seatDelta: number
+  ): IPromiseReturnedData<ISubscriptionDocument> {
+    if (seatDelta === 0) {
+      throw new BadRequestError({ message: 'Seat change cannot be zero' });
+    }
+
+    const session = await this.subscriptionDAO.startSession();
+
+    try {
+      const result = await this.subscriptionDAO.withTransaction(session, async (cxtsession) => {
+        const subscription = await this.subscriptionDAO.findFirst({ cuid });
+        if (!subscription) {
+          throw new BadRequestError({ message: 'Subscription not found' });
+        }
+
+        if (subscription.planName === 'essential') {
+          throw new BadRequestError({
+            message:
+              'Cannot manage seats on Essential plan. Please upgrade to Growth or Portfolio.',
+          });
+        }
+
+        const config = subscriptionPlanConfig.getConfig(subscription.planName);
+        const newAdditionalCount = subscription.additionalSeatsCount + seatDelta;
+
+        // Validate new count is within allowed range
+        if (newAdditionalCount < 0) {
+          throw new BadRequestError({
+            message: `Cannot remove ${Math.abs(seatDelta)} seats. You only have ${subscription.additionalSeatsCount} additional seats.`,
+          });
+        }
+
+        if (newAdditionalCount > config.seatPricing.maxAdditionalSeats) {
+          throw new BadRequestError({
+            message: `Cannot ${seatDelta > 0 ? 'purchase' : 'have'} ${Math.abs(seatDelta)} seats. Your ${subscription.planName} plan allows a maximum of ${config.seatPricing.maxAdditionalSeats} additional seats. You currently have ${subscription.additionalSeatsCount} additional seats.`,
+          });
+        }
+
+        // If removing seats, check current usage won't exceed new limit
+        if (seatDelta < 0) {
+          const maxAllowedAfterRemoval = config.seatPricing.includedSeats + newAdditionalCount;
+          if (subscription.currentSeats > maxAllowedAfterRemoval) {
+            const needToArchive = subscription.currentSeats - maxAllowedAfterRemoval;
+            throw new BadRequestError({
+              message: `Cannot remove ${Math.abs(seatDelta)} seats. You currently have ${subscription.currentSeats} active users but would only have ${maxAllowedAfterRemoval} seats allowed. Please archive ${needToArchive} user(s) first.`,
+            });
+          }
+        }
+
+        // Stripe integration - Add, update, or delete subscription item
+        let seatItemId: string | undefined = subscription.paymentGateway?.seatItemId;
+
+        if (
+          subscription.paymentGateway?.subscriberId &&
+          subscription.paymentGateway.provider === 'stripe'
+        ) {
+          try {
+            // Get subscription with items to check if seat item exists
+            const stripeSubResult = await this.paymentGatewayService.getSubscriptionWithItems(
+              IPaymentGatewayProvider.STRIPE,
+              subscription.paymentGateway.subscriberId
+            );
+
+            if (!stripeSubResult.success || !stripeSubResult.data) {
+              throw new Error('Failed to fetch Stripe subscription');
+            }
+
+            const stripeSubscription = stripeSubResult.data;
+            const seatItem = stripeSubscription.items?.data?.find(
+              (item: any) => item.price?.lookup_key === config.seatPricing.lookUpKey
+            );
+
+            if (newAdditionalCount === 0) {
+              // Remove all seats - delete subscription item if it exists
+              if (seatItem) {
+                this.log.info(
+                  { itemId: seatItem.id },
+                  'Deleting seat item from Stripe (removing all additional seats)'
+                );
+
+                const deleteResult = await this.paymentGatewayService.deleteSubscriptionItem(
+                  IPaymentGatewayProvider.STRIPE,
+                  seatItem.id
+                );
+
+                if (!deleteResult.success) {
+                  throw new Error(deleteResult.message || 'Failed to delete seat item from Stripe');
+                }
+
+                this.log.info('Seat item deleted from Stripe successfully');
+              }
+              seatItemId = undefined;
+            } else if (!seatItem) {
+              // First seat purchase - create new subscription item
+              this.log.info(
+                { cuid, lookupKey: config.seatPricing.lookUpKey, quantity: newAdditionalCount },
+                'Adding seat subscription item'
+              );
+
+              const addResult = await this.paymentGatewayService.addSubscriptionItem(
+                IPaymentGatewayProvider.STRIPE,
+                subscription.paymentGateway.subscriberId,
+                config.seatPricing.lookUpKey,
+                newAdditionalCount
+              );
+
+              if (!addResult.success || !addResult.data) {
+                throw new Error(addResult.message || 'Failed to add seats to Stripe subscription');
+              }
+
+              seatItemId = addResult.data.id;
+              this.log.info(
+                { seatItemId, quantity: newAdditionalCount },
+                'Seat item created in Stripe'
+              );
+            } else {
+              // Update existing seat item quantity
+              this.log.info(
+                {
+                  itemId: seatItem.id,
+                  oldQuantity: seatItem.quantity,
+                  newQuantity: newAdditionalCount,
+                },
+                'Updating seat item quantity in Stripe'
+              );
+
+              const updateResult = await this.paymentGatewayService.updateSubscriptionItemQuantity(
+                IPaymentGatewayProvider.STRIPE,
+                seatItem.id,
+                newAdditionalCount
+              );
+
+              if (!updateResult.success) {
+                throw new Error(updateResult.message || 'Failed to update seat quantity in Stripe');
+              }
+
+              seatItemId = seatItem.id;
+              this.log.info(
+                { seatItemId, newQuantity: newAdditionalCount },
+                'Seat item quantity updated'
+              );
+            }
+          } catch (stripeError) {
+            this.log.error(
+              { error: stripeError, cuid },
+              'Stripe integration failed for seat update'
+            );
+            throw new BadRequestError({
+              message: `Payment failed: ${stripeError instanceof Error ? stripeError.message : 'Unable to update Stripe subscription'}`,
+            });
+          }
+        }
+
+        // Calculate new pricing
+        const monthlyCostChange = (seatDelta * config.seatPricing.additionalSeatPriceCents) / 100;
+        const newAdditionalCost =
+          (newAdditionalCount * config.seatPricing.additionalSeatPriceCents) / 100;
+
+        const updateFields: any = {
+          $inc: { additionalSeatsCount: seatDelta },
+          $set: {
+            additionalSeatsCost: newAdditionalCost,
+            totalMonthlyPrice: subscription.totalMonthlyPrice + monthlyCostChange,
+          },
+        };
+
+        // Store or clear seat item ID
+        if (seatItemId) {
+          updateFields.$set['paymentGateway.seatItemId'] = seatItemId;
+        } else if (newAdditionalCount === 0) {
+          updateFields.$unset = { 'paymentGateway.seatItemId': '' };
+        }
+
+        const updatedSubscription = await this.subscriptionDAO.update(
+          { _id: subscription._id },
+          updateFields,
+          { new: true },
+          cxtsession
+        );
+
+        if (!updatedSubscription) {
+          throw new BadRequestError({ message: 'Failed to update subscription' });
+        }
+
+        this.log.info(
+          {
+            cuid,
+            seatDelta,
+            newTotal: newAdditionalCount,
+            costPerSeat: config.seatPricing.additionalSeatPriceCents / 100,
+            monthlyCostChange,
+            seatItemId,
+          },
+          `Seats ${seatDelta > 0 ? 'purchased' : 'removed'} successfully`
+        );
+
+        return updatedSubscription;
+      });
+
+      // Send SSE notification
+      const action = seatDelta > 0 ? 'purchased' : 'removed';
+      await this.notifyAccountAdminViaSSE(result.cuid, {
+        type: 'seats_purchased',
+        subscription: {
+          plan: result.planName,
+          additionalSeats: result.additionalSeatsCount,
+          totalMonthlyCost: result.totalMonthlyPrice,
+        },
+        message: `Successfully ${action} ${Math.abs(seatDelta)} seat${Math.abs(seatDelta) > 1 ? 's' : ''}`,
+      });
+
+      return { data: result, success: true };
+    } catch (error) {
+      this.log.error({ error, cuid, seatDelta }, 'Error updating seat count');
+      throw error;
     }
   }
 
@@ -735,12 +1058,16 @@ export class SubscriptionService {
               });
             }
 
-            // Update local DB
+            // Get plan config to update entitlements
+            const planConfig = subscriptionPlanConfig.getConfig(subscription.planName);
+
+            // Update local DB (endDate will be updated by Stripe webhook)
             const updatedSubscription = await this.subscriptionDAO.update(
               { _id: subscription._id },
               {
                 $set: {
                   billingInterval: checkoutData.billingInterval,
+                  entitlements: planConfig.features,
                   'paymentGateway.planId': priceId,
                   'paymentGateway.planLookUpKey': checkoutData.lookUpKey,
                 },
@@ -1203,10 +1530,224 @@ export class SubscriptionService {
   }
 
   private setupEventListeners(): void {
-    this.log.info('Subscription service event listeners setup');
+    // Track unit creation to maintain cumulative counter
+    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchCreated.bind(this));
+
+    // Track invitations for seat counting (only employee roles)
+    this.emitterService.on(EventTypes.INVITATION_SENT, this.handleInvitationSent.bind(this));
+    this.emitterService.on(
+      EventTypes.INVITATION_ACCEPTED,
+      this.handleInvitationAccepted.bind(this)
+    );
+    this.emitterService.on(EventTypes.INVITATION_EXPIRED, this.handleInvitationExpired.bind(this));
+    this.emitterService.on(EventTypes.INVITATION_REVOKED, this.handleInvitationRevoked.bind(this));
+
+    // Track user archival for seat counting (only employee roles)
+    this.emitterService.on(EventTypes.USER_ARCHIVED, this.handleUserArchived.bind(this));
+
+    this.log.info('Subscription service event listeners setup complete');
+  }
+
+  /**
+   * Handle batch unit creation - increment cumulative unit counter
+   * Note: Archived units still count toward limits to prevent gaming
+   */
+  private async handleUnitBatchCreated(payload: any): Promise<void> {
+    try {
+      const { cuid, unitsCreated } = payload;
+      if (!cuid || unitsCreated === undefined) {
+        this.log.warn('Unit batch created event missing required fields', { payload });
+        return;
+      }
+
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        this.log.warn({ cuid }, 'Client not found for unit batch creation event');
+        return;
+      }
+
+      if (unitsCreated > 0) {
+        await this.subscriptionDAO.updateResourceCount('propertyUnit', client._id, unitsCreated);
+        this.log.info({ cuid, clientId: client._id, unitsCreated }, 'Unit counter incremented');
+      }
+    } catch (error) {
+      this.log.error({ error, payload }, 'Error handling unit batch created event');
+    }
+  }
+
+  private isEmployeeRole(role: string): boolean {
+    const EMPLOYEE_ROLES = ['super-admin', 'admin', 'manager', 'staff'];
+    return EMPLOYEE_ROLES.includes(role);
+  }
+
+  /**
+   * Handle invitation sent - increment seat counter for employee roles only
+   * Validates against total allowed seats (includedSeats + additionalSeatsCount)
+   */
+  private async handleInvitationSent(payload: any): Promise<void> {
+    try {
+      const { cuid, role } = payload;
+      if (!cuid || !role) return;
+
+      if (!this.isEmployeeRole(role)) {
+        this.log.debug({ cuid, role }, 'Skipping seat increment - not an employee role');
+        return;
+      }
+
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) return;
+
+      const subscription = await this.subscriptionDAO.findFirst({ client: client._id });
+      if (!subscription) {
+        this.log.warn({ cuid }, 'Subscription not found for seat increment');
+        return;
+      }
+
+      const config = subscriptionPlanConfig.getConfig(subscription.planName);
+      const maxAllowedSeats = config.seatPricing.includedSeats + subscription.additionalSeatsCount;
+
+      const result = await this.subscriptionDAO.updateResourceCount(
+        'seat',
+        client._id,
+        1,
+        maxAllowedSeats
+      );
+
+      if (!result) {
+        this.log.error(
+          { cuid, currentSeats: subscription.currentSeats, maxAllowedSeats },
+          'Seat limit reached - invitation should have been blocked'
+        );
+        throw new BadRequestError({
+          message: `Seat limit reached. Your ${subscription.planName} plan allows ${maxAllowedSeats} seats (${config.seatPricing.includedSeats} included + ${subscription.additionalSeatsCount} additional).`,
+        });
+      }
+
+      this.log.info({ cuid, role }, 'Seat counter incremented for invitation sent');
+    } catch (error) {
+      this.log.error({ error, payload }, 'Error handling invitation sent event');
+      throw error;
+    }
+  }
+
+  /**
+   * Handle invitation accepted - seat already counted when sent, no action needed
+   */
+  private async handleInvitationAccepted(payload: any): Promise<void> {
+    try {
+      const { cuid, role } = payload;
+      this.log.debug({ cuid, role }, 'Invitation accepted - seat already counted');
+    } catch (error) {
+      this.log.error({ error, payload }, 'Error handling invitation accepted event');
+    }
+  }
+
+  /**
+   * Handle invitation expired - decrement seat counter for employee roles
+   */
+  private async handleInvitationExpired(payload: any): Promise<void> {
+    try {
+      const { cuid, role } = payload;
+      if (!cuid || !role) return;
+
+      if (!this.isEmployeeRole(role)) {
+        this.log.debug({ cuid, role }, 'Skipping seat decrement - not an employee role');
+        return;
+      }
+
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) return;
+
+      const result = await this.subscriptionDAO.updateResourceCount('seat', client._id, -1);
+      if (!result) {
+        this.log.warn(
+          { cuid, role },
+          'Failed to decrement seat counter - counter may already be at zero'
+        );
+        return;
+      }
+      this.log.info({ cuid, role }, 'Seat counter decremented for expired invitation');
+    } catch (error) {
+      this.log.error({ error, payload }, 'Error handling invitation expired event');
+    }
+  }
+
+  /**
+   * Handle invitation revoked - decrement seat counter for employee roles
+   */
+  private async handleInvitationRevoked(payload: any): Promise<void> {
+    try {
+      const { cuid, role } = payload;
+      if (!cuid || !role) return;
+
+      if (!this.isEmployeeRole(role)) {
+        this.log.debug({ cuid, role }, 'Skipping seat decrement - not an employee role');
+        return;
+      }
+
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) return;
+
+      const result = await this.subscriptionDAO.updateResourceCount('seat', client._id, -1);
+      if (!result) {
+        this.log.warn(
+          { cuid, role },
+          'Failed to decrement seat counter - counter may already be at zero'
+        );
+        return;
+      }
+      this.log.info({ cuid, role }, 'Seat counter decremented for revoked invitation');
+    } catch (error) {
+      this.log.error({ error, payload }, 'Error handling invitation revoked event');
+    }
+  }
+
+  /**
+   * Handle user archival - decrement seat counter for employee roles only
+   * Frees up seat capacity when employees are removed from the organization
+   */
+  private async handleUserArchived(payload: any): Promise<void> {
+    try {
+      const { cuid, roles } = payload;
+      if (!cuid || !roles) {
+        this.log.warn('User archived event missing required fields', { payload });
+        return;
+      }
+
+      // Check if user has any employee role
+      const hasEmployeeRole = roles.some((role: string) => this.isEmployeeRole(role));
+      if (!hasEmployeeRole) {
+        this.log.debug({ cuid, roles }, 'Skipping seat decrement - not an employee role');
+        return;
+      }
+
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        this.log.warn({ cuid }, 'Client not found for user archived event');
+        return;
+      }
+
+      const result = await this.subscriptionDAO.updateResourceCount('seat', client._id, -1);
+      if (!result) {
+        this.log.warn(
+          { cuid, roles },
+          'Failed to decrement seat counter - counter may already be at zero'
+        );
+        return;
+      }
+      this.log.info({ cuid, roles }, 'Seat counter decremented for archived employee');
+    } catch (error) {
+      this.log.error({ error, payload }, 'Error handling user archived event');
+    }
   }
 
   cleanupEventListeners(): void {
+    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchCreated);
+    this.emitterService.off(EventTypes.INVITATION_SENT, this.handleInvitationSent);
+    this.emitterService.off(EventTypes.INVITATION_ACCEPTED, this.handleInvitationAccepted);
+    this.emitterService.off(EventTypes.INVITATION_EXPIRED, this.handleInvitationExpired);
+    this.emitterService.off(EventTypes.INVITATION_REVOKED, this.handleInvitationRevoked);
+    this.emitterService.off(EventTypes.USER_ARCHIVED, this.handleUserArchived);
     this.log.info('Subscription service event listeners removed');
   }
 }

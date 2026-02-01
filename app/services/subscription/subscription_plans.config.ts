@@ -46,6 +46,7 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       includedSeats: 3, // 3 seats included
       additionalSeatPriceCents: 0, // Can't buy more seats
       maxAdditionalSeats: 0, // Must upgrade to add seats
+      lookUpKey: '', // Essential plan has no seat pricing
     },
     limits: {
       maxProperties: 3,
@@ -91,6 +92,7 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       includedSeats: 10,
       additionalSeatPriceCents: 500,
       maxAdditionalSeats: 25,
+      lookUpKey: 'growth_seats', // Stripe price lookup key for additional seats
     },
     limits: {
       maxProperties: 15,
@@ -136,6 +138,7 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       includedSeats: 25,
       additionalSeatPriceCents: 799,
       maxAdditionalSeats: 40,
+      lookUpKey: 'portfolio_seats', // Stripe price lookup key for additional seats
     },
     limits: {
       maxProperties: 30,

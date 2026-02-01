@@ -118,26 +118,6 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
   }
 
   /**
-   * Update subscription tier
-   */
-  async updateTier(
-    subscriptionId: string | Types.ObjectId,
-    planName: 'basic' | 'starter' | 'professional'
-  ): Promise<ISubscriptionDocument | null> {
-    try {
-      return await this.update(
-        { _id: new Types.ObjectId(subscriptionId) },
-        {
-          $set: { planName },
-        }
-      );
-    } catch (error) {
-      this.logger.error({ error, subscriptionId, planName }, 'Error updating subscription tier');
-      this.throwErrorHandler(error);
-    }
-  }
-
-  /**
    * Update subscription end date
    */
   async updateEndDate(
@@ -207,98 +187,68 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
   }
 
   /**
-   * Update seat count (increment or decrement)
-   */
-  async updateSeatCount(
-    clientId: string | Types.ObjectId,
-    delta: number
-  ): Promise<ISubscriptionDocument | null> {
-    try {
-      return await this.update(
-        { client: new Types.ObjectId(clientId) },
-        {
-          $inc: { currentSeats: delta },
-        }
-      );
-    } catch (error) {
-      this.logger.error({ error, clientId, delta }, 'Error updating seat count');
-      this.throwErrorHandler(error);
-    }
-  }
-
-  /**
-   * Update property count (increment or decrement)
-   */
-  async updatePropertyCount(
-    clientId: string | Types.ObjectId,
-    delta: number
-  ): Promise<ISubscriptionDocument | null> {
-    try {
-      return await this.update(
-        { client: new Types.ObjectId(clientId) },
-        {
-          $inc: { currentProperties: delta },
-        }
-      );
-    } catch (error) {
-      this.logger.error({ error, clientId, delta }, 'Error updating property count');
-      this.throwErrorHandler(error);
-    }
-  }
-
-  /**
-   * Atomically increment resource count with limit check (prevents race conditions)
-   * @param resourceName - The resource type ('property' or 'propertyUnit')
+   * Update resource count (property, unit, or seat) with optional limit check
+   * @param resourceName - The resource type ('property' | 'propertyUnit' | 'seat')
    * @param clientId - The client ID
-   * @param maxLimit - The maximum allowed count for this resource
+   * @param delta - Amount to increment/decrement (positive or negative)
+   * @param maxLimit - Optional maximum allowed count (for limit checks during increment)
    * @param session - Optional MongoDB session for transactions
-   * @returns true if successful, false if limit reached
+   * @returns ISubscriptionDocument if updated, null if limit reached
    */
   async updateResourceCount(
-    resourceName: 'property' | 'propertyUnit',
+    resourceName: 'property' | 'propertyUnit' | 'seat',
     clientId: string | Types.ObjectId,
-    maxLimit: number,
+    delta: number,
+    maxLimit?: number,
     session?: any
-  ): Promise<boolean> {
+  ): Promise<ISubscriptionDocument | null> {
     try {
-      const fieldName = resourceName === 'property' ? 'currentProperties' : 'currentUnits';
+      const fieldName = {
+        property: 'currentProperties',
+        propertyUnit: 'currentUnits',
+        seat: 'currentSeats',
+      }[resourceName];
 
-      const result = await this.update(
-        {
-          client: new Types.ObjectId(clientId),
-          [fieldName]: { $lt: maxLimit },
-        },
-        { $inc: { [fieldName]: 1 } },
+      if (maxLimit !== undefined && delta > 0) {
+        // Incrementing with max limit check
+        const result = await this.update(
+          {
+            client: new Types.ObjectId(clientId),
+            [fieldName]: { $lt: maxLimit },
+          },
+          { $inc: { [fieldName]: delta } },
+          { new: true },
+          session
+        );
+        return result;
+      }
+
+      if (delta < 0) {
+        // Decrementing - prevent going below zero
+        const result = await this.update(
+          {
+            client: new Types.ObjectId(clientId),
+            [fieldName]: { $gte: Math.abs(delta) }, // Ensure current value >= amount to subtract
+          },
+          { $inc: { [fieldName]: delta } },
+          { new: true },
+          session
+        );
+        return result;
+      }
+
+      // Incrementing without limit check
+      return await this.update(
+        { client: new Types.ObjectId(clientId) },
+        { $inc: { [fieldName]: delta } },
         { new: true },
         session
       );
-
-      return result !== null;
     } catch (error) {
       this.logger.error(
-        { error, resourceName, clientId, maxLimit },
+        { error, resourceName, clientId, delta, maxLimit },
         'Error updating resource count'
       );
-      this.throwErrorHandler(error);
-    }
-  }
-
-  /**
-   * Update unit count (increment or decrement)
-   */
-  async updateUnitCount(
-    clientId: string | Types.ObjectId,
-    delta: number
-  ): Promise<ISubscriptionDocument | null> {
-    try {
-      return await this.update(
-        { client: new Types.ObjectId(clientId) },
-        {
-          $inc: { currentUnits: delta },
-        }
-      );
-    } catch (error) {
-      this.logger.error({ error, clientId, delta }, 'Error updating unit count');
       this.throwErrorHandler(error);
     }
   }

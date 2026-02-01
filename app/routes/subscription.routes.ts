@@ -57,4 +57,16 @@ router.delete(
   })
 );
 
+router.post(
+  '/:cuid/seats',
+  isAuthenticated,
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  validateRequest({ body: SubscriptionValidations.manageSeats }),
+  asyncWrapper((req, res) => {
+    const subscriptionController =
+      req.container.resolve<SubscriptionController>('subscriptionController');
+    return subscriptionController.manageSeats(req, res);
+  })
+);
+
 export default router;

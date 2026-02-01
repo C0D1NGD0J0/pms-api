@@ -6,7 +6,15 @@ export const InitiateCheckoutSchema = z.object({
     errorMap: () => ({ message: 'Billing interval must be monthly or annual' }),
   }),
   lookUpKey: z.string().optional(),
-  // Optional for updates (ACTIVE subscriptions), required for initial payment (PENDING)
   successUrl: z.string().url('Invalid success URL').optional(),
   cancelUrl: z.string().url('Invalid cancel URL').optional(),
+});
+
+export const ManageSeatsSchema = z.object({
+  seatDelta: z
+    .number()
+    .int('Seat delta must be an integer')
+    .refine((val) => val !== 0, {
+      message: 'Seat delta must be non-zero (positive to purchase, negative to remove)',
+    }),
 });

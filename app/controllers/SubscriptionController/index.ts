@@ -68,4 +68,22 @@ export class SubscriptionController {
 
     res.status(httpStatusCodes.OK).json(result);
   };
+
+  manageSeats = async (req: AppRequest, res: Response) => {
+    const { currentuser } = req.context;
+    const { cuid } = req.params;
+    const { seatDelta } = req.body;
+
+    if (!currentuser || currentuser.client.cuid !== cuid) {
+      throw new UnauthorizedError({ message: 'Unauthorized access' });
+    }
+
+    if (currentuser.client.role !== 'super-admin') {
+      throw new ForbiddenError({ message: 'Only account owner can manage seats' });
+    }
+
+    const result = await this.subscriptionService.updateAdditionalSeats(cuid, seatDelta);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

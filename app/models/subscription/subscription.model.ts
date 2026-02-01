@@ -54,6 +54,13 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       default: 'monthly',
       index: true,
     },
+    entitlements: {
+      eSignature: { type: Boolean, required: true, default: false },
+      RepairRequestService: { type: Boolean, required: true, default: false },
+      VisitorPassService: { type: Boolean, required: true, default: false },
+      reportingAnalytics: { type: Boolean, required: true, default: false },
+      prioritySupport: { type: Boolean, default: false },
+    },
     paymentGateway: {
       customerId: { type: String },
       subscriberId: { type: String },
@@ -65,6 +72,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       },
       planId: { type: String, required: true },
       planLookUpKey: { type: String },
+      seatItemId: { type: String }, // Subscription item ID for seats (e.g., Stripe si_xxx)
       cardLast4: { type: String },
       cardBrand: { type: String },
     },

@@ -62,8 +62,32 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       prioritySupport: { type: Boolean, default: false },
     },
     paymentGateway: {
-      customerId: { type: String },
-      subscriberId: { type: String },
+      customerId: {
+        type: String,
+        validate: {
+          validator: function (this: any, value: string | undefined) {
+            const parent = this && typeof this.parent === 'function' ? this.parent() : null;
+            if (!parent || parent.planName === 'essential') {
+              return true;
+            }
+            return value !== undefined && value !== null && value !== '';
+          },
+          message: 'Customer ID is required for paid subscriptions',
+        },
+      },
+      subscriberId: {
+        type: String,
+        validate: {
+          validator: function (this: any, value: string | undefined) {
+            const parent = this && typeof this.parent === 'function' ? this.parent() : null;
+            if (!parent || parent.planName === 'essential') {
+              return true;
+            }
+            return value !== undefined && value !== null && value !== '';
+          },
+          message: 'Subscriber ID is required for paid subscriptions',
+        },
+      },
       provider: {
         type: String,
         enum: ['stripe', 'paypal', 'none', 'paystack'],

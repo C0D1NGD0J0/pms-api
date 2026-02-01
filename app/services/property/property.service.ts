@@ -426,17 +426,17 @@ export class PropertyService {
 
     const session = await this.propertyDAO.startSession();
     const result = await this.propertyDAO.withTransaction(session, async (txSession) => {
-      // Atomically increment property count with limit check
-      const canAdd = await this.subscriptionDAO.updateResourceCount(
+      const result = await this.subscriptionDAO.updateResourceCount(
         'property',
         subscription.client,
+        1,
         maxProperties,
         txSession
       );
 
-      if (!canAdd) {
+      if (!result) {
         throw new BadRequestError({
-          message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties.`,
+          message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties (including archived).`,
         });
       }
 
@@ -1203,6 +1203,66 @@ export class PropertyService {
     await this.propertyCache.invalidatePropertyLists(cuid);
 
     return { success: true, data: null, message: t('property.success.archived') };
+  }
+
+  async unarchiveClientProperty(cuid: string, pid: string): Promise<ISuccessReturnData> {
+    if (!cuid || !pid) {
+      this.log.error('Client ID and Property ID are required');
+      throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
+    }
+
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      this.log.error(`Client with cuid ${cuid} not found`);
+      throw new BadRequestError({ message: t('property.errors.unableToUnarchive') });
+    }
+
+    // Find archived property
+    const property = await this.propertyDAO.findFirst({
+      pid,
+      cuid,
+      deletedAt: { $ne: null },
+    });
+
+    if (!property) {
+      throw new NotFoundError({ message: 'Archived property not found' });
+    }
+
+    // Check subscription limits - properties count cumulatively (active + archived)
+    // This is already accounted for, but we verify active properties don't exceed limits
+    const subscription = await this.subscriptionDAO.findFirst({ cuid });
+    if (!subscription) {
+      throw new BadRequestError({ message: 'Subscription not found for client' });
+    }
+
+    const config = subscriptionPlanConfig.getConfig(subscription.planName);
+    const maxProperties = config.limits.maxProperties;
+
+    const activePropertiesCount = await this.propertyDAO.countDocuments({
+      cuid,
+      deletedAt: null,
+    });
+
+    // Since cumulative counter includes this archived property, we just check active count
+    if (activePropertiesCount >= maxProperties) {
+      throw new BadRequestError({
+        message: `Cannot unarchive property. Your ${subscription.planName} plan allows ${maxProperties} active properties. You currently have ${activePropertiesCount} active. Please archive another property or upgrade your plan.`,
+      });
+    }
+
+    // Unarchive the property
+    const unarchivedProperty = await this.propertyDAO.updateById(property.id, {
+      $set: { deletedAt: null },
+    });
+
+    if (!unarchivedProperty) {
+      throw new BadRequestError({ message: 'Unable to unarchive property' });
+    }
+
+    await this.propertyCache.invalidateProperty(cuid, property.id);
+    await this.propertyCache.invalidatePropertyLists(cuid);
+
+    return { success: true, data: unarchivedProperty, message: 'Property unarchived successfully' };
   }
 
   private async handleUnitChanged(payload: any): Promise<void> {

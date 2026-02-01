@@ -118,8 +118,14 @@ export interface IRequestContext {
       status: string;
       billingInterval: 'monthly' | 'annual';
     };
-    features: Record<string, boolean>;
-    paymentFlow: {
+    entitlements: {
+      eSignature: boolean;
+      RepairRequestService: boolean;
+      VisitorPassService: boolean;
+      reportingAnalytics: boolean;
+      prioritySupport?: boolean;
+    };
+    paymentFlow?: {
       requiresPayment: boolean;
       reason: 'pending_signup' | 'expired' | 'grace_period' | null;
       gracePeriodEndsAt: Date | null;

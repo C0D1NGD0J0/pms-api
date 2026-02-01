@@ -223,6 +223,111 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async getSubscriptionWithItems(subscriptionId: string): Promise<Stripe.Subscription> {
+    try {
+      const subscription = await this.stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ['items.data.price'],
+      });
+      return subscription;
+    } catch (error) {
+      this.log.error({ error, subscriptionId }, 'Error fetching subscription with items');
+      throw error;
+    }
+  }
+
+  async getPriceByLookupKey(lookupKey: string): Promise<Stripe.Price | null> {
+    try {
+      const prices = await this.stripe.prices.list({
+        lookup_keys: [lookupKey],
+        limit: 1,
+      });
+
+      if (!prices.data.length) {
+        this.log.warn({ lookupKey }, 'Price not found for lookup key');
+        return null;
+      }
+
+      return prices.data[0];
+    } catch (error) {
+      this.log.error({ error, lookupKey }, 'Error fetching price by lookup key');
+      throw error;
+    }
+  }
+
+  async addSubscriptionItem(
+    subscriptionId: string,
+    priceLookupKey: string,
+    quantity: number,
+    prorate: boolean = true
+  ): Promise<Stripe.SubscriptionItem> {
+    try {
+      // Get price by lookup key
+      const price = await this.getPriceByLookupKey(priceLookupKey);
+      if (!price) {
+        throw new Error(`Price not found for lookup key: ${priceLookupKey}`);
+      }
+
+      // Add subscription item with proration
+      const item = await this.stripe.subscriptionItems.create({
+        subscription: subscriptionId,
+        price: price.id,
+        quantity: quantity,
+        proration_behavior: prorate ? 'always_invoice' : 'none',
+      });
+
+      this.log.info(
+        { subscriptionId, priceLookupKey, quantity, itemId: item.id },
+        'Added subscription item'
+      );
+
+      return item;
+    } catch (error) {
+      this.log.error(
+        { error, subscriptionId, priceLookupKey, quantity },
+        'Error adding subscription item'
+      );
+      throw error;
+    }
+  }
+
+  async updateSubscriptionItemQuantity(
+    itemId: string,
+    quantity: number,
+    prorate: boolean = true
+  ): Promise<Stripe.SubscriptionItem> {
+    try {
+      const updated = await this.stripe.subscriptionItems.update(itemId, {
+        quantity: quantity,
+        proration_behavior: prorate ? 'always_invoice' : 'none',
+      });
+
+      this.log.info({ itemId, quantity }, 'Updated subscription item quantity');
+
+      return updated;
+    } catch (error) {
+      this.log.error({ error, itemId, quantity }, 'Error updating subscription item quantity');
+      throw error;
+    }
+  }
+
+  async deleteSubscriptionItem(
+    itemId: string,
+    prorate: boolean = true
+  ): Promise<Stripe.DeletedSubscriptionItem> {
+    try {
+      const deleted = await this.stripe.subscriptionItems.del(itemId, {
+        proration_behavior: prorate ? 'always_invoice' : 'none',
+      });
+
+      this.log.info({ itemId }, 'Deleted subscription item');
+
+      return deleted;
+    } catch (error) {
+      this.log.error({ error, itemId }, 'Error deleting subscription item');
+      throw error;
+    }
+  }
+
   async getCustomer(customerId: string): Promise<Stripe.Customer> {
     try {
       const customer = await this.stripe.customers.retrieve(customerId);

@@ -217,4 +217,130 @@ export class PaymentGatewayService {
       };
     }
   }
+
+  async getSubscriptionWithItems(
+    provider: IPaymentGatewayProvider,
+    subscriptionId: string
+  ): IPromiseReturnedData<any> {
+    try {
+      this.log.info({ provider, subscriptionId }, 'Fetching subscription with items');
+
+      const providerInstance = this.getProvider(provider);
+
+      if (!('getSubscriptionWithItems' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement getSubscriptionWithItems`);
+      }
+
+      const result = await (providerInstance as any).getSubscriptionWithItems(subscriptionId);
+
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider, subscriptionId }, 'Error fetching subscription with items');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to fetch subscription',
+      };
+    }
+  }
+
+  async addSubscriptionItem(
+    provider: IPaymentGatewayProvider,
+    subscriptionId: string,
+    priceLookupKey: string,
+    quantity: number
+  ): IPromiseReturnedData<any> {
+    try {
+      this.log.info(
+        { provider, subscriptionId, priceLookupKey, quantity },
+        'Adding subscription item'
+      );
+
+      const providerInstance = this.getProvider(provider);
+
+      if (!('addSubscriptionItem' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement addSubscriptionItem`);
+      }
+
+      const result = await (providerInstance as any).addSubscriptionItem(
+        subscriptionId,
+        priceLookupKey,
+        quantity,
+        true // prorate = true
+      );
+
+      this.log.info({ provider, itemId: result.id }, 'Subscription item added successfully');
+
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider, subscriptionId }, 'Error adding subscription item');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to add subscription item',
+      };
+    }
+  }
+
+  async updateSubscriptionItemQuantity(
+    provider: IPaymentGatewayProvider,
+    itemId: string,
+    quantity: number
+  ): IPromiseReturnedData<any> {
+    try {
+      this.log.info({ provider, itemId, quantity }, 'Updating subscription item quantity');
+
+      const providerInstance = this.getProvider(provider);
+
+      if (!('updateSubscriptionItemQuantity' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement updateSubscriptionItemQuantity`);
+      }
+
+      const result = await (providerInstance as any).updateSubscriptionItemQuantity(
+        itemId,
+        quantity,
+        true // prorate = true
+      );
+
+      this.log.info({ provider, itemId, quantity }, 'Subscription item quantity updated');
+
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider, itemId }, 'Error updating subscription item quantity');
+      return {
+        success: false,
+        data: null,
+        message:
+          error instanceof Error ? error.message : 'Failed to update subscription item quantity',
+      };
+    }
+  }
+
+  async deleteSubscriptionItem(
+    provider: IPaymentGatewayProvider,
+    itemId: string
+  ): IPromiseReturnedData<any> {
+    try {
+      this.log.info({ provider, itemId }, 'Deleting subscription item');
+
+      const providerInstance = this.getProvider(provider);
+
+      if (!('deleteSubscriptionItem' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement deleteSubscriptionItem`);
+      }
+
+      const result = await (providerInstance as any).deleteSubscriptionItem(itemId, true);
+
+      this.log.info({ provider, itemId }, 'Subscription item deleted successfully');
+
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider, itemId }, 'Error deleting subscription item');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to delete subscription item',
+      };
+    }
+  }
 }

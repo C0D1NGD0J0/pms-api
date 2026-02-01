@@ -367,6 +367,9 @@ export class LeaseService {
           ownershipType,
           propertyName: property.name,
           propertyType: property.propertyType,
+          ...(tenantInfo.pendingTenantEmail && {
+            pendingTenantEmail: tenantInfo.pendingTenantEmail,
+          }),
         },
       };
 
@@ -1993,6 +1996,7 @@ export class LeaseService {
     tenantInfo?: {
       tenantId: Types.ObjectId;
       useInvitationIdAsTenantId: boolean;
+      pendingTenantEmail?: string;
     } | null;
     propertyInfo?: {
       id: string;
@@ -2011,7 +2015,11 @@ export class LeaseService {
     };
   }> {
     const validationErrors: Record<string, string[]> = {};
-    let tenantInfo: { tenantId: Types.ObjectId; useInvitationIdAsTenantId: boolean } | null = null;
+    let tenantInfo: {
+      tenantId: Types.ObjectId;
+      useInvitationIdAsTenantId: boolean;
+      pendingTenantEmail?: string;
+    } | null = null;
 
     if (leaseData.tenantInfo.id) {
       if (!Types.ObjectId.isValid(leaseData.tenantInfo.id)) {
@@ -2054,12 +2062,13 @@ export class LeaseService {
 
         if (!invitation) {
           if (leaseData.tenantInfo.firstName && leaseData.tenantInfo.lastName) {
-            this.log.info('No existing invitation found, will create new tenant invitation', {
+            this.log.info('No existing invitation found, will create lease with temp tenant ID', {
               email: leaseData.tenantInfo.email,
             });
             tenantInfo = {
               tenantId: new Types.ObjectId(),
               useInvitationIdAsTenantId: true,
+              pendingTenantEmail: leaseData.tenantInfo.email.toLowerCase(), // For orphaned lease detection
             };
           } else {
             if (!validationErrors['tenantInfo.email']) validationErrors['tenantInfo.email'] = [];

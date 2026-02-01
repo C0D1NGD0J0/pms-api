@@ -235,12 +235,24 @@ export function convertUserRoleToEnum(userRole: string): IUserRole {
  * @returns Boolean indicating if the phone number is valid
  */
 export function isValidPhoneNumber(phoneNumber: string): boolean {
-  if (!phoneNumber || phoneNumber.length > 17) {
+  if (!phoneNumber) {
     return false;
   }
+
+  const trimmedNumber = phoneNumber.trim();
+  if (!trimmedNumber || trimmedNumber.length > 17) {
+    return false;
+  }
+
   try {
-    // Add '+' prefix if not present and starts with a digit
-    const normalizedNumber = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
+    // Add '+' prefix only if not present and the number starts with a digit
+    if (!trimmedNumber.startsWith('+') && !/^\d/.test(trimmedNumber)) {
+      return false;
+    }
+
+    const normalizedNumber = trimmedNumber.startsWith('+')
+      ? trimmedNumber
+      : `+${trimmedNumber}`;
     const parsedNumber = parsePhoneNumber(normalizedNumber);
     return !!parsedNumber && parsedNumber.isValid();
   } catch (error) {

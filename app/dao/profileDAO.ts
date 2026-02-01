@@ -541,19 +541,16 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                         status: '$$sub.status',
                         billingInterval: '$$sub.billingInterval',
                       },
-                      features: {
-                        eSignature: {
-                          $in: ['eSignature', { $ifNull: ['$$sub.features', []] }],
-                        },
-                        propertyMedia: {
-                          $in: ['propertyMedia', { $ifNull: ['$$sub.features', []] }],
-                        },
-                        reportingAnalytics: {
-                          $in: ['reportingAnalytics', { $ifNull: ['$$sub.features', []] }],
-                        },
-                        maintenanceTracking: {
-                          $in: ['maintenanceTracking', { $ifNull: ['$$sub.features', []] }],
-                        },
+                      entitlements: {
+                        $ifNull: [
+                          '$$sub.entitlements',
+                          {
+                            eSignature: false,
+                            RepairRequestService: false,
+                            VisitorPassService: false,
+                            reportingAnalytics: false,
+                          },
+                        ],
                       },
                       paymentFlow: {
                         requiresPayment: {

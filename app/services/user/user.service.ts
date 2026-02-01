@@ -2,12 +2,13 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
+import { EventTypes } from '@interfaces/index';
 import { UserCache } from '@caching/user.cache';
-import { VendorService } from '@services/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
+import { EventEmitterService, VendorService } from '@services/index';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
-import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
+import { PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
@@ -33,41 +34,51 @@ import {
 
 interface IConstructor {
   permissionService: PermissionService;
+  emitterService: EventEmitterService;
   vendorService: VendorService;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   userCache: UserCache;
+  leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
 
 export class UserService {
   private readonly log: Logger;
-  private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
-  private readonly propertyDAO: PropertyDAO;
-  private readonly profileDAO: ProfileDAO;
+  private readonly clientDAO: ClientDAO;
   private readonly userCache: UserCache;
-  private readonly permissionService: PermissionService;
+  private readonly profileDAO: ProfileDAO;
+  private readonly propertyDAO: PropertyDAO;
+  private readonly leaseDAO: LeaseDAO;
   private readonly vendorService: VendorService;
+  private readonly emitterService: EventEmitterService;
+  private readonly permissionService: PermissionService;
 
   constructor({
-    clientDAO,
     userDAO,
-    propertyDAO,
-    profileDAO,
     userCache,
-    permissionService,
+    clientDAO,
+    profileDAO,
+    propertyDAO,
+    leaseDAO,
     vendorService,
+    emitterService,
+    permissionService,
   }: IConstructor) {
-    this.log = createLogger('UserService');
-    this.clientDAO = clientDAO;
     this.userDAO = userDAO;
-    this.propertyDAO = propertyDAO;
-    this.profileDAO = profileDAO;
     this.userCache = userCache;
-    this.permissionService = permissionService;
+    this.clientDAO = clientDAO;
+    this.profileDAO = profileDAO;
+    this.propertyDAO = propertyDAO;
+    this.leaseDAO = leaseDAO;
     this.vendorService = vendorService;
+    this.emitterService = emitterService;
+    this.log = createLogger('UserService');
+    this.permissionService = permissionService;
+
+    this.setupEventListeners();
   }
 
   private async fetchAndValidateUser(
@@ -1727,7 +1738,33 @@ export class UserService {
         actions: [],
       };
 
-      // 1. Handle Property Management Reassignment
+      // Check for active leases if user is a tenant
+      if (roles.includes('tenant')) {
+        this.log.info('Checking for active leases before archiving tenant', { uid, cuid });
+
+        const now = new Date();
+        const activeLeasesResult = await this.leaseDAO.list({
+          tenantId: user._id,
+          cuid: cuid,
+          deletedAt: null,
+          endDate: { $gte: now },
+        });
+
+        const activeLeases = activeLeasesResult.items || [];
+
+        if (activeLeases.length > 0) {
+          this.log.warn('Cannot archive tenant with active leases', {
+            uid,
+            cuid,
+            activeLeaseCount: activeLeases.length,
+          });
+
+          throw new BadRequestError({
+            message: `Cannot archive tenant. This user has ${activeLeases.length} active lease(s). Please terminate the lease(s) before archiving.`,
+          });
+        }
+      }
+
       const managedProperties = await this.propertyDAO.getPropertiesByClientId(
         cuid,
         { managedBy: user._id.toString(), deletedAt: null },
@@ -1777,7 +1814,6 @@ export class UserService {
         }
       }
 
-      // 2. Handle Primary Vendor Account Cleanup
       if (roles.includes(IUserRole.VENDOR as string) && !clientConnection.linkedVendorUid) {
         // This is a primary vendor - need to archive linked accounts
         try {
@@ -1838,13 +1874,46 @@ export class UserService {
         }
       }
 
-      // 3. Soft delete the user
-      await this.userDAO.updateById(user._id.toString(), {
-        deletedAt: new Date(),
-        isActive: false,
-      });
+      // Check if user belongs to multiple clients
+      const activeConnections = user.cuids?.filter((c: any) => c.isConnected) || [];
+      const isMultiTenantUser = activeConnections.length > 1;
 
-      // 4. Disconnect user from this client
+      if (isMultiTenantUser) {
+        this.log.info('User belongs to multiple clients, performing soft disconnect only', {
+          uid,
+          cuid,
+          totalClients: activeConnections.length,
+          otherClients: activeConnections
+            .filter((c: any) => c.cuid !== cuid)
+            .map((c: any) => c.cuid),
+        });
+
+        archivalSummary.actions.push({
+          action: 'multi_tenant_soft_disconnect',
+          message: `User disconnected from this client but remains active in ${activeConnections.length - 1} other client(s)`,
+        });
+
+        // Don't set global deletedAt or isActive flags
+        // Only disconnect from THIS client
+      } else {
+        this.log.info('User belongs to single client, performing full deletion', {
+          uid,
+          cuid,
+        });
+
+        // Safe to set global deletion flags
+        await this.userDAO.updateById(user._id.toString(), {
+          deletedAt: new Date(),
+          isActive: false,
+        });
+
+        archivalSummary.actions.push({
+          action: 'full_user_deletion',
+          message: 'User globally deleted (single client)',
+        });
+      }
+
+      // Disconnect from THIS client (happens for both multi-tenant and single-tenant)
       await this.userDAO.updateById(
         user._id.toString(),
         {
@@ -1855,16 +1924,24 @@ export class UserService {
         } as any
       );
 
-      // 5. Invalidate caches
       await this.userCache.invalidateUserDetail(cuid, uid);
       await this.userCache.invalidateUserLists(cuid);
 
-      this.log.info('User archived successfully', {
+      // Emit event for subscription seat tracking (employee roles only)
+      const EMPLOYEE_ROLES = ['super-admin', 'admin', 'manager', 'staff'];
+      const isEmployee = roles.some((role) => EMPLOYEE_ROLES.includes(role));
+
+      this.emitterService.emit(EventTypes.USER_ARCHIVED, {
+        userId: user._id.toString(),
         cuid,
-        uid,
+        roles,
         archivedBy: currentUser.uid,
-        summary: archivalSummary,
+        createdAt: new Date(),
       });
+
+      if (isEmployee) {
+        this.log.info('USER_ARCHIVED event emitted for seat tracking', { uid, cuid, roles });
+      }
 
       return {
         success: true,
@@ -2020,5 +2097,9 @@ export class UserService {
       });
       throw error;
     }
+  }
+
+  private setupEventListeners(): void {
+    // Reserved for future event listeners
   }
 }

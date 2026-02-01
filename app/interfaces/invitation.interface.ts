@@ -11,30 +11,6 @@ import { EmployeeInfo, TenantInfo, VendorInfo } from './profile.interface';
  */
 
 /**
- * Invitation Document Interface
- * Extends IInvitation with MongoDB document properties and methods
- */
-export interface IInvitationDocument extends IInvitation, Document {
-  // Instance methods
-  revoke(revokedBy: string, reason?: string): Promise<IInvitationDocument>;
-  accept(acceptedBy: string): Promise<IInvitationDocument>;
-  expire(): Promise<IInvitationDocument>;
-  // Virtual properties (computed)
-  inviteeFullName: string;
-
-  // Optional fields
-  declineReason?: string;
-
-  // MongoDB fields
-  _id: Types.ObjectId;
-  isValid(): boolean;
-
-  declinedAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-/**
  * Main Invitation Interface
  * Core invitation data structure
  */
@@ -55,6 +31,23 @@ export interface IInvitation {
   role: IUserRole;
   expiresAt: Date;
   iuid: string;
+}
+
+/**
+ * Invitation Document Interface
+ * Extends IInvitation with MongoDB document properties and methods
+ */
+export interface IInvitationDocument extends IInvitation, Document {
+  revoke(revokedBy: string, reason?: string): Promise<IInvitationDocument>;
+  accept(acceptedBy: string): Promise<IInvitationDocument>;
+  expire(): Promise<IInvitationDocument>;
+  inviteeFullName: string;
+  declineReason?: string;
+  _id: Types.ObjectId;
+  isValid(): boolean;
+  declinedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 /**

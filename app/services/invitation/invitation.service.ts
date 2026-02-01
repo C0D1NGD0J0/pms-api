@@ -1,4 +1,5 @@
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
@@ -42,6 +43,7 @@ interface IConstructor {
   vendorService: VendorService;
   queueFactory: QueueFactory;
   userService: UserService;
+  subscriptionService: any;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
@@ -60,6 +62,7 @@ export class InvitationService {
   private readonly vendorService: VendorService;
   private readonly userService: UserService;
   private readonly leaseDAO: any;
+  private readonly subscriptionService: any;
 
   constructor({
     invitationDAO,
@@ -72,11 +75,13 @@ export class InvitationService {
     vendorService,
     userService,
     leaseDAO,
+    subscriptionService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
     this.queueFactory = queueFactory;
     this.profileDAO = profileDAO;
+    this.subscriptionService = subscriptionService;
     this.invitationDAO = invitationDAO;
     this.emitterService = emitterService;
     this.profileService = profileService;
@@ -134,6 +139,29 @@ export class InvitationService {
         });
       }
 
+      // Check seat availability for employee roles
+      const EMPLOYEE_ROLES = ['super-admin', 'admin', 'manager', 'staff'];
+      if (EMPLOYEE_ROLES.includes(validatedData.role)) {
+        try {
+          const seatInfo = await this.subscriptionService.getAvailableSeats(cuid);
+
+          if (seatInfo.availableSeats <= 0) {
+            const canPurchase = seatInfo.canPurchaseMore;
+            const message = canPurchase
+              ? `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats (${seatInfo.includedSeats} included + ${seatInfo.additionalSeats} additional). You can purchase up to ${seatInfo.maxAdditionalSeats - seatInfo.additionalSeats} more seats.`
+              : `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats. Please upgrade your plan or archive users to free up seats.`;
+
+            throw new BadRequestError({ message });
+          }
+        } catch (error) {
+          if (error instanceof BadRequestError) {
+            throw error;
+          }
+          this.log.error({ error, cuid }, 'Error checking seat availability');
+          // Don't block invitation if seat check fails - let event handler handle it
+        }
+      }
+
       const invitation = await this.invitationDAO.createInvitation(
         validatedData as IInvitationData,
         inviterUserId,
@@ -175,7 +203,13 @@ export class InvitationService {
           invitationId: invitation._id.toString(),
         } as any);
 
-        this.log.info(`Invitation sent to ${validatedData.inviteeEmail} for client ${cuid}`);
+        this.emitterService.emit(EventTypes.INVITATION_SENT, {
+          invitationId: invitation._id.toString(),
+          inviteeEmail: validatedData.inviteeEmail,
+          clientId: client.id,
+          role: validatedData.role,
+          cuid,
+        });
       } else {
         this.log.info(
           `Draft invitation created for ${validatedData.inviteeEmail} for client ${cuid}`
@@ -393,6 +427,17 @@ export class InvitationService {
 
     await this.finalizeInvitationAcceptance(result, cuid);
 
+    // Emit invitation accepted event for seat tracking (only for employee roles)
+    if (client) {
+      this.emitterService.emit(EventTypes.INVITATION_ACCEPTED, {
+        invitationId: invitation._id.toString(),
+        inviteeEmail: invitation.inviteeEmail,
+        clientId: client.id,
+        role: invitation.role,
+        cuid,
+      });
+    }
+
     return {
       success: true,
       data: result,
@@ -484,6 +529,18 @@ export class InvitationService {
       reason
     );
 
+    // Emit invitation revoked event for seat tracking (only for employee roles)
+    const client = await this.clientDAO.findFirst({ _id: new Types.ObjectId(invitation.clientId) });
+    if (client) {
+      this.emitterService.emit(EventTypes.INVITATION_REVOKED, {
+        invitationId: invitation._id.toString(),
+        inviteeEmail: invitation.inviteeEmail,
+        clientId: invitation.clientId.toString(),
+        role: invitation.role,
+        cuid: client.cuid,
+      });
+    }
+
     return {
       success: true,
       data: revokedInvitation!,
@@ -545,7 +602,7 @@ export class InvitationService {
       }
 
       const [client, resender] = await Promise.all([
-        this.clientDAO.findById(invitation.clientId.toString()),
+        this.clientDAO.findFirst({ _id: new Types.ObjectId(invitation.clientId) }),
         this.userDAO.getUserById(resenderUserId, { populate: 'profile' }),
       ]);
 
@@ -669,7 +726,37 @@ export class InvitationService {
 
   async expireInvitations(): Promise<ISuccessReturnData<{ expiredCount: number }>> {
     try {
+      const expiredInvitations = await this.invitationDAO.list(
+        {
+          status: { $in: ['pending', 'sent'] },
+          expiresAt: { $lte: new Date() },
+        },
+        { limit: 1000 }
+      );
+
       const expiredCount = await this.invitationDAO.expireInvitations();
+
+      // Emit events for each expired invitation (for seat tracking)
+      for (const invitation of expiredInvitations.items) {
+        try {
+          const client = await this.clientDAO.findFirst({
+            _id: new Types.ObjectId(invitation.clientId),
+          });
+          if (client) {
+            this.emitterService.emit(EventTypes.INVITATION_EXPIRED, {
+              invitationId: invitation._id.toString(),
+              inviteeEmail: invitation.inviteeEmail,
+              clientId: invitation.clientId.toString(),
+              role: invitation.role,
+              cuid: client.cuid,
+            });
+          }
+        } catch (eventError) {
+          this.log.error('Error emitting invitation expired event:', eventError);
+          // Continue processing other invitations
+        }
+      }
+
       this.log.info(`Expired ${expiredCount} invitations`);
       return {
         success: true,
@@ -1074,12 +1161,6 @@ export class InvitationService {
         });
         return;
       }
-
-      this.log.info(`Migrating ${leasesToMigrate.length} lease(s) from invitation to user`, {
-        invitationId: invitationId.toString(),
-        userId: userId.toString(),
-        leaseIds: leasesToMigrate.map((l: any) => l.luid),
-      });
 
       // Bulk update all leases using DAO
       const updateResult = await this.leaseDAO.updateMany(

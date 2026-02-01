@@ -62,6 +62,12 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       updateSubscription: jest.fn().mockResolvedValue({ success: true, data: {} }),
     } as any;
 
+    const mockEmitterService = {
+      on: jest.fn(),
+      off: jest.fn(),
+      emit: jest.fn(),
+    } as any;
+
     subscriptionService = new SubscriptionService({
       subscriptionDAO: mockSubscriptionDAO,
       clientDAO: mockClientDAO,
@@ -70,7 +76,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       sseService: mockSSEService,
       stripeService: {} as any,
       userDAO: {} as any,
-      emitterService: {} as any,
+      emitterService: mockEmitterService,
     });
   });
 

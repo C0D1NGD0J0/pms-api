@@ -314,6 +314,20 @@ export interface FilteredUserVendorInfo
 }
 
 /**
+ * Tenant Filter Options
+ * Extended filter options specific to tenant queries
+ */
+export interface ITenantFilterOptions extends IUserFilterOptions {
+  connectionStatus?: 'connected' | 'disconnected' | 'all'; // Filter by connection status
+  backgroundCheckStatus?: BackgroundCheckStatus;
+  moveInDateRange?: { start: Date; end: Date };
+  leaseStatus?: LeaseStatusType;
+  rentStatus?: RentStatus;
+  propertyId?: string;
+  unitType?: string;
+}
+
+/**
  * Filtered User Table Data
  * Lightweight user data for table display only
  */
@@ -365,16 +379,14 @@ export type ISignupData = {
 };
 
 /**
- * Tenant Filter Options
- * Extended filter options specific to tenant queries
+ * Filtered User Tenant Info
+ * Minimal tenant info for table display (lightweight)
  */
-export interface ITenantFilterOptions extends IUserFilterOptions {
-  backgroundCheckStatus?: BackgroundCheckStatus;
-  moveInDateRange?: { start: Date; end: Date };
-  leaseStatus?: LeaseStatusType;
-  rentStatus?: RentStatus;
-  propertyId?: string;
-  unitType?: string;
+export interface FilteredUserTenantInfo {
+  propertyAddress?: string; // Full address of the property
+  leaseStatus?: string; // active, pending_signature, no_active_lease, etc.
+  monthlyRent?: number; // Monthly rent amount
+  rentStatus?: string; // paid, overdue, pending, etc.
 }
 
 /**
@@ -410,6 +422,12 @@ export interface IBaseUserProfile {
 }
 
 /**
+ * ============================================================================
+ * DOCUMENT INTERFACES (Mongoose Extensions)
+ * ============================================================================
+ */
+
+/**
  * Main User Interface
  * Core authentication and account data
  */
@@ -421,12 +439,6 @@ export interface IUser {
   password: string;
   email: string;
 }
-
-/**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
 
 /**
  * Signup Account Type Interface
@@ -465,6 +477,12 @@ export interface IExtendedPagination {
 }
 
 /**
+ * ============================================================================
+ * CURRENT USER & SESSION INTERFACES
+ * ============================================================================
+ */
+
+/**
  * User Statistics Interface
  * User statistics for filtered users response
  */
@@ -476,7 +494,7 @@ export interface IUserStats {
 
 /**
  * ============================================================================
- * CURRENT USER & SESSION INTERFACES
+ * DETAIL INFO INTERFACES (Role-Specific)
  * ============================================================================
  */
 
@@ -491,12 +509,6 @@ export interface IBasePagination {
   perPage: number;
   total: number;
 }
-
-/**
- * ============================================================================
- * DETAIL INFO INTERFACES (Role-Specific)
- * ============================================================================
- */
 
 /**
  * Extended Vendor Info Interface
@@ -517,6 +529,12 @@ export interface ILinkedVendorUser
 }
 
 /**
+ * ============================================================================
+ * RESPONSE INTERFACES
+ * ============================================================================
+ */
+
+/**
  * User Property Interface
  * Minimal property info for user context
  */
@@ -527,12 +545,6 @@ export interface IUserProperty {
   units: number;
   name: string;
 }
-
-/**
- * ============================================================================
- * RESPONSE INTERFACES
- * ============================================================================
- */
 
 /**
  * ID Type Union
@@ -552,16 +564,6 @@ export interface FilteredUserEmployeeInfo {
   startDate?: Date | string;
   department?: string;
   jobTitle?: string;
-}
-
-/**
- * Filtered User Tenant Info
- * Minimal tenant info for table display
- */
-export interface FilteredUserTenantInfo {
-  leaseStatus?: string;
-  rentStatus?: string;
-  unitNumber?: string;
 }
 
 /**

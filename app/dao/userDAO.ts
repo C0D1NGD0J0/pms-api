@@ -970,7 +970,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           $match: {
             'cuids.cuid': cuid,
             'cuids.roles': 'tenant',
-            'cuids.isConnected': true,
             deletedAt: null,
           },
         },
@@ -987,6 +986,20 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       if (filters) {
         const matchConditions: any = {};
+
+        // Filter by connection status
+        if (filters.connectionStatus !== undefined) {
+          if (filters.connectionStatus === 'connected') {
+            matchConditions['cuids'] = {
+              $elemMatch: { cuid, isConnected: true },
+            };
+          } else if (filters.connectionStatus === 'disconnected') {
+            matchConditions['cuids'] = {
+              $elemMatch: { cuid, isConnected: false },
+            };
+          }
+          // If 'all', don't add connection filter
+        }
 
         if (filters.status) {
           matchConditions.isActive = filters.status === 'active';

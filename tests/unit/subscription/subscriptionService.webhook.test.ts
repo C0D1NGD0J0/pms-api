@@ -71,7 +71,11 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
     mockStripeService = {} as any;
     mockPaymentGatewayService = {} as any;
-    mockEmitterService = {} as any;
+    mockEmitterService = {
+      emit: jest.fn(),
+      off: jest.fn(),
+      on: jest.fn(),
+    } as any;
 
     subscriptionService = new SubscriptionService({
       subscriptionDAO: mockSubscriptionDAO,

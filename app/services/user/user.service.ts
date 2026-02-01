@@ -68,11 +68,11 @@ export class UserService {
     permissionService,
   }: IConstructor) {
     this.userDAO = userDAO;
+    this.leaseDAO = leaseDAO;
     this.userCache = userCache;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
-    this.leaseDAO = leaseDAO;
     this.vendorService = vendorService;
     this.emitterService = emitterService;
     this.log = createLogger('UserService');
@@ -315,7 +315,6 @@ export class UserService {
 
           if (roles.includes(ROLES.TENANT as string)) {
             tableUserData.tenantInfo = {
-              unitNumber: user.profile?.tenantInfo?.unitNumber || undefined,
               leaseStatus: user.profile?.tenantInfo?.leaseStatus || undefined,
               rentStatus: user.profile?.tenantInfo?.rentStatus || undefined,
             };
@@ -1282,10 +1281,47 @@ export class UserService {
           const personalInfo = tenant.profile?.personalInfo || {};
           const tenantInfo = tenant.profile?.tenantInfo || {};
 
+          // Extract isConnected for this specific client
+          const clientConnection = tenant.cuids?.find((c: any) => c.cuid === cuid);
+          const isConnected = clientConnection?.isConnected ?? false;
+
+          // Fetch minimal active lease info for table display
+          const activeLeases = await this.leaseDAO.list({
+            cuid,
+            tenantId: tenant.user,
+            status: { $in: ['active', 'pending_signature'] },
+            deletedAt: null,
+          });
+
+          // Get the most recent active lease (if multiple exist)
+          const activeLease = activeLeases.items?.[0];
+
+          // Lightweight lease info for table display
+          let leaseInfo: any = {};
+
+          if (activeLease) {
+            // Extract address - handle both string and AddressDetails object
+            const address = activeLease.property?.address;
+            const propertyAddress = typeof address === 'string' ? address : address?.fullAddress;
+
+            leaseInfo = {
+              leaseStatus: activeLease.status,
+              propertyAddress,
+              monthlyRent: activeLease.fees?.monthlyRent,
+              rentStatus: 'paid', // TODO: Integrate with payment tracking when available
+            };
+          } else {
+            leaseInfo = {
+              leaseStatus: 'no_active_lease',
+            };
+          }
+
           return {
             id: tenant.user,
+            uid: tenant.uid, // Include UID as requested
             email: tenant.email,
             isActive: tenant.isActive,
+            isConnected, // Connection status for this client
             fullName: `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim(),
             displayName:
               personalInfo.displayName ||
@@ -1294,7 +1330,7 @@ export class UserService {
             phoneNumber: personalInfo.phoneNumber,
             avatar: personalInfo.avatar,
             tenantInfo: {
-              activeLease: tenantInfo.activeLease,
+              ...leaseInfo, // Minimal lease info for table
               employerInfo: tenantInfo.employerInfo,
               rentalReferences: tenantInfo.rentalReferences,
               pets: tenantInfo.pets,
@@ -1725,6 +1761,22 @@ export class UserService {
         });
       }
 
+      // Prevent deleting account owner
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.clientNotFound') });
+      }
+
+      if (client.accountAdmin.toString() === user._id.toString()) {
+        throw new BadRequestError({
+          message: t('client.errors.cannotDeleteAccountOwner'),
+          details: {
+            isAccountOwner: true,
+            suggestedActions: ['transfer_ownership', 'close_account'],
+          },
+        } as any);
+      }
+
       const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
       if (!clientConnection) {
         throw new NotFoundError({ message: t('client.errors.userNotFoundInClient') });
@@ -1830,14 +1882,9 @@ export class UserService {
                 linkedAccountCount: linkedUsers.items.length,
               });
 
-              // Archive all linked vendor accounts
+              // Disconnect all linked vendor accounts (soft delete - preserve data)
               for (const linkedUser of linkedUsers.items) {
-                await this.userDAO.updateById(linkedUser._id.toString(), {
-                  deletedAt: new Date(),
-                  isActive: false,
-                });
-
-                // Disconnect from client
+                // Only disconnect - no hard delete for compliance/audit
                 await this.userDAO.updateById(
                   linkedUser._id.toString(),
                   {
@@ -1896,20 +1943,16 @@ export class UserService {
         // Don't set global deletedAt or isActive flags
         // Only disconnect from THIS client
       } else {
-        this.log.info('User belongs to single client, performing full deletion', {
+        this.log.info('User belongs to single client, performing disconnect', {
           uid,
           cuid,
         });
 
-        // Safe to set global deletion flags
-        await this.userDAO.updateById(user._id.toString(), {
-          deletedAt: new Date(),
-          isActive: false,
-        });
-
+        // No global deletion - preserve data for compliance/audit
+        // The isConnected: false flag below is sufficient to block access
         archivalSummary.actions.push({
-          action: 'full_user_deletion',
-          message: 'User globally deleted (single client)',
+          action: 'single_client_disconnect',
+          message: 'User disconnected from their only client (data preserved for audit)',
         });
       }
 

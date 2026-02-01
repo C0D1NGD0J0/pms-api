@@ -42,6 +42,7 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
       getClientByCuid: jest.fn().mockResolvedValue({
         _id: mockClientId,
         cuid: testCuid,
+        accountAdmin: new Types.ObjectId(), // Default: different user is account owner
       }),
     } as any;
 
@@ -72,6 +73,54 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
       vendorService: {} as any,
       emitterService: mockEmitterService,
       permissionService: mockPermissionService as any,
+    });
+  });
+
+  describe('Account Owner Protection', () => {
+    it('should prevent deleting account owner', async () => {
+      const accountOwnerUser = {
+        _id: mockUserId,
+        uid: testUid,
+        cuids: [{ cuid: testCuid, roles: ['super-admin'], isConnected: true }],
+      };
+
+      mockUserDAO.getUserByUId.mockResolvedValue(accountOwnerUser as any);
+      mockClientDAO.getClientByCuid.mockResolvedValue({
+        _id: mockClientId,
+        cuid: testCuid,
+        accountAdmin: mockUserId, // This user IS the account owner
+      } as any);
+
+      await expect(
+        userService.archiveUser(testCuid, testUid, mockCurrentUser as any)
+      ).rejects.toThrow(BadRequestError);
+
+      await expect(
+        userService.archiveUser(testCuid, testUid, mockCurrentUser as any)
+      ).rejects.toThrow(/cannotDeleteAccountOwner/);
+    });
+
+    it('should allow deleting non-account-owner admin', async () => {
+      const adminUser = {
+        _id: mockUserId,
+        uid: testUid,
+        cuids: [{ cuid: testCuid, roles: ['admin'], isConnected: true }],
+      };
+
+      const differentUserId = new Types.ObjectId();
+
+      mockUserDAO.getUserByUId.mockResolvedValue(adminUser as any);
+      mockClientDAO.getClientByCuid.mockResolvedValue({
+        _id: mockClientId,
+        cuid: testCuid,
+        accountAdmin: differentUserId, // Different user is account owner
+      } as any);
+
+      mockUserDAO.updateById.mockResolvedValue(adminUser as any);
+
+      const result = await userService.archiveUser(testCuid, testUid, mockCurrentUser as any);
+
+      expect(result.success).toBe(true);
     });
   });
 
@@ -126,7 +175,7 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
       );
     });
 
-    it('should fully delete user when they belong to only one client', async () => {
+    it('should disconnect user when they belong to only one client', async () => {
       const singleTenantUser = {
         _id: mockUserId,
         uid: testUid,
@@ -141,8 +190,8 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
 
       expect(result.success).toBe(true);
 
-      // Should set global deletion flags
-      expect(mockUserDAO.updateById).toHaveBeenCalledWith(
+      // Should NOT set global deletion flags (data preserved for compliance)
+      expect(mockUserDAO.updateById).not.toHaveBeenCalledWith(
         mockUserId.toString(),
         expect.objectContaining({
           deletedAt: expect.any(Date),
@@ -150,7 +199,7 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
         })
       );
 
-      // Should also disconnect from client
+      // Should only disconnect from client
       expect(mockUserDAO.updateById).toHaveBeenCalledWith(
         mockUserId.toString(),
         {

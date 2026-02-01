@@ -3,6 +3,8 @@ import { t } from '@shared/languages';
 import ProfileDAO from '@dao/profileDAO';
 import { AuthCache } from '@caching/auth.cache';
 import { ClientValidations } from '@shared/validations';
+import { EventTypes } from '@interfaces/events.interface';
+import { EventEmitterService } from '@services/eventEmitter';
 import { getRequestDuration, createLogger } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { IClientDocument, IClientStats } from '@interfaces/client.interface';
@@ -14,6 +16,7 @@ import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/
 
 interface IConstructor {
   subscriptionService: SubscriptionService;
+  emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   propertyUnitDAO: PropertyUnitDAO;
   propertyDAO: PropertyDAO;
@@ -33,6 +36,7 @@ export class ClientService {
   private readonly authCache: AuthCache;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly subscriptionService: SubscriptionService;
+  private readonly emitterService: EventEmitterService;
 
   constructor({
     clientDAO,
@@ -43,11 +47,13 @@ export class ClientService {
     authCache,
     subscriptionDAO,
     subscriptionService,
+    emitterService,
   }: IConstructor) {
     this.log = createLogger('ClientService');
     this.clientDAO = clientDAO;
     this.propertyDAO = propertyDAO;
     this.propertyUnitDAO = propertyUnitDAO;
+    this.emitterService = emitterService;
     this.userDAO = userDAO;
     this.profileDAO = profileDAO;
     this.authCache = authCache;
@@ -551,6 +557,26 @@ export class ClientService {
         arrayFilters: [{ 'elem.cuid': clientId }],
       }
     );
+
+    // Emit event for subscription seat tracking (employee roles only)
+    const EMPLOYEE_ROLES = ['super-admin', 'admin', 'manager', 'staff'];
+    const isEmployee = clientConnection.roles.some((role) => EMPLOYEE_ROLES.includes(role));
+
+    if (isEmployee) {
+      this.emitterService.emit(EventTypes.USER_ARCHIVED, {
+        userId: user._id.toString(),
+        cuid: clientId,
+        roles: clientConnection.roles,
+        archivedBy: currentuser.uid,
+        createdAt: new Date(),
+      });
+
+      this.log.info('USER_ARCHIVED event emitted for seat tracking', {
+        userId: targetUserId,
+        cuid: clientId,
+        roles: clientConnection.roles,
+      });
+    }
 
     this.log.info(
       {

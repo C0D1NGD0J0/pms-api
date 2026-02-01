@@ -1,5 +1,7 @@
 import { Document, Types } from 'mongoose';
 
+import { AddressDetails } from './property.interface';
+
 /**
  * ============================================================================
  * BASE TYPE DEFINITIONS (Single Source of Truth)
@@ -319,6 +321,27 @@ export interface ILeaseFinancialSummary {
 }
 
 /**
+ * Property Reference Interface
+ * Links lease to property and unit
+ * Includes essential property information for lease documents
+ */
+export interface ILeaseProperty {
+  specifications?: {
+    totalArea?: number; // Square footage
+    bedrooms?: number;
+    bathrooms?: number;
+    parkingSpaces?: number;
+    floors?: number;
+  };
+  unitId?: Types.ObjectId | string;
+  propertyType?: LeasePropertyType;
+  address: AddressDetails | string; // Support both detailed address object and simple string
+  id: Types.ObjectId | string;
+  unitNumber?: string; // Unit/Suite number from property unit
+  name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
+}
+
+/**
  * Lease Activity Event Interface
  * Individual activity/audit event in lease history
  */
@@ -344,27 +367,6 @@ export interface ILeaseActivityEvent {
   userName?: string;
   timestamp: Date;
   notes?: string;
-}
-
-/**
- * Property Reference Interface
- * Links lease to property and unit
- * Includes essential property information for lease documents
- */
-export interface ILeaseProperty {
-  specifications?: {
-    totalArea?: number; // Square footage
-    bedrooms?: number;
-    bathrooms?: number;
-    parkingSpaces?: number;
-    floors?: number;
-  };
-  unitId?: Types.ObjectId | string;
-  propertyType?: LeasePropertyType;
-  id: Types.ObjectId | string;
-  unitNumber?: string; // Unit/Suite number from property unit
-  address: string;
-  name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
 }
 
 /**

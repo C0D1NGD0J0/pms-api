@@ -66,6 +66,12 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
 
     mockStripeService = {} as any;
 
+    const mockEmitterService = {
+      emit: jest.fn(),
+      off: jest.fn(),
+      on: jest.fn(),
+    } as any;
+
     subscriptionService = new SubscriptionService({
       subscriptionDAO: mockSubscriptionDAO,
       clientDAO: mockClientDAO,
@@ -74,7 +80,7 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
       paymentGatewayService: mockPaymentGatewayService,
       sseService: mockSSEService,
       userDAO: {} as any,
-      emitterService: {} as any,
+      emitterService: mockEmitterService,
     });
   });
 

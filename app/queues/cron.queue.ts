@@ -53,7 +53,13 @@ export class CronQueue extends BaseQueue {
 
       // Delete all repeat:* keys (Bull will recreate them for active jobs)
       // The repeat sorted set contains the actual job definitions
-      await client.del(...repeatKeys);
+      // Batch deletions to avoid exceeding Redis argument limits
+      const BATCH_SIZE = 1000;
+      for (let i = 0; i < repeatKeys.length; i += BATCH_SIZE) {
+        const batch = repeatKeys.slice(i, i + BATCH_SIZE);
+        // eslint-disable-next-line @typescript-eslint/await-thenable
+        await client.del(...batch);
+      }
     } catch (error) {
       this.log.error({ error }, 'Failed to cleanup orphaned repeat keys');
     }

@@ -258,7 +258,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
    */
   async updatePlanAndPrice(
     clientId: string | Types.ObjectId,
-    planName: 'basic' | 'starter' | 'professional',
+    planName: 'essential' | 'growth' | 'portfolio',
     totalMonthlyPrice: number
   ): Promise<ISubscriptionDocument | null> {
     try {

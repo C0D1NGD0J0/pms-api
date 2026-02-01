@@ -5,6 +5,7 @@ import { UserService } from '@services/index';
 import { httpStatusCodes } from '@utils/constants';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ProfileService } from '@services/profile/profile.service';
+import { QueueFactory } from '@services/queue/queueFactory.service';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
@@ -13,20 +14,24 @@ export class UserController {
   private readonly log: Logger;
   private readonly userService: UserService;
   private readonly profileService: ProfileService;
+  private readonly queueFactory: QueueFactory;
   private readonly mediaUploadService: MediaUploadService;
 
   constructor({
     userService,
     profileService,
+    queueFactory,
     mediaUploadService,
   }: {
     userService: UserService;
     profileService: ProfileService;
+    queueFactory: QueueFactory;
     mediaUploadService: MediaUploadService;
   }) {
     this.log = createLogger('UserController');
     this.userService = userService;
     this.profileService = profileService;
+    this.queueFactory = queueFactory;
     this.mediaUploadService = mediaUploadService;
   }
 
@@ -256,5 +261,34 @@ export class UserController {
     const result = await this.userService.deactivateTenant(cuid, uid, req.context);
 
     res.status(httpStatusCodes.OK).json(result);
+  };
+
+  /**
+   * Initialize all queues for Bull Dashboard (development/testing only)
+   */
+  initializeQueues = async (req: AppRequest, res: Response): Promise<void> => {
+    try {
+      this.log.info('Initializing all queues via API request');
+      const result = await this.queueFactory.initializeAllQueues();
+
+      res.status(httpStatusCodes.OK).json({
+        success: true,
+        message: 'Queues initialized successfully',
+        data: {
+          initialized: {
+            queues: result.queues,
+            total: result.queues.length,
+          },
+          failed: result.failed.length > 0 ? result.failed : undefined,
+        },
+      });
+    } catch (error) {
+      this.log.error('Failed to initialize queues:', error);
+      res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Failed to initialize queues',
+        error: error.message,
+      });
+    }
   };
 }

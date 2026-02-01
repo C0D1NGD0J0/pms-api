@@ -70,8 +70,9 @@ describe('Invitation Metadata Transfer', () => {
     mockDAOs = createMockDAOs();
     mockQueues = createMockQueues();
     emitterService = {
-      on: jest.fn(),
+      emit: jest.fn(),
       off: jest.fn(),
+      on: jest.fn(),
     } as any;
 
     const mockUser = {

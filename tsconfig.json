@@ -49,7 +49,7 @@
     "transpileOnly": true
   },
   "compileOnSave": true,
-  "include": ["app/**/*", "app.ts", "server.ts", "worker_process.ts", "tests/**/*", "types/**/*"],
+  "include": ["app/**/*", "app.ts", "server.ts", "worker_process.ts", "tests/**/*", "types/**/*", "app/services/notification/notification.service.ts"],
   "exclude": [
     "node_modules",
     "**/*.spec.ts",

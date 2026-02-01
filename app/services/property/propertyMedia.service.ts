@@ -47,8 +47,6 @@ export class PropertyMediaService {
   private setupEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
-
-    this.log.info('PropertyMediaService event listeners initialized');
   }
 
   /**

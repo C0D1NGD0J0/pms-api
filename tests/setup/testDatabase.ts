@@ -50,16 +50,21 @@ export const setupTestDatabase = connectTestDatabase;
  * Disconnect from test database and stop memory server
  */
 export const disconnectTestDatabase = async (): Promise<void> => {
-  if (mongoose.connection.readyState !== 0) {
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  if (mongoose.connection.readyState === 1) {
     try {
       if (!USE_LOCAL_MONGO) {
-        await mongoose.connection.close();
+        await mongoose.connection.close(false); // false = don't force, graceful close
       } else {
         console.log('Test data preserved in: pms-test-debug');
-        await mongoose.connection.close();
+        await mongoose.connection.close(false);
       }
     } catch (error) {
-      console.error('Error during test database disconnect:', error);
+      // Silently ignore "client was closed" errors - connection already closed elsewhere
+      if (!(error instanceof Error) || !error.message?.includes('client was closed')) {
+        console.error('Error during test database disconnect:', error);
+      }
     }
   }
 

@@ -16,14 +16,14 @@ const FEATURES = {
     PRIORITY_SUPPORT: 'Priority support',
   },
   upgrades: {
-    EVERYTHING_IN_STARTER: 'Everything in Starter',
+    EVERYTHING_IN_GROWTH: 'Everything in Growth',
   },
 } as const;
 
 const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
-  starter: {
-    planName: 'starter',
-    name: 'Starter',
+  essential: {
+    planName: 'essential',
+    name: 'Essential',
     description: 'Perfect for individual landlords',
     trialDays: 0,
     ctaText: 'Get Started Free',
@@ -31,11 +31,11 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     displayOrder: 1,
     pricing: {
       monthly: {
-        priceId: 'price_starter_monthly',
+        priceId: 'price_essential_monthly',
         priceInCents: 0,
       },
       annual: {
-        priceId: 'price_starter_annual',
+        priceId: 'price_essential_annual',
         priceInCents: 0,
         savingsPercent: 0,
       },
@@ -46,11 +46,12 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       includedSeats: 3, // 3 seats included
       additionalSeatPriceCents: 0, // Can't buy more seats
       maxAdditionalSeats: 0, // Must upgrade to add seats
+      lookUpKey: '', // Essential plan has no seat pricing
     },
     limits: {
       maxProperties: 3,
       maxUnits: 10,
-      maxVendors: -1, // unlimited
+      maxVendors: -1,
     },
     features: {
       eSignature: false,
@@ -65,19 +66,19 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     ],
     disabledFeatures: [FEATURES.premiumFeatures.E_SIGNATURE, FEATURES.premiumFeatures.GUEST_PASS],
   },
-  personal: {
-    planName: 'personal',
-    name: 'Personal',
+  growth: {
+    planName: 'growth',
+    name: 'Growth',
     description: 'For growing property managers',
     trialDays: 14,
     pricing: {
       monthly: {
-        priceId: 'price_personal_monthly',
-        priceInCents: 2900, // $29/month
+        priceId: 'price_growth_monthly',
+        priceInCents: 2900,
       },
       annual: {
-        priceId: 'price_personal_annual',
-        priceInCents: 27800, // $278/year (20% discount)
+        priceId: 'price_growth_annual',
+        priceInCents: 27840,
         savingsPercent: 20,
       },
     },
@@ -89,8 +90,9 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     isCustomPricing: false,
     seatPricing: {
       includedSeats: 10,
-      additionalSeatPriceCents: 899,
+      additionalSeatPriceCents: 500,
       maxAdditionalSeats: 25,
+      lookUpKey: 'growth_seats', // Stripe price lookup key for additional seats
     },
     limits: {
       maxProperties: 15,
@@ -111,19 +113,19 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     ],
     disabledFeatures: [],
   },
-  professional: {
-    planName: 'professional',
-    name: 'Professional',
+  portfolio: {
+    planName: 'portfolio',
+    name: 'Portfolio',
     description: 'For established businesses',
     trialDays: 14,
     pricing: {
       monthly: {
-        priceId: 'price_professional_monthly',
-        priceInCents: 9900, // $99/month
+        priceId: 'price_portfolio_monthly',
+        priceInCents: 9900,
       },
       annual: {
-        priceId: 'price_professional_annual',
-        priceInCents: 95000, // $950/year (20% discount)
+        priceId: 'price_portfolio_annual',
+        priceInCents: 95040,
         savingsPercent: 20,
       },
     },
@@ -136,11 +138,12 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       includedSeats: 25,
       additionalSeatPriceCents: 799,
       maxAdditionalSeats: 40,
+      lookUpKey: 'portfolio_seats', // Stripe price lookup key for additional seats
     },
     limits: {
       maxProperties: 30,
       maxUnits: 300,
-      maxVendors: -1, // unlimited
+      maxVendors: -1,
     },
     features: {
       eSignature: true,
@@ -150,7 +153,7 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
       prioritySupport: true,
     },
     featureList: [
-      FEATURES.upgrades.EVERYTHING_IN_STARTER,
+      FEATURES.upgrades.EVERYTHING_IN_GROWTH,
       FEATURES.premiumFeatures.REPORTING,
       FEATURES.premiumFeatures.CUSTOM_LEASES,
       FEATURES.premiumFeatures.PRIORITY_SUPPORT,

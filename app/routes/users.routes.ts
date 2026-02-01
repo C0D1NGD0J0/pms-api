@@ -312,4 +312,18 @@ router.delete(
   })
 );
 
+// Development/Testing endpoint to initialize all queues for Bull Dashboard
+router.post(
+  '/:cuid/initialize-queues',
+  basicLimiter(),
+  isAuthenticated,
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.initializeQueues(req, res);
+  })
+);
+
 export default router;

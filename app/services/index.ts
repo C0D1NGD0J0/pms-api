@@ -1,4 +1,5 @@
 export * from './external/esignature';
+export * from './paymentGateway';
 export * from './eventEmitter';
 export * from './pdfGenerator';
 export * from './subscription';

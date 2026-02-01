@@ -90,7 +90,9 @@
       "userAlreadyHasRole": "User already has the role {{role}}",
       "cannotRemoveLastAdmin": "Cannot remove admin role from the last administrator",
       "cannotDisconnectLastAdmin": "Cannot disconnect the last administrator",
-      "clientIdRequired": "Client ID is required"
+      "cannotDeleteAccountOwner": "Cannot delete account owner. Please transfer ownership to another admin or close your account instead.",
+      "clientIdRequired": "Client ID is required",
+      "clientNotFound": "Client not found"
     },
     "success": {
       "profileUpdated": "Client profile updated successfully",

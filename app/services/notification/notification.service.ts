@@ -1896,11 +1896,6 @@ export class NotificationService {
     try {
       const { leaseId, luid, cuid, tenantId, propertyManagerId } = payload;
 
-      this.log.info('Sending lease activation notifications', {
-        leaseId,
-        luid,
-      });
-
       await this.createNotification(cuid, NotificationTypeEnum.LEASE, {
         cuid,
         type: NotificationTypeEnum.LEASE,
@@ -1927,11 +1922,6 @@ export class NotificationService {
           leaseId,
           luid,
         },
-      });
-
-      this.log.info('Lease activation notifications sent', {
-        leaseId,
-        luid,
       });
     } catch (error) {
       this.log.error('Error sending lease activation notifications', {

@@ -16,9 +16,9 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     client: { type: Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
     planName: {
       type: String,
-      enum: ['personal', 'starter', 'professional'],
+      enum: ['essential', 'growth', 'portfolio'],
       required: true,
-      default: 'personal',
+      default: 'essential',
       index: true,
     },
     status: {
@@ -34,7 +34,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       required: false,
       validate: {
         validator: function (this: ISubscriptionDocument, value: Date | undefined) {
-          if (this.planName === 'starter') return true;
+          if (this.planName === 'essential') return true;
 
           // paid plans with active status must have endDate
           if (this.status === 'active') {
@@ -54,8 +54,40 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       default: 'monthly',
       index: true,
     },
+    entitlements: {
+      eSignature: { type: Boolean, required: true, default: false },
+      RepairRequestService: { type: Boolean, required: true, default: false },
+      VisitorPassService: { type: Boolean, required: true, default: false },
+      reportingAnalytics: { type: Boolean, required: true, default: false },
+      prioritySupport: { type: Boolean, default: false },
+    },
     paymentGateway: {
-      id: { type: String, required: true, index: true },
+      customerId: {
+        type: String,
+        validate: {
+          validator: function (this: any, value: string | undefined) {
+            const parent = this && typeof this.parent === 'function' ? this.parent() : null;
+            if (!parent || parent.planName === 'essential') {
+              return true;
+            }
+            return value !== undefined && value !== null && value !== '';
+          },
+          message: 'Customer ID is required for paid subscriptions',
+        },
+      },
+      subscriberId: {
+        type: String,
+        validate: {
+          validator: function (this: any, value: string | undefined) {
+            const parent = this && typeof this.parent === 'function' ? this.parent() : null;
+            if (!parent || parent.planName === 'essential') {
+              return true;
+            }
+            return value !== undefined && value !== null && value !== '';
+          },
+          message: 'Subscriber ID is required for paid subscriptions',
+        },
+      },
       provider: {
         type: String,
         enum: ['stripe', 'paypal', 'none', 'paystack'],
@@ -64,6 +96,9 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       },
       planId: { type: String, required: true },
       planLookUpKey: { type: String },
+      seatItemId: { type: String }, // Subscription item ID for seats (e.g., Stripe si_xxx)
+      cardLast4: { type: String },
+      cardBrand: { type: String },
     },
     customPriceInCents: { type: Number }, // For Enterprise custom negotiated price
     additionalSeatsCount: { type: Number, default: 0 }, // Extra seats purchased beyond included

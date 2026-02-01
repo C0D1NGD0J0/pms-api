@@ -32,8 +32,6 @@ export class PermissionService {
   async checkPermission(permissionCheck: IPermissionCheck): Promise<IPermissionResult> {
     try {
       const { role, resource, action, scope, context } = permissionCheck;
-
-      // Use business logic for all permission checks
       // This handles both CRUD and custom actions (send, revoke, settings, etc.)
       return this.evaluateBusinessSpecificPermission(
         role,

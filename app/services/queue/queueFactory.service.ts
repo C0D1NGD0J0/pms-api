@@ -17,7 +17,6 @@ export class QueueFactory {
   public getQueue(queueName: string): BaseQueue {
     if (!this.initializedQueues.has(queueName)) {
       this.log.info(`Lazy initializing queue: ${queueName}`);
-
       try {
         const queue = container.resolve(queueName);
         this.initializedQueues.add(queueName);
@@ -37,12 +36,9 @@ export class QueueFactory {
    */
   public getWorker(workerName: string): any {
     if (!this.initializedWorkers.has(workerName)) {
-      this.log.info(`Lazy initializing worker: ${workerName}`);
-
       try {
         const worker = container.resolve(workerName);
         this.initializedWorkers.add(workerName);
-        this.log.info(`Successfully initialized worker: ${workerName}`);
         return worker;
       } catch (error) {
         this.log.error(`Failed to initialize worker ${workerName}:`, error);
@@ -68,9 +64,11 @@ export class QueueFactory {
   }
 
   /**
-   * Force initialize all queues (for development or when explicitly needed)
+   * Force initialize all queues (for worker process)
+   * Workers are automatically injected into queue constructors, no need to resolve separately
+   * Returns list of successfully initialized queues
    */
-  public initializeAllQueues(): void {
+  public async initializeAllQueues(): Promise<{ queues: string[]; failed: string[] }> {
     const queueNames = [
       'propertyMediaQueue',
       'emailQueue',
@@ -84,35 +82,25 @@ export class QueueFactory {
       'cronQueue',
     ];
 
-    const workerNames = [
-      'propertyMediaWorker',
-      'emailWorker',
-      'propertyWorker',
-      'propertyUnitWorker',
-      'uploadWorker',
-      'invitationWorker',
-      'eSignatureWorker',
-      'pdfGeneratorWorker',
-      'cronWorker',
-    ];
+    this.log.info('Force initializing all queues (workers auto-injected via DI)');
 
-    this.log.info('Force initializing all queues and workers');
+    const initializedQueues: string[] = [];
+    const failed: string[] = [];
 
-    queueNames.forEach((queueName) => {
+    // Stagger initialization to avoid overwhelming Redis with simultaneous connections
+    for (const queueName of queueNames) {
       try {
         this.getQueue(queueName);
+        initializedQueues.push(queueName);
+        // Small delay between each queue to prevent thundering herd
+        await new Promise((resolve) => setTimeout(resolve, 100));
       } catch (error) {
         this.log.error(`Failed to initialize queue ${queueName}:`, error);
+        failed.push(queueName);
       }
-    });
+    }
 
-    workerNames.forEach((workerName) => {
-      try {
-        this.getWorker(workerName);
-      } catch (error) {
-        this.log.error(`Failed to initialize worker ${workerName}:`, error);
-      }
-    });
+    return { queues: initializedQueues, failed };
   }
 
   /**

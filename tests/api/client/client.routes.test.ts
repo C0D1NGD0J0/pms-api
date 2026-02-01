@@ -17,7 +17,7 @@ const mockClientController = {
         displayName: faker.company.name(),
         accountType: {
           isEnterpriseAccount: false,
-          planName: 'basic',
+          planName: 'essential',
         },
         contactInfo: {
           email: faker.internet.email(),

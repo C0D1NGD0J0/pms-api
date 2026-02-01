@@ -34,6 +34,7 @@ export class App implements IAppSetup {
   private readonly log = createLogger('App');
   private readonly db: DatabaseService;
   protected expApp: Application;
+  protected readonly BASE_PATH = '/api/v1';
 
   constructor(expressApp: Application, dbService: DatabaseService) {
     this.expApp = expressApp;
@@ -76,7 +77,17 @@ export class App implements IAppSetup {
     if (process.env.NODE_ENV !== 'production') {
       app.use(requestLogger(this.log));
     }
-    app.use(express.json({ limit: '200mb' }));
+    app.use(
+      express.json({
+        limit: '200mb',
+        verify: (req: any, res, buf) => {
+          // Save raw Buffer for Stripe webhook signature verification
+          if (req.originalUrl === '/api/v1/webhooks/stripe') {
+            req.rawBody = buf;
+          }
+        },
+      })
+    );
     app.use(urlencoded({ extended: true, limit: '200mb' }));
     app.use(cookieParser());
     app.use(compression());
@@ -90,11 +101,15 @@ export class App implements IAppSetup {
   }
 
   private routes(app: Application) {
-    const BASE_PATH = '/api/v1';
     app.use(contextBuilder);
     app.use(detectLanguage);
     app.use(setUserLanguage);
-    app.use(`${BASE_PATH}/healthcheck`, async (req, res) => {
+    app.use(
+      `${this.BASE_PATH}/webhooks`,
+      // express.raw({ type: 'application/json' }),
+      routes.webhookRoutes
+    );
+    app.use(`${this.BASE_PATH}/healthcheck`, async (req, res) => {
       try {
         const redisService = req.container.resolve<RedisService>('redisService');
         const redisStats = await redisService.getConnectionStats();
@@ -131,20 +146,19 @@ export class App implements IAppSetup {
       }
     });
     if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
-      app.use(`${BASE_PATH}/queues`, serverAdapter.getRouter());
+      app.use(`${this.BASE_PATH}/queues`, serverAdapter.getRouter());
     }
-    app.use(`${BASE_PATH}/auth`, routes.authRoutes);
-    app.use(`${BASE_PATH}/users`, routes.userRoutes);
-    app.use(`${BASE_PATH}/leases`, routes.leaseRoutes);
-    app.use(`${BASE_PATH}/clients`, routes.clientRoutes);
-    app.use(`${BASE_PATH}/vendors`, routes.vendorRoutes);
-    app.use(`${BASE_PATH}/webhooks`, routes.webhookRoutes);
-    app.use(`${BASE_PATH}/invites`, routes.invitationRoutes);
-    app.use(`${BASE_PATH}/properties`, routes.propertyRoutes);
-    app.use(`${BASE_PATH}/notifications`, routes.notificationRoutes);
-    app.use(`${BASE_PATH}/subscriptions`, routes.subscriptionRoutes);
-    app.use(`${BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
-    // app.use(`${BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
+    app.use(`${this.BASE_PATH}/auth`, routes.authRoutes);
+    app.use(`${this.BASE_PATH}/users`, routes.userRoutes);
+    app.use(`${this.BASE_PATH}/leases`, routes.leaseRoutes);
+    app.use(`${this.BASE_PATH}/clients`, routes.clientRoutes);
+    app.use(`${this.BASE_PATH}/vendors`, routes.vendorRoutes);
+    app.use(`${this.BASE_PATH}/invites`, routes.invitationRoutes);
+    app.use(`${this.BASE_PATH}/properties`, routes.propertyRoutes);
+    app.use(`${this.BASE_PATH}/notifications`, routes.notificationRoutes);
+    app.use(`${this.BASE_PATH}/subscriptions`, routes.subscriptionRoutes);
+    app.use(`${this.BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
+    // app.use(`${this.BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
     app.all('*', (req: Request, res: Response) => {
       res.status(httpStatusCodes.NOT_FOUND).json({ message: 'Invalid endpoint.' });
     });

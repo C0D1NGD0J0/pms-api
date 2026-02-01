@@ -128,7 +128,9 @@ describe('UserController Integration Tests', () => {
       userDAO,
       profileDAO,
       propertyDAO,
+      propertyUnitDAO,
       authCache,
+      subscriptionDAO: {} as any,
     });
 
     userController = new UserController({

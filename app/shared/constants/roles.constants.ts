@@ -11,6 +11,7 @@
  * Defines all available user roles in the system
  */
 export enum IUserRole {
+  SUPER_ADMIN = 'super-admin',
   MANAGER = 'manager',
   TENANT = 'tenant',
   VENDOR = 'vendor',
@@ -23,6 +24,7 @@ export enum IUserRole {
  * Provides the same values as IUserRole enum but in object format
  */
 export const ROLES = {
+  SUPER_ADMIN: 'super-admin',
   ADMIN: 'admin',
   MANAGER: 'manager',
   STAFF: 'staff',
@@ -33,7 +35,14 @@ export const ROLES = {
 /**
  * Type definition for user roles (maintained for backward compatibility)
  */
-export type IUserRoleType = 'admin' | 'tenant' | 'manager' | 'staff' | 'landlord' | 'vendor';
+export type IUserRoleType =
+  | 'super-admin'
+  | 'admin'
+  | 'tenant'
+  | 'manager'
+  | 'staff'
+  | 'landlord'
+  | 'vendor';
 
 /**
  * Type definition for role values
@@ -45,10 +54,11 @@ export type RoleType = (typeof ROLES)[keyof typeof ROLES];
  * Common role groupings for business logic
  */
 export const ROLE_GROUPS = {
-  EMPLOYEE_ROLES: [ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF],
-  MANAGEMENT_ROLES: [ROLES.ADMIN, ROLES.MANAGER],
-  PROPERTY_APPROVAL_ROLES: [ROLES.ADMIN, ROLES.MANAGER],
+  EMPLOYEE_ROLES: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF],
+  MANAGEMENT_ROLES: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER],
+  PROPERTY_APPROVAL_ROLES: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER],
   PROPERTY_STAFF_ROLES: [ROLES.STAFF],
+  BILLING_ROLES: [ROLES.SUPER_ADMIN],
   EXTERNAL_ROLES: [ROLES.TENANT, ROLES.VENDOR],
 } as const;
 

@@ -14,15 +14,11 @@ const ClientSchema = new Schema<IClientDocument>(
       immutable: true,
     },
     accountType: {
-      planId: {
+      category: {
         type: String,
+        enum: ['business', 'individual'],
         required: true,
-        trim: true,
-      },
-      planName: {
-        type: String,
-        required: true,
-        trim: true,
+        index: true,
       },
       isEnterpriseAccount: {
         type: Boolean,

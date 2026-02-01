@@ -2,14 +2,21 @@ import Stripe from 'stripe';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
+import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import {
+  ICreateCheckoutInput,
+  ICreateCustomerInput,
+  IPaymentProvider,
+  IPaymentCustomer,
+  ICheckoutSession,
+} from '@interfaces/paymentGateway.interface';
 
-export class StripeService {
+export class StripeService implements IPaymentProvider {
   private readonly log: Logger;
   private readonly stripe: Stripe;
 
   constructor() {
     this.log = createLogger('StripeService');
-
     if (!envVariables.STRIPE.SECRET_KEY) {
       throw new Error('STRIPE_SECRET_KEY is not defined in environment variables');
     }
@@ -17,8 +24,6 @@ export class StripeService {
       apiVersion: '2025-02-24.acacia',
       typescript: true,
     });
-
-    this.log.info('StripeService initialized');
   }
 
   async getProducts(): Promise<Stripe.Product[]> {
@@ -36,7 +41,6 @@ export class StripeService {
 
   /**
    * Get products with all price mappings (monthly and annual)
-   * This is the single source of truth for pricing
    */
   async getProductsWithPrices(): Promise<
     Map<
@@ -115,44 +119,38 @@ export class StripeService {
     }
   }
 
-  async createCheckoutSession(
-    lookUpKey: string,
-    clientId: string,
-    customerEmail: string,
-    successUrl: string,
-    cancelUrl: string
-  ): Promise<Stripe.Checkout.Session> {
+  async createCheckoutSession(data: ICreateCheckoutInput): Promise<ICheckoutSession> {
     try {
-      const prices = await this.stripe.prices.list({
-        lookup_keys: [lookUpKey],
-        expand: ['data.product'],
-      });
+      const { customerId, priceId, successUrl, cancelUrl, metadata } = data;
+
       const session = await this.stripe.checkout.sessions.create({
         mode: 'subscription',
+        customer: customerId,
         line_items: [
           {
-            price: prices.data[0].id,
+            price: priceId,
             quantity: 1,
           },
         ],
         success_url: successUrl,
         cancel_url: cancelUrl,
-        customer_email: customerEmail,
-        customer_creation: 'always', // Ensures customer is always created
-        metadata: {
-          clientId,
-        },
+        metadata,
         subscription_data: {
-          metadata: {
-            clientId,
-          },
+          metadata,
         },
       });
 
-      this.log.info({ sessionId: session.id, clientId }, 'Created checkout session');
-      return session;
+      this.log.info({ sessionId: session.id, customerId }, 'Created checkout session');
+
+      return {
+        sessionId: session.id,
+        redirectUrl: session.url || '',
+        customerId,
+        provider: IPaymentGatewayProvider.STRIPE,
+        metadata,
+      };
     } catch (error) {
-      this.log.error({ error, lookUpKey, clientId }, 'Error creating checkout session');
+      this.log.error({ error, data }, 'Error creating checkout session');
       throw error;
     }
   }
@@ -185,6 +183,151 @@ export class StripeService {
     }
   }
 
+  async cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
+    try {
+      const result = await this.stripe.subscriptions.update(subscriptionId, {
+        cancel_at_period_end: true,
+      });
+      return result;
+    } catch (error) {
+      this.log.error({ error, subscriptionId }, 'Error canceling Stripe subscription');
+      throw error;
+    }
+  }
+
+  async updateSubscription(
+    subscriptionId: string,
+    newPriceId: string
+  ): Promise<Stripe.Subscription> {
+    try {
+      // Get current subscription to find subscription item ID
+      const subscription = await this.stripe.subscriptions.retrieve(subscriptionId);
+      const subscriptionItemId = subscription.items.data[0].id;
+
+      // Update to new price with proration (charges immediately)
+      const updated = await this.stripe.subscriptions.update(subscriptionId, {
+        items: [
+          {
+            id: subscriptionItemId,
+            price: newPriceId,
+          },
+        ],
+        proration_behavior: 'create_prorations', // Credit unused time
+      });
+
+      this.log.info({ subscriptionId, newPriceId }, 'Updated Stripe subscription');
+      return updated;
+    } catch (error) {
+      this.log.error({ error, subscriptionId, newPriceId }, 'Error updating Stripe subscription');
+      throw error;
+    }
+  }
+
+  async getSubscriptionWithItems(subscriptionId: string): Promise<Stripe.Subscription> {
+    try {
+      const subscription = await this.stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ['items.data.price'],
+      });
+      return subscription;
+    } catch (error) {
+      this.log.error({ error, subscriptionId }, 'Error fetching subscription with items');
+      throw error;
+    }
+  }
+
+  async getPriceByLookupKey(lookupKey: string): Promise<Stripe.Price | null> {
+    try {
+      const prices = await this.stripe.prices.list({
+        lookup_keys: [lookupKey],
+        limit: 1,
+      });
+
+      if (!prices.data.length) {
+        this.log.warn({ lookupKey }, 'Price not found for lookup key');
+        return null;
+      }
+
+      return prices.data[0];
+    } catch (error) {
+      this.log.error({ error, lookupKey }, 'Error fetching price by lookup key');
+      throw error;
+    }
+  }
+
+  async addSubscriptionItem(
+    subscriptionId: string,
+    priceLookupKey: string,
+    quantity: number,
+    prorate: boolean = true
+  ): Promise<Stripe.SubscriptionItem> {
+    try {
+      // Get price by lookup key
+      const price = await this.getPriceByLookupKey(priceLookupKey);
+      if (!price) {
+        throw new Error(`Price not found for lookup key: ${priceLookupKey}`);
+      }
+
+      // Add subscription item with proration
+      const item = await this.stripe.subscriptionItems.create({
+        subscription: subscriptionId,
+        price: price.id,
+        quantity: quantity,
+        proration_behavior: prorate ? 'always_invoice' : 'none',
+      });
+
+      this.log.info(
+        { subscriptionId, priceLookupKey, quantity, itemId: item.id },
+        'Added subscription item'
+      );
+
+      return item;
+    } catch (error) {
+      this.log.error(
+        { error, subscriptionId, priceLookupKey, quantity },
+        'Error adding subscription item'
+      );
+      throw error;
+    }
+  }
+
+  async updateSubscriptionItemQuantity(
+    itemId: string,
+    quantity: number,
+    prorate: boolean = true
+  ): Promise<Stripe.SubscriptionItem> {
+    try {
+      const updated = await this.stripe.subscriptionItems.update(itemId, {
+        quantity: quantity,
+        proration_behavior: prorate ? 'always_invoice' : 'none',
+      });
+
+      this.log.info({ itemId, quantity }, 'Updated subscription item quantity');
+
+      return updated;
+    } catch (error) {
+      this.log.error({ error, itemId, quantity }, 'Error updating subscription item quantity');
+      throw error;
+    }
+  }
+
+  async deleteSubscriptionItem(
+    itemId: string,
+    prorate: boolean = true
+  ): Promise<Stripe.DeletedSubscriptionItem> {
+    try {
+      const deleted = await this.stripe.subscriptionItems.del(itemId, {
+        proration_behavior: prorate ? 'always_invoice' : 'none',
+      });
+
+      this.log.info({ itemId }, 'Deleted subscription item');
+
+      return deleted;
+    } catch (error) {
+      this.log.error({ error, itemId }, 'Error deleting subscription item');
+      throw error;
+    }
+  }
+
   async getCustomer(customerId: string): Promise<Stripe.Customer> {
     try {
       const customer = await this.stripe.customers.retrieve(customerId);
@@ -195,22 +338,69 @@ export class StripeService {
     }
   }
 
-  async createCustomer(
-    email: string,
-    name: string,
-    metadata?: Record<string, string>
-  ): Promise<Stripe.Customer> {
+  async getCharge(chargeId: string): Promise<Stripe.Charge> {
     try {
+      return await this.stripe.charges.retrieve(chargeId);
+    } catch (error) {
+      this.log.error({ error, chargeId }, 'Error fetching Stripe charge');
+      throw error;
+    }
+  }
+
+  async getCustomerInvoices(customerId: string, limit: number = 12): Promise<Stripe.Invoice[]> {
+    try {
+      const result = await this.stripe.invoices.list({
+        customer: customerId,
+        limit,
+        status: 'paid',
+      });
+      this.log.info({ customerId, count: result.data.length }, 'Fetched customer invoices');
+      return result.data;
+    } catch (error) {
+      this.log.error({ error, customerId }, 'Error fetching customer invoices');
+      throw error;
+    }
+  }
+
+  async createCustomer(data: ICreateCustomerInput): Promise<IPaymentCustomer> {
+    try {
+      const { email, metadata, name } = data;
+
       const customer = await this.stripe.customers.create({
         email,
         name,
         metadata,
       });
 
-      this.log.info({ customerId: customer.id, email }, 'Created Stripe customer');
-      return customer;
+      this.log.info({ customerId: customer.id, email, name }, 'Created Stripe customer');
+
+      return {
+        customerId: customer.id,
+        email: customer.email || email,
+        provider: IPaymentGatewayProvider.STRIPE,
+        metadata,
+        createdAt: new Date(customer.created * 1000),
+      };
     } catch (error) {
-      this.log.error({ error, email }, 'Error creating Stripe customer');
+      this.log.error({ error, email: data.email }, 'Error creating Stripe customer');
+      throw error;
+    }
+  }
+
+  async verifyWebhookSignature(payload: string | Buffer, signature: string): Promise<any> {
+    try {
+      const webhookSecret = envVariables.STRIPE.WEBHOOK_SECRET;
+
+      if (!webhookSecret) {
+        throw new Error('STRIPE_WEBHOOK_SECRET is not configured');
+      }
+
+      const event = this.stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+      this.log.info({ eventType: event.type, eventId: event.id }, 'Webhook verified');
+
+      return event;
+    } catch (error) {
+      this.log.error({ error }, 'Error verifying webhook signature');
       throw error;
     }
   }

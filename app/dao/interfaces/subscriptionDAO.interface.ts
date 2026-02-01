@@ -10,7 +10,7 @@ import { IFindOptions } from './baseDAO.interface';
 export interface ISubscriptionDAO {
   updatePlanAndPrice(
     clientId: string | Types.ObjectId,
-    planName: 'personal' | 'starter' | 'professional',
+    planName: 'basic' | 'starter' | 'professional',
     totalMonthlyPrice: number
   ): Promise<ISubscriptionDocument | null>;
   updateAdditionalSeats(
@@ -39,10 +39,6 @@ export interface ISubscriptionDAO {
     subscriptionId: string | Types.ObjectId,
     canceledAt?: Date
   ): Promise<ISubscriptionDocument | null>;
-  updateTier(
-    subscriptionId: string | Types.ObjectId,
-    planName: string
-  ): Promise<ISubscriptionDocument | null>;
   findByPaymentGatewayId(
     paymentGatewayId: string,
     opts?: IFindOptions
@@ -50,18 +46,6 @@ export interface ISubscriptionDAO {
   updateEndDate(
     subscriptionId: string | Types.ObjectId,
     endDate: Date
-  ): Promise<ISubscriptionDocument | null>;
-  updatePropertyCount(
-    clientId: string | Types.ObjectId,
-    delta: number
-  ): Promise<ISubscriptionDocument | null>;
-  updateSeatCount(
-    clientId: string | Types.ObjectId,
-    delta: number
-  ): Promise<ISubscriptionDocument | null>;
-  updateUnitCount(
-    clientId: string | Types.ObjectId,
-    delta: number
   ): Promise<ISubscriptionDocument | null>;
   downgradeToStarter(
     subscriptionId: string | Types.ObjectId

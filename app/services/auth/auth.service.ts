@@ -22,6 +22,7 @@ import {
   JOB_NAME,
 } from '@utils/index';
 import {
+  ValidationRequestError,
   InvalidRequestError,
   UnauthorizedError,
   BadRequestError,
@@ -193,12 +194,20 @@ export class AuthService {
       const _userId = new Types.ObjectId();
       const clientId = generateShortUID();
 
+      const alreadyExists = await this.userDAO.findFirst({ email: signupData.email });
+      if (alreadyExists) {
+        throw new ValidationRequestError({
+          message: 'Validation failed',
+          errorInfo: { email: ['An account with this email already exists.'] },
+        });
+      }
+
       const user = await this.userDAO.insert(
         {
           uid: generateShortUID(),
           _id: _userId,
-          activecuid: clientId,
           isActive: false,
+          activecuid: clientId,
           email: signupData.email,
           password: signupData.password,
           activationToken: hashGenerator({}),
@@ -207,8 +216,10 @@ export class AuthService {
             {
               cuid: clientId,
               isConnected: true,
-              roles: [IUserRole.ADMIN],
-              clientDisplayName: signupData.displayName,
+              roles: [IUserRole.SUPER_ADMIN],
+              clientDisplayName: signupData.accountType.isEnterpriseAccount
+                ? signupData.companyProfile?.tradingName || signupData.displayName
+                : `${signupData.firstName} ${signupData.lastName}`,
             },
           ],
         },
@@ -219,7 +230,10 @@ export class AuthService {
         throw new InvalidRequestError({ message: t('auth.errors.userNotCreated') });
       }
 
-      if (signupData.accountType.isEnterpriseAccount) {
+      const isEnterpriseAccount = signupData.accountType.category === 'business';
+      signupData.accountType.isEnterpriseAccount = isEnterpriseAccount;
+
+      if (isEnterpriseAccount) {
         signupData.companyProfile = {
           ...signupData.companyProfile,
           contactInfo: {
@@ -233,8 +247,11 @@ export class AuthService {
           cuid: clientId,
           accountAdmin: _userId,
           displayName: signupData.displayName,
-          accountType: signupData.accountType,
-          ...(signupData.accountType.isEnterpriseAccount && {
+          accountType: {
+            category: signupData.accountType.category,
+            isEnterpriseAccount: signupData.accountType.isEnterpriseAccount,
+          },
+          ...(isEnterpriseAccount && {
             companyProfile: signupData?.companyProfile,
           }),
         },
@@ -279,24 +296,6 @@ export class AuthService {
           message: subscriptionResult.message || 'Encountered an error while creating subscription',
         });
       }
-
-      // const isPaidPlan = signupData.accountType.planName !== 'starter';
-      // const checkoutUrl: string | null = null;
-
-      // For paid plans, create checkout session
-      // if (isPaidPlan && result.planLookUpKey) {
-      //   const checkoutResult = await this.subscriptionService.createCheckoutSession(
-      //     subscriptionResult.data._id.toString(),
-      //     result.email,
-      //     result.planLookUpKey,
-      //     `${envVariables.FRONTEND_URL}/signup/success`,
-      //     `${envVariables.FRONTEND_URL}/signup/cancel`
-      //   );
-
-      //   if (checkoutResult.success && checkoutResult.data) {
-      //     checkoutUrl = checkoutResult.data.checkoutUrl;
-      //   }
-      // }
 
       return {
         userId: _userId.toString(),
@@ -519,7 +518,7 @@ export class AuthService {
     }
 
     await this.userDAO.createActivationToken('', email)!;
-    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.findFirst({ email }, { populate: 'profile' });
 
     if (!user) {
       throw new NotFoundError({ message: t('auth.success.activationLinkSent', { email }) });
@@ -531,7 +530,7 @@ export class AuthService {
       emailType: MailType.ACCOUNT_ACTIVATION,
       data: {
         fullname: user.profile?.fullname,
-        activationUrl: `${envVariables.FRONTEND.URL}/${user.activecuid}/account_activation/?t=${user.activationToken}`,
+        activationUrl: `${envVariables.FRONTEND.URL}/account_activation/${user.activecuid}?t=${user.activationToken}`,
       },
     };
     const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;

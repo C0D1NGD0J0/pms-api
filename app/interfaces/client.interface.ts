@@ -2,7 +2,7 @@ import { Document, Types } from 'mongoose';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 
 import {
-  IdentificationType,
+  IIdentificationType,
   IContactInfoType,
   IBaseUserProfile,
   IUserDocument,
@@ -21,7 +21,7 @@ import {
  */
 export interface IClient {
   accountAdmin: Types.ObjectId | PopulatedAccountAdmin;
-  identification?: IdentificationType;
+  identification?: IIdentificationType;
   subscription: Types.ObjectId | null;
   companyProfile?: ICompanyProfile;
   lastModifiedBy: Types.ObjectId;

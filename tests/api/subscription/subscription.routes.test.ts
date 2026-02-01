@@ -26,8 +26,8 @@ describe('Subscription Routes API Tests', () => {
           success: true,
           data: [
             {
-              planName: 'personal',
-              name: 'Personal',
+              planName: 'essential',
+              name: 'Basic',
               description: 'Perfect for individual landlords',
               pricing: {
                 monthly: {

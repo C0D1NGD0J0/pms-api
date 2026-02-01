@@ -165,9 +165,10 @@ describe('AuthController Integration Tests', () => {
         location: 'New York, NY',
         termsAccepted: true,
         accountType: {
-          planName: 'starter',
+          planName: 'growth',
           planId: 'plan_starter',
           billingInterval: 'monthly',
+          category: 'individual',
           isEnterpriseAccount: false,
         },
       };
@@ -229,9 +230,10 @@ describe('AuthController Integration Tests', () => {
         location: 'Lagos, Nigeria',
         termsAccepted: true,
         accountType: {
-          planName: 'starter',
+          planName: 'growth',
           planId: 'plan_starter',
           billingInterval: 'monthly',
+          category: 'individual',
           isEnterpriseAccount: false,
         },
       };
@@ -257,7 +259,8 @@ describe('AuthController Integration Tests', () => {
         location: 'Toronto, ON',
         termsAccepted: true,
         accountType: {
-          planName: 'personal',
+          planName: 'essential',
+          category: 'individual',
           planId: 'price_1234567890abcd',
           billingInterval: 'annual',
           isEnterpriseAccount: false,
@@ -287,7 +290,8 @@ describe('AuthController Integration Tests', () => {
         location: 'London',
         termsAccepted: true,
         accountType: {
-          planName: 'personal',
+          planName: 'essential',
+          category: 'individual',
           planId: 'invalid_price_id',
           billingInterval: 'monthly',
           isEnterpriseAccount: false,
@@ -315,9 +319,10 @@ describe('AuthController Integration Tests', () => {
         location: 'Los Angeles, CA',
         termsAccepted: true,
         accountType: {
-          planName: 'starter',
+          planName: 'growth',
           planId: 'plan_starter',
           billingInterval: 'monthly',
+          category: 'individual',
           isEnterpriseAccount: false,
         },
       };
@@ -329,6 +334,150 @@ describe('AuthController Integration Tests', () => {
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
+    });
+
+    describe('Account Type + Plan Combinations', () => {
+      it('should allow individual account with personal plan', async () => {
+        const signupData = {
+          email: `individual-personal-${Date.now()}@example.com`,
+          password: 'SecurePassword123!',
+          firstName: 'Individual',
+          lastName: 'PersonalPlan',
+          displayName: 'Individual Personal Account',
+          phoneNumber: '+1234567890',
+          lang: 'en',
+          location: 'Seattle, WA',
+          termsAccepted: true,
+          accountType: {
+            planName: 'essential',
+          category: 'individual',
+            planId: 'price_1234567890abcd',
+            billingInterval: 'monthly',
+            isEnterpriseAccount: false,
+          },
+        };
+
+        const response = await request(app)
+          .post('/api/v1/auth/signup')
+          .send(signupData)
+          .expect('Content-Type', /json/)
+          .expect(httpStatusCodes.OK);
+
+        expect(response.body.success).toBe(true);
+
+        const savedClient = await Client.findOne({ displayName: signupData.displayName });
+        expect(savedClient).toBeDefined();
+        expect(savedClient!.accountType.isEnterpriseAccount).toBe(false);
+        expect(savedClient!.accountType.planName).toBe('essential');
+      });
+
+      it('should allow business account with personal plan', async () => {
+        const signupData = {
+          email: `business-personal-${Date.now()}@example.com`,
+          password: 'SecurePassword123!',
+          firstName: 'Business',
+          lastName: 'PersonalPlan',
+          displayName: 'Small Business Personal Account',
+          phoneNumber: '+1234567890',
+          lang: 'en',
+          location: 'Austin, TX',
+          termsAccepted: true,
+          accountType: {
+            planName: 'essential',
+            category: 'business',
+            planId: 'price_1234567890abcd',
+            billingInterval: 'monthly',
+            isEnterpriseAccount: true,
+          },
+          companyProfile: {
+            tradingName: 'Small Business Inc',
+            legalEntityName: 'Small Business Incorporated',
+          },
+        };
+
+        const response = await request(app)
+          .post('/api/v1/auth/signup')
+          .send(signupData)
+          .expect('Content-Type', /json/)
+          .expect(httpStatusCodes.OK);
+
+        expect(response.body.success).toBe(true);
+
+        const savedClient = await Client.findOne({ displayName: signupData.displayName });
+        expect(savedClient).toBeDefined();
+        expect(savedClient!.accountType.isEnterpriseAccount).toBe(true);
+        expect(savedClient!.accountType.planName).toBe('essential');
+        expect(savedClient!.companyProfile?.tradingName).toBe('Small Business Inc');
+      });
+
+      it('should allow business account with professional plan', async () => {
+        const signupData = {
+          email: `business-professional-${Date.now()}@example.com`,
+          password: 'SecurePassword123!',
+          firstName: 'Business',
+          lastName: 'ProfessionalPlan',
+          displayName: 'Enterprise Professional Account',
+          phoneNumber: '+1234567890',
+          lang: 'en',
+          location: 'San Francisco, CA',
+          termsAccepted: true,
+          accountType: {
+            planName: 'portfolio',
+            category: 'business',
+            planId: 'price_1234567890abcd',
+            billingInterval: 'annual',
+            isEnterpriseAccount: true,
+          },
+          companyProfile: {
+            tradingName: 'Enterprise Corporation',
+            legalEntityName: 'Enterprise Corporation LLC',
+          },
+        };
+
+        const response = await request(app)
+          .post('/api/v1/auth/signup')
+          .send(signupData)
+          .expect('Content-Type', /json/)
+          .expect(httpStatusCodes.OK);
+
+        expect(response.body.success).toBe(true);
+
+        const savedClient = await Client.findOne({ displayName: signupData.displayName });
+        expect(savedClient).toBeDefined();
+        expect(savedClient!.accountType.isEnterpriseAccount).toBe(true);
+        expect(savedClient!.accountType.planName).toBe('portfolio');
+        expect(savedClient!.companyProfile?.tradingName).toBe('Enterprise Corporation');
+      });
+
+      it('should reject business account without company profile', async () => {
+        const signupData = {
+          email: `business-noprofile-${Date.now()}@example.com`,
+          password: 'SecurePassword123!',
+          firstName: 'Business',
+          lastName: 'NoProfile',
+          displayName: 'Business Without Profile',
+          phoneNumber: '+1234567890',
+          lang: 'en',
+          location: 'Boston, MA',
+          termsAccepted: true,
+          accountType: {
+            planName: 'essential',
+            category: 'business',
+            planId: 'price_1234567890abcd',
+            billingInterval: 'monthly',
+            isEnterpriseAccount: true,
+          },
+          // Missing companyProfile
+        };
+
+        const response = await request(app)
+          .post('/api/v1/auth/signup')
+          .send(signupData)
+          .expect('Content-Type', /json/);
+
+        expect(response.status).toBeGreaterThanOrEqual(400);
+        expect(response.body.success).toBeFalsy();
+      });
     });
   });
 

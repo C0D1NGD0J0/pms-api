@@ -32,8 +32,8 @@ const createSharedRedisConnection = (): Redis => {
       // Bull requires maxRetriesPerRequest to be null for bclient/subscriber
       // See: https://github.com/OptimalBits/bull/issues/1873
       maxRetriesPerRequest: null,
-      // Increased timeout to handle queue operations during startup/high load
-      commandTimeout: 30000,
+      // Production uses 30s timeout, slightly higher timeout (60s) in development
+      commandTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 60000, // 60s in dev
       // Enable offline queue to buffer commands until Redis connects
       enableOfflineQueue: true,
       // Bull requires enableReadyCheck to be false
@@ -47,8 +47,10 @@ const createSharedRedisConnection = (): Redis => {
     // Create ioredis client using URL (supports redis:// or redis://user:pass@host:port format)
     sharedIORedisClient = new Redis(redisUrl, redisConfig);
 
-    // Increase max listeners to prevent warning (9 queues + DLQ = 10+ listeners)
-    sharedIORedisClient.setMaxListeners(20);
+    // Increase max listeners to prevent warning
+    // Each queue (10) creates ~3-4 listeners per connection type (client, subscriber, bclient)
+    // Set to 40 to accommodate all queues without warnings
+    sharedIORedisClient.setMaxListeners(40);
 
     sharedIORedisClient.on('error', (err) => {
       const logger = createLogger('IORedis');
@@ -92,7 +94,7 @@ const DEVELOPMENT_QUEUE_OPTIONS: BullQueueOptions = {
   settings: {
     maxStalledCount: 3,
     lockDuration: 300000, // 5 minutes
-    stalledInterval: 120000, // 2 minutes - reduced polling to save CPU/battery
+    stalledInterval: 60000, // 1 minute - faster detection of stale connections
   },
   createClient: (type) => {
     switch (type) {
@@ -152,8 +154,14 @@ export class BaseQueue<T extends JobData = JobData> {
     }
     this.dlq = deadLetterQueue;
 
-    // Only add to Bull Board in development or when explicitly enabled
-    if (envVariables.SERVER.ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
+    // Only register with Bull Board in API process (not worker)
+    // Worker queues don't need UI - they just process jobs
+    // This prevents stale connection errors when worker restarts
+    const shouldAddToBullBoard =
+      (envVariables.SERVER.ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') &&
+      process.env.PROCESS_TYPE !== 'worker';
+
+    if (shouldAddToBullBoard) {
       this.addQueueToBullBoard(this.queue, this.dlq);
     }
 
@@ -210,8 +218,24 @@ export class BaseQueue<T extends JobData = JobData> {
       }
     });
 
-    this.queue.on('error', (error) => {
+    this.queue.on('error', async (error) => {
       this.log.error({ error }, `Queue ${this.queue.name} encountered an error: ${error.message}`);
+
+      // If command timeout, connection might be stale - trigger reconnection
+      if (error.message?.includes('Command timed out')) {
+        this.log.warn(`Timeout detected in ${this.queue.name}, attempting reconnection...`);
+        try {
+          const client = await this.queue.client;
+          if (client.status !== 'ready') {
+            await client.connect();
+            this.log.info(`Reconnected ${this.queue.name} successfully`);
+          } else {
+            this.log.info(`${this.queue.name} connection healthy, timeout was temporary`);
+          }
+        } catch (reconnectError) {
+          this.log.error({ error: reconnectError }, `Failed to reconnect ${this.queue.name}`);
+        }
+      }
     });
 
     this.queue.on('stalled', (job) => {
@@ -221,6 +245,10 @@ export class BaseQueue<T extends JobData = JobData> {
       );
       job.moveToFailed({ message: 'Job stalled' }, true);
     });
+
+    // Check if queue is paused and resume immediately
+    // This handles race condition where 'ready' event fired before listener attached
+    this.autoResumeQueue();
   }
 
   addQueueToBullBoard(queue: Queue.Queue, dlq?: Queue.Queue): void {
@@ -234,14 +262,13 @@ export class BaseQueue<T extends JobData = JobData> {
       adaptersToAdd.push(dlq);
     }
 
-    const existingQueueNames = bullMQAdapters.map(
-      (adapter) => (adapter as any).queue?.name || 'unknown'
-    );
+    const existingQueueNames = bullMQAdapters.map((adapter) => (adapter as any).queue?.name);
 
     adaptersToAdd = adaptersToAdd.filter((q) => !existingQueueNames.includes(q.name));
     adaptersToAdd.forEach((q) => {
       bullMQAdapters.push(new BullAdapter(q));
     });
+
     createBullBoard({
       serverAdapter,
       queues: bullMQAdapters,
@@ -273,9 +300,9 @@ export class BaseQueue<T extends JobData = JobData> {
     callback: Queue.ProcessCallbackFunction<T>
   ): void {
     if (process.env.PROCESS_TYPE !== 'worker') {
-      // this.log.warn(
-      //   `Queue processing for ${this.queue.name} is disabled because PROCESS_TYPE is not 'worker'.`
-      // );
+      this.log.warn(
+        `Queue processing for ${this.queue.name} is disabled because PROCESS_TYPE is '${process.env.PROCESS_TYPE}' not 'worker'.`
+      );
       return;
     }
     this.queue.process(name, concurrency, callback);
@@ -292,7 +319,7 @@ export class BaseQueue<T extends JobData = JobData> {
       await this.queue.pause();
 
       // Wait for active jobs to complete (with timeout)
-      const maxWaitTime = 30000; // 30 seconds
+      const maxWaitTime = 10000; // 10 seconds
       const startTime = Date.now();
 
       while (Date.now() - startTime < maxWaitTime) {
@@ -353,7 +380,7 @@ export class BaseQueue<T extends JobData = JobData> {
 
       if (isPaused) {
         await this.queue.resume();
-        // this.log.info(`⚠️ Resumed previously paused queue: ${this.queue.name}`);
+        this.log.info(`⚠️ Resumed previously paused queue: ${this.queue.name}`);
       }
     } catch (error) {
       this.log.warn({ error }, `Failed to auto-resume queue ${this.queue.name}: ${error.message}`);

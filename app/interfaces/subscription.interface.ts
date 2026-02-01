@@ -25,17 +25,18 @@ export interface ISubscriptionPlansConfig {
       savingsPercent: number;
     };
   };
+  seatPricing: {
+    includedSeats: number;
+    additionalSeatPriceCents: number;
+    maxAdditionalSeats: number;
+    lookUpKey: string; // Stripe price lookup key for additional seats (e.g., 'growth_seats')
+  };
   features: {
     eSignature: boolean;
     RepairRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
     prioritySupport?: boolean;
-  };
-  seatPricing: {
-    includedSeats: number;
-    additionalSeatPriceCents: number;
-    maxAdditionalSeats: number;
   };
   limits: {
     maxProperties: number;
@@ -57,6 +58,13 @@ export interface ISubscriptionPlansConfig {
 }
 
 export interface ISubscription {
+  entitlements: {
+    eSignature: boolean;
+    RepairRequestService: boolean;
+    VisitorPassService: boolean;
+    reportingAnalytics: boolean;
+    prioritySupport?: boolean;
+  };
   billingInterval: 'monthly' | 'annual';
   paymentGateway: IPaymentGateway;
   additionalSeatsCount: number;
@@ -74,6 +82,71 @@ export interface ISubscription {
   startDate: Date;
   endDate: Date;
   cuid: string;
+}
+
+export interface ISubscriptionPlanUsage {
+  seatInfo: {
+    includedSeats: number;
+    additionalSeats: number;
+    totalAllowed: number;
+    maxAdditionalSeats: number;
+    additionalSeatPriceCents: number;
+    availableForPurchase: number;
+  };
+  plan: {
+    name: PlanName;
+    status: ISubscriptionStatus;
+    billingInterval: 'monthly' | 'annual';
+    startDate: Date;
+    endDate: Date | null;
+  };
+  isLimitReached: {
+    properties: boolean;
+    units: boolean;
+    seats: boolean;
+  };
+  limits: {
+    properties: number;
+    units: number;
+    seats: number;
+  };
+  usage: {
+    properties: number;
+    units: number;
+    seats: number;
+  };
+}
+
+export interface IPaymentGateway {
+  provider: IPaymentGatewayProvider;
+  planLookUpKey?: string; // Lookup key for the plan
+  subscriberId?: string; // Payment gateway subscription ID (e.g., Stripe sub_xxx) set after payment
+  seatItemId?: string; // Subscription item ID for seats (e.g., Stripe si_xxx) - used for updating seat quantity
+  customerId: string; // Payment gateway customer ID (e.g., Stripe customer ID)
+  cardLast4?: string; // Last 4 digits for UI display (PCI-compliant)
+  cardBrand?: string; // Card brand for UI display (visa, mastercard, etc.)
+  planId: string; // Payment gateway price/plan ID (e.g., Stripe price ID)
+}
+
+export interface ISubscriptionEntitlements {
+  paymentFlow?: {
+    requiresPayment: boolean;
+    reason: 'pending_signup' | 'expired' | 'grace_period' | null;
+    gracePeriodEndsAt: Date | null;
+    daysUntilDowngrade: number | null;
+  };
+  entitlements: {
+    eSignature: boolean;
+    RepairRequestService: boolean;
+    VisitorPassService: boolean;
+    reportingAnalytics: boolean;
+    prioritySupport?: boolean;
+  };
+  plan: {
+    name: PlanName;
+    status: ISubscriptionStatus;
+    billingInterval: 'monthly' | 'annual';
+  };
 }
 
 export type ISubscriptionPlanResponse = {
@@ -95,11 +168,18 @@ export type ISubscriptionPlanResponse = {
   };
 } & Omit<ISubscriptionPlansConfig, 'pricing' | 'features'>;
 
-export interface IPaymentGateway {
-  provider: IPaymentGatewayProvider;
-  planLookUpKey?: string; // Lookup key for the plan
-  planId: string; // Stripe price ID or plan ID
-  id: string; // Stripe customer ID or payment gateway customer ID
+export interface ISubscriptionSummary {
+  billingInterval: 'monthly' | 'annual';
+  status: ISubscriptionStatus;
+  currentProperties: number;
+  subscriptionId: string;
+  nextBillingDate?: Date;
+  currentSeats: number;
+  currentUnits: number;
+  planName: PlanName;
+  amount: number;
+  suid: string;
+  cuid: string;
 }
 
 export interface ISubscriptionDocument extends ISubscription, Document {
@@ -109,4 +189,4 @@ export interface ISubscriptionDocument extends ISubscription, Document {
   suid: string;
 }
 
-export type PlanName = 'personal' | 'starter' | 'professional';
+export type PlanName = 'essential' | 'growth' | 'portfolio';

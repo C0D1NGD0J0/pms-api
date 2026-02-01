@@ -251,6 +251,18 @@ export class LeaseService {
       });
     }
 
+    // Prevent conflict of interest: user cannot create lease for themselves as tenant
+    const tenantIdStr =
+      typeof tenantInfo.tenantId === 'object'
+        ? tenantInfo.tenantId.toString()
+        : tenantInfo.tenantId;
+
+    if (tenantIdStr === currentuser.sub && !tenantInfo.useInvitationIdAsTenantId) {
+      throw new ForbiddenError({
+        message: t('lease.errors.cannotCreateOwnLease'),
+      });
+    }
+
     if (
       data.tenantInfo.email &&
       data.tenantInfo.firstName &&
@@ -367,6 +379,9 @@ export class LeaseService {
           ownershipType,
           propertyName: property.name,
           propertyType: property.propertyType,
+          ...(tenantInfo.pendingTenantEmail && {
+            pendingTenantEmail: tenantInfo.pendingTenantEmail,
+          }),
         },
       };
 
@@ -597,6 +612,19 @@ export class LeaseService {
       if (!lease) {
         throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
       }
+
+      // Prevent conflict of interest: tenants cannot update their own lease
+      const tenantIdStr =
+        typeof lease.tenantId === 'object' && lease.tenantId !== null
+          ? (lease.tenantId as any)._id?.toString() || lease.tenantId.toString()
+          : lease.tenantId?.toString();
+
+      if (tenantIdStr === currentUser.sub && currentUser.client.role === 'tenant') {
+        throw new ForbiddenError({
+          message: t('lease.errors.cannotUpdateOwnLease'),
+        });
+      }
+
       if (
         lease.status === LeaseStatus.PENDING_SIGNATURE &&
         !PROPERTY_APPROVAL_ROLES.includes(userRole)
@@ -1993,6 +2021,7 @@ export class LeaseService {
     tenantInfo?: {
       tenantId: Types.ObjectId;
       useInvitationIdAsTenantId: boolean;
+      pendingTenantEmail?: string;
     } | null;
     propertyInfo?: {
       id: string;
@@ -2011,7 +2040,11 @@ export class LeaseService {
     };
   }> {
     const validationErrors: Record<string, string[]> = {};
-    let tenantInfo: { tenantId: Types.ObjectId; useInvitationIdAsTenantId: boolean } | null = null;
+    let tenantInfo: {
+      tenantId: Types.ObjectId;
+      useInvitationIdAsTenantId: boolean;
+      pendingTenantEmail?: string;
+    } | null = null;
 
     if (leaseData.tenantInfo.id) {
       if (!Types.ObjectId.isValid(leaseData.tenantInfo.id)) {
@@ -2054,12 +2087,13 @@ export class LeaseService {
 
         if (!invitation) {
           if (leaseData.tenantInfo.firstName && leaseData.tenantInfo.lastName) {
-            this.log.info('No existing invitation found, will create new tenant invitation', {
+            this.log.info('No existing invitation found, will create lease with temp tenant ID', {
               email: leaseData.tenantInfo.email,
             });
             tenantInfo = {
               tenantId: new Types.ObjectId(),
               useInvitationIdAsTenantId: true,
+              pendingTenantEmail: leaseData.tenantInfo.email.toLowerCase(), // For orphaned lease detection
             };
           } else {
             if (!validationErrors['tenantInfo.email']) validationErrors['tenantInfo.email'] = [];
@@ -2193,7 +2227,10 @@ export class LeaseService {
       propertyInfo: {
         id: leaseData.property.id.toString(),
         unitId: leaseData.property.unitId || null,
-        address: propertyRecord?.address.fullAddress || '',
+        address:
+          (typeof propertyRecord?.address === 'string'
+            ? propertyRecord?.address
+            : propertyRecord?.address?.fullAddress) || '',
         propertyType: propertyRecord?.propertyType,
         name: propertyRecord?.name,
         unitNumber: unit?.unitNumber,
@@ -2758,7 +2795,10 @@ export class LeaseService {
                 leaseNumber: lease.leaseNumber,
                 cuid: lease.cuid,
                 tenantId: lease.tenantId.toString(),
-                propertyAddress: lease.property?.address || 'Property',
+                propertyAddress:
+                  (typeof lease.property?.address === 'string'
+                    ? lease.property?.address
+                    : lease.property?.address?.fullAddress) || 'Property',
                 endDate: lease.duration.endDate,
               },
               recipients: {
@@ -2814,7 +2854,10 @@ export class LeaseService {
                 leaseNumber: lease.leaseNumber,
                 cuid: lease.cuid,
                 tenantId: lease.tenantId.toString(),
-                propertyAddress: lease.property?.address || 'Property',
+                propertyAddress:
+                  (typeof lease.property?.address === 'string'
+                    ? lease.property?.address
+                    : lease.property?.address?.fullAddress) || 'Property',
                 endDate: lease.duration.endDate,
               },
               recipients: {
@@ -2869,7 +2912,10 @@ export class LeaseService {
                 leaseNumber: lease.leaseNumber,
                 cuid: lease.cuid,
                 tenantId: lease.tenantId.toString(),
-                propertyAddress: lease.property?.address || 'Property',
+                propertyAddress:
+                  (typeof lease.property?.address === 'string'
+                    ? lease.property?.address
+                    : lease.property?.address?.fullAddress) || 'Property',
                 endDate: lease.duration.endDate,
               },
               recipients: {

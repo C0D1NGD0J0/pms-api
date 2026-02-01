@@ -1,8 +1,15 @@
 import { ROLES } from '@shared/constants/roles.constants';
 import { ClientService } from '@services/client/client.service';
-import { Property, Profile, Client, User } from '@models/index';
-import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { PropertyUnit, Property, Profile, Client, User } from '@models/index';
 import { beforeEach, beforeAll, describe, afterAll, expect, it } from '@jest/globals';
+import {
+  PropertyUnitDAO,
+  SubscriptionDAO,
+  PropertyDAO,
+  ProfileDAO,
+  ClientDAO,
+  UserDAO,
+} from '@dao/index';
 
 import {
   disconnectTestDatabase,
@@ -20,6 +27,8 @@ const setupServices = () => {
   const userDAO = new UserDAO({ userModel: User });
   const profileDAO = new ProfileDAO({ profileModel: Profile });
   const propertyDAO = new PropertyDAO({ propertyModel: Property } as any);
+  const propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
+  const subscriptionDAO = new SubscriptionDAO();
 
   const authCache = {
     invalidateUserCache: jest.fn().mockResolvedValue(undefined),
@@ -30,7 +39,9 @@ const setupServices = () => {
     userDAO,
     profileDAO,
     propertyDAO,
+    propertyUnitDAO,
     authCache,
+    subscriptionDAO,
   });
 
   return { clientService, clientDAO, userDAO, profileDAO, propertyDAO };
@@ -409,7 +420,7 @@ describe('ClientService Integration Tests - Read Operations', () => {
   });
 
   describe('getClientDetails', () => {
-    it('should successfully retrieve client details with statistics', async () => {
+    it('should successfully retrieve client details with statistics for regular admin', async () => {
       const mockContext = {
         currentuser: {
           uid: seededData.users.admin1.uid,
@@ -436,6 +447,64 @@ describe('ClientService Integration Tests - Read Operations', () => {
       expect(result.data.cuid).toBe(seededData.clients.client1.cuid);
       expect(result.data.clientStats).toBeDefined();
       expect(result.data.clientStats.totalUsers).toBeGreaterThanOrEqual(0);
+      expect(result.data.subscription).toBeUndefined(); // Regular admin should NOT see subscription
+
+      // Verify structured accountType
+      expect(result.data.accountType).toBeDefined();
+      expect(result.data.accountType.category).toMatch(/^(business|individual)$/);
+    });
+
+    it('should include subscription details for super-admin', async () => {
+      const mockContext = {
+        currentuser: {
+          uid: seededData.users.admin1.uid,
+          sub: seededData.users.admin1._id.toString(),
+          client: {
+            cuid: seededData.clients.client1.cuid,
+            role: ROLES.SUPER_ADMIN,
+          },
+        },
+        request: {
+          params: { cuid: seededData.clients.client1.cuid },
+          url: '/test',
+          method: 'GET',
+          path: '/client/details',
+          query: {},
+        },
+        requestId: 'req-123',
+      } as any;
+
+      const result = await clientService.getClientDetails(mockContext);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      expect(result.data.cuid).toBe(seededData.clients.client1.cuid);
+      expect(result.data.clientStats).toBeDefined();
+      expect(result.data.subscription).toBeDefined(); // Super-admin should see subscription
+
+      // Verify structured accountType
+      expect(result.data.accountType).toBeDefined();
+      expect(result.data.accountType.category).toMatch(/^(business|individual)$/);
+
+      // Verify sanitized fields are present
+      const subscription = result.data.subscription as any;
+      expect(subscription.subscriptionId).toBeDefined();
+      expect(subscription.suid).toBeDefined();
+      expect(subscription.cuid).toBe(seededData.clients.client1.cuid);
+      expect(subscription.planName).toBeDefined();
+      expect(subscription.status).toBeDefined();
+      expect(subscription.billingInterval).toBeDefined();
+      expect(subscription.amount).toBeDefined();
+      expect(subscription.currentSeats).toBeDefined();
+      expect(subscription.currentProperties).toBeDefined();
+      expect(subscription.currentUnits).toBeDefined();
+
+      // Verify sensitive fields are NOT present
+      expect(subscription).not.toHaveProperty('client');
+      expect(subscription).not.toHaveProperty('paymentGateway');
+      expect(subscription).not.toHaveProperty('additionalSeatsCount');
+      expect(subscription).not.toHaveProperty('additionalSeatsCost');
+      expect(subscription).not.toHaveProperty('customPriceInCents');
     });
 
     it('should handle client not found', async () => {

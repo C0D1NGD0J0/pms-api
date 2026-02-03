@@ -19,33 +19,70 @@ describe('SubscriptionService Integration Tests', () => {
 
     subscriptionDAO = new SubscriptionDAO();
 
-    // Mock Stripe service to avoid real API calls
+    // Mock Stripe service to avoid real API calls - Updated with correct CAD pricing
     mockStripeService = {
       getProductsWithPrices: jest.fn().mockResolvedValue(
         new Map([
-          ['portfolio', {
-            monthly: { priceId: 'price_portfolio_monthly', amount: 9900 },
-            annual: { priceId: 'price_portfolio_annual', amount: 7920 }
-          }],
-          ['essential', {
-            monthly: { priceId: 'price_essential_monthly', amount: 0 },
-            annual: { priceId: 'price_essential_annual', amount: 0 }
-          }],
-          ['growth', {
-            monthly: { priceId: 'price_growth_monthly', amount: 2900 },
-            annual: { priceId: 'price_growth_annual', amount: 2320 }
-          }],
+          [
+            'portfolio',
+            {
+              monthly: {
+                priceId: 'price_portfolio_monthly',
+                amount: 14999,
+                lookUpKey: 'portfolio_monthly',
+              },
+              annual: {
+                priceId: 'price_portfolio_annual',
+                amount: 144000,
+                lookUpKey: 'portfolio_annual',
+              },
+            },
+          ],
+          [
+            'essential',
+            {
+              monthly: {
+                priceId: 'price_essential_monthly',
+                amount: 0,
+                lookUpKey: 'essential_monthly',
+              },
+              annual: {
+                priceId: 'price_essential_annual',
+                amount: 0,
+                lookUpKey: 'essential_annual',
+              },
+            },
+          ],
+          [
+            'growth',
+            {
+              monthly: {
+                priceId: 'price_growth_monthly',
+                amount: 7999,
+                lookUpKey: 'growth_monthly',
+              },
+              annual: {
+                priceId: 'price_growth_annual',
+                amount: 76800,
+                lookUpKey: 'growth_annual',
+              },
+            },
+          ],
         ])
       ),
       getProductPrice: jest.fn().mockImplementation((priceId: string) => {
         if (priceId.includes('annual')) {
-          return Promise.resolve({ unit_amount: 34800 });
+          return Promise.resolve({ unit_amount: 76800 });
         }
-        return Promise.resolve({ unit_amount: 6500 });
+        return Promise.resolve({ unit_amount: 7999 });
       }),
       createCheckoutSession: jest.fn().mockResolvedValue({
         sessionId: 'cs_test_123',
         checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_123',
+      }),
+      updateSubscriptionSeats: jest.fn().mockResolvedValue({
+        success: true,
+        newQuantity: 5,
       }),
     };
 
@@ -78,16 +115,46 @@ describe('SubscriptionService Integration Tests', () => {
 
       const growthPlan = result.data.find((p) => p.planName === 'growth');
       expect(growthPlan).toBeDefined();
-      expect(growthPlan?.pricing.monthly.priceInCents).toBe(2900);
-      expect(growthPlan?.pricing.monthly.displayPrice).toBe('$29');
+      expect(growthPlan?.pricing.monthly.priceInCents).toBe(7999); // $79.99 CAD
+      expect(growthPlan?.pricing.monthly.displayPrice).toBe('$79.99');
     });
 
     it('should calculate annual pricing with 20% discount', async () => {
       const result = await subscriptionService.getSubscriptionPlans();
 
       const growthPlan = result.data.find((p) => p.planName === 'growth');
-      expect(growthPlan?.pricing.annual.priceInCents).toBe(2320);
+      expect(growthPlan?.pricing.annual.priceInCents).toBe(76800); // $768 CAD/year
       expect(growthPlan?.pricing.annual.savingsPercent).toBe(20);
+    });
+
+    it('should return subscription prices NOT seat prices', async () => {
+      const result = await subscriptionService.getSubscriptionPlans();
+
+      const growthPlan = result.data.find((p) => p.planName === 'growth');
+      const portfolioPlan = result.data.find((p) => p.planName === 'portfolio');
+
+      // Growth: $79.99/month subscription (NOT $7.99 seat price)
+      expect(growthPlan?.pricing.monthly.priceInCents).toBe(7999);
+      expect(growthPlan?.pricing.annual.priceInCents).toBe(76800);
+
+      // Portfolio: $149.99/month subscription (NOT $5.99 seat price)
+      expect(portfolioPlan?.pricing.monthly.priceInCents).toBe(14999);
+      expect(portfolioPlan?.pricing.annual.priceInCents).toBe(144000);
+    });
+
+    it('should return seat pricing separately from subscription pricing', async () => {
+      const result = await subscriptionService.getSubscriptionPlans();
+
+      const growthPlan = result.data.find((p) => p.planName === 'growth');
+      const portfolioPlan = result.data.find((p) => p.planName === 'portfolio');
+
+      // Growth seats: $7.99/month
+      expect(growthPlan?.seatPricing.additionalSeatPriceCents).toBe(799);
+      expect(growthPlan?.seatPricing.includedSeats).toBe(10);
+
+      // Portfolio seats: $5.99/month
+      expect(portfolioPlan?.seatPricing.additionalSeatPriceCents).toBe(599);
+      expect(portfolioPlan?.seatPricing.includedSeats).toBe(25);
     });
 
     it('should fallback to config prices when Stripe fails', async () => {
@@ -103,7 +170,7 @@ describe('SubscriptionService Integration Tests', () => {
       // Should still return plans with config prices
       const growthPlan = result.data.find((p) => p.planName === 'growth');
       expect(growthPlan).toBeDefined();
-      expect(growthPlan?.pricing.monthly.priceInCents).toBe(2900);
+      expect(growthPlan?.pricing.monthly.priceInCents).toBe(7999);
     });
 
     it('should include plan metadata and features', async () => {
@@ -778,6 +845,258 @@ describe('SubscriptionService Integration Tests', () => {
           cancelUrl: 'https://app.example.com/cancel',
         })
       ).rejects.toThrow();
+    });
+  });
+
+  describe('Seat Management (updateSubscriptionSeats)', () => {
+    it('should allow purchasing additional seats when under the limit', async () => {
+      const client = new Types.ObjectId();
+      const subscription = await Subscription.create({
+        cuid: 'client-seat-add',
+        suid: 'suid-seat-add',
+        client,
+        planName: 'growth',
+        status: 'active',
+        paymentGateway: {
+          customerId: 'cus_test123',
+          provider: 'stripe',
+          planId: 'price_growth_monthly',
+          seatItemId: 'si_test123',
+        },
+        totalMonthlyPrice: 7999,
+        billingInterval: 'monthly',
+        currentSeats: 10, // Using all included seats
+        currentProperties: 5,
+        currentUnits: 20,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+        entitlements: {
+          eSignature: true,
+          RepairRequestService: true,
+          VisitorPassService: true,
+          reportingAnalytics: true,
+        },
+      });
+
+      const ctx = {
+        currentuser: {
+          sub: new Types.ObjectId().toString(),
+          email: 'owner@example.com',
+          client: {
+            cuid: 'client-seat-add',
+            role: 'super-admin',
+          },
+        },
+      } as any;
+
+      const result = await subscriptionService.updateSubscriptionSeats(ctx, { seatsToAdd: 5 });
+
+      expect(result.success).toBe(true);
+      expect(mockStripeService.updateSubscriptionSeats).toHaveBeenCalledWith({
+        subscriptionItemId: 'si_test123',
+        newQuantity: 5,
+      });
+
+      // Verify database was updated
+      const updated = await Subscription.findById(subscription._id);
+      expect(updated?.additionalSeatsCount).toBe(5);
+      expect(updated?.additionalSeatsCost).toBe(3995); // 5 * 799 cents
+    });
+
+    it('should allow removing seats when it would not exceed current usage', async () => {
+      const client = new Types.ObjectId();
+      const subscription = await Subscription.create({
+        cuid: 'client-seat-remove',
+        suid: 'suid-seat-remove',
+        client,
+        planName: 'growth',
+        status: 'active',
+        paymentGateway: {
+          customerId: 'cus_test456',
+          provider: 'stripe',
+          planId: 'price_growth_monthly',
+          seatItemId: 'si_test456',
+        },
+        totalMonthlyPrice: 7999,
+        billingInterval: 'monthly',
+        currentSeats: 8, // Using 8 out of 15 total seats
+        currentProperties: 5,
+        currentUnits: 20,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        additionalSeatsCount: 5, // 10 included + 5 purchased = 15 total
+        additionalSeatsCost: 3995,
+        entitlements: {
+          eSignature: true,
+          RepairRequestService: true,
+          VisitorPassService: true,
+          reportingAnalytics: true,
+        },
+      });
+
+      const ctx = {
+        currentuser: {
+          sub: new Types.ObjectId().toString(),
+          email: 'owner@example.com',
+          client: {
+            cuid: 'client-seat-remove',
+            role: 'super-admin',
+          },
+        },
+      } as any;
+
+      const result = await subscriptionService.updateSubscriptionSeats(ctx, { seatsToAdd: -3 });
+
+      expect(result.success).toBe(true);
+
+      // Verify database was updated
+      const updated = await Subscription.findById(subscription._id);
+      expect(updated?.additionalSeatsCount).toBe(2); // 5 - 3 = 2
+      expect(updated?.additionalSeatsCost).toBe(1598); // 2 * 799 cents
+    });
+
+    it('should prevent removing seats when it would exceed current usage', async () => {
+      const client = new Types.ObjectId();
+      await Subscription.create({
+        cuid: 'client-over-limit',
+        suid: 'suid-over-limit',
+        client,
+        planName: 'growth',
+        status: 'active',
+        paymentGateway: {
+          customerId: 'cus_test789',
+          provider: 'stripe',
+          planId: 'price_growth_monthly',
+          seatItemId: 'si_test789',
+        },
+        totalMonthlyPrice: 7999,
+        billingInterval: 'monthly',
+        currentSeats: 21, // Using 21 seats (OVER by 9)
+        currentProperties: 5,
+        currentUnits: 20,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        additionalSeatsCount: 2, // 10 included + 2 purchased = 12 total
+        additionalSeatsCost: 1598,
+        entitlements: {
+          eSignature: true,
+          RepairRequestService: true,
+          VisitorPassService: true,
+          reportingAnalytics: true,
+        },
+      });
+
+      const ctx = {
+        currentuser: {
+          sub: new Types.ObjectId().toString(),
+          email: 'owner@example.com',
+          client: {
+            cuid: 'client-over-limit',
+            role: 'super-admin',
+          },
+        },
+      } as any;
+
+      await expect(
+        subscriptionService.updateSubscriptionSeats(ctx, { seatsToAdd: -1 })
+      ).rejects.toThrow(BadRequestError);
+    });
+
+    it('should prevent purchasing more than maxAdditionalSeats', async () => {
+      const client = new Types.ObjectId();
+      await Subscription.create({
+        cuid: 'client-max-seats',
+        suid: 'suid-max-seats',
+        client,
+        planName: 'growth',
+        status: 'active',
+        paymentGateway: {
+          customerId: 'cus_test999',
+          provider: 'stripe',
+          planId: 'price_growth_monthly',
+          seatItemId: 'si_test999',
+        },
+        totalMonthlyPrice: 7999,
+        billingInterval: 'monthly',
+        currentSeats: 20,
+        currentProperties: 5,
+        currentUnits: 20,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        additionalSeatsCount: 20, // 10 included + 20 purchased = 30 total
+        additionalSeatsCost: 15980,
+        entitlements: {
+          eSignature: true,
+          RepairRequestService: true,
+          VisitorPassService: true,
+          reportingAnalytics: true,
+        },
+      });
+
+      const ctx = {
+        currentuser: {
+          sub: new Types.ObjectId().toString(),
+          email: 'owner@example.com',
+          client: {
+            cuid: 'client-max-seats',
+            role: 'super-admin',
+          },
+        },
+      } as any;
+
+      // Growth plan maxAdditionalSeats is 25, already have 20, can only add 5 more
+      await expect(
+        subscriptionService.updateSubscriptionSeats(ctx, { seatsToAdd: 10 })
+      ).rejects.toThrow(BadRequestError);
+    });
+
+    it('should require super-admin role for seat management', async () => {
+      const client = new Types.ObjectId();
+      await Subscription.create({
+        cuid: 'client-role-check',
+        suid: 'suid-role-check',
+        client,
+        planName: 'growth',
+        status: 'active',
+        paymentGateway: {
+          customerId: 'cus_role',
+          provider: 'stripe',
+          planId: 'price_growth_monthly',
+          seatItemId: 'si_role',
+        },
+        totalMonthlyPrice: 7999,
+        billingInterval: 'monthly',
+        currentSeats: 10,
+        currentProperties: 5,
+        currentUnits: 20,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+        entitlements: {
+          eSignature: true,
+          RepairRequestService: true,
+          VisitorPassService: true,
+          reportingAnalytics: true,
+        },
+      });
+
+      const ctx = {
+        currentuser: {
+          sub: new Types.ObjectId().toString(),
+          email: 'admin@example.com',
+          client: {
+            cuid: 'client-role-check',
+            role: 'admin', // NOT super-admin
+          },
+        },
+      } as any;
+
+      await expect(
+        subscriptionService.updateSubscriptionSeats(ctx, { seatsToAdd: 5 })
+      ).rejects.toThrow('Only account owner can manage billing');
     });
   });
 });

@@ -10,6 +10,7 @@ import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { IClientDocument, IClientStats } from '@interfaces/client.interface';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { SubscriptionDAO, PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
@@ -352,6 +353,7 @@ export class ClientService {
     if (isSuperAdmin && subscription) {
       const unitCount = await this.propertyUnitDAO.countDocuments({ cuid, deletedAt: null });
       const billingHistory = await this.subscriptionService.getBillingHistory(cuid);
+      const config = subscriptionPlanConfig.getConfig(subscription.planName);
 
       responseData.subscription = {
         subscriptionId: subscription._id.toString(),
@@ -364,9 +366,18 @@ export class ClientService {
         nextBillingDate: subscription.endDate,
         canceledAt: subscription.canceledAt || null,
         pendingDowngradeAt: subscription.pendingDowngradeAt || null,
-        currentSeats: usersResult.pagination?.total || 0,
+        currentSeats: subscription.currentSeats,
         currentProperties: propertiesResult,
         currentUnits: unitCount,
+        seatInfo: {
+          includedSeats: config.seatPricing.includedSeats,
+          additionalSeats: subscription.additionalSeatsCount,
+          totalAvailable: config.seatPricing.includedSeats + subscription.additionalSeatsCount,
+          maxAdditionalSeats: config.seatPricing.maxAdditionalSeats,
+          availableForPurchase:
+            config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
+          additionalSeatCost: subscription.additionalSeatsCost,
+        },
         paymentMethod: subscription.paymentGateway?.cardLast4
           ? {
               last4: subscription.paymentGateway.cardLast4,

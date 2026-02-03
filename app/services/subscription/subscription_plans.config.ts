@@ -74,11 +74,11 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     pricing: {
       monthly: {
         priceId: 'price_growth_monthly',
-        priceInCents: 2900,
+        priceInCents: 7999,
       },
       annual: {
         priceId: 'price_growth_annual',
-        priceInCents: 27840,
+        priceInCents: 76800,
         savingsPercent: 20,
       },
     },
@@ -90,9 +90,13 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     isCustomPricing: false,
     seatPricing: {
       includedSeats: 10,
-      additionalSeatPriceCents: 500,
+      additionalSeatPriceCents: 799,
       maxAdditionalSeats: 25,
-      lookUpKey: 'growth_seats', // Stripe price lookup key for additional seats
+      lookUpKey: 'growth_seats',
+      lookUpKeys: {
+        monthly: 'growth_seats_monthly',
+        annual: 'growth_seat_annual',
+      },
     },
     limits: {
       maxProperties: 15,
@@ -121,11 +125,11 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     pricing: {
       monthly: {
         priceId: 'price_portfolio_monthly',
-        priceInCents: 9900,
+        priceInCents: 14999,
       },
       annual: {
         priceId: 'price_portfolio_annual',
-        priceInCents: 95040,
+        priceInCents: 144000,
         savingsPercent: 20,
       },
     },
@@ -136,9 +140,13 @@ const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
     isCustomPricing: false,
     seatPricing: {
       includedSeats: 25,
-      additionalSeatPriceCents: 799,
+      additionalSeatPriceCents: 599,
       maxAdditionalSeats: 40,
-      lookUpKey: 'portfolio_seats', // Stripe price lookup key for additional seats
+      lookUpKey: 'portfolio_seats',
+      lookUpKeys: {
+        monthly: 'portfolio_seat_monthly',
+        annual: 'portfolio_seat_annual',
+      },
     },
     limits: {
       maxProperties: 30,

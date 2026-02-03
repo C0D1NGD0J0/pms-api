@@ -67,14 +67,34 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
       expect(price).toBe(0);
     });
 
+    it('should calculate growth plan monthly price', () => {
+      const price = subscriptionPlanConfig.calculatePrice('growth', 'monthly', 0);
+      expect(price).toBe(7999); // $79.99/month
+    });
+
+    it('should calculate growth plan annual price', () => {
+      const price = subscriptionPlanConfig.calculatePrice('growth', 'annual', 0);
+      expect(price).toBe(76800); // $768/year
+    });
+
     it('should calculate growth plan with additional seats', () => {
       const price = subscriptionPlanConfig.calculatePrice('growth', 'monthly', 5);
-      expect(price).toBe(5400);
+      expect(price).toBe(11994); // 7999 + (5 * 799)
+    });
+
+    it('should calculate portfolio plan monthly price', () => {
+      const price = subscriptionPlanConfig.calculatePrice('portfolio', 'monthly', 0);
+      expect(price).toBe(14999); // $149.99/month
+    });
+
+    it('should calculate portfolio plan annual price', () => {
+      const price = subscriptionPlanConfig.calculatePrice('portfolio', 'annual', 0);
+      expect(price).toBe(144000); // $1440/year
     });
 
     it('should calculate portfolio plan with additional seats', () => {
       const price = subscriptionPlanConfig.calculatePrice('portfolio', 'monthly', 10);
-      expect(price).toBe(17890);
+      expect(price).toBe(20989); // 14999 + (10 * 599)
     });
   });
 
@@ -97,6 +117,29 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
       expect(subscriptionPlanConfig.getTransactionFeePercent('essential')).toBe(3.5);
       expect(subscriptionPlanConfig.getTransactionFeePercent('growth')).toBe(3.0);
       expect(subscriptionPlanConfig.getTransactionFeePercent('portfolio')).toBe(2.8);
+    });
+  });
+
+  describe('getFormattedPrice', () => {
+    it('should format essential plan as Free', () => {
+      expect(subscriptionPlanConfig.getFormattedPrice('essential', 'monthly')).toBe('Free');
+      expect(subscriptionPlanConfig.getFormattedPrice('essential', 'annual')).toBe('Free');
+    });
+
+    it('should format growth plan monthly price with decimals', () => {
+      expect(subscriptionPlanConfig.getFormattedPrice('growth', 'monthly')).toBe('$79.99');
+    });
+
+    it('should format growth plan annual price with decimals', () => {
+      expect(subscriptionPlanConfig.getFormattedPrice('growth', 'annual')).toBe('$768.00');
+    });
+
+    it('should format portfolio plan monthly price with decimals', () => {
+      expect(subscriptionPlanConfig.getFormattedPrice('portfolio', 'monthly')).toBe('$149.99');
+    });
+
+    it('should format portfolio plan annual price with decimals', () => {
+      expect(subscriptionPlanConfig.getFormattedPrice('portfolio', 'annual')).toBe('$1440.00');
     });
   });
 });

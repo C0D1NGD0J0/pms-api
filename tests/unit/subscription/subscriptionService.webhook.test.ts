@@ -328,6 +328,9 @@ describe('SubscriptionService - Webhook Handlers', () => {
         cuid: 'client123',
         planName: 'growth',
         status: ISubscriptionStatus.INACTIVE,
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+        totalMonthlyPrice: 29,
         paymentGateway: {
           subscriberId: 'sub_test123',
         },
@@ -338,6 +341,15 @@ describe('SubscriptionService - Webhook Handlers', () => {
         ...mockSubscription,
         status: ISubscriptionStatus.ACTIVE,
       } as any);
+
+      mockPaymentGatewayService.getSubscriptionWithItems = jest.fn().mockResolvedValue({
+        success: true,
+        data: { items: { data: [] } },
+      });
+
+      mockAuthCache.client = {
+        DEL: jest.fn().mockResolvedValue(1),
+      };
 
       const result = await subscriptionService.handleSubscriptionUpdated({
         stripeSubscriptionId: 'sub_test123',
@@ -355,6 +367,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
       );
       expect(mockClientDAO.getClientByCuid).toHaveBeenCalledWith('client123');
       expect(mockAuthCache.invalidateCurrentUser).toHaveBeenCalledTimes(1); // Called only for account admin
+      expect(mockAuthCache.client.DEL).toHaveBeenCalledWith('billing_history:client123');
       expect(mockSSEService.sendToUser).toHaveBeenCalledTimes(1);
       expect(mockSSEService.sendToUser).toHaveBeenCalledWith(
         expect.any(String),
@@ -419,6 +432,185 @@ describe('SubscriptionService - Webhook Handlers', () => {
           },
         }
       );
+    });
+
+    it('should sync seat quantity changes from Stripe', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: 'client123',
+        planName: 'growth',
+        billingInterval: 'annual',
+        status: ISubscriptionStatus.ACTIVE,
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+        totalMonthlyPrice: 768,
+        paymentGateway: {
+          subscriberId: 'sub_test123',
+        },
+      };
+
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // Mock Stripe returning subscription with 2 seats
+      mockPaymentGatewayService.getSubscriptionWithItems = jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          items: {
+            data: [
+              {
+                id: 'si_base123',
+                price: { lookup_key: 'growth_annual_price' },
+                quantity: 1,
+              },
+              {
+                id: 'si_seat123',
+                price: { lookup_key: 'growth_seat_annual' },
+                quantity: 2,
+              },
+            ],
+          },
+        },
+      });
+
+      mockSubscriptionDAO.update.mockResolvedValue({
+        ...mockSubscription,
+        additionalSeatsCount: 2,
+        additionalSeatsCost: 10, // 2 seats * 500 cents / 100 = 10
+        totalMonthlyPrice: 778, // 768 + 10
+        paymentGateway: {
+          subscriberId: 'sub_test123',
+          seatItemId: 'si_seat123',
+        },
+      } as any);
+
+      mockAuthCache.client = { DEL: jest.fn().mockResolvedValue(1) };
+
+      const result = await subscriptionService.handleSubscriptionUpdated({
+        stripeSubscriptionId: 'sub_test123',
+        status: 'active',
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockPaymentGatewayService.getSubscriptionWithItems).toHaveBeenCalledWith(
+        expect.any(String),
+        'sub_test123'
+      );
+      expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
+        { _id: mockSubscription._id },
+        expect.objectContaining({
+          $set: expect.objectContaining({
+            additionalSeatsCount: 2,
+            additionalSeatsCost: 10,
+            totalMonthlyPrice: 778,
+            'paymentGateway.seatItemId': 'si_seat123',
+          }),
+        })
+      );
+      expect(mockSSEService.sendToUser).toHaveBeenCalledWith(
+        expect.any(String),
+        'client123',
+        expect.objectContaining({
+          eventType: 'subscription_updated',
+          message: expect.stringContaining('Seats: 2'),
+        }),
+        'subscription_update'
+      );
+    });
+
+    it('should sync seat removal from Stripe to database', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: 'client123',
+        planName: 'growth',
+        billingInterval: 'monthly',
+        status: ISubscriptionStatus.ACTIVE,
+        additionalSeatsCount: 5,
+        additionalSeatsCost: 25,
+        totalMonthlyPrice: 54,
+        paymentGateway: {
+          subscriberId: 'sub_test123',
+          seatItemId: 'si_seat123',
+        },
+      };
+
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // Mock Stripe returning subscription WITHOUT seat item (removed)
+      mockPaymentGatewayService.getSubscriptionWithItems = jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          items: {
+            data: [
+              {
+                id: 'si_base123',
+                price: { lookup_key: 'growth_monthly_price' },
+                quantity: 1,
+              },
+            ],
+          },
+        },
+      });
+
+      mockSubscriptionDAO.update.mockResolvedValue({
+        ...mockSubscription,
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+        totalMonthlyPrice: 29,
+      } as any);
+
+      mockAuthCache.client = { DEL: jest.fn().mockResolvedValue(1) };
+
+      const result = await subscriptionService.handleSubscriptionUpdated({
+        stripeSubscriptionId: 'sub_test123',
+        status: 'active',
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
+        { _id: mockSubscription._id },
+        expect.objectContaining({
+          $set: expect.objectContaining({
+            additionalSeatsCount: 0,
+            additionalSeatsCost: 0,
+            totalMonthlyPrice: 29,
+          }),
+        })
+      );
+    });
+
+    it('should continue with status update if seat sync fails', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: 'client123',
+        planName: 'growth',
+        additionalSeatsCount: 0,
+        paymentGateway: {
+          subscriberId: 'sub_test123',
+        },
+      };
+
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // Mock Stripe fetch failure
+      mockPaymentGatewayService.getSubscriptionWithItems = jest
+        .fn()
+        .mockRejectedValue(new Error('Stripe API error'));
+
+      mockSubscriptionDAO.update.mockResolvedValue({
+        ...mockSubscription,
+        status: ISubscriptionStatus.ACTIVE,
+      } as any);
+
+      mockAuthCache.client = { DEL: jest.fn().mockResolvedValue(1) };
+
+      const result = await subscriptionService.handleSubscriptionUpdated({
+        stripeSubscriptionId: 'sub_test123',
+        status: 'active',
+      });
+
+      // Should still succeed with status update
+      expect(result.success).toBe(true);
+      expect(mockSubscriptionDAO.update).toHaveBeenCalled();
     });
 
     it('should throw error if subscription not found for update', async () => {

@@ -45,9 +45,51 @@ describe('SubscriptionController Integration Tests', () => {
       }),
       getProductsWithPrices: jest.fn().mockResolvedValue(
         new Map([
-          ['portfolio', { priceId: 'price_professional', amount: 9900 }],
-          ['growth', { priceId: 'price_starter', amount: 2900 }],
-          ['essential', { priceId: 'price_basic', amount: 0 }],
+          [
+            'portfolio',
+            {
+              monthly: {
+                priceId: 'price_portfolio_monthly',
+                amount: 14999,
+                lookUpKey: 'portfolio_monthly',
+              },
+              annual: {
+                priceId: 'price_portfolio_annual',
+                amount: 144000,
+                lookUpKey: 'portfolio_annual',
+              },
+            },
+          ],
+          [
+            'essential',
+            {
+              monthly: {
+                priceId: 'price_essential_monthly',
+                amount: 0,
+                lookUpKey: 'essential_monthly',
+              },
+              annual: {
+                priceId: 'price_essential_annual',
+                amount: 0,
+                lookUpKey: 'essential_annual',
+              },
+            },
+          ],
+          [
+            'growth',
+            {
+              monthly: {
+                priceId: 'price_growth_monthly',
+                amount: 7999,
+                lookUpKey: 'growth_monthly',
+              },
+              annual: {
+                priceId: 'price_growth_annual',
+                amount: 76800,
+                lookUpKey: 'growth_annual',
+              },
+            },
+          ],
         ])
       ),
     };
@@ -71,6 +113,10 @@ describe('SubscriptionController Integration Tests', () => {
     // Setup routes
     app.post('/api/v1/subscriptions/:cuid/init-subscription-payment', async (req, res) => {
       await subscriptionController.initSubscriptionPayment(req as any, res);
+    });
+
+    app.get('/api/v1/subscriptions/plans', async (req, res) => {
+      await subscriptionController.getSubscriptionPlans(req as any, res);
     });
   });
 
@@ -322,6 +368,128 @@ describe('SubscriptionController Integration Tests', () => {
           priceId: 'price_professional_annual',
         })
       );
+    });
+  });
+
+  describe('GET /subscriptions/plans - getSubscriptionPlans', () => {
+    it('should return all subscription plans with correct structure', async () => {
+      const response = await request(app)
+        .get('/api/v1/subscriptions/plans')
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toBeInstanceOf(Array);
+      expect(response.body.data.length).toBe(3);
+
+      const plan = response.body.data[0];
+      expect(plan).toHaveProperty('planName');
+      expect(plan).toHaveProperty('name');
+      expect(plan).toHaveProperty('description');
+      expect(plan).toHaveProperty('pricing');
+      expect(plan).toHaveProperty('seatPricing');
+      expect(plan).toHaveProperty('limits');
+      expect(plan).toHaveProperty('featureList');
+    });
+
+    it('should return pricing with both monthly and annual options', async () => {
+      const response = await request(app)
+        .get('/api/v1/subscriptions/plans')
+        .expect(httpStatusCodes.OK);
+
+      const plan = response.body.data.find((p: any) => p.planName === 'growth');
+      expect(plan).toBeDefined();
+      expect(plan.pricing).toHaveProperty('monthly');
+      expect(plan.pricing).toHaveProperty('annual');
+
+      // Verify monthly pricing structure
+      expect(plan.pricing.monthly).toMatchObject({
+        priceId: expect.any(String),
+        priceInCents: expect.any(Number),
+        displayPrice: expect.any(String),
+      });
+
+      // Verify annual pricing structure
+      expect(plan.pricing.annual).toMatchObject({
+        priceId: expect.any(String),
+        priceInCents: expect.any(Number),
+        displayPrice: expect.any(String),
+        savingsPercent: expect.any(Number),
+        savingsDisplay: expect.any(String),
+      });
+    });
+
+    it('should return subscription prices NOT seat prices in pricing object', async () => {
+      const response = await request(app)
+        .get('/api/v1/subscriptions/plans')
+        .expect(httpStatusCodes.OK);
+
+      const growthPlan = response.body.data.find((p: any) => p.planName === 'growth');
+      const portfolioPlan = response.body.data.find((p: any) => p.planName === 'portfolio');
+
+      // Growth subscription pricing should be $79.99/month (NOT $7.99 seat price)
+      expect(growthPlan.pricing.monthly.priceInCents).toBe(7999);
+      expect(growthPlan.pricing.annual.priceInCents).toBe(76800);
+
+      // Portfolio subscription pricing should be $149.99/month (NOT $5.99 seat price)
+      expect(portfolioPlan.pricing.monthly.priceInCents).toBe(14999);
+      expect(portfolioPlan.pricing.annual.priceInCents).toBe(144000);
+    });
+
+    it('should return seat pricing separately in seatPricing object', async () => {
+      const response = await request(app)
+        .get('/api/v1/subscriptions/plans')
+        .expect(httpStatusCodes.OK);
+
+      const growthPlan = response.body.data.find((p: any) => p.planName === 'growth');
+      const portfolioPlan = response.body.data.find((p: any) => p.planName === 'portfolio');
+
+      // Growth seat pricing structure
+      expect(growthPlan.seatPricing).toMatchObject({
+        includedSeats: expect.any(Number),
+        additionalSeatPriceCents: expect.any(Number),
+        maxAdditionalSeats: expect.any(Number),
+        lookUpKey: expect.any(String),
+      });
+
+      // Growth seats should be $7.99/month
+      expect(growthPlan.seatPricing.additionalSeatPriceCents).toBe(799);
+
+      // Portfolio seats should be $5.99/month
+      expect(portfolioPlan.seatPricing.additionalSeatPriceCents).toBe(599);
+    });
+
+    it('should include Stripe pricing data when available', async () => {
+      const response = await request(app)
+        .get('/api/v1/subscriptions/plans')
+        .expect(httpStatusCodes.OK);
+
+      const growthPlan = response.body.data.find((p: any) => p.planName === 'growth');
+
+      // Should use Stripe prices from mock
+      expect(growthPlan.pricing.monthly.priceInCents).toBe(7999);
+      expect(growthPlan.pricing.monthly.priceId).toBe('price_growth_monthly');
+      expect(growthPlan.pricing.monthly.lookUpKey).toBe('growth_monthly');
+    });
+
+    it('should return all three plans: essential, growth, portfolio', async () => {
+      const response = await request(app)
+        .get('/api/v1/subscriptions/plans')
+        .expect(httpStatusCodes.OK);
+
+      const planNames = response.body.data.map((p: any) => p.planName);
+      expect(planNames).toContain('essential');
+      expect(planNames).toContain('growth');
+      expect(planNames).toContain('portfolio');
+    });
+
+    it('should format prices as currency strings', async () => {
+      const response = await request(app)
+        .get('/api/v1/subscriptions/plans')
+        .expect(httpStatusCodes.OK);
+
+      const plan = response.body.data.find((p: any) => p.planName === 'growth');
+      expect(plan.pricing.monthly.displayPrice).toMatch(/^\$\d+\.\d{2}$/);
+      expect(plan.pricing.annual.displayPrice).toMatch(/^\$\d+\.\d{2}$/);
     });
   });
 });

@@ -93,6 +93,15 @@ describe('ClientController Integration Tests', () => {
       invalidateUserCache: jest.fn().mockResolvedValue(undefined),
     } as any;
 
+    const subscriptionDAO = {
+      findOne: jest.fn().mockResolvedValue({
+        planName: 'growth',
+        currentSeats: 3,
+        additionalSeatsCount: 2,
+        additionalSeatsCost: 799,
+      }),
+    } as any;
+
     const clientService = new ClientService({
       clientDAO,
       userDAO,
@@ -100,7 +109,7 @@ describe('ClientController Integration Tests', () => {
       propertyDAO,
       propertyUnitDAO,
       authCache,
-      subscriptionDAO: {} as any,
+      subscriptionDAO,
     });
 
     clientController = new ClientController({ clientService });
@@ -204,6 +213,31 @@ describe('ClientController Integration Tests', () => {
       expect(response.body.data.settings).toBeDefined();
       expect(response.body.data.settings.timezone).toBeDefined();
       expect(response.body.data.settings.currency).toBeDefined();
+    });
+
+    it('should include subscription seat information in response', async () => {
+      const response = await request(app)
+        .get(`/api/v1/clients/${testClient.cuid}/client_details`)
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.data.seatInfo).toBeDefined();
+      expect(response.body.data.seatInfo).toMatchObject({
+        includedSeats: expect.any(Number),
+        additionalSeats: expect.any(Number),
+        totalAvailable: expect.any(Number),
+        maxAdditionalSeats: expect.any(Number),
+        availableForPurchase: expect.any(Number),
+        additionalSeatCost: expect.any(Number),
+      });
+    });
+
+    it('should return correct currentSeats from subscription not total users', async () => {
+      const response = await request(app)
+        .get(`/api/v1/clients/${testClient.cuid}/client_details`)
+        .expect(httpStatusCodes.OK);
+
+      // Test setup has 3 employee profiles, subscription mock returns currentSeats: 3
+      expect(response.body.data.currentSeats).toBe(3);
     });
   });
 

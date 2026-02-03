@@ -64,7 +64,6 @@ export class StripeService implements IPaymentProvider {
         }
       >();
 
-      // Fetch all prices for each product
       for (const product of products.data) {
         const prices = await this.stripe.prices.list({
           product: product.id,
@@ -75,6 +74,7 @@ export class StripeService implements IPaymentProvider {
           (p) =>
             p.recurring?.interval === 'month' &&
             p.unit_amount !== null &&
+            !p.lookup_key?.includes('seat') &&
             (p.lookup_key?.includes('_monthly') || p.lookup_key?.includes('monthly_price'))
         );
 
@@ -82,6 +82,7 @@ export class StripeService implements IPaymentProvider {
           (p) =>
             p.recurring?.interval === 'year' &&
             p.unit_amount !== null &&
+            !p.lookup_key?.includes('seat') &&
             (p.lookup_key?.includes('_annual') || p.lookup_key?.includes('annual_price'))
         );
 
@@ -371,8 +372,6 @@ export class StripeService implements IPaymentProvider {
         name,
         metadata,
       });
-
-      this.log.info({ customerId: customer.id, email, name }, 'Created Stripe customer');
 
       return {
         customerId: customer.id,

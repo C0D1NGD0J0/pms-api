@@ -946,8 +946,9 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         { $match: filter },
         {
           $addFields: {
-            // Images don't have a status field in the schema, so we don't filter them
-            // Only documents have a status field
+            // Images don't have a status field in the schema, so we don't filter them here;
+            // the images array is passed through unchanged from the database.
+            // Only documents have a status field, so we filter out those marked as 'deleted'.
             documents: {
               $filter: {
                 input: { $ifNull: ['$documents', []] },

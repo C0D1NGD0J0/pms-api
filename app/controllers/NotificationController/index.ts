@@ -86,7 +86,7 @@ export class NotificationController {
         pagination
       );
 
-      const session = await this.sseService.connect(req, res, userId, cuid, 'personal');
+      const session = await this.sseService.connect(req, res, userId, cuid, 'individual');
       if (initialData.success && initialData.data) {
         const initialPayload = {
           ...initialData.data,

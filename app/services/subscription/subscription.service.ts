@@ -5,7 +5,6 @@ import { AuthCache } from '@caching/index';
 import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { Subscription } from '@models/index';
-import { StripeService } from '@services/external';
 import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -31,7 +30,6 @@ interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
-  stripeService: StripeService;
   sseService: SSEService;
   clientDAO: ClientDAO;
   authCache: AuthCache;
@@ -45,7 +43,6 @@ export class SubscriptionService {
   private sseService: SSEService;
   private emitterService: EventEmitterService;
   private log: ReturnType<typeof createLogger>;
-  private readonly stripeService: StripeService;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
 
@@ -54,7 +51,6 @@ export class SubscriptionService {
     clientDAO,
     authCache,
     sseService,
-    stripeService,
     emitterService,
     subscriptionDAO,
     paymentGatewayService,
@@ -63,7 +59,6 @@ export class SubscriptionService {
     this.clientDAO = clientDAO;
     this.authCache = authCache;
     this.sseService = sseService;
-    this.stripeService = stripeService;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
     this.paymentGatewayService = paymentGatewayService;
@@ -163,9 +158,11 @@ export class SubscriptionService {
     > = new Map();
 
     try {
-      stripePriceMap = await this.stripeService.getProductsWithPrices();
+      stripePriceMap = await this.paymentGatewayService.getProductsWithPrices(
+        IPaymentGatewayProvider.STRIPE
+      );
     } catch (error) {
-      this.log.error({ error }, 'Error fetching plans from Stripe');
+      this.log.error({ error }, 'Error fetching plans from payment gateway');
       this.log.warn('Falling back to config prices');
     }
 
@@ -176,6 +173,7 @@ export class SubscriptionService {
 
       const monthlyPriceInCents = stripeData?.monthly.amount ?? config.pricing.monthly.priceInCents;
       const annualPriceInCents = stripeData?.annual.amount ?? config.pricing.annual.priceInCents;
+
       return {
         planName: config.planName,
         name: config.name,
@@ -244,10 +242,16 @@ export class SubscriptionService {
       let actualBilledAmount: number = config.pricing[billingInterval].priceInCents;
       if (planName !== 'essential') {
         try {
-          const stripePrice = await this.stripeService.getProductPrice(planId);
+          const stripePrice = await this.paymentGatewayService.getProductPrice(
+            IPaymentGatewayProvider.STRIPE,
+            planId
+          );
           actualBilledAmount = stripePrice.unit_amount || 0;
         } catch (error) {
-          this.log.warn({ error, planId }, 'Failed to fetch Stripe price, using config fallback');
+          this.log.warn(
+            { error, planId },
+            'Failed to fetch price from payment gateway, using config fallback'
+          );
         }
       }
 
@@ -822,6 +826,49 @@ export class SubscriptionService {
           subscription.paymentGateway.provider === 'stripe'
         ) {
           try {
+            // Choose correct lookup key based on subscription's billing interval
+            const seatLookupKey =
+              subscription.billingInterval === 'annual'
+                ? config.seatPricing.lookUpKeys?.annual || config.seatPricing.lookUpKey
+                : config.seatPricing.lookUpKeys?.monthly || config.seatPricing.lookUpKey;
+
+            // PROACTIVE VALIDATION: Verify billing interval match BEFORE calling payment gateway
+            if (newAdditionalCount > 0) {
+              const stripePrice = await this.paymentGatewayService.getPriceByLookupKey(
+                IPaymentGatewayProvider.STRIPE,
+                seatLookupKey
+              );
+
+              if (!stripePrice) {
+                const intervalName =
+                  subscription.billingInterval === 'annual' ? 'annual' : 'monthly';
+                throw new BadRequestError({
+                  message: `Cannot add seats to your ${intervalName} subscription. The seat price configuration is missing in Stripe. Please contact support to enable seat purchases for ${intervalName} billing.`,
+                });
+              }
+
+              // Validate interval match
+              const priceInterval = stripePrice.recurring?.interval; // 'month' or 'year'
+              const subInterval = subscription.billingInterval; // 'monthly' or 'annual'
+
+              const intervalsMatch =
+                (priceInterval === 'month' && subInterval === 'monthly') ||
+                (priceInterval === 'year' && subInterval === 'annual');
+
+              if (!intervalsMatch) {
+                const priceIntervalName = priceInterval === 'month' ? 'monthly' : 'yearly';
+                const subIntervalName = subInterval === 'monthly' ? 'monthly' : 'yearly';
+                throw new BadRequestError({
+                  message: `Cannot add seats to your ${subIntervalName} subscription. The seat price (${seatLookupKey}) is configured for ${priceIntervalName} billing, but your subscription is billed ${subIntervalName}. Please contact support to resolve this billing interval mismatch.`,
+                });
+              }
+
+              this.log.info(
+                { seatLookupKey, priceInterval, subInterval },
+                'Billing interval validation passed'
+              );
+            }
+
             // Get subscription with items to check if seat item exists
             const stripeSubResult = await this.paymentGatewayService.getSubscriptionWithItems(
               IPaymentGatewayProvider.STRIPE,
@@ -833,8 +880,12 @@ export class SubscriptionService {
             }
 
             const stripeSubscription = stripeSubResult.data;
+
+            // Find existing seat item (check both new and old lookup keys for backward compatibility)
             const seatItem = stripeSubscription.items?.data?.find(
-              (item: any) => item.price?.lookup_key === config.seatPricing.lookUpKey
+              (item: any) =>
+                item.price?.lookup_key === seatLookupKey ||
+                item.price?.lookup_key === config.seatPricing.lookUpKey
             );
 
             if (newAdditionalCount === 0) {
@@ -860,14 +911,14 @@ export class SubscriptionService {
             } else if (!seatItem) {
               // First seat purchase - create new subscription item
               this.log.info(
-                { cuid, lookupKey: config.seatPricing.lookUpKey, quantity: newAdditionalCount },
+                { cuid, lookupKey: seatLookupKey, quantity: newAdditionalCount },
                 'Adding seat subscription item'
               );
 
               const addResult = await this.paymentGatewayService.addSubscriptionItem(
                 IPaymentGatewayProvider.STRIPE,
                 subscription.paymentGateway.subscriberId,
-                config.seatPricing.lookUpKey,
+                seatLookupKey,
                 newAdditionalCount
               );
 
@@ -912,8 +963,16 @@ export class SubscriptionService {
               { error: stripeError, cuid },
               'Stripe integration failed for seat update'
             );
+            // If it's already a BadRequestError with a user-friendly message, rethrow it
+            if (stripeError instanceof BadRequestError) {
+              throw stripeError;
+            }
+
+            // Otherwise, wrap in user-friendly error
+            const errorMessage =
+              stripeError instanceof Error ? stripeError.message : 'Unknown error';
             throw new BadRequestError({
-              message: `Payment failed: ${stripeError instanceof Error ? stripeError.message : 'Unable to update Stripe subscription'}`,
+              message: `Unable to update seats. ${errorMessage}. Please try again or contact support if the issue persists.`,
             });
           }
         }
@@ -1123,7 +1182,7 @@ export class SubscriptionService {
 
   private formatPrice(priceInCents: number): string {
     if (priceInCents === 0) return '$0';
-    return `$${Math.ceil(priceInCents / 100)}`;
+    return `$${(priceInCents / 100).toFixed(2)}`;
   }
 
   // WEBHOOKS AND CRON JOBS
@@ -1366,6 +1425,79 @@ export class SubscriptionService {
         updateData.endDate = new Date(currentPeriodEnd * 1000);
       }
 
+      // Fetch full subscription from Stripe to check for seat changes
+      try {
+        const stripeSubResult = await this.paymentGatewayService.getSubscriptionWithItems(
+          IPaymentGatewayProvider.STRIPE,
+          stripeSubscriptionId
+        );
+
+        if (stripeSubResult.success && stripeSubResult.data) {
+          const stripeSubscription = stripeSubResult.data;
+          const config = subscriptionPlanConfig.getConfig(subscription.planName);
+
+          // Find seat item in Stripe subscription
+          const seatLookupKeys = [
+            config.seatPricing.lookUpKeys?.monthly,
+            config.seatPricing.lookUpKeys?.annual,
+            config.seatPricing.lookUpKey, // Fallback for backward compatibility
+          ].filter(Boolean);
+
+          const seatItem = stripeSubscription.items?.data?.find((item: any) =>
+            seatLookupKeys.includes(item.price?.lookup_key)
+          );
+
+          if (seatItem) {
+            const newSeatQuantity = seatItem.quantity || 0;
+
+            // Check if seat count changed
+            if (newSeatQuantity !== subscription.additionalSeatsCount) {
+              this.log.info(
+                {
+                  stripeSubscriptionId,
+                  oldQuantity: subscription.additionalSeatsCount,
+                  newQuantity: newSeatQuantity,
+                },
+                'Seat quantity changed in Stripe, syncing to database'
+              );
+
+              // Calculate new pricing
+              const newAdditionalCost =
+                (newSeatQuantity * config.seatPricing.additionalSeatPriceCents) / 100;
+              const priceDifference = newAdditionalCost - subscription.additionalSeatsCost;
+
+              updateData.additionalSeatsCount = newSeatQuantity;
+              updateData.additionalSeatsCost = newAdditionalCost;
+              updateData.totalMonthlyPrice = subscription.totalMonthlyPrice + priceDifference;
+
+              // Store seat item ID if we don't have it
+              if (seatItem.id && !subscription.paymentGateway?.seatItemId) {
+                updateData['paymentGateway.seatItemId'] = seatItem.id;
+              }
+            }
+          } else if (subscription.additionalSeatsCount > 0) {
+            // Seat item was removed in Stripe but we still have seats in DB
+            this.log.warn(
+              {
+                stripeSubscriptionId,
+                dbSeatCount: subscription.additionalSeatsCount,
+              },
+              'Seat item not found in Stripe but DB has seats, syncing to zero'
+            );
+
+            updateData.additionalSeatsCount = 0;
+            updateData.additionalSeatsCost = 0;
+            updateData.totalMonthlyPrice =
+              subscription.totalMonthlyPrice - subscription.additionalSeatsCost;
+          }
+        }
+      } catch (seatSyncError) {
+        this.log.warn(
+          { error: seatSyncError, stripeSubscriptionId },
+          'Failed to sync seat data from Stripe, continuing with status update'
+        );
+      }
+
       const updatedSubscription = await this.subscriptionDAO.update(
         { _id: subscription._id },
         { $set: updateData }
@@ -1380,9 +1512,24 @@ export class SubscriptionService {
           subscriptionId: subscription._id,
           stripeSubscriptionId,
           newStatus: status,
+          seatsUpdated: updateData.additionalSeatsCount !== undefined,
         },
         'Subscription updated from Stripe'
       );
+
+      // Invalidate billing history cache
+      try {
+        const billingCacheKey = `billing_history:${updatedSubscription.cuid}`;
+        await this.authCache.client.DEL(billingCacheKey);
+      } catch (error) {
+        this.log.warn({ error }, 'Failed to invalidate billing history cache');
+      }
+
+      // Notify user with appropriate message
+      const notificationMessage =
+        updateData.additionalSeatsCount !== undefined
+          ? `Your subscription has been updated. Seats: ${updateData.additionalSeatsCount}`
+          : `Your subscription status has been updated to ${status}`;
 
       await this.notifyAccountAdminViaSSE(updatedSubscription.cuid, {
         type: 'subscription_updated',
@@ -1390,8 +1537,10 @@ export class SubscriptionService {
           plan: updatedSubscription.planName,
           status: updatedSubscription.status,
           endDate: updatedSubscription.endDate,
+          additionalSeats: updatedSubscription.additionalSeatsCount,
+          totalMonthlyCost: updatedSubscription.totalMonthlyPrice,
         },
-        message: `Your subscription status has been updated to ${status}`,
+        message: notificationMessage,
       });
 
       return { data: updatedSubscription, success: true };

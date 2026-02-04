@@ -189,6 +189,77 @@ export class PaymentGatewayService {
     }
   }
 
+  async getProductsWithPrices(provider: IPaymentGatewayProvider): Promise<
+    Map<
+      string,
+      {
+        monthly: { priceId: string; amount: number; lookUpKey: string | null };
+        annual: { priceId: string; amount: number; lookUpKey: string | null };
+      }
+    >
+  > {
+    try {
+      this.log.info({ provider }, 'Fetching products with prices');
+
+      const providerInstance = this.getProvider(provider);
+
+      if (!('getProductsWithPrices' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement getProductsWithPrices`);
+      }
+
+      const products = await (providerInstance as any).getProductsWithPrices();
+
+      this.log.info({ provider }, 'Fetched products with prices successfully');
+
+      return products;
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error fetching products with prices');
+      throw error;
+    }
+  }
+
+  async getProductPrice(provider: IPaymentGatewayProvider, priceId: string): Promise<any> {
+    try {
+      this.log.info({ provider, priceId }, 'Fetching product price');
+
+      const providerInstance = this.getProvider(provider);
+
+      if (!('getProductPrice' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement getProductPrice`);
+      }
+
+      const price = await (providerInstance as any).getProductPrice(priceId);
+
+      this.log.info({ provider, priceId }, 'Fetched product price successfully');
+
+      return price;
+    } catch (error) {
+      this.log.error({ error, provider, priceId }, 'Error fetching product price');
+      throw error;
+    }
+  }
+
+  async getPriceByLookupKey(provider: IPaymentGatewayProvider, lookupKey: string): Promise<any> {
+    try {
+      this.log.info({ provider, lookupKey }, 'Fetching price by lookup key');
+
+      const providerInstance = this.getProvider(provider);
+
+      if (!('getPriceByLookupKey' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement getPriceByLookupKey`);
+      }
+
+      const price = await (providerInstance as any).getPriceByLookupKey(lookupKey);
+
+      this.log.info({ provider, lookupKey }, 'Fetched price by lookup key successfully');
+
+      return price;
+    } catch (error) {
+      this.log.error({ error, provider, lookupKey }, 'Error fetching price by lookup key');
+      throw error;
+    }
+  }
+
   async updateSubscription(
     provider: IPaymentGatewayProvider,
     subscriptionId: string,

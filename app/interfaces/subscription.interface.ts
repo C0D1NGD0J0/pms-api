@@ -14,22 +14,40 @@ export enum ISubscriptionStatus {
 }
 
 export interface ISubscriptionPlansConfig {
-  pricing: {
-    monthly: {
-      priceId: string; // Stripe price ID for monthly billing
-      priceInCents: number;
-    };
-    annual: {
-      priceId: string; // Stripe price ID for annual billing
-      priceInCents: number;
-      savingsPercent: number;
-    };
-  };
   seatPricing: {
     includedSeats: number;
     additionalSeatPriceCents: number;
     maxAdditionalSeats: number;
-    lookUpKey: string; // Stripe price lookup key for additional seats (e.g., 'growth_seats')
+    lookUpKey: string;
+    lookUpKeys?: {
+      monthly: string;
+      annual: string;
+    };
+    stripePrices?: {
+      monthly: {
+        priceId: string;
+        amountInCents: number;
+        displayPrice: string;
+        lookUpKey: string;
+      } | null;
+      annual: {
+        priceId: string;
+        amountInCents: number;
+        displayPrice: string;
+        lookUpKey: string;
+      } | null;
+    };
+  };
+  pricing: {
+    monthly: {
+      priceId: string;
+      priceInCents: number;
+    };
+    annual: {
+      priceId: string;
+      priceInCents: number;
+      savingsPercent: number;
+    };
   };
   features: {
     eSignature: boolean;

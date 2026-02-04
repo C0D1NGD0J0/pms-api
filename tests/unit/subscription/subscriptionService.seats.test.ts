@@ -14,6 +14,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
   let mockPaymentGatewayService: jest.Mocked<PaymentGatewayService>;
   let mockSSEService: jest.Mocked<SSEService>;
   let mockAuthCache: any;
+  let mockStripeService: any;
   let mockSession: any;
 
   const testCuid = 'test-client-123';
@@ -55,6 +56,17 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
     mockAuthCache = {
       invalidateCurrentUser: jest.fn().mockResolvedValue({ success: true }),
+      client: {
+        DEL: jest.fn().mockResolvedValue(1),
+      },
+    };
+
+    mockStripeService = {
+      getPriceByLookupKey: jest.fn().mockResolvedValue({
+        id: 'price_test123',
+        unit_amount: 500,
+        recurring: { interval: 'month' },
+      }),
     };
 
     const mockEmitterService = {
@@ -69,18 +81,19 @@ describe('SubscriptionService - Additional Seat Management', () => {
       paymentGatewayService: mockPaymentGatewayService,
       sseService: mockSSEService,
       authCache: mockAuthCache,
-      stripeService: {} as any,
+      stripeService: mockStripeService,
       userDAO: {} as any,
       emitterService: mockEmitterService,
     });
   });
 
   describe('updateAdditionalSeats - Purchase Flow (positive delta)', () => {
-    it('should purchase seats and create Stripe subscription item for first purchase', async () => {
+    it('should purchase seats and create Stripe subscription item for monthly subscription', async () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'growth',
+        billingInterval: 'monthly',
         status: ISubscriptionStatus.ACTIVE,
         additionalSeatsCount: 0,
         additionalSeatsCost: 0,
@@ -94,6 +107,14 @@ describe('SubscriptionService - Additional Seat Management', () => {
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // Mock Stripe price validation - monthly price with monthly interval
+      // Growth plan seats are 799¢ = $7.99/month
+      mockStripeService.getPriceByLookupKey.mockResolvedValue({
+        id: 'price_monthly123',
+        unit_amount: 799,
+        recurring: { interval: 'month' },
+      });
 
       // Mock Stripe response - no existing seat item
       mockPaymentGatewayService.getSubscriptionWithItems.mockResolvedValue({
@@ -113,8 +134,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
         additionalSeatsCount: 5,
-        additionalSeatsCost: 25,
-        totalMonthlyPrice: 54,
+        additionalSeatsCost: 39.95, // 5 * $7.99
+        totalMonthlyPrice: 68.95, // $29 + $39.95
         paymentGateway: {
           ...mockSubscription.paymentGateway,
           seatItemId: 'si_new123',
@@ -124,10 +145,11 @@ describe('SubscriptionService - Additional Seat Management', () => {
       const result = await subscriptionService.updateAdditionalSeats(testCuid, 5);
 
       expect(result.success).toBe(true);
+      expect(mockStripeService.getPriceByLookupKey).toHaveBeenCalledWith('growth_seats_monthly');
       expect(mockPaymentGatewayService.addSubscriptionItem).toHaveBeenCalledWith(
         IPaymentGatewayProvider.STRIPE,
         'sub_stripe123',
-        'growth_seats',
+        'growth_seats_monthly',
         5
       );
 
@@ -136,8 +158,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
         {
           $inc: { additionalSeatsCount: 5 },
           $set: {
-            additionalSeatsCost: 25,
-            totalMonthlyPrice: 54,
+            additionalSeatsCost: 39.95, // 5 * $7.99
+            totalMonthlyPrice: 68.95, // $29 + $39.95
             'paymentGateway.seatItemId': 'si_new123',
           },
         },
@@ -151,6 +173,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'portfolio',
+        billingInterval: 'monthly',
         additionalSeatsCount: 10,
         additionalSeatsCost: 79.90,
         totalMonthlyPrice: 129.90,
@@ -164,6 +187,13 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
+      // Mock Stripe price validation - monthly price
+      mockStripeService.getPriceByLookupKey.mockResolvedValue({
+        id: 'price_monthly123',
+        unit_amount: 799,
+        recurring: { interval: 'month' },
+      });
+
       // Mock Stripe response - existing seat item
       mockPaymentGatewayService.getSubscriptionWithItems.mockResolvedValue({
         success: true,
@@ -173,7 +203,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
               {
                 id: 'si_existing123',
                 quantity: 10,
-                price: { lookup_key: 'portfolio_seats' },
+                price: { lookup_key: 'portfolio_seat_monthly' },
               },
             ],
           },
@@ -192,6 +222,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       await subscriptionService.updateAdditionalSeats(testCuid, 5);
 
+      expect(mockStripeService.getPriceByLookupKey).toHaveBeenCalledWith('portfolio_seat_monthly');
       expect(mockPaymentGatewayService.updateSubscriptionItemQuantity).toHaveBeenCalledWith(
         IPaymentGatewayProvider.STRIPE,
         'si_existing123',
@@ -219,6 +250,103 @@ describe('SubscriptionService - Additional Seat Management', () => {
       );
     });
 
+    it('should purchase seats for annual subscription using annual lookup key', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: testCuid,
+        planName: 'growth',
+        billingInterval: 'annual',
+        status: ISubscriptionStatus.ACTIVE,
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+        totalMonthlyPrice: 768,
+        currentSeats: 8,
+        paymentGateway: {
+          subscriberId: 'sub_stripe123',
+          customerId: 'cus_stripe123',
+          provider: 'stripe',
+        },
+      };
+
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // Mock Stripe price validation - annual price with year interval
+      mockStripeService.getPriceByLookupKey.mockResolvedValue({
+        id: 'price_annual123',
+        unit_amount: 9500,
+        recurring: { interval: 'year' },
+      });
+
+      mockPaymentGatewayService.getSubscriptionWithItems.mockResolvedValue({
+        success: true,
+        data: { items: { data: [] } },
+      });
+
+      mockPaymentGatewayService.addSubscriptionItem.mockResolvedValue({
+        success: true,
+        data: { id: 'si_new123' },
+      });
+
+      mockSubscriptionDAO.update.mockResolvedValue({
+        ...mockSubscription,
+        additionalSeatsCount: 2,
+      } as any);
+
+      await subscriptionService.updateAdditionalSeats(testCuid, 2);
+
+      expect(mockStripeService.getPriceByLookupKey).toHaveBeenCalledWith('growth_seat_annual');
+      expect(mockPaymentGatewayService.addSubscriptionItem).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        'sub_stripe123',
+        'growth_seat_annual',
+        2
+      );
+    });
+
+    it('should throw user-friendly error when billing intervals mismatch', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: testCuid,
+        planName: 'growth',
+        billingInterval: 'annual',
+        additionalSeatsCount: 0,
+        paymentGateway: { subscriberId: 'sub_stripe123', provider: 'stripe' },
+      };
+
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // Mock Stripe returning monthly price when annual expected
+      mockStripeService.getPriceByLookupKey.mockResolvedValue({
+        id: 'price_monthly123',
+        unit_amount: 500,
+        recurring: { interval: 'month' }, // Wrong interval!
+      });
+
+      await expect(subscriptionService.updateAdditionalSeats(testCuid, 2)).rejects.toThrow(
+        /billing interval mismatch/
+      );
+    });
+
+    it('should throw error when seat price not found in Stripe', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: testCuid,
+        planName: 'growth',
+        billingInterval: 'monthly',
+        additionalSeatsCount: 0,
+        paymentGateway: { subscriberId: 'sub_stripe123', provider: 'stripe' },
+      };
+
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // Mock Stripe returning null (price not found)
+      mockStripeService.getPriceByLookupKey.mockResolvedValue(null);
+
+      await expect(subscriptionService.updateAdditionalSeats(testCuid, 2)).rejects.toThrow(
+        /seat price configuration is missing/
+      );
+    });
+
     it('should throw error for Essential plan', async () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
@@ -241,6 +369,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'growth',
+        billingInterval: 'monthly',
         additionalSeatsCount: 10,
         additionalSeatsCost: 50,
         totalMonthlyPrice: 79,
@@ -254,11 +383,18 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
+      // Mock Stripe price validation
+      mockStripeService.getPriceByLookupKey.mockResolvedValue({
+        id: 'price_monthly123',
+        unit_amount: 500,
+        recurring: { interval: 'month' },
+      });
+
       mockPaymentGatewayService.getSubscriptionWithItems.mockResolvedValue({
         success: true,
         data: {
           items: {
-            data: [{ id: 'si_123', quantity: 10, price: { lookup_key: 'growth_seats' } }],
+            data: [{ id: 'si_123', quantity: 10, price: { lookup_key: 'growth_seats_monthly' } }],
           },
         },
       });
@@ -366,6 +502,196 @@ describe('SubscriptionService - Additional Seat Management', () => {
         /Please archive 4 user\(s\) first/
       );
     });
+
+    it('should calculate maxCanRemove correctly when currentSeats > includedSeats', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: testCuid,
+        planName: 'growth',
+        billingInterval: 'monthly',
+        additionalSeatsCount: 10,
+        currentSeats: 15, // 10 included + 5 additional in use
+        paymentGateway: {
+          subscriberId: 'sub_stripe123',
+          provider: 'stripe',
+          seatItemId: 'si_123',
+        },
+      };
+
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // Mock Stripe price validation
+      mockStripeService.getPriceByLookupKey.mockResolvedValue({
+        id: 'price_monthly123',
+        unit_amount: 799,
+        recurring: { interval: 'month' },
+      });
+
+      mockPaymentGatewayService.getSubscriptionWithItems.mockResolvedValue({
+        success: true,
+        data: {
+          items: {
+            data: [{ id: 'si_123', quantity: 10, price: { lookup_key: 'growth_seats_monthly' } }],
+          },
+        },
+      });
+
+      mockPaymentGatewayService.updateSubscriptionItemQuantity.mockResolvedValue({
+        success: true,
+        data: {},
+      });
+
+      mockSubscriptionDAO.update.mockResolvedValue({
+        ...mockSubscription,
+        additionalSeatsCount: 5,
+      } as any);
+
+      // maxCanRemove = additionalSeatsCount - (currentSeats - includedSeats)
+      // = 10 - (15 - 10) = 10 - 5 = 5
+      // So we can remove 5 seats maximum
+      const result = await subscriptionService.updateAdditionalSeats(testCuid, -5);
+
+      expect(result.success).toBe(true);
+      expect(mockPaymentGatewayService.updateSubscriptionItemQuantity).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        'si_123',
+        5
+      );
+    });
+
+    it('should throw detailed error when trying to remove more than maxCanRemove', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: testCuid,
+        planName: 'portfolio',
+        additionalSeatsCount: 15,
+        currentSeats: 35, // 25 included + 10 additional in use
+      };
+
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // maxCanRemove = 15 - (35 - 25) = 15 - 10 = 5
+      // Trying to remove 8 seats
+      // totalAllowed after removal = 25 + (15 - 8) = 32
+      // currentSeats = 35
+      // usersToArchive = 35 - 32 = 3
+
+      await expect(subscriptionService.updateAdditionalSeats(testCuid, -8)).rejects.toThrow(
+        BadRequestError
+      );
+      await expect(subscriptionService.updateAdditionalSeats(testCuid, -8)).rejects.toThrow(
+        /Cannot remove 8 seats\. You currently have 35 active users but would only have 32 seats allowed\. Please archive 3 user\(s\) first/
+      );
+    });
+
+    it('should succeed when removing seats and still within current usage', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: testCuid,
+        planName: 'growth',
+        billingInterval: 'monthly',
+        additionalSeatsCount: 10,
+        currentSeats: 12, // 10 included + 2 additional in use
+        paymentGateway: {
+          subscriberId: 'sub_stripe123',
+          provider: 'stripe',
+          seatItemId: 'si_123',
+        },
+      };
+
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // Mock Stripe price validation
+      mockStripeService.getPriceByLookupKey.mockResolvedValue({
+        id: 'price_monthly123',
+        unit_amount: 799,
+        recurring: { interval: 'month' },
+      });
+
+      mockPaymentGatewayService.getSubscriptionWithItems.mockResolvedValue({
+        success: true,
+        data: {
+          items: {
+            data: [{ id: 'si_123', quantity: 10, price: { lookup_key: 'growth_seats_monthly' } }],
+          },
+        },
+      });
+
+      mockPaymentGatewayService.updateSubscriptionItemQuantity.mockResolvedValue({
+        success: true,
+        data: {},
+      });
+
+      mockSubscriptionDAO.update.mockResolvedValue({
+        ...mockSubscription,
+        additionalSeatsCount: 3,
+      } as any);
+
+      // Removing 7 seats: 10 - 7 = 3 additional seats remaining
+      // Total allowed = 10 included + 3 = 13 seats
+      // currentSeats = 12, so it's within limit
+      const result = await subscriptionService.updateAdditionalSeats(testCuid, -7);
+
+      expect(result.success).toBe(true);
+      expect(mockPaymentGatewayService.updateSubscriptionItemQuantity).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        'si_123',
+        3
+      );
+    });
+
+    it('should validate seat removal when currentSeats equals includedSeats', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: testCuid,
+        planName: 'growth',
+        billingInterval: 'monthly',
+        additionalSeatsCount: 5,
+        currentSeats: 10, // Exactly at included seats, all additional seats unused
+        paymentGateway: {
+          subscriberId: 'sub_stripe123',
+          provider: 'stripe',
+          seatItemId: 'si_123',
+        },
+      };
+
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // Mock Stripe price validation
+      mockStripeService.getPriceByLookupKey.mockResolvedValue({
+        id: 'price_monthly123',
+        unit_amount: 799,
+        recurring: { interval: 'month' },
+      });
+
+      mockPaymentGatewayService.getSubscriptionWithItems.mockResolvedValue({
+        success: true,
+        data: {
+          items: {
+            data: [{ id: 'si_123', quantity: 5, price: { lookup_key: 'growth_seats_monthly' } }],
+          },
+        },
+      });
+
+      mockPaymentGatewayService.deleteSubscriptionItem.mockResolvedValue({
+        success: true,
+        data: {},
+      });
+
+      mockSubscriptionDAO.update.mockResolvedValue({
+        ...mockSubscription,
+        additionalSeatsCount: 0,
+      } as any);
+
+      // Can remove all 5 additional seats since none are in use
+      const result = await subscriptionService.updateAdditionalSeats(testCuid, -5);
+
+      expect(result.success).toBe(true);
+      expect(mockPaymentGatewayService.deleteSubscriptionItem).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        'si_123'
+      );
+    });
   });
 
   describe('updateAdditionalSeats - Validation', () => {
@@ -391,6 +717,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'growth',
+        billingInterval: 'monthly',
         additionalSeatsCount: 0,
         totalMonthlyPrice: 29,
         currentSeats: 8,
@@ -408,6 +735,13 @@ describe('SubscriptionService - Additional Seat Management', () => {
       } as any);
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // Mock Stripe price validation
+      mockStripeService.getPriceByLookupKey.mockResolvedValue({
+        id: 'price_monthly123',
+        unit_amount: 500,
+        recurring: { interval: 'month' },
+      });
 
       // Mock Stripe response - no existing seat item
       mockPaymentGatewayService.getSubscriptionWithItems.mockResolvedValue({
@@ -452,6 +786,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'growth',
+        billingInterval: 'monthly',
         additionalSeatsCount: 5,
         currentSeats: 10,
         totalMonthlyPrice: 54,
@@ -471,6 +806,13 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
+      // Mock Stripe price validation
+      mockStripeService.getPriceByLookupKey.mockResolvedValue({
+        id: 'price_monthly123',
+        unit_amount: 500,
+        recurring: { interval: 'month' },
+      });
+
       // Mock Stripe response - existing seat item
       mockPaymentGatewayService.getSubscriptionWithItems.mockResolvedValue({
         success: true,
@@ -480,7 +822,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
               {
                 id: 'si_existing123',
                 quantity: 5,
-                price: { lookup_key: 'growth_seats' },
+                price: { lookup_key: 'growth_seats_monthly' },
               },
             ],
           },

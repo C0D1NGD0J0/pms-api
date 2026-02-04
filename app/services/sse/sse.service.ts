@@ -18,7 +18,7 @@ export class SSEService {
     res: Response,
     userId: string,
     cuid: string,
-    channelType: 'personal' | 'announcement'
+    channelType: 'individual' | 'announcement'
   ): Promise<Session> {
     try {
       const session = await createSession(req, res);
@@ -53,7 +53,7 @@ export class SSEService {
     try {
       const plainData = data?.toObject ? data.toObject() : data;
 
-      const sessionKey = this.getSessionKey(userId, cuid, 'personal');
+      const sessionKey = this.getSessionKey(userId, cuid, 'individual');
       const sessions = this.activeSessions.get(sessionKey);
 
       if (!sessions || sessions.length === 0) {
@@ -128,7 +128,7 @@ export class SSEService {
   getActiveSessionCount(
     userId: string,
     cuid: string,
-    channelType: 'personal' | 'announcement'
+    channelType: 'individual' | 'announcement'
   ): number {
     const sessionKey = this.getSessionKey(userId, cuid, channelType);
     const sessions = this.activeSessions.get(sessionKey) || [];

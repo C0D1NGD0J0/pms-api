@@ -492,13 +492,6 @@ PropertySchema.methods.getAuthorizationStatus = function (this: IPropertyDocumen
   return { isAuthorized: true };
 };
 
-PropertySchema.pre('validate', async function (this: IPropertyDocument, next) {
-  if (this.isModified('occupancyStatus')) {
-    // add logic to recalculate occupancy based on associated units
-  }
-  next();
-});
-
 // hook to prevent duplicate properties
 PropertySchema.pre('validate', async function (next) {
   try {

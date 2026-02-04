@@ -1,0 +1,89 @@
+import Logger from 'bunyan';
+import { Response, Request } from 'express';
+import { SubscriptionService } from '@services/index';
+import { AppRequest } from '@interfaces/utils.interface';
+import { httpStatusCodes, createLogger } from '@utils/index';
+import { UnauthorizedError, ForbiddenError } from '@shared/customErrors';
+
+interface IConstructor {
+  subscriptionService: SubscriptionService;
+}
+
+export class SubscriptionController {
+  private readonly log: Logger;
+  private readonly subscriptionService: SubscriptionService;
+
+  constructor({ subscriptionService }: IConstructor) {
+    this.log = createLogger('SubscriptionController');
+    this.subscriptionService = subscriptionService;
+  }
+
+  getSubscriptionPlans = async (req: Request, res: Response) => {
+    const result = await this.subscriptionService.getSubscriptionPlans();
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getPlanUsage = async (req: AppRequest, res: Response) => {
+    const { currentuser } = req.context;
+
+    if (!currentuser || !currentuser.client.cuid) {
+      throw new UnauthorizedError({ message: 'Unauthorized access to client data.' });
+    }
+
+    const result = await this.subscriptionService.getSubscriptionPlanUsage(req.context);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  initSubscriptionPayment = async (req: AppRequest, res: Response) => {
+    const { currentuser } = req.context;
+    const { cuid } = req.params;
+
+    if (!currentuser || currentuser.client.cuid !== cuid) {
+      throw new UnauthorizedError({ message: 'Unauthorized access' });
+    }
+
+    if (currentuser.client.role !== 'super-admin') {
+      throw new ForbiddenError({ message: 'Only account owner can manage billing' });
+    }
+
+    const result = await this.subscriptionService.initSubscriptionPayment(req.context, req.body);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  cancelSubscription = async (req: AppRequest, res: Response) => {
+    const { currentuser } = req.context;
+    const { cuid } = req.params;
+
+    if (!currentuser || currentuser.client.cuid !== cuid) {
+      throw new UnauthorizedError({ message: 'Unauthorized access' });
+    }
+
+    if (currentuser.client.role !== 'super-admin') {
+      throw new ForbiddenError({ message: 'Only account owner can cancel subscription' });
+    }
+
+    const result = await this.subscriptionService.cancelSubscription(req.context);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  manageSeats = async (req: AppRequest, res: Response) => {
+    const { currentuser } = req.context;
+    const { cuid } = req.params;
+    const { seatDelta } = req.body;
+
+    if (!currentuser || currentuser.client.cuid !== cuid) {
+      throw new UnauthorizedError({ message: 'Unauthorized access' });
+    }
+
+    if (currentuser.client.role !== 'super-admin') {
+      throw new ForbiddenError({ message: 'Only account owner can manage seats' });
+    }
+
+    const result = await this.subscriptionService.updateAdditionalSeats(cuid, seatDelta);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+}

@@ -8,12 +8,23 @@ import { EventTypes } from '@interfaces/events.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyUnitQueue } from '@queues/propertyUnit.queue';
-import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
 import { IPropertyUnitDocument, IPropertyUnit } from '@interfaces/propertyUnit.interface';
-import { ValidationRequestError, BadRequestError, ForbiddenError } from '@shared/customErrors';
-import { ExtractedMediaFile, IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
+import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
+import { PropertyUnitDAO, SubscriptionDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import {
+  ValidationRequestError,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from '@shared/customErrors';
+import {
+  ExtractedMediaFile,
+  ISuccessReturnData,
+  IPaginationQuery,
+  IRequestContext,
+} from '@interfaces/utils.interface';
 import {
   PROPERTY_APPROVAL_ROLES,
   HIGH_IMPACT_UNIT_FIELDS,
@@ -29,6 +40,7 @@ interface IConstructor {
   unitNumberingService: UnitNumberingService;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
+  subscriptionDAO: SubscriptionDAO;
   propertyCache: PropertyCache;
   queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
@@ -50,6 +62,7 @@ export class PropertyUnitService {
   private readonly queueFactory: QueueFactory;
   private readonly propertyCache: PropertyCache;
   private readonly propertyUnitDAO: PropertyUnitDAO;
+  private readonly subscriptionDAO: SubscriptionDAO;
   private readonly emitterService: EventEmitterService;
   private readonly unitNumberingService: UnitNumberingService;
 
@@ -61,6 +74,7 @@ export class PropertyUnitService {
     queueFactory,
     propertyCache,
     emitterService,
+    subscriptionDAO,
     unitNumberingService,
   }: IConstructor) {
     this.clientDAO = clientDAO;
@@ -69,6 +83,7 @@ export class PropertyUnitService {
     this.propertyCache = propertyCache;
     this.queueFactory = queueFactory;
     this.emitterService = emitterService;
+    this.subscriptionDAO = subscriptionDAO;
     this.propertyUnitDAO = propertyUnitDAO;
     this.unitNumberingService = unitNumberingService;
     this.log = createLogger('PropertyUnitService');
@@ -713,6 +728,80 @@ export class PropertyUnitService {
     }
 
     return result;
+  }
+
+  async unarchivePropertyUnit(cxt: IRequestContext): Promise<ISuccessReturnData> {
+    const currentuser = cxt.currentuser!;
+    const { cuid, pid, unitId } = cxt.request.params;
+
+    if (!cuid || !pid || !unitId) {
+      throw new BadRequestError({ message: t('propertyUnit.errors.requiredFieldsMissing') });
+    }
+
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    if (!property) {
+      throw new NotFoundError({ message: t('property.errors.notFound') });
+    }
+
+    // Find archived unit
+    const unit = await this.propertyUnitDAO.findFirst({
+      _id: new Types.ObjectId(unitId),
+      propertyId: new Types.ObjectId(property.id),
+      deletedAt: { $ne: null },
+    });
+
+    if (!unit) {
+      throw new NotFoundError({ message: 'Archived unit not found' });
+    }
+
+    // Check subscription limits
+    const subscription = await this.subscriptionDAO.findFirst({ cuid });
+    if (!subscription) {
+      throw new BadRequestError({ message: 'Subscription not found for client' });
+    }
+
+    const config = subscriptionPlanConfig.getConfig(subscription.planName);
+    const maxUnits = config.limits.maxUnits;
+
+    // Count currently active units
+    const activeUnitsResult = await this.propertyUnitDAO.list(
+      {
+        cuid,
+        deletedAt: null,
+      },
+      { limit: 0 }
+    );
+    const activeUnitsCount = activeUnitsResult.pagination?.total || 0;
+
+    if (activeUnitsCount >= maxUnits) {
+      throw new BadRequestError({
+        message: `Cannot unarchive unit. Your ${subscription.planName} plan allows ${maxUnits} active units. You currently have ${activeUnitsCount} active. Please archive another unit or upgrade your plan.`,
+      });
+    }
+
+    // Unarchive the unit
+    const updateData = {
+      deletedAt: null,
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    };
+
+    const result = await this.propertyUnitDAO.updateById(unit.id, { $set: updateData });
+
+    if (!result) {
+      throw new BadRequestError({ message: 'Unable to unarchive unit' });
+    }
+
+    // Emit unit unarchived event
+    this.emitterService.emit(EventTypes.UNIT_UNARCHIVED, {
+      propertyId: property.id,
+      propertyPid: pid,
+      cuid,
+      unitId,
+      userId: currentuser.sub,
+      changeType: 'unarchived',
+    });
+
+    return { success: true, data: result, message: 'Unit unarchived successfully' };
   }
 
   async setupInspection(cxt: IRequestContext, inspectionData: any) {

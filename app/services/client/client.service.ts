@@ -3,15 +3,23 @@ import { t } from '@shared/languages';
 import ProfileDAO from '@dao/profileDAO';
 import { AuthCache } from '@caching/auth.cache';
 import { ClientValidations } from '@shared/validations';
-import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
+import { EventTypes } from '@interfaces/events.interface';
+import { EventEmitterService } from '@services/eventEmitter';
 import { getRequestDuration, createLogger } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
+import { IClientDocument, IClientStats } from '@interfaces/client.interface';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
+import { SubscriptionService } from '@services/subscription/subscription.service';
+import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
+import { SubscriptionDAO, PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
-import { PopulatedAccountAdmin, IClientDocument, IClientStats } from '@interfaces/client.interface';
 
 interface IConstructor {
+  subscriptionService: SubscriptionService;
+  emitterService: EventEmitterService;
+  subscriptionDAO: SubscriptionDAO;
+  propertyUnitDAO: PropertyUnitDAO;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
@@ -23,17 +31,35 @@ export class ClientService {
   private readonly log: Logger;
   private readonly clientDAO: ClientDAO;
   private readonly propertyDAO: PropertyDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly userDAO: UserDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly authCache: AuthCache;
+  private readonly subscriptionDAO: SubscriptionDAO;
+  private readonly subscriptionService: SubscriptionService;
+  private readonly emitterService: EventEmitterService;
 
-  constructor({ clientDAO, propertyDAO, userDAO, profileDAO, authCache }: IConstructor) {
+  constructor({
+    clientDAO,
+    propertyDAO,
+    propertyUnitDAO,
+    userDAO,
+    profileDAO,
+    authCache,
+    subscriptionDAO,
+    subscriptionService,
+    emitterService,
+  }: IConstructor) {
     this.log = createLogger('ClientService');
     this.clientDAO = clientDAO;
     this.propertyDAO = propertyDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
+    this.emitterService = emitterService;
     this.userDAO = userDAO;
     this.profileDAO = profileDAO;
     this.authCache = authCache;
+    this.subscriptionDAO = subscriptionDAO;
+    this.subscriptionService = subscriptionService;
   }
 
   async updateClientDetails(
@@ -75,15 +101,6 @@ export class ClientService {
         updateData.identification.idType !== client.identification.idType
       ) {
         requiresReVerification = true;
-        this.log.info(
-          {
-            cuid,
-            oldIdType: client.identification.idType,
-            newIdType: updateData.identification.idType,
-            userId: currentuser.sub,
-          },
-          t('client.logging.idTypeChanged')
-        );
       }
 
       if (updateData.identification.idType && !updateData.identification.idNumber) {
@@ -132,16 +149,13 @@ export class ClientService {
       updateData.isVerified = false;
     }
 
-    // Enterprise client validation
     if (client.accountType?.isEnterpriseAccount) {
-      // Create merged company profile data (existing + updates)
       const mergedCompanyProfile = {
         ...client.companyProfile,
         ...updateData.companyProfile,
       };
 
       try {
-        // Validate enterprise requirements using the validation schema
         ClientValidations.enterpriseValidation.parse({
           companyProfile: mergedCompanyProfile,
         });
@@ -154,28 +168,11 @@ export class ClientService {
         }
 
         if (enterpriseErrors.length > 0) {
-          this.log.error(
-            {
-              cuid,
-              userId: currentuser.sub,
-              enterpriseErrors,
-              companyProfile: mergedCompanyProfile,
-            },
-            'Enterprise client validation failed'
-          );
           throw new BadRequestError({
             message: 'Enterprise clients must have complete company profile information',
           });
         }
       }
-
-      this.log.info(
-        {
-          cuid,
-          userId: currentuser.sub,
-        },
-        'Enterprise client validation passed'
-      );
     }
 
     const changedFields = Object.keys(updateData);
@@ -271,7 +268,7 @@ export class ClientService {
       throw new BadRequestError({ message: t('client.errors.fetchFailed') });
     }
 
-    const [client, usersResult, propertiesResult] = await Promise.all([
+    const [client, usersResult, propertiesResult, subscription] = await Promise.all([
       this.clientDAO.getClientByCuid(cuid, {
         populate: {
           path: 'accountAdmin',
@@ -287,6 +284,7 @@ export class ClientService {
       }),
       this.userDAO.getUsersByClientId(cuid, {}, { limit: 1000, skip: 0 }),
       this.propertyDAO.countDocuments({ cuid, deletedAt: null }),
+      this.subscriptionDAO.findFirst({ cuid }),
     ]);
 
     if (!client) {
@@ -303,25 +301,97 @@ export class ClientService {
       throw new NotFoundError({ message: t('client.errors.detailsNotFound') });
     }
 
-    const clientWithStats = client.toObject() as { clientStats: IClientStats } & IClientDocument;
-    clientWithStats.clientStats = {
-      totalProperties: propertiesResult,
-      totalUsers: usersResult.pagination?.total || 0,
+    const responseData: any = {
+      cuid: client.cuid,
+      displayName: client.displayName,
+      isVerified: client.isVerified,
+      accountType: {
+        category:
+          client.accountType.category ||
+          (client.accountType.isEnterpriseAccount ? 'business' : 'individual'),
+        plan: subscription?.planName || 'essential',
+        billingInterval: subscription?.billingInterval || 'monthly',
+      },
+      accountAdmin: {
+        email: (client.accountAdmin as any)?.email || '',
+        id: (client.accountAdmin as any)?._id?.toString() || '',
+        firstName: (client.accountAdmin as any)?.profile?.personalInfo?.firstName || '',
+        lastName: (client.accountAdmin as any)?.profile?.personalInfo?.lastName || '',
+        phoneNumber: (client.accountAdmin as any)?.profile?.personalInfo?.phoneNumber || '',
+        avatar: (client.accountAdmin as any)?.profile?.personalInfo?.avatar || '',
+      },
+      settings: {
+        notificationPreferences: client.settings.notificationPreferences,
+        timeZone: client.settings.timeZone,
+        lang: client.settings.lang,
+      },
+      clientStats: {
+        totalProperties: propertiesResult,
+        totalUsers: usersResult.pagination?.total || 0,
+      },
+      createdAt: client.createdAt,
+      updatedAt: client.updatedAt,
     };
 
-    clientWithStats.accountAdmin = {
-      email: (client.accountAdmin as any)?.email || '',
-      id: (client.accountAdmin as any)?._id?.toString() || '',
-      firstName: (client.accountAdmin as any)?.profile?.personalInfo?.firstName || '',
-      lastName: (client.accountAdmin as any)?.profile?.personalInfo?.lastName || '',
-      phoneNumber: (client.accountAdmin as any)?.profile?.personalInfo?.phoneNumber || '',
-      avatar: (client.accountAdmin as any)?.profile?.personalInfo?.avatar || '',
-    } as unknown as PopulatedAccountAdmin;
+    if (client.identification) {
+      responseData.identification = {
+        dataProcessingConsent: client.identification.dataProcessingConsent,
+        retentionExpiryDate: client.identification.retentionExpiryDate,
+      };
+    }
+
+    if (client.accountType.isEnterpriseAccount && client.companyProfile) {
+      responseData.companyProfile = {
+        legalEntityName: client.companyProfile.legalEntityName,
+        tradingName: client.companyProfile.tradingName,
+        website: client.companyProfile.website,
+        industry: client.companyProfile.industry,
+      };
+    }
+
+    const isSuperAdmin = currentuser.client?.role === 'super-admin';
+    if (isSuperAdmin && subscription) {
+      const unitCount = await this.propertyUnitDAO.countDocuments({ cuid, deletedAt: null });
+      const billingHistory = await this.subscriptionService.getBillingHistory(cuid);
+      const config = subscriptionPlanConfig.getConfig(subscription.planName);
+
+      responseData.subscription = {
+        subscriptionId: subscription._id.toString(),
+        suid: subscription.suid,
+        cuid: subscription.cuid,
+        planName: subscription.planName,
+        status: subscription.status,
+        billingInterval: subscription.billingInterval,
+        amount: subscription.totalMonthlyPrice,
+        nextBillingDate: subscription.endDate,
+        canceledAt: subscription.canceledAt || null,
+        pendingDowngradeAt: subscription.pendingDowngradeAt || null,
+        currentSeats: subscription.currentSeats,
+        currentProperties: propertiesResult,
+        currentUnits: unitCount,
+        seatInfo: {
+          includedSeats: config.seatPricing.includedSeats,
+          additionalSeats: subscription.additionalSeatsCount,
+          totalAvailable: config.seatPricing.includedSeats + subscription.additionalSeatsCount,
+          maxAdditionalSeats: config.seatPricing.maxAdditionalSeats,
+          availableForPurchase:
+            config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
+          additionalSeatCost: subscription.additionalSeatsCost,
+        },
+        paymentMethod: subscription.paymentGateway?.cardLast4
+          ? {
+              last4: subscription.paymentGateway.cardLast4,
+              brand: subscription.paymentGateway.cardBrand,
+            }
+          : null,
+        billingHistory,
+      };
+    }
 
     return {
-      data: clientWithStats,
       success: true,
       message: t('client.success.retrieved'),
+      data: responseData,
     };
   }
 
@@ -498,6 +568,26 @@ export class ClientService {
         arrayFilters: [{ 'elem.cuid': clientId }],
       }
     );
+
+    // Emit event for subscription seat tracking (employee roles only)
+    const EMPLOYEE_ROLES = ['super-admin', 'admin', 'manager', 'staff'];
+    const isEmployee = clientConnection.roles.some((role) => EMPLOYEE_ROLES.includes(role));
+
+    if (isEmployee) {
+      this.emitterService.emit(EventTypes.USER_ARCHIVED, {
+        userId: user._id.toString(),
+        cuid: clientId,
+        roles: clientConnection.roles,
+        archivedBy: currentuser.uid,
+        createdAt: new Date(),
+      });
+
+      this.log.info('USER_ARCHIVED event emitted for seat tracking', {
+        userId: targetUserId,
+        cuid: clientId,
+        roles: clientConnection.roles,
+      });
+    }
 
     this.log.info(
       {

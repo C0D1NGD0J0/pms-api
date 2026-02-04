@@ -596,7 +596,10 @@ export class LeaseRenewalService {
                 leaseNumber: renewalResult.data.leaseNumber,
                 cuid: lease.cuid,
                 tenantId: lease.tenantId.toString(),
-                propertyAddress: lease.property?.address || 'Property',
+                propertyAddress:
+                  (typeof lease.property?.address === 'string'
+                    ? lease.property?.address
+                    : lease.property?.address?.fullAddress) || 'Property',
                 endDate: renewalResult.data.duration.endDate,
                 startDate: renewalResult.data.duration.startDate,
               },
@@ -1007,7 +1010,10 @@ export class LeaseRenewalService {
           leaseNumber: renewal.leaseNumber,
           cuid: renewal.cuid,
           tenantId: renewal.tenantId.toString(),
-          propertyAddress: renewal.property?.address || 'Property',
+          propertyAddress:
+            (typeof renewal.property?.address === 'string'
+              ? renewal.property?.address
+              : renewal.property?.address?.fullAddress) || 'Property',
           endDate: renewal.duration.endDate,
           startDate: renewal.duration.startDate,
         },

@@ -33,13 +33,9 @@ export class ClientController {
   getClient = async (req: AppRequest, res: Response) => {
     this.log.info('Getting complete client information for cuid');
 
-    const client = await this.clientService.getClientDetails(req.context);
+    const result = await this.clientService.getClientDetails(req.context);
 
-    res.status(httpStatusCodes.OK).json({
-      success: true,
-      data: client,
-      message: t('client.success.detailsRetrieved'),
-    });
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   assignUserRole = async (req: AppRequest, res: Response) => {

@@ -14,15 +14,11 @@ const ClientSchema = new Schema<IClientDocument>(
       immutable: true,
     },
     accountType: {
-      planId: {
+      category: {
         type: String,
+        enum: ['business', 'individual'],
         required: true,
-        trim: true,
-      },
-      planName: {
-        type: String,
-        required: true,
-        trim: true,
+        index: true,
       },
       isEnterpriseAccount: {
         type: Boolean,
@@ -37,7 +33,6 @@ const ClientSchema = new Schema<IClientDocument>(
           if (this.isNew) return false;
           return this.isModified('identification.idType');
         },
-        // Field level encryption could be added here
       },
       issueDate: {
         type: Date,

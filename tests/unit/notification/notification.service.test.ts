@@ -10,8 +10,45 @@ const mockNotificationDAO = {
   updateById: jest.fn(),
 } as any;
 
+// Mock EventEmitterService
+const mockEmitterService = {
+  on: jest.fn(),
+  emit: jest.fn(),
+  off: jest.fn(),
+} as any;
+
+// Mock UserService
+const mockUserService = {
+  getUsersByRole: jest.fn(),
+} as any;
+
+// Mock SSEService
+const mockSSEService = {
+  send: jest.fn(),
+} as any;
+
+// Mock ProfileService
+const mockProfileService = {
+  getProfile: jest.fn(),
+} as any;
+
+// Mock ProfileDAO
+const mockProfileDAO = {
+  findFirst: jest.fn(),
+} as any;
+
+// Mock ClientDAO
+const mockClientDAO = {
+  findByCuid: jest.fn(),
+} as any;
+
+// Mock UserDAO
+const mockUserDAO = {
+  findById: jest.fn(),
+} as any;
+
 // Mock Logger
-const mockLogger = {
+const _mockLogger = {
   info: jest.fn(),
   error: jest.fn(),
   warn: jest.fn(),
@@ -26,7 +63,13 @@ describe('NotificationService - New Methods', () => {
 
     notificationService = new NotificationService({
       notificationDAO: mockNotificationDAO,
-      log: mockLogger,
+      emitterService: mockEmitterService,
+      profileDAO: mockProfileDAO,
+      clientDAO: mockClientDAO,
+      userDAO: mockUserDAO,
+      userService: mockUserService,
+      sseService: mockSSEService,
+      profileService: mockProfileService,
     } as any);
 
     // Mock createNotification to avoid database calls
@@ -34,6 +77,11 @@ describe('NotificationService - New Methods', () => {
       success: true,
       data: { nuid: 'test-notification-id' },
     });
+
+    // Spy on the actual logger methods
+    jest.spyOn(notificationService['log'], 'error').mockImplementation();
+    jest.spyOn(notificationService['log'], 'info').mockImplementation();
+    jest.spyOn(notificationService['log'], 'warn').mockImplementation();
   });
 
   describe('notifyLeaseLifecycleEvent', () => {
@@ -76,7 +124,7 @@ describe('NotificationService - New Methods', () => {
         })
       );
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(notificationService['log'].info).toHaveBeenCalledWith(
         'Lease lifecycle event notifications sent: renewal_created',
         expect.any(Object)
       );
@@ -238,7 +286,7 @@ describe('NotificationService - New Methods', () => {
         notificationService.notifyLeaseLifecycleEvent(params)
       ).resolves.not.toThrow();
 
-      expect(mockLogger.error).toHaveBeenCalledWith(
+      expect(notificationService['log'].error).toHaveBeenCalledWith(
         'Failed to send lease lifecycle event notifications',
         expect.any(Object)
       );
@@ -356,7 +404,7 @@ describe('NotificationService - New Methods', () => {
       // Should not throw
       await expect(notificationService.notifySystemError(params)).resolves.not.toThrow();
 
-      expect(mockLogger.error).toHaveBeenCalledWith(
+      expect(notificationService['log'].error).toHaveBeenCalledWith(
         'Failed to send system error notifications',
         expect.any(Object)
       );
@@ -374,7 +422,7 @@ describe('NotificationService - New Methods', () => {
 
       await notificationService.notifySystemError(params);
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(notificationService['log'].info).toHaveBeenCalledWith(
         'System error notifications sent',
         expect.objectContaining({
           errorType: 'auto_send_failed',

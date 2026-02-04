@@ -1,6 +1,7 @@
 export * from './notification.interface';
 export * from './propertyUnit.interface';
 export * from './pdfGenerator.interface';
+export * from './subscription.interface';
 export * from './esignature.interface';
 export * from './invitation.interface';
 export * from './unit-patterns.types';

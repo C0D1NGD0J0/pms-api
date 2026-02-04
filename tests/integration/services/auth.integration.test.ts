@@ -35,6 +35,13 @@ describe('AuthService Integration Tests', () => {
       emitterService: {} as any,
     } as any);
 
+    const mockSubscriptionService = {
+      createSubscription: jest.fn().mockResolvedValue({
+        success: true,
+        data: { suid: 'test-subscription-id' },
+      }),
+    };
+
     authService = new AuthService({
       userDAO,
       clientDAO,
@@ -43,6 +50,7 @@ describe('AuthService Integration Tests', () => {
       tokenService: mockTokenService as any,
       authCache: mockAuthCache as any,
       vendorService,
+      subscriptionService: mockSubscriptionService as any,
     });
   });
 
@@ -64,7 +72,7 @@ describe('AuthService Integration Tests', () => {
         location: 'US',
         termsAccepted: true,
         accountType: {
-          planName: 'starter',
+          planName: 'growth',
           planId: 'plan_starter',
           isEnterpriseAccount: false,
         },
@@ -115,7 +123,7 @@ describe('AuthService Integration Tests', () => {
         location: 'US',
         termsAccepted: true,
         accountType: {
-          planName: 'starter',
+          planName: 'growth',
           planId: 'plan_starter',
           isEnterpriseAccount: false,
         },
@@ -141,7 +149,7 @@ describe('AuthService Integration Tests', () => {
         location: 'US',
         termsAccepted: true,
         accountType: {
-          planName: 'starter',
+          planName: 'growth',
           planId: 'plan_starter',
           isEnterpriseAccount: false,
         },
@@ -156,6 +164,45 @@ describe('AuthService Integration Tests', () => {
       // Verify password can be verified
       const isValid = await bcrypt.compare(plainPassword, savedUser!.password);
       expect(isValid).toBe(true);
+    });
+
+    it('should allow business account with personal plan', async () => {
+      const signupData = {
+        email: `business-${Date.now()}@example.com`,
+        password: 'SecurePassword123!',
+        firstName: 'Business',
+        lastName: 'Owner',
+        displayName: 'Small Business LLC',
+        phoneNumber: '+1234567890',
+        lang: 'en',
+        location: 'US',
+        termsAccepted: true,
+        accountType: {
+          planName: 'essential',
+          planId: 'price_1234567890abcd',
+          billingInterval: 'monthly',
+          category: 'business',
+          isEnterpriseAccount: true,
+        },
+        companyProfile: {
+          tradingName: 'Small Business LLC',
+          legalEntityName: 'Small Business Limited Liability Company',
+          companyEmail: 'info@smallbusiness.com',
+          companyAddress: '456 Business Ave, New York, NY 10001',
+          companyPhone: '+12125551234',
+        },
+      };
+
+      const result = await authService.signup(signupData as any);
+
+      expect(result.success).toBe(true);
+
+      const savedClient = await Client.findOne({ displayName: signupData.displayName });
+      expect(savedClient).not.toBeNull();
+      expect(savedClient!.accountType.category).toBe('business');
+      expect(savedClient!.accountType.isEnterpriseAccount).toBe(true);
+      expect(savedClient!.accountType.planName).toBe('essential');
+      expect(savedClient!.companyProfile?.tradingName).toBe('Small Business LLC');
     });
   });
 

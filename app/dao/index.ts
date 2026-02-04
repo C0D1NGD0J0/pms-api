@@ -1,4 +1,5 @@
 export * from './propertyUnitDAO';
+export * from './subscriptionDAO';
 export * from './notificationDAO';
 export * from './invitationDAO';
 export * from './propertyDAO';

@@ -711,7 +711,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       };
 
       if (propertyId) {
-        matchQuery['property.id'] = propertyId;
+        matchQuery['property.id'] = new Types.ObjectId(propertyId);
       }
 
       const rentRoll = await this.aggregate([

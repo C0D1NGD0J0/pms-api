@@ -21,18 +21,25 @@ export enum EventTypes {
   LEASE_RENEWAL_REQUESTED = 'lease:renewal:requested',
   PROPERTY_UPDATE_FAILED = 'update:property:failed',
   DELETE_ASSET_COMPLETED = 'delete:asset:completed',
+  USER_SIGNUP_INITIATED = 'user:signup:initiated',
   LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
   PDF_GENERATION_FAILED = 'pdf:generation:failed',
+  INVITATION_ACCEPTED = 'invitation:accepted',
   DELETE_ASSET_FAILED = 'delete:asset:failed',
   DELETE_REMOTE_ASSET = 'delete:remote:asset',
   UNIT_STATUS_CHANGED = 'unit:status:changed',
+  INVITATION_EXPIRED = 'invitation:expired',
+  INVITATION_REVOKED = 'invitation:revoked',
   DELETE_LOCAL_ASSET = 'delete:local:asset',
   UNIT_BATCH_CREATED = 'unit:batch:created',
   LEASE_TERMINATED = 'lease:terminated',
   PROPERTY_CREATED = 'property:created',
   PROPERTY_DELETED = 'property:deleted',
   UPLOAD_COMPLETED = 'upload:completed',
+  INVITATION_SENT = 'invitation:sent',
+  USER_UNARCHIVED = 'user:unarchived',
   UNIT_UNARCHIVED = 'unit:unarchived',
+  USER_ARCHIVED = 'user:archived',
   PDF_GENERATED = 'pdf:generated',
   LEASE_RENEWED = 'lease:renewed',
   UNIT_ARCHIVED = 'unit:archived',
@@ -82,8 +89,26 @@ export type EventPayloadMap = {
   [EventTypes.UPLOAD_COMPLETED]: UploadCompletedPayload;
   [EventTypes.UPLOAD_FAILED]: UploadFailedPayload;
   [EventTypes.LEASE_RENEWED]: LeaseRenewedPayload;
+  [EventTypes.USER_SIGNUP_INITIATED]: UserSignupInitiatedPayload;
+  [EventTypes.INVITATION_SENT]: InvitationEventPayload;
+  [EventTypes.INVITATION_ACCEPTED]: InvitationEventPayload;
+  [EventTypes.INVITATION_EXPIRED]: InvitationEventPayload;
+  [EventTypes.INVITATION_REVOKED]: InvitationEventPayload;
+  [EventTypes.USER_ARCHIVED]: UserArchivePayload;
+  [EventTypes.USER_UNARCHIVED]: UserArchivePayload;
   [EventTypes.LEASE_RENEWAL_REQUESTED]: LeaseRenewalRequestedPayload;
 };
+
+export interface UserSignupInitiatedPayload {
+  billingInterval: 'monthly' | 'annual'; // Billing frequency
+  subscriptionId: string; // MongoDB ObjectId of created subscription
+  planLookUpKey: string; // Optional Stripe plan lookup key
+  planName: string; // 'personal' | 'starter' | 'professional'
+  clientId: string; // MongoDB ObjectId of client/organization
+  planId: string; // Stripe price ID (required for paid plans)
+  userId: string; // MongoDB ObjectId of user
+  email: string; // User email (required for Stripe customer creation)
+}
 
 export interface UnitChangedPayload {
   changeType: 'created' | 'updated' | 'archived' | 'unarchived' | 'status_changed';
@@ -153,6 +178,14 @@ export interface LeaseRenewedPayload {
   status: string;
   endDate: Date;
   cuid: string;
+}
+
+export interface InvitationEventPayload {
+  invitationId: string; // MongoDB ObjectId of invitation
+  inviteeEmail: string; // Email of person invited
+  clientId: string; // MongoDB ObjectId of client
+  role: string; // Role being invited to
+  cuid: string; // Client unique ID
 }
 
 export interface UploadCompletedPayload {
@@ -251,6 +284,14 @@ export interface PropertyUpdatedPayload {
   updateType: 'documents' | 'details' | 'status';
   propertyId: string;
   status: 'success';
+}
+
+export interface UserArchivePayload {
+  archivedBy: string;
+  createdAt: Date;
+  roles: string[];
+  userId: string;
+  cuid: string;
 }
 export interface EventMetadata {
   requestId?: string;

@@ -246,7 +246,6 @@ export class LeaseDocumentService {
   private setupEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
-    this.log.info('Lease document service event listeners registered');
   }
 
   /**

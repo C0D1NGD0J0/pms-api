@@ -7,8 +7,8 @@ import { ProfileDAO } from '@dao/profileDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { EventEmitterService } from '@services/index';
 import { EventTypes } from '@interfaces/events.interface';
-import { BoldSignService } from '@services/esignature/boldSign.service';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
+import { BoldSignService } from '@services/external/esignature/boldSign.service';
 import { BoldSignJobResult, BoldSignJobData } from '@interfaces/esignature.interface';
 import {
   LeaseESignatureRequestedPayload,

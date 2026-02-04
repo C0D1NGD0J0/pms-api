@@ -13,7 +13,8 @@ export const errorHandlerMiddleware = async (
   res: Response,
   next: NextFunction
 ) => {
-  const { emitterService } = req.container.cradle;
+  // Container might not be set up if error occurs early in middleware chain
+  const emitterService = req.container?.cradle?.emitterService;
 
   logger.error('Error caught by middleware:', {
     stack: err.stack ? err.stack.split('\n').slice(0, 5).join('\n') : 'No stack trace available',
@@ -65,13 +66,12 @@ export const errorHandlerMiddleware = async (
     ...(errorInfo ? { errorInfo } : {}),
   };
 
-  // clean up uploaded files on error
-  if (req.files) {
+  if (req.files && emitterService) {
     try {
       const filesToDelete = extractMulterFiles(req.files).map((file) => file.filename);
       emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, filesToDelete);
     } catch (cleanupError) {
-      void cleanupError; // ignore cleanup errors
+      void cleanupError;
     }
   }
 

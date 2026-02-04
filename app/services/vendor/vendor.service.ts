@@ -13,17 +13,19 @@ import { IVendorFilterOptions } from '@dao/interfaces/vendorDAO.interface';
 import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import {
-  ListResultWithPagination,
-  ISuccessReturnData,
-  IRequestContext,
-  IPaginateResult,
-} from '@interfaces/utils.interface';
-import {
   FilteredUserTableData,
   IUserDetailResponse,
   IVendorDetailInfo,
   IVendorTeamMember,
 } from '@interfaces/user.interface';
+import {
+  ListResultWithPagination,
+  ISuccessReturnData,
+  PermissionResource,
+  PermissionAction,
+  IRequestContext,
+  IPaginateResult,
+} from '@interfaces/utils.interface';
 interface IConstructor {
   permissionService: PermissionService;
   vendorCache: VendorCache;
@@ -429,7 +431,13 @@ export class VendorService {
       }
 
       // Check permissions
-      if (!this.permissionService.canUserAccessVendors(currentuser, vendor)) {
+      const canAccess = await this.permissionService.canAccessResource(
+        currentuser,
+        PermissionResource.VENDOR,
+        PermissionAction.READ,
+        vendor
+      );
+      if (!canAccess) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
             action: 'view',

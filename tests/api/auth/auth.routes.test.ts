@@ -175,7 +175,7 @@ describe('Auth Routes Integration Tests', () => {
         phoneNumber: faker.phone.number(),
         accountType: {
           planId: faker.string.uuid(),
-          planName: 'personal',
+          planName: 'essential',
           isEnterpriseAccount: false,
         },
         lang: 'en',
@@ -262,7 +262,7 @@ describe('Auth Routes Integration Tests', () => {
         location: 'New York',
         accountType: {
           planId: faker.string.uuid(),
-          planName: 'personal',
+          planName: 'essential',
           isEnterpriseAccount: false,
         },
       };
@@ -292,7 +292,7 @@ describe('Auth Routes Integration Tests', () => {
         location: 'New York',
         accountType: {
           planId: faker.string.uuid(),
-          planName: 'personal',
+          planName: 'essential',
           isEnterpriseAccount: false,
         },
       };
@@ -322,7 +322,7 @@ describe('Auth Routes Integration Tests', () => {
         location: 'New York',
         accountType: {
           planId: faker.string.uuid(),
-          planName: 'personal',
+          planName: 'essential',
           isEnterpriseAccount: false,
         },
       };

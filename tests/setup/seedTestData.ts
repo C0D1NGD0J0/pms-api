@@ -4,11 +4,12 @@ import { ROLES } from '@shared/constants/roles.constants';
 import { IUserDocument } from '@models/user/user.interface';
 import { ILeaseDocument } from '@models/lease/lease.interface';
 import { IClientDocument } from '@models/client/client.interface';
-import { Invitation, Profile, Client, User } from '@models/index';
 import { IProfileDocument } from '@models/profile/profile.interface';
 import { IPropertyDocument } from '@models/property/property.interface';
 import { IInvitationDocument } from '@models/invitation/invitation.interface';
+import { Subscription, Invitation, Profile, Client, User } from '@models/index';
 import { IPropertyUnitDocument } from '@models/propertyUnit/propertyUnit.interface';
+import { ISubscriptionDocument } from '@models/subscription/subscription.interface';
 
 export interface SeededTestData {
   invitations: {
@@ -57,6 +58,11 @@ export interface SeededTestData {
     client2: IClientDocument;
     client3: IClientDocument;
   };
+
+  subscriptions: {
+    subscription1: ISubscriptionDocument;
+    subscription2: ISubscriptionDocument;
+  };
 }
 
 /**
@@ -67,48 +73,37 @@ export const seedTestData = async (): Promise<SeededTestData> => {
   const client1 = await Client.create({
     cuid: `test-client-1-${faker.string.alphanumeric(8)}`,
     displayName: 'Acme Property Management',
-    status: 'active',
     accountAdmin: new Types.ObjectId(),
     accountType: {
-      planName: 'professional',
-      planId: 'plan_professional',
-      features: ['multi_property', 'reporting'],
-    },
-    contactInfo: {
-      email: 'admin@acme-pm.com',
-      phone: '555-0001',
+      category: 'individual',
+      isEnterpriseAccount: false,
     },
   });
 
   const client2 = await Client.create({
     cuid: `test-client-2-${faker.string.alphanumeric(8)}`,
     displayName: 'Summit Realty Group',
-    status: 'active',
     accountAdmin: new Types.ObjectId(),
     accountType: {
-      planName: 'starter',
-      planId: 'plan_starter',
-      features: [],
-    },
-    contactInfo: {
-      email: 'admin@summit-realty.com',
-      phone: '555-0002',
+      category: 'individual',
+      isEnterpriseAccount: false,
     },
   });
 
   const client3 = await Client.create({
     cuid: `test-client-3-${faker.string.alphanumeric(8)}`,
     displayName: 'Coastal Properties LLC',
-    status: 'active',
     accountAdmin: new Types.ObjectId(),
     accountType: {
-      planName: 'enterprise',
-      planId: 'plan_enterprise',
-      features: ['multi_property', 'reporting', 'api_access'],
+      category: 'business',
+      isEnterpriseAccount: true,
     },
-    contactInfo: {
-      email: 'admin@coastal-props.com',
-      phone: '555-0003',
+    companyProfile: {
+      tradingName: 'Coastal Properties LLC',
+      legalEntityName: 'Coastal Properties Limited Liability Company',
+      companyEmail: 'admin@coastal-props.com',
+      companyAddress: '123 Ocean Drive, Miami Beach, FL 33139',
+      companyPhone: '+13055550003',
     },
   });
 
@@ -356,6 +351,52 @@ export const seedTestData = async (): Promise<SeededTestData> => {
     },
   });
 
+  // Create subscriptions for clients
+  const subscription1 = await Subscription.create({
+    cuid: client1.cuid,
+    client: client1._id,
+    planName: 'portfolio',
+    status: 'active',
+    startDate: new Date(),
+    endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+    billingInterval: 'monthly',
+    paymentGateway: {
+      customerId: 'cus_test123',
+      provider: 'stripe',
+      planId: 'price_portfolio123',
+    },
+    totalMonthlyPrice: 4900,
+    currentSeats: 2,
+    currentProperties: 0,
+    currentUnits: 0,
+  });
+
+  const subscription2 = await Subscription.create({
+    cuid: client2.cuid,
+    client: client2._id,
+    planName: 'essential',
+    status: 'active',
+    startDate: new Date(),
+    endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
+    billingInterval: 'monthly',
+    paymentGateway: {
+      customerId: 'none',
+      provider: 'none',
+      planId: 'plan_essential',
+    },
+    totalMonthlyPrice: 0,
+    currentSeats: 2,
+    currentProperties: 0,
+    currentUnits: 0,
+  });
+
+  // Update client1 to reference subscription
+  client1.subscription = subscription1._id;
+  await client1.save();
+
+  client2.subscription = subscription2._id;
+  await client2.save();
+
   const property1 = null as any;
   const property2 = null as any;
   const property3 = null as any;
@@ -406,6 +447,10 @@ export const seedTestData = async (): Promise<SeededTestData> => {
       activeLease1,
       activeLease2,
       expiredLease1,
+    },
+    subscriptions: {
+      subscription1,
+      subscription2,
     },
   };
 };

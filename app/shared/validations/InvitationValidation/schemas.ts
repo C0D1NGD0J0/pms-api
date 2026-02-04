@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isValidPhoneNumber } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
@@ -239,14 +240,14 @@ export const invitationDataSchema = z.object({
 
     phoneNumber: z
       .string()
-      .regex(/^\+?[\d\s\-()]+$/, 'Please provide a valid phone number')
-      .max(20, 'Phone number must be less than 20 characters')
-      .refine((val) => {
-        if (!val) return true; // optional field
-        const digitsOnly = val.replace(/\D/g, '');
-        return digitsOnly.length >= 10;
-      }, 'Phone number must contain at least 10 digits')
-      .optional(),
+      .optional()
+      .refine(
+        (val) => {
+          if (!val) return true; // optional field
+          return isValidPhoneNumber(val);
+        },
+        { message: 'Invalid phone number' }
+      ),
   }),
 
   metadata: z
@@ -445,14 +446,14 @@ export const invitationCsvSchema = z
 
     phoneNumber: z
       .string()
-      .regex(/^\+?[\d\s\-()]+$/, 'Please provide a valid phone number')
-      .max(20, 'Phone number must be less than 20 characters')
-      .refine((val) => {
-        if (!val) return true; // optional field
-        const digitsOnly = val.replace(/\D/g, '');
-        return digitsOnly.length >= 10;
-      }, 'Phone number must contain at least 10 digits')
-      .optional(),
+      .optional()
+      .refine(
+        (val) => {
+          if (!val) return true; // optional field
+          return isValidPhoneNumber(val);
+        },
+        { message: 'Invalid phone number' }
+      ),
 
     status: z
       .enum(['draft', 'pending'], {
@@ -595,8 +596,14 @@ export const invitationCsvSchema = z
       .optional(),
     vendorInfo_contactPerson_phone: z
       .string()
-      .transform((str) => (str && str.trim() !== '' ? str : undefined))
-      .optional(),
+      .optional()
+      .refine(
+        (val) => {
+          if (!val || val.trim() === '') return true; // optional field
+          return isValidPhoneNumber(val);
+        },
+        { message: 'Invalid vendor contact phone number' }
+      ),
 
     // Tenant Info fields
     tenantInfo_employerCompanyName: z

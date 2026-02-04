@@ -12,7 +12,15 @@ import { NotificationService } from '@services/notification';
 import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
-import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import {
+  PropertyUnitDAO,
+  SubscriptionDAO,
+  PropertyDAO,
+  ProfileDAO,
+  ClientDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -51,6 +59,7 @@ import {
 import { PropertyStatsService } from './propertyStats.service';
 import { PropertyApprovalService } from './propertyApproval.service';
 import { PropertyValidationService } from './propertyValidation.service';
+import { subscriptionPlanConfig } from '../subscription/subscription_plans.config';
 import { generatePendingChangesPreview, validateOccupancyStatusChange } from './propertyHelpers';
 
 interface IConstructor {
@@ -62,6 +71,7 @@ interface IConstructor {
   emitterService: EventEmitterService;
   geoCoderService: GeoCoderService;
   propertyUnitDAO: PropertyUnitDAO;
+  subscriptionDAO: SubscriptionDAO;
   propertyCache: PropertyCache;
   queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
@@ -88,6 +98,7 @@ export class PropertyService {
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
   private readonly notificationService: NotificationService;
+  private readonly subscriptionDAO: SubscriptionDAO;
 
   constructor({
     clientDAO,
@@ -105,6 +116,7 @@ export class PropertyService {
     userDAO,
     leaseDAO,
     notificationService,
+    subscriptionDAO,
   }: IConstructor) {
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -122,6 +134,7 @@ export class PropertyService {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
     this.notificationService = notificationService;
+    this.subscriptionDAO = subscriptionDAO;
 
     this.setupEventListeners();
   }
@@ -402,8 +415,31 @@ export class PropertyService {
         : new Types.ObjectId(currentuser.sub); // last resort fallback
     }
 
+    // Get subscription and check limits
+    const subscription = await this.subscriptionDAO.findFirst({ cuid });
+    if (!subscription) {
+      throw new BadRequestError({ message: 'Subscription not found for client' });
+    }
+
+    const config = subscriptionPlanConfig.getConfig(subscription.planName);
+    const maxProperties = config.limits.maxProperties;
+
     const session = await this.propertyDAO.startSession();
-    const result = await this.propertyDAO.withTransaction(session, async (session) => {
+    const result = await this.propertyDAO.withTransaction(session, async (txSession) => {
+      const result = await this.subscriptionDAO.updateResourceCount(
+        'property',
+        subscription.client,
+        1,
+        maxProperties,
+        txSession
+      );
+
+      if (!result) {
+        throw new BadRequestError({
+          message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties (including archived).`,
+        });
+      }
+
       const property = await this.propertyDAO.createProperty(
         {
           ...cleanPropertyData,
@@ -411,7 +447,7 @@ export class PropertyService {
           approvalStatus,
           approvalDetails,
         },
-        session
+        txSession
       );
 
       if (!property) {
@@ -1169,6 +1205,66 @@ export class PropertyService {
     return { success: true, data: null, message: t('property.success.archived') };
   }
 
+  async unarchiveClientProperty(cuid: string, pid: string): Promise<ISuccessReturnData> {
+    if (!cuid || !pid) {
+      this.log.error('Client ID and Property ID are required');
+      throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
+    }
+
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      this.log.error(`Client with cuid ${cuid} not found`);
+      throw new BadRequestError({ message: t('property.errors.unableToUnarchive') });
+    }
+
+    // Find archived property
+    const property = await this.propertyDAO.findFirst({
+      pid,
+      cuid,
+      deletedAt: { $ne: null },
+    });
+
+    if (!property) {
+      throw new NotFoundError({ message: 'Archived property not found' });
+    }
+
+    // Check subscription limits - properties count cumulatively (active + archived)
+    // This is already accounted for, but we verify active properties don't exceed limits
+    const subscription = await this.subscriptionDAO.findFirst({ cuid });
+    if (!subscription) {
+      throw new BadRequestError({ message: 'Subscription not found for client' });
+    }
+
+    const config = subscriptionPlanConfig.getConfig(subscription.planName);
+    const maxProperties = config.limits.maxProperties;
+
+    const activePropertiesCount = await this.propertyDAO.countDocuments({
+      cuid,
+      deletedAt: null,
+    });
+
+    // Since cumulative counter includes this archived property, we just check active count
+    if (activePropertiesCount >= maxProperties) {
+      throw new BadRequestError({
+        message: `Cannot unarchive property. Your ${subscription.planName} plan allows ${maxProperties} active properties. You currently have ${activePropertiesCount} active. Please archive another property or upgrade your plan.`,
+      });
+    }
+
+    // Unarchive the property
+    const unarchivedProperty = await this.propertyDAO.updateById(property.id, {
+      $set: { deletedAt: null },
+    });
+
+    if (!unarchivedProperty) {
+      throw new BadRequestError({ message: 'Unable to unarchive property' });
+    }
+
+    await this.propertyCache.invalidateProperty(cuid, property.id);
+    await this.propertyCache.invalidatePropertyLists(cuid);
+
+    return { success: true, data: unarchivedProperty, message: 'Property unarchived successfully' };
+  }
+
   private async handleUnitChanged(payload: any): Promise<void> {
     try {
       this.log.info(
@@ -1666,11 +1762,9 @@ export class PropertyService {
     }
   }
 
-  async destroy(): Promise<void> {
+  cleanupEventListeners(): void {
     this.log.info(t('property.logging.cleaningUp'));
 
-    // Remove all event listeners
-    // Note: Upload event listeners are now managed by PropertyMediaService
     this.emitterService.off(EventTypes.UNIT_CREATED, this.handleUnitChanged);
     this.emitterService.off(EventTypes.UNIT_UPDATED, this.handleUnitChanged);
     this.emitterService.off(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged);

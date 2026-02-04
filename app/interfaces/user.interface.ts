@@ -3,6 +3,7 @@ import { IUserRoleType } from '@shared/constants/roles.constants';
 
 import { IClientUserConnections, ICompanyProfile } from './client.interface';
 import {
+  EmployeeDepartment,
   IProfileDocument,
   GDPRSettings,
   EmployeeInfo,
@@ -29,6 +30,20 @@ export enum IUserRelationshipsEnum {
  * Authenticated user session data with all role-specific info
  */
 export interface ICurrentUser {
+  subscription?: {
+    plan: {
+      name: string;
+      status: string;
+      billingInterval: 'monthly' | 'annual';
+    };
+    features: Record<string, boolean>;
+    paymentFlow: {
+      requiresPayment: boolean;
+      reason: 'pending_signup' | 'expired' | 'grace_period' | null;
+      gracePeriodEndsAt: Date | null;
+      daysUntilDowngrade: number | null;
+    };
+  };
   client: {
     clientSettings?: any;
     cuid: string;
@@ -48,7 +63,7 @@ export interface ICurrentUser {
     activeLease?: Record<string, any> | null;
   };
   employeeInfo?: {
-    department?: string;
+    department?: EmployeeDepartment;
     jobTitle?: string;
     employeeId?: string;
     startDate?: Date;
@@ -299,6 +314,20 @@ export interface FilteredUserVendorInfo
 }
 
 /**
+ * Tenant Filter Options
+ * Extended filter options specific to tenant queries
+ */
+export interface ITenantFilterOptions extends IUserFilterOptions {
+  connectionStatus?: 'connected' | 'disconnected' | 'all'; // Filter by connection status
+  backgroundCheckStatus?: BackgroundCheckStatus;
+  moveInDateRange?: { start: Date; end: Date };
+  leaseStatus?: LeaseStatusType;
+  rentStatus?: RentStatus;
+  propertyId?: string;
+  unitType?: string;
+}
+
+/**
  * Filtered User Table Data
  * Lightweight user data for table display only
  */
@@ -315,12 +344,28 @@ export interface FilteredUserTableData extends Pick<IUser, 'email'> {
 }
 
 /**
+ * Identification Type Interface
+ * User identification documents
+ */
+export interface IIdentificationType {
+  documents: IdentificationDocumentType[];
+  retentionExpiryDate: Date | string;
+  idType: IdentificationDocumentType;
+  dataProcessingConsent: boolean;
+  expiryDate: Date | string;
+  issueDate: Date | string;
+  issuingState: string;
+  authority: string;
+  idNumber: string;
+}
+
+/**
  * Signup Data Type
  * User registration form data
  */
 export type ISignupData = {
   companyProfile?: ICompanyProfile;
-  accountType: IAccountType;
+  accountType: ISignupAccountType;
   termsAccepted: boolean;
   phoneNumber: string;
   displayName: string;
@@ -334,16 +379,14 @@ export type ISignupData = {
 };
 
 /**
- * Tenant Filter Options
- * Extended filter options specific to tenant queries
+ * Filtered User Tenant Info
+ * Minimal tenant info for table display (lightweight)
  */
-export interface ITenantFilterOptions extends IUserFilterOptions {
-  backgroundCheckStatus?: BackgroundCheckStatus;
-  moveInDateRange?: { start: Date; end: Date };
-  leaseStatus?: LeaseStatusType;
-  rentStatus?: RentStatus;
-  propertyId?: string;
-  unitType?: string;
+export interface FilteredUserTenantInfo {
+  propertyAddress?: string; // Full address of the property
+  leaseStatus?: string; // active, pending_signature, no_active_lease, etc.
+  monthlyRent?: number; // Monthly rent amount
+  rentStatus?: string; // paid, overdue, pending, etc.
 }
 
 /**
@@ -379,6 +422,12 @@ export interface IBaseUserProfile {
 }
 
 /**
+ * ============================================================================
+ * DOCUMENT INTERFACES (Mongoose Extensions)
+ * ============================================================================
+ */
+
+/**
  * Main User Interface
  * Core authentication and account data
  */
@@ -392,23 +441,16 @@ export interface IUser {
 }
 
 /**
- * Identification Type Interface
- * User identification documents
+ * Signup Account Type Interface
+ * Extended account type for signup requests (includes plan selection)
  */
-export interface IIdentificationType {
-  idType: IdentificationDocumentType;
-  expiryDate: Date | string;
-  issueDate: Date | string;
-  issuingState: string;
-  authority: string;
-  idNumber: string;
+export interface ISignupAccountType extends IAccountType {
+  billingInterval: 'monthly' | 'annual';
+  totalMonthlyPrice?: number;
+  planLookUpKey?: string;
+  planName: string;
+  planId: string;
 }
-
-/**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
 
 /**
  * Base User Filter Options
@@ -435,6 +477,12 @@ export interface IExtendedPagination {
 }
 
 /**
+ * ============================================================================
+ * CURRENT USER & SESSION INTERFACES
+ * ============================================================================
+ */
+
+/**
  * User Statistics Interface
  * User statistics for filtered users response
  */
@@ -446,7 +494,7 @@ export interface IUserStats {
 
 /**
  * ============================================================================
- * CURRENT USER & SESSION INTERFACES
+ * DETAIL INFO INTERFACES (Role-Specific)
  * ============================================================================
  */
 
@@ -461,12 +509,6 @@ export interface IBasePagination {
   perPage: number;
   total: number;
 }
-
-/**
- * ============================================================================
- * DETAIL INFO INTERFACES (Role-Specific)
- * ============================================================================
- */
 
 /**
  * Extended Vendor Info Interface
@@ -487,6 +529,12 @@ export interface ILinkedVendorUser
 }
 
 /**
+ * ============================================================================
+ * RESPONSE INTERFACES
+ * ============================================================================
+ */
+
+/**
  * User Property Interface
  * Minimal property info for user context
  */
@@ -497,12 +545,6 @@ export interface IUserProperty {
   units: number;
   name: string;
 }
-
-/**
- * ============================================================================
- * RESPONSE INTERFACES
- * ============================================================================
- */
 
 /**
  * ID Type Union
@@ -525,16 +567,6 @@ export interface FilteredUserEmployeeInfo {
 }
 
 /**
- * Filtered User Tenant Info
- * Minimal tenant info for table display
- */
-export interface FilteredUserTenantInfo {
-  leaseStatus?: string;
-  rentStatus?: string;
-  unitNumber?: string;
-}
-
-/**
  * Vendor Team Members Response with Pagination
  */
 export interface IVendorTeamMembersResponse {
@@ -550,12 +582,11 @@ export interface IVendorTeamMembersResponse {
 
 /**
  * Account Type Interface
- * Subscription/plan information
+ * Basic account categorization (plan details stored in Subscription)
  */
 export interface IAccountType {
+  category: 'business' | 'individual';
   isEnterpriseAccount: boolean;
-  planName: string;
-  planId: string;
 }
 
 /**

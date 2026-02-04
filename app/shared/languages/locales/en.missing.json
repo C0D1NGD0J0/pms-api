@@ -66,7 +66,9 @@
   "lease": {
     "errors": {
       "validationFailed": "lease.errors.validationFailed",
-      "overlappingLease": "lease.errors.overlappingLease"
+      "overlappingLease": "lease.errors.overlappingLease",
+      "cannotCreateOwnLease": "Cannot create a lease for yourself as the tenant - conflict of interest",
+      "cannotUpdateOwnLease": "Cannot update your own lease information - conflict of interest"
     },
     "invalid_access": "lease.invalid_access",
     "retrieved_successfully": "lease.retrieved_successfully",

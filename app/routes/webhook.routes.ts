@@ -19,4 +19,16 @@ router.post(
   })
 );
 
+/**
+ * Stripe webhook endpoint
+ * POST /api/webhooks/stripe
+ */
+router.post(
+  '/stripe',
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<WebhookController>('webhookController');
+    return controller.handleStripeWebhook(req, res);
+  })
+);
+
 export default router;

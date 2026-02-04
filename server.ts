@@ -235,6 +235,7 @@ class Server {
         'propertyService',
         'redisService',
         'propertyUnitService',
+        'subscriptionService',
         'authService',
         'leaseService',
         'clientService',

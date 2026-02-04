@@ -230,4 +230,31 @@ export class AuthCache extends BaseCache {
       };
     }
   }
+
+  /**
+   * Invalidates cached current user data
+   * Used when subscription data changes to force fresh data fetch
+   */
+  async invalidateCurrentUser(userId: string): Promise<ISuccessReturnData> {
+    try {
+      if (!userId) {
+        return {
+          data: null,
+          success: false,
+          error: 'User ID is required',
+        };
+      }
+
+      const key = `${this.KEY_PREFIXES.USER}:${userId}`;
+      await this.deleteItems([key]);
+      return { data: null, success: true };
+    } catch (error) {
+      this.log.error('Failed to invalidate current user:', error);
+      return {
+        data: null,
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
 }

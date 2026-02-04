@@ -2,15 +2,22 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
+import { EventTypes } from '@interfaces/index';
 import { UserCache } from '@caching/user.cache';
-import { VendorService } from '@services/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
+import { EventEmitterService, VendorService } from '@services/index';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
-import { PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
+import { PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
-import { ISuccessReturnData, IRequestContext, IPaginateResult } from '@interfaces/utils.interface';
+import {
+  ISuccessReturnData,
+  PermissionResource,
+  PermissionAction,
+  IRequestContext,
+  IPaginateResult,
+} from '@interfaces/utils.interface';
 import {
   IUserPopulatedDocument,
   FilteredUserTableData,
@@ -27,41 +34,51 @@ import {
 
 interface IConstructor {
   permissionService: PermissionService;
+  emitterService: EventEmitterService;
   vendorService: VendorService;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   userCache: UserCache;
+  leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
 
 export class UserService {
   private readonly log: Logger;
-  private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
-  private readonly propertyDAO: PropertyDAO;
-  private readonly profileDAO: ProfileDAO;
+  private readonly clientDAO: ClientDAO;
   private readonly userCache: UserCache;
-  private readonly permissionService: PermissionService;
+  private readonly profileDAO: ProfileDAO;
+  private readonly propertyDAO: PropertyDAO;
+  private readonly leaseDAO: LeaseDAO;
   private readonly vendorService: VendorService;
+  private readonly emitterService: EventEmitterService;
+  private readonly permissionService: PermissionService;
 
   constructor({
-    clientDAO,
     userDAO,
-    propertyDAO,
-    profileDAO,
     userCache,
-    permissionService,
+    clientDAO,
+    profileDAO,
+    propertyDAO,
+    leaseDAO,
     vendorService,
+    emitterService,
+    permissionService,
   }: IConstructor) {
-    this.log = createLogger('UserService');
-    this.clientDAO = clientDAO;
     this.userDAO = userDAO;
-    this.propertyDAO = propertyDAO;
-    this.profileDAO = profileDAO;
+    this.leaseDAO = leaseDAO;
     this.userCache = userCache;
-    this.permissionService = permissionService;
+    this.clientDAO = clientDAO;
+    this.profileDAO = profileDAO;
+    this.propertyDAO = propertyDAO;
     this.vendorService = vendorService;
+    this.emitterService = emitterService;
+    this.log = createLogger('UserService');
+    this.permissionService = permissionService;
+
+    this.setupEventListeners();
   }
 
   private async fetchAndValidateUser(
@@ -89,7 +106,12 @@ export class UserService {
       profile: user.profile,
     };
 
-    if (!this.permissionService.canUserAccessUser(currentuser, targetUser)) {
+    const access = await this.permissionService.getResourceAccess(
+      currentuser,
+      PermissionResource.USER,
+      targetUser
+    );
+    if (!access.canRead) {
       throw new ForbiddenError({
         message: t('client.errors.insufficientPermissions', {
           action: 'view',
@@ -133,7 +155,6 @@ export class UserService {
     }
 
     const userDetail = await this.buildUserDetailData(user, clientConnection, clientId, client);
-
     await this.userCache.cacheUserDetail(clientId, uid, userDetail);
     this.log.info('User detail cached', { clientId, uid });
 
@@ -294,7 +315,6 @@ export class UserService {
 
           if (roles.includes(ROLES.TENANT as string)) {
             tableUserData.tenantInfo = {
-              unitNumber: user.profile?.tenantInfo?.unitNumber || undefined,
               leaseStatus: user.profile?.tenantInfo?.leaseStatus || undefined,
               rentStatus: user.profile?.tenantInfo?.rentStatus || undefined,
             };
@@ -1261,10 +1281,47 @@ export class UserService {
           const personalInfo = tenant.profile?.personalInfo || {};
           const tenantInfo = tenant.profile?.tenantInfo || {};
 
+          // Extract isConnected for this specific client
+          const clientConnection = tenant.cuids?.find((c: any) => c.cuid === cuid);
+          const isConnected = clientConnection?.isConnected ?? false;
+
+          // Fetch minimal active lease info for table display
+          const activeLeases = await this.leaseDAO.list({
+            cuid,
+            tenantId: tenant.user,
+            status: { $in: ['active', 'pending_signature'] },
+            deletedAt: null,
+          });
+
+          // Get the most recent active lease (if multiple exist)
+          const activeLease = activeLeases.items?.[0];
+
+          // Lightweight lease info for table display
+          let leaseInfo: any = {};
+
+          if (activeLease) {
+            // Extract address - handle both string and AddressDetails object
+            const address = activeLease.property?.address;
+            const propertyAddress = typeof address === 'string' ? address : address?.fullAddress;
+
+            leaseInfo = {
+              leaseStatus: activeLease.status,
+              propertyAddress,
+              monthlyRent: activeLease.fees?.monthlyRent,
+              rentStatus: 'paid', // TODO: Integrate with payment tracking when available
+            };
+          } else {
+            leaseInfo = {
+              leaseStatus: 'no_active_lease',
+            };
+          }
+
           return {
             id: tenant.user,
+            uid: tenant.uid, // Include UID as requested
             email: tenant.email,
             isActive: tenant.isActive,
+            isConnected, // Connection status for this client
             fullName: `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim(),
             displayName:
               personalInfo.displayName ||
@@ -1273,7 +1330,7 @@ export class UserService {
             phoneNumber: personalInfo.phoneNumber,
             avatar: personalInfo.avatar,
             tenantInfo: {
-              activeLease: tenantInfo.activeLease,
+              ...leaseInfo, // Minimal lease info for table
               employerInfo: tenantInfo.employerInfo,
               rentalReferences: tenantInfo.rentalReferences,
               pets: tenantInfo.pets,
@@ -1567,7 +1624,13 @@ export class UserService {
       }
 
       // Check permissions
-      if (!this.permissionService.canUserAccessUser(currentUser, user as any)) {
+      const canAccess = await this.permissionService.canAccessResource(
+        currentUser,
+        PermissionResource.USER,
+        PermissionAction.READ,
+        user
+      );
+      if (!canAccess) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
             action: 'update',
@@ -1676,7 +1739,13 @@ export class UserService {
       }
 
       // Check permissions
-      if (!this.permissionService.canUserAccessUser(currentUser, user as any)) {
+      const canAccess = await this.permissionService.canAccessResource(
+        currentUser,
+        PermissionResource.USER,
+        PermissionAction.READ,
+        user
+      );
+      if (!canAccess) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
             action: 'delete',
@@ -1692,6 +1761,22 @@ export class UserService {
         });
       }
 
+      // Prevent deleting account owner
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: t('client.errors.clientNotFound') });
+      }
+
+      if (client.accountAdmin.toString() === user._id.toString()) {
+        throw new BadRequestError({
+          message: t('client.errors.cannotDeleteAccountOwner'),
+          details: {
+            isAccountOwner: true,
+            suggestedActions: ['transfer_ownership', 'close_account'],
+          },
+        } as any);
+      }
+
       const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
       if (!clientConnection) {
         throw new NotFoundError({ message: t('client.errors.userNotFoundInClient') });
@@ -1705,7 +1790,33 @@ export class UserService {
         actions: [],
       };
 
-      // 1. Handle Property Management Reassignment
+      // Check for active leases if user is a tenant
+      if (roles.includes('tenant')) {
+        this.log.info('Checking for active leases before archiving tenant', { uid, cuid });
+
+        const now = new Date();
+        const activeLeasesResult = await this.leaseDAO.list({
+          tenantId: user._id,
+          cuid: cuid,
+          deletedAt: null,
+          endDate: { $gte: now },
+        });
+
+        const activeLeases = activeLeasesResult.items || [];
+
+        if (activeLeases.length > 0) {
+          this.log.warn('Cannot archive tenant with active leases', {
+            uid,
+            cuid,
+            activeLeaseCount: activeLeases.length,
+          });
+
+          throw new BadRequestError({
+            message: `Cannot archive tenant. This user has ${activeLeases.length} active lease(s). Please terminate the lease(s) before archiving.`,
+          });
+        }
+      }
+
       const managedProperties = await this.propertyDAO.getPropertiesByClientId(
         cuid,
         { managedBy: user._id.toString(), deletedAt: null },
@@ -1755,7 +1866,6 @@ export class UserService {
         }
       }
 
-      // 2. Handle Primary Vendor Account Cleanup
       if (roles.includes(IUserRole.VENDOR as string) && !clientConnection.linkedVendorUid) {
         // This is a primary vendor - need to archive linked accounts
         try {
@@ -1772,14 +1882,9 @@ export class UserService {
                 linkedAccountCount: linkedUsers.items.length,
               });
 
-              // Archive all linked vendor accounts
+              // Disconnect all linked vendor accounts (soft delete - preserve data)
               for (const linkedUser of linkedUsers.items) {
-                await this.userDAO.updateById(linkedUser._id.toString(), {
-                  deletedAt: new Date(),
-                  isActive: false,
-                });
-
-                // Disconnect from client
+                // Only disconnect - no hard delete for compliance/audit
                 await this.userDAO.updateById(
                   linkedUser._id.toString(),
                   {
@@ -1816,13 +1921,42 @@ export class UserService {
         }
       }
 
-      // 3. Soft delete the user
-      await this.userDAO.updateById(user._id.toString(), {
-        deletedAt: new Date(),
-        isActive: false,
-      });
+      // Check if user belongs to multiple clients
+      const activeConnections = user.cuids?.filter((c: any) => c.isConnected) || [];
+      const isMultiTenantUser = activeConnections.length > 1;
 
-      // 4. Disconnect user from this client
+      if (isMultiTenantUser) {
+        this.log.info('User belongs to multiple clients, performing soft disconnect only', {
+          uid,
+          cuid,
+          totalClients: activeConnections.length,
+          otherClients: activeConnections
+            .filter((c: any) => c.cuid !== cuid)
+            .map((c: any) => c.cuid),
+        });
+
+        archivalSummary.actions.push({
+          action: 'multi_tenant_soft_disconnect',
+          message: `User disconnected from this client but remains active in ${activeConnections.length - 1} other client(s)`,
+        });
+
+        // Don't set global deletedAt or isActive flags
+        // Only disconnect from THIS client
+      } else {
+        this.log.info('User belongs to single client, performing disconnect', {
+          uid,
+          cuid,
+        });
+
+        // No global deletion - preserve data for compliance/audit
+        // The isConnected: false flag below is sufficient to block access
+        archivalSummary.actions.push({
+          action: 'single_client_disconnect',
+          message: 'User disconnected from their only client (data preserved for audit)',
+        });
+      }
+
+      // Disconnect from THIS client (happens for both multi-tenant and single-tenant)
       await this.userDAO.updateById(
         user._id.toString(),
         {
@@ -1833,16 +1967,24 @@ export class UserService {
         } as any
       );
 
-      // 5. Invalidate caches
       await this.userCache.invalidateUserDetail(cuid, uid);
       await this.userCache.invalidateUserLists(cuid);
 
-      this.log.info('User archived successfully', {
+      // Emit event for subscription seat tracking (employee roles only)
+      const EMPLOYEE_ROLES = ['super-admin', 'admin', 'manager', 'staff'];
+      const isEmployee = roles.some((role) => EMPLOYEE_ROLES.includes(role));
+
+      this.emitterService.emit(EventTypes.USER_ARCHIVED, {
+        userId: user._id.toString(),
         cuid,
-        uid,
+        roles,
         archivedBy: currentUser.uid,
-        summary: archivalSummary,
+        createdAt: new Date(),
       });
+
+      if (isEmployee) {
+        this.log.info('USER_ARCHIVED event emitted for seat tracking', { uid, cuid, roles });
+      }
 
       return {
         success: true,
@@ -1910,7 +2052,13 @@ export class UserService {
         });
       }
 
-      if (!this.permissionService.canUserAccessUser(context.currentuser, user as any)) {
+      const canAccess = await this.permissionService.canAccessResource(
+        context.currentuser,
+        PermissionResource.USER,
+        PermissionAction.READ,
+        user
+      );
+      if (!canAccess) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
             action: 'deactivate',
@@ -1992,5 +2140,9 @@ export class UserService {
       });
       throw error;
     }
+  }
+
+  private setupEventListeners(): void {
+    // Reserved for future event listeners
   }
 }

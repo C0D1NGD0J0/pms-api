@@ -20,7 +20,7 @@ export const ManageSeatsSchema = z.object({
     .refine((val) => val !== 0, {
       message: 'Seat delta must be non-zero (positive to purchase, negative to remove)',
     })
-    .refine((val) => val >= -1000 && val <= 1000, {
-      message: 'Seat delta must be between -1000 and 1000',
+    .refine((val) => Math.abs(val) <= 40, {
+      message: 'Seat delta must be between -40 and 40',
     }),
 });

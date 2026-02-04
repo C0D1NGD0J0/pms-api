@@ -101,11 +101,10 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     companyInfo: Partial<ICompanyProfile>
   ): Promise<IClientDocument | null> {
     try {
-      // Create an update object that only updates the specified fields
       const updateObj: Record<string, any> = {};
 
       for (const [key, value] of Object.entries(companyInfo)) {
-        updateObj[`companyInfo.${key}`] = value;
+        updateObj[`companyProfile.${key}`] = value;
       }
 
       return await this.updateById(clientId, { $set: updateObj });
@@ -123,7 +122,6 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     settings: Partial<IClientSettings>
   ): Promise<IClientDocument | null> {
     try {
-      // Create an update object with only the specified settings fields
       const updateObj: Record<string, any> = {};
 
       for (const [key, value] of Object.entries(settings)) {
@@ -194,7 +192,6 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     opts?: IFindOptions
   ): ListResultWithPagination<IClientDocument[]> {
     try {
-      // Create a search filter that looks for the term in various fields
       const filter = {
         $or: [
           { cuid: { $regex: searchTerm, $options: 'i' } },
@@ -233,10 +230,8 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
       let rolesToQuery: string[];
       if (role) {
         const rolesArray = Array.isArray(role) ? role : [role];
-        // Only include employee roles from the filter
         rolesToQuery = rolesArray.filter((r) => employeeRoles.includes(r));
         if (rolesToQuery.length === 0) {
-          // No employee roles in filter, return empty stats
           return {
             totalFilteredUsers: 0,
             roleDistribution: [],
@@ -255,14 +250,11 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
         ...(status && { isActive: status === 'active' }),
       };
 
-      // Get total count and role distribution in a single aggregation
       const statsQuery = [
         { $match: baseQuery },
         {
           $facet: {
-            // Get total count
             total: [{ $count: 'count' }],
-            // Get role distribution
             roleStats: [
               { $unwind: '$cuids' },
               {
@@ -289,17 +281,13 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
       ];
 
       const [statsResult] = await this.userModel.aggregate(statsQuery).exec();
-
-      // Extract total count
       const totalEmployees = statsResult.total[0]?.count || 0;
 
-      // Map role counts
       const roleCountMap: Record<string, number> = {};
       statsResult.roleStats.forEach((stat: any) => {
         roleCountMap[stat._id] = stat.count;
       });
 
-      // Simple aggregation for department distribution
       const departmentPipeline: PipelineStage[] = [
         { $match: baseQuery },
         {
@@ -313,7 +301,6 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
         { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
       ];
 
-      // Add department filter if specified
       if (department) {
         departmentPipeline.push({
           $match: { 'profile.employeeInfo.department': department },
@@ -328,8 +315,6 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
       });
 
       const departmentStats = await this.userModel.aggregate(departmentPipeline).exec();
-
-      // Format role distribution based on actual roles queried
       const roleDistribution = rolesToQuery
         .map((roleName) => ({
           name: roleName.charAt(0).toUpperCase() + roleName.slice(1),

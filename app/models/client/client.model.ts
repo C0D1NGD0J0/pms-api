@@ -33,7 +33,6 @@ const ClientSchema = new Schema<IClientDocument>(
           if (this.isNew) return false;
           return this.isModified('identification.idType');
         },
-        // Field level encryption could be added here
       },
       issueDate: {
         type: Date,

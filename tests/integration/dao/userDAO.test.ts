@@ -92,6 +92,7 @@ describe('UserDAO Integration Tests', () => {
         firstName: 'Unique',
         lastName: 'Test',
         password: 'hashed',
+        isActive: true,
         activecuid: 'CLIENT_1',
         cuids: [],
       });

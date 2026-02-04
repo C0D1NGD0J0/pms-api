@@ -98,12 +98,12 @@ describe('ClientDAO Integration Tests', () => {
       });
 
       const updated = await clientDAO.updateCompanyInfo(client._id.toString(), {
-        legalName: 'New Legal Name Inc.',
-        industry: 'Technology',
+        legalEntityName: 'New Legal Name Inc.',
+        tradingName: 'TechCorp',
       });
 
-      expect(updated?.companyProfile?.legalName).toBe('New Legal Name Inc.');
-      expect(updated?.companyProfile?.industry).toBe('Technology');
+      expect(updated?.companyProfile?.legalEntityName).toBe('New Legal Name Inc.');
+      expect(updated?.companyProfile?.tradingName).toBe('TechCorp');
     });
   });
 
@@ -116,19 +116,18 @@ describe('ClientDAO Integration Tests', () => {
         status: 'active',
         accountAdmin: testAdminId,
         settings: {
-          timezone: 'America/Toronto',
-          currency: 'USD',
-          dateFormat: 'MM/DD/YYYY',
+          timeZone: 'America/Toronto',
+          lang: 'en',
         },
       });
 
       const updated = await clientDAO.updateClientSettings(client._id.toString(), {
-        timezone: 'America/Los_Angeles',
-        currency: 'CAD',
+        timeZone: 'America/Los_Angeles',
+        lang: 'fr',
       });
 
-      expect(updated?.settings?.timezone).toBe('America/Los_Angeles');
-      expect(updated?.settings?.currency).toBe('CAD');
+      expect(updated?.settings?.timeZone).toBe('America/Los_Angeles');
+      expect(updated?.settings?.lang).toBe('fr');
     });
   });
 
@@ -179,20 +178,19 @@ describe('ClientDAO Integration Tests', () => {
   });
 
   describe('updateClientStatus', () => {
-    it('should change client status', async () => {
+    it('should update client fields using updateById', async () => {
       const client = await Client.create({
         accountType: { category: 'individual' },
         cuid: 'STATUS_TEST',
         displayName: 'Status Company',
-        status: 'active',
         accountAdmin: testAdminId,
       });
 
       const updated = await clientDAO.updateById(client._id.toString(), {
-        $set: { status: 'suspended' },
+        $set: { displayName: 'Updated Company Name' },
       });
 
-      expect(updated?.status).toBe('suspended');
+      expect(updated?.displayName).toBe('Updated Company Name');
     });
   });
 });

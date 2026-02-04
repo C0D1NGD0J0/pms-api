@@ -249,7 +249,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property ID, upload data, and user ID are required');
       }
 
-      const property = await this.findFirst({ uid: propertyUid });
+      const property = await this.findFirst({ pid: propertyUid });
       if (!property) {
         throw new Error('Property not found');
       }
@@ -586,31 +586,26 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
    * @returns A promise that resolves to true if successful
    */
   async archiveProperty(propertyId: string, userId: string): Promise<boolean> {
-    try {
-      if (!propertyId || !userId) {
-        throw new Error('Property ID and user ID are required');
-      }
-
-      const archiveCheck = await this.canArchiveProperty(propertyId);
-      if (!archiveCheck.canArchive) {
-        throw new Error(
-          `Cannot archive property with ${archiveCheck.activeUnitCount} active units (${archiveCheck.occupiedUnitCount} occupied)`
-        );
-      }
-
-      const updateOperation = {
-        $set: {
-          deletedAt: new Date(),
-          lastModifiedBy: new Types.ObjectId(userId),
-        },
-      };
-
-      const result = await this.updateById(propertyId, updateOperation);
-      return !!result;
-    } catch (error) {
-      this.logger.error('Error in archiveProperty:', error);
-      throw this.throwErrorHandler(error);
+    if (!propertyId || !userId) {
+      throw new Error('Property ID and user ID are required');
     }
+
+    const archiveCheck = await this.canArchiveProperty(propertyId);
+    if (!archiveCheck.canArchive) {
+      throw new Error(
+        `Cannot archive property with ${archiveCheck.activeUnitCount} active units (${archiveCheck.occupiedUnitCount} occupied)`
+      );
+    }
+
+    const updateOperation = {
+      $set: {
+        deletedAt: new Date(),
+        lastModifiedBy: new Types.ObjectId(userId),
+      },
+    };
+
+    const result = await this.updateById(propertyId, updateOperation);
+    return !!result;
   }
 
   /**
@@ -951,12 +946,8 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         { $match: filter },
         {
           $addFields: {
-            images: {
-              $filter: {
-                input: { $ifNull: ['$images', []] },
-                cond: { $ne: ['$$this.status', 'deleted'] },
-              },
-            },
+            // Images don't have a status field in the schema, so we don't filter them
+            // Only documents have a status field
             documents: {
               $filter: {
                 input: { $ifNull: ['$documents', []] },

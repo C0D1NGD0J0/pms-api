@@ -1,11 +1,18 @@
+import dayjs from 'dayjs';
 import Stripe from 'stripe';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import {
+  ICreateConnectAccountInput,
+  IFinalizeInvoiceResponse,
+  IConnectAccountResponse,
+  IOnboardingLinkResponse,
+  ICreateInvoiceResponse,
   ICreateCheckoutInput,
   ICreateCustomerInput,
+  ICreateInvoiceInput,
   IPaymentProvider,
   IPaymentCustomer,
   ICheckoutSession,
@@ -382,6 +389,215 @@ export class StripeService implements IPaymentProvider {
       };
     } catch (error) {
       this.log.error({ error, email: data.email }, 'Error creating Stripe customer');
+      throw error;
+    }
+  }
+
+  async createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse> {
+    try {
+      const { email, country, businessType, businessProfile, metadata } = input;
+
+      const account = await this.stripe.accounts.create({
+        type: 'express',
+        country,
+        email,
+        business_type: businessType,
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
+        controller: {
+          fees: {
+            payer: 'application',
+          },
+          losses: {
+            payments: 'application',
+          },
+          stripe_dashboard: {
+            type: 'express',
+          },
+        },
+        ...(businessProfile && {
+          business_profile: {
+            name: businessProfile.companyName,
+            url: businessProfile.url,
+            support_email: businessProfile.email,
+            support_phone: businessProfile.phone,
+            product_description:
+              businessProfile.productDescription || 'Property management and rent collection',
+          },
+        }),
+        settings: {
+          payouts: {
+            schedule: {
+              interval: 'weekly',
+            },
+          },
+          branding: {
+            icon: metadata?.platformLogoUrl,
+            primary_color: metadata?.brandColor,
+          },
+        },
+        metadata,
+      });
+
+      return {
+        accountId: account.id,
+        email: account.email!,
+        country: account.country!,
+        currency: account.default_currency!,
+        chargesEnabled: account.charges_enabled,
+        payoutsEnabled: account.payouts_enabled,
+        detailsSubmitted: account.details_submitted,
+      };
+    } catch (error) {
+      this.log.error({ error, input }, 'Error creating Stripe Connect account');
+      throw error;
+    }
+  }
+
+  async createKycOnboardingLink(params: {
+    accountId: string;
+    refreshUrl: string;
+    returnUrl: string;
+  }): Promise<IOnboardingLinkResponse> {
+    try {
+      const accountLink = await this.stripe.accountLinks.create({
+        account: params.accountId,
+        refresh_url: params.refreshUrl,
+        return_url: params.returnUrl,
+        type: 'account_onboarding',
+      });
+
+      return { url: accountLink.url };
+    } catch (error) {
+      this.log.error({ error, params }, 'Error creating onboarding link');
+      throw error;
+    }
+  }
+
+  async createDashboardLoginLink(accountId: string): Promise<IOnboardingLinkResponse> {
+    try {
+      const loginLink = await this.stripe.accounts.createLoginLink(accountId);
+
+      return { url: loginLink.url };
+    } catch (error) {
+      this.log.error({ error, accountId }, 'Error creating login link');
+      throw error;
+    }
+  }
+
+  async createInvoice(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse> {
+    try {
+      const {
+        tenantCustomerId,
+        connectedAccountId,
+        applicationFeeAmount,
+        currency,
+        description,
+        autoChargeDueDate,
+        lineItems,
+        cuid,
+        leaseUid,
+      } = input;
+
+      // days until rent due
+      const daysUntilDue = Math.ceil(dayjs(autoChargeDueDate).diff(dayjs(), 'day', true));
+
+      // create invoice with direct-charge so PM company handles disputes, platform gets automatic fee
+      const invoice = await this.stripe.invoices.create(
+        {
+          customer: tenantCustomerId,
+          auto_advance: true,
+          collection_method: 'charge_automatically',
+          days_until_due: daysUntilDue > 0 ? daysUntilDue : 0,
+          description,
+          metadata: {
+            cuid,
+            leaseUid,
+          },
+          application_fee_amount: applicationFeeAmount,
+        },
+        {
+          stripeAccount: connectedAccountId,
+        }
+      );
+
+      const itemResults = await Promise.allSettled(
+        lineItems.map((item) =>
+          this.stripe.invoiceItems.create(
+            {
+              customer: tenantCustomerId,
+              invoice: invoice.id,
+              amount: item.amount,
+              quantity: item.quantity || 1,
+              currency,
+              description: item.description,
+            },
+            {
+              stripeAccount: connectedAccountId,
+            }
+          )
+        )
+      );
+
+      const failedItems = itemResults.filter((result) => result.status === 'rejected');
+      const successfulItems = itemResults.filter((result) => result.status === 'fulfilled');
+
+      if (failedItems.length > 0) {
+        this.log.error(
+          {
+            invoiceId: invoice.id,
+            failedCount: failedItems.length,
+            successfulCount: successfulItems.length,
+            failures: failedItems.map((r, i) => ({
+              item: lineItems[i],
+              error: r.status === 'rejected' ? r.reason : null,
+            })),
+          },
+          'Some invoice items failed to create'
+        );
+
+        throw new Error(
+          `Failed to add ${failedItems.length} of ${lineItems.length} invoice items. Invoice ${invoice.id} created but incomplete.`
+        );
+      }
+
+      return {
+        invoiceId: invoice.id,
+        amountDue: invoice.amount_due,
+        status: invoice.status || 'open',
+        hostedInvoiceUrl: invoice.hosted_invoice_url || undefined,
+        dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : undefined,
+      };
+    } catch (error) {
+      this.log.error({ error, input }, 'Error creating invoice');
+      throw error;
+    }
+  }
+
+  async finalizeInvoice(
+    invoiceId: string,
+    connectedAccountId: string
+  ): Promise<IFinalizeInvoiceResponse> {
+    try {
+      const invoice = await this.stripe.invoices.finalizeInvoice(
+        invoiceId,
+        {
+          auto_advance: true,
+        },
+        {
+          stripeAccount: connectedAccountId,
+        }
+      );
+
+      return {
+        invoiceId: invoice.id,
+        status: invoice.status!,
+        hostedInvoiceUrl: invoice.hosted_invoice_url || undefined,
+      };
+    } catch (error) {
+      this.log.error({ error, invoiceId }, 'Error finalizing invoice');
       throw error;
     }
   }

@@ -19,26 +19,74 @@ export interface IPaymentProvider {
     cancelUrl: string;
     metadata?: Record<string, string>;
   }): Promise<ICheckoutSession>;
+  createKycOnboardingLink?(params: {
+    accountId: string;
+    refreshUrl: string;
+    returnUrl: string;
+  }): Promise<IOnboardingLinkResponse>;
   createCustomer(data: {
     email: string;
     metadata?: Record<string, string>;
   }): Promise<IPaymentCustomer>;
+  finalizeInvoice?(
+    invoiceId: string,
+    connectedAccountId: string
+  ): Promise<IFinalizeInvoiceResponse>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
   updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
+  createConnectAccount?(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse>;
   getCustomerInvoices(customerId: string, limit?: number): Promise<Stripe.Invoice[]>;
+  createDashboardLoginLink?(accountId: string): Promise<IOnboardingLinkResponse>;
+  createInvoice?(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse>;
   cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
+  getInvoice?(invoiceId: string, connectedAccountId: string): Promise<any>;
   getSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
   getCustomer(customerId: string): Promise<Stripe.Customer>;
   getCharge(chargeId: string): Promise<Stripe.Charge>;
+  getConnectAccount?(accountId: string): Promise<any>;
   getProducts(): Promise<Stripe.Product[]>;
 }
 
-export interface ICheckoutSession {
-  provider: IPaymentGatewayProvider;
+export interface ICreateInvoiceInput {
+  lineItems: Array<{
+    description: string;
+    amount: number; // in cents
+    quantity?: number;
+  }>;
+  applicationFeeAmount: number; // in cents
+  connectedAccountId: string;
+  tenantCustomerId: string;
+  autoChargeDueDate: Date;
+  description: string;
+  currency: string;
+  leaseUid: string;
+  cuid: string;
+}
+
+export interface ICreateConnectAccountInput {
+  businessProfile?: {
+    companyName: string;
+    email: string;
+    phone?: string;
+    address?: string;
+    url?: string;
+    productDescription?: string;
+  };
+  businessType: 'individual' | 'company';
   metadata?: Record<string, string>;
-  redirectUrl: string; // redirect URL for payment
-  customerId: string;
-  sessionId: string;
+  country: string;
+  email: string;
+  cuid: string;
+}
+
+export interface IConnectAccountResponse {
+  detailsSubmitted: boolean;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  accountId: string;
+  currency: string;
+  country: string;
+  email: string;
 }
 
 export interface ICreateCheckoutInput {
@@ -48,6 +96,21 @@ export interface ICreateCheckoutInput {
   successUrl: string;
   cancelUrl: string;
   priceId: string;
+}
+
+export interface ICreateInvoiceResponse {
+  status: 'draft' | 'open' | 'paid' | 'uncollectible' | 'void';
+  hostedInvoiceUrl?: string;
+  invoiceId: string;
+  amountDue: number;
+  dueDate?: Date;
+}
+export interface ICheckoutSession {
+  provider: IPaymentGatewayProvider;
+  metadata?: Record<string, string>;
+  redirectUrl: string;
+  customerId: string;
+  sessionId: string;
 }
 
 export interface IPaymentCustomer {
@@ -63,4 +126,14 @@ export interface ICreateCustomerInput {
   provider: IPaymentGatewayProvider;
   email: string;
   name?: string;
+}
+
+export interface IFinalizeInvoiceResponse {
+  hostedInvoiceUrl?: string;
+  invoiceId: string;
+  status: string;
+}
+
+export interface IOnboardingLinkResponse {
+  url: string;
 }

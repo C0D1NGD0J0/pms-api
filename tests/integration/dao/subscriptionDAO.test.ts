@@ -36,7 +36,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       startDate: new Date(),
       billingInterval: 'monthly',
       totalMonthlyPrice: 0,
-      paymentGateway: {
+      billing: {
         provider: 'none',
         customerId: 'none',
         planId: 'none',
@@ -194,9 +194,9 @@ describe('SubscriptionDAO - updateResourceCount', () => {
 
       const result = await subscriptionDAO.updatePaymentGateway(subscription!._id, newGateway);
 
-      expect(result?.paymentGateway.provider).toBe('stripe');
-      expect(result?.paymentGateway.customerId).toBe('cus_test123');
-      expect(result?.paymentGateway.seatItemId).toBe('si_test456');
+      expect(result?.billing.provider).toBe('stripe');
+      expect(result?.billing.customerId).toBe('cus_test123');
+      expect(result?.billing.seatItemId).toBe('si_test456');
     });
   });
 

@@ -6,7 +6,7 @@ import { Subscription } from '@models/index';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { EventEmitterService } from '@services/eventEmitter';
-import { PaymentGatewayService } from '@services/paymentGateway';
+import { PaymentGatewayService } from '@services/billing';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { ISubscriptionStatus } from '@interfaces/subscription.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
@@ -83,7 +83,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
       userDAO: mockUserDAO,
       authCache: mockAuthCache,
       stripeService: mockStripeService,
-      paymentGatewayService: mockPaymentGatewayService,
+      billingService: mockPaymentGatewayService,
       emitterService: mockEmitterService,
       sseService: mockSSEService,
     });
@@ -96,7 +96,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         cuid: 'client123',
         planName: 'growth',
         status: ISubscriptionStatus.PENDING_PAYMENT,
-        paymentGateway: {
+        billing: {
           customerId: 'cus_test123',
         },
       };
@@ -105,7 +105,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           customerId: 'cus_test123',
           subscriberId: 'sub_test123',
         },
@@ -124,15 +124,15 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
       expect(result.success).toBe(true);
       expect(mockSubscriptionDAO.findFirst).toHaveBeenCalledWith({
-        'paymentGateway.customerId': 'cus_test123',
+        'billing.customerId': 'cus_test123',
       });
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
         {
           $set: {
             status: ISubscriptionStatus.ACTIVE,
-            'paymentGateway.customerId': 'cus_test123',
-            'paymentGateway.subscriberId': 'sub_test123',
+            'billing.customerId': 'cus_test123',
+            'billing.subscriberId': 'sub_test123',
             pendingDowngradeAt: null,
             startDate: new Date(1700000000 * 1000),
             endDate: new Date(1702592000 * 1000),
@@ -177,7 +177,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         cuid: 'client123',
         planName: 'growth',
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_test123',
           customerId: 'cus_test123',
         },
@@ -198,7 +198,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
       expect(result.success).toBe(true);
       expect(mockSubscriptionDAO.findFirst).toHaveBeenCalledWith({
-        'paymentGateway.subscriberId': 'sub_test123',
+        'billing.subscriberId': 'sub_test123',
       });
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
@@ -240,7 +240,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
     it('should throw error if update fails', async () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
-        paymentGateway: { subscriberId: 'sub_test123' },
+        billing: { subscriberId: 'sub_test123' },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -263,7 +263,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         cuid: 'client123',
         planName: 'growth',
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_test123',
           customerId: 'cus_test123',
         },
@@ -283,7 +283,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
       expect(result.success).toBe(true);
       expect(mockSubscriptionDAO.findFirst).toHaveBeenCalledWith({
-        'paymentGateway.subscriberId': 'sub_test123',
+        'billing.subscriberId': 'sub_test123',
       });
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
@@ -331,7 +331,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         additionalSeatsCount: 0,
         additionalSeatsCost: 0,
         totalMonthlyPrice: 29,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_test123',
         },
       };
@@ -383,7 +383,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
     it('should update subscription status to inactive when canceled', async () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
-        paymentGateway: { subscriberId: 'sub_test123' },
+        billing: { subscriberId: 'sub_test123' },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -411,7 +411,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
     it('should update billing period end date', async () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
-        paymentGateway: { subscriberId: 'sub_test123' },
+        billing: { subscriberId: 'sub_test123' },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -444,7 +444,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         additionalSeatsCount: 0,
         additionalSeatsCost: 0,
         totalMonthlyPrice: 768,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_test123',
         },
       };
@@ -477,7 +477,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         additionalSeatsCount: 2,
         additionalSeatsCost: 10, // 2 seats * 500 cents / 100 = 10
         totalMonthlyPrice: 778, // 768 + 10
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_test123',
           seatItemId: 'si_seat123',
         },
@@ -502,7 +502,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
             additionalSeatsCount: 2,
             additionalSeatsCost: 10,
             totalMonthlyPrice: 778,
-            'paymentGateway.seatItemId': 'si_seat123',
+            'billing.seatItemId': 'si_seat123',
           }),
         })
       );
@@ -527,7 +527,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         additionalSeatsCount: 5,
         additionalSeatsCost: 25,
         totalMonthlyPrice: 54,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_test123',
           seatItemId: 'si_seat123',
         },
@@ -584,7 +584,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         cuid: 'client123',
         planName: 'growth',
         additionalSeatsCount: 0,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_test123',
         },
       };
@@ -632,7 +632,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         cuid: 'client123',
         planName: 'growth',
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_test123',
         },
       };
@@ -651,7 +651,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
       expect(result.success).toBe(true);
       expect(mockSubscriptionDAO.findFirst).toHaveBeenCalledWith({
-        'paymentGateway.subscriberId': 'sub_test123',
+        'billing.subscriberId': 'sub_test123',
       });
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
@@ -692,7 +692,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
     it('should throw error if update fails during cancellation', async () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
-        paymentGateway: { subscriberId: 'sub_test123' },
+        billing: { subscriberId: 'sub_test123' },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);

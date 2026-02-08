@@ -197,7 +197,7 @@ describe('SubscriptionService Integration Tests', () => {
         client: clientId,
         planName: 'essential',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'none',
           provider: 'none',
           planId: 'none',
@@ -230,7 +230,7 @@ describe('SubscriptionService Integration Tests', () => {
         client: clientId,
         planName: 'growth',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_stripe123',
           provider: 'stripe',
           planId: 'price_starter',
@@ -261,7 +261,7 @@ describe('SubscriptionService Integration Tests', () => {
         client: clientId,
         planName: 'growth',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_stripe456',
           provider: 'stripe',
           planId: 'price_starter',
@@ -298,7 +298,7 @@ describe('SubscriptionService Integration Tests', () => {
         client: new Types.ObjectId(),
         planName: 'growth',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'none',
           provider: 'none',
           planId: 'plan_starter',
@@ -325,7 +325,7 @@ describe('SubscriptionService Integration Tests', () => {
           client: new Types.ObjectId(),
           planName: 'growth',
           status: 'active',
-          paymentGateway: {
+          billing: {
             customerId: 'cus_123',
             provider: 'stripe',
             planId: 'price_growth',
@@ -349,7 +349,7 @@ describe('SubscriptionService Integration Tests', () => {
         client: new Types.ObjectId(),
         planName: 'essential',
         status: 'pending_payment',
-        paymentGateway: {
+        billing: {
           customerId: 'none',
           provider: 'stripe',
           planId: 'price_basic',
@@ -377,7 +377,7 @@ describe('SubscriptionService Integration Tests', () => {
         client: new Types.ObjectId(),
         planName: 'essential',
         status: 'pending_payment',
-        paymentGateway: {
+        billing: {
           customerId: 'none',
           provider: 'stripe',
           planId: 'price_annual_123',
@@ -407,7 +407,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'essential',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_123',
           provider: 'stripe',
           planId: 'price_basic',
@@ -446,7 +446,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'portfolio',
         status: 'pending_payment',
-        paymentGateway: {
+        billing: {
           customerId: '',
           provider: 'stripe',
           planId: 'price_professional',
@@ -481,7 +481,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'portfolio',
         status: 'pending_payment',
-        paymentGateway: {
+        billing: {
           customerId: '',
           provider: 'stripe',
           planId: 'price_professional',
@@ -515,7 +515,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'essential',
         status: 'pending_payment',
-        paymentGateway: {
+        billing: {
           customerId: '',
           provider: 'stripe',
           planId: 'price_basic',
@@ -550,7 +550,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'essential',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_expired',
           provider: 'stripe',
           planId: 'price_basic',
@@ -582,7 +582,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'growth',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'none',
           provider: 'none',
           planId: 'plan_starter',
@@ -615,7 +615,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'essential',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_usage',
           provider: 'stripe',
           planId: 'price_basic',
@@ -657,7 +657,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'essential',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_limits',
           provider: 'stripe',
           planId: 'price_basic',
@@ -695,7 +695,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'portfolio',
         status: 'pending_payment',
-        paymentGateway: {
+        billing: {
           customerId: '',
           provider: 'stripe',
           planId: 'price_professional_monthly',
@@ -746,7 +746,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'portfolio',
         status: 'pending_payment',
-        paymentGateway: {
+        billing: {
           customerId: '',
           provider: 'stripe',
           planId: 'price_professional_annual',
@@ -792,7 +792,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'portfolio',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_123',
           provider: 'stripe',
           planId: 'price_professional_monthly',
@@ -857,7 +857,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'growth',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_test123',
           provider: 'stripe',
           planId: 'price_growth_monthly',
@@ -913,7 +913,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'growth',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_test456',
           provider: 'stripe',
           planId: 'price_growth_monthly',
@@ -965,7 +965,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'growth',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_test789',
           provider: 'stripe',
           planId: 'price_growth_monthly',
@@ -1012,7 +1012,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'growth',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_test999',
           provider: 'stripe',
           planId: 'price_growth_monthly',
@@ -1060,7 +1060,7 @@ describe('SubscriptionService Integration Tests', () => {
         client,
         planName: 'growth',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_role',
           provider: 'stripe',
           planId: 'price_growth_monthly',

@@ -501,7 +501,7 @@ describe('ClientService Integration Tests - Read Operations', () => {
 
       // Verify sensitive fields are NOT present
       expect(subscription).not.toHaveProperty('client');
-      expect(subscription).not.toHaveProperty('paymentGateway');
+      expect(subscription).not.toHaveProperty('billing');
       expect(subscription).not.toHaveProperty('additionalSeatsCount');
       expect(subscription).not.toHaveProperty('additionalSeatsCost');
       expect(subscription).not.toHaveProperty('customPriceInCents');

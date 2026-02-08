@@ -6,8 +6,7 @@ import { Subscription } from '@models/index';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { EventEmitterService } from '@services/eventEmitter';
-import { PaymentGatewayService } from '@services/billing';
-import { StripeService } from '@services/external/stripe/stripe.service';
+import { PaymentGatewayService } from '@services/paymentGateway';
 import { ISubscriptionStatus } from '@interfaces/subscription.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 
@@ -23,7 +22,6 @@ describe('SubscriptionService - Webhook Handlers', () => {
   let mockClientDAO: jest.Mocked<ClientDAO>;
   let mockUserDAO: jest.Mocked<UserDAO>;
   let mockAuthCache: jest.Mocked<AuthCache>;
-  let mockStripeService: jest.Mocked<StripeService>;
   let mockPaymentGatewayService: jest.Mocked<PaymentGatewayService>;
   let mockEmitterService: jest.Mocked<EventEmitterService>;
   let mockSSEService: jest.Mocked<SSEService>;
@@ -69,8 +67,9 @@ describe('SubscriptionService - Webhook Handlers', () => {
       sendToUser: jest.fn().mockResolvedValue(true),
     } as any;
 
-    mockStripeService = {} as any;
-    mockPaymentGatewayService = {} as any;
+    mockPaymentGatewayService = {
+      getSubscriptionWithItems: jest.fn(),
+    } as any;
     mockEmitterService = {
       emit: jest.fn(),
       off: jest.fn(),
@@ -82,8 +81,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
       clientDAO: mockClientDAO,
       userDAO: mockUserDAO,
       authCache: mockAuthCache,
-      stripeService: mockStripeService,
-      billingService: mockPaymentGatewayService,
+      paymentGatewayService: mockPaymentGatewayService,
       emitterService: mockEmitterService,
       sseService: mockSSEService,
     });
@@ -475,8 +473,8 @@ describe('SubscriptionService - Webhook Handlers', () => {
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
         additionalSeatsCount: 2,
-        additionalSeatsCost: 10, // 2 seats * 500 cents / 100 = 10
-        totalMonthlyPrice: 778, // 768 + 10
+        additionalSeatsCost: 15.98, // 2 seats * 799 cents / 100 = 15.98
+        totalMonthlyPrice: 783.98, // 768 + 15.98
         billing: {
           subscriberId: 'sub_test123',
           seatItemId: 'si_seat123',
@@ -500,8 +498,8 @@ describe('SubscriptionService - Webhook Handlers', () => {
         expect.objectContaining({
           $set: expect.objectContaining({
             additionalSeatsCount: 2,
-            additionalSeatsCost: 10,
-            totalMonthlyPrice: 778,
+            additionalSeatsCost: 15.98,
+            totalMonthlyPrice: 783.98,
             'billing.seatItemId': 'si_seat123',
           }),
         })

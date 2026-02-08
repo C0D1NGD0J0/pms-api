@@ -88,7 +88,12 @@ describe('SubscriptionService Integration Tests', () => {
 
     subscriptionService = new SubscriptionService({
       subscriptionDAO,
-      stripeService: mockStripeService,
+      paymentGatewayService: mockStripeService,
+      emitterService: { on: jest.fn(), off: jest.fn(), emit: jest.fn() } as any,
+      sseService: { sendToUser: jest.fn() } as any,
+      clientDAO: {} as any,
+      authCache: { client: { DEL: jest.fn(), GET: jest.fn(), SETEX: jest.fn() }, invalidateCurrentUser: jest.fn() } as any,
+      userDAO: {} as any,
     });
   });
 

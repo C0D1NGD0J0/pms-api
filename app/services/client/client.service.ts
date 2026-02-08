@@ -378,10 +378,10 @@ export class ClientService {
             config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
           additionalSeatCost: subscription.additionalSeatsCost,
         },
-        paymentMethod: subscription.paymentGateway?.cardLast4
+        paymentMethod: subscription.billing?.cardLast4
           ? {
-              last4: subscription.paymentGateway.cardLast4,
-              brand: subscription.paymentGateway.cardBrand,
+              last4: subscription.billing.cardLast4,
+              brand: subscription.billing.cardBrand,
             }
           : null,
         billingHistory,

@@ -19,6 +19,7 @@
     "mediatype",
     "networkidle",
     "nuid",
+    "ppuid",
     "publicuid",
     "puid",
     "Reapproval",

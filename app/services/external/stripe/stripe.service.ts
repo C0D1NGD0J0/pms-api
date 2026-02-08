@@ -456,6 +456,26 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async getConnectAccount(accountId: string): Promise<Stripe.Account> {
+    try {
+      return await this.stripe.accounts.retrieve(accountId);
+    } catch (error) {
+      this.log.error({ error, accountId }, 'Error fetching Connect account');
+      throw error;
+    }
+  }
+
+  async getInvoice(invoiceId: string, connectedAccountId: string): Promise<Stripe.Invoice> {
+    try {
+      return await this.stripe.invoices.retrieve(invoiceId, {
+        stripeAccount: connectedAccountId, // specify connected account for direct charge
+      });
+    } catch (error) {
+      this.log.error({ error, invoiceId }, 'Error fetching invoice');
+      throw error;
+    }
+  }
+
   async createKycOnboardingLink(params: {
     accountId: string;
     refreshUrl: string;
@@ -492,7 +512,7 @@ export class StripeService implements IPaymentProvider {
       const {
         tenantCustomerId,
         connectedAccountId,
-        applicationFeeAmount,
+        applicationFeeAmountInCents: applicationFeeAmount,
         currency,
         description,
         autoChargeDueDate,
@@ -501,10 +521,7 @@ export class StripeService implements IPaymentProvider {
         leaseUid,
       } = input;
 
-      // days until rent due
       const daysUntilDue = Math.ceil(dayjs(autoChargeDueDate).diff(dayjs(), 'day', true));
-
-      // create invoice with direct-charge so PM company handles disputes, platform gets automatic fee
       const invoice = await this.stripe.invoices.create(
         {
           customer: tenantCustomerId,
@@ -529,7 +546,7 @@ export class StripeService implements IPaymentProvider {
             {
               customer: tenantCustomerId,
               invoice: invoice.id,
-              amount: item.amount,
+              amount: item.amountInCents,
               quantity: item.quantity || 1,
               currency,
               description: item.description,

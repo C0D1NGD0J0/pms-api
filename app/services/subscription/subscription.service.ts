@@ -271,7 +271,7 @@ export class SubscriptionService {
         endDate: undefined,
         billingInterval,
         entitlements: config.features,
-        paymentGateway: {
+        billing: {
           customerId: isPaidPlan ? '' : 'none', // will be handle via webhook after payment
           provider: isPaidPlan ? IPaymentGatewayProvider.STRIPE : IPaymentGatewayProvider.NONE,
           planId: planId || 'none',
@@ -327,7 +327,7 @@ export class SubscriptionService {
           customerName = client.displayName;
         }
 
-        let customerId = subscription.paymentGateway?.customerId;
+        let customerId = subscription.billing?.customerId;
         const hasValidCustomer = customerId && customerId !== 'none' && customerId !== '';
 
         if (!hasValidCustomer) {
@@ -354,9 +354,9 @@ export class SubscriptionService {
             { _id: subscription._id },
             {
               $set: {
-                'paymentGateway.customerId': customerId,
-                'paymentGateway.subscriberId': undefined,
-                'paymentGateway.planId': priceId,
+                'billing.customerId': customerId,
+                'billing.subscriberId': undefined,
+                'billing.planId': priceId,
               },
             },
             undefined,
@@ -415,17 +415,17 @@ export class SubscriptionService {
         }
 
         const isPaidSubscription =
-          subscription.paymentGateway?.subscriberId && subscription.planName !== 'essential';
+          subscription.billing?.subscriberId && subscription.planName !== 'essential';
 
         if (isPaidSubscription) {
           this.log.info(
-            { cuid, stripeSubscriptionId: subscription.paymentGateway.subscriberId },
+            { cuid, stripeSubscriptionId: subscription.billing.subscriberId },
             'Scheduling Stripe subscription cancellation at period end'
           );
 
           const cancelResult = await this.paymentGatewayService.cancelSubscription(
             IPaymentGatewayProvider.STRIPE,
-            subscription.paymentGateway.subscriberId!
+            subscription.billing.subscriberId!
           );
 
           if (!cancelResult.success) {
@@ -475,7 +475,7 @@ export class SubscriptionService {
       });
 
       // Notify account admin with appropriate message
-      const isPaid = result.paymentGateway?.subscriberId && result.planName !== 'essential';
+      const isPaid = result.billing?.subscriberId && result.planName !== 'essential';
       const message = isPaid
         ? `Your subscription will cancel at the end of your billing period (${result.endDate?.toLocaleDateString()}). You'll retain access until then.`
         : 'Your subscription has been canceled successfully';
@@ -669,13 +669,13 @@ export class SubscriptionService {
       }
 
       const subscription = await this.subscriptionDAO.findFirst({ cuid });
-      if (!subscription?.paymentGateway?.customerId || subscription.planName === 'essential') {
+      if (!subscription?.billing?.customerId || subscription.planName === 'essential') {
         return [];
       }
 
       const result = await this.paymentGatewayService.getInvoices(
         IPaymentGatewayProvider.STRIPE,
-        subscription.paymentGateway.customerId,
+        subscription.billing.customerId,
         12
       );
 
@@ -819,12 +819,9 @@ export class SubscriptionService {
         }
 
         // Stripe integration - Add, update, or delete subscription item
-        let seatItemId: string | undefined = subscription.paymentGateway?.seatItemId;
+        let seatItemId: string | undefined = subscription.billing?.seatItemId;
 
-        if (
-          subscription.paymentGateway?.subscriberId &&
-          subscription.paymentGateway.provider === 'stripe'
-        ) {
+        if (subscription.billing?.subscriberId && subscription.billing.provider === 'stripe') {
           try {
             // Choose correct lookup key based on subscription's billing interval
             const seatLookupKey =
@@ -872,11 +869,11 @@ export class SubscriptionService {
             // Get subscription with items to check if seat item exists
             const stripeSubResult = await this.paymentGatewayService.getSubscriptionWithItems(
               IPaymentGatewayProvider.STRIPE,
-              subscription.paymentGateway.subscriberId
+              subscription.billing.subscriberId
             );
 
             if (!stripeSubResult.success || !stripeSubResult.data) {
-              throw new Error('Failed to fetch Stripe subscription');
+              throw new InternalServerError({ message: 'Failed to fetch Stripe subscription' });
             }
 
             const stripeSubscription = stripeSubResult.data;
@@ -902,14 +899,15 @@ export class SubscriptionService {
                 );
 
                 if (!deleteResult.success) {
-                  throw new Error(deleteResult.message || 'Failed to delete seat item from Stripe');
+                  throw new BadRequestError({
+                    message: deleteResult.message || 'Failed to delete seat item from Stripe',
+                  });
                 }
 
                 this.log.info('Seat item deleted from Stripe successfully');
               }
               seatItemId = undefined;
             } else if (!seatItem) {
-              // First seat purchase - create new subscription item
               this.log.info(
                 { cuid, lookupKey: seatLookupKey, quantity: newAdditionalCount },
                 'Adding seat subscription item'
@@ -917,13 +915,15 @@ export class SubscriptionService {
 
               const addResult = await this.paymentGatewayService.addSubscriptionItem(
                 IPaymentGatewayProvider.STRIPE,
-                subscription.paymentGateway.subscriberId,
+                subscription.billing.subscriberId,
                 seatLookupKey,
                 newAdditionalCount
               );
 
               if (!addResult.success || !addResult.data) {
-                throw new Error(addResult.message || 'Failed to add seats to Stripe subscription');
+                throw new BadRequestError({
+                  message: addResult.message || 'Failed to add seats to Stripe subscription',
+                });
               }
 
               seatItemId = addResult.data.id;
@@ -932,7 +932,6 @@ export class SubscriptionService {
                 'Seat item created in Stripe'
               );
             } else {
-              // Update existing seat item quantity
               this.log.info(
                 {
                   itemId: seatItem.id,
@@ -949,7 +948,9 @@ export class SubscriptionService {
               );
 
               if (!updateResult.success) {
-                throw new Error(updateResult.message || 'Failed to update seat quantity in Stripe');
+                throw new BadRequestError({
+                  message: updateResult.message || 'Failed to update seat quantity in Stripe',
+                });
               }
 
               seatItemId = seatItem.id;
@@ -992,9 +993,9 @@ export class SubscriptionService {
 
         // Store or clear seat item ID
         if (seatItemId) {
-          updateFields.$set['paymentGateway.seatItemId'] = seatItemId;
+          updateFields.$set['billing.seatItemId'] = seatItemId;
         } else if (newAdditionalCount === 0) {
-          updateFields.$unset = { 'paymentGateway.seatItemId': '' };
+          updateFields.$unset = { 'billing.seatItemId': '' };
         }
 
         const updatedSubscription = await this.subscriptionDAO.update(
@@ -1069,7 +1070,7 @@ export class SubscriptionService {
       const isInitialPayment = subscription.status === ISubscriptionStatus.PENDING_PAYMENT;
       const isUpdate = subscription.status === ISubscriptionStatus.ACTIVE;
 
-      const priceId = checkoutData.priceId || subscription.paymentGateway.planId;
+      const priceId = checkoutData.priceId || subscription.billing.planId;
       if (!priceId) {
         throw new InternalServerError({ message: 'Plan pricing not configured' });
       }
@@ -1097,7 +1098,7 @@ export class SubscriptionService {
       }
 
       if (isUpdate) {
-        const stripeSubscriptionId = subscription.paymentGateway?.subscriberId;
+        const stripeSubscriptionId = subscription.billing?.subscriberId;
         if (!stripeSubscriptionId) {
           throw new BadRequestError({ message: 'No active Stripe subscription found' });
         }
@@ -1127,8 +1128,8 @@ export class SubscriptionService {
                 $set: {
                   billingInterval: checkoutData.billingInterval,
                   entitlements: planConfig.features,
-                  'paymentGateway.planId': priceId,
-                  'paymentGateway.planLookUpKey': checkoutData.lookUpKey,
+                  'billing.planId': priceId,
+                  'billing.planLookUpKey': checkoutData.lookUpKey,
                 },
               },
               undefined,
@@ -1210,7 +1211,7 @@ export class SubscriptionService {
         } = data;
 
         const subscription = await this.subscriptionDAO.findFirst({
-          'paymentGateway.customerId': stripeCustomerId,
+          'billing.customerId': stripeCustomerId,
         });
 
         if (!subscription) {
@@ -1223,10 +1224,10 @@ export class SubscriptionService {
           {
             $set: {
               status: ISubscriptionStatus.ACTIVE,
-              'paymentGateway.customerId': stripeCustomerId,
-              'paymentGateway.subscriberId': stripeSubscriptionId,
-              'paymentGateway.cardLast4': cardLast4,
-              'paymentGateway.cardBrand': cardBrand,
+              'billing.customerId': stripeCustomerId,
+              'billing.subscriberId': stripeSubscriptionId,
+              'billing.cardLast4': cardLast4,
+              'billing.cardBrand': cardBrand,
               pendingDowngradeAt: null,
               startDate: new Date(currentPeriodStart * 1000),
               endDate: new Date(currentPeriodEnd * 1000),
@@ -1279,7 +1280,7 @@ export class SubscriptionService {
         const { stripeSubscriptionId, currentPeriodStart, currentPeriodEnd } = data;
 
         const subscription = await this.subscriptionDAO.findFirst({
-          'paymentGateway.subscriberId': stripeSubscriptionId,
+          'billing.subscriberId': stripeSubscriptionId,
         });
 
         if (!subscription) {
@@ -1344,7 +1345,7 @@ export class SubscriptionService {
         const { stripeSubscriptionId, invoiceId, attemptCount } = data;
 
         const subscription = await this.subscriptionDAO.findFirst({
-          'paymentGateway.subscriberId': stripeSubscriptionId,
+          'billing.subscriberId': stripeSubscriptionId,
         });
 
         if (!subscription) {
@@ -1406,7 +1407,7 @@ export class SubscriptionService {
       const { stripeSubscriptionId, status, currentPeriodEnd } = data;
 
       const subscription = await this.subscriptionDAO.findFirst({
-        'paymentGateway.subscriberId': stripeSubscriptionId,
+        'billing.subscriberId': stripeSubscriptionId,
       });
 
       if (!subscription) {
@@ -1471,8 +1472,8 @@ export class SubscriptionService {
               updateData.totalMonthlyPrice = subscription.totalMonthlyPrice + priceDifference;
 
               // Store seat item ID if we don't have it
-              if (seatItem.id && !subscription.paymentGateway?.seatItemId) {
-                updateData['paymentGateway.seatItemId'] = seatItem.id;
+              if (seatItem.id && !subscription.billing?.seatItemId) {
+                updateData['billing.seatItemId'] = seatItem.id;
               }
             }
           } else if (subscription.additionalSeatsCount > 0) {
@@ -1561,7 +1562,7 @@ export class SubscriptionService {
         const { stripeSubscriptionId, canceledAt } = data;
 
         const subscription = await this.subscriptionDAO.findFirst({
-          'paymentGateway.subscriberId': stripeSubscriptionId,
+          'billing.subscriberId': stripeSubscriptionId,
         });
 
         if (!subscription) {

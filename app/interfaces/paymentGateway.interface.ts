@@ -19,7 +19,7 @@ export interface IPaymentProvider {
     cancelUrl: string;
     metadata?: Record<string, string>;
   }): Promise<ICheckoutSession>;
-  createKycOnboardingLink?(params: {
+  createKycOnboardingLink(params: {
     accountId: string;
     refreshUrl: string;
     returnUrl: string;
@@ -28,32 +28,29 @@ export interface IPaymentProvider {
     email: string;
     metadata?: Record<string, string>;
   }): Promise<IPaymentCustomer>;
-  finalizeInvoice?(
-    invoiceId: string,
-    connectedAccountId: string
-  ): Promise<IFinalizeInvoiceResponse>;
+  finalizeInvoice(invoiceId: string, connectedAccountId: string): Promise<IFinalizeInvoiceResponse>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
   updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
-  createConnectAccount?(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse>;
+  createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse>;
   getCustomerInvoices(customerId: string, limit?: number): Promise<Stripe.Invoice[]>;
-  createDashboardLoginLink?(accountId: string): Promise<IOnboardingLinkResponse>;
-  createInvoice?(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse>;
+  createDashboardLoginLink(accountId: string): Promise<IOnboardingLinkResponse>;
+  createInvoice(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse>;
   cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
-  getInvoice?(invoiceId: string, connectedAccountId: string): Promise<any>;
+  getInvoice(invoiceId: string, connectedAccountId: string): Promise<any>;
   getSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
   getCustomer(customerId: string): Promise<Stripe.Customer>;
   getCharge(chargeId: string): Promise<Stripe.Charge>;
-  getConnectAccount?(accountId: string): Promise<any>;
+  getConnectAccount(accountId: string): Promise<any>;
   getProducts(): Promise<Stripe.Product[]>;
 }
 
 export interface ICreateInvoiceInput {
   lineItems: Array<{
     description: string;
-    amount: number; // in cents
+    amountInCents: number;
     quantity?: number;
   }>;
-  applicationFeeAmount: number; // in cents
+  applicationFeeAmountInCents: number;
   connectedAccountId: string;
   tenantCustomerId: string;
   autoChargeDueDate: Date;

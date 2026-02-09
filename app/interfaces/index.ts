@@ -5,6 +5,7 @@ export * from './subscription.interface';
 export * from './esignature.interface';
 export * from './invitation.interface';
 export * from './unit-patterns.types';
+export * from './payments.interface';
 export * from './property.interface';
 export * from './profile.interface';
 export * from './service.interface';

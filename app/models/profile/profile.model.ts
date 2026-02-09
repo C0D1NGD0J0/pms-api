@@ -155,9 +155,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
         },
       },
     },
-
     puid: { type: String, required: true, index: true },
-
     vendorInfo: {
       type: {
         vendorId: {
@@ -183,15 +181,14 @@ const ProfileSchema = new Schema<IProfileDocument>(
         employeeId: { type: String, trim: true, sparse: true, select: false },
         reportsTo: {
           required: function (this: IProfileDocument) {
-            // Not required for vendor linked accounts
             if (this.vendorInfo?.isLinkedAccount) {
               return false;
             }
-            // Not required if employeeInfo doesn't exist or is being set
+            // not required if employeeInfo doesn't exist or is being set
             if (!this.employeeInfo || Object.keys(this.employeeInfo).length === 0) {
               return false;
             }
-            // Only required for actual employees (when employeeInfo is present and not a vendor)
+            // only required for actual employees (when employeeInfo is present and not a vendor)
             return !!(this.employeeInfo.department || this.employeeInfo.jobTitle);
           },
           type: Schema.Types.ObjectId,
@@ -203,7 +200,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
       },
       default: null,
     },
-
     tenantInfo: {
       type: {
         employerInfo: [
@@ -264,7 +260,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
       },
       default: null,
     },
-
     policies: {
       tos: {
         acceptedOn: { type: Date, default: null },

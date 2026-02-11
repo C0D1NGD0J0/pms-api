@@ -23,7 +23,31 @@ import {
   UserCache,
 } from '@caching/index';
 import {
+  PropertyMediaWorker,
+  PropertyUnitWorker,
+  InvitationWorker,
+  ESignatureWorker,
+  PropertyWorker,
+  UploadWorker,
+  EmailWorker,
+  CronWorker,
+  PdfWorker,
+} from '@workers/index';
+import {
+  PropertyMediaQueue,
+  PropertyUnitQueue,
+  InvitationQueue,
+  ESignatureQueue,
+  EventBusQueue,
+  PropertyQueue,
+  UploadQueue,
+  EmailQueue,
+  CronQueue,
+  PdfQueue,
+} from '@queues/index';
+import {
   NotificationModel,
+  PaymentProcessor,
   PaymentModel,
   PropertyUnit,
   Subscription,
@@ -37,17 +61,7 @@ import {
   User,
 } from '@models/index';
 import {
-  PropertyMediaWorker,
-  PropertyUnitWorker,
-  InvitationWorker,
-  ESignatureWorker,
-  PropertyWorker,
-  UploadWorker,
-  EmailWorker,
-  CronWorker,
-  PdfWorker,
-} from '@workers/index';
-import {
+  PaymentProcessorDAO,
   PropertyUnitDAO,
   NotificationDAO,
   SubscriptionDAO,
@@ -60,18 +74,6 @@ import {
   LeaseDAO,
   UserDAO,
 } from '@dao/index';
-import {
-  PropertyMediaQueue,
-  PropertyUnitQueue,
-  InvitationQueue,
-  ESignatureQueue,
-  EventBusQueue,
-  PropertyQueue,
-  UploadQueue,
-  EmailQueue,
-  CronQueue,
-  PdfQueue,
-} from '@queues/index';
 import {
   NotificationController,
   SubscriptionController,
@@ -146,6 +148,7 @@ const ModelResources = {
   subscriptionModel: asValue(Subscription),
   notificationModel: asValue(NotificationModel),
   paymentModel: asValue(PaymentModel),
+  paymentProcessorModel: asValue(PaymentProcessor),
 };
 
 const ServiceResources = {
@@ -199,6 +202,7 @@ const DAOResources = {
   subscriptionDAO: asClass(SubscriptionDAO).singleton(),
   notificationDAO: asClass(NotificationDAO).singleton(),
   paymentDAO: asClass(PaymentDAO).singleton(),
+  paymentProcessorDAO: asClass(PaymentProcessorDAO).singleton(),
 };
 
 const CacheResources = {

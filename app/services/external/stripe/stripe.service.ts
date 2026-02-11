@@ -371,14 +371,16 @@ export class StripeService implements IPaymentProvider {
   }
 
   async createCustomer(data: ICreateCustomerInput): Promise<IPaymentCustomer> {
+    const { email, metadata, name, connectedAccountId } = data;
     try {
-      const { email, metadata, name } = data;
-
-      const customer = await this.stripe.customers.create({
-        email,
-        name,
-        metadata,
-      });
+      const customer = await this.stripe.customers.create(
+        {
+          email,
+          name,
+          metadata,
+        },
+        connectedAccountId ? { stripeAccount: connectedAccountId } : undefined
+      );
 
       return {
         customerId: customer.id,
@@ -388,7 +390,10 @@ export class StripeService implements IPaymentProvider {
         createdAt: new Date(customer.created * 1000),
       };
     } catch (error) {
-      this.log.error({ error, email: data.email }, 'Error creating Stripe customer');
+      this.log.error(
+        { error, email: data.email, connectedAccountId },
+        'Error creating Stripe customer'
+      );
       throw error;
     }
   }

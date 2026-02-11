@@ -57,12 +57,21 @@ export class PaymentGatewayService {
    */
   async createCustomer(input: ICreateCustomerInput): IPromiseReturnedData<IPaymentCustomer | null> {
     try {
-      const { provider, email, metadata } = input;
+      const { provider, email, metadata, name, connectedAccountId } = input;
 
-      this.log.info({ provider, email }, 'Creating customer via payment gateway');
+      this.log.info(
+        { provider, email, connectedAccountId },
+        'Creating customer via payment gateway'
+      );
 
       const providerInstance = this.getProvider(provider);
-      const customer = await providerInstance.createCustomer({ email, metadata });
+      const customer = await providerInstance.createCustomer({
+        email,
+        metadata,
+        name,
+        connectedAccountId,
+        provider,
+      });
 
       this.log.info({ provider, customerId: customer.customerId }, 'Customer created successfully');
 

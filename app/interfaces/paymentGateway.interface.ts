@@ -12,6 +12,13 @@ export interface IPaymentProvider {
       }
     >
   >;
+  createCustomer(data: {
+    email: string;
+    name?: string;
+    connectedAccountId?: string;
+    provider: IPaymentGatewayProvider;
+    metadata?: Record<string, string>;
+  }): Promise<IPaymentCustomer>;
   createCheckoutSession(data: {
     customerId: string;
     priceId: string;
@@ -24,10 +31,6 @@ export interface IPaymentProvider {
     refreshUrl: string;
     returnUrl: string;
   }): Promise<IOnboardingLinkResponse>;
-  createCustomer(data: {
-    email: string;
-    metadata?: Record<string, string>;
-  }): Promise<IPaymentCustomer>;
   finalizeInvoice(invoiceId: string, connectedAccountId: string): Promise<IFinalizeInvoiceResponse>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
   updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
@@ -76,6 +79,14 @@ export interface ICreateConnectAccountInput {
   cuid: string;
 }
 
+export interface ICreateCustomerInput {
+  metadata?: Record<string, string>;
+  provider: IPaymentGatewayProvider;
+  connectedAccountId?: string; // For creating customer on PM's connected account (Stripe Connect)
+  email: string;
+  name?: string;
+}
+
 export interface IConnectAccountResponse {
   detailsSubmitted: boolean;
   chargesEnabled: boolean;
@@ -94,7 +105,6 @@ export interface ICreateCheckoutInput {
   cancelUrl: string;
   priceId: string;
 }
-
 export interface ICreateInvoiceResponse {
   status: 'draft' | 'open' | 'paid' | 'uncollectible' | 'void';
   hostedInvoiceUrl?: string;
@@ -102,6 +112,7 @@ export interface ICreateInvoiceResponse {
   amountDue: number;
   dueDate?: Date;
 }
+
 export interface ICheckoutSession {
   provider: IPaymentGatewayProvider;
   metadata?: Record<string, string>;
@@ -116,13 +127,6 @@ export interface IPaymentCustomer {
   customerId: string;
   createdAt?: Date;
   email: string;
-}
-
-export interface ICreateCustomerInput {
-  metadata?: Record<string, string>;
-  provider: IPaymentGatewayProvider;
-  email: string;
-  name?: string;
 }
 
 export interface IFinalizeInvoiceResponse {

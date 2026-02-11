@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
 import {
   PaymentProcessorAccountType,
@@ -20,7 +21,6 @@ const PaymentProcessorSchema = new Schema<IPaymentProcessorDocument>(
     cuid: {
       type: String,
       required: [true, 'Client ID is required'],
-      index: true,
       immutable: true,
     },
     client: {
@@ -33,8 +33,6 @@ const PaymentProcessorSchema = new Schema<IPaymentProcessorDocument>(
     accountId: {
       type: String,
       required: [true, 'Account ID is required'],
-      unique: true,
-      index: true,
     },
     accountType: {
       type: String,
@@ -70,6 +68,10 @@ const PaymentProcessorSchema = new Schema<IPaymentProcessorDocument>(
     toObject: { virtuals: true },
   }
 );
+
+PaymentProcessorSchema.plugin(uniqueValidator, {
+  message: '{PATH} must be unique.',
+});
 
 PaymentProcessorSchema.index({ cuid: 1 });
 PaymentProcessorSchema.index({ accountId: 1 }, { unique: true });

@@ -257,6 +257,11 @@ const ProfileSchema = new Schema<IProfileDocument>(
           relationship: { type: String, trim: true },
           email: { type: String, trim: true, lowercase: true },
         },
+        paymentGatewayCustomers: {
+          type: Map,
+          of: String,
+          default: undefined,
+        },
       },
       default: null,
     },

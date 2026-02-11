@@ -12,7 +12,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       immutable: true,
       default: () => generateShortUID(),
     },
-    cuid: { type: String, required: true, index: true },
+    cuid: { type: String, required: true },
     client: { type: Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
     planName: {
       type: String,

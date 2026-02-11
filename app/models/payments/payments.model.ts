@@ -98,10 +98,9 @@ PaymentSchema.index(
   { lease: 1, paymentType: 1, 'period.month': 1, 'period.year': 1 },
   {
     unique: true,
-    sparse: true,
     partialFilterExpression: {
       paymentType: PaymentRecordType.RENT,
-      deletedAt: { $exists: false },
+      deletedAt: null,
     },
   }
 );

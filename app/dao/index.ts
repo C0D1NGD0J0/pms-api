@@ -1,3 +1,4 @@
+export * from './paymentProcessorDAO';
 export * from './propertyUnitDAO';
 export * from './subscriptionDAO';
 export * from './notificationDAO';

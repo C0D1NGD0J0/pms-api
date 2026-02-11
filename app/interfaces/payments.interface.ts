@@ -40,12 +40,12 @@ export interface IPaymentDocument extends Document {
 }
 
 export interface IPaymentFormData {
-  propertyType: PaymentRecordType;
+  paymentType: PaymentRecordType;
   period?: IPaymentPeriod;
   description?: string;
   baseAmount: number;
-  lease?: string;
-  tenant: string;
+  leaseId?: string;
+  tenantId: string;
   dueDate: Date;
 }
 

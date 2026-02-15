@@ -1,0 +1,192 @@
+{
+  "$schema": "./platform.config.schema.json",
+  "version": "1.0.0",
+  "lastUpdated": "2026-02-11",
+  "description": "Platform configuration for subscription plans and payment gateway settings",
+
+  "paymentGateways": {
+    "stripe": {
+      "provider": "stripe",
+      "displayName": "Stripe",
+      "isActive": true,
+      "processingFee": {
+        "percentRate": 2.9,
+        "fixedFeeCents": 30,
+        "description": "Standard Stripe rate (2.9% + $0.30). Verify with your Stripe account dashboard."
+      },
+      "note": "This is an estimate for budgeting. Actual fees will be fetched from Stripe Balance Transaction API after payment and updated via webhook.",
+      "applicationFeeSettings": {
+        "payerType": "application",
+        "description": "Platform pays Stripe fees from application fee (controller.fees.payer = 'application')"
+      },
+      "connectSettings": {
+        "accountType": "express",
+        "capabilities": ["card_payments", "transfers"]
+      }
+    },
+    "paypal": {
+      "provider": "paypal",
+      "displayName": "PayPal",
+      "isActive": false,
+      "processingFee": {
+        "percentRate": 2.99,
+        "fixedFeeCents": 49,
+        "description": "Standard PayPal rate (2.99% + $0.49). Verify with your PayPal account."
+      },
+      "note": "This is an estimate. Actual fees may vary based on transaction type."
+    }
+  },
+
+  "subscriptionPlans": {
+    "essential": {
+      "planName": "essential",
+      "name": "Essential",
+      "description": "Perfect for individual landlords",
+      "trialDays": 0,
+      "ctaText": "Get Started Free",
+      "isFeatured": false,
+      "displayOrder": 1,
+      "pricing": {
+        "monthly": {
+          "priceId": "price_essential_monthly",
+          "priceInCents": 0
+        },
+        "annual": {
+          "priceId": "price_essential_annual",
+          "priceInCents": 0,
+          "savingsPercent": 0
+        }
+      },
+      "transactionFeePercent": 3.5,
+      "isCustomPricing": false,
+      "seatPricing": {
+        "includedSeats": 3,
+        "additionalSeatPriceCents": 0,
+        "maxAdditionalSeats": 0,
+        "lookUpKey": ""
+      },
+      "limits": {
+        "maxProperties": 3,
+        "maxUnits": 10,
+        "maxVendors": -1
+      },
+      "features": {
+        "eSignature": false,
+        "RepairRequestService": false,
+        "VisitorPassService": false,
+        "reportingAnalytics": false
+      },
+      "featureList": [
+        "Tenant management",
+        "Rent collection",
+        "Maintenance requests"
+      ],
+      "disabledFeatures": [
+        "E-Signature",
+        "Guest Pass Service"
+      ]
+    },
+    "growth": {
+      "planName": "growth",
+      "name": "Growth",
+      "description": "For growing property managers",
+      "trialDays": 14,
+      "pricing": {
+        "monthly": {
+          "priceId": "price_growth_monthly",
+          "priceInCents": 7999
+        },
+        "annual": {
+          "priceId": "price_growth_annual",
+          "priceInCents": 76800,
+          "savingsPercent": 20
+        }
+      },
+      "ctaText": "Start 14-Day Free Trial",
+      "isFeatured": true,
+      "featuredBadge": "Most Popular",
+      "displayOrder": 2,
+      "transactionFeePercent": 3.0,
+      "isCustomPricing": false,
+      "seatPricing": {
+        "includedSeats": 10,
+        "additionalSeatPriceCents": 799,
+        "maxAdditionalSeats": 25,
+        "lookUpKey": "growth_seats",
+        "lookUpKeys": {
+          "monthly": "growth_seats_monthly",
+          "annual": "growth_seat_annual"
+        }
+      },
+      "limits": {
+        "maxProperties": 15,
+        "maxUnits": 100,
+        "maxVendors": -1
+      },
+      "features": {
+        "eSignature": true,
+        "RepairRequestService": true,
+        "VisitorPassService": true,
+        "reportingAnalytics": true
+      },
+      "featureList": [
+        "Online payments & AutoPay",
+        "Vendor management",
+        "E-Signature",
+        "Guest Pass Service"
+      ],
+      "disabledFeatures": []
+    },
+    "portfolio": {
+      "planName": "portfolio",
+      "name": "Portfolio",
+      "description": "For established businesses",
+      "trialDays": 14,
+      "pricing": {
+        "monthly": {
+          "priceId": "price_portfolio_monthly",
+          "priceInCents": 14999
+        },
+        "annual": {
+          "priceId": "price_portfolio_annual",
+          "priceInCents": 144000,
+          "savingsPercent": 20
+        }
+      },
+      "ctaText": "Start 14-Day Free Trial",
+      "isFeatured": false,
+      "displayOrder": 3,
+      "transactionFeePercent": 2.8,
+      "isCustomPricing": false,
+      "seatPricing": {
+        "includedSeats": 25,
+        "additionalSeatPriceCents": 599,
+        "maxAdditionalSeats": 40,
+        "lookUpKey": "portfolio_seats",
+        "lookUpKeys": {
+          "monthly": "portfolio_seat_monthly",
+          "annual": "portfolio_seat_annual"
+        }
+      },
+      "limits": {
+        "maxProperties": 30,
+        "maxUnits": 300,
+        "maxVendors": -1
+      },
+      "features": {
+        "eSignature": true,
+        "RepairRequestService": true,
+        "VisitorPassService": true,
+        "reportingAnalytics": true,
+        "prioritySupport": true
+      },
+      "featureList": [
+        "Everything in Growth",
+        "Advanced reporting & analytics",
+        "Customizable lease agreements",
+        "Priority support"
+      ],
+      "disabledFeatures": []
+    }
+  }
+}

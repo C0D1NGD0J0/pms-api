@@ -189,34 +189,18 @@ const PropertySchema = new Schema<IPropertyDocument>(
       taxAmount: {
         default: 0,
         type: Number,
-        get: (val: number) => {
-          return (val / 100).toFixed(2);
-        },
-        set: (val: number) => val * 100,
       },
       rentalAmount: {
         default: 0,
         type: Number,
-        get: function (val: number) {
-          return (val / 100).toFixed(2);
-        },
-        set: (val: number) => val * 100,
       },
       managementFees: {
         default: 0,
         type: Number,
-        get: (val: number) => {
-          return (val / 100).toFixed(2);
-        },
-        set: (val: number) => val * 100,
       },
       securityDeposit: {
         default: 0,
         type: Number,
-        get: (val: number) => {
-          return (val / 100).toFixed(2);
-        },
-        set: (val: number) => val * 100,
       },
     },
     specifications: SpecificationsSchema,
@@ -490,6 +474,56 @@ PropertySchema.methods.getAuthorizationStatus = function (this: IPropertyDocumen
   }
 
   return { isAuthorized: true };
+};
+
+/**
+ * Calculate all property fees
+ * Returns all monetary values in CENTS for precision
+ *
+ * @returns Complete fee breakdown with all values in cents
+ *
+ * @example
+ * const fees = property.calculateFees();
+ * // {
+ * //   monthly: { rental: 200000, management: 17000, tax: 15000, total: 232000 },
+ * //   annual: { total: 2784000 },
+ * //   deposits: { security: 400000 },
+ * //   analysis: { managementFeePercentage: "8.50" },
+ * //   currency: "USD"
+ * // }
+ */
+PropertySchema.methods.calculateFees = function () {
+  // Monthly fees (in cents - stored values)
+  const rentalAmount = this.fees?.rentalAmount || 0;
+  const managementFees = this.fees?.managementFees || 0;
+  const taxAmount = this.fees?.taxAmount || 0;
+  const totalMonthly = rentalAmount + managementFees + taxAmount;
+
+  // Annual calculation
+  const totalAnnual = totalMonthly * 12;
+
+  // Management fee percentage (if rental amount exists)
+  const managementFeePercentage =
+    rentalAmount > 0 ? ((managementFees / rentalAmount) * 100).toFixed(2) : '0.00';
+
+  return {
+    monthly: {
+      rental: rentalAmount, // cents
+      management: managementFees, // cents
+      tax: taxAmount, // cents
+      total: totalMonthly, // cents
+    },
+    annual: {
+      total: totalAnnual, // cents
+    },
+    deposits: {
+      security: this.fees?.securityDeposit || 0, // cents
+    },
+    analysis: {
+      managementFeePercentage, // string (e.g., "8.50")
+    },
+    currency: this.fees?.currency || 'USD',
+  };
 };
 
 // hook to prevent duplicate properties

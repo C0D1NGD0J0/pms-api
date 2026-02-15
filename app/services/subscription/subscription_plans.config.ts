@@ -1,174 +1,19 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { ISubscriptionPlansConfig, PlanName } from '@interfaces/subscription.interface';
 
-const FEATURES = {
-  coreFeatures: {
-    TENANT_MANAGEMENT: 'Tenant management',
-    RENT_COLLECTION: 'Rent collection',
-    MAINTENANCE_REQUESTS: 'Maintenance requests',
-    ONLINE_PAYMENTS: 'Online payments & AutoPay',
-    VENDOR_MANAGEMENT: 'Vendor management',
-  },
-  premiumFeatures: {
-    E_SIGNATURE: 'E-Signature',
-    GUEST_PASS: 'Guest Pass Service',
-    REPORTING: 'Advanced reporting & analytics',
-    CUSTOM_LEASES: 'Customizable lease agreements',
-    PRIORITY_SUPPORT: 'Priority support',
-  },
-  upgrades: {
-    EVERYTHING_IN_GROWTH: 'Everything in Growth',
-  },
-} as const;
+const CONFIG_PATH = path.join(process.cwd(), 'configs', 'platform.config.json');
+let platformConfig: any;
 
-const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = {
-  essential: {
-    planName: 'essential',
-    name: 'Essential',
-    description: 'Perfect for individual landlords',
-    trialDays: 0,
-    ctaText: 'Get Started Free',
-    isFeatured: false,
-    displayOrder: 1,
-    pricing: {
-      monthly: {
-        priceId: 'price_essential_monthly',
-        priceInCents: 0,
-      },
-      annual: {
-        priceId: 'price_essential_annual',
-        priceInCents: 0,
-        savingsPercent: 0,
-      },
-    },
-    transactionFeePercent: 3.5,
-    isCustomPricing: false,
-    seatPricing: {
-      includedSeats: 3, // 3 seats included
-      additionalSeatPriceCents: 0, // Can't buy more seats
-      maxAdditionalSeats: 0, // Must upgrade to add seats
-      lookUpKey: '', // Essential plan has no seat pricing
-    },
-    limits: {
-      maxProperties: 3,
-      maxUnits: 10,
-      maxVendors: -1,
-    },
-    features: {
-      eSignature: false,
-      RepairRequestService: false,
-      VisitorPassService: false,
-      reportingAnalytics: false,
-    },
-    featureList: [
-      FEATURES.coreFeatures.TENANT_MANAGEMENT,
-      FEATURES.coreFeatures.RENT_COLLECTION,
-      FEATURES.coreFeatures.MAINTENANCE_REQUESTS,
-    ],
-    disabledFeatures: [FEATURES.premiumFeatures.E_SIGNATURE, FEATURES.premiumFeatures.GUEST_PASS],
-  },
-  growth: {
-    planName: 'growth',
-    name: 'Growth',
-    description: 'For growing property managers',
-    trialDays: 14,
-    pricing: {
-      monthly: {
-        priceId: 'price_growth_monthly',
-        priceInCents: 7999,
-      },
-      annual: {
-        priceId: 'price_growth_annual',
-        priceInCents: 76800,
-        savingsPercent: 20,
-      },
-    },
-    ctaText: 'Start 14-Day Free Trial',
-    isFeatured: true,
-    featuredBadge: 'Most Popular',
-    displayOrder: 2,
-    transactionFeePercent: 3.0,
-    isCustomPricing: false,
-    seatPricing: {
-      includedSeats: 10,
-      additionalSeatPriceCents: 799,
-      maxAdditionalSeats: 25,
-      lookUpKey: 'growth_seats',
-      lookUpKeys: {
-        monthly: 'growth_seats_monthly',
-        annual: 'growth_seat_annual',
-      },
-    },
-    limits: {
-      maxProperties: 15,
-      maxUnits: 100,
-      maxVendors: -1,
-    },
-    features: {
-      eSignature: true,
-      RepairRequestService: true,
-      VisitorPassService: true,
-      reportingAnalytics: true,
-    },
-    featureList: [
-      FEATURES.coreFeatures.ONLINE_PAYMENTS,
-      FEATURES.coreFeatures.VENDOR_MANAGEMENT,
-      FEATURES.premiumFeatures.E_SIGNATURE,
-      FEATURES.premiumFeatures.GUEST_PASS,
-    ],
-    disabledFeatures: [],
-  },
-  portfolio: {
-    planName: 'portfolio',
-    name: 'Portfolio',
-    description: 'For established businesses',
-    trialDays: 14,
-    pricing: {
-      monthly: {
-        priceId: 'price_portfolio_monthly',
-        priceInCents: 14999,
-      },
-      annual: {
-        priceId: 'price_portfolio_annual',
-        priceInCents: 144000,
-        savingsPercent: 20,
-      },
-    },
-    ctaText: 'Start 14-Day Free Trial',
-    isFeatured: false,
-    displayOrder: 3,
-    transactionFeePercent: 2.8,
-    isCustomPricing: false,
-    seatPricing: {
-      includedSeats: 25,
-      additionalSeatPriceCents: 599,
-      maxAdditionalSeats: 40,
-      lookUpKey: 'portfolio_seats',
-      lookUpKeys: {
-        monthly: 'portfolio_seat_monthly',
-        annual: 'portfolio_seat_annual',
-      },
-    },
-    limits: {
-      maxProperties: 30,
-      maxUnits: 300,
-      maxVendors: -1,
-    },
-    features: {
-      eSignature: true,
-      RepairRequestService: true,
-      VisitorPassService: true,
-      reportingAnalytics: true,
-      prioritySupport: true,
-    },
-    featureList: [
-      FEATURES.upgrades.EVERYTHING_IN_GROWTH,
-      FEATURES.premiumFeatures.REPORTING,
-      FEATURES.premiumFeatures.CUSTOM_LEASES,
-      FEATURES.premiumFeatures.PRIORITY_SUPPORT,
-    ],
-    disabledFeatures: [],
-  },
-};
+try {
+  const configData = fs.readFileSync(CONFIG_PATH, 'utf-8');
+  platformConfig = JSON.parse(configData);
+} catch (error) {
+  console.error('Failed to load platform.config.json:', error);
+  throw new Error('Platform configuration file not found or invalid');
+}
+
+const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = platformConfig.subscriptionPlans;
 
 export type SubscriptionPlanName = keyof typeof PLAN_CONFIGS;
 
@@ -364,6 +209,62 @@ export class SubscriptionPlanConfig {
       enabled: this.getFeatureListWithLimits(planName),
       disabled: config.disabledFeatures || [],
     };
+  }
+
+  /**
+   * Get payment gateway processing fees
+   * @param provider - Payment gateway provider (e.g., 'stripe', 'paypal')
+   * @returns Processing fees configuration
+   *
+   * NOTE: This is an estimate. Actual fees should be fetched from gateway API
+   * after payment (e.g., Stripe Balance Transaction) and updated via webhook.
+   */
+  public getPaymentGatewayFees(provider: string = 'stripe'): {
+    percentRate: number;
+    fixedFeeCents: number;
+    description: string;
+  } {
+    const gateway = platformConfig.paymentGateways[provider];
+    if (!gateway) {
+      throw new Error(`Payment gateway not found: ${provider}`);
+    }
+
+    return gateway.processingFee;
+  }
+
+  /**
+   * Calculate payment gateway processing fee (ESTIMATION ONLY)
+   * @param amountInCents - Transaction amount in cents
+   * @param provider - Payment gateway provider
+   * @returns Estimated processing fee in cents
+   *
+   * IMPORTANT: This is an ESTIMATE for budgeting purposes.
+   * Actual fees vary by card type, country, etc.
+   * Update payment record with actual fees from gateway API after payment succeeds.
+   */
+  public calculatePaymentGatewayFee(amountInCents: number, provider: string = 'stripe'): number {
+    const fees = this.getPaymentGatewayFees(provider);
+    return Math.round((amountInCents * fees.percentRate) / 100) + fees.fixedFeeCents;
+  }
+
+  /**
+   * Get all active payment gateways
+   */
+  public getActivePaymentGateways(): string[] {
+    return Object.keys(platformConfig.paymentGateways).filter(
+      (key) => platformConfig.paymentGateways[key].isActive
+    );
+  }
+
+  /**
+   * Get payment gateway config
+   */
+  public getPaymentGatewayConfig(provider: string) {
+    const gateway = platformConfig.paymentGateways[provider];
+    if (!gateway) {
+      throw new Error(`Payment gateway not found: ${provider}`);
+    }
+    return gateway;
   }
 }
 

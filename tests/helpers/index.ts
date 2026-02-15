@@ -12,8 +12,10 @@ export {
   clearTestDatabase,
 } from '../setup/testDatabase';
 
-export { mockUnauthenticatedContext, mockRequestContext } from './mockRequestContext';
+export { createMockCurrentUser, createApiTestHelper } from './factories/property.factories';
 
+export { mockUnauthenticatedContext, mockRequestContext } from './mockRequestContext';
 export type { SeededTestData } from '../setup/seedTestData';
 export { seedTestData } from '../setup/seedTestData';
+
 export * from '../setup/testFactories';

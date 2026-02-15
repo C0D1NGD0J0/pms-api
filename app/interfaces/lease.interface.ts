@@ -187,6 +187,38 @@ export interface ILeaseFormData {
   type: LeaseType;
 }
 
+export interface ILeaseDocument extends Document, ILease {
+  calculateFees(options?: { daysLate?: number }): {
+    monthly: { rent: number; petFee: number; total: number };
+    deposits: { security: number; pet: number; total: number };
+    late: {
+      daysLate: number;
+      fee: number;
+      type: LateFeeType | 'none';
+      percentage: number;
+      gracePeriod: number;
+    };
+    currency: string;
+  };
+  // Instance methods
+  softDelete(userId: Types.ObjectId): Promise<ILeaseDocument>;
+  hasOverlap(startDate: Date, endDate: Date): boolean;
+  propertyInfo?: ILeasePropertyInfo;
+  propertyUnitInfo?: ILeaseUnitInfo;
+  // Virtual properties (computed)
+  daysUntilExpiry: number | null;
+  durationMonths: number | null;
+  tenantInfo?: ILeaseTenantInfo;
+  totalMonthlyFees: number;
+  isExpiringSoon: boolean;
+  _id: Types.ObjectId;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  luid: string;
+  id: string;
+}
+
 /**
  * Renewal Metadata Interface
  * Pre-calculated renewal information for active/draft_renewal leases
@@ -266,30 +298,6 @@ export interface ILeaseFilterOptions {
   minRent?: number;
   maxRent?: number;
   search?: string; // For lease number or tenant name search
-}
-
-/**
- * Lease Document Interface with Mongoose Document
- * Extends ILease with MongoDB document properties and methods
- */
-export interface ILeaseDocument extends Document, ILease {
-  // Instance methods
-  softDelete(userId: Types.ObjectId): Promise<ILeaseDocument>;
-  hasOverlap(startDate: Date, endDate: Date): boolean;
-  propertyInfo?: ILeasePropertyInfo;
-  propertyUnitInfo?: ILeaseUnitInfo;
-  // Virtual properties (computed)
-  daysUntilExpiry: number | null;
-  durationMonths: number | null;
-  tenantInfo?: ILeaseTenantInfo;
-  totalMonthlyFees: number;
-  isExpiringSoon: boolean;
-  _id: Types.ObjectId;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  luid: string;
-  id: string;
 }
 
 /**

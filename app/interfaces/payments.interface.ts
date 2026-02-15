@@ -43,7 +43,7 @@ export interface IPaymentFormData {
   paymentType: PaymentRecordType;
   period?: IPaymentPeriod;
   description?: string;
-  baseAmount: number;
+  daysLate?: number; // For late fee calculations
   leaseId?: string;
   tenantId: string;
   dueDate: Date;

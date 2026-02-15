@@ -60,10 +60,11 @@ export const createMockPropertyData = (overrides = {}) => ({
   },
   fees: {
     currency: faker.helpers.arrayElement(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY']),
-    taxAmount: faker.number.float({ min: 100, max: 1000, fractionDigits: 2 }),
-    rentalAmount: faker.number.float({ min: 1000, max: 5000, fractionDigits: 2 }),
-    managementFees: faker.number.float({ min: 50, max: 500, fractionDigits: 2 }),
-    securityDeposit: faker.number.float({ min: 500, max: 2000, fractionDigits: 2 }),
+    // Values in cents (e.g., 100000 = $1000.00)
+    taxAmount: faker.number.int({ min: 10000, max: 100000 }),
+    rentalAmount: faker.number.int({ min: 100000, max: 500000 }),
+    managementFees: faker.number.int({ min: 5000, max: 50000 }),
+    securityDeposit: faker.number.int({ min: 50000, max: 200000 }),
   },
   utilities: {
     water: faker.datatype.boolean(),
@@ -143,10 +144,11 @@ export const createMockProperty = (overrides = {}) => ({
   },
   fees: {
     currency: faker.helpers.arrayElement(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY']),
-    taxAmount: faker.number.float({ min: 100, max: 1000, fractionDigits: 2 }),
-    rentalAmount: faker.number.float({ min: 1000, max: 5000, fractionDigits: 2 }),
-    managementFees: faker.number.float({ min: 50, max: 500, fractionDigits: 2 }),
-    securityDeposit: faker.number.float({ min: 500, max: 2000, fractionDigits: 2 }),
+    // Values in cents (e.g., 100000 = $1000.00)
+    taxAmount: faker.number.int({ min: 10000, max: 100000 }),
+    rentalAmount: faker.number.int({ min: 100000, max: 500000 }),
+    managementFees: faker.number.int({ min: 5000, max: 50000 }),
+    securityDeposit: faker.number.int({ min: 50000, max: 200000 }),
   },
   description: {
     text: faker.lorem.paragraphs(2),
@@ -420,5 +422,16 @@ export const createMockPropertyFormMetadata = () => ({
       { value: '4br', label: '4 Bedrooms' },
       { value: 'penthouse', label: 'Penthouse' },
     ],
+  },
+});
+
+// API Test Helper (stub for route tests)
+export const createApiTestHelper = () => ({
+  createApp: (setupFn: any) => {
+    const express = require('express');
+    const app = express();
+    app.use(express.json());
+    if (setupFn) setupFn(app);
+    return app;
   },
 });

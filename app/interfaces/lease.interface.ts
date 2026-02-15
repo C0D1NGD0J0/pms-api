@@ -817,6 +817,25 @@ export interface LeaseESignatureRequestedPayload {
  */
 
 /**
+ * Payment Method Types
+ */
+export type PaymentMethodType =
+  | 'bank_transfer'
+  | 'e-transfer'
+  | 'auto-debit'
+  | 'check'
+  | 'cash'
+  | 'credit_card'
+  | 'debit_card'
+  | 'mobile_payment';
+
+/**
+ * ============================================================================
+ * E-SIGNATURE PAYLOAD INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Lease Template Types
  */
 export type LeaseTemplateType =
@@ -825,12 +844,6 @@ export type LeaseTemplateType =
   | 'commercial-office'
   | 'commercial-retail'
   | 'short-term-rental';
-
-/**
- * ============================================================================
- * E-SIGNATURE PAYLOAD INTERFACES
- * ============================================================================
- */
 
 /**
  * Lease Termination Data Interface
@@ -903,17 +916,6 @@ export interface IPetPolicy {
   types?: string[];
   maxPets?: number;
 }
-
-/**
- * Payment Method Types
- */
-export type PaymentMethodType =
-  | 'bank_transfer'
-  | 'check'
-  | 'cash'
-  | 'credit_card'
-  | 'debit_card'
-  | 'mobile_payment';
 
 /**
  * ============================================================================

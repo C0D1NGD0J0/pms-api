@@ -193,7 +193,16 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       acceptedPaymentMethod: {
         type: String,
         required: true,
-        enum: ['e-transfer', 'credit_card', 'crypto'],
+        enum: [
+          'bank_transfer',
+          'e-transfer',
+          'auto-debit',
+          'check',
+          'cash',
+          'credit_card',
+          'debit_card',
+          'mobile_payment',
+        ],
       },
     },
     coTenants: [

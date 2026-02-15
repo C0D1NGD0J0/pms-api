@@ -1,3 +1,4 @@
+import express from 'express';
 import { Types } from 'mongoose';
 import { faker } from '@faker-js/faker';
 import { ROLES } from '@shared/constants/roles.constants';
@@ -428,7 +429,6 @@ export const createMockPropertyFormMetadata = () => ({
 // API Test Helper (stub for route tests)
 export const createApiTestHelper = () => ({
   createApp: (setupFn: any) => {
-    const express = require('express');
     const app = express();
     app.use(express.json());
     if (setupFn) setupFn(app);

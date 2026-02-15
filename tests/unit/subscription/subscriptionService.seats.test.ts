@@ -3,7 +3,7 @@ import { ClientDAO } from '@dao/clientDAO';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { BadRequestError } from '@shared/customErrors';
-import { PaymentGatewayService } from '@services/paymentGateway';
+import { PaymentGatewayService } from '@services/billing';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/index';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 
@@ -78,7 +78,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
     subscriptionService = new SubscriptionService({
       subscriptionDAO: mockSubscriptionDAO,
       clientDAO: mockClientDAO,
-      paymentGatewayService: mockPaymentGatewayService,
+      billingService: mockPaymentGatewayService,
       sseService: mockSSEService,
       authCache: mockAuthCache,
       stripeService: mockStripeService,
@@ -99,7 +99,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCost: 0,
         totalMonthlyPrice: 29,
         currentSeats: 8,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
           provider: 'stripe',
@@ -136,8 +136,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCount: 5,
         additionalSeatsCost: 39.95, // 5 * $7.99
         totalMonthlyPrice: 68.95, // $29 + $39.95
-        paymentGateway: {
-          ...mockSubscription.paymentGateway,
+        billing: {
+          ...mockSubscription.billing,
           seatItemId: 'si_new123',
         },
       } as any);
@@ -160,7 +160,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
           $set: {
             additionalSeatsCost: 39.95, // 5 * $7.99
             totalMonthlyPrice: 68.95, // $29 + $39.95
-            'paymentGateway.seatItemId': 'si_new123',
+            'billing.seatItemId': 'si_new123',
           },
         },
         { new: true },
@@ -178,7 +178,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCost: 79.90,
         totalMonthlyPrice: 129.90,
         currentSeats: 30,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
           seatItemId: 'si_existing123',
@@ -236,7 +236,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         cuid: testCuid,
         planName: 'growth',
         additionalSeatsCount: 20,
-        paymentGateway: {},
+        billing: {},
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -261,7 +261,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCost: 0,
         totalMonthlyPrice: 768,
         currentSeats: 8,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
           provider: 'stripe',
@@ -310,7 +310,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         planName: 'growth',
         billingInterval: 'annual',
         additionalSeatsCount: 0,
-        paymentGateway: { subscriberId: 'sub_stripe123', provider: 'stripe' },
+        billing: { subscriberId: 'sub_stripe123', provider: 'stripe' },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -334,7 +334,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         planName: 'growth',
         billingInterval: 'monthly',
         additionalSeatsCount: 0,
-        paymentGateway: { subscriberId: 'sub_stripe123', provider: 'stripe' },
+        billing: { subscriberId: 'sub_stripe123', provider: 'stripe' },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -374,7 +374,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCost: 50,
         totalMonthlyPrice: 79,
         currentSeats: 15, // 10 included + 5 in use from additional
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
           seatItemId: 'si_123',
@@ -425,7 +425,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         planName: 'growth',
         additionalSeatsCount: 5,
         currentSeats: 10,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
           seatItemId: 'si_123',
@@ -463,7 +463,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
         expect.objectContaining({
-          $unset: { 'paymentGateway.seatItemId': '' },
+          $unset: { 'billing.seatItemId': '' },
         }),
         { new: true },
         mockSession
@@ -511,7 +511,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         billingInterval: 'monthly',
         additionalSeatsCount: 10,
         currentSeats: 15, // 10 included + 5 additional in use
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
           seatItemId: 'si_123',
@@ -592,7 +592,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         billingInterval: 'monthly',
         additionalSeatsCount: 10,
         currentSeats: 12, // 10 included + 2 additional in use
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
           seatItemId: 'si_123',
@@ -648,7 +648,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         billingInterval: 'monthly',
         additionalSeatsCount: 5,
         currentSeats: 10, // Exactly at included seats, all additional seats unused
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
           seatItemId: 'si_123',
@@ -721,7 +721,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCount: 0,
         totalMonthlyPrice: 29,
         currentSeats: 8,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
           provider: 'stripe',
@@ -762,7 +762,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         ...mockSubscription,
         additionalSeatsCount: 3,
         totalMonthlyPrice: 44,
-        paymentGateway: {
+        billing: {
           seatItemId: 'si_new123',
         },
       } as any);
@@ -790,7 +790,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCount: 5,
         currentSeats: 10,
         totalMonthlyPrice: 54,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
           provider: 'stripe',

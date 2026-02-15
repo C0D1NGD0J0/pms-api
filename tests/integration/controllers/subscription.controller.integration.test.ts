@@ -150,7 +150,7 @@ describe('SubscriptionController Integration Tests', () => {
         client,
         planName: 'portfolio',
         status: 'pending_payment',
-        paymentGateway: {
+        billing: {
           customerId: '',
           provider: 'stripe',
           planId: 'price_professional_monthly',
@@ -209,7 +209,7 @@ describe('SubscriptionController Integration Tests', () => {
         client,
         planName: 'portfolio',
         status: 'pending_payment',
-        paymentGateway: {
+        billing: {
           customerId: '',
           provider: 'stripe',
           planId: 'price_professional_monthly',
@@ -250,7 +250,7 @@ describe('SubscriptionController Integration Tests', () => {
         client,
         planName: 'portfolio',
         status: 'pending_payment',
-        paymentGateway: {
+        billing: {
           customerId: '',
           provider: 'stripe',
           planId: 'price_professional_monthly',
@@ -291,7 +291,7 @@ describe('SubscriptionController Integration Tests', () => {
         client,
         planName: 'portfolio',
         status: 'active',
-        paymentGateway: {
+        billing: {
           customerId: 'cus_123',
           provider: 'stripe',
           planId: 'price_professional_monthly',
@@ -333,7 +333,7 @@ describe('SubscriptionController Integration Tests', () => {
         client,
         planName: 'portfolio',
         status: 'pending_payment',
-        paymentGateway: {
+        billing: {
           customerId: '',
           provider: 'stripe',
           planId: 'price_professional_annual',

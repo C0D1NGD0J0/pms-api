@@ -5,15 +5,19 @@ import Client from '@models/client/client.model';
 import Vendor from '@models/vendor/vendor.model';
 import Profile from '@models/profile/profile.model';
 import Property from '@models/property/property.model';
+import PaymentModel from '@models/payments/payments.model';
 import Invitation from '@models/invitation/invitation.model';
 import Subscription from '@models/subscription/subscription.model';
 import PropertyUnit from '@models/property-unit/propertyUnit.model';
 import NotificationModel from '@models/notification/notification.model';
+import { PaymentProcessor } from '@models/paymentProcessor/paymentProcessor.model';
 
 export {
   NotificationModel,
+  PaymentProcessor,
   Subscription,
   PropertyUnit,
+  PaymentModel,
   Invitation,
   Property,
   Profile,

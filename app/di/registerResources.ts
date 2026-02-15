@@ -23,31 +23,6 @@ import {
   UserCache,
 } from '@caching/index';
 import {
-  NotificationModel,
-  PropertyUnit,
-  Subscription,
-  Invitation,
-  Property,
-  Profile,
-  Client,
-  Vendor,
-  Lease,
-  Asset,
-  User,
-} from '@models/index';
-import {
-  PropertyUnitDAO,
-  NotificationDAO,
-  SubscriptionDAO,
-  InvitationDAO,
-  PropertyDAO,
-  ProfileDAO,
-  ClientDAO,
-  VendorDAO,
-  LeaseDAO,
-  UserDAO,
-} from '@dao/index';
-import {
   PropertyMediaWorker,
   PropertyUnitWorker,
   InvitationWorker,
@@ -70,6 +45,35 @@ import {
   CronQueue,
   PdfQueue,
 } from '@queues/index';
+import {
+  NotificationModel,
+  PaymentProcessor,
+  PaymentModel,
+  PropertyUnit,
+  Subscription,
+  Invitation,
+  Property,
+  Profile,
+  Client,
+  Vendor,
+  Lease,
+  Asset,
+  User,
+} from '@models/index';
+import {
+  PaymentProcessorDAO,
+  PropertyUnitDAO,
+  NotificationDAO,
+  SubscriptionDAO,
+  InvitationDAO,
+  PropertyDAO,
+  PaymentDAO,
+  ProfileDAO,
+  ClientDAO,
+  VendorDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   NotificationController,
   SubscriptionController,
@@ -143,6 +147,8 @@ const ModelResources = {
   propertyUnitModel: asValue(PropertyUnit),
   subscriptionModel: asValue(Subscription),
   notificationModel: asValue(NotificationModel),
+  paymentModel: asValue(PaymentModel),
+  paymentProcessorModel: asValue(PaymentProcessor),
 };
 
 const ServiceResources = {
@@ -195,6 +201,8 @@ const DAOResources = {
   propertyUnitDAO: asClass(PropertyUnitDAO).singleton(),
   subscriptionDAO: asClass(SubscriptionDAO).singleton(),
   notificationDAO: asClass(NotificationDAO).singleton(),
+  paymentDAO: asClass(PaymentDAO).singleton(),
+  paymentProcessorDAO: asClass(PaymentProcessorDAO).singleton(),
 };
 
 const CacheResources = {

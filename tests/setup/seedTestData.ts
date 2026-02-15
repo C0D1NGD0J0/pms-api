@@ -360,7 +360,7 @@ export const seedTestData = async (): Promise<SeededTestData> => {
     startDate: new Date(),
     endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
     billingInterval: 'monthly',
-    paymentGateway: {
+    billing: {
       customerId: 'cus_test123',
       provider: 'stripe',
       planId: 'price_portfolio123',
@@ -379,7 +379,7 @@ export const seedTestData = async (): Promise<SeededTestData> => {
     startDate: new Date(),
     endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
     billingInterval: 'monthly',
-    paymentGateway: {
+    billing: {
       customerId: 'none',
       provider: 'none',
       planId: 'plan_essential',

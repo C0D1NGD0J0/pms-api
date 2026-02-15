@@ -3,7 +3,7 @@ import { AuthCache } from '@caching/index';
 import { ClientDAO } from '@dao/clientDAO';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { SSEService } from '@services/sse/sse.service';
-import { PaymentGatewayService } from '@services/paymentGateway';
+import { PaymentGatewayService } from '@services/billing';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/index';
 import { SubscriptionService } from '@services/subscription/subscription.service';
@@ -77,7 +77,7 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
       clientDAO: mockClientDAO,
       authCache: mockAuthCache,
       stripeService: mockStripeService,
-      paymentGatewayService: mockPaymentGatewayService,
+      billingService: mockPaymentGatewayService,
       sseService: mockSSEService,
       userDAO: {} as any,
       emitterService: mockEmitterService,
@@ -91,7 +91,7 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
         cuid: 'client123',
         planName: 'growth',
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
         },
@@ -130,7 +130,7 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
         cuid: 'client123',
         planName: 'essential',
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           provider: 'none',
         },
       };
@@ -182,7 +182,7 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
         cuid: 'client123',
         planName: 'growth',
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
         },
       };

@@ -32,7 +32,7 @@ const PaymentSchema = new Schema<IPaymentDocument>(
     },
     tenant: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: 'Profile',
       required: [true, 'Tenant is required'],
     },
     baseAmount: {

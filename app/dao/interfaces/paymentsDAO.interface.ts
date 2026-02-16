@@ -7,7 +7,7 @@ export interface IPaymentDAO {
   /**
    * Find payments by client with optional filters
    * @param cuid - Client ID
-   * @param filters - Optional filters (status, propertyType, tenantId, leaseId)
+   * @param filters - Optional filters (status, paymentType, tenantId, leaseId)
    * @param opts - Additional query options (populate, select, sort)
    * @returns Paginated list of payments
    */
@@ -15,7 +15,7 @@ export interface IPaymentDAO {
     cuid: string,
     filters?: {
       status?: PaymentRecordStatus;
-      propertyType?: PaymentRecordType;
+      paymentType?: PaymentRecordType;
       tenantId?: string;
       leaseId?: string;
     },

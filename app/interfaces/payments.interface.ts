@@ -1,5 +1,8 @@
 import { Document, Types } from 'mongoose';
 
+import { ILeaseDocument } from './lease.interface';
+import { IProfileDocument } from './profile.interface';
+
 export enum PaymentRecordStatus {
   CANCELLED = 'cancelled',
   PENDING = 'pending',
@@ -25,7 +28,7 @@ export interface IPaymentDocument extends Document {
   gatewayPaymentId?: string;
   period?: IPaymentPeriod;
   lease?: Types.ObjectId;
-  tenant: Types.ObjectId;
+  tenant: Types.ObjectId; // References Profile
   invoiceNumber: string;
   processingFee: number;
   description?: string;
@@ -47,6 +50,11 @@ export interface IPaymentFormData {
   leaseId?: string;
   tenantId: string;
   dueDate: Date;
+}
+
+export interface IPaymentPopulated extends Omit<IPaymentDocument, 'tenant' | 'lease'> {
+  tenant: IProfileDocument;
+  lease?: ILeaseDocument;
 }
 
 export interface IPaymentPeriod {

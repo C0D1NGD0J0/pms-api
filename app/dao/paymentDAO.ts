@@ -23,7 +23,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     cuid: string,
     filters?: {
       status?: PaymentRecordStatus;
-      propertyType?: PaymentRecordType;
+      paymentType?: PaymentRecordType;
       tenantId?: string;
       leaseId?: string;
     },
@@ -37,7 +37,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       const query: FilterQuery<IPaymentDocument> = { cuid, deletedAt: null };
 
       if (filters?.status) query.status = filters.status;
-      if (filters?.propertyType) query.propertyType = filters.propertyType;
+      if (filters?.paymentType) query.paymentType = filters.paymentType;
       if (filters?.tenantId) query.tenant = filters.tenantId;
       if (filters?.leaseId) query.lease = filters.leaseId;
 
@@ -163,7 +163,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
         {
           cuid,
           lease: leaseId,
-          propertyType: PaymentRecordType.RENT,
+          paymentType: PaymentRecordType.RENT,
           'period.month': month,
           'period.year': year,
           deletedAt: null,

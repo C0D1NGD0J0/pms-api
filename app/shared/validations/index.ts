@@ -3,6 +3,7 @@ export * from './PropertyUnitValidation';
 export * from './SubscriptionValidation';
 export * from './InvitationValidation';
 export * from './PropertyValidation';
+export * from './PaymentsValidation';
 export * from './ProfileValidation';
 export * from './ClientValidation';
 export * from './VendorValidation';

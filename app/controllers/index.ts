@@ -3,6 +3,7 @@ export * from './NotificationController';
 export * from './SubscriptionController';
 export * from './InvitationController';
 export * from './PropertyController';
+export * from './PaymentController';
 export * from './WebhookController';
 export * from './ClientController';
 export * from './VendorController';

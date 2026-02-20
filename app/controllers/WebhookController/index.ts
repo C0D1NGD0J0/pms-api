@@ -85,7 +85,8 @@ export class WebhookController {
         return res.status(400).json({ success: false, message: 'Missing signature' });
       }
 
-      const event = await this.stripeService.verifyWebhookSignature(req.body, signature);
+      const rawBody = (req as any).rawBody ?? req.body;
+      const event = await this.stripeService.verifyWebhookSignature(rawBody, signature);
       this.log.info({ type: event.type, id: event.id }, 'Processing Stripe webhook event');
 
       switch (event.type) {

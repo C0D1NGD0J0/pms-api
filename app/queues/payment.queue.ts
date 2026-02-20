@@ -9,7 +9,7 @@ export interface ICreateRentInvoiceJobData {
   paymentType: PaymentRecordType;
   period: IPaymentPeriod;
   description?: string;
-  tenantId: string; // Profile._id
+  tenantId: string; // User._id
   leaseId: string;
   dueDate: Date;
   cuid: string;

@@ -1,6 +1,11 @@
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/index';
-import { PaymentRecordStatus, PaymentRecordType, IPaymentDocument } from '@interfaces/index';
+import {
+  PaymentRecordStatus,
+  PaymentRecordType,
+  IPaymentDocument,
+  PaymentMethod,
+} from '@interfaces/index';
 
 const PaymentSchema = new Schema<IPaymentDocument>(
   {
@@ -25,6 +30,12 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       type: String,
       enum: Object.values(PaymentRecordType),
       required: [true, 'Payment type is required'],
+    },
+    paymentMethod: {
+      type: String,
+      enum: Object.values(PaymentMethod),
+      default: PaymentMethod.ONLINE,
+      required: [true, 'Payment method is required'],
     },
     lease: {
       type: Schema.Types.ObjectId,
@@ -71,6 +82,30 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       },
     },
     description: String,
+    receipt: {
+      url: {
+        type: String,
+        validate: {
+          validator: function (v: string) {
+            return !v || /^https?:\/\/.+/.test(v);
+          },
+          message: (props: any) => `${props.value} is not a valid URL!`,
+        },
+      },
+      filename: { type: String },
+      key: { type: String },
+      uploadedAt: { type: Date },
+      uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    },
+    recordedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    isManualEntry: {
+      type: Boolean,
+      default: false,
+      required: true,
+    },
     notes: {
       type: [
         {

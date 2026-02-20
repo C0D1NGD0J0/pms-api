@@ -1,4 +1,4 @@
-import express, { Router } from 'express';
+import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { basicLimiter } from '@shared/middlewares';
 import { AppRequest } from '@interfaces/utils.interface';
@@ -17,11 +17,11 @@ router.post(
 
 /**
  * Stripe webhooks (all events)
- * Uses express.raw() to preserve raw body for signature verification
+ * Raw body is already preserved by global middleware in app.ts (line 81-89)
+ * which saves req.rawBody for /api/v1/webhooks/stripe endpoint
  */
 router.post(
   '/stripe',
-  express.raw({ type: 'application/json' }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<WebhookController>('webhookController');
     return controller.handleStripeWebhook(req, res);

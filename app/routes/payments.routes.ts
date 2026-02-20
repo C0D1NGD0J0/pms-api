@@ -4,7 +4,13 @@ import { PaymentValidations } from '@shared/validations';
 import { PaymentController } from '@controllers/PaymentController';
 import { UtilsValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
-import { requirePermission, isAuthenticated, basicLimiter } from '@shared/middlewares';
+import {
+  requirePermission,
+  isAuthenticated,
+  basicLimiter,
+  diskUpload,
+  scanFile,
+} from '@shared/middlewares';
 
 export const router: Router = express.Router();
 
@@ -35,18 +41,7 @@ router.get(
 );
 
 router.get(
-  '/:cuid/payments',
-  isAuthenticated,
-  requirePermission(PermissionResource.PAYMENT, PermissionAction.LIST),
-  validateRequest({ params: UtilsValidations.cuid }),
-  asyncWrapper((req, res) => {
-    const controller = req.container.resolve<PaymentController>('paymentController');
-    return controller.listPayments(req, res);
-  })
-);
-
-router.get(
-  '/:cuid/payments/:pytuid',
+  '/:cuid/:pytuid',
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.READ),
   validateRequest({ params: UtilsValidations.cuid }),
@@ -57,7 +52,7 @@ router.get(
 );
 
 router.post(
-  '/:cuid/payments',
+  '/:cuid',
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   validateRequest({
@@ -70,8 +65,24 @@ router.post(
   })
 );
 
+router.post(
+  '/:cuid/manual_entry',
+  isAuthenticated,
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
+  diskUpload(['receipt.file']),
+  scanFile,
+  validateRequest({
+    params: UtilsValidations.cuid,
+    body: PaymentValidations.recordManualPayment,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.recordManualPayment(req, res);
+  })
+);
+
 router.patch(
-  '/:cuid/payments/:pytuid/cancel',
+  '/:cuid/:pytuid/cancel',
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
   validateRequest({ params: UtilsValidations.cuid }),

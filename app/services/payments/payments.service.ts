@@ -18,11 +18,13 @@ import {
 } from '@dao/index';
 import {
   IPaymentGatewayProvider,
+  IManualPaymentFormData,
   PaymentRecordStatus,
-  PaymentRecordType,
   IPaymentPopulated,
+  PaymentRecordType,
   IPaymentDocument,
   IPaymentFormData,
+  PaymentMethod,
   LeaseStatus,
 } from '@interfaces/index';
 
@@ -75,6 +77,67 @@ export class PaymentService implements ICronProvider {
 
   getCronJobs(): ICronJob[] {
     return [];
+  }
+
+  async recordManualPayment(
+    cuid: string,
+    userId: string,
+    data: IManualPaymentFormData
+  ): IPromiseReturnedData<IPaymentDocument> {
+    try {
+      const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
+      if (!client) {
+        throw new NotFoundError({ message: 'Client not found' });
+      }
+
+      const tenantProfile = await this.profileDAO.findFirst({ user: data.tenantId });
+      if (!tenantProfile) {
+        throw new NotFoundError({ message: 'Tenant profile not found' });
+      }
+
+      let lease;
+      if (data.leaseId) {
+        lease = await this.leaseDAO.findById(data.leaseId);
+        if (!lease || lease.cuid !== cuid) {
+          throw new NotFoundError({ message: 'Lease not found' });
+        }
+      }
+
+      const payment = await this.paymentDAO.insert({
+        cuid,
+        paymentType: data.paymentType,
+        paymentMethod: data.paymentMethod,
+        lease: data.leaseId ? new Types.ObjectId(data.leaseId) : undefined,
+        tenant: tenantProfile._id,
+        baseAmount: data.amount,
+        processingFee: 0,
+        status: PaymentRecordStatus.PAID,
+        dueDate: data.paidAt,
+        paidAt: data.paidAt,
+        period: data.period,
+        description: data.description,
+        receipt: data.receipt
+          ? {
+              url: data.receipt.url,
+              filename: data.receipt.filename,
+              key: data.receipt.key,
+              uploadedAt: new Date(),
+              uploadedBy: new Types.ObjectId(userId),
+            }
+          : undefined,
+        recordedBy: new Types.ObjectId(userId),
+        isManualEntry: true,
+      });
+
+      return {
+        success: true,
+        data: payment,
+        message: 'Manual payment recorded successfully',
+      };
+    } catch (error: any) {
+      this.log.error('Error recording manual payment:', error);
+      throw error;
+    }
   }
 
   async createRentPayment(
@@ -181,6 +244,7 @@ export class PaymentService implements ICronProvider {
       const payment = await this.paymentDAO.insert({
         cuid,
         paymentType: PaymentRecordType.RENT,
+        paymentMethod: PaymentMethod.ONLINE,
         lease: data.leaseId ? new Types.ObjectId(data.leaseId) : undefined,
         tenant: tenantProfile._id, // References Profile document
         baseAmount: totalAmountInCents,
@@ -190,6 +254,7 @@ export class PaymentService implements ICronProvider {
         dueDate: data.dueDate,
         period: data.period,
         description: data.description,
+        isManualEntry: false,
       });
 
       return {
@@ -215,6 +280,11 @@ export class PaymentService implements ICronProvider {
     }
   ): IPromiseReturnedData<{ items: IPaymentDocument[]; pagination?: IPaginateResult }> {
     try {
+      const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
+      if (!client) {
+        throw new NotFoundError({ message: 'Client not found' });
+      }
+
       const query: FilterQuery<IPaymentDocument> = { cuid, deletedAt: null };
 
       if (filters?.status) {
@@ -797,18 +867,31 @@ export class PaymentService implements ICronProvider {
       paymentsThisMonth.forEach((payment) => {
         const amount = payment.baseAmount;
 
-        // All payments count toward expected revenue
-        expectedRevenue += amount;
-
         switch (payment.status) {
-          case PaymentRecordStatus.OVERDUE:
-            overdue += amount;
+          case PaymentRecordStatus.CANCELLED:
+          case PaymentRecordStatus.FAILED:
+            // FAILED and CANCELLED payments don't count toward any stat
+            // They are excluded from expectedRevenue
             break;
           case PaymentRecordStatus.PENDING:
+            expectedRevenue += amount;
             pending += amount;
             break;
+          case PaymentRecordStatus.OVERDUE:
+            expectedRevenue += amount;
+            overdue += amount;
+            break;
           case PaymentRecordStatus.PAID:
+            // Only PAID payments contribute to expected revenue and collected
+            expectedRevenue += amount;
             collected += amount;
+            break;
+          default:
+            // Log unknown status for debugging
+            this.log.warn('Unknown payment status encountered', {
+              status: payment.status,
+              pytuid: payment.pytuid,
+            });
             break;
         }
       });

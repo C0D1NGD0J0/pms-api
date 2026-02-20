@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { basicLimiter } from '@shared/middlewares';
 import { AppRequest } from '@interfaces/utils.interface';
@@ -7,10 +7,6 @@ import { WebhookController } from '@controllers/WebhookController';
 const router = Router();
 router.use(basicLimiter());
 
-/**
- * BoldSign webhook endpoint
- * POST /api/webhooks/boldsign
- */
 router.post(
   '/boldsign',
   asyncWrapper(async (req: AppRequest, res) => {
@@ -20,11 +16,12 @@ router.post(
 );
 
 /**
- * Stripe webhook endpoint
- * POST /api/webhooks/stripe
+ * Stripe webhooks (all events)
+ * Uses express.raw() to preserve raw body for signature verification
  */
 router.post(
   '/stripe',
+  express.raw({ type: 'application/json' }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<WebhookController>('webhookController');
     return controller.handleStripeWebhook(req, res);

@@ -10,6 +10,30 @@ export const router: Router = express.Router();
 
 router.use(basicLimiter());
 
+// Payment statistics
+router.get(
+  '/:cuid/stats',
+  isAuthenticated,
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.LIST),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.getPaymentStats(req, res);
+  })
+);
+
+// List payments (supports both /:cuid and /:cuid/payments for convenience)
+router.get(
+  '/:cuid',
+  isAuthenticated,
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.LIST),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.listPayments(req, res);
+  })
+);
+
 router.get(
   '/:cuid/payments',
   isAuthenticated,
@@ -46,8 +70,19 @@ router.post(
   })
 );
 
+router.patch(
+  '/:cuid/payments/:pytuid/cancel',
+  isAuthenticated,
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.cancelPayment(req, res);
+  })
+);
+
 router.post(
-  '/:cuid/connect/onboard',
+  '/:cuid/payout-account',
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   validateRequest({
@@ -61,7 +96,7 @@ router.post(
 );
 
 router.get(
-  '/:cuid/connect/onboarding-link',
+  '/:cuid/payout-account/onboard',
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   validateRequest({ params: UtilsValidations.cuid }),
@@ -72,7 +107,7 @@ router.get(
 );
 
 router.get(
-  '/:cuid/connect/login-link',
+  '/:cuid/payout-account/dashboard',
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   validateRequest({ params: UtilsValidations.cuid }),

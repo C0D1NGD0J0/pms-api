@@ -74,12 +74,11 @@ export class PaymentController {
   async createConnectAccount(req: AppRequest, res: Response) {
     try {
       const { cuid } = req.params;
-      const { email, country, businessType } = req.body;
+      const { email, country } = req.body;
 
       const result = await this.paymentService.createConnectAccount(cuid, {
         email,
         country,
-        businessType,
       });
 
       return res.status(201).json(result);
@@ -119,6 +118,39 @@ export class PaymentController {
       return res.status(error.statusCode || 500).json({
         success: false,
         message: error.message || 'Failed to get login link',
+      });
+    }
+  }
+
+  async getPaymentStats(req: AppRequest, res: Response) {
+    try {
+      const { cuid } = req.params;
+
+      const result = await this.paymentService.getPaymentStats(cuid);
+
+      return res.status(200).json(result);
+    } catch (error) {
+      this.log.error('Error getting payment stats', error);
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || 'Failed to get payment stats',
+      });
+    }
+  }
+
+  async cancelPayment(req: AppRequest, res: Response) {
+    try {
+      const { cuid, pytuid } = req.params;
+      const { reason } = req.body;
+
+      const result = await this.paymentService.cancelPayment(cuid, pytuid, reason);
+
+      return res.status(200).json(result);
+    } catch (error) {
+      this.log.error('Error cancelling payment', error);
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || 'Failed to cancel payment',
       });
     }
   }

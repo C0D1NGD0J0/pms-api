@@ -41,7 +41,16 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       if (filters?.tenantId) query.tenant = filters.tenantId;
       if (filters?.leaseId) query.lease = filters.leaseId;
 
-      return await this.list(query, { ...opts, sort: opts?.sort || { dueDate: -1 } });
+      const populateOpts = {
+        ...opts,
+        sort: opts?.sort || { dueDate: -1 },
+        populate: opts?.populate || [
+          { path: 'tenant', select: 'personalInfo.firstName personalInfo.lastName user' },
+          { path: 'lease', select: 'luid leaseNumber status property duration' },
+        ],
+      };
+
+      return await this.list(query, populateOpts);
     } catch (error: any) {
       this.log.error('Error finding payments by cuid:', error);
       throw this.throwErrorHandler(error);
@@ -90,7 +99,15 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
 
       if (status) query.status = status;
 
-      return await this.list(query, { ...opts, sort: opts?.sort || { dueDate: -1 } });
+      const populateOpts = {
+        ...opts,
+        sort: opts?.sort || { dueDate: -1 },
+        populate: opts?.populate || [
+          { path: 'lease', select: 'luid leaseNumber status property duration' },
+        ],
+      };
+
+      return await this.list(query, populateOpts);
     } catch (error: any) {
       this.log.error('Error finding payments by tenant:', error);
       throw this.throwErrorHandler(error);
@@ -110,10 +127,15 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
         throw new Error('Lease ID and Client ID are required');
       }
 
-      return await this.list(
-        { lease: leaseId, cuid, deletedAt: null },
-        { ...opts, sort: opts?.sort || { dueDate: -1 } }
-      );
+      const populateOpts = {
+        ...opts,
+        sort: opts?.sort || { dueDate: -1 },
+        populate: opts?.populate || [
+          { path: 'tenant', select: 'personalInfo.firstName personalInfo.lastName user' },
+        ],
+      };
+
+      return await this.list({ lease: leaseId, cuid, deletedAt: null }, populateOpts);
     } catch (error: any) {
       this.log.error('Error finding payments by lease:', error);
       throw this.throwErrorHandler(error);

@@ -781,16 +781,13 @@ export class PaymentService implements ICronProvider {
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-      // Fetch all payments for current month using findByCuid
-      const result = await this.paymentDAO.findByCuid(cuid, {}, { limit: 10000 });
-      const allPayments = result.items || [];
-
-      // Filter by current month's due date
-      const paymentsThisMonth = allPayments.filter((payment) => {
-        const dueDate = new Date(payment.dueDate);
-        return dueDate >= startOfMonth && dueDate <= endOfMonth;
-      });
-
+      // Fetch payments for current month directly using dueDate range
+      const result = await this.paymentDAO.findByCuid(
+        cuid,
+        { dueDate: { $gte: startOfMonth, $lte: endOfMonth } },
+        { limit: 10000 },
+      );
+      const paymentsThisMonth = result.items || [];
       // Calculate stats
       let expectedRevenue = 0;
       let collected = 0;

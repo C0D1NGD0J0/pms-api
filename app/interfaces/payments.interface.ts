@@ -68,11 +68,13 @@ export interface IManualPaymentFormData {
   };
   paymentType: PaymentRecordType;
   paymentMethod: PaymentMethod;
+  status?: PaymentRecordStatus;
   period?: IPaymentPeriod;
+  processingFee?: number; // In cents
   description?: string;
+  baseAmount: number; // In cents
   leaseId?: string;
   tenantId: string;
-  amount: number; // In cents
   paidAt: Date;
 }
 

@@ -189,13 +189,13 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           populate: [
             {
               path: 'tenantId',
-              select: 'email',
+              select: 'uid email',
               populate: {
                 path: 'profile',
                 select: 'personalInfo.firstName personalInfo.lastName',
               },
             },
-            { path: 'property.id', select: 'address.fullAddress' },
+            { path: 'property.id', select: 'pid name address.fullAddress' },
             { path: 'property.unitId', select: 'unitNumber' },
           ],
         }),
@@ -213,6 +213,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
             : tenant?.email || 'N/A';
 
         const propertyAddress = leaseObj.property?.id?.address?.fullAddress || 'N/A';
+        const propertyName = leaseObj.property?.id?.name || 'Unknown Property';
         const unitNumber = leaseObj.property?.unitId?.unitNumber || null;
 
         return {
@@ -228,6 +229,16 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           sentForSignature:
             leaseObj.signingMethod === 'electronic' && leaseObj.eSignature?.status === 'sent',
           tenantActivated: leaseObj.status === 'active',
+          tenant: {
+            uid: tenant?.uid,
+            email: tenant?.email,
+            fullName: tenantName,
+          },
+          property: {
+            pid: leaseObj.property?.id?.pid,
+            name: propertyName,
+            address: propertyAddress,
+          },
         };
       });
 

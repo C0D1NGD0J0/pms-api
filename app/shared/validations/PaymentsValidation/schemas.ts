@@ -18,7 +18,9 @@ export const createPayment = z.object({
 export const recordManualPayment = z.object({
   paymentType: z.enum(['rent', 'maintenance', 'late_fee']),
   paymentMethod: z.enum(['online', 'cash', 'check', 'bank_transfer', 'other']),
-  amount: z.number().int().min(0, 'Amount must be a positive number'),
+  status: z.enum(['paid', 'pending', 'overdue', 'failed', 'cancelled']).optional(),
+  baseAmount: z.number().int().min(0, 'Base amount must be a positive number'),
+  processingFee: z.number().int().min(0, 'Processing fee cannot be negative').optional(),
   paidAt: z.coerce.date(),
   tenantId: z.string().min(1, 'Tenant ID is required'),
   leaseId: z.string().optional(),

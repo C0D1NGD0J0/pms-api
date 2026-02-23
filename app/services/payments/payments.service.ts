@@ -116,15 +116,6 @@ export class PaymentService implements ICronProvider {
         paidAt: data.paidAt,
         period: data.period,
         description: data.description,
-        receipt: data.receipt
-          ? {
-              url: data.receipt.url,
-              filename: data.receipt.filename,
-              key: data.receipt.key,
-              uploadedAt: new Date(),
-              uploadedBy: new Types.ObjectId(userId),
-            }
-          : undefined,
         recordedBy: new Types.ObjectId(userId),
         isManualEntry: true,
       });
@@ -278,7 +269,7 @@ export class PaymentService implements ICronProvider {
       skip?: number;
       limit?: number;
     }
-  ): IPromiseReturnedData<{ items: IPaymentDocument[]; pagination?: IPaginateResult }> {
+  ): IPromiseReturnedData<{ items: any[]; pagination?: IPaginateResult }> {
     try {
       const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
       if (!client) {
@@ -300,16 +291,55 @@ export class PaymentService implements ICronProvider {
         query.lease = new Types.ObjectId(filters.leaseId);
       }
 
-      const result = await this.paymentDAO.list(query, {
-        sort: { createdAt: -1 },
-        populate: ['tenant', 'lease'],
-        skip: filters?.skip,
-        limit: filters?.limit,
-      });
+      const result = await this.paymentDAO.list(
+        query,
+        {
+          sort: { dueDate: -1, createdAt: -1 },
+          populate: [
+            {
+              path: 'tenant',
+              select: 'personalInfo',
+            },
+            {
+              path: 'lease',
+              select: 'property',
+            },
+          ],
+          projection: 'pytuid paymentMethod baseAmount processingFee status dueDate paidAt period',
+          skip: filters?.skip,
+          limit: filters?.limit,
+        },
+        true
+      );
+
+      const cleanItems = result.items.map((payment: any) => ({
+        pytuid: payment.pytuid,
+        tenant: payment.tenant
+          ? {
+              firstName: payment.tenant.personalInfo?.firstName || '',
+              lastName: payment.tenant.personalInfo?.lastName || '',
+              fullName:
+                `${payment.tenant.personalInfo?.firstName || ''} ${payment.tenant.personalInfo?.lastName || ''}`.trim() ||
+                'Unknown Tenant',
+            }
+          : null,
+        property: payment.lease?.property?.address || 'Unknown Property',
+        amount: payment.baseAmount + (payment.processingFee || 0),
+        baseAmount: payment.baseAmount,
+        processingFee: payment.processingFee || 0,
+        status: payment.status,
+        paymentMethod: payment.paymentMethod,
+        dueDate: payment.dueDate,
+        paidAt: payment.paidAt,
+        period: payment.period,
+      }));
 
       return {
         success: true,
-        data: result,
+        data: {
+          items: cleanItems,
+          ...(result.pagination ? { pagination: result.pagination } : {}),
+        },
         message: 'Payments retrieved successfully',
       };
     } catch (error) {
@@ -351,8 +381,22 @@ export class PaymentService implements ICronProvider {
         { pytuid, cuid, deletedAt: null },
         {
           populate: [
-            { path: 'tenant', populate: { path: 'user' } }, // Populate Profile and nested User
-            'lease',
+            {
+              path: 'tenant',
+              select:
+                'personalInfo.firstName personalInfo.lastName personalInfo.phoneNumber puid user',
+              populate: { path: 'user', select: 'email' },
+            },
+            {
+              path: 'lease',
+              select:
+                'property.id property.address property.name property.unitNumber leaseNumber status duration.startDate duration.endDate luid',
+              populate: {
+                path: 'property.id',
+                select:
+                  'propertyType specifications.bedrooms specifications.bathrooms status managedBy',
+              },
+            },
           ],
         }
       )) as IPaymentPopulated | null;
@@ -364,9 +408,30 @@ export class PaymentService implements ICronProvider {
       const tenantProfile = {
         firstName: payment.tenant?.personalInfo?.firstName,
         lastName: payment.tenant?.personalInfo?.lastName,
+        phoneNumber: payment.tenant?.personalInfo?.phoneNumber,
         email: (payment.tenant?.user as any)?.email, // Profile has user populated
         puid: payment.tenant?.puid,
       };
+
+      const propertyDoc = (payment.lease?.property as any)?.id;
+      let propertyManager = null;
+      if (propertyDoc?.managedBy) {
+        const managerProfile = await this.profileDAO.findFirst(
+          { user: propertyDoc.managedBy },
+          {
+            select: 'personalInfo.firstName personalInfo.lastName personalInfo.phoneNumber user',
+            populate: { path: 'user', select: 'email' },
+          }
+        );
+        if (managerProfile) {
+          propertyManager = {
+            fullName:
+              `${managerProfile.personalInfo?.firstName || ''} ${managerProfile.personalInfo?.lastName || ''}`.trim(),
+            email: (managerProfile.user as any)?.email || '',
+            phoneNumber: managerProfile.personalInfo?.phoneNumber || '',
+          };
+        }
+      }
 
       const leaseInfo = payment.lease
         ? {
@@ -378,9 +443,11 @@ export class PaymentService implements ICronProvider {
             leaseUid: payment.lease.luid,
             unitNumber: payment.lease.property?.unitNumber,
             propertyName: payment.lease.property?.name,
-            propertyType: payment.lease.property?.propertyType,
-            bedrooms: payment.lease.property?.specifications?.bedrooms,
-            bathrooms: payment.lease.property?.specifications?.bathrooms,
+            propertyType: propertyDoc?.propertyType,
+            propertyStatus: propertyDoc?.status,
+            bedrooms: propertyDoc?.specifications?.bedrooms,
+            bathrooms: propertyDoc?.specifications?.bathrooms,
+            propertyManager,
           }
         : null;
 
@@ -394,7 +461,17 @@ export class PaymentService implements ICronProvider {
         success: true,
         data: {
           ...paymentObj,
-          tenantProfile,
+          tenant: {
+            uid: tenantProfile.puid || '',
+            fullName: `${tenantProfile.firstName || ''} ${tenantProfile.lastName || ''}`.trim(),
+            email: tenantProfile.email || '',
+            phoneNumber: tenantProfile.phoneNumber || '',
+          },
+          property: {
+            pid: '',
+            name: leaseInfo?.propertyName || '',
+            address: leaseInfo?.address || '',
+          },
           leaseInfo,
         },
         message: 'Payment retrieved successfully',

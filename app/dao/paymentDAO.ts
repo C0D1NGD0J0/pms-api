@@ -247,4 +247,100 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       throw this.throwErrorHandler(error);
     }
   }
+
+  /**
+   * Get tenant payment metrics and history
+   */
+  async getTenantPaymentMetrics(
+    cuid: string,
+    tenantId: string,
+    options?: {
+      includeHistory?: boolean;
+      historyLimit?: number;
+    }
+  ): Promise<{
+    payments: any[];
+    metrics: {
+      totalRentPaid: number;
+      onTimePaymentRate: number;
+      averagePaymentDelay: number;
+    };
+  }> {
+    if (!cuid || !tenantId) {
+      throw new Error('Client ID and Tenant ID are required');
+    }
+
+    try {
+      const result = await this.list(
+        {
+          cuid,
+          tenant: tenantId,
+          deletedAt: null,
+        },
+        {
+          sort: { dueDate: -1 },
+        },
+        true
+      );
+
+      const allPayments = result.items;
+
+      const paidPayments = allPayments.filter((p: any) => p.status === PaymentRecordStatus.PAID);
+      const totalRentPaid = paidPayments.reduce(
+        (sum: number, p: any) => sum + (p.baseAmount || 0) + (p.processingFee || 0),
+        0
+      );
+
+      const paymentsWithDueDate = paidPayments.filter((p: any) => p.dueDate && p.paidAt);
+      const onTimePayments = paymentsWithDueDate.filter((p: any) => {
+        const dueDate = new Date(p.dueDate);
+        const paidDate = new Date(p.paidAt);
+        return paidDate <= dueDate;
+      });
+      const onTimePaymentRate =
+        paymentsWithDueDate.length > 0
+          ? Math.round((onTimePayments.length / paymentsWithDueDate.length) * 100)
+          : 0;
+
+      const delaysInDays = paymentsWithDueDate.map((p: any) => {
+        const dueDate = new Date(p.dueDate);
+        const paidDate = new Date(p.paidAt);
+        const diffMs = paidDate.getTime() - dueDate.getTime();
+        return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+      });
+      const averagePaymentDelay =
+        delaysInDays.length > 0
+          ? Math.round(
+              delaysInDays.reduce((a: number, b: number) => a + b, 0) / delaysInDays.length
+            )
+          : 0;
+
+      const historyLimit = options?.historyLimit || 50;
+      const paymentHistory = options?.includeHistory
+        ? allPayments.slice(0, historyLimit).map((payment: any) => ({
+            id: payment._id.toString(),
+            pytuid: payment.pytuid,
+            invoiceNumber: payment.invoiceNumber,
+            paymentType: payment.paymentType,
+            amount: (payment.baseAmount || 0) + (payment.processingFee || 0),
+            status: payment.status,
+            dueDate: payment.dueDate,
+            paidAt: payment.paidAt,
+            createdAt: payment.createdAt,
+          }))
+        : [];
+
+      return {
+        payments: paymentHistory,
+        metrics: {
+          totalRentPaid,
+          onTimePaymentRate,
+          averagePaymentDelay,
+        },
+      };
+    } catch (error: any) {
+      this.log.error('Error getting tenant payment metrics:', error);
+      throw this.throwErrorHandler(error);
+    }
+  }
 }

@@ -34,9 +34,9 @@ export interface IPaymentDocument extends Document {
     uploadedBy?: Types.ObjectId;
   };
   notes?: {
-    text: string;
-    createdAt: Date;
+    note: string;
     author: string;
+    createdAt: Date;
   }[];
   paymentType: PaymentRecordType;
   paymentMethod: PaymentMethod;

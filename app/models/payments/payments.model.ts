@@ -106,15 +106,23 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       default: false,
       required: true,
     },
-    notes: {
-      type: [
-        {
-          text: String,
-          createdAt: Date,
-          author: String,
+    notes: [
+      {
+        note: {
+          type: String,
+          required: true,
+          trim: true,
         },
-      ],
-    },
+        author: {
+          type: String,
+          required: true,
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
     deletedAt: {
       type: Date,
       default: null,

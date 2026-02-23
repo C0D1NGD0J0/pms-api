@@ -18,6 +18,7 @@ describe('PaymentService - getPaymentByUid', () => {
   let paymentService: PaymentService;
   let mockPaymentDAO: jest.Mocked<PaymentDAO>;
   let mockClientDAO: jest.Mocked<ClientDAO>;
+  let mockProfileDAO: jest.Mocked<ProfileDAO>;
 
   const CUID = 'CLIENT001';
   const PYTUID = 'PYT001';
@@ -36,7 +37,11 @@ describe('PaymentService - getPaymentByUid', () => {
     paidAt: new Date('2026-02-01T10:22:00Z'),
     tenant: {
       puid: 'PUID001',
-      personalInfo: { firstName: 'Marcus', lastName: 'Johnson' },
+      personalInfo: {
+        firstName: 'Marcus',
+        lastName: 'Johnson',
+        phoneNumber: '+1234567890'
+      },
       user: { email: 'marcus.j@email.com' },
     },
     lease: {
@@ -48,11 +53,16 @@ describe('PaymentService - getPaymentByUid', () => {
         endDate: new Date('2026-02-28'),
       },
       property: {
+        id: {
+          _id: new Types.ObjectId(),
+          propertyType: 'residential',
+          specifications: { bedrooms: 2, bathrooms: 1 },
+          status: 'active',
+          managedBy: new Types.ObjectId(),
+        },
         address: '12 Sunset Blvd, Los Angeles, CA 90028',
         unitNumber: '4A',
         name: 'Sunset Apartments',
-        propertyType: 'residential',
-        specifications: { bedrooms: 2, bathrooms: 1 },
       },
     },
     toObject() {
@@ -73,11 +83,22 @@ describe('PaymentService - getPaymentByUid', () => {
       update: jest.fn(),
     } as any;
 
+    mockProfileDAO = {
+      findFirst: jest.fn().mockResolvedValue({
+        personalInfo: {
+          firstName: 'John',
+          lastName: 'Manager',
+          phoneNumber: '+1987654321',
+        },
+        user: { email: 'manager@property.com' },
+      }),
+    } as any;
+
     paymentService = new PaymentService({
       clientDAO: mockClientDAO,
       paymentDAO: mockPaymentDAO,
       paymentProcessorDAO: {} as jest.Mocked<PaymentProcessorDAO>,
-      profileDAO: {} as jest.Mocked<ProfileDAO>,
+      profileDAO: mockProfileDAO,
       subscriptionDAO: {} as jest.Mocked<SubscriptionDAO>,
       leaseDAO: {} as jest.Mocked<LeaseDAO>,
       userDAO: {} as jest.Mocked<UserDAO>,
@@ -87,7 +108,7 @@ describe('PaymentService - getPaymentByUid', () => {
   });
 
   describe('success cases', () => {
-    it('should return payment with full leaseInfo including unit and property details', async () => {
+    it('should return payment with full leaseInfo including unit, property details, and manager', async () => {
       mockPaymentDAO.findFirst.mockResolvedValue(makeMockPayment() as any);
 
       const result = await paymentService.getPaymentByUid(CUID, PYTUID);
@@ -103,21 +124,27 @@ describe('PaymentService - getPaymentByUid', () => {
         unitNumber: '4A',
         propertyName: 'Sunset Apartments',
         propertyType: 'residential',
+        propertyStatus: 'active',
         bedrooms: 2,
         bathrooms: 1,
+        propertyManager: {
+          fullName: 'John Manager',
+          email: 'manager@property.com',
+          phoneNumber: '+1987654321',
+        },
       });
     });
 
-    it('should return correct tenantProfile with name and email', async () => {
+    it('should return correct tenant with name, email, and phone number', async () => {
       mockPaymentDAO.findFirst.mockResolvedValue(makeMockPayment() as any);
 
       const result = await paymentService.getPaymentByUid(CUID, PYTUID);
 
-      expect(result.data.tenantProfile).toEqual({
-        firstName: 'Marcus',
-        lastName: 'Johnson',
+      expect(result.data.tenant).toEqual({
+        uid: 'PUID001',
+        fullName: 'Marcus Johnson',
         email: 'marcus.j@email.com',
-        puid: 'PUID001',
+        phoneNumber: '+1234567890',
       });
     });
 
@@ -135,6 +162,7 @@ describe('PaymentService - getPaymentByUid', () => {
     it('should handle lease with no unit number or specifications', async () => {
       const payment = makeMockPayment();
       payment.lease.property = {
+        id: { _id: new Types.ObjectId() } as any,
         address: '5 Harbor St',
         name: 'Harbor View',
       } as any;
@@ -148,16 +176,36 @@ describe('PaymentService - getPaymentByUid', () => {
       expect(result.data.leaseInfo?.propertyName).toBe('Harbor View');
     });
 
-    it('should strip tenant and lease from the raw paymentObj', async () => {
+    it('should handle property with no manager', async () => {
+      const payment = makeMockPayment();
+      payment.lease.property.id.managedBy = null;
+      mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
+      mockProfileDAO.findFirst.mockResolvedValue(null);
+
+      const result = await paymentService.getPaymentByUid(CUID, PYTUID);
+
+      expect(result.data.leaseInfo?.propertyManager).toBeNull();
+    });
+
+    it('should return transformed tenant and property objects (not raw)', async () => {
       mockPaymentDAO.findFirst.mockResolvedValue(makeMockPayment() as any);
 
       const result = await paymentService.getPaymentByUid(CUID, PYTUID);
 
-      expect(result.data).not.toHaveProperty('tenant');
-      expect(result.data).not.toHaveProperty('lease');
+      // Should have transformed tenant object
+      expect(result.data.tenant).toEqual({
+        uid: 'PUID001',
+        fullName: 'Marcus Johnson',
+        email: 'marcus.j@email.com',
+        phoneNumber: '+1234567890',
+      });
+
+      // Should have property and leaseInfo
+      expect(result.data.property).toBeDefined();
+      expect(result.data.leaseInfo).toBeDefined();
     });
 
-    it('should populate payment with tenant user and lease paths', async () => {
+    it('should populate payment with correct paths', async () => {
       mockPaymentDAO.findFirst.mockResolvedValue(makeMockPayment() as any);
 
       await paymentService.getPaymentByUid(CUID, PYTUID);
@@ -166,8 +214,19 @@ describe('PaymentService - getPaymentByUid', () => {
         { pytuid: PYTUID, cuid: CUID, deletedAt: null },
         {
           populate: [
-            { path: 'tenant', populate: { path: 'user' } },
-            'lease',
+            {
+              path: 'tenant',
+              select: 'personalInfo.firstName personalInfo.lastName personalInfo.phoneNumber puid user',
+              populate: { path: 'user', select: 'email' },
+            },
+            {
+              path: 'lease',
+              select: 'property.id property.address property.name property.unitNumber leaseNumber status duration.startDate duration.endDate luid',
+              populate: {
+                path: 'property.id',
+                select: 'propertyType specifications.bedrooms specifications.bathrooms status managedBy',
+              },
+            },
           ],
         }
       );

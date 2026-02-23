@@ -16,7 +16,6 @@ export const router: Router = express.Router();
 
 router.use(basicLimiter());
 
-// Payment statistics
 router.get(
   '/:cuid/stats',
   isAuthenticated,
@@ -28,7 +27,17 @@ router.get(
   })
 );
 
-// List payments (supports both /:cuid and /:cuid/payments for convenience)
+router.get(
+  '/:cuid/:pytuid',
+  isAuthenticated,
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.READ),
+  validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.pytuid) }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.getPayment(req, res);
+  })
+);
+
 router.get(
   '/:cuid',
   isAuthenticated,
@@ -37,17 +46,6 @@ router.get(
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
     return controller.listPayments(req, res);
-  })
-);
-
-router.get(
-  '/:cuid/:pytuid',
-  isAuthenticated,
-  requirePermission(PermissionResource.PAYMENT, PermissionAction.READ),
-  validateRequest({ params: UtilsValidations.cuid }),
-  asyncWrapper((req, res) => {
-    const controller = req.container.resolve<PaymentController>('paymentController');
-    return controller.getPayment(req, res);
   })
 );
 
@@ -66,13 +64,13 @@ router.post(
 );
 
 router.post(
-  '/:cuid/manual_entry',
+  '/:cuid/:pytuid/manual_entry',
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   diskUpload(['receipt.file']),
   scanFile,
   validateRequest({
-    params: UtilsValidations.cuid,
+    params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
     body: PaymentValidations.recordManualPayment,
   }),
   asyncWrapper((req, res) => {
@@ -85,7 +83,7 @@ router.patch(
   '/:cuid/:pytuid/cancel',
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
-  validateRequest({ params: UtilsValidations.cuid }),
+  validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.pytuid) }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
     return controller.cancelPayment(req, res);

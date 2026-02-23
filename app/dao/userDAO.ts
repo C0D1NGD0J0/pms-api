@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import { User } from '@models/index';
+import { Lease, User } from '@models/index';
 import { IUserDocument } from '@interfaces/user.interface';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
 import { IUserRoleType, ROLES } from '@shared/constants/roles.constants';
@@ -1398,11 +1398,32 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       const tenant = result[0] as any;
 
-      // TODO: In a real implementation, you would fetch additional data from other collections:
-      // - Lease history from a leases collection
-      // - Payment history from a payments collection
-      // - Maintenance requests from a maintenance collection
-      // - Notes from a tenant_notes collection
+      const tenantId = typeof tenant._id === 'string' ? new Types.ObjectId(tenant._id) : tenant._id;
+
+      // Note: Payment metrics and history are now populated in the service layer
+      // This allows proper separation of concerns - UserDAO handles user data only
+
+      if (includeLeaseHistory) {
+        const leases = await Lease.find({
+          cuid,
+          tenantId,
+        })
+          .sort({ createdAt: -1 })
+          .limit(10)
+          .lean();
+
+        tenant.tenantInfo.leaseHistory = leases.map((lease: any) => ({
+          id: lease._id.toString(),
+          luid: lease.luid,
+          leaseNumber: lease.leaseNumber,
+          status: lease.status,
+          propertyName: lease.property?.address || 'Unknown Property',
+          unitNumber: lease.unit?.unitNumber || '',
+          monthlyRent: lease.fees?.monthlyRent || 0,
+          leaseStart: lease.duration?.startDate || lease.startDate,
+          leaseEnd: lease.duration?.endDate || lease.endDate,
+        }));
+      }
 
       return tenant as import('@interfaces/user.interface').IClientTenantDetails;
     } catch (error) {

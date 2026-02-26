@@ -26,6 +26,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       paymentType?: PaymentRecordType;
       tenantId?: string;
       leaseId?: string;
+      dueDate?: string;
     },
     opts?: IFindOptions
   ): ListResultWithPagination<IPaymentDocument[]> {
@@ -40,6 +41,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       if (filters?.paymentType) query.paymentType = filters.paymentType;
       if (filters?.tenantId) query.tenant = filters.tenantId;
       if (filters?.leaseId) query.lease = filters.leaseId;
+      if (filters?.dueDate) query.dueDate = filters.dueDate;
 
       const populateOpts = {
         ...opts,

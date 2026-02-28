@@ -58,6 +58,7 @@ export interface ICompanyProfile {
  */
 export interface IClientDocument extends Document, IClient {
   verifiedBy: string | Types.ObjectId;
+  verifiedAt: Date | null;
   isVerified: boolean;
   _id: Types.ObjectId;
   deletedAt: Date;

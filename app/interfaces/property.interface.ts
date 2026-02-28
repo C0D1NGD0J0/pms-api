@@ -62,6 +62,7 @@ export interface IProperty {
   createdBy: Types.ObjectId;
   maxAllowedUnits?: number;
   address: AddressDetails;
+  notes?: IPropertyNote[];
   status: PropertyStatus;
   owner: IPropertyOwner;
   yearBuilt?: number;
@@ -198,6 +199,22 @@ export interface FinancialDetails {
  */
 
 /**
+ * Property with Unit Info Interface
+ * Using intersection type for property with unit statistics
+ */
+export type IPropertyWithUnitInfo = {
+  unitInfo: UnitInfo;
+  metrics?: {
+    monthlyRent: number;
+    annualRevenue: number;
+    occupancyRate: number;
+    monthlyNetIncome: number;
+  };
+  paymentHistory?: any[];
+  maintenanceHistory?: any[];
+} & Partial<{ property: IPropertyDocument }>;
+
+/**
  * Property Owner Interface
  */
 export interface IPropertyOwner {
@@ -229,21 +246,6 @@ export interface IAssignableUser {
   displayName: string;
   email: string;
   id: string;
-}
-
-/**
- * Unit Info Interface
- */
-export interface UnitInfo {
-  suggestedNextUnitNumber?: string;
-  availableSpaces?: number;
-  maxAllowedUnits?: number;
-  lastUnitNumber?: string;
-  currentUnits?: number;
-  statistics: UnitStats;
-  unitStats?: UnitStats;
-  canAddUnit?: boolean;
-  totalUnits: number;
 }
 
 /**
@@ -288,6 +290,20 @@ export interface PropertyApprovalEntry {
   timestamp: Date;
   notes?: string;
   metadata?: any;
+}
+
+/**
+ * Unit Info Interface
+ */
+export interface UnitInfo {
+  suggestedNextUnitNumber?: string;
+  availableSpaces?: number;
+  maxAllowedUnits?: number;
+  lastUnitNumber?: string;
+  currentUnits?: number;
+  unitStats?: UnitStats;
+  canAddUnit?: boolean;
+  totalUnits: number;
 }
 
 /**
@@ -371,6 +387,22 @@ export interface PropertyImageItem {
 }
 
 /**
+ * Property Note Interface
+ * Individual note entry for property
+ */
+export interface IPropertyNote {
+  author: {
+    uid: string;
+    name: string;
+  };
+  _id?: Types.ObjectId;
+  updatedAt?: Date;
+  createdAt: Date;
+  html?: string;
+  text: string;
+}
+
+/**
  * Pending Changes Interface
  * Using Omit to exclude specific fields from changes
  */
@@ -379,6 +411,12 @@ export type IPendingChanges = {
   updatedBy: Types.ObjectId;
   displayName: string;
 } & Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>>;
+
+/**
+ * ============================================================================
+ * MAIN PROPERTY INTERFACE
+ * ============================================================================
+ */
 
 /**
  * Property Utilities Interface
@@ -394,7 +432,7 @@ export interface PropertyUtilities {
 
 /**
  * ============================================================================
- * MAIN PROPERTY INTERFACE
+ * FORM DATA INTERFACES
  * ============================================================================
  */
 
@@ -412,7 +450,7 @@ export interface UnitStats {
 
 /**
  * ============================================================================
- * FORM DATA INTERFACES
+ * DOCUMENT INTERFACES (Mongoose Extensions)
  * ============================================================================
  */
 
@@ -431,7 +469,7 @@ export type PropertyDocumentType =
 
 /**
  * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
+ * POPULATED/ENRICHED INTERFACES
  * ============================================================================
  */
 
@@ -445,20 +483,6 @@ export type PropertyType =
   | 'townhouse'
   | 'commercial'
   | 'industrial';
-
-/**
- * ============================================================================
- * POPULATED/ENRICHED INTERFACES
- * ============================================================================
- */
-
-/**
- * Property with Unit Info Interface
- * Using intersection type for property with unit statistics
- */
-export type IPropertyWithUnitInfo = Partial<{ property: IPropertyDocument }> & {
-  unitInfo: UnitInfo;
-};
 
 /**
  * Property Status Types

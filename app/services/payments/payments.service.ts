@@ -1,10 +1,11 @@
 import Logger from 'bunyan';
-import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
+import { FilterQuery, Types } from 'mongoose';
+import { envVariables } from '@shared/config';
 import { SubscriptionPlanConfig } from '@services/subscription';
-import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { IPromiseReturnedData, IPaginateResult } from '@interfaces/utils.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import {
   PaymentProcessorDAO,
@@ -17,10 +18,13 @@ import {
 } from '@dao/index';
 import {
   IPaymentGatewayProvider,
+  IManualPaymentFormData,
   PaymentRecordStatus,
+  IPaymentPopulated,
   PaymentRecordType,
   IPaymentDocument,
   IPaymentFormData,
+  PaymentMethod,
   LeaseStatus,
 } from '@interfaces/index';
 
@@ -75,6 +79,58 @@ export class PaymentService implements ICronProvider {
     return [];
   }
 
+  async recordManualPayment(
+    cuid: string,
+    userId: string,
+    data: IManualPaymentFormData
+  ): IPromiseReturnedData<IPaymentDocument> {
+    try {
+      const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
+      if (!client) {
+        throw new NotFoundError({ message: 'Client not found' });
+      }
+
+      const tenantProfile = await this.profileDAO.findFirst({ user: data.tenantId });
+      if (!tenantProfile) {
+        throw new NotFoundError({ message: 'Tenant profile not found' });
+      }
+
+      let lease;
+      if (data.leaseId) {
+        lease = await this.leaseDAO.findById(data.leaseId);
+        if (!lease || lease.cuid !== cuid) {
+          throw new NotFoundError({ message: 'Lease not found' });
+        }
+      }
+
+      const payment = await this.paymentDAO.insert({
+        cuid,
+        paymentType: data.paymentType,
+        paymentMethod: data.paymentMethod,
+        lease: data.leaseId ? new Types.ObjectId(data.leaseId) : undefined,
+        tenant: tenantProfile._id,
+        baseAmount: data.baseAmount,
+        processingFee: data.processingFee || 0,
+        status: data.status || PaymentRecordStatus.PAID,
+        dueDate: data.paidAt,
+        paidAt: data.paidAt,
+        period: data.period,
+        description: data.description,
+        recordedBy: new Types.ObjectId(userId),
+        isManualEntry: true,
+      });
+
+      return {
+        success: true,
+        data: payment,
+        message: 'Manual payment recorded successfully',
+      };
+    } catch (error: any) {
+      this.log.error('Error recording manual payment:', error);
+      throw error;
+    }
+  }
+
   async createRentPayment(
     cuid: string,
     data: IPaymentFormData
@@ -120,22 +176,22 @@ export class PaymentService implements ICronProvider {
       // Gateway-agnostic: Keyed by accountId (supports Stripe, PayPal, etc.)
       // Location: Profile.tenantInfo.paymentGatewayCustomers[accountId]
 
-      const tenant = await this.profileDAO.findFirst(
+      const tenantProfile = await this.profileDAO.findFirst(
         { user: data.tenantId },
         {
           populate: ['user'],
         }
       );
-      if (!tenant) {
+      if (!tenantProfile) {
         throw new NotFoundError({ message: 'Tenant profile not found' });
       }
 
-      const tenantCustomerId = tenant.tenantInfo?.paymentGatewayCustomers?.get(
+      const tenantCustomerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get(
         paymentProcessor.accountId
       );
       if (!tenantCustomerId) {
         this.log.error('Payment gateway customerId not found for tenant', {
-          tenantId: tenant._id,
+          profileId: tenantProfile._id,
           accountId: paymentProcessor.accountId,
           cuid,
         });
@@ -145,7 +201,7 @@ export class PaymentService implements ICronProvider {
         });
       }
 
-      const lineItems = this.buildLineItemsFromLease(lease, data.daysLate);
+      const lineItems = this.buildLineItemsFromFees(leaseFees);
       const invoiceResult = await this.paymentGatewayService.createInvoice(
         IPaymentGatewayProvider.STRIPE,
         {
@@ -175,11 +231,13 @@ export class PaymentService implements ICronProvider {
       }
 
       // status of PENDING, will be updated via webhook when tenant is charged
+      // tenant field references Profile (not User)
       const payment = await this.paymentDAO.insert({
         cuid,
         paymentType: PaymentRecordType.RENT,
+        paymentMethod: PaymentMethod.ONLINE,
         lease: data.leaseId ? new Types.ObjectId(data.leaseId) : undefined,
-        tenant: new Types.ObjectId(data.tenantId),
+        tenant: tenantProfile._id, // References Profile document
         baseAmount: totalAmountInCents,
         processingFee: feeBreakdown.gatewayProcessingFee,
         gatewayPaymentId: invoiceResult.data.invoiceId,
@@ -187,6 +245,7 @@ export class PaymentService implements ICronProvider {
         dueDate: data.dueDate,
         period: data.period,
         description: data.description,
+        isManualEntry: false,
       });
 
       return {
@@ -200,23 +259,375 @@ export class PaymentService implements ICronProvider {
     }
   }
 
+  async listPayments(
+    cuid: string,
+    filters?: {
+      status?: string;
+      type?: string;
+      tenantId?: string;
+      leaseId?: string;
+      skip?: number;
+      limit?: number;
+    }
+  ): IPromiseReturnedData<{ items: any[]; pagination?: IPaginateResult }> {
+    try {
+      const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
+      if (!client) {
+        throw new NotFoundError({ message: 'Client not found' });
+      }
+
+      const query: FilterQuery<IPaymentDocument> = { cuid, deletedAt: null };
+
+      if (filters?.status) {
+        query.status = filters.status;
+      }
+      if (filters?.type) {
+        query.paymentType = filters.type;
+      }
+      if (filters?.tenantId) {
+        query.tenant = new Types.ObjectId(filters.tenantId);
+      }
+      if (filters?.leaseId) {
+        query.lease = new Types.ObjectId(filters.leaseId);
+      }
+
+      const result = await this.paymentDAO.list(
+        query,
+        {
+          sort: { dueDate: -1, createdAt: -1 },
+          populate: [
+            {
+              path: 'tenant',
+              select: 'personalInfo',
+            },
+            {
+              path: 'lease',
+              select: 'property',
+            },
+          ],
+          projection: 'pytuid paymentMethod baseAmount processingFee status dueDate paidAt period',
+          skip: filters?.skip,
+          limit: filters?.limit,
+        },
+        true
+      );
+
+      const cleanItems = result.items.map((payment: any) => ({
+        pytuid: payment.pytuid,
+        tenant: payment.tenant
+          ? {
+              firstName: payment.tenant.personalInfo?.firstName || '',
+              lastName: payment.tenant.personalInfo?.lastName || '',
+              fullName:
+                `${payment.tenant.personalInfo?.firstName || ''} ${payment.tenant.personalInfo?.lastName || ''}`.trim() ||
+                'Unknown Tenant',
+            }
+          : null,
+        property: payment.lease?.property?.address || 'Unknown Property',
+        amount: payment.baseAmount + (payment.processingFee || 0),
+        baseAmount: payment.baseAmount,
+        processingFee: payment.processingFee || 0,
+        status: payment.status,
+        paymentMethod: payment.paymentMethod,
+        dueDate: payment.dueDate,
+        paidAt: payment.paidAt,
+        period: payment.period,
+      }));
+
+      return {
+        success: true,
+        data: {
+          items: cleanItems,
+          ...(result.pagination ? { pagination: result.pagination } : {}),
+        },
+        message: 'Payments retrieved successfully',
+      };
+    } catch (error) {
+      this.log.error('Error listing payments', error);
+      throw error;
+    }
+  }
+
+  async getPaymentByUid(
+    cuid: string,
+    pytuid: string
+  ): IPromiseReturnedData<{
+    tenantProfile: { firstName?: string; lastName?: string; email?: string; puid?: string };
+    leaseInfo: {
+      address?: any;
+      leaseNumber?: string;
+      status?: string;
+      leaseUid?: string;
+      startDate?: Date;
+      endDate?: Date;
+      unitNumber?: string;
+      propertyName?: string;
+      propertyType?: string;
+      bedrooms?: number;
+      bathrooms?: number;
+    } | null;
+  }> {
+    try {
+      if (!cuid || !pytuid) {
+        throw new BadRequestError({ message: 'Client ID and Payment ID are required' });
+      }
+
+      const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
+      if (!client) {
+        throw new NotFoundError({ message: 'Client not found' });
+      }
+
+      const payment = (await this.paymentDAO.findFirst(
+        { pytuid, cuid, deletedAt: null },
+        {
+          populate: [
+            {
+              path: 'tenant',
+              select:
+                'personalInfo.firstName personalInfo.lastName personalInfo.phoneNumber puid user',
+              populate: { path: 'user', select: 'email' },
+            },
+            {
+              path: 'lease',
+              select:
+                'property.id property.address property.name property.unitNumber leaseNumber status duration.startDate duration.endDate luid',
+              populate: {
+                path: 'property.id',
+                select:
+                  'propertyType specifications.bedrooms specifications.bathrooms status managedBy',
+              },
+            },
+          ],
+        }
+      )) as IPaymentPopulated | null;
+
+      if (!payment) {
+        throw new NotFoundError({ message: 'Payment not found' });
+      }
+
+      const tenantProfile = {
+        firstName: payment.tenant?.personalInfo?.firstName,
+        lastName: payment.tenant?.personalInfo?.lastName,
+        phoneNumber: payment.tenant?.personalInfo?.phoneNumber,
+        email: (payment.tenant?.user as any)?.email, // Profile has user populated
+        puid: payment.tenant?.puid,
+      };
+
+      const propertyDoc = (payment.lease?.property as any)?.id;
+      let propertyManager = null;
+      if (propertyDoc?.managedBy) {
+        const managerProfile = await this.profileDAO.findFirst(
+          { user: propertyDoc.managedBy },
+          {
+            select: 'personalInfo.firstName personalInfo.lastName personalInfo.phoneNumber user',
+            populate: { path: 'user', select: 'email' },
+          }
+        );
+        if (managerProfile) {
+          propertyManager = {
+            fullName:
+              `${managerProfile.personalInfo?.firstName || ''} ${managerProfile.personalInfo?.lastName || ''}`.trim(),
+            email: (managerProfile.user as any)?.email || '',
+            phoneNumber: managerProfile.personalInfo?.phoneNumber || '',
+          };
+        }
+      }
+
+      const leaseInfo = payment.lease
+        ? {
+            address: payment.lease.property?.address,
+            leaseNumber: payment.lease.leaseNumber,
+            status: payment.lease.status,
+            startDate: payment.lease.duration?.startDate,
+            endDate: payment.lease.duration?.endDate,
+            leaseUid: payment.lease.luid,
+            unitNumber: payment.lease.property?.unitNumber,
+            propertyName: payment.lease.property?.name,
+            propertyType: propertyDoc?.propertyType,
+            propertyStatus: propertyDoc?.status,
+            bedrooms: propertyDoc?.specifications?.bedrooms,
+            bathrooms: propertyDoc?.specifications?.bathrooms,
+            propertyManager,
+          }
+        : null;
+
+      const paymentObj = payment.toObject();
+      delete paymentObj.tenant;
+      delete paymentObj.lease;
+
+      this.log.info({ pytuid, cuid }, 'Payment retrieved');
+
+      return {
+        success: true,
+        data: {
+          ...paymentObj,
+          tenant: {
+            uid: tenantProfile.puid || '',
+            fullName: `${tenantProfile.firstName || ''} ${tenantProfile.lastName || ''}`.trim(),
+            email: tenantProfile.email || '',
+            phoneNumber: tenantProfile.phoneNumber || '',
+          },
+          property: {
+            pid: '',
+            name: leaseInfo?.propertyName || '',
+            address: leaseInfo?.address || '',
+          },
+          leaseInfo,
+        },
+        message: 'Payment retrieved successfully',
+      };
+    } catch (error) {
+      this.log.error('Error getting payment', error);
+      throw error;
+    }
+  }
+
+  async createConnectAccount(
+    cuid: string,
+    data: { email: string; country: string }
+  ): IPromiseReturnedData<any> {
+    try {
+      const existingProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (existingProcessor?.accountId) {
+        throw new BadRequestError({
+          message: 'Connect account already exists for this client',
+        });
+      }
+
+      const client = await this.clientDAO.findFirst({ cuid });
+      if (!client) {
+        throw new NotFoundError({ message: 'Client not found' });
+      }
+
+      const accountResult = await this.paymentGatewayService.createConnectAccount(
+        IPaymentGatewayProvider.STRIPE,
+        {
+          cuid,
+          email: data.email,
+          country: data.country,
+          businessType: client.accountType.isEnterpriseAccount ? 'company' : 'individual',
+          metadata: { cuid },
+        }
+      );
+      if (!accountResult.success || !accountResult.data) {
+        throw new BadRequestError({
+          message: accountResult.message || 'Failed to create Connect account',
+        });
+      }
+
+      await this.paymentProcessorDAO.insert({
+        cuid,
+        client: client._id,
+        accountId: accountResult.data.accountId,
+        chargesEnabled: accountResult.data.chargesEnabled || false,
+        payoutsEnabled: accountResult.data.payoutsEnabled || false,
+        detailsSubmitted: accountResult.data.detailsSubmitted || false,
+      });
+
+      return {
+        success: true,
+        data: {
+          accountId: accountResult.data.accountId,
+          chargesEnabled: accountResult.data.chargesEnabled,
+          payoutsEnabled: accountResult.data.payoutsEnabled,
+          detailsSubmitted: accountResult.data.detailsSubmitted,
+        },
+        message: 'Connect account created successfully',
+      };
+    } catch (error) {
+      this.log.error('Error creating Connect account', error);
+      throw error;
+    }
+  }
+
+  async getKycOnboardingLink(cuid: string): IPromiseReturnedData<{ url: string }> {
+    try {
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor || !paymentProcessor.accountId) {
+        throw new BadRequestError({
+          message: 'No Connect account found. Please create one first.',
+        });
+      }
+
+      const baseUrl = envVariables.FRONTEND.URL || 'http://localhost:3000';
+      const linkResult = await this.paymentGatewayService.createKycOnboardingLink(
+        IPaymentGatewayProvider.STRIPE,
+        {
+          accountId: paymentProcessor.accountId,
+          refreshUrl: `${baseUrl}/client/${cuid}/account_settings/payment/refresh`,
+          returnUrl: `${baseUrl}/client/${cuid}/account_settings/payment/success`,
+        }
+      );
+
+      if (!linkResult.success || !linkResult.data) {
+        throw new BadRequestError({
+          message: linkResult.message || 'Failed to create onboarding link',
+        });
+      }
+
+      return {
+        success: true,
+        data: { url: linkResult.data.url },
+        message: 'Onboarding link created successfully',
+      };
+    } catch (error) {
+      this.log.error('Error creating onboarding link', error);
+      throw error;
+    }
+  }
+
+  async getExternalDashboardLoginLink(cuid: string): IPromiseReturnedData<{ url: string }> {
+    try {
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor || !paymentProcessor.accountId) {
+        throw new BadRequestError({
+          message: 'No Connect account found',
+        });
+      }
+
+      const linkResult = await this.paymentGatewayService.createDashboardLoginLink(
+        IPaymentGatewayProvider.STRIPE,
+        paymentProcessor.accountId
+      );
+
+      if (!linkResult.success || !linkResult.data) {
+        throw new BadRequestError({ message: linkResult.message || 'Failed to create login link' });
+      }
+
+      return {
+        success: true,
+        data: { url: linkResult.data.url },
+        message: 'Login link created successfully',
+      };
+    } catch (error) {
+      this.log.error('Error creating login link', error);
+      throw error;
+    }
+  }
+
   /**
-   * Build invoice line items from lease fees
-   * Uses lease.calculateFees() method for centralized fee calculation
+   * Build invoice line items from pre-calculated lease fees
+   * Accepts already-calculated fees to avoid redundant calculations
    *
-   * @param lease - Lease document with calculateFees() method
-   * @param daysLate - Number of days payment is late (for late fee calculation)
+   * @param fees - Pre-calculated fees from lease.calculateFees()
    * @returns Array of line items with amounts in cents
    */
-  private buildLineItemsFromLease(
-    lease: any,
-    daysLate?: number
-  ): Array<{
+  private buildLineItemsFromFees(fees: {
+    monthly: { rent: number; petFee: number; total: number };
+    late: {
+      daysLate: number;
+      fee: number;
+      type: string;
+      percentage: number;
+      gracePeriod: number;
+    };
+    deposits: { security: number; pet: number; total: number };
+    currency: string;
+  }): Array<{
     description: string;
     amountInCents: number;
     quantity?: number;
   }> {
-    const fees = lease.calculateFees({ daysLate });
     const lineItems = [];
 
     // Monthly rent (required)
@@ -257,28 +668,382 @@ export class PaymentService implements ICronProvider {
   }
 
   /**
-   * Calculate rent payment fees
+   * Webhook handler: invoice.payment_succeeded
+   * Updates payment status when tenant pays rent invoice
    *
-   * Money flow (Direct Charges with Application Fee):
-   * 1. Tenant pays $2,000 → PM's Stripe Connect Account
-   * 2. Stripe deducts application fee from PM: $2,000 × 4% = $80
-   * 3. Stripe transfers $80 to Platform account
-   * 4. Platform pays Stripe processing fee from the $80:
-   *    - Processing fee = ($2,000 × 2.9%) + $0.30 = $58.30 (ESTIMATED from config)
-   *    - Platform net revenue = $80 - $58.30 = $21.70
-   * 5. PM receives: $2,000 - $80 = $1,920
-   *
-   * FINAL:
-   * - PM: $1,920
-   * - Platform: $21.70 (estimated)
-   * - Stripe: $58.30 (paid by platform from application fee)
-   *
-   * NOTE:
-   * - Processing fee is ESTIMATED from platform.config.json
-   * - Actual fee will be fetched from Stripe Balance Transaction API after payment
-   * - Webhook will update Payment record with actual fee
-   * - Actual fees may vary by card type (debit/credit/international/amex)
+   * @param invoiceId - Stripe invoice ID (stored in Payment.gatewayPaymentId)
+   * @param invoiceData - Full invoice object from Stripe webhook
    */
+  async handleInvoicePaymentSucceeded(
+    invoiceId: string,
+    invoiceData: any
+  ): IPromiseReturnedData<void> {
+    try {
+      const payment = await this.paymentDAO.findFirst({
+        gatewayPaymentId: invoiceId,
+        deletedAt: null,
+      });
+
+      if (!payment) {
+        this.log.warn('Payment not found for invoice', { invoiceId });
+        return {
+          success: false,
+          data: undefined,
+          message: 'Payment record not found',
+        };
+      }
+
+      if (payment.status === PaymentRecordStatus.PAID) {
+        this.log.info('Payment already marked as paid', { invoiceId, pytuid: payment.pytuid });
+        return {
+          success: true,
+          data: undefined,
+          message: 'Payment already paid',
+        };
+      }
+
+      const chargeId = invoiceData.charge;
+      if (!chargeId) {
+        this.log.warn('No charge ID found in invoice', { invoiceId });
+      }
+
+      await this.paymentDAO.update(
+        { _id: payment._id },
+        {
+          $set: {
+            status: PaymentRecordStatus.PAID,
+            paidAt: new Date(),
+            gatewayChargeId: chargeId,
+          },
+        }
+      );
+
+      this.log.info('Payment marked as paid', {
+        pytuid: payment.pytuid,
+        invoiceId,
+        chargeId,
+      });
+
+      return {
+        success: true,
+        data: undefined,
+        message: 'Payment updated successfully',
+      };
+    } catch (error: any) {
+      this.log.error('Error handling invoice payment succeeded', { invoiceId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Webhook handler: invoice.payment_failed
+   * Updates payment status when tenant's payment fails
+   *
+   * @param invoiceId - Stripe invoice ID
+   * @param invoiceData - Full invoice object from Stripe webhook
+   */
+  async handleInvoicePaymentFailed(
+    invoiceId: string,
+    invoiceData: any
+  ): IPromiseReturnedData<void> {
+    try {
+      const payment = await this.paymentDAO.findFirst({
+        gatewayPaymentId: invoiceId,
+        deletedAt: null,
+      });
+
+      if (!payment) {
+        this.log.warn('Payment not found for failed invoice', { invoiceId });
+        return {
+          success: false,
+          data: undefined,
+          message: 'Payment record not found',
+        };
+      }
+
+      const attemptCount = invoiceData.attempt_count || 0;
+      const nextPaymentAttempt = invoiceData.next_payment_attempt
+        ? new Date(invoiceData.next_payment_attempt * 1000)
+        : undefined;
+
+      await this.paymentDAO.update(
+        { _id: payment._id },
+        {
+          $set: {
+            status: PaymentRecordStatus.FAILED,
+          },
+        }
+      );
+
+      this.log.warn('Payment marked as failed', {
+        pytuid: payment.pytuid,
+        invoiceId,
+        attemptCount,
+        nextPaymentAttempt,
+      });
+
+      return {
+        success: true,
+        data: undefined,
+        message: 'Payment marked as failed',
+      };
+    } catch (error: any) {
+      this.log.error('Error handling invoice payment failed', { invoiceId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Webhook handler: charge.refunded
+   * Updates payment status when rent payment is refunded
+   *
+   * @param chargeId - Stripe charge ID
+   * @param chargeData - Full charge object from Stripe webhook
+   */
+  async handleChargeRefunded(chargeId: string, chargeData: any): IPromiseReturnedData<void> {
+    try {
+      const payment = await this.paymentDAO.findFirst({
+        gatewayChargeId: chargeId,
+        deletedAt: null,
+      });
+
+      if (!payment) {
+        this.log.warn('Payment not found for refunded charge', { chargeId });
+        return {
+          success: false,
+          data: undefined,
+          message: 'Payment record not found',
+        };
+      }
+
+      const refundAmountInCents = chargeData.amount_refunded || 0;
+      const isFullRefund = refundAmountInCents >= payment.baseAmount;
+
+      await this.paymentDAO.update(
+        { _id: payment._id },
+        {
+          $set: {
+            refundedAt: new Date(),
+            refundAmount: refundAmountInCents,
+            // Note: Status remains PAID - refundedAt and refundAmount indicate refund
+          },
+        }
+      );
+
+      this.log.info('Payment refund processed', {
+        pytuid: payment.pytuid,
+        chargeId,
+        refundAmount: refundAmountInCents,
+        isFullRefund,
+      });
+
+      return {
+        success: true,
+        data: undefined,
+        message: 'Refund processed successfully',
+      };
+    } catch (error: any) {
+      this.log.error('Error handling charge refunded', { chargeId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Webhook handler: account.updated
+   * Updates PaymentProcessor when PM's Stripe Connect account changes
+   *
+   * @param accountId - Stripe Connect account ID
+   * @param accountData - Full account object from Stripe webhook
+   */
+  async handleAccountUpdated(accountId: string, accountData: any): IPromiseReturnedData<void> {
+    try {
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({
+        accountId,
+      });
+
+      if (!paymentProcessor) {
+        this.log.warn('PaymentProcessor not found for account', { accountId });
+        return {
+          success: false,
+          data: undefined,
+          message: 'PaymentProcessor record not found',
+        };
+      }
+
+      const updateData: any = {
+        chargesEnabled: accountData.charges_enabled || false,
+        payoutsEnabled: accountData.payouts_enabled || false,
+        detailsSubmitted: accountData.details_submitted || false,
+      };
+
+      if (accountData.requirements) {
+        updateData.requirements = {
+          currentlyDue: accountData.requirements.currently_due || [],
+          eventuallyDue: accountData.requirements.eventually_due || [],
+          pastDue: accountData.requirements.past_due || [],
+          disabledReason: accountData.requirements.disabled_reason,
+        };
+      }
+
+      await this.paymentProcessorDAO.update({ _id: paymentProcessor._id }, { $set: updateData });
+
+      this.log.info('PaymentProcessor updated from webhook', {
+        accountId,
+        chargesEnabled: updateData.chargesEnabled,
+        payoutsEnabled: updateData.payoutsEnabled,
+        detailsSubmitted: updateData.detailsSubmitted,
+      });
+
+      return {
+        success: true,
+        data: undefined,
+        message: 'PaymentProcessor updated successfully',
+      };
+    } catch (error: any) {
+      this.log.error('Error handling account updated', { accountId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get payment statistics
+   * Calculates stats on-demand from payment records for current month
+   */
+  async getPaymentStats(cuid: string): IPromiseReturnedData<{
+    expectedRevenue: number;
+    collected: number;
+    pending: number;
+    overdue: number;
+    collectionRate: number;
+    currency: string;
+  }> {
+    try {
+      const client = await this.clientDAO.findFirst({ cuid });
+      if (!client) {
+        throw new NotFoundError({ message: 'Client not found' });
+      }
+
+      // Get current month's date range
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+      // Fetch payments for current month directly using dueDate range
+      const result = await this.paymentDAO.findByCuid(
+        cuid,
+        { dueDate: { $gte: startOfMonth, $lte: endOfMonth } },
+        { limit: 10000 },
+      );
+      const paymentsThisMonth = result.items || [];
+      // Calculate stats
+      let expectedRevenue = 0;
+      let collected = 0;
+      let pending = 0;
+      let overdue = 0;
+
+      paymentsThisMonth.forEach((payment) => {
+        const amount = payment.baseAmount;
+
+        switch (payment.status) {
+          case PaymentRecordStatus.CANCELLED:
+          case PaymentRecordStatus.FAILED:
+            // FAILED and CANCELLED payments don't count toward any stat
+            // They are excluded from expectedRevenue
+            break;
+          case PaymentRecordStatus.PENDING:
+            expectedRevenue += amount;
+            pending += amount;
+            break;
+          case PaymentRecordStatus.OVERDUE:
+            expectedRevenue += amount;
+            overdue += amount;
+            break;
+          case PaymentRecordStatus.PAID:
+            // Only PAID payments contribute to expected revenue and collected
+            expectedRevenue += amount;
+            collected += amount;
+            break;
+          default:
+            // Log unknown status for debugging
+            this.log.warn('Unknown payment status encountered', {
+              status: payment.status,
+              pytuid: payment.pytuid,
+            });
+            break;
+        }
+      });
+
+      const collectionRate =
+        expectedRevenue > 0 ? Math.round((collected / expectedRevenue) * 100) : 0;
+
+      return {
+        success: true,
+        data: {
+          expectedRevenue,
+          collected,
+          pending,
+          overdue,
+          collectionRate,
+          currency: 'USD',
+        },
+      };
+    } catch (error: any) {
+      this.log.error('Error getting payment stats', error);
+      throw error;
+    }
+  }
+
+  async cancelPayment(
+    cuid: string,
+    pytuid: string,
+    reason?: string
+  ): IPromiseReturnedData<IPaymentDocument> {
+    try {
+      if (!cuid || !pytuid) {
+        throw new BadRequestError({ message: 'Client ID and payment ID are required' });
+      }
+
+      const client = await this.clientDAO.findFirst({ cuid });
+      if (!client) {
+        throw new NotFoundError({ message: 'Client not found' });
+      }
+
+      const payment = await this.paymentDAO.findFirst({
+        pytuid,
+        cuid,
+        deletedAt: null,
+      });
+      if (!payment) {
+        throw new NotFoundError({ message: 'Payment not found' });
+      }
+
+      if (
+        payment.status === PaymentRecordStatus.PAID ||
+        payment.status === PaymentRecordStatus.CANCELLED
+      ) {
+        throw new BadRequestError({
+          message: `Cannot cancel a payment with status: ${payment.status}`,
+        });
+      }
+
+      const updated = await this.paymentDAO.updateById((payment as any)._id.toString(), {
+        status: PaymentRecordStatus.CANCELLED,
+        ...(reason
+          ? {
+              $push: {
+                notes: { text: `Cancelled: ${reason}`, createdAt: new Date(), author: 'system' },
+              },
+            }
+          : {}),
+      });
+
+      return { success: true, data: updated as IPaymentDocument };
+    } catch (error: any) {
+      this.log.error({ error: error.message, cuid, pytuid }, 'Error cancelling payment');
+      throw error;
+    }
+  }
+
   private calculateRentFees(
     totalAmount: number,
     transactionFeePercent: number,
@@ -289,17 +1054,11 @@ export class PaymentService implements ICronProvider {
     gatewayProcessingFee: number;
     platformNetRevenue: number;
   } {
-    // what we charge the PM (deducted by Stripe from PM's account)
     const applicationFee = Math.round(totalAmount * transactionFeePercent);
-
-    // Gateway processing fee: ESTIMATED from config, calculated on FULL transaction amount
-    // paid by platform from application fee, will be updated with actual fee from Stripe API after payment succeeds
     const gatewayProcessingFee = this.subscriptionPlanConfig.calculatePaymentGatewayFee(
       totalAmount,
       provider
     );
-
-    // what we keep after paying gateway (ESTIMATED)
     const platformNetRevenue = applicationFee - gatewayProcessingFee;
 
     return {

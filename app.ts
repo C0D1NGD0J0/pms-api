@@ -157,6 +157,7 @@ export class App implements IAppSetup {
     app.use(`${this.BASE_PATH}/properties`, routes.propertyRoutes);
     app.use(`${this.BASE_PATH}/notifications`, routes.notificationRoutes);
     app.use(`${this.BASE_PATH}/subscriptions`, routes.subscriptionRoutes);
+    app.use(`${this.BASE_PATH}/payments`, routes.paymentRoutes);
     app.use(`${this.BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
     // app.use(`${this.BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
     app.all('*', (req: Request, res: Response) => {

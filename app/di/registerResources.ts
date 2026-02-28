@@ -10,6 +10,7 @@ import { AssetService } from '@services/asset/asset.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { LanguageService } from '@shared/languages/language.service';
+import { PaymentService } from '@services/payments/payments.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
@@ -22,29 +23,6 @@ import {
   AuthCache,
   UserCache,
 } from '@caching/index';
-import {
-  PropertyMediaWorker,
-  PropertyUnitWorker,
-  InvitationWorker,
-  ESignatureWorker,
-  PropertyWorker,
-  UploadWorker,
-  EmailWorker,
-  CronWorker,
-  PdfWorker,
-} from '@workers/index';
-import {
-  PropertyMediaQueue,
-  PropertyUnitQueue,
-  InvitationQueue,
-  ESignatureQueue,
-  EventBusQueue,
-  PropertyQueue,
-  UploadQueue,
-  EmailQueue,
-  CronQueue,
-  PdfQueue,
-} from '@queues/index';
 import {
   NotificationModel,
   PaymentProcessor,
@@ -60,6 +38,31 @@ import {
   Asset,
   User,
 } from '@models/index';
+import {
+  PropertyMediaWorker,
+  PropertyUnitWorker,
+  InvitationWorker,
+  ESignatureWorker,
+  PropertyWorker,
+  PaymentWorker,
+  UploadWorker,
+  EmailWorker,
+  CronWorker,
+  PdfWorker,
+} from '@workers/index';
+import {
+  PropertyMediaQueue,
+  PropertyUnitQueue,
+  InvitationQueue,
+  ESignatureQueue,
+  EventBusQueue,
+  PropertyQueue,
+  PaymentQueue,
+  UploadQueue,
+  EmailQueue,
+  CronQueue,
+  PdfQueue,
+} from '@queues/index';
 import {
   PaymentProcessorDAO,
   PropertyUnitDAO,
@@ -81,6 +84,7 @@ import {
   InvitationController,
   PropertyController,
   WebhookController,
+  PaymentController,
   ClientController,
   VendorController,
   LeaseController,
@@ -133,6 +137,7 @@ const ControllerResources = {
   subscriptionController: asClass(SubscriptionController).scoped(),
   emailTemplateController: asClass(EmailTemplateController).scoped(),
   webhookController: asClass(WebhookController).scoped(),
+  paymentController: asClass(PaymentController).scoped(),
 };
 
 const ModelResources = {
@@ -185,6 +190,7 @@ const ServiceResources = {
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   subscriptionPlanConfig: asValue(subscriptionPlanConfig),
   stripeService: asClass(StripeService).singleton(),
+  paymentService: asClass(PaymentService).singleton(),
   paymentGatewayService: asClass(PaymentGatewayService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
 };
@@ -224,6 +230,7 @@ const WorkerResources = {
   invitationWorker: asClass(InvitationWorker).singleton(),
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
   propertyMediaWorker: asClass(PropertyMediaWorker).singleton(),
+  paymentWorker: asClass(PaymentWorker).singleton(),
 };
 
 const QueuesResources = {
@@ -237,6 +244,7 @@ const QueuesResources = {
   invitationQueue: asClass(InvitationQueue).singleton(),
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
   propertyMediaQueue: asClass(PropertyMediaQueue).singleton(),
+  paymentQueue: asClass(PaymentQueue).singleton(),
 };
 
 const UtilsResources = {

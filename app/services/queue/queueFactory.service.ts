@@ -80,6 +80,7 @@ export class QueueFactory {
       'eSignatureQueue',
       'pdfGeneratorQueue',
       'cronQueue',
+      'paymentQueue',
     ];
 
     this.log.info('Force initializing all queues (workers auto-injected via DI)');

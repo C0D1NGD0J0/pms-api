@@ -463,7 +463,12 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         note: {
           type: String,
           required: true,
-          trim: true,
+          maxlength: 10000,
+        },
+        html: {
+          type: String,
+          required: true,
+          maxlength: 10000,
         },
         author: {
           type: String,

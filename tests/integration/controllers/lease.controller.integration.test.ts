@@ -1144,4 +1144,328 @@ describe('LeaseController Integration Tests', () => {
       expect(response.status).toBeLessThan(500);
     });
   });
+
+  describe('Internal Notes - Create and Update', () => {
+    it('should create a lease with internal notes', async () => {
+      const leaseData = {
+        tenantInfo: {
+          id: testTenant._id.toString(),
+        },
+        property: {
+          id: testProperty._id.toString(),
+          unitId: testUnit._id.toString(),
+          address: testProperty.address.fullAddress,
+        },
+        duration: {
+          startDate: new Date('2025-01-01'),
+          endDate: new Date('2026-01-01'),
+        },
+        fees: {
+          monthlyRent: 1500,
+          securityDeposit: 3000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-NOTES-${Date.now()}`,
+        internalNotes: [
+          {
+            note: 'This is a test note',
+            author: 'Test Manager',
+            authorId: testManager._id.toString(),
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const response = await request(app)
+        .post(`/api/v1/leases/${testClient.cuid}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send(leaseData)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.data.internalNotes).toBeDefined();
+      expect(response.body.data.data.internalNotes).toHaveLength(1);
+      expect(response.body.data.data.internalNotes[0].note).toBe('This is a test note');
+      expect(response.body.data.data.internalNotes[0].author).toBe('Test Manager');
+    });
+
+    it('should update lease with new internal notes', async () => {
+      const lease = await Lease.create({
+        luid: `lease-notes-update-${Date.now()}`,
+        cuid: testClient.cuid,
+        clientId: testClient._id,
+        tenantId: testTenant._id,
+        property: {
+          id: testProperty._id,
+          unitId: testUnit._id,
+          address: testProperty.address.fullAddress,
+        },
+        duration: {
+          startDate: new Date('2025-01-01'),
+          endDate: new Date('2026-01-01'),
+        },
+        fees: {
+          monthlyRent: 150000,
+          securityDeposit: 300000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        status: LeaseStatus.DRAFT,
+        approvalStatus: 'approved',
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-UPDATE-NOTES-${Date.now()}`,
+        createdBy: testManager._id,
+        internalNotes: [
+          {
+            note: 'Initial note',
+            author: 'Test Manager',
+            authorId: testManager._id,
+            timestamp: new Date(),
+          },
+        ],
+      });
+
+      const updateData = {
+        internalNotes: [
+          {
+            note: 'Initial note',
+            author: 'Test Manager',
+            authorId: testManager._id.toString(),
+            timestamp: new Date().toISOString(),
+          },
+          {
+            note: 'Second note added',
+            author: 'Test Manager',
+            authorId: testManager._id.toString(),
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const response = await request(app)
+        .patch(`/api/v1/leases/${testClient.cuid}/${lease.luid}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send(updateData)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.lease.internalNotes).toHaveLength(2);
+      expect(response.body.data.lease.internalNotes[1].note).toBe('Second note added');
+    });
+
+    it('should reject notes exceeding 2000 characters', async () => {
+      const longNote = 'a'.repeat(2001);
+      const leaseData = {
+        tenantInfo: {
+          id: testTenant._id.toString(),
+        },
+        property: {
+          id: testProperty._id.toString(),
+          unitId: testUnit._id.toString(),
+          address: testProperty.address.fullAddress,
+        },
+        duration: {
+          startDate: new Date('2025-01-01'),
+          endDate: new Date('2026-01-01'),
+        },
+        fees: {
+          monthlyRent: 1500,
+          securityDeposit: 3000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-LONG-NOTE-${Date.now()}`,
+        internalNotes: [
+          {
+            note: longNote,
+            author: 'Test Manager',
+            authorId: testManager._id.toString(),
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const response = await request(app)
+        .post(`/api/v1/leases/${testClient.cuid}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send(leaseData);
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should reject notes without required author info', async () => {
+      const leaseData = {
+        tenantInfo: {
+          id: testTenant._id.toString(),
+        },
+        property: {
+          id: testProperty._id.toString(),
+          unitId: testUnit._id.toString(),
+          address: testProperty.address.fullAddress,
+        },
+        duration: {
+          startDate: new Date('2025-01-01'),
+          endDate: new Date('2026-01-01'),
+        },
+        fees: {
+          monthlyRent: 1500,
+          securityDeposit: 3000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-NO-AUTHOR-${Date.now()}`,
+        internalNotes: [
+          {
+            note: 'Note without author',
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const response = await request(app)
+        .post(`/api/v1/leases/${testClient.cuid}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send(leaseData);
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should handle empty notes array', async () => {
+      const leaseData = {
+        tenantInfo: {
+          id: testTenant._id.toString(),
+        },
+        property: {
+          id: testProperty._id.toString(),
+          unitId: testUnit._id.toString(),
+          address: testProperty.address.fullAddress,
+        },
+        duration: {
+          startDate: new Date('2025-01-01'),
+          endDate: new Date('2026-01-01'),
+        },
+        fees: {
+          monthlyRent: 1500,
+          securityDeposit: 3000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-EMPTY-NOTES-${Date.now()}`,
+        internalNotes: [],
+      };
+
+      const response = await request(app)
+        .post(`/api/v1/leases/${testClient.cuid}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send(leaseData)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.data.internalNotes).toBeDefined();
+      expect(response.body.data.data.internalNotes).toHaveLength(0);
+    });
+
+    it('should create a lease with HTML notes', async () => {
+      const leaseData = {
+        tenantInfo: {
+          id: testTenant._id.toString(),
+        },
+        property: {
+          id: testProperty._id.toString(),
+          unitId: testUnit._id.toString(),
+          address: testProperty.address.fullAddress,
+        },
+        duration: {
+          startDate: new Date('2025-01-01'),
+          endDate: new Date('2026-01-01'),
+        },
+        fees: {
+          monthlyRent: 1500,
+          securityDeposit: 3000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-HTML-NOTES-${Date.now()}`,
+        internalNotes: [
+          {
+            note: 'This is a test note',
+            html: '<p>This is a <b>test</b> note</p>',
+            author: 'Test Manager',
+            authorId: testManager._id.toString(),
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const response = await request(app)
+        .post(`/api/v1/leases/${testClient.cuid}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send(leaseData)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.data.internalNotes).toBeDefined();
+      expect(response.body.data.data.internalNotes).toHaveLength(1);
+      expect(response.body.data.data.internalNotes[0].note).toBe('This is a test note');
+      expect(response.body.data.data.internalNotes[0].html).toBe('<p>This is a <b>test</b> note</p>');
+    });
+
+    it('should reject HTML exceeding 10000 characters', async () => {
+      const longHtml = '<p>' + 'a'.repeat(10001) + '</p>';
+      const leaseData = {
+        tenantInfo: {
+          id: testTenant._id.toString(),
+        },
+        property: {
+          id: testProperty._id.toString(),
+          unitId: testUnit._id.toString(),
+          address: testProperty.address.fullAddress,
+        },
+        duration: {
+          startDate: new Date('2025-01-01'),
+          endDate: new Date('2026-01-01'),
+        },
+        fees: {
+          monthlyRent: 1500,
+          securityDeposit: 3000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-LONG-HTML-${Date.now()}`,
+        internalNotes: [
+          {
+            note: 'Short text',
+            html: longHtml,
+            author: 'Test Manager',
+            authorId: testManager._id.toString(),
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const response = await request(app)
+        .post(`/api/v1/leases/${testClient.cuid}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send(leaseData);
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.body.success).toBe(false);
+    });
+  });
 });

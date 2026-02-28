@@ -74,4 +74,17 @@ router.patch(
   })
 );
 
+router.post(
+  '/:cuid/verify-account',
+  isAuthenticated,
+  requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+  }),
+  asyncWrapper((req, res) => {
+    const clientController = req.container.resolve<ClientController>('clientController');
+    return clientController.verifyAccount(req, res);
+  })
+);
+
 export default router;

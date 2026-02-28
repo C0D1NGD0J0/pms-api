@@ -57,6 +57,16 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
       const updatedOpts = {
         ...opts,
         sort: sortOption,
+        populate: [
+          {
+            path: 'currentLease',
+            select: 'luid tenantId',
+            populate: {
+              path: 'tenantId',
+              select: 'uid userId personalInfo.firstName personalInfo.lastName',
+            },
+          },
+        ],
       };
 
       const result = await this.list(query, updatedOpts);

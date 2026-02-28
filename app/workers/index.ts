@@ -4,6 +4,7 @@ export * from './pdfGenerator.worker';
 export * from './esignature.worker';
 export * from './invitation.worker';
 export * from './property.worker';
+export * from './payment.worker';
 export * from './upload.worker';
 export * from './email.worker';
 export * from './cron.worker';

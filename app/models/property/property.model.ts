@@ -303,6 +303,18 @@ const PropertySchema = new Schema<IPropertyDocument>(
       },
       default: [],
     },
+    notes: [
+      {
+        text: { type: String, required: true, maxlength: 10000 },
+        html: { type: String, required: true, maxlength: 10000 },
+        author: {
+          uid: { type: String, required: true },
+          name: { type: String, required: true },
+        },
+        createdAt: { type: Date, default: Date.now },
+        updatedAt: { type: Date },
+      },
+    ],
     occupancyStatus: {
       type: String,
       enum: ['vacant', 'occupied', 'partially_occupied'],

@@ -398,6 +398,134 @@ describe('PropertyController Integration Tests', () => {
 
       expect(response.body.success).toBe(false);
     });
+
+    it('should successfully add notes to property', async () => {
+      const updateData = {
+        notes: [
+          {
+            text: 'This is a test note',
+            author: {
+              uid: adminUser._id.toString(),
+              name: 'Admin User',
+            },
+            createdAt: new Date().toISOString(),
+          },
+          {
+            text: 'Another important note about the property',
+            author: {
+              uid: adminUser._id.toString(),
+              name: 'Admin User',
+            },
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const response = await request(app)
+        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(updateData)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.notes).toBeDefined();
+      expect(response.body.data.notes.length).toBe(2);
+      expect(response.body.data.notes[0].text).toBe('This is a test note');
+      expect(response.body.data.notes[1].text).toBe('Another important note about the property');
+
+      // Verify database update
+      const updatedProperty = await Property.findById(testProperty._id);
+      expect(updatedProperty!.notes).toBeDefined();
+      expect(updatedProperty!.notes!.length).toBe(2);
+    });
+
+    it('should reject notes with text exceeding 2000 characters', async () => {
+      const longText = 'a'.repeat(2001);
+      const updateData = {
+        notes: [
+          {
+            text: longText,
+            author: {
+              uid: adminUser._id.toString(),
+              name: 'Admin User',
+            },
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const response = await request(app)
+        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(updateData)
+        .expect(400);
+
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should reject notes without required author information', async () => {
+      const updateData = {
+        notes: [
+          {
+            text: 'Note without proper author',
+            author: {
+              uid: '',
+              name: '',
+            },
+          },
+        ],
+      };
+
+      const response = await request(app)
+        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(updateData)
+        .expect(400);
+
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should update existing notes', async () => {
+      // First add a note
+      await Property.findByIdAndUpdate(testProperty._id, {
+        notes: [
+          {
+            text: 'Original note',
+            author: {
+              uid: adminUser._id.toString(),
+              name: 'Admin User',
+            },
+            createdAt: new Date(),
+          },
+        ],
+      });
+
+      // Then update with new notes
+      const updateData = {
+        notes: [
+          {
+            text: 'Updated note',
+            author: {
+              uid: adminUser._id.toString(),
+              name: 'Admin User',
+            },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const response = await request(app)
+        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(updateData)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.notes.length).toBe(1);
+      expect(response.body.data.notes[0].text).toBe('Updated note');
+      expect(response.body.data.notes[0].updatedAt).toBeDefined();
+    });
   });
 
   describe('POST /api/v1/properties/:cuid/properties/:pid/approve', () => {
@@ -579,6 +707,59 @@ describe('PropertyController Integration Tests', () => {
         .send({ notes: 'Approval attempt' })
         .expect(403);
 
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should successfully add notes with HTML content', async () => {
+      const updateData = {
+        notes: [
+          {
+            text: 'First note about the property',
+            html: '<p>First note about the <b>property</b></p>',
+            author: {
+              uid: adminUser._id.toString(),
+              name: 'Admin User',
+            },
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const response = await request(app)
+        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(updateData)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.notes).toBeDefined();
+      expect(response.body.data.notes.length).toBe(1);
+      expect(response.body.data.notes[0].text).toBe('First note about the property');
+      expect(response.body.data.notes[0].html).toBe('<p>First note about the <b>property</b></p>');
+    });
+
+    it('should reject HTML content exceeding 10000 characters', async () => {
+      const longHtml = '<p>' + 'a'.repeat(10001) + '</p>';
+      const updateData = {
+        notes: [
+          {
+            text: 'Short text',
+            html: longHtml,
+            author: {
+              uid: adminUser._id.toString(),
+              name: 'Admin User',
+            },
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const response = await request(app)
+        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(updateData);
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
       expect(response.body.success).toBe(false);
     });
   });

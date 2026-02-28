@@ -7,10 +7,6 @@ import { WebhookController } from '@controllers/WebhookController';
 const router = Router();
 router.use(basicLimiter());
 
-/**
- * BoldSign webhook endpoint
- * POST /api/webhooks/boldsign
- */
 router.post(
   '/boldsign',
   asyncWrapper(async (req: AppRequest, res) => {
@@ -20,8 +16,9 @@ router.post(
 );
 
 /**
- * Stripe webhook endpoint
- * POST /api/webhooks/stripe
+ * Stripe webhooks (all events)
+ * Raw body is already preserved by global middleware in app.ts (line 81-89)
+ * which saves req.rawBody for /api/v1/webhooks/stripe endpoint
  */
 router.post(
   '/stripe',

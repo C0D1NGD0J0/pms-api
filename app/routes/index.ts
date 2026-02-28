@@ -4,6 +4,7 @@ import leaseRoutes from './lease.routes';
 import clientRoutes from './client.routes';
 import vendorRoutes from './vendors.routes';
 import webhookRoutes from './webhook.routes';
+import paymentRoutes from './payments.routes';
 import propertyRoutes from './property.routes';
 import invitationRoutes from './invitation.routes';
 import notificationRoutes from './notification.routes';
@@ -18,6 +19,7 @@ export const routes = {
   vendorRoutes,
   webhookRoutes,
   propertyRoutes,
+  paymentRoutes,
   invitationRoutes,
   subscriptionRoutes,
   notificationRoutes,

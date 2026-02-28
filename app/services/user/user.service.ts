@@ -8,8 +8,8 @@ import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { EventEmitterService, VendorService } from '@services/index';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { PermissionService } from '@services/permission/permission.service';
-import { PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
+import { PropertyDAO, ProfileDAO, PaymentDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
   ISuccessReturnData,
@@ -38,6 +38,7 @@ interface IConstructor {
   vendorService: VendorService;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
+  paymentDAO: PaymentDAO;
   clientDAO: ClientDAO;
   userCache: UserCache;
   leaseDAO: LeaseDAO;
@@ -52,6 +53,7 @@ export class UserService {
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly leaseDAO: LeaseDAO;
+  private readonly paymentDAO: PaymentDAO;
   private readonly vendorService: VendorService;
   private readonly emitterService: EventEmitterService;
   private readonly permissionService: PermissionService;
@@ -63,12 +65,14 @@ export class UserService {
     profileDAO,
     propertyDAO,
     leaseDAO,
+    paymentDAO,
     vendorService,
     emitterService,
     permissionService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
+    this.paymentDAO = paymentDAO;
     this.userCache = userCache;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -1288,7 +1292,7 @@ export class UserService {
           // Fetch minimal active lease info for table display
           const activeLeases = await this.leaseDAO.list({
             cuid,
-            tenantId: tenant.user,
+            tenantId: tenant._id, // Use tenant._id from aggregation result
             status: { $in: ['active', 'pending_signature'] },
             deletedAt: null,
           });
@@ -1304,11 +1308,41 @@ export class UserService {
             const address = activeLease.property?.address;
             const propertyAddress = typeof address === 'string' ? address : address?.fullAddress;
 
+            // Calculate rent status from most recent payment
+            let rentStatus = 'n/a';
+            const recentPayments = await this.paymentDAO.list({
+              cuid,
+              tenant: tenant._id,
+              lease: activeLease._id,
+              paymentType: 'rent',
+              limit: 1,
+              sortBy: 'dueDate',
+              sort: 'desc',
+            });
+
+            if (recentPayments.items && recentPayments.items.length > 0) {
+              const latestPayment = recentPayments.items[0];
+              const now = new Date();
+              const dueDate = new Date(latestPayment.dueDate);
+
+              if (latestPayment.status === 'paid') {
+                rentStatus = 'current'; // Frontend expects 'current' not 'paid'
+              } else if (
+                latestPayment.status === 'overdue' ||
+                (latestPayment.status === 'pending' && dueDate < now)
+              ) {
+                rentStatus = 'overdue';
+              } else if (latestPayment.status === 'pending') {
+                rentStatus = 'pending';
+              }
+            }
+
             leaseInfo = {
               leaseStatus: activeLease.status,
-              propertyAddress,
-              monthlyRent: activeLease.fees?.monthlyRent,
-              rentStatus: 'paid', // TODO: Integrate with payment tracking when available
+              propertyName: propertyAddress, // Frontend expects propertyName
+              propertyAddress, // Keep for backwards compatibility
+              monthlyRent: activeLease.fees?.monthlyRent, // Keep in cents - frontend formatCurrency will convert
+              rentStatus,
             };
           } else {
             leaseInfo = {
@@ -1317,11 +1351,11 @@ export class UserService {
           }
 
           return {
-            id: tenant.user,
-            uid: tenant.uid, // Include UID as requested
+            id: tenant._id,
+            uid: tenant.uid,
             email: tenant.email,
             isActive: tenant.isActive,
-            isConnected, // Connection status for this client
+            isConnected,
             fullName: `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim(),
             displayName:
               personalInfo.displayName ||
@@ -1330,7 +1364,7 @@ export class UserService {
             phoneNumber: personalInfo.phoneNumber,
             avatar: personalInfo.avatar,
             tenantInfo: {
-              ...leaseInfo, // Minimal lease info for table
+              ...leaseInfo,
               employerInfo: tenantInfo.employerInfo,
               rentalReferences: tenantInfo.rentalReferences,
               pets: tenantInfo.pets,
@@ -1470,6 +1504,33 @@ export class UserService {
         throw new NotFoundError({
           message: t('tenant.errors.notFound'),
         });
+      }
+
+      // Fetch payment metrics and history using PaymentDAO (proper separation of concerns)
+      const includeAll = !include || include.includes('all');
+      const includePaymentHistory = includeAll || include.includes('payments');
+      const tenantId = (rawTenantDetails as any)._id?.toString();
+
+      if (tenantId) {
+        const paymentData = await this.paymentDAO.getTenantPaymentMetrics(cuid, tenantId, {
+          includeHistory: includePaymentHistory,
+          historyLimit: 50,
+        });
+
+        // Update tenant metrics with payment data
+        rawTenantDetails.tenantMetrics = {
+          totalMaintenanceRequests: rawTenantDetails.tenantMetrics?.totalMaintenanceRequests || 0,
+          currentRentStatus: rawTenantDetails.tenantMetrics?.currentRentStatus || 'no_lease',
+          daysCurrentLease: rawTenantDetails.tenantMetrics?.daysCurrentLease || 0,
+          totalRentPaid: paymentData.metrics.totalRentPaid,
+          onTimePaymentRate: paymentData.metrics.onTimePaymentRate,
+          averagePaymentDelay: paymentData.metrics.averagePaymentDelay,
+        };
+
+        // Add payment history if requested
+        if (includePaymentHistory) {
+          rawTenantDetails.tenantInfo.paymentHistory = paymentData.payments;
+        }
       }
 
       const transformedResponse: import('@interfaces/user.interface').IClientTenantDetails = {

@@ -236,6 +236,24 @@ const CreatePropertySchema = z.object({
   communityAmenities: CommunityAmenitiesSchema.optional(),
   documents: z.array(PropertyMediaDocumentSchema).optional(),
   images: z.array(PropertyImageSchema).max(5, 'Property cannot have more than 5 images').optional(),
+  notes: z
+    .array(
+      z.object({
+        text: z
+          .string()
+          .trim()
+          .min(1, 'Note text cannot be empty')
+          .max(2000, 'Note text cannot exceed 2000 characters'),
+        html: z.string().trim().max(10000, 'Note HTML cannot exceed 10000 characters').optional(),
+        author: z.object({
+          uid: z.string().min(1, 'Author UID is required'),
+          name: z.string().min(1, 'Author name is required'),
+        }),
+        createdAt: z.union([z.date(), z.string()]).optional(),
+        updatedAt: z.union([z.date(), z.string()]).optional(),
+      })
+    )
+    .optional(),
 });
 
 export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefine(

@@ -696,4 +696,142 @@ export class ClientService {
       message: `Department '${department}' assigned successfully`,
     };
   }
+
+  async verifyAccount(cxt: IRequestContext): Promise<ISuccessReturnData<{ isVerified: boolean }>> {
+    const currentuser = cxt.currentuser!;
+    const start = process.hrtime.bigint();
+    const { cuid } = cxt.request.params;
+
+    // Fetch client
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      this.log.error(
+        {
+          cuid,
+          url: cxt.request.url,
+          userId: currentuser?.sub,
+          requestId: cxt.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        t('client.errors.notFound')
+      );
+      throw new NotFoundError({ message: t('client.errors.notFound') });
+    }
+
+    // Check if already verified
+    if (client.isVerified) {
+      this.log.warn(
+        {
+          cuid,
+          userId: currentuser.sub,
+          requestId: cxt.requestId,
+        },
+        'Account is already verified'
+      );
+      throw new BadRequestError({ message: 'Account is already verified' });
+    }
+
+    // Validate identification data exists
+    if (!client.identification) {
+      throw new BadRequestError({ message: 'Identification information is required' });
+    }
+
+    const validationErrors: string[] = [];
+    const identification = client.identification;
+
+    // Check required fields
+    if (!identification.idType) {
+      validationErrors.push('ID type is required');
+    }
+    if (!identification.idNumber) {
+      validationErrors.push('ID number is required');
+    }
+    if (!identification.expiryDate) {
+      validationErrors.push('Expiry date is required');
+    }
+    if (!identification.authority) {
+      validationErrors.push('Issuing authority is required');
+    }
+    if (!identification.issuingState) {
+      validationErrors.push('Issuing state/country is required');
+    }
+    if (!identification.dataProcessingConsent) {
+      validationErrors.push('Data processing consent is required');
+    }
+
+    // Validate document type
+    const validIdTypes = ['passport', 'national-id', 'drivers-license', 'corporation-license'];
+    if (identification.idType && !validIdTypes.includes(identification.idType)) {
+      validationErrors.push(`Invalid ID type. Must be one of: ${validIdTypes.join(', ')}`);
+    }
+
+    // Validate expiry date is in the future
+    if (identification.expiryDate) {
+      const expiryDate = new Date(identification.expiryDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      if (expiryDate <= today) {
+        validationErrors.push('Document has expired. Please provide a valid document.');
+      }
+    }
+
+    // If there are validation errors, throw them
+    if (validationErrors.length > 0) {
+      this.log.error(
+        {
+          cuid,
+          url: cxt.request.url,
+          userId: currentuser?.sub,
+          requestId: cxt.requestId,
+          validationErrors,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Verification validation failed'
+      );
+      throw new BadRequestError({
+        message: 'Verification failed. Please complete all required fields.',
+        errorInfo: { validationErrors },
+      });
+    }
+
+    // Update client to verified status
+    const updatedClient = await this.clientDAO.updateById(client._id.toString(), {
+      $set: {
+        isVerified: true,
+        verifiedAt: new Date(),
+        verifiedBy: currentuser.sub,
+      },
+    });
+
+    if (!updatedClient) {
+      this.log.error(
+        {
+          cuid,
+          url: cxt.request.url,
+          userId: currentuser?.sub,
+          requestId: cxt.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Failed to update client verification status'
+      );
+      throw new BadRequestError({ message: 'Failed to verify account' });
+    }
+
+    this.log.info(
+      {
+        cuid,
+        userId: currentuser.sub,
+        requestId: cxt.requestId,
+        duration: getRequestDuration(start).durationInMs,
+      },
+      'Account verified successfully'
+    );
+
+    return {
+      success: true,
+      data: { isVerified: true },
+      message: t('client.success.verified'),
+    };
+  }
 }

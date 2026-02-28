@@ -75,6 +75,46 @@ export interface ISubscriptionPlansConfig {
   name: string;
 }
 
+export interface ISubscriptionPlanUsage {
+  seatInfo: {
+    includedSeats: number;
+    additionalSeats: number;
+    totalAllowed: number;
+    maxAdditionalSeats: number;
+    additionalSeatPriceCents: number;
+    availableForPurchase: number;
+  };
+  verification: {
+    isVerified: boolean;
+    requiresVerification: boolean;
+    gracePeriodExpired: boolean;
+    daysRemaining: number | null;
+    accountCreatedAt: Date;
+  };
+  plan: {
+    name: PlanName;
+    status: ISubscriptionStatus;
+    billingInterval: 'monthly' | 'annual';
+    startDate: Date;
+    endDate: Date | null;
+  };
+  isLimitReached: {
+    properties: boolean;
+    units: boolean;
+    seats: boolean;
+  };
+  limits: {
+    properties: number;
+    units: number;
+    seats: number;
+  };
+  usage: {
+    properties: number;
+    units: number;
+    seats: number;
+  };
+}
+
 export interface ISubscription {
   entitlements: {
     eSignature: boolean;
@@ -100,39 +140,6 @@ export interface ISubscription {
   startDate: Date;
   endDate: Date;
   cuid: string;
-}
-
-export interface ISubscriptionPlanUsage {
-  seatInfo: {
-    includedSeats: number;
-    additionalSeats: number;
-    totalAllowed: number;
-    maxAdditionalSeats: number;
-    additionalSeatPriceCents: number;
-    availableForPurchase: number;
-  };
-  plan: {
-    name: PlanName;
-    status: ISubscriptionStatus;
-    billingInterval: 'monthly' | 'annual';
-    startDate: Date;
-    endDate: Date | null;
-  };
-  isLimitReached: {
-    properties: boolean;
-    units: boolean;
-    seats: boolean;
-  };
-  limits: {
-    properties: number;
-    units: number;
-    seats: number;
-  };
-  usage: {
-    properties: number;
-    units: number;
-    seats: number;
-  };
 }
 
 export interface ISubscriptionEntitlements {

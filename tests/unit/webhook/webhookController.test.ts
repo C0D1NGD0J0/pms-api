@@ -353,7 +353,7 @@ describe('WebhookController - Stripe Webhooks', () => {
       });
     });
 
-    it('should handle invoice.paid without customer ID gracefully', async () => {
+    it('should call handlePaymentSuccess for invoice.paid with subscription_create even when customer data is sparse', async () => {
       const mockEvent = {
         id: 'evt_test123',
         type: 'invoice.paid',
@@ -375,7 +375,9 @@ describe('WebhookController - Stripe Webhooks', () => {
       );
 
       expect(mockResponse.status).toHaveBeenCalledWith(200);
-      expect(mockSubscriptionService.handlePaymentSuccess).not.toHaveBeenCalled();
+      expect(mockSubscriptionService.handlePaymentSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({ stripeSubscriptionId: 'sub_test123' })
+      );
     });
   });
 });

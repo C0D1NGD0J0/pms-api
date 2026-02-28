@@ -98,6 +98,23 @@ export interface INotificationSettings {
 }
 
 /**
+ * Active Lease Item Interface
+ */
+export interface IActiveLeaseItem {
+  leaseId: string | Types.ObjectId;
+  propertyAddress?: string;
+  leaseNumber?: string;
+  monthlyRent?: number;
+  confirmedDate: Date;
+  unitNumber?: string;
+  confirmed: boolean;
+  startDate?: Date;
+  endDate?: Date;
+  luid?: string;
+  cuid: string;
+}
+
+/**
  * Populated User Interface
  */
 export interface IPopulatedUser {
@@ -117,19 +134,6 @@ export interface IPopulatedUser {
 }
 
 /**
- * Employer Info Item Interface
- */
-export interface IEmployerInfoItem {
-  companyAddress: string;
-  monthlyIncome: number;
-  contactPerson: string;
-  contactEmail: string;
-  companyName: string;
-  position: string;
-  cuid: string; // Track which client the employer info is associated with
-}
-
-/**
  * Personal Info Interface
  */
 export interface IPersonalInfo {
@@ -143,22 +147,6 @@ export interface IPersonalInfo {
   avatar?: IAvatar;
   bio?: string;
   dob?: Date;
-}
-
-/**
- * ============================================================================
- * ENUMS
- * ============================================================================
- */
-
-/**
- * Active Lease Item Interface
- */
-export interface IActiveLeaseItem {
-  leaseId: string | Types.ObjectId; // Reference to Lease entity - all details fetched from there
-  confirmedDate: Date;
-  confirmed: boolean;
-  cuid: string; // Track which client the lease is associated with
 }
 
 /**
@@ -186,12 +174,6 @@ export interface IVendorInfo {
 }
 
 /**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
-
-/**
  * Main Profile Interface
  */
 export interface IProfile {
@@ -203,6 +185,12 @@ export interface IProfile {
   settings: ISettings;
   policies: IPolicies;
 }
+
+/**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
 
 /**
  * Background Check Item Interface
@@ -225,6 +213,19 @@ export interface IProfileEditData {
   settings: IProfileEditSettings;
   userType: ProfileUserType;
   roles: IUserRoleType[];
+}
+
+/**
+ * Employer Info Item Interface
+ */
+export interface IEmployerInfoItem {
+  companyAddress: string;
+  monthlyIncome: number;
+  contactPerson: string;
+  contactEmail: string;
+  companyName: string;
+  position: string;
+  cuid: string;
 }
 
 /**

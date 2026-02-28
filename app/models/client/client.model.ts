@@ -267,6 +267,10 @@ const ClientSchema = new Schema<IClientDocument>(
       type: Schema.Types.ObjectId,
       ref: 'User',
     },
+    verifiedAt: {
+      type: Date,
+      default: null,
+    },
     deletedAt: {
       type: Date,
       default: null,

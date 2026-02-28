@@ -894,6 +894,18 @@ export interface IPendingLeaseChanges {
 }
 
 /**
+ * Internal Note Interface
+ * Audit trail for internal notes on a lease
+ */
+export interface IInternalNote {
+  authorId: Types.ObjectId | string;
+  timestamp: Date;
+  author: string;
+  html?: string;
+  note: string;
+}
+
+/**
  * Duration Interface
  * All date-related information
  */
@@ -904,6 +916,12 @@ export interface ILeaseDuration {
   startDate: Date;
   endDate: Date;
 }
+
+/**
+ * ============================================================================
+ * ACTION DATA INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Pet Policy Interface
@@ -918,12 +936,6 @@ export interface IPetPolicy {
 }
 
 /**
- * ============================================================================
- * ACTION DATA INTERFACES
- * ============================================================================
- */
-
-/**
  * Property Types (for lease context)
  */
 export type LeasePropertyType =
@@ -933,17 +945,6 @@ export type LeasePropertyType =
   | 'townhouse'
   | 'commercial'
   | 'industrial';
-
-/**
- * Internal Note Interface
- * Audit trail for internal notes on a lease
- */
-export interface IInternalNote {
-  authorId: Types.ObjectId | string;
-  timestamp: Date;
-  author: string;
-  note: string;
-}
 
 /**
  * Lease Activation Data Interface

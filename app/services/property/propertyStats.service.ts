@@ -27,14 +27,6 @@ export class PropertyStatsService {
     availableSpaces: number;
     lastUnitNumber?: string;
     suggestedNextUnitNumber?: string;
-    statistics: {
-      occupied: number;
-      vacant: number;
-      maintenance: number;
-      available: number;
-      reserved: number;
-      inactive: number;
-    };
     totalUnits: number;
     unitStats: {
       occupied: number;
@@ -109,7 +101,6 @@ export class PropertyStatsService {
         availableSpaces,
         lastUnitNumber,
         suggestedNextUnitNumber,
-        statistics: unitData.unitStats,
         totalUnits: unitData.currentUnits,
         unitStats: unitData.unitStats,
       };
@@ -152,7 +143,6 @@ export class PropertyStatsService {
         currentUnits: 1,
         availableSpaces: 0,
         suggestedNextUnitNumber,
-        statistics: unitStats,
         totalUnits: 1,
         unitStats,
       };

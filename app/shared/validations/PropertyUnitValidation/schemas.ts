@@ -165,6 +165,22 @@ export const UnitInspectionSchema = z.object({
   attachments: z.array(InspectionAttachmentSchema).optional(),
 });
 
+const PropertyUnitNoteSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1, 'Note title is required')
+    .max(100, 'Note title cannot exceed 100 characters'),
+  content: z
+    .string()
+    .trim()
+    .min(1, 'Note content is required')
+    .max(2000, 'Note content cannot exceed 2000 characters'),
+  html: z.string().trim().max(10000, 'Note HTML cannot exceed 10000 characters').optional(),
+  createdAt: z.union([z.date(), z.string()]).optional(),
+  createdBy: z.string().optional(),
+});
+
 const BaseUnitSchema = z.object({
   unitNumber: z
     .string()
@@ -191,6 +207,7 @@ const BaseUnitSchema = z.object({
     .optional(),
   documents: z.array(UnitDocumentSchema).optional(),
   inspections: z.array(UnitInspectionSchema).optional(),
+  notes: z.array(PropertyUnitNoteSchema).optional(),
   puid: z.string().optional(),
   currentLease: z.string().optional(),
 });

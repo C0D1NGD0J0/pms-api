@@ -26,7 +26,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       paymentType?: PaymentRecordType;
       tenantId?: string;
       leaseId?: string;
-      dueDate?: string;
+      dueDate?: any;
     },
     opts?: IFindOptions
   ): ListResultWithPagination<IPaymentDocument[]> {

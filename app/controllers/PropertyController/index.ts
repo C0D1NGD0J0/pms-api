@@ -149,7 +149,11 @@ export class PropertyController {
       });
     }
 
-    const data = await this.propertyService.getClientProperty(cuid, pid, currentuser);
+    // Parse include query parameter
+    const includeParam = req.query.include as string | undefined;
+    const include = includeParam ? includeParam.split(',').map((s) => s.trim()) : undefined;
+
+    const data = await this.propertyService.getClientProperty(cuid, pid, currentuser, include);
     res.status(httpStatusCodes.OK).json(data);
   };
 

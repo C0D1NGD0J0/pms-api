@@ -163,6 +163,11 @@ describe('ClientController Integration Tests', () => {
       req.context = mockContext(adminUser, req.params.cuid) as any;
       await clientController.assignDepartment(req as any, res);
     });
+
+    app.post('/api/v1/clients/:cuid/verify-account', async (req, res) => {
+      req.context = mockContext(adminUser, req.params.cuid) as any;
+      await clientController.verifyAccount(req as any, res);
+    });
   });
 
   beforeEach(async () => {
@@ -584,6 +589,243 @@ describe('ClientController Integration Tests', () => {
       const roles = user?.cuids.find((c) => c.cuid === testClient.cuid)?.roles || [];
       const managerCount = roles.filter((r) => r === ROLES.MANAGER).length;
       expect(managerCount).toBe(1);
+    });
+  });
+
+  describe('POST /clients/:cuid/verify-account - verifyAccount', () => {
+    it('should successfully verify account with valid identification data', async () => {
+      // Update client with valid identification data
+      await Client.findOneAndUpdate(
+        { cuid: testClient.cuid },
+        {
+          $set: {
+            isVerified: false,
+            identification: {
+              idType: 'passport',
+              idNumber: 'A12345678',
+              expiryDate: new Date('2030-12-31'),
+              authority: 'Immigration Office',
+              issuingState: 'United States',
+              dataProcessingConsent: true,
+              issueDate: new Date('2020-01-01'),
+            },
+          },
+        }
+      );
+
+      const response = await request(app)
+        .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.isVerified).toBe(true);
+      expect(response.body.message).toBeDefined();
+
+      // Verify database update
+      const client = await Client.findOne({ cuid: testClient.cuid });
+      expect(client?.isVerified).toBe(true);
+      expect(client?.verifiedAt).toBeDefined();
+      expect(client?.verifiedBy).toBeDefined();
+    });
+
+    it('should return 400 when client is already verified', async () => {
+      // Update client to verified status
+      await Client.findOneAndUpdate(
+        { cuid: testClient.cuid },
+        {
+          $set: {
+            isVerified: true,
+            identification: {
+              idType: 'passport',
+              idNumber: 'A12345678',
+              expiryDate: new Date('2030-12-31'),
+              authority: 'Immigration Office',
+              issuingState: 'United States',
+              dataProcessingConsent: true,
+              issueDate: new Date('2020-01-01'),
+            },
+          },
+        }
+      );
+
+      const response = await request(app)
+        .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toContain('already verified');
+    });
+
+    it('should return 400 when identification data is missing', async () => {
+      // Update client without identification data
+      await Client.findOneAndUpdate(
+        { cuid: testClient.cuid },
+        {
+          $set: {
+            isVerified: false,
+            identification: undefined,
+          },
+        }
+      );
+
+      const response = await request(app)
+        .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toContain('Identification information is required');
+    });
+
+    it('should return 400 when required fields are missing', async () => {
+      // Update client with incomplete identification data
+      await Client.findOneAndUpdate(
+        { cuid: testClient.cuid },
+        {
+          $set: {
+            isVerified: false,
+            identification: {
+              idType: 'passport',
+              idNumber: '', // Missing
+              expiryDate: new Date('2030-12-31'),
+              authority: 'Immigration Office',
+              issuingState: 'United States',
+              dataProcessingConsent: true,
+              issueDate: new Date('2020-01-01'),
+            },
+          },
+        }
+      );
+
+      const response = await request(app)
+        .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toContain('Verification failed');
+    });
+
+    it('should return 400 when document has expired', async () => {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      await Client.findOneAndUpdate(
+        { cuid: testClient.cuid },
+        {
+          $set: {
+            isVerified: false,
+            identification: {
+              idType: 'passport',
+              idNumber: 'A12345678',
+              expiryDate: yesterday,
+              authority: 'Immigration Office',
+              issuingState: 'United States',
+              dataProcessingConsent: true,
+              issueDate: new Date('2020-01-01'),
+            },
+          },
+        }
+      );
+
+      const response = await request(app)
+        .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toContain('Verification failed');
+    });
+
+    it('should return 400 when data processing consent is not given', async () => {
+      await Client.findOneAndUpdate(
+        { cuid: testClient.cuid },
+        {
+          $set: {
+            isVerified: false,
+            identification: {
+              idType: 'passport',
+              idNumber: 'A12345678',
+              expiryDate: new Date('2030-12-31'),
+              authority: 'Immigration Office',
+              issuingState: 'United States',
+              dataProcessingConsent: false,
+              issueDate: new Date('2020-01-01'),
+            },
+          },
+        }
+      );
+
+      const response = await request(app)
+        .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toContain('Verification failed');
+    });
+
+    it('should return 400 when ID type is invalid', async () => {
+      await Client.findOneAndUpdate(
+        { cuid: testClient.cuid },
+        {
+          $set: {
+            isVerified: false,
+            identification: {
+              idType: 'invalid-type',
+              idNumber: 'A12345678',
+              expiryDate: new Date('2030-12-31'),
+              authority: 'Immigration Office',
+              issuingState: 'United States',
+              dataProcessingConsent: true,
+              issueDate: new Date('2020-01-01'),
+            },
+          },
+        }
+      );
+
+      const response = await request(app)
+        .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toContain('Verification failed');
+    });
+
+    it('should return 404 for non-existent client', async () => {
+      const response = await request(app)
+        .post('/api/v1/clients/nonexistent-cuid/verify-account')
+        .expect(httpStatusCodes.NOT_FOUND);
+
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should accept all valid ID types', async () => {
+      const validIdTypes = ['passport', 'national-id', 'drivers-license', 'corporation-license'];
+
+      for (const idType of validIdTypes) {
+        // Reset client to unverified state with valid data
+        await Client.findOneAndUpdate(
+          { cuid: testClient.cuid },
+          {
+            $set: {
+              isVerified: false,
+              identification: {
+                idType,
+                idNumber: 'A12345678',
+                expiryDate: new Date('2030-12-31'),
+                authority: 'Immigration Office',
+                issuingState: 'United States',
+                dataProcessingConsent: true,
+                issueDate: new Date('2020-01-01'),
+              },
+            },
+          }
+        );
+
+        const response = await request(app)
+          .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
+          .expect(httpStatusCodes.OK);
+
+        expect(response.body.success).toBe(true);
+        expect(response.body.data.isVerified).toBe(true);
+      }
     });
   });
 });

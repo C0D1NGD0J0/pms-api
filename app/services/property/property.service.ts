@@ -79,6 +79,7 @@ interface IConstructor {
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
+  paymentDAO: any;
 }
 
 export class PropertyService {
@@ -99,6 +100,7 @@ export class PropertyService {
   private readonly leaseDAO: LeaseDAO;
   private readonly notificationService: NotificationService;
   private readonly subscriptionDAO: SubscriptionDAO;
+  private readonly paymentDAO: any;
 
   constructor({
     clientDAO,
@@ -117,6 +119,7 @@ export class PropertyService {
     leaseDAO,
     notificationService,
     subscriptionDAO,
+    paymentDAO,
   }: IConstructor) {
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -135,6 +138,7 @@ export class PropertyService {
     this.leaseDAO = leaseDAO;
     this.notificationService = notificationService;
     this.subscriptionDAO = subscriptionDAO;
+    this.paymentDAO = paymentDAO;
 
     this.setupEventListeners();
   }
@@ -756,7 +760,8 @@ export class PropertyService {
   async getClientProperty(
     cuid: string,
     pid: string,
-    currentUser: ICurrentUser
+    currentUser: ICurrentUser,
+    include?: string[]
   ): Promise<ISuccessReturnData<IPropertyWithUnitInfo>> {
     if (!cuid || !pid) {
       throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
@@ -779,6 +784,72 @@ export class PropertyService {
 
     const unitInfo = await this.getUnitInfoForProperty(property);
 
+    // Fetch property manager details
+    let propertyManager = null;
+    if (property.managedBy) {
+      const managerProfile = await this.profileDAO.findFirst(
+        { user: property.managedBy, deletedAt: null },
+        {
+          select: 'personalInfo.firstName personalInfo.lastName personalInfo.phoneNumber user',
+          populate: { path: 'user', select: 'email' },
+        }
+      );
+
+      if (managerProfile) {
+        propertyManager = {
+          fullName:
+            `${managerProfile.personalInfo?.firstName || ''} ${managerProfile.personalInfo?.lastName || ''}`.trim(),
+          email: (managerProfile as any).user?.email || '',
+          phoneNumber: managerProfile.personalInfo?.phoneNumber || '',
+        };
+      }
+    }
+
+    // Calculate property metrics
+    const metrics = await this.calculatePropertyMetrics(cuid, property._id.toString(), unitInfo);
+
+    // Conditionally fetch payment history
+    let paymentHistory: any[] | undefined;
+    if (include?.includes('payments') || include?.includes('all')) {
+      const leasesResult = await this.leaseDAO.list(
+        {
+          'property.id': property._id.toString(),
+          cuid,
+          deletedAt: null,
+        },
+        { projection: '_id' },
+        true
+      );
+
+      const leaseIds = leasesResult.items.map((l: any) => l._id.toString());
+      if (leaseIds.length > 0) {
+        const paymentsResult = await this.paymentDAO.list(
+          {
+            cuid,
+            lease: { $in: leaseIds },
+            deletedAt: null,
+          },
+          {
+            sort: { dueDate: -1 },
+            limit: 50,
+            populate: [
+              { path: 'tenant', select: 'personalInfo.firstName personalInfo.lastName' },
+              { path: 'lease', select: 'leaseNumber property' },
+            ],
+          },
+          true
+        );
+        paymentHistory = paymentsResult.items;
+      }
+    }
+
+    // Conditionally fetch maintenance history (placeholder for future implementation)
+    let maintenanceHistory: any[] | undefined;
+    if (include?.includes('maintenance') || include?.includes('all')) {
+      // When maintenance is implemented, fetch it here
+      maintenanceHistory = [];
+    }
+
     const propertyObj = property.toObject ? property.toObject() : property;
     const pendingChangesPreview = generatePendingChangesPreview(property, currentUser);
 
@@ -786,6 +857,7 @@ export class PropertyService {
       ...propertyObj,
       ...(pendingChangesPreview && { pendingChangesPreview }),
       fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
+      manager: propertyManager,
     };
 
     return {
@@ -793,6 +865,9 @@ export class PropertyService {
       data: {
         property: propertyWithPreview,
         unitInfo,
+        metrics,
+        ...(paymentHistory !== undefined && { paymentHistory }),
+        ...(maintenanceHistory !== undefined && { maintenanceHistory }),
       },
     };
   }
@@ -1369,14 +1444,6 @@ export class PropertyService {
     availableSpaces: number;
     lastUnitNumber?: string;
     suggestedNextUnitNumber?: string;
-    statistics: {
-      occupied: number;
-      vacant: number;
-      maintenance: number;
-      available: number;
-      reserved: number;
-      inactive: number;
-    };
     totalUnits: number;
     unitStats: {
       occupied: number;
@@ -1388,6 +1455,83 @@ export class PropertyService {
     };
   }> {
     return this.propertyStatsService.getUnitInfoForProperty(property);
+  }
+
+  async calculatePropertyMetrics(
+    cuid: string,
+    propertyId: string,
+    unitInfo: any
+  ): Promise<{
+    monthlyRent: number;
+    annualRevenue: number;
+    occupancyRate: number;
+    monthlyNetIncome: number;
+  }> {
+    try {
+      // Get all active leases for this property
+      const leasesResult = await this.leaseDAO.list(
+        {
+          'property.id': propertyId,
+          cuid,
+          status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.RENEWED] },
+          deletedAt: null,
+        },
+        {},
+        true // lean query for performance
+      );
+
+      const activeLeases = leasesResult.items || [];
+
+      // Calculate monthly rent from active leases
+      let monthlyRent = activeLeases.reduce((sum: number, lease: any) => {
+        return sum + (lease.rentAmount || 0);
+      }, 0);
+
+      // If no active leases, calculate potential rent from occupied units
+      if (monthlyRent === 0 && unitInfo.unitStats?.occupied > 0) {
+        try {
+          const unitsResult = await this.propertyUnitDAO.findUnitsByPropertyId(propertyId, {
+            page: 1,
+            limit: 1000,
+          });
+
+          monthlyRent = unitsResult.items
+            .filter((unit: any) => unit.status === 'occupied')
+            .reduce((sum: number, unit: any) => {
+              return sum + (unit.fees?.rentAmount || 0);
+            }, 0);
+        } catch (err) {
+          this.log.warn('Error calculating rent from units:', err);
+        }
+      }
+
+      // Calculate annual revenue
+      const annualRevenue = monthlyRent * 12;
+
+      // Calculate occupancy rate
+      const totalUnits = unitInfo.totalUnits || 1;
+      const occupiedUnits = unitInfo.unitStats?.occupied || activeLeases.length;
+      const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
+
+      // Calculate net income (simplified: rent minus 10% for management/maintenance)
+      const monthlyNetIncome = Math.round(monthlyRent * 0.9);
+
+      return {
+        monthlyRent,
+        annualRevenue,
+        occupancyRate,
+        monthlyNetIncome,
+      };
+    } catch (error) {
+      this.log.error('Error calculating property metrics:', error);
+      // Return zero metrics on error instead of failing
+      return {
+        monthlyRent: 0,
+        annualRevenue: 0,
+        occupancyRate: 0,
+        monthlyNetIncome: 0,
+      };
+    }
   }
 
   async getAssignableUsers(

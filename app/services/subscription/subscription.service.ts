@@ -613,6 +613,19 @@ export class SubscriptionService {
         subscription.currentSeats = actualSeatCount;
       }
 
+      // Fetch client for verification status
+      const client = await this.clientDAO.findFirst({ cuid });
+      if (!client) {
+        throw new BadRequestError({ message: 'Client not found' });
+      }
+
+      // Calculate verification status and grace period
+      const daysSinceCreation = Math.floor(
+        (Date.now() - new Date(client.createdAt).getTime()) / (1000 * 60 * 60 * 24)
+      );
+      const gracePeriodExpired = !client.isVerified && daysSinceCreation > 5;
+      const daysRemaining = client.isVerified ? null : Math.max(0, 5 - daysSinceCreation);
+
       const config = subscriptionPlanConfig.getConfig(subscription.planName);
       const maxAllowedSeats = config.seatPricing.includedSeats + subscription.additionalSeatsCount;
       const isLimitReached = {
@@ -648,6 +661,13 @@ export class SubscriptionService {
           additionalSeatPriceCents: config.seatPricing.additionalSeatPriceCents,
           availableForPurchase:
             config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
+        },
+        verification: {
+          isVerified: client.isVerified,
+          requiresVerification: !client.isVerified,
+          gracePeriodExpired,
+          daysRemaining,
+          accountCreatedAt: client.createdAt,
         },
       };
 

@@ -4,6 +4,7 @@
       "$extend": ["admin"],
       "subscription": ["read:any", "update:any", "manage:any"],
       "billing": ["read:any", "update:any", "manage:any"],
+      "client": ["update:mine", "read:mine", "settings:mine", "manage_users:mine"],
       "payment": ["create:any", "read:any", "update:any"]
     },
     "admin": {

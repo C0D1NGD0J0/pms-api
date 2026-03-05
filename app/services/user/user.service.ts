@@ -424,9 +424,9 @@ export class UserService {
       return properties.map((property: any) => ({
         name: property.name || '',
         propertyId: property.id || '',
-        location: this.formatPropertyLocation(property.location),
-        units: property.totalUnits || 0,
-        occupancy: `${property.occupancyRate || 0}%`,
+        location: this.formatPropertyLocation(property.address),
+        units: property.maxAllowedUnits || 0,
+        occupancy: this.formatOccupancy(property.occupancyStatus),
         since: this.formatDate(property.createdAt),
       }));
     } catch (error) {
@@ -809,15 +809,27 @@ export class UserService {
     return 'employee';
   }
 
-  private formatPropertyLocation(location: any): string {
-    if (!location) return 'Location not specified';
+  private formatPropertyLocation(address: any): string {
+    if (!address) return 'Location not specified';
+    if (address.fullAddress) return address.fullAddress;
 
     const parts = [];
-    if (location.address) parts.push(location.address);
-    if (location.city) parts.push(location.city);
-    if (location.state) parts.push(location.state);
+    if (address.street) parts.push(address.street);
+    if (address.city) parts.push(address.city);
+    if (address.state) parts.push(address.state);
 
     return parts.length > 0 ? parts.join(', ') : 'Location not specified';
+  }
+
+  private formatOccupancy(occupancyStatus?: string): string {
+    switch (occupancyStatus) {
+      case 'partially_occupied':
+        return '50%';
+      case 'occupied':
+        return '100%';
+      default:
+        return '0%';
+    }
   }
 
   private formatDate(date: Date): string {

@@ -40,6 +40,11 @@ export const recordManualPayment = z.object({
     .optional(),
 });
 
+export const refundPayment = z.object({
+  amount: z.number().int().positive('Refund amount must be positive').optional(),
+  reason: z.string().trim().max(500, 'Reason cannot exceed 500 characters').optional(),
+});
+
 export const createConnectAccount = z.object({
   email: z.string().email(),
   country: z.string().length(2).toUpperCase(),

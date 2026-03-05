@@ -20,6 +20,7 @@ import {
   IPaymentGatewayProvider,
   IManualPaymentFormData,
   PaymentRecordStatus,
+  IRefundPaymentData,
   IPaymentPopulated,
   PaymentRecordType,
   IPaymentDocument,
@@ -118,6 +119,9 @@ export class PaymentService implements ICronProvider {
         description: data.description,
         recordedBy: new Types.ObjectId(userId),
         isManualEntry: true,
+        ...(data.receipt
+          ? { receipt: { ...data.receipt, uploadedBy: new Types.ObjectId(userId) } }
+          : {}),
       });
 
       return {
@@ -305,7 +309,8 @@ export class PaymentService implements ICronProvider {
               select: 'property',
             },
           ],
-          projection: 'pytuid paymentMethod baseAmount processingFee status dueDate paidAt period',
+          projection:
+            'pytuid paymentMethod paymentType baseAmount processingFee status dueDate paidAt period',
           skip: filters?.skip,
           limit: filters?.limit,
         },
@@ -323,11 +328,13 @@ export class PaymentService implements ICronProvider {
                 'Unknown Tenant',
             }
           : null,
-        property: payment.lease?.property?.address || 'Unknown Property',
+        property:
+          payment.lease?.property?.name || payment.lease?.property?.address || 'Unknown Property',
         amount: payment.baseAmount + (payment.processingFee || 0),
         baseAmount: payment.baseAmount,
         processingFee: payment.processingFee || 0,
         status: payment.status,
+        paymentType: payment.paymentType,
         paymentMethod: payment.paymentMethod,
         dueDate: payment.dueDate,
         paidAt: payment.paidAt,
@@ -348,25 +355,7 @@ export class PaymentService implements ICronProvider {
     }
   }
 
-  async getPaymentByUid(
-    cuid: string,
-    pytuid: string
-  ): IPromiseReturnedData<{
-    tenantProfile: { firstName?: string; lastName?: string; email?: string; puid?: string };
-    leaseInfo: {
-      address?: any;
-      leaseNumber?: string;
-      status?: string;
-      leaseUid?: string;
-      startDate?: Date;
-      endDate?: Date;
-      unitNumber?: string;
-      propertyName?: string;
-      propertyType?: string;
-      bedrooms?: number;
-      bathrooms?: number;
-    } | null;
-  }> {
+  async getPaymentByUid(cuid: string, pytuid: string): IPromiseReturnedData<any> {
     try {
       if (!cuid || !pytuid) {
         throw new BadRequestError({ message: 'Client ID and Payment ID are required' });
@@ -817,24 +806,22 @@ export class PaymentService implements ICronProvider {
       }
 
       const refundAmountInCents = chargeData.amount_refunded || 0;
-      const isFullRefund = refundAmountInCents >= payment.baseAmount;
 
       await this.paymentDAO.update(
         { _id: payment._id },
         {
           $set: {
+            status: PaymentRecordStatus.REFUNDED,
             refundedAt: new Date(),
             refundAmount: refundAmountInCents,
-            // Note: Status remains PAID - refundedAt and refundAmount indicate refund
           },
         }
       );
 
-      this.log.info('Payment refund processed', {
+      this.log.info('Payment refund processed via webhook', {
         pytuid: payment.pytuid,
         chargeId,
         refundAmount: refundAmountInCents,
-        isFullRefund,
       });
 
       return {
@@ -844,6 +831,71 @@ export class PaymentService implements ICronProvider {
       };
     } catch (error: any) {
       this.log.error('Error handling charge refunded', { chargeId, error });
+      throw error;
+    }
+  }
+
+  async refundPayment(
+    cuid: string,
+    pytuid: string,
+    data: IRefundPaymentData
+  ): IPromiseReturnedData<IPaymentDocument> {
+    try {
+      if (!cuid || !pytuid) {
+        throw new BadRequestError({ message: 'Client ID and payment ID are required' });
+      }
+
+      const payment = await this.paymentDAO.findFirst({ pytuid, cuid, deletedAt: null });
+      if (!payment) {
+        throw new NotFoundError({ message: 'Payment not found' });
+      }
+
+      if (payment.status !== PaymentRecordStatus.PAID) {
+        throw new BadRequestError({
+          message: `Cannot refund a payment with status: ${payment.status}`,
+        });
+      }
+
+      if (!payment.gatewayChargeId) {
+        throw new BadRequestError({
+          message: 'Refunds are only available for online payments processed through Stripe',
+        });
+      }
+
+      if (data.amount && data.amount > payment.baseAmount) {
+        throw new BadRequestError({
+          message: `Refund amount cannot exceed the original payment amount of ${payment.baseAmount}`,
+        });
+      }
+
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor?.accountId) {
+        throw new BadRequestError({ message: 'Payment processor not configured for this account' });
+      }
+
+      await this.paymentGatewayService.createRefund(IPaymentGatewayProvider.STRIPE, {
+        chargeId: payment.gatewayChargeId,
+        connectedAccountId: paymentProcessor.accountId,
+        amountInCents: data.amount,
+        reason: data.reason,
+      });
+
+      const updated = await this.paymentDAO.updateById((payment as any)._id.toString(), {
+        status: PaymentRecordStatus.REFUNDED,
+        refundedAt: new Date(),
+        refundAmount: data.amount || payment.baseAmount,
+        refundReason: data.reason,
+      });
+
+      this.log.info('Payment refund initiated', {
+        pytuid: payment.pytuid,
+        refundAmount: data.amount || payment.baseAmount,
+        isPartial: !!data.amount && data.amount < payment.baseAmount,
+      });
+
+      return { success: true, data: updated as IPaymentDocument };
+    } catch (error: any) {
+      this.log.error({ error: error.message, cuid, pytuid }, 'Error refunding payment');
       throw error;
     }
   }
@@ -914,6 +966,7 @@ export class PaymentService implements ICronProvider {
     collected: number;
     pending: number;
     overdue: number;
+    refunded: number;
     collectionRate: number;
     currency: string;
   }> {
@@ -923,48 +976,58 @@ export class PaymentService implements ICronProvider {
         throw new NotFoundError({ message: 'Client not found' });
       }
 
-      // Get current month's date range
-      const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      // Fetch ALL payments for this client across all time (no date filter).
+      // Overdue payments from past months are still outstanding and relevant —
+      // restricting to current month would hide unpaid historical debt.
+      const result = await this.paymentDAO.findByCuid(cuid, {}, { limit: 10000 });
+      const allPayments = result.items || [];
 
-      // Fetch payments for current month directly using dueDate range
-      const result = await this.paymentDAO.findByCuid(
-        cuid,
-        { dueDate: { $gte: startOfMonth, $lte: endOfMonth } },
-        { limit: 10000 },
-      );
-      const paymentsThisMonth = result.items || [];
-      // Calculate stats
-      let expectedRevenue = 0;
-      let collected = 0;
-      let pending = 0;
-      let overdue = 0;
+      // Running totals — all values are in cents (e.g. 150000 = $1,500.00)
+      let expectedRevenue = 0; // PAID + PENDING + OVERDUE (excludes CANCELLED, FAILED, REFUNDED)
+      let collected = 0; // Sum of all PAID payments (baseAmount)
+      let pending = 0; // Sum of all PENDING payments (baseAmount)
+      let overdue = 0; // Sum of all OVERDUE payments (baseAmount)
+      let refunded = 0; // Sum of all REFUNDED amounts (refundAmount if partial, else baseAmount)
 
-      paymentsThisMonth.forEach((payment) => {
-        const amount = payment.baseAmount;
+      allPayments.forEach((payment) => {
+        // baseAmount is stored in cents. Guard against missing values on legacy records.
+        const amount = payment.baseAmount ?? 0;
 
         switch (payment.status) {
+          // CANCELLED and FAILED payments are excluded from all stats —
+          // they were never collected and are no longer expected.
           case PaymentRecordStatus.CANCELLED:
           case PaymentRecordStatus.FAILED:
-            // FAILED and CANCELLED payments don't count toward any stat
-            // They are excluded from expectedRevenue
             break;
+
+          // REFUNDED: use refundAmount (partial refund) or full baseAmount (full refund).
+          // Refunded payments are excluded from expectedRevenue since the money was returned.
+          case PaymentRecordStatus.REFUNDED:
+            refunded += payment.refundAmount || amount;
+            break;
+
+          // PENDING: payment is due but not yet collected.
+          // Counts toward expectedRevenue because it is expected to be paid.
           case PaymentRecordStatus.PENDING:
             expectedRevenue += amount;
             pending += amount;
             break;
+
+          // OVERDUE: payment is past its due date and still unpaid.
+          // Counts toward expectedRevenue — the money is owed and tracked.
           case PaymentRecordStatus.OVERDUE:
             expectedRevenue += amount;
             overdue += amount;
             break;
+
+          // PAID: payment was successfully collected.
+          // Counts toward both expectedRevenue and collected.
           case PaymentRecordStatus.PAID:
-            // Only PAID payments contribute to expected revenue and collected
             expectedRevenue += amount;
             collected += amount;
             break;
+
           default:
-            // Log unknown status for debugging
             this.log.warn('Unknown payment status encountered', {
               status: payment.status,
               pytuid: payment.pytuid,
@@ -973,17 +1036,21 @@ export class PaymentService implements ICronProvider {
         }
       });
 
+      // collectionRate = what percentage of expected revenue has actually been collected.
+      // Formula: (collected / expectedRevenue) * 100, rounded to nearest integer.
+      // Example: collected=$453,818 / expected=$537,418 = ~84%
       const collectionRate =
         expectedRevenue > 0 ? Math.round((collected / expectedRevenue) * 100) : 0;
 
       return {
         success: true,
         data: {
-          expectedRevenue,
-          collected,
-          pending,
-          overdue,
-          collectionRate,
+          expectedRevenue, // PAID + PENDING + OVERDUE (in cents)
+          collected, // PAID only (in cents)
+          pending, // PENDING only (in cents)
+          overdue, // OVERDUE only (in cents)
+          refunded, // REFUNDED amounts (in cents)
+          collectionRate, // percentage (0–100)
           currency: 'USD',
         },
       };

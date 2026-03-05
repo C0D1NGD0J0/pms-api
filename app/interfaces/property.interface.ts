@@ -215,6 +215,22 @@ export type IPropertyWithUnitInfo = {
 } & Partial<{ property: IPropertyDocument }>;
 
 /**
+ * Media Document Item Interface
+ */
+export interface MediaDocumentItem {
+  documentType?: PropertyDocumentType;
+  status: MediaDocumentStatus;
+  uploadedBy: Types.ObjectId;
+  _id?: Types.ObjectId;
+  description?: string;
+  documentName: string;
+  externalUrl: string;
+  uploadedAt: Date;
+  key?: string;
+  url: string;
+}
+
+/**
  * Property Owner Interface
  */
 export interface IPropertyOwner {
@@ -265,21 +281,6 @@ export interface PropertySpecifications {
 }
 
 /**
- * Media Document Item Interface
- */
-export interface MediaDocumentItem {
-  documentType?: PropertyDocumentType;
-  status: MediaDocumentStatus;
-  uploadedBy: Types.ObjectId;
-  description?: string;
-  documentName: string;
-  externalUrl: string;
-  uploadedAt: Date;
-  key?: string;
-  url: string;
-}
-
-/**
  * Property Approval Entry Interface
  * Individual property approval tracking
  */
@@ -318,6 +319,20 @@ export interface CommunityAmenities {
   elevator: boolean;
   doorman: boolean;
   parking: boolean;
+}
+
+/**
+ * Property Image Item Interface
+ */
+export interface PropertyImageItem {
+  status: MediaDocumentStatus;
+  uploadedBy: Types.ObjectId;
+  _id?: Types.ObjectId;
+  description?: string;
+  filename?: string;
+  uploadedAt: Date;
+  key?: string;
+  url: string;
 }
 
 /**
@@ -371,19 +386,6 @@ export interface InteriorAmenities {
   furnished: boolean;
   heating: boolean;
   fridge: boolean;
-}
-
-/**
- * Property Image Item Interface
- */
-export interface PropertyImageItem {
-  status: MediaDocumentStatus;
-  uploadedBy: Types.ObjectId;
-  description?: string;
-  filename?: string;
-  uploadedAt: Date;
-  key?: string;
-  url: string;
 }
 
 /**
@@ -512,12 +514,12 @@ export type PropertyApprovalStatus = 'pending' | 'approved' | 'rejected' | 'draf
  */
 
 /**
- * New Property Type (for creation)
- * Using Omit to exclude pid
+ * Computed Location Interface
  */
-export type NewProperty = {
-  fullAddress: string;
-} & Omit<IProperty, 'pid'>;
+export interface ComputedLocation {
+  coordinates: number[];
+  type?: 'Point';
+}
 
 /**
  * ============================================================================
@@ -526,15 +528,17 @@ export type NewProperty = {
  */
 
 /**
+ * New Property Type (for creation)
+ * Using Omit to exclude pid
+ */
+export type NewProperty = {
+  fullAddress: string;
+} & Omit<IProperty, 'pid'>;
+
+/**
  * Occupancy Status Types
  */
 export type OccupancyStatus = 'vacant' | 'occupied' | 'partially_occupied';
-
-/**
- * Property Type Rules Collection
- * Using Record with string to allow dynamic access
- */
-export type PropertyTypeRules = Record<string, PropertyTypeRule>;
 
 /**
  * ============================================================================
@@ -543,11 +547,10 @@ export type PropertyTypeRules = Record<string, PropertyTypeRule>;
  */
 
 /**
- * Computed Location Interface
+ * Property Type Rules Collection
+ * Using Record with string to allow dynamic access
  */
-export interface ComputedLocation {
-  coordinates: number[];
-}
+export type PropertyTypeRules = Record<string, PropertyTypeRule>;
 
 /**
  * ============================================================================

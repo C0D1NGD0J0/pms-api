@@ -12,6 +12,12 @@ export interface IPaymentProvider {
       }
     >
   >;
+  createRefund(params: {
+    chargeId: string;
+    connectedAccountId: string;
+    amountInCents?: number;
+    reason?: string;
+  }): Promise<{ refundId: string; status: string; amount: number; currency: string }>;
   createCustomer(data: {
     email: string;
     name?: string;

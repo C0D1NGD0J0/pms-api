@@ -91,6 +91,20 @@ router.patch(
 );
 
 router.post(
+  '/:cuid/:pytuid/refund',
+  isAuthenticated,
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
+    body: PaymentValidations.refundPayment,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.refundPayment(req, res);
+  })
+);
+
+router.post(
   '/:cuid/payout-account',
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),

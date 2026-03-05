@@ -547,4 +547,32 @@ export class PaymentGatewayService {
       };
     }
   }
+
+  async createRefund(
+    provider: IPaymentGatewayProvider,
+    params: {
+      chargeId: string;
+      connectedAccountId: string;
+      amountInCents?: number;
+      reason?: string;
+    }
+  ): IPromiseReturnedData<{
+    refundId: string;
+    status: string;
+    amount: number;
+    currency: string;
+  } | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      const result = await providerInstance.createRefund(params);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider, chargeId: params.chargeId }, 'Error creating refund');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to create refund',
+      };
+    }
+  }
 }

@@ -355,6 +355,34 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async createRefund(params: {
+    chargeId: string;
+    connectedAccountId: string;
+    amountInCents?: number;
+    reason?: string;
+  }): Promise<{ refundId: string; status: string; amount: number; currency: string }> {
+    const { chargeId, connectedAccountId, amountInCents, reason } = params;
+    try {
+      const refundParams: Stripe.RefundCreateParams = { charge: chargeId };
+      if (amountInCents) refundParams.amount = amountInCents;
+      if (reason) refundParams.reason = reason as Stripe.RefundCreateParams.Reason;
+
+      const refund = await this.stripe.refunds.create(refundParams, {
+        stripeAccount: connectedAccountId,
+      });
+      this.log.info({ chargeId, refundId: refund.id, amount: refund.amount }, 'Refund created');
+      return {
+        refundId: refund.id,
+        status: refund.status ?? 'unknown',
+        amount: refund.amount,
+        currency: refund.currency,
+      };
+    } catch (error) {
+      this.log.error({ error, chargeId }, 'Error creating Stripe refund');
+      throw error;
+    }
+  }
+
   async getCustomerInvoices(customerId: string, limit: number = 12): Promise<Stripe.Invoice[]> {
     try {
       const result = await this.stripe.invoices.list({

@@ -127,4 +127,13 @@ export class PaymentController {
 
     return res.status(200).json(result);
   }
+
+  async refundPayment(req: AppRequest, res: Response) {
+    const { cuid, pytuid } = req.params;
+    const { amount, reason } = req.body;
+
+    const result = await this.paymentService.refundPayment(cuid, pytuid, { amount, reason });
+
+    return res.status(200).json(result);
+  }
 }

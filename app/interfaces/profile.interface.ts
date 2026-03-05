@@ -150,6 +150,21 @@ export interface IPersonalInfo {
 }
 
 /**
+ * Lease History Item Interface
+ */
+export interface ILeaseHistoryItem {
+  status: LeaseHistoryStatus;
+  leaseNumber?: string;
+  propertyName: string;
+  monthlyRent: number;
+  unitNumber: string;
+  leaseStart: Date;
+  leaseEnd: Date;
+  luid?: string;
+  id?: string;
+}
+
+/**
  * Profile Document Interface
  * Extends IProfile with MongoDB document properties and methods
  */
@@ -174,6 +189,12 @@ export interface IVendorInfo {
 }
 
 /**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
+
+/**
  * Main Profile Interface
  */
 export interface IProfile {
@@ -185,12 +206,6 @@ export interface IProfile {
   settings: ISettings;
   policies: IPolicies;
 }
-
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
 
 /**
  * Background Check Item Interface
@@ -262,18 +277,6 @@ export interface ISettings {
   theme?: ThemeType;
   timeZone?: string;
   lang: string;
-}
-
-/**
- * Lease History Item Interface
- */
-export interface ILeaseHistoryItem {
-  status: LeaseHistoryStatus;
-  propertyName: string;
-  unitNumber: string;
-  rentAmount: number;
-  leaseStart: Date;
-  leaseEnd: Date;
 }
 
 /**

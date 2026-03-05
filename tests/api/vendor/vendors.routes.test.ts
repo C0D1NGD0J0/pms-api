@@ -4,7 +4,7 @@ jest.setTimeout(10000);
 import request from 'supertest';
 import { faker } from '@faker-js/faker';
 import { httpStatusCodes } from '@utils/index';
-import { Application, Response, Request } from 'express';
+import { Application, Response, Request, NextFunction } from 'express';
 import { createMockCurrentUser, createApiTestHelper } from '@tests/helpers';
 
 // Mock Vendor Controller
@@ -129,9 +129,9 @@ describe('Vendors Routes Integration Tests', () => {
 
   beforeAll(() => {
     // Setup test app with routes
-    app = apiHelper.createApp((testApp) => {
+    app = apiHelper.createApp((testApp: Application) => {
       // Inject container and simulate authentication
-      testApp.use((req, res, next) => {
+      testApp.use((req: Request, res: Response, next: NextFunction) => {
         req.container = mockContainer as any;
         req.context = { currentuser: createMockCurrentUser() } as any;
         next();

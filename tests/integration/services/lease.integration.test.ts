@@ -90,6 +90,9 @@ const setupServices = () => {
     userCache,
     permissionService,
     vendorService,
+    leaseDAO,
+    paymentDAO: {} as any,
+    emitterService: {} as any,
   });
 
   const eventsRegistry = {
@@ -1326,7 +1329,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         { limit: 10, skip: 0 }
       );
 
-      expect(result.data).toBeInstanceOf(Array);
+      expect(result.items).toBeInstanceOf(Array);
       expect(result.pagination).toBeDefined();
       expect(result?.pagination?.total).toBeGreaterThan(0);
     });
@@ -1349,9 +1352,9 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         { limit: 10, skip: 0 }
       );
 
-      expect(result.data).toBeInstanceOf(Array);
+      expect(result.items).toBeInstanceOf(Array);
       // All returned leases should be active
-      result.data.forEach((lease: any) => {
+      result.items.forEach((lease: any) => {
         expect(lease.status).toBe(LeaseStatus.ACTIVE);
       });
     });
@@ -1377,9 +1380,6 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       // Create a property and tenant for renewal tests
       renewalProperty = await createTestProperty(testClient.cuid, testClient._id, {
         propertyType: 'house',
-        approvalStatus: 'approved',
-        owner: { type: 'company_owned' },
-        authorization: { isActive: true },
       });
 
       renewalTenant = await createTestTenantUser(testClient.cuid, testClient._id);
@@ -1544,8 +1544,8 @@ describe('LeaseService Integration Tests - Read Operations', () => {
 
       // Check that autoSendInfo was NOT updated (manual signing is intentional, not a failure)
       const updatedRenewal = await Lease.findById(renewalResult.data._id);
-      expect(updatedRenewal.autoSendInfo?.failureReason).toBeUndefined();
-      expect(updatedRenewal.autoSendInfo?.failedAt).toBeUndefined();
+      expect(updatedRenewal!.autoSendInfo?.failureReason).toBeUndefined();
+      expect(updatedRenewal!.autoSendInfo?.failedAt).toBeUndefined();
     });
 
     it('should skip auto-send for renewals without e-signature provider', async () => {
@@ -1575,7 +1575,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
 
       // Check autoSendInfo was updated
       const updatedRenewal = await Lease.findById(renewalResult.data._id);
-      expect(updatedRenewal.autoSendInfo?.failureReason).toBe('no_provider');
+      expect(updatedRenewal!.autoSendInfo?.failureReason).toBe('no_provider');
     });
   });
 });

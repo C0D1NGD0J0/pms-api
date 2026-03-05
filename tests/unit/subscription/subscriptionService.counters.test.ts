@@ -10,7 +10,7 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
   let mockSubscriptionDAO: jest.Mocked<SubscriptionDAO>;
   let mockClientDAO: jest.Mocked<ClientDAO>;
   let mockEmitterService: jest.Mocked<EventEmitterService>;
-  let unitBatchCreatedHandler: (payload: any) => Promise<void>;
+  let unitBatchCreatedHandler: (payload: unknown) => void | Promise<void>;
 
   const mockClientId = new Types.ObjectId();
   const testCuid = 'test-client-123';
@@ -42,7 +42,6 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
       emitterService: mockEmitterService,
       authCache: {} as any,
       sseService: {} as any,
-      stripeService: {} as any,
       userDAO: {} as any,
       paymentGatewayService: {} as any,
     });
@@ -161,7 +160,7 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
   });
 
   describe('Additional Seat Enforcement', () => {
-    let invitationSentHandler: (payload: any) => Promise<void>;
+    let invitationSentHandler: (payload: unknown) => void | Promise<void>;
 
     beforeEach(() => {
       mockSubscriptionDAO.findFirst = jest.fn();
@@ -183,7 +182,6 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         emitterService: mockEmitterService,
         authCache: {} as any,
         sseService: {} as any,
-        stripeService: {} as any,
         userDAO: {} as any,
         paymentGatewayService: {} as any,
       });
@@ -197,8 +195,8 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         additionalSeatsCount: 2,
       };
 
-      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription);
-      mockSubscriptionDAO.updateResourceCount.mockResolvedValue(mockSubscription);
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+      mockSubscriptionDAO.updateResourceCount.mockResolvedValue(mockSubscription as any);
 
       const payload = {
         cuid: testCuid,
@@ -228,7 +226,7 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         additionalSeatsCount: 2,
       };
 
-      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription);
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
       mockSubscriptionDAO.updateResourceCount.mockResolvedValue(null); // Limit reached
 
       const payload = {
@@ -250,8 +248,8 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         additionalSeatsCount: 10,
       };
 
-      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription);
-      mockSubscriptionDAO.updateResourceCount.mockResolvedValue(mockSubscription);
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+      mockSubscriptionDAO.updateResourceCount.mockResolvedValue(mockSubscription as any);
 
       const payload = {
         cuid: testCuid,

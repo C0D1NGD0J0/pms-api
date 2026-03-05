@@ -251,7 +251,7 @@ describe('SubscriptionService Integration Tests', () => {
       });
 
       // Increment seats
-      await subscriptionDAO.updateSeatCount(clientId, 5);
+      await subscriptionDAO.updateResourceCount('seat', clientId, 5);
 
       const updated = await Subscription.findById(subscription._id);
       expect(updated?.currentSeats).toBe(15);
@@ -282,13 +282,13 @@ describe('SubscriptionService Integration Tests', () => {
       });
 
       // Increment properties
-      await subscriptionDAO.updatePropertyCount(clientId, 3);
+      await subscriptionDAO.updateResourceCount('property', clientId, 3);
 
       const updated = await Subscription.findById(subscription._id);
       expect(updated?.currentProperties).toBe(8);
 
       // Decrement properties
-      await subscriptionDAO.updatePropertyCount(clientId, -2);
+      await subscriptionDAO.updateResourceCount('property', clientId, -2);
 
       const updated2 = await Subscription.findById(subscription._id);
       expect(updated2?.currentProperties).toBe(6);
@@ -435,10 +435,10 @@ describe('SubscriptionService Integration Tests', () => {
       expect(result.data?.plan.name).toBe('essential');
       expect(result.data?.plan.status).toBe('active');
       expect(result.data?.plan.billingInterval).toBe('monthly');
-      expect(result.data?.features).toBeDefined();
-      expect(result.data?.features.eSignature).toBe(true);
-      expect(result.data?.paymentFlow.requiresPayment).toBe(false);
-      expect(result.data?.paymentFlow.reason).toBeNull();
+      expect(result.data?.entitlements).toBeDefined();
+      expect(result.data?.entitlements.eSignature).toBe(true);
+      expect(result.data?.paymentFlow!.requiresPayment).toBe(false);
+      expect(result.data?.paymentFlow!.reason).toBeNull();
     });
 
     it('should return requiresPayment=true for super-admin with pending_payment status', async () => {
@@ -471,9 +471,9 @@ describe('SubscriptionService Integration Tests', () => {
       const result = await subscriptionService.getSubscriptionEntitlements('client-pending', 'super-admin');
 
       expect(result.success).toBe(true);
-      expect(result.data?.paymentFlow.requiresPayment).toBe(true);
-      expect(result.data?.paymentFlow.reason).toBe('pending_signup');
-      expect(result.data?.paymentFlow.daysUntilDowngrade).toBe(2);
+      expect(result.data?.paymentFlow!.requiresPayment).toBe(true);
+      expect(result.data?.paymentFlow!.reason).toBe('pending_signup');
+      expect(result.data?.paymentFlow!.daysUntilDowngrade).toBe(2);
     });
 
     it('should NOT show payment requirements for regular admin', async () => {
@@ -506,8 +506,8 @@ describe('SubscriptionService Integration Tests', () => {
       const result = await subscriptionService.getSubscriptionEntitlements('client-admin', 'admin');
 
       expect(result.success).toBe(true);
-      expect(result.data?.paymentFlow.requiresPayment).toBe(false); // Regular admin should NOT see payment requirements
-      expect(result.data?.paymentFlow.reason).toBeNull();
+      expect(result.data?.paymentFlow!.requiresPayment).toBe(false); // Regular admin should NOT see payment requirements
+      expect(result.data?.paymentFlow!.reason).toBeNull();
     });
 
     it('should return grace_period reason for super-admin when < 24 hours until downgrade', async () => {
@@ -540,9 +540,9 @@ describe('SubscriptionService Integration Tests', () => {
       const result = await subscriptionService.getSubscriptionEntitlements('client-grace', 'super-admin');
 
       expect(result.success).toBe(true);
-      expect(result.data?.paymentFlow.requiresPayment).toBe(true);
-      expect(result.data?.paymentFlow.reason).toBe('grace_period');
-      expect(result.data?.paymentFlow.daysUntilDowngrade).toBeLessThanOrEqual(1);
+      expect(result.data?.paymentFlow!.requiresPayment).toBe(true);
+      expect(result.data?.paymentFlow!.reason).toBe('grace_period');
+      expect(result.data?.paymentFlow!.daysUntilDowngrade).toBeLessThanOrEqual(1);
     });
 
     it('should return expired reason for super-admin when endDate has passed', async () => {
@@ -574,8 +574,8 @@ describe('SubscriptionService Integration Tests', () => {
       const result = await subscriptionService.getSubscriptionEntitlements('client-expired', 'super-admin');
 
       expect(result.success).toBe(true);
-      expect(result.data?.paymentFlow.requiresPayment).toBe(true);
-      expect(result.data?.paymentFlow.reason).toBe('expired');
+      expect(result.data?.paymentFlow!.requiresPayment).toBe(true);
+      expect(result.data?.paymentFlow!.reason).toBe('expired');
     });
 
     it('should not require payment for free essential plan', async () => {
@@ -607,7 +607,7 @@ describe('SubscriptionService Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.data?.plan.name).toBe('growth');
-      expect(result.data?.paymentFlow.requiresPayment).toBe(false);
+      expect(result.data?.paymentFlow!.requiresPayment).toBe(false);
     });
   });
 
@@ -729,6 +729,7 @@ describe('SubscriptionService Integration Tests', () => {
       const result = await subscriptionService.initSubscriptionPayment(ctx, {
         successUrl: 'https://app.example.com/success',
         cancelUrl: 'https://app.example.com/cancel',
+        priceId: 'price_professional_monthly',
       });
 
       expect(result.success).toBe(true);
@@ -780,6 +781,7 @@ describe('SubscriptionService Integration Tests', () => {
       await subscriptionService.initSubscriptionPayment(ctx, {
         successUrl: 'https://app.example.com/success',
         cancelUrl: 'https://app.example.com/cancel',
+        priceId: 'price_professional_annual',
       });
 
       expect(mockStripeService.createCheckoutSession).toHaveBeenCalledWith(
@@ -828,6 +830,7 @@ describe('SubscriptionService Integration Tests', () => {
         subscriptionService.initSubscriptionPayment(ctx, {
           successUrl: 'https://app.example.com/success',
           cancelUrl: 'https://app.example.com/cancel',
+          priceId: 'price_professional_monthly',
         })
       ).rejects.toThrow(BadRequestError);
     });
@@ -848,6 +851,7 @@ describe('SubscriptionService Integration Tests', () => {
         subscriptionService.initSubscriptionPayment(ctx, {
           successUrl: 'https://app.example.com/success',
           cancelUrl: 'https://app.example.com/cancel',
+          priceId: 'price_professional_monthly',
         })
       ).rejects.toThrow();
     });
@@ -896,7 +900,7 @@ describe('SubscriptionService Integration Tests', () => {
         },
       } as any;
 
-      const result = await subscriptionService.updateSubscriptionSeats(ctx, { seatsToAdd: 5 });
+      const result = await subscriptionService.updateAdditionalSeats('client-seat-add', 5);
 
       expect(result.success).toBe(true);
       expect(mockStripeService.updateSubscriptionSeats).toHaveBeenCalledWith({
@@ -952,7 +956,7 @@ describe('SubscriptionService Integration Tests', () => {
         },
       } as any;
 
-      const result = await subscriptionService.updateSubscriptionSeats(ctx, { seatsToAdd: -3 });
+      const result = await subscriptionService.updateAdditionalSeats('client-seat-remove', -3);
 
       expect(result.success).toBe(true);
 
@@ -1005,7 +1009,7 @@ describe('SubscriptionService Integration Tests', () => {
       } as any;
 
       await expect(
-        subscriptionService.updateSubscriptionSeats(ctx, { seatsToAdd: -1 })
+        subscriptionService.updateAdditionalSeats('client-over-limit', -1)
       ).rejects.toThrow(BadRequestError);
     });
 
@@ -1053,7 +1057,7 @@ describe('SubscriptionService Integration Tests', () => {
 
       // Growth plan maxAdditionalSeats is 25, already have 20, can only add 5 more
       await expect(
-        subscriptionService.updateSubscriptionSeats(ctx, { seatsToAdd: 10 })
+        subscriptionService.updateAdditionalSeats('client-max-seats', 10)
       ).rejects.toThrow(BadRequestError);
     });
 
@@ -1100,8 +1104,8 @@ describe('SubscriptionService Integration Tests', () => {
       } as any;
 
       await expect(
-        subscriptionService.updateSubscriptionSeats(ctx, { seatsToAdd: 5 })
-      ).rejects.toThrow('Only account owner can manage billing');
+        subscriptionService.updateAdditionalSeats('client-role-check', 5)
+      ).rejects.toThrow(BadRequestError);
     });
   });
 });

@@ -151,7 +151,7 @@ export const createTestInvitation = async (
 
   if (typeof clientIdOrDoc === 'object' && '_id' in clientIdOrDoc) {
     clientId = clientIdOrDoc._id;
-  } else if (typeof clientIdOrDoc === 'object' && clientIdOrDoc instanceof Types.ObjectId) {
+  } else if (typeof clientIdOrDoc === 'object' && (clientIdOrDoc as object) instanceof Types.ObjectId) {
     clientId = clientIdOrDoc;
   } else {
     clientId = new Types.ObjectId(clientIdOrDoc as string);
@@ -221,8 +221,8 @@ export const createTestProperty = async (
     computedLocation: {
       type: 'Point',
       coordinates: [
-        parseFloat(faker.location.longitude()),
-        parseFloat(faker.location.latitude()),
+        parseFloat(faker.location.longitude().toString()),
+        parseFloat(faker.location.latitude().toString()),
       ], // Required field
     },
     approvalStatus: 'approved', // Required for lease validation

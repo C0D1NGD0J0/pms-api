@@ -147,6 +147,8 @@ describe('PropertyService Integration Tests', () => {
       propertyApprovalService,
       propertyStatsService,
       notificationService: mockNotificationService,
+      subscriptionDAO: {} as any,
+      paymentDAO: {} as any,
     });
   });
 

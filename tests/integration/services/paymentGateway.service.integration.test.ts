@@ -14,6 +14,7 @@ describe('PaymentGatewayService Integration Tests', () => {
       createCustomer: jest.fn(),
       createCheckoutSession: jest.fn(),
       verifyWebhookSignature: jest.fn(),
+      createRefund: jest.fn(),
     } as any;
 
     // Initialize service with mocked Stripe
@@ -42,10 +43,12 @@ describe('PaymentGatewayService Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(mockCustomer);
-      expect(mockStripeService.createCustomer).toHaveBeenCalledWith({
-        email: 'test@example.com',
-        metadata: { clientId: 'client_123' },
-      });
+      expect(mockStripeService.createCustomer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'test@example.com',
+          metadata: { clientId: 'client_123' },
+        })
+      );
     });
 
     it('should return error when customer creation fails', async () => {
@@ -185,6 +188,70 @@ describe('PaymentGatewayService Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(mockStripeService.cancelSubscription).toHaveBeenCalledWith('sub_123');
+    });
+  });
+
+  describe('createRefund', () => {
+    it('should call StripeService.createRefund with the params object and return success', async () => {
+      const mockRefundResult = {
+        refundId: 're_test_123',
+        status: 'succeeded',
+        amount: 150000,
+        currency: 'usd',
+      };
+
+      mockStripeService.createRefund.mockResolvedValue(mockRefundResult);
+
+      const result = await paymentGatewayService.createRefund(
+        IPaymentGatewayProvider.STRIPE,
+        {
+          chargeId: 'ch_test_abc',
+          connectedAccountId: 'acct_test_xyz',
+          amountInCents: 150000,
+          reason: 'requested_by_customer',
+        }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(mockRefundResult);
+      expect(mockStripeService.createRefund).toHaveBeenCalledWith({
+        chargeId: 'ch_test_abc',
+        connectedAccountId: 'acct_test_xyz',
+        amountInCents: 150000,
+        reason: 'requested_by_customer',
+      });
+    });
+
+    it('should return error when createRefund fails', async () => {
+      mockStripeService.createRefund.mockRejectedValue(new Error('Stripe refund failed'));
+
+      const result = await paymentGatewayService.createRefund(
+        IPaymentGatewayProvider.STRIPE,
+        { chargeId: 'ch_bad', connectedAccountId: 'acct_test_xyz' }
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe('Stripe refund failed');
+    });
+
+    it('should work without optional amountInCents and reason (full refund)', async () => {
+      mockStripeService.createRefund.mockResolvedValue({
+        refundId: 're_full_123',
+        status: 'succeeded',
+        amount: 200000,
+        currency: 'usd',
+      });
+
+      const result = await paymentGatewayService.createRefund(
+        IPaymentGatewayProvider.STRIPE,
+        { chargeId: 'ch_full', connectedAccountId: 'acct_test_xyz' }
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockStripeService.createRefund).toHaveBeenCalledWith({
+        chargeId: 'ch_full',
+        connectedAccountId: 'acct_test_xyz',
+      });
     });
   });
 

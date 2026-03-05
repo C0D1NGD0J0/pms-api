@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { LeaseDAO } from '@dao/leaseDAO';
-import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
+import { LeaseStatus, LeaseType, SigningMethod } from '@interfaces/lease.interface';
 import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
 import {
   disconnectTestDatabase,
@@ -139,10 +139,11 @@ describe('LeaseDAO Integration Tests', () => {
       const leaseData = {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment' as const,
-        tenantId: testTenantId,
+        leaseNumber: 'L2024-001',
+        tenantInfo: { id: testTenantId.toString() },
         property: {
           id: testPropertyId,
-          unitId: testUnitId,
+          unitId: testUnitId.toString(),
           address: '123 Main St, Toronto, ON M1A 1A1',
         },
         duration: {
@@ -156,8 +157,7 @@ describe('LeaseDAO Integration Tests', () => {
           currency: 'CAD',
           acceptedPaymentMethod: 'e-transfer' as const,
         },
-        signingMethod: 'pending' as const,
-        createdBy: testCreatorId,
+        signingMethod: SigningMethod.PENDING,
       };
 
       const lease = await leaseDAO.createLease(testCuid, leaseData);
@@ -174,10 +174,11 @@ describe('LeaseDAO Integration Tests', () => {
       const leaseData = {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment' as const,
-        tenantId: testTenantId,
+        leaseNumber: 'L2024-002',
+        tenantInfo: { id: testTenantId.toString() },
         property: {
           id: testPropertyId,
-          unitId: testUnitId,
+          unitId: testUnitId.toString(),
           address: '123 Main St',
         },
         duration: {
@@ -191,8 +192,7 @@ describe('LeaseDAO Integration Tests', () => {
           currency: 'USD',
           acceptedPaymentMethod: 'credit_card' as const,
         },
-        signingMethod: 'pending' as const,
-        createdBy: testCreatorId,
+        signingMethod: SigningMethod.PENDING,
       };
 
       const lease = await leaseDAO.createLease(testCuid, leaseData);
@@ -210,7 +210,7 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: {
           id: testPropertyId,
-          unitId: testUnitId,
+          unitId: testUnitId.toString(),
           address: '123 Main St',
         },
         duration: {
@@ -248,7 +248,7 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: {
           id: testPropertyId,
-          unitId: testUnitId,
+          unitId: testUnitId.toString(),
           address: '123 Main St',
         },
         duration: {
@@ -294,7 +294,7 @@ describe('LeaseDAO Integration Tests', () => {
           type: LeaseType.FIXED_TERM,
           templateType: 'residential-apartment',
           tenantId: testTenantId,
-          property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+          property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
           duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
           fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
           status: LeaseStatus.ACTIVE,
@@ -336,7 +336,7 @@ describe('LeaseDAO Integration Tests', () => {
       const result = await leaseDAO.getFilteredLeases(testCuid, {}, { page: 1, limit: 10 });
 
       expect(result.items.length).toBe(2);
-      expect(result.pagination.total).toBe(2);
+      expect(result.pagination!.total).toBe(2);
     });
 
     it('should filter by status', async () => {
@@ -413,7 +413,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         signingMethod: 'pending',
@@ -456,7 +456,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         signingMethod: 'pending',
@@ -485,7 +485,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.ACTIVE,
@@ -565,7 +565,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-06-30') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.ACTIVE,
@@ -605,7 +605,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.ACTIVE,
@@ -700,7 +700,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.ACTIVE,
@@ -752,7 +752,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.ACTIVE,
@@ -795,7 +795,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.ACTIVE,
@@ -842,7 +842,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: futureDate },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.ACTIVE,
@@ -879,7 +879,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: futureDate },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.ACTIVE,
@@ -960,7 +960,7 @@ describe('LeaseDAO Integration Tests', () => {
           type: LeaseType.FIXED_TERM,
           templateType: 'residential-apartment',
           tenantId: testTenantId,
-          property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+          property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
           duration: { startDate: new Date('2024-01-01'), endDate: date1 },
           fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
           status: LeaseStatus.ACTIVE,
@@ -1000,7 +1000,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.DRAFT,
@@ -1038,7 +1038,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.ACTIVE,
@@ -1046,21 +1046,6 @@ describe('LeaseDAO Integration Tests', () => {
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
-        approvalStatus: 'approved',
-        signedDate: new Date(),
         leaseDocuments: [{
           url: 'https://example.com/lease.pdf',
           key: 'lease-key',
@@ -1125,7 +1110,7 @@ describe('LeaseDAO Integration Tests', () => {
           type: LeaseType.FIXED_TERM,
           templateType: 'residential-apartment',
           tenantId: testTenantId,
-          property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+          property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
           duration: { startDate: new Date('2024-01-01'), endDate: date30 },
           fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
           status: LeaseStatus.ACTIVE,
@@ -1222,7 +1207,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.ACTIVE,
@@ -1276,7 +1261,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         signingMethod: 'pending',
@@ -1289,6 +1274,9 @@ describe('LeaseDAO Integration Tests', () => {
           key: 'leases/lease-123.pdf',
           filename: 'lease-agreement.pdf',
           size: 1024000,
+          fieldName: 'leaseDocuments',
+          resourceId: lease._id.toString(),
+          publicuid: 'pub-uid-lease-doc',
         },
       ];
 
@@ -1309,7 +1297,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         signingMethod: 'pending',
@@ -1352,7 +1340,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         signingMethod: 'pending',
@@ -1381,7 +1369,7 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment',
         tenantId: testTenantId,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         signingMethod: 'pending',
@@ -1411,7 +1399,7 @@ describe('LeaseDAO Integration Tests', () => {
         templateType: 'residential-apartment',
         tenantId: invitationId,
         useInvitationIdAsTenantId: true,
-        property: { id: testPropertyId, unitId: testUnitId, address: '123 Main St' },
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
         fees: { monthlyRent: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
         signingMethod: 'pending',

@@ -107,6 +107,7 @@ describe('InvitationService Integration Tests', () => {
       vendorService,
       userService,
       leaseDAO,
+      subscriptionService: {} as any,
     });
   });
 

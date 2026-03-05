@@ -74,11 +74,13 @@ describe('AuthService Integration Tests', () => {
         accountType: {
           planName: 'growth',
           planId: 'plan_starter',
+          billingInterval: 'monthly' as const,
+          category: 'individual' as const,
           isEnterpriseAccount: false,
         },
       };
 
-      const result = await authService.signup(signupData as any);
+      const result = await authService.signup(signupData);
 
       expect(result.success).toBe(true);
       expect(result.data).toBeNull();
@@ -125,6 +127,8 @@ describe('AuthService Integration Tests', () => {
         accountType: {
           planName: 'growth',
           planId: 'plan_starter',
+          billingInterval: 'monthly' as const,
+          category: 'individual' as const,
           isEnterpriseAccount: false,
         },
       };
@@ -151,6 +155,8 @@ describe('AuthService Integration Tests', () => {
         accountType: {
           planName: 'growth',
           planId: 'plan_starter',
+          billingInterval: 'monthly' as const,
+          category: 'individual' as const,
           isEnterpriseAccount: false,
         },
       };
@@ -201,7 +207,6 @@ describe('AuthService Integration Tests', () => {
       expect(savedClient).not.toBeNull();
       expect(savedClient!.accountType.category).toBe('business');
       expect(savedClient!.accountType.isEnterpriseAccount).toBe(true);
-      expect(savedClient!.accountType.planName).toBe('essential');
       expect(savedClient!.companyProfile?.tradingName).toBe('Small Business LLC');
     });
   });

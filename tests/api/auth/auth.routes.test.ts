@@ -3,7 +3,7 @@ jest.setTimeout(10000);
 
 import request from 'supertest';
 import { faker } from '@faker-js/faker';
-import { Application, Response, Request } from 'express';
+import { Application, Response, Request, NextFunction } from 'express';
 import { httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
 import { createMockCurrentUser, createApiTestHelper } from '@tests/helpers';
 
@@ -123,9 +123,9 @@ describe('Auth Routes Integration Tests', () => {
 
   beforeAll(() => {
     // Setup test app with routes
-    app = apiHelper.createApp((testApp) => {
+    app = apiHelper.createApp((testApp: Application) => {
       // Inject container directly
-      testApp.use((req, res, next) => {
+      testApp.use((req: Request, res: Response, next: NextFunction) => {
         req.container = mockContainer as any;
         req.context = { currentuser: null } as any;
         next();
@@ -134,21 +134,21 @@ describe('Auth Routes Integration Tests', () => {
       // Define auth routes (matching auth.routes.ts structure)
       testApp.post(`${baseUrl}/signup`, mockAuthController.signup);
       testApp.post(`${baseUrl}/login`, mockAuthController.login);
-      testApp.get(`${baseUrl}/:cuid/me`, (req, res) => {
+      testApp.get(`${baseUrl}/:cuid/me`, (req: Request, res: Response) => {
         // Simulate isAuthenticated middleware
         req.context = { currentuser: createMockCurrentUser() } as any;
         mockAuthController.getCurrentUser(req, res);
       });
       testApp.patch(`${baseUrl}/:cuid/account_activation`, mockAuthController.accountActivation);
       testApp.patch(`${baseUrl}/resend_activation_link`, mockAuthController.sendActivationLink);
-      testApp.patch(`${baseUrl}/switch_client_account`, (req, res) => {
+      testApp.patch(`${baseUrl}/switch_client_account`, (req: Request, res: Response) => {
         // Simulate isAuthenticated middleware
         req.context = { currentuser: createMockCurrentUser() } as any;
         mockAuthController.switchClientAccount(req, res);
       });
       testApp.patch(`${baseUrl}/forgot_password`, mockAuthController.forgotPassword);
       testApp.patch(`${baseUrl}/reset_password`, mockAuthController.resetPassword);
-      testApp.delete(`${baseUrl}/:cuid/logout`, (req, res) => {
+      testApp.delete(`${baseUrl}/:cuid/logout`, (req: Request, res: Response) => {
         // Simulate isAuthenticated middleware
         req.context = { currentuser: createMockCurrentUser() } as any;
         mockAuthController.logout(req, res);

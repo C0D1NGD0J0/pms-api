@@ -87,6 +87,9 @@ describe('ClientController Integration Tests', () => {
       userCache,
       permissionService,
       vendorService,
+      emitterService: {} as any,
+      paymentDAO: {} as any,
+      leaseDAO: {} as any,
     });
 
     const authCache = {
@@ -110,6 +113,8 @@ describe('ClientController Integration Tests', () => {
       propertyUnitDAO,
       authCache,
       subscriptionDAO,
+      subscriptionService: {} as any,
+      emitterService: {} as any,
     });
 
     clientController = new ClientController({ clientService });

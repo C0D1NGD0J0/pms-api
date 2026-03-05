@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
-import { AuthCache } from '@caching/index';
+import { AuthCache, RedisClient } from '@caching/index';
 import { ClientDAO } from '@dao/clientDAO';
 import { Subscription } from '@models/index';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
@@ -347,7 +347,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
       mockAuthCache.client = {
         DEL: jest.fn().mockResolvedValue(1),
-      };
+      } as unknown as RedisClient;
 
       const result = await subscriptionService.handleSubscriptionUpdated({
         stripeSubscriptionId: 'sub_test123',
@@ -481,7 +481,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         },
       } as any);
 
-      mockAuthCache.client = { DEL: jest.fn().mockResolvedValue(1) };
+      mockAuthCache.client = { DEL: jest.fn().mockResolvedValue(1) } as unknown as RedisClient;
 
       const result = await subscriptionService.handleSubscriptionUpdated({
         stripeSubscriptionId: 'sub_test123',
@@ -556,7 +556,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         totalMonthlyPrice: 29,
       } as any);
 
-      mockAuthCache.client = { DEL: jest.fn().mockResolvedValue(1) };
+      mockAuthCache.client = { DEL: jest.fn().mockResolvedValue(1) } as unknown as RedisClient;
 
       const result = await subscriptionService.handleSubscriptionUpdated({
         stripeSubscriptionId: 'sub_test123',
@@ -599,7 +599,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         status: ISubscriptionStatus.ACTIVE,
       } as any);
 
-      mockAuthCache.client = { DEL: jest.fn().mockResolvedValue(1) };
+      mockAuthCache.client = { DEL: jest.fn().mockResolvedValue(1) } as unknown as RedisClient;
 
       const result = await subscriptionService.handleSubscriptionUpdated({
         stripeSubscriptionId: 'sub_test123',

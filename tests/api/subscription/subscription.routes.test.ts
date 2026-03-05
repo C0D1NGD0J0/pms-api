@@ -1,6 +1,6 @@
 import express from 'express';
 import request from 'supertest';
-import { container } from '@di/container';
+import { container } from '@di/setup';
 import { SubscriptionController } from '@controllers/index';
 import subscriptionRoutes from '@routes/subscription.routes';
 import {
@@ -22,7 +22,7 @@ describe('Subscription Routes API Tests', () => {
     // Mock controller methods
     mockSubscriptionController = {
       getSubscriptionPlans: jest.fn(async (req, res) => {
-        return res.json({
+        res.json({
           success: true,
           data: [
             {
@@ -66,7 +66,7 @@ describe('Subscription Routes API Tests', () => {
 
     // Mock container resolution
     const originalResolve = container.resolve.bind(container);
-    jest.spyOn(container, 'resolve').mockImplementation((name: string) => {
+    jest.spyOn(container, 'resolve').mockImplementation((name: string | symbol) => {
       if (name === 'subscriptionController') {
         return mockSubscriptionController as SubscriptionController;
       }

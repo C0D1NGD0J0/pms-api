@@ -440,9 +440,9 @@ describe('VendorService Integration Tests - Read Operations', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
-      expect(result.data.vendorInfo).toBeDefined();
-      expect(result.data.vendorInfo.companyName).toBe('Test Vendor Company');
-      expect(result.data.profile).toBeDefined();
+      expect(result.data!.vendorInfo).toBeDefined();
+      expect(result.data!.vendorInfo!.companyName).toBe('Test Vendor Company');
+      expect(result.data!.profile).toBeDefined();
     });
 
     it('should throw NotFoundError when vendor not found', async () => {

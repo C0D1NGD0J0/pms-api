@@ -42,6 +42,8 @@ const setupServices = () => {
     propertyUnitDAO,
     authCache,
     subscriptionDAO,
+    subscriptionService: {} as any,
+    emitterService: {} as any,
   });
 
   return { clientService, clientDAO, userDAO, profileDAO, propertyDAO };

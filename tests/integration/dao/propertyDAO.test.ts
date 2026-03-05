@@ -13,6 +13,7 @@ import {
   PropertyStatus,
   PropertyType,
 } from '@interfaces/property.interface';
+import { CURRENCIES } from '@interfaces/utils.interface';
 
 describe('PropertyDAO Integration Tests', () => {
   let propertyDAO: PropertyDAO;
@@ -389,6 +390,8 @@ describe('PropertyDAO Integration Tests', () => {
           url: 'https://example.com/doc.pdf',
           actorId: testUserId.toString(),
           filename: 'lease.pdf',
+          resourceId: testPropertyId.toString(),
+          publicuid: 'pub-uid-doc-123',
         },
       ];
 
@@ -412,6 +415,8 @@ describe('PropertyDAO Integration Tests', () => {
           url: 'https://example.com/image.jpg',
           filename: 'property.jpg',
           actorId: testUserId.toString(),
+          resourceId: testPropertyId.toString(),
+          publicuid: 'pub-uid-img-456',
         },
       ];
 
@@ -436,6 +441,8 @@ describe('PropertyDAO Integration Tests', () => {
           url: 'https://example.com/tax.pdf',
           actorId: testUserId.toString(),
           filename: 'tax.pdf',
+          resourceId: testPropertyId.toString(),
+          publicuid: 'pub-uid-doc-789',
         },
         {
           fieldName: 'images',
@@ -443,6 +450,8 @@ describe('PropertyDAO Integration Tests', () => {
           url: 'https://example.com/photo.jpg',
           filename: 'photo.jpg',
           actorId: testUserId.toString(),
+          resourceId: testPropertyId.toString(),
+          publicuid: 'pub-uid-img-101',
         },
       ];
 
@@ -575,7 +584,7 @@ describe('PropertyDAO Integration Tests', () => {
         description: { text: 'Brand new property' },
         specifications: { totalArea: 2000 },
         fees: {
-          currency: 'USD' as const,
+          currency: 'USD' as CURRENCIES,
           rentalAmount: 3000,
           taxAmount: 400,
           managementFees: 250,
@@ -612,13 +621,15 @@ describe('PropertyDAO Integration Tests', () => {
             url: 'https://example.com/remove.pdf',
             actorId: testUserId.toString(),
             filename: 'remove.pdf',
+            resourceId: testPropertyId.toString(),
+            publicuid: 'pub-uid-remove',
           },
         ],
         testUserId.toString()
       );
 
       const updatedProperty = await Property.findById(testPropertyId);
-      const docId = updatedProperty!.documents![0]._id;
+      const docId = updatedProperty!.documents![0]._id!;
 
       const result = await propertyDAO.removePropertyDocument(
         testPropertyId.toString(),
@@ -650,13 +661,15 @@ describe('PropertyDAO Integration Tests', () => {
             url: 'https://example.com/remove.jpg',
             filename: 'remove.jpg',
             actorId: testUserId.toString(),
+            resourceId: testPropertyId.toString(),
+            publicuid: 'pub-uid-img-remove',
           },
         ],
         testUserId.toString()
       );
 
       const updatedProperty = await Property.findById(testPropertyId);
-      const imageId = updatedProperty!.images![0]._id;
+      const imageId = updatedProperty!.images![0]._id!;
 
       const result = await propertyDAO.removePropertyImage(
         testPropertyId.toString(),
@@ -688,13 +701,15 @@ describe('PropertyDAO Integration Tests', () => {
             url: 'https://example.com/media.pdf',
             actorId: testUserId.toString(),
             filename: 'media.pdf',
+            resourceId: testPropertyId.toString(),
+            publicuid: 'pub-uid-media-doc',
           },
         ],
         testUserId.toString()
       );
 
       const updatedProperty = await Property.findById(testPropertyId);
-      const docId = updatedProperty!.documents![0]._id;
+      const docId = updatedProperty!.documents![0]._id!;
 
       const result = await propertyDAO.removePropertyMedia(
         testPropertyId.toString(),
@@ -718,13 +733,15 @@ describe('PropertyDAO Integration Tests', () => {
             url: 'https://example.com/media.jpg',
             filename: 'media.jpg',
             actorId: testUserId.toString(),
+            resourceId: testPropertyId.toString(),
+            publicuid: 'pub-uid-media-img',
           },
         ],
         testUserId.toString()
       );
 
       const updatedProperty = await Property.findById(testPropertyId);
-      const imageId = updatedProperty!.images![0]._id;
+      const imageId = updatedProperty!.images![0]._id!;
 
       const result = await propertyDAO.removePropertyMedia(
         testPropertyId.toString(),

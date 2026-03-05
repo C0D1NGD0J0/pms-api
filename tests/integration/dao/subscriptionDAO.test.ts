@@ -190,7 +190,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
         customerId: 'cus_test123',
         planId: 'price_growth_monthly',
         seatItemId: 'si_test456',
-      };
+      } as any;
 
       const result = await subscriptionDAO.updatePaymentGateway(subscription!._id, newGateway);
 

@@ -3,7 +3,7 @@ import { AuthCache } from '@caching/index';
 import { ClientDAO } from '@dao/clientDAO';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { SSEService } from '@services/sse/sse.service';
-import { PaymentGatewayService } from '@services/billing';
+import { PaymentGatewayService } from '@services/paymentGateway';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/index';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 
@@ -72,9 +72,8 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       subscriptionDAO: mockSubscriptionDAO,
       clientDAO: mockClientDAO,
       authCache: mockAuthCache,
-      billingService: mockPaymentGatewayService,
+      paymentGatewayService: mockPaymentGatewayService,
       sseService: mockSSEService,
-      stripeService: {} as any,
       userDAO: {} as any,
       emitterService: mockEmitterService,
     });

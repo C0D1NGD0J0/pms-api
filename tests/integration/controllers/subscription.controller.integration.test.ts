@@ -96,7 +96,12 @@ describe('SubscriptionController Integration Tests', () => {
 
     const subscriptionService = new SubscriptionService({
       subscriptionDAO,
-      stripeService: mockStripeService,
+      paymentGatewayService: mockStripeService,
+      emitterService: {} as any,
+      sseService: {} as any,
+      clientDAO: {} as any,
+      authCache: {} as any,
+      userDAO: {} as any,
     });
 
     subscriptionController = new SubscriptionController({ subscriptionService });

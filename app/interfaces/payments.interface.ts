@@ -34,6 +34,17 @@ export interface IPaymentDocument extends Document {
     uploadedAt?: Date;
     uploadedBy?: Types.ObjectId;
   };
+  dispute?: {
+    disputeId?: string;
+    amount?: number;
+    reason?: string;
+    disputedAt?: Date;
+  };
+  refund?: {
+    refundedAt?: Date;
+    amount?: number;
+    reason?: string;
+  };
   notes?: {
     note: string;
     author: string;
@@ -51,11 +62,8 @@ export interface IPaymentDocument extends Document {
   isManualEntry: boolean;
   invoiceNumber: string;
   processingFee: number;
-  refundAmount?: number;
-  refundReason?: string;
   description?: string;
   baseAmount: number;
-  refundedAt?: Date;
   deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;

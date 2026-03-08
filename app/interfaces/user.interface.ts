@@ -44,6 +44,15 @@ export interface ICurrentUser {
       daysUntilDowngrade: number | null;
     };
   };
+  paymentProcessor?: {
+    isSetup: boolean;
+    chargesEnabled: boolean;
+    payoutsEnabled: boolean;
+    needsOnboarding: boolean;
+    accountId?: string;
+    accountType?: string;
+    onboardedAt?: string;
+  };
   client: {
     clientSettings?: any;
     cuid: string;

@@ -62,16 +62,22 @@ const PaymentSchema = new Schema<IPaymentDocument>(
     gatewayChargeId: {
       type: String,
     },
-    refundedAt: {
-      type: Date,
+    refund: {
+      refundedAt: { type: Date },
+      amount: {
+        type: Number,
+        min: [0, 'Refund amount cannot be negative'],
+      },
+      reason: { type: String, trim: true },
     },
-    refundAmount: {
-      type: Number,
-      min: [0, 'Refund amount cannot be negative'],
-    },
-    refundReason: {
-      type: String,
-      trim: true,
+    dispute: {
+      disputeId: { type: String },
+      amount: {
+        type: Number,
+        min: [0, 'Dispute amount cannot be negative'],
+      },
+      reason: { type: String, trim: true },
+      disputedAt: { type: Date },
     },
     status: {
       type: String,

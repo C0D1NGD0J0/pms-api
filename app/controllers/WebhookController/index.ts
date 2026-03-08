@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { Response, Request } from 'express';
 import { createLogger } from '@utils/index';
+import { envVariables } from '@shared/config';
 import { LeaseService } from '@services/lease/lease.service';
 import { PaymentService } from '@services/payments/payments.service';
 import { StripeService } from '@services/external/stripe/stripe.service';
@@ -90,12 +91,30 @@ export class WebhookController {
       this.log.info({ type: event.type, id: event.id }, 'Processing Stripe webhook event');
 
       switch (event.type) {
+        // ── Dispute events ────────────────────────────────────────────────────
+        case 'charge.dispute.funds_reinstated': {
+          const dispute = event.data.object as any;
+          await this.paymentService.handleDisputeWon(dispute.id, dispute);
+          break;
+        }
+
         // ── Subscription lifecycle ────────────────────────────────────────────
+        case 'customer.subscription.created': {
+          const subscription = event.data.object as any;
+          await this.subscriptionService.handleSubscriptionCreated({
+            stripeSubscriptionId: subscription.id,
+            stripeCustomerId: subscription.customer,
+          });
+          break;
+        }
+
         case 'customer.subscription.updated': {
           const subscription = event.data.object as any;
           await this.subscriptionService.handleSubscriptionUpdated({
             stripeSubscriptionId: subscription.id,
+            stripeCustomerId: subscription.customer,
             status: subscription.status,
+            currentPeriodStart: subscription.current_period_start,
             currentPeriodEnd: subscription.current_period_end,
           });
           break;
@@ -119,18 +138,16 @@ export class WebhookController {
           break;
         }
 
+        case 'charge.dispute.created': {
+          const dispute = event.data.object as any;
+          await this.paymentService.handleDisputeCreated(dispute.id, dispute);
+          break;
+        }
+
         case 'invoice.payment_failed': {
           const invoice = event.data.object as any;
-          const stripeSubscriptionId =
-            invoice.subscription || invoice.parent?.subscription_details?.subscription;
-
-          if (stripeSubscriptionId) {
-            await this.subscriptionService.handlePaymentFailed({
-              stripeSubscriptionId,
-              invoiceId: invoice.id,
-              attemptCount: invoice.attempt_count,
-            });
-          } else {
+          await this.subscriptionService.handleInvoicePaymentFailed(invoice);
+          if (!invoice.subscription && !invoice.parent?.subscription_details?.subscription) {
             await this.paymentService.handleInvoicePaymentFailed(invoice.id, invoice);
           }
           break;
@@ -143,64 +160,10 @@ export class WebhookController {
           break;
         }
 
-        // ── Connect account events ────────────────────────────────────────────
-        case 'account.updated': {
-          const account = event.data.object as any;
-          await this.paymentService.handleAccountUpdated(account.id, account);
-          break;
-        }
-
         // ── Invoice events (subscription vs rent distinguished by invoice.subscription) ──
         case 'invoice.paid': {
           const invoice = event.data.object as any;
-          const stripeSubscriptionId =
-            invoice.subscription || invoice.parent?.subscription_details?.subscription;
-
-          if (!stripeSubscriptionId) {
-            this.log.info('Ignoring non-subscription invoice.paid', { invoiceId: invoice.id });
-            break;
-          }
-
-          const customerId = invoice.customer;
-          const lineItemMetadata = invoice.lines?.data?.[0]?.metadata || {};
-          const clientId =
-            lineItemMetadata.clientId || invoice.metadata?.clientId || invoice.customer_email;
-          const subscriptionPeriod = invoice.lines?.data?.[0]?.period;
-          const isInitialPayment = invoice.billing_reason === 'subscription_create';
-
-          let cardLast4: string | undefined;
-          let cardBrand: string | undefined;
-          if (isInitialPayment && invoice.charge) {
-            try {
-              const chargeId =
-                typeof invoice.charge === 'string' ? invoice.charge : invoice.charge.id;
-              const charge = await this.stripeService.getCharge(chargeId);
-              if (charge?.payment_method_details?.card) {
-                cardLast4 = charge.payment_method_details.card.last4 ?? undefined;
-                cardBrand = charge.payment_method_details.card.brand ?? undefined;
-              }
-            } catch (err) {
-              this.log.warn({ err }, 'Failed to fetch card details for initial payment');
-            }
-          }
-
-          if (isInitialPayment) {
-            await this.subscriptionService.handlePaymentSuccess({
-              stripeCustomerId: customerId,
-              stripeSubscriptionId,
-              currentPeriodStart: subscriptionPeriod?.start || invoice.period_start,
-              currentPeriodEnd: subscriptionPeriod?.end || invoice.period_end,
-              clientId,
-              cardLast4,
-              cardBrand,
-            });
-          } else {
-            await this.subscriptionService.handleSubscriptionRenewal({
-              stripeSubscriptionId,
-              currentPeriodStart: subscriptionPeriod?.start || invoice.period_start,
-              currentPeriodEnd: subscriptionPeriod?.end || invoice.period_end,
-            });
-          }
+          await this.subscriptionService.handleInvoicePaid(invoice);
           break;
         }
 
@@ -211,6 +174,67 @@ export class WebhookController {
       return res.status(200).json({ success: true, received: true });
     } catch (error: any) {
       this.log.error('Error processing Stripe webhook', {
+        error: error.message,
+        stack: error.stack,
+      });
+      return res.status(400).json({
+        success: false,
+        message: error.message || 'Webhook processing failed',
+      });
+    }
+  };
+
+  /**
+   * Handle Stripe Connect webhook events (connected account events)
+   * POST /api/webhooks/stripe/connect
+   * Requires a separate Stripe webhook endpoint configured with "Listen to events on Connected accounts"
+   */
+  handleStripeConnectWebhook = async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const signature = req.headers['stripe-signature'];
+      if (!signature || typeof signature !== 'string') {
+        this.log.warn('Missing Stripe signature header on Connect webhook');
+        return res.status(400).json({ success: false, message: 'Missing signature' });
+      }
+
+      const rawBody = (req as any).rawBody ?? req.body;
+      const event = await this.stripeService.verifyWebhookSignature(
+        rawBody,
+        signature,
+        envVariables.STRIPE.CONNECT_WEBHOOK_SECRET
+      );
+      this.log.info(
+        { type: event.type, id: event.id, account: event.account },
+        'Processing Stripe Connect webhook event'
+      );
+
+      switch (event.type) {
+        case 'account.updated': {
+          const account = event.data.object as any;
+          await this.paymentService.handleAccountUpdated(account.id, account);
+          break;
+        }
+
+        case 'person.updated': {
+          const person = event.data.object as any;
+          this.log.info(
+            {
+              account: event.account,
+              person: person.id,
+              verification: person.verification?.status,
+            },
+            'Stripe person verification updated'
+          );
+          break;
+        }
+
+        default:
+          this.log.info({ type: event.type }, 'Unhandled Stripe Connect webhook event type');
+      }
+
+      return res.status(200).json({ success: true, received: true });
+    } catch (error: any) {
+      this.log.error('Error processing Stripe Connect webhook', {
         error: error.message,
         stack: error.stack,
       });

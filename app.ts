@@ -81,8 +81,10 @@ export class App implements IAppSetup {
       express.json({
         limit: '200mb',
         verify: (req: any, res, buf) => {
-          // Save raw Buffer for Stripe webhook signature verification
-          if (req.originalUrl === '/api/v1/webhooks/stripe') {
+          if (
+            req.originalUrl === '/api/v1/webhooks/stripe' ||
+            req.originalUrl === '/api/v1/webhooks/stripe/connect'
+          ) {
             req.rawBody = buf;
           }
         },

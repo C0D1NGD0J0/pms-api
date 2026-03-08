@@ -28,4 +28,17 @@ router.post(
   })
 );
 
+/**
+ * Stripe Connect webhooks (connected account events: account.updated, person.updated)
+ * Requires a separate Stripe webhook endpoint configured with "Listen to events on Connected accounts"
+ * Raw body is preserved by global middleware in app.ts for /api/v1/webhooks/stripe/connect
+ */
+router.post(
+  '/stripe/connect',
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<WebhookController>('webhookController');
+    return controller.handleStripeConnectWebhook(req, res);
+  })
+);
+
 export default router;

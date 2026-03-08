@@ -130,6 +130,17 @@ router.get(
 );
 
 router.get(
+  '/:cuid/payout-account/update',
+  isAuthenticated,
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.getAccountUpdateLink(req, res);
+  })
+);
+
+router.get(
   '/:cuid/payout-account/dashboard',
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),

@@ -98,8 +98,18 @@ export class PaymentController {
 
   async getOnboardingLink(req: AppRequest, res: Response) {
     const { cuid } = req.params;
+    const { returnUrl, refreshUrl } = req.query as { returnUrl?: string; refreshUrl?: string };
 
-    const result = await this.paymentService.getKycOnboardingLink(cuid);
+    const result = await this.paymentService.getKycOnboardingLink(cuid, { returnUrl, refreshUrl });
+
+    return res.status(200).json(result);
+  }
+
+  async getAccountUpdateLink(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const { returnUrl, refreshUrl } = req.query as { returnUrl?: string; refreshUrl?: string };
+
+    const result = await this.paymentService.getAccountUpdateLink(cuid, { returnUrl, refreshUrl });
 
     return res.status(200).json(result);
   }

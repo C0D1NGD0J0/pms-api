@@ -389,6 +389,27 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
           },
         },
 
+        // Add payment processor lookup for active client (SUPER_ADMIN only)
+        {
+          $lookup: {
+            from: 'paymentprocessors',
+            let: { activeCuid: '$userData.activecuid' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: ['$cuid', '$$activeCuid'] },
+                },
+              },
+            ],
+            as: 'paymentProcessorData',
+          },
+        },
+        {
+          $addFields: {
+            paymentProcessorInfo: { $arrayElemAt: ['$paymentProcessorData', 0] },
+          },
+        },
+
         // transform data into ICurrentUser structure
         {
           $project: {
@@ -538,7 +559,18 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                     in: {
                       plan: {
                         name: '$$sub.planName',
-                        status: '$$sub.status',
+                        status: {
+                          $cond: {
+                            if: {
+                              $and: [
+                                { $eq: ['$$sub.status', 'active'] },
+                                { $eq: [{ $ifNull: ['$$sub.billing.subscriberId', ''] }, ''] },
+                              ],
+                            },
+                            then: 'pending_payment',
+                            else: '$$sub.status',
+                          },
+                        },
                         billingInterval: '$$sub.billingInterval',
                       },
                       entitlements: {
@@ -558,7 +590,22 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                             if: {
                               $and: [
                                 '$$isSuperAdmin',
-                                { $eq: ['$$sub.status', 'pending_payment'] },
+                                {
+                                  $or: [
+                                    { $eq: ['$$sub.status', 'pending_payment'] },
+                                    {
+                                      $and: [
+                                        { $eq: ['$$sub.status', 'active'] },
+                                        {
+                                          $eq: [
+                                            { $ifNull: ['$$sub.billing.subscriberId', ''] },
+                                            '',
+                                          ],
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
                               ],
                             },
                             then: true,
@@ -650,6 +697,35 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                       },
                     },
                   },
+                },
+                else: '$$REMOVE',
+              },
+            },
+
+            // Payment processor status — only exposed for SUPER_ADMIN
+            paymentProcessor: {
+              $cond: {
+                if: {
+                  $and: [
+                    { $ne: ['$paymentProcessorInfo', null] },
+                    { $eq: ['$activeClientRole', 'super-admin'] },
+                  ],
+                },
+                then: {
+                  isSetup: { $literal: true },
+                  chargesEnabled: { $ifNull: ['$paymentProcessorInfo.chargesEnabled', false] },
+                  payoutsEnabled: { $ifNull: ['$paymentProcessorInfo.payoutsEnabled', false] },
+                  needsOnboarding: {
+                    $not: {
+                      $and: [
+                        { $ifNull: ['$paymentProcessorInfo.chargesEnabled', false] },
+                        { $ifNull: ['$paymentProcessorInfo.payoutsEnabled', false] },
+                      ],
+                    },
+                  },
+                  accountId: { $ifNull: ['$paymentProcessorInfo.accountId', null] },
+                  accountType: { $ifNull: ['$paymentProcessorInfo.accountType', null] },
+                  onboardedAt: { $ifNull: ['$paymentProcessorInfo.onboardedAt', null] },
                 },
                 else: '$$REMOVE',
               },

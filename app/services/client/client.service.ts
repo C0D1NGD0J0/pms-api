@@ -2,26 +2,40 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import ProfileDAO from '@dao/profileDAO';
 import { AuthCache } from '@caching/auth.cache';
+import { SSEService } from '@services/sse/sse.service';
 import { ClientValidations } from '@shared/validations';
-import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { getRequestDuration, createLogger } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { IClientDocument, IClientStats } from '@interfaces/client.interface';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { NotificationService } from '@services/notification/notification.service';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { SubscriptionDAO, PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
+import {
+  NotificationPriorityEnum,
+  NotificationTypeEnum,
+  RecipientTypeEnum,
+} from '@interfaces/notification.interface';
+import {
+  PaymentProcessorVerifiedPayload,
+  PaymentDisputeCreatedPayload,
+  PaymentDisputeWonPayload,
+  EventTypes,
+} from '@interfaces/events.interface';
 
 interface IConstructor {
   subscriptionService: SubscriptionService;
+  notificationService: NotificationService;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   propertyUnitDAO: PropertyUnitDAO;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
+  sseService: SSEService;
   clientDAO: ClientDAO;
   authCache: AuthCache;
   userDAO: UserDAO;
@@ -35,8 +49,10 @@ export class ClientService {
   private readonly userDAO: UserDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly authCache: AuthCache;
+  private readonly sseService: SSEService;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly subscriptionService: SubscriptionService;
+  private readonly notificationService: NotificationService;
   private readonly emitterService: EventEmitterService;
 
   constructor({
@@ -46,8 +62,10 @@ export class ClientService {
     userDAO,
     profileDAO,
     authCache,
+    sseService,
     subscriptionDAO,
     subscriptionService,
+    notificationService,
     emitterService,
   }: IConstructor) {
     this.log = createLogger('ClientService');
@@ -58,8 +76,11 @@ export class ClientService {
     this.userDAO = userDAO;
     this.profileDAO = profileDAO;
     this.authCache = authCache;
+    this.sseService = sseService;
     this.subscriptionDAO = subscriptionDAO;
+    this.notificationService = notificationService;
     this.subscriptionService = subscriptionService;
+    this.setupEventListeners();
   }
 
   async updateClientDetails(
@@ -833,5 +854,114 @@ export class ClientService {
       data: { isVerified: true },
       message: t('client.success.verified'),
     };
+  }
+
+  // ── Payment event listeners ───────────────────────────────────────────────
+
+  private setupEventListeners(): void {
+    this.emitterService.on(
+      EventTypes.PAYMENT_PROCESSOR_VERIFIED,
+      this.handlePaymentProcessorVerified.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.PAYMENT_DISPUTE_CREATED,
+      this.handleDisputeCreated.bind(this)
+    );
+    this.emitterService.on(EventTypes.PAYMENT_DISPUTE_WON, this.handleDisputeWon.bind(this));
+  }
+
+  private async handlePaymentProcessorVerified({
+    cuid,
+    accountId,
+  }: PaymentProcessorVerifiedPayload): Promise<void> {
+    try {
+      const client = await this.clientDAO.findFirst({ cuid });
+      const adminId = client?.accountAdmin?.toString();
+      if (!adminId) {
+        this.log.warn({ cuid }, 'No account admin found for payout verification notification');
+        return;
+      }
+
+      await this.authCache.invalidateCurrentUser(adminId);
+
+      await this.sseService.sendToUser(
+        adminId,
+        cuid,
+        {
+          action: 'REFETCH_CURRENT_USER',
+          eventType: 'payout_account_verified',
+          message: 'Your payout account has been verified and is ready to receive payments.',
+          timestamp: new Date().toISOString(),
+        },
+        'payment_update'
+      );
+
+      await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        priority: NotificationPriorityEnum.HIGH,
+        title: 'Payout Account Verified',
+        message:
+          'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
+        cuid,
+        targetRoles: [ROLES.ADMIN],
+        metadata: {},
+      });
+
+      this.log.info({ cuid, adminId, accountId }, 'Payout account verified — PM notified');
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Failed to handle payment processor verified event');
+    }
+  }
+
+  private async handleDisputeCreated({
+    cuid,
+    amount,
+    currency,
+    reason,
+    disputeId,
+    invoiceNumber,
+    chargeId,
+  }: PaymentDisputeCreatedPayload): Promise<void> {
+    try {
+      const amountFormatted = `${(amount / 100).toFixed(2)} ${currency.toUpperCase()}`;
+      await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        priority: NotificationPriorityEnum.HIGH,
+        title: 'Payment Dispute Opened',
+        message: `A dispute of ${amountFormatted} was filed for invoice ${invoiceNumber}. The transfer has been reversed pending resolution.`,
+        cuid,
+        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        metadata: { disputeId, chargeId, invoiceNumber, amount, currency, reason },
+      });
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Failed to handle dispute created event');
+    }
+  }
+
+  private async handleDisputeWon({
+    cuid,
+    amount,
+    currency,
+    disputeId,
+    invoiceNumber,
+    chargeId,
+  }: PaymentDisputeWonPayload): Promise<void> {
+    try {
+      const amountFormatted = `${(amount / 100).toFixed(2)} ${currency.toUpperCase()}`;
+      await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        priority: NotificationPriorityEnum.MEDIUM,
+        title: 'Dispute Resolved — Funds Returned',
+        message: `The dispute for invoice ${invoiceNumber} was resolved in your favor. ${amountFormatted} has been re-transferred to your account.`,
+        cuid,
+        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        metadata: { disputeId, chargeId, invoiceNumber, amount, currency },
+      });
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Failed to handle dispute won event');
+    }
   }
 }

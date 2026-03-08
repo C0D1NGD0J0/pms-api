@@ -8,7 +8,8 @@
       "userRetrieved": "client.success.userRetrieved",
       "userStatsRetrieved": "client.success.userStatsRetrieved",
       "tenantsRetrieved": "client.success.tenantsRetrieved",
-      "verified": "Account verified successfully"
+      "verified": "Account verified successfully",
+      "updated": "client.success.updated"
     }
   },
   "invitation": {

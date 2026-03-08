@@ -53,7 +53,7 @@ export class RateLimiterFactory {
       max: options.max || 30, // 30 requests per window default
       standardHeaders: true,
       keyGenerator: options.keyGenerator,
-      skip: options.skip,
+      skip: options.skip ?? (() => process.env.NODE_ENV !== 'production'),
       handler: (_req, res, _next) => {
         const message = options.message || 'Too many requests, please try again later.';
         // Send Retry-After header in seconds
@@ -84,6 +84,7 @@ export class RateLimiterFactory {
       windowMs: options.windowMs || 2 * 60 * 1000, // 2 minutes default
       delayAfter: options.delayAfter || 20, // Start slowing down after 20 requests
       delayMs: options.delayMs || (() => 50000), // 50000ms delay default
+      skip: options.skip ?? (() => process.env.NODE_ENV !== 'production'),
     });
 
     this.speedLimiterCache.set(cacheKey, speedLimiter);

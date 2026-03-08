@@ -1,8 +1,8 @@
 import dayjs from 'dayjs';
 import Stripe from 'stripe';
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
+import { isValidPhoneNumber, createLogger } from '@utils/index';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import {
   ICreateConnectAccountInput,
@@ -134,6 +134,10 @@ export class StripeService implements IPaymentProvider {
       const session = await this.stripe.checkout.sessions.create({
         mode: 'subscription',
         customer: customerId,
+        customer_update: {
+          name: 'auto',
+          address: 'auto',
+        },
         line_items: [
           {
             price: priceId,
@@ -357,19 +361,16 @@ export class StripeService implements IPaymentProvider {
 
   async createRefund(params: {
     chargeId: string;
-    connectedAccountId: string;
     amountInCents?: number;
     reason?: string;
   }): Promise<{ refundId: string; status: string; amount: number; currency: string }> {
-    const { chargeId, connectedAccountId, amountInCents, reason } = params;
+    const { chargeId, amountInCents, reason } = params;
     try {
       const refundParams: Stripe.RefundCreateParams = { charge: chargeId };
       if (amountInCents) refundParams.amount = amountInCents;
       if (reason) refundParams.reason = reason as Stripe.RefundCreateParams.Reason;
 
-      const refund = await this.stripe.refunds.create(refundParams, {
-        stripeAccount: connectedAccountId,
-      });
+      const refund = await this.stripe.refunds.create(refundParams);
       this.log.info({ chargeId, refundId: refund.id, amount: refund.amount }, 'Refund created');
       return {
         refundId: refund.id,
@@ -379,6 +380,50 @@ export class StripeService implements IPaymentProvider {
       };
     } catch (error) {
       this.log.error({ error, chargeId }, 'Error creating Stripe refund');
+      throw error;
+    }
+  }
+
+  async createTransferReversal(
+    transferId: string,
+    amountInCents?: number
+  ): Promise<{ reversalId: string; amount: number }> {
+    try {
+      const reversal = await this.stripe.transfers.createReversal(
+        transferId,
+        amountInCents ? { amount: amountInCents } : undefined
+      );
+      this.log.info(
+        { transferId, reversalId: reversal.id, amount: reversal.amount },
+        'Transfer reversal created'
+      );
+      return { reversalId: reversal.id, amount: reversal.amount };
+    } catch (error) {
+      this.log.error({ error, transferId }, 'Error creating transfer reversal');
+      throw error;
+    }
+  }
+
+  async createTransfer(params: {
+    amountInCents: number;
+    currency: string;
+    destination: string;
+    metadata?: Record<string, string>;
+  }): Promise<{ transferId: string; amount: number }> {
+    try {
+      const transfer = await this.stripe.transfers.create({
+        amount: params.amountInCents,
+        currency: params.currency,
+        destination: params.destination,
+        ...(params.metadata && { metadata: params.metadata }),
+      });
+      this.log.info(
+        { transferId: transfer.id, amount: transfer.amount, destination: params.destination },
+        'Transfer created'
+      );
+      return { transferId: transfer.id, amount: transfer.amount };
+    } catch (error) {
+      this.log.error({ error, destination: params.destination }, 'Error creating transfer');
       throw error;
     }
   }
@@ -399,16 +444,9 @@ export class StripeService implements IPaymentProvider {
   }
 
   async createCustomer(data: ICreateCustomerInput): Promise<IPaymentCustomer> {
-    const { email, metadata, name, connectedAccountId } = data;
+    const { email, metadata, name } = data;
     try {
-      const customer = await this.stripe.customers.create(
-        {
-          email,
-          name,
-          metadata,
-        },
-        connectedAccountId ? { stripeAccount: connectedAccountId } : undefined
-      );
+      const customer = await this.stripe.customers.create({ email, name, metadata });
 
       return {
         customerId: customer.id,
@@ -418,27 +456,26 @@ export class StripeService implements IPaymentProvider {
         createdAt: new Date(customer.created * 1000),
       };
     } catch (error) {
-      this.log.error(
-        { error, email: data.email, connectedAccountId },
-        'Error creating Stripe customer'
-      );
+      this.log.error({ error, email: data.email }, 'Error creating Stripe customer');
       throw error;
     }
   }
 
   async createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse> {
     try {
-      const { email, country, businessType, businessProfile, metadata } = input;
+      const { email, country, businessType, businessProfile, prefill, metadata } = input;
 
       const account = await this.stripe.accounts.create({
-        type: 'express',
         country,
         email,
         business_type: businessType,
         capabilities: {
-          card_payments: { requested: true },
           transfers: { requested: true },
         },
+        // Our architecture uses destination charges — PMs only receive payouts, never make
+        // direct charges. The recipient service agreement accurately reflects this and
+        // satisfies Stripe's requirement for countries like CA that enforce it.
+        tos_acceptance: { service_agreement: 'recipient' },
         controller: {
           fees: {
             payer: 'application',
@@ -460,10 +497,32 @@ export class StripeService implements IPaymentProvider {
               businessProfile.productDescription || 'Property management and rent collection',
           },
         }),
+        // Prefill the hosted KYC form so the PM doesn't re-enter their own data
+        ...(prefill &&
+          businessType === 'individual' && {
+            individual: {
+              first_name: prefill.firstName,
+              last_name: prefill.lastName,
+              email,
+              ...(prefill.phone &&
+                prefill.phone.startsWith('+') &&
+                isValidPhoneNumber(prefill.phone) && { phone: prefill.phone }),
+            },
+          }),
+        ...(prefill &&
+          businessType === 'company' && {
+            company: {
+              name: prefill.companyName,
+              ...(prefill.phone &&
+                prefill.phone.startsWith('+') &&
+                isValidPhoneNumber(prefill.phone) && { phone: prefill.phone }),
+            },
+          }),
         settings: {
           payouts: {
             schedule: {
               interval: 'weekly',
+              weekly_anchor: 'monday',
             },
           },
           branding: {
@@ -498,11 +557,9 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async getInvoice(invoiceId: string, connectedAccountId: string): Promise<Stripe.Invoice> {
+  async getInvoice(invoiceId: string): Promise<Stripe.Invoice> {
     try {
-      return await this.stripe.invoices.retrieve(invoiceId, {
-        stripeAccount: connectedAccountId, // specify connected account for direct charge
-      });
+      return await this.stripe.invoices.retrieve(invoiceId);
     } catch (error) {
       this.log.error({ error, invoiceId }, 'Error fetching invoice');
       throw error;
@@ -525,6 +582,26 @@ export class StripeService implements IPaymentProvider {
       return { url: accountLink.url };
     } catch (error) {
       this.log.error({ error, params }, 'Error creating onboarding link');
+      throw error;
+    }
+  }
+
+  async createAccountUpdateLink(params: {
+    accountId: string;
+    refreshUrl: string;
+    returnUrl: string;
+  }): Promise<IOnboardingLinkResponse> {
+    try {
+      const accountLink = await this.stripe.accountLinks.create({
+        account: params.accountId,
+        refresh_url: params.refreshUrl,
+        return_url: params.returnUrl,
+        type: 'account_update',
+      });
+
+      return { url: accountLink.url };
+    } catch (error) {
+      this.log.error({ error, params }, 'Error creating account update link');
       throw error;
     }
   }
@@ -555,39 +632,32 @@ export class StripeService implements IPaymentProvider {
       } = input;
 
       const daysUntilDue = Math.ceil(dayjs(autoChargeDueDate).diff(dayjs(), 'day', true));
-      const invoice = await this.stripe.invoices.create(
-        {
-          customer: tenantCustomerId,
-          auto_advance: true,
-          collection_method: 'charge_automatically',
-          days_until_due: daysUntilDue > 0 ? daysUntilDue : 0,
-          description,
-          metadata: {
-            cuid,
-            leaseUid,
-          },
-          application_fee_amount: applicationFeeAmount,
+      const invoice = await this.stripe.invoices.create({
+        customer: tenantCustomerId,
+        auto_advance: true,
+        collection_method: 'charge_automatically',
+        days_until_due: daysUntilDue > 0 ? daysUntilDue : 0,
+        description,
+        metadata: {
+          cuid,
+          leaseUid,
         },
-        {
-          stripeAccount: connectedAccountId,
-        }
-      );
+        application_fee_amount: applicationFeeAmount,
+        transfer_data: {
+          destination: connectedAccountId,
+        },
+      });
 
       const itemResults = await Promise.allSettled(
         lineItems.map((item) =>
-          this.stripe.invoiceItems.create(
-            {
-              customer: tenantCustomerId,
-              invoice: invoice.id,
-              amount: item.amountInCents,
-              quantity: item.quantity || 1,
-              currency,
-              description: item.description,
-            },
-            {
-              stripeAccount: connectedAccountId,
-            }
-          )
+          this.stripe.invoiceItems.create({
+            customer: tenantCustomerId,
+            invoice: invoice.id,
+            amount: item.amountInCents,
+            quantity: item.quantity || 1,
+            currency,
+            description: item.description,
+          })
         )
       );
 
@@ -626,20 +696,11 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async finalizeInvoice(
-    invoiceId: string,
-    connectedAccountId: string
-  ): Promise<IFinalizeInvoiceResponse> {
+  async finalizeInvoice(invoiceId: string): Promise<IFinalizeInvoiceResponse> {
     try {
-      const invoice = await this.stripe.invoices.finalizeInvoice(
-        invoiceId,
-        {
-          auto_advance: true,
-        },
-        {
-          stripeAccount: connectedAccountId,
-        }
-      );
+      const invoice = await this.stripe.invoices.finalizeInvoice(invoiceId, {
+        auto_advance: true,
+      });
 
       return {
         invoiceId: invoice.id,
@@ -652,9 +713,13 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async verifyWebhookSignature(payload: string | Buffer, signature: string): Promise<any> {
+  async verifyWebhookSignature(
+    payload: string | Buffer,
+    signature: string,
+    secret?: string
+  ): Promise<any> {
     try {
-      const webhookSecret = envVariables.STRIPE.WEBHOOK_SECRET;
+      const webhookSecret = secret || envVariables.STRIPE.WEBHOOK_SECRET;
 
       if (!webhookSecret) {
         throw new Error('STRIPE_WEBHOOK_SECRET is not configured');

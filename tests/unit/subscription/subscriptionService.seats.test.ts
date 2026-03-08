@@ -83,6 +83,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
       authCache: mockAuthCache,
       userDAO: {} as any,
       emitterService: mockEmitterService,
+      propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
     });
   });
 

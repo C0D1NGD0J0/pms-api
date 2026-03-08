@@ -40,7 +40,9 @@ describe('ClientService - Account Verification', () => {
       authCache: {} as any,
       subscriptionDAO: {} as any,
       subscriptionService: {} as any,
-      emitterService: {} as any,
+      emitterService: { emit: jest.fn(), on: jest.fn() } as any,
+      notificationService: {} as any,
+      sseService: {} as any,
     });
   });
 
@@ -202,9 +204,13 @@ describe('ClientService - Account Verification', () => {
       mockClientDAO.getClientByCuid.mockResolvedValue(mockClient as IClientDocument);
 
       await expect(clientService.verifyAccount(mockContext)).rejects.toThrow(BadRequestError);
-      await expect(clientService.verifyAccount(mockContext)).rejects.toThrow(
-        /Document has expired/
-      );
+      await expect(clientService.verifyAccount(mockContext)).rejects.toMatchObject({
+        errorInfo: {
+          validationErrors: expect.arrayContaining([
+            'Document has expired. Please provide a valid document.',
+          ]),
+        },
+      });
       expect(mockClientDAO.updateById).not.toHaveBeenCalled();
     });
 

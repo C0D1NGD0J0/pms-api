@@ -76,6 +76,8 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       sseService: mockSSEService,
       userDAO: {} as any,
       emitterService: mockEmitterService,
+      propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
     });
   });
 

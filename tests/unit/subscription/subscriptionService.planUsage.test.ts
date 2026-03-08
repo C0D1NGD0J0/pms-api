@@ -44,6 +44,8 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
       sseService: {} as any,
       userDAO: {} as any,
       emitterService: {} as any,
+      propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
     });
   });
 

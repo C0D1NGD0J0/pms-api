@@ -80,6 +80,8 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
       sseService: mockSSEService,
       userDAO: {} as any,
       emitterService: mockEmitterService,
+      propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
     });
   });
 

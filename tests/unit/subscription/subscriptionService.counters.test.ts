@@ -44,6 +44,8 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
       sseService: {} as any,
       userDAO: {} as any,
       paymentGatewayService: {} as any,
+      propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
     });
   });
 
@@ -184,7 +186,9 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         sseService: {} as any,
         userDAO: {} as any,
         paymentGatewayService: {} as any,
-      });
+        propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
+    });
     });
 
     it('should allow invitation when seats available', async () => {

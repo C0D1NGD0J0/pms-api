@@ -102,6 +102,8 @@ describe('SubscriptionController Integration Tests', () => {
       clientDAO: {} as any,
       authCache: {} as any,
       userDAO: {} as any,
+      propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
     });
 
     subscriptionController = new SubscriptionController({ subscriptionService });

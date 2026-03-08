@@ -94,6 +94,8 @@ describe('SubscriptionService Integration Tests', () => {
       clientDAO: {} as any,
       authCache: { client: { DEL: jest.fn(), GET: jest.fn(), SETEX: jest.fn() }, invalidateCurrentUser: jest.fn() } as any,
       userDAO: {} as any,
+      propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
     });
   });
 

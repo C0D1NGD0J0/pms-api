@@ -206,7 +206,6 @@ describe('PaymentGatewayService Integration Tests', () => {
         IPaymentGatewayProvider.STRIPE,
         {
           chargeId: 'ch_test_abc',
-          connectedAccountId: 'acct_test_xyz',
           amountInCents: 150000,
           reason: 'requested_by_customer',
         }
@@ -216,7 +215,6 @@ describe('PaymentGatewayService Integration Tests', () => {
       expect(result.data).toEqual(mockRefundResult);
       expect(mockStripeService.createRefund).toHaveBeenCalledWith({
         chargeId: 'ch_test_abc',
-        connectedAccountId: 'acct_test_xyz',
         amountInCents: 150000,
         reason: 'requested_by_customer',
       });
@@ -227,7 +225,7 @@ describe('PaymentGatewayService Integration Tests', () => {
 
       const result = await paymentGatewayService.createRefund(
         IPaymentGatewayProvider.STRIPE,
-        { chargeId: 'ch_bad', connectedAccountId: 'acct_test_xyz' }
+        { chargeId: 'ch_bad' }
       );
 
       expect(result.success).toBe(false);
@@ -244,13 +242,12 @@ describe('PaymentGatewayService Integration Tests', () => {
 
       const result = await paymentGatewayService.createRefund(
         IPaymentGatewayProvider.STRIPE,
-        { chargeId: 'ch_full', connectedAccountId: 'acct_test_xyz' }
+        { chargeId: 'ch_full' }
       );
 
       expect(result.success).toBe(true);
       expect(mockStripeService.createRefund).toHaveBeenCalledWith({
         chargeId: 'ch_full',
-        connectedAccountId: 'acct_test_xyz',
       });
     });
   });

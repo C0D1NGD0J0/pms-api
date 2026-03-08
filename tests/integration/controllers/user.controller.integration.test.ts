@@ -135,7 +135,9 @@ describe('UserController Integration Tests', () => {
       authCache,
       subscriptionDAO: {} as any,
       subscriptionService: {} as any,
-      emitterService: {} as any,
+      emitterService: { emit: jest.fn(), on: jest.fn() } as any,
+      notificationService: {} as any,
+      sseService: {} as any,
     });
 
     userController = new UserController({

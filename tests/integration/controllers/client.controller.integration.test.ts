@@ -114,7 +114,9 @@ describe('ClientController Integration Tests', () => {
       authCache,
       subscriptionDAO,
       subscriptionService: {} as any,
-      emitterService: {} as any,
+      emitterService: { emit: jest.fn(), on: jest.fn() } as any,
+      notificationService: {} as any,
+      sseService: {} as any,
     });
 
     clientController = new ClientController({ clientService });

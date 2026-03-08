@@ -108,6 +108,8 @@ describe('InvitationService Integration Tests', () => {
       userService,
       leaseDAO,
       subscriptionService: {} as any,
+      paymentProcessorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
+      paymentGatewayService: { createCustomer: jest.fn() } as any,
     });
   });
 

@@ -70,6 +70,8 @@ describe('PaymentController Integration Tests', () => {
       leaseDAO: {} as any,
       userDAO: new UserDAO({ userModel: User }),
       subscriptionPlanConfig: {} as any,
+      queueFactory: { getQueue: jest.fn() } as any,
+      emitterService: { emit: jest.fn(), on: jest.fn() } as any,
     });
 
     const paymentController = new PaymentController({ paymentService, mediaUploadService: {} as any });
@@ -136,15 +138,14 @@ describe('PaymentController Integration Tests', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data.status).toBe(PaymentRecordStatus.REFUNDED);
-      expect(response.body.data.refundAmount).toBe(150000);
-      expect(response.body.data.refundedAt).toBeDefined();
+      expect(response.body.data.refund.amount).toBe(150000);
+      expect(response.body.data.refund.refundedAt).toBeDefined();
 
       // Refund must route through gateway — never direct to Stripe
       expect(mockCreateRefund).toHaveBeenCalledWith(
         IPaymentGatewayProvider.STRIPE,
         expect.objectContaining({
           chargeId: 'ch_test_123',
-          connectedAccountId: 'acct_test_123',
         })
       );
     });
@@ -162,8 +163,8 @@ describe('PaymentController Integration Tests', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data.status).toBe(PaymentRecordStatus.REFUNDED);
-      expect(response.body.data.refundAmount).toBe(50000);
-      expect(response.body.data.refundReason).toBe('Partial refund requested');
+      expect(response.body.data.refund.amount).toBe(50000);
+      expect(response.body.data.refund.reason).toBe('Partial refund requested');
     });
 
     it('should return 400 when trying to refund a PENDING payment', async () => {

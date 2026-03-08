@@ -7,9 +7,9 @@ import { IClientDocument } from '@interfaces/client.interface';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { IPropertyDocument } from '@interfaces/property.interface';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
-import { Subscription, Invitation, Profile, Client, User } from '@models/index';
 import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import { ISubscriptionDocument } from '@interfaces/subscription.interface';
+import { Subscription, Invitation, Profile, Client, User } from '@models/index';
 
 export interface SeededTestData {
   invitations: {

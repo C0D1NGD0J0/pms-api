@@ -3,17 +3,16 @@ import cookieParser from 'cookie-parser';
 import express, { Application } from 'express';
 import { ROLES } from '@shared/constants/roles.constants';
 import { PaymentController } from '@controllers/PaymentController';
-import { PaymentService } from '@services/payments/payments.service';
-import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
-import { beforeEach, beforeAll, afterAll, describe, expect, it, jest } from '@jest/globals';
-import { PaymentModel, Client, Profile, User, PaymentProcessor } from '@models/index';
-import { disconnectTestDatabase, setupTestDatabase, clearTestDatabase } from '@tests/helpers';
-import { createTestClient, createTestUser, createTestProfile } from '@tests/setup/testFactories';
-import { PaymentDAO, ClientDAO, ProfileDAO, UserDAO, PaymentProcessorDAO } from '@dao/index';
-import { PaymentRecordStatus, PaymentRecordType, PaymentMethod } from '@interfaces/payments.interface';
-import { ISuccessReturnData } from '@interfaces/utils.interface';
+import { PaymentService } from '@services/payments/payments.service';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import { PaymentProcessor, PaymentModel, Profile, Client, User } from '@models/index';
+import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import { beforeEach, beforeAll, afterAll, describe, expect, jest, it } from '@jest/globals';
+import { PaymentProcessorDAO, PaymentDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { disconnectTestDatabase, setupTestDatabase, clearTestDatabase } from '@tests/helpers';
+import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
+import { PaymentRecordStatus, PaymentRecordType, PaymentMethod } from '@interfaces/payments.interface';
 
 describe('PaymentController Integration Tests', () => {
   let app: Application;

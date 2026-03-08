@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, jest, it } from '@jest/globals';
 import { NotificationService } from '@services/notification/notification.service';
-import { ISuccessReturnData } from '@interfaces/utils.interface';
-import { INotificationDocument, NotificationPriorityEnum, NotificationTypeEnum, RecipientTypeEnum } from '@interfaces/notification.interface';
+import { NotificationPriorityEnum, INotificationDocument, NotificationTypeEnum, RecipientTypeEnum } from '@interfaces/notification.interface';
 
 // Mock NotificationDAO
 const mockNotificationDAO = {

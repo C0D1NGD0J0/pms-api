@@ -891,17 +891,6 @@ describe('SubscriptionService Integration Tests', () => {
         },
       });
 
-      const ctx = {
-        currentuser: {
-          sub: new Types.ObjectId().toString(),
-          email: 'owner@example.com',
-          client: {
-            cuid: 'client-seat-add',
-            role: 'super-admin',
-          },
-        },
-      } as any;
-
       const result = await subscriptionService.updateAdditionalSeats('client-seat-add', 5);
 
       expect(result.success).toBe(true);
@@ -947,17 +936,6 @@ describe('SubscriptionService Integration Tests', () => {
         },
       });
 
-      const ctx = {
-        currentuser: {
-          sub: new Types.ObjectId().toString(),
-          email: 'owner@example.com',
-          client: {
-            cuid: 'client-seat-remove',
-            role: 'super-admin',
-          },
-        },
-      } as any;
-
       const result = await subscriptionService.updateAdditionalSeats('client-seat-remove', -3);
 
       expect(result.success).toBe(true);
@@ -999,17 +977,6 @@ describe('SubscriptionService Integration Tests', () => {
         },
       });
 
-      const ctx = {
-        currentuser: {
-          sub: new Types.ObjectId().toString(),
-          email: 'owner@example.com',
-          client: {
-            cuid: 'client-over-limit',
-            role: 'super-admin',
-          },
-        },
-      } as any;
-
       await expect(
         subscriptionService.updateAdditionalSeats('client-over-limit', -1)
       ).rejects.toThrow(BadRequestError);
@@ -1045,17 +1012,6 @@ describe('SubscriptionService Integration Tests', () => {
           reportingAnalytics: true,
         },
       });
-
-      const ctx = {
-        currentuser: {
-          sub: new Types.ObjectId().toString(),
-          email: 'owner@example.com',
-          client: {
-            cuid: 'client-max-seats',
-            role: 'super-admin',
-          },
-        },
-      } as any;
 
       // Growth plan maxAdditionalSeats is 25, already have 20, can only add 5 more
       await expect(
@@ -1093,17 +1049,6 @@ describe('SubscriptionService Integration Tests', () => {
           reportingAnalytics: true,
         },
       });
-
-      const ctx = {
-        currentuser: {
-          sub: new Types.ObjectId().toString(),
-          email: 'admin@example.com',
-          client: {
-            cuid: 'client-role-check',
-            role: 'admin', // NOT super-admin
-          },
-        },
-      } as any;
 
       await expect(
         subscriptionService.updateAdditionalSeats('client-role-check', 5)

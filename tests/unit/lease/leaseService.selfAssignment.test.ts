@@ -7,8 +7,8 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { InvitationDAO } from '@dao/invitationDAO';
 import { ForbiddenError } from '@shared/customErrors';
 import { LeaseService } from '@services/lease/lease.service';
-import { IRequestContext } from '@interfaces/utils.interface';
 import { ILeaseFormData } from '@interfaces/lease.interface';
+import { IRequestContext } from '@interfaces/utils.interface';
 
 describe('LeaseService - Tenant Self-Assignment Prevention', () => {
   let leaseService: LeaseService;

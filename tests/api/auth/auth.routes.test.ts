@@ -3,8 +3,8 @@ jest.setTimeout(10000);
 
 import request from 'supertest';
 import { faker } from '@faker-js/faker';
-import { Application, Response, Request, NextFunction } from 'express';
 import { httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
+import { NextFunction, Application, Response, Request } from 'express';
 import { createMockCurrentUser, createApiTestHelper } from '@tests/helpers';
 
 // Mock Auth Controller

@@ -2,12 +2,12 @@ import { Types } from 'mongoose';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { PaymentService } from '@services/payments/payments.service';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import {
   PaymentRecordStatus,
   PaymentRecordType,
   PaymentMethod,
 } from '@interfaces/payments.interface';
-import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import {
   PaymentProcessorDAO,
   SubscriptionDAO,

@@ -1,10 +1,10 @@
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
-import { AuthCache, RedisClient } from '@caching/index';
 import { ClientDAO } from '@dao/clientDAO';
 import { Subscription } from '@models/index';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { SSEService } from '@services/sse/sse.service';
+import { RedisClient, AuthCache } from '@caching/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PaymentGatewayService } from '@services/paymentGateway';
 import { ISubscriptionStatus } from '@interfaces/subscription.interface';

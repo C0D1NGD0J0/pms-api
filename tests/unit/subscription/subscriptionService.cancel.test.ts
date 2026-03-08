@@ -4,7 +4,6 @@ import { ClientDAO } from '@dao/clientDAO';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { PaymentGatewayService } from '@services/paymentGateway';
-import { StripeService } from '@services/external/stripe/stripe.service';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/index';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 
@@ -13,7 +12,6 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
   let mockSubscriptionDAO: jest.Mocked<SubscriptionDAO>;
   let mockClientDAO: jest.Mocked<ClientDAO>;
   let mockAuthCache: jest.Mocked<AuthCache>;
-  let mockStripeService: jest.Mocked<StripeService>;
   let mockPaymentGatewayService: jest.Mocked<PaymentGatewayService>;
   let mockSSEService: jest.Mocked<SSEService>;
   let mockSession: any;
@@ -63,8 +61,6 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
     mockPaymentGatewayService = {
       cancelSubscription: jest.fn().mockResolvedValue({ success: true, data: {} }),
     } as any;
-
-    mockStripeService = {} as any;
 
     const mockEmitterService = {
       emit: jest.fn(),

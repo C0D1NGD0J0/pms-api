@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { LeaseDAO } from '@dao/leaseDAO';
-import { LeaseStatus, LeaseType, SigningMethod } from '@interfaces/lease.interface';
+import { SigningMethod, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
 import {
   disconnectTestDatabase,

@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { CURRENCIES } from '@interfaces/utils.interface';
 import { PropertyUnit, Property, Client, User } from '@models/index';
 import { PropertyUnitStatusEnum, PropertyUnitTypeEnum } from '@interfaces/propertyUnit.interface';
 import {
@@ -13,7 +14,6 @@ import {
   PropertyStatus,
   PropertyType,
 } from '@interfaces/property.interface';
-import { CURRENCIES } from '@interfaces/utils.interface';
 
 describe('PropertyDAO Integration Tests', () => {
   let propertyDAO: PropertyDAO;

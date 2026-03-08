@@ -4,7 +4,7 @@ jest.setTimeout(10000);
 import request from 'supertest';
 import { faker } from '@faker-js/faker';
 import { httpStatusCodes } from '@utils/index';
-import { Application, Response, Request, NextFunction } from 'express';
+import { NextFunction, Application, Response, Request } from 'express';
 import { createMockCurrentUser, createApiTestHelper } from '@tests/helpers';
 
 // Mock Client Controller

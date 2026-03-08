@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { InvitationDAO } from '@dao/invitationDAO';
 import { Invitation, Client, User } from '@models/index';
-import { ROLES, IUserRole } from '@shared/constants/roles.constants';
+import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
   disconnectTestDatabase,
   clearTestDatabase,

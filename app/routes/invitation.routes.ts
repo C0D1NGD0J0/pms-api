@@ -8,6 +8,7 @@ import {
   validateRequest,
 } from '@shared/validations/index';
 import {
+  requireVerifiedClient,
   requirePermission,
   isAuthenticated,
   basicLimiter,
@@ -74,6 +75,7 @@ router.post(
   isAuthenticated,
   basicLimiter(),
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
+  requireVerifiedClient,
   validateRequest({
     params: UtilsValidations.cuid,
     body: InvitationValidations.sendInvitation,
@@ -184,6 +186,7 @@ router.post(
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
+  requireVerifiedClient,
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
@@ -201,6 +204,7 @@ router.post(
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
+  requireVerifiedClient,
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({

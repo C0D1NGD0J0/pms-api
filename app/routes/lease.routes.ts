@@ -4,6 +4,7 @@ import { LeaseController } from '@controllers/LeaseController';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import { UtilsValidations, LeaseValidations, validateRequest } from '@shared/validations/index';
 import {
+  requireVerifiedClient,
   requirePermission,
   isAuthenticated,
   basicLimiter,
@@ -67,6 +68,7 @@ router
   )
   .post(
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
+    requireVerifiedClient,
     diskUpload(['document']),
     scanFile,
     validateRequest({
@@ -145,6 +147,7 @@ router.post(
   '/:cuid/:luid/activate',
   // Activate lease (after all signatures complete, marks unit as occupied)
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  requireVerifiedClient,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     body: LeaseValidations.activateLease,
@@ -293,6 +296,7 @@ router
   )
   .post(
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
+    requireVerifiedClient,
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),
       body: LeaseValidations.renewLease,

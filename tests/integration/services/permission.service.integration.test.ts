@@ -38,6 +38,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.ADMIN,
+          isVerified: true,
         },
         preferences: {},
       } as ICurrentUser;
@@ -66,6 +67,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.MANAGER,
+          isVerified: true,
         },
         preferences: {},
       } as ICurrentUser;
@@ -93,6 +95,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.STAFF,
+          isVerified: true,
         },
         employeeInfo: {
           department: EmployeeDepartment.ACCOUNTING,
@@ -125,6 +128,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.STAFF,
+          isVerified: true,
         },
         employeeInfo: {
           department: EmployeeDepartment.MAINTENANCE,
@@ -157,6 +161,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.STAFF,
+          isVerified: true,
         },
         preferences: {},
       } as ICurrentUser;
@@ -187,6 +192,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.TENANT,
+          isVerified: true,
         },
         preferences: {},
       } as ICurrentUser;
@@ -217,6 +223,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.VENDOR,
+          isVerified: true,
         },
         preferences: {},
       } as ICurrentUser;
@@ -348,6 +355,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.ADMIN,
+          isVerified: true,
         },
         permissions: [],
       };
@@ -383,6 +391,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.MANAGER,
+          isVerified: true,
         },
         permissions: [],
       };
@@ -418,6 +427,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.ADMIN,
+          isVerified: true,
         },
         permissions: [],
       };
@@ -453,6 +463,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.TENANT,
+          isVerified: true,
         },
         permissions: [],
       };
@@ -490,6 +501,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.ADMIN,
+          isVerified: true,
         },
         permissions: [],
       };
@@ -521,6 +533,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.TENANT,
+          isVerified: true,
         },
         permissions: [],
       };
@@ -552,6 +565,7 @@ describe('PermissionService Integration Tests', () => {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.ADMIN,
+          isVerified: true,
         },
         permissions: [],
       };

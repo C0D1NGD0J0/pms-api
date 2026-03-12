@@ -449,12 +449,25 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                       0,
                     ],
                   },
+                  activeClientData: {
+                    $arrayElemAt: [
+                      {
+                        $filter: {
+                          input: '$clientsData',
+                          as: 'cd',
+                          cond: { $eq: ['$$cd.cuid', '$userData.activecuid'] },
+                        },
+                      },
+                      0,
+                    ],
+                  },
                 },
                 in: {
                   cuid: '$$activeClient.cuid',
                   clientDisplayName: '$$activeClient.clientDisplayName',
                   role: { $arrayElemAt: ['$$activeClient.roles', 0] },
                   linkedVendorUid: '$$activeClient.linkedVendorUid',
+                  isVerified: { $ifNull: ['$$activeClientData.isVerified', false] },
                   isPrimaryVendor: {
                     $cond: {
                       if: {

@@ -70,6 +70,7 @@ export interface ICurrentUser {
     displayname: string;
     linkedVendorUid?: string;
     role: IUserRoleType;
+    isVerified: boolean;
   };
   vendorInfo?: {
     vendorId?: string;

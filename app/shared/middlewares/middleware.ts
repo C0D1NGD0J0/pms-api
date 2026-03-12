@@ -535,6 +535,21 @@ export const requireFeature = (featureName: keyof ISubscriptionEntitlements['ent
 };
 
 /**
+ * Ensures the client account is verified before allowing business-critical actions.
+ * Must run after isAuthenticated.
+ */
+export const requireVerifiedClient = (req: Request, _res: Response, next: NextFunction) => {
+  const currentuser = validateUserAndConnection(req, next);
+  if (!currentuser) return;
+
+  if (!currentuser.client.isVerified) {
+    return next(new ForbiddenError({ message: t('auth.errors.clientNotVerified') }));
+  }
+
+  next();
+};
+
+/**
  * this check if user has any of the specified permissions (OR logic)
  */
 export const requireAnyPermission = (permissions: PermissionCheck[]) => {

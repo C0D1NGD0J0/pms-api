@@ -5,6 +5,7 @@ import { PaymentController } from '@controllers/PaymentController';
 import { UtilsValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
+  requireVerifiedClient,
   requirePermission,
   isAuthenticated,
   basicLimiter,
@@ -53,6 +54,7 @@ router.post(
   '/:cuid',
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
+  requireVerifiedClient,
   validateRequest({
     params: UtilsValidations.cuid,
     body: PaymentValidations.createPayment,
@@ -67,6 +69,7 @@ router.post(
   '/:cuid/:pytuid/manual_entry',
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
+  requireVerifiedClient,
   diskUpload(['receipt.file']),
   scanFile,
   validateRequest({
@@ -94,6 +97,7 @@ router.post(
   '/:cuid/:pytuid/refund',
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
+  requireVerifiedClient,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
     body: PaymentValidations.refundPayment,
@@ -108,6 +112,7 @@ router.post(
   '/:cuid/payout-account',
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  requireVerifiedClient,
   validateRequest({
     params: UtilsValidations.cuid,
     body: PaymentValidations.createConnectAccount,
@@ -122,6 +127,7 @@ router.get(
   '/:cuid/payout-account/onboard',
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  requireVerifiedClient,
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');

@@ -78,7 +78,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message: error instanceof CustomError ? error.message : 'Failed to create customer',
+        message: error instanceof Error ? error.message : 'Failed to create customer',
       };
     }
   }
@@ -108,7 +108,7 @@ export class PaymentGatewayService {
       return {
         data: null,
         success: false,
-        message: error instanceof CustomError ? error.message : 'Failed to create checkout session',
+        message: error instanceof Error ? error.message : 'Failed to create checkout session',
       };
     }
   }
@@ -164,7 +164,7 @@ export class PaymentGatewayService {
       return {
         data: null,
         success: false,
-        message: error instanceof CustomError ? error.message : 'Failed to cancel subscription',
+        message: error instanceof Error ? error.message : 'Failed to cancel subscription',
       };
     }
   }
@@ -196,7 +196,7 @@ export class PaymentGatewayService {
       return {
         data: [],
         success: false,
-        message: error instanceof CustomError ? error.message : 'Failed to fetch invoices',
+        message: error instanceof Error ? error.message : 'Failed to fetch invoices',
       };
     }
   }
@@ -296,7 +296,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message: error instanceof CustomError ? error.message : 'Failed to update subscription',
+        message: error instanceof Error ? error.message : 'Failed to update subscription',
       };
     }
   }
@@ -322,7 +322,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message: error instanceof CustomError ? error.message : 'Failed to fetch subscription',
+        message: error instanceof Error ? error.message : 'Failed to fetch subscription',
       };
     }
   }
@@ -353,7 +353,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message: error instanceof CustomError ? error.message : 'Failed to add subscription item',
+        message: error instanceof Error ? error.message : 'Failed to add subscription item',
       };
     }
   }
@@ -409,8 +409,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message:
-          error instanceof CustomError ? error.message : 'Failed to delete subscription item',
+        message: error instanceof Error ? error.message : 'Failed to delete subscription item',
       };
     }
   }
@@ -432,7 +431,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message: error instanceof CustomError ? error.message : 'Failed to create Connect account',
+        message: error instanceof Error ? error.message : 'Failed to create Connect account',
       };
     }
   }
@@ -454,7 +453,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message: error instanceof CustomError ? error.message : 'Failed to create onboarding link',
+        message: error instanceof Error ? error.message : 'Failed to create onboarding link',
       };
     }
   }
@@ -526,7 +525,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message: error instanceof CustomError ? error.message : 'Failed to fetch Connect account',
+        message: error instanceof Error ? error.message : 'Failed to fetch Connect account',
       };
     }
   }
@@ -548,7 +547,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message: error instanceof CustomError ? error.message : 'Failed to create invoice',
+        message: error instanceof Error ? error.message : 'Failed to create invoice',
       };
     }
   }
@@ -570,7 +569,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message: error instanceof CustomError ? error.message : 'Failed to finalize invoice',
+        message: error instanceof Error ? error.message : 'Failed to finalize invoice',
       };
     }
   }
@@ -585,7 +584,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message: error instanceof CustomError ? error.message : 'Failed to fetch charge',
+        message: error instanceof Error ? error.message : 'Failed to fetch charge',
       };
     }
   }
@@ -604,8 +603,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message:
-          error instanceof CustomError ? error.message : 'Failed to create transfer reversal',
+        message: error instanceof Error ? error.message : 'Failed to create transfer reversal',
       };
     }
   }
@@ -631,7 +629,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message: error instanceof CustomError ? error.message : 'Failed to create transfer',
+        message: error instanceof Error ? error.message : 'Failed to create transfer',
       };
     }
   }
@@ -658,7 +656,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
-        message: error instanceof CustomError ? error.message : 'Failed to create refund',
+        message: error instanceof Error ? error.message : 'Failed to create refund',
       };
     }
   }

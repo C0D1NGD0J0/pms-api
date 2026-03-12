@@ -821,6 +821,9 @@ export class UserService {
     return parts.length > 0 ? parts.join(', ') : 'Location not specified';
   }
 
+  // Returns a rough occupancy percentage based on status label alone.
+  // 'partially_occupied' is approximated as 50% — actual occupancy
+  // requires unit-level data which is not available at this call site.
   private formatOccupancy(occupancyStatus?: string): string {
     switch (occupancyStatus) {
       case 'partially_occupied':

@@ -146,8 +146,11 @@ export class WebhookController {
 
         case 'invoice.payment_failed': {
           const invoice = event.data.object as any;
-          await this.subscriptionService.handleInvoicePaymentFailed(invoice);
-          if (!invoice.subscription && !invoice.parent?.subscription_details?.subscription) {
+          const hasSubscription =
+            !!invoice.subscription || !!invoice.parent?.subscription_details?.subscription;
+          if (hasSubscription) {
+            await this.subscriptionService.handleInvoicePaymentFailed(invoice);
+          } else {
             await this.paymentService.handleInvoicePaymentFailed(invoice.id, invoice);
           }
           break;

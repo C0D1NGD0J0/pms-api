@@ -48,5 +48,4 @@ export const refundPayment = z.object({
 export const createConnectAccount = z.object({
   email: z.string().email(),
   country: z.string().length(2).toUpperCase(),
-  // businessType: z.enum(['individual', 'company']),
 });

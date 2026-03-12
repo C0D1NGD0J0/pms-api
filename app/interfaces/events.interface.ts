@@ -14,9 +14,11 @@ import {
 export enum EventTypes {
   LEASE_ESIGNATURE_REQUESTED = 'lease:esignature:requested',
   LEASE_ESIGNATURE_COMPLETED = 'lease:esignature:completed',
+  PAYMENT_PROCESSOR_VERIFIED = 'payment:processor:verified',
   LEASE_ESIGNATURE_DECLINED = 'lease:esignature:declined',
   PROPERTY_DOCUMENTS_UPDATE = 'update:property:documents',
   PDF_GENERATION_REQUESTED = 'pdf:generation:requested',
+  PAYMENT_DISPUTE_CREATED = 'payment:dispute:created',
   LEASE_ESIGNATURE_FAILED = 'lease:esignature:failed',
   LEASE_RENEWAL_REQUESTED = 'lease:renewal:requested',
   PROPERTY_UPDATE_FAILED = 'update:property:failed',
@@ -24,6 +26,7 @@ export enum EventTypes {
   USER_SIGNUP_INITIATED = 'user:signup:initiated',
   LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
   PDF_GENERATION_FAILED = 'pdf:generation:failed',
+  PAYMENT_DISPUTE_WON = 'payment:dispute:won',
   INVITATION_ACCEPTED = 'invitation:accepted',
   DELETE_ASSET_FAILED = 'delete:asset:failed',
   DELETE_REMOTE_ASSET = 'delete:remote:asset',
@@ -32,6 +35,8 @@ export enum EventTypes {
   INVITATION_REVOKED = 'invitation:revoked',
   DELETE_LOCAL_ASSET = 'delete:local:asset',
   UNIT_BATCH_CREATED = 'unit:batch:created',
+  PAYMENT_SUCCEEDED = 'payment:succeeded',
+  PAYMENT_REFUNDED = 'payment:refunded',
   LEASE_TERMINATED = 'lease:terminated',
   PROPERTY_CREATED = 'property:created',
   PROPERTY_DELETED = 'property:deleted',
@@ -39,6 +44,7 @@ export enum EventTypes {
   INVITATION_SENT = 'invitation:sent',
   USER_UNARCHIVED = 'user:unarchived',
   UNIT_UNARCHIVED = 'unit:unarchived',
+  PAYMENT_FAILED = 'payment:failed',
   USER_ARCHIVED = 'user:archived',
   PDF_GENERATED = 'pdf:generated',
   LEASE_RENEWED = 'lease:renewed',
@@ -97,6 +103,12 @@ export type EventPayloadMap = {
   [EventTypes.USER_ARCHIVED]: UserArchivePayload;
   [EventTypes.USER_UNARCHIVED]: UserArchivePayload;
   [EventTypes.LEASE_RENEWAL_REQUESTED]: LeaseRenewalRequestedPayload;
+  [EventTypes.PAYMENT_PROCESSOR_VERIFIED]: PaymentProcessorVerifiedPayload;
+  [EventTypes.PAYMENT_DISPUTE_CREATED]: PaymentDisputeCreatedPayload;
+  [EventTypes.PAYMENT_DISPUTE_WON]: PaymentDisputeWonPayload;
+  [EventTypes.PAYMENT_SUCCEEDED]: PaymentSucceededPayload;
+  [EventTypes.PAYMENT_FAILED]: PaymentFailedPayload;
+  [EventTypes.PAYMENT_REFUNDED]: PaymentRefundedPayload;
 };
 
 export interface UserSignupInitiatedPayload {
@@ -237,6 +249,17 @@ export interface SystemErrorPayload {
   context?: any;
 }
 
+export interface PaymentDisputeCreatedPayload {
+  invoiceNumber: string;
+  disputeId: string;
+  chargeId: string;
+  currency: string;
+  pytuid: string;
+  amount: number;
+  reason: string;
+  cuid: string;
+}
+
 export interface PdfGenerationRequestedPayload {
   senderInfo?: {
     email: string;
@@ -270,6 +293,16 @@ export interface EmailFailedPayload {
   to: string;
 }
 
+export interface PaymentDisputeWonPayload {
+  invoiceNumber: string;
+  disputeId: string;
+  chargeId: string;
+  currency: string;
+  pytuid: string;
+  amount: number;
+  cuid: string;
+}
+
 export interface UploadFailedPayload {
   error: {
     message: string;
@@ -279,7 +312,6 @@ export interface UploadFailedPayload {
   resourceType: string;
   resourceId: string;
 }
-
 export interface PropertyUpdatedPayload {
   updateType: 'documents' | 'details' | 'status';
   propertyId: string;
@@ -293,6 +325,22 @@ export interface UserArchivePayload {
   userId: string;
   cuid: string;
 }
+
+export interface PaymentSucceededPayload {
+  invoiceId: string;
+  pytuid: string;
+  amount: number;
+  cuid: string;
+  paidAt: Date;
+}
+
+export interface PaymentRefundedPayload {
+  refundAmount: number;
+  chargeId: string;
+  pytuid: string;
+  cuid: string;
+}
+
 export interface EventMetadata {
   requestId?: string;
   timestamp: number;
@@ -312,6 +360,12 @@ export interface PdfGenerationFailedPayload {
   error: string;
 }
 
+export interface PaymentProcessorVerifiedPayload {
+  accountId: string;
+  verifiedAt: Date;
+  cuid: string;
+}
+
 // Generic email event payloads
 export interface EmailSentPayload {
   jobData: Record<string, any>;
@@ -325,9 +379,17 @@ export interface DeleteAssetFailedPayload {
   reason: string;
 }
 
+// ── Payment domain events ────────────────────────────────────────────────────
+
 export interface DeleteAssetCompletedPayload {
   deletedKeys: string[];
   failedKeys?: string[];
+}
+
+export interface PaymentFailedPayload {
+  invoiceId: string;
+  pytuid: string;
+  cuid: string;
 }
 
 export type DeleteRemoteAssetPayload = AssetIdentifiersPayload;

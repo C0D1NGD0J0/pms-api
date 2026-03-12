@@ -59,6 +59,26 @@ const PaymentSchema = new Schema<IPaymentDocument>(
     gatewayPaymentId: {
       type: String,
     },
+    gatewayChargeId: {
+      type: String,
+    },
+    refund: {
+      refundedAt: { type: Date },
+      amount: {
+        type: Number,
+        min: [0, 'Refund amount cannot be negative'],
+      },
+      reason: { type: String, trim: true },
+    },
+    dispute: {
+      disputeId: { type: String },
+      amount: {
+        type: Number,
+        min: [0, 'Dispute amount cannot be negative'],
+      },
+      reason: { type: String, trim: true },
+      disputedAt: { type: Date },
+    },
     status: {
       type: String,
       enum: Object.values(PaymentRecordStatus),
@@ -149,6 +169,7 @@ PaymentSchema.index(
 );
 
 PaymentSchema.index({ gatewayPaymentId: 1 }, { unique: true, sparse: true });
+PaymentSchema.index({ gatewayChargeId: 1 }, { sparse: true });
 
 PaymentSchema.virtual('isOverdue').get(function (this: IPaymentDocument) {
   return (

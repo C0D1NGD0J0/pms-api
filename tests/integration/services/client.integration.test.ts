@@ -42,6 +42,10 @@ const setupServices = () => {
     propertyUnitDAO,
     authCache,
     subscriptionDAO,
+    subscriptionService: {} as any,
+    emitterService: { emit: jest.fn(), on: jest.fn() } as any,
+    notificationService: {} as any,
+    sseService: {} as any,
   });
 
   return { clientService, clientDAO, userDAO, profileDAO, propertyDAO };

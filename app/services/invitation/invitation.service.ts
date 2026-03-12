@@ -8,11 +8,12 @@ import { createLogger, JOB_NAME } from '@utils/index';
 import { MailType } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { InvitationQueue, EmailQueue } from '@queues/index';
-import { VendorService, UserService } from '@services/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
-import { InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
+import { PaymentGatewayService, VendorService, UserService } from '@services/index';
+import { PaymentProcessorDAO, InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { EmailFailedPayload, EmailSentPayload, EventTypes } from '@interfaces/events.interface';
 import {
   ISuccessReturnData,
@@ -37,6 +38,8 @@ import {
 } from '@interfaces/invitation.interface';
 
 interface IConstructor {
+  paymentGatewayService: PaymentGatewayService;
+  paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
   profileService: ProfileService;
   invitationDAO: InvitationDAO;
@@ -61,6 +64,8 @@ export class InvitationService {
   private readonly profileService: ProfileService;
   private readonly vendorService: VendorService;
   private readonly userService: UserService;
+  private readonly paymentProcessorDAO: PaymentProcessorDAO;
+  private readonly paymentGatewayService: PaymentGatewayService;
   private readonly leaseDAO: any;
   private readonly subscriptionService: any;
 
@@ -76,6 +81,8 @@ export class InvitationService {
     userService,
     leaseDAO,
     subscriptionService,
+    paymentProcessorDAO,
+    paymentGatewayService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -87,6 +94,8 @@ export class InvitationService {
     this.profileService = profileService;
     this.vendorService = vendorService;
     this.userService = userService;
+    this.paymentProcessorDAO = paymentProcessorDAO;
+    this.paymentGatewayService = paymentGatewayService;
     this.leaseDAO = leaseDAO;
     this.log = createLogger('InvitationService');
     this.setupEventListeners();
@@ -387,6 +396,62 @@ export class InvitationService {
     if (result.invitation.linkedVendorUid && result.invitation.role === ROLES.VENDOR) {
       this.log.info(
         `Vendor link established from primary vendor ${result.invitation.linkedVendorUid} to new user ${result.user._id}`
+      );
+    }
+
+    if (result.invitation.role === 'tenant') {
+      await this.maybeCreateTenantPaymentCustomer(result.user, result.invitation, cuid);
+    }
+  }
+
+  private async maybeCreateTenantPaymentCustomer(
+    user: any,
+    invitation: IInvitationDocument,
+    cuid: string
+  ): Promise<void> {
+    try {
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor || !paymentProcessor.chargesEnabled) {
+        this.log.info(
+          { cuid },
+          'PM has no active payment processor — skipping tenant Stripe customer creation'
+        );
+        return;
+      }
+
+      const result = await this.paymentGatewayService.createCustomer({
+        provider: IPaymentGatewayProvider.STRIPE,
+        email: user.email,
+        name: invitation.inviteeFullName || user.email,
+      });
+
+      if (!result.success || !result.data) {
+        this.log.warn(
+          { cuid, userId: user._id },
+          'Stripe customer creation returned no data for tenant — skipping'
+        );
+        return;
+      }
+
+      await this.profileDAO.update(
+        { user: user._id },
+        {
+          $set: {
+            [`tenantInfo.paymentGatewayCustomers.${paymentProcessor.accountId}`]:
+              result.data.customerId,
+          },
+        }
+      );
+
+      this.log.info(
+        { cuid, userId: user._id, customerId: result.data.customerId },
+        'Tenant Stripe customer created and stored on profile'
+      );
+    } catch (error) {
+      // Do not throw — invitation acceptance must succeed even if customer creation fails
+      this.log.error(
+        { error, cuid, userId: user._id },
+        'Error creating Stripe customer for tenant — invitation accepted without customer record'
       );
     }
   }

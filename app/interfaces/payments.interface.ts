@@ -5,6 +5,7 @@ import { IProfileDocument } from './profile.interface';
 
 export enum PaymentRecordStatus {
   CANCELLED = 'cancelled',
+  REFUNDED = 'refunded',
   PENDING = 'pending',
   OVERDUE = 'overdue',
   FAILED = 'failed',
@@ -33,6 +34,17 @@ export interface IPaymentDocument extends Document {
     uploadedAt?: Date;
     uploadedBy?: Types.ObjectId;
   };
+  dispute?: {
+    disputeId?: string;
+    amount?: number;
+    reason?: string;
+    disputedAt?: Date;
+  };
+  refund?: {
+    refundedAt?: Date;
+    amount?: number;
+    reason?: string;
+  };
   notes?: {
     note: string;
     author: string;
@@ -43,6 +55,7 @@ export interface IPaymentDocument extends Document {
   status: PaymentRecordStatus;
   recordedBy?: Types.ObjectId; // User who recorded manual payment
   gatewayPaymentId?: string;
+  gatewayChargeId?: string;
   period?: IPaymentPeriod;
   lease?: Types.ObjectId;
   tenant: Types.ObjectId; // References Profile
@@ -91,6 +104,11 @@ export interface IPaymentFormData {
 export interface IPaymentPopulated extends Omit<IPaymentDocument, 'tenant' | 'lease'> {
   tenant: IProfileDocument;
   lease?: ILeaseDocument;
+}
+
+export interface IRefundPaymentData {
+  amount?: number;
+  reason?: string;
 }
 
 export interface IPaymentPeriod {

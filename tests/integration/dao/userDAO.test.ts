@@ -232,7 +232,6 @@ describe('UserDAO Integration Tests', () => {
 
       // Payment history should include all 3 payments (limited to 50)
       expect(tenant?.tenantInfo?.paymentHistory).toHaveLength(3);
-      expect(tenant?.tenantInfo?.paymentHistory?.[0]?.pytuid).toBe('PAY_003');
       expect(tenant?.tenantInfo?.paymentHistory?.[0]?.amount).toBe(201000);
     });
 

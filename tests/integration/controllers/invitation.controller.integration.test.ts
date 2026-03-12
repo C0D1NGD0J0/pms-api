@@ -87,6 +87,7 @@ describe('InvitationController Integration Tests', () => {
       tokenService: mockTokenService,
       authCache: mockAuthCache,
       vendorService,
+      subscriptionService: {} as any,
     });
 
     const mockEmailService = {

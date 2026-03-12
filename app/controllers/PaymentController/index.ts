@@ -98,8 +98,18 @@ export class PaymentController {
 
   async getOnboardingLink(req: AppRequest, res: Response) {
     const { cuid } = req.params;
+    const { returnUrl, refreshUrl } = req.query as { returnUrl?: string; refreshUrl?: string };
 
-    const result = await this.paymentService.getKycOnboardingLink(cuid);
+    const result = await this.paymentService.getKycOnboardingLink(cuid, { returnUrl, refreshUrl });
+
+    return res.status(200).json(result);
+  }
+
+  async getAccountUpdateLink(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const { returnUrl, refreshUrl } = req.query as { returnUrl?: string; refreshUrl?: string };
+
+    const result = await this.paymentService.getAccountUpdateLink(cuid, { returnUrl, refreshUrl });
 
     return res.status(200).json(result);
   }
@@ -126,5 +136,14 @@ export class PaymentController {
     const result = await this.paymentService.cancelPayment(cuid, pytuid, reason);
 
     return res.status(200).json(result);
+  }
+
+  async refundPayment(req: AppRequest, res: Response) {
+    const { cuid, pytuid } = req.params;
+    const { amount, reason } = req.body;
+
+    const result = await this.paymentService.refundPayment(cuid, pytuid, { amount, reason });
+
+    return res.status(201).json(result);
   }
 }

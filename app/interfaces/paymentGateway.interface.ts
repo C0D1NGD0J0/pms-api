@@ -12,13 +12,6 @@ export interface IPaymentProvider {
       }
     >
   >;
-  createCustomer(data: {
-    email: string;
-    name?: string;
-    connectedAccountId?: string;
-    provider: IPaymentGatewayProvider;
-    metadata?: Record<string, string>;
-  }): Promise<IPaymentCustomer>;
   createCheckoutSession(data: {
     customerId: string;
     priceId: string;
@@ -26,12 +19,37 @@ export interface IPaymentProvider {
     cancelUrl: string;
     metadata?: Record<string, string>;
   }): Promise<ICheckoutSession>;
+  createTransfer(params: {
+    amountInCents: number;
+    currency: string;
+    destination: string;
+    metadata?: Record<string, string>;
+  }): Promise<{ transferId: string; amount: number }>;
+  createRefund(params: {
+    chargeId: string;
+    amountInCents?: number;
+    reason?: string;
+  }): Promise<{ refundId: string; status: string; amount: number; currency: string }>;
+  createCustomer(data: {
+    email: string;
+    name?: string;
+    provider: IPaymentGatewayProvider;
+    metadata?: Record<string, string>;
+  }): Promise<IPaymentCustomer>;
   createKycOnboardingLink(params: {
     accountId: string;
     refreshUrl: string;
     returnUrl: string;
   }): Promise<IOnboardingLinkResponse>;
-  finalizeInvoice(invoiceId: string, connectedAccountId: string): Promise<IFinalizeInvoiceResponse>;
+  createAccountUpdateLink(params: {
+    accountId: string;
+    refreshUrl: string;
+    returnUrl: string;
+  }): Promise<IOnboardingLinkResponse>;
+  createTransferReversal(
+    transferId: string,
+    amountInCents?: number
+  ): Promise<{ reversalId: string; amount: number }>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
   updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
   createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse>;
@@ -39,12 +57,35 @@ export interface IPaymentProvider {
   createDashboardLoginLink(accountId: string): Promise<IOnboardingLinkResponse>;
   createInvoice(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse>;
   cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
-  getInvoice(invoiceId: string, connectedAccountId: string): Promise<any>;
+  finalizeInvoice(invoiceId: string): Promise<IFinalizeInvoiceResponse>;
   getSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
   getCustomer(customerId: string): Promise<Stripe.Customer>;
   getCharge(chargeId: string): Promise<Stripe.Charge>;
   getConnectAccount(accountId: string): Promise<any>;
+  getInvoice(invoiceId: string): Promise<any>;
   getProducts(): Promise<Stripe.Product[]>;
+}
+
+export interface ICreateConnectAccountInput {
+  businessProfile?: {
+    companyName: string;
+    email: string;
+    phone?: string;
+    address?: string;
+    url?: string;
+    productDescription?: string;
+  };
+  prefill?: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    companyName?: string;
+  };
+  businessType: 'individual' | 'company';
+  metadata?: Record<string, string>;
+  country: string;
+  email: string;
+  cuid: string;
 }
 
 export interface ICreateInvoiceInput {
@@ -61,30 +102,6 @@ export interface ICreateInvoiceInput {
   currency: string;
   leaseUid: string;
   cuid: string;
-}
-
-export interface ICreateConnectAccountInput {
-  businessProfile?: {
-    companyName: string;
-    email: string;
-    phone?: string;
-    address?: string;
-    url?: string;
-    productDescription?: string;
-  };
-  businessType: 'individual' | 'company';
-  metadata?: Record<string, string>;
-  country: string;
-  email: string;
-  cuid: string;
-}
-
-export interface ICreateCustomerInput {
-  metadata?: Record<string, string>;
-  provider: IPaymentGatewayProvider;
-  connectedAccountId?: string; // For creating customer on PM's connected account (Stripe Connect)
-  email: string;
-  name?: string;
 }
 
 export interface IConnectAccountResponse {
@@ -105,6 +122,7 @@ export interface ICreateCheckoutInput {
   cancelUrl: string;
   priceId: string;
 }
+
 export interface ICreateInvoiceResponse {
   status: 'draft' | 'open' | 'paid' | 'uncollectible' | 'void';
   hostedInvoiceUrl?: string;
@@ -112,7 +130,6 @@ export interface ICreateInvoiceResponse {
   amountDue: number;
   dueDate?: Date;
 }
-
 export interface ICheckoutSession {
   provider: IPaymentGatewayProvider;
   metadata?: Record<string, string>;
@@ -127,6 +144,13 @@ export interface IPaymentCustomer {
   customerId: string;
   createdAt?: Date;
   email: string;
+}
+
+export interface ICreateCustomerInput {
+  metadata?: Record<string, string>;
+  provider: IPaymentGatewayProvider;
+  email: string;
+  name?: string;
 }
 
 export interface IFinalizeInvoiceResponse {

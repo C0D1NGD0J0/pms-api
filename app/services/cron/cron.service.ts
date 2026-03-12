@@ -4,12 +4,14 @@ import { CronQueue } from '@queues/cron.queue';
 import { QueueFactory } from '@services/queue';
 import { LeaseService } from '@services/lease';
 import { NotificationService } from '@services/notification';
+import { PaymentService } from '@services/payments/payments.service';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 
 interface IConstructor {
   notificationService?: NotificationService;
   subscriptionService: SubscriptionService;
+  paymentService: PaymentService;
   leaseService: LeaseService;
   queueFactory: QueueFactory;
 }
@@ -25,12 +27,14 @@ export class CronService {
   private queueFactory: QueueFactory;
   private cronJobs: Map<string, ICronJob> = new Map();
 
-  constructor({ queueFactory, leaseService, subscriptionService }: IConstructor) {
+  constructor({ queueFactory, leaseService, subscriptionService, paymentService }: IConstructor) {
     this.log = createLogger('CronService');
     this.queueFactory = queueFactory;
 
     // collects cron jobs from all services that implement ICronProvider
-    const services: ICronProvider[] = [leaseService, subscriptionService].filter(Boolean);
+    const services: ICronProvider[] = [leaseService, subscriptionService, paymentService].filter(
+      Boolean
+    );
 
     this.registerAllCronJobs(services);
   }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, jest, it } from '@jest/globals';
 import { NotificationService } from '@services/notification/notification.service';
-import { NotificationPriorityEnum, NotificationTypeEnum, RecipientTypeEnum } from '@interfaces/notification.interface';
+import { NotificationPriorityEnum, INotificationDocument, NotificationTypeEnum, RecipientTypeEnum } from '@interfaces/notification.interface';
 
 // Mock NotificationDAO
 const mockNotificationDAO = {
@@ -73,15 +73,15 @@ describe('NotificationService - New Methods', () => {
     } as any);
 
     // Mock createNotification to avoid database calls
-    notificationService.createNotification = jest.fn().mockResolvedValue({
+    jest.spyOn(notificationService, 'createNotification').mockReturnValue(Promise.resolve({
       success: true,
-      data: { nuid: 'test-notification-id' },
-    });
+      data: { nuid: 'test-notification-id' } as unknown as INotificationDocument,
+    }));
 
     // Spy on the actual logger methods
-    jest.spyOn(notificationService['log'], 'error').mockImplementation();
-    jest.spyOn(notificationService['log'], 'info').mockImplementation();
-    jest.spyOn(notificationService['log'], 'warn').mockImplementation();
+    jest.spyOn(notificationService['log'], 'error').mockImplementation((_msg: unknown) => undefined);
+    jest.spyOn(notificationService['log'], 'info').mockImplementation((_msg: unknown) => undefined);
+    jest.spyOn(notificationService['log'], 'warn').mockImplementation((_msg: unknown) => undefined);
   });
 
   describe('notifyLeaseLifecycleEvent', () => {
@@ -262,7 +262,7 @@ describe('NotificationService - New Methods', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      (notificationService.createNotification as jest.Mock).mockRejectedValueOnce(
+      (notificationService.createNotification as jest.MockedFunction<typeof notificationService.createNotification>).mockRejectedValueOnce(
         new Error('Database error')
       );
 
@@ -388,7 +388,7 @@ describe('NotificationService - New Methods', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      (notificationService.createNotification as jest.Mock).mockRejectedValueOnce(
+      (notificationService.createNotification as jest.MockedFunction<typeof notificationService.createNotification>).mockRejectedValueOnce(
         new Error('Notification creation failed')
       );
 

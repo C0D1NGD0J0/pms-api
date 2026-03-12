@@ -338,13 +338,19 @@ describe('PermissionService Integration Tests', () => {
         sub: 'admin-123',
         uid: 'admin-uid',
         email: 'admin@test.com',
+        fullname: 'Admin User',
+        displayName: 'Admin User',
+        avatarUrl: '',
+        isActive: true,
+        clients: [],
+        preferences: {},
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.ADMIN,
         },
         permissions: [],
-      } as ICurrentUser;
+      };
 
       const property = {
         _id: 'prop-123',
@@ -367,13 +373,19 @@ describe('PermissionService Integration Tests', () => {
         sub: 'manager-123',
         uid: 'manager-uid',
         email: 'manager@test.com',
+        fullname: 'Manager User',
+        displayName: 'Manager User',
+        avatarUrl: '',
+        isActive: true,
+        clients: [],
+        preferences: {},
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.MANAGER,
         },
         permissions: [],
-      } as ICurrentUser;
+      };
 
       const property = {
         _id: 'prop-123',
@@ -396,13 +408,19 @@ describe('PermissionService Integration Tests', () => {
         sub: 'admin-123',
         uid: 'admin-uid',
         email: 'admin@test.com',
+        fullname: 'Admin User',
+        displayName: 'Admin User',
+        avatarUrl: '',
+        isActive: true,
+        clients: [],
+        preferences: {},
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.ADMIN,
         },
         permissions: [],
-      } as ICurrentUser;
+      };
 
       const property = {
         _id: 'prop-123',
@@ -425,13 +443,19 @@ describe('PermissionService Integration Tests', () => {
         sub: 'tenant-123',
         uid: 'tenant-uid',
         email: 'tenant@test.com',
+        fullname: 'Tenant User',
+        displayName: 'Tenant User',
+        avatarUrl: '',
+        isActive: true,
+        clients: [],
+        preferences: {},
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.TENANT,
         },
         permissions: [],
-      } as ICurrentUser;
+      };
 
       const property = {
         _id: 'prop-456',
@@ -456,14 +480,19 @@ describe('PermissionService Integration Tests', () => {
         sub: 'admin-123',
         uid: 'admin-uid',
         email: 'admin@test.com',
+        fullname: 'Admin User',
+        displayName: 'Admin User',
+        avatarUrl: '',
+        isActive: true,
         clients: [{ cuid: 'test-cuid', isConnected: true } as any],
+        preferences: {},
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.ADMIN,
         },
         permissions: [],
-      } as ICurrentUser;
+      };
 
       const property = { _id: 'prop-123', cuid: 'test-cuid' };
 
@@ -482,14 +511,19 @@ describe('PermissionService Integration Tests', () => {
         sub: 'tenant-123',
         uid: 'tenant-uid',
         email: 'tenant@test.com',
+        fullname: 'Tenant User',
+        displayName: 'Tenant User',
+        avatarUrl: '',
+        isActive: true,
         clients: [{ cuid: 'test-cuid', isConnected: true } as any],
+        preferences: {},
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.TENANT,
         },
         permissions: [],
-      } as ICurrentUser;
+      };
 
       const property = { _id: 'prop-123', cuid: 'test-cuid' };
 
@@ -508,14 +542,19 @@ describe('PermissionService Integration Tests', () => {
         sub: 'user-123',
         uid: 'user-uid',
         email: 'user@test.com',
+        fullname: 'Disconnected User',
+        displayName: 'Disconnected User',
+        avatarUrl: '',
+        isActive: true,
         clients: [{ cuid: 'test-cuid', isConnected: false } as any],
+        preferences: {},
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
           role: ROLES.ADMIN,
         },
         permissions: [],
-      } as ICurrentUser;
+      };
 
       const property = { _id: 'prop-123', cuid: 'test-cuid' };
 

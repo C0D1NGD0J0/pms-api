@@ -1,8 +1,12 @@
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
 import { FilterQuery, Types } from 'mongoose';
 import { envVariables } from '@shared/config';
+import { QueueFactory } from '@services/queue';
+import { PaymentQueue } from '@queues/payment.queue';
+import { EventTypes } from '@interfaces/events.interface';
+import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionPlanConfig } from '@services/subscription';
+import { getPaymentProcessorUrls, createLogger } from '@utils/index';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IPromiseReturnedData, IPaginateResult } from '@interfaces/utils.interface';
@@ -20,6 +24,7 @@ import {
   IPaymentGatewayProvider,
   IManualPaymentFormData,
   PaymentRecordStatus,
+  IRefundPaymentData,
   IPaymentPopulated,
   PaymentRecordType,
   IPaymentDocument,
@@ -32,7 +37,9 @@ interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
+  emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
+  queueFactory: QueueFactory;
   paymentDAO: PaymentDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
@@ -47,6 +54,8 @@ export class PaymentService implements ICronProvider {
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly paymentDAO: PaymentDAO;
+  private readonly emitterService: EventEmitterService;
+  private readonly queueFactory: QueueFactory;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
@@ -58,6 +67,8 @@ export class PaymentService implements ICronProvider {
     clientDAO,
     paymentDAO,
     leaseDAO,
+    emitterService,
+    queueFactory,
     subscriptionDAO,
     paymentProcessorDAO,
     subscriptionPlanConfig,
@@ -68,6 +79,8 @@ export class PaymentService implements ICronProvider {
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.paymentDAO = paymentDAO;
+    this.emitterService = emitterService;
+    this.queueFactory = queueFactory;
     this.subscriptionDAO = subscriptionDAO;
     this.log = createLogger('PaymentService');
     this.paymentProcessorDAO = paymentProcessorDAO;
@@ -76,7 +89,139 @@ export class PaymentService implements ICronProvider {
   }
 
   getCronJobs(): ICronJob[] {
-    return [];
+    return [
+      {
+        name: 'payment.weekly-rent-invoices',
+        schedule: '0 0 * * 0', // Sunday midnight UTC
+        handler: this.queueWeeklyRentInvoices.bind(this),
+        enabled: true,
+        service: 'PaymentService',
+        description: 'Queue rent invoice creation for leases due in the upcoming week',
+        timeout: 600000,
+      },
+      {
+        name: 'payment.daily-rent-safety-net',
+        schedule: '0 9 * * *', // 9 AM UTC daily
+        handler: this.queueDailySafetyNetInvoices.bind(this),
+        enabled: true,
+        service: 'PaymentService',
+        description:
+          'Queue rent invoices for leases due today or tomorrow (catches any missed by weekly job)',
+        timeout: 300000,
+      },
+    ];
+  }
+
+  /**
+   * Returns the next due date for a lease given its rentDueDay and a reference date.
+   * If the due day has already passed this month, returns next month's due date.
+   */
+  private calculateNextDueDate(rentDueDay: number, referenceDate: Date): Date {
+    const year = referenceDate.getFullYear();
+    const month = referenceDate.getMonth(); // 0-indexed
+    const thisMonthDue = new Date(year, month, rentDueDay);
+    if (thisMonthDue >= referenceDate) {
+      return thisMonthDue;
+    }
+    return new Date(year, month + 1, rentDueDay);
+  }
+
+  /**
+   * Weekly cron (Sunday midnight): queue invoice jobs for leases due in the next 7 days.
+   */
+  private async queueWeeklyRentInvoices(): Promise<void> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const sevenDaysLater = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const { items: leases } = await this.leaseDAO.list(
+      { status: LeaseStatus.ACTIVE, 'fees.acceptedPaymentMethod': 'auto-debit', deletedAt: null },
+      { limit: 5000 }
+    );
+
+    let queued = 0;
+    for (const lease of leases) {
+      try {
+        const dueDate = this.calculateNextDueDate(lease.fees.rentDueDay, today);
+        if (dueDate < today || dueDate > sevenDaysLater) continue;
+
+        const period = { month: dueDate.getMonth() + 1, year: dueDate.getFullYear() };
+        const existing = await this.paymentDAO.findByPeriod(
+          lease.cuid,
+          lease._id.toString(),
+          period.month,
+          period.year
+        );
+        if (existing) continue;
+
+        const paymentQueue = this.queueFactory.getQueue('paymentQueue') as PaymentQueue;
+        await paymentQueue.addCreateRentInvoiceJob({
+          cuid: lease.cuid,
+          leaseId: lease._id.toString(),
+          tenantId: lease.tenantId.toString(),
+          period,
+          dueDate,
+          paymentType: PaymentRecordType.RENT,
+        });
+        queued++;
+      } catch (error) {
+        this.log.error(
+          { error, leaseId: lease._id },
+          'Weekly rent invoice: error processing lease'
+        );
+      }
+    }
+
+    this.log.info({ queued, total: leases.length }, 'Weekly rent invoice queue complete');
+  }
+
+  /**
+   * Daily cron (9 AM): safety net for leases due today or tomorrow.
+   */
+  private async queueDailySafetyNetInvoices(): Promise<void> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+
+    const { items: leases } = await this.leaseDAO.list(
+      {
+        status: LeaseStatus.ACTIVE,
+        'fees.acceptedPaymentMethod': 'auto-debit',
+        'fees.rentDueDay': { $in: [today.getDate(), tomorrow.getDate()] },
+        deletedAt: null,
+      },
+      { limit: 5000 }
+    );
+
+    let queued = 0;
+    for (const lease of leases) {
+      try {
+        const dueDate = this.calculateNextDueDate(lease.fees.rentDueDay, today);
+        const period = { month: dueDate.getMonth() + 1, year: dueDate.getFullYear() };
+        const existing = await this.paymentDAO.findByPeriod(
+          lease.cuid,
+          lease._id.toString(),
+          period.month,
+          period.year
+        );
+        if (existing) continue;
+
+        const paymentQueue = this.queueFactory.getQueue('paymentQueue') as PaymentQueue;
+        await paymentQueue.addCreateRentInvoiceJob({
+          cuid: lease.cuid,
+          leaseId: lease._id.toString(),
+          tenantId: lease.tenantId.toString(),
+          period,
+          dueDate,
+          paymentType: PaymentRecordType.RENT,
+        });
+        queued++;
+      } catch (error) {
+        this.log.error({ error, leaseId: lease._id }, 'Daily safety net: error processing lease');
+      }
+    }
+
+    this.log.info({ queued, total: leases.length }, 'Daily rent invoice safety net complete');
   }
 
   async recordManualPayment(
@@ -118,6 +263,9 @@ export class PaymentService implements ICronProvider {
         description: data.description,
         recordedBy: new Types.ObjectId(userId),
         isManualEntry: true,
+        ...(data.receipt
+          ? { receipt: { ...data.receipt, uploadedBy: new Types.ObjectId(userId) } }
+          : {}),
       });
 
       return {
@@ -222,8 +370,7 @@ export class PaymentService implements ICronProvider {
 
       const finalizeResult = await this.paymentGatewayService.finalizeInvoice(
         IPaymentGatewayProvider.STRIPE,
-        invoiceResult.data.invoiceId,
-        paymentProcessor.accountId
+        invoiceResult.data.invoiceId
       );
 
       if (!finalizeResult.success) {
@@ -305,7 +452,8 @@ export class PaymentService implements ICronProvider {
               select: 'property',
             },
           ],
-          projection: 'pytuid paymentMethod baseAmount processingFee status dueDate paidAt period',
+          projection:
+            'pytuid paymentMethod paymentType baseAmount processingFee status dueDate paidAt period',
           skip: filters?.skip,
           limit: filters?.limit,
         },
@@ -323,11 +471,13 @@ export class PaymentService implements ICronProvider {
                 'Unknown Tenant',
             }
           : null,
-        property: payment.lease?.property?.address || 'Unknown Property',
+        property:
+          payment.lease?.property?.name || payment.lease?.property?.address || 'Unknown Property',
         amount: payment.baseAmount + (payment.processingFee || 0),
         baseAmount: payment.baseAmount,
         processingFee: payment.processingFee || 0,
         status: payment.status,
+        paymentType: payment.paymentType,
         paymentMethod: payment.paymentMethod,
         dueDate: payment.dueDate,
         paidAt: payment.paidAt,
@@ -348,25 +498,7 @@ export class PaymentService implements ICronProvider {
     }
   }
 
-  async getPaymentByUid(
-    cuid: string,
-    pytuid: string
-  ): IPromiseReturnedData<{
-    tenantProfile: { firstName?: string; lastName?: string; email?: string; puid?: string };
-    leaseInfo: {
-      address?: any;
-      leaseNumber?: string;
-      status?: string;
-      leaseUid?: string;
-      startDate?: Date;
-      endDate?: Date;
-      unitNumber?: string;
-      propertyName?: string;
-      propertyType?: string;
-      bedrooms?: number;
-      bathrooms?: number;
-    } | null;
-  }> {
+  async getPaymentByUid(cuid: string, pytuid: string): IPromiseReturnedData<any> {
     try {
       if (!cuid || !pytuid) {
         throw new BadRequestError({ message: 'Client ID and Payment ID are required' });
@@ -499,14 +631,26 @@ export class PaymentService implements ICronProvider {
         throw new NotFoundError({ message: 'Client not found' });
       }
 
+      // Fetch the account admin's profile to prefill the Stripe KYC form
+      const adminProfile = client.accountAdmin
+        ? await this.profileDAO.findFirst({ user: client.accountAdmin })
+        : null;
+
+      const isEnterprise = client.accountType.isEnterpriseAccount;
       const accountResult = await this.paymentGatewayService.createConnectAccount(
         IPaymentGatewayProvider.STRIPE,
         {
           cuid,
           email: data.email,
           country: data.country,
-          businessType: client.accountType.isEnterpriseAccount ? 'company' : 'individual',
+          businessType: isEnterprise ? 'company' : 'individual',
           metadata: { cuid },
+          prefill: {
+            firstName: adminProfile?.personalInfo?.firstName,
+            lastName: adminProfile?.personalInfo?.lastName,
+            phone: adminProfile?.personalInfo?.phoneNumber,
+            companyName: isEnterprise ? (client as any).companyName : undefined,
+          },
         }
       );
       if (!accountResult.success || !accountResult.data) {
@@ -540,7 +684,10 @@ export class PaymentService implements ICronProvider {
     }
   }
 
-  async getKycOnboardingLink(cuid: string): IPromiseReturnedData<{ url: string }> {
+  async getKycOnboardingLink(
+    cuid: string,
+    urlOverrides?: { returnUrl?: string; refreshUrl?: string }
+  ): IPromiseReturnedData<{ url: string }> {
     try {
       const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
       if (!paymentProcessor || !paymentProcessor.accountId) {
@@ -550,12 +697,13 @@ export class PaymentService implements ICronProvider {
       }
 
       const baseUrl = envVariables.FRONTEND.URL || 'http://localhost:3000';
+      const fallback = getPaymentProcessorUrls(baseUrl, cuid);
       const linkResult = await this.paymentGatewayService.createKycOnboardingLink(
         IPaymentGatewayProvider.STRIPE,
         {
           accountId: paymentProcessor.accountId,
-          refreshUrl: `${baseUrl}/client/${cuid}/account_settings/payment/refresh`,
-          returnUrl: `${baseUrl}/client/${cuid}/account_settings/payment/success`,
+          refreshUrl: urlOverrides?.refreshUrl || fallback.refreshUrl,
+          returnUrl: urlOverrides?.returnUrl || fallback.kycReturnUrl,
         }
       );
 
@@ -572,6 +720,48 @@ export class PaymentService implements ICronProvider {
       };
     } catch (error) {
       this.log.error('Error creating onboarding link', error);
+      throw error;
+    }
+  }
+
+  async getAccountUpdateLink(
+    cuid: string,
+    urlOverrides?: { returnUrl?: string; refreshUrl?: string }
+  ): IPromiseReturnedData<{ url: string }> {
+    try {
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor || !paymentProcessor.accountId) {
+        throw new BadRequestError({
+          message: 'No Connect account found.',
+        });
+      }
+
+      const baseUrl = envVariables.FRONTEND.URL || 'http://localhost:3000';
+      const fallback = getPaymentProcessorUrls(baseUrl, cuid);
+      // Express accounts only support account_onboarding type — Stripe shows the
+      // appropriate update form when the account is already verified.
+      const linkResult = await this.paymentGatewayService.createKycOnboardingLink(
+        IPaymentGatewayProvider.STRIPE,
+        {
+          accountId: paymentProcessor.accountId,
+          refreshUrl: urlOverrides?.refreshUrl || fallback.refreshUrl,
+          returnUrl: urlOverrides?.returnUrl || fallback.accountUpdateReturnUrl,
+        }
+      );
+
+      if (!linkResult.success || !linkResult.data) {
+        throw new BadRequestError({
+          message: linkResult.message || 'Failed to create account update link',
+        });
+      }
+
+      return {
+        success: true,
+        data: { url: linkResult.data.url },
+        message: 'Account update link created successfully',
+      };
+    } catch (error) {
+      this.log.error('Error creating account update link', error);
       throw error;
     }
   }
@@ -724,6 +914,14 @@ export class PaymentService implements ICronProvider {
         chargeId,
       });
 
+      this.emitterService.emit(EventTypes.PAYMENT_SUCCEEDED, {
+        cuid: payment.cuid,
+        pytuid: payment.pytuid,
+        invoiceId,
+        amount: payment.baseAmount,
+        paidAt: new Date(),
+      });
+
       return {
         success: true,
         data: undefined,
@@ -782,6 +980,12 @@ export class PaymentService implements ICronProvider {
         nextPaymentAttempt,
       });
 
+      this.emitterService.emit(EventTypes.PAYMENT_FAILED, {
+        cuid: payment.cuid,
+        pytuid: payment.pytuid,
+        invoiceId,
+      });
+
       return {
         success: true,
         data: undefined,
@@ -817,24 +1021,29 @@ export class PaymentService implements ICronProvider {
       }
 
       const refundAmountInCents = chargeData.amount_refunded || 0;
-      const isFullRefund = refundAmountInCents >= payment.baseAmount;
 
       await this.paymentDAO.update(
         { _id: payment._id },
         {
           $set: {
-            refundedAt: new Date(),
-            refundAmount: refundAmountInCents,
-            // Note: Status remains PAID - refundedAt and refundAmount indicate refund
+            status: PaymentRecordStatus.REFUNDED,
+            'refund.refundedAt': new Date(),
+            'refund.amount': refundAmountInCents,
           },
         }
       );
 
-      this.log.info('Payment refund processed', {
+      this.log.info('Payment refund processed via webhook', {
         pytuid: payment.pytuid,
         chargeId,
         refundAmount: refundAmountInCents,
-        isFullRefund,
+      });
+
+      this.emitterService.emit(EventTypes.PAYMENT_REFUNDED, {
+        cuid: payment.cuid,
+        pytuid: payment.pytuid,
+        chargeId,
+        refundAmount: refundAmountInCents,
       });
 
       return {
@@ -848,6 +1057,70 @@ export class PaymentService implements ICronProvider {
     }
   }
 
+  async refundPayment(
+    cuid: string,
+    pytuid: string,
+    data: IRefundPaymentData
+  ): IPromiseReturnedData<IPaymentDocument> {
+    try {
+      if (!cuid || !pytuid) {
+        throw new BadRequestError({ message: 'Client ID and payment ID are required' });
+      }
+
+      const payment = await this.paymentDAO.findFirst({ pytuid, cuid, deletedAt: null });
+      if (!payment) {
+        throw new NotFoundError({ message: 'Payment not found' });
+      }
+
+      if (payment.status !== PaymentRecordStatus.PAID) {
+        throw new BadRequestError({
+          message: `Cannot refund a payment with status: ${payment.status}`,
+        });
+      }
+
+      if (!payment.gatewayChargeId) {
+        throw new BadRequestError({
+          message: 'Refunds are only available for online payments processed through Stripe',
+        });
+      }
+
+      if (data.amount && data.amount > payment.baseAmount) {
+        throw new BadRequestError({
+          message: `Refund amount cannot exceed the original payment amount of ${payment.baseAmount}`,
+        });
+      }
+
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor?.accountId) {
+        throw new BadRequestError({ message: 'Payment processor not configured for this account' });
+      }
+
+      await this.paymentGatewayService.createRefund(IPaymentGatewayProvider.STRIPE, {
+        chargeId: payment.gatewayChargeId,
+        amountInCents: data.amount,
+        reason: data.reason,
+      });
+
+      const updated = await this.paymentDAO.updateById((payment as any)._id.toString(), {
+        status: PaymentRecordStatus.REFUNDED,
+        'refund.refundedAt': new Date(),
+        'refund.amount': data.amount || payment.baseAmount,
+        'refund.reason': data.reason,
+      });
+
+      this.log.info('Payment refund initiated', {
+        pytuid: payment.pytuid,
+        refundAmount: data.amount || payment.baseAmount,
+        isPartial: !!data.amount && data.amount < payment.baseAmount,
+      });
+
+      return { success: true, data: updated as IPaymentDocument };
+    } catch (error: any) {
+      this.log.error({ error: error.message, cuid, pytuid }, 'Error refunding payment');
+      throw error;
+    }
+  }
+
   /**
    * Webhook handler: account.updated
    * Updates PaymentProcessor when PM's Stripe Connect account changes
@@ -855,7 +1128,7 @@ export class PaymentService implements ICronProvider {
    * @param accountId - Stripe Connect account ID
    * @param accountData - Full account object from Stripe webhook
    */
-  async handleAccountUpdated(accountId: string, accountData: any): IPromiseReturnedData<void> {
+  async handleAccountUpdated(accountId: string, accountData: any): IPromiseReturnedData<null> {
     try {
       const paymentProcessor = await this.paymentProcessorDAO.findFirst({
         accountId,
@@ -865,15 +1138,18 @@ export class PaymentService implements ICronProvider {
         this.log.warn('PaymentProcessor not found for account', { accountId });
         return {
           success: false,
-          data: undefined,
+          data: null,
           message: 'PaymentProcessor record not found',
         };
       }
+
+      const justVerified = !paymentProcessor.payoutsEnabled && accountData.payouts_enabled;
 
       const updateData: any = {
         chargesEnabled: accountData.charges_enabled || false,
         payoutsEnabled: accountData.payouts_enabled || false,
         detailsSubmitted: accountData.details_submitted || false,
+        ...(justVerified && { onboardedAt: new Date() }),
       };
 
       if (accountData.requirements) {
@@ -889,18 +1165,161 @@ export class PaymentService implements ICronProvider {
 
       this.log.info('PaymentProcessor updated from webhook', {
         accountId,
+        justVerified,
         chargesEnabled: updateData.chargesEnabled,
         payoutsEnabled: updateData.payoutsEnabled,
         detailsSubmitted: updateData.detailsSubmitted,
       });
 
+      if (justVerified) {
+        this.emitterService.emit(EventTypes.PAYMENT_PROCESSOR_VERIFIED, {
+          cuid: paymentProcessor.cuid,
+          accountId,
+          verifiedAt: new Date(),
+        });
+      }
+
       return {
+        data: null,
         success: true,
-        data: undefined,
         message: 'PaymentProcessor updated successfully',
       };
     } catch (error: any) {
       this.log.error('Error handling account updated', { accountId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Webhook handler: charge.dispute.created
+   * Reverses the transfer to recover disputed funds from PM, then notifies PM.
+   */
+  async handleDisputeCreated(disputeId: string, disputeData: any): IPromiseReturnedData<void> {
+    try {
+      const chargeId =
+        typeof disputeData.charge === 'string' ? disputeData.charge : disputeData.charge?.id;
+      const amount: number = disputeData.amount;
+      const currency: string = disputeData.currency;
+      const reason: string = disputeData.reason || 'unknown';
+
+      const payment = await this.paymentDAO.findFirst({
+        gatewayChargeId: chargeId,
+        deletedAt: null,
+      });
+      if (!payment) {
+        this.log.warn('Payment not found for disputed charge', { chargeId, disputeId });
+        return { success: false, data: undefined, message: 'Payment record not found' };
+      }
+
+      // Get the original charge to find the transfer ID, then reverse it
+      const chargeResult = await this.paymentGatewayService.getCharge(
+        IPaymentGatewayProvider.STRIPE,
+        chargeId
+      );
+      const transferRaw = chargeResult.data?.transfer;
+      const transferId = typeof transferRaw === 'string' ? transferRaw : (transferRaw as any)?.id;
+
+      if (transferId) {
+        await this.paymentGatewayService.createTransferReversal(
+          IPaymentGatewayProvider.STRIPE,
+          transferId,
+          amount
+        );
+        this.log.info('Transfer reversed for dispute', { disputeId, transferId, amount });
+      } else {
+        this.log.warn('No transfer on charge — skipping reversal', { chargeId, disputeId });
+      }
+
+      await this.paymentDAO.update(
+        { _id: payment._id },
+        {
+          $set: {
+            'dispute.disputeId': disputeId,
+            'dispute.amount': amount,
+            'dispute.reason': reason,
+            'dispute.disputedAt': new Date(),
+          },
+        }
+      );
+
+      this.emitterService.emit(EventTypes.PAYMENT_DISPUTE_CREATED, {
+        cuid: payment.cuid,
+        pytuid: payment.pytuid,
+        disputeId,
+        invoiceNumber: payment.invoiceNumber,
+        chargeId,
+        amount,
+        currency,
+        reason,
+      });
+
+      this.log.info('Dispute handled — transfer reversed, PM notified', {
+        disputeId,
+        chargeId,
+        pytuid: payment.pytuid,
+      });
+      return { success: true, data: undefined, message: 'Dispute handled' };
+    } catch (error: any) {
+      this.log.error('Error handling dispute created', { disputeId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Webhook handler: charge.dispute.funds_reinstated
+   * Platform won the dispute — re-transfer funds back to PM.
+   */
+  async handleDisputeWon(disputeId: string, disputeData: any): IPromiseReturnedData<void> {
+    try {
+      const chargeId =
+        typeof disputeData.charge === 'string' ? disputeData.charge : disputeData.charge?.id;
+      const amount: number = disputeData.amount;
+      const currency: string = disputeData.currency;
+
+      const payment = await this.paymentDAO.findFirst({
+        gatewayChargeId: chargeId,
+        deletedAt: null,
+      });
+      if (!payment) {
+        this.log.warn('Payment not found for won dispute charge', { chargeId, disputeId });
+        return { success: false, data: undefined, message: 'Payment record not found' };
+      }
+
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid: payment.cuid });
+      if (!paymentProcessor?.accountId) {
+        this.log.warn('Payment processor not found for won dispute', {
+          cuid: payment.cuid,
+          disputeId,
+        });
+        return { success: false, data: undefined, message: 'Payment processor not found' };
+      }
+
+      // Re-transfer the disputed amount back to the PM
+      await this.paymentGatewayService.createTransfer(IPaymentGatewayProvider.STRIPE, {
+        amountInCents: amount,
+        currency,
+        destination: paymentProcessor.accountId,
+        metadata: { disputeId, reason: 'dispute_won', invoiceNumber: payment.invoiceNumber },
+      });
+
+      this.emitterService.emit(EventTypes.PAYMENT_DISPUTE_WON, {
+        cuid: payment.cuid,
+        pytuid: payment.pytuid,
+        disputeId,
+        invoiceNumber: payment.invoiceNumber,
+        chargeId,
+        amount,
+        currency,
+      });
+
+      this.log.info('Dispute won — PM re-transferred and notified', {
+        disputeId,
+        chargeId,
+        pytuid: payment.pytuid,
+      });
+      return { success: true, data: undefined, message: 'Dispute won handled' };
+    } catch (error: any) {
+      this.log.error('Error handling dispute won', { disputeId, error });
       throw error;
     }
   }
@@ -914,6 +1333,7 @@ export class PaymentService implements ICronProvider {
     collected: number;
     pending: number;
     overdue: number;
+    refunded: number;
     collectionRate: number;
     currency: string;
   }> {
@@ -923,48 +1343,58 @@ export class PaymentService implements ICronProvider {
         throw new NotFoundError({ message: 'Client not found' });
       }
 
-      // Get current month's date range
-      const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      // Fetch ALL payments for this client across all time (no date filter).
+      // Overdue payments from past months are still outstanding and relevant —
+      // restricting to current month would hide unpaid historical debt.
+      const result = await this.paymentDAO.findByCuid(cuid, {}, { limit: 10000 });
+      const allPayments = result.items || [];
 
-      // Fetch payments for current month directly using dueDate range
-      const result = await this.paymentDAO.findByCuid(
-        cuid,
-        { dueDate: { $gte: startOfMonth, $lte: endOfMonth } },
-        { limit: 10000 },
-      );
-      const paymentsThisMonth = result.items || [];
-      // Calculate stats
-      let expectedRevenue = 0;
-      let collected = 0;
-      let pending = 0;
-      let overdue = 0;
+      // Running totals — all values are in cents (e.g. 150000 = $1,500.00)
+      let expectedRevenue = 0; // PAID + PENDING + OVERDUE (excludes CANCELLED, FAILED, REFUNDED)
+      let collected = 0; // Sum of all PAID payments (baseAmount)
+      let pending = 0; // Sum of all PENDING payments (baseAmount)
+      let overdue = 0; // Sum of all OVERDUE payments (baseAmount)
+      let refunded = 0; // Sum of all REFUNDED amounts (refundAmount if partial, else baseAmount)
 
-      paymentsThisMonth.forEach((payment) => {
-        const amount = payment.baseAmount;
+      allPayments.forEach((payment) => {
+        // baseAmount is stored in cents. Guard against missing values on legacy records.
+        const amount = payment.baseAmount ?? 0;
 
         switch (payment.status) {
+          // CANCELLED and FAILED payments are excluded from all stats —
+          // they were never collected and are no longer expected.
           case PaymentRecordStatus.CANCELLED:
           case PaymentRecordStatus.FAILED:
-            // FAILED and CANCELLED payments don't count toward any stat
-            // They are excluded from expectedRevenue
             break;
+
+          // REFUNDED: use refundAmount (partial refund) or full baseAmount (full refund).
+          // Refunded payments are excluded from expectedRevenue since the money was returned.
+          case PaymentRecordStatus.REFUNDED:
+            refunded += payment.refund?.amount || amount;
+            break;
+
+          // PENDING: payment is due but not yet collected.
+          // Counts toward expectedRevenue because it is expected to be paid.
           case PaymentRecordStatus.PENDING:
             expectedRevenue += amount;
             pending += amount;
             break;
+
+          // OVERDUE: payment is past its due date and still unpaid.
+          // Counts toward expectedRevenue — the money is owed and tracked.
           case PaymentRecordStatus.OVERDUE:
             expectedRevenue += amount;
             overdue += amount;
             break;
+
+          // PAID: payment was successfully collected.
+          // Counts toward both expectedRevenue and collected.
           case PaymentRecordStatus.PAID:
-            // Only PAID payments contribute to expected revenue and collected
             expectedRevenue += amount;
             collected += amount;
             break;
+
           default:
-            // Log unknown status for debugging
             this.log.warn('Unknown payment status encountered', {
               status: payment.status,
               pytuid: payment.pytuid,
@@ -973,17 +1403,21 @@ export class PaymentService implements ICronProvider {
         }
       });
 
+      // collectionRate = what percentage of expected revenue has actually been collected.
+      // Formula: (collected / expectedRevenue) * 100, rounded to nearest integer.
+      // Example: collected=$453,818 / expected=$537,418 = ~84%
       const collectionRate =
         expectedRevenue > 0 ? Math.round((collected / expectedRevenue) * 100) : 0;
 
       return {
         success: true,
         data: {
-          expectedRevenue,
-          collected,
-          pending,
-          overdue,
-          collectionRate,
+          expectedRevenue, // PAID + PENDING + OVERDUE (in cents)
+          collected, // PAID only (in cents)
+          pending, // PENDING only (in cents)
+          overdue, // OVERDUE only (in cents)
+          refunded, // REFUNDED amounts (in cents)
+          collectionRate, // percentage (0–100)
           currency: 'USD',
         },
       };

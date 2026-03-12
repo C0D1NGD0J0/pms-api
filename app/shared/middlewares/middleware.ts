@@ -11,7 +11,6 @@ import { LanguageService } from '@shared/languages/language.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { InvalidRequestError, UnauthorizedError, ForbiddenError } from '@shared/customErrors';
 import { extractMulterFiles, generateShortUID, JWT_KEY_NAMES, createLogger } from '@utils/index';
-import { PermissionResource, PermissionAction, ICurrentUser, EventTypes } from '@interfaces/index';
 import {
   EventEmitterService,
   SubscriptionService,
@@ -24,6 +23,13 @@ import {
   RequestSource,
   TokenType,
 } from '@interfaces/utils.interface';
+import {
+  ISubscriptionEntitlements,
+  PermissionResource,
+  PermissionAction,
+  ICurrentUser,
+  EventTypes,
+} from '@interfaces/index';
 
 import { rateLimiterFactory } from './rateLimiterFactory';
 
@@ -508,6 +514,23 @@ export const requirePermission = (
       console.error('Error in requirePermission middleware:', error);
       return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
     }
+  };
+};
+
+/**
+ * Check if the current user's subscription entitles them to a specific feature.
+ * Requires `subscriptionEntitlements` middleware to have run first.
+ */
+export const requireFeature = (featureName: keyof ISubscriptionEntitlements['entitlements']) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const entitlements = req.context?.entitlements?.entitlements;
+    if (!entitlements) {
+      return next(new ForbiddenError({ message: t('auth.errors.entitlementsUnavailable') }));
+    }
+    if (!entitlements[featureName]) {
+      return next(new ForbiddenError({ message: t('auth.errors.featureNotEntitled') }));
+    }
+    next();
   };
 };
 

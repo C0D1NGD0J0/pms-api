@@ -74,7 +74,8 @@
         "eSignature": false,
         "RepairRequestService": false,
         "VisitorPassService": false,
-        "reportingAnalytics": false
+        "reportingAnalytics": false,
+        "leaseTemplates": false
       },
       "featureList": [
         "Tenant management",
@@ -127,7 +128,8 @@
         "eSignature": true,
         "RepairRequestService": true,
         "VisitorPassService": true,
-        "reportingAnalytics": true
+        "reportingAnalytics": true,
+        "leaseTemplates": true
       },
       "featureList": [
         "Online payments & AutoPay",
@@ -178,6 +180,7 @@
         "RepairRequestService": true,
         "VisitorPassService": true,
         "reportingAnalytics": true,
+        "leaseTemplates": true,
         "prioritySupport": true
       },
       "featureList": [

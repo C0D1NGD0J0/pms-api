@@ -127,7 +127,9 @@ describe('AssetDAO Integration Tests', () => {
 
   describe('getAssetById', () => {
     it('should retrieve asset by id', async () => {
-      const created = await Asset.create({
+      const assetId = new Types.ObjectId();
+      await Asset.create({
+        _id: assetId,
         resource: {
           name: 'User',
           id: testUserId,
@@ -146,10 +148,10 @@ describe('AssetDAO Integration Tests', () => {
         status: 'active',
       });
 
-      const asset = await assetDAO.getAssetById(created._id.toString());
+      const asset = await assetDAO.getAssetById(assetId.toString());
 
       expect(asset).not.toBeNull();
-      expect(asset?._id.toString()).toBe(created._id.toString());
+      expect(asset?._id?.toString()).toBe(assetId.toString());
       expect(asset?.originalName).toBe('photo.jpg');
     });
 
@@ -161,7 +163,9 @@ describe('AssetDAO Integration Tests', () => {
     });
 
     it('should not return deleted assets', async () => {
-      const created = await Asset.create({
+      const deletedId = new Types.ObjectId();
+      await Asset.create({
+        _id: deletedId,
         resource: {
           name: 'User',
           id: testUserId,
@@ -180,7 +184,7 @@ describe('AssetDAO Integration Tests', () => {
         status: 'deleted',
       });
 
-      const asset = await assetDAO.getAssetById(created._id.toString());
+      const asset = await assetDAO.getAssetById(deletedId.toString());
 
       expect(asset).toBeNull();
     });
@@ -408,7 +412,9 @@ describe('AssetDAO Integration Tests', () => {
 
   describe('softDeleteAsset', () => {
     it('should soft delete an asset by setting status to deleted', async () => {
-      const created = await Asset.create({
+      const activeId = new Types.ObjectId();
+      await Asset.create({
+        _id: activeId,
         resource: { name: 'User', id: testUserId },
         s3Info: {
           url: 'https://s3.amazonaws.com/bucket/photo.jpg',
@@ -424,17 +430,19 @@ describe('AssetDAO Integration Tests', () => {
         status: 'active',
       });
 
-      const result = await assetDAO.softDeleteAsset(created._id.toString());
+      const result = await assetDAO.softDeleteAsset(activeId.toString());
 
       expect(result).toBe(true);
 
-      const asset = await Asset.findById(created._id).select('+deletedAt');
+      const asset = await Asset.findById(activeId).select('+deletedAt');
       expect(asset?.status).toBe('deleted');
       expect(asset?.deletedAt).toBeInstanceOf(Date);
     });
 
     it('should return true even if asset already deleted', async () => {
-      const created = await Asset.create({
+      const alreadyDeletedId = new Types.ObjectId();
+      await Asset.create({
+        _id: alreadyDeletedId,
         resource: { name: 'User', id: testUserId },
         s3Info: {
           url: 'https://s3.amazonaws.com/bucket/photo.jpg',
@@ -450,7 +458,7 @@ describe('AssetDAO Integration Tests', () => {
         status: 'deleted',
       });
 
-      const result = await assetDAO.softDeleteAsset(created._id.toString());
+      const result = await assetDAO.softDeleteAsset(alreadyDeletedId.toString());
 
       expect(result).toBe(true);
     });

@@ -3,7 +3,7 @@ import { ClientDAO } from '@dao/clientDAO';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { BadRequestError } from '@shared/customErrors';
-import { PaymentGatewayService } from '@services/billing';
+import { PaymentGatewayService } from '@services/paymentGateway';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/index';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 
@@ -78,12 +78,13 @@ describe('SubscriptionService - Additional Seat Management', () => {
     subscriptionService = new SubscriptionService({
       subscriptionDAO: mockSubscriptionDAO,
       clientDAO: mockClientDAO,
-      billingService: mockPaymentGatewayService,
+      paymentGatewayService: mockPaymentGatewayService,
       sseService: mockSSEService,
       authCache: mockAuthCache,
-      stripeService: mockStripeService,
       userDAO: {} as any,
       emitterService: mockEmitterService,
+      propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
     });
   });
 

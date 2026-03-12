@@ -1,6 +1,57 @@
 {
   "templates": [
     {
+      "templateType": "generic",
+      "displayName": "Standard Lease Agreement",
+      "description": "A general-purpose lease agreement suitable for all property types.",
+      "category": "general",
+      "version": "1.0.0",
+      "fileName": "generic.ejs",
+      "propertyTypes": [
+        "house",
+        "apartment",
+        "condominium",
+        "townhouse",
+        "commercial",
+        "industrial"
+      ],
+      "requiredVariables": [
+        "leaseNumber",
+        "currentDate",
+        "jurisdiction",
+        "landlordName",
+        "landlordAddress",
+        "landlordEmail",
+        "landlordPhone",
+        "tenantName",
+        "tenantEmail",
+        "tenantPhone",
+        "propertyAddress",
+        "leaseType",
+        "startDate",
+        "endDate",
+        "monthlyRent",
+        "securityDeposit",
+        "rentDueDayOrdinal"
+      ],
+      "optionalVariables": [
+        "signedDate",
+        "propertyName",
+        "propertyType",
+        "unitNumber",
+        "propertySpecs",
+        "coTenants",
+        "petPolicy",
+        "renewalOptions",
+        "legalTerms",
+        "utilitiesIncluded",
+        "signingMethod",
+        "landlordSignatureUrl",
+        "tenantSignatureUrl",
+        "requiresNotarization"
+      ]
+    },
+    {
       "templateType": "residential-single-family",
       "displayName": "Single-Family Home Lease",
       "description": "Lease agreement for single-family homes",

@@ -40,11 +40,12 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
       subscriptionDAO: mockSubscriptionDAO,
       clientDAO: mockClientDAO,
       authCache: {} as any,
-      billingService: {} as any,
+      paymentGatewayService: {} as any,
       sseService: {} as any,
-      stripeService: {} as any,
       userDAO: {} as any,
       emitterService: {} as any,
+      propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
     });
   });
 

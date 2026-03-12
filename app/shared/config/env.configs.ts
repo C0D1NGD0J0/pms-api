@@ -77,6 +77,7 @@ class EnvVariables {
     REDIRECT_URL: string;
     TEST_KEY: string;
     WEBHOOK_SECRET: string;
+    CONNECT_WEBHOOK_SECRET: string;
   };
   public BOLDSIGN: {
     API_KEY: string;
@@ -163,6 +164,7 @@ class EnvVariables {
       TEST_KEY: process.env.STRIPE_TEST_KEY || '',
       REDIRECT_URL: process.env.STRIPE_REDIRECT_URL || '',
       WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
+      CONNECT_WEBHOOK_SECRET: process.env.STRIPE_CONNECT_WEBHOOK_SECRET || '',
     };
     this.BOLDSIGN = {
       API_KEY: process.env.BOLDSIGN_API_KEY || '',

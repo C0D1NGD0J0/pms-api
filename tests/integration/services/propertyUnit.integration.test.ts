@@ -76,6 +76,7 @@ describe('PropertyUnitService Integration Tests', () => {
       propertyCache: mockPropertyCache as any,
       emitterService: mockEventEmitter as any,
       unitNumberingService,
+      subscriptionDAO: {} as any,
     });
   });
 
@@ -96,7 +97,7 @@ describe('PropertyUnitService Integration Tests', () => {
       adminUser = await createTestAdminUser(testClient.cuid);
       testProperty = await createTestProperty(testClient.cuid, testClient._id, {
         maxAllowedUnits: 10,
-        status: 'active',
+        status: 'available',
       });
     });
 
@@ -240,7 +241,7 @@ describe('PropertyUnitService Integration Tests', () => {
         // Create property with max 2 units
         const limitedProperty = await createTestProperty(testClient.cuid, testClient._id, {
           maxAllowedUnits: 2,
-          status: 'active',
+          status: 'available',
         });
 
         // Try to add 3 units
@@ -547,7 +548,7 @@ describe('PropertyUnitService Integration Tests', () => {
       adminUser = await createTestAdminUser(testClient.cuid);
       testProperty = await createTestProperty(testClient.cuid, testClient._id, {
         maxAllowedUnits: 20,
-        status: 'active',
+        status: 'available',
       });
 
       // Create multiple units

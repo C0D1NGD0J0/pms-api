@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { ProfileDAO } from '@dao/profileDAO';
 import { Profile, User } from '@models/index';
+import { DataRetentionPolicy } from '@interfaces/profile.interface';
 import {
   disconnectTestDatabase,
   clearTestDatabase,
@@ -207,7 +208,7 @@ describe('ProfileDAO Integration Tests', () => {
 
     it('should update data retention policy', async () => {
       const result = await profileDAO.updateGDPRSettings(testProfileId.toString(), {
-        dataRetentionPolicy: 'extended',
+        dataRetentionPolicy: DataRetentionPolicy.EXTENDED,
       });
 
       expect(result?.settings.gdprSettings?.dataRetentionPolicy).toBe('extended');
@@ -215,7 +216,7 @@ describe('ProfileDAO Integration Tests', () => {
 
     it('should update multiple GDPR fields', async () => {
       const result = await profileDAO.updateGDPRSettings(testProfileId.toString(), {
-        dataRetentionPolicy: 'minimal',
+        dataRetentionPolicy: DataRetentionPolicy.MINIMAL,
         dataProcessingConsent: true,
       });
 

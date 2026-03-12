@@ -91,6 +91,9 @@ describe('UserController Integration Tests', () => {
       userCache,
       permissionService,
       vendorService,
+      emitterService: {} as any,
+      paymentDAO: {} as any,
+      leaseDAO: {} as any,
     });
 
     const mockMediaUploadService = {
@@ -131,12 +134,17 @@ describe('UserController Integration Tests', () => {
       propertyUnitDAO,
       authCache,
       subscriptionDAO: {} as any,
+      subscriptionService: {} as any,
+      emitterService: { emit: jest.fn(), on: jest.fn() } as any,
+      notificationService: {} as any,
+      sseService: {} as any,
     });
 
     userController = new UserController({
       userService,
       profileService,
       mediaUploadService: mockMediaUploadService,
+      queueFactory: {} as any,
     });
 
     clientController = new ClientController({ clientService });

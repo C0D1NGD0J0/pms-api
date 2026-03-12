@@ -87,6 +87,9 @@ describe('ClientController Integration Tests', () => {
       userCache,
       permissionService,
       vendorService,
+      emitterService: {} as any,
+      paymentDAO: {} as any,
+      leaseDAO: {} as any,
     });
 
     const authCache = {
@@ -110,6 +113,10 @@ describe('ClientController Integration Tests', () => {
       propertyUnitDAO,
       authCache,
       subscriptionDAO,
+      subscriptionService: {} as any,
+      emitterService: { emit: jest.fn(), on: jest.fn() } as any,
+      notificationService: {} as any,
+      sseService: {} as any,
     });
 
     clientController = new ClientController({ clientService });

@@ -1,5 +1,6 @@
 import { UserService } from '@services/user/user.service';
 import { ROLES } from '@shared/constants/roles.constants';
+import { IBaseUserProfile } from '@interfaces/user.interface';
 import { mockQueueFactory } from '@tests/setup/externalMocks';
 import { VendorService } from '@services/vendor/vendor.service';
 import { PermissionService } from '@services/permission/permission.service';
@@ -61,6 +62,9 @@ const setupServices = () => {
     userCache,
     permissionService,
     vendorService,
+    leaseDAO: {} as any,
+    paymentDAO: {} as any,
+    emitterService: {} as any,
   });
 
   return { userService, userDAO, clientDAO, profileDAO, propertyDAO, vendorDAO };
@@ -263,7 +267,7 @@ describe('UserService Integration Tests - Read Operations', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.profile).toBeDefined();
-      expect(result.data.profile.uid).toBe(seededData.users.staff1.uid);
+      expect((result.data.profile as unknown as IBaseUserProfile).uid).toBe(seededData.users.staff1.uid);
     });
 
     it('should fail when user does not exist', async () => {

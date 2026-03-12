@@ -1,7 +1,9 @@
 import { Document, Types } from 'mongoose';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 
+import { PaymentProcessorAccountType } from './paymentProcessor.interface';
 import { IClientUserConnections, ICompanyProfile } from './client.interface';
+import { ISubscriptionEntitlements, ISubscriptionStatus, PlanName } from './subscription.interface';
 import {
   EmployeeDepartment,
   IProfileDocument,
@@ -27,22 +29,40 @@ export enum IUserRelationshipsEnum {
 
 /**
  * Current User Interface
- * Authenticated user session data with all role-specific info
+ * Authenticated user session data with all role-specific info.
+ *
+ * Role-restricted fields:
+ *  - `subscription`     — only present for super-admin
+ *  - `paymentProcessor` — only present for super-admin with a connected payment processor
+ *  - `vendorInfo`       — only present for vendor role
+ *  - `tenantInfo`       — only present for tenant role
+ *  - `employeeInfo`     — only present for admin/manager/staff roles
  */
 export interface ICurrentUser {
+  /** Only populated for super-admin users */
   subscription?: {
     plan: {
-      name: string;
-      status: string;
+      name: PlanName;
+      status: ISubscriptionStatus;
       billingInterval: 'monthly' | 'annual';
     };
-    features: Record<string, boolean>;
+    entitlements: ISubscriptionEntitlements['entitlements'];
     paymentFlow: {
       requiresPayment: boolean;
       reason: 'pending_signup' | 'expired' | 'grace_period' | null;
       gracePeriodEndsAt: Date | null;
       daysUntilDowngrade: number | null;
     };
+  };
+  /** Only populated for super-admin users who have completed payment processor onboarding */
+  paymentProcessor?: {
+    isSetup: boolean;
+    chargesEnabled: boolean;
+    payoutsEnabled: boolean;
+    needsOnboarding: boolean;
+    accountId: string | null;
+    accountType: PaymentProcessorAccountType | null;
+    onboardedAt: Date | null;
   };
   client: {
     clientSettings?: any;

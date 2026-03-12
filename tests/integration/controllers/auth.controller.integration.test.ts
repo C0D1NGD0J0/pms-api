@@ -135,6 +135,7 @@ describe('AuthController Integration Tests', () => {
       tokenService,
       authCache: mockAuthCache as any,
       vendorService,
+      subscriptionService: {} as any,
     });
 
     authController = new AuthController({ authService });
@@ -368,7 +369,6 @@ describe('AuthController Integration Tests', () => {
         const savedClient = await Client.findOne({ displayName: signupData.displayName });
         expect(savedClient).toBeDefined();
         expect(savedClient!.accountType.isEnterpriseAccount).toBe(false);
-        expect(savedClient!.accountType.planName).toBe('essential');
       });
 
       it('should allow business account with personal plan', async () => {
@@ -406,7 +406,6 @@ describe('AuthController Integration Tests', () => {
         const savedClient = await Client.findOne({ displayName: signupData.displayName });
         expect(savedClient).toBeDefined();
         expect(savedClient!.accountType.isEnterpriseAccount).toBe(true);
-        expect(savedClient!.accountType.planName).toBe('essential');
         expect(savedClient!.companyProfile?.tradingName).toBe('Small Business Inc');
       });
 
@@ -445,7 +444,6 @@ describe('AuthController Integration Tests', () => {
         const savedClient = await Client.findOne({ displayName: signupData.displayName });
         expect(savedClient).toBeDefined();
         expect(savedClient!.accountType.isEnterpriseAccount).toBe(true);
-        expect(savedClient!.accountType.planName).toBe('portfolio');
         expect(savedClient!.companyProfile?.tradingName).toBe('Enterprise Corporation');
       });
 

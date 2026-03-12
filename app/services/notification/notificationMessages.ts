@@ -89,6 +89,24 @@ export const NotificationMessages = {
     },
   },
 
+  payment: {
+    disputeCreated: {
+      title: 'Payment Dispute Opened',
+      message:
+        'A dispute of {{amount}} was filed for invoice {{invoiceNumber}}. The transfer has been reversed pending resolution.',
+    },
+    disputeWon: {
+      title: 'Dispute Resolved — Funds Returned',
+      message:
+        'The dispute for invoice {{invoiceNumber}} was resolved in your favor. {{amount}} has been re-transferred to your account.',
+    },
+    payoutAccountVerified: {
+      title: 'Payout Account Verified',
+      message:
+        'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
+    },
+  },
+
   lease: {
     pdfGenerationStarted: {
       title: 'Lease PDF Generation Started',
@@ -130,7 +148,10 @@ export type NotificationMessageKey =
   | 'vendor.disconnected'
   | 'lease.pdfGenerationStarted'
   | 'lease.pdfGenerated'
-  | 'lease.pdfGenerationFailed';
+  | 'lease.pdfGenerationFailed'
+  | 'payment.disputeCreated'
+  | 'payment.disputeWon'
+  | 'payment.payoutAccountVerified';
 
 /**
  * Get notification message template by dot notation key

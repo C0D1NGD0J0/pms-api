@@ -41,9 +41,8 @@ describe('ClientDAO Integration Tests', () => {
     it('should create client with auto-generated cuid', async () => {
       const client = await clientDAO.createClient({
         displayName: 'Test Company',
-        status: 'active',
         accountAdmin: testAdminId,
-        accountType: { category: 'individual' },
+        accountType: { category: 'individual', isEnterpriseAccount: false },
       });
 
       expect(client).toBeDefined();
@@ -55,9 +54,8 @@ describe('ClientDAO Integration Tests', () => {
       const client = await clientDAO.createClient({
         cuid: 'CUSTOM_CUID',
         displayName: 'Custom Company',
-        status: 'active',
         accountAdmin: testAdminId,
-        accountType: { category: 'individual' },
+        accountType: { category: 'individual', isEnterpriseAccount: false },
       });
 
       expect(client.cuid).toBe('CUSTOM_CUID');

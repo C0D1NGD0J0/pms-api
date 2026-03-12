@@ -55,6 +55,9 @@ const setupServices = () => {
     userCache,
     permissionService,
     vendorService,
+    leaseDAO: {} as any,
+    paymentDAO: {} as any,
+    emitterService: {} as any,
   });
 
   const mockEmitterService = {
@@ -603,7 +606,7 @@ describe('ProfileService Integration Tests - Read Operations', () => {
   describe('getUserBasicInfo (ProfileDAO)', () => {
     it('should return complete basic user info for valid userId and cuid', async () => {
       const { profileDAO } = setupServices();
-      const user = seededData.users.propertyManager1;
+      const user = seededData.users.staff1;
       const client = seededData.clients.client1;
 
       const result = await profileDAO.getUserBasicInfo(user._id.toString(), client.cuid);

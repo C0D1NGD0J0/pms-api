@@ -7,6 +7,7 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { InvitationDAO } from '@dao/invitationDAO';
 import { ForbiddenError } from '@shared/customErrors';
 import { LeaseService } from '@services/lease/lease.service';
+import { ILeaseFormData } from '@interfaces/lease.interface';
 import { IRequestContext } from '@interfaces/utils.interface';
 
 describe('LeaseService - Tenant Self-Assignment Prevention', () => {
@@ -56,7 +57,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
 
   beforeEach(() => {
     mockLeaseDAO = {
-      create: jest.fn(),
+      createLease: jest.fn(),
       findFirst: jest.fn(),
       update: jest.fn(),
       startSession: jest.fn(),
@@ -100,14 +101,23 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       propertyDAO: mockPropertyDAO,
       invitationDAO: mockInvitationDAO,
       profileDAO: mockProfileDAO,
-      emailService: {} as any,
-      sseService: {} as any,
+      mailerService: {} as any,
       invitationService: {} as any,
       leaseCache: {
         invalidateLease: jest.fn(),
       } as any,
       emitterService: mockEmitterService,
       notificationService: {} as any,
+      leaseSignatureService: {} as any,
+      leaseDocumentService: {} as any,
+      leaseRenewalService: {} as any,
+      pdfGeneratorService: {} as any,
+      mediaUploadService: {} as any,
+      leasePdfService: {} as any,
+      boldSignService: {} as any,
+      propertyUnitDAO: {} as any,
+      queueFactory: {} as any,
+      userService: {} as any,
     });
   });
 
@@ -179,7 +189,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
 
       mockPropertyDAO.findFirst.mockResolvedValue(mockProperty as any);
       mockUserDAO.findFirst.mockResolvedValue(mockTenantUser as any);
-      mockLeaseDAO.create.mockResolvedValue({
+      mockLeaseDAO.createLease.mockResolvedValue({
         _id: new Types.ObjectId(),
         luid: testLuid,
         tenantId: differentTenantId,
@@ -209,7 +219,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(mockLeaseDAO.create).toHaveBeenCalled();
+      expect(mockLeaseDAO.createLease).toHaveBeenCalled();
     });
 
     it('should allow creating lease with invitation (useInvitationIdAsTenantId)', async () => {
@@ -232,7 +242,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         status: 'pending',
         role: 'tenant',
       } as any);
-      mockLeaseDAO.create.mockResolvedValue({
+      mockLeaseDAO.createLease.mockResolvedValue({
         _id: new Types.ObjectId(),
         luid: testLuid,
         tenantId: invitationId,
@@ -262,7 +272,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(mockLeaseDAO.create).toHaveBeenCalled();
+      expect(mockLeaseDAO.createLease).toHaveBeenCalled();
     });
   });
 
@@ -294,10 +304,8 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
 
       mockLeaseDAO.findFirst.mockResolvedValue(mockLease as any);
 
-      const updateData = {
-        fees: {
-          monthlyRent: 500, // Trying to reduce rent!
-        },
+      const updateData: Partial<ILeaseFormData> = {
+        fees: { monthlyRent: 500 } as ILeaseFormData['fees'],
       };
 
       // Should fail even though user has staff role, because they're the tenant
@@ -342,10 +350,8 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         fees: { monthlyRent: 1200, securityDeposit: 2000 },
       } as any);
 
-      const updateData = {
-        fees: {
-          monthlyRent: 1200,
-        },
+      const updateData: Partial<ILeaseFormData> = {
+        fees: { monthlyRent: 1200 } as ILeaseFormData['fees'],
       };
 
       const result = await leaseService.updateLease(
@@ -384,7 +390,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         } as any,
       };
 
-      const updateData = { fees: { monthlyRent: 500 } };
+      const updateData: Partial<ILeaseFormData> = { fees: { monthlyRent: 500 } as ILeaseFormData['fees'] };
 
       await expect(
         leaseService.updateLease(staffTenantContext as IRequestContext, testLuid, updateData)
@@ -405,7 +411,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       mockLeaseDAO.findFirst.mockResolvedValue(mockLease as any);
       mockLeaseDAO.update.mockResolvedValue(mockLease as any);
 
-      const updateData = { fees: { monthlyRent: 1200 } };
+      const updateData: Partial<ILeaseFormData> = { fees: { monthlyRent: 1200 } as ILeaseFormData['fees'] };
 
       // This should succeed because lease tenant !== current user
       const result = await leaseService.updateLease(

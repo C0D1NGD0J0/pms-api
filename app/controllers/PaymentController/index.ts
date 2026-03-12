@@ -144,6 +144,6 @@ export class PaymentController {
 
     const result = await this.paymentService.refundPayment(cuid, pytuid, { amount, reason });
 
-    return res.status(200).json(result);
+    return res.status(201).json(result);
   }
 }

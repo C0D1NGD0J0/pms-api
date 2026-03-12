@@ -66,13 +66,14 @@ const LeaseSchema = new Schema<ILeaseDocument>(
     templateType: {
       type: String,
       enum: [
+        'generic',
         'residential-single-family',
         'residential-apartment',
         'commercial-office',
         'commercial-retail',
         'short-term-rental',
       ],
-      default: 'residential-single-family',
+      default: 'generic',
       required: [true, 'Template type is required'],
       index: true,
     },

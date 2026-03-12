@@ -38,6 +38,14 @@ export interface ISubscriptionPlansConfig {
       } | null;
     };
   };
+  features: {
+    eSignature: boolean;
+    RepairRequestService: boolean;
+    VisitorPassService: boolean;
+    reportingAnalytics: boolean;
+    leaseTemplates: boolean;
+    prioritySupport?: boolean;
+  };
   pricing: {
     monthly: {
       priceId: string;
@@ -48,13 +56,6 @@ export interface ISubscriptionPlansConfig {
       priceInCents: number;
       savingsPercent: number;
     };
-  };
-  features: {
-    eSignature: boolean;
-    RepairRequestService: boolean;
-    VisitorPassService: boolean;
-    reportingAnalytics: boolean;
-    prioritySupport?: boolean;
   };
   limits: {
     maxProperties: number;
@@ -121,6 +122,7 @@ export interface ISubscription {
     RepairRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
+    leaseTemplates: boolean;
     prioritySupport?: boolean;
   };
   billingInterval: 'monthly' | 'annual';
@@ -143,18 +145,19 @@ export interface ISubscription {
 }
 
 export interface ISubscriptionEntitlements {
-  paymentFlow?: {
-    requiresPayment: boolean;
-    reason: 'pending_signup' | 'expired' | 'grace_period' | null;
-    gracePeriodEndsAt: Date | null;
-    daysUntilDowngrade: number | null;
-  };
   entitlements: {
     eSignature: boolean;
     RepairRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
+    leaseTemplates: boolean;
     prioritySupport?: boolean;
+  };
+  paymentFlow?: {
+    requiresPayment: boolean;
+    reason: 'pending_signup' | 'expired' | 'grace_period' | null;
+    gracePeriodEndsAt: Date | null;
+    daysUntilDowngrade: number | null;
   };
   plan: {
     name: PlanName;

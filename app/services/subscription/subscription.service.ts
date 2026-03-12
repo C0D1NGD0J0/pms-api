@@ -564,7 +564,7 @@ export class SubscriptionService {
           status: subscription.status,
           billingInterval: subscription.billingInterval,
         },
-        entitlements: subscription.entitlements || config.features,
+        entitlements: { ...config.features, ...subscription.entitlements },
         ...(requiresPayment && {
           paymentFlow: {
             requiresPayment,

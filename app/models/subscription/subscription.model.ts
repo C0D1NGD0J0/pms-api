@@ -59,6 +59,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       RepairRequestService: { type: Boolean, required: true, default: false },
       VisitorPassService: { type: Boolean, required: true, default: false },
       reportingAnalytics: { type: Boolean, required: true, default: false },
+      leaseTemplates: { type: Boolean, required: true, default: false },
       prioritySupport: { type: Boolean, default: false },
     },
     billing: {

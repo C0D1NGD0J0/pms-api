@@ -581,6 +581,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                             RepairRequestService: false,
                             VisitorPassService: false,
                             reportingAnalytics: false,
+                            leaseTemplates: false,
                           },
                         ],
                       },

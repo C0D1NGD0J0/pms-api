@@ -33,7 +33,9 @@
       "connectionCheckFailed": "Connection check failed",
       "adminRequired": "Admin privileges required",
       "authorizationFailed": "Authorization failed",
-      "clientAccessDenied": "Access denied. You do not have permission to access this client account"
+      "clientAccessDenied": "Access denied. You do not have permission to access this client account",
+      "entitlementsUnavailable": "Subscription entitlements could not be verified. Please try again.",
+      "featureNotEntitled": "This feature is not available on your current subscription plan. Please upgrade to access it."
     },
     "success": {
       "tokenRefreshed": "Token refreshed successfully",

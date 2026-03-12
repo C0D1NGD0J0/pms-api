@@ -325,7 +325,13 @@ export class LeaseController {
   };
 
   getLeaseTemplates = async (req: AppRequest, res: Response) => {
-    const templates = await this.leaseTemplateService.getAvailableTemplates();
+    const allTemplates = await this.leaseTemplateService.getAvailableTemplates();
+    const hasLeaseTemplates =
+      req.context?.currentuser?.subscription?.entitlements?.leaseTemplates ?? false;
+
+    const templates = hasLeaseTemplates
+      ? allTemplates
+      : allTemplates.filter((t) => t.templateType === 'generic');
 
     res.status(httpStatusCodes.OK).json({
       success: true,

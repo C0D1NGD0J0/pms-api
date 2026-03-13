@@ -8,22 +8,13 @@
 import { disconnectTestDatabase, setupTestDatabase } from './testDatabase';
 import { setupAllExternalMocks, resetAllExternalMocks } from './externalMocks';
 
-// =============================================================================
-// Jest Configuration
-// =============================================================================
-
-// Increase timeout for integration tests
 jest.setTimeout(30000);
-
-// =============================================================================
-// Console Output Filtering
-// =============================================================================
 
 const originalConsoleError = console.error;
 const originalConsoleWarn = console.warn;
+const shouldUseDatabase = process.env.JEST_USE_DB === 'true';
 
 beforeAll(async () => {
-  // Filter out known noisy warnings
   console.error = (...args: any[]) => {
     if (
       args[0]?.includes?.('punycode') ||
@@ -46,24 +37,23 @@ beforeAll(async () => {
     originalConsoleWarn(...args);
   };
 
-  // Setup test database connection
-  await setupTestDatabase();
+  if (shouldUseDatabase) {
+    await setupTestDatabase();
+  }
 
-  // Setup external service mocks
   setupAllExternalMocks();
 });
 
 afterAll(async () => {
-  // Restore console methods
   console.error = originalConsoleError;
   console.warn = originalConsoleWarn;
 
-  // Disconnect from test database
-  await disconnectTestDatabase();
+  if (shouldUseDatabase) {
+    await disconnectTestDatabase();
+  }
 });
 
 beforeEach(() => {
-  // Reset external mocks before each test
   resetAllExternalMocks();
 });
 

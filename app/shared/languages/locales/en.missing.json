@@ -1,1 +1,7 @@
-{}
+{
+  "client": {
+    "success": {
+      "tenantStatsRetrieved": "client.success.tenantStatsRetrieved"
+    }
+  }
+}

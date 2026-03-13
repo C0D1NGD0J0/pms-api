@@ -14,6 +14,7 @@ const config: JestConfigWithTsJest = {
   ...baseConfig,
   displayName: 'integration',
   testMatch: ['**/tests/integration/**/*.test.[jt]s?(x)'],
+  testPathIgnorePatterns: [],
   testTimeout: 60000, // Integration tests may take longer
   maxWorkers: 1, // Run integration tests serially to avoid DB conflicts
   coverageThreshold: {

@@ -71,6 +71,7 @@ export class UserController {
       role: roles,
       department: filter.department as string | undefined,
       status: filter.status as 'active' | 'inactive' | undefined,
+      search: filter.search as string | undefined,
     };
 
     const page = pagination.page ? parseInt(pagination.page, 10) : 1;
@@ -113,6 +114,7 @@ export class UserController {
       role: roles,
       department: filter.department as string | undefined,
       status: filter.status as 'active' | 'inactive' | undefined,
+      search: filter.search as string | undefined,
     };
 
     const page = pagination.page ? parseInt(pagination.page, 10) : 1;

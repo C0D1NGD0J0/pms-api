@@ -1840,7 +1840,7 @@ export class UserService {
       // Prevent deleting account owner
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.clientNotFound') });
+        throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
       if (client.accountAdmin.toString() === user._id.toString()) {

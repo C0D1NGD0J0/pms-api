@@ -305,7 +305,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     paginationOpts?: IFindOptions
   ): Promise<ListResultWithPagination<IUserDocument[]>> {
     try {
-      const { role, department, status } = filterOptions;
+      const { role, department, status, search } = filterOptions;
 
       const query: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
@@ -320,6 +320,16 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       if (role) {
         // const roles = Array.isArray(role) ? role : [role];
         query['cuids.roles'] = Array.isArray(role) ? { $in: role } : role;
+      }
+
+      if (search && search.trim()) {
+        const searchRegex = new RegExp(search.trim(), 'i');
+        query.$or = [
+          { firstName: { $regex: searchRegex } },
+          { lastName: { $regex: searchRegex } },
+          { email: { $regex: searchRegex } },
+          { phoneNumber: { $regex: searchRegex } },
+        ];
       }
 
       const pipeline: PipelineStage[] = [
@@ -965,14 +975,24 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     pagination?: IFindOptions
   ): Promise<import('@interfaces/user.interface').IPaginatedResult<IUserDocument[]>> {
     try {
+      const tenantMatch: Record<string, any> = {
+        'cuids.cuid': cuid,
+        'cuids.roles': 'tenant',
+        deletedAt: null,
+      };
+
+      if (filters?.search && filters.search.trim()) {
+        const searchRegex = new RegExp(filters.search.trim(), 'i');
+        tenantMatch.$or = [
+          { firstName: { $regex: searchRegex } },
+          { lastName: { $regex: searchRegex } },
+          { email: { $regex: searchRegex } },
+          { phoneNumber: { $regex: searchRegex } },
+        ];
+      }
+
       const pipeline: PipelineStage[] = [
-        {
-          $match: {
-            'cuids.cuid': cuid,
-            'cuids.roles': 'tenant',
-            deletedAt: null,
-          },
-        },
+        { $match: tenantMatch },
         {
           $lookup: {
             from: 'profiles',

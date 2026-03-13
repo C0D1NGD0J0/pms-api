@@ -1,7 +1,7 @@
 import { ROLES } from '@shared/constants/roles.constants';
 import { ClientService } from '@services/client/client.service';
-import { PropertyUnit, Property, Profile, Client, User } from '@models/index';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
+import { PropertyUnit, Property, Profile, Client, User } from '@models/index';
 import {
   PropertyUnitDAO,
   SubscriptionDAO,

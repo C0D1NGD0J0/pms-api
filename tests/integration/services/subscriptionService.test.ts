@@ -1,9 +1,9 @@
 import { Types } from 'mongoose';
 import { Subscription } from '@models/index';
+import { clearTestDatabase } from '@tests/helpers';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { BadRequestError } from '@shared/customErrors';
 import { SubscriptionService } from '@services/subscription/subscription.service';
-import { clearTestDatabase } from '@tests/helpers';
 
 describe('SubscriptionService Integration Tests', () => {
   let subscriptionService: SubscriptionService;

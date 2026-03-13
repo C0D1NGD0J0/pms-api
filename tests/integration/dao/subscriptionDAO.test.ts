@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { Subscription } from '@models/index';
-import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { clearTestDatabase } from '@tests/helpers';
+import { SubscriptionDAO } from '@dao/subscriptionDAO';
 
 describe('SubscriptionDAO - updateResourceCount', () => {
   let subscriptionDAO: SubscriptionDAO;

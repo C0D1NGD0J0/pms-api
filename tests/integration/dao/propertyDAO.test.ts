@@ -1,10 +1,10 @@
 import { Types } from 'mongoose';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { clearTestDatabase } from '@tests/helpers';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import { PropertyUnit, Property, Client, User } from '@models/index';
 import { PropertyUnitStatusEnum, PropertyUnitTypeEnum } from '@interfaces/propertyUnit.interface';
-import { clearTestDatabase } from '@tests/helpers';
 import {
   OccupancyStatus,
   PropertyStatus,

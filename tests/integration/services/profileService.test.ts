@@ -6,8 +6,8 @@ import { VendorService } from '@services/vendor/vendor.service';
 import { ProfileService } from '@services/profile/profile.service';
 import { ProfileDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
+import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { ProfileBackgroundCheckStatus } from '@interfaces/profile.interface';
-import { beforeEach, beforeAll, describe, afterAll, expect, it } from '@jest/globals';
 
 import { setupAllExternalMocks,
 

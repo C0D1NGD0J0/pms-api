@@ -1,7 +1,7 @@
-import express, { Request, Response, NextFunction } from 'express';
 import request from 'supertest';
 import { SubscriptionController } from '@controllers/index';
 import subscriptionRoutes from '@routes/subscription.routes';
+import express, { NextFunction, Response, Request } from 'express';
 
 describe('Subscription Routes API Tests', () => {
   let app: express.Application;

@@ -2,6 +2,7 @@ import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import express, { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
+import { clearTestDatabase } from '@tests/helpers';
 import { UserService } from '@services/user/user.service';
 import { ROLES } from '@shared/constants/roles.constants';
 import { UserController } from '@controllers/UserController';
@@ -13,7 +14,6 @@ import { ProfileService } from '@services/profile/profile.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PropertyUnit, Property, Profile, Client, Vendor, User } from '@models/index';
-import { clearTestDatabase } from '@tests/helpers';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
 import {
   PropertyUnitDAO,

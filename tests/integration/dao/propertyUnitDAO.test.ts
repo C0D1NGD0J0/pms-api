@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { PropertyUnit } from '@models/index';
-import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { clearTestDatabase } from '@tests/helpers';
+import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import {
   PropertyUnitStatusEnum,
   PropertyUnitTypeEnum,

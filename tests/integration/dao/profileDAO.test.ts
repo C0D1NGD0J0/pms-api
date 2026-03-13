@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
 import { ProfileDAO } from '@dao/profileDAO';
 import { Profile, User } from '@models/index';
-import { DataRetentionPolicy } from '@interfaces/profile.interface';
 import { clearTestDatabase } from '@tests/helpers';
+import { DataRetentionPolicy } from '@interfaces/profile.interface';
 
 describe('ProfileDAO Integration Tests', () => {
   let profileDAO: ProfileDAO;

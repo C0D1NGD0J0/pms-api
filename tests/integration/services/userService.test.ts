@@ -4,8 +4,8 @@ import { IBaseUserProfile } from '@interfaces/user.interface';
 import { mockQueueFactory } from '@tests/setup/externalMocks';
 import { VendorService } from '@services/vendor/vendor.service';
 import { PermissionService } from '@services/permission/permission.service';
+import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PropertyUnit, Property, Profile, Client, Vendor, User } from '@models/index';
-import { beforeEach, beforeAll, describe, afterAll, expect, it } from '@jest/globals';
 import {
   PropertyUnitDAO,
   PropertyDAO,

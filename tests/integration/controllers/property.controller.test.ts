@@ -4,9 +4,9 @@ import request from 'supertest';
 import { envVariables } from '@shared/config';
 import { ROLES } from '@shared/constants/roles.constants';
 import { PropertyUnit, Property, Lease } from '@models/index';
+import { clearTestDatabase } from '@tests/setup/testDatabase';
 import { PropertyApprovalStatusEnum } from '@interfaces/property.interface';
 import express, { NextFunction, Application, Response, Request } from 'express';
-import { clearTestDatabase } from '@tests/setup/testDatabase';
 import {
   createTestProperty,
   createTestProfile,

@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
 import { LeaseDAO } from '@dao/leaseDAO';
+import { clearTestDatabase } from '@tests/helpers';
 import { SigningMethod, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
-import { clearTestDatabase } from '@tests/helpers';
 
 describe('LeaseDAO Integration Tests', () => {
   let leaseDAO: LeaseDAO;

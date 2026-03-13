@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
+import { clearTestDatabase } from '@tests/helpers';
 import { NotificationDAO } from '@dao/notificationDAO';
 import { NotificationModel, User } from '@models/index';
 import { ResourceContext } from '@interfaces/utils.interface';
-import { clearTestDatabase } from '@tests/helpers';
 import {
   NotificationPriorityEnum,
   NotificationTypeEnum,

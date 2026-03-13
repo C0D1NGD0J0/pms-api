@@ -295,8 +295,8 @@ export const initQueues = (container: AwilixContainer) => {
 
   // Queues and workers are now lazily initialized via QueueFactory when first accessed
   // This reduces startup time and memory footprint
-  const processType = process.env.PROCESS_TYPE || 'api';
-  const environment = process.env.NODE_ENV || 'development';
+  const processType = envVariables.SERVER.PROCESS_TYPE;
+  const environment = envVariables.SERVER.ENV;
 
   logger.info(
     `💡 ${processType.toUpperCase()} process (${environment}): Queues will be initialized on-demand via QueueFactory`
@@ -308,9 +308,9 @@ export const registerResources = {
   ...ModelResources,
   ...DAOResources,
   ...CacheResources,
+  ...WorkerResources,
   ...QueuesResources,
   ...ServiceResources,
-  ...WorkerResources,
   ...UtilsResources,
   ...SocketIOResources,
 };

@@ -4,8 +4,11 @@ import { IPromiseReturnedData } from '@interfaces/index';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import {
+  IIdentityVerificationReport,
+  ICreateIdentitySessionInput,
   ICreateConnectAccountInput,
   IFinalizeInvoiceResponse,
+  IIdentitySessionResponse,
   IConnectAccountResponse,
   IOnboardingLinkResponse,
   ICreateInvoiceResponse,
@@ -657,6 +660,41 @@ export class PaymentGatewayService {
         success: false,
         data: null,
         message: error instanceof Error ? error.message : 'Failed to create refund',
+      };
+    }
+  }
+
+  async createIdentityVerificationSession(
+    provider: IPaymentGatewayProvider,
+    input: ICreateIdentitySessionInput
+  ): IPromiseReturnedData<IIdentitySessionResponse | null> {
+    try {
+      const result = await this.getProvider(provider).createIdentityVerificationSession(input);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error }, 'Error creating identity verification session');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to create identity session',
+      };
+    }
+  }
+
+  async retrieveIdentityVerificationSession(
+    provider: IPaymentGatewayProvider,
+    sessionId: string
+  ): IPromiseReturnedData<IIdentityVerificationReport | null> {
+    try {
+      const result =
+        await this.getProvider(provider).retrieveIdentityVerificationSession(sessionId);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error }, 'Error retrieving identity verification session');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to retrieve identity session',
       };
     }
   }

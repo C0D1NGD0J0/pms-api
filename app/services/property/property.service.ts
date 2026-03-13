@@ -143,20 +143,20 @@ export class PropertyService {
     this.setupEventListeners();
   }
 
+  private readonly onUnitChanged = this.handleUnitChanged.bind(this);
+  private readonly onUnitBatchChanged = this.handleUnitBatchChanged.bind(this);
+  private readonly onLeaseActivated = this.handleLeaseActivated.bind(this);
+  private readonly onLeaseTerminated = this.handleLeaseTerminated.bind(this);
+
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.UNIT_CREATED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_UPDATED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_UNARCHIVED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged.bind(this));
-
-    this.emitterService.on(
-      EventTypes.LEASE_ESIGNATURE_COMPLETED,
-      this.handleLeaseActivated.bind(this)
-    );
-
-    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
+    this.emitterService.on(EventTypes.UNIT_CREATED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_UPDATED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_ARCHIVED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_UNARCHIVED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_STATUS_CHANGED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchChanged);
+    this.emitterService.on(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
+    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
 
     this.log.info(t('property.logging.eventListenersInitialized'));
   }
@@ -725,6 +725,16 @@ export class PropertyService {
         if (Object.keys(dateFilter).length > 0) {
           filter[filters.dateRange.field] = dateFilter;
         }
+      }
+
+      if (filters.searchTerm && filters.searchTerm.trim()) {
+        filter.$or = [
+          { name: { $regex: filters.searchTerm, $options: 'i' } },
+          { pid: { $regex: filters.searchTerm, $options: 'i' } },
+          { 'address.city': { $regex: filters.searchTerm, $options: 'i' } },
+          { 'address.state': { $regex: filters.searchTerm, $options: 'i' } },
+          { 'address.fullAddress': { $regex: filters.searchTerm, $options: 'i' } },
+        ];
       }
     }
 
@@ -1909,12 +1919,14 @@ export class PropertyService {
   cleanupEventListeners(): void {
     this.log.info(t('property.logging.cleaningUp'));
 
-    this.emitterService.off(EventTypes.UNIT_CREATED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_UPDATED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_UNARCHIVED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged);
+    this.emitterService.off(EventTypes.UNIT_CREATED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_UPDATED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_ARCHIVED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_UNARCHIVED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_STATUS_CHANGED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchChanged);
+    this.emitterService.off(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
+    this.emitterService.off(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
 
     this.log.info(t('property.logging.eventListenersRemoved'));
   }

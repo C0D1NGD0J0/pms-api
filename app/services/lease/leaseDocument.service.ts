@@ -240,20 +240,23 @@ export class LeaseDocumentService {
     }
   }
 
+  private readonly onUploadCompleted = this.handleUploadCompleted.bind(this);
+  private readonly onUploadFailed = this.handleUploadFailed.bind(this);
+
   /**
    * Setup event listeners for upload events
    */
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
-    this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
+    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
+    this.emitterService.on(EventTypes.UPLOAD_FAILED, this.onUploadFailed);
   }
 
   /**
    * Cleanup event listeners
    */
   cleanupEventListeners(): void {
-    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
-    this.emitterService.off(EventTypes.UPLOAD_FAILED, this.handleUploadFailed);
+    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
+    this.emitterService.off(EventTypes.UPLOAD_FAILED, this.onUploadFailed);
     this.log.info('Lease document service event listeners removed');
   }
 }

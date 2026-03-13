@@ -1756,21 +1756,20 @@ export class SubscriptionService {
     ];
   }
 
+  private readonly onUnitBatchCreated = this.handleUnitBatchCreated.bind(this);
+  private readonly onInvitationSent = this.handleInvitationSent.bind(this);
+  private readonly onInvitationAccepted = this.handleInvitationAccepted.bind(this);
+  private readonly onInvitationExpired = this.handleInvitationExpired.bind(this);
+  private readonly onInvitationRevoked = this.handleInvitationRevoked.bind(this);
+  private readonly onUserArchived = this.handleUserArchived.bind(this);
+
   private setupEventListeners(): void {
-    // Track unit creation to maintain cumulative counter
-    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchCreated.bind(this));
-
-    // Track invitations for seat counting (only employee roles)
-    this.emitterService.on(EventTypes.INVITATION_SENT, this.handleInvitationSent.bind(this));
-    this.emitterService.on(
-      EventTypes.INVITATION_ACCEPTED,
-      this.handleInvitationAccepted.bind(this)
-    );
-    this.emitterService.on(EventTypes.INVITATION_EXPIRED, this.handleInvitationExpired.bind(this));
-    this.emitterService.on(EventTypes.INVITATION_REVOKED, this.handleInvitationRevoked.bind(this));
-
-    // Track user archival for seat counting (only employee roles)
-    this.emitterService.on(EventTypes.USER_ARCHIVED, this.handleUserArchived.bind(this));
+    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchCreated);
+    this.emitterService.on(EventTypes.INVITATION_SENT, this.onInvitationSent);
+    this.emitterService.on(EventTypes.INVITATION_ACCEPTED, this.onInvitationAccepted);
+    this.emitterService.on(EventTypes.INVITATION_EXPIRED, this.onInvitationExpired);
+    this.emitterService.on(EventTypes.INVITATION_REVOKED, this.onInvitationRevoked);
+    this.emitterService.on(EventTypes.USER_ARCHIVED, this.onUserArchived);
 
     this.log.info('Subscription service event listeners setup complete');
   }
@@ -1969,12 +1968,12 @@ export class SubscriptionService {
   }
 
   cleanupEventListeners(): void {
-    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchCreated);
-    this.emitterService.off(EventTypes.INVITATION_SENT, this.handleInvitationSent);
-    this.emitterService.off(EventTypes.INVITATION_ACCEPTED, this.handleInvitationAccepted);
-    this.emitterService.off(EventTypes.INVITATION_EXPIRED, this.handleInvitationExpired);
-    this.emitterService.off(EventTypes.INVITATION_REVOKED, this.handleInvitationRevoked);
-    this.emitterService.off(EventTypes.USER_ARCHIVED, this.handleUserArchived);
+    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchCreated);
+    this.emitterService.off(EventTypes.INVITATION_SENT, this.onInvitationSent);
+    this.emitterService.off(EventTypes.INVITATION_ACCEPTED, this.onInvitationAccepted);
+    this.emitterService.off(EventTypes.INVITATION_EXPIRED, this.onInvitationExpired);
+    this.emitterService.off(EventTypes.INVITATION_REVOKED, this.onInvitationRevoked);
+    this.emitterService.off(EventTypes.USER_ARCHIVED, this.onUserArchived);
     this.log.info('Subscription service event listeners removed');
   }
 }

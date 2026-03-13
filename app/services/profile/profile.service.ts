@@ -773,16 +773,17 @@ export class ProfileService {
     }
   }
 
+  private readonly onUploadCompleted = this.handleUploadCompleted.bind(this);
+  private readonly onLeaseActivated = this.handleLeaseActivated.bind(this);
+  private readonly onLeaseTerminated = this.handleLeaseTerminated.bind(this);
+
   /**
    * Setup event listeners for profile-related events
    */
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
-    this.emitterService.on(
-      EventTypes.LEASE_ESIGNATURE_COMPLETED,
-      this.handleLeaseActivated.bind(this)
-    );
-    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
+    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
+    this.emitterService.on(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
+    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
   }
 
   /**
@@ -952,7 +953,9 @@ export class ProfileService {
    * Clean up event listeners when service is destroyed
    */
   destroy(): void {
-    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
+    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
+    this.emitterService.off(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
+    this.emitterService.off(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
     this.logger.info('Profile service event listeners removed');
   }
 }

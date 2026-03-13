@@ -1,7 +1,7 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { paginateResult, createLogger } from '@utils/index';
 import { ClientSession, FilterQuery, Model } from 'mongoose';
+import { paginateResult, createLogger, escapeRegExp } from '@utils/index';
 import {
   ListResultWithPagination,
   IPaginationQuery,
@@ -163,8 +163,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
 
       if (filters.search) {
         query.$or = [
-          { leaseNumber: { $regex: filters.search, $options: 'i' } },
-          { 'property.address': { $regex: filters.search, $options: 'i' } },
+          { leaseNumber: { $regex: escapeRegExp(filters.search), $options: 'i' } },
+          { 'property.address': { $regex: escapeRegExp(filters.search), $options: 'i' } },
         ];
       }
 

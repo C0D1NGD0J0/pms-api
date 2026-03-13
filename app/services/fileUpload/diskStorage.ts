@@ -46,7 +46,7 @@ export class DiskStorage {
     {
       name: 'videos',
       maxCount: 1,
-      maxSize: 100 * 1024 * 1024, // 60MB
+      maxSize: 100 * 1024 * 1024, // 100MB
       fileTypes: ['mp4', 'avi', 'mov'],
     },
     {
@@ -64,7 +64,7 @@ export class DiskStorage {
     {
       name: 'documents[*].file', // Property documents pattern
       maxCount: 10,
-      maxSize: 10 * 1024 * 1024, // 20MB
+      maxSize: 10 * 1024 * 1024, // 10MB
       fileTypes: ['pdf', 'jpeg', 'jpg', 'png', 'doc', 'docx'],
     },
     {

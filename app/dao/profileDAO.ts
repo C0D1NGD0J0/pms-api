@@ -2,9 +2,9 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import ROLES from '@shared/constants/roles.constants';
 import { BadRequestError } from '@shared/customErrors';
-import { generateShortUID, createLogger } from '@utils/index';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { ListResultWithPagination, ICurrentUser } from '@interfaces/index';
+import { generateShortUID, createLogger, escapeRegExp } from '@utils/index';
 import { PipelineStage, ClientSession, FilterQuery, Types, Model } from 'mongoose';
 
 import { BaseDAO } from './baseDAO';
@@ -264,12 +264,12 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
       // Create a search filter that looks across various fields
       const filter: FilterQuery<IProfileDocument> = {
         $or: [
-          { 'personalInfo.displayName': { $regex: searchTerm, $options: 'i' } },
-          { 'personalInfo.firstName': { $regex: searchTerm, $options: 'i' } },
-          { 'personalInfo.lastName': { $regex: searchTerm, $options: 'i' } },
-          { 'personalInfo.bio': { $regex: searchTerm, $options: 'i' } },
-          { 'personalInfo.headline': { $regex: searchTerm, $options: 'i' } },
-          { 'personalInfo.location': { $regex: searchTerm, $options: 'i' } },
+          { 'personalInfo.displayName': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
+          { 'personalInfo.firstName': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
+          { 'personalInfo.lastName': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
+          { 'personalInfo.bio': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
+          { 'personalInfo.headline': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
+          { 'personalInfo.location': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
         ],
       };
 

@@ -732,11 +732,11 @@ export class PropertyService {
 
       if (filters.searchTerm && filters.searchTerm.trim()) {
         filter.$or = [
-          { name: { $regex: filters.searchTerm, $options: 'i' } },
-          { pid: { $regex: filters.searchTerm, $options: 'i' } },
-          { 'address.city': { $regex: filters.searchTerm, $options: 'i' } },
-          { 'address.state': { $regex: filters.searchTerm, $options: 'i' } },
-          { 'address.fullAddress': { $regex: filters.searchTerm, $options: 'i' } },
+          { name: { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+          { pid: { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+          { 'address.city': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+          { 'address.state': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+          { 'address.fullAddress': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
         ];
       }
     }
@@ -1605,10 +1605,25 @@ export class PropertyService {
         pipeline.push({
           $match: {
             $or: [
-              { email: { $regex: filters.search, $options: 'i' } },
-              { 'profile.personalInfo.displayName': { $regex: filters.search, $options: 'i' } },
-              { 'profile.personalInfo.firstName': { $regex: filters.search, $options: 'i' } },
-              { 'profile.personalInfo.lastName': { $regex: filters.search, $options: 'i' } },
+              { email: { $regex: escapeRegExp(filters.search), $options: 'i' } },
+              {
+                'profile.personalInfo.displayName': {
+                  $regex: escapeRegExp(filters.search),
+                  $options: 'i',
+                },
+              },
+              {
+                'profile.personalInfo.firstName': {
+                  $regex: escapeRegExp(filters.search),
+                  $options: 'i',
+                },
+              },
+              {
+                'profile.personalInfo.lastName': {
+                  $regex: escapeRegExp(filters.search),
+                  $options: 'i',
+                },
+              },
             ],
           },
         });

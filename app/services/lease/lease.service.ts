@@ -619,7 +619,7 @@ export class LeaseService {
           ? (lease.tenantId as any)._id?.toString() || lease.tenantId.toString()
           : lease.tenantId?.toString();
 
-      if (tenantIdStr === currentUser.sub && currentUser.client.role === 'tenant') {
+      if (tenantIdStr === currentUser.sub) {
         throw new ForbiddenError({
           message: t('lease.errors.cannotUpdateOwnLease'),
         });

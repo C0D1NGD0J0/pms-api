@@ -5,6 +5,7 @@ import { validateRequest } from '@shared/validations/setup';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
+  requireVerification,
   requirePermission,
   isAuthenticated,
   basicLimiter,
@@ -28,6 +29,7 @@ router.get(
 
 router.post(
   '/:cuid/add_property',
+  requireVerification,
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   diskUpload(['documents[*].file', 'images[*].file']),
   scanFile,

@@ -1,4 +1,3 @@
-import { IdentificationType } from '@interfaces/user.interface';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/client.interface';
 
@@ -24,18 +23,6 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
     roleDistribution: any[];
     totalFilteredUsers: number;
   }>;
-
-  /**
-   * Updates a client's identification information.
-   *
-   * @param clientId - The MongoDB ObjectId of the client to update
-   * @param identification - The identification information
-   * @returns A promise that resolves to the updated client document or null if not found
-   */
-  updateIdentification(
-    clientId: string,
-    identification: IdentificationType
-  ): Promise<IClientDocument | null>;
 
   /**
    * Updates a client's settings.
@@ -108,6 +95,15 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
     searchTerm: string,
     opts?: IFindOptions
   ): ListResultWithPagination<IClientDocument[]>;
+
+  /**
+   * Updates a client's data processing consent.
+   *
+   * @param clientId - The MongoDB ObjectId of the client to update
+   * @param consent - Whether consent is given
+   * @returns A promise that resolves to the updated client document or null if not found
+   */
+  updateDataProcessingConsent(clientId: string, consent: boolean): Promise<IClientDocument | null>;
 
   /**
    * Retrieves a client by its unique client ID (cuid).

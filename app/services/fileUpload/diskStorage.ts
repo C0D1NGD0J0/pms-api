@@ -64,31 +64,31 @@ export class DiskStorage {
     {
       name: 'documents[*].file', // Property documents pattern
       maxCount: 10,
-      maxSize: 20 * 1024 * 1024, // 20MB
+      maxSize: 10 * 1024 * 1024, // 20MB
       fileTypes: ['pdf', 'jpeg', 'jpg', 'png', 'doc', 'docx'],
     },
     {
       name: 'images[*].file', // Property images pattern
       maxCount: 5,
-      maxSize: 10 * 1024 * 1024, // 10MB
+      maxSize: 5 * 1024 * 1024, // 5MB
       fileTypes: ['jpeg', 'jpg', 'png'],
     },
     {
       name: 'propertyImages[*].file', // Property images pattern (alternative naming)
       maxCount: 5,
-      maxSize: 10 * 1024 * 1024, // 10MB
+      maxSize: 5 * 1024 * 1024, // 5MB
       fileTypes: ['jpeg', 'jpg', 'png'],
     },
     {
       name: 'personalInfo.avatar.file',
       maxCount: 1,
-      maxSize: 5 * 1024 * 1024, // 5MB
+      maxSize: 3 * 1024 * 1024, // 3MB
       fileTypes: ['jpeg', 'jpg', 'png'],
     },
     {
       name: 'leaseDocument[*].file',
       maxCount: 10,
-      maxSize: 20 * 1024 * 1024,
+      maxSize: 10 * 1024 * 1024, // 10MB
       fileTypes: ['pdf', 'doc', 'docx'],
     },
   ];

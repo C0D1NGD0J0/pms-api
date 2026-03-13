@@ -1,21 +1,13 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import request from 'supertest';
-import { container } from '@di/setup';
 import { SubscriptionController } from '@controllers/index';
 import subscriptionRoutes from '@routes/subscription.routes';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
 
 describe('Subscription Routes API Tests', () => {
   let app: express.Application;
   let mockSubscriptionController: Partial<SubscriptionController>;
 
-  beforeAll(async () => {
-    await setupTestDatabase();
-
+  beforeAll(() => {
     app = express();
     app.use(express.json());
 
@@ -64,25 +56,29 @@ describe('Subscription Routes API Tests', () => {
       }),
     };
 
-    // Mock container resolution
-    const originalResolve = container.resolve.bind(container);
-    jest.spyOn(container, 'resolve').mockImplementation((name: string | symbol) => {
-      if (name === 'subscriptionController') {
-        return mockSubscriptionController as SubscriptionController;
-      }
-      return originalResolve(name);
+    // Inject req.container (Awilix scoped container mock)
+    const mockContainer = {
+      resolve: (name: string | symbol) => {
+        if (name === 'subscriptionController') {
+          return mockSubscriptionController as SubscriptionController;
+        }
+        return {};
+      },
+    };
+
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      (req as any).container = mockContainer;
+      next();
     });
 
     app.use('/api/v1/subscriptions', subscriptionRoutes);
   });
 
-  afterAll(async () => {
-    await disconnectTestDatabase();
+  afterAll(() => {
     jest.restoreAllMocks();
   });
 
-  beforeEach(async () => {
-    await clearTestDatabase();
+  beforeEach(() => {
     jest.clearAllMocks();
   });
 

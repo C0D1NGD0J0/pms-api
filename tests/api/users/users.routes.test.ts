@@ -383,6 +383,16 @@ describe('Users Routes Integration Tests', () => {
       expect(response.body.success).toBe(true);
       expect(mockUserController.getFilteredUsers).toHaveBeenCalled();
     });
+
+    it('should accept filter[search] query parameter', async () => {
+      const response = await request(app)
+        .get(endpoint)
+        .query({ 'filter[search]': 'Alice' })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(mockUserController.getFilteredUsers).toHaveBeenCalled();
+    });
   });
 
   describe('GET /:cuid/users/stats (protected)', () => {
@@ -611,6 +621,16 @@ describe('Users Routes Integration Tests', () => {
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
+    });
+
+    it('should accept filter[search] query parameter', async () => {
+      const response = await request(app)
+        .get(endpoint)
+        .query({ 'filter[search]': 'Smith' })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(mockUserController.getFilteredTenants).toHaveBeenCalled();
     });
   });
 

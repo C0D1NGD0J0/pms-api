@@ -33,7 +33,11 @@
       "connectionCheckFailed": "Vérification de la connexion échouée",
       "adminRequired": "Privilèges administrateur requis",
       "authorizationFailed": "Autorisation échouée",
-      "clientAccessDenied": "Accès refusé. Vous n'avez pas la permission d'accéder à ce compte client"
+      "clientAccessDenied": "Accès refusé. Vous n'avez pas la permission d'accéder à ce compte client",
+      "entitlementsUnavailable": "Les droits d'abonnement n'ont pas pu être vérifiés. Veuillez réessayer.",
+      "featureNotEntitled": "Cette fonctionnalité n'est pas disponible dans votre plan d'abonnement actuel. Veuillez mettre à niveau pour y accéder.",
+      "clientNotVerified": "Votre compte doit être vérifié avant d'effectuer cette action. Veuillez compléter la vérification du compte.",
+      "superAdminRequired": "Des privilèges de super administrateur sont requis pour effectuer cette action"
     },
     "success": {
       "tokenRefreshed": "Jeton rafraîchi avec succès",
@@ -72,7 +76,6 @@
   },
   "client": {
     "errors": {
-      "clientNotFound": "Client introuvable",
       "notFound": "Client introuvable",
       "insufficientPermissions": "Permissions insuffisantes pour effectuer cette action",
       "idNumberRequired": "Numéro d'identification requis lors de la mise à jour du type d'identification",
@@ -83,23 +86,47 @@
       "validationFailed": "La validation a échoué",
       "updateFailed": "Échec de la mise à jour du profil client",
       "unableToFetch": "Impossible de récupérer les détails du client.",
-      "detailsNotFound": "Détails du client introuvables."
+      "detailsNotFound": "Détails du client introuvables.",
+      "invalidRole": "Rôle spécifié invalide",
+      "userNotFound": "Utilisateur introuvable",
+      "userNotInClient": "L'utilisateur n'est pas connecté à ce client",
+      "userAlreadyHasRole": "L'utilisateur a déjà le rôle {{role}}",
+      "cannotRemoveLastAdmin": "Impossible de supprimer le rôle administrateur du dernier administrateur",
+      "cannotDisconnectLastAdmin": "Impossible de déconnecter le dernier administrateur",
+      "cannotDeleteAccountOwner": "Impossible de supprimer le propriétaire du compte. Veuillez transférer la propriété à un autre administrateur ou fermer votre compte.",
+      "clientIdRequired": "ID client requis",
+      "identitySessionFailed": "Échec de l'initiation de la vérification d'identité. Veuillez réessayer.",
+      "identityNotVerified": "La vérification d'identité via Stripe n'a pas été complétée. Veuillez compléter la vérification avant d'approuver.",
+      "alreadyVerified": "Ce compte est déjà vérifié.",
+      "verificationRequired": "La vérification du compte est requise pour effectuer cette action. Veuillez compléter la vérification d'identité."
     },
     "success": {
       "profileUpdated": "Profil client mis à jour avec succès",
       "detailsUpdated": "Détails du client mis à jour avec succès",
-      "detailsRetrieved": "Détails du client récupérés avec succès",
       "userRetrieved": "Informations utilisateur récupérées avec succès",
       "userStatsRetrieved": "Statistiques utilisateur récupérées avec succès",
       "tenantsRetrieved": "Locataires récupérés avec succès",
-      "retrieved": "Détails du client récupérés avec succès"
+      "retrieved": "Détails du client récupérés avec succès",
+      "roleAssigned": "Rôle {{role}} assigné avec succès",
+      "roleRemoved": "Rôle {{role}} supprimé avec succès",
+      "rolesRetrieved": "Rôles utilisateur récupérés avec succès",
+      "userDisconnected": "Utilisateur déconnecté avec succès",
+      "userReconnected": "Utilisateur reconnecté avec succès",
+      "usersRetrieved": "Utilisateurs du client récupérés avec succès",
+      "filteredUsersRetrieved": "Utilisateurs récupérés avec succès",
+      "verified": "Compte vérifié avec succès",
+      "updated": "Client mis à jour avec succès"
+    },
+    "logging": {
+      "validationCompleted": "Validation client terminée"
     }
   },
   "property": {
     "logging": {
       "cleaningUp": "Nettoyage des ressources de propriété et des écouteurs d'événements",
       "eventListenersRemoved": "Écouteurs d'événements de propriété supprimés avec succès",
-      "ignoringUploadEvent": "Ignorer l'événement de téléchargement pour une ressource non-propriété"
+      "ignoringUploadEvent": "Ignorer l'événement de téléchargement pour une ressource non-propriété",
+      "eventListenersInitialized": "Écouteurs d'événements de propriété initialisés"
     },
     "errors": {
       "noCsvFileUploaded": "Aucun fichier CSV téléchargé",
@@ -137,7 +164,9 @@
       "csvImportStarted": "Tâche d'importation CSV démarrée",
       "propertyUpdated": "Propriété mise à jour avec succès",
       "csvValidationStarted": "Processus de validation CSV démarré.",
-      "propertyArchived": "Propriété archivée avec succès"
+      "propertyArchived": "Propriété archivée avec succès",
+      "assignableUsersRetrieved": "Utilisateurs assignables récupérés avec succès",
+      "propertiesRetrieved": "Propriétés récupérées avec succès"
     }
   },
   "propertyUnit": {
@@ -476,6 +505,25 @@
   "tenant": {
     "success": {
       "detailsRetrieved": "Détails du locataire récupérés avec succès"
+    },
+    "errors": {
+      "notFound": "Locataire introuvable"
+    }
+  },
+  "lease": {
+    "errors": {
+      "validationFailed": "Validation du bail échouée. Veuillez vérifier les détails et réessayer.",
+      "overlappingLease": "Les dates du bail chevauchent un bail actif existant pour cette unité",
+      "cannotCreateOwnLease": "Impossible de créer un bail pour vous-même en tant que locataire - conflit d'intérêts",
+      "cannotUpdateOwnLease": "Impossible de mettre à jour vos propres informations de bail - conflit d'intérêts"
+    },
+    "invalid_access": "Vous n'avez pas la permission d'accéder à ce bail",
+    "retrieved_successfully": "Bail récupéré avec succès",
+    "updatedSuccessfully": "Bail mis à jour avec succès"
+  },
+  "common": {
+    "errors": {
+      "invalidUserRole": "Rôle utilisateur invalide spécifié"
     }
   }
 }

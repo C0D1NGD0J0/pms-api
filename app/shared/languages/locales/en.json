@@ -3,7 +3,7 @@
     "errors": {
       "unauthorized": "Unauthorized",
       "invalidRefreshToken": "Invalid refresh token",
-      "tokenExpired": "token expired.",
+      "tokenExpired": "Token expired.",
       "authenticationRequired": "Authentication required",
       "invalidAuthToken": "Invalid authentication token",
       "accountVerificationPending": "Account verification pending",
@@ -36,7 +36,8 @@
       "clientAccessDenied": "Access denied. You do not have permission to access this client account",
       "entitlementsUnavailable": "Subscription entitlements could not be verified. Please try again.",
       "featureNotEntitled": "This feature is not available on your current subscription plan. Please upgrade to access it.",
-      "clientNotVerified": "Your account must be verified before performing this action. Please complete account verification."
+      "clientNotVerified": "Your account must be verified before performing this action. Please complete account verification.",
+      "superAdminRequired": "Super administrator privileges are required to perform this action"
     },
     "success": {
       "tokenRefreshed": "Token refreshed successfully",
@@ -75,7 +76,6 @@
   },
   "client": {
     "errors": {
-      "clientNotFound": "Client not found",
       "notFound": "Client not found",
       "insufficientPermissions": "Insufficient permissions to perform this action",
       "idNumberRequired": "ID number is required when updating identification type",
@@ -95,12 +95,14 @@
       "cannotDisconnectLastAdmin": "Cannot disconnect the last administrator",
       "cannotDeleteAccountOwner": "Cannot delete account owner. Please transfer ownership to another admin or close your account instead.",
       "clientIdRequired": "Client ID is required",
-      "clientNotFound": "Client not found"
+      "identitySessionFailed": "Failed to initiate identity verification. Please try again.",
+      "identityNotVerified": "Identity verification has not been completed via Stripe. Please complete verification before approving.",
+      "alreadyVerified": "This account is already verified.",
+      "verificationRequired": "Account verification is required to perform this action. Please complete identity verification."
     },
     "success": {
       "profileUpdated": "Client profile updated successfully",
       "detailsUpdated": "Client details updated successfully",
-      "detailsRetrieved": "Client details retrieved successfully",
       "userRetrieved": "User information retrieved successfully",
       "userStatsRetrieved": "User statistics retrieved successfully",
       "tenantsRetrieved": "Tenants retrieved successfully",
@@ -111,14 +113,20 @@
       "userReconnected": "User reconnected successfully",
       "usersRetrieved": "Client users retrieved successfully",
       "filteredUsersRetrieved": "Users retrieved successfully",
-      "retrieved": "Client details retrieved successfully"
+      "retrieved": "Client details retrieved successfully",
+      "verified": "Account verified successfully",
+      "updated": "Client updated successfully"
+    },
+    "logging": {
+      "validationCompleted": "Client validation completed"
     }
   },
   "property": {
     "logging": {
       "cleaningUp": "Cleaning up property resources and event listeners",
       "eventListenersRemoved": "Property event listeners removed successfully",
-      "ignoringUploadEvent": "Ignoring upload event for non-property resource"
+      "ignoringUploadEvent": "Ignoring upload event for non-property resource",
+      "eventListenersInitialized": "Property event listeners initialized"
     },
     "errors": {
       "noCsvFileUploaded": "No CSV file uploaded",
@@ -157,11 +165,13 @@
       "propertyUpdated": "Property updated successfully",
       "csvValidationStarted": "CSV validation process started.",
       "propertyArchived": "Property archived successfully",
-      "assignableUsersRetrieved": "Assignable users retrieved successfully"
+      "assignableUsersRetrieved": "Assignable users retrieved successfully",
+      "propertiesRetrieved": "Properties retrieved successfully"
     }
   },
   "propertyUnit": {
     "errors": {
+      "noCsvFileUploaded": "No CSV file uploaded",
       "noDocumentFileUploaded": "No document file uploaded",
       "unableToAddUnit": "Unable to add unit to property.",
       "propertyNotFound": "Unable to add unit to property, property not found.",
@@ -211,14 +221,10 @@
       "invalidUrl": "Invalid URL provided.",
       "companyNameRequired": "Company name is required",
       "invalidCompanyEmail": "Invalid company email",
-      "legalEntityNameRequired": "Legal entity name is required",
       "companyAddressRequired": "Company address is required",
       "companyPhoneRequired": "Company phone number is required",
       "contactPersonRequired": "Contact person is required",
       "businessRegNumberRequired": "Business registration number is required",
-      "idNumberRequired": "ID number is required",
-      "issuingAuthorityRequired": "Issuing authority is required",
-      "issuingStateRequired": "Issuing state is required",
       "companyProfileRequired": "Company profile is required for business accounts",
       "invalidEmergencyEmail": "Invalid emergency contact email",
       "invalidToken": "Invalid token provided",
@@ -268,7 +274,7 @@
       "invalidPurchaseDate": "Invalid date format for purchase date",
       "marketValuePositive": "Market value must be a positive number",
       "propertyTaxNonNegative": "Property tax must be a non-negative number",
-      "invalidAssessmentDate": "Invalid date format for last-assesment date",
+      "invalidAssessmentDate": "Invalid date format for last-assessment date",
       "taxAmountNonNegative": "Tax amount must be a non-negative number",
       "rentalAmountNonNegative": "Rental amount must be a non-negative number",
       "managementFeesNonNegative": "Management fees must be a non-negative number",
@@ -300,17 +306,10 @@
     },
     "propertyUnit": {
       "invalidUnitId": "Invalid unit ID",
-      "totalAreaPositive": "Total area must be a positive number",
       "roomsNonNegative": "room must be a non-negative integer",
-      "bathroomsNonNegative": "Bathrooms must be a non-negative number",
-      "maxOccupantsMinOne": "Maximum occupants must be at least 1",
       "rentNonNegative": "Rent amount must be a non-negative number",
-      "securityDepositNonNegative": "Security deposit must be a non-negative number",
       "invalidPhotoUrl": "Invalid URL format for photo",
-      "invalidDocumentUrl": "Invalid URL format for document",
       "invalidExternalUrl": "Invalid external URL format",
-      "descriptionMaxLength": "Description must be at most 150 characters",
-      "documentNameMaxLength": "Document name must be at most 100 characters",
       "invalidAttachmentUrl": "Invalid URL format for attachment",
       "unitNumberRequired": "Unit number must not be empty",
       "unitNumberMaxLength": "Unit number must be at most 20 characters",
@@ -376,31 +375,29 @@
     }
   },
   "email": {
-    "accountUpdate": {
+    "common": {
       "greeting": "Hello {{fullname}},",
+      "alternativeText": "If the button doesn't work, copy and paste this link in your browser:"
+    },
+    "accountUpdate": {
       "message": "This email is to inform you that, your account was recently updated at {{updatedAt}}. If you feel this update wasn't carried out by you please contact customer support.",
       "supportText": "customer support email: Customer support"
     },
     "forgotPassword": {
       "subject": "Reset Your Password",
-      "greeting": "Hello {{fullname}},",
       "message": "We received a request to reset your password. Click the button below to set a new password for your Property Solutions account.",
       "buttonText": "Reset Password",
-      "alternativeText": "If the button doesn't work, copy and paste this link in your browser:",
       "expiryText": "This link will expire in 1 hour. If you didn't request a password reset, please ignore this email."
     },
     "registration": {
       "subject": "Activate Your Account",
-      "greeting": "Hello {{fullname}},",
       "message": "Welcome to Property Solutions! To complete your account setup, please click the button below to activate your account.",
       "buttonText": "Activate Account",
-      "alternativeText": "If the button doesn't work, copy and paste this link in your browser:",
       "expiryText": "This link will expire in 2 hours. If you didn't create an account, please ignore this email."
     },
     "resetPassword": {
-      "greeting": "Hello {{fullname}},",
-      "message": "Your password has successfully been updated.for your account.",
-      "warningText": "If you didn't initiate this equest please contact customer care urgently."
+      "message": "Your password has been successfully updated for your account.",
+      "warningText": "If you didn't initiate this request, please contact customer care urgently."
     },
     "invitation": {
       "subject": "You've been invited to join {{companyName}}",
@@ -483,43 +480,6 @@
       "notFound": "Profile not found"
     }
   },
-  "propertyUnit": {
-    "errors": {
-      "noCsvFileUploaded": "No CSV file uploaded",
-      "noDocumentFileUploaded": "No document file uploaded",
-      "unableToAddUnit": "Unable to add unit to property.",
-      "propertyNotFound": "Unable to add unit to property, property not found.",
-      "unableToGetDetails": "Unable to get property unit details.",
-      "unableToGetUnitFromProperty": "Unable to get unit from property, property not found.",
-      "unitNotFound": "Unable to get unit from property, unit not found.",
-      "unableToGetUnits": "Unable to get property units.",
-      "unableToGetUnitsFromProperty": "Unable to get units from property, property not found.",
-      "unableToUpdateUnit": "Unable to update property unit.",
-      "cannotUpdateDueToStatus": "Cannot update unit, due to property status of {{status}}.",
-      "rentalAmountMustBeNonNegative": "Rental amount must be a non-negative number",
-      "securityDepositMustBeNonNegative": "Security deposit must be a non-negative number",
-      "cannotSetOccupiedWhenProperty": "Cannot set unit as occupied when property is {{status}}",
-      "occupiedUnitsMustHaveRental": "Occupied units must have a rental amount",
-      "validationFailed": "Validation failed",
-      "documentDeletionNotImplemented": "Document deletion functionality needs to be implemented",
-      "maxCapacityReached": "Unable to add units to property, maximum capacity reached.",
-      "exceedsLimit": "Cannot add {{count}} units. Property has {{current}}/{{max}} units (including archived). Adding these units would exceed the limit.",
-      "duplicateUnitNumbers": "Duplicate unit numbers found in batch: {{unitNumbers}}",
-      "patternInconsistency": "Pattern inconsistency detected: {{recommendation}}",
-      "unitNumberAlreadyExists": "A unit with number '{{unitNumber}}' already exists for this property",
-      "unitSuggestion": "Suggested unit number: {{suggestion}}"
-    },
-    "success": {
-      "unitRetrieved": "Unit retrieved successfully.",
-      "unitsRetrieved": "Units retrieved successfully.",
-      "unitUpdated": "Unit updated successfully",
-      "unitCreationQueued": "Unit creation job queued successfully",
-      "unitsCreated": "{{created}} units created successfully, {{failed}} failed",
-      "allUnitsCreated": "All {{count}} units created successfully",
-      "csvValidated": "Property units CSV file validated successfully",
-      "csvImported": "Property units imported successfully from CSV file"
-    }
-  },
   "vendor": {
     "success": {
       "statsRetrieved": "Vendor statistics retrieved successfully",
@@ -532,6 +492,25 @@
   "tenant": {
     "success": {
       "detailsRetrieved": "Tenant details retrieved successfully"
+    },
+    "errors": {
+      "notFound": "Tenant not found"
+    }
+  },
+  "lease": {
+    "errors": {
+      "validationFailed": "Lease validation failed. Please check the details and try again.",
+      "overlappingLease": "Lease dates overlap with an existing active lease for this unit",
+      "cannotCreateOwnLease": "Cannot create a lease for yourself as the tenant - conflict of interest",
+      "cannotUpdateOwnLease": "Cannot update your own lease information - conflict of interest"
+    },
+    "invalid_access": "You do not have permission to access this lease",
+    "retrieved_successfully": "Lease retrieved successfully",
+    "updatedSuccessfully": "Lease updated successfully"
+  },
+  "common": {
+    "errors": {
+      "invalidUserRole": "Invalid user role specified"
     }
   }
 }

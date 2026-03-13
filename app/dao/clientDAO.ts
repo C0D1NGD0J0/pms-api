@@ -1,9 +1,9 @@
 import Logger from 'bunyan';
+import { IUserDocument } from '@interfaces/user.interface';
 import { ListResultWithPagination } from '@interfaces/index';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
-import { IdentificationType, IUserDocument } from '@interfaces/user.interface';
 import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/client.interface';
 
 import { BaseDAO } from './baseDAO';
@@ -138,13 +138,13 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
   /**
    * @inheritdoc
    */
-  async updateIdentification(
+  async updateDataProcessingConsent(
     clientId: string,
-    identification: IdentificationType
+    consent: boolean
   ): Promise<IClientDocument | null> {
     try {
       return await this.updateById(clientId, {
-        $set: { identification: identification },
+        $set: { dataProcessingConsent: consent },
       });
     } catch (error) {
       this.logger.error(error);

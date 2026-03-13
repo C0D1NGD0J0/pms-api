@@ -3,7 +3,12 @@ import { asyncWrapper } from '@utils/index';
 import { ClientController } from '@controllers/ClientController';
 import { ClientValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
-import { requireUserManagement, requirePermission, isAuthenticated } from '@shared/middlewares';
+import {
+  requireUserManagement,
+  requirePermission,
+  isAuthenticated,
+  basicLimiter,
+} from '@shared/middlewares';
 
 const router = Router();
 
@@ -84,6 +89,20 @@ router.post(
   asyncWrapper((req, res) => {
     const clientController = req.container.resolve<ClientController>('clientController');
     return clientController.verifyAccount(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/verify_client_identity',
+  isAuthenticated,
+  basicLimiter(),
+  requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+  }),
+  asyncWrapper((req, res) => {
+    const clientController = req.container.resolve<ClientController>('clientController');
+    return clientController.initiateIdentityVerification(req, res);
   })
 );
 

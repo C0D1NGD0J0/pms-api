@@ -2,6 +2,7 @@ import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import express, { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
+import { clearTestDatabase } from '@tests/helpers';
 import { ROLES } from '@shared/constants/roles.constants';
 import { Profile, Client, Vendor, User } from '@models/index';
 import { VendorService } from '@services/vendor/vendor.service';
@@ -9,8 +10,7 @@ import { VendorController } from '@controllers/VendorController';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { ProfileDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
-import { beforeEach, beforeAll, afterAll, describe, expect, it } from '@jest/globals';
-import { disconnectTestDatabase, setupTestDatabase, clearTestDatabase } from '@tests/helpers';
+import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
 
 describe('VendorController Integration Tests', () => {
@@ -35,7 +35,6 @@ describe('VendorController Integration Tests', () => {
   });
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
 
     // Initialize DAOs
@@ -140,10 +139,6 @@ describe('VendorController Integration Tests', () => {
       ],
       yearsInBusiness: 5,
     });
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   describe('GET /vendors/:cuid/vendors/stats - getVendorStats', () => {

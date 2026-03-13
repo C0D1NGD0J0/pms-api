@@ -9,18 +9,15 @@ import { beforeEach, beforeAll, describe, afterAll, expect, it } from '@jest/glo
 
 import { createAuthToken, createTestApp } from '../../setup/testApp';
 import {
-  disconnectTestDatabase,
   createTestPropertyUnit,
   setupAllExternalMocks,
   createTestManagerUser,
   createTestTenantUser,
   createTestAdminUser,
   createTestProperty,
-  setupTestDatabase,
   createTestProfile,
   createTestClient,
-  createTestUser,
-} from '../../helpers';
+  createTestUser,} from '../../helpers';
 
 // Helper function to create standard lease documents for testing
 const createMockLeaseDocuments = (uploadedBy: Types.ObjectId) => [
@@ -68,7 +65,6 @@ describe('LeaseController Integration Tests', () => {
   let staffToken: string;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
 
     // Ensure Lease model indexes are built
@@ -112,10 +108,6 @@ describe('LeaseController Integration Tests', () => {
   beforeEach(async () => {
     // Clear only leases to maintain test users/properties
     await Lease.deleteMany({});
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   describe('POST /api/v1/leases/:cuid - Create Lease', () => {
@@ -1421,7 +1413,9 @@ describe('LeaseController Integration Tests', () => {
       expect(response.body.data.data.internalNotes).toBeDefined();
       expect(response.body.data.data.internalNotes).toHaveLength(1);
       expect(response.body.data.data.internalNotes[0].note).toBe('This is a test note');
-      expect(response.body.data.data.internalNotes[0].html).toBe('<p>This is a <b>test</b> note</p>');
+      expect(response.body.data.data.internalNotes[0].html).toBe(
+        '<p>This is a <b>test</b> note</p>'
+      );
     });
 
     it('should reject HTML exceeding 10000 characters', async () => {

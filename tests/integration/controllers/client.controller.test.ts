@@ -2,6 +2,7 @@ import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import express, { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
+import { clearTestDatabase } from '@tests/helpers';
 import { UserService } from '@services/user/user.service';
 import { ROLES } from '@shared/constants/roles.constants';
 import { ClientService } from '@services/client/client.service';
@@ -9,9 +10,8 @@ import { VendorService } from '@services/vendor/vendor.service';
 import { ClientController } from '@controllers/ClientController';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { PermissionService } from '@services/permission/permission.service';
-import { beforeEach, beforeAll, afterAll, describe, expect, it } from '@jest/globals';
+import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PropertyUnit, Property, Profile, Client, Vendor, User } from '@models/index';
-import { disconnectTestDatabase, setupTestDatabase, clearTestDatabase } from '@tests/helpers';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
 import {
   PropertyUnitDAO,
@@ -44,7 +44,6 @@ describe('ClientController Integration Tests', () => {
   });
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
 
     // Initialize DAOs
@@ -117,6 +116,7 @@ describe('ClientController Integration Tests', () => {
       emitterService: { emit: jest.fn(), on: jest.fn() } as any,
       notificationService: {} as any,
       sseService: {} as any,
+      paymentGatewayService: {} as any,
     });
 
     clientController = new ClientController({ clientService });
@@ -190,10 +190,6 @@ describe('ClientController Integration Tests', () => {
     await createTestProfile(adminUser._id, testClient._id, { type: 'employee' });
     await createTestProfile(managerUser._id, testClient._id, { type: 'employee' });
     await createTestProfile(staffUser._id, testClient._id, { type: 'employee' });
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   describe('GET /clients/:cuid/client_details - getClient', () => {
@@ -631,8 +627,8 @@ describe('ClientController Integration Tests', () => {
       // Verify database update
       const client = await Client.findOne({ cuid: testClient.cuid });
       expect(client?.isVerified).toBe(true);
-      expect(client?.verifiedAt).toBeDefined();
-      expect(client?.verifiedBy).toBeDefined();
+      expect(client?.identityVerification?.verifiedAt).toBeDefined();
+      expect(client?.identityVerification?.verifiedBy).toBeDefined();
     });
 
     it('should return 400 when client is already verified', async () => {

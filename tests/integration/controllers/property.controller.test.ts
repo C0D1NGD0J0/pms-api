@@ -6,17 +6,12 @@ import { ROLES } from '@shared/constants/roles.constants';
 import { PropertyUnit, Property, Lease } from '@models/index';
 import { PropertyApprovalStatusEnum } from '@interfaces/property.interface';
 import express, { NextFunction, Application, Response, Request } from 'express';
-import {
-  disconnectTestDatabase,
-  setupTestDatabase,
-  clearTestDatabase,
-} from '@tests/setup/testDatabase';
+import { clearTestDatabase } from '@tests/setup/testDatabase';
 import {
   createTestProperty,
   createTestProfile,
   createTestClient,
-  createTestUser,
-} from '@tests/setup/testFactories';
+  createTestUser,} from '@tests/setup/testFactories';
 
 // Import DI container and services
 let container: any;
@@ -123,8 +118,6 @@ describe('PropertyController Integration Tests', () => {
   };
 
   beforeAll(async () => {
-    await setupTestDatabase();
-
     // Setup Express app with minimal middleware
     app = express();
     app.use(express.json({ limit: '200mb' }));
@@ -185,7 +178,6 @@ describe('PropertyController Integration Tests', () => {
 
   afterAll(async () => {
     await clearTestDatabase();
-    await disconnectTestDatabase();
   });
 
   beforeEach(async () => {

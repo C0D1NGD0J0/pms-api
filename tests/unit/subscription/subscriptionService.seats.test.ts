@@ -48,6 +48,11 @@ describe('SubscriptionService - Additional Seat Management', () => {
       addSubscriptionItem: jest.fn(),
       updateSubscriptionItemQuantity: jest.fn(),
       deleteSubscriptionItem: jest.fn(),
+      getPriceByLookupKey: jest.fn().mockResolvedValue({
+        id: 'price_test123',
+        unit_amount: 500,
+        recurring: { interval: 'month' },
+      }),
     } as any;
 
     mockSSEService = {
@@ -146,7 +151,10 @@ describe('SubscriptionService - Additional Seat Management', () => {
       const result = await subscriptionService.updateAdditionalSeats(testCuid, 5);
 
       expect(result.success).toBe(true);
-      expect(mockStripeService.getPriceByLookupKey).toHaveBeenCalledWith('growth_seats_monthly');
+      expect(mockPaymentGatewayService.getPriceByLookupKey).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        'growth_seats_monthly'
+      );
       expect(mockPaymentGatewayService.addSubscriptionItem).toHaveBeenCalledWith(
         IPaymentGatewayProvider.STRIPE,
         'sub_stripe123',
@@ -223,7 +231,10 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       await subscriptionService.updateAdditionalSeats(testCuid, 5);
 
-      expect(mockStripeService.getPriceByLookupKey).toHaveBeenCalledWith('portfolio_seat_monthly');
+      expect(mockPaymentGatewayService.getPriceByLookupKey).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        'portfolio_seat_monthly'
+      );
       expect(mockPaymentGatewayService.updateSubscriptionItemQuantity).toHaveBeenCalledWith(
         IPaymentGatewayProvider.STRIPE,
         'si_existing123',
@@ -272,7 +283,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       // Mock Stripe price validation - annual price with year interval
-      mockStripeService.getPriceByLookupKey.mockResolvedValue({
+      mockPaymentGatewayService.getPriceByLookupKey.mockResolvedValue({
         id: 'price_annual123',
         unit_amount: 9500,
         recurring: { interval: 'year' },
@@ -295,7 +306,10 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       await subscriptionService.updateAdditionalSeats(testCuid, 2);
 
-      expect(mockStripeService.getPriceByLookupKey).toHaveBeenCalledWith('growth_seat_annual');
+      expect(mockPaymentGatewayService.getPriceByLookupKey).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        'growth_seat_annual'
+      );
       expect(mockPaymentGatewayService.addSubscriptionItem).toHaveBeenCalledWith(
         IPaymentGatewayProvider.STRIPE,
         'sub_stripe123',
@@ -316,12 +330,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
-      // Mock Stripe returning monthly price when annual expected
-      mockStripeService.getPriceByLookupKey.mockResolvedValue({
-        id: 'price_monthly123',
-        unit_amount: 500,
-        recurring: { interval: 'month' }, // Wrong interval!
-      });
+      // Default mock returns { interval: 'month' }; annual subscription expects 'year' → mismatch
+      // (No override needed — beforeEach default already returns monthly interval)
 
       await expect(subscriptionService.updateAdditionalSeats(testCuid, 2)).rejects.toThrow(
         /billing interval mismatch/
@@ -341,7 +351,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       // Mock Stripe returning null (price not found)
-      mockStripeService.getPriceByLookupKey.mockResolvedValue(null);
+      mockPaymentGatewayService.getPriceByLookupKey.mockResolvedValue(null);
 
       await expect(subscriptionService.updateAdditionalSeats(testCuid, 2)).rejects.toThrow(
         /seat price configuration is missing/

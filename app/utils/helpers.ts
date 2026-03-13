@@ -904,3 +904,5 @@ export const getPaymentProcessorUrls = (baseUrl: string, cuid: string) => ({
   refreshUrl: `${baseUrl}/client/${cuid}/account_settings/payment/refresh`,
   accountUpdateReturnUrl: `${baseUrl}/client/${cuid}/account_settings?activeTab=payment`,
 });
+
+export const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

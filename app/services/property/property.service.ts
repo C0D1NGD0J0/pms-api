@@ -53,6 +53,7 @@ import {
   PROPERTY_STAFF_ROLES,
   getRequestDuration,
   createLogger,
+  escapeRegExp,
   MoneyUtils,
 } from '@utils/index';
 
@@ -696,10 +697,12 @@ export class PropertyService {
 
       if (filters.location) {
         if (filters.location.city) {
-          filter['address.city'] = { $regex: new RegExp(filters.location.city, 'i') };
+          filter['address.city'] = { $regex: new RegExp(escapeRegExp(filters.location.city), 'i') };
         }
         if (filters.location.state) {
-          filter['address.state'] = { $regex: new RegExp(filters.location.state, 'i') };
+          filter['address.state'] = {
+            $regex: new RegExp(escapeRegExp(filters.location.state), 'i'),
+          };
         }
         if (filters.location.postCode) {
           filter['address.postCode'] = filters.location.postCode;

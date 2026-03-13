@@ -4,8 +4,8 @@ import { Lease, User } from '@models/index';
 import { IUserDocument } from '@interfaces/user.interface';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
 import { IUserRoleType, ROLES } from '@shared/constants/roles.constants';
-import { paginateResult, hashGenerator, createLogger } from '@utils/index';
 import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
+import { paginateResult, hashGenerator, createLogger, escapeRegExp } from '@utils/index';
 
 import { BaseDAO } from './baseDAO';
 import { IFindOptions, dynamic } from './interfaces/baseDAO.interface';
@@ -323,7 +323,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       }
 
       if (search && search.trim()) {
-        const searchRegex = new RegExp(search.trim(), 'i');
+        const searchRegex = new RegExp(escapeRegExp(search.trim()), 'i');
         query.$or = [
           { firstName: { $regex: searchRegex } },
           { lastName: { $regex: searchRegex } },
@@ -982,7 +982,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       };
 
       if (filters?.search && filters.search.trim()) {
-        const searchRegex = new RegExp(filters.search.trim(), 'i');
+        const searchRegex = new RegExp(escapeRegExp(filters.search.trim()), 'i');
         tenantMatch.$or = [
           { firstName: { $regex: searchRegex } },
           { lastName: { $regex: searchRegex } },

@@ -1,7 +1,7 @@
 import { Document, Types } from 'mongoose';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 
-import { IdentificationType } from './user.interface';
+import { IUserIdentificationType } from './user.interface';
 
 /**
  * ============================================================================
@@ -137,7 +137,7 @@ export interface IPopulatedUser {
  * Personal Info Interface
  */
 export interface IPersonalInfo {
-  identification?: IdentificationType;
+  identification?: IUserIdentificationType;
   phoneNumber?: string;
   displayName: string;
   firstName: string;
@@ -208,6 +208,18 @@ export interface IProfile {
 }
 
 /**
+ * Profile Edit Data Interface
+ * Used when fetching profile data for editing/display
+ */
+export interface IProfileEditData {
+  identification?: IUserIdentificationType;
+  personalInfo: IProfileEditPersonalInfo;
+  settings: IProfileEditSettings;
+  userType: ProfileUserType;
+  roles: IUserRoleType[];
+}
+
+/**
  * Background Check Item Interface
  */
 export interface IBackgroundCheckItem {
@@ -216,18 +228,6 @@ export interface IBackgroundCheckItem {
   expiryDate?: Date;
   notes?: string;
   cuid: string; // Track which client performed the background check
-}
-
-/**
- * Profile Edit Data Interface
- * Used when fetching profile data for editing/display
- */
-export interface IProfileEditData {
-  personalInfo: IProfileEditPersonalInfo;
-  identification?: IdentificationType;
-  settings: IProfileEditSettings;
-  userType: ProfileUserType;
-  roles: IUserRoleType[];
 }
 
 /**

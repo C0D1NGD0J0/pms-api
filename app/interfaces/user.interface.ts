@@ -365,22 +365,6 @@ export interface FilteredUserTableData extends Pick<IUser, 'email'> {
 }
 
 /**
- * Identification Type Interface
- * User identification documents
- */
-export interface IIdentificationType {
-  documents: IdentificationDocumentType[];
-  retentionExpiryDate: Date | string;
-  idType: IdentificationDocumentType;
-  dataProcessingConsent: boolean;
-  expiryDate: Date | string;
-  issueDate: Date | string;
-  issuingState: string;
-  authority: string;
-  idNumber: string;
-}
-
-/**
  * Signup Data Type
  * User registration form data
  */
@@ -400,6 +384,21 @@ export type ISignupData = {
 };
 
 /**
+ * Identification Type Interface
+ * Client identity verification data (Stripe Identity)
+ */
+export interface IIdentificationType {
+  identityVerification?: {
+    sessionId?: string;
+    sessionStatus?: 'requires_input' | 'stripe_verified';
+    documentType?: string;
+    issuingCountry?: string;
+  };
+  processingConsentDate?: Date | string;
+  dataProcessingConsent: boolean;
+}
+
+/**
  * Filtered User Tenant Info
  * Minimal tenant info for table display (lightweight)
  */
@@ -408,6 +407,19 @@ export interface FilteredUserTenantInfo {
   leaseStatus?: string; // active, pending_signature, no_active_lease, etc.
   monthlyRent?: number; // Monthly rent amount
   rentStatus?: string; // paid, overdue, pending, etc.
+}
+
+/**
+ * User profile identification (for tenants, staff, etc.)
+ * Separate from client KYC — stored on Profile.personalInfo.identification
+ */
+export interface IUserIdentificationType {
+  idType?: 'passport' | 'drivers-license' | 'national-id' | 'corporation-license' | string;
+  expiryDate?: Date | string;
+  issueDate?: Date | string;
+  issuingState?: string;
+  authority?: string;
+  idNumber?: string;
 }
 
 /**
@@ -423,6 +435,12 @@ export interface IVendorTeamMember
   joinedDate: Date;
   role: string;
 }
+
+/**
+ * ============================================================================
+ * DOCUMENT INTERFACES (Mongoose Extensions)
+ * ============================================================================
+ */
 
 /**
  * Base User Profile Interface
@@ -441,12 +459,6 @@ export interface IBaseUserProfile {
   uid: string;
   id: string;
 }
-
-/**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
 
 /**
  * Main User Interface
@@ -485,6 +497,12 @@ export interface IUserFilterOptions {
 }
 
 /**
+ * ============================================================================
+ * CURRENT USER & SESSION INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Extended Pagination Interface
  * Alternative pagination structure with hasNext/hasPrev
  */
@@ -499,7 +517,7 @@ export interface IExtendedPagination {
 
 /**
  * ============================================================================
- * CURRENT USER & SESSION INTERFACES
+ * DETAIL INFO INTERFACES (Role-Specific)
  * ============================================================================
  */
 
@@ -512,12 +530,6 @@ export interface IUserStats {
   roleDistribution: StatsDistribution[];
   totalFilteredUsers: number;
 }
-
-/**
- * ============================================================================
- * DETAIL INFO INTERFACES (Role-Specific)
- * ============================================================================
- */
 
 /**
  * Base Pagination Interface
@@ -542,18 +554,18 @@ export interface FilteredVendorInfo extends VendorInfo {
 }
 
 /**
+ * ============================================================================
+ * RESPONSE INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Linked Vendor User Info
  */
 export interface ILinkedVendorUser
   extends Pick<IBaseUserProfile, 'displayName' | 'isActive' | 'email' | 'uid'> {
   phoneNumber?: string;
 }
-
-/**
- * ============================================================================
- * RESPONSE INTERFACES
- * ============================================================================
- */
 
 /**
  * User Property Interface
@@ -568,16 +580,6 @@ export interface IUserProperty {
 }
 
 /**
- * ID Type Union
- * Supported identification document types
- */
-export type IdentificationDocumentType =
-  | 'passport'
-  | 'national-id'
-  | 'drivers-license'
-  | 'corporation-license';
-
-/**
  * Filtered User Employee Info
  * Minimal employee info for table display
  */
@@ -588,18 +590,18 @@ export interface FilteredUserEmployeeInfo {
 }
 
 /**
+ * ============================================================================
+ * FILTERED/LIGHTWEIGHT INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Vendor Team Members Response with Pagination
  */
 export interface IVendorTeamMembersResponse {
   pagination: IBasePagination;
   items: IVendorTeamMember[];
 }
-
-/**
- * ============================================================================
- * FILTERED/LIGHTWEIGHT INTERFACES
- * ============================================================================
- */
 
 /**
  * Account Type Interface
@@ -658,6 +660,12 @@ export interface IPaginatedResult<T> {
 }
 
 /**
+ * ============================================================================
+ * FORM DATA INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Background Check Status Type
  * Used for tenant screening
  */
@@ -665,7 +673,7 @@ export type BackgroundCheckStatus = 'pending' | 'approved' | 'failed' | 'not_req
 
 /**
  * ============================================================================
- * FORM DATA INTERFACES
+ * QUERY & FILTER INTERFACES
  * ============================================================================
  */
 
@@ -678,16 +686,16 @@ export type IUserPopulatedDocument = {
 } & IUserDocument;
 
 /**
- * ============================================================================
- * QUERY & FILTER INTERFACES
- * ============================================================================
- */
-
-/**
  * Lease Status Type
  * Current lease state for tenants
  */
 export type LeaseStatusType = 'active' | 'expired' | 'pending' | 'terminated';
+
+/**
+ * ============================================================================
+ * STATISTICS INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Base Stats Interface
@@ -697,12 +705,6 @@ export interface IBaseStats {
   onTimeRate: string;
   rating: string;
 }
-
-/**
- * ============================================================================
- * STATISTICS INTERFACES
- * ============================================================================
- */
 
 /**
  * Rent Status Type
@@ -717,21 +719,21 @@ export type RentStatus = 'current' | 'late' | 'overdue' | 'no_lease';
 export interface ITenantDetailInfo extends TenantInfo {}
 
 /**
- * User Type Union
- * The three primary user types in the system
- */
-export type UserType = 'employee' | 'vendor' | 'tenant';
-
-/**
  * ============================================================================
  * PAGINATION INTERFACES
  * ============================================================================
  */
 
 /**
- * @deprecated Use IIdentificationType instead
+ * @deprecated Use IIdentificationType (client KYC) or IUserIdentificationType (user profiles) instead
  */
-export type IdentificationType = IIdentificationType;
+export type IdentificationType = IUserIdentificationType;
+
+/**
+ * User Type Union
+ * The three primary user types in the system
+ */
+export type UserType = 'employee' | 'vendor' | 'tenant';
 
 /**
  * ============================================================================

@@ -9,16 +9,13 @@ import { PermissionService } from '@services/permission/permission.service';
 import { ProfileBackgroundCheckStatus } from '@interfaces/profile.interface';
 import { beforeEach, beforeAll, describe, afterAll, expect, it } from '@jest/globals';
 
-import {
-  disconnectTestDatabase,
-  setupAllExternalMocks,
-  setupTestDatabase,
+import { setupAllExternalMocks,
+
   clearTestDatabase,
   createTestClient,
   createTestUser,
   SeededTestData,
-  seedTestData,
-} from '../../helpers';
+  seedTestData,} from '../../helpers';
 
 const setupServices = () => {
   const profileDAO = new ProfileDAO({ profileModel: Profile });
@@ -93,7 +90,6 @@ describe('ProfileService Integration Tests - Write Operations', () => {
   let profileDAO: ProfileDAO;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
     const services = setupServices();
     profileService = services.profileService;
@@ -103,11 +99,6 @@ describe('ProfileService Integration Tests - Write Operations', () => {
   beforeEach(async () => {
     await clearTestDatabase();
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   describe('updateEmployeeInfo', () => {
     it('should successfully update employee information', async () => {
       const client = await createTestClient();
@@ -549,17 +540,11 @@ describe('ProfileService Integration Tests - Read Operations', () => {
   let seededData: SeededTestData;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
     const services = setupServices();
     profileService = services.profileService;
     seededData = await seedTestData();
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   describe('getUserNotificationPreferences', () => {
     it('should return user notification preferences successfully', async () => {
       const user = seededData.users.admin1;

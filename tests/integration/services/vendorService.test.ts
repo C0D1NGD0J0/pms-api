@@ -6,16 +6,13 @@ import { ProfileDAO, VendorDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, afterAll, expect, it } from '@jest/globals';
 
-import {
-  disconnectTestDatabase,
-  setupAllExternalMocks,
-  setupTestDatabase,
+import { setupAllExternalMocks,
+
   clearTestDatabase,
   createTestClient,
   createTestUser,
   SeededTestData,
-  seedTestData,
-} from '../../helpers';
+  seedTestData,} from '../../helpers';
 
 const setupServices = () => {
   const vendorDAO = new VendorDAO({ vendorModel: Vendor });
@@ -54,7 +51,6 @@ describe('VendorService Integration Tests - Write Operations', () => {
   let _vendorDAO: VendorDAO;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
     const services = setupServices();
     vendorService = services.vendorService;
@@ -64,11 +60,6 @@ describe('VendorService Integration Tests - Write Operations', () => {
   beforeEach(async () => {
     await clearTestDatabase();
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   describe('createVendor', () => {
     it('should successfully create vendor with valid data', async () => {
       const client = await createTestClient();
@@ -283,7 +274,6 @@ describe('VendorService Integration Tests - Read Operations', () => {
   let testVendorUser: any;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
     const services = setupServices();
     vendorService = services.vendorService;
@@ -326,11 +316,6 @@ describe('VendorService Integration Tests - Read Operations', () => {
       ],
     });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   describe('getVendorByUserId', () => {
     it('should successfully retrieve vendor by user ID', async () => {
       const result = await vendorService.getVendorByUserId(testVendorUser._id.toString());

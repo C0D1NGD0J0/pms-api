@@ -22,25 +22,21 @@ import {
   ClientDAO,
   VendorDAO,
   LeaseDAO,
-  UserDAO,
-} from '@dao/index';
+  UserDAO,} from '@dao/index';
 
-import {
-  disconnectTestDatabase,
-  createTestPropertyUnit,
+import { createTestPropertyUnit,
   setupAllExternalMocks,
   createTestManagerUser,
   createTestTenantUser,
   createTestAdminUser,
   createTestProperty,
-  setupTestDatabase,
+
   clearTestDatabase,
   createTestProfile,
   createTestClient,
   createTestUser,
   SeededTestData,
-  seedTestData,
-} from '../../helpers';
+  seedTestData,} from '../../helpers';
 
 const setupServices = () => {
   const userDAO = new UserDAO({ userModel: User });
@@ -228,7 +224,6 @@ describe('LeaseService Integration Tests - Write Operations', () => {
   let _leaseDAO: LeaseDAO;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
 
     // Ensure Lease model indexes are built before running tests
@@ -243,11 +238,6 @@ describe('LeaseService Integration Tests - Write Operations', () => {
   beforeEach(async () => {
     await clearTestDatabase();
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   describe('createLease', () => {
     it('should create a lease successfully for single-family property', async () => {
       const client = await createTestClient();
@@ -1185,7 +1175,6 @@ describe('LeaseService Integration Tests - Read Operations', () => {
   let testProperty: any;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
     const services = setupServices();
     leaseService = services.leaseService;
@@ -1257,11 +1246,6 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       ],
     });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   describe('getLeaseById', () => {
     it('should retrieve lease by luid', async () => {
       const mockContext = {

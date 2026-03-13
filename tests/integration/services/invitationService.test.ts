@@ -12,12 +12,11 @@ import {
   createTestInvitation,
   createTestAdminUser,
   clearTestDatabase,
-  setupTestDatabase,
+
   createTestClient,
   createTestUser,
   SeededTestData,
-  seedTestData,
-} from '@tests/helpers';
+  seedTestData,} from '@tests/helpers';
 
 const mockMediaUploadService = {
   handleAvatarDeletion: jest.fn().mockResolvedValue(undefined),
@@ -61,10 +60,7 @@ describe('InvitationService Integration Tests', () => {
     timestamp: new Date(),
   });
 
-  beforeAll(async () => {
-    await setupTestDatabase();
-
-    invitationDAO = new InvitationDAO();
+  beforeAll(async () => { invitationDAO = new InvitationDAO();
     userDAO = new UserDAO({ userModel: User });
     clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
     profileDAO = new ProfileDAO({ profileModel: Profile });

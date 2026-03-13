@@ -12,19 +12,15 @@ import {
   ProfileDAO,
   ClientDAO,
   VendorDAO,
-  UserDAO,
-} from '@dao/index';
+  UserDAO,} from '@dao/index';
 
-import {
-  disconnectTestDatabase,
-  setupAllExternalMocks,
-  setupTestDatabase,
+import { setupAllExternalMocks,
+
   clearTestDatabase,
   createTestClient,
   createTestUser,
   SeededTestData,
-  seedTestData,
-} from '../../helpers';
+  seedTestData,} from '../../helpers';
 
 const setupServices = () => {
   const userDAO = new UserDAO({ userModel: User });
@@ -74,7 +70,6 @@ describe('UserService Integration Tests - Write Operations', () => {
   let userService: UserService;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
     const services = setupServices();
     userService = services.userService;
@@ -131,17 +126,11 @@ describe('UserService Integration Tests - Read Operations', () => {
   let seededData: SeededTestData;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
     const services = setupServices();
     userService = services.userService;
     seededData = await seedTestData();
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   describe('getUsersByRole', () => {
     it('should return users with specific role', async () => {
       const mockContext = {

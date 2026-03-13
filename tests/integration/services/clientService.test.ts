@@ -1,26 +1,22 @@
 import { ROLES } from '@shared/constants/roles.constants';
 import { ClientService } from '@services/client/client.service';
 import { PropertyUnit, Property, Profile, Client, User } from '@models/index';
-import { beforeEach, beforeAll, describe, afterAll, expect, it } from '@jest/globals';
+import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import {
   PropertyUnitDAO,
   SubscriptionDAO,
   PropertyDAO,
   ProfileDAO,
   ClientDAO,
-  UserDAO,
-} from '@dao/index';
+  UserDAO,} from '@dao/index';
 
 import {
-  disconnectTestDatabase,
   setupAllExternalMocks,
-  setupTestDatabase,
   clearTestDatabase,
   createTestClient,
   createTestUser,
   SeededTestData,
-  seedTestData,
-} from '../../helpers';
+  seedTestData,} from '../../helpers';
 
 const setupServices = () => {
   const clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
@@ -46,6 +42,7 @@ const setupServices = () => {
     emitterService: { emit: jest.fn(), on: jest.fn() } as any,
     notificationService: {} as any,
     sseService: {} as any,
+    paymentGatewayService: {} as any,
   });
 
   return { clientService, clientDAO, userDAO, profileDAO, propertyDAO };
@@ -57,7 +54,6 @@ describe('ClientService Integration Tests - Write Operations', () => {
   let userDAO: UserDAO;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
     const services = setupServices();
     clientService = services.clientService;
@@ -412,15 +408,10 @@ describe('ClientService Integration Tests - Read Operations', () => {
   let seededData: SeededTestData;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
     const services = setupServices();
     clientService = services.clientService;
     seededData = await seedTestData();
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   describe('getClientDetails', () => {

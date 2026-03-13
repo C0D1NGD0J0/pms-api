@@ -10,10 +10,9 @@ import {
   createTestPropertyUnit,
   createTestAdminUser,
   createTestProperty,
-  setupTestDatabase,
+
   clearTestDatabase,
-  createTestClient,
-} from '@tests/helpers';
+  createTestClient,} from '@tests/helpers';
 
 // Mock PropertyCache
 const mockPropertyCache = {
@@ -56,10 +55,7 @@ describe('PropertyUnitService Integration Tests', () => {
     timestamp: new Date(),
   });
 
-  beforeAll(async () => {
-    await setupTestDatabase();
-
-    // Initialize REAL DAOs (not mocks)
+  beforeAll(async () => { // Initialize REAL DAOs (not mocks)
     propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
     propertyDAO = new PropertyDAO({ propertyModel: Property, propertyUnitDAO });
     profileDAO = new ProfileDAO({ profileModel: null as any });

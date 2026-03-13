@@ -5,13 +5,8 @@ import { AuthService } from '@services/auth/auth.service';
 import { ROLES } from '@shared/constants/roles.constants';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { VendorService } from '@services/vendor/vendor.service';
+import { clearTestDatabase, createTestClient, createTestUser } from '@tests/helpers';
 import { mockTokenService, mockQueueFactory, mockAuthCache } from '@tests/setup/externalMocks';
-import {
-  clearTestDatabase,
-  setupTestDatabase,
-  createTestClient,
-  createTestUser,
-} from '@tests/helpers';
 
 describe('AuthService Integration Tests', () => {
   let authService: AuthService;
@@ -21,8 +16,6 @@ describe('AuthService Integration Tests', () => {
   let vendorService: VendorService;
 
   beforeAll(async () => {
-    await setupTestDatabase();
-
     userDAO = new UserDAO({ userModel: User });
     clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
     profileDAO = new ProfileDAO({ profileModel: Profile });

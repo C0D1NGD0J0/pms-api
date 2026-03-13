@@ -1,6 +1,5 @@
 import { PropertyCache } from '@caching/property.cache';
 import { ROLES } from '@shared/constants/roles.constants';
-import { disconnectTestDatabase } from '@tests/setup/testDatabase';
 import { PropertyService } from '@services/property/property.service';
 import { PropertyApprovalStatusEnum } from '@interfaces/property.interface';
 import { PropertyStatsService } from '@services/property/propertyStats.service';
@@ -13,12 +12,11 @@ import {
   createTestPropertyUnit,
   createTestProperty,
   clearTestDatabase,
-  setupTestDatabase,
+
   createTestProfile,
   createTestClient,
   createTestUser,
-  SeededTestData,
-} from '@tests/helpers';
+  SeededTestData,} from '@tests/helpers';
 
 // Mock only external services
 const mockMediaUploadService = {
@@ -104,10 +102,7 @@ describe('PropertyService Integration Tests', () => {
     timestamp: new Date(),
   });
 
-  beforeAll(async () => {
-    await setupTestDatabase();
-
-    // Initialize real DAOs (order matters for dependencies)
+  beforeAll(async () => { // Initialize real DAOs (order matters for dependencies)
     propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
     propertyDAO = new PropertyDAO({ propertyModel: Property, propertyUnitDAO });
     clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
@@ -151,11 +146,6 @@ describe('PropertyService Integration Tests', () => {
       paymentDAO: {} as any,
     });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   // =========================================================================
   // WRITE TESTS - Create fresh data for each test (mutations)
   // =========================================================================
@@ -925,6 +915,45 @@ describe('PropertyService Integration Tests', () => {
         expect(result.data.items).toHaveLength(3);
         // Should default to createdAt sorting with deterministic order
         expect(result.data.pagination).toBeDefined();
+      });
+
+      it('should filter properties by searchTerm matching name', async () => {
+        const queryParams = {
+          pagination: { page: 1, limit: 10, sort: 'asc', sortBy: 'name' },
+          filters: { searchTerm: 'Apartment' },
+        };
+
+        const result = await propertyService.getClientProperties(
+          testClient.cuid,
+          {
+            sub: adminUser._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+          } as any,
+          queryParams as any
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data.items).toHaveLength(1);
+        expect(result.data.items[0].name).toBe('Apartment Complex A');
+      });
+
+      it('should return no properties for a non-matching searchTerm', async () => {
+        const queryParams = {
+          pagination: { page: 1, limit: 10, sort: 'asc', sortBy: 'name' },
+          filters: { searchTerm: 'zzznomatch' },
+        };
+
+        const result = await propertyService.getClientProperties(
+          testClient.cuid,
+          {
+            sub: adminUser._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+          } as any,
+          queryParams as any
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data.items).toHaveLength(0);
       });
     }); // End getClientProperties
 

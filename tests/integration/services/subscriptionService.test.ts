@@ -3,21 +3,14 @@ import { Subscription } from '@models/index';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { BadRequestError } from '@shared/customErrors';
 import { SubscriptionService } from '@services/subscription/subscription.service';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
+import { clearTestDatabase } from '@tests/helpers';
 
 describe('SubscriptionService Integration Tests', () => {
   let subscriptionService: SubscriptionService;
   let subscriptionDAO: SubscriptionDAO;
   let mockStripeService: any;
 
-  beforeAll(async () => {
-    await setupTestDatabase();
-
-    subscriptionDAO = new SubscriptionDAO();
+  beforeAll(async () => { subscriptionDAO = new SubscriptionDAO();
 
     // Mock Stripe service to avoid real API calls - Updated with correct CAD pricing
     mockStripeService = {
@@ -98,11 +91,6 @@ describe('SubscriptionService Integration Tests', () => {
       propertyUnitDAO: {} as any,
     });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
     jest.clearAllMocks();

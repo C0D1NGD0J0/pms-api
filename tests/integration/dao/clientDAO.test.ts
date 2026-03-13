@@ -1,24 +1,15 @@
 import { Types } from 'mongoose';
 import { ClientDAO } from '@dao/clientDAO';
 import { Client, User } from '@models/index';
+import { clearTestDatabase } from '@tests/helpers';
 import { ROLES } from '@shared/constants/roles.constants';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
 
 describe('ClientDAO Integration Tests', () => {
   let clientDAO: ClientDAO;
   let testAdminId: Types.ObjectId;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   beforeEach(async () => {
@@ -33,7 +24,14 @@ describe('ClientDAO Integration Tests', () => {
       lastName: 'User',
       password: 'hashed',
       activecuid: 'TEST_CUID',
-      cuids: [{ cuid: 'TEST_CUID', clientDisplayName: 'Test Client', roles: [ROLES.SUPER_ADMIN], isConnected: true }],
+      cuids: [
+        {
+          cuid: 'TEST_CUID',
+          clientDisplayName: 'Test Client',
+          roles: [ROLES.SUPER_ADMIN],
+          isConnected: true,
+        },
+      ],
     });
   });
 

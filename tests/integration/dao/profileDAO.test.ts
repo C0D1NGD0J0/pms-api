@@ -2,11 +2,7 @@ import { Types } from 'mongoose';
 import { ProfileDAO } from '@dao/profileDAO';
 import { Profile, User } from '@models/index';
 import { DataRetentionPolicy } from '@interfaces/profile.interface';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
+import { clearTestDatabase } from '@tests/helpers';
 
 describe('ProfileDAO Integration Tests', () => {
   let profileDAO: ProfileDAO;
@@ -14,14 +10,8 @@ describe('ProfileDAO Integration Tests', () => {
   let testProfileId: Types.ObjectId;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     profileDAO = new ProfileDAO({ profileModel: Profile });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
     testUserId = new Types.ObjectId();

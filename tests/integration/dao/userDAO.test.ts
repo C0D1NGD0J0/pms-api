@@ -1,24 +1,15 @@
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
+import { clearTestDatabase } from '@tests/helpers';
+import { ROLES } from '@shared/constants/roles.constants';
 import { PaymentModel, Profile, Lease, User } from '@models/index';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
 
 describe('UserDAO Integration Tests', () => {
   let userDAO: UserDAO;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     userDAO = new UserDAO({ userModel: User });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
   });
@@ -212,11 +203,7 @@ describe('UserDAO Integration Tests', () => {
 
       await PaymentModel.insertMany(payments);
 
-      const tenant = await userDAO.getClientTenantDetails(
-        testCuid,
-        testTenantUid,
-        []
-      );
+      const tenant = await userDAO.getClientTenantDetails(testCuid, testTenantUid, []);
 
       expect(tenant).not.toBeNull();
       expect(tenant?.tenantMetrics).toBeDefined();
@@ -265,11 +252,7 @@ describe('UserDAO Integration Tests', () => {
     });
 
     it('should handle tenants with no payments', async () => {
-      const tenant = await userDAO.getClientTenantDetails(
-        testCuid,
-        testTenantUid,
-        []
-      );
+      const tenant = await userDAO.getClientTenantDetails(testCuid, testTenantUid, []);
 
       expect(tenant).not.toBeNull();
       expect(tenant?.tenantInfo?.paymentHistory).toEqual([]);
@@ -303,11 +286,7 @@ describe('UserDAO Integration Tests', () => {
         },
       });
 
-      const tenant = await userDAO.getClientTenantDetails(
-        testCuid,
-        testTenantUid,
-        ['lease']
-      );
+      const tenant = await userDAO.getClientTenantDetails(testCuid, testTenantUid, ['lease']);
 
       expect(tenant).not.toBeNull();
       expect(tenant?.tenantInfo?.leaseHistory).toBeDefined();
@@ -315,6 +294,183 @@ describe('UserDAO Integration Tests', () => {
       expect(tenant?.tenantInfo?.leaseHistory?.[0]?.luid).toBe('LEASE_001');
       expect(tenant?.tenantInfo?.leaseHistory?.[0]?.leaseNumber).toBe('L2024-001');
       expect(tenant?.tenantInfo?.leaseHistory?.[0]?.monthlyRent).toBe(200000);
+    });
+  });
+
+  describe('getUsersByFilteredType', () => {
+    const cuid = 'CLIENT_SEARCH_001';
+    const otherCuid = 'OTHER_CLIENT_999';
+
+    beforeEach(async () => {
+      await User.create([
+        {
+          uid: 'uid-alice-001',
+          email: 'alice.smith@example.com',
+          firstName: 'Alice',
+          lastName: 'Smith',
+          password: 'hashed',
+          isActive: true,
+          activecuid: cuid,
+          cuids: [{ cuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Test Client' }],
+        },
+        {
+          uid: 'uid-bob-001',
+          email: 'bob.jones@example.com',
+          firstName: 'Bob',
+          lastName: 'Jones',
+          password: 'hashed',
+          isActive: true,
+          activecuid: cuid,
+          cuids: [{ cuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Test Client' }],
+        },
+        {
+          uid: 'uid-carol-001',
+          email: 'carol.adams@example.com',
+          firstName: 'Carol',
+          lastName: 'Adams',
+          password: 'hashed',
+          isActive: true,
+          activecuid: cuid,
+          cuids: [{ cuid, roles: [ROLES.MANAGER], isConnected: true, clientDisplayName: 'Test Client' }],
+        },
+        {
+          uid: 'uid-alice-other',
+          email: 'alice.other@example.com',
+          firstName: 'Alice',
+          lastName: 'Other',
+          password: 'hashed',
+          isActive: true,
+          activecuid: otherCuid,
+          cuids: [{ cuid: otherCuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Other Client' }],
+        },
+      ]);
+    });
+
+    it('should filter by partial email match', async () => {
+      const result = await userDAO.getUsersByFilteredType(
+        cuid,
+        { search: 'alice.smith' },
+        { limit: 10 }
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].email).toBe('alice.smith@example.com');
+    });
+
+    it('should return users matching search by email', async () => {
+      const result = await userDAO.getUsersByFilteredType(
+        cuid,
+        { search: 'bob.jones' },
+        { limit: 10 }
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].email).toBe('bob.jones@example.com');
+    });
+
+    it('should scope search results to the given cuid', async () => {
+      // 'alice' matches both alice.smith@... (cuid) and alice.other@... (otherCuid) via email
+      // only the one in `cuid` should be returned
+      const result = await userDAO.getUsersByFilteredType(cuid, { search: 'alice' }, { limit: 10 });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].uid).toBe('uid-alice-001');
+    });
+
+    it('should return all users when search is omitted', async () => {
+      const result = await userDAO.getUsersByFilteredType(cuid, {}, { limit: 10 });
+
+      expect(result.items).toHaveLength(3);
+    });
+
+    it('should return no results for a non-matching search term', async () => {
+      const result = await userDAO.getUsersByFilteredType(
+        cuid,
+        { search: 'zzznomatch' },
+        { limit: 10 }
+      );
+
+      expect(result.items).toHaveLength(0);
+    });
+  });
+
+  describe('getTenantsByClient', () => {
+    const cuid = 'CLIENT_TENANT_SEARCH_001';
+
+    beforeEach(async () => {
+      await User.create([
+        {
+          uid: 'uid-tenant-alice',
+          email: 'alice.tenant@example.com',
+          firstName: 'Alice',
+          lastName: 'Walker',
+          password: 'hashed',
+          isActive: true,
+          activecuid: cuid,
+          cuids: [{ cuid, roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'Test Client' }],
+        },
+        {
+          uid: 'uid-tenant-bob',
+          email: 'bob.tenant@example.com',
+          firstName: 'Bob',
+          lastName: 'Walker',
+          password: 'hashed',
+          isActive: true,
+          activecuid: cuid,
+          cuids: [{ cuid, roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'Test Client' }],
+        },
+        {
+          uid: 'uid-staff-dave',
+          email: 'dave.staff@example.com',
+          firstName: 'Dave',
+          lastName: 'Staff',
+          password: 'hashed',
+          isActive: true,
+          activecuid: cuid,
+          cuids: [{ cuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Test Client' }],
+        },
+      ]);
+    });
+
+    it('should filter tenants by partial email match', async () => {
+      const result = await userDAO.getTenantsByClient(
+        cuid,
+        { search: 'alice.tenant' },
+        { limit: 10 }
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].email).toBe('alice.tenant@example.com');
+    });
+
+    it('should return multiple tenants matching the same search term', async () => {
+      // 'tenant' appears in both alice.tenant@ and bob.tenant@ emails
+      const result = await userDAO.getTenantsByClient(cuid, { search: 'tenant' }, { limit: 10 });
+
+      expect(result.items).toHaveLength(2);
+    });
+
+    it('should not return non-tenant users when searching', async () => {
+      // Dave is staff, not a tenant — should never appear in tenant search
+      const result = await userDAO.getTenantsByClient(cuid, { search: 'Dave' }, { limit: 10 });
+
+      expect(result.items).toHaveLength(0);
+    });
+
+    it('should return all tenants when search is omitted', async () => {
+      const result = await userDAO.getTenantsByClient(cuid, {}, { limit: 10 });
+
+      expect(result.items).toHaveLength(2);
+    });
+
+    it('should return no results for a non-matching search term', async () => {
+      const result = await userDAO.getTenantsByClient(
+        cuid,
+        { search: 'zzznomatch' },
+        { limit: 10 }
+      );
+
+      expect(result.items).toHaveLength(0);
     });
   });
 });

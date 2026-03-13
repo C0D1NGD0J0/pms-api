@@ -1,25 +1,15 @@
 import { Types } from 'mongoose';
 import { Subscription } from '@models/index';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
+import { clearTestDatabase } from '@tests/helpers';
 
 describe('SubscriptionDAO - updateResourceCount', () => {
   let subscriptionDAO: SubscriptionDAO;
   let testClientId: Types.ObjectId;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     subscriptionDAO = new SubscriptionDAO();
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
     testClientId = new Types.ObjectId();

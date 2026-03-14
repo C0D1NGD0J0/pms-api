@@ -8,7 +8,7 @@
 import { disconnectTestDatabase, setupTestDatabase } from './testDatabase';
 import { setupAllExternalMocks, resetAllExternalMocks } from './externalMocks';
 
-jest.setTimeout(30000);
+jest.setTimeout(process.env.JEST_USE_DB === 'true' ? 90000 : 30000);
 
 const originalConsoleError = console.error;
 const originalConsoleWarn = console.warn;

@@ -1,5 +1,6 @@
 import { PropertyCache } from '@caching/property.cache';
 import { ROLES } from '@shared/constants/roles.constants';
+import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { PropertyService } from '@services/property/property.service';
 import { PropertyApprovalStatusEnum } from '@interfaces/property.interface';
 import { PropertyStatsService } from '@services/property/propertyStats.service';
@@ -955,6 +956,61 @@ describe('PropertyService Integration Tests', () => {
         expect(result.success).toBe(true);
         expect(result.data.items).toHaveLength(0);
       });
+      it('should strip financial fields for security department staff', async () => {
+        const queryParams = {
+          pagination: { page: 1, limit: 10, sort: 'asc', sortBy: 'name' },
+          filters: {},
+        };
+
+        const result = await propertyService.getClientProperties(
+          testClient.cuid,
+          {
+            sub: adminUser._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.STAFF },
+            employeeInfo: { department: EmployeeDepartment.SECURITY },
+          } as any,
+          queryParams as any
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data.items.length).toBeGreaterThan(0);
+
+        const item = result.data.items[0] as any;
+        // Physical/access fields should be present
+        expect(item.name).toBeDefined();
+        expect(item.address).toBeDefined();
+        expect(item.status).toBeDefined();
+        expect(item.propertyType).toBeDefined();
+        // Financial/internal fields should be stripped
+        expect(item.fees).toBeUndefined();
+        expect(item.financialDetails).toBeUndefined();
+        expect(item.notes).toBeUndefined();
+        expect(item.authorization).toBeUndefined();
+        expect(item.approvalDetails).toBeUndefined();
+      });
+
+      it('should return full property data for non-security staff', async () => {
+        const queryParams = {
+          pagination: { page: 1, limit: 10, sort: 'asc', sortBy: 'name' },
+          filters: {},
+        };
+
+        const result = await propertyService.getClientProperties(
+          testClient.cuid,
+          {
+            sub: adminUser._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.STAFF },
+            employeeInfo: { department: EmployeeDepartment.OPERATIONS },
+          } as any,
+          queryParams as any
+        );
+
+        expect(result.success).toBe(true);
+        const item = result.data.items[0] as any;
+        // Operations staff get full data — fees object should be present (even if values are zero)
+        expect(item.name).toBeDefined();
+        expect(item.fees).toBeDefined();
+      });
     }); // End getClientProperties
 
     describe('getClientProperty', () => {
@@ -978,6 +1034,41 @@ describe('PropertyService Integration Tests', () => {
             client: { cuid: testClient.cuid, role: ROLES.ADMIN },
           } as any)
         ).rejects.toThrow(NotFoundError);
+      });
+
+      it('should strip financial data and omit unitInfo/metrics for security department staff', async () => {
+        const result = await propertyService.getClientProperty(testClient.cuid, property1.pid, {
+          sub: adminUser._id.toString(),
+          client: { cuid: testClient.cuid, role: ROLES.STAFF },
+          employeeInfo: { department: EmployeeDepartment.SECURITY },
+        } as any);
+
+        expect(result.success).toBe(true);
+
+        const property = result.data.property as any;
+        // Basic access fields present
+        expect(property.name).toBe('Apartment Complex A');
+        expect(property.address).toBeDefined();
+        expect(property.status).toBeDefined();
+        // Financial/internal fields stripped
+        expect(property.fees).toBeUndefined();
+        expect(property.financialDetails).toBeUndefined();
+        expect(property.notes).toBeUndefined();
+        expect(property.authorization).toBeUndefined();
+        // Enriched detail data omitted
+        expect(result.data.unitInfo).toBeUndefined();
+        expect(result.data.metrics).toBeUndefined();
+      });
+
+      it('should return full detail including unitInfo and metrics for admin', async () => {
+        const result = await propertyService.getClientProperty(testClient.cuid, property1.pid, {
+          sub: adminUser._id.toString(),
+          client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+        } as any);
+
+        expect(result.success).toBe(true);
+        expect(result.data.property).toBeDefined();
+        expect(result.data.unitInfo).toBeDefined();
       });
     }); // End getClientProperty
 

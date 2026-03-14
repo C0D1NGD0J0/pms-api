@@ -2,6 +2,10 @@ import type { JestConfigWithTsJest } from 'ts-jest';
 
 import baseConfig from './jest.config';
 
+// Ensure the global jest.setup.ts connects to MongoDB whenever this config is used,
+// regardless of whether the caller passed JEST_USE_DB=true on the command line.
+process.env.JEST_USE_DB = 'true';
+
 /**
  * Jest Configuration for Integration Tests
  *

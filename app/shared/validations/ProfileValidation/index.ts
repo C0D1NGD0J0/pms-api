@@ -257,6 +257,19 @@ const tenantInfoSchema = z.object({
     .optional(),
 });
 
+const policiesSchema = z.object({
+  tos: z
+    .object({
+      accepted: z.boolean().optional(),
+    })
+    .optional(),
+  marketing: z
+    .object({
+      accepted: z.boolean().optional(),
+    })
+    .optional(),
+});
+
 const notificationPreferencesSchema = z.object({
   messages: z.boolean().optional(),
   comments: z.boolean().optional(),
@@ -291,6 +304,7 @@ export const ProfileValidations = {
       employeeInfo: employeeInfoSchema.optional(),
       vendorInfo: vendorInfoSchema.optional(),
       tenantInfo: tenantInfoSchema.optional(),
+      policies: policiesSchema.optional(),
     })
     .refine(
       (data) => {

@@ -78,7 +78,8 @@ export class AuthController {
 
   accountActivation = async (req: Request, res: Response) => {
     const { t: token } = req.query;
-    const data = await this.authService.accountActivation(token as string);
+    const { firstName, lastName } = req.body;
+    const data = await this.authService.accountActivation(token as string, { firstName, lastName });
     res.status(httpStatusCodes.OK).json(data);
   };
 

@@ -38,6 +38,11 @@ const UserSchema = new Schema<IUserDocument>(
     deletedAt: { type: Date, default: null, select: false },
     activationTokenExpiresAt: { type: Date, default: null },
     passwordResetTokenExpiresAt: { type: Number, default: null },
+    consent: {
+      acceptedOn: { type: Date, default: null },
+      acceptedBy: { type: String, default: '' },
+      _id: false,
+    },
   },
   {
     timestamps: true,

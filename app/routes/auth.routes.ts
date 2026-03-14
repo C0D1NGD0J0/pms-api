@@ -39,6 +39,7 @@ router.patch(
   '/:cuid/account_activation',
   validateRequest({
     query: AuthValidations.activationToken,
+    body: AuthValidations.consentBody,
   }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');

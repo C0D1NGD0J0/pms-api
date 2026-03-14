@@ -576,7 +576,9 @@ describe('AuthService Integration Tests', () => {
   });
 
   describe('accountActivation', () => {
-    it('should activate account with valid token', async () => {
+    const consentData = { firstName: 'Jane', lastName: 'Doe' };
+
+    it('should activate account with valid token and consent data', async () => {
       const client = await createTestClient();
       const user = await createTestUser(client.cuid, {
         email: `activate-${Date.now()}@example.com`,
@@ -589,7 +591,7 @@ describe('AuthService Integration Tests', () => {
         activationTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       });
 
-      const result = await authService.accountActivation('valid-activation-token');
+      const result = await authService.accountActivation('valid-activation-token', consentData);
 
       expect(result.success).toBe(true);
 
@@ -598,8 +600,29 @@ describe('AuthService Integration Tests', () => {
       expect(activatedUser!.activationToken).toBeFalsy();
     });
 
+    it('should persist consent data on activation', async () => {
+      const client = await createTestClient();
+      const user = await createTestUser(client.cuid, {
+        email: `consent-${Date.now()}@example.com`,
+        isActive: false,
+      });
+
+      await User.findByIdAndUpdate(user._id, {
+        activationToken: 'consent-test-token',
+        activationTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+
+      await authService.accountActivation('consent-test-token', consentData);
+
+      const activatedUser = await User.findById(user._id);
+      expect(activatedUser!.consent?.acceptedBy).toBe('Jane Doe');
+      expect(activatedUser!.consent?.acceptedOn).toBeInstanceOf(Date);
+    });
+
     it('should reject invalid activation token', async () => {
-      await expect(authService.accountActivation('invalid-token')).rejects.toThrow();
+      await expect(
+        authService.accountActivation('invalid-token', consentData)
+      ).rejects.toThrow();
     });
 
     it('should reject expired activation token', async () => {
@@ -624,7 +647,9 @@ describe('AuthService Integration Tests', () => {
         activecuid: client.cuid,
       });
 
-      await expect(authService.accountActivation(activationToken)).rejects.toThrow();
+      await expect(
+        authService.accountActivation(activationToken, consentData)
+      ).rejects.toThrow();
     });
   });
 

@@ -583,13 +583,21 @@ describe('Auth Routes Integration Tests', () => {
   describe('PATCH /auth/:cuid/account_activation (public)', () => {
     const cuid = faker.string.uuid();
     const endpoint = `${baseUrl}/${cuid}/account_activation`;
+    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-    it('should successfully activate account with valid token', async () => {
+    const validConsentBody = {
+      firstName: 'Jane',
+      lastName: 'Doe',
+      consentDate: todayStr,
+    };
+
+    it('should successfully activate account with valid token and consent body', async () => {
       const validToken = faker.string.alphanumeric(32);
 
       const response = await request(app)
         .patch(endpoint)
         .query({ t: validToken })
+        .send(validConsentBody)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -610,9 +618,24 @@ describe('Auth Routes Integration Tests', () => {
       const response = await request(app)
         .patch(endpoint)
         .query({ t: 'invalid-token' })
+        .send(validConsentBody)
         .expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.message).toContain('invalid');
+    });
+
+    it('should forward firstName and lastName from body to controller', async () => {
+      const validToken = faker.string.alphanumeric(32);
+
+      await request(app)
+        .patch(endpoint)
+        .query({ t: validToken })
+        .send(validConsentBody)
+        .expect(httpStatusCodes.OK);
+
+      const callArg = (mockAuthController.accountActivation as jest.Mock).mock.calls.at(-1)?.[0];
+      expect(callArg?.body?.firstName).toBe('Jane');
+      expect(callArg?.body?.lastName).toBe('Doe');
     });
   });
 

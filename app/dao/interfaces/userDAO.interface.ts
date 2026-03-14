@@ -74,6 +74,7 @@ export interface IUserDAO {
   ): ListResultWithPagination<IUserDocument[]>;
   associateUserWithClient(userId: string, clientId: string, role: IUserRoleType): Promise<boolean>;
   createActivationToken(userId?: string, email?: string): Promise<IUserDocument | null>;
+  activateAccount(token: string, consentData: { acceptedBy: string }): Promise<boolean>;
   getUserWithClientAccess(email: string, cuid: string): Promise<IUserDocument | null>;
   getTenantStats(cuid: string, filters?: ITenantFilterOptions): Promise<ITenantStats>;
   getActiveUserByEmail(email: string, opts?: dynamic): Promise<IUserDocument | null>;
@@ -86,7 +87,6 @@ export interface IUserDAO {
   searchUsers(query: string, clientId: string): Promise<IUserDocument[]>;
   createPasswordResetToken(email: string): Promise<IUserDocument | null>;
   getUserClientAssociations(userId: string): Promise<any[]>;
-  activateAccount(token: string): Promise<boolean>;
   isEmailUnique(email: string): Promise<boolean>;
 }
 

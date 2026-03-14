@@ -238,6 +238,25 @@ export const AccountActivationSchema = z.object({
     ),
 });
 
+export const ConsentBodySchema = z.object({
+  firstName: z
+    .string({ message: 'First name is required' })
+    .min(1, { message: 'First name is required' })
+    .max(50, { message: 'First name must be 50 characters or fewer' }),
+  lastName: z
+    .string({ message: 'Last name is required' })
+    .min(1, { message: 'Last name is required' })
+    .max(50, { message: 'Last name must be 50 characters or fewer' }),
+  consentDate: z
+    .string({ message: 'Consent date is required' })
+    .refine((val) => dayjs(val, 'YYYY-MM-DD', true).isValid(), {
+      message: 'Invalid date format (expected YYYY-MM-DD)',
+    })
+    .refine((val) => dayjs(val).isSame(dayjs(), 'day'), {
+      message: "Consent date must be today's date",
+    }),
+});
+
 export const ForgotPasswordSchema = z.object({
   email: z
     .string({ message: "Email can't be blank" })

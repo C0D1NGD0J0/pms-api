@@ -443,6 +443,20 @@ export interface IVendorTeamMember
  */
 
 /**
+ * Main User Interface
+ * Core authentication and account data
+ */
+export interface IUser {
+  passwordResetTokenExpiresAt: Date | number | null;
+  activationTokenExpiresAt: Date | number | null;
+  passwordResetToken?: string;
+  activationToken?: string;
+  consent?: IUserConsent;
+  password: string;
+  email: string;
+}
+
+/**
  * Base User Profile Interface
  * Core user profile fields used across different contexts
  */
@@ -458,19 +472,6 @@ export interface IBaseUserProfile {
   email: string;
   uid: string;
   id: string;
-}
-
-/**
- * Main User Interface
- * Core authentication and account data
- */
-export interface IUser {
-  passwordResetTokenExpiresAt: Date | number | null;
-  activationTokenExpiresAt: Date | number | null;
-  passwordResetToken?: string;
-  activationToken?: string;
-  password: string;
-  email: string;
 }
 
 /**
@@ -497,12 +498,6 @@ export interface IUserFilterOptions {
 }
 
 /**
- * ============================================================================
- * CURRENT USER & SESSION INTERFACES
- * ============================================================================
- */
-
-/**
  * Extended Pagination Interface
  * Alternative pagination structure with hasNext/hasPrev
  */
@@ -517,7 +512,7 @@ export interface IExtendedPagination {
 
 /**
  * ============================================================================
- * DETAIL INFO INTERFACES (Role-Specific)
+ * CURRENT USER & SESSION INTERFACES
  * ============================================================================
  */
 
@@ -530,6 +525,12 @@ export interface IUserStats {
   roleDistribution: StatsDistribution[];
   totalFilteredUsers: number;
 }
+
+/**
+ * ============================================================================
+ * DETAIL INFO INTERFACES (Role-Specific)
+ * ============================================================================
+ */
 
 /**
  * Base Pagination Interface
@@ -554,18 +555,18 @@ export interface FilteredVendorInfo extends VendorInfo {
 }
 
 /**
- * ============================================================================
- * RESPONSE INTERFACES
- * ============================================================================
- */
-
-/**
  * Linked Vendor User Info
  */
 export interface ILinkedVendorUser
   extends Pick<IBaseUserProfile, 'displayName' | 'isActive' | 'email' | 'uid'> {
   phoneNumber?: string;
 }
+
+/**
+ * ============================================================================
+ * RESPONSE INTERFACES
+ * ============================================================================
+ */
 
 /**
  * User Property Interface
@@ -590,18 +591,18 @@ export interface FilteredUserEmployeeInfo {
 }
 
 /**
- * ============================================================================
- * FILTERED/LIGHTWEIGHT INTERFACES
- * ============================================================================
- */
-
-/**
  * Vendor Team Members Response with Pagination
  */
 export interface IVendorTeamMembersResponse {
   pagination: IBasePagination;
   items: IVendorTeamMember[];
 }
+
+/**
+ * ============================================================================
+ * FILTERED/LIGHTWEIGHT INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Account Type Interface
@@ -660,12 +661,6 @@ export interface IPaginatedResult<T> {
 }
 
 /**
- * ============================================================================
- * FORM DATA INTERFACES
- * ============================================================================
- */
-
-/**
  * Background Check Status Type
  * Used for tenant screening
  */
@@ -673,7 +668,7 @@ export type BackgroundCheckStatus = 'pending' | 'approved' | 'failed' | 'not_req
 
 /**
  * ============================================================================
- * QUERY & FILTER INTERFACES
+ * FORM DATA INTERFACES
  * ============================================================================
  */
 
@@ -684,6 +679,21 @@ export type BackgroundCheckStatus = 'pending' | 'approved' | 'failed' | 'not_req
 export type IUserPopulatedDocument = {
   profile: IProfileDocument;
 } & IUserDocument;
+
+/**
+ * ============================================================================
+ * QUERY & FILTER INTERFACES
+ * ============================================================================
+ */
+
+/**
+ * User Consent Record
+ * Captured when the user completes the consent form on first activation
+ */
+export interface IUserConsent {
+  acceptedOn: Date | null;
+  acceptedBy: string;
+}
 
 /**
  * Lease Status Type

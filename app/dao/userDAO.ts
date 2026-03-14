@@ -153,7 +153,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * @param token - The activation token.
    * @returns A promise that resolves to true if activation was successful, false otherwise.
    */
-  async activateAccount(token: string): Promise<boolean> {
+  async activateAccount(token: string, consentData: { acceptedBy: string }): Promise<boolean> {
     try {
       const query = {
         activationToken: token,
@@ -166,6 +166,10 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       result.isActive = true;
       result.activationToken = '';
       result.activationTokenExpiresAt = null;
+      result.consent = {
+        acceptedOn: new Date(),
+        acceptedBy: consentData.acceptedBy,
+      };
       await result.save();
       return true;
     } catch (error) {

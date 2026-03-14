@@ -497,13 +497,17 @@ export class AuthService {
     };
   }
 
-  async accountActivation(token: string): Promise<ISuccessReturnData> {
+  async accountActivation(
+    token: string,
+    consentData: { firstName: string; lastName: string }
+  ): Promise<ISuccessReturnData> {
     if (!token) {
       this.log.error(t('auth.errors.activationTokenMissing'));
       throw new BadRequestError({ message: t('auth.errors.activationTokenMissing') });
     }
 
-    const activated = await this.userDAO.activateAccount(token.trim());
+    const acceptedBy = `${consentData.firstName} ${consentData.lastName}`.trim();
+    const activated = await this.userDAO.activateAccount(token.trim(), { acceptedBy });
     if (!activated) {
       const msg = t('auth.errors.invalidActivationToken');
       throw new NotFoundError({ message: msg });

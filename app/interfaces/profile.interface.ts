@@ -41,6 +41,32 @@ export enum DataRetentionPolicy {
 }
 
 /**
+ * Profile Update Data Interface
+ * Used when updating profile data
+ */
+export interface IProfileUpdateData {
+  policies?: {
+    tos?: { accepted?: boolean };
+    marketing?: { accepted?: boolean };
+  };
+  settings?: {
+    timeZone?: string;
+    lang?: string;
+  } & Partial<ISettings>;
+  profileMeta?: {
+    timeZone?: string;
+    lang?: string;
+  };
+  personalInfo?: Partial<IPersonalInfo>;
+  employeeInfo?: Partial<IEmployeeInfo>;
+  userInfo?: {
+    email?: string;
+  };
+  tenantInfo?: Partial<ITenantInfo>;
+  vendorInfo?: Partial<IVendorInfo>;
+}
+
+/**
  * Tenant Information Interface
  * - employerInfo, activeLeases, backgroundChecks are client-specific (filtered by cuid)
  * - rentalReferences, pets, emergencyContact are shared across all clients
@@ -58,28 +84,6 @@ export interface ITenantInfo {
   activeLeases?: IActiveLeaseItem[];
   notes?: INoteItem[];
   pets?: IPet[];
-}
-
-/**
- * Profile Update Data Interface
- * Used when updating profile data
- */
-export interface IProfileUpdateData {
-  settings?: {
-    timeZone?: string;
-    lang?: string;
-  } & Partial<ISettings>;
-  profileMeta?: {
-    timeZone?: string;
-    lang?: string;
-  };
-  personalInfo?: Partial<IPersonalInfo>;
-  employeeInfo?: Partial<IEmployeeInfo>;
-  userInfo?: {
-    email?: string;
-  };
-  tenantInfo?: Partial<ITenantInfo>;
-  vendorInfo?: Partial<IVendorInfo>;
 }
 
 /**
@@ -151,6 +155,19 @@ export interface IPersonalInfo {
 }
 
 /**
+ * Profile Edit Data Interface
+ * Used when fetching profile data for editing/display
+ */
+export interface IProfileEditData {
+  identification?: IUserIdentificationType;
+  personalInfo: IProfileEditPersonalInfo;
+  settings: IProfileEditSettings;
+  userType: ProfileUserType;
+  roles: IUserRoleType[];
+  policies?: IPolicies;
+}
+
+/**
  * Lease History Item Interface
  */
 export interface ILeaseHistoryItem {
@@ -181,6 +198,12 @@ export interface IProfileDocument extends Document, IProfile {
 }
 
 /**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
+
+/**
  * Vendor Info Interface
  */
 export interface IVendorInfo {
@@ -188,12 +211,6 @@ export interface IVendorInfo {
   isLinkedAccount: boolean;
   linkedVendorUid?: string; // Reference to primary vendor (stays as string to match user model)
 }
-
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
 
 /**
  * Main Profile Interface
@@ -206,18 +223,6 @@ export interface IProfile {
   user: Types.ObjectId;
   settings: ISettings;
   policies: IPolicies;
-}
-
-/**
- * Profile Edit Data Interface
- * Used when fetching profile data for editing/display
- */
-export interface IProfileEditData {
-  identification?: IUserIdentificationType;
-  personalInfo: IProfileEditPersonalInfo;
-  settings: IProfileEditSettings;
-  userType: ProfileUserType;
-  roles: IUserRoleType[];
 }
 
 /**
@@ -290,6 +295,15 @@ export interface IGDPRSettings {
   retentionExpiryDate: Date;
 }
 
+export interface ICompletionSection {
+  fields: ICompletionField[];
+  completedFields: number;
+  totalFields: number;
+  percent: number;
+  label: string;
+  key: string;
+}
+
 /**
  * Payment History Item Interface
  */
@@ -308,6 +322,12 @@ export interface IProfileEditPersonalInfo extends IPersonalInfo {
   isActive: boolean;
   email: string;
   uid: string;
+}
+
+export interface IProfileCompletion {
+  sections: ICompletionSection[];
+  missingFields: string[];
+  percent: number;
 }
 
 /**
@@ -379,6 +399,18 @@ export interface IPolicies {
   tos: IPolicyAcceptance;
 }
 
+export interface ICompletionField {
+  filled: boolean;
+  label: string;
+  key: string;
+}
+
+/**
+ * ============================================================================
+ * FORM DATA INTERFACES
+ * ============================================================================
+ */
+
 /**
  * Policy Acceptance Interface
  */
@@ -402,12 +434,6 @@ export interface IAvatar {
 }
 
 /**
- * ============================================================================
- * FORM DATA INTERFACES
- * ============================================================================
- */
-
-/**
  * Maintenance Request Priority Type
  */
 export type MaintenanceRequestPriority = 'low' | 'medium' | 'high' | 'urgent';
@@ -421,9 +447,21 @@ export interface ClientVendorInfo {
 }
 
 /**
+ * ============================================================================
+ * DOCUMENT INTERFACES (Mongoose Extensions)
+ * ============================================================================
+ */
+
+/**
  * Note Type
  */
 export type NoteType = 'general' | 'payment' | 'maintenance' | 'lease';
+
+/**
+ * ============================================================================
+ * POPULATED/ENRICHED INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Lease History Status Type
@@ -436,19 +474,13 @@ export type LeaseHistoryStatus = 'completed' | 'active' | 'terminated';
 export type NotificationSettings = INotificationSettings;
 
 /**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
-
-/**
  * Payment Status Type
  */
 export type PaymentStatus = 'paid' | 'late' | 'pending';
 
 /**
  * ============================================================================
- * POPULATED/ENRICHED INTERFACES
+ * LEGACY INTERFACES (Backward Compatibility)
  * ============================================================================
  */
 
@@ -468,12 +500,6 @@ export type PaymentType = 'rent' | 'fee' | 'deposit';
 export type LoginType = 'otp' | 'password';
 
 /**
- * ============================================================================
- * LEGACY INTERFACES (Backward Compatibility)
- * ============================================================================
- */
-
-/**
  * Theme Type
  */
 export type ThemeType = 'light' | 'dark';
@@ -487,6 +513,12 @@ export type EmployeeInfo = IEmployeeInfo;
  * @deprecated Use IGDPRSettings instead
  */
 export type GDPRSettings = IGDPRSettings;
+
+/**
+ * ============================================================================
+ * PROFILE COMPLETION INTERFACES
+ * ============================================================================
+ */
 
 /**
  * @deprecated Use ITenantInfo instead

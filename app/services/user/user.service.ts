@@ -102,6 +102,11 @@ export class UserService {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
 
+    // Users can always read their own record regardless of connection status
+    if (user._id.toString() === currentuser.sub) {
+      return user;
+    }
+
     const targetUser = {
       _id: user._id,
       uid: user.uid,

@@ -93,10 +93,10 @@ export const AssignRoleSchema = z.object({
 
 export const AssignDepartmentSchema = z.object({
   department: z
-    .enum(['maintenance', 'operations', 'accounting', 'management'], {
+    .enum(['maintenance', 'operations', 'accounting', 'management', 'other', 'security'], {
       errorMap: () => ({
         message:
-          'Invalid department. Must be one of: maintenance, operations, accounting, management',
+          'Invalid department. Must be one of: maintenance, operations, accounting, management, other, security',
       }),
     })
     .describe('Department to assign to the employee'),

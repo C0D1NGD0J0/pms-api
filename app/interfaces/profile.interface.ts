@@ -17,6 +17,7 @@ export enum EmployeeDepartment {
   OPERATIONS = 'operations', // Day-to-day property operations
   ACCOUNTING = 'accounting', // Financial operations and rent collection
   MANAGEMENT = 'management', // Executive and general management
+  SECURITY = 'security', // Security and access control
   OTHER = 'other', // Any other department not listed
 }
 

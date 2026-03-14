@@ -505,6 +505,8 @@ export const invitationCsvSchema = z
           operations: EmployeeDepartment.OPERATIONS,
           accounting: EmployeeDepartment.ACCOUNTING,
           management: EmployeeDepartment.MANAGEMENT,
+          other: EmployeeDepartment.OTHER,
+          security: EmployeeDepartment.SECURITY,
         };
 
         const department = departmentMap[trimmed];

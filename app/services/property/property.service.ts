@@ -9,6 +9,7 @@ import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { LeaseStatus, EventTypes } from '@interfaces/index';
 import { NotificationService } from '@services/notification';
+import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
@@ -61,7 +62,11 @@ import { PropertyStatsService } from './propertyStats.service';
 import { PropertyApprovalService } from './propertyApproval.service';
 import { PropertyValidationService } from './propertyValidation.service';
 import { subscriptionPlanConfig } from '../subscription/subscription_plans.config';
-import { generatePendingChangesPreview, validateOccupancyStatusChange } from './propertyHelpers';
+import {
+  generatePendingChangesPreview,
+  validateOccupancyStatusChange,
+  filterPropertyByDepartment,
+} from './propertyHelpers';
 
 interface IConstructor {
   propertyApprovalService: PropertyApprovalService;
@@ -750,21 +755,24 @@ export class PropertyService {
     };
 
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
+    const department = currentuser.employeeInfo?.department as EmployeeDepartment | undefined;
     const itemsWithPreview = properties.items.map((property) => {
       const propertyObj = property.toObject ? property.toObject() : property;
       const pendingChangesPreview = generatePendingChangesPreview(property, currentuser);
 
-      return {
+      const enriched = {
         ...propertyObj,
         ...(pendingChangesPreview && { pendingChangesPreview }),
         fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
       };
+
+      return filterPropertyByDepartment(enriched as IPropertyDocument, department);
     });
 
     return {
       success: true,
       data: {
-        items: itemsWithPreview,
+        items: itemsWithPreview as IPropertyDocument[],
         pagination: properties.pagination,
       },
     };
@@ -873,14 +881,21 @@ export class PropertyService {
       manager: propertyManager,
     };
 
+    const department = currentUser.employeeInfo?.department as EmployeeDepartment | undefined;
+    const filteredProperty = filterPropertyByDepartment(
+      propertyWithPreview as IPropertyDocument,
+      department
+    );
+    const isSecurityDept = department === EmployeeDepartment.SECURITY;
+
     return {
       success: true,
       data: {
-        property: propertyWithPreview,
-        unitInfo,
-        metrics,
-        ...(paymentHistory !== undefined && { paymentHistory }),
-        ...(maintenanceHistory !== undefined && { maintenanceHistory }),
+        property: filteredProperty as IPropertyDocument,
+        unitInfo: isSecurityDept ? undefined : unitInfo,
+        metrics: isSecurityDept ? undefined : metrics,
+        ...(!isSecurityDept && paymentHistory !== undefined && { paymentHistory }),
+        ...(!isSecurityDept && maintenanceHistory !== undefined && { maintenanceHistory }),
       },
     };
   }

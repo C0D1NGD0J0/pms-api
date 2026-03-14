@@ -203,7 +203,7 @@ export interface FinancialDetails {
  * Using intersection type for property with unit statistics
  */
 export type IPropertyWithUnitInfo = {
-  unitInfo: UnitInfo;
+  unitInfo?: UnitInfo;
   metrics?: {
     monthlyRent: number;
     annualRevenue: number;

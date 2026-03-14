@@ -73,6 +73,7 @@ router.post(
 
 router.get(
   '/:cuid/client_properties',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.LIST),
   validateRequest({
     params: PropertyValidations.validatecuid,
   }),
@@ -84,6 +85,7 @@ router.get(
 
 router.get(
   '/:cuid/client_property/:pid',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),

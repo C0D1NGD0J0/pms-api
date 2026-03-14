@@ -2,6 +2,7 @@ import { t } from '@shared/languages';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ValidationRequestError } from '@shared/customErrors';
 import { IPropertyDocument } from '@interfaces/property.interface';
+import { EmployeeDepartment } from '@interfaces/profile.interface';
 import {
   PROPERTY_APPROVAL_ROLES,
   convertUserRoleToEnum,
@@ -101,6 +102,43 @@ export const generatePendingChangesPreview = (
     updatedBy,
     summary,
     changes: formattedChanges,
+  };
+};
+
+/**
+ * Filter property fields based on the requesting user's department.
+ * Security staff only see access/patrol-relevant info — no financial or internal workflow data.
+ */
+export const filterPropertyByDepartment = (
+  property: IPropertyDocument,
+  department?: EmployeeDepartment
+): Partial<IPropertyDocument> => {
+  if (department !== EmployeeDepartment.SECURITY) {
+    return property;
+  }
+
+  return {
+    _id: property._id,
+    pid: property.pid,
+    name: property.name,
+    propertyType: property.propertyType,
+    status: property.status,
+    occupancyStatus: property.occupancyStatus,
+    address: property.address,
+    computedLocation: property.computedLocation,
+    specifications: property.specifications,
+    communityAmenities: property.communityAmenities,
+    interiorAmenities: property.interiorAmenities,
+    utilities: property.utilities,
+    images: property.images,
+    maxAllowedUnits: property.maxAllowedUnits,
+    yearBuilt: property.yearBuilt,
+    managedBy: property.managedBy,
+    cuid: property.cuid,
+    createdAt: property.createdAt,
+    updatedAt: property.updatedAt,
+    // Excluded: fees, financialDetails, approvalDetails, approvalStatus,
+    //           pendingChanges, authorization, documents, notes, createdBy, owner
   };
 };
 

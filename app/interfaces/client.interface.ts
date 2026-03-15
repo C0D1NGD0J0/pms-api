@@ -75,6 +75,8 @@ export interface ICompanyProfile {
  * Represents the connection between a user and a client
  */
 export interface IClientUserConnections {
+  requiresOnboarding?: boolean;
+  primaryRole: IUserRoleType;
   clientDisplayName: string;
   linkedVendorUid?: string;
   roles: IUserRoleType[];

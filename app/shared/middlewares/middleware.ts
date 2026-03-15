@@ -1,4 +1,5 @@
 import bunyan from 'bunyan';
+import { Types } from 'mongoose';
 import { container } from '@di/index';
 import { t } from '@shared/languages';
 import { UAParser } from 'ua-parser-js';
@@ -735,3 +736,18 @@ export const requireUserPermission = (action: PermissionAction | string) => {
     ownerId: req.params.userId || req.params.uid, // For "mine" scope validation
   }));
 };
+
+/**
+ * Throws ForbiddenError if the requesting user is the tenant on the resource.
+ * Prevents dual-role users (e.g. staff+tenant) from modifying records where
+ * they are personally the tenant — a conflict-of-interest guard.
+ */
+export function preventTenantConflict(
+  requestingUserId: string,
+  tenantId: Types.ObjectId | string | null | undefined,
+  message = 'You cannot modify a record where you are the tenant.'
+): void {
+  if (tenantId && requestingUserId === tenantId.toString()) {
+    throw new ForbiddenError({ message });
+  }
+}

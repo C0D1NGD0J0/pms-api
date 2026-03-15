@@ -27,6 +27,8 @@ const UserSchema = new Schema<IUserDocument>(
         cuid: { type: String, required: true, index: true },
         linkedVendorUid: { type: String, trim: true, default: null }, // Optional, for if the user is linked to a vendor
         isConnected: { type: Boolean, required: true, default: false },
+        requiresOnboarding: { type: Boolean, default: false },
+        primaryRole: { type: String, default: null },
         _id: false,
       },
     ],

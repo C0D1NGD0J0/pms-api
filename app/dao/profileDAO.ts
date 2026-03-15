@@ -362,7 +362,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                     ],
                   },
                 },
-                in: { $arrayElemAt: ['$$activeClientData.roles', 0] },
+                in: '$$activeClientData.primaryRole',
               },
             },
           },
@@ -465,9 +465,10 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                 in: {
                   cuid: '$$activeClient.cuid',
                   clientDisplayName: '$$activeClient.clientDisplayName',
-                  role: { $arrayElemAt: ['$$activeClient.roles', 0] },
+                  role: '$$activeClient.primaryRole',
                   linkedVendorUid: '$$activeClient.linkedVendorUid',
                   isVerified: { $ifNull: ['$$activeClientData.isVerified', false] },
+                  requiresOnboarding: { $ifNull: ['$$activeClient.requiresOnboarding', false] },
                   isPrimaryVendor: {
                     $cond: {
                       if: {

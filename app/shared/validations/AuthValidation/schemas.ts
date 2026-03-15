@@ -354,6 +354,39 @@ export const TenantSchema = z.object({
   maintenanceRequests: z.array(z.string()).optional(),
 });
 
+export const completeOnboardingSchema = z
+  .object({
+    policies: z.object({
+      tos: z.object({
+        accepted: z.literal(true, { message: 'You must accept the Terms of Service' }),
+      }),
+      privacy: z.object({
+        accepted: z.literal(true, { message: 'You must accept the Privacy Policy' }),
+      }),
+      marketing: z.object({ accepted: z.boolean() }),
+    }),
+    newPassword: z
+      .string()
+      .min(8, 'Password must be at least 8 characters')
+      .max(15, 'Password must be at most 15 characters')
+      .regex(
+        /^(?=.*[A-Z])(?=.*\d)/,
+        'Password must contain at least one uppercase letter and one number'
+      )
+      .optional(),
+    confirmPassword: z.string().optional(),
+    lang: z
+      .string()
+      .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Invalid language code')
+      .optional(),
+    timeZone: z.string().min(3).max(50).optional(),
+    location: z.string().min(2).max(100).optional(),
+  })
+  .refine((d) => !d.newPassword || d.newPassword === d.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
+
 export const ClientSchema = z.object({
   admin: z.string(),
   accountType: z.object({

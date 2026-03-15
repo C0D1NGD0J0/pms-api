@@ -1,4 +1,5 @@
 import {
+  completeOnboardingSchema,
   AccountActivationSchema,
   ResendActivationSchema,
   ForgotPasswordSchema,
@@ -16,4 +17,7 @@ export class AuthValidations {
   static resetPassword = ResetPasswordSchema;
   static signup = UserSignupSchema;
   static login = LoginSchema;
+  static completeOnboarding = completeOnboardingSchema;
 }
+
+export { completeOnboardingSchema };

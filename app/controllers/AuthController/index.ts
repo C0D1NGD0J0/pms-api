@@ -118,6 +118,13 @@ export class AuthController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  completeOnboarding = async (req: AppRequest, res: Response) => {
+    const userId = req.context?.currentuser?.sub;
+    const { cuid } = req.params;
+    const result = await this.authService.completeOnboarding(userId!, cuid, req.body);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   refreshToken = async (req: Request, res: Response) => {
     let refreshToken = req.cookies?.[JWT_KEY_NAMES.REFRESH_TOKEN];
 

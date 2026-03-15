@@ -217,6 +217,7 @@ export class AuthService {
               cuid: clientId,
               isConnected: true,
               roles: [IUserRole.SUPER_ADMIN],
+              primaryRole: IUserRole.SUPER_ADMIN,
               clientDisplayName: signupData.accountType.isEnterpriseAccount
                 ? signupData.companyProfile?.tradingName || signupData.displayName
                 : `${signupData.firstName} ${signupData.lastName}`,
@@ -507,10 +508,25 @@ export class AuthService {
     }
 
     const acceptedBy = `${consentData.firstName} ${consentData.lastName}`.trim();
-    const activated = await this.userDAO.activateAccount(token.trim(), { acceptedBy });
-    if (!activated) {
+    const userId = await this.userDAO.activateAccount(token.trim(), { acceptedBy });
+    if (!userId) {
       const msg = t('auth.errors.invalidActivationToken');
       throw new NotFoundError({ message: msg });
+    }
+
+    try {
+      const profile = await this.profileDAO.getProfileByUserId(userId);
+      if (profile && !profile.personalInfo?.firstName) {
+        await this.profileDAO.updatePersonalInfo(profile._id.toString(), {
+          firstName: consentData.firstName,
+          lastName: consentData.lastName,
+        });
+      }
+    } catch (err: any) {
+      this.log.error('Failed to update profile personalInfo after activation', {
+        userId,
+        error: err.message,
+      });
     }
 
     return { success: true, data: null, message: t('auth.success.accountActivated') };
@@ -691,5 +707,63 @@ export class AuthService {
       this.log.error('Error in login after invitation signup:', error);
       throw error;
     }
+  }
+
+  async completeOnboarding(
+    userId: string,
+    cuid: string,
+    body: {
+      policies: {
+        tos: { accepted: true };
+        privacy: { accepted: true };
+        marketing: { accepted: boolean };
+      };
+      newPassword?: string;
+      lang?: string;
+      timeZone?: string;
+      location?: string;
+    }
+  ): Promise<ISuccessReturnData> {
+    const profile = await this.profileDAO.getProfileByUserId(userId);
+    if (!profile) {
+      throw new NotFoundError({ message: t('profile.errors.notFound') });
+    }
+
+    const now = new Date();
+    const updateFields: Record<string, any> = {
+      'policies.tos.accepted': true,
+      'policies.tos.acceptedOn': now,
+      'policies.privacy.accepted': true,
+      'policies.privacy.acceptedOn': now,
+      'policies.marketing.accepted': body.policies.marketing.accepted,
+      'policies.marketing.acceptedOn': body.policies.marketing.accepted ? now : null,
+    };
+
+    if (body.lang) updateFields['settings.lang'] = body.lang;
+    if (body.timeZone) updateFields['settings.timeZone'] = body.timeZone;
+    if (body.location) updateFields['personalInfo.location'] = body.location;
+
+    await this.profileDAO.updateById(profile._id.toString(), { $set: updateFields });
+
+    if (body.newPassword) {
+      const user = await this.userDAO.getUserById(userId);
+      if (user) {
+        user.password = body.newPassword;
+        await user.save();
+      }
+    }
+
+    await this.userDAO.updateById(userId, {
+      $set: {
+        'consent.acceptedOn': now,
+        'consent.acceptedBy':
+          `${profile.personalInfo?.firstName ?? ''} ${profile.personalInfo?.lastName ?? ''}`.trim(),
+      },
+    });
+
+    await this.userDAO.clearOnboardingFlag(userId, cuid);
+    await this.authCache.invalidateCurrentUser(userId);
+
+    return { success: true, message: t('auth.success.onboardingCompleted'), data: null };
   }
 }

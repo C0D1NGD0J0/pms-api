@@ -1,7 +1,7 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { AuthController } from '@controllers/index';
-import { isAuthenticated } from '@shared/middlewares';
+import { isAuthenticated, basicLimiter } from '@shared/middlewares';
 import { validateRequest, AuthValidations } from '@shared/validations';
 
 const router: Router = express.Router();
@@ -106,6 +106,17 @@ router.post(
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.refreshToken(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/complete_onboarding',
+  isAuthenticated,
+  basicLimiter(),
+  validateRequest({ body: AuthValidations.completeOnboarding }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.completeOnboarding(req, res);
   })
 );
 

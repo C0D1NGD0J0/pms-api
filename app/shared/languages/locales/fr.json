@@ -49,7 +49,8 @@
       "accountActivated": "Compte activé avec succès.",
       "activationLinkSent": "Lien d'activation envoyé à {{email}}.",
       "passwordResetEmailSent": "Email de réinitialisation de mot de passe envoyé à {{email}}",
-      "logoutSuccessful": "Déconnexion réussie."
+      "logoutSuccessful": "Déconnexion réussie.",
+      "onboardingCompleted": "Intégration complétée avec succès."
     }
   },
   "connection": {

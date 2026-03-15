@@ -49,7 +49,8 @@
       "accountActivated": "Account don activate successfully.",
       "activationLinkSent": "Activation link don send to {{email}}.",
       "passwordResetEmailSent": "Password reset email don send to {{email}}",
-      "logoutSuccessful": "Logout successful."
+      "logoutSuccessful": "Logout successful.",
+      "onboardingCompleted": "Onboarding don complete successfully."
     }
   },
   "client": {

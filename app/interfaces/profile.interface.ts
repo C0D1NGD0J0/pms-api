@@ -331,6 +331,15 @@ export interface IProfileCompletion {
 }
 
 /**
+ * Policies Interface
+ */
+export interface IPolicies {
+  marketing: IPolicyAcceptance;
+  privacy?: IPolicyAcceptance;
+  tos: IPolicyAcceptance;
+}
+
+/**
  * Emergency Contact Interface
  */
 export interface IEmergencyContact {
@@ -390,14 +399,6 @@ export interface IProfileEditSettings extends ISettings {
  * Extended user type including primary_account_holder
  */
 export type ProfileUserType = 'employee' | 'vendor' | 'tenant' | 'primary_account_holder';
-
-/**
- * Policies Interface
- */
-export interface IPolicies {
-  marketing: IPolicyAcceptance;
-  tos: IPolicyAcceptance;
-}
 
 export interface ICompletionField {
   filled: boolean;

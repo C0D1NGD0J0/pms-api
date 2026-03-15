@@ -71,6 +71,7 @@ export interface ICurrentUser {
     linkedVendorUid?: string;
     role: IUserRoleType;
     isVerified: boolean;
+    requiresOnboarding?: boolean;
   };
   vendorInfo?: {
     vendorId?: string;

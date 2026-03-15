@@ -1163,6 +1163,161 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       expect(terminatedLease?.status).toBe(LeaseStatus.TERMINATED);
     });
   });
+
+  describe('self-tenant edit guard (preventTenantConflict)', () => {
+    const buildLease = async (
+      client: any,
+      manager: any,
+      tenantId: Types.ObjectId,
+      status = LeaseStatus.DRAFT
+    ) => {
+      const property = await createTestProperty(client.cuid, client._id, {
+        propertyType: 'house',
+      });
+      await Property.findByIdAndUpdate(property._id, {
+        approvalStatus: 'approved',
+        owner: { type: 'company_owned' },
+        authorization: { isActive: true },
+      });
+
+      return Lease.create({
+        luid: `lease-guard-${Date.now()}-${Math.random()}`,
+        cuid: client.cuid,
+        clientId: client._id,
+        tenantId,
+        property: {
+          id: property._id,
+          address: property.address.fullAddress,
+        },
+        duration: {
+          startDate: new Date('2025-01-01'),
+          endDate: new Date('2026-12-31'),
+        },
+        fees: {
+          monthlyRent: 150000,
+          securityDeposit: 300000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        status,
+        approvalStatus: 'approved',
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-GUARD-${Date.now()}`,
+        createdBy: manager._id,
+      });
+    };
+
+    it('updateLease — blocks a dual-role (staff+tenant) user from editing their own lease', async () => {
+      const client = await createTestClient();
+      const dualRoleUser = await createTestTenantUser(client.cuid, client._id);
+
+      const lease = await buildLease(client, dualRoleUser, dualRoleUser._id);
+
+      const mockContext = {
+        request: { params: { cuid: client.cuid } },
+        currentuser: {
+          uid: dualRoleUser.uid,
+          sub: dualRoleUser._id.toString(), // same as tenantId
+          client: { cuid: client.cuid, role: ROLES.STAFF },
+        },
+      } as any;
+
+      await expect(
+        leaseService.updateLease(mockContext, lease.luid, { fees: { monthlyRent: 2000 } } as any)
+      ).rejects.toThrow();
+    });
+
+    it('updateLease — allows a staff user to edit a lease where they are NOT the tenant', async () => {
+      const client = await createTestClient();
+      const staffUser = await createTestManagerUser(client.cuid, client._id);
+      const tenant = await createTestTenantUser(client.cuid, client._id);
+
+      const lease = await buildLease(client, staffUser, tenant._id);
+
+      const mockContext = {
+        request: { params: { cuid: client.cuid } },
+        currentuser: {
+          uid: staffUser.uid,
+          sub: staffUser._id.toString(), // different from tenantId
+          client: { cuid: client.cuid, role: ROLES.MANAGER },
+        },
+      } as any;
+
+      const result = await leaseService.updateLease(
+        mockContext,
+        lease.luid,
+        { fees: { monthlyRent: 2000, securityDeposit: 4000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' } } as any
+      );
+      expect(result.success).toBe(true);
+    });
+
+    it('deleteLease — blocks a dual-role user from deleting their own lease', async () => {
+      const client = await createTestClient();
+      const dualRoleUser = await createTestTenantUser(client.cuid, client._id);
+
+      const lease = await buildLease(client, dualRoleUser, dualRoleUser._id, LeaseStatus.DRAFT);
+
+      const mockContext = {
+        currentuser: {
+          uid: dualRoleUser.uid,
+          sub: dualRoleUser._id.toString(),
+          client: { cuid: client.cuid, role: ROLES.STAFF },
+        },
+      } as any;
+
+      await expect(
+        leaseService.deleteLease(client.cuid, lease.luid, mockContext)
+      ).rejects.toThrow();
+    });
+
+    it('terminateLease — blocks a dual-role user from terminating their own active lease', async () => {
+      const client = await createTestClient();
+      const dualRoleUser = await createTestTenantUser(client.cuid, client._id);
+
+      const property = await createTestProperty(client.cuid, client._id, { propertyType: 'house' });
+      await Property.findByIdAndUpdate(property._id, {
+        approvalStatus: 'approved',
+        owner: { type: 'company_owned' },
+        authorization: { isActive: true },
+      });
+
+      const lease = await Lease.create({
+        luid: `lease-terminate-guard-${Date.now()}`,
+        cuid: client.cuid,
+        clientId: client._id,
+        tenantId: dualRoleUser._id,
+        property: { id: property._id, address: property.address.fullAddress },
+        duration: { startDate: new Date('2025-01-01'), endDate: new Date('2026-12-31') },
+        fees: { monthlyRent: 150000, securityDeposit: 300000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+        status: LeaseStatus.ACTIVE,
+        approvalStatus: 'approved',
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-TERM-GUARD-${Date.now()}`,
+        createdBy: dualRoleUser._id,
+        signedDate: new Date(),
+        signingMethod: 'electronic',
+        eSignature: { status: 'signed', provider: 'boldsign' },
+        signatures: [{ userId: dualRoleUser._id, signedAt: new Date(), role: 'tenant', signatureMethod: 'electronic' }],
+        leaseDocuments: [{ url: 'https://test.com/lease.pdf', key: 's3-key', filename: 'lease.pdf', documentType: 'lease_agreement', uploadedAt: new Date(), uploadedBy: dualRoleUser._id }],
+      });
+
+      const mockContext = {
+        currentuser: {
+          uid: dualRoleUser.uid,
+          sub: dualRoleUser._id.toString(),
+          client: { cuid: client.cuid, role: ROLES.STAFF },
+        },
+      } as any;
+
+      await expect(
+        leaseService.terminateLease(client.cuid, lease.luid, {
+          terminationDate: new Date('2026-06-01'),
+          terminationReason: 'Test',
+        } as any, mockContext)
+      ).rejects.toThrow();
+    });
+  });
 });
 
 describe('LeaseService Integration Tests - Read Operations', () => {

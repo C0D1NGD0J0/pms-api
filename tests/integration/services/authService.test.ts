@@ -774,6 +774,139 @@ describe('AuthService Integration Tests', () => {
     });
   });
 
+  describe('completeOnboarding', () => {
+    const onboardingBody = {
+      policies: {
+        tos: { accepted: true as const },
+        privacy: { accepted: true as const },
+        marketing: { accepted: false },
+      },
+    };
+
+    it('should update profile policies and clear the onboarding flag', async () => {
+      const client = await createTestClient();
+      const user = await createTestUser(client.cuid, {
+        email: `onboarding-${Date.now()}@example.com`,
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            requiresOnboarding: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
+      });
+
+      await Profile.create({
+        puid: `puid-${Date.now()}`,
+        user: user._id,
+        personalInfo: { firstName: 'Jane', lastName: 'Doe', displayName: 'Jane Doe', location: 'US' },
+      });
+
+      const result = await authService.completeOnboarding(user._id.toString(), client.cuid, onboardingBody);
+
+      expect(result.success).toBe(true);
+
+      // requiresOnboarding cleared
+      const updatedUser = await User.findById(user._id);
+      const cuidEntry = updatedUser!.cuids.find((c) => c.cuid === client.cuid);
+      expect(cuidEntry!.requiresOnboarding).toBe(false);
+
+      // consent recorded
+      expect(updatedUser!.consent?.acceptedBy).toBe('Jane Doe');
+      expect(updatedUser!.consent?.acceptedOn).toBeInstanceOf(Date);
+    });
+
+    it('should update profile policies with correct timestamps', async () => {
+      const client = await createTestClient();
+      const user = await createTestUser(client.cuid, {
+        email: `onboarding-policies-${Date.now()}@example.com`,
+        cuids: [{ cuid: client.cuid, roles: [ROLES.STAFF], isConnected: true, requiresOnboarding: true, clientDisplayName: client.displayName }],
+      });
+
+      const profile = await Profile.create({
+        puid: `puid-pol-${Date.now()}`,
+        user: user._id,
+        personalInfo: { firstName: 'John', lastName: 'Smith', displayName: 'John Smith', location: 'CA' },
+      });
+
+      await authService.completeOnboarding(user._id.toString(), client.cuid, {
+        ...onboardingBody,
+        policies: { ...onboardingBody.policies, marketing: { accepted: true } },
+      });
+
+      const updatedProfile = await Profile.findById(profile._id);
+      expect(updatedProfile!.policies?.tos?.accepted).toBe(true);
+      expect(updatedProfile!.policies?.tos?.acceptedOn).toBeInstanceOf(Date);
+      expect(updatedProfile!.policies?.privacy?.accepted).toBe(true);
+      expect(updatedProfile!.policies?.privacy?.acceptedOn).toBeInstanceOf(Date);
+      expect(updatedProfile!.policies?.marketing?.accepted).toBe(true);
+    });
+
+    it('should update password when newPassword is provided', async () => {
+      const client = await createTestClient();
+      const originalPassword = 'OriginalPass123!';
+      const user = await createTestUser(client.cuid, {
+        email: `onboarding-pwd-${Date.now()}@example.com`,
+        password: originalPassword,
+        cuids: [{ cuid: client.cuid, roles: [ROLES.STAFF], isConnected: true, requiresOnboarding: true, clientDisplayName: client.displayName }],
+      });
+
+      await Profile.create({
+        puid: `puid-pwd-${Date.now()}`,
+        user: user._id,
+        personalInfo: { firstName: 'John', lastName: 'Smith', displayName: 'John Smith', location: 'CA' },
+      });
+
+      const newPassword = 'NewSecure1A!';
+      await authService.completeOnboarding(user._id.toString(), client.cuid, {
+        ...onboardingBody,
+        newPassword,
+      });
+
+      const updatedUser = await User.findById(user._id);
+      const { default: bcrypt } = await import('bcryptjs');
+      const isValid = await bcrypt.compare(newPassword, updatedUser!.password);
+      expect(isValid).toBe(true);
+    });
+
+    it('should throw NotFoundError when profile does not exist', async () => {
+      const client = await createTestClient();
+      const user = await createTestUser(client.cuid);
+
+      await expect(
+        authService.completeOnboarding(user._id.toString(), client.cuid, onboardingBody)
+      ).rejects.toThrow();
+    });
+
+    it('should update lang and timeZone preferences when provided', async () => {
+      const client = await createTestClient();
+      const user = await createTestUser(client.cuid, {
+        email: `onboarding-prefs-${Date.now()}@example.com`,
+        cuids: [{ cuid: client.cuid, roles: [ROLES.STAFF], isConnected: true, requiresOnboarding: true, clientDisplayName: client.displayName }],
+      });
+
+      const profile = await Profile.create({
+        puid: `puid-prefs-${Date.now()}`,
+        user: user._id,
+        personalInfo: { firstName: 'Alice', lastName: 'Test', displayName: 'Alice Test', location: 'US' },
+      });
+
+      await authService.completeOnboarding(user._id.toString(), client.cuid, {
+        ...onboardingBody,
+        lang: 'fr',
+        timeZone: 'Europe/Paris',
+        location: 'Paris',
+      });
+
+      const updatedProfile = await Profile.findById(profile._id);
+      expect(updatedProfile!.settings?.lang).toBe('fr');
+      expect(updatedProfile!.settings?.timeZone).toBe('Europe/Paris');
+      expect(updatedProfile!.personalInfo?.location).toBe('Paris');
+    });
+  });
+
   describe('verifyClientAccess', () => {
     it('should verify user has access to client', async () => {
       const client = await createTestClient();

@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
-import { clearTestDatabase } from '@tests/helpers';
+import { clearTestDatabase, createTestClient } from '@tests/helpers';
 import { ROLES } from '@shared/constants/roles.constants';
 import { PaymentModel, Profile, Lease, User } from '@models/index';
 
@@ -391,6 +391,233 @@ describe('UserDAO Integration Tests', () => {
       );
 
       expect(result.items).toHaveLength(0);
+    });
+  });
+
+  describe('createBulkUserWithDefaults', () => {
+    it('should set requiresOnboarding to true on the cuid entry', async () => {
+      const client = await createTestClient();
+      const userData = {
+        email: `bulk-${Date.now()}@example.com`,
+        firstName: 'Bulk',
+        lastName: 'User',
+        role: ROLES.STAFF,
+        defaultPassword: 'TempPass123!',
+      };
+
+      const user = await userDAO.createBulkUserWithDefaults(
+        { cuid: client.cuid, clientDisplayName: client.displayName, id: client._id.toString() },
+        userData
+      );
+
+      expect(user).not.toBeNull();
+      const cuidEntry = user.cuids.find((c) => c.cuid === client.cuid);
+      expect(cuidEntry).toBeDefined();
+      expect(cuidEntry!.requiresOnboarding).toBe(true);
+    });
+
+    it('should create an active user with the given role', async () => {
+      const client = await createTestClient();
+      const email = `bulk-role-${Date.now()}@example.com`;
+
+      const user = await userDAO.createBulkUserWithDefaults(
+        { cuid: client.cuid, clientDisplayName: client.displayName, id: client._id.toString() },
+        { email, firstName: 'Bulk', lastName: 'User', role: ROLES.TENANT, defaultPassword: 'TempPass123!' }
+      );
+
+      expect(user.isActive).toBe(true);
+      expect(user.email).toBe(email);
+      const cuidEntry = user.cuids.find((c) => c.cuid === client.cuid);
+      expect(cuidEntry!.roles).toContain(ROLES.TENANT);
+    });
+  });
+
+  describe('clearOnboardingFlag', () => {
+    it('should set requiresOnboarding to false for the given cuid', async () => {
+      const client = await createTestClient();
+      const user = await User.create({
+        uid: `uid-onboarding-${Date.now()}`,
+        email: `onboarding-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client.cuid,
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            requiresOnboarding: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
+      });
+
+      await userDAO.clearOnboardingFlag(user._id.toString(), client.cuid);
+
+      const updated = await User.findById(user._id);
+      const cuidEntry = updated!.cuids.find((c) => c.cuid === client.cuid);
+      expect(cuidEntry!.requiresOnboarding).toBe(false);
+    });
+
+    it('should not affect other cuid entries', async () => {
+      const client1 = await createTestClient();
+      const client2 = await createTestClient();
+      const user = await User.create({
+        uid: `uid-multi-onboard-${Date.now()}`,
+        email: `multi-onboard-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client1.cuid,
+        cuids: [
+          {
+            cuid: client1.cuid,
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            requiresOnboarding: true,
+            clientDisplayName: client1.displayName,
+          },
+          {
+            cuid: client2.cuid,
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            requiresOnboarding: true,
+            clientDisplayName: client2.displayName,
+          },
+        ],
+      });
+
+      await userDAO.clearOnboardingFlag(user._id.toString(), client1.cuid);
+
+      const updated = await User.findById(user._id);
+      const entry1 = updated!.cuids.find((c) => c.cuid === client1.cuid);
+      const entry2 = updated!.cuids.find((c) => c.cuid === client2.cuid);
+      expect(entry1!.requiresOnboarding).toBe(false);
+      expect(entry2!.requiresOnboarding).toBe(true); // untouched
+    });
+  });
+
+  describe('addUserToClient — dual-role / primaryRole', () => {
+    it('sets primaryRole to the role when adding a brand-new cuid connection', async () => {
+      const client = await createTestClient();
+      const user = await User.create({
+        uid: `uid-addclient-new-${Date.now()}`,
+        email: `addclient-new-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client.cuid,
+        cuids: [],
+      });
+
+      await userDAO.addUserToClient(user._id.toString(), ROLES.TENANT, {
+        cuid: client.cuid,
+        clientDisplayName: client.displayName,
+        id: client._id.toString(),
+      });
+
+      const updated = await User.findById(user._id);
+      const entry = updated!.cuids.find((c) => c.cuid === client.cuid);
+      expect(entry).toBeDefined();
+      expect(entry!.roles).toContain(ROLES.TENANT);
+      expect(entry!.primaryRole).toBe(ROLES.TENANT);
+    });
+
+    it('keeps primaryRole as the higher-privilege role when a lower role is added second', async () => {
+      const client = await createTestClient();
+      const user = await User.create({
+        uid: `uid-dual-low-${Date.now()}`,
+        email: `dual-low-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client.cuid,
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.STAFF],
+            primaryRole: ROLES.STAFF,
+            isConnected: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
+      });
+
+      await userDAO.addUserToClient(user._id.toString(), ROLES.TENANT, {
+        cuid: client.cuid,
+        clientDisplayName: client.displayName,
+        id: client._id.toString(),
+      });
+
+      const updated = await User.findById(user._id);
+      const entry = updated!.cuids.find((c) => c.cuid === client.cuid);
+      expect(entry!.roles).toContain(ROLES.STAFF);
+      expect(entry!.roles).toContain(ROLES.TENANT);
+      // staff (index 3) > tenant (index 4) → staff wins
+      expect(entry!.primaryRole).toBe(ROLES.STAFF);
+    });
+
+    it('upgrades primaryRole when a higher-privilege role is added second', async () => {
+      const client = await createTestClient();
+      // User was added as tenant first
+      const user = await User.create({
+        uid: `uid-dual-high-${Date.now()}`,
+        email: `dual-high-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client.cuid,
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.TENANT],
+            primaryRole: ROLES.TENANT,
+            isConnected: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
+      });
+
+      await userDAO.addUserToClient(user._id.toString(), ROLES.STAFF, {
+        cuid: client.cuid,
+        clientDisplayName: client.displayName,
+        id: client._id.toString(),
+      });
+
+      const updated = await User.findById(user._id);
+      const entry = updated!.cuids.find((c) => c.cuid === client.cuid);
+      expect(entry!.roles).toContain(ROLES.TENANT);
+      expect(entry!.roles).toContain(ROLES.STAFF);
+      // staff has higher privilege than tenant → staff wins
+      expect(entry!.primaryRole).toBe(ROLES.STAFF);
+    });
+
+    it('does not duplicate roles when the same role is added twice', async () => {
+      const client = await createTestClient();
+      const user = await User.create({
+        uid: `uid-dedup-${Date.now()}`,
+        email: `dedup-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client.cuid,
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.STAFF],
+            primaryRole: ROLES.STAFF,
+            isConnected: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
+      });
+
+      await userDAO.addUserToClient(user._id.toString(), ROLES.STAFF, {
+        cuid: client.cuid,
+        clientDisplayName: client.displayName,
+        id: client._id.toString(),
+      });
+
+      const updated = await User.findById(user._id);
+      const entry = updated!.cuids.find((c) => c.cuid === client.cuid);
+      const staffCount = entry!.roles.filter((r) => r === ROLES.STAFF).length;
+      expect(staffCount).toBe(1);
+      expect(entry!.primaryRole).toBe(ROLES.STAFF);
     });
   });
 

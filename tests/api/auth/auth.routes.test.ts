@@ -102,6 +102,13 @@ const mockAuthController = {
       message: 'Token refreshed successfully',
     });
   }),
+
+  completeOnboarding: jest.fn((_req: Request, res: Response) => {
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: 'Onboarding completed successfully.',
+    });
+  }),
 };
 
 // Simplified mock container
@@ -154,6 +161,10 @@ describe('Auth Routes Integration Tests', () => {
         mockAuthController.logout(req, res);
       });
       testApp.post(`${baseUrl}/refresh_token`, mockAuthController.refreshToken);
+      testApp.post(`${baseUrl}/:cuid/complete_onboarding`, (req: Request, res: Response) => {
+        req.context = { currentuser: createMockCurrentUser() } as any;
+        mockAuthController.completeOnboarding(req, res);
+      });
     });
   });
 
@@ -868,6 +879,58 @@ describe('Auth Routes Integration Tests', () => {
 
       expect(response.body.errors).toBeDefined();
       expect(Array.isArray(response.body.errors)).toBe(true);
+    });
+  });
+
+  describe('POST /auth/:cuid/complete_onboarding (protected)', () => {
+    const cuid = faker.string.uuid();
+    const endpoint = `${baseUrl}/${cuid}/complete_onboarding`;
+
+    const validBody = {
+      policies: {
+        tos: { accepted: true },
+        privacy: { accepted: true },
+        marketing: { accepted: false },
+      },
+    };
+
+    it('should complete onboarding with valid consent body', async () => {
+      const response = await request(app)
+        .post(endpoint)
+        .send(validBody)
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toContain('Onboarding');
+      expect(mockAuthController.completeOnboarding).toHaveBeenCalled();
+    });
+
+    it('should complete onboarding with optional password and preferences', async () => {
+      const bodyWithExtras = {
+        ...validBody,
+        newPassword: 'NewPass1A!',
+        confirmPassword: 'NewPass1A!',
+        lang: 'fr',
+        timeZone: 'Europe/Paris',
+        location: 'Paris',
+      };
+
+      const response = await request(app)
+        .post(endpoint)
+        .send(bodyWithExtras)
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(mockAuthController.completeOnboarding).toHaveBeenCalled();
+    });
+
+    it('should return 200 when marketing is accepted', async () => {
+      const response = await request(app)
+        .post(endpoint)
+        .send({ policies: { tos: { accepted: true }, privacy: { accepted: true }, marketing: { accepted: true } } })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
     });
   });
 });

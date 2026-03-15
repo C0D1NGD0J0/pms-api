@@ -540,6 +540,24 @@ export class UserService {
     const hireDate = employeeInfo.startDate || user.createdAt;
     const tenure = this.calculateTenure(hireDate);
 
+    // Resolve supervisor name: reportsTo may be stored as a MongoDB ObjectId string
+    let directManager = employeeInfo.reportsTo || '';
+    if (directManager && /^[a-f0-9]{24}$/i.test(directManager)) {
+      try {
+        const supervisor = await this.userDAO.findFirst(
+          { _id: new Types.ObjectId(directManager) },
+          { populate: [{ path: 'profile', select: 'personalInfo' }] }
+        );
+        if (supervisor?.profile?.personalInfo) {
+          const { firstName, lastName } = supervisor.profile.personalInfo as any;
+          const resolvedName = `${firstName || ''} ${lastName || ''}`.trim();
+          if (resolvedName) directManager = resolvedName;
+        }
+      } catch {
+        // keep raw ID if supervisor lookup fails
+      }
+    }
+
     return {
       employeeId: employeeInfo.employeeId || '',
       hireDate: hireDate,
@@ -547,7 +565,7 @@ export class UserService {
       employmentType: employeeInfo.employmentType || 'Full-Time',
       department: employeeInfo.department || 'operations',
       position: this.determinePrimaryRole(roles),
-      directManager: employeeInfo.reportsTo || '',
+      directManager,
 
       // Skills and expertise
       skills: employeeInfo.skills || [

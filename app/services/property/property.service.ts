@@ -744,6 +744,10 @@ export class PropertyService {
           { 'address.fullAddress': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
         ];
       }
+
+      if (filters.managedBy) {
+        filter.managedBy = new Types.ObjectId(filters.managedBy as string);
+      }
     }
 
     const opts: IPaginationQuery = {

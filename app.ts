@@ -153,6 +153,7 @@ export class App implements IAppSetup {
       const { serverAdapter } = require('@queues/index');
       app.use(`${this.BASE_PATH}/queues`, serverAdapter.getRouter());
     }
+    app.use(`${this.BASE_PATH}/admin`, routes.adminRoutes);
     app.use(`${this.BASE_PATH}/auth`, routes.authRoutes);
     app.use(`${this.BASE_PATH}/users`, routes.userRoutes);
     app.use(`${this.BASE_PATH}/leases`, routes.leaseRoutes);

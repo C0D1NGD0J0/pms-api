@@ -88,6 +88,7 @@ import {
   ClientController,
   VendorController,
   LeaseController,
+  AdminController,
   UserController,
   AuthController,
 } from '@controllers/index';
@@ -125,6 +126,7 @@ import {
 } from '@services/index';
 
 const ControllerResources = {
+  adminController: asClass(AdminController).scoped(),
   authController: asClass(AuthController).scoped(),
   userController: asClass(UserController).scoped(),
   leaseController: asClass(LeaseController).scoped(),

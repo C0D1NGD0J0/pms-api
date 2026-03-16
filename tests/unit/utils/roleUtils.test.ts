@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { ForbiddenError } from '@shared/customErrors';
-import { ROLE_PRIORITY, resolveHighestRole } from '@shared/constants/roles.constants';
 import { preventTenantConflict } from '@shared/middlewares';
+import { resolveHighestRole, ROLE_PRIORITY } from '@shared/constants/roles.constants';
 
 describe('resolveHighestRole', () => {
   it('returns the single role when the array has one entry', () => {

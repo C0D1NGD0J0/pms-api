@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
-import { clearTestDatabase, createTestClient } from '@tests/helpers';
 import { ROLES } from '@shared/constants/roles.constants';
 import { PaymentModel, Profile, Lease, User } from '@models/index';
+import { clearTestDatabase, createTestClient } from '@tests/helpers';
 
 describe('UserDAO Integration Tests', () => {
   let userDAO: UserDAO;

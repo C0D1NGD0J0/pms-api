@@ -6,6 +6,8 @@ import { PropertyUnitController } from '@controllers/PropertyUnitController';
 import { PropertyUnitValidations } from '@shared/validations/PropertyUnitValidation';
 import {
   requirePropertyPermission,
+  requireActiveSubscription,
+  subscriptionEntitlements,
   isAuthenticated,
   basicLimiter,
   diskUpload,
@@ -18,6 +20,8 @@ router.use(isAuthenticated);
 router.post(
   '/',
   requirePropertyPermission(PermissionAction.CREATE),
+  subscriptionEntitlements,
+  requireActiveSubscription,
   basicLimiter(),
   diskUpload(['propertyUnit.media']),
   scanFile,

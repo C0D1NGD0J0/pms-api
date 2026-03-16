@@ -8,6 +8,8 @@ import {
   validateRequest,
 } from '@shared/validations/index';
 import {
+  requireActiveSubscription,
+  subscriptionEntitlements,
   requireVerifiedClient,
   requirePermission,
   isAuthenticated,
@@ -76,6 +78,8 @@ router.post(
   basicLimiter(),
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   requireVerifiedClient,
+  subscriptionEntitlements,
+  requireActiveSubscription,
   validateRequest({
     params: UtilsValidations.cuid,
     body: InvitationValidations.sendInvitation,

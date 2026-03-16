@@ -5,6 +5,8 @@ import { validateRequest } from '@shared/validations/setup';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
+  requireActiveSubscription,
+  subscriptionEntitlements,
   requireVerification,
   requirePermission,
   isAuthenticated,
@@ -31,6 +33,8 @@ router.post(
   '/:cuid/add_property',
   requireVerification,
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
+  subscriptionEntitlements,
+  requireActiveSubscription,
   diskUpload(['documents[*].file', 'images[*].file']),
   scanFile,
   validateRequest({

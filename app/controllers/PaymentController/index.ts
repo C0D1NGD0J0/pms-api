@@ -57,15 +57,16 @@ export class PaymentController {
   async recordManualPayment(req: AppRequest, res: Response) {
     const { cuid } = req.params;
     const userId = req.context?.currentuser?.uid;
+    const userSub = req.context?.currentuser?.sub;
 
-    if (!userId) {
+    if (!userId || !userSub) {
       return res.status(401).json({
         success: false,
         message: 'User not authenticated',
       });
     }
 
-    const result = await this.paymentService.recordManualPayment(cuid, userId, req.body);
+    const result = await this.paymentService.recordManualPayment(cuid, userId, userSub, req.body);
 
     const uploadResult = await this.mediaUploadService.handleFiles(req, {
       primaryResourceId: (result.data as any).pytuid,
@@ -141,8 +142,12 @@ export class PaymentController {
   async refundPayment(req: AppRequest, res: Response) {
     const { cuid, pytuid } = req.params;
     const { amount, reason } = req.body;
+    const userSub = req.context?.currentuser?.sub ?? '';
 
-    const result = await this.paymentService.refundPayment(cuid, pytuid, { amount, reason });
+    const result = await this.paymentService.refundPayment(cuid, pytuid, userSub, {
+      amount,
+      reason,
+    });
 
     return res.status(201).json(result);
   }

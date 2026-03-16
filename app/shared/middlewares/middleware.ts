@@ -26,6 +26,7 @@ import {
 } from '@interfaces/utils.interface';
 import {
   ISubscriptionEntitlements,
+  ISubscriptionStatus,
   PermissionResource,
   PermissionAction,
   ICurrentUser,
@@ -533,6 +534,24 @@ export const requireFeature = (featureName: keyof ISubscriptionEntitlements['ent
     }
     next();
   };
+};
+
+/**
+ * Blocks requests when the client's subscription is not in an active state.
+ * Requires `subscriptionEntitlements` middleware to have run first.
+ * Fails open (allows request) when entitlements could not be loaded, so a
+ * subscription service outage does not break the application.
+ */
+export const requireActiveSubscription = (req: Request, _res: Response, next: NextFunction) => {
+  const entitlements = req.context?.entitlements;
+  if (!entitlements) {
+    return next();
+  }
+  const { status } = entitlements.plan;
+  if (status === ISubscriptionStatus.INACTIVE || status === ISubscriptionStatus.PENDING_PAYMENT) {
+    return next(new ForbiddenError({ message: t('auth.errors.subscriptionInactive') }));
+  }
+  next();
 };
 
 /**

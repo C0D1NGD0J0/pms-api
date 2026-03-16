@@ -8,6 +8,7 @@ import { UserService } from '@services/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
+import { preventTenantConflict } from '@shared/middlewares';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { IPropertyDocument, ICronJob } from '@interfaces/index';
 import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
@@ -184,6 +185,11 @@ export class LeaseRenewalService {
       throw new InvalidRequestError({
         message: t('lease.errors.notFound'),
       });
+    }
+
+    // Prevent conflict of interest: cannot renew a lease where you are the tenant
+    if (!isSystemCall) {
+      preventTenantConflict(ctx!.currentuser.sub, existingLease.tenantId as any);
     }
 
     if (!['active'].includes(existingLease.status)) {

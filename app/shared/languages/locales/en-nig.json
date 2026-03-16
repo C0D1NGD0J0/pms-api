@@ -37,7 +37,8 @@
       "entitlementsUnavailable": "We no fit verify your subscription entitlements. Please try again.",
       "featureNotEntitled": "Dis feature no dey available for your current subscription plan. Please upgrade to access am.",
       "clientNotVerified": "You must verify your account before you fit do dis action. Please complete account verification.",
-      "superAdminRequired": "You need super admin privilege to do dis action"
+      "superAdminRequired": "You need super admin privilege to do dis action",
+      "subscriptionInactive": "Your subscription no dey active. Please renew your plan to continue."
     },
     "success": {
       "tokenRefreshed": "Token don refresh successfully",

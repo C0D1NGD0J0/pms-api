@@ -37,7 +37,8 @@
       "entitlementsUnavailable": "Les droits d'abonnement n'ont pas pu être vérifiés. Veuillez réessayer.",
       "featureNotEntitled": "Cette fonctionnalité n'est pas disponible dans votre plan d'abonnement actuel. Veuillez mettre à niveau pour y accéder.",
       "clientNotVerified": "Votre compte doit être vérifié avant d'effectuer cette action. Veuillez compléter la vérification du compte.",
-      "superAdminRequired": "Des privilèges de super administrateur sont requis pour effectuer cette action"
+      "superAdminRequired": "Des privilèges de super administrateur sont requis pour effectuer cette action",
+      "subscriptionInactive": "Votre abonnement n'est pas actif. Veuillez renouveler votre plan pour continuer."
     },
     "success": {
       "tokenRefreshed": "Jeton rafraîchi avec succès",

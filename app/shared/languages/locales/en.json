@@ -37,7 +37,8 @@
       "entitlementsUnavailable": "Subscription entitlements could not be verified. Please try again.",
       "featureNotEntitled": "This feature is not available on your current subscription plan. Please upgrade to access it.",
       "clientNotVerified": "Your account must be verified before performing this action. Please complete account verification.",
-      "superAdminRequired": "Super administrator privileges are required to perform this action"
+      "superAdminRequired": "Super administrator privileges are required to perform this action",
+      "subscriptionInactive": "Your subscription is not active. Please renew your plan to continue."
     },
     "success": {
       "tokenRefreshed": "Token refreshed successfully",

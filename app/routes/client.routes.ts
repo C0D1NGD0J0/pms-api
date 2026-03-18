@@ -99,7 +99,7 @@ router.post(
 );
 
 router.post(
-  '/:cuid/verify_client_identity',
+  '/:cuid/identity_verification/session',
   isAuthenticated,
   basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),

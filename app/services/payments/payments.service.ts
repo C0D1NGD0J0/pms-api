@@ -4,6 +4,7 @@ import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { PaymentQueue } from '@queues/payment.queue';
 import { EventTypes } from '@interfaces/events.interface';
+import { preventTenantConflict } from '@shared/middlewares';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { getPaymentProcessorUrls, createLogger } from '@utils/index';
@@ -227,9 +228,13 @@ export class PaymentService implements ICronProvider {
   async recordManualPayment(
     cuid: string,
     userId: string,
+    requestingUserSub: string,
     data: IManualPaymentFormData
   ): IPromiseReturnedData<IPaymentDocument> {
     try {
+      // Prevent conflict of interest: cannot record payment where you are the tenant
+      preventTenantConflict(requestingUserSub, data.tenantId as string);
+
       const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
       if (!client) {
         throw new NotFoundError({ message: 'Client not found' });
@@ -1060,6 +1065,7 @@ export class PaymentService implements ICronProvider {
   async refundPayment(
     cuid: string,
     pytuid: string,
+    requestingUserSub: string,
     data: IRefundPaymentData
   ): IPromiseReturnedData<IPaymentDocument> {
     try {
@@ -1071,6 +1077,10 @@ export class PaymentService implements ICronProvider {
       if (!payment) {
         throw new NotFoundError({ message: 'Payment not found' });
       }
+
+      // Prevent conflict of interest: cannot refund a payment where you are the tenant
+      const tenantProfile = await this.profileDAO.findFirst({ _id: payment.tenant });
+      preventTenantConflict(requestingUserSub, tenantProfile?.user as any);
 
       if (payment.status !== PaymentRecordStatus.PAID) {
         throw new BadRequestError({

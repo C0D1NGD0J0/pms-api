@@ -35,6 +35,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
 
     mockSubscriptionDAO = {
       findFirst: jest.fn(),
+      findById: jest.fn(),
       update: jest.fn(),
       startSession: jest.fn().mockResolvedValue(mockSession),
       withTransaction: jest.fn((session, callback) => callback(session)),
@@ -188,7 +189,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
           priceId: 'price_growth_annual',
           billingInterval: 'annual',
         })
-      ).rejects.toThrow('No active Stripe subscription found');
+      ).rejects.toThrow('Client subscription not found');
 
       expect(mockPaymentGatewayService.updateSubscription).not.toHaveBeenCalled();
     });

@@ -4,13 +4,13 @@ import cookieParser from 'cookie-parser';
 import { Subscription } from '@models/index';
 import express, { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
+import { clearTestDatabase } from '@tests/helpers';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { ROLES } from '@shared/constants/roles.constants';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
+import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { SubscriptionController } from '@controllers/SubscriptionController';
 import { SubscriptionService } from '@services/subscription/subscription.service';
-import { beforeEach, beforeAll, afterAll, describe, expect, it } from '@jest/globals';
-import { disconnectTestDatabase, setupTestDatabase, clearTestDatabase } from '@tests/helpers';
 
 describe('SubscriptionController Integration Tests', () => {
   let app: Application;
@@ -33,7 +33,6 @@ describe('SubscriptionController Integration Tests', () => {
   });
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
 
     const subscriptionDAO = new SubscriptionDAO();
@@ -144,10 +143,6 @@ describe('SubscriptionController Integration Tests', () => {
     };
   });
 
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   describe('POST /subscriptions/:cuid/init-subscription-payment', () => {
     it('should create checkout session for super-admin with pending_payment subscription', async () => {
       const client = new Types.ObjectId();
@@ -174,7 +169,10 @@ describe('SubscriptionController Integration Tests', () => {
 
       const _response = await request(app)
         .post(`/api/v1/subscriptions/${superAdminUser.cuid}/init-subscription-payment`)
-        .set('x-test-context', JSON.stringify(mockContext(ROLES.SUPER_ADMIN, superAdminUser.cuid, superAdminUser.email)))
+        .set(
+          'x-test-context',
+          JSON.stringify(mockContext(ROLES.SUPER_ADMIN, superAdminUser.cuid, superAdminUser.email))
+        )
         .send({
           successUrl: 'https://app.example.com/success',
           cancelUrl: 'https://app.example.com/cancel',

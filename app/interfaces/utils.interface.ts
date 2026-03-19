@@ -73,13 +73,6 @@ export enum ResourceContext {
   LEASE = 'lease',
 }
 
-export enum IdentificationEnumType {
-  CORPORATION_LICENSE = 'corporation-license',
-  DRIVERS_LICENSE = 'drivers-license',
-  NATIONAL_ID = 'national-id',
-  PASSPORT = 'passport',
-}
-
 export enum CURRENCIES {
   USD = 'USD',
   EUR = 'EUR',

@@ -2,6 +2,7 @@ import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import express, { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
+import { clearTestDatabase } from '@tests/helpers';
 import { AuthService } from '@services/auth/auth.service';
 import { ROLES } from '@shared/constants/roles.constants';
 import { VendorService } from '@services/vendor/vendor.service';
@@ -10,15 +11,13 @@ import { InvitationController } from '@controllers/InvitationController';
 import { Invitation, Profile, Client, Vendor, User } from '@models/index';
 import { InvitationService } from '@services/invitation/invitation.service';
 import { PermissionService } from '@services/permission/permission.service';
-import { beforeEach, beforeAll, afterAll, describe, expect, it } from '@jest/globals';
+import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { InvitationDAO, ProfileDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
-import { disconnectTestDatabase, setupTestDatabase, clearTestDatabase } from '@tests/helpers';
 import {
   createTestInvitation,
   createTestProfile,
   createTestClient,
-  createTestUser,
-} from '@tests/setup/testFactories';
+  createTestUser,} from '@tests/setup/testFactories';
 
 describe('InvitationController Integration Tests', () => {
   let app: Application;
@@ -42,7 +41,6 @@ describe('InvitationController Integration Tests', () => {
   });
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
 
     // Initialize DAOs
@@ -194,10 +192,6 @@ describe('InvitationController Integration Tests', () => {
       role: ROLES.STAFF,
       status: 'pending',
     });
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   describe('POST /invites/:cuid/send_invite - sendInvitation', () => {

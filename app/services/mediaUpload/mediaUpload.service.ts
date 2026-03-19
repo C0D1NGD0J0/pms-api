@@ -265,6 +265,14 @@ export class MediaUploadService {
     resourceId: string;
     fieldName: string;
   } {
+    if (fieldName === 'identification.idimage' || fieldName.startsWith('identification.')) {
+      return {
+        resourceName: 'client',
+        resourceId: context.primaryResourceId,
+        fieldName: 'identification.idimage',
+      };
+    }
+
     if (fieldName.includes('avatar') || fieldName.startsWith('personalInfo.avatar')) {
       return {
         resourceName: 'profile',

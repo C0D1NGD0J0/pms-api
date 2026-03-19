@@ -78,7 +78,8 @@ export class AuthController {
 
   accountActivation = async (req: Request, res: Response) => {
     const { t: token } = req.query;
-    const data = await this.authService.accountActivation(token as string);
+    const { firstName, lastName } = req.body;
+    const data = await this.authService.accountActivation(token as string, { firstName, lastName });
     res.status(httpStatusCodes.OK).json(data);
   };
 
@@ -114,6 +115,13 @@ export class AuthController {
 
     res.clearCookie(JWT_KEY_NAMES.ACCESS_TOKEN, { path: '/' });
     res.clearCookie(JWT_KEY_NAMES.REFRESH_TOKEN, { path: '/api/v1/auth/refresh_token' });
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  completeOnboarding = async (req: AppRequest, res: Response) => {
+    const userId = req.context?.currentuser?.sub;
+    const { cuid } = req.params;
+    const result = await this.authService.completeOnboarding(userId!, cuid, req.body);
     res.status(httpStatusCodes.OK).json(result);
   };
 

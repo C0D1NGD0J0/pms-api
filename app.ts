@@ -15,7 +15,6 @@ import sanitizer from 'perfect-express-sanitizer';
 import mongoSanitize from 'express-mongo-sanitize';
 import { httpStatusCodes, createLogger } from '@utils/index';
 import { DatabaseService, RedisService } from '@database/index';
-import { initBullBoardAdapter, serverAdapter } from '@queues/index';
 import express, { Application, urlencoded, Response, Request } from 'express';
 import {
   errorHandlerMiddleware,
@@ -46,6 +45,8 @@ export class App implements IAppSetup {
     this.standardMiddleware(this.expApp);
     // Initialize Bull Board adapter before routes (for lazy-loaded queues)
     if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { initBullBoardAdapter } = require('@queues/index');
       initBullBoardAdapter();
     }
     this.routes(this.expApp);
@@ -148,8 +149,11 @@ export class App implements IAppSetup {
       }
     });
     if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { serverAdapter } = require('@queues/index');
       app.use(`${this.BASE_PATH}/queues`, serverAdapter.getRouter());
     }
+    app.use(`${this.BASE_PATH}/admin`, routes.adminRoutes);
     app.use(`${this.BASE_PATH}/auth`, routes.authRoutes);
     app.use(`${this.BASE_PATH}/users`, routes.userRoutes);
     app.use(`${this.BASE_PATH}/leases`, routes.leaseRoutes);

@@ -1,11 +1,7 @@
 import { Types } from 'mongoose';
 import { Asset } from '@models/index';
 import { AssetDAO } from '@dao/assetDAO';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
+import { clearTestDatabase } from '@tests/helpers';
 
 describe('AssetDAO Integration Tests', () => {
   let assetDAO: AssetDAO;
@@ -13,12 +9,7 @@ describe('AssetDAO Integration Tests', () => {
   let testPropertyId: string;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     assetDAO = new AssetDAO({ assetModel: Asset });
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   beforeEach(async () => {
@@ -352,33 +343,21 @@ describe('AssetDAO Integration Tests', () => {
     });
 
     it('should retrieve assets by field name', async () => {
-      const assets = await assetDAO.getAssetsByFieldName(
-        'Property',
-        testPropertyId,
-        'photos'
-      );
+      const assets = await assetDAO.getAssetsByFieldName('Property', testPropertyId, 'photos');
 
       expect(assets.length).toBe(2);
       expect(assets.every((a) => a.fieldName === 'photos')).toBe(true);
     });
 
     it('should retrieve different field name', async () => {
-      const assets = await assetDAO.getAssetsByFieldName(
-        'Property',
-        testPropertyId,
-        'documents'
-      );
+      const assets = await assetDAO.getAssetsByFieldName('Property', testPropertyId, 'documents');
 
       expect(assets.length).toBe(1);
       expect(assets[0].type).toBe('document');
     });
 
     it('should return empty array for non-existent field name', async () => {
-      const assets = await assetDAO.getAssetsByFieldName(
-        'Property',
-        testPropertyId,
-        'videos'
-      );
+      const assets = await assetDAO.getAssetsByFieldName('Property', testPropertyId, 'videos');
 
       expect(assets.length).toBe(0);
     });
@@ -400,11 +379,7 @@ describe('AssetDAO Integration Tests', () => {
         status: 'deleted',
       });
 
-      const assets = await assetDAO.getAssetsByFieldName(
-        'Property',
-        testPropertyId,
-        'photos'
-      );
+      const assets = await assetDAO.getAssetsByFieldName('Property', testPropertyId, 'photos');
 
       expect(assets.length).toBe(2);
     });

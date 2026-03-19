@@ -102,6 +102,11 @@ export class UserService {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
 
+    // Users can always read their own record regardless of connection status
+    if (user._id.toString() === currentuser.sub) {
+      return user;
+    }
+
     const targetUser = {
       _id: user._id,
       uid: user.uid,
@@ -535,6 +540,24 @@ export class UserService {
     const hireDate = employeeInfo.startDate || user.createdAt;
     const tenure = this.calculateTenure(hireDate);
 
+    // Resolve supervisor name: reportsTo may be stored as a MongoDB ObjectId string
+    let directManager = employeeInfo.reportsTo || '';
+    if (directManager && /^[a-f0-9]{24}$/i.test(directManager)) {
+      try {
+        const supervisor = await this.userDAO.findFirst(
+          { _id: new Types.ObjectId(directManager) },
+          { populate: [{ path: 'profile', select: 'personalInfo' }] }
+        );
+        if (supervisor?.profile?.personalInfo) {
+          const { firstName, lastName } = supervisor.profile.personalInfo as any;
+          const resolvedName = `${firstName || ''} ${lastName || ''}`.trim();
+          if (resolvedName) directManager = resolvedName;
+        }
+      } catch {
+        // keep raw ID if supervisor lookup fails
+      }
+    }
+
     return {
       employeeId: employeeInfo.employeeId || '',
       hireDate: hireDate,
@@ -542,7 +565,7 @@ export class UserService {
       employmentType: employeeInfo.employmentType || 'Full-Time',
       department: employeeInfo.department || 'operations',
       position: this.determinePrimaryRole(roles),
-      directManager: employeeInfo.reportsTo || '',
+      directManager,
 
       // Skills and expertise
       skills: employeeInfo.skills || [
@@ -1840,7 +1863,7 @@ export class UserService {
       // Prevent deleting account owner
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.clientNotFound') });
+        throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
       if (client.accountAdmin.toString() === user._id.toString()) {

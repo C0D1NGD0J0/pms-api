@@ -71,6 +71,7 @@ export interface ICurrentUser {
     linkedVendorUid?: string;
     role: IUserRoleType;
     isVerified: boolean;
+    requiresOnboarding?: boolean;
   };
   vendorInfo?: {
     vendorId?: string;
@@ -365,22 +366,6 @@ export interface FilteredUserTableData extends Pick<IUser, 'email'> {
 }
 
 /**
- * Identification Type Interface
- * User identification documents
- */
-export interface IIdentificationType {
-  documents: IdentificationDocumentType[];
-  retentionExpiryDate: Date | string;
-  idType: IdentificationDocumentType;
-  dataProcessingConsent: boolean;
-  expiryDate: Date | string;
-  issueDate: Date | string;
-  issuingState: string;
-  authority: string;
-  idNumber: string;
-}
-
-/**
  * Signup Data Type
  * User registration form data
  */
@@ -400,6 +385,21 @@ export type ISignupData = {
 };
 
 /**
+ * Identification Type Interface
+ * Client identity verification data (Stripe Identity)
+ */
+export interface IIdentificationType {
+  identityVerification?: {
+    sessionId?: string;
+    sessionStatus?: 'requires_input' | 'stripe_verified';
+    documentType?: string;
+    issuingCountry?: string;
+  };
+  processingConsentDate?: Date | string;
+  dataProcessingConsent: boolean;
+}
+
+/**
  * Filtered User Tenant Info
  * Minimal tenant info for table display (lightweight)
  */
@@ -408,6 +408,19 @@ export interface FilteredUserTenantInfo {
   leaseStatus?: string; // active, pending_signature, no_active_lease, etc.
   monthlyRent?: number; // Monthly rent amount
   rentStatus?: string; // paid, overdue, pending, etc.
+}
+
+/**
+ * User profile identification (for tenants, staff, etc.)
+ * Separate from client KYC — stored on Profile.personalInfo.identification
+ */
+export interface IUserIdentificationType {
+  idType?: 'passport' | 'drivers-license' | 'national-id' | 'corporation-license' | string;
+  expiryDate?: Date | string;
+  issueDate?: Date | string;
+  issuingState?: string;
+  authority?: string;
+  idNumber?: string;
 }
 
 /**
@@ -422,6 +435,26 @@ export interface IVendorTeamMember
   isTeamMember: boolean;
   joinedDate: Date;
   role: string;
+}
+
+/**
+ * ============================================================================
+ * DOCUMENT INTERFACES (Mongoose Extensions)
+ * ============================================================================
+ */
+
+/**
+ * Main User Interface
+ * Core authentication and account data
+ */
+export interface IUser {
+  passwordResetTokenExpiresAt: Date | number | null;
+  activationTokenExpiresAt: Date | number | null;
+  passwordResetToken?: string;
+  activationToken?: string;
+  consent?: IUserConsent;
+  password: string;
+  email: string;
 }
 
 /**
@@ -440,25 +473,6 @@ export interface IBaseUserProfile {
   email: string;
   uid: string;
   id: string;
-}
-
-/**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
-
-/**
- * Main User Interface
- * Core authentication and account data
- */
-export interface IUser {
-  passwordResetTokenExpiresAt: Date | number | null;
-  activationTokenExpiresAt: Date | number | null;
-  passwordResetToken?: string;
-  activationToken?: string;
-  password: string;
-  email: string;
 }
 
 /**
@@ -568,16 +582,6 @@ export interface IUserProperty {
 }
 
 /**
- * ID Type Union
- * Supported identification document types
- */
-export type IdentificationDocumentType =
-  | 'passport'
-  | 'national-id'
-  | 'drivers-license'
-  | 'corporation-license';
-
-/**
  * Filtered User Employee Info
  * Minimal employee info for table display
  */
@@ -684,10 +688,25 @@ export type IUserPopulatedDocument = {
  */
 
 /**
+ * User Consent Record
+ * Captured when the user completes the consent form on first activation
+ */
+export interface IUserConsent {
+  acceptedOn: Date | null;
+  acceptedBy: string;
+}
+
+/**
  * Lease Status Type
  * Current lease state for tenants
  */
 export type LeaseStatusType = 'active' | 'expired' | 'pending' | 'terminated';
+
+/**
+ * ============================================================================
+ * STATISTICS INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Base Stats Interface
@@ -697,12 +716,6 @@ export interface IBaseStats {
   onTimeRate: string;
   rating: string;
 }
-
-/**
- * ============================================================================
- * STATISTICS INTERFACES
- * ============================================================================
- */
 
 /**
  * Rent Status Type
@@ -717,21 +730,21 @@ export type RentStatus = 'current' | 'late' | 'overdue' | 'no_lease';
 export interface ITenantDetailInfo extends TenantInfo {}
 
 /**
- * User Type Union
- * The three primary user types in the system
- */
-export type UserType = 'employee' | 'vendor' | 'tenant';
-
-/**
  * ============================================================================
  * PAGINATION INTERFACES
  * ============================================================================
  */
 
 /**
- * @deprecated Use IIdentificationType instead
+ * @deprecated Use IIdentificationType (client KYC) or IUserIdentificationType (user profiles) instead
  */
-export type IdentificationType = IIdentificationType;
+export type IdentificationType = IUserIdentificationType;
+
+/**
+ * User Type Union
+ * The three primary user types in the system
+ */
+export type UserType = 'employee' | 'vendor' | 'tenant';
 
 /**
  * ============================================================================

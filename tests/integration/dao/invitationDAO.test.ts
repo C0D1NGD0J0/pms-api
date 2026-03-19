@@ -1,12 +1,8 @@
 import { Types } from 'mongoose';
 import { InvitationDAO } from '@dao/invitationDAO';
+import { clearTestDatabase } from '@tests/helpers';
 import { Invitation, Client, User } from '@models/index';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
 
 describe('InvitationDAO Integration Tests', () => {
   let invitationDAO: InvitationDAO;
@@ -15,12 +11,7 @@ describe('InvitationDAO Integration Tests', () => {
   let testAccepterId: Types.ObjectId;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     invitationDAO = new InvitationDAO();
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   beforeEach(async () => {
@@ -272,10 +263,7 @@ describe('InvitationDAO Integration Tests', () => {
         },
       });
 
-      const found = await invitationDAO.findByIuid(
-        created.iuid,
-        new Types.ObjectId().toString()
-      );
+      const found = await invitationDAO.findByIuid(created.iuid, new Types.ObjectId().toString());
 
       expect(found).toBeNull();
     });
@@ -824,10 +812,7 @@ describe('InvitationDAO Integration Tests', () => {
         },
       });
 
-      const updated = await invitationDAO.declineInvitation(
-        created.iuid,
-        testClientId.toString()
-      );
+      const updated = await invitationDAO.declineInvitation(created.iuid, testClientId.toString());
 
       expect(updated?.status).toBe('declined');
       expect(updated?.declinedAt).toBeInstanceOf(Date);

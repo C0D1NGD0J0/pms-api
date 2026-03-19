@@ -1,21 +1,16 @@
+import { clearTestDatabase } from '@tests/helpers';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { PermissionService } from '@services/permission/permission.service';
-import { beforeEach, beforeAll, afterAll, describe, expect, it } from '@jest/globals';
-import { disconnectTestDatabase, setupTestDatabase, clearTestDatabase } from '@tests/helpers';
+import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PermissionResource, PermissionAction, PermissionScope } from '@interfaces/utils.interface';
 
 describe('PermissionService Integration Tests', () => {
   let permissionService: PermissionService;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     permissionService = new PermissionService();
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   beforeEach(async () => {

@@ -30,6 +30,7 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
   beforeEach(() => {
     mockSubscriptionDAO = {
       findFirst: jest.fn(),
+      update: jest.fn(),
     } as any;
 
     mockClientDAO = {
@@ -42,10 +43,10 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
       authCache: {} as any,
       paymentGatewayService: {} as any,
       sseService: {} as any,
-      userDAO: {} as any,
-      emitterService: {} as any,
-      propertyDAO: {} as any,
-      propertyUnitDAO: {} as any,
+      userDAO: { list: jest.fn().mockResolvedValue([]) } as any,
+      emitterService: { on: jest.fn(), off: jest.fn(), emit: jest.fn() } as any,
+      propertyDAO: { countDocuments: jest.fn().mockResolvedValue(0) } as any,
+      propertyUnitDAO: { countDocuments: jest.fn().mockResolvedValue(0) } as any,
     });
   });
 
@@ -220,6 +221,13 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
     });
 
     it('should throw BadRequestError when client not found', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: 'TEST123',
+        planName: 'growth',
+        limits: { maxProperties: 10, maxUsers: 5, maxUnits: 50 },
+      };
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
       mockClientDAO.findFirst.mockResolvedValue(null);
 
       await expect(subscriptionService.getSubscriptionPlanUsage(mockContext)).rejects.toThrow(

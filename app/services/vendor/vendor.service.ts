@@ -415,7 +415,7 @@ export class VendorService {
         throw new NotFoundError({ message: t('vendor.errors.notAssociatedWithClient') });
       }
 
-      const allowedRoles = [IUserRole.MANAGER, IUserRole.ADMIN].includes(
+      const allowedRoles = [IUserRole.SUPER_ADMIN, IUserRole.MANAGER, IUserRole.ADMIN].includes(
         currentuser.client.role as IUserRole
       );
       const isPrimaryVendor =

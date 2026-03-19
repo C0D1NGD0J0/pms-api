@@ -5,6 +5,9 @@ import { validateRequest } from '@shared/validations/setup';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
+  requireActiveSubscription,
+  subscriptionEntitlements,
+  requireVerification,
   requirePermission,
   isAuthenticated,
   basicLimiter,
@@ -28,7 +31,10 @@ router.get(
 
 router.post(
   '/:cuid/add_property',
+  requireVerification,
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
+  subscriptionEntitlements,
+  requireActiveSubscription,
   diskUpload(['documents[*].file', 'images[*].file']),
   scanFile,
   validateRequest({
@@ -71,6 +77,7 @@ router.post(
 
 router.get(
   '/:cuid/client_properties',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.LIST),
   validateRequest({
     params: PropertyValidations.validatecuid,
   }),
@@ -82,6 +89,7 @@ router.get(
 
 router.get(
   '/:cuid/client_property/:pid',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),

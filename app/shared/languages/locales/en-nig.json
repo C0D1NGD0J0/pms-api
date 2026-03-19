@@ -26,7 +26,19 @@
       "accessTokenNotFound": "Access token no dey found",
       "refreshTokenNotFound": "Refresh token no dey found",
       "invalidTokenType": "Token type no correct",
-      "clientAccessDenied": "Access denied. You no get permission to access dis client account"
+      "allConnectionsDisabled": "All your connections don disable",
+      "connectionInactive": "Your connection no dey active",
+      "insufficientPermissions": "You no get enough permission to do dis action",
+      "permissionCheckFailed": "Permission check fail",
+      "connectionCheckFailed": "Connection check fail",
+      "adminRequired": "You need admin privilege to do dis action",
+      "authorizationFailed": "Authorization fail",
+      "clientAccessDenied": "Access denied. You no get permission to access dis client account",
+      "entitlementsUnavailable": "We no fit verify your subscription entitlements. Please try again.",
+      "featureNotEntitled": "Dis feature no dey available for your current subscription plan. Please upgrade to access am.",
+      "clientNotVerified": "You must verify your account before you fit do dis action. Please complete account verification.",
+      "superAdminRequired": "You need super admin privilege to do dis action",
+      "subscriptionInactive": "Your subscription no dey active. Please renew your plan to continue."
     },
     "success": {
       "tokenRefreshed": "Token don refresh successfully",
@@ -38,12 +50,12 @@
       "accountActivated": "Account don activate successfully.",
       "activationLinkSent": "Activation link don send to {{email}}.",
       "passwordResetEmailSent": "Password reset email don send to {{email}}",
-      "logoutSuccessful": "Logout successful."
+      "logoutSuccessful": "Logout successful.",
+      "onboardingCompleted": "Onboarding don complete successfully."
     }
   },
   "client": {
     "errors": {
-      "clientNotFound": "Client no dey found",
       "notFound": "Client no dey found",
       "insufficientPermissions": "You no get enough permission to do dis action",
       "idNumberRequired": "ID number dey needed when you dey update identification type",
@@ -54,23 +66,47 @@
       "validationFailed": "Validation fail",
       "updateFailed": "We no fit update client profile",
       "unableToFetch": "We no fit fetch client details.",
-      "detailsNotFound": "Client details no dey found."
+      "detailsNotFound": "Client details no dey found.",
+      "invalidRole": "Role wey you specify no correct",
+      "userNotFound": "We no fit find dis user",
+      "userNotInClient": "Dis user no dey connect to dis client",
+      "userAlreadyHasRole": "User already get role {{role}}",
+      "cannotRemoveLastAdmin": "We no fit remove admin role from the last administrator",
+      "cannotDisconnectLastAdmin": "We no fit disconnect the last administrator",
+      "cannotDeleteAccountOwner": "We no fit delete account owner. Please transfer ownership to another admin or close your account instead.",
+      "clientIdRequired": "Client ID dey needed",
+      "identitySessionFailed": "We no fit start identity verification. Please try again.",
+      "identityNotVerified": "Identity verification via Stripe no complete. Please complete verification before approving.",
+      "alreadyVerified": "Dis account don already verify.",
+      "verificationRequired": "You must verify your account to do dis action. Please complete identity verification."
     },
     "success": {
       "profileUpdated": "Client profile don update successfully",
       "detailsUpdated": "Client details don update successfully",
-      "detailsRetrieved": "Client details don retrieve successfully",
       "userRetrieved": "User information don retrieve successfully",
       "userStatsRetrieved": "User statistics don retrieve successfully",
       "tenantsRetrieved": "Tenants don retrieve successfully",
-      "retrieved": "Client details don retrieve successfully"
+      "retrieved": "Client details don retrieve successfully",
+      "roleAssigned": "Role {{role}} don assign successfully",
+      "roleRemoved": "Role {{role}} don remove successfully",
+      "rolesRetrieved": "User roles don retrieve successfully",
+      "userDisconnected": "User don disconnect successfully",
+      "userReconnected": "User don reconnect successfully",
+      "usersRetrieved": "Client users don retrieve successfully",
+      "filteredUsersRetrieved": "Users don retrieve successfully",
+      "verified": "Account don verify successfully",
+      "updated": "Client don update successfully"
+    },
+    "logging": {
+      "validationCompleted": "Client validation don complete"
     }
   },
   "property": {
     "logging": {
       "cleaningUp": "Dey clean property resources and event listeners",
       "eventListenersRemoved": "Property event listeners don remove successfully",
-      "ignoringUploadEvent": "Dey ignore upload event for non-property resource"
+      "ignoringUploadEvent": "Dey ignore upload event for non-property resource",
+      "eventListenersInitialized": "Property event listeners don initialize"
     },
     "errors": {
       "noCsvFileUploaded": "No CSV file upload",
@@ -108,7 +144,9 @@
       "csvImportStarted": "CSV import job don start",
       "propertyUpdated": "Property don update successfully",
       "csvValidationStarted": "CSV validation process don start.",
-      "propertyArchived": "Property don archive successfully"
+      "propertyArchived": "Property don archive successfully",
+      "assignableUsersRetrieved": "Assignable users don retrieve successfully",
+      "propertiesRetrieved": "Properties don retrieve successfully"
     }
   },
   "propertyUnit": {
@@ -447,6 +485,25 @@
   "tenant": {
     "success": {
       "detailsRetrieved": "Tenant details don retrieve successfully"
+    },
+    "errors": {
+      "notFound": "We no fit find dis tenant"
+    }
+  },
+  "lease": {
+    "errors": {
+      "validationFailed": "Lease validation fail. Please check the details and try again.",
+      "overlappingLease": "Lease dates dey overlap with existing active lease for dis unit",
+      "cannotCreateOwnLease": "You no fit create lease for yourself as tenant - conflict of interest",
+      "cannotUpdateOwnLease": "You no fit update your own lease information - conflict of interest"
+    },
+    "invalid_access": "You no get permission to access dis lease",
+    "retrieved_successfully": "Lease don retrieve successfully",
+    "updatedSuccessfully": "Lease don update successfully"
+  },
+  "common": {
+    "errors": {
+      "invalidUserRole": "User role no correct"
     }
   }
 }

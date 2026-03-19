@@ -270,6 +270,10 @@ const ProfileSchema = new Schema<IProfileDocument>(
         acceptedOn: { type: Date, default: null },
         accepted: { type: Boolean, default: false },
       },
+      privacy: {
+        acceptedOn: { type: Date, default: null },
+        accepted: { type: Boolean, default: false },
+      },
       marketing: {
         acceptedOn: { type: Date, default: null },
         accepted: { type: Boolean, default: false },

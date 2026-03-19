@@ -1,19 +1,14 @@
 import { Types } from 'mongoose';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { clearTestDatabase } from '@tests/helpers';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import { PropertyUnit, Property, Client, User } from '@models/index';
 import { PropertyUnitStatusEnum, PropertyUnitTypeEnum } from '@interfaces/propertyUnit.interface';
 import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
-import {
   OccupancyStatus,
   PropertyStatus,
-  PropertyType,
-} from '@interfaces/property.interface';
+  PropertyType,} from '@interfaces/property.interface';
 
 describe('PropertyDAO Integration Tests', () => {
   let propertyDAO: PropertyDAO;
@@ -23,18 +18,12 @@ describe('PropertyDAO Integration Tests', () => {
   let testPropertyId: Types.ObjectId;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
     propertyDAO = new PropertyDAO({
       propertyModel: Property,
       propertyUnitDAO: propertyUnitDAO,
     });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
     testClientId = new Types.ObjectId();
@@ -1092,7 +1081,7 @@ describe('PropertyDAO Integration Tests', () => {
             internet: false,
             cableTV: false,
            trash: false, heating: true, centralAC: false },
-        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false },        },
+        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false }},
         {
           propertyId: testPropertyId,
           unitNumber: 'Unit-402',
@@ -1111,7 +1100,7 @@ describe('PropertyDAO Integration Tests', () => {
             internet: false,
             cableTV: false,
            trash: false, heating: true, centralAC: false },
-        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false },        },
+        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false }},
       ]);
 
       const result = await propertyDAO.syncPropertyOccupancyWithUnits(
@@ -1142,7 +1131,7 @@ describe('PropertyDAO Integration Tests', () => {
             internet: false,
             cableTV: false,
            trash: false, heating: true, centralAC: false },
-        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false },        },
+        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false }},
         {
           propertyId: testPropertyId,
           unitNumber: 'Unit-502',
@@ -1161,7 +1150,7 @@ describe('PropertyDAO Integration Tests', () => {
             internet: false,
             cableTV: false,
            trash: false, heating: true, centralAC: false },
-        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false },        },
+        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false }},
       ]);
 
       const result = await propertyDAO.syncPropertyOccupancyWithUnits(

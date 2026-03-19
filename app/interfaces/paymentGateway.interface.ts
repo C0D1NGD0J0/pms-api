@@ -50,8 +50,12 @@ export interface IPaymentProvider {
     transferId: string,
     amountInCents?: number
   ): Promise<{ reversalId: string; amount: number }>;
+  createIdentityVerificationSession(
+    input: ICreateIdentitySessionInput
+  ): Promise<IIdentitySessionResponse>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
   updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
+  retrieveIdentityVerificationSession(sessionId: string): Promise<IIdentityVerificationReport>;
   createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse>;
   getCustomerInvoices(customerId: string, limit?: number): Promise<Stripe.Invoice[]>;
   createDashboardLoginLink(accountId: string): Promise<IOnboardingLinkResponse>;
@@ -130,6 +134,13 @@ export interface ICreateInvoiceResponse {
   amountDue: number;
   dueDate?: Date;
 }
+export interface ICreateIdentitySessionInput {
+  allowedTypes?: Array<'driving_license' | 'passport' | 'id_card'>;
+  metadata?: Record<string, string>;
+  returnUrl: string;
+  email?: string;
+}
+
 export interface ICheckoutSession {
   provider: IPaymentGatewayProvider;
   metadata?: Record<string, string>;
@@ -153,10 +164,21 @@ export interface ICreateCustomerInput {
   name?: string;
 }
 
+export interface IIdentityVerificationReport {
+  issuingCountry?: string;
+  documentType?: string;
+  status: string;
+}
+
 export interface IFinalizeInvoiceResponse {
   hostedInvoiceUrl?: string;
   invoiceId: string;
   status: string;
+}
+
+export interface IIdentitySessionResponse {
+  sessionId: string;
+  url: string;
 }
 
 export interface IOnboardingLinkResponse {

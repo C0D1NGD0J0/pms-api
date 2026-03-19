@@ -36,6 +36,7 @@ describe('WebhookController - Stripe Webhooks', () => {
       leaseService: mockLeaseService,
       boldSignService: mockBoldSignService,
       paymentService: {} as any,
+      clientService: {} as any,
     });
 
     mockRequest = {

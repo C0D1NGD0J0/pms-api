@@ -1,13 +1,7 @@
 import { Document, Types } from 'mongoose';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 
-import {
-  IIdentificationType,
-  IContactInfoType,
-  IBaseUserProfile,
-  IUserDocument,
-  IAccountType,
-} from './user.interface';
+import { IContactInfoType, IBaseUserProfile, IUserDocument, IAccountType } from './user.interface';
 
 /**
  * ============================================================================
@@ -20,10 +14,19 @@ import {
  * Core client data structure
  */
 export interface IClient {
+  identityVerification?: {
+    sessionId?: string;
+    sessionStatus?: 'requires_input' | 'stripe_verified';
+    documentType?: string;
+    issuingCountry?: string;
+    expiryDate?: Date | null;
+    verifiedBy?: string | Types.ObjectId | null;
+    verifiedAt?: Date | null;
+  };
   accountAdmin: Types.ObjectId | PopulatedAccountAdmin;
-  identification?: IIdentificationType;
   subscription: Types.ObjectId | null;
   companyProfile?: ICompanyProfile;
+  dataProcessingConsent?: boolean;
   lastModifiedBy: Types.ObjectId;
   settings: IClientSettings;
   accountType: IAccountType;
@@ -35,6 +38,21 @@ export interface IClient {
  * CORE INTERFACES (Single Source of Truth)
  * ============================================================================
  */
+
+/**
+ * Client Document Interface (extends Mongoose Document)
+ * Extends IClient with MongoDB document properties
+ */
+export interface IClientDocument extends Document, IClient {
+  verificationDeadline?: Date | null; // virtual: createdAt + 3 days, null when isVerified
+  isVerified: boolean;
+  _id: Types.ObjectId;
+  deletedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  cuid: string;
+  id: string;
+}
 
 /**
  * Company Profile Interface
@@ -53,26 +71,12 @@ export interface ICompanyProfile {
 }
 
 /**
- * Client Document Interface (extends Mongoose Document)
- * Extends IClient with MongoDB document properties
- */
-export interface IClientDocument extends Document, IClient {
-  verifiedBy: string | Types.ObjectId;
-  verifiedAt: Date | null;
-  isVerified: boolean;
-  _id: Types.ObjectId;
-  deletedAt: Date;
-  createdAt: Date;
-  updatedAt: Date;
-  cuid: string;
-  id: string;
-}
-
-/**
  * Client User Connections Interface
  * Represents the connection between a user and a client
  */
 export interface IClientUserConnections {
+  requiresOnboarding?: boolean;
+  primaryRole: IUserRoleType;
   clientDisplayName: string;
   linkedVendorUid?: string;
   roles: IUserRoleType[];

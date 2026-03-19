@@ -1,12 +1,8 @@
 import { Types } from 'mongoose';
 import { LeaseDAO } from '@dao/leaseDAO';
+import { clearTestDatabase } from '@tests/helpers';
 import { SigningMethod, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
 
 describe('LeaseDAO Integration Tests', () => {
   let leaseDAO: LeaseDAO;
@@ -18,14 +14,8 @@ describe('LeaseDAO Integration Tests', () => {
   const testCuid = 'TEST_CLIENT';
 
   beforeAll(async () => {
-    await setupTestDatabase();
     leaseDAO = new LeaseDAO({ leaseModel: Lease });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
 

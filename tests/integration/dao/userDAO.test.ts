@@ -1,24 +1,15 @@
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
+import { ROLES } from '@shared/constants/roles.constants';
 import { PaymentModel, Profile, Lease, User } from '@models/index';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
+import { clearTestDatabase, createTestClient } from '@tests/helpers';
 
 describe('UserDAO Integration Tests', () => {
   let userDAO: UserDAO;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     userDAO = new UserDAO({ userModel: User });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
   });
@@ -212,11 +203,7 @@ describe('UserDAO Integration Tests', () => {
 
       await PaymentModel.insertMany(payments);
 
-      const tenant = await userDAO.getClientTenantDetails(
-        testCuid,
-        testTenantUid,
-        []
-      );
+      const tenant = await userDAO.getClientTenantDetails(testCuid, testTenantUid, []);
 
       expect(tenant).not.toBeNull();
       expect(tenant?.tenantMetrics).toBeDefined();
@@ -265,11 +252,7 @@ describe('UserDAO Integration Tests', () => {
     });
 
     it('should handle tenants with no payments', async () => {
-      const tenant = await userDAO.getClientTenantDetails(
-        testCuid,
-        testTenantUid,
-        []
-      );
+      const tenant = await userDAO.getClientTenantDetails(testCuid, testTenantUid, []);
 
       expect(tenant).not.toBeNull();
       expect(tenant?.tenantInfo?.paymentHistory).toEqual([]);
@@ -303,11 +286,7 @@ describe('UserDAO Integration Tests', () => {
         },
       });
 
-      const tenant = await userDAO.getClientTenantDetails(
-        testCuid,
-        testTenantUid,
-        ['lease']
-      );
+      const tenant = await userDAO.getClientTenantDetails(testCuid, testTenantUid, ['lease']);
 
       expect(tenant).not.toBeNull();
       expect(tenant?.tenantInfo?.leaseHistory).toBeDefined();
@@ -315,6 +294,410 @@ describe('UserDAO Integration Tests', () => {
       expect(tenant?.tenantInfo?.leaseHistory?.[0]?.luid).toBe('LEASE_001');
       expect(tenant?.tenantInfo?.leaseHistory?.[0]?.leaseNumber).toBe('L2024-001');
       expect(tenant?.tenantInfo?.leaseHistory?.[0]?.monthlyRent).toBe(200000);
+    });
+  });
+
+  describe('getUsersByFilteredType', () => {
+    const cuid = 'CLIENT_SEARCH_001';
+    const otherCuid = 'OTHER_CLIENT_999';
+
+    beforeEach(async () => {
+      await User.create([
+        {
+          uid: 'uid-alice-001',
+          email: 'alice.smith@example.com',
+          firstName: 'Alice',
+          lastName: 'Smith',
+          password: 'hashed',
+          isActive: true,
+          activecuid: cuid,
+          cuids: [{ cuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Test Client' }],
+        },
+        {
+          uid: 'uid-bob-001',
+          email: 'bob.jones@example.com',
+          firstName: 'Bob',
+          lastName: 'Jones',
+          password: 'hashed',
+          isActive: true,
+          activecuid: cuid,
+          cuids: [{ cuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Test Client' }],
+        },
+        {
+          uid: 'uid-carol-001',
+          email: 'carol.adams@example.com',
+          firstName: 'Carol',
+          lastName: 'Adams',
+          password: 'hashed',
+          isActive: true,
+          activecuid: cuid,
+          cuids: [{ cuid, roles: [ROLES.MANAGER], isConnected: true, clientDisplayName: 'Test Client' }],
+        },
+        {
+          uid: 'uid-alice-other',
+          email: 'alice.other@example.com',
+          firstName: 'Alice',
+          lastName: 'Other',
+          password: 'hashed',
+          isActive: true,
+          activecuid: otherCuid,
+          cuids: [{ cuid: otherCuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Other Client' }],
+        },
+      ]);
+    });
+
+    it('should filter by partial email match', async () => {
+      const result = await userDAO.getUsersByFilteredType(
+        cuid,
+        { search: 'alice.smith' },
+        { limit: 10 }
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].email).toBe('alice.smith@example.com');
+    });
+
+    it('should return users matching search by email', async () => {
+      const result = await userDAO.getUsersByFilteredType(
+        cuid,
+        { search: 'bob.jones' },
+        { limit: 10 }
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].email).toBe('bob.jones@example.com');
+    });
+
+    it('should scope search results to the given cuid', async () => {
+      // 'alice' matches both alice.smith@... (cuid) and alice.other@... (otherCuid) via email
+      // only the one in `cuid` should be returned
+      const result = await userDAO.getUsersByFilteredType(cuid, { search: 'alice' }, { limit: 10 });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].uid).toBe('uid-alice-001');
+    });
+
+    it('should return all users when search is omitted', async () => {
+      const result = await userDAO.getUsersByFilteredType(cuid, {}, { limit: 10 });
+
+      expect(result.items).toHaveLength(3);
+    });
+
+    it('should return no results for a non-matching search term', async () => {
+      const result = await userDAO.getUsersByFilteredType(
+        cuid,
+        { search: 'zzznomatch' },
+        { limit: 10 }
+      );
+
+      expect(result.items).toHaveLength(0);
+    });
+  });
+
+  describe('createBulkUserWithDefaults', () => {
+    it('should set requiresOnboarding to true on the cuid entry', async () => {
+      const client = await createTestClient();
+      const userData = {
+        email: `bulk-${Date.now()}@example.com`,
+        firstName: 'Bulk',
+        lastName: 'User',
+        role: ROLES.STAFF,
+        defaultPassword: 'TempPass123!',
+      };
+
+      const user = await userDAO.createBulkUserWithDefaults(
+        { cuid: client.cuid, clientDisplayName: client.displayName, id: client._id.toString() },
+        userData
+      );
+
+      expect(user).not.toBeNull();
+      const cuidEntry = user.cuids.find((c) => c.cuid === client.cuid);
+      expect(cuidEntry).toBeDefined();
+      expect(cuidEntry!.requiresOnboarding).toBe(true);
+    });
+
+    it('should create an active user with the given role', async () => {
+      const client = await createTestClient();
+      const email = `bulk-role-${Date.now()}@example.com`;
+
+      const user = await userDAO.createBulkUserWithDefaults(
+        { cuid: client.cuid, clientDisplayName: client.displayName, id: client._id.toString() },
+        { email, firstName: 'Bulk', lastName: 'User', role: ROLES.TENANT, defaultPassword: 'TempPass123!' }
+      );
+
+      expect(user.isActive).toBe(true);
+      expect(user.email).toBe(email);
+      const cuidEntry = user.cuids.find((c) => c.cuid === client.cuid);
+      expect(cuidEntry!.roles).toContain(ROLES.TENANT);
+    });
+  });
+
+  describe('clearOnboardingFlag', () => {
+    it('should set requiresOnboarding to false for the given cuid', async () => {
+      const client = await createTestClient();
+      const user = await User.create({
+        uid: `uid-onboarding-${Date.now()}`,
+        email: `onboarding-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client.cuid,
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            requiresOnboarding: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
+      });
+
+      await userDAO.clearOnboardingFlag(user._id.toString(), client.cuid);
+
+      const updated = await User.findById(user._id);
+      const cuidEntry = updated!.cuids.find((c) => c.cuid === client.cuid);
+      expect(cuidEntry!.requiresOnboarding).toBe(false);
+    });
+
+    it('should not affect other cuid entries', async () => {
+      const client1 = await createTestClient();
+      const client2 = await createTestClient();
+      const user = await User.create({
+        uid: `uid-multi-onboard-${Date.now()}`,
+        email: `multi-onboard-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client1.cuid,
+        cuids: [
+          {
+            cuid: client1.cuid,
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            requiresOnboarding: true,
+            clientDisplayName: client1.displayName,
+          },
+          {
+            cuid: client2.cuid,
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            requiresOnboarding: true,
+            clientDisplayName: client2.displayName,
+          },
+        ],
+      });
+
+      await userDAO.clearOnboardingFlag(user._id.toString(), client1.cuid);
+
+      const updated = await User.findById(user._id);
+      const entry1 = updated!.cuids.find((c) => c.cuid === client1.cuid);
+      const entry2 = updated!.cuids.find((c) => c.cuid === client2.cuid);
+      expect(entry1!.requiresOnboarding).toBe(false);
+      expect(entry2!.requiresOnboarding).toBe(true); // untouched
+    });
+  });
+
+  describe('addUserToClient — dual-role / primaryRole', () => {
+    it('sets primaryRole to the role when adding a brand-new cuid connection', async () => {
+      const client = await createTestClient();
+      const user = await User.create({
+        uid: `uid-addclient-new-${Date.now()}`,
+        email: `addclient-new-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client.cuid,
+        cuids: [],
+      });
+
+      await userDAO.addUserToClient(user._id.toString(), ROLES.TENANT, {
+        cuid: client.cuid,
+        clientDisplayName: client.displayName,
+        id: client._id.toString(),
+      });
+
+      const updated = await User.findById(user._id);
+      const entry = updated!.cuids.find((c) => c.cuid === client.cuid);
+      expect(entry).toBeDefined();
+      expect(entry!.roles).toContain(ROLES.TENANT);
+      expect(entry!.primaryRole).toBe(ROLES.TENANT);
+    });
+
+    it('keeps primaryRole as the higher-privilege role when a lower role is added second', async () => {
+      const client = await createTestClient();
+      const user = await User.create({
+        uid: `uid-dual-low-${Date.now()}`,
+        email: `dual-low-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client.cuid,
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.STAFF],
+            primaryRole: ROLES.STAFF,
+            isConnected: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
+      });
+
+      await userDAO.addUserToClient(user._id.toString(), ROLES.TENANT, {
+        cuid: client.cuid,
+        clientDisplayName: client.displayName,
+        id: client._id.toString(),
+      });
+
+      const updated = await User.findById(user._id);
+      const entry = updated!.cuids.find((c) => c.cuid === client.cuid);
+      expect(entry!.roles).toContain(ROLES.STAFF);
+      expect(entry!.roles).toContain(ROLES.TENANT);
+      // staff (index 3) > tenant (index 4) → staff wins
+      expect(entry!.primaryRole).toBe(ROLES.STAFF);
+    });
+
+    it('upgrades primaryRole when a higher-privilege role is added second', async () => {
+      const client = await createTestClient();
+      // User was added as tenant first
+      const user = await User.create({
+        uid: `uid-dual-high-${Date.now()}`,
+        email: `dual-high-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client.cuid,
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.TENANT],
+            primaryRole: ROLES.TENANT,
+            isConnected: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
+      });
+
+      await userDAO.addUserToClient(user._id.toString(), ROLES.STAFF, {
+        cuid: client.cuid,
+        clientDisplayName: client.displayName,
+        id: client._id.toString(),
+      });
+
+      const updated = await User.findById(user._id);
+      const entry = updated!.cuids.find((c) => c.cuid === client.cuid);
+      expect(entry!.roles).toContain(ROLES.TENANT);
+      expect(entry!.roles).toContain(ROLES.STAFF);
+      // staff has higher privilege than tenant → staff wins
+      expect(entry!.primaryRole).toBe(ROLES.STAFF);
+    });
+
+    it('does not duplicate roles when the same role is added twice', async () => {
+      const client = await createTestClient();
+      const user = await User.create({
+        uid: `uid-dedup-${Date.now()}`,
+        email: `dedup-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client.cuid,
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.STAFF],
+            primaryRole: ROLES.STAFF,
+            isConnected: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
+      });
+
+      await userDAO.addUserToClient(user._id.toString(), ROLES.STAFF, {
+        cuid: client.cuid,
+        clientDisplayName: client.displayName,
+        id: client._id.toString(),
+      });
+
+      const updated = await User.findById(user._id);
+      const entry = updated!.cuids.find((c) => c.cuid === client.cuid);
+      const staffCount = entry!.roles.filter((r) => r === ROLES.STAFF).length;
+      expect(staffCount).toBe(1);
+      expect(entry!.primaryRole).toBe(ROLES.STAFF);
+    });
+  });
+
+  describe('getTenantsByClient', () => {
+    const cuid = 'CLIENT_TENANT_SEARCH_001';
+
+    beforeEach(async () => {
+      await User.create([
+        {
+          uid: 'uid-tenant-alice',
+          email: 'alice.tenant@example.com',
+          firstName: 'Alice',
+          lastName: 'Walker',
+          password: 'hashed',
+          isActive: true,
+          activecuid: cuid,
+          cuids: [{ cuid, roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'Test Client' }],
+        },
+        {
+          uid: 'uid-tenant-bob',
+          email: 'bob.tenant@example.com',
+          firstName: 'Bob',
+          lastName: 'Walker',
+          password: 'hashed',
+          isActive: true,
+          activecuid: cuid,
+          cuids: [{ cuid, roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'Test Client' }],
+        },
+        {
+          uid: 'uid-staff-dave',
+          email: 'dave.staff@example.com',
+          firstName: 'Dave',
+          lastName: 'Staff',
+          password: 'hashed',
+          isActive: true,
+          activecuid: cuid,
+          cuids: [{ cuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Test Client' }],
+        },
+      ]);
+    });
+
+    it('should filter tenants by partial email match', async () => {
+      const result = await userDAO.getTenantsByClient(
+        cuid,
+        { search: 'alice.tenant' },
+        { limit: 10 }
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].email).toBe('alice.tenant@example.com');
+    });
+
+    it('should return multiple tenants matching the same search term', async () => {
+      // 'tenant' appears in both alice.tenant@ and bob.tenant@ emails
+      const result = await userDAO.getTenantsByClient(cuid, { search: 'tenant' }, { limit: 10 });
+
+      expect(result.items).toHaveLength(2);
+    });
+
+    it('should not return non-tenant users when searching', async () => {
+      // Dave is staff, not a tenant — should never appear in tenant search
+      const result = await userDAO.getTenantsByClient(cuid, { search: 'Dave' }, { limit: 10 });
+
+      expect(result.items).toHaveLength(0);
+    });
+
+    it('should return all tenants when search is omitted', async () => {
+      const result = await userDAO.getTenantsByClient(cuid, {}, { limit: 10 });
+
+      expect(result.items).toHaveLength(2);
+    });
+
+    it('should return no results for a non-matching search term', async () => {
+      const result = await userDAO.getTenantsByClient(
+        cuid,
+        { search: 'zzznomatch' },
+        { limit: 10 }
+      );
+
+      expect(result.items).toHaveLength(0);
     });
   });
 });

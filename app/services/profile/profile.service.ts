@@ -2,16 +2,17 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
-import { buildDotNotation, createLogger } from '@utils/index';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { EventEmitterService, VendorService, UserService } from '@services/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
+import { computeProfileCompletion, buildDotNotation, createLogger } from '@utils/index';
 import {
   IProfileUpdateData,
   ISuccessReturnData,
+  IProfileCompletion,
   IProfileDocument,
   IProfileEditData,
   IRequestContext,
@@ -483,6 +484,7 @@ export class ProfileService {
           | 'tenant'
           | 'primary_account_holder',
         roles: userDoc.data.profile.roles as IUserRoleType[],
+        policies: profileDoc.policies,
       };
 
       return {
@@ -654,6 +656,22 @@ export class ProfileService {
       hasUpdates = true;
     }
 
+    if (profileData.policies) {
+      const policiesUpdate: Record<string, unknown> = {};
+      if (profileData.policies.tos?.accepted !== undefined) {
+        policiesUpdate['policies.tos.accepted'] = profileData.policies.tos.accepted;
+        policiesUpdate['policies.tos.acceptedOn'] = profileData.policies.tos.accepted ? new Date() : null;
+      }
+      if (profileData.policies.marketing?.accepted !== undefined) {
+        policiesUpdate['policies.marketing.accepted'] = profileData.policies.marketing.accepted;
+        policiesUpdate['policies.marketing.acceptedOn'] = profileData.policies.marketing.accepted ? new Date() : null;
+      }
+      if (Object.keys(policiesUpdate).length > 0) {
+        result = await this.profileDAO.updateById(profileId, { $set: policiesUpdate });
+        hasUpdates = true;
+      }
+    }
+
     // Get the final updated profile if we made updates but don't have the result yet
     if (hasUpdates && !result) {
       result = await this.profileDAO.findFirst({ _id: new Types.ObjectId(profileId) });
@@ -773,16 +791,17 @@ export class ProfileService {
     }
   }
 
+  private readonly onUploadCompleted = this.handleUploadCompleted.bind(this);
+  private readonly onLeaseActivated = this.handleLeaseActivated.bind(this);
+  private readonly onLeaseTerminated = this.handleLeaseTerminated.bind(this);
+
   /**
    * Setup event listeners for profile-related events
    */
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
-    this.emitterService.on(
-      EventTypes.LEASE_ESIGNATURE_COMPLETED,
-      this.handleLeaseActivated.bind(this)
-    );
-    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
+    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
+    this.emitterService.on(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
+    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
   }
 
   /**
@@ -948,11 +967,32 @@ export class ProfileService {
     }
   }
 
+  async getProfileCompletion(
+    cuid: string,
+    userId: string,
+    roles: IUserRoleType[]
+  ): Promise<ISuccessReturnData<IProfileCompletion>> {
+    const profile = await this.profileDAO.getProfileByUserId(userId);
+    if (!profile) {
+      return { success: false, message: 'Profile not found', data: null as any };
+    }
+
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      return { success: false, message: 'Client not found', data: null as any };
+    }
+
+    const data = computeProfileCompletion(profile, client, roles);
+    return { success: true, data };
+  }
+
   /**
    * Clean up event listeners when service is destroyed
    */
   destroy(): void {
-    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
+    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
+    this.emitterService.off(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
+    this.emitterService.off(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
     this.logger.info('Profile service event listeners removed');
   }
 }

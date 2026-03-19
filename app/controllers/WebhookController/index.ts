@@ -3,6 +3,7 @@ import { Response, Request } from 'express';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { LeaseService } from '@services/lease/lease.service';
+import { ClientService } from '@services/client/client.service';
 import { PaymentService } from '@services/payments/payments.service';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { BoldSignService } from '@services/external/esignature/boldSign.service';
@@ -13,6 +14,7 @@ interface IConstructor {
   boldSignService: BoldSignService;
   paymentService: PaymentService;
   stripeService: StripeService;
+  clientService: ClientService;
   leaseService: LeaseService;
 }
 
@@ -22,6 +24,7 @@ export class WebhookController {
   private boldSignService: BoldSignService;
   private subscriptionService: SubscriptionService;
   private paymentService: PaymentService;
+  private clientService: ClientService;
   private log: Logger;
 
   constructor({
@@ -30,12 +33,14 @@ export class WebhookController {
     subscriptionService,
     stripeService,
     paymentService,
+    clientService,
   }: IConstructor) {
     this.leaseService = leaseService;
     this.stripeService = stripeService;
     this.boldSignService = boldSignService;
     this.subscriptionService = subscriptionService;
     this.paymentService = paymentService;
+    this.clientService = clientService;
     this.log = createLogger('WebhookController');
   }
 
@@ -91,6 +96,19 @@ export class WebhookController {
       this.log.info({ type: event.type, id: event.id }, 'Processing Stripe webhook event');
 
       switch (event.type) {
+        case 'identity.verification_session.requires_input': {
+          const session = event.data.object as any;
+          await this.clientService.handleIdentityWebhookEvent('requires_input', session.id);
+          break;
+        }
+
+        // ── Identity verification ─────────────────────────────────────────────
+        case 'identity.verification_session.verified': {
+          const session = event.data.object as any;
+          await this.clientService.handleIdentityWebhookEvent('verified', session.id);
+          break;
+        }
+
         // ── Dispute events ────────────────────────────────────────────────────
         case 'charge.dispute.funds_reinstated': {
           const dispute = event.data.object as any;

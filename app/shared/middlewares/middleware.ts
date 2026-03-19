@@ -1,4 +1,5 @@
 import bunyan from 'bunyan';
+import { Types } from 'mongoose';
 import { container } from '@di/index';
 import { t } from '@shared/languages';
 import { UAParser } from 'ua-parser-js';
@@ -25,6 +26,7 @@ import {
 } from '@interfaces/utils.interface';
 import {
   ISubscriptionEntitlements,
+  ISubscriptionStatus,
   PermissionResource,
   PermissionAction,
   ICurrentUser,
@@ -535,6 +537,24 @@ export const requireFeature = (featureName: keyof ISubscriptionEntitlements['ent
 };
 
 /**
+ * Blocks requests when the client's subscription is not in an active state.
+ * Requires `subscriptionEntitlements` middleware to have run first.
+ * Fails open (allows request) when entitlements could not be loaded, so a
+ * subscription service outage does not break the application.
+ */
+export const requireActiveSubscription = (req: Request, _res: Response, next: NextFunction) => {
+  const entitlements = req.context?.entitlements;
+  if (!entitlements) {
+    return next();
+  }
+  const { status } = entitlements.plan;
+  if (status === ISubscriptionStatus.INACTIVE || status === ISubscriptionStatus.PENDING_PAYMENT) {
+    return next(new ForbiddenError({ message: t('auth.errors.subscriptionInactive') }));
+  }
+  next();
+};
+
+/**
  * Ensures the client account is verified before allowing business-critical actions.
  * Must run after isAuthenticated.
  */
@@ -735,3 +755,18 @@ export const requireUserPermission = (action: PermissionAction | string) => {
     ownerId: req.params.userId || req.params.uid, // For "mine" scope validation
   }));
 };
+
+/**
+ * Throws ForbiddenError if the requesting user is the tenant on the resource.
+ * Prevents dual-role users (e.g. staff+tenant) from modifying records where
+ * they are personally the tenant — a conflict-of-interest guard.
+ */
+export function preventTenantConflict(
+  requestingUserId: string,
+  tenantId: Types.ObjectId | string | null | undefined,
+  message = 'You cannot modify a record where you are the tenant.'
+): void {
+  if (tenantId && requestingUserId === tenantId.toString()) {
+    throw new ForbiddenError({ message });
+  }
+}

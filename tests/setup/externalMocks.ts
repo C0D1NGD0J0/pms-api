@@ -142,6 +142,7 @@ export const mockAuthCache = {
   saveCurrentUser: jest.fn(),
   getCurrentUser: jest.fn(),
   deleteCurrentUser: jest.fn(),
+  invalidateCurrentUser: jest.fn(),
 } as any;
 
 export const setupAuthCacheMocks = () => {
@@ -151,6 +152,7 @@ export const setupAuthCacheMocks = () => {
   mockAuthCache.saveCurrentUser.mockResolvedValue({ success: true });
   mockAuthCache.getCurrentUser.mockResolvedValue(null);
   mockAuthCache.deleteCurrentUser.mockResolvedValue({ success: true });
+  mockAuthCache.invalidateCurrentUser.mockResolvedValue({ success: true });
 };
 
 export const resetAuthCacheMocks = () => {
@@ -160,6 +162,7 @@ export const resetAuthCacheMocks = () => {
   mockAuthCache.saveCurrentUser.mockClear();
   mockAuthCache.getCurrentUser.mockClear();
   mockAuthCache.deleteCurrentUser.mockClear();
+  mockAuthCache.invalidateCurrentUser.mockClear();
 };
 
 // =============================================================================

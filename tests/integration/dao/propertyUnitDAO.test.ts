@@ -1,16 +1,11 @@
 import { Types } from 'mongoose';
 import { PropertyUnit } from '@models/index';
+import { clearTestDatabase } from '@tests/helpers';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
 import {
   PropertyUnitStatusEnum,
   PropertyUnitTypeEnum,
-  InspectionStatusEnum,
-} from '@interfaces/propertyUnit.interface';
+  InspectionStatusEnum,} from '@interfaces/propertyUnit.interface';
 
 describe('PropertyUnitDAO Integration Tests', () => {
   let propertyUnitDAO: PropertyUnitDAO;
@@ -19,14 +14,8 @@ describe('PropertyUnitDAO Integration Tests', () => {
   let testCuid: string;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
     testPropertyId = new Types.ObjectId();

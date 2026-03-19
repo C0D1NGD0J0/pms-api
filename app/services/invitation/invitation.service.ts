@@ -1158,9 +1158,12 @@ export class InvitationService {
     }
   }
 
+  private readonly onEmailSent = this.handleEmailSent.bind(this);
+  private readonly onEmailFailed = this.handleEmailFailed.bind(this);
+
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.EMAIL_SENT, this.handleEmailSent.bind(this));
-    this.emitterService.on(EventTypes.EMAIL_FAILED, this.handleEmailFailed.bind(this));
+    this.emitterService.on(EventTypes.EMAIL_SENT, this.onEmailSent);
+    this.emitterService.on(EventTypes.EMAIL_FAILED, this.onEmailFailed);
   }
 
   private async handleEmailSent(payload: EmailSentPayload): Promise<void> {
@@ -1258,7 +1261,7 @@ export class InvitationService {
   }
 
   destroy(): void {
-    this.emitterService.off(EventTypes.EMAIL_SENT, this.handleEmailSent);
-    this.emitterService.off(EventTypes.EMAIL_FAILED, this.handleEmailFailed);
+    this.emitterService.off(EventTypes.EMAIL_SENT, this.onEmailSent);
+    this.emitterService.off(EventTypes.EMAIL_FAILED, this.onEmailFailed);
   }
 }

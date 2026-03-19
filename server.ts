@@ -114,6 +114,15 @@ class Server {
       return undefined;
     }
 
+    const socketsEnabled =
+      process.env.ENABLE_SOCKET_IO === 'true' || this.SERVER_ENV === 'development';
+    if (!socketsEnabled) {
+      this.log.info(
+        'Socket.IO disabled (ENABLE_SOCKET_IO not set). Set ENABLE_SOCKET_IO=true to enable real-time features.'
+      );
+      return undefined;
+    }
+
     const io: SocketIOServer = new SocketIOServer(httpServer, {
       cors: {
         origin: [

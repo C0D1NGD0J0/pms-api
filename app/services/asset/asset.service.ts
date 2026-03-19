@@ -321,11 +321,13 @@ export class AssetService {
     return mimeTypes[extension || ''] || 'application/octet-stream';
   }
 
+  private readonly onUploadCompleted = this.handleUploadCompleted.bind(this);
+
   /**
    * Setup event listeners for asset-related events
    */
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
+    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
   }
 
   /**
@@ -369,7 +371,7 @@ export class AssetService {
    * Clean up event listeners when service is destroyed
    */
   destroy(): void {
-    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted);
+    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
     this.logger.info('Asset service event listeners removed');
   }
 }

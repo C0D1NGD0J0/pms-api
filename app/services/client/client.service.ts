@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import ProfileDAO from '@dao/profileDAO';
+import { envVariables } from '@shared/config';
 import { AuthCache } from '@caching/auth.cache';
 import { SSEService } from '@services/sse/sse.service';
 import { ClientValidations } from '@shared/validations';
@@ -8,9 +9,12 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { getRequestDuration, createLogger } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { IClientDocument, IClientStats } from '@interfaces/client.interface';
+import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import { IIdentitySessionResponse } from '@interfaces/paymentGateway.interface';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { NotificationService } from '@services/notification/notification.service';
+import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { SubscriptionDAO, PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
@@ -28,6 +32,7 @@ import {
 } from '@interfaces/events.interface';
 
 interface IConstructor {
+  paymentGatewayService: PaymentGatewayService;
   subscriptionService: SubscriptionService;
   notificationService: NotificationService;
   emitterService: EventEmitterService;
@@ -54,6 +59,7 @@ export class ClientService {
   private readonly subscriptionService: SubscriptionService;
   private readonly notificationService: NotificationService;
   private readonly emitterService: EventEmitterService;
+  private readonly paymentGatewayService: PaymentGatewayService;
 
   constructor({
     clientDAO,
@@ -67,6 +73,7 @@ export class ClientService {
     subscriptionService,
     notificationService,
     emitterService,
+    paymentGatewayService,
   }: IConstructor) {
     this.log = createLogger('ClientService');
     this.clientDAO = clientDAO;
@@ -80,6 +87,7 @@ export class ClientService {
     this.subscriptionDAO = subscriptionDAO;
     this.notificationService = notificationService;
     this.subscriptionService = subscriptionService;
+    this.paymentGatewayService = paymentGatewayService;
     this.setupEventListeners();
   }
 
@@ -115,24 +123,8 @@ export class ClientService {
       return emailRegex.test(email);
     };
 
-    if (updateData.identification) {
-      if (
-        updateData.identification.idType &&
-        client.identification?.idType &&
-        updateData.identification.idType !== client.identification.idType
-      ) {
-        requiresReVerification = true;
-      }
-
-      if (updateData.identification.idType && !updateData.identification.idNumber) {
-        validationErrors.push(t('client.validation.idNumberRequired'));
-      }
-      if (updateData.identification.idType && !updateData.identification.authority) {
-        validationErrors.push(t('client.validation.authorityRequired'));
-      }
-      if (updateData.identification.idNumber && !updateData.identification.idType) {
-        validationErrors.push(t('client.validation.idTypeRequired'));
-      }
+    if (updateData.dataProcessingConsent === false) {
+      requiresReVerification = true;
     }
 
     if (updateData.companyProfile) {
@@ -232,7 +224,6 @@ export class ClientService {
       delete updateData.accountType;
       delete updateData.isVerified;
       delete updateData.cuid;
-
       const updatedClient = await this.clientDAO.updateById(
         client._id.toString(),
         {
@@ -354,12 +345,8 @@ export class ClientService {
       updatedAt: client.updatedAt,
     };
 
-    if (client.identification) {
-      responseData.identification = {
-        dataProcessingConsent: client.identification.dataProcessingConsent,
-        retentionExpiryDate: client.identification.retentionExpiryDate,
-      };
-    }
+    responseData.dataProcessingConsent = client.dataProcessingConsent;
+    responseData.identityVerification = client.identityVerification;
 
     if (client.accountType.isEnterpriseAccount && client.companyProfile) {
       responseData.companyProfile = {
@@ -752,76 +739,12 @@ export class ClientService {
       throw new BadRequestError({ message: 'Account is already verified' });
     }
 
-    // Validate identification data exists
-    if (!client.identification) {
-      throw new BadRequestError({ message: 'Identification information is required' });
-    }
-
-    const validationErrors: string[] = [];
-    const identification = client.identification;
-
-    // Check required fields
-    if (!identification.idType) {
-      validationErrors.push('ID type is required');
-    }
-    if (!identification.idNumber) {
-      validationErrors.push('ID number is required');
-    }
-    if (!identification.expiryDate) {
-      validationErrors.push('Expiry date is required');
-    }
-    if (!identification.authority) {
-      validationErrors.push('Issuing authority is required');
-    }
-    if (!identification.issuingState) {
-      validationErrors.push('Issuing state/country is required');
-    }
-    if (!identification.dataProcessingConsent) {
-      validationErrors.push('Data processing consent is required');
-    }
-
-    // Validate document type
-    const validIdTypes = ['passport', 'national-id', 'drivers-license', 'corporation-license'];
-    if (identification.idType && !validIdTypes.includes(identification.idType)) {
-      validationErrors.push(`Invalid ID type. Must be one of: ${validIdTypes.join(', ')}`);
-    }
-
-    // Validate expiry date is in the future
-    if (identification.expiryDate) {
-      const expiryDate = new Date(identification.expiryDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (expiryDate <= today) {
-        validationErrors.push('Document has expired. Please provide a valid document.');
-      }
-    }
-
-    // If there are validation errors, throw them
-    if (validationErrors.length > 0) {
-      this.log.error(
-        {
-          cuid,
-          url: cxt.request.url,
-          userId: currentuser?.sub,
-          requestId: cxt.requestId,
-          validationErrors,
-          duration: getRequestDuration(start).durationInMs,
-        },
-        'Verification validation failed'
-      );
-      throw new BadRequestError({
-        message: 'Verification failed. Please complete all required fields.',
-        errorInfo: { validationErrors },
-      });
-    }
-
     // Update client to verified status
     const updatedClient = await this.clientDAO.updateById(client._id.toString(), {
       $set: {
         isVerified: true,
-        verifiedAt: new Date(),
-        verifiedBy: currentuser.sub,
+        'identityVerification.verifiedAt': new Date(),
+        'identityVerification.verifiedBy': currentuser.sub,
       },
     });
 
@@ -854,6 +777,92 @@ export class ClientService {
       data: { isVerified: true },
       message: t('client.success.verified'),
     };
+  }
+
+  async initiateIdentityVerification(
+    cxt: IRequestContext
+  ): Promise<ISuccessReturnData<IIdentitySessionResponse>> {
+    const currentuser = cxt.currentuser!;
+    const { cuid } = cxt.request.params;
+
+    if (currentuser.client.role !== ROLES.SUPER_ADMIN) {
+      throw new ForbiddenError({ message: t('auth.errors.superAdminRequired') });
+    }
+
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) throw new NotFoundError({ message: t('client.errors.notFound') });
+    if (client.isVerified)
+      throw new BadRequestError({ message: t('client.errors.alreadyVerified') });
+
+    const returnUrl = `${envVariables.FRONTEND.URL}/client/${cuid}/account_settings`;
+
+    const { data, success } = await this.paymentGatewayService.createIdentityVerificationSession(
+      IPaymentGatewayProvider.STRIPE,
+      {
+        email: currentuser.email,
+        metadata: { cuid, userId: currentuser.sub },
+        returnUrl,
+      }
+    );
+
+    if (!success || !data) {
+      throw new BadRequestError({ message: t('client.errors.identitySessionFailed') });
+    }
+
+    await this.clientDAO.updateById(client._id.toString(), {
+      $set: {
+        'identityVerification.sessionId': data.sessionId,
+        'identityVerification.sessionStatus': 'requires_input',
+      },
+    });
+
+    this.log.info({ cuid, sessionId: data.sessionId }, 'Identity verification session created');
+    return { success: true, data };
+  }
+
+  async handleIdentityWebhookEvent(
+    status: 'verified' | 'requires_input',
+    sessionId: string
+  ): Promise<void> {
+    const client = await this.clientDAO.findFirst({
+      'identityVerification.sessionId': sessionId,
+    });
+    if (!client) {
+      this.log.warn({ sessionId }, 'No client found for identity webhook session');
+      return;
+    }
+
+    if (status === 'verified') {
+      const { data: report } = await this.paymentGatewayService.retrieveIdentityVerificationSession(
+        IPaymentGatewayProvider.STRIPE,
+        sessionId
+      );
+
+      await this.clientDAO.updateById(client._id.toString(), {
+        $set: {
+          isVerified: true,
+          'identityVerification.sessionStatus': 'stripe_verified',
+          'identityVerification.documentType': report?.documentType,
+          'identityVerification.issuingCountry': report?.issuingCountry,
+          'identityVerification.verifiedAt': new Date(),
+        },
+      });
+
+      this.sseService.sendToUser(client.accountAdmin.toString(), EventTypes.IDENTITY_VERIFIED, {
+        cuid: client.cuid,
+        isVerified: true,
+      });
+    } else {
+      await this.clientDAO.updateById(client._id.toString(), {
+        $set: { 'identityVerification.sessionStatus': 'requires_input' },
+      });
+
+      this.sseService.sendToUser(
+        client.accountAdmin.toString(),
+        EventTypes.IDENTITY_REQUIRES_INPUT,
+        { cuid: client.cuid, sessionStatus: 'requires_input' }
+      );
+    }
   }
 
   // ── Payment event listeners ───────────────────────────────────────────────

@@ -3,9 +3,9 @@ import Logger from 'bunyan';
 import { Lease, User } from '@models/index';
 import { IUserDocument } from '@interfaces/user.interface';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
-import { IUserRoleType, ROLES } from '@shared/constants/roles.constants';
-import { paginateResult, hashGenerator, createLogger } from '@utils/index';
 import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
+import { paginateResult, hashGenerator, createLogger, escapeRegExp } from '@utils/index';
+import { resolveHighestRole, IUserRoleType, ROLES } from '@shared/constants/roles.constants';
 
 import { BaseDAO } from './baseDAO';
 import { IFindOptions, dynamic } from './interfaces/baseDAO.interface';
@@ -153,7 +153,10 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * @param token - The activation token.
    * @returns A promise that resolves to true if activation was successful, false otherwise.
    */
-  async activateAccount(token: string): Promise<boolean> {
+  async activateAccount(
+    token: string,
+    consentData: { acceptedBy: string }
+  ): Promise<string | null> {
     try {
       const query = {
         activationToken: token,
@@ -162,12 +165,16 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       };
 
       const result = await this.findFirst(query);
-      if (!result) return false;
+      if (!result) return null;
       result.isActive = true;
       result.activationToken = '';
       result.activationTokenExpiresAt = null;
+      result.consent = {
+        acceptedOn: new Date(),
+        acceptedBy: consentData.acceptedBy,
+      };
       await result.save();
-      return true;
+      return result._id.toString();
     } catch (error) {
       this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
@@ -305,7 +312,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     paginationOpts?: IFindOptions
   ): Promise<ListResultWithPagination<IUserDocument[]>> {
     try {
-      const { role, department, status } = filterOptions;
+      const { role, department, status, search } = filterOptions;
 
       const query: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
@@ -320,6 +327,16 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       if (role) {
         // const roles = Array.isArray(role) ? role : [role];
         query['cuids.roles'] = Array.isArray(role) ? { $in: role } : role;
+      }
+
+      if (search && search.trim()) {
+        const searchRegex = new RegExp(escapeRegExp(search.trim()), 'i');
+        query.$or = [
+          { firstName: { $regex: searchRegex } },
+          { lastName: { $regex: searchRegex } },
+          { email: { $regex: searchRegex } },
+          { phoneNumber: { $regex: searchRegex } },
+        ];
       }
 
       const pipeline: PipelineStage[] = [
@@ -634,6 +651,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         cuid: client.cuid,
         isConnected: true,
         roles: [invitationData.role],
+        primaryRole: invitationData.role,
         clientDisplayName: client.displayName,
         linkedVendorUid: invitationData.role === ROLES.VENDOR ? linkedVendorUid : null,
       };
@@ -677,15 +695,21 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       const existingConnection = user.cuids.find((c) => c.cuid === client.cuid);
 
       if (existingConnection) {
+        const allRoles = existingConnection.roles.includes(role)
+          ? existingConnection.roles
+          : [...existingConnection.roles, role];
+        const newPrimaryRole = resolveHighestRole(allRoles as IUserRoleType[]);
+
         const updateObj: any = {
           'cuids.$.isConnected': true,
           'cuids.$.clientDisplayName': client.clientDisplayName,
           'cuids.$.linkedVendorUid': role === ROLES.VENDOR ? linkedVendorUid : null,
+          'cuids.$.primaryRole': newPrimaryRole,
         };
 
         const updateOperation = existingConnection.roles.includes(role)
           ? { $set: updateObj }
-          : { $set: updateObj, $addToSet: { 'cuids.$.roles': role } }; // Add new role
+          : { $set: updateObj, $addToSet: { 'cuids.$.roles': role } };
 
         return await this.update(
           { _id: new Types.ObjectId(userId), 'cuids.cuid': client.cuid },
@@ -699,6 +723,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           cuid: client.cuid,
           isConnected: true,
           roles: [role],
+          primaryRole: role,
           clientDisplayName: client.clientDisplayName || '',
           linkedVendorUid: role === ROLES.VENDOR ? linkedVendorUid : null,
         };
@@ -761,8 +786,10 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         cuid: client.cuid,
         isConnected: true,
         roles: [userData.role],
+        primaryRole: userData.role,
         clientDisplayName: client.clientDisplayName || '',
         linkedVendorUid: userData.role === ROLES.VENDOR && linkedVendorUid ? linkedVendorUid : null,
+        requiresOnboarding: true,
       };
 
       const user = await this.insert(
@@ -965,14 +992,24 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     pagination?: IFindOptions
   ): Promise<import('@interfaces/user.interface').IPaginatedResult<IUserDocument[]>> {
     try {
+      const tenantMatch: Record<string, any> = {
+        'cuids.cuid': cuid,
+        'cuids.roles': 'tenant',
+        deletedAt: null,
+      };
+
+      if (filters?.search && filters.search.trim()) {
+        const searchRegex = new RegExp(escapeRegExp(filters.search.trim()), 'i');
+        tenantMatch.$or = [
+          { firstName: { $regex: searchRegex } },
+          { lastName: { $regex: searchRegex } },
+          { email: { $regex: searchRegex } },
+          { phoneNumber: { $regex: searchRegex } },
+        ];
+      }
+
       const pipeline: PipelineStage[] = [
-        {
-          $match: {
-            'cuids.cuid': cuid,
-            'cuids.roles': 'tenant',
-            deletedAt: null,
-          },
-        },
+        { $match: tenantMatch },
         {
           $lookup: {
             from: 'profiles',
@@ -1431,6 +1468,18 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         `Error getting tenant details for client ${cuid}, tenant ${tenantUid}:`,
         error
       );
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async clearOnboardingFlag(userId: string, cuid: string): Promise<void> {
+    try {
+      await this.update(
+        { _id: userId, 'cuids.cuid': cuid },
+        { $set: { 'cuids.$.requiresOnboarding': false } }
+      );
+    } catch (error) {
+      this.logger.error('Error clearing onboarding flag:', error);
       throw this.throwErrorHandler(error);
     }
   }

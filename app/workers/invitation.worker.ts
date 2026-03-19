@@ -707,11 +707,15 @@ export class InvitationWorker {
       timeZone: 'UTC',
       policies: {
         tos: {
-          accepted: true, // Auto-accept for bulk created users
-          acceptedOn: new Date(),
+          accepted: false,
+          acceptedOn: null,
+        },
+        privacy: {
+          accepted: false,
+          acceptedOn: null,
         },
         marketing: {
-          accepted: false, // Conservative default - no marketing consent
+          accepted: false,
           acceptedOn: null,
         },
       },

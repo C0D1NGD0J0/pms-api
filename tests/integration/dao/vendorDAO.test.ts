@@ -1,11 +1,7 @@
 import { Types } from 'mongoose';
 import { VendorDAO } from '@dao/vendorDAO';
 import { Vendor, User } from '@models/index';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
+import { clearTestDatabase } from '@tests/helpers';
 
 describe('VendorDAO Integration Tests', () => {
   let vendorDAO: VendorDAO;
@@ -15,14 +11,8 @@ describe('VendorDAO Integration Tests', () => {
   let testCuid2: string;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     vendorDAO = new VendorDAO({ vendorModel: Vendor });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
     testUserId = new Types.ObjectId();

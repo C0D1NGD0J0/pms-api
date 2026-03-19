@@ -8,7 +8,10 @@ import {
   validateRequest,
 } from '@shared/validations/index';
 import {
+  requireActiveSubscription,
+  subscriptionEntitlements,
   requireVerifiedClient,
+  requireVerification,
   requirePermission,
   isAuthenticated,
   basicLimiter,
@@ -72,10 +75,13 @@ router.patch(
 
 router.post(
   '/:cuid/send_invite',
-  isAuthenticated,
   basicLimiter(),
+  isAuthenticated,
+  requireVerification,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   requireVerifiedClient,
+  subscriptionEntitlements,
+  requireActiveSubscription,
   validateRequest({
     params: UtilsValidations.cuid,
     body: InvitationValidations.sendInvitation,
@@ -185,6 +191,7 @@ router.post(
   '/:cuid/validate_csv',
   basicLimiter(),
   isAuthenticated,
+  requireVerification,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   requireVerifiedClient,
   diskUpload(['csv_file']),

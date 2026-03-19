@@ -1,8 +1,8 @@
 import Zod from 'zod';
 import { Schema, model } from 'mongoose';
 import { isValidPhoneNumber } from '@utils/index';
+import { IClientDocument } from '@interfaces/index';
 import uniqueValidator from 'mongoose-unique-validator';
-import { IdentificationEnumType, IClientDocument } from '@interfaces/index';
 
 const ClientSchema = new Schema<IClientDocument>(
   {
@@ -25,65 +25,24 @@ const ClientSchema = new Schema<IClientDocument>(
         default: false,
       },
     },
-    identification: {
-      idType: {
-        type: String,
-        enum: Object.values(IdentificationEnumType),
-        required: function (this: IClientDocument) {
-          if (this.isNew) return false;
-          return this.isModified('identification.idType');
-        },
+    dataProcessingConsent: {
+      type: Boolean,
+      default: false,
+    },
+    identityVerification: {
+      sessionId: { type: String, select: false },
+      sessionStatus: { type: String, enum: ['requires_input', 'stripe_verified'] },
+      documentType: { type: String },
+      issuingCountry: { type: String },
+      expiryDate: { type: Date },
+      verifiedBy: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
       },
-      issueDate: {
+      verifiedAt: {
         type: Date,
-        required: function (this: IClientDocument) {
-          if (this.isNew) return false;
-          return this.isModified('identification.issueDate');
-        },
+        default: null,
       },
-      expiryDate: {
-        type: Date,
-        required: function (this: IClientDocument) {
-          if (this.isNew) return false;
-          return this.isModified('identification.expiryDate');
-        },
-        validate: {
-          validator: function (this: IClientDocument, expiryDate: Date) {
-            return !this.identification?.issueDate || expiryDate > this.identification?.issueDate;
-          },
-          message: 'Expiry date must be after issue date',
-        },
-      },
-      idNumber: {
-        type: String,
-        trim: true,
-        required: function (this: IClientDocument) {
-          if (this.isNew) return false;
-          return this.isModified('identification.idNumber');
-        },
-      },
-      authority: {
-        type: String,
-        trim: true,
-      },
-      issuingState: {
-        type: String,
-        trim: true,
-        required: function (this: IClientDocument) {
-          if (this.isNew) return false;
-          return this.isModified('identification.issuingState');
-        },
-      },
-      retentionExpiryDate: {
-        type: Date,
-        default: () => new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 7), // 7 years default
-      },
-      lastVerifiedAt: Date,
-      dataProcessingConsent: {
-        type: Boolean,
-        default: false,
-      },
-      processingConsentDate: Date,
     },
     subscription: {
       type: Schema.Types.ObjectId,
@@ -263,14 +222,6 @@ const ClientSchema = new Schema<IClientDocument>(
       type: Schema.Types.ObjectId,
       ref: 'User',
     },
-    verifiedBy: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-    },
-    verifiedAt: {
-      type: Date,
-      default: null,
-    },
     deletedAt: {
       type: Date,
       default: null,
@@ -291,32 +242,9 @@ ClientSchema.virtual('fullCompanyName').get(function (this: IClientDocument) {
   return this.companyProfile?.tradingName || this.companyProfile?.legalEntityName || 'Unknown';
 });
 
-// Pre-validation middleware
-ClientSchema.pre('validate', function (this: IClientDocument, next) {
-  if (this.isNew) return next();
-
-  // Check if identification is being updated partially
-  if (this.isModified('identification')) {
-    const identification = this.identification;
-
-    // If identification object exists and any field is provided, require all mandatory fields
-    if (identification && Object.values(identification).some((value) => value !== undefined)) {
-      const requiredFields = ['idType', 'issueDate', 'expiryDate', 'idNumber', 'issuingState'];
-
-      // Check if any required field is missing
-      const missingFields = requiredFields.filter(
-        (field) => !identification[field as keyof typeof identification]
-      );
-
-      if (missingFields.length > 0) {
-        return next(
-          new Error(`Missing required identification fields: ${missingFields.join(', ')}`)
-        );
-      }
-    }
-  }
-
-  next();
+ClientSchema.virtual('verificationDeadline').get(function (this: IClientDocument) {
+  if (this.isVerified) return null;
+  return new Date((this.createdAt as Date).getTime() + 3 * 24 * 60 * 60 * 1000);
 });
 
 // Soft deletion method

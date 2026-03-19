@@ -5,8 +5,11 @@ import { envVariables } from '@shared/config';
 import { isValidPhoneNumber, createLogger } from '@utils/index';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import {
+  IIdentityVerificationReport,
+  ICreateIdentitySessionInput,
   ICreateConnectAccountInput,
   IFinalizeInvoiceResponse,
+  IIdentitySessionResponse,
   IConnectAccountResponse,
   IOnboardingLinkResponse,
   ICreateInvoiceResponse,
@@ -731,6 +734,47 @@ export class StripeService implements IPaymentProvider {
       return event;
     } catch (error) {
       this.log.error({ error }, 'Error verifying webhook signature');
+      throw error;
+    }
+  }
+
+  async createIdentityVerificationSession(
+    input: ICreateIdentitySessionInput
+  ): Promise<IIdentitySessionResponse> {
+    try {
+      const session = await this.stripe.identity.verificationSessions.create({
+        type: 'document',
+        provided_details: input.email ? { email: input.email } : undefined,
+        metadata: input.metadata,
+        return_url: input.returnUrl,
+        options: {
+          document: {
+            allowed_types: input.allowedTypes ?? ['driving_license', 'passport', 'id_card'],
+          },
+        },
+      });
+      return { sessionId: session.id, url: session.url! };
+    } catch (error) {
+      this.log.error({ error }, 'Error creating Stripe Identity verification session');
+      throw error;
+    }
+  }
+
+  async retrieveIdentityVerificationSession(
+    sessionId: string
+  ): Promise<IIdentityVerificationReport> {
+    try {
+      const session = await this.stripe.identity.verificationSessions.retrieve(sessionId, {
+        expand: ['last_verification_report'],
+      });
+      const report = session.last_verification_report as Stripe.Identity.VerificationReport | null;
+      return {
+        status: session.status,
+        documentType: report?.document?.type ?? undefined,
+        issuingCountry: report?.document?.issuing_country ?? undefined,
+      };
+    } catch (error) {
+      this.log.error({ error }, 'Error retrieving Stripe Identity verification session');
       throw error;
     }
   }

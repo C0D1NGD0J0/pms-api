@@ -140,6 +140,19 @@ router.get(
 );
 
 router.get(
+  '/:cuid/profile-completion',
+  basicLimiter(),
+  isAuthenticated,
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getProfileCompletion(req, res);
+  })
+);
+
+router.get(
   '/:cuid/profile_details',
   basicLimiter(),
   isAuthenticated,

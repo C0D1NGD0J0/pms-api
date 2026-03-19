@@ -1,5 +1,6 @@
 import authRoutes from './auth.routes';
 import userRoutes from './users.routes';
+import adminRoutes from './admin.routes';
 import leaseRoutes from './lease.routes';
 import clientRoutes from './client.routes';
 import vendorRoutes from './vendors.routes';
@@ -12,6 +13,7 @@ import subscriptionRoutes from './subscription.routes';
 import emailTemplateRoutes from './emailTemplate.routes';
 
 export const routes = {
+  adminRoutes,
   authRoutes,
   userRoutes,
   leaseRoutes,

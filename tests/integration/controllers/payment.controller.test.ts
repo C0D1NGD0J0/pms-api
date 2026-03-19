@@ -1,18 +1,21 @@
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import express, { Application } from 'express';
+import { clearTestDatabase } from '@tests/helpers';
 import { ROLES } from '@shared/constants/roles.constants';
 import { PaymentController } from '@controllers/PaymentController';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { PaymentService } from '@services/payments/payments.service';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import { beforeEach, beforeAll, describe, expect, jest, it } from '@jest/globals';
 import { PaymentProcessor, PaymentModel, Profile, Client, User } from '@models/index';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
-import { beforeEach, beforeAll, afterAll, describe, expect, jest, it } from '@jest/globals';
 import { PaymentProcessorDAO, PaymentDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
-import { disconnectTestDatabase, setupTestDatabase, clearTestDatabase } from '@tests/helpers';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
-import { PaymentRecordStatus, PaymentRecordType, PaymentMethod } from '@interfaces/payments.interface';
+import {
+  PaymentRecordStatus,
+  PaymentRecordType,
+  PaymentMethod,} from '@interfaces/payments.interface';
 
 describe('PaymentController Integration Tests', () => {
   let app: Application;
@@ -45,7 +48,6 @@ describe('PaymentController Integration Tests', () => {
   } as unknown as PaymentGatewayService;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
 
     // testFactories use Mongoose models directly
@@ -57,7 +59,9 @@ describe('PaymentController Integration Tests', () => {
     const paymentDAO = new PaymentDAO({ paymentModel: PaymentModel });
     const clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
     const profileDAO = new ProfileDAO({ profileModel: Profile });
-    const paymentProcessorDAO = new PaymentProcessorDAO({ paymentProcessorModel: PaymentProcessor });
+    const paymentProcessorDAO = new PaymentProcessorDAO({
+      paymentProcessorModel: PaymentProcessor,
+    });
 
     const paymentService = new PaymentService({
       paymentDAO,
@@ -73,7 +77,10 @@ describe('PaymentController Integration Tests', () => {
       emitterService: { emit: jest.fn(), on: jest.fn() } as any,
     });
 
-    const paymentController = new PaymentController({ paymentService, mediaUploadService: {} as any });
+    const paymentController = new PaymentController({
+      paymentService,
+      mediaUploadService: {} as any,
+    });
 
     app = express();
     app.use(express.json());
@@ -88,10 +95,6 @@ describe('PaymentController Integration Tests', () => {
       req.context = mockContext(adminUser, req.params.cuid) as any;
       return paymentController.cancelPayment(req as any, res);
     });
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   beforeEach(async () => {
@@ -118,17 +121,23 @@ describe('PaymentController Integration Tests', () => {
     // Ensure a payment processor record exists
     await PaymentProcessor.findOneAndUpdate(
       { cuid: testClient.cuid },
-      { cuid: testClient.cuid, accountId: 'acct_test_123', provider: IPaymentGatewayProvider.STRIPE },
+      {
+        cuid: testClient.cuid,
+        accountId: 'acct_test_123',
+        provider: IPaymentGatewayProvider.STRIPE,
+      },
       { upsert: true, new: true }
     );
   });
 
   describe('POST /api/v1/payments/:cuid/:pytuid/refund', () => {
     it('should process a full refund of a PAID payment', async () => {
-      (mockCreateRefund as jest.Mock).mockReturnValue(Promise.resolve({
-        success: true,
-        data: { refundId: 're_test_123', status: 'succeeded', amount: 150000, currency: 'usd' },
-      }));
+      (mockCreateRefund as jest.Mock).mockReturnValue(
+        Promise.resolve({
+          success: true,
+          data: { refundId: 're_test_123', status: 'succeeded', amount: 150000, currency: 'usd' },
+        })
+      );
 
       const response = await request(app)
         .post(`/api/v1/payments/${testClient.cuid}/${testPayment.pytuid}/refund`)
@@ -150,10 +159,12 @@ describe('PaymentController Integration Tests', () => {
     });
 
     it('should process a partial refund with a specified amount', async () => {
-      (mockCreateRefund as jest.Mock).mockReturnValue(Promise.resolve({
-        success: true,
-        data: { refundId: 're_test_456', status: 'succeeded', amount: 50000, currency: 'usd' },
-      }));
+      (mockCreateRefund as jest.Mock).mockReturnValue(
+        Promise.resolve({
+          success: true,
+          data: { refundId: 're_test_456', status: 'succeeded', amount: 50000, currency: 'usd' },
+        })
+      );
 
       const response = await request(app)
         .post(`/api/v1/payments/${testClient.cuid}/${testPayment.pytuid}/refund`)

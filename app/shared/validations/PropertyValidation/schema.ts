@@ -541,9 +541,10 @@ export const GetAssignableUsersSchema = z.object({
     })
     .optional(),
   department: z
-    .enum(['maintenance', 'operations', 'accounting', 'management'], {
+    .enum(['maintenance', 'operations', 'accounting', 'management', 'other', 'security'], {
       errorMap: () => ({
-        message: 'Department must be maintenance, operations, accounting, or management',
+        message:
+          'Department must be maintenance, operations, accounting, management, other, or security',
       }),
     })
     .optional(),

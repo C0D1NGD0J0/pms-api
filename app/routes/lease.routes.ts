@@ -4,9 +4,11 @@ import { LeaseController } from '@controllers/LeaseController';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import { UtilsValidations, LeaseValidations, validateRequest } from '@shared/validations/index';
 import {
+  subscriptionEntitlements,
   requireVerifiedClient,
   requirePermission,
   isAuthenticated,
+  requireFeature,
   basicLimiter,
   diskUpload,
   scanFile,
@@ -217,6 +219,8 @@ router
   .post(
     // Send for e-signature OR mark as manually signed OR cancel signing
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+    subscriptionEntitlements,
+    requireFeature('eSignature'),
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),
       body: LeaseValidations.signatureAction,

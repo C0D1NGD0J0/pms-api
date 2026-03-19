@@ -9,6 +9,7 @@ import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { LeaseStatus, EventTypes } from '@interfaces/index';
 import { NotificationService } from '@services/notification';
+import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
@@ -53,6 +54,7 @@ import {
   PROPERTY_STAFF_ROLES,
   getRequestDuration,
   createLogger,
+  escapeRegExp,
   MoneyUtils,
 } from '@utils/index';
 
@@ -60,7 +62,11 @@ import { PropertyStatsService } from './propertyStats.service';
 import { PropertyApprovalService } from './propertyApproval.service';
 import { PropertyValidationService } from './propertyValidation.service';
 import { subscriptionPlanConfig } from '../subscription/subscription_plans.config';
-import { generatePendingChangesPreview, validateOccupancyStatusChange } from './propertyHelpers';
+import {
+  generatePendingChangesPreview,
+  validateOccupancyStatusChange,
+  filterPropertyByDepartment,
+} from './propertyHelpers';
 
 interface IConstructor {
   propertyApprovalService: PropertyApprovalService;
@@ -143,20 +149,20 @@ export class PropertyService {
     this.setupEventListeners();
   }
 
+  private readonly onUnitChanged = this.handleUnitChanged.bind(this);
+  private readonly onUnitBatchChanged = this.handleUnitBatchChanged.bind(this);
+  private readonly onLeaseActivated = this.handleLeaseActivated.bind(this);
+  private readonly onLeaseTerminated = this.handleLeaseTerminated.bind(this);
+
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.UNIT_CREATED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_UPDATED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_UNARCHIVED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged.bind(this));
-
-    this.emitterService.on(
-      EventTypes.LEASE_ESIGNATURE_COMPLETED,
-      this.handleLeaseActivated.bind(this)
-    );
-
-    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
+    this.emitterService.on(EventTypes.UNIT_CREATED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_UPDATED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_ARCHIVED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_UNARCHIVED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_STATUS_CHANGED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchChanged);
+    this.emitterService.on(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
+    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
 
     this.log.info(t('property.logging.eventListenersInitialized'));
   }
@@ -696,10 +702,12 @@ export class PropertyService {
 
       if (filters.location) {
         if (filters.location.city) {
-          filter['address.city'] = { $regex: new RegExp(filters.location.city, 'i') };
+          filter['address.city'] = { $regex: new RegExp(escapeRegExp(filters.location.city), 'i') };
         }
         if (filters.location.state) {
-          filter['address.state'] = { $regex: new RegExp(filters.location.state, 'i') };
+          filter['address.state'] = {
+            $regex: new RegExp(escapeRegExp(filters.location.state), 'i'),
+          };
         }
         if (filters.location.postCode) {
           filter['address.postCode'] = filters.location.postCode;
@@ -726,6 +734,20 @@ export class PropertyService {
           filter[filters.dateRange.field] = dateFilter;
         }
       }
+
+      if (filters.searchTerm && filters.searchTerm.trim()) {
+        filter.$or = [
+          { name: { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+          { pid: { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+          { 'address.city': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+          { 'address.state': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+          { 'address.fullAddress': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+        ];
+      }
+
+      if (filters.managedBy) {
+        filter.managedBy = new Types.ObjectId(filters.managedBy as string);
+      }
     }
 
     const opts: IPaginationQuery = {
@@ -737,21 +759,24 @@ export class PropertyService {
     };
 
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
+    const department = currentuser.employeeInfo?.department as EmployeeDepartment | undefined;
     const itemsWithPreview = properties.items.map((property) => {
       const propertyObj = property.toObject ? property.toObject() : property;
       const pendingChangesPreview = generatePendingChangesPreview(property, currentuser);
 
-      return {
+      const enriched = {
         ...propertyObj,
         ...(pendingChangesPreview && { pendingChangesPreview }),
         fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
       };
+
+      return filterPropertyByDepartment(enriched as IPropertyDocument, department);
     });
 
     return {
       success: true,
       data: {
-        items: itemsWithPreview,
+        items: itemsWithPreview as IPropertyDocument[],
         pagination: properties.pagination,
       },
     };
@@ -860,14 +885,21 @@ export class PropertyService {
       manager: propertyManager,
     };
 
+    const department = currentUser.employeeInfo?.department as EmployeeDepartment | undefined;
+    const filteredProperty = filterPropertyByDepartment(
+      propertyWithPreview as IPropertyDocument,
+      department
+    );
+    const isSecurityDept = department === EmployeeDepartment.SECURITY;
+
     return {
       success: true,
       data: {
-        property: propertyWithPreview,
-        unitInfo,
-        metrics,
-        ...(paymentHistory !== undefined && { paymentHistory }),
-        ...(maintenanceHistory !== undefined && { maintenanceHistory }),
+        property: filteredProperty as IPropertyDocument,
+        unitInfo: isSecurityDept ? undefined : unitInfo,
+        metrics: isSecurityDept ? undefined : metrics,
+        ...(!isSecurityDept && paymentHistory !== undefined && { paymentHistory }),
+        ...(!isSecurityDept && maintenanceHistory !== undefined && { maintenanceHistory }),
       },
     };
   }
@@ -1592,10 +1624,25 @@ export class PropertyService {
         pipeline.push({
           $match: {
             $or: [
-              { email: { $regex: filters.search, $options: 'i' } },
-              { 'profile.personalInfo.displayName': { $regex: filters.search, $options: 'i' } },
-              { 'profile.personalInfo.firstName': { $regex: filters.search, $options: 'i' } },
-              { 'profile.personalInfo.lastName': { $regex: filters.search, $options: 'i' } },
+              { email: { $regex: escapeRegExp(filters.search), $options: 'i' } },
+              {
+                'profile.personalInfo.displayName': {
+                  $regex: escapeRegExp(filters.search),
+                  $options: 'i',
+                },
+              },
+              {
+                'profile.personalInfo.firstName': {
+                  $regex: escapeRegExp(filters.search),
+                  $options: 'i',
+                },
+              },
+              {
+                'profile.personalInfo.lastName': {
+                  $regex: escapeRegExp(filters.search),
+                  $options: 'i',
+                },
+              },
             ],
           },
         });
@@ -1909,12 +1956,14 @@ export class PropertyService {
   cleanupEventListeners(): void {
     this.log.info(t('property.logging.cleaningUp'));
 
-    this.emitterService.off(EventTypes.UNIT_CREATED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_UPDATED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_UNARCHIVED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged);
+    this.emitterService.off(EventTypes.UNIT_CREATED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_UPDATED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_ARCHIVED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_UNARCHIVED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_STATUS_CHANGED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchChanged);
+    this.emitterService.off(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
+    this.emitterService.off(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
 
     this.log.info(t('property.logging.eventListenersRemoved'));
   }

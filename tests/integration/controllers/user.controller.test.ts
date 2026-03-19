@@ -2,6 +2,7 @@ import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import express, { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
+import { clearTestDatabase } from '@tests/helpers';
 import { UserService } from '@services/user/user.service';
 import { ROLES } from '@shared/constants/roles.constants';
 import { UserController } from '@controllers/UserController';
@@ -11,9 +12,8 @@ import { ClientController } from '@controllers/ClientController';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { ProfileService } from '@services/profile/profile.service';
 import { PermissionService } from '@services/permission/permission.service';
-import { beforeEach, beforeAll, afterAll, describe, expect, it } from '@jest/globals';
+import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PropertyUnit, Property, Profile, Client, Vendor, User } from '@models/index';
-import { disconnectTestDatabase, setupTestDatabase, clearTestDatabase } from '@tests/helpers';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
 import {
   PropertyUnitDAO,
@@ -21,8 +21,7 @@ import {
   ProfileDAO,
   ClientDAO,
   VendorDAO,
-  UserDAO,
-} from '@dao/index';
+  UserDAO,} from '@dao/index';
 
 describe('UserController Integration Tests', () => {
   let app: Application;
@@ -48,7 +47,6 @@ describe('UserController Integration Tests', () => {
   });
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
 
     // Initialize DAOs
@@ -138,6 +136,7 @@ describe('UserController Integration Tests', () => {
       emitterService: { emit: jest.fn(), on: jest.fn() } as any,
       notificationService: {} as any,
       sseService: {} as any,
+      paymentGatewayService: {} as any,
     });
 
     userController = new UserController({
@@ -261,10 +260,6 @@ describe('UserController Integration Tests', () => {
     await createTestProfile(managerUser._id, testClient._id, { type: 'employee' });
     await createTestProfile(staffUser._id, testClient._id, { type: 'employee' });
     await createTestProfile(tenantUser._id, testClient._id, { type: 'tenant' });
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   describe('GET /users/:cuid/users - getFilteredUsers', () => {
@@ -543,17 +538,11 @@ describe('UserController Integration Tests', () => {
     });
 
     it('should handle database errors gracefully', async () => {
-      // Disconnect database temporarily to simulate error
-      await disconnectTestDatabase();
-
       const response = await request(app)
         .get(`/api/v1/users/${testClient.cuid}/users`)
         .expect(httpStatusCodes.INTERNAL_SERVER_ERROR);
 
       expect(response.body.success).toBe(false);
-
-      // Reconnect for other tests
-      await setupTestDatabase();
     });
   });
 });

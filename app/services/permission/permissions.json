@@ -87,6 +87,11 @@
           "user": ["read:any", "update:any", "list:any"],
           "report": ["read:any", "create:any", "list:any"],
           "client": ["read:mine", "settings:mine"]
+        },
+        "security": {
+          "property": ["read:any", "list:any"],
+          "user": ["read:mine", "update:mine"],
+          "client": ["read:mine"]
         }
       }
     },

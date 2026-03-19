@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
 import { ClientSession, Types, Model } from 'mongoose';
+import { createLogger, escapeRegExp } from '@utils/index';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
 
@@ -49,7 +49,7 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
 
       // Add search filter (company name, contact person)
       if (search && search.trim()) {
-        const searchRegex = new RegExp(search.trim(), 'i');
+        const searchRegex = new RegExp(escapeRegExp(search.trim()), 'i');
         pipeline.push({
           $match: {
             $or: [

@@ -10,15 +10,9 @@ import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { AuthController } from '@controllers/AuthController';
 import { httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
 import { VendorService } from '@services/vendor/vendor.service';
-import { beforeEach, beforeAll, describe, afterAll, expect, it } from '@jest/globals';
+import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
+import { clearTestDatabase, createTestClient, createTestUser } from '@tests/helpers';
 import { setupAllExternalMocks, mockQueueFactory, mockAuthCache } from '@tests/setup/externalMocks';
-import {
-  disconnectTestDatabase,
-  setupTestDatabase,
-  clearTestDatabase,
-  createTestClient,
-  createTestUser,
-} from '@tests/helpers';
 
 describe('AuthController Integration Tests', () => {
   let app: Application;
@@ -29,7 +23,6 @@ describe('AuthController Integration Tests', () => {
   let profileDAO: ProfileDAO;
   let tokenService: AuthTokenService;
 
-  // Setup Express app for integration testing
   const setupTestApp = () => {
     const testApp = express();
     testApp.use(express.json());
@@ -108,7 +101,6 @@ describe('AuthController Integration Tests', () => {
   };
 
   beforeAll(async () => {
-    await setupTestDatabase();
     setupAllExternalMocks();
 
     // Initialize DAOs
@@ -147,10 +139,6 @@ describe('AuthController Integration Tests', () => {
   beforeEach(async () => {
     await clearTestDatabase();
     jest.clearAllMocks();
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   describe('POST /api/v1/auth/signup', () => {
@@ -351,7 +339,7 @@ describe('AuthController Integration Tests', () => {
           termsAccepted: true,
           accountType: {
             planName: 'essential',
-          category: 'individual',
+            category: 'individual',
             planId: 'price_1234567890abcd',
             billingInterval: 'monthly',
             isEnterpriseAccount: false,

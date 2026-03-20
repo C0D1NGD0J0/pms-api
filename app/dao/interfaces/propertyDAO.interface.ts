@@ -26,7 +26,7 @@ export interface IPropertyDAO {
     clientId: string,
     filters: {
       propertyType?: PropertyType[];
-      status?: PropertyStatus[];
+      operationalStatus?: PropertyStatus[];
       occupancyStatus?: OccupancyStatus[];
       priceRange?: { min?: number; max?: number };
       areaRange?: { min?: number; max?: number };

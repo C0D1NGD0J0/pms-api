@@ -2597,10 +2597,10 @@ export class LeaseService {
     }
 
     return {
-      tenantName: lease.tenantInfo?.fullname,
+      tenantName: lease.tenantInfo?.fullname || 'Tenant',
       propertyAddress: lease.property.address,
       leaseNumber: lease.leaseNumber,
-      unitNumber: lease.property.unitNumber,
+      unitNumber: lease.property.unitNumber || '',
       endDate: lease.duration.endDate,
       daysRemaining,
 
@@ -2617,9 +2617,9 @@ export class LeaseService {
       responseDeadline,
 
       // Property manager info
-      propertyManagerName: propertyManager?.fullName,
-      propertyManagerEmail: propertyManager?.email,
-      propertyManagerPhone: propertyManager?.phone,
+      propertyManagerName: propertyManager?.fullName || 'Property Manager',
+      propertyManagerEmail: propertyManager?.email || envVariables.EMAIL.APP_EMAIL_ADDRESS,
+      propertyManagerPhone: propertyManager?.phone || '',
 
       // URLs
       renewalUrl: `${envVariables.FRONTEND.URL}/leases/${lease.luid}/lease_renewal_confirmation`,

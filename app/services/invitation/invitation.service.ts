@@ -15,6 +15,7 @@ import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
 import { PaymentGatewayService, VendorService, UserService } from '@services/index';
 import { EmailFailedPayload, EmailSentPayload, EventTypes } from '@interfaces/events.interface';
+import { PaymentProcessorDAO, InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import {
   ISuccessReturnData,
   ExtractedMediaFile,
@@ -27,15 +28,6 @@ import {
   NotFoundError,
   ConflictError,
 } from '@shared/customErrors';
-import {
-  PaymentProcessorDAO,
-  PropertyUnitDAO,
-  InvitationDAO,
-  PropertyDAO,
-  ProfileDAO,
-  ClientDAO,
-  UserDAO,
-} from '@dao/index';
 import {
   IInvitationAcceptance,
   ISendInvitationResult,
@@ -50,12 +42,10 @@ interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
-  propertyUnitDAO: PropertyUnitDAO;
   profileService: ProfileService;
   invitationDAO: InvitationDAO;
   vendorService: VendorService;
   queueFactory: QueueFactory;
-  propertyDAO: PropertyDAO;
   userService: UserService;
   subscriptionService: any;
   profileDAO: ProfileDAO;
@@ -77,8 +67,6 @@ export class InvitationService {
   private readonly userService: UserService;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
-  private readonly propertyUnitDAO: PropertyUnitDAO;
-  private readonly propertyDAO: PropertyDAO;
   private readonly leaseDAO: any;
   private readonly subscriptionService: any;
 
@@ -96,8 +84,6 @@ export class InvitationService {
     subscriptionService,
     paymentProcessorDAO,
     paymentGatewayService,
-    propertyDAO,
-    propertyUnitDAO,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -111,8 +97,6 @@ export class InvitationService {
     this.userService = userService;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.paymentGatewayService = paymentGatewayService;
-    this.propertyDAO = propertyDAO;
-    this.propertyUnitDAO = propertyUnitDAO;
     this.leaseDAO = leaseDAO;
     this.log = createLogger('InvitationService');
     this.setupEventListeners();
@@ -163,35 +147,6 @@ export class InvitationService {
         throw new ConflictError({
           message: t('invitation.errors.userAlreadyHasAccess'),
         });
-      }
-
-      // For tenant invitations being sent (not draft), validate property exists
-      const isDraftInvite = validatedData.status === 'draft';
-      if (validatedData.role === 'tenant' && !isDraftInvite) {
-        const propertyId = validatedData.metadata?.tenantInfo?.propertyId;
-        if (!propertyId) {
-          throw new BadRequestError({ message: t('invitation.errors.propertyRequired') });
-        }
-
-        const property = await this.propertyDAO.findFirst({
-          pid: propertyId,
-          cuid,
-          deletedAt: null,
-        });
-        if (!property) {
-          throw new NotFoundError({ message: t('property.errors.propertyNotFound') });
-        }
-
-        const unitId = validatedData.metadata?.tenantInfo?.unitId;
-        if (unitId) {
-          const unit = await this.propertyUnitDAO.findFirst({
-            pid: unitId,
-            propertyId: property._id,
-          });
-          if (!unit) {
-            throw new NotFoundError({ message: t('propertyUnit.errors.unitNotFound') });
-          }
-        }
       }
 
       // Check seat availability for employee roles

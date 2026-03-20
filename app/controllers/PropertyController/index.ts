@@ -110,7 +110,7 @@ export class PropertyController {
       }
 
       if (filter.status) {
-        queryParams.filters.status = filter.status as any;
+        queryParams.filters.operationalStatus = filter.status as any;
       }
 
       if (filter.occupancyStatus) {

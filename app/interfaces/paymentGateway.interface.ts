@@ -12,6 +12,13 @@ export interface IPaymentProvider {
       }
     >
   >;
+  createCustomer(data: {
+    email: string;
+    name?: string;
+    provider: IPaymentGatewayProvider;
+    connectedAccountId?: string;
+    metadata?: Record<string, string>;
+  }): Promise<IPaymentCustomer>;
   createCheckoutSession(data: {
     customerId: string;
     priceId: string;
@@ -30,12 +37,6 @@ export interface IPaymentProvider {
     amountInCents?: number;
     reason?: string;
   }): Promise<{ refundId: string; status: string; amount: number; currency: string }>;
-  createCustomer(data: {
-    email: string;
-    name?: string;
-    provider: IPaymentGatewayProvider;
-    metadata?: Record<string, string>;
-  }): Promise<IPaymentCustomer>;
   createKycOnboardingLink(params: {
     accountId: string;
     refreshUrl: string;
@@ -141,6 +142,14 @@ export interface ICreateIdentitySessionInput {
   email?: string;
 }
 
+export interface ICreateCustomerInput {
+  metadata?: Record<string, string>;
+  provider: IPaymentGatewayProvider;
+  connectedAccountId?: string;
+  email: string;
+  name?: string;
+}
+
 export interface ICheckoutSession {
   provider: IPaymentGatewayProvider;
   metadata?: Record<string, string>;
@@ -155,13 +164,6 @@ export interface IPaymentCustomer {
   customerId: string;
   createdAt?: Date;
   email: string;
-}
-
-export interface ICreateCustomerInput {
-  metadata?: Record<string, string>;
-  provider: IPaymentGatewayProvider;
-  email: string;
-  name?: string;
 }
 
 export interface IIdentityVerificationReport {

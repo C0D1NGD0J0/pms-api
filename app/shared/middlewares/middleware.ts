@@ -29,6 +29,7 @@ import {
   ISubscriptionStatus,
   PermissionResource,
   PermissionAction,
+  PermissionScope,
   ICurrentUser,
   EventTypes,
 } from '@interfaces/index';
@@ -673,13 +674,21 @@ export const requirePermissionWithContext = (
       }
 
       // Extract resource context if provided
-      let context = {};
+      let context: Record<string, any> = {};
+      let scope: PermissionScope | undefined;
       if (contextExtractor) {
         try {
           const extractedContext = contextExtractor(req);
+          // Auto-determine scope: if ownerId matches the current user, use MINE scope
+          const ownerId = extractedContext?.ownerId;
+          if (ownerId) {
+            const isOwner = ownerId === currentuser.uid || ownerId === currentuser.sub;
+            scope = isOwner ? PermissionScope.MINE : PermissionScope.ANY;
+          }
           context = {
             clientId: currentuser.client.cuid,
             userId: currentuser.sub,
+            resourceOwnerId: extractedContext?.ownerId,
             ...extractedContext,
           };
         } catch (error) {
@@ -694,6 +703,7 @@ export const requirePermissionWithContext = (
         role: currentuser.client.role,
         resource: resource as PermissionResource,
         action: action as string,
+        scope: scope ?? PermissionScope.ANY,
         context: {
           clientId: currentuser.client.cuid,
           userId: currentuser.sub,

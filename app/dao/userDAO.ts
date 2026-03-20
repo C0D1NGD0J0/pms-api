@@ -1146,6 +1146,40 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           },
         },
         { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+        // Join active leases directly from the leases collection
+        {
+          $lookup: {
+            from: 'leases',
+            let: { userId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: ['$tenantId', '$$userId'] },
+                  status: 'active',
+                },
+              },
+              { $project: { 'fees.monthlyRent': 1, 'property.id': 1 } },
+            ],
+            as: 'activeLeasesDocs',
+          },
+        },
+        // Join prior (terminated/expired) leases for expiredLeases count
+        {
+          $lookup: {
+            from: 'leases',
+            let: { userId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: ['$tenantId', '$$userId'] },
+                  status: { $in: ['terminated', 'expired'] },
+                },
+              },
+              { $project: { _id: 1 } },
+            ],
+            as: 'priorLeasesDocs',
+          },
+        },
       ];
 
       // Apply filters if provided
@@ -1157,7 +1191,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         }
 
         if (filters.propertyId) {
-          matchConditions['profile.tenantInfo.activeLease.propertyId'] = filters.propertyId;
+          matchConditions['activeLeasesDocs.property.id'] = filters.propertyId;
         }
 
         if (Object.keys(matchConditions).length > 0) {
@@ -1171,24 +1205,33 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           $group: {
             _id: null,
             total: { $sum: 1 },
-            activeLeases: {
+            activeCount: {
               $sum: {
-                $cond: [{ $ne: ['$profile.tenantInfo.activeLease', null] }, 1, 0],
+                $cond: [{ $gt: [{ $size: '$activeLeasesDocs' }, 0] }, 1, 0],
+              },
+            },
+            expiredCount: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $eq: [{ $size: '$activeLeasesDocs' }, 0] },
+                      { $gt: [{ $size: '$priorLeasesDocs' }, 0] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
               },
             },
             totalRent: {
-              $sum: {
-                $ifNull: ['$profile.tenantInfo.activeLease.rentAmount', 0],
-              },
+              $sum: { $sum: '$activeLeasesDocs.fees.monthlyRent' },
             },
             backgroundCheckDistribution: {
               $push: '$profile.tenantInfo.backgroundCheckStatus',
             },
             propertyDistribution: {
-              $push: {
-                propertyId: '$profile.tenantInfo.activeLease.propertyId',
-                rentAmount: '$profile.tenantInfo.activeLease.rentAmount',
-              },
+              $push: { $arrayElemAt: ['$activeLeasesDocs.property.id', 0] },
             },
           },
         },
@@ -1196,25 +1239,21 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           $project: {
             _id: 0,
             total: 1,
-            activeLeases: 1,
-            expiredLeases: { $subtract: ['$total', '$activeLeases'] },
-            pendingLeases: { $literal: 0 }, // This would need additional logic based on lease dates
+            activeLeases: '$activeCount',
+            expiredLeases: '$expiredCount',
+            pendingLeases: { $literal: 0 },
             rentStatus: {
-              current: '$activeLeases', // Simplified - would need payment data
+              current: '$activeCount',
               late: { $literal: 0 },
               overdue: { $literal: 0 },
             },
             averageRent: {
-              $cond: [
-                { $gt: ['$activeLeases', 0] },
-                { $divide: ['$totalRent', '$activeLeases'] },
-                0,
-              ],
+              $cond: [{ $gt: ['$activeCount', 0] }, { $divide: ['$totalRent', '$activeCount'] }, 0],
             },
             occupancyRate: {
               $cond: [
                 { $gt: ['$total', 0] },
-                { $multiply: [{ $divide: ['$activeLeases', '$total'] }, 100] },
+                { $multiply: [{ $divide: ['$activeCount', '$total'] }, 100] },
                 0,
               ],
             },
@@ -1286,26 +1325,20 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       const stats: any = result[0];
 
-      // Process property distribution
-      const propertyMap = new Map<string, { count: number; totalRent: number; name?: string }>();
+      // Process property distribution — array of property ObjectIds (null entries filtered out)
+      const propertyMap = new Map<string, number>();
 
-      for (const prop of stats.distributionByProperty || []) {
-        if (prop.propertyId) {
-          const existing = propertyMap.get(prop.propertyId) || {
-            count: 0,
-            totalRent: 0,
-            name: `Property ${prop.propertyId}`,
-          };
-          existing.count++;
-          existing.totalRent += prop.rentAmount || 0;
-          propertyMap.set(prop.propertyId, existing);
+      for (const propId of stats.distributionByProperty || []) {
+        if (propId) {
+          const key = propId.toString();
+          propertyMap.set(key, (propertyMap.get(key) || 0) + 1);
         }
       }
 
-      stats.distributionByProperty = Array.from(propertyMap.entries()).map(([id, data]) => ({
+      stats.distributionByProperty = Array.from(propertyMap.entries()).map(([id, count]) => ({
         propertyId: id,
-        propertyName: data.name,
-        tenantCount: data.count,
+        propertyName: `Property ${id}`,
+        tenantCount: count,
       }));
 
       return stats as import('@interfaces/user.interface').ITenantStats;

@@ -16,9 +16,8 @@ export const createMockPropertyData = (overrides = {}) => ({
     'commercial',
     'industrial',
   ]),
-  status: faker.helpers.arrayElement([
+  operationalStatus: faker.helpers.arrayElement([
     'available',
-    'occupied',
     'maintenance',
     'construction',
     'inactive',
@@ -112,9 +111,8 @@ export const createMockProperty = (overrides = {}) => ({
     'commercial',
     'industrial',
   ]),
-  status: faker.helpers.arrayElement([
+  operationalStatus: faker.helpers.arrayElement([
     'available',
-    'occupied',
     'maintenance',
     'construction',
     'inactive',
@@ -255,9 +253,8 @@ export const createMockPropertySearchFilters = (overrides = {}) => ({
     'commercial',
     'industrial',
   ]),
-  status: faker.helpers.arrayElement([
+  operationalStatus: faker.helpers.arrayElement([
     'available',
-    'occupied',
     'maintenance',
     'construction',
     'inactive',

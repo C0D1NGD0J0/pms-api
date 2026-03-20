@@ -3,7 +3,7 @@ import { UserService } from '@services/user/user.service';
 import { VendorService } from '@services/vendor/vendor.service';
 import { ProfileService } from '@services/profile/profile.service';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
-import { BadRequestError, ConflictError } from '@shared/customErrors';
+import { BadRequestError, ConflictError, NotFoundError } from '@shared/customErrors';
 import { Invitation, Profile, Client, Lease, User } from '@models/index';
 import { InvitationService } from '@services/invitation/invitation.service';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
@@ -106,6 +106,8 @@ describe('InvitationService Integration Tests', () => {
       subscriptionService: {} as any,
       paymentProcessorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
       paymentGatewayService: { createCustomer: jest.fn() } as any,
+      propertyDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
+      propertyUnitDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
     });
   });
 
@@ -284,6 +286,155 @@ describe('InvitationService Integration Tests', () => {
         // No invitation should be created
         const invitations = await Invitation.find({ inviteeEmail: existingMember.email });
         expect(invitations).toHaveLength(0);
+      });
+      describe('tenant invitation property validation', () => {
+        let propertyDAOMock: any;
+        let propertyUnitDAOMock: any;
+
+        beforeEach(() => {
+          jest.clearAllMocks();
+          propertyDAOMock = (invitationService as any).propertyDAO;
+          propertyUnitDAOMock = (invitationService as any).propertyUnitDAO;
+        });
+
+        it('should throw BadRequestError when sending tenant invite without propertyId', async () => {
+          // Arrange
+          const invitationData = {
+            inviteeEmail: `tenant-noprop-${Date.now()}@example.com`,
+            role: IUserRole.TENANT,
+            personalInfo: { firstName: 'Alice', lastName: 'Smith' },
+            status: 'pending' as const,
+            // no metadata.tenantInfo.propertyId
+          };
+
+          // Act & Assert
+          await expect(
+            invitationService.sendInvitation(
+              adminUser._id.toString(),
+              testClient.cuid,
+              invitationData
+            )
+          ).rejects.toThrow(BadRequestError);
+
+          expect(propertyDAOMock.findFirst).not.toHaveBeenCalled();
+        });
+
+        it('should allow draft tenant invite without propertyId', async () => {
+          // Arrange
+          const invitationData = {
+            inviteeEmail: `tenant-draft-${Date.now()}@example.com`,
+            role: IUserRole.TENANT,
+            personalInfo: { firstName: 'Bob', lastName: 'Jones' },
+            status: 'draft' as const,
+            // no metadata.tenantInfo.propertyId
+          };
+
+          // Act
+          const result = await invitationService.sendInvitation(
+            adminUser._id.toString(),
+            testClient.cuid,
+            invitationData
+          );
+
+          // Assert
+          expect(result.success).toBe(true);
+          expect(propertyDAOMock.findFirst).not.toHaveBeenCalled();
+        });
+
+        it('should throw NotFoundError when propertyId does not belong to client', async () => {
+          // Arrange
+          propertyDAOMock.findFirst.mockReturnValue(Promise.resolve(null));
+
+          const invitationData = {
+            inviteeEmail: `tenant-badprop-${Date.now()}@example.com`,
+            role: IUserRole.TENANT,
+            personalInfo: { firstName: 'Carol', lastName: 'White' },
+            status: 'pending' as const,
+            metadata: { tenantInfo: { propertyId: 'some-pid-123' } },
+          };
+
+          // Act & Assert
+          await expect(
+            invitationService.sendInvitation(
+              adminUser._id.toString(),
+              testClient.cuid,
+              invitationData
+            )
+          ).rejects.toThrow(NotFoundError);
+
+          expect(propertyDAOMock.findFirst).toHaveBeenCalledWith({
+            pid: 'some-pid-123',
+            cuid: testClient.cuid,
+            deletedAt: null,
+          });
+        });
+
+        it('should succeed when tenant invite has valid propertyId', async () => {
+          // Arrange
+          const propertyObjectId = new Types.ObjectId();
+          propertyDAOMock.findFirst.mockReturnValue(
+            Promise.resolve({ _id: propertyObjectId, pid: 'prop-pid-123' })
+          );
+
+          const invitationData = {
+            inviteeEmail: `tenant-validprop-${Date.now()}@example.com`,
+            role: IUserRole.TENANT,
+            personalInfo: { firstName: 'Dave', lastName: 'Brown' },
+            status: 'pending' as const,
+            metadata: { tenantInfo: { propertyId: 'prop-pid-123' } },
+          };
+
+          // Act
+          const result = await invitationService.sendInvitation(
+            adminUser._id.toString(),
+            testClient.cuid,
+            invitationData
+          );
+
+          // Assert
+          expect(result.success).toBe(true);
+          expect(propertyDAOMock.findFirst).toHaveBeenCalledWith({
+            pid: 'prop-pid-123',
+            cuid: testClient.cuid,
+            deletedAt: null,
+          });
+        });
+
+        it('should throw NotFoundError when unitId does not exist on property', async () => {
+          // Arrange
+          const propertyObjectId = new Types.ObjectId();
+          propertyDAOMock.findFirst.mockReturnValue(
+            Promise.resolve({ _id: propertyObjectId, pid: 'prop-pid-123' })
+          );
+          propertyUnitDAOMock.findFirst.mockReturnValue(Promise.resolve(null));
+
+          const invitationData = {
+            inviteeEmail: `tenant-badunit-${Date.now()}@example.com`,
+            role: IUserRole.TENANT,
+            personalInfo: { firstName: 'Eve', lastName: 'Taylor' },
+            status: 'pending' as const,
+            metadata: { tenantInfo: { propertyId: 'prop-pid-123', unitId: 'unit-pid-123' } },
+          };
+
+          // Act & Assert
+          await expect(
+            invitationService.sendInvitation(
+              adminUser._id.toString(),
+              testClient.cuid,
+              invitationData
+            )
+          ).rejects.toThrow(NotFoundError);
+
+          expect(propertyDAOMock.findFirst).toHaveBeenCalledWith({
+            pid: 'prop-pid-123',
+            cuid: testClient.cuid,
+            deletedAt: null,
+          });
+          expect(propertyUnitDAOMock.findFirst).toHaveBeenCalledWith({
+            pid: 'unit-pid-123',
+            propertyId: propertyObjectId,
+          });
+        });
       });
     }); // End sendInvitation
 

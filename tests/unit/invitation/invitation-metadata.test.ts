@@ -127,6 +127,8 @@ describe('Invitation Metadata Transfer', () => {
       leaseDAO: {} as any,
       paymentProcessorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
       paymentGatewayService: { createCustomer: jest.fn() } as any,
+      propertyDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
+      propertyUnitDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
     });
 
     jest.spyOn(profileService, 'initializeRoleInfo');

@@ -274,7 +274,7 @@ export const validateResourceAvailable = (
   resource: IPropertyDocument | IPropertyUnitDocument,
   resourceType: 'property' | 'unit'
 ): void => {
-  if (resource.status !== 'available') {
+  if (resource.operationalStatus !== 'available') {
     throw new BadRequestError({
       message: `Cannot send lease for signatures, as the selected ${resourceType} is not available.`,
     });

@@ -149,7 +149,7 @@ export class PropertyCsvProcessor {
       fullAddress: row.fullAddress?.trim(),
       propertyType: row.propertyType,
       ...(documents.length > 0 && { documents }),
-      status: (row.status || 'available') as PropertyStatus,
+      operationalStatus: (row.operationalStatus || 'available') as PropertyStatus,
       occupancyStatus: (row.occupancyStatus || 'vacant') as OccupancyStatus,
       maxAllowedUnits: row.maxAllowedUnits ? Number(row.maxAllowedUnits) : 0,
       yearBuilt: row.yearBuilt ? Number(row.yearBuilt) : undefined,

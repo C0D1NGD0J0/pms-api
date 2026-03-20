@@ -468,6 +468,7 @@ export class PropertyService {
     });
 
     await this.propertyCache.cacheProperty(cuid, result.id, result);
+    await this.propertyCache.invalidateLeaseableProperties(cuid);
 
     if (approvalStatus === PropertyApprovalStatusEnum.PENDING) {
       try {
@@ -647,7 +648,7 @@ export class PropertyService {
     const filter: FilterQuery<IPropertyDocument> = {
       cuid,
       deletedAt: null,
-      status: { $ne: 'inactive' },
+      operationalStatus: { $ne: 'inactive' },
     };
 
     const userRole = currentuser.client.role;
@@ -666,8 +667,8 @@ export class PropertyService {
         filter.propertyType = { $in: filters.propertyType };
       }
 
-      if (filters.status) {
-        filter.status = { $in: filters.status };
+      if (filters.operationalStatus) {
+        filter.operationalStatus = { $in: filters.operationalStatus };
       }
 
       if (filters.occupancyStatus) {
@@ -1088,6 +1089,7 @@ export class PropertyService {
       }
 
       await this.propertyCache.invalidateProperty(ctx.cuid, result.id);
+      await this.propertyCache.invalidateLeaseableProperties(ctx.cuid);
       await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
 
       // notify staff if their pending changes were overridden
@@ -1810,8 +1812,11 @@ export class PropertyService {
       const filter: FilterQuery<IPropertyDocument> = {
         cuid,
         deletedAt: null,
-        status: 'available',
-        approvalStatus: PropertyApprovalStatusEnum.APPROVED,
+        operationalStatus: 'available',
+        $or: [
+          { approvalStatus: PropertyApprovalStatusEnum.APPROVED },
+          { approvalStatus: { $exists: false } },
+        ],
       };
 
       const properties = await this.propertyDAO.list(filter, {

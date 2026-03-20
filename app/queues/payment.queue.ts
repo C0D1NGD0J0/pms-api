@@ -34,17 +34,17 @@ export class PaymentQueue extends BaseQueue {
 
     this.processQueueJobs(
       JOB_NAME.CREATE_RENT_INVOICE_JOB,
-      5, // concurrency: process up to 5 invoices simultaneously
+      3,
       this.paymentWorker.handleCreateRentInvoice
     );
 
     this.processQueueJobs(
       JOB_NAME.RETRY_FAILED_INVOICE_JOB,
-      2,
+      1,
       this.paymentWorker.handleCreateRentInvoice // same handler, different retry config
     );
 
-    this.processQueueJobs(JOB_NAME.CANCEL_PAYMENT_JOB, 10, this.paymentWorker.handleCancelPayment);
+    this.processQueueJobs(JOB_NAME.CANCEL_PAYMENT_JOB, 3, this.paymentWorker.handleCancelPayment);
   }
 
   /**

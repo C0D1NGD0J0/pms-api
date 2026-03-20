@@ -16,11 +16,11 @@ export class QueueFactory {
    */
   public getQueue(queueName: string): BaseQueue {
     if (!this.initializedQueues.has(queueName)) {
-      this.log.info(`Lazy initializing queue: ${queueName}`);
+      this.log.debug(`Lazy initializing queue: ${queueName}`);
       try {
         const queue = container.resolve(queueName);
         this.initializedQueues.add(queueName);
-        this.log.info(`Successfully initialized queue: ${queueName}`);
+        this.log.debug(`Successfully initialized queue: ${queueName}`);
         return queue;
       } catch (error) {
         this.log.error(`Failed to initialize queue ${queueName}:`, error);

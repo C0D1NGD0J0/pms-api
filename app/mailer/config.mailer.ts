@@ -162,8 +162,16 @@ export class MailService {
     const renderSafely = async (path: string): Promise<string> => {
       try {
         return await this.renderTemplateFile(path, templateData);
-      } catch (err) {
-        this.log.debug(`Template not found: ${path}`);
+      } catch (err: any) {
+        // Distinguish between missing template (expected for .text variants) and render errors (bugs)
+        if (err.code === 'ENOENT') {
+          this.log.debug(`Template file not found (optional): ${path}`);
+        } else {
+          this.log.error(
+            { error: err.message, path, dataKeys: Object.keys(templateData) },
+            `Email template render failed: ${path}`
+          );
+        }
         return '';
       }
     };
@@ -253,6 +261,13 @@ export class MailService {
 
   private getEnvironmentTransportOptions() {
     const isProduction = envVariables.SERVER.ENV === 'production';
+    // Timeouts prevent nodemailer from hanging indefinitely when SMTP is unreachable
+    const timeouts = {
+      connectionTimeout: 10000, // 10s to establish connection
+      greetingTimeout: 10000, // 10s for SMTP greeting
+      socketTimeout: 30000, // 30s for socket inactivity
+    };
+
     if (isProduction) {
       return {
         service: envVariables.EMAIL.PROD.PROVIDER,
@@ -263,6 +278,7 @@ export class MailService {
           user: envVariables.EMAIL.PROD.PROVIDER_USERNAME,
           pass: envVariables.EMAIL.PROD.PROVIDER_PASSWORD,
         },
+        ...timeouts,
       };
     } else {
       return {
@@ -272,6 +288,7 @@ export class MailService {
           user: envVariables.EMAIL.DEV.PROVIDER_USERNAME,
           pass: envVariables.EMAIL.DEV.PROVIDER_PASSWORD,
         },
+        ...timeouts,
       };
     }
   }

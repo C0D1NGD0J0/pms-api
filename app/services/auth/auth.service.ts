@@ -549,7 +549,7 @@ export class AuthService {
       subject: t('email.registration.subject'),
       emailType: MailType.ACCOUNT_ACTIVATION,
       data: {
-        fullname: user.profile?.fullname,
+        fullname: user.profile?.fullname || '',
         activationUrl: `${envVariables.FRONTEND.URL}/account_activation/${user.activecuid}?t=${user.activationToken}`,
       },
     };
@@ -578,7 +578,7 @@ export class AuthService {
       subject: t('email.forgotPassword.subject'),
       to: user.email,
       data: {
-        fullname: user.profile?.fullname,
+        fullname: user.profile?.fullname || '',
         resetUrl: `${process.env.FRONTEND_URL}/reset_password/${user.passwordResetToken}`,
       },
       emailType: MailType.FORGOT_PASSWORD,
@@ -612,7 +612,7 @@ export class AuthService {
       subject: t('email.forgotPassword.subject'),
       to: user.email,
       data: {
-        fullname: user.profile?.fullname,
+        fullname: user.profile?.fullname || '',
       },
       emailType: MailType.PASSWORD_RESET,
     };

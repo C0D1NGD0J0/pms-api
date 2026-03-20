@@ -16,8 +16,9 @@ export class PidManager {
   }
 
   /**
-   * Check for existing PID file and prevent duplicate processes
-   * Exits process if another instance is already running
+   * Check for existing PID file and prevent duplicate processes.
+   * In development: kills the old process and takes over (nodemon restarts).
+   * In production: exits to prevent duplicate processes.
    */
   check(): void {
     this.ensurePidDirectory();
@@ -26,14 +27,29 @@ export class PidManager {
       const existingPid = this.readPidFile();
 
       if (this.isProcessRunning(existingPid)) {
-        this.log.warn(
-          `${this.processName.toUpperCase()} process already running with PID ${existingPid}. Exiting to prevent duplicate processes.`
-        );
-        process.exit(0);
+        const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev';
+
+        if (isDev) {
+          this.log.info(
+            `Killing previous ${this.processName.toUpperCase()} process (PID ${existingPid}) from nodemon restart...`
+          );
+          try {
+            process.kill(existingPid, 'SIGTERM');
+          } catch (err: any) {
+            if (err.code !== 'ESRCH') {
+              this.log.warn(`Failed to kill old process ${existingPid}:`, err);
+            }
+          }
+          // Brief wait for old process to release resources
+          this.waitForProcessExit(existingPid, 3000);
+        } else {
+          this.log.warn(
+            `${this.processName.toUpperCase()} process already running with PID ${existingPid}. Exiting to prevent duplicate processes.`
+          );
+          process.exit(0);
+        }
       }
 
-      // Process doesn't exist, stale PID file - safe to continue
-      this.log.info(`Removing stale PID file for non-existent process ${existingPid}`);
       this.cleanup();
     }
 
@@ -143,6 +159,32 @@ export class PidManager {
     } catch (err) {
       this.log.error('Failed to write PID file:', err);
       throw err;
+    }
+  }
+
+  private waitForProcessExit(pid: number, timeoutMs: number): void {
+    const start = Date.now();
+    const interval = 100;
+
+    while (Date.now() - start < timeoutMs) {
+      if (!this.isProcessRunning(pid)) {
+        return;
+      }
+      // Synchronous sleep — acceptable here since this only runs once at startup
+      const waitUntil = Date.now() + interval;
+      while (Date.now() < waitUntil) {
+        // busy-wait
+      }
+    }
+
+    // Force kill if still alive
+    try {
+      process.kill(pid, 'SIGKILL');
+      this.log.warn(`Force-killed old process ${pid} after ${timeoutMs}ms timeout`);
+    } catch (err: any) {
+      if (err.code !== 'ESRCH') {
+        this.log.warn(`Failed to force-kill process ${pid}:`, err);
+      }
     }
   }
 

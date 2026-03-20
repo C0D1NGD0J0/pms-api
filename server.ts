@@ -56,15 +56,23 @@ class Server {
     // Queues/workers run in separate worker_process.ts
     // Only load Bull Board UI (readonly) for monitoring via /admin/queues
     const isWorkerProcess = process.env.PROCESS_TYPE === 'worker';
-    if (!isWorkerProcess) {
-      this.log.info('API process: Skipping queue/worker initialization to save memory');
-      this.log.info('Workers run in separate worker_process.ts (deploy pms-worker service)');
-    } else {
+    if (isWorkerProcess) {
       this.log.warn('⚠️  PROCESS_TYPE=worker detected in server.ts - this should not happen!');
       this.log.warn('⚠️  Worker initialization should only happen in worker_process.ts');
     }
 
     this.app.initConfig();
+
+    // Eagerly initialize all queues so Bull Board shows them immediately after startup.
+    // Queues are otherwise lazy-loaded (only initialized when first used), which causes
+    // Bull Board to appear empty after a server restart until the first job is enqueued.
+    if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
+      const { queueFactory } = container.cradle;
+      queueFactory.initializeAllQueues().catch((err: any) => {
+        this.log.warn('Queue pre-initialization for Bull Board failed (non-fatal):', err?.message);
+      });
+    }
+
     await this.startServers(this.expApp);
     this.initialized = true;
   };
@@ -171,7 +179,7 @@ class Server {
 
     this.shuttingDown = true;
     this.log.info('Server shutting down...');
-    this.pidManager.killProcess();
+    this.pidManager.cleanup();
 
     // Set a timeout to force exit if graceful shutdown takes too long
     const shutdownTimeout = setTimeout(() => {
@@ -223,11 +231,7 @@ class Server {
 
       clearTimeout(shutdownTimeout);
       this.log.info('Graceful shutdown completed');
-
-      if (exitCode !== 0) {
-        this.log.info(`Exiting with code ${exitCode}`);
-        process.exit(exitCode);
-      }
+      process.exit(exitCode);
     } catch (error) {
       clearTimeout(shutdownTimeout);
       this.log.error('Error during shutdown:', error);

@@ -469,7 +469,8 @@
       "cannotResend": "Cannot resend this invitation",
       "expired": "Invitation has expired",
       "noCsvFileUploaded": "No CSV file uploaded. Please select a file to continue.",
-      "pendingInvitationExists": "An active invitation already exists for this email address"
+      "pendingInvitationExists": "An active invitation already exists for this email address",
+      "propertyRequired": "A property is required when sending a tenant invitation"
     }
   },
   "profile": {

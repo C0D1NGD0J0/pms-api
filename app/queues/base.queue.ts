@@ -316,7 +316,7 @@ export class BaseQueue<T extends JobData = JobData> {
     }
     this.log.info(`Registering processor for job '${name}' on queue '${this.queue.name}'`);
     const wrappedCallback: Queue.ProcessCallbackFunction<T> = async (job) => {
-      this.log.info(`[DISPATCH] Bull dispatched job ${job.id} (${job.name}) to processor`);
+      this.log.debug(`[DISPATCH] Bull dispatched job ${job.id} (${job.name}) to processor`);
       return callback(job);
     };
     this.queue.process(name, concurrency, wrappedCallback);

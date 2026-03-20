@@ -105,6 +105,24 @@ export class QueueFactory {
   }
 
   /**
+   * Gracefully shut down all initialized queues
+   */
+  public async shutdownAll(): Promise<void> {
+    const queueNames = Array.from(this.initializedQueues);
+    await Promise.allSettled(
+      queueNames.map(async (name) => {
+        try {
+          const queue: BaseQueue = container.resolve(name);
+          await queue.shutdown();
+          this.log.info(`Queue ${name} shut down`);
+        } catch (err) {
+          this.log.warn(`Failed to shut down queue ${name}:`, err);
+        }
+      })
+    );
+  }
+
+  /**
    * Clear initialization tracking (for testing)
    */
   public reset(): void {

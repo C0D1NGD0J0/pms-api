@@ -165,16 +165,15 @@ export class PidManager {
   private waitForProcessExit(pid: number, timeoutMs: number): void {
     const start = Date.now();
     const interval = 100;
+    // Shared buffer used solely as a blocking target for Atomics.wait (no data written)
+    const sharedBuf = new Int32Array(new SharedArrayBuffer(4));
 
     while (Date.now() - start < timeoutMs) {
       if (!this.isProcessRunning(pid)) {
         return;
       }
-      // Synchronous sleep — acceptable here since this only runs once at startup
-      const waitUntil = Date.now() + interval;
-      while (Date.now() < waitUntil) {
-        // busy-wait
-      }
+      // Non-spinning synchronous sleep — releases CPU while waiting
+      Atomics.wait(sharedBuf, 0, 0, interval);
     }
 
     // Force kill if still alive

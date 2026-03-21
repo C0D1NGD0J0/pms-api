@@ -233,13 +233,13 @@ class Server {
 
       clearTimeout(shutdownTimeout);
       this.log.info('Graceful shutdown completed');
+      await Sentry.flush(2000);
       process.exit(exitCode);
     } catch (error) {
       clearTimeout(shutdownTimeout);
       this.log.error('Error during shutdown:', error);
-      process.exit(1);
-    } finally {
       await Sentry.flush(2000);
+      process.exit(1);
     }
   }
 

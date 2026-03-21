@@ -394,7 +394,9 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
       ? (sourceHeader as RequestSource)
       : RequestSource.UNKNOWN;
 
-    const requestId = (req.headers['x-request-id'] as string | undefined) || generateShortUID(12);
+    const rawRequestId = req.headers['x-request-id'];
+    const requestId =
+      (Array.isArray(rawRequestId) ? rawRequestId[0] : rawRequestId) || generateShortUID(12);
     res.setHeader('X-Request-ID', requestId);
 
     const uaParser = new UAParser(req.headers['user-agent'] as string);
@@ -802,10 +804,12 @@ export const idempotency = async (
   const { idempotencyCache } = req.container.cradle;
   const userId = req.context?.currentuser?.sub ?? 'anonymous';
   const cuid = req.params?.cuid ?? 'global';
+  const routePath = req.route?.path ?? req.path;
 
   try {
     const cached = await idempotencyCache.getCachedRouteResponse(
       req.method,
+      routePath,
       userId,
       cuid,
       idempotencyKey
@@ -820,7 +824,15 @@ export const idempotency = async (
     res.json = (body: any): Response => {
       if (res.statusCode >= 200 && res.statusCode < 300) {
         idempotencyCache
-          .cacheRouteResponse(req.method, userId, cuid, idempotencyKey, res.statusCode, body)
+          .cacheRouteResponse(
+            req.method,
+            routePath,
+            userId,
+            cuid,
+            idempotencyKey,
+            res.statusCode,
+            body
+          )
           .catch((err: unknown) =>
             logger.error({ err, idempotencyKey, cuid }, 'Failed to cache idempotent response')
           );

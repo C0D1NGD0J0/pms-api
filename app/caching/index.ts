@@ -1,3 +1,4 @@
+export * from './idempotency.cache';
 export * from './property.cache';
 export * from './events.cache';
 export * from './vendor.cache';

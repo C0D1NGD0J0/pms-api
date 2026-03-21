@@ -8,6 +8,7 @@ import hpp from 'hpp';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+import * as Sentry from '@sentry/node';
 import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
 import { envVariables } from '@shared/config';
@@ -50,6 +51,7 @@ export class App implements IAppSetup {
       initBullBoardAdapter();
     }
     this.routes(this.expApp);
+    this.expApp.use(Sentry.expressErrorHandler());
     this.expApp.use(errorHandlerMiddleware);
   };
 

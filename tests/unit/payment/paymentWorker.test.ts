@@ -1,10 +1,8 @@
-import { DoneCallback, Job } from 'bull';
+import { Job } from 'bull';
 import { PaymentWorker } from '@workers/payment.worker';
 import { PaymentRecordType } from '@interfaces/payments.interface';
 import { PaymentService } from '@services/payments/payments.service';
 import { ICreateRentInvoiceJobData, ICancelPaymentJobData } from '@queues/payment.queue';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const makeJob = <T>(data: T, overrides: Partial<Job> = {}): Job<T> =>
   ({
@@ -14,11 +12,11 @@ const makeJob = <T>(data: T, overrides: Partial<Job> = {}): Job<T> =>
     opts: { attempts: 5 },
     progress: jest.fn().mockResolvedValue(undefined),
     ...overrides,
-  } as unknown as Job<T>);
+  }) as unknown as Job<T>;
 
-const makeDone = (): jest.MockedFunction<DoneCallback> => jest.fn();
-
-const makeRentJobData = (overrides: Partial<ICreateRentInvoiceJobData> = {}): ICreateRentInvoiceJobData => ({
+const makeRentJobData = (
+  overrides: Partial<ICreateRentInvoiceJobData> = {}
+): ICreateRentInvoiceJobData => ({
   cuid: 'MMQHHVX09JJT',
   leaseId: 'lease-object-id-123',
   tenantId: 'tenant-profile-id-456',
@@ -29,7 +27,9 @@ const makeRentJobData = (overrides: Partial<ICreateRentInvoiceJobData> = {}): IC
   ...overrides,
 });
 
-const makeCancelJobData = (overrides: Partial<ICancelPaymentJobData> = {}): ICancelPaymentJobData => ({
+const makeCancelJobData = (
+  overrides: Partial<ICancelPaymentJobData> = {}
+): ICancelPaymentJobData => ({
   cuid: 'MMQHHVX09JJT',
   pytuid: 'PYT001',
   reason: 'Tenant requested cancellation',
@@ -56,18 +56,19 @@ describe('PaymentWorker', () => {
   // ── handleCreateRentInvoice ──────────────────────────────────────────────
 
   describe('handleCreateRentInvoice', () => {
-    it('should call createRentPayment with correct args and call done(null, result)', async () => {
+    it('should call createRentPayment with correct args and return result', async () => {
       const mockPayment = { pytuid: 'PYT-NEW-001' };
-      mockPaymentService.createRentPayment.mockResolvedValue({
-        success: true,
-        data: mockPayment as any,
-      });
+      mockPaymentService.createRentPayment.mockReturnValue(
+        Promise.resolve({
+          success: true,
+          data: mockPayment as any,
+        })
+      );
 
       const data = makeRentJobData();
       const job = makeJob(data);
-      const done = makeDone();
 
-      await worker.handleCreateRentInvoice(job, done);
+      const result = await worker.handleCreateRentInvoice(job);
 
       expect(mockPaymentService.createRentPayment).toHaveBeenCalledWith(
         data.cuid,
@@ -81,33 +82,24 @@ describe('PaymentWorker', () => {
       );
       expect(job.progress).toHaveBeenCalledWith(10);
       expect(job.progress).toHaveBeenCalledWith(100);
-      expect(done).toHaveBeenCalledWith(
-        null,
-        expect.objectContaining({ success: true, pytuid: 'PYT-NEW-001' })
-      );
+      expect(result).toEqual(expect.objectContaining({ success: true, pytuid: 'PYT-NEW-001' }));
     });
 
-    it('should call done(error) when createRentPayment throws', async () => {
+    it('should throw when createRentPayment throws', async () => {
       const err = new Error('Stripe API unavailable');
-      mockPaymentService.createRentPayment.mockRejectedValue(err);
+      mockPaymentService.createRentPayment.mockReturnValue(Promise.reject(err));
 
-      const done = makeDone();
-      await worker.handleCreateRentInvoice(makeJob(makeRentJobData()), done);
-
-      expect(done).toHaveBeenCalledWith(err);
+      await expect(worker.handleCreateRentInvoice(makeJob(makeRentJobData()))).rejects.toThrow(err);
     });
 
-    it('should log an alert on final retry attempt', async () => {
+    it('should throw on final retry attempt', async () => {
       const err = new Error('Stripe timeout');
-      mockPaymentService.createRentPayment.mockRejectedValue(err);
+      mockPaymentService.createRentPayment.mockReturnValue(Promise.reject(err));
 
       // Simulate job on last attempt (attemptsMade = 4, attempts = 5)
       const job = makeJob(makeRentJobData(), { attemptsMade: 4, opts: { attempts: 5 } } as any);
-      const done = makeDone();
 
-      await worker.handleCreateRentInvoice(job, done);
-
-      expect(done).toHaveBeenCalledWith(err);
+      await expect(worker.handleCreateRentInvoice(job)).rejects.toThrow(err);
     });
 
     it('should report progress at 10% before calling service and 100% after', async () => {
@@ -119,9 +111,12 @@ describe('PaymentWorker', () => {
         }),
       } as any);
 
-      mockPaymentService.createRentPayment.mockResolvedValue({ success: true, data: { pytuid: 'X' } as any });
+      mockPaymentService.createRentPayment.mockResolvedValue({
+        success: true,
+        data: { pytuid: 'X' } as any,
+      });
 
-      await worker.handleCreateRentInvoice(job, makeDone());
+      await worker.handleCreateRentInvoice(job);
 
       expect(progressOrder).toEqual([10, 100]);
     });
@@ -130,46 +125,46 @@ describe('PaymentWorker', () => {
   // ── handleCancelPayment ──────────────────────────────────────────────────
 
   describe('handleCancelPayment', () => {
-    it('should call cancelPayment with correct args and call done(null, result)', async () => {
-      mockPaymentService.cancelPayment.mockResolvedValue({ success: true, data: {} as any });
+    it('should call cancelPayment with correct args and return result', async () => {
+      mockPaymentService.cancelPayment.mockReturnValue(
+        Promise.resolve({ success: true, data: {} as any })
+      );
 
       const data = makeCancelJobData();
       const job = makeJob(data);
-      const done = makeDone();
 
-      await worker.handleCancelPayment(job, done);
+      const result = await worker.handleCancelPayment(job);
 
       expect(mockPaymentService.cancelPayment).toHaveBeenCalledWith(
         data.cuid,
         data.pytuid,
         data.reason
       );
-      expect(done).toHaveBeenCalledWith(
-        null,
-        expect.objectContaining({ success: true, pytuid: data.pytuid })
-      );
+      expect(result).toEqual(expect.objectContaining({ success: true, pytuid: data.pytuid }));
     });
 
-    it('should call done(error) when cancelPayment throws', async () => {
+    it('should throw when cancelPayment throws', async () => {
       const err = new Error('Payment not found');
-      mockPaymentService.cancelPayment.mockRejectedValue(err);
+      mockPaymentService.cancelPayment.mockReturnValue(Promise.reject(err));
 
-      const done = makeDone();
-      await worker.handleCancelPayment(makeJob(makeCancelJobData()), done);
-
-      expect(done).toHaveBeenCalledWith(err);
+      await expect(worker.handleCancelPayment(makeJob(makeCancelJobData()))).rejects.toThrow(err);
     });
 
     it('should work without optional reason field', async () => {
-      mockPaymentService.cancelPayment.mockResolvedValue({ success: true, data: {} as any });
+      mockPaymentService.cancelPayment.mockReturnValue(
+        Promise.resolve({ success: true, data: {} as any })
+      );
 
       const data = makeCancelJobData({ reason: undefined });
-      const done = makeDone();
 
-      await worker.handleCancelPayment(makeJob(data), done);
+      const result = await worker.handleCancelPayment(makeJob(data));
 
-      expect(mockPaymentService.cancelPayment).toHaveBeenCalledWith(data.cuid, data.pytuid, undefined);
-      expect(done).toHaveBeenCalledWith(null, expect.objectContaining({ success: true }));
+      expect(mockPaymentService.cancelPayment).toHaveBeenCalledWith(
+        data.cuid,
+        data.pytuid,
+        undefined
+      );
+      expect(result).toEqual(expect.objectContaining({ success: true }));
     });
   });
 });

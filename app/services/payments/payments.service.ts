@@ -247,8 +247,8 @@ export class PaymentService implements ICronProvider {
 
       let lease;
       if (data.leaseId) {
-        lease = await this.leaseDAO.findById(data.leaseId);
-        if (!lease || lease.cuid !== cuid) {
+        lease = await this.leaseDAO.findFirst({ luid: data.leaseId, cuid });
+        if (!lease) {
           throw new NotFoundError({ message: 'Lease not found' });
         }
       }
@@ -293,8 +293,8 @@ export class PaymentService implements ICronProvider {
         throw new BadRequestError({ message: 'Lease ID is required for rent payments' });
       }
 
-      const lease = await this.leaseDAO.findById(data.leaseId);
-      if (!lease || lease.cuid !== cuid) {
+      const lease = await this.leaseDAO.findFirst({ luid: data.leaseId, cuid });
+      if (!lease) {
         throw new NotFoundError({ message: 'Lease not found' });
       }
       if (lease.status !== LeaseStatus.ACTIVE) {

@@ -15,6 +15,7 @@ import {
   requirePermission,
   isAuthenticated,
   basicLimiter,
+  idempotency,
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
@@ -80,6 +81,7 @@ router.post(
   requireVerification,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   requireVerifiedClient,
+  idempotency,
   subscriptionEntitlements,
   requireActiveSubscription,
   validateRequest({

@@ -1,10 +1,11 @@
+import './instrument'; // must be first — initialises Sentry before any other module loads
+process.env.PROCESS_TYPE = 'worker';
 import { container } from '@di/index';
+import * as Sentry from '@sentry/node';
 import { createLogger } from '@utils/helpers';
 import { PidManager } from '@utils/pid-manager';
 import { initQueues } from '@di/registerResources';
 import { EventListenerSetup } from '@di/eventListenerSetup';
-
-process.env.PROCESS_TYPE = 'worker';
 
 class WorkerProcess {
   private log = createLogger('WorkerProcess');
@@ -85,6 +86,7 @@ class WorkerProcess {
     }
 
     this.pidManager.cleanup();
+    await Sentry.flush(2000);
     process.exit(0);
   }
 }

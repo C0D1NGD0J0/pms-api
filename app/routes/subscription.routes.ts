@@ -8,6 +8,7 @@ import {
   requirePermission,
   isAuthenticated,
   basicLimiter,
+  idempotency,
 } from '@shared/middlewares';
 
 export const router: Router = express.Router();
@@ -38,6 +39,7 @@ router.post(
   '/:cuid/init-subscription-payment',
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  idempotency,
   validateRequest({ body: SubscriptionValidations.initiateCheckout }),
   asyncWrapper((req, res) => {
     const subscriptionController =

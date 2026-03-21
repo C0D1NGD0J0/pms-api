@@ -1,5 +1,6 @@
 import { Response, Request } from 'express';
 import { LeaseService } from '@services/lease/lease.service';
+import { IdempotencyCache } from '@caching/idempotency.cache';
 import { WebhookController } from '@controllers/WebhookController';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { BoldSignService } from '@services/external/esignature/boldSign.service';
@@ -11,6 +12,7 @@ describe('WebhookController - Stripe Webhooks', () => {
   let mockSubscriptionService: jest.Mocked<SubscriptionService>;
   let mockLeaseService: jest.Mocked<LeaseService>;
   let mockBoldSignService: jest.Mocked<BoldSignService>;
+  let mockIdempotencyCache: jest.Mocked<IdempotencyCache>;
   let mockRequest: Partial<Request>;
   let mockResponse: Partial<Response>;
 
@@ -30,6 +32,17 @@ describe('WebhookController - Stripe Webhooks', () => {
     mockLeaseService = {} as any;
     mockBoldSignService = {} as any;
 
+    mockIdempotencyCache = {
+      claimWebhookEvent: jest.fn(),
+      markWebhookProcessed: jest.fn(),
+      releaseWebhookClaim: jest.fn(),
+    } as any;
+
+    // Default: every event is a new (unclaimed) event — claim succeeds
+    mockIdempotencyCache.claimWebhookEvent.mockResolvedValue(true);
+    mockIdempotencyCache.markWebhookProcessed.mockResolvedValue(undefined);
+    mockIdempotencyCache.releaseWebhookClaim.mockResolvedValue(undefined);
+
     webhookController = new WebhookController({
       stripeService: mockStripeService,
       subscriptionService: mockSubscriptionService,
@@ -37,6 +50,7 @@ describe('WebhookController - Stripe Webhooks', () => {
       boldSignService: mockBoldSignService,
       paymentService: {} as any,
       clientService: {} as any,
+      idempotencyCache: mockIdempotencyCache,
     });
 
     mockRequest = {
@@ -54,10 +68,7 @@ describe('WebhookController - Stripe Webhooks', () => {
     it('should return 400 if signature is missing', async () => {
       mockRequest.headers = {};
 
-      await webhookController.handleStripeWebhook(
-        mockRequest as Request,
-        mockResponse as Response
-      );
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
       expect(mockResponse.status).toHaveBeenCalledWith(400);
       expect(mockResponse.json).toHaveBeenCalledWith({
@@ -82,10 +93,7 @@ describe('WebhookController - Stripe Webhooks', () => {
       mockStripeService.verifyWebhookSignature.mockResolvedValue(mockEvent);
       mockSubscriptionService.handleSubscriptionCreated.mockResolvedValue(undefined);
 
-      await webhookController.handleStripeWebhook(
-        mockRequest as Request,
-        mockResponse as Response
-      );
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
       expect(mockSubscriptionService.handleSubscriptionCreated).toHaveBeenCalledWith({
         stripeSubscriptionId: 'sub_test123',
@@ -117,10 +125,7 @@ describe('WebhookController - Stripe Webhooks', () => {
         data: {} as any,
       });
 
-      await webhookController.handleStripeWebhook(
-        mockRequest as Request,
-        mockResponse as Response
-      );
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
       expect(mockSubscriptionService.handleSubscriptionUpdated).toHaveBeenCalledWith({
         stripeSubscriptionId: 'sub_test123',
@@ -151,10 +156,7 @@ describe('WebhookController - Stripe Webhooks', () => {
         data: {} as any,
       });
 
-      await webhookController.handleStripeWebhook(
-        mockRequest as Request,
-        mockResponse as Response
-      );
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
       expect(mockSubscriptionService.handleSubscriptionCanceled).toHaveBeenCalledWith({
         stripeSubscriptionId: 'sub_test123',
@@ -181,10 +183,7 @@ describe('WebhookController - Stripe Webhooks', () => {
       mockStripeService.verifyWebhookSignature.mockResolvedValue(mockEvent);
       mockSubscriptionService.handleInvoicePaid.mockResolvedValue(undefined);
 
-      await webhookController.handleStripeWebhook(
-        mockRequest as Request,
-        mockResponse as Response
-      );
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
       expect(mockSubscriptionService.handleInvoicePaid).toHaveBeenCalledWith(mockInvoice);
       expect(mockResponse.status).toHaveBeenCalledWith(200);
@@ -208,10 +207,7 @@ describe('WebhookController - Stripe Webhooks', () => {
       mockStripeService.verifyWebhookSignature.mockResolvedValue(mockEvent);
       mockSubscriptionService.handleInvoicePaymentFailed.mockResolvedValue(undefined);
 
-      await webhookController.handleStripeWebhook(
-        mockRequest as Request,
-        mockResponse as Response
-      );
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
       expect(mockSubscriptionService.handleInvoicePaymentFailed).toHaveBeenCalledWith(mockInvoice);
       expect(mockResponse.status).toHaveBeenCalledWith(200);
@@ -232,10 +228,7 @@ describe('WebhookController - Stripe Webhooks', () => {
       mockRequest.headers = { 'stripe-signature': 'test_signature' };
       mockStripeService.verifyWebhookSignature.mockResolvedValue(mockEvent);
 
-      await webhookController.handleStripeWebhook(
-        mockRequest as Request,
-        mockResponse as Response
-      );
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
       expect(mockResponse.status).toHaveBeenCalledWith(200);
       expect(mockResponse.json).toHaveBeenCalledWith({
@@ -246,14 +239,9 @@ describe('WebhookController - Stripe Webhooks', () => {
 
     it('should return 400 if signature verification fails', async () => {
       mockRequest.headers = { 'stripe-signature': 'invalid_signature' };
-      mockStripeService.verifyWebhookSignature.mockRejectedValue(
-        new Error('Invalid signature')
-      );
+      mockStripeService.verifyWebhookSignature.mockRejectedValue(new Error('Invalid signature'));
 
-      await webhookController.handleStripeWebhook(
-        mockRequest as Request,
-        mockResponse as Response
-      );
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
       expect(mockResponse.status).toHaveBeenCalledWith(400);
       expect(mockResponse.json).toHaveBeenCalledWith({

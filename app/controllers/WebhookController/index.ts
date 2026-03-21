@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { Response, Request } from 'express';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
+import { IdempotencyCache } from '@caching/index';
 import { LeaseService } from '@services/lease/lease.service';
 import { ClientService } from '@services/client/client.service';
 import { PaymentService } from '@services/payments/payments.service';
@@ -11,6 +12,7 @@ import { SubscriptionService } from '@services/subscription/subscription.service
 
 interface IConstructor {
   subscriptionService: SubscriptionService;
+  idempotencyCache: IdempotencyCache;
   boldSignService: BoldSignService;
   paymentService: PaymentService;
   stripeService: StripeService;
@@ -25,6 +27,7 @@ export class WebhookController {
   private subscriptionService: SubscriptionService;
   private paymentService: PaymentService;
   private clientService: ClientService;
+  private idempotencyCache: IdempotencyCache;
   private log: Logger;
 
   constructor({
@@ -34,6 +37,7 @@ export class WebhookController {
     stripeService,
     paymentService,
     clientService,
+    idempotencyCache,
   }: IConstructor) {
     this.leaseService = leaseService;
     this.stripeService = stripeService;
@@ -41,6 +45,7 @@ export class WebhookController {
     this.subscriptionService = subscriptionService;
     this.paymentService = paymentService;
     this.clientService = clientService;
+    this.idempotencyCache = idempotencyCache;
     this.log = createLogger('WebhookController');
   }
 
@@ -95,104 +100,116 @@ export class WebhookController {
       const event = await this.stripeService.verifyWebhookSignature(rawBody, signature);
       this.log.info({ type: event.type, id: event.id }, 'Processing Stripe webhook event');
 
-      switch (event.type) {
-        case 'identity.verification_session.requires_input': {
-          const session = event.data.object as any;
-          await this.clientService.handleIdentityWebhookEvent('requires_input', session.id);
-          break;
-        }
-
-        // ── Identity verification ─────────────────────────────────────────────
-        case 'identity.verification_session.verified': {
-          const session = event.data.object as any;
-          await this.clientService.handleIdentityWebhookEvent('verified', session.id);
-          break;
-        }
-
-        // ── Dispute events ────────────────────────────────────────────────────
-        case 'charge.dispute.funds_reinstated': {
-          const dispute = event.data.object as any;
-          await this.paymentService.handleDisputeWon(dispute.id, dispute);
-          break;
-        }
-
-        // ── Subscription lifecycle ────────────────────────────────────────────
-        case 'customer.subscription.created': {
-          const subscription = event.data.object as any;
-          await this.subscriptionService.handleSubscriptionCreated({
-            stripeSubscriptionId: subscription.id,
-            stripeCustomerId: subscription.customer,
-          });
-          break;
-        }
-
-        case 'customer.subscription.updated': {
-          const subscription = event.data.object as any;
-          await this.subscriptionService.handleSubscriptionUpdated({
-            stripeSubscriptionId: subscription.id,
-            stripeCustomerId: subscription.customer,
-            status: subscription.status,
-            currentPeriodStart: subscription.current_period_start,
-            currentPeriodEnd: subscription.current_period_end,
-          });
-          break;
-        }
-
-        case 'customer.subscription.deleted': {
-          const subscription = event.data.object as any;
-          await this.subscriptionService.handleSubscriptionCanceled({
-            stripeSubscriptionId: subscription.id,
-            canceledAt: subscription.canceled_at,
-          });
-          break;
-        }
-
-        case 'invoice.payment_succeeded': {
-          const invoice = event.data.object as any;
-          // Rent invoices have no subscription ID
-          if (!invoice.subscription) {
-            await this.paymentService.handleInvoicePaymentSucceeded(invoice.id, invoice);
-          }
-          break;
-        }
-
-        case 'charge.dispute.created': {
-          const dispute = event.data.object as any;
-          await this.paymentService.handleDisputeCreated(dispute.id, dispute);
-          break;
-        }
-
-        case 'invoice.payment_failed': {
-          const invoice = event.data.object as any;
-          const hasSubscription =
-            !!invoice.subscription || !!invoice.parent?.subscription_details?.subscription;
-          if (hasSubscription) {
-            await this.subscriptionService.handleInvoicePaymentFailed(invoice);
-          } else {
-            await this.paymentService.handleInvoicePaymentFailed(invoice.id, invoice);
-          }
-          break;
-        }
-
-        // ── Rent payment events ───────────────────────────────────────────────
-        case 'charge.refunded': {
-          const charge = event.data.object as any;
-          await this.paymentService.handleChargeRefunded(charge.id, charge);
-          break;
-        }
-
-        // ── Invoice events (subscription vs rent distinguished by invoice.subscription) ──
-        case 'invoice.paid': {
-          const invoice = event.data.object as any;
-          await this.subscriptionService.handleInvoicePaid(invoice);
-          break;
-        }
-
-        default:
-          this.log.info({ type: event.type }, 'Unhandled Stripe webhook event type');
+      const claimed = await this.idempotencyCache.claimWebhookEvent(event.id);
+      if (!claimed) {
+        this.log.info({ eventId: event.id }, 'Duplicate webhook — skipping');
+        return res.status(200).json({ success: true, received: true });
       }
 
-      return res.status(200).json({ success: true, received: true });
+      try {
+        switch (event.type) {
+          case 'identity.verification_session.requires_input': {
+            const session = event.data.object as any;
+            await this.clientService.handleIdentityWebhookEvent('requires_input', session.id);
+            break;
+          }
+
+          // ── Identity verification ─────────────────────────────────────────────
+          case 'identity.verification_session.verified': {
+            const session = event.data.object as any;
+            await this.clientService.handleIdentityWebhookEvent('verified', session.id);
+            break;
+          }
+
+          // ── Dispute events ────────────────────────────────────────────────────
+          case 'charge.dispute.funds_reinstated': {
+            const dispute = event.data.object as any;
+            await this.paymentService.handleDisputeWon(dispute.id, dispute);
+            break;
+          }
+
+          // ── Subscription lifecycle ────────────────────────────────────────────
+          case 'customer.subscription.created': {
+            const subscription = event.data.object as any;
+            await this.subscriptionService.handleSubscriptionCreated({
+              stripeSubscriptionId: subscription.id,
+              stripeCustomerId: subscription.customer,
+            });
+            break;
+          }
+
+          case 'customer.subscription.updated': {
+            const subscription = event.data.object as any;
+            await this.subscriptionService.handleSubscriptionUpdated({
+              stripeSubscriptionId: subscription.id,
+              stripeCustomerId: subscription.customer,
+              status: subscription.status,
+              currentPeriodStart: subscription.current_period_start,
+              currentPeriodEnd: subscription.current_period_end,
+            });
+            break;
+          }
+
+          case 'customer.subscription.deleted': {
+            const subscription = event.data.object as any;
+            await this.subscriptionService.handleSubscriptionCanceled({
+              stripeSubscriptionId: subscription.id,
+              canceledAt: subscription.canceled_at,
+            });
+            break;
+          }
+
+          case 'invoice.payment_succeeded': {
+            const invoice = event.data.object as any;
+            // Rent invoices have no subscription ID
+            if (!invoice.subscription) {
+              await this.paymentService.handleInvoicePaymentSucceeded(invoice.id, invoice);
+            }
+            break;
+          }
+
+          case 'charge.dispute.created': {
+            const dispute = event.data.object as any;
+            await this.paymentService.handleDisputeCreated(dispute.id, dispute);
+            break;
+          }
+
+          case 'invoice.payment_failed': {
+            const invoice = event.data.object as any;
+            const hasSubscription =
+              !!invoice.subscription || !!invoice.parent?.subscription_details?.subscription;
+            if (hasSubscription) {
+              await this.subscriptionService.handleInvoicePaymentFailed(invoice);
+            } else {
+              await this.paymentService.handleInvoicePaymentFailed(invoice.id, invoice);
+            }
+            break;
+          }
+
+          // ── Rent payment events ───────────────────────────────────────────────
+          case 'charge.refunded': {
+            const charge = event.data.object as any;
+            await this.paymentService.handleChargeRefunded(charge.id, charge);
+            break;
+          }
+
+          // ── Invoice events (subscription vs rent distinguished by invoice.subscription) ──
+          case 'invoice.paid': {
+            const invoice = event.data.object as any;
+            await this.subscriptionService.handleInvoicePaid(invoice);
+            break;
+          }
+
+          default:
+            this.log.info({ type: event.type }, 'Unhandled Stripe webhook event type');
+        }
+
+        await this.idempotencyCache.markWebhookProcessed(event.id);
+        return res.status(200).json({ success: true, received: true });
+      } catch (processingError: any) {
+        await this.idempotencyCache.releaseWebhookClaim(event.id);
+        throw processingError;
+      }
     } catch (error: any) {
       this.log.error('Error processing Stripe webhook', {
         error: error.message,
@@ -229,31 +246,43 @@ export class WebhookController {
         'Processing Stripe Connect webhook event'
       );
 
-      switch (event.type) {
-        case 'account.updated': {
-          const account = event.data.object as any;
-          await this.paymentService.handleAccountUpdated(account.id, account);
-          break;
-        }
-
-        case 'person.updated': {
-          const person = event.data.object as any;
-          this.log.info(
-            {
-              account: event.account,
-              person: person.id,
-              verification: person.verification?.status,
-            },
-            'Stripe person verification updated'
-          );
-          break;
-        }
-
-        default:
-          this.log.info({ type: event.type }, 'Unhandled Stripe Connect webhook event type');
+      const claimed = await this.idempotencyCache.claimWebhookEvent(event.id);
+      if (!claimed) {
+        this.log.info({ eventId: event.id }, 'Duplicate Connect webhook — skipping');
+        return res.status(200).json({ success: true, received: true });
       }
 
-      return res.status(200).json({ success: true, received: true });
+      try {
+        switch (event.type) {
+          case 'account.updated': {
+            const account = event.data.object as any;
+            await this.paymentService.handleAccountUpdated(account.id, account);
+            break;
+          }
+
+          case 'person.updated': {
+            const person = event.data.object as any;
+            this.log.info(
+              {
+                account: event.account,
+                person: person.id,
+                verification: person.verification?.status,
+              },
+              'Stripe person verification updated'
+            );
+            break;
+          }
+
+          default:
+            this.log.info({ type: event.type }, 'Unhandled Stripe Connect webhook event type');
+        }
+
+        await this.idempotencyCache.markWebhookProcessed(event.id);
+        return res.status(200).json({ success: true, received: true });
+      } catch (processingError: any) {
+        await this.idempotencyCache.releaseWebhookClaim(event.id);
+        throw processingError;
+      }
     } catch (error: any) {
       this.log.error('Error processing Stripe Connect webhook', {
         error: error.message,

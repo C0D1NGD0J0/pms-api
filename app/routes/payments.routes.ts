@@ -9,6 +9,7 @@ import {
   requirePermission,
   isAuthenticated,
   basicLimiter,
+  idempotency,
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
@@ -55,6 +56,7 @@ router.post(
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireVerifiedClient,
+  idempotency,
   validateRequest({
     params: UtilsValidations.cuid,
     body: PaymentValidations.createPayment,
@@ -66,14 +68,15 @@ router.post(
 );
 
 router.post(
-  '/:cuid/:pytuid/manual_entry',
+  '/:cuid/manual_entry',
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireVerifiedClient,
+  idempotency,
   diskUpload(['receipt.file']),
   scanFile,
   validateRequest({
-    params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
+    params: UtilsValidations.cuid,
     body: PaymentValidations.recordManualPayment,
   }),
   asyncWrapper((req, res) => {
@@ -86,6 +89,7 @@ router.patch(
   '/:cuid/:pytuid/cancel',
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.pytuid) }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
@@ -98,6 +102,7 @@ router.post(
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
   requireVerifiedClient,
+  idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
     body: PaymentValidations.refundPayment,
@@ -113,6 +118,7 @@ router.post(
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   requireVerifiedClient,
+  idempotency,
   validateRequest({
     params: UtilsValidations.cuid,
     body: PaymentValidations.createConnectAccount,

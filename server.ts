@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-namespace */
+import './instrument'; // initializes Sentry before any other module loads
 process.env.PROCESS_TYPE = 'api';
 import http from 'http';
 import { asValue } from 'awilix';
 import { createClient } from 'redis';
 import { container } from '@di/index';
+import * as Sentry from '@sentry/node';
 import { IAppSetup, App } from '@root/app';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
@@ -231,10 +233,12 @@ class Server {
 
       clearTimeout(shutdownTimeout);
       this.log.info('Graceful shutdown completed');
+      await Sentry.flush(2000);
       process.exit(exitCode);
     } catch (error) {
       clearTimeout(shutdownTimeout);
       this.log.error('Error during shutdown:', error);
+      await Sentry.flush(2000);
       process.exit(1);
     }
   }

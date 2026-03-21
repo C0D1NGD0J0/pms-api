@@ -24,8 +24,7 @@
     "test:coverage": "cross-env NODE_ENV=test jest --coverage",
     "test:unit": "cross-env NODE_ENV=test JEST_USE_DB=false jest --testPathPattern=\"tests/unit/${npm_config_path:-}\"",
     "test:integration": "cross-env NODE_ENV=test JEST_USE_DB=true jest --config test.config.integration.ts",
-    "test:integration:watch": "cross-env NODE_ENV=test JEST_USE_DB=true jest --config test.config.integration.ts --watch",
-    "migrate:property-operational-status": "ts-node -r tsconfig-paths/register scripts/migrations/rename-property-status-to-operational-status.ts"
+    "test:integration:watch": "cross-env NODE_ENV=test JEST_USE_DB=true jest --config test.config.integration.ts --watch"
   },
   "keywords": [
     "property-management-system",
@@ -40,6 +39,7 @@
     "@aws-sdk/s3-request-presigner": "^3.758.0",
     "@bull-board/express": "^6.7.10",
     "@bull-board/ui": "^6.7.10",
+    "@sentry/node": "^10.45.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "@types/compression": "^1.7.5",
     "@types/express-serve-static-core": "^5.0.6",

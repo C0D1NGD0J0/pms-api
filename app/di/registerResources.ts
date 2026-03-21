@@ -17,6 +17,7 @@ import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import {
   EventsRegistryCache,
+  IdempotencyCache,
   PropertyCache,
   VendorCache,
   LeaseCache,
@@ -220,6 +221,7 @@ const CacheResources = {
   eventsRegistry: asClass(EventsRegistryCache).singleton(),
   userCache: asClass(UserCache).singleton(),
   vendorCache: asClass(VendorCache).singleton(),
+  idempotencyCache: asClass(IdempotencyCache).singleton(),
 };
 
 const WorkerResources = {

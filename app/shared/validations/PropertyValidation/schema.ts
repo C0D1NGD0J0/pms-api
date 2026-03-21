@@ -33,13 +33,7 @@ const PropertyTypeEnum = z.enum([
   'industrial',
 ]);
 
-const PropertyStatusEnum = z.enum([
-  'available',
-  'occupied',
-  'maintenance',
-  'construction',
-  'inactive',
-]);
+const PropertyStatusEnum = z.enum(['available', 'maintenance', 'construction', 'inactive']);
 
 const OccupancyStatusEnum = z.enum(['vacant', 'occupied', 'partially_occupied']);
 
@@ -196,7 +190,7 @@ const CreatePropertySchema = z.object({
     .min(3, 'Property name must be at least 3 characters')
     .max(100, 'Property name must be at most 100 characters'),
   propertyType: PropertyTypeEnum,
-  status: PropertyStatusEnum.default('available'),
+  operationalStatus: PropertyStatusEnum.default('available'),
   managedBy: z.string(),
   yearBuilt: z
     .number()
@@ -278,7 +272,7 @@ export const UpdatePropertySchema = CreatePropertySchema.partial().omit({ cuid: 
 export const PropertySearchSchema = z.object({
   query: z.string().optional(),
   clientId: z.string(),
-  status: z.array(PropertyStatusEnum).optional(),
+  operationalStatus: z.array(PropertyStatusEnum).optional(),
   propertyType: z.array(PropertyTypeEnum).optional(),
   occupancyStatus: z.array(OccupancyStatusEnum).optional(),
   minArea: z.number().positive().optional(),

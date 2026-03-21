@@ -16,11 +16,11 @@ export class QueueFactory {
    */
   public getQueue(queueName: string): BaseQueue {
     if (!this.initializedQueues.has(queueName)) {
-      this.log.info(`Lazy initializing queue: ${queueName}`);
+      this.log.debug(`Lazy initializing queue: ${queueName}`);
       try {
         const queue = container.resolve(queueName);
         this.initializedQueues.add(queueName);
-        this.log.info(`Successfully initialized queue: ${queueName}`);
+        this.log.debug(`Successfully initialized queue: ${queueName}`);
         return queue;
       } catch (error) {
         this.log.error(`Failed to initialize queue ${queueName}:`, error);
@@ -102,6 +102,24 @@ export class QueueFactory {
     }
 
     return { queues: initializedQueues, failed };
+  }
+
+  /**
+   * Gracefully shut down all initialized queues
+   */
+  public async shutdownAll(): Promise<void> {
+    const queueNames = Array.from(this.initializedQueues);
+    await Promise.allSettled(
+      queueNames.map(async (name) => {
+        try {
+          const queue: BaseQueue = container.resolve(name);
+          await queue.shutdown();
+          this.log.info(`Queue ${name} shut down`);
+        } catch (err) {
+          this.log.warn(`Failed to shut down queue ${name}:`, err);
+        }
+      })
+    );
   }
 
   /**

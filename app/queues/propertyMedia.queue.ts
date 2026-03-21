@@ -23,7 +23,7 @@ export class PropertyMediaQueue extends BaseQueue {
     this.processQueueJobs(JOB_NAME.DOCUMENT_UPDATE_JOB, 3, propertyMediaWorker.updateDocuments);
     this.processQueueJobs(
       JOB_NAME.DOCUMENT_FAILURE_JOB,
-      5,
+      2,
       propertyMediaWorker.markDocumentsAsFailed
     );
   }

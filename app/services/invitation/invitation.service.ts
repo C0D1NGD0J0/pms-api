@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
@@ -13,8 +14,8 @@ import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
 import { PaymentGatewayService, VendorService, UserService } from '@services/index';
-import { PaymentProcessorDAO, InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { EmailFailedPayload, EmailSentPayload, EventTypes } from '@interfaces/events.interface';
+import { PaymentProcessorDAO, InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import {
   ISuccessReturnData,
   ExtractedMediaFile,
@@ -198,7 +199,7 @@ export class InvitationService {
           data: {
             role: validatedData.role,
             expiresAt: invitation.expiresAt,
-            customMessage: validatedData.metadata?.inviteMessage,
+            customMessage: validatedData.metadata?.inviteMessage || '',
             inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
             companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
             inviteeName: `${validatedData.personalInfo.firstName} ${validatedData.personalInfo.lastName}`,
@@ -423,6 +424,7 @@ export class InvitationService {
         provider: IPaymentGatewayProvider.STRIPE,
         email: user.email,
         name: invitation.inviteeFullName || user.email,
+        connectedAccountId: paymentProcessor.accountId,
       });
 
       if (!result.success || !result.data) {
@@ -432,6 +434,12 @@ export class InvitationService {
         );
         return;
       }
+
+      // Initialize tenantInfo if null — MongoDB cannot set nested paths through null
+      await this.profileDAO.update(
+        { user: user._id, tenantInfo: null },
+        { $set: { tenantInfo: {} } }
+      );
 
       await this.profileDAO.update(
         { user: user._id },
@@ -491,6 +499,16 @@ export class InvitationService {
     });
 
     await this.finalizeInvitationAcceptance(result, cuid);
+
+    // Record explicit consent on the user document when provided via the invitation acceptance consent step
+    if (invitationData.firstName || invitationData.lastName) {
+      const acceptedBy =
+        `${invitationData.firstName ?? ''} ${invitationData.lastName ?? ''}`.trim();
+      await this.userDAO.update(
+        { _id: result.user._id },
+        { $set: { consent: { acceptedOn: new Date(), acceptedBy } } }
+      );
+    }
 
     // Emit invitation accepted event for seat tracking (only for employee roles)
     if (client) {
@@ -662,8 +680,14 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.cannotResend') });
       }
 
-      if (!invitation.isValid()) {
-        throw new BadRequestError({ message: t('invitation.errors.expired') });
+      // If the draft has expired, extend it rather than blocking — resend is a reactivation
+      if (invitation.expiresAt <= new Date()) {
+        const newExpiresAt = dayjs().add(1, 'day').toDate();
+        await this.invitationDAO.update(
+          { _id: invitation._id },
+          { $set: { expiresAt: newExpiresAt } }
+        );
+        invitation.expiresAt = newExpiresAt;
       }
 
       const [client, resender] = await Promise.all([
@@ -706,7 +730,7 @@ export class InvitationService {
           inviteeName: invitation.inviteeFullName,
           resenderName: resender?.profile?.fullname || 'Team Member',
           inviterName: resender?.profile?.fullname || resender?.email || 'Team Member',
-          customMessage: validatedData.customMessage || invitation.metadata?.inviteMessage,
+          customMessage: validatedData.customMessage || invitation.metadata?.inviteMessage || '',
           companyName: client?.displayName || client?.companyProfile?.legalEntityName || 'Company',
           invitationUrl: `${envVariables.FRONTEND.URL}/invite/${client?.cuid}/?token=${invitation.invitationToken}`,
         },
@@ -1214,23 +1238,6 @@ export class InvitationService {
     session: any
   ): Promise<void> {
     try {
-      // Find all leases using this invitation as temporary tenant
-      const leasesToMigrate = await this.leaseDAO.find(
-        {
-          tenantId: invitationId,
-          useInvitationIdAsTenantId: true,
-        },
-        { session }
-      );
-
-      if (leasesToMigrate.length === 0) {
-        this.log.info('No leases found to migrate from invitation', {
-          invitationId: invitationId.toString(),
-        });
-        return;
-      }
-
-      // Bulk update all leases using DAO
       const updateResult = await this.leaseDAO.updateMany(
         {
           tenantId: invitationId,
@@ -1242,11 +1249,18 @@ export class InvitationService {
             useInvitationIdAsTenantId: false,
           },
         },
-        { session }
+        session
       );
 
+      if (updateResult.modifiedCount === 0) {
+        this.log.info('No leases found to migrate from invitation', {
+          invitationId: invitationId.toString(),
+        });
+        return;
+      }
+
       this.log.info('Leases migrated successfully', {
-        count: updateResult.modifiedCount || leasesToMigrate.length,
+        count: updateResult.modifiedCount,
         invitationId: invitationId.toString(),
         userId: userId.toString(),
       });

@@ -152,7 +152,7 @@ class EnvVariables {
         PROVIDER_HOST: process.env.EMAIL_PROVIDER_HOST_PROD || '',
         PROVIDER_PORT: Number(process.env.EMAIL_PROVIDER_PORT_PROD),
         PROVIDER_USERNAME: process.env.EMAIL_PROVIDER_USERNAME_PROD || '',
-        PROVIDER_PASSWORD: process.env.EMAIL_PROVIDER_USERNAME_PROD || '',
+        PROVIDER_PASSWORD: process.env.EMAIL_PROVIDER_PASSWORD_PROD || '',
       },
       APP_EMAIL_ADDRESS: process.env.APP_EMAIL_ADDRESS || '',
     };

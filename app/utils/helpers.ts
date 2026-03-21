@@ -129,10 +129,9 @@ export function createLogger(name: string) {
 
   const logger = bunyan.createLogger({
     name,
-    level: LOG_LEVELS[process.env.LOG_LEVEL || 'info'],
+    level: LOG_LEVELS[(process.env.LOG_LEVEL || 'INFO').toUpperCase()] ?? LOG_LEVELS.INFO,
     streams: [
       {
-        level: 'trace',
         type: 'raw',
         stream,
       },

@@ -181,7 +181,7 @@ export const createTestInvitation = async (
 
 export interface CreatePropertyOptions {
   propertyType?: 'apartment' | 'house' | 'condominium' | 'townhouse' | 'commercial' | 'industrial';
-  status?: 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
+  operationalStatus?: 'available' | 'maintenance' | 'construction' | 'inactive';
   maxAllowedUnits?: number;
   name?: string;
 }
@@ -203,7 +203,7 @@ export const createTestProperty = async (
     clientId: typeof clientId === 'string' ? new Types.ObjectId(clientId) : clientId,
     name: options.name || `${faker.location.street()} Property`,
     propertyType: options.propertyType || 'apartment',
-    status: options.status || 'available',
+    operationalStatus: options.operationalStatus || 'available',
     maxAllowedUnits: options.maxAllowedUnits || 20,
     managedBy: new Types.ObjectId(), // Required field
     createdBy: new Types.ObjectId(), // Required field

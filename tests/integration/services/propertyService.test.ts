@@ -402,7 +402,7 @@ describe('PropertyService Integration Tests', () => {
         // Create property first
         const property = await createTestProperty(testClient.cuid, testClient._id, {
           name: 'Original Name',
-          status: 'available',
+          operationalStatus: 'available',
         });
 
         const updateData = {
@@ -440,7 +440,7 @@ describe('PropertyService Integration Tests', () => {
       it('should create pending changes for staff user', async () => {
         const property = await createTestProperty(testClient.cuid, testClient._id, {
           name: 'Staff Update Test',
-          status: 'available',
+          operationalStatus: 'available',
         });
 
         // Ensure property is approved first
@@ -1135,7 +1135,7 @@ describe('PropertyService Integration Tests', () => {
         // Ensure properties are available
         await Property.updateMany(
           { cuid: testClient.cuid },
-          { status: 'available', approvalStatus: PropertyApprovalStatusEnum.APPROVED }
+          { operationalStatus: 'available', approvalStatus: PropertyApprovalStatusEnum.APPROVED }
         );
 
         const result = await propertyService.getLeaseableProperties(
@@ -1160,7 +1160,7 @@ describe('PropertyService Integration Tests', () => {
         });
 
         await Property.findByIdAndUpdate(property1._id, {
-          status: 'available',
+          operationalStatus: 'available',
           approvalStatus: PropertyApprovalStatusEnum.APPROVED,
         });
 

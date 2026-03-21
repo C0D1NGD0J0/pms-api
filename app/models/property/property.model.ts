@@ -141,9 +141,9 @@ const PropertySchema = new Schema<IPropertyDocument>(
       enum: ['apartment', 'house', 'condominium', 'townhouse', 'commercial', 'industrial'],
       index: true,
     },
-    status: {
+    operationalStatus: {
       type: String,
-      enum: ['available', 'occupied', 'maintenance', 'construction', 'inactive'],
+      enum: ['available', 'maintenance', 'construction', 'inactive'],
       default: 'available',
       index: true,
     },

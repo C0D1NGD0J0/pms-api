@@ -53,6 +53,7 @@ export interface IProperty {
   interiorAmenities?: InteriorAmenities;
   computedLocation?: ComputedLocation;
   financialDetails?: FinancialDetails;
+  operationalStatus: PropertyStatus;
   occupancyStatus: OccupancyStatus;
   documents?: MediaDocumentItem[];
   images?: PropertyImageItem[];
@@ -63,7 +64,6 @@ export interface IProperty {
   maxAllowedUnits?: number;
   address: AddressDetails;
   notes?: IPropertyNote[];
-  status: PropertyStatus;
   owner: IPropertyOwner;
   yearBuilt?: number;
   cuid: string;
@@ -99,7 +99,7 @@ export interface IPropertyFilterQuery {
     };
     propertyType?: PropertyType;
     searchTerm?: string;
-    status?: PropertyStatus;
+    operationalStatus?: PropertyStatus;
     yearBuilt?: {
       max?: number;
       min?: number;
@@ -487,9 +487,9 @@ export type PropertyType =
   | 'industrial';
 
 /**
- * Property Status Types
+ * Media Document Status Types
  */
-export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
+export type MediaDocumentStatus = 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
 
 /**
  * ============================================================================
@@ -498,9 +498,9 @@ export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'constru
  */
 
 /**
- * Media Document Status Types
+ * Property Status Types
  */
-export type MediaDocumentStatus = 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
+export type PropertyStatus = 'available' | 'maintenance' | 'construction' | 'inactive';
 
 /**
  * Property Approval Status Types

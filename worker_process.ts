@@ -70,11 +70,22 @@ class WorkerProcess {
   private async shutdown(signal: string): Promise<void> {
     this.log.info(`🛑 ${signal} received, shutting down worker gracefully...`);
 
-    this.pidManager.killProcess();
+    // Force-exit after 10s if active jobs haven't finished.
+    // unref() so this timer doesn't prevent the event loop from draining naturally.
     setTimeout(() => {
-      this.log.info('Force shutdown after timeout');
+      this.log.warn('Force shutdown after timeout');
       process.exit(0);
-    }, 30000); // allows running jobs time to finish (max 30 seconds)
+    }, 10000).unref();
+
+    try {
+      const { queueFactory } = container.cradle;
+      await queueFactory.shutdownAll();
+    } catch (err) {
+      this.log.warn('Error during queue shutdown:', err);
+    }
+
+    this.pidManager.cleanup();
+    process.exit(0);
   }
 }
 

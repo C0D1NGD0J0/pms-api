@@ -57,6 +57,27 @@ export interface IInvitationDocument extends IInvitation, Document {
  */
 
 /**
+ * Invitation Acceptance Data Interface
+ * Used when accepting an invitation
+ */
+export interface IInvitationAcceptance {
+  newsletterOptIn: boolean;
+  confirmPassword: string;
+  termsAccepted: boolean;
+  phoneNumber?: string;
+  consentDate?: string;
+  firstName?: string;
+  location?: string;
+  lastName?: string;
+  password: string;
+  timeZone: string;
+  email: string;
+  token: string;
+  lang: string;
+  cuid: string;
+}
+
+/**
  * Invitation List Query Interface
  * Used for querying and filtering invitations
  */
@@ -82,24 +103,6 @@ export interface IInvitationData {
   linkedVendorUid?: string; // ID of an existing vendor user to link this invitation to
   inviteeEmail: string;
   role: IUserRole;
-}
-
-/**
- * Invitation Acceptance Data Interface
- * Used when accepting an invitation
- */
-export interface IInvitationAcceptance {
-  newsletterOptIn: boolean;
-  confirmPassword: string;
-  termsAccepted: boolean;
-  phoneNumber?: string;
-  location?: string;
-  password: string;
-  timeZone: string;
-  email: string;
-  token: string;
-  lang: string;
-  cuid: string;
 }
 
 /**

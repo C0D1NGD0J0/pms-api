@@ -41,7 +41,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     clientId: string,
     filters: {
       propertyType?: PropertyType[];
-      status?: PropertyStatus[];
+      operationalStatus?: PropertyStatus[];
       occupancyStatus?: OccupancyStatus[];
       priceRange?: { min?: number; max?: number };
       areaRange?: { min?: number; max?: number };
@@ -61,8 +61,8 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         query.propertyType = { $in: filters.propertyType };
       }
 
-      if (filters.status && filters.status.length > 0) {
-        query.status = { $in: filters.status };
+      if (filters.operationalStatus && filters.operationalStatus.length > 0) {
+        query.operationalStatus = { $in: filters.operationalStatus };
       }
 
       if (filters.occupancyStatus && filters.occupancyStatus.length > 0) {

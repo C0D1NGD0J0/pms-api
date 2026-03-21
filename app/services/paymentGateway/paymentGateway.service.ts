@@ -61,7 +61,7 @@ export class PaymentGatewayService {
    */
   async createCustomer(input: ICreateCustomerInput): IPromiseReturnedData<IPaymentCustomer | null> {
     try {
-      const { provider, email, metadata, name } = input;
+      const { provider, email, metadata, name, connectedAccountId } = input;
 
       this.log.info({ provider, email }, 'Creating customer via payment gateway');
 
@@ -71,6 +71,7 @@ export class PaymentGatewayService {
         metadata,
         name,
         provider,
+        connectedAccountId,
       });
 
       this.log.info({ provider, customerId: customer.customerId }, 'Customer created successfully');

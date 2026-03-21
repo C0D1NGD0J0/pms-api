@@ -374,6 +374,22 @@ export class PropertyCache extends BaseCache {
    * @param fetchUnits - Whether units were included
    * @returns Cached leaseable properties or null
    */
+  async invalidateLeaseableProperties(cuid: string): Promise<ISuccessReturnData> {
+    try {
+      if (!cuid) {
+        return { success: false, data: null, error: 'Client ID is required' };
+      }
+      const keys = [
+        `leaseableProperties:${cuid}:units=true`,
+        `leaseableProperties:${cuid}:units=false`,
+      ];
+      return await this.deleteItems(keys);
+    } catch (error) {
+      this.log.error('Failed to invalidate leaseable properties cache:', error);
+      return { success: false, data: null, error: (error as Error).message };
+    }
+  }
+
   async getLeaseableProperties(
     cuid: string,
     fetchUnits: boolean

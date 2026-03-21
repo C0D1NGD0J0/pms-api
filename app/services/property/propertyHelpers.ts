@@ -122,7 +122,7 @@ export const filterPropertyByDepartment = (
     pid: property.pid,
     name: property.name,
     propertyType: property.propertyType,
-    status: property.status,
+    operationalStatus: property.operationalStatus,
     occupancyStatus: property.occupancyStatus,
     address: property.address,
     computedLocation: property.computedLocation,

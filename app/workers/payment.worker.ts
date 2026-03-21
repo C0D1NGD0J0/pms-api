@@ -1,5 +1,5 @@
+import { Job } from 'bull';
 import Logger from 'bunyan';
-import { DoneCallback, Job } from 'bull';
 import { createLogger } from '@utils/index';
 import { PaymentService } from '@services/payments/payments.service';
 import { ICreateRentInvoiceJobData, ICancelPaymentJobData } from '@queues/payment.queue';
@@ -21,10 +21,7 @@ export class PaymentWorker {
    * Handle rent invoice creation
    * Arrow function to preserve `this` binding when passed as callback to processQueueJobs
    */
-  handleCreateRentInvoice = async (
-    job: Job<ICreateRentInvoiceJobData>,
-    done: DoneCallback
-  ): Promise<void> => {
+  handleCreateRentInvoice = async (job: Job<ICreateRentInvoiceJobData>) => {
     const { cuid, leaseId, tenantId, period, dueDate, paymentType, description } = job.data;
     const startTime = Date.now();
 
@@ -53,7 +50,7 @@ export class PaymentWorker {
         'PaymentWorker: rent invoice created successfully'
       );
 
-      done(null, { success: true, pytuid: result.data?.pytuid, duration });
+      return { success: true, pytuid: result.data?.pytuid, duration };
     } catch (error: any) {
       const duration = Date.now() - startTime;
       this.log.error(
@@ -78,7 +75,7 @@ export class PaymentWorker {
         );
       }
 
-      done(error);
+      throw error;
     }
   };
 
@@ -86,10 +83,7 @@ export class PaymentWorker {
    * Handle payment cancellation
    * Arrow function to preserve `this` binding
    */
-  handleCancelPayment = async (
-    job: Job<ICancelPaymentJobData>,
-    done: DoneCallback
-  ): Promise<void> => {
+  handleCancelPayment = async (job: Job<ICancelPaymentJobData>) => {
     const { cuid, pytuid, reason } = job.data;
     const startTime = Date.now();
 
@@ -111,7 +105,7 @@ export class PaymentWorker {
         'PaymentWorker: payment cancelled successfully'
       );
 
-      done(null, { success: true, pytuid, duration });
+      return { success: true, pytuid, duration };
     } catch (error: any) {
       const duration = Date.now() - startTime;
       this.log.error(
@@ -119,7 +113,7 @@ export class PaymentWorker {
         'PaymentWorker: payment cancellation job failed'
       );
 
-      done(error);
+      throw error;
     }
   };
 }

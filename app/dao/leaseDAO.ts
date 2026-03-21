@@ -220,6 +220,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           luid: leaseObj.luid,
           leaseNumber: leaseObj.leaseNumber,
           tenantName,
+          tenantUid: tenant?._id?.toString() || '',
           propertyAddress,
           unitNumber,
           monthlyRent: leaseObj.fees?.monthlyRent,

@@ -536,6 +536,25 @@ export interface IRentRollReport {
 }
 
 /**
+ * Lease List Item Interface
+ * Simplified lease data for list views
+ */
+export interface ILeaseListItem {
+  sentForSignature: boolean;
+  tenantActivated: boolean;
+  propertyAddress: string;
+  leaseNumber: string;
+  monthlyRent: number;
+  status: LeaseStatus;
+  unitNumber?: string;
+  tenantName: string;
+  tenantUid: string;
+  startDate: Date;
+  endDate: Date;
+  luid: string;
+}
+
+/**
  * Signature Interface
  * Individual signature tracking
  */
@@ -554,6 +573,12 @@ export interface ILeaseSignature {
 }
 
 /**
+ * ============================================================================
+ * MAIN LEASE INTERFACE
+ * ============================================================================
+ */
+
+/**
  * Fees Interface
  * All financial terms of the lease
  */
@@ -567,30 +592,6 @@ export interface ILeaseFees {
   monthlyRent: number;
   rentDueDay: number; // 1-31
   currency: string;
-}
-
-/**
- * ============================================================================
- * MAIN LEASE INTERFACE
- * ============================================================================
- */
-
-/**
- * Lease List Item Interface
- * Simplified lease data for list views
- */
-export interface ILeaseListItem {
-  sentForSignature: boolean;
-  tenantActivated: boolean;
-  propertyAddress: string;
-  leaseNumber: string;
-  monthlyRent: number;
-  status: LeaseStatus;
-  unitNumber?: string;
-  tenantName: string;
-  startDate: Date;
-  endDate: Date;
-  luid: string;
 }
 
 /**

@@ -68,7 +68,7 @@ router.post(
 );
 
 router.post(
-  '/:cuid/:pytuid/manual_entry',
+  '/:cuid/manual_entry',
   isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireVerifiedClient,
@@ -76,7 +76,7 @@ router.post(
   diskUpload(['receipt.file']),
   scanFile,
   validateRequest({
-    params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
+    params: UtilsValidations.cuid,
     body: PaymentValidations.recordManualPayment,
   }),
   asyncWrapper((req, res) => {

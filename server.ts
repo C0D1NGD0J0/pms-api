@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-namespace */
-import './instrument'; // must come first — initializes Sentry before any other module loads
+import './instrument'; // initializes Sentry before any other module loads
 process.env.PROCESS_TYPE = 'api';
 import http from 'http';
 import { asValue } from 'awilix';

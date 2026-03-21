@@ -1,6 +1,7 @@
 {
   "cSpell.words": [
     "activecuid",
+    "Andlon",
     "Awilix",
     "boldsign",
     "cuids",
@@ -19,8 +20,11 @@
     "mediatype",
     "networkidle",
     "nuid",
+    "ppuid",
     "publicuid",
     "puid",
+    "pytid",
+    "pytuid",
     "Reapproval",
     "resender",
     "ttypescript",

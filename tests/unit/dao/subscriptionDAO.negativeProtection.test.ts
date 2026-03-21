@@ -1,13 +1,12 @@
 import { Types } from 'mongoose';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
-import { Subscription } from '@models/subscription/subscription.model';
 
 describe('SubscriptionDAO - Negative Value Protection', () => {
   let subscriptionDAO: SubscriptionDAO;
   const mockClientId = new Types.ObjectId();
 
   beforeEach(() => {
-    subscriptionDAO = new SubscriptionDAO(Subscription);
+    subscriptionDAO = new SubscriptionDAO();
   });
 
   afterEach(() => {

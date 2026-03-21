@@ -38,6 +38,14 @@ export interface ISubscriptionPlansConfig {
       } | null;
     };
   };
+  features: {
+    eSignature: boolean;
+    RepairRequestService: boolean;
+    VisitorPassService: boolean;
+    reportingAnalytics: boolean;
+    leaseTemplates: boolean;
+    prioritySupport?: boolean;
+  };
   pricing: {
     monthly: {
       priceId: string;
@@ -48,13 +56,6 @@ export interface ISubscriptionPlansConfig {
       priceInCents: number;
       savingsPercent: number;
     };
-  };
-  features: {
-    eSignature: boolean;
-    RepairRequestService: boolean;
-    VisitorPassService: boolean;
-    reportingAnalytics: boolean;
-    prioritySupport?: boolean;
   };
   limits: {
     maxProperties: number;
@@ -75,33 +76,6 @@ export interface ISubscriptionPlansConfig {
   name: string;
 }
 
-export interface ISubscription {
-  entitlements: {
-    eSignature: boolean;
-    RepairRequestService: boolean;
-    VisitorPassService: boolean;
-    reportingAnalytics: boolean;
-    prioritySupport?: boolean;
-  };
-  billingInterval: 'monthly' | 'annual';
-  paymentGateway: IPaymentGateway;
-  additionalSeatsCount: number;
-  status: ISubscriptionStatus;
-  customPriceInCents?: number;
-  additionalSeatsCost: number;
-  totalMonthlyPrice: number;
-  currentProperties: number;
-  pendingDowngradeAt?: Date;
-  client: Types.ObjectId;
-  currentSeats: number;
-  currentUnits: number;
-  planName: PlanName;
-  canceledAt?: Date;
-  startDate: Date;
-  endDate: Date;
-  cuid: string;
-}
-
 export interface ISubscriptionPlanUsage {
   seatInfo: {
     includedSeats: number;
@@ -110,6 +84,13 @@ export interface ISubscriptionPlanUsage {
     maxAdditionalSeats: number;
     additionalSeatPriceCents: number;
     availableForPurchase: number;
+  };
+  verification: {
+    isVerified: boolean;
+    requiresVerification: boolean;
+    gracePeriodExpired: boolean;
+    daysRemaining: number | null;
+    accountCreatedAt: Date;
   };
   plan: {
     name: PlanName;
@@ -135,30 +116,48 @@ export interface ISubscriptionPlanUsage {
   };
 }
 
-export interface IPaymentGateway {
-  provider: IPaymentGatewayProvider;
-  planLookUpKey?: string; // Lookup key for the plan
-  subscriberId?: string; // Payment gateway subscription ID (e.g., Stripe sub_xxx) set after payment
-  seatItemId?: string; // Subscription item ID for seats (e.g., Stripe si_xxx) - used for updating seat quantity
-  customerId: string; // Payment gateway customer ID (e.g., Stripe customer ID)
-  cardLast4?: string; // Last 4 digits for UI display (PCI-compliant)
-  cardBrand?: string; // Card brand for UI display (visa, mastercard, etc.)
-  planId: string; // Payment gateway price/plan ID (e.g., Stripe price ID)
-}
-
-export interface ISubscriptionEntitlements {
-  paymentFlow?: {
-    requiresPayment: boolean;
-    reason: 'pending_signup' | 'expired' | 'grace_period' | null;
-    gracePeriodEndsAt: Date | null;
-    daysUntilDowngrade: number | null;
-  };
+export interface ISubscription {
   entitlements: {
     eSignature: boolean;
     RepairRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
+    leaseTemplates: boolean;
     prioritySupport?: boolean;
+  };
+  billingInterval: 'monthly' | 'annual';
+  billing: ISubscriptionBilling;
+  additionalSeatsCount: number;
+  status: ISubscriptionStatus;
+  customPriceInCents?: number;
+  additionalSeatsCost: number;
+  totalMonthlyPrice: number;
+  currentProperties: number;
+  pendingDowngradeAt?: Date;
+  client: Types.ObjectId;
+  currentSeats: number;
+  currentUnits: number;
+  planName: PlanName;
+  canceledAt?: Date;
+  startDate: Date;
+  endDate: Date;
+  cuid: string;
+}
+
+export interface ISubscriptionEntitlements {
+  entitlements: {
+    eSignature: boolean;
+    RepairRequestService: boolean;
+    VisitorPassService: boolean;
+    reportingAnalytics: boolean;
+    leaseTemplates: boolean;
+    prioritySupport?: boolean;
+  };
+  paymentFlow?: {
+    requiresPayment: boolean;
+    reason: 'pending_signup' | 'expired' | 'grace_period' | null;
+    gracePeriodEndsAt: Date | null;
+    daysUntilDowngrade: number | null;
   };
   plan: {
     name: PlanName;
@@ -200,11 +199,26 @@ export interface ISubscriptionSummary {
   cuid: string;
 }
 
+export interface ISubscriptionBilling {
+  provider: IPaymentGatewayProvider;
+  planLookUpKey?: string;
+  subscriberId?: string;
+  seatItemId?: string;
+  customerId: string;
+  cardLast4?: string;
+  cardBrand?: string;
+  planId: string;
+}
+
 export interface ISubscriptionDocument extends ISubscription, Document {
   _id: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
   suid: string;
+}
+
+export interface IPaymentGateway extends ISubscriptionBilling {
+  connectedAccountId?: string;
 }
 
 export type PlanName = 'essential' | 'growth' | 'portfolio';

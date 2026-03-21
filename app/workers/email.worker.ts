@@ -1,5 +1,5 @@
+import { Job } from 'bull';
 import Logger from 'bunyan';
-import { DoneCallback, Job } from 'bull';
 import { MailService } from '@mailer/index';
 import { createLogger } from '@utils/index';
 import { ProfileService } from '@services/index';
@@ -28,11 +28,15 @@ export class EmailWorker {
     this.profileService = profileService;
   }
 
-  sendMail = async (job: Job, done: DoneCallback) => {
-    try {
-      const data = job.data as IEmailOptions<any>;
+  sendMail = async (job: Job) => {
+    this.log.info(
+      { jobId: job.id, jobName: job.name },
+      `Processing email job ${job.id} (${job.name})`
+    );
 
-      // Check user email preferences for non-critical emails
+    const data = job.data as IEmailOptions<any>;
+
+    try {
       const shouldSend = await this.checkEmailPreferences(data);
 
       if (!shouldSend) {
@@ -42,14 +46,12 @@ export class EmailWorker {
           cuid: data.client?.cuid,
         });
 
-        // Mark job as completed but skipped
-        done(null, {
+        return {
           success: true,
           skipped: true,
           reason: 'User email preferences',
           skippedAt: new Date().toISOString(),
-        });
-        return;
+        };
       }
 
       await this.mailer.sendMail(data, data.emailType as MailType);
@@ -62,27 +64,32 @@ export class EmailWorker {
       };
 
       this.emitterService.emit(EventTypes.EMAIL_SENT, payload);
-      this.log.info(`Emitted EMAIL_SENT event for email to ${data.to}`);
-      done(null, {
+      this.log.info(`Email sent successfully to ${data.to}`);
+
+      return {
         success: true,
         sentAt: new Date().toISOString(),
-      });
+      };
     } catch (error) {
       this.log.error(`Failed to send email for job ${job.id}:`, error);
 
-      const data = job.data as IEmailOptions<any>;
-      const payload: EmailFailedPayload = {
-        to: data.to,
-        subject: data.subject || '',
-        emailType: data.emailType as MailType,
-        error: {
-          message: (error as Error).message || 'Unknown error',
-          code: (error as any).code,
-        },
-        jobData: data, // Contains all original job data (invitationId, userId, etc.)
-      };
-      this.emitterService.emit(EventTypes.EMAIL_FAILED, payload);
-      done(error);
+      try {
+        const payload: EmailFailedPayload = {
+          to: data.to,
+          subject: data.subject || '',
+          emailType: data.emailType as MailType,
+          error: {
+            message: (error as Error).message || 'Unknown error',
+            code: (error as any).code,
+          },
+          jobData: data,
+        };
+        this.emitterService.emit(EventTypes.EMAIL_FAILED, payload);
+      } catch (emitError) {
+        this.log.error(`Failed to emit EMAIL_FAILED event for job ${job.id}:`, emitError);
+      }
+
+      throw error;
     }
   };
 

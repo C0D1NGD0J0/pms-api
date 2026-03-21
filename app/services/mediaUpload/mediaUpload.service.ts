@@ -161,8 +161,8 @@ export class MediaUploadService {
    * Utility method for other services to handle media deletions
    */
   async handleMediaDeletion(
-    currentMedia: Array<{ key?: string; _id?: string; status?: string }>,
-    newMedia: Array<{ key?: string; _id?: string; status?: string }>,
+    currentMedia: Array<{ key?: string; _id?: string | object; status?: string }>,
+    newMedia: Array<{ key?: string; _id?: string | object; status?: string }>,
     actorId: string,
     hardDelete: boolean = false
   ): Promise<void> {
@@ -183,7 +183,7 @@ export class MediaUploadService {
         // Soft delete asset record
         try {
           if (item._id) {
-            await this.assetService.deleteAsset(item._id, actorId);
+            await this.assetService.deleteAsset(item._id.toString(), actorId);
             this.logger.debug(`Successfully soft deleted asset ${item._id}`);
           }
         } catch (error) {
@@ -207,7 +207,7 @@ export class MediaUploadService {
   /**
    * Find media items that should be deleted based on status field
    */
-  private findMediaToDelete<T extends { key?: string; _id?: string; status?: string }>(
+  private findMediaToDelete<T extends { key?: string; _id?: string | object; status?: string }>(
     currentMedia: T[],
     newMedia: T[]
   ): T[] {
@@ -265,6 +265,14 @@ export class MediaUploadService {
     resourceId: string;
     fieldName: string;
   } {
+    if (fieldName === 'identification.idimage' || fieldName.startsWith('identification.')) {
+      return {
+        resourceName: 'client',
+        resourceId: context.primaryResourceId,
+        fieldName: 'identification.idimage',
+      };
+    }
+
     if (fieldName.includes('avatar') || fieldName.startsWith('personalInfo.avatar')) {
       return {
         resourceName: 'profile',

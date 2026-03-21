@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
@@ -8,12 +9,13 @@ import { createLogger, JOB_NAME } from '@utils/index';
 import { MailType } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { InvitationQueue, EmailQueue } from '@queues/index';
-import { VendorService, UserService } from '@services/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
-import { InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
+import { PaymentGatewayService, VendorService, UserService } from '@services/index';
 import { EmailFailedPayload, EmailSentPayload, EventTypes } from '@interfaces/events.interface';
+import { PaymentProcessorDAO, InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import {
   ISuccessReturnData,
   ExtractedMediaFile,
@@ -37,6 +39,8 @@ import {
 } from '@interfaces/invitation.interface';
 
 interface IConstructor {
+  paymentGatewayService: PaymentGatewayService;
+  paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
   profileService: ProfileService;
   invitationDAO: InvitationDAO;
@@ -61,6 +65,8 @@ export class InvitationService {
   private readonly profileService: ProfileService;
   private readonly vendorService: VendorService;
   private readonly userService: UserService;
+  private readonly paymentProcessorDAO: PaymentProcessorDAO;
+  private readonly paymentGatewayService: PaymentGatewayService;
   private readonly leaseDAO: any;
   private readonly subscriptionService: any;
 
@@ -76,6 +82,8 @@ export class InvitationService {
     userService,
     leaseDAO,
     subscriptionService,
+    paymentProcessorDAO,
+    paymentGatewayService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -87,6 +95,8 @@ export class InvitationService {
     this.profileService = profileService;
     this.vendorService = vendorService;
     this.userService = userService;
+    this.paymentProcessorDAO = paymentProcessorDAO;
+    this.paymentGatewayService = paymentGatewayService;
     this.leaseDAO = leaseDAO;
     this.log = createLogger('InvitationService');
     this.setupEventListeners();
@@ -189,7 +199,7 @@ export class InvitationService {
           data: {
             role: validatedData.role,
             expiresAt: invitation.expiresAt,
-            customMessage: validatedData.metadata?.inviteMessage,
+            customMessage: validatedData.metadata?.inviteMessage || '',
             inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
             companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
             inviteeName: `${validatedData.personalInfo.firstName} ${validatedData.personalInfo.lastName}`,
@@ -389,6 +399,69 @@ export class InvitationService {
         `Vendor link established from primary vendor ${result.invitation.linkedVendorUid} to new user ${result.user._id}`
       );
     }
+
+    if (result.invitation.role === 'tenant') {
+      await this.maybeCreateTenantPaymentCustomer(result.user, result.invitation, cuid);
+    }
+  }
+
+  private async maybeCreateTenantPaymentCustomer(
+    user: any,
+    invitation: IInvitationDocument,
+    cuid: string
+  ): Promise<void> {
+    try {
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor || !paymentProcessor.chargesEnabled) {
+        this.log.info(
+          { cuid },
+          'PM has no active payment processor — skipping tenant Stripe customer creation'
+        );
+        return;
+      }
+
+      const result = await this.paymentGatewayService.createCustomer({
+        provider: IPaymentGatewayProvider.STRIPE,
+        email: user.email,
+        name: invitation.inviteeFullName || user.email,
+        connectedAccountId: paymentProcessor.accountId,
+      });
+
+      if (!result.success || !result.data) {
+        this.log.warn(
+          { cuid, userId: user._id },
+          'Stripe customer creation returned no data for tenant — skipping'
+        );
+        return;
+      }
+
+      // Initialize tenantInfo if null — MongoDB cannot set nested paths through null
+      await this.profileDAO.update(
+        { user: user._id, tenantInfo: null },
+        { $set: { tenantInfo: {} } }
+      );
+
+      await this.profileDAO.update(
+        { user: user._id },
+        {
+          $set: {
+            [`tenantInfo.paymentGatewayCustomers.${paymentProcessor.accountId}`]:
+              result.data.customerId,
+          },
+        }
+      );
+
+      this.log.info(
+        { cuid, userId: user._id, customerId: result.data.customerId },
+        'Tenant Stripe customer created and stored on profile'
+      );
+    } catch (error) {
+      // Do not throw — invitation acceptance must succeed even if customer creation fails
+      this.log.error(
+        { error, cuid, userId: user._id },
+        'Error creating Stripe customer for tenant — invitation accepted without customer record'
+      );
+    }
   }
 
   async acceptInvitation(
@@ -426,6 +499,16 @@ export class InvitationService {
     });
 
     await this.finalizeInvitationAcceptance(result, cuid);
+
+    // Record explicit consent on the user document when provided via the invitation acceptance consent step
+    if (invitationData.firstName || invitationData.lastName) {
+      const acceptedBy =
+        `${invitationData.firstName ?? ''} ${invitationData.lastName ?? ''}`.trim();
+      await this.userDAO.update(
+        { _id: result.user._id },
+        { $set: { consent: { acceptedOn: new Date(), acceptedBy } } }
+      );
+    }
 
     // Emit invitation accepted event for seat tracking (only for employee roles)
     if (client) {
@@ -597,8 +680,14 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.cannotResend') });
       }
 
-      if (!invitation.isValid()) {
-        throw new BadRequestError({ message: t('invitation.errors.expired') });
+      // If the draft has expired, extend it rather than blocking — resend is a reactivation
+      if (invitation.expiresAt <= new Date()) {
+        const newExpiresAt = dayjs().add(1, 'day').toDate();
+        await this.invitationDAO.update(
+          { _id: invitation._id },
+          { $set: { expiresAt: newExpiresAt } }
+        );
+        invitation.expiresAt = newExpiresAt;
       }
 
       const [client, resender] = await Promise.all([
@@ -641,7 +730,7 @@ export class InvitationService {
           inviteeName: invitation.inviteeFullName,
           resenderName: resender?.profile?.fullname || 'Team Member',
           inviterName: resender?.profile?.fullname || resender?.email || 'Team Member',
-          customMessage: validatedData.customMessage || invitation.metadata?.inviteMessage,
+          customMessage: validatedData.customMessage || invitation.metadata?.inviteMessage || '',
           companyName: client?.displayName || client?.companyProfile?.legalEntityName || 'Company',
           invitationUrl: `${envVariables.FRONTEND.URL}/invite/${client?.cuid}/?token=${invitation.invitationToken}`,
         },
@@ -1093,9 +1182,12 @@ export class InvitationService {
     }
   }
 
+  private readonly onEmailSent = this.handleEmailSent.bind(this);
+  private readonly onEmailFailed = this.handleEmailFailed.bind(this);
+
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.EMAIL_SENT, this.handleEmailSent.bind(this));
-    this.emitterService.on(EventTypes.EMAIL_FAILED, this.handleEmailFailed.bind(this));
+    this.emitterService.on(EventTypes.EMAIL_SENT, this.onEmailSent);
+    this.emitterService.on(EventTypes.EMAIL_FAILED, this.onEmailFailed);
   }
 
   private async handleEmailSent(payload: EmailSentPayload): Promise<void> {
@@ -1146,23 +1238,6 @@ export class InvitationService {
     session: any
   ): Promise<void> {
     try {
-      // Find all leases using this invitation as temporary tenant
-      const leasesToMigrate = await this.leaseDAO.find(
-        {
-          tenantId: invitationId,
-          useInvitationIdAsTenantId: true,
-        },
-        { session }
-      );
-
-      if (leasesToMigrate.length === 0) {
-        this.log.info('No leases found to migrate from invitation', {
-          invitationId: invitationId.toString(),
-        });
-        return;
-      }
-
-      // Bulk update all leases using DAO
       const updateResult = await this.leaseDAO.updateMany(
         {
           tenantId: invitationId,
@@ -1174,11 +1249,18 @@ export class InvitationService {
             useInvitationIdAsTenantId: false,
           },
         },
-        { session }
+        session
       );
 
+      if (updateResult.modifiedCount === 0) {
+        this.log.info('No leases found to migrate from invitation', {
+          invitationId: invitationId.toString(),
+        });
+        return;
+      }
+
       this.log.info('Leases migrated successfully', {
-        count: updateResult.modifiedCount || leasesToMigrate.length,
+        count: updateResult.modifiedCount,
         invitationId: invitationId.toString(),
         userId: userId.toString(),
       });
@@ -1193,7 +1275,7 @@ export class InvitationService {
   }
 
   destroy(): void {
-    this.emitterService.off(EventTypes.EMAIL_SENT, this.handleEmailSent);
-    this.emitterService.off(EventTypes.EMAIL_FAILED, this.handleEmailFailed);
+    this.emitterService.off(EventTypes.EMAIL_SENT, this.onEmailSent);
+    this.emitterService.off(EventTypes.EMAIL_FAILED, this.onEmailFailed);
   }
 }

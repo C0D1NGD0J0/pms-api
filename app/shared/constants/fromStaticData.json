@@ -9,7 +9,7 @@
       "industrial",
       "mixed"
     ],
-    "propertyStatuses": ["available", "occupied", "maintenance", "construction", "inactive"],
+    "propertyStatuses": ["available", "maintenance", "construction", "inactive"],
     "occupancyStatuses": ["vacant", "occupied", "partially_occupied"],
     "documentTypes": ["deed", "tax", "insurance", "inspection", "other", "lease"],
     "currencies": [

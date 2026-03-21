@@ -110,6 +110,29 @@ export const RoleHelpers = {
 };
 
 /**
+ * Role priority order — index 0 = highest privilege.
+ * Used to determine the effective (primary) role when a user holds multiple roles.
+ */
+export const ROLE_PRIORITY: IUserRoleType[] = [
+  'super-admin',
+  'admin',
+  'manager',
+  'staff',
+  'tenant',
+  'vendor',
+];
+
+/**
+ * Returns the highest-privilege role from the given array.
+ * Used to compute `primaryRole` whenever a user's roles change.
+ */
+export function resolveHighestRole(roles: IUserRoleType[]): IUserRoleType {
+  return roles.reduce((best, current) =>
+    ROLE_PRIORITY.indexOf(current) < ROLE_PRIORITY.indexOf(best) ? current : best
+  );
+}
+
+/**
  * Role validation arrays for validation schemas
  */
 export const ROLE_VALIDATION = {

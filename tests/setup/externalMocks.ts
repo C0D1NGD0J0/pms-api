@@ -65,7 +65,7 @@ export const mockQueue = {
 };
 
 export const mockEmailQueue = {
-  addToEmailQueue: jest.fn().mockResolvedValue({ success: true }),
+  addToEmailQueue: jest.fn(),
   add: jest.fn(),
   process: jest.fn(),
   on: jest.fn(),
@@ -73,8 +73,8 @@ export const mockEmailQueue = {
 } as any;
 
 export const mockInvitationQueue = {
-  addCsvValidationJob: jest.fn().mockResolvedValue({ jobId: 'job-123' }),
-  addCsvImportJob: jest.fn().mockResolvedValue({ jobId: 'job-456' }),
+  addCsvValidationJob: jest.fn(),
+  addCsvImportJob: jest.fn(),
   add: jest.fn(),
   process: jest.fn(),
   on: jest.fn(),
@@ -136,12 +136,13 @@ export const resetQueueMocks = () => {
 // =============================================================================
 
 export const mockAuthCache = {
-  saveRefreshToken: jest.fn().mockResolvedValue({ success: true }),
-  getRefreshToken: jest.fn().mockResolvedValue({ success: true }),
-  deleteRefreshToken: jest.fn().mockResolvedValue({ success: true }),
-  saveCurrentUser: jest.fn().mockResolvedValue({ success: true }),
-  getCurrentUser: jest.fn().mockResolvedValue(null),
-  deleteCurrentUser: jest.fn().mockResolvedValue({ success: true }),
+  saveRefreshToken: jest.fn(),
+  getRefreshToken: jest.fn(),
+  deleteRefreshToken: jest.fn(),
+  saveCurrentUser: jest.fn(),
+  getCurrentUser: jest.fn(),
+  deleteCurrentUser: jest.fn(),
+  invalidateCurrentUser: jest.fn(),
 } as any;
 
 export const setupAuthCacheMocks = () => {
@@ -151,6 +152,7 @@ export const setupAuthCacheMocks = () => {
   mockAuthCache.saveCurrentUser.mockResolvedValue({ success: true });
   mockAuthCache.getCurrentUser.mockResolvedValue(null);
   mockAuthCache.deleteCurrentUser.mockResolvedValue({ success: true });
+  mockAuthCache.invalidateCurrentUser.mockResolvedValue({ success: true });
 };
 
 export const resetAuthCacheMocks = () => {
@@ -160,6 +162,7 @@ export const resetAuthCacheMocks = () => {
   mockAuthCache.saveCurrentUser.mockClear();
   mockAuthCache.getCurrentUser.mockClear();
   mockAuthCache.deleteCurrentUser.mockClear();
+  mockAuthCache.invalidateCurrentUser.mockClear();
 };
 
 // =============================================================================
@@ -172,10 +175,7 @@ export const mockTokenService = {
     refreshToken: 'mock-refresh-token',
     rememberMe: false,
   }),
-  verifyJwtToken: jest.fn().mockResolvedValue({
-    success: true,
-    data: { sub: 'user-id', csub: 'client-cuid' },
-  }),
+  verifyJwtToken: jest.fn(),
   generateToken: jest.fn().mockReturnValue('mock-token'),
 } as any;
 

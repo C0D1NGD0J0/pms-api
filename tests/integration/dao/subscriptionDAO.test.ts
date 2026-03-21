@@ -1,25 +1,15 @@
 import { Types } from 'mongoose';
 import { Subscription } from '@models/index';
+import { clearTestDatabase } from '@tests/helpers';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
 
 describe('SubscriptionDAO - updateResourceCount', () => {
   let subscriptionDAO: SubscriptionDAO;
   let testClientId: Types.ObjectId;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     subscriptionDAO = new SubscriptionDAO();
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
     testClientId = new Types.ObjectId();
@@ -36,7 +26,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       startDate: new Date(),
       billingInterval: 'monthly',
       totalMonthlyPrice: 0,
-      paymentGateway: {
+      billing: {
         provider: 'none',
         customerId: 'none',
         planId: 'none',
@@ -190,13 +180,13 @@ describe('SubscriptionDAO - updateResourceCount', () => {
         customerId: 'cus_test123',
         planId: 'price_growth_monthly',
         seatItemId: 'si_test456',
-      };
+      } as any;
 
       const result = await subscriptionDAO.updatePaymentGateway(subscription!._id, newGateway);
 
-      expect(result?.paymentGateway.provider).toBe('stripe');
-      expect(result?.paymentGateway.customerId).toBe('cus_test123');
-      expect(result?.paymentGateway.seatItemId).toBe('si_test456');
+      expect(result?.billing.provider).toBe('stripe');
+      expect(result?.billing.customerId).toBe('cus_test123');
+      expect(result?.billing.seatItemId).toBe('si_test456');
     });
   });
 

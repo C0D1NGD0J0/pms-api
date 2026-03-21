@@ -1,6 +1,6 @@
+import { Job } from 'bull';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { DoneCallback, Job } from 'bull';
 import { createLogger } from '@utils/index';
 import { EventTypes } from '@interfaces/events.interface';
 import { PropertyUnitDAO, PropertyDAO } from '@dao/index';
@@ -35,7 +35,7 @@ export class PropertyUnitWorker {
     this.log = createLogger('PropertyUnitWorker');
   }
 
-  processUnitBatchCreation = async (job: Job<UnitBatchJobData>, done: DoneCallback) => {
+  processUnitBatchCreation = async (job: Job<UnitBatchJobData>) => {
     job.progress(10);
     const { units, pid, cuid, userId } = job.data;
     this.log.info(`Processing unit batch creation job ${job.id} for property ${pid}`);
@@ -44,14 +44,12 @@ export class PropertyUnitWorker {
       job.progress(20);
       const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
       if (!property) {
-        done(new Error('Property not found'), null);
-        return;
+        throw new Error('Property not found');
       }
 
       const canAddUnits = await this.propertyDAO.canAddUnitToProperty(property.id);
       if (!canAddUnits.canAdd) {
-        done(new Error('Property has reached maximum unit capacity'), null);
-        return;
+        throw new Error('Property has reached maximum unit capacity');
       }
 
       // Additional validation: Check if adding the batch would exceed the limit
@@ -59,13 +57,9 @@ export class PropertyUnitWorker {
         canAddUnits.maxCapacity > 0 &&
         canAddUnits.currentCount + units.length > canAddUnits.maxCapacity
       ) {
-        done(
-          new Error(
-            `Cannot add ${units.length} units. Property has ${canAddUnits.currentCount}/${canAddUnits.maxCapacity} units (including archived). Adding these units would exceed the limit.`
-          ),
-          null
+        throw new Error(
+          `Cannot add ${units.length} units. Property has ${canAddUnits.currentCount}/${canAddUnits.maxCapacity} units (including archived). Adding these units would exceed the limit.`
         );
-        return;
       }
 
       job.progress(30);
@@ -79,8 +73,7 @@ export class PropertyUnitWorker {
       const patternConsistency =
         this.unitNumberingService.validatePatternConsistency(unitsForValidation);
       if (!patternConsistency.isConsistent) {
-        done(new Error(`Pattern inconsistency: ${patternConsistency.recommendation}`), null);
-        return;
+        throw new Error(`Pattern inconsistency: ${patternConsistency.recommendation}`);
       }
 
       job.progress(40);
@@ -155,7 +148,11 @@ export class PropertyUnitWorker {
 
       job.progress(100);
 
-      done(null, {
+      this.log.info(
+        `Completed unit batch creation job ${job.id} for property ${pid}: ${result.createdUnits.length}/${units.length} successful`
+      );
+
+      return {
         success: true,
         processId: job.id,
         data: {
@@ -170,14 +167,10 @@ export class PropertyUnitWorker {
           result.errors.length > 0
             ? `${result.createdUnits.length} units created successfully, ${result.errors.length} failed`
             : `All ${result.createdUnits.length} units created successfully`,
-      });
-
-      this.log.info(
-        `Completed unit batch creation job ${job.id} for property ${pid}: ${result.createdUnits.length}/${units.length} successful`
-      );
+      };
     } catch (error) {
       this.log.error(`Error processing unit batch creation job ${job.id}:`, error);
-      done(error, null);
+      throw error;
     }
   };
 }

@@ -151,7 +151,7 @@ export const createTestInvitation = async (
 
   if (typeof clientIdOrDoc === 'object' && '_id' in clientIdOrDoc) {
     clientId = clientIdOrDoc._id;
-  } else if (typeof clientIdOrDoc === 'object' && clientIdOrDoc instanceof Types.ObjectId) {
+  } else if (typeof clientIdOrDoc === 'object' && (clientIdOrDoc as object) instanceof Types.ObjectId) {
     clientId = clientIdOrDoc;
   } else {
     clientId = new Types.ObjectId(clientIdOrDoc as string);
@@ -181,7 +181,7 @@ export const createTestInvitation = async (
 
 export interface CreatePropertyOptions {
   propertyType?: 'apartment' | 'house' | 'condominium' | 'townhouse' | 'commercial' | 'industrial';
-  status?: 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
+  operationalStatus?: 'available' | 'maintenance' | 'construction' | 'inactive';
   maxAllowedUnits?: number;
   name?: string;
 }
@@ -203,7 +203,7 @@ export const createTestProperty = async (
     clientId: typeof clientId === 'string' ? new Types.ObjectId(clientId) : clientId,
     name: options.name || `${faker.location.street()} Property`,
     propertyType: options.propertyType || 'apartment',
-    status: options.status || 'available',
+    operationalStatus: options.operationalStatus || 'available',
     maxAllowedUnits: options.maxAllowedUnits || 20,
     managedBy: new Types.ObjectId(), // Required field
     createdBy: new Types.ObjectId(), // Required field
@@ -221,8 +221,8 @@ export const createTestProperty = async (
     computedLocation: {
       type: 'Point',
       coordinates: [
-        parseFloat(faker.location.longitude()),
-        parseFloat(faker.location.latitude()),
+        parseFloat(faker.location.longitude().toString()),
+        parseFloat(faker.location.latitude().toString()),
       ], // Required field
     },
     approvalStatus: 'approved', // Required for lease validation
@@ -252,6 +252,7 @@ export const createTestPropertyUnit = async (
   options: CreatePropertyUnitOptions = {}
 ): Promise<IPropertyUnitDocument> => {
   const squareFeet = faker.number.int({ min: 500, max: 2000 });
+  // monthlyRent is in dollars, will be converted to cents by model setter
   const monthlyRent = options.monthlyRent || faker.number.int({ min: 1000, max: 3000 });
 
   return PropertyUnit.create({
@@ -263,7 +264,7 @@ export const createTestPropertyUnit = async (
     status: options.status || 'available',
     floor: options.floor || 1,
     fees: {
-      rentAmount: monthlyRent, // Required field
+      rentAmount: monthlyRent, // In dollars - model setter converts to cents
       currency: 'USD',
     },
     specifications: {
@@ -343,9 +344,9 @@ export const createTestLease = async (
       type: 'fixed',
     },
     fees: {
-      monthlyRent: options.monthlyRent || faker.number.int({ min: 1000, max: 3000 }),
+      monthlyRent: options.monthlyRent || faker.number.int({ min: 1000, max: 3000 }), // In dollars - model setter converts to cents
       currency: 'USD',
-      securityDeposit: faker.number.int({ min: 500, max: 2000 }),
+      securityDeposit: faker.number.int({ min: 500, max: 2000 }), // In dollars - model setter converts to cents
     },
     createdAt: new Date(),
     updatedAt: new Date(),

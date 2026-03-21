@@ -1,17 +1,12 @@
 import { Types } from 'mongoose';
+import { clearTestDatabase } from '@tests/helpers';
 import { NotificationDAO } from '@dao/notificationDAO';
 import { NotificationModel, User } from '@models/index';
 import { ResourceContext } from '@interfaces/utils.interface';
 import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
-import {
   NotificationPriorityEnum,
   NotificationTypeEnum,
-  RecipientTypeEnum,
-} from '@interfaces/notification.interface';
+  RecipientTypeEnum,} from '@interfaces/notification.interface';
 
 describe('NotificationDAO Integration Tests', () => {
   let notificationDAO: NotificationDAO;
@@ -20,14 +15,8 @@ describe('NotificationDAO Integration Tests', () => {
   let testCuid: string;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     notificationDAO = new NotificationDAO({ notificationModel: NotificationModel });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
     testCuid = 'TEST_CLIENT';

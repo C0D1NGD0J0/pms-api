@@ -1,18 +1,14 @@
 import { Types } from 'mongoose';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { clearTestDatabase } from '@tests/helpers';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { CURRENCIES } from '@interfaces/utils.interface';
 import { PropertyUnit, Property, Client, User } from '@models/index';
 import { PropertyUnitStatusEnum, PropertyUnitTypeEnum } from '@interfaces/propertyUnit.interface';
 import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
-import {
   OccupancyStatus,
   PropertyStatus,
-  PropertyType,
-} from '@interfaces/property.interface';
+  PropertyType,} from '@interfaces/property.interface';
 
 describe('PropertyDAO Integration Tests', () => {
   let propertyDAO: PropertyDAO;
@@ -22,18 +18,12 @@ describe('PropertyDAO Integration Tests', () => {
   let testPropertyId: Types.ObjectId;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
     propertyDAO = new PropertyDAO({
       propertyModel: Property,
       propertyUnitDAO: propertyUnitDAO,
     });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
     testClientId = new Types.ObjectId();
@@ -73,7 +63,7 @@ describe('PropertyDAO Integration Tests', () => {
       cuid: 'TEST_CLIENT',
       name: 'Test Property',
       propertyType: 'apartment',
-      status: 'available',
+      operationalStatus: 'available',
       managedBy: testUserId,
       createdBy: testUserId,
       maxAllowedUnits: 10,
@@ -125,7 +115,7 @@ describe('PropertyDAO Integration Tests', () => {
         cuid: 'TEST_CLIENT',
         name: 'House Property',
         propertyType: 'house',
-        status: 'available',
+        operationalStatus: 'available',
         managedBy: testUserId,
         createdBy: testUserId,
         address: {
@@ -169,7 +159,7 @@ describe('PropertyDAO Integration Tests', () => {
         cuid: 'TEST_CLIENT',
         name: 'Expensive Property',
         propertyType: 'condominium',
-        status: 'available',
+        operationalStatus: 'available',
         managedBy: testUserId,
         createdBy: testUserId,
         address: { fullAddress: '789 Luxury Blvd, Toronto, ON M5D 2B2' },
@@ -206,7 +196,7 @@ describe('PropertyDAO Integration Tests', () => {
         cuid: 'TEST_CLIENT',
         name: 'Vancouver Property',
         propertyType: 'townhouse',
-        status: 'available',
+        operationalStatus: 'available',
         managedBy: testUserId,
         createdBy: testUserId,
         address: {
@@ -244,7 +234,7 @@ describe('PropertyDAO Integration Tests', () => {
           cuid: 'TEST_CLIENT',
           name: `Property ${i}`,
           propertyType: 'apartment',
-          status: 'available',
+          operationalStatus: 'available',
           managedBy: testUserId,
           createdBy: testUserId,
           address: { fullAddress: `${i} Street, Toronto, ON M${i}A ${i}B${i}` },
@@ -328,7 +318,7 @@ describe('PropertyDAO Integration Tests', () => {
         cuid: 'TEST_CLIENT',
         name: 'Another Property',
         propertyType: 'house',
-        status: 'available',
+        operationalStatus: 'available',
         managedBy: testUserId,
         createdBy: testUserId,
         address: { fullAddress: '999 Last St, Toronto, ON M9Z 9Z9' },
@@ -353,7 +343,7 @@ describe('PropertyDAO Integration Tests', () => {
         cuid: 'TEST_CLIENT',
         name: 'Cheap Property',
         propertyType: 'house',
-        status: 'available',
+        operationalStatus: 'available',
         managedBy: testUserId,
         createdBy: testUserId,
         address: { fullAddress: '100 Budget St, Toronto, ON M1B 1B1' },
@@ -389,6 +379,8 @@ describe('PropertyDAO Integration Tests', () => {
           url: 'https://example.com/doc.pdf',
           actorId: testUserId.toString(),
           filename: 'lease.pdf',
+          resourceId: testPropertyId.toString(),
+          publicuid: 'pub-uid-doc-123',
         },
       ];
 
@@ -412,6 +404,8 @@ describe('PropertyDAO Integration Tests', () => {
           url: 'https://example.com/image.jpg',
           filename: 'property.jpg',
           actorId: testUserId.toString(),
+          resourceId: testPropertyId.toString(),
+          publicuid: 'pub-uid-img-456',
         },
       ];
 
@@ -436,6 +430,8 @@ describe('PropertyDAO Integration Tests', () => {
           url: 'https://example.com/tax.pdf',
           actorId: testUserId.toString(),
           filename: 'tax.pdf',
+          resourceId: testPropertyId.toString(),
+          publicuid: 'pub-uid-doc-789',
         },
         {
           fieldName: 'images',
@@ -443,6 +439,8 @@ describe('PropertyDAO Integration Tests', () => {
           url: 'https://example.com/photo.jpg',
           filename: 'photo.jpg',
           actorId: testUserId.toString(),
+          resourceId: testPropertyId.toString(),
+          publicuid: 'pub-uid-img-101',
         },
       ];
 
@@ -478,7 +476,7 @@ describe('PropertyDAO Integration Tests', () => {
         cuid: 'TEST_CLIENT',
         name: 'Nearby Property',
         propertyType: 'apartment',
-        status: 'available',
+        operationalStatus: 'available',
         managedBy: testUserId,
         createdBy: testUserId,
         address: { fullAddress: '200 Close St, Toronto, ON M5E 1C1' },
@@ -560,7 +558,7 @@ describe('PropertyDAO Integration Tests', () => {
         cuid: 'TEST_CLIENT',
         name: 'New Property',
         propertyType: 'house' as PropertyType,
-        status: 'available' as PropertyStatus,
+        operationalStatus: 'available' as PropertyStatus,
         managedBy: testUserId,
         createdBy: testUserId,
         address: {
@@ -575,7 +573,7 @@ describe('PropertyDAO Integration Tests', () => {
         description: { text: 'Brand new property' },
         specifications: { totalArea: 2000 },
         fees: {
-          currency: 'USD' as const,
+          currency: 'USD' as CURRENCIES,
           rentalAmount: 3000,
           taxAmount: 400,
           managementFees: 250,
@@ -612,13 +610,15 @@ describe('PropertyDAO Integration Tests', () => {
             url: 'https://example.com/remove.pdf',
             actorId: testUserId.toString(),
             filename: 'remove.pdf',
+            resourceId: testPropertyId.toString(),
+            publicuid: 'pub-uid-remove',
           },
         ],
         testUserId.toString()
       );
 
       const updatedProperty = await Property.findById(testPropertyId);
-      const docId = updatedProperty!.documents![0]._id;
+      const docId = updatedProperty!.documents![0]._id!;
 
       const result = await propertyDAO.removePropertyDocument(
         testPropertyId.toString(),
@@ -650,13 +650,15 @@ describe('PropertyDAO Integration Tests', () => {
             url: 'https://example.com/remove.jpg',
             filename: 'remove.jpg',
             actorId: testUserId.toString(),
+            resourceId: testPropertyId.toString(),
+            publicuid: 'pub-uid-img-remove',
           },
         ],
         testUserId.toString()
       );
 
       const updatedProperty = await Property.findById(testPropertyId);
-      const imageId = updatedProperty!.images![0]._id;
+      const imageId = updatedProperty!.images![0]._id!;
 
       const result = await propertyDAO.removePropertyImage(
         testPropertyId.toString(),
@@ -688,13 +690,15 @@ describe('PropertyDAO Integration Tests', () => {
             url: 'https://example.com/media.pdf',
             actorId: testUserId.toString(),
             filename: 'media.pdf',
+            resourceId: testPropertyId.toString(),
+            publicuid: 'pub-uid-media-doc',
           },
         ],
         testUserId.toString()
       );
 
       const updatedProperty = await Property.findById(testPropertyId);
-      const docId = updatedProperty!.documents![0]._id;
+      const docId = updatedProperty!.documents![0]._id!;
 
       const result = await propertyDAO.removePropertyMedia(
         testPropertyId.toString(),
@@ -718,13 +722,15 @@ describe('PropertyDAO Integration Tests', () => {
             url: 'https://example.com/media.jpg',
             filename: 'media.jpg',
             actorId: testUserId.toString(),
+            resourceId: testPropertyId.toString(),
+            publicuid: 'pub-uid-media-img',
           },
         ],
         testUserId.toString()
       );
 
       const updatedProperty = await Property.findById(testPropertyId);
-      const imageId = updatedProperty!.images![0]._id;
+      const imageId = updatedProperty!.images![0]._id!;
 
       const result = await propertyDAO.removePropertyMedia(
         testPropertyId.toString(),
@@ -1003,7 +1009,7 @@ describe('PropertyDAO Integration Tests', () => {
         cuid: 'TEST_CLIENT',
         name: 'House Property',
         propertyType: 'house',
-        status: 'available',
+        operationalStatus: 'available',
         managedBy: testUserId,
         createdBy: testUserId,
         address: { fullAddress: '777 House St, Toronto, ON M7H 7H7' },
@@ -1075,7 +1081,7 @@ describe('PropertyDAO Integration Tests', () => {
             internet: false,
             cableTV: false,
            trash: false, heating: true, centralAC: false },
-        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false },        },
+        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false }},
         {
           propertyId: testPropertyId,
           unitNumber: 'Unit-402',
@@ -1094,7 +1100,7 @@ describe('PropertyDAO Integration Tests', () => {
             internet: false,
             cableTV: false,
            trash: false, heating: true, centralAC: false },
-        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false },        },
+        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false }},
       ]);
 
       const result = await propertyDAO.syncPropertyOccupancyWithUnits(
@@ -1125,7 +1131,7 @@ describe('PropertyDAO Integration Tests', () => {
             internet: false,
             cableTV: false,
            trash: false, heating: true, centralAC: false },
-        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false },        },
+        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false }},
         {
           propertyId: testPropertyId,
           unitNumber: 'Unit-502',
@@ -1144,7 +1150,7 @@ describe('PropertyDAO Integration Tests', () => {
             internet: false,
             cableTV: false,
            trash: false, heating: true, centralAC: false },
-        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false },        },
+        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false }},
       ]);
 
       const result = await propertyDAO.syncPropertyOccupancyWithUnits(

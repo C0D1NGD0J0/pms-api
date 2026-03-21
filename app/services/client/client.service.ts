@@ -1,27 +1,46 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import ProfileDAO from '@dao/profileDAO';
+import { envVariables } from '@shared/config';
 import { AuthCache } from '@caching/auth.cache';
+import { SSEService } from '@services/sse/sse.service';
 import { ClientValidations } from '@shared/validations';
-import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { getRequestDuration, createLogger } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { IClientDocument, IClientStats } from '@interfaces/client.interface';
+import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import { IIdentitySessionResponse } from '@interfaces/paymentGateway.interface';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { NotificationService } from '@services/notification/notification.service';
+import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { SubscriptionDAO, PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
+import {
+  NotificationPriorityEnum,
+  NotificationTypeEnum,
+  RecipientTypeEnum,
+} from '@interfaces/notification.interface';
+import {
+  PaymentProcessorVerifiedPayload,
+  PaymentDisputeCreatedPayload,
+  PaymentDisputeWonPayload,
+  EventTypes,
+} from '@interfaces/events.interface';
 
 interface IConstructor {
+  paymentGatewayService: PaymentGatewayService;
   subscriptionService: SubscriptionService;
+  notificationService: NotificationService;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   propertyUnitDAO: PropertyUnitDAO;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
+  sseService: SSEService;
   clientDAO: ClientDAO;
   authCache: AuthCache;
   userDAO: UserDAO;
@@ -35,9 +54,12 @@ export class ClientService {
   private readonly userDAO: UserDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly authCache: AuthCache;
+  private readonly sseService: SSEService;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly subscriptionService: SubscriptionService;
+  private readonly notificationService: NotificationService;
   private readonly emitterService: EventEmitterService;
+  private readonly paymentGatewayService: PaymentGatewayService;
 
   constructor({
     clientDAO,
@@ -46,9 +68,12 @@ export class ClientService {
     userDAO,
     profileDAO,
     authCache,
+    sseService,
     subscriptionDAO,
     subscriptionService,
+    notificationService,
     emitterService,
+    paymentGatewayService,
   }: IConstructor) {
     this.log = createLogger('ClientService');
     this.clientDAO = clientDAO;
@@ -58,8 +83,12 @@ export class ClientService {
     this.userDAO = userDAO;
     this.profileDAO = profileDAO;
     this.authCache = authCache;
+    this.sseService = sseService;
     this.subscriptionDAO = subscriptionDAO;
+    this.notificationService = notificationService;
     this.subscriptionService = subscriptionService;
+    this.paymentGatewayService = paymentGatewayService;
+    this.setupEventListeners();
   }
 
   async updateClientDetails(
@@ -94,24 +123,8 @@ export class ClientService {
       return emailRegex.test(email);
     };
 
-    if (updateData.identification) {
-      if (
-        updateData.identification.idType &&
-        client.identification?.idType &&
-        updateData.identification.idType !== client.identification.idType
-      ) {
-        requiresReVerification = true;
-      }
-
-      if (updateData.identification.idType && !updateData.identification.idNumber) {
-        validationErrors.push(t('client.validation.idNumberRequired'));
-      }
-      if (updateData.identification.idType && !updateData.identification.authority) {
-        validationErrors.push(t('client.validation.authorityRequired'));
-      }
-      if (updateData.identification.idNumber && !updateData.identification.idType) {
-        validationErrors.push(t('client.validation.idTypeRequired'));
-      }
+    if (updateData.dataProcessingConsent === false) {
+      requiresReVerification = true;
     }
 
     if (updateData.companyProfile) {
@@ -211,7 +224,6 @@ export class ClientService {
       delete updateData.accountType;
       delete updateData.isVerified;
       delete updateData.cuid;
-
       const updatedClient = await this.clientDAO.updateById(
         client._id.toString(),
         {
@@ -333,12 +345,8 @@ export class ClientService {
       updatedAt: client.updatedAt,
     };
 
-    if (client.identification) {
-      responseData.identification = {
-        dataProcessingConsent: client.identification.dataProcessingConsent,
-        retentionExpiryDate: client.identification.retentionExpiryDate,
-      };
-    }
+    responseData.dataProcessingConsent = client.dataProcessingConsent;
+    responseData.identityVerification = client.identityVerification;
 
     if (client.accountType.isEnterpriseAccount && client.companyProfile) {
       responseData.companyProfile = {
@@ -378,10 +386,10 @@ export class ClientService {
             config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
           additionalSeatCost: subscription.additionalSeatsCost,
         },
-        paymentMethod: subscription.paymentGateway?.cardLast4
+        paymentMethod: subscription.billing?.cardLast4
           ? {
-              last4: subscription.paymentGateway.cardLast4,
-              brand: subscription.paymentGateway.cardBrand,
+              last4: subscription.billing.cardLast4,
+              brand: subscription.billing.cardBrand,
             }
           : null,
         billingHistory,
@@ -695,5 +703,274 @@ export class ClientService {
       data: { department },
       message: `Department '${department}' assigned successfully`,
     };
+  }
+
+  async verifyAccount(cxt: IRequestContext): Promise<ISuccessReturnData<{ isVerified: boolean }>> {
+    const currentuser = cxt.currentuser!;
+    const start = process.hrtime.bigint();
+    const { cuid } = cxt.request.params;
+
+    // Fetch client
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      this.log.error(
+        {
+          cuid,
+          url: cxt.request.url,
+          userId: currentuser?.sub,
+          requestId: cxt.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        t('client.errors.notFound')
+      );
+      throw new NotFoundError({ message: t('client.errors.notFound') });
+    }
+
+    // Check if already verified
+    if (client.isVerified) {
+      this.log.warn(
+        {
+          cuid,
+          userId: currentuser.sub,
+          requestId: cxt.requestId,
+        },
+        'Account is already verified'
+      );
+      throw new BadRequestError({ message: 'Account is already verified' });
+    }
+
+    // Update client to verified status
+    const updatedClient = await this.clientDAO.updateById(client._id.toString(), {
+      $set: {
+        isVerified: true,
+        'identityVerification.verifiedAt': new Date(),
+        'identityVerification.verifiedBy': currentuser.sub,
+      },
+    });
+
+    if (!updatedClient) {
+      this.log.error(
+        {
+          cuid,
+          url: cxt.request.url,
+          userId: currentuser?.sub,
+          requestId: cxt.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Failed to update client verification status'
+      );
+      throw new BadRequestError({ message: 'Failed to verify account' });
+    }
+
+    this.log.info(
+      {
+        cuid,
+        userId: currentuser.sub,
+        requestId: cxt.requestId,
+        duration: getRequestDuration(start).durationInMs,
+      },
+      'Account verified successfully'
+    );
+
+    return {
+      success: true,
+      data: { isVerified: true },
+      message: t('client.success.verified'),
+    };
+  }
+
+  async initiateIdentityVerification(
+    cxt: IRequestContext
+  ): Promise<ISuccessReturnData<IIdentitySessionResponse>> {
+    const currentuser = cxt.currentuser!;
+    const { cuid } = cxt.request.params;
+
+    if (currentuser.client.role !== ROLES.SUPER_ADMIN) {
+      throw new ForbiddenError({ message: t('auth.errors.superAdminRequired') });
+    }
+
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) throw new NotFoundError({ message: t('client.errors.notFound') });
+    if (client.isVerified)
+      throw new BadRequestError({ message: t('client.errors.alreadyVerified') });
+
+    const returnUrl = `${envVariables.FRONTEND.URL}/client/${cuid}/account_settings`;
+
+    const { data, success } = await this.paymentGatewayService.createIdentityVerificationSession(
+      IPaymentGatewayProvider.STRIPE,
+      {
+        email: currentuser.email,
+        metadata: { cuid, userId: currentuser.sub },
+        returnUrl,
+      }
+    );
+
+    if (!success || !data) {
+      throw new BadRequestError({ message: t('client.errors.identitySessionFailed') });
+    }
+
+    await this.clientDAO.updateById(client._id.toString(), {
+      $set: {
+        'identityVerification.sessionId': data.sessionId,
+        'identityVerification.sessionStatus': 'requires_input',
+      },
+    });
+
+    this.log.info({ cuid, sessionId: data.sessionId }, 'Identity verification session created');
+    return { success: true, data };
+  }
+
+  async handleIdentityWebhookEvent(
+    status: 'verified' | 'requires_input',
+    sessionId: string
+  ): Promise<void> {
+    const client = await this.clientDAO.findFirst({
+      'identityVerification.sessionId': sessionId,
+    });
+    if (!client) {
+      this.log.warn({ sessionId }, 'No client found for identity webhook session');
+      return;
+    }
+
+    if (status === 'verified') {
+      const { data: report } = await this.paymentGatewayService.retrieveIdentityVerificationSession(
+        IPaymentGatewayProvider.STRIPE,
+        sessionId
+      );
+
+      await this.clientDAO.updateById(client._id.toString(), {
+        $set: {
+          isVerified: true,
+          'identityVerification.sessionStatus': 'stripe_verified',
+          'identityVerification.documentType': report?.documentType,
+          'identityVerification.issuingCountry': report?.issuingCountry,
+          'identityVerification.verifiedAt': new Date(),
+        },
+      });
+
+      this.sseService.sendToUser(client.accountAdmin.toString(), EventTypes.IDENTITY_VERIFIED, {
+        cuid: client.cuid,
+        isVerified: true,
+      });
+    } else {
+      await this.clientDAO.updateById(client._id.toString(), {
+        $set: { 'identityVerification.sessionStatus': 'requires_input' },
+      });
+
+      this.sseService.sendToUser(
+        client.accountAdmin.toString(),
+        EventTypes.IDENTITY_REQUIRES_INPUT,
+        { cuid: client.cuid, sessionStatus: 'requires_input' }
+      );
+    }
+  }
+
+  // ── Payment event listeners ───────────────────────────────────────────────
+
+  private setupEventListeners(): void {
+    this.emitterService.on(
+      EventTypes.PAYMENT_PROCESSOR_VERIFIED,
+      this.handlePaymentProcessorVerified.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.PAYMENT_DISPUTE_CREATED,
+      this.handleDisputeCreated.bind(this)
+    );
+    this.emitterService.on(EventTypes.PAYMENT_DISPUTE_WON, this.handleDisputeWon.bind(this));
+  }
+
+  private async handlePaymentProcessorVerified({
+    cuid,
+    accountId,
+  }: PaymentProcessorVerifiedPayload): Promise<void> {
+    try {
+      const client = await this.clientDAO.findFirst({ cuid });
+      const adminId = client?.accountAdmin?.toString();
+      if (!adminId) {
+        this.log.warn({ cuid }, 'No account admin found for payout verification notification');
+        return;
+      }
+
+      await this.authCache.invalidateCurrentUser(adminId);
+
+      await this.sseService.sendToUser(
+        adminId,
+        cuid,
+        {
+          action: 'REFETCH_CURRENT_USER',
+          eventType: 'payout_account_verified',
+          message: 'Your payout account has been verified and is ready to receive payments.',
+          timestamp: new Date().toISOString(),
+        },
+        'payment_update'
+      );
+
+      await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        priority: NotificationPriorityEnum.HIGH,
+        title: 'Payout Account Verified',
+        message:
+          'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
+        cuid,
+        targetRoles: [ROLES.ADMIN],
+        metadata: {},
+      });
+
+      this.log.info({ cuid, adminId, accountId }, 'Payout account verified — PM notified');
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Failed to handle payment processor verified event');
+    }
+  }
+
+  private async handleDisputeCreated({
+    cuid,
+    amount,
+    currency,
+    reason,
+    disputeId,
+    invoiceNumber,
+    chargeId,
+  }: PaymentDisputeCreatedPayload): Promise<void> {
+    try {
+      const amountFormatted = `${(amount / 100).toFixed(2)} ${currency.toUpperCase()}`;
+      await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        priority: NotificationPriorityEnum.HIGH,
+        title: 'Payment Dispute Opened',
+        message: `A dispute of ${amountFormatted} was filed for invoice ${invoiceNumber}. The transfer has been reversed pending resolution.`,
+        cuid,
+        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        metadata: { disputeId, chargeId, invoiceNumber, amount, currency, reason },
+      });
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Failed to handle dispute created event');
+    }
+  }
+
+  private async handleDisputeWon({
+    cuid,
+    amount,
+    currency,
+    disputeId,
+    invoiceNumber,
+    chargeId,
+  }: PaymentDisputeWonPayload): Promise<void> {
+    try {
+      const amountFormatted = `${(amount / 100).toFixed(2)} ${currency.toUpperCase()}`;
+      await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        priority: NotificationPriorityEnum.MEDIUM,
+        title: 'Dispute Resolved — Funds Returned',
+        message: `The dispute for invoice ${invoiceNumber} was resolved in your favor. ${amountFormatted} has been re-transferred to your account.`,
+        cuid,
+        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        metadata: { disputeId, chargeId, invoiceNumber, amount, currency },
+      });
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Failed to handle dispute won event');
+    }
   }
 }

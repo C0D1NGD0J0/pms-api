@@ -264,6 +264,17 @@ export interface IPropertyUnitPendingChanges {
  */
 
 /**
+ * Property Unit Note Interface
+ */
+export interface IPropertyUnitNote {
+  createdBy: Types.ObjectId;
+  content: string;
+  createdAt: Date;
+  html?: string;
+  title: string;
+}
+
+/**
  * Property Unit Utilities Interface
  */
 export interface IPropertyUnitUtilities {
@@ -318,16 +329,6 @@ export type UnitType =
   | 'loft'
   | 'commercial'
   | 'other';
-
-/**
- * Property Unit Note Interface
- */
-export interface IPropertyUnitNote {
-  createdBy: Types.ObjectId;
-  content: string;
-  createdAt: Date;
-  title: string;
-}
 
 /**
  * Property Unit Inspection Attachment Type

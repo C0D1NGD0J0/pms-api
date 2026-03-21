@@ -41,6 +41,7 @@ export const QUEUE_NAMES = {
   ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
   LEASE_SIGNATURE_REQUEST_QUEUE: 'leaseSignatureRequestQueue',
   PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
+  PAYMENT_QUEUE: 'paymentQueue',
 };
 
 export const JOB_NAME = {
@@ -65,6 +66,9 @@ export const JOB_NAME = {
   INVITATION_BULK_USER_IMPORT_JOB: 'invitation_bulk_user_import',
   INVITATION_BULK_USER_VALIDATION_JOB: 'invitation_bulk_user_validation',
   LEASE_ENDING_SOON_JOB: 'leaseEndingSoonJob',
+  CREATE_RENT_INVOICE_JOB: 'createRentInvoiceJob',
+  RETRY_FAILED_INVOICE_JOB: 'retryFailedInvoiceJob',
+  CANCEL_PAYMENT_JOB: 'cancelPaymentJob',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {

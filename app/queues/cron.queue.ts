@@ -9,9 +9,9 @@ export class CronQueue extends BaseQueue {
 
     // process all cron jobs with a single worker
     // lazy load: gets cronWorker only when processing starts
-    this.processQueueJobs('*', 1, (job, done) => {
+    this.processQueueJobs('*', 1, async (job) => {
       const cronWorker = container.resolve('cronWorker');
-      return cronWorker.executeCronJob(job, done);
+      return cronWorker.executeCronJob(job);
     });
 
     if (process.env.PROCESS_TYPE === 'worker') {

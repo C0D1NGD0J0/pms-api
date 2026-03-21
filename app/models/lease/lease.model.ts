@@ -66,13 +66,14 @@ const LeaseSchema = new Schema<ILeaseDocument>(
     templateType: {
       type: String,
       enum: [
+        'generic',
         'residential-single-family',
         'residential-apartment',
         'commercial-office',
         'commercial-retail',
         'short-term-rental',
       ],
-      default: 'residential-single-family',
+      default: 'generic',
       required: [true, 'Template type is required'],
       index: true,
     },
@@ -193,7 +194,16 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       acceptedPaymentMethod: {
         type: String,
         required: true,
-        enum: ['e-transfer', 'credit_card', 'crypto'],
+        enum: [
+          'bank_transfer',
+          'e-transfer',
+          'auto-debit',
+          'check',
+          'cash',
+          'credit_card',
+          'debit_card',
+          'mobile_payment',
+        ],
       },
     },
     coTenants: [
@@ -245,6 +255,11 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         default: false,
       },
       deposit: {
+        type: Number,
+        min: 0,
+        default: 0,
+      },
+      monthlyFee: {
         type: Number,
         min: 0,
         default: 0,
@@ -449,7 +464,12 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         note: {
           type: String,
           required: true,
-          trim: true,
+          maxlength: 10000,
+        },
+        html: {
+          type: String,
+          required: true,
+          maxlength: 10000,
         },
         author: {
           type: String,
@@ -788,6 +808,59 @@ LeaseSchema.methods.softDelete = async function (userId: any) {
   this.deletedAt = new Date();
   this.deletedBy = userId;
   return await this.save();
+};
+
+/**
+ * Calculate all lease fees
+ * Returns all monetary values in CENTS
+ *
+ * @param options.daysLate - Number of days past due date (for late fee calculation)
+ * @returns Complete fee breakdown with all values in cents
+ */
+LeaseSchema.methods.calculateFees = function (options?: { daysLate?: number }) {
+  const daysLate = options?.daysLate || 0;
+
+  const monthlyRent = this.fees?.monthlyRent || 0;
+  const petMonthlyFee = this.petPolicy?.monthlyFee || 0;
+  const totalMonthly = monthlyRent + petMonthlyFee;
+
+  const securityDeposit = this.fees?.securityDeposit || 0;
+  const petDeposit = this.petPolicy?.deposit || 0;
+  const totalDeposits = securityDeposit + petDeposit;
+
+  let lateFee = 0;
+  const gracePeriod = this.fees?.lateFeeDays || 5;
+
+  if (daysLate >= gracePeriod) {
+    if (this.fees?.lateFeeType === 'percentage' && this.fees?.lateFeePercentage) {
+      // calculate percentage of monthly rent
+      lateFee = Math.round(monthlyRent * (this.fees.lateFeePercentage / 100));
+    } else {
+      // fixed late fee amount
+      lateFee = this.fees?.lateFeeAmount || 0;
+    }
+  }
+
+  return {
+    monthly: {
+      rent: monthlyRent,
+      petFee: petMonthlyFee,
+      total: totalMonthly,
+    },
+    deposits: {
+      security: securityDeposit,
+      pet: petDeposit,
+      total: totalDeposits,
+    },
+    late: {
+      daysLate,
+      fee: lateFee,
+      type: this.fees?.lateFeeType || 'fixed',
+      percentage: this.fees?.lateFeePercentage,
+      gracePeriod,
+    },
+    currency: this.fees?.currency || 'USD',
+  };
 };
 
 LeaseSchema.plugin(uniqueValidator, {

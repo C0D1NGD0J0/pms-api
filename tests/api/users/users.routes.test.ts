@@ -4,8 +4,8 @@ jest.setTimeout(10000);
 import request from 'supertest';
 import { faker } from '@faker-js/faker';
 import { httpStatusCodes } from '@utils/index';
-import { Application, Response, Request } from 'express';
 import { ROLES } from '@shared/constants/roles.constants';
+import { NextFunction, Application, Response, Request } from 'express';
 import { createMockCurrentUser, createApiTestHelper } from '@tests/helpers';
 
 // Mock User Controller
@@ -277,9 +277,9 @@ describe('Users Routes Integration Tests', () => {
 
   beforeAll(() => {
     // Setup test app with routes
-    app = apiHelper.createApp((testApp) => {
+    app = apiHelper.createApp((testApp: Application) => {
       // Inject container and simulate authentication
-      testApp.use((req, res, next) => {
+      testApp.use((req: Request, res: Response, next: NextFunction) => {
         req.container = mockContainer as any;
         req.context = { currentuser: createMockCurrentUser() } as any;
         next();
@@ -378,6 +378,16 @@ describe('Users Routes Integration Tests', () => {
       const response = await request(app)
         .get(endpoint)
         .query({ role: ROLES.STAFF, isActive: 'true' })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(mockUserController.getFilteredUsers).toHaveBeenCalled();
+    });
+
+    it('should accept filter[search] query parameter', async () => {
+      const response = await request(app)
+        .get(endpoint)
+        .query({ 'filter[search]': 'Alice' })
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -611,6 +621,16 @@ describe('Users Routes Integration Tests', () => {
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
+    });
+
+    it('should accept filter[search] query parameter', async () => {
+      const response = await request(app)
+        .get(endpoint)
+        .query({ 'filter[search]': 'Smith' })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(mockUserController.getFilteredTenants).toHaveBeenCalled();
     });
   });
 

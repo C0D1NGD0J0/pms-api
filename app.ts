@@ -8,6 +8,7 @@ import hpp from 'hpp';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+import * as Sentry from '@sentry/node';
 import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
 import { envVariables } from '@shared/config';
@@ -15,7 +16,6 @@ import sanitizer from 'perfect-express-sanitizer';
 import mongoSanitize from 'express-mongo-sanitize';
 import { httpStatusCodes, createLogger } from '@utils/index';
 import { DatabaseService, RedisService } from '@database/index';
-import { initBullBoardAdapter, serverAdapter } from '@queues/index';
 import express, { Application, urlencoded, Response, Request } from 'express';
 import {
   errorHandlerMiddleware,
@@ -46,9 +46,12 @@ export class App implements IAppSetup {
     this.standardMiddleware(this.expApp);
     // Initialize Bull Board adapter before routes (for lazy-loaded queues)
     if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { initBullBoardAdapter } = require('@queues/index');
       initBullBoardAdapter();
     }
     this.routes(this.expApp);
+    this.expApp.use(Sentry.expressErrorHandler());
     this.expApp.use(errorHandlerMiddleware);
   };
 
@@ -81,8 +84,10 @@ export class App implements IAppSetup {
       express.json({
         limit: '200mb',
         verify: (req: any, res, buf) => {
-          // Save raw Buffer for Stripe webhook signature verification
-          if (req.originalUrl === '/api/v1/webhooks/stripe') {
+          if (
+            req.originalUrl === '/api/v1/webhooks/stripe' ||
+            req.originalUrl === '/api/v1/webhooks/stripe/connect'
+          ) {
             req.rawBody = buf;
           }
         },
@@ -146,8 +151,11 @@ export class App implements IAppSetup {
       }
     });
     if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { serverAdapter } = require('@queues/index');
       app.use(`${this.BASE_PATH}/queues`, serverAdapter.getRouter());
     }
+    app.use(`${this.BASE_PATH}/admin`, routes.adminRoutes);
     app.use(`${this.BASE_PATH}/auth`, routes.authRoutes);
     app.use(`${this.BASE_PATH}/users`, routes.userRoutes);
     app.use(`${this.BASE_PATH}/leases`, routes.leaseRoutes);
@@ -157,6 +165,7 @@ export class App implements IAppSetup {
     app.use(`${this.BASE_PATH}/properties`, routes.propertyRoutes);
     app.use(`${this.BASE_PATH}/notifications`, routes.notificationRoutes);
     app.use(`${this.BASE_PATH}/subscriptions`, routes.subscriptionRoutes);
+    app.use(`${this.BASE_PATH}/payments`, routes.paymentRoutes);
     app.use(`${this.BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
     // app.use(`${this.BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
     app.all('*', (req: Request, res: Response) => {

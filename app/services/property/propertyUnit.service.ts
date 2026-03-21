@@ -481,7 +481,7 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
     }
 
-    if (property.status === 'inactive' || property.deletedAt) {
+    if (property.operationalStatus === 'inactive' || property.deletedAt) {
       this.log.error(
         {
           cuid,
@@ -495,7 +495,7 @@ export class PropertyUnitService {
         'Cannot update unit for inactive or archived property'
       );
       throw new BadRequestError({
-        message: `Cannot update unit, due to property status of ${property.status}.`,
+        message: `Cannot update unit, due to property status of ${property.operationalStatus}.`,
       });
     }
 
@@ -553,10 +553,10 @@ export class PropertyUnitService {
     }
 
     if (updateData.status) {
-      if (updateData.status === 'occupied' && property.status !== 'available') {
+      if (updateData.status === 'occupied' && property.operationalStatus !== 'available') {
         if (!validationErrors['status']) validationErrors['status'] = [];
         validationErrors['status'].push(
-          `Cannot set unit as occupied when property is ${property.status}`
+          `Cannot set unit as occupied when property is ${property.operationalStatus}`
         );
       }
 

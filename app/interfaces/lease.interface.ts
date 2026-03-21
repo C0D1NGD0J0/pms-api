@@ -187,6 +187,38 @@ export interface ILeaseFormData {
   type: LeaseType;
 }
 
+export interface ILeaseDocument extends Document, ILease {
+  calculateFees(options?: { daysLate?: number }): {
+    monthly: { rent: number; petFee: number; total: number };
+    deposits: { security: number; pet: number; total: number };
+    late: {
+      daysLate: number;
+      fee: number;
+      type: LateFeeType | 'none';
+      percentage: number;
+      gracePeriod: number;
+    };
+    currency: string;
+  };
+  // Instance methods
+  softDelete(userId: Types.ObjectId): Promise<ILeaseDocument>;
+  hasOverlap(startDate: Date, endDate: Date): boolean;
+  propertyInfo?: ILeasePropertyInfo;
+  propertyUnitInfo?: ILeaseUnitInfo;
+  // Virtual properties (computed)
+  daysUntilExpiry: number | null;
+  durationMonths: number | null;
+  tenantInfo?: ILeaseTenantInfo;
+  totalMonthlyFees: number;
+  isExpiringSoon: boolean;
+  _id: Types.ObjectId;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  luid: string;
+  id: string;
+}
+
 /**
  * Renewal Metadata Interface
  * Pre-calculated renewal information for active/draft_renewal leases
@@ -266,30 +298,6 @@ export interface ILeaseFilterOptions {
   minRent?: number;
   maxRent?: number;
   search?: string; // For lease number or tenant name search
-}
-
-/**
- * Lease Document Interface with Mongoose Document
- * Extends ILease with MongoDB document properties and methods
- */
-export interface ILeaseDocument extends Document, ILease {
-  // Instance methods
-  softDelete(userId: Types.ObjectId): Promise<ILeaseDocument>;
-  hasOverlap(startDate: Date, endDate: Date): boolean;
-  propertyInfo?: ILeasePropertyInfo;
-  propertyUnitInfo?: ILeaseUnitInfo;
-  // Virtual properties (computed)
-  daysUntilExpiry: number | null;
-  durationMonths: number | null;
-  tenantInfo?: ILeaseTenantInfo;
-  totalMonthlyFees: number;
-  isExpiringSoon: boolean;
-  _id: Types.ObjectId;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  luid: string;
-  id: string;
 }
 
 /**
@@ -528,6 +536,25 @@ export interface IRentRollReport {
 }
 
 /**
+ * Lease List Item Interface
+ * Simplified lease data for list views
+ */
+export interface ILeaseListItem {
+  sentForSignature: boolean;
+  tenantActivated: boolean;
+  propertyAddress: string;
+  leaseNumber: string;
+  monthlyRent: number;
+  status: LeaseStatus;
+  unitNumber?: string;
+  tenantName: string;
+  tenantUid: string;
+  startDate: Date;
+  endDate: Date;
+  luid: string;
+}
+
+/**
  * Signature Interface
  * Individual signature tracking
  */
@@ -546,6 +573,12 @@ export interface ILeaseSignature {
 }
 
 /**
+ * ============================================================================
+ * MAIN LEASE INTERFACE
+ * ============================================================================
+ */
+
+/**
  * Fees Interface
  * All financial terms of the lease
  */
@@ -559,30 +592,6 @@ export interface ILeaseFees {
   monthlyRent: number;
   rentDueDay: number; // 1-31
   currency: string;
-}
-
-/**
- * ============================================================================
- * MAIN LEASE INTERFACE
- * ============================================================================
- */
-
-/**
- * Lease List Item Interface
- * Simplified lease data for list views
- */
-export interface ILeaseListItem {
-  sentForSignature: boolean;
-  tenantActivated: boolean;
-  propertyAddress: string;
-  leaseNumber: string;
-  monthlyRent: number;
-  status: LeaseStatus;
-  unitNumber?: string;
-  tenantName: string;
-  startDate: Date;
-  endDate: Date;
-  luid: string;
 }
 
 /**
@@ -809,6 +818,25 @@ export interface LeaseESignatureRequestedPayload {
  */
 
 /**
+ * Payment Method Types
+ */
+export type PaymentMethodType =
+  | 'bank_transfer'
+  | 'e-transfer'
+  | 'auto-debit'
+  | 'check'
+  | 'cash'
+  | 'credit_card'
+  | 'debit_card'
+  | 'mobile_payment';
+
+/**
+ * ============================================================================
+ * E-SIGNATURE PAYLOAD INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Lease Template Types
  */
 export type LeaseTemplateType =
@@ -817,12 +845,6 @@ export type LeaseTemplateType =
   | 'commercial-office'
   | 'commercial-retail'
   | 'short-term-rental';
-
-/**
- * ============================================================================
- * E-SIGNATURE PAYLOAD INTERFACES
- * ============================================================================
- */
 
 /**
  * Lease Termination Data Interface
@@ -873,6 +895,18 @@ export interface IPendingLeaseChanges {
 }
 
 /**
+ * Internal Note Interface
+ * Audit trail for internal notes on a lease
+ */
+export interface IInternalNote {
+  authorId: Types.ObjectId | string;
+  timestamp: Date;
+  author: string;
+  html?: string;
+  note: string;
+}
+
+/**
  * Duration Interface
  * All date-related information
  */
@@ -883,6 +917,12 @@ export interface ILeaseDuration {
   startDate: Date;
   endDate: Date;
 }
+
+/**
+ * ============================================================================
+ * ACTION DATA INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Pet Policy Interface
@@ -897,23 +937,6 @@ export interface IPetPolicy {
 }
 
 /**
- * Payment Method Types
- */
-export type PaymentMethodType =
-  | 'bank_transfer'
-  | 'check'
-  | 'cash'
-  | 'credit_card'
-  | 'debit_card'
-  | 'mobile_payment';
-
-/**
- * ============================================================================
- * ACTION DATA INTERFACES
- * ============================================================================
- */
-
-/**
  * Property Types (for lease context)
  */
 export type LeasePropertyType =
@@ -923,17 +946,6 @@ export type LeasePropertyType =
   | 'townhouse'
   | 'commercial'
   | 'industrial';
-
-/**
- * Internal Note Interface
- * Audit trail for internal notes on a lease
- */
-export interface IInternalNote {
-  authorId: Types.ObjectId | string;
-  timestamp: Date;
-  author: string;
-  note: string;
-}
 
 /**
  * Lease Activation Data Interface

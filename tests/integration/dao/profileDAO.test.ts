@@ -1,11 +1,8 @@
 import { Types } from 'mongoose';
 import { ProfileDAO } from '@dao/profileDAO';
 import { Profile, User } from '@models/index';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
+import { clearTestDatabase } from '@tests/helpers';
+import { DataRetentionPolicy } from '@interfaces/profile.interface';
 
 describe('ProfileDAO Integration Tests', () => {
   let profileDAO: ProfileDAO;
@@ -13,14 +10,8 @@ describe('ProfileDAO Integration Tests', () => {
   let testProfileId: Types.ObjectId;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     profileDAO = new ProfileDAO({ profileModel: Profile });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
     testUserId = new Types.ObjectId();
@@ -207,7 +198,7 @@ describe('ProfileDAO Integration Tests', () => {
 
     it('should update data retention policy', async () => {
       const result = await profileDAO.updateGDPRSettings(testProfileId.toString(), {
-        dataRetentionPolicy: 'extended',
+        dataRetentionPolicy: DataRetentionPolicy.EXTENDED,
       });
 
       expect(result?.settings.gdprSettings?.dataRetentionPolicy).toBe('extended');
@@ -215,7 +206,7 @@ describe('ProfileDAO Integration Tests', () => {
 
     it('should update multiple GDPR fields', async () => {
       const result = await profileDAO.updateGDPRSettings(testProfileId.toString(), {
-        dataRetentionPolicy: 'minimal',
+        dataRetentionPolicy: DataRetentionPolicy.MINIMAL,
         dataProcessingConsent: true,
       });
 
@@ -667,6 +658,52 @@ describe('ProfileDAO Integration Tests', () => {
       const result = await profileDAO.generateCurrentUserInfo(fakeUserId.toString());
 
       expect(result).toBeNull();
+    });
+
+    it('resolves client.role from primaryRole, not insertion order (tenant first, staff second)', async () => {
+      // Simulate a user who was connected as tenant first, then staff was added later.
+      // Without primaryRole, roles[0] would return 'tenant' — the wrong answer.
+      await User.updateOne(
+        { _id: testUserId },
+        {
+          cuids: [
+            {
+              cuid: 'TEST_CUID',
+              clientDisplayName: 'Test Client',
+              roles: ['tenant', 'staff'],
+              primaryRole: 'staff', // highest-privilege role
+              isConnected: true,
+            },
+          ],
+        }
+      );
+
+      const result = await profileDAO.generateCurrentUserInfo(testUserId.toString());
+
+      expect(result).not.toBeNull();
+      // result.client is the active client object — role is resolved from primaryRole
+      expect(result?.client?.role).toBe('staff');
+    });
+
+    it('resolves client.role from primaryRole when admin is added after lower roles', async () => {
+      await User.updateOne(
+        { _id: testUserId },
+        {
+          cuids: [
+            {
+              cuid: 'TEST_CUID',
+              clientDisplayName: 'Test Client',
+              roles: ['tenant', 'staff', 'admin'],
+              primaryRole: 'admin',
+              isConnected: true,
+            },
+          ],
+        }
+      );
+
+      const result = await profileDAO.generateCurrentUserInfo(testUserId.toString());
+
+      expect(result?.client?.role).toBe('admin');
     });
   });
 

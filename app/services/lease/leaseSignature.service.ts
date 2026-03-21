@@ -88,15 +88,15 @@ export class LeaseSignatureService {
     this.setupEventListeners();
   }
 
+  private readonly onESignatureSent = this.handleESignatureSent.bind(this);
+  private readonly onESignatureFailed = this.handleESignatureFailed.bind(this);
+
   /**
    * Setup event listeners for signature-related events
    */
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.LEASE_ESIGNATURE_SENT, this.handleESignatureSent.bind(this));
-    this.emitterService.on(
-      EventTypes.LEASE_ESIGNATURE_FAILED,
-      this.handleESignatureFailed.bind(this)
-    );
+    this.emitterService.on(EventTypes.LEASE_ESIGNATURE_SENT, this.onESignatureSent);
+    this.emitterService.on(EventTypes.LEASE_ESIGNATURE_FAILED, this.onESignatureFailed);
   }
 
   /**
@@ -546,8 +546,8 @@ export class LeaseSignatureService {
    * Cleanup event listeners
    */
   cleanupEventListeners(): void {
-    this.emitterService.off(EventTypes.LEASE_ESIGNATURE_SENT, this.handleESignatureSent);
-    this.emitterService.off(EventTypes.LEASE_ESIGNATURE_FAILED, this.handleESignatureFailed);
+    this.emitterService.off(EventTypes.LEASE_ESIGNATURE_SENT, this.onESignatureSent);
+    this.emitterService.off(EventTypes.LEASE_ESIGNATURE_FAILED, this.onESignatureFailed);
     this.log.info('Lease signature service event listeners removed');
   }
 }

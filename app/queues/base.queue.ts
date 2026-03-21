@@ -32,8 +32,7 @@ const createSharedRedisConnection = (): Redis => {
       // Bull requires maxRetriesPerRequest to be null for bclient/subscriber
       // See: https://github.com/OptimalBits/bull/issues/1873
       maxRetriesPerRequest: null,
-      // Production uses 30s timeout, slightly higher timeout (60s) in development
-      commandTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 60000, // 60s in dev
+      commandTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 15000, // 15s in dev
       // Enable offline queue to buffer commands until Redis connects
       enableOfflineQueue: true,
       // Bull requires enableReadyCheck to be false
@@ -68,7 +67,7 @@ const createSharedRedisConnection = (): Redis => {
 // Production-optimized queue options for reduced network traffic
 const PRODUCTION_QUEUE_OPTIONS: BullQueueOptions = {
   settings: {
-    maxStalledCount: 1800000,
+    maxStalledCount: 6,
     lockDuration: 3600000, // 1hr
     stalledInterval: 300000, // 5 minutes - reduces Redis polling frequency
   },
@@ -176,6 +175,13 @@ export class BaseQueue<T extends JobData = JobData> {
       this.autoResumeQueue();
     });
 
+    this.queue.on('active', (job) => {
+      this.log.info(
+        { jobId: job.id, jobName: job.name, processType: process.env.PROCESS_TYPE },
+        `Job ${job.id} (${job.name}) is now active in ${this.queue.name} [${process.env.PROCESS_TYPE}]`
+      );
+    });
+
     this.queue.on('completed', (job, result) => {
       const processingTime = job.finishedOn ? job.finishedOn - job.processedOn! : 'N/A';
       this.log.info(
@@ -219,31 +225,34 @@ export class BaseQueue<T extends JobData = JobData> {
     });
 
     this.queue.on('error', async (error) => {
-      this.log.error({ error }, `Queue ${this.queue.name} encountered an error: ${error.message}`);
-
-      // If command timeout, connection might be stale - trigger reconnection
+      // Command timeouts are common in dev (idle queues, Redis polling intervals)
+      // Only log at debug unless the connection is actually broken
       if (error.message?.includes('Command timed out')) {
-        this.log.warn(`Timeout detected in ${this.queue.name}, attempting reconnection...`);
         try {
           const client = await this.queue.client;
           if (client.status !== 'ready') {
+            this.log.warn(`${this.queue.name} connection lost after timeout, reconnecting...`);
             await client.connect();
             this.log.info(`Reconnected ${this.queue.name} successfully`);
           } else {
-            this.log.info(`${this.queue.name} connection healthy, timeout was temporary`);
+            this.log.debug(`${this.queue.name} transient timeout (connection healthy)`);
           }
         } catch (reconnectError) {
           this.log.error({ error: reconnectError }, `Failed to reconnect ${this.queue.name}`);
         }
+        return;
       }
+
+      this.log.error({ error }, `Queue ${this.queue.name} encountered an error: ${error.message}`);
     });
 
     this.queue.on('stalled', (job) => {
+      // Bull handles stalled jobs internally (re-queues up to maxStalledCount).
+      // Do NOT call moveToFailed() here — it bypasses Bull's retry mechanism.
       this.log.warn(
         { jobId: job.id, jobName: job.name },
-        `Job ${job.id} (${job.name}) has stalled.`
+        `Job ${job.id} (${job.name}) stalled in ${this.queue.name}. Bull will retry automatically.`
       );
-      job.moveToFailed({ message: 'Job stalled' }, true);
     });
 
     // Check if queue is paused and resume immediately
@@ -297,15 +306,20 @@ export class BaseQueue<T extends JobData = JobData> {
   processQueueJobs(
     name: string,
     concurrency = 5,
-    callback: Queue.ProcessCallbackFunction<T>
+    callback: (job: Queue.Job<T>) => Promise<any>
   ): void {
     if (process.env.PROCESS_TYPE !== 'worker') {
-      this.log.warn(
-        `Queue processing for ${this.queue.name} is disabled because PROCESS_TYPE is '${process.env.PROCESS_TYPE}' not 'worker'.`
+      this.log.debug(
+        `Queue processing for ${this.queue.name} is disabled (PROCESS_TYPE='${process.env.PROCESS_TYPE}').`
       );
       return;
     }
-    this.queue.process(name, concurrency, callback);
+    this.log.info(`Registering processor for job '${name}' on queue '${this.queue.name}'`);
+    const wrappedCallback: Queue.ProcessCallbackFunction<T> = async (job) => {
+      this.log.debug(`[DISPATCH] Bull dispatched job ${job.id} (${job.name}) to processor`);
+      return callback(job);
+    };
+    this.queue.process(name, concurrency, wrappedCallback);
   }
 
   /**

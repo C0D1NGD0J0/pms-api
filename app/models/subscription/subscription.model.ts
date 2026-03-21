@@ -12,7 +12,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       immutable: true,
       default: () => generateShortUID(),
     },
-    cuid: { type: String, required: true, index: true },
+    cuid: { type: String, required: true },
     client: { type: Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
     planName: {
       type: String,
@@ -59,9 +59,10 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       RepairRequestService: { type: Boolean, required: true, default: false },
       VisitorPassService: { type: Boolean, required: true, default: false },
       reportingAnalytics: { type: Boolean, required: true, default: false },
+      leaseTemplates: { type: Boolean, required: true, default: false },
       prioritySupport: { type: Boolean, default: false },
     },
-    paymentGateway: {
+    billing: {
       customerId: {
         type: String,
         validate: {
@@ -96,15 +97,15 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       },
       planId: { type: String, required: true },
       planLookUpKey: { type: String },
-      seatItemId: { type: String }, // Subscription item ID for seats (e.g., Stripe si_xxx)
+      seatItemId: { type: String },
       cardLast4: { type: String },
       cardBrand: { type: String },
     },
-    customPriceInCents: { type: Number }, // For Enterprise custom negotiated price
-    additionalSeatsCount: { type: Number, default: 0 }, // Extra seats purchased beyond included
-    additionalSeatsCost: { type: Number, default: 0 }, // Total cost for extra seats in cents
-    totalMonthlyPrice: { type: Number, required: true }, // basePrice + additionalSeatsCost + customPrice
-    currentSeats: { type: Number, default: 1 }, // Total seats in use (included + additional)
+    customPriceInCents: { type: Number },
+    additionalSeatsCount: { type: Number, default: 0 },
+    additionalSeatsCost: { type: Number, default: 0 },
+    totalMonthlyPrice: { type: Number, required: true },
+    currentSeats: { type: Number, default: 1 },
     currentProperties: { type: Number, default: 0 },
     pendingDowngradeAt: { type: Date, index: true },
     currentUnits: { type: Number, default: 0 },

@@ -1,12 +1,8 @@
 import { Types } from 'mongoose';
 import { InvitationDAO } from '@dao/invitationDAO';
+import { clearTestDatabase } from '@tests/helpers';
 import { Invitation, Client, User } from '@models/index';
-import { ROLES } from '@shared/constants/roles.constants';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
+import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 
 describe('InvitationDAO Integration Tests', () => {
   let invitationDAO: InvitationDAO;
@@ -15,12 +11,7 @@ describe('InvitationDAO Integration Tests', () => {
   let testAccepterId: Types.ObjectId;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     invitationDAO = new InvitationDAO();
-  });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
   });
 
   beforeEach(async () => {
@@ -68,7 +59,7 @@ describe('InvitationDAO Integration Tests', () => {
     it('should create invitation with all required fields', async () => {
       const invitationData = {
         inviteeEmail: 'newuser@example.com',
-        role: ROLES.STAFF,
+        role: ROLES.STAFF as IUserRole,
         status: 'pending' as const,
         personalInfo: {
           firstName: 'New',
@@ -99,7 +90,7 @@ describe('InvitationDAO Integration Tests', () => {
     it('should lowercase the invitee email', async () => {
       const invitationData = {
         inviteeEmail: 'NewUser@EXAMPLE.COM',
-        role: ROLES.MANAGER,
+        role: ROLES.MANAGER as IUserRole,
         status: 'pending' as const,
         personalInfo: {
           firstName: 'Test',
@@ -120,7 +111,7 @@ describe('InvitationDAO Integration Tests', () => {
       const vendorId = new Types.ObjectId();
       const invitationData = {
         inviteeEmail: 'vendor@example.com',
-        role: ROLES.VENDOR,
+        role: ROLES.VENDOR as IUserRole,
         status: 'pending' as const,
         personalInfo: {
           firstName: 'Vendor',
@@ -142,7 +133,7 @@ describe('InvitationDAO Integration Tests', () => {
       const beforeCreate = new Date();
       const invitationData = {
         inviteeEmail: 'expire@example.com',
-        role: ROLES.STAFF,
+        role: ROLES.STAFF as IUserRole,
         status: 'pending' as const,
         personalInfo: {
           firstName: 'Expire',
@@ -168,7 +159,7 @@ describe('InvitationDAO Integration Tests', () => {
         await invitationDAO.withTransaction(session, async (txSession) => {
           const invitationData = {
             inviteeEmail: 'transaction@example.com',
-            role: ROLES.ADMIN,
+            role: ROLES.ADMIN as IUserRole,
             status: 'pending' as const,
             personalInfo: {
               firstName: 'Transaction',
@@ -272,10 +263,7 @@ describe('InvitationDAO Integration Tests', () => {
         },
       });
 
-      const found = await invitationDAO.findByIuid(
-        created.iuid,
-        new Types.ObjectId().toString()
-      );
+      const found = await invitationDAO.findByIuid(created.iuid, new Types.ObjectId().toString());
 
       expect(found).toBeNull();
     });
@@ -485,7 +473,7 @@ describe('InvitationDAO Integration Tests', () => {
       const result = await invitationDAO.getInvitationsByClient({
         clientId: testClientId.toString(),
         cuid: 'TEST_CLIENT',
-        role: ROLES.STAFF,
+        role: ROLES.STAFF as IUserRole,
       });
 
       expect(result.items.length).toBe(2);
@@ -541,7 +529,7 @@ describe('InvitationDAO Integration Tests', () => {
 
       const updateData = {
         inviteeEmail: 'newemail@example.com',
-        role: ROLES.MANAGER,
+        role: ROLES.MANAGER as IUserRole,
         status: 'pending' as const,
         personalInfo: {
           firstName: 'New',
@@ -587,7 +575,7 @@ describe('InvitationDAO Integration Tests', () => {
       const vendorId = new Types.ObjectId();
       const updateData = {
         inviteeEmail: 'vendor@example.com',
-        role: ROLES.VENDOR,
+        role: ROLES.VENDOR as IUserRole,
         status: 'pending' as const,
         personalInfo: {
           firstName: 'Vendor',
@@ -627,7 +615,7 @@ describe('InvitationDAO Integration Tests', () => {
 
       const updateData = {
         inviteeEmail: 'vendor2@example.com',
-        role: ROLES.VENDOR,
+        role: ROLES.VENDOR as IUserRole,
         status: 'pending' as const,
         personalInfo: {
           firstName: 'Vendor',
@@ -824,10 +812,7 @@ describe('InvitationDAO Integration Tests', () => {
         },
       });
 
-      const updated = await invitationDAO.declineInvitation(
-        created.iuid,
-        testClientId.toString()
-      );
+      const updated = await invitationDAO.declineInvitation(created.iuid, testClientId.toString());
 
       expect(updated?.status).toBe('declined');
       expect(updated?.declinedAt).toBeInstanceOf(Date);
@@ -947,7 +932,7 @@ describe('InvitationDAO Integration Tests', () => {
             metadata: { remindersSent: 0 },
           },
         ],
-        { validateBeforeSave: false }
+        { validateBeforeSave: false } as any
       );
 
       const expiredCount = await invitationDAO.expireInvitations();

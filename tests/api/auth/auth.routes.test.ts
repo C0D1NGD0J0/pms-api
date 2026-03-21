@@ -3,8 +3,8 @@ jest.setTimeout(10000);
 
 import request from 'supertest';
 import { faker } from '@faker-js/faker';
-import { Application, Response, Request } from 'express';
 import { httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
+import { NextFunction, Application, Response, Request } from 'express';
 import { createMockCurrentUser, createApiTestHelper } from '@tests/helpers';
 
 // Mock Auth Controller
@@ -102,6 +102,13 @@ const mockAuthController = {
       message: 'Token refreshed successfully',
     });
   }),
+
+  completeOnboarding: jest.fn((_req: Request, res: Response) => {
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: 'Onboarding completed successfully.',
+    });
+  }),
 };
 
 // Simplified mock container
@@ -123,9 +130,9 @@ describe('Auth Routes Integration Tests', () => {
 
   beforeAll(() => {
     // Setup test app with routes
-    app = apiHelper.createApp((testApp) => {
+    app = apiHelper.createApp((testApp: Application) => {
       // Inject container directly
-      testApp.use((req, res, next) => {
+      testApp.use((req: Request, res: Response, next: NextFunction) => {
         req.container = mockContainer as any;
         req.context = { currentuser: null } as any;
         next();
@@ -134,26 +141,30 @@ describe('Auth Routes Integration Tests', () => {
       // Define auth routes (matching auth.routes.ts structure)
       testApp.post(`${baseUrl}/signup`, mockAuthController.signup);
       testApp.post(`${baseUrl}/login`, mockAuthController.login);
-      testApp.get(`${baseUrl}/:cuid/me`, (req, res) => {
+      testApp.get(`${baseUrl}/:cuid/me`, (req: Request, res: Response) => {
         // Simulate isAuthenticated middleware
         req.context = { currentuser: createMockCurrentUser() } as any;
         mockAuthController.getCurrentUser(req, res);
       });
       testApp.patch(`${baseUrl}/:cuid/account_activation`, mockAuthController.accountActivation);
       testApp.patch(`${baseUrl}/resend_activation_link`, mockAuthController.sendActivationLink);
-      testApp.patch(`${baseUrl}/switch_client_account`, (req, res) => {
+      testApp.patch(`${baseUrl}/switch_client_account`, (req: Request, res: Response) => {
         // Simulate isAuthenticated middleware
         req.context = { currentuser: createMockCurrentUser() } as any;
         mockAuthController.switchClientAccount(req, res);
       });
       testApp.patch(`${baseUrl}/forgot_password`, mockAuthController.forgotPassword);
       testApp.patch(`${baseUrl}/reset_password`, mockAuthController.resetPassword);
-      testApp.delete(`${baseUrl}/:cuid/logout`, (req, res) => {
+      testApp.delete(`${baseUrl}/:cuid/logout`, (req: Request, res: Response) => {
         // Simulate isAuthenticated middleware
         req.context = { currentuser: createMockCurrentUser() } as any;
         mockAuthController.logout(req, res);
       });
       testApp.post(`${baseUrl}/refresh_token`, mockAuthController.refreshToken);
+      testApp.post(`${baseUrl}/:cuid/complete_onboarding`, (req: Request, res: Response) => {
+        req.context = { currentuser: createMockCurrentUser() } as any;
+        mockAuthController.completeOnboarding(req, res);
+      });
     });
   });
 
@@ -583,13 +594,21 @@ describe('Auth Routes Integration Tests', () => {
   describe('PATCH /auth/:cuid/account_activation (public)', () => {
     const cuid = faker.string.uuid();
     const endpoint = `${baseUrl}/${cuid}/account_activation`;
+    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-    it('should successfully activate account with valid token', async () => {
+    const validConsentBody = {
+      firstName: 'Jane',
+      lastName: 'Doe',
+      consentDate: todayStr,
+    };
+
+    it('should successfully activate account with valid token and consent body', async () => {
       const validToken = faker.string.alphanumeric(32);
 
       const response = await request(app)
         .patch(endpoint)
         .query({ t: validToken })
+        .send(validConsentBody)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -610,9 +629,24 @@ describe('Auth Routes Integration Tests', () => {
       const response = await request(app)
         .patch(endpoint)
         .query({ t: 'invalid-token' })
+        .send(validConsentBody)
         .expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.message).toContain('invalid');
+    });
+
+    it('should forward firstName and lastName from body to controller', async () => {
+      const validToken = faker.string.alphanumeric(32);
+
+      await request(app)
+        .patch(endpoint)
+        .query({ t: validToken })
+        .send(validConsentBody)
+        .expect(httpStatusCodes.OK);
+
+      const callArg = (mockAuthController.accountActivation as jest.Mock).mock.calls.at(-1)?.[0];
+      expect(callArg?.body?.firstName).toBe('Jane');
+      expect(callArg?.body?.lastName).toBe('Doe');
     });
   });
 
@@ -845,6 +879,58 @@ describe('Auth Routes Integration Tests', () => {
 
       expect(response.body.errors).toBeDefined();
       expect(Array.isArray(response.body.errors)).toBe(true);
+    });
+  });
+
+  describe('POST /auth/:cuid/complete_onboarding (protected)', () => {
+    const cuid = faker.string.uuid();
+    const endpoint = `${baseUrl}/${cuid}/complete_onboarding`;
+
+    const validBody = {
+      policies: {
+        tos: { accepted: true },
+        privacy: { accepted: true },
+        marketing: { accepted: false },
+      },
+    };
+
+    it('should complete onboarding with valid consent body', async () => {
+      const response = await request(app)
+        .post(endpoint)
+        .send(validBody)
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toContain('Onboarding');
+      expect(mockAuthController.completeOnboarding).toHaveBeenCalled();
+    });
+
+    it('should complete onboarding with optional password and preferences', async () => {
+      const bodyWithExtras = {
+        ...validBody,
+        newPassword: 'NewPass1A!',
+        confirmPassword: 'NewPass1A!',
+        lang: 'fr',
+        timeZone: 'Europe/Paris',
+        location: 'Paris',
+      };
+
+      const response = await request(app)
+        .post(endpoint)
+        .send(bodyWithExtras)
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(mockAuthController.completeOnboarding).toHaveBeenCalled();
+    });
+
+    it('should return 200 when marketing is accepted', async () => {
+      const response = await request(app)
+        .post(endpoint)
+        .send({ policies: { tos: { accepted: true }, privacy: { accepted: true }, marketing: { accepted: true } } })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
     });
   });
 });

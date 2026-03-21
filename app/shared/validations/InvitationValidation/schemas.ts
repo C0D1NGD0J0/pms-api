@@ -111,6 +111,8 @@ const tenantInfoSchema = z
         })
       )
       .optional(),
+    propertyId: z.string().min(8).optional(),
+    unitId: z.string().min(8).optional(),
   })
   .optional();
 
@@ -329,6 +331,13 @@ export const acceptInvitationSchema = z
     headline: z.string().max(50, 'Headline must be less than 50 characters').optional(),
 
     policies: policiesSchema.optional(),
+
+    firstName: z.string().min(2, 'First name must be at least 2 characters').max(50).optional(),
+    lastName: z.string().min(2, 'Last name must be at least 2 characters').max(50).optional(),
+    consentDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Consent date must be in YYYY-MM-DD format')
+      .optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: 'Passwords do not match',
@@ -505,6 +514,8 @@ export const invitationCsvSchema = z
           operations: EmployeeDepartment.OPERATIONS,
           accounting: EmployeeDepartment.ACCOUNTING,
           management: EmployeeDepartment.MANAGEMENT,
+          other: EmployeeDepartment.OTHER,
+          security: EmployeeDepartment.SECURITY,
         };
 
         const department = departmentMap[trimmed];

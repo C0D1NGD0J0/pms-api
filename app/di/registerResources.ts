@@ -10,12 +10,14 @@ import { AssetService } from '@services/asset/asset.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { LanguageService } from '@shared/languages/language.service';
+import { PaymentService } from '@services/payments/payments.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import {
   EventsRegistryCache,
+  IdempotencyCache,
   PropertyCache,
   VendorCache,
   LeaseCache,
@@ -24,6 +26,8 @@ import {
 } from '@caching/index';
 import {
   NotificationModel,
+  PaymentProcessor,
+  PaymentModel,
   PropertyUnit,
   Subscription,
   Invitation,
@@ -36,23 +40,12 @@ import {
   User,
 } from '@models/index';
 import {
-  PropertyUnitDAO,
-  NotificationDAO,
-  SubscriptionDAO,
-  InvitationDAO,
-  PropertyDAO,
-  ProfileDAO,
-  ClientDAO,
-  VendorDAO,
-  LeaseDAO,
-  UserDAO,
-} from '@dao/index';
-import {
   PropertyMediaWorker,
   PropertyUnitWorker,
   InvitationWorker,
   ESignatureWorker,
   PropertyWorker,
+  PaymentWorker,
   UploadWorker,
   EmailWorker,
   CronWorker,
@@ -65,11 +58,26 @@ import {
   ESignatureQueue,
   EventBusQueue,
   PropertyQueue,
+  PaymentQueue,
   UploadQueue,
   EmailQueue,
   CronQueue,
   PdfQueue,
 } from '@queues/index';
+import {
+  PaymentProcessorDAO,
+  PropertyUnitDAO,
+  NotificationDAO,
+  SubscriptionDAO,
+  InvitationDAO,
+  PropertyDAO,
+  PaymentDAO,
+  ProfileDAO,
+  ClientDAO,
+  VendorDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   NotificationController,
   SubscriptionController,
@@ -77,9 +85,11 @@ import {
   InvitationController,
   PropertyController,
   WebhookController,
+  PaymentController,
   ClientController,
   VendorController,
   LeaseController,
+  AdminController,
   UserController,
   AuthController,
 } from '@controllers/index';
@@ -117,6 +127,7 @@ import {
 } from '@services/index';
 
 const ControllerResources = {
+  adminController: asClass(AdminController).scoped(),
   authController: asClass(AuthController).scoped(),
   userController: asClass(UserController).scoped(),
   leaseController: asClass(LeaseController).scoped(),
@@ -129,6 +140,7 @@ const ControllerResources = {
   subscriptionController: asClass(SubscriptionController).scoped(),
   emailTemplateController: asClass(EmailTemplateController).scoped(),
   webhookController: asClass(WebhookController).scoped(),
+  paymentController: asClass(PaymentController).scoped(),
 };
 
 const ModelResources = {
@@ -143,6 +155,8 @@ const ModelResources = {
   propertyUnitModel: asValue(PropertyUnit),
   subscriptionModel: asValue(Subscription),
   notificationModel: asValue(NotificationModel),
+  paymentModel: asValue(PaymentModel),
+  paymentProcessorModel: asValue(PaymentProcessor),
 };
 
 const ServiceResources = {
@@ -179,6 +193,7 @@ const ServiceResources = {
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   subscriptionPlanConfig: asValue(subscriptionPlanConfig),
   stripeService: asClass(StripeService).singleton(),
+  paymentService: asClass(PaymentService).singleton(),
   paymentGatewayService: asClass(PaymentGatewayService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
 };
@@ -195,6 +210,8 @@ const DAOResources = {
   propertyUnitDAO: asClass(PropertyUnitDAO).singleton(),
   subscriptionDAO: asClass(SubscriptionDAO).singleton(),
   notificationDAO: asClass(NotificationDAO).singleton(),
+  paymentDAO: asClass(PaymentDAO).singleton(),
+  paymentProcessorDAO: asClass(PaymentProcessorDAO).singleton(),
 };
 
 const CacheResources = {
@@ -204,6 +221,7 @@ const CacheResources = {
   eventsRegistry: asClass(EventsRegistryCache).singleton(),
   userCache: asClass(UserCache).singleton(),
   vendorCache: asClass(VendorCache).singleton(),
+  idempotencyCache: asClass(IdempotencyCache).singleton(),
 };
 
 const WorkerResources = {
@@ -216,6 +234,7 @@ const WorkerResources = {
   invitationWorker: asClass(InvitationWorker).singleton(),
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
   propertyMediaWorker: asClass(PropertyMediaWorker).singleton(),
+  paymentWorker: asClass(PaymentWorker).singleton(),
 };
 
 const QueuesResources = {
@@ -229,6 +248,7 @@ const QueuesResources = {
   invitationQueue: asClass(InvitationQueue).singleton(),
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
   propertyMediaQueue: asClass(PropertyMediaQueue).singleton(),
+  paymentQueue: asClass(PaymentQueue).singleton(),
 };
 
 const UtilsResources = {
@@ -279,8 +299,8 @@ export const initQueues = (container: AwilixContainer) => {
 
   // Queues and workers are now lazily initialized via QueueFactory when first accessed
   // This reduces startup time and memory footprint
-  const processType = process.env.PROCESS_TYPE || 'api';
-  const environment = process.env.NODE_ENV || 'development';
+  const processType = envVariables.SERVER.PROCESS_TYPE;
+  const environment = envVariables.SERVER.ENV;
 
   logger.info(
     `💡 ${processType.toUpperCase()} process (${environment}): Queues will be initialized on-demand via QueueFactory`
@@ -292,9 +312,9 @@ export const registerResources = {
   ...ModelResources,
   ...DAOResources,
   ...CacheResources,
+  ...WorkerResources,
   ...QueuesResources,
   ...ServiceResources,
-  ...WorkerResources,
   ...UtilsResources,
   ...SocketIOResources,
 };

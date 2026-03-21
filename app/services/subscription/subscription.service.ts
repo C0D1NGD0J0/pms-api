@@ -5,8 +5,10 @@ import { AuthCache } from '@caching/index';
 import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { Subscription } from '@models/index';
+import { PropertyDAO } from '@dao/propertyDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
+import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PaymentGatewayService } from '@services/paymentGateway';
 import { InternalServerError, UnauthorizedError, BadRequestError } from '@shared/customErrors';
@@ -30,6 +32,8 @@ interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
+  propertyUnitDAO: PropertyUnitDAO;
+  propertyDAO: PropertyDAO;
   sseService: SSEService;
   clientDAO: ClientDAO;
   authCache: AuthCache;
@@ -44,6 +48,8 @@ export class SubscriptionService {
   private emitterService: EventEmitterService;
   private log: ReturnType<typeof createLogger>;
   private readonly subscriptionDAO: SubscriptionDAO;
+  private readonly propertyDAO: PropertyDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
 
   constructor({
@@ -53,6 +59,8 @@ export class SubscriptionService {
     sseService,
     emitterService,
     subscriptionDAO,
+    propertyDAO,
+    propertyUnitDAO,
     paymentGatewayService,
   }: IConstructor) {
     this.userDAO = userDAO;
@@ -61,6 +69,8 @@ export class SubscriptionService {
     this.sseService = sseService;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
+    this.propertyDAO = propertyDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
     this.paymentGatewayService = paymentGatewayService;
     this.log = createLogger('SubscriptionService');
     this.setupEventListeners();
@@ -271,8 +281,8 @@ export class SubscriptionService {
         endDate: undefined,
         billingInterval,
         entitlements: config.features,
-        paymentGateway: {
-          customerId: isPaidPlan ? '' : 'none', // will be handle via webhook after payment
+        billing: {
+          customerId: isPaidPlan ? '' : 'none', // will be set via webhook after payment
           provider: isPaidPlan ? IPaymentGatewayProvider.STRIPE : IPaymentGatewayProvider.NONE,
           planId: planId || 'none',
           planLookUpKey: planLookUpKey,
@@ -294,6 +304,7 @@ export class SubscriptionService {
   private async createCheckoutSession(data: {
     subscriptionId: string;
     email: string;
+    name?: string;
     priceId: string;
     successUrl: string;
     cancelUrl: string;
@@ -325,9 +336,11 @@ export class SubscriptionService {
           customerName = client.companyProfile.legalEntityName;
         } else if (client.displayName) {
           customerName = client.displayName;
+        } else if (data.name) {
+          customerName = data.name;
         }
 
-        let customerId = subscription.paymentGateway?.customerId;
+        let customerId = subscription.billing?.customerId;
         const hasValidCustomer = customerId && customerId !== 'none' && customerId !== '';
 
         if (!hasValidCustomer) {
@@ -354,9 +367,9 @@ export class SubscriptionService {
             { _id: subscription._id },
             {
               $set: {
-                'paymentGateway.customerId': customerId,
-                'paymentGateway.subscriberId': undefined,
-                'paymentGateway.planId': priceId,
+                'billing.customerId': customerId,
+                'billing.subscriberId': undefined,
+                'billing.planId': priceId,
               },
             },
             undefined,
@@ -415,17 +428,17 @@ export class SubscriptionService {
         }
 
         const isPaidSubscription =
-          subscription.paymentGateway?.subscriberId && subscription.planName !== 'essential';
+          subscription.billing?.subscriberId && subscription.planName !== 'essential';
 
         if (isPaidSubscription) {
           this.log.info(
-            { cuid, stripeSubscriptionId: subscription.paymentGateway.subscriberId },
+            { cuid, stripeSubscriptionId: subscription.billing.subscriberId },
             'Scheduling Stripe subscription cancellation at period end'
           );
 
           const cancelResult = await this.paymentGatewayService.cancelSubscription(
             IPaymentGatewayProvider.STRIPE,
-            subscription.paymentGateway.subscriberId!
+            subscription.billing.subscriberId!
           );
 
           if (!cancelResult.success) {
@@ -475,7 +488,7 @@ export class SubscriptionService {
       });
 
       // Notify account admin with appropriate message
-      const isPaid = result.paymentGateway?.subscriberId && result.planName !== 'essential';
+      const isPaid = result.billing?.subscriberId && result.planName !== 'essential';
       const message = isPaid
         ? `Your subscription will cancel at the end of your billing period (${result.endDate?.toLocaleDateString()}). You'll retain access until then.`
         : 'Your subscription has been canceled successfully';
@@ -551,7 +564,7 @@ export class SubscriptionService {
           status: subscription.status,
           billingInterval: subscription.billingInterval,
         },
-        entitlements: subscription.entitlements || config.features,
+        entitlements: { ...config.features, ...subscription.entitlements },
         ...(requiresPayment && {
           paymentFlow: {
             requiresPayment,
@@ -569,6 +582,67 @@ export class SubscriptionService {
     }
   }
 
+  /**
+   * Recalculates all subscription usage counters (properties, units, seats) from source-of-truth
+   * data and persists any corrections. Call this wherever counters may have drifted.
+   */
+  private async syncUsageCounters(
+    subscription: ISubscriptionDocument,
+    cuid: string
+  ): Promise<void> {
+    const [actualProperties, actualUnits, actualEmployees] = await Promise.all([
+      this.propertyDAO.countDocuments({ cuid, deletedAt: null }),
+      this.propertyUnitDAO.countDocuments({ cuid, deletedAt: null }),
+      this.userDAO.list({
+        'cuids.cuid': cuid,
+        'cuids.isConnected': true,
+        'cuids.roles': { $in: ['super-admin', 'admin', 'manager', 'staff'] },
+        deletedAt: null,
+      }),
+    ]);
+
+    const actualSeats = actualEmployees.items?.length || 0;
+
+    const drift = {
+      properties: actualProperties !== subscription.currentProperties,
+      units: actualUnits !== subscription.currentUnits,
+      seats: actualSeats !== subscription.currentSeats,
+    };
+
+    if (drift.properties || drift.units || drift.seats) {
+      this.log.warn(
+        {
+          cuid,
+          stored: {
+            properties: subscription.currentProperties,
+            units: subscription.currentUnits,
+            seats: subscription.currentSeats,
+          },
+          actual: { properties: actualProperties, units: actualUnits, seats: actualSeats },
+        },
+        'Usage counters out of sync — auto-correcting'
+      );
+
+      const $set: Record<string, number> = {};
+      if (drift.properties) $set.currentProperties = actualProperties;
+      if (drift.units) $set.currentUnits = actualUnits;
+      if (drift.seats) $set.currentSeats = actualSeats;
+
+      await this.subscriptionDAO.update({ _id: subscription._id }, { $set });
+
+      subscription.currentProperties = actualProperties;
+      subscription.currentUnits = actualUnits;
+      subscription.currentSeats = actualSeats;
+
+      // Bust the currentUser cache so the frontend picks up corrected counters
+      await this.notifyAccountAdminViaSSE(cuid, {
+        type: 'subscription_updated',
+        subscription: { plan: subscription.planName, status: subscription.status },
+        message: 'Subscription usage counters updated',
+      });
+    }
+  }
+
   async getSubscriptionPlanUsage(
     ctx: IRequestContext
   ): IPromiseReturnedData<ISubscriptionPlanUsage> {
@@ -581,37 +655,20 @@ export class SubscriptionService {
         throw new BadRequestError({ message: 'Subscription not found for client' });
       }
 
-      // Verify seat counter accuracy and auto-sync if needed
-      const actualEmployeeCount = await this.userDAO.list({
-        'cuids.cuid': cuid,
-        'cuids.isConnected': true,
-        'cuids.roles': {
-          $in: ['super-admin', 'admin', 'manager', 'staff'],
-        },
-        deletedAt: null,
-      });
+      await this.syncUsageCounters(subscription, cuid);
 
-      const actualSeatCount = actualEmployeeCount.items?.length || 0;
-
-      // If counter is out of sync, correct it
-      if (actualSeatCount !== subscription.currentSeats) {
-        this.log.warn(
-          {
-            cuid,
-            storedCount: subscription.currentSeats,
-            actualCount: actualSeatCount,
-          },
-          'Seat counter out of sync - auto-correcting'
-        );
-
-        await this.subscriptionDAO.update(
-          { _id: subscription._id },
-          { $set: { currentSeats: actualSeatCount } }
-        );
-
-        // Update local object for response
-        subscription.currentSeats = actualSeatCount;
+      // Fetch client for verification status
+      const client = await this.clientDAO.findFirst({ cuid });
+      if (!client) {
+        throw new BadRequestError({ message: 'Client not found' });
       }
+
+      // Calculate verification status and grace period
+      const daysSinceCreation = Math.floor(
+        (Date.now() - new Date(client.createdAt).getTime()) / (1000 * 60 * 60 * 24)
+      );
+      const gracePeriodExpired = !client.isVerified && daysSinceCreation > 5;
+      const daysRemaining = client.isVerified ? null : Math.max(0, 5 - daysSinceCreation);
 
       const config = subscriptionPlanConfig.getConfig(subscription.planName);
       const maxAllowedSeats = config.seatPricing.includedSeats + subscription.additionalSeatsCount;
@@ -626,8 +683,8 @@ export class SubscriptionService {
           name: subscription.planName,
           status: subscription.status,
           billingInterval: subscription.billingInterval,
-          startDate: subscription.startDate,
-          endDate: subscription.endDate || null,
+          startDate: subscription?.startDate,
+          endDate: subscription?.endDate || null,
         },
         limits: {
           properties: config.limits.maxProperties,
@@ -649,6 +706,13 @@ export class SubscriptionService {
           availableForPurchase:
             config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
         },
+        verification: {
+          isVerified: client.isVerified,
+          requiresVerification: !client.isVerified,
+          gracePeriodExpired,
+          daysRemaining,
+          accountCreatedAt: client.createdAt,
+        },
       };
 
       return { data: planUsage, success: true };
@@ -669,13 +733,13 @@ export class SubscriptionService {
       }
 
       const subscription = await this.subscriptionDAO.findFirst({ cuid });
-      if (!subscription?.paymentGateway?.customerId || subscription.planName === 'essential') {
+      if (!subscription?.billing?.customerId || subscription.planName === 'essential') {
         return [];
       }
 
       const result = await this.paymentGatewayService.getInvoices(
         IPaymentGatewayProvider.STRIPE,
-        subscription.paymentGateway.customerId,
+        subscription.billing.customerId,
         12
       );
 
@@ -819,12 +883,9 @@ export class SubscriptionService {
         }
 
         // Stripe integration - Add, update, or delete subscription item
-        let seatItemId: string | undefined = subscription.paymentGateway?.seatItemId;
+        let seatItemId: string | undefined = subscription.billing?.seatItemId;
 
-        if (
-          subscription.paymentGateway?.subscriberId &&
-          subscription.paymentGateway.provider === 'stripe'
-        ) {
+        if (subscription.billing?.subscriberId && subscription.billing.provider === 'stripe') {
           try {
             // Choose correct lookup key based on subscription's billing interval
             const seatLookupKey =
@@ -872,11 +933,11 @@ export class SubscriptionService {
             // Get subscription with items to check if seat item exists
             const stripeSubResult = await this.paymentGatewayService.getSubscriptionWithItems(
               IPaymentGatewayProvider.STRIPE,
-              subscription.paymentGateway.subscriberId
+              subscription.billing.subscriberId
             );
 
             if (!stripeSubResult.success || !stripeSubResult.data) {
-              throw new Error('Failed to fetch Stripe subscription');
+              throw new InternalServerError({ message: 'Failed to fetch Stripe subscription' });
             }
 
             const stripeSubscription = stripeSubResult.data;
@@ -902,14 +963,15 @@ export class SubscriptionService {
                 );
 
                 if (!deleteResult.success) {
-                  throw new Error(deleteResult.message || 'Failed to delete seat item from Stripe');
+                  throw new BadRequestError({
+                    message: deleteResult.message || 'Failed to delete seat item from Stripe',
+                  });
                 }
 
                 this.log.info('Seat item deleted from Stripe successfully');
               }
               seatItemId = undefined;
             } else if (!seatItem) {
-              // First seat purchase - create new subscription item
               this.log.info(
                 { cuid, lookupKey: seatLookupKey, quantity: newAdditionalCount },
                 'Adding seat subscription item'
@@ -917,13 +979,15 @@ export class SubscriptionService {
 
               const addResult = await this.paymentGatewayService.addSubscriptionItem(
                 IPaymentGatewayProvider.STRIPE,
-                subscription.paymentGateway.subscriberId,
+                subscription.billing.subscriberId,
                 seatLookupKey,
                 newAdditionalCount
               );
 
               if (!addResult.success || !addResult.data) {
-                throw new Error(addResult.message || 'Failed to add seats to Stripe subscription');
+                throw new BadRequestError({
+                  message: addResult.message || 'Failed to add seats to Stripe subscription',
+                });
               }
 
               seatItemId = addResult.data.id;
@@ -932,7 +996,6 @@ export class SubscriptionService {
                 'Seat item created in Stripe'
               );
             } else {
-              // Update existing seat item quantity
               this.log.info(
                 {
                   itemId: seatItem.id,
@@ -949,7 +1012,9 @@ export class SubscriptionService {
               );
 
               if (!updateResult.success) {
-                throw new Error(updateResult.message || 'Failed to update seat quantity in Stripe');
+                throw new BadRequestError({
+                  message: updateResult.message || 'Failed to update seat quantity in Stripe',
+                });
               }
 
               seatItemId = seatItem.id;
@@ -992,9 +1057,9 @@ export class SubscriptionService {
 
         // Store or clear seat item ID
         if (seatItemId) {
-          updateFields.$set['paymentGateway.seatItemId'] = seatItemId;
+          updateFields.$set['billing.seatItemId'] = seatItemId;
         } else if (newAdditionalCount === 0) {
-          updateFields.$unset = { 'paymentGateway.seatItemId': '' };
+          updateFields.$unset = { 'billing.seatItemId': '' };
         }
 
         const updatedSubscription = await this.subscriptionDAO.update(
@@ -1049,6 +1114,7 @@ export class SubscriptionService {
       cancelUrl?: string;
       billingInterval?: 'monthly' | 'annual';
       lookUpKey?: string;
+      planName?: string;
       priceId: string;
     }
   ): IPromiseReturnedData<{ checkoutUrl?: string; sessionId?: string; message?: string }> {
@@ -1056,9 +1122,30 @@ export class SubscriptionService {
       const { currentuser } = ctx;
       const cuid = currentuser!.client.cuid;
 
-      const subscription = await this.subscriptionDAO.findFirst({ cuid });
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new BadRequestError({ message: 'Client not found' });
+      }
+
+      let subscription = await this.subscriptionDAO.findFirst({ cuid });
       if (!subscription) {
-        throw new BadRequestError({ message: 'Subscription not found' });
+        // Subscription record missing (e.g. DB was reset). Auto-create it from checkout data.
+        if (!checkoutData.planName || !checkoutData.billingInterval) {
+          throw new BadRequestError({ message: 'Subscription not found' });
+        }
+
+        const createResult = await this.createSubscription(client._id.toString(), {
+          planName: checkoutData.planName as PlanName,
+          planId: checkoutData.priceId,
+          planLookUpKey: checkoutData.lookUpKey,
+          billingInterval: checkoutData.billingInterval,
+        });
+        if (!createResult.success || !createResult.data) {
+          throw new BadRequestError({
+            message: createResult.message || 'Failed to initialize subscription',
+          });
+        }
+        subscription = createResult.data;
       }
 
       // Block only inactive subscriptions
@@ -1066,10 +1153,13 @@ export class SubscriptionService {
         throw new BadRequestError({ message: 'Cannot update canceled/inactive subscription' });
       }
 
-      const isInitialPayment = subscription.status === ISubscriptionStatus.PENDING_PAYMENT;
-      const isUpdate = subscription.status === ISubscriptionStatus.ACTIVE;
+      const hasActiveStripeSubscription = !!subscription.billing?.subscriberId;
+      const isInitialPayment =
+        subscription.status === ISubscriptionStatus.PENDING_PAYMENT || !hasActiveStripeSubscription;
+      const isUpdate =
+        subscription.status === ISubscriptionStatus.ACTIVE && hasActiveStripeSubscription;
 
-      const priceId = checkoutData.priceId || subscription.paymentGateway.planId;
+      const priceId = checkoutData.priceId || subscription.billing.planId;
       if (!priceId) {
         throw new InternalServerError({ message: 'Plan pricing not configured' });
       }
@@ -1078,6 +1168,7 @@ export class SubscriptionService {
         const checkoutResult = await this.createCheckoutSession({
           subscriptionId: subscription._id.toString(),
           email: currentuser!.email,
+          name: currentuser!.displayName || currentuser!.fullname || undefined,
           priceId,
           successUrl: checkoutData.successUrl!,
           cancelUrl: checkoutData.cancelUrl!,
@@ -1097,7 +1188,7 @@ export class SubscriptionService {
       }
 
       if (isUpdate) {
-        const stripeSubscriptionId = subscription.paymentGateway?.subscriberId;
+        const stripeSubscriptionId = subscription.billing?.subscriberId;
         if (!stripeSubscriptionId) {
           throw new BadRequestError({ message: 'No active Stripe subscription found' });
         }
@@ -1127,8 +1218,8 @@ export class SubscriptionService {
                 $set: {
                   billingInterval: checkoutData.billingInterval,
                   entitlements: planConfig.features,
-                  'paymentGateway.planId': priceId,
-                  'paymentGateway.planLookUpKey': checkoutData.lookUpKey,
+                  'billing.planId': priceId,
+                  'billing.planLookUpKey': checkoutData.lookUpKey,
                 },
               },
               undefined,
@@ -1186,149 +1277,36 @@ export class SubscriptionService {
   }
 
   // WEBHOOKS AND CRON JOBS
-  async handlePaymentSuccess(data: {
+  /**
+   * Webhook handler: customer.subscription.created
+   * Links the Stripe subscriberId to our subscription record.
+   * Status/period updates are handled exclusively by customer.subscription.updated.
+   */
+  async handleSubscriptionCreated(data: {
+    stripeSubscriptionId: string;
     stripeCustomerId: string;
-    stripeSubscriptionId: string;
-    currentPeriodStart: number;
-    currentPeriodEnd: number;
-    clientId: string;
-    cardLast4?: string;
-    cardBrand?: string;
-  }): IPromiseReturnedData<ISubscriptionDocument> {
-    const session = await this.subscriptionDAO.startSession();
+  }): Promise<void> {
+    const subscription = await this.subscriptionDAO.findFirst({
+      'billing.customerId': data.stripeCustomerId,
+    });
 
-    try {
-      const result = await this.subscriptionDAO.withTransaction(session, async (cxtsession) => {
-        const {
-          stripeCustomerId,
-          stripeSubscriptionId,
-          currentPeriodStart,
-          currentPeriodEnd,
-          clientId,
-          cardLast4,
-          cardBrand,
-        } = data;
-
-        const subscription = await this.subscriptionDAO.findFirst({
-          'paymentGateway.customerId': stripeCustomerId,
-        });
-
-        if (!subscription) {
-          this.log.error({ stripeCustomerId, clientId }, 'Subscription not found for customer');
-          throw new BadRequestError({ message: 'Subscription not found for customer' });
-        }
-
-        const updatedSubscription = await this.subscriptionDAO.update(
-          { _id: subscription._id },
-          {
-            $set: {
-              status: ISubscriptionStatus.ACTIVE,
-              'paymentGateway.customerId': stripeCustomerId,
-              'paymentGateway.subscriberId': stripeSubscriptionId,
-              'paymentGateway.cardLast4': cardLast4,
-              'paymentGateway.cardBrand': cardBrand,
-              pendingDowngradeAt: null,
-              startDate: new Date(currentPeriodStart * 1000),
-              endDate: new Date(currentPeriodEnd * 1000),
-            },
-          },
-          undefined,
-          cxtsession
-        );
-
-        if (!updatedSubscription) {
-          throw new BadRequestError({ message: 'Failed to update subscription' });
-        }
-
-        return updatedSubscription;
-      });
-
-      try {
-        const billingCacheKey = `billing_history:${result.cuid}`;
-        await this.authCache.client.DEL(billingCacheKey);
-      } catch (error) {
-        this.log.warn({ error }, 'Failed to invalidate billing history cache');
-      }
-
-      await this.notifyAccountAdminViaSSE(result.cuid, {
-        type: 'subscription_activated',
-        subscription: {
-          plan: result.planName,
-          status: result.status,
-          endDate: result.endDate,
-        },
-        message: 'Your subscription has been activated successfully',
-      });
-
-      return { data: result, success: true };
-    } catch (error) {
-      this.log.error({ error, data }, 'Error handling payment success');
-      throw error;
+    if (!subscription) {
+      this.log.warn(
+        data,
+        'customer.subscription.created: no local subscription found for customer'
+      );
+      return;
     }
-  }
 
-  async handleSubscriptionRenewal(data: {
-    stripeSubscriptionId: string;
-    currentPeriodStart: number;
-    currentPeriodEnd: number;
-  }): IPromiseReturnedData<ISubscriptionDocument> {
-    const session = await this.subscriptionDAO.startSession();
-
-    try {
-      const result = await this.subscriptionDAO.withTransaction(session, async (cxtsession) => {
-        const { stripeSubscriptionId, currentPeriodStart, currentPeriodEnd } = data;
-
-        const subscription = await this.subscriptionDAO.findFirst({
-          'paymentGateway.subscriberId': stripeSubscriptionId,
-        });
-
-        if (!subscription) {
-          this.log.error({ stripeSubscriptionId }, 'Subscription not found for renewal');
-          throw new BadRequestError({ message: 'Subscription not found' });
-        }
-
-        const updatedSubscription = await this.subscriptionDAO.update(
-          { _id: subscription._id },
-          {
-            $set: {
-              startDate: new Date(currentPeriodStart * 1000),
-              endDate: new Date(currentPeriodEnd * 1000),
-            },
-          },
-          undefined,
-          cxtsession
-        );
-
-        if (!updatedSubscription) {
-          throw new BadRequestError({ message: 'Failed to update subscription' });
-        }
-
-        this.log.info(
-          {
-            subscriptionId: subscription._id,
-            stripeSubscriptionId,
-            newEndDate: new Date(currentPeriodEnd * 1000),
-          },
-          'Subscription renewed - billing period updated'
-        );
-
-        return updatedSubscription;
-      });
-
-      await this.notifyAccountAdminViaSSE(result.cuid, {
-        type: 'subscription_renewed',
-        subscription: {
-          plan: result.planName,
-          status: result.status,
-          endDate: result.endDate,
-        },
-        message: 'Your subscription has been renewed successfully',
-      });
-
-      return { data: result, success: true };
-    } catch (error) {
-      this.log.error({ error, data }, 'Error handling subscription renewal');
-      throw error;
+    if (!subscription.billing?.subscriberId) {
+      await this.subscriptionDAO.update(
+        { _id: subscription._id },
+        { $set: { 'billing.subscriberId': data.stripeSubscriptionId } }
+      );
+      this.log.info(
+        { ...data, subscriptionId: subscription._id },
+        'Linked Stripe subscriberId via customer.subscription.created'
+      );
     }
   }
 
@@ -1344,7 +1322,7 @@ export class SubscriptionService {
         const { stripeSubscriptionId, invoiceId, attemptCount } = data;
 
         const subscription = await this.subscriptionDAO.findFirst({
-          'paymentGateway.subscriberId': stripeSubscriptionId,
+          'billing.subscriberId': stripeSubscriptionId,
         });
 
         if (!subscription) {
@@ -1397,17 +1375,108 @@ export class SubscriptionService {
     }
   }
 
+  /**
+   * Webhook handler: invoice.paid
+   * Saves card details to the subscription on first payment.
+   * Status and period updates are handled exclusively by customer.subscription.updated.
+   * Non-subscription invoices (rent) are silently ignored.
+   */
+  async handleInvoicePaid(rawInvoice: any): Promise<void> {
+    const stripeSubscriptionId =
+      rawInvoice.subscription || rawInvoice.parent?.subscription_details?.subscription;
+
+    // Non-subscription invoice (e.g. rent) — handled elsewhere
+    if (!stripeSubscriptionId) return;
+
+    // Only save card details on the first payment
+    if (rawInvoice.billing_reason !== 'subscription_create') return;
+
+    const rawChargeId: string | undefined =
+      rawInvoice.latest_charge ||
+      (typeof rawInvoice.charge === 'string' ? rawInvoice.charge : rawInvoice.charge?.id);
+
+    if (!rawChargeId) return;
+
+    const subscription = await this.subscriptionDAO.findFirst({
+      'billing.subscriberId': stripeSubscriptionId,
+    });
+
+    if (!subscription) {
+      this.log.warn(
+        { stripeSubscriptionId },
+        'invoice.paid: subscription not found, skipping card save'
+      );
+      return;
+    }
+
+    try {
+      const chargeResult = await this.paymentGatewayService.getCharge(
+        IPaymentGatewayProvider.STRIPE,
+        rawChargeId
+      );
+      if (chargeResult.data?.payment_method_details?.card) {
+        const { last4, brand } = chargeResult.data.payment_method_details.card;
+        await this.subscriptionDAO.update(
+          { _id: subscription._id },
+          {
+            $set: {
+              'billing.cardLast4': last4 ?? undefined,
+              'billing.cardBrand': brand ?? undefined,
+            },
+          }
+        );
+        this.log.info({ stripeSubscriptionId }, 'Saved card details from invoice.paid');
+      }
+    } catch (err) {
+      this.log.warn({ err }, 'Failed to fetch card details from charge');
+    }
+  }
+
+  /**
+   * Webhook handler: invoice.payment_failed
+   * Handles subscription payment failures only; silently ignores rent invoices.
+   */
+  async handleInvoicePaymentFailed(rawInvoice: any): Promise<void> {
+    const stripeSubscriptionId =
+      rawInvoice.subscription || rawInvoice.parent?.subscription_details?.subscription;
+
+    if (!stripeSubscriptionId) {
+      return;
+    }
+
+    await this.handlePaymentFailed({
+      stripeSubscriptionId,
+      invoiceId: rawInvoice.id,
+      attemptCount: rawInvoice.attempt_count,
+    });
+  }
+
   async handleSubscriptionUpdated(data: {
     stripeSubscriptionId: string;
+    stripeCustomerId?: string;
     status: string;
+    currentPeriodStart?: number;
     currentPeriodEnd?: number;
   }): IPromiseReturnedData<ISubscriptionDocument> {
     try {
-      const { stripeSubscriptionId, status, currentPeriodEnd } = data;
+      const {
+        stripeSubscriptionId,
+        stripeCustomerId,
+        status,
+        currentPeriodStart,
+        currentPeriodEnd,
+      } = data;
 
-      const subscription = await this.subscriptionDAO.findFirst({
-        'paymentGateway.subscriberId': stripeSubscriptionId,
+      let subscription = await this.subscriptionDAO.findFirst({
+        'billing.subscriberId': stripeSubscriptionId,
       });
+
+      // Fallback: subscription may not have subscriberId linked yet (e.g. first activation)
+      if (!subscription && stripeCustomerId) {
+        subscription = await this.subscriptionDAO.findFirst({
+          'billing.customerId': stripeCustomerId,
+        });
+      }
 
       if (!subscription) {
         this.log.error({ stripeSubscriptionId }, 'Subscription not found for update');
@@ -1417,8 +1486,17 @@ export class SubscriptionService {
       const updateData: any = {};
       if (status === 'active') {
         updateData.status = ISubscriptionStatus.ACTIVE;
+        updateData.pendingDowngradeAt = null;
+        // Ensure subscriberId is linked (in case customer.subscription.created was missed)
+        if (!subscription.billing?.subscriberId) {
+          updateData['billing.subscriberId'] = stripeSubscriptionId;
+        }
       } else if (status === 'canceled' || status === 'unpaid') {
         updateData.status = ISubscriptionStatus.INACTIVE;
+      }
+
+      if (currentPeriodStart) {
+        updateData.startDate = new Date(currentPeriodStart * 1000);
       }
 
       if (currentPeriodEnd) {
@@ -1471,8 +1549,8 @@ export class SubscriptionService {
               updateData.totalMonthlyPrice = subscription.totalMonthlyPrice + priceDifference;
 
               // Store seat item ID if we don't have it
-              if (seatItem.id && !subscription.paymentGateway?.seatItemId) {
-                updateData['paymentGateway.seatItemId'] = seatItem.id;
+              if (seatItem.id && !subscription.billing?.seatItemId) {
+                updateData['billing.seatItemId'] = seatItem.id;
               }
             }
           } else if (subscription.additionalSeatsCount > 0) {
@@ -1561,7 +1639,7 @@ export class SubscriptionService {
         const { stripeSubscriptionId, canceledAt } = data;
 
         const subscription = await this.subscriptionDAO.findFirst({
-          'paymentGateway.subscriberId': stripeSubscriptionId,
+          'billing.subscriberId': stripeSubscriptionId,
         });
 
         if (!subscription) {
@@ -1678,21 +1756,20 @@ export class SubscriptionService {
     ];
   }
 
+  private readonly onUnitBatchCreated = this.handleUnitBatchCreated.bind(this);
+  private readonly onInvitationSent = this.handleInvitationSent.bind(this);
+  private readonly onInvitationAccepted = this.handleInvitationAccepted.bind(this);
+  private readonly onInvitationExpired = this.handleInvitationExpired.bind(this);
+  private readonly onInvitationRevoked = this.handleInvitationRevoked.bind(this);
+  private readonly onUserArchived = this.handleUserArchived.bind(this);
+
   private setupEventListeners(): void {
-    // Track unit creation to maintain cumulative counter
-    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchCreated.bind(this));
-
-    // Track invitations for seat counting (only employee roles)
-    this.emitterService.on(EventTypes.INVITATION_SENT, this.handleInvitationSent.bind(this));
-    this.emitterService.on(
-      EventTypes.INVITATION_ACCEPTED,
-      this.handleInvitationAccepted.bind(this)
-    );
-    this.emitterService.on(EventTypes.INVITATION_EXPIRED, this.handleInvitationExpired.bind(this));
-    this.emitterService.on(EventTypes.INVITATION_REVOKED, this.handleInvitationRevoked.bind(this));
-
-    // Track user archival for seat counting (only employee roles)
-    this.emitterService.on(EventTypes.USER_ARCHIVED, this.handleUserArchived.bind(this));
+    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchCreated);
+    this.emitterService.on(EventTypes.INVITATION_SENT, this.onInvitationSent);
+    this.emitterService.on(EventTypes.INVITATION_ACCEPTED, this.onInvitationAccepted);
+    this.emitterService.on(EventTypes.INVITATION_EXPIRED, this.onInvitationExpired);
+    this.emitterService.on(EventTypes.INVITATION_REVOKED, this.onInvitationRevoked);
+    this.emitterService.on(EventTypes.USER_ARCHIVED, this.onUserArchived);
 
     this.log.info('Subscription service event listeners setup complete');
   }
@@ -1891,12 +1968,12 @@ export class SubscriptionService {
   }
 
   cleanupEventListeners(): void {
-    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchCreated);
-    this.emitterService.off(EventTypes.INVITATION_SENT, this.handleInvitationSent);
-    this.emitterService.off(EventTypes.INVITATION_ACCEPTED, this.handleInvitationAccepted);
-    this.emitterService.off(EventTypes.INVITATION_EXPIRED, this.handleInvitationExpired);
-    this.emitterService.off(EventTypes.INVITATION_REVOKED, this.handleInvitationRevoked);
-    this.emitterService.off(EventTypes.USER_ARCHIVED, this.handleUserArchived);
+    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchCreated);
+    this.emitterService.off(EventTypes.INVITATION_SENT, this.onInvitationSent);
+    this.emitterService.off(EventTypes.INVITATION_ACCEPTED, this.onInvitationAccepted);
+    this.emitterService.off(EventTypes.INVITATION_EXPIRED, this.onInvitationExpired);
+    this.emitterService.off(EventTypes.INVITATION_REVOKED, this.onInvitationRevoked);
+    this.emitterService.off(EventTypes.USER_ARCHIVED, this.onUserArchived);
     this.log.info('Subscription service event listeners removed');
   }
 }

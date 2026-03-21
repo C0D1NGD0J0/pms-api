@@ -12,6 +12,13 @@ export interface IPaymentProvider {
       }
     >
   >;
+  createCustomer(data: {
+    email: string;
+    name?: string;
+    provider: IPaymentGatewayProvider;
+    connectedAccountId?: string;
+    metadata?: Record<string, string>;
+  }): Promise<IPaymentCustomer>;
   createCheckoutSession(data: {
     customerId: string;
     priceId: string;
@@ -19,26 +26,97 @@ export interface IPaymentProvider {
     cancelUrl: string;
     metadata?: Record<string, string>;
   }): Promise<ICheckoutSession>;
-  createCustomer(data: {
-    email: string;
+  createTransfer(params: {
+    amountInCents: number;
+    currency: string;
+    destination: string;
     metadata?: Record<string, string>;
-  }): Promise<IPaymentCustomer>;
+  }): Promise<{ transferId: string; amount: number }>;
+  createRefund(params: {
+    chargeId: string;
+    amountInCents?: number;
+    reason?: string;
+  }): Promise<{ refundId: string; status: string; amount: number; currency: string }>;
+  createKycOnboardingLink(params: {
+    accountId: string;
+    refreshUrl: string;
+    returnUrl: string;
+  }): Promise<IOnboardingLinkResponse>;
+  createAccountUpdateLink(params: {
+    accountId: string;
+    refreshUrl: string;
+    returnUrl: string;
+  }): Promise<IOnboardingLinkResponse>;
+  createTransferReversal(
+    transferId: string,
+    amountInCents?: number
+  ): Promise<{ reversalId: string; amount: number }>;
+  createIdentityVerificationSession(
+    input: ICreateIdentitySessionInput
+  ): Promise<IIdentitySessionResponse>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
   updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
+  retrieveIdentityVerificationSession(sessionId: string): Promise<IIdentityVerificationReport>;
+  createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse>;
   getCustomerInvoices(customerId: string, limit?: number): Promise<Stripe.Invoice[]>;
+  createDashboardLoginLink(accountId: string): Promise<IOnboardingLinkResponse>;
+  createInvoice(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse>;
   cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
+  finalizeInvoice(invoiceId: string): Promise<IFinalizeInvoiceResponse>;
   getSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
   getCustomer(customerId: string): Promise<Stripe.Customer>;
   getCharge(chargeId: string): Promise<Stripe.Charge>;
+  getConnectAccount(accountId: string): Promise<any>;
+  getInvoice(invoiceId: string): Promise<any>;
   getProducts(): Promise<Stripe.Product[]>;
 }
 
-export interface ICheckoutSession {
-  provider: IPaymentGatewayProvider;
+export interface ICreateConnectAccountInput {
+  businessProfile?: {
+    companyName: string;
+    email: string;
+    phone?: string;
+    address?: string;
+    url?: string;
+    productDescription?: string;
+  };
+  prefill?: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    companyName?: string;
+  };
+  businessType: 'individual' | 'company';
   metadata?: Record<string, string>;
-  redirectUrl: string; // redirect URL for payment
-  customerId: string;
-  sessionId: string;
+  country: string;
+  email: string;
+  cuid: string;
+}
+
+export interface ICreateInvoiceInput {
+  lineItems: Array<{
+    description: string;
+    amountInCents: number;
+    quantity?: number;
+  }>;
+  applicationFeeAmountInCents: number;
+  connectedAccountId: string;
+  tenantCustomerId: string;
+  autoChargeDueDate: Date;
+  description: string;
+  currency: string;
+  leaseUid: string;
+  cuid: string;
+}
+
+export interface IConnectAccountResponse {
+  detailsSubmitted: boolean;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  accountId: string;
+  currency: string;
+  country: string;
+  email: string;
 }
 
 export interface ICreateCheckoutInput {
@@ -50,6 +128,36 @@ export interface ICreateCheckoutInput {
   priceId: string;
 }
 
+export interface ICreateInvoiceResponse {
+  status: 'draft' | 'open' | 'paid' | 'uncollectible' | 'void';
+  hostedInvoiceUrl?: string;
+  invoiceId: string;
+  amountDue: number;
+  dueDate?: Date;
+}
+export interface ICreateIdentitySessionInput {
+  allowedTypes?: Array<'driving_license' | 'passport' | 'id_card'>;
+  metadata?: Record<string, string>;
+  returnUrl: string;
+  email?: string;
+}
+
+export interface ICreateCustomerInput {
+  metadata?: Record<string, string>;
+  provider: IPaymentGatewayProvider;
+  connectedAccountId?: string;
+  email: string;
+  name?: string;
+}
+
+export interface ICheckoutSession {
+  provider: IPaymentGatewayProvider;
+  metadata?: Record<string, string>;
+  redirectUrl: string;
+  customerId: string;
+  sessionId: string;
+}
+
 export interface IPaymentCustomer {
   provider: IPaymentGatewayProvider;
   metadata?: Record<string, string>;
@@ -58,9 +166,23 @@ export interface IPaymentCustomer {
   email: string;
 }
 
-export interface ICreateCustomerInput {
-  metadata?: Record<string, string>;
-  provider: IPaymentGatewayProvider;
-  email: string;
-  name?: string;
+export interface IIdentityVerificationReport {
+  issuingCountry?: string;
+  documentType?: string;
+  status: string;
+}
+
+export interface IFinalizeInvoiceResponse {
+  hostedInvoiceUrl?: string;
+  invoiceId: string;
+  status: string;
+}
+
+export interface IIdentitySessionResponse {
+  sessionId: string;
+  url: string;
+}
+
+export interface IOnboardingLinkResponse {
+  url: string;
 }

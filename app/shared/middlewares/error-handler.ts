@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import { MongooseError } from 'mongoose';
 import { AwilixResolutionError } from 'awilix';
 import { EventTypes } from '@interfaces/index';
@@ -66,6 +67,14 @@ export const errorHandlerMiddleware = async (
     ...(errorInfo ? { errorInfo } : {}),
   };
 
+  if (statusCode >= 500) {
+    Sentry.withScope((scope) => {
+      scope.setTag('requestId', (req as any).context?.requestId);
+      scope.setUser({ useruid: (req as any).context?.currentuser?.uid });
+      Sentry.captureException(err);
+    });
+  }
+
   if (req.files && emitterService) {
     try {
       const filesToDelete = extractMulterFiles(req.files).map((file) => file.filename);
@@ -80,6 +89,5 @@ export const errorHandlerMiddleware = async (
     logger.warn('Headers already sent, forwarding to Express error handler');
     return next(err);
   }
-  // send the error response
   res.status(errorResponse.statusCode).json(errorResponse);
 };

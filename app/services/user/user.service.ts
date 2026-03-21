@@ -8,8 +8,8 @@ import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { EventEmitterService, VendorService } from '@services/index';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { PermissionService } from '@services/permission/permission.service';
-import { PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
+import { PropertyDAO, ProfileDAO, PaymentDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
   ISuccessReturnData,
@@ -38,6 +38,7 @@ interface IConstructor {
   vendorService: VendorService;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
+  paymentDAO: PaymentDAO;
   clientDAO: ClientDAO;
   userCache: UserCache;
   leaseDAO: LeaseDAO;
@@ -52,6 +53,7 @@ export class UserService {
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly leaseDAO: LeaseDAO;
+  private readonly paymentDAO: PaymentDAO;
   private readonly vendorService: VendorService;
   private readonly emitterService: EventEmitterService;
   private readonly permissionService: PermissionService;
@@ -63,12 +65,14 @@ export class UserService {
     profileDAO,
     propertyDAO,
     leaseDAO,
+    paymentDAO,
     vendorService,
     emitterService,
     permissionService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
+    this.paymentDAO = paymentDAO;
     this.userCache = userCache;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -96,6 +100,11 @@ export class UserService {
 
     if (!user) {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
+    }
+
+    // Users can always read their own record regardless of connection status
+    if (user._id.toString() === currentuser.sub) {
+      return user;
     }
 
     const targetUser = {
@@ -420,9 +429,9 @@ export class UserService {
       return properties.map((property: any) => ({
         name: property.name || '',
         propertyId: property.id || '',
-        location: this.formatPropertyLocation(property.location),
-        units: property.totalUnits || 0,
-        occupancy: `${property.occupancyRate || 0}%`,
+        location: this.formatPropertyLocation(property.address),
+        units: property.maxAllowedUnits || 0,
+        occupancy: this.formatOccupancy(property.occupancyStatus),
         since: this.formatDate(property.createdAt),
       }));
     } catch (error) {
@@ -531,6 +540,24 @@ export class UserService {
     const hireDate = employeeInfo.startDate || user.createdAt;
     const tenure = this.calculateTenure(hireDate);
 
+    // Resolve supervisor name: reportsTo may be stored as a MongoDB ObjectId string
+    let directManager = employeeInfo.reportsTo || '';
+    if (directManager && /^[a-f0-9]{24}$/i.test(directManager)) {
+      try {
+        const supervisor = await this.userDAO.findFirst(
+          { _id: new Types.ObjectId(directManager) },
+          { populate: [{ path: 'profile', select: 'personalInfo' }] }
+        );
+        if (supervisor?.profile?.personalInfo) {
+          const { firstName, lastName } = supervisor.profile.personalInfo as any;
+          const resolvedName = `${firstName || ''} ${lastName || ''}`.trim();
+          if (resolvedName) directManager = resolvedName;
+        }
+      } catch {
+        // keep raw ID if supervisor lookup fails
+      }
+    }
+
     return {
       employeeId: employeeInfo.employeeId || '',
       hireDate: hireDate,
@@ -538,7 +565,7 @@ export class UserService {
       employmentType: employeeInfo.employmentType || 'Full-Time',
       department: employeeInfo.department || 'operations',
       position: this.determinePrimaryRole(roles),
-      directManager: employeeInfo.reportsTo || '',
+      directManager,
 
       // Skills and expertise
       skills: employeeInfo.skills || [
@@ -805,15 +832,30 @@ export class UserService {
     return 'employee';
   }
 
-  private formatPropertyLocation(location: any): string {
-    if (!location) return 'Location not specified';
+  private formatPropertyLocation(address: any): string {
+    if (!address) return 'Location not specified';
+    if (address.fullAddress) return address.fullAddress;
 
     const parts = [];
-    if (location.address) parts.push(location.address);
-    if (location.city) parts.push(location.city);
-    if (location.state) parts.push(location.state);
+    if (address.street) parts.push(address.street);
+    if (address.city) parts.push(address.city);
+    if (address.state) parts.push(address.state);
 
     return parts.length > 0 ? parts.join(', ') : 'Location not specified';
+  }
+
+  // Returns a rough occupancy percentage based on status label alone.
+  // 'partially_occupied' is approximated as 50% — actual occupancy
+  // requires unit-level data which is not available at this call site.
+  private formatOccupancy(occupancyStatus?: string): string {
+    switch (occupancyStatus) {
+      case 'partially_occupied':
+        return '50%';
+      case 'occupied':
+        return '100%';
+      default:
+        return '0%';
+    }
   }
 
   private formatDate(date: Date): string {
@@ -1288,7 +1330,7 @@ export class UserService {
           // Fetch minimal active lease info for table display
           const activeLeases = await this.leaseDAO.list({
             cuid,
-            tenantId: tenant.user,
+            tenantId: tenant._id, // Use tenant._id from aggregation result
             status: { $in: ['active', 'pending_signature'] },
             deletedAt: null,
           });
@@ -1304,11 +1346,41 @@ export class UserService {
             const address = activeLease.property?.address;
             const propertyAddress = typeof address === 'string' ? address : address?.fullAddress;
 
+            // Calculate rent status from most recent payment
+            let rentStatus = 'n/a';
+            const recentPayments = await this.paymentDAO.list({
+              cuid,
+              tenant: tenant._id,
+              lease: activeLease._id,
+              paymentType: 'rent',
+              limit: 1,
+              sortBy: 'dueDate',
+              sort: 'desc',
+            });
+
+            if (recentPayments.items && recentPayments.items.length > 0) {
+              const latestPayment = recentPayments.items[0];
+              const now = new Date();
+              const dueDate = new Date(latestPayment.dueDate);
+
+              if (latestPayment.status === 'paid') {
+                rentStatus = 'current'; // Frontend expects 'current' not 'paid'
+              } else if (
+                latestPayment.status === 'overdue' ||
+                (latestPayment.status === 'pending' && dueDate < now)
+              ) {
+                rentStatus = 'overdue';
+              } else if (latestPayment.status === 'pending') {
+                rentStatus = 'pending';
+              }
+            }
+
             leaseInfo = {
               leaseStatus: activeLease.status,
-              propertyAddress,
-              monthlyRent: activeLease.fees?.monthlyRent,
-              rentStatus: 'paid', // TODO: Integrate with payment tracking when available
+              propertyName: propertyAddress, // Frontend expects propertyName
+              propertyAddress, // Keep for backwards compatibility
+              monthlyRent: activeLease.fees?.monthlyRent, // Keep in cents - frontend formatCurrency will convert
+              rentStatus,
             };
           } else {
             leaseInfo = {
@@ -1317,11 +1389,11 @@ export class UserService {
           }
 
           return {
-            id: tenant.user,
-            uid: tenant.uid, // Include UID as requested
+            id: tenant._id,
+            uid: tenant.uid,
             email: tenant.email,
             isActive: tenant.isActive,
-            isConnected, // Connection status for this client
+            isConnected,
             fullName: `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim(),
             displayName:
               personalInfo.displayName ||
@@ -1330,7 +1402,7 @@ export class UserService {
             phoneNumber: personalInfo.phoneNumber,
             avatar: personalInfo.avatar,
             tenantInfo: {
-              ...leaseInfo, // Minimal lease info for table
+              ...leaseInfo,
               employerInfo: tenantInfo.employerInfo,
               rentalReferences: tenantInfo.rentalReferences,
               pets: tenantInfo.pets,
@@ -1470,6 +1542,33 @@ export class UserService {
         throw new NotFoundError({
           message: t('tenant.errors.notFound'),
         });
+      }
+
+      // Fetch payment metrics and history using PaymentDAO (proper separation of concerns)
+      const includeAll = !include || include.includes('all');
+      const includePaymentHistory = includeAll || include.includes('payments');
+      const tenantId = (rawTenantDetails as any)._id?.toString();
+
+      if (tenantId) {
+        const paymentData = await this.paymentDAO.getTenantPaymentMetrics(cuid, tenantId, {
+          includeHistory: includePaymentHistory,
+          historyLimit: 50,
+        });
+
+        // Update tenant metrics with payment data
+        rawTenantDetails.tenantMetrics = {
+          totalMaintenanceRequests: rawTenantDetails.tenantMetrics?.totalMaintenanceRequests || 0,
+          currentRentStatus: rawTenantDetails.tenantMetrics?.currentRentStatus || 'no_lease',
+          daysCurrentLease: rawTenantDetails.tenantMetrics?.daysCurrentLease || 0,
+          totalRentPaid: paymentData.metrics.totalRentPaid,
+          onTimePaymentRate: paymentData.metrics.onTimePaymentRate,
+          averagePaymentDelay: paymentData.metrics.averagePaymentDelay,
+        };
+
+        // Add payment history if requested
+        if (includePaymentHistory) {
+          rawTenantDetails.tenantInfo.paymentHistory = paymentData.payments;
+        }
       }
 
       const transformedResponse: import('@interfaces/user.interface').IClientTenantDetails = {
@@ -1764,7 +1863,7 @@ export class UserService {
       // Prevent deleting account owner
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.clientNotFound') });
+        throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
       if (client.accountAdmin.toString() === user._id.toString()) {

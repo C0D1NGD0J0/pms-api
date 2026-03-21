@@ -4,7 +4,6 @@ import { ClientDAO } from '@dao/clientDAO';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { PaymentGatewayService } from '@services/paymentGateway';
-import { StripeService } from '@services/external/stripe/stripe.service';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/index';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 
@@ -13,7 +12,6 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
   let mockSubscriptionDAO: jest.Mocked<SubscriptionDAO>;
   let mockClientDAO: jest.Mocked<ClientDAO>;
   let mockAuthCache: jest.Mocked<AuthCache>;
-  let mockStripeService: jest.Mocked<StripeService>;
   let mockPaymentGatewayService: jest.Mocked<PaymentGatewayService>;
   let mockSSEService: jest.Mocked<SSEService>;
   let mockSession: any;
@@ -64,8 +62,6 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
       cancelSubscription: jest.fn().mockResolvedValue({ success: true, data: {} }),
     } as any;
 
-    mockStripeService = {} as any;
-
     const mockEmitterService = {
       emit: jest.fn(),
       off: jest.fn(),
@@ -76,11 +72,12 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
       subscriptionDAO: mockSubscriptionDAO,
       clientDAO: mockClientDAO,
       authCache: mockAuthCache,
-      stripeService: mockStripeService,
       paymentGatewayService: mockPaymentGatewayService,
       sseService: mockSSEService,
       userDAO: {} as any,
       emitterService: mockEmitterService,
+      propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
     });
   });
 
@@ -91,7 +88,7 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
         cuid: 'client123',
         planName: 'growth',
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
         },
@@ -130,7 +127,7 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
         cuid: 'client123',
         planName: 'essential',
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           provider: 'none',
         },
       };
@@ -182,7 +179,7 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
         cuid: 'client123',
         planName: 'growth',
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
         },
       };

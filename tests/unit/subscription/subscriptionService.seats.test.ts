@@ -48,6 +48,11 @@ describe('SubscriptionService - Additional Seat Management', () => {
       addSubscriptionItem: jest.fn(),
       updateSubscriptionItemQuantity: jest.fn(),
       deleteSubscriptionItem: jest.fn(),
+      getPriceByLookupKey: jest.fn().mockResolvedValue({
+        id: 'price_test123',
+        unit_amount: 500,
+        recurring: { interval: 'month' },
+      }),
     } as any;
 
     mockSSEService = {
@@ -81,9 +86,10 @@ describe('SubscriptionService - Additional Seat Management', () => {
       paymentGatewayService: mockPaymentGatewayService,
       sseService: mockSSEService,
       authCache: mockAuthCache,
-      stripeService: mockStripeService,
       userDAO: {} as any,
       emitterService: mockEmitterService,
+      propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
     });
   });
 
@@ -99,7 +105,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCost: 0,
         totalMonthlyPrice: 29,
         currentSeats: 8,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
           provider: 'stripe',
@@ -136,8 +142,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCount: 5,
         additionalSeatsCost: 39.95, // 5 * $7.99
         totalMonthlyPrice: 68.95, // $29 + $39.95
-        paymentGateway: {
-          ...mockSubscription.paymentGateway,
+        billing: {
+          ...mockSubscription.billing,
           seatItemId: 'si_new123',
         },
       } as any);
@@ -145,7 +151,10 @@ describe('SubscriptionService - Additional Seat Management', () => {
       const result = await subscriptionService.updateAdditionalSeats(testCuid, 5);
 
       expect(result.success).toBe(true);
-      expect(mockStripeService.getPriceByLookupKey).toHaveBeenCalledWith('growth_seats_monthly');
+      expect(mockPaymentGatewayService.getPriceByLookupKey).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        'growth_seats_monthly'
+      );
       expect(mockPaymentGatewayService.addSubscriptionItem).toHaveBeenCalledWith(
         IPaymentGatewayProvider.STRIPE,
         'sub_stripe123',
@@ -160,7 +169,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
           $set: {
             additionalSeatsCost: 39.95, // 5 * $7.99
             totalMonthlyPrice: 68.95, // $29 + $39.95
-            'paymentGateway.seatItemId': 'si_new123',
+            'billing.seatItemId': 'si_new123',
           },
         },
         { new: true },
@@ -178,7 +187,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCost: 79.90,
         totalMonthlyPrice: 129.90,
         currentSeats: 30,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
           seatItemId: 'si_existing123',
@@ -222,7 +231,10 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       await subscriptionService.updateAdditionalSeats(testCuid, 5);
 
-      expect(mockStripeService.getPriceByLookupKey).toHaveBeenCalledWith('portfolio_seat_monthly');
+      expect(mockPaymentGatewayService.getPriceByLookupKey).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        'portfolio_seat_monthly'
+      );
       expect(mockPaymentGatewayService.updateSubscriptionItemQuantity).toHaveBeenCalledWith(
         IPaymentGatewayProvider.STRIPE,
         'si_existing123',
@@ -236,7 +248,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         cuid: testCuid,
         planName: 'growth',
         additionalSeatsCount: 20,
-        paymentGateway: {},
+        billing: {},
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -261,7 +273,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCost: 0,
         totalMonthlyPrice: 768,
         currentSeats: 8,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
           provider: 'stripe',
@@ -271,7 +283,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       // Mock Stripe price validation - annual price with year interval
-      mockStripeService.getPriceByLookupKey.mockResolvedValue({
+      mockPaymentGatewayService.getPriceByLookupKey.mockResolvedValue({
         id: 'price_annual123',
         unit_amount: 9500,
         recurring: { interval: 'year' },
@@ -294,7 +306,10 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       await subscriptionService.updateAdditionalSeats(testCuid, 2);
 
-      expect(mockStripeService.getPriceByLookupKey).toHaveBeenCalledWith('growth_seat_annual');
+      expect(mockPaymentGatewayService.getPriceByLookupKey).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        'growth_seat_annual'
+      );
       expect(mockPaymentGatewayService.addSubscriptionItem).toHaveBeenCalledWith(
         IPaymentGatewayProvider.STRIPE,
         'sub_stripe123',
@@ -310,17 +325,13 @@ describe('SubscriptionService - Additional Seat Management', () => {
         planName: 'growth',
         billingInterval: 'annual',
         additionalSeatsCount: 0,
-        paymentGateway: { subscriberId: 'sub_stripe123', provider: 'stripe' },
+        billing: { subscriberId: 'sub_stripe123', provider: 'stripe' },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
-      // Mock Stripe returning monthly price when annual expected
-      mockStripeService.getPriceByLookupKey.mockResolvedValue({
-        id: 'price_monthly123',
-        unit_amount: 500,
-        recurring: { interval: 'month' }, // Wrong interval!
-      });
+      // Default mock returns { interval: 'month' }; annual subscription expects 'year' → mismatch
+      // (No override needed — beforeEach default already returns monthly interval)
 
       await expect(subscriptionService.updateAdditionalSeats(testCuid, 2)).rejects.toThrow(
         /billing interval mismatch/
@@ -334,13 +345,13 @@ describe('SubscriptionService - Additional Seat Management', () => {
         planName: 'growth',
         billingInterval: 'monthly',
         additionalSeatsCount: 0,
-        paymentGateway: { subscriberId: 'sub_stripe123', provider: 'stripe' },
+        billing: { subscriberId: 'sub_stripe123', provider: 'stripe' },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       // Mock Stripe returning null (price not found)
-      mockStripeService.getPriceByLookupKey.mockResolvedValue(null);
+      mockPaymentGatewayService.getPriceByLookupKey.mockResolvedValue(null);
 
       await expect(subscriptionService.updateAdditionalSeats(testCuid, 2)).rejects.toThrow(
         /seat price configuration is missing/
@@ -374,7 +385,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCost: 50,
         totalMonthlyPrice: 79,
         currentSeats: 15, // 10 included + 5 in use from additional
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
           seatItemId: 'si_123',
@@ -425,7 +436,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         planName: 'growth',
         additionalSeatsCount: 5,
         currentSeats: 10,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
           seatItemId: 'si_123',
@@ -463,7 +474,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
         expect.objectContaining({
-          $unset: { 'paymentGateway.seatItemId': '' },
+          $unset: { 'billing.seatItemId': '' },
         }),
         { new: true },
         mockSession
@@ -511,7 +522,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         billingInterval: 'monthly',
         additionalSeatsCount: 10,
         currentSeats: 15, // 10 included + 5 additional in use
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
           seatItemId: 'si_123',
@@ -592,7 +603,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         billingInterval: 'monthly',
         additionalSeatsCount: 10,
         currentSeats: 12, // 10 included + 2 additional in use
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
           seatItemId: 'si_123',
@@ -648,7 +659,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         billingInterval: 'monthly',
         additionalSeatsCount: 5,
         currentSeats: 10, // Exactly at included seats, all additional seats unused
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
           seatItemId: 'si_123',
@@ -721,7 +732,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCount: 0,
         totalMonthlyPrice: 29,
         currentSeats: 8,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
           provider: 'stripe',
@@ -762,7 +773,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         ...mockSubscription,
         additionalSeatsCount: 3,
         totalMonthlyPrice: 44,
-        paymentGateway: {
+        billing: {
           seatItemId: 'si_new123',
         },
       } as any);
@@ -790,7 +801,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         additionalSeatsCount: 5,
         currentSeats: 10,
         totalMonthlyPrice: 54,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
           provider: 'stripe',

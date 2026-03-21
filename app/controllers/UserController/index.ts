@@ -7,6 +7,7 @@ import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ProfileService } from '@services/profile/profile.service';
 import { QueueFactory } from '@services/queue/queueFactory.service';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
+import { UnauthorizedError, BadRequestError } from '@shared/customErrors';
 import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 
@@ -71,6 +72,7 @@ export class UserController {
       role: roles,
       department: filter.department as string | undefined,
       status: filter.status as 'active' | 'inactive' | undefined,
+      search: filter.search as string | undefined,
     };
 
     const page = pagination.page ? parseInt(pagination.page, 10) : 1;
@@ -113,6 +115,7 @@ export class UserController {
       role: roles,
       department: filter.department as string | undefined,
       status: filter.status as 'active' | 'inactive' | undefined,
+      search: filter.search as string | undefined,
     };
 
     const page = pagination.page ? parseInt(pagination.page, 10) : 1;
@@ -290,5 +293,28 @@ export class UserController {
         error: error.message,
       });
     }
+  };
+
+  getProfileCompletion = async (req: AppRequest, res: Response): Promise<void> => {
+    const { cuid } = req.params;
+    const currentuser = req.context?.currentuser;
+
+    if (!currentuser?.sub) {
+      throw new UnauthorizedError({ message: 'User not authenticated' });
+    }
+
+    if (currentuser.client.cuid !== cuid) {
+      throw new BadRequestError({ message: 'Invalid client context' });
+    }
+
+    const roles = currentuser.client.role ? [currentuser.client.role as IUserRoleType] : [];
+    const result = await this.profileService.getProfileCompletion(cuid, currentuser.sub, roles);
+
+    if (!result.success) {
+      res.status(httpStatusCodes.NOT_FOUND).json({ success: false, message: result.message });
+      return;
+    }
+
+    res.status(httpStatusCodes.OK).json({ success: true, data: result.data });
   };
 }

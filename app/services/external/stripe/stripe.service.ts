@@ -1,11 +1,21 @@
+import dayjs from 'dayjs';
 import Stripe from 'stripe';
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
+import { isValidPhoneNumber, createLogger } from '@utils/index';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import {
+  IIdentityVerificationReport,
+  ICreateIdentitySessionInput,
+  ICreateConnectAccountInput,
+  IFinalizeInvoiceResponse,
+  IIdentitySessionResponse,
+  IConnectAccountResponse,
+  IOnboardingLinkResponse,
+  ICreateInvoiceResponse,
   ICreateCheckoutInput,
   ICreateCustomerInput,
+  ICreateInvoiceInput,
   IPaymentProvider,
   IPaymentCustomer,
   ICheckoutSession,
@@ -127,6 +137,10 @@ export class StripeService implements IPaymentProvider {
       const session = await this.stripe.checkout.sessions.create({
         mode: 'subscription',
         customer: customerId,
+        customer_update: {
+          name: 'auto',
+          address: 'auto',
+        },
         line_items: [
           {
             price: priceId,
@@ -348,6 +362,75 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async createRefund(params: {
+    chargeId: string;
+    amountInCents?: number;
+    reason?: string;
+  }): Promise<{ refundId: string; status: string; amount: number; currency: string }> {
+    const { chargeId, amountInCents, reason } = params;
+    try {
+      const refundParams: Stripe.RefundCreateParams = { charge: chargeId };
+      if (amountInCents) refundParams.amount = amountInCents;
+      if (reason) refundParams.reason = reason as Stripe.RefundCreateParams.Reason;
+
+      const refund = await this.stripe.refunds.create(refundParams);
+      this.log.info({ chargeId, refundId: refund.id, amount: refund.amount }, 'Refund created');
+      return {
+        refundId: refund.id,
+        status: refund.status ?? 'unknown',
+        amount: refund.amount,
+        currency: refund.currency,
+      };
+    } catch (error) {
+      this.log.error({ error, chargeId }, 'Error creating Stripe refund');
+      throw error;
+    }
+  }
+
+  async createTransferReversal(
+    transferId: string,
+    amountInCents?: number
+  ): Promise<{ reversalId: string; amount: number }> {
+    try {
+      const reversal = await this.stripe.transfers.createReversal(
+        transferId,
+        amountInCents ? { amount: amountInCents } : undefined
+      );
+      this.log.info(
+        { transferId, reversalId: reversal.id, amount: reversal.amount },
+        'Transfer reversal created'
+      );
+      return { reversalId: reversal.id, amount: reversal.amount };
+    } catch (error) {
+      this.log.error({ error, transferId }, 'Error creating transfer reversal');
+      throw error;
+    }
+  }
+
+  async createTransfer(params: {
+    amountInCents: number;
+    currency: string;
+    destination: string;
+    metadata?: Record<string, string>;
+  }): Promise<{ transferId: string; amount: number }> {
+    try {
+      const transfer = await this.stripe.transfers.create({
+        amount: params.amountInCents,
+        currency: params.currency,
+        destination: params.destination,
+        ...(params.metadata && { metadata: params.metadata }),
+      });
+      this.log.info(
+        { transferId: transfer.id, amount: transfer.amount, destination: params.destination },
+        'Transfer created'
+      );
+      return { transferId: transfer.id, amount: transfer.amount };
+    } catch (error) {
+      this.log.error({ error, destination: params.destination }, 'Error creating transfer');
+      throw error;
+    }
+  }
+
   async getCustomerInvoices(customerId: string, limit: number = 12): Promise<Stripe.Invoice[]> {
     try {
       const result = await this.stripe.invoices.list({
@@ -364,14 +447,13 @@ export class StripeService implements IPaymentProvider {
   }
 
   async createCustomer(data: ICreateCustomerInput): Promise<IPaymentCustomer> {
+    const { email, metadata, name, connectedAccountId } = data;
     try {
-      const { email, metadata, name } = data;
-
-      const customer = await this.stripe.customers.create({
-        email,
-        name,
-        metadata,
-      });
+      const requestOptions = connectedAccountId ? { stripeAccount: connectedAccountId } : undefined;
+      const customer = await this.stripe.customers.create(
+        { email, name, metadata },
+        requestOptions
+      );
 
       return {
         customerId: customer.id,
@@ -386,9 +468,265 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async verifyWebhookSignature(payload: string | Buffer, signature: string): Promise<any> {
+  async createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse> {
     try {
-      const webhookSecret = envVariables.STRIPE.WEBHOOK_SECRET;
+      const { email, country, businessType, businessProfile, prefill, metadata } = input;
+
+      const account = await this.stripe.accounts.create({
+        country,
+        email,
+        business_type: businessType,
+        capabilities: {
+          transfers: { requested: true },
+        },
+        // Our architecture uses destination charges — PMs only receive payouts, never make
+        // direct charges. The recipient service agreement accurately reflects this and
+        // satisfies Stripe's requirement for countries like CA that enforce it.
+        tos_acceptance: { service_agreement: 'recipient' },
+        controller: {
+          fees: {
+            payer: 'application',
+          },
+          losses: {
+            payments: 'application',
+          },
+          stripe_dashboard: {
+            type: 'express',
+          },
+        },
+        ...(businessProfile && {
+          business_profile: {
+            name: businessProfile.companyName,
+            url: businessProfile.url,
+            support_email: businessProfile.email,
+            support_phone: businessProfile.phone,
+            product_description:
+              businessProfile.productDescription || 'Property management and rent collection',
+          },
+        }),
+        // Prefill the hosted KYC form so the PM doesn't re-enter their own data
+        ...(prefill &&
+          businessType === 'individual' && {
+            individual: {
+              first_name: prefill.firstName,
+              last_name: prefill.lastName,
+              email,
+              ...(prefill.phone &&
+                prefill.phone.startsWith('+') &&
+                isValidPhoneNumber(prefill.phone) && { phone: prefill.phone }),
+            },
+          }),
+        ...(prefill &&
+          businessType === 'company' && {
+            company: {
+              name: prefill.companyName,
+              ...(prefill.phone &&
+                prefill.phone.startsWith('+') &&
+                isValidPhoneNumber(prefill.phone) && { phone: prefill.phone }),
+            },
+          }),
+        settings: {
+          payouts: {
+            schedule: {
+              interval: 'weekly',
+              weekly_anchor: 'monday',
+            },
+          },
+          branding: {
+            icon: metadata?.platformLogoUrl,
+            primary_color: metadata?.brandColor,
+          },
+        },
+        metadata,
+      });
+
+      return {
+        accountId: account.id,
+        email: account.email!,
+        country: account.country!,
+        currency: account.default_currency!,
+        chargesEnabled: account.charges_enabled,
+        payoutsEnabled: account.payouts_enabled,
+        detailsSubmitted: account.details_submitted,
+      };
+    } catch (error) {
+      this.log.error({ error, input }, 'Error creating Stripe Connect account');
+      throw error;
+    }
+  }
+
+  async getConnectAccount(accountId: string): Promise<Stripe.Account> {
+    try {
+      return await this.stripe.accounts.retrieve(accountId);
+    } catch (error) {
+      this.log.error({ error, accountId }, 'Error fetching Connect account');
+      throw error;
+    }
+  }
+
+  async getInvoice(invoiceId: string): Promise<Stripe.Invoice> {
+    try {
+      return await this.stripe.invoices.retrieve(invoiceId);
+    } catch (error) {
+      this.log.error({ error, invoiceId }, 'Error fetching invoice');
+      throw error;
+    }
+  }
+
+  async createKycOnboardingLink(params: {
+    accountId: string;
+    refreshUrl: string;
+    returnUrl: string;
+  }): Promise<IOnboardingLinkResponse> {
+    try {
+      const accountLink = await this.stripe.accountLinks.create({
+        account: params.accountId,
+        refresh_url: params.refreshUrl,
+        return_url: params.returnUrl,
+        type: 'account_onboarding',
+      });
+
+      return { url: accountLink.url };
+    } catch (error) {
+      this.log.error({ error, params }, 'Error creating onboarding link');
+      throw error;
+    }
+  }
+
+  async createAccountUpdateLink(params: {
+    accountId: string;
+    refreshUrl: string;
+    returnUrl: string;
+  }): Promise<IOnboardingLinkResponse> {
+    try {
+      const accountLink = await this.stripe.accountLinks.create({
+        account: params.accountId,
+        refresh_url: params.refreshUrl,
+        return_url: params.returnUrl,
+        type: 'account_update',
+      });
+
+      return { url: accountLink.url };
+    } catch (error) {
+      this.log.error({ error, params }, 'Error creating account update link');
+      throw error;
+    }
+  }
+
+  async createDashboardLoginLink(accountId: string): Promise<IOnboardingLinkResponse> {
+    try {
+      const loginLink = await this.stripe.accounts.createLoginLink(accountId);
+
+      return { url: loginLink.url };
+    } catch (error) {
+      this.log.error({ error, accountId }, 'Error creating login link');
+      throw error;
+    }
+  }
+
+  async createInvoice(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse> {
+    try {
+      const {
+        tenantCustomerId,
+        connectedAccountId,
+        applicationFeeAmountInCents: applicationFeeAmount,
+        currency,
+        description,
+        autoChargeDueDate,
+        lineItems,
+        cuid,
+        leaseUid,
+      } = input;
+
+      const daysUntilDue = Math.ceil(dayjs(autoChargeDueDate).diff(dayjs(), 'day', true));
+      const invoice = await this.stripe.invoices.create({
+        customer: tenantCustomerId,
+        auto_advance: true,
+        collection_method: 'charge_automatically',
+        days_until_due: daysUntilDue > 0 ? daysUntilDue : 0,
+        description,
+        metadata: {
+          cuid,
+          leaseUid,
+        },
+        application_fee_amount: applicationFeeAmount,
+        transfer_data: {
+          destination: connectedAccountId,
+        },
+      });
+
+      const itemResults = await Promise.allSettled(
+        lineItems.map((item) =>
+          this.stripe.invoiceItems.create({
+            customer: tenantCustomerId,
+            invoice: invoice.id,
+            amount: item.amountInCents,
+            quantity: item.quantity || 1,
+            currency,
+            description: item.description,
+          })
+        )
+      );
+
+      const failedItems = itemResults.filter((result) => result.status === 'rejected');
+      const successfulItems = itemResults.filter((result) => result.status === 'fulfilled');
+
+      if (failedItems.length > 0) {
+        this.log.error(
+          {
+            invoiceId: invoice.id,
+            failedCount: failedItems.length,
+            successfulCount: successfulItems.length,
+            failures: failedItems.map((r, i) => ({
+              item: lineItems[i],
+              error: r.status === 'rejected' ? r.reason : null,
+            })),
+          },
+          'Some invoice items failed to create'
+        );
+
+        throw new Error(
+          `Failed to add ${failedItems.length} of ${lineItems.length} invoice items. Invoice ${invoice.id} created but incomplete.`
+        );
+      }
+
+      return {
+        invoiceId: invoice.id,
+        amountDue: invoice.amount_due,
+        status: invoice.status || 'open',
+        hostedInvoiceUrl: invoice.hosted_invoice_url || undefined,
+        dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : undefined,
+      };
+    } catch (error) {
+      this.log.error({ error, input }, 'Error creating invoice');
+      throw error;
+    }
+  }
+
+  async finalizeInvoice(invoiceId: string): Promise<IFinalizeInvoiceResponse> {
+    try {
+      const invoice = await this.stripe.invoices.finalizeInvoice(invoiceId, {
+        auto_advance: true,
+      });
+
+      return {
+        invoiceId: invoice.id,
+        status: invoice.status!,
+        hostedInvoiceUrl: invoice.hosted_invoice_url || undefined,
+      };
+    } catch (error) {
+      this.log.error({ error, invoiceId }, 'Error finalizing invoice');
+      throw error;
+    }
+  }
+
+  async verifyWebhookSignature(
+    payload: string | Buffer,
+    signature: string,
+    secret?: string
+  ): Promise<any> {
+    try {
+      const webhookSecret = secret || envVariables.STRIPE.WEBHOOK_SECRET;
 
       if (!webhookSecret) {
         throw new Error('STRIPE_WEBHOOK_SECRET is not configured');
@@ -400,6 +738,47 @@ export class StripeService implements IPaymentProvider {
       return event;
     } catch (error) {
       this.log.error({ error }, 'Error verifying webhook signature');
+      throw error;
+    }
+  }
+
+  async createIdentityVerificationSession(
+    input: ICreateIdentitySessionInput
+  ): Promise<IIdentitySessionResponse> {
+    try {
+      const session = await this.stripe.identity.verificationSessions.create({
+        type: 'document',
+        provided_details: input.email ? { email: input.email } : undefined,
+        metadata: input.metadata,
+        return_url: input.returnUrl,
+        options: {
+          document: {
+            allowed_types: input.allowedTypes ?? ['driving_license', 'passport', 'id_card'],
+          },
+        },
+      });
+      return { sessionId: session.id, url: session.url! };
+    } catch (error) {
+      this.log.error({ error }, 'Error creating Stripe Identity verification session');
+      throw error;
+    }
+  }
+
+  async retrieveIdentityVerificationSession(
+    sessionId: string
+  ): Promise<IIdentityVerificationReport> {
+    try {
+      const session = await this.stripe.identity.verificationSessions.retrieve(sessionId, {
+        expand: ['last_verification_report'],
+      });
+      const report = session.last_verification_report as Stripe.Identity.VerificationReport | null;
+      return {
+        status: session.status,
+        documentType: report?.document?.type ?? undefined,
+        issuingCountry: report?.document?.issuing_country ?? undefined,
+      };
+    } catch (error) {
+      this.log.error({ error }, 'Error retrieving Stripe Identity verification session');
       throw error;
     }
   }

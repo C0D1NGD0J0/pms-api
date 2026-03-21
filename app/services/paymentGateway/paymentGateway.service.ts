@@ -1,10 +1,20 @@
 import { createLogger } from '@utils/index';
+import { CustomError } from '@shared/customErrors';
 import { IPromiseReturnedData } from '@interfaces/index';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import {
+  IIdentityVerificationReport,
+  ICreateIdentitySessionInput,
+  ICreateConnectAccountInput,
+  IFinalizeInvoiceResponse,
+  IIdentitySessionResponse,
+  IConnectAccountResponse,
+  IOnboardingLinkResponse,
+  ICreateInvoiceResponse,
   ICreateCustomerInput,
   ICreateCheckoutInput,
+  ICreateInvoiceInput,
   IPaymentProvider,
   IPaymentCustomer,
   ICheckoutSession,
@@ -51,12 +61,18 @@ export class PaymentGatewayService {
    */
   async createCustomer(input: ICreateCustomerInput): IPromiseReturnedData<IPaymentCustomer | null> {
     try {
-      const { provider, email, metadata } = input;
+      const { provider, email, metadata, name, connectedAccountId } = input;
 
       this.log.info({ provider, email }, 'Creating customer via payment gateway');
 
       const providerInstance = this.getProvider(provider);
-      const customer = await providerInstance.createCustomer({ email, metadata });
+      const customer = await providerInstance.createCustomer({
+        email,
+        metadata,
+        name,
+        provider,
+        connectedAccountId,
+      });
 
       this.log.info({ provider, customerId: customer.customerId }, 'Customer created successfully');
 
@@ -322,11 +338,6 @@ export class PaymentGatewayService {
     quantity: number
   ): IPromiseReturnedData<any> {
     try {
-      this.log.info(
-        { provider, subscriptionId, priceLookupKey, quantity },
-        'Adding subscription item'
-      );
-
       const providerInstance = this.getProvider(provider);
 
       if (!('addSubscriptionItem' in providerInstance)) {
@@ -339,8 +350,6 @@ export class PaymentGatewayService {
         quantity,
         true // prorate = true
       );
-
-      this.log.info({ provider, itemId: result.id }, 'Subscription item added successfully');
 
       return { success: true, data: result };
     } catch (error) {
@@ -359,8 +368,6 @@ export class PaymentGatewayService {
     quantity: number
   ): IPromiseReturnedData<any> {
     try {
-      this.log.info({ provider, itemId, quantity }, 'Updating subscription item quantity');
-
       const providerInstance = this.getProvider(provider);
 
       if (!('updateSubscriptionItemQuantity' in providerInstance)) {
@@ -373,8 +380,6 @@ export class PaymentGatewayService {
         true // prorate = true
       );
 
-      this.log.info({ provider, itemId, quantity }, 'Subscription item quantity updated');
-
       return { success: true, data: result };
     } catch (error) {
       this.log.error({ error, provider, itemId }, 'Error updating subscription item quantity');
@@ -382,7 +387,9 @@ export class PaymentGatewayService {
         success: false,
         data: null,
         message:
-          error instanceof Error ? error.message : 'Failed to update subscription item quantity',
+          error instanceof CustomError
+            ? error.message
+            : 'Failed to update subscription item quantity',
       };
     }
   }
@@ -392,8 +399,6 @@ export class PaymentGatewayService {
     itemId: string
   ): IPromiseReturnedData<any> {
     try {
-      this.log.info({ provider, itemId }, 'Deleting subscription item');
-
       const providerInstance = this.getProvider(provider);
 
       if (!('deleteSubscriptionItem' in providerInstance)) {
@@ -402,8 +407,6 @@ export class PaymentGatewayService {
 
       const result = await (providerInstance as any).deleteSubscriptionItem(itemId, true);
 
-      this.log.info({ provider, itemId }, 'Subscription item deleted successfully');
-
       return { success: true, data: result };
     } catch (error) {
       this.log.error({ error, provider, itemId }, 'Error deleting subscription item');
@@ -411,6 +414,288 @@ export class PaymentGatewayService {
         success: false,
         data: null,
         message: error instanceof Error ? error.message : 'Failed to delete subscription item',
+      };
+    }
+  }
+
+  async createConnectAccount(
+    provider: IPaymentGatewayProvider,
+    input: ICreateConnectAccountInput
+  ): IPromiseReturnedData<IConnectAccountResponse | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('createConnectAccount' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not support Connect accounts`);
+      }
+
+      const account = await providerInstance.createConnectAccount(input);
+      return { success: true, data: account };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error creating Connect account');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to create Connect account',
+      };
+    }
+  }
+
+  async createKycOnboardingLink(
+    provider: IPaymentGatewayProvider,
+    params: { accountId: string; refreshUrl: string; returnUrl: string }
+  ): IPromiseReturnedData<IOnboardingLinkResponse | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('createKycOnboardingLink' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not support onboarding links`);
+      }
+
+      const link = await providerInstance.createKycOnboardingLink(params);
+      return { success: true, data: link };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error creating onboarding link');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to create onboarding link',
+      };
+    }
+  }
+
+  async createAccountUpdateLink(
+    provider: IPaymentGatewayProvider,
+    params: { accountId: string; refreshUrl: string; returnUrl: string }
+  ): IPromiseReturnedData<IOnboardingLinkResponse | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('createAccountUpdateLink' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not support account update links`);
+      }
+
+      const link = await providerInstance.createAccountUpdateLink(params);
+      return { success: true, data: link };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error creating account update link');
+      return {
+        success: false,
+        data: null,
+        message:
+          error instanceof CustomError
+            ? error.message
+            : (error as any)?.message || 'Failed to create account update link',
+      };
+    }
+  }
+
+  async createDashboardLoginLink(
+    provider: IPaymentGatewayProvider,
+    accountId: string
+  ): IPromiseReturnedData<IOnboardingLinkResponse | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('createDashboardLoginLink' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not support login links`);
+      }
+
+      const link = await providerInstance.createDashboardLoginLink(accountId);
+      return { success: true, data: link };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error creating login link');
+      return {
+        success: false,
+        data: null,
+        message:
+          error instanceof CustomError
+            ? error.message
+            : (error as any)?.message || 'Failed to create login link',
+      };
+    }
+  }
+
+  async getConnectAccount(
+    provider: IPaymentGatewayProvider,
+    accountId: string
+  ): IPromiseReturnedData<any> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('getConnectAccount' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not support Connect accounts`);
+      }
+
+      const account = await providerInstance.getConnectAccount(accountId);
+      return { success: true, data: account };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error fetching Connect account');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to fetch Connect account',
+      };
+    }
+  }
+
+  async createInvoice(
+    provider: IPaymentGatewayProvider,
+    input: ICreateInvoiceInput
+  ): IPromiseReturnedData<ICreateInvoiceResponse | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('createInvoice' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not support invoices`);
+      }
+
+      const result = await providerInstance.createInvoice(input);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error creating invoice');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to create invoice',
+      };
+    }
+  }
+
+  async finalizeInvoice(
+    provider: IPaymentGatewayProvider,
+    invoiceId: string
+  ): IPromiseReturnedData<IFinalizeInvoiceResponse | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('finalizeInvoice' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not support invoice finalization`);
+      }
+
+      const result = await providerInstance.finalizeInvoice!(invoiceId);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error finalizing invoice');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to finalize invoice',
+      };
+    }
+  }
+
+  async getCharge(provider: IPaymentGatewayProvider, chargeId: string): IPromiseReturnedData<any> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      const charge = await providerInstance.getCharge(chargeId);
+      return { success: true, data: charge };
+    } catch (error) {
+      this.log.error({ error, provider, chargeId }, 'Error fetching charge');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to fetch charge',
+      };
+    }
+  }
+
+  async createTransferReversal(
+    provider: IPaymentGatewayProvider,
+    transferId: string,
+    amountInCents?: number
+  ): IPromiseReturnedData<{ reversalId: string; amount: number } | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      const result = await providerInstance.createTransferReversal(transferId, amountInCents);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider, transferId }, 'Error creating transfer reversal');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to create transfer reversal',
+      };
+    }
+  }
+
+  async createTransfer(
+    provider: IPaymentGatewayProvider,
+    params: {
+      amountInCents: number;
+      currency: string;
+      destination: string;
+      metadata?: Record<string, string>;
+    }
+  ): IPromiseReturnedData<{ transferId: string; amount: number } | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      const result = await providerInstance.createTransfer(params);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error(
+        { error, provider, destination: params.destination },
+        'Error creating transfer'
+      );
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to create transfer',
+      };
+    }
+  }
+
+  async createRefund(
+    provider: IPaymentGatewayProvider,
+    params: {
+      chargeId: string;
+      amountInCents?: number;
+      reason?: string;
+    }
+  ): IPromiseReturnedData<{
+    refundId: string;
+    status: string;
+    amount: number;
+    currency: string;
+  } | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      const result = await providerInstance.createRefund(params);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider, chargeId: params.chargeId }, 'Error creating refund');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to create refund',
+      };
+    }
+  }
+
+  async createIdentityVerificationSession(
+    provider: IPaymentGatewayProvider,
+    input: ICreateIdentitySessionInput
+  ): IPromiseReturnedData<IIdentitySessionResponse | null> {
+    try {
+      const result = await this.getProvider(provider).createIdentityVerificationSession(input);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error }, 'Error creating identity verification session');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to create identity session',
+      };
+    }
+  }
+
+  async retrieveIdentityVerificationSession(
+    provider: IPaymentGatewayProvider,
+    sessionId: string
+  ): IPromiseReturnedData<IIdentityVerificationReport | null> {
+    try {
+      const result =
+        await this.getProvider(provider).retrieveIdentityVerificationSession(sessionId);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error }, 'Error retrieving identity verification session');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to retrieve identity session',
       };
     }
   }

@@ -14,24 +14,26 @@ export class InvitationQueue extends BaseQueue {
   constructor({ invitationWorker }: IConstructor) {
     super({ queueName: QUEUE_NAMES.INVITATION_QUEUE });
     this.invitationWorker = invitationWorker;
+    // CSV/bulk operations are heavy — low concurrency prevents BRPOPLPUSH
+    // contention on the shared bclient and avoids overwhelming the system.
     this.processQueueJobs(
       JOB_NAME.INVITATION_CSV_VALIDATION_JOB,
-      5,
+      2,
       this.invitationWorker.processCsvValidation
     );
     this.processQueueJobs(
       JOB_NAME.INVITATION_CSV_IMPORT_JOB,
-      5,
+      1,
       this.invitationWorker.processCsvImport
     );
     this.processQueueJobs(
       JOB_NAME.INVITATION_BULK_USER_VALIDATION_JOB,
-      5,
+      2,
       this.invitationWorker.processCsvBulkUserValidation
     );
     this.processQueueJobs(
       JOB_NAME.INVITATION_BULK_USER_IMPORT_JOB,
-      5,
+      1,
       this.invitationWorker.processCsvBulkUserImport
     );
   }

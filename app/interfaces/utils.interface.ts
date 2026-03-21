@@ -5,6 +5,7 @@ import { NextFunction, Response, Request } from 'express';
 import { ICurrentUser } from './user.interface';
 import { IProperty } from './property.interface';
 import { IInvalidCsvProperty } from './csv.interface';
+import { ISubscriptionEntitlements } from './subscription.interface';
 
 export enum MailType {
   LEASE_APPLICATION_UPDATE = 'LEASE_APPLICATION_UPDATE',
@@ -72,13 +73,6 @@ export enum ResourceContext {
   LEASE = 'lease',
 }
 
-export enum IdentificationEnumType {
-  CORPORATION_LICENSE = 'corporation-license',
-  DRIVERS_LICENSE = 'drivers-license',
-  NATIONAL_ID = 'national-id',
-  PASSPORT = 'passport',
-}
-
 export enum CURRENCIES {
   USD = 'USD',
   EUR = 'EUR',
@@ -112,26 +106,6 @@ export enum RequestSource {
   API = 'api',
 }
 export interface IRequestContext {
-  entitlements?: {
-    plan: {
-      name: string;
-      status: string;
-      billingInterval: 'monthly' | 'annual';
-    };
-    entitlements: {
-      eSignature: boolean;
-      RepairRequestService: boolean;
-      VisitorPassService: boolean;
-      reportingAnalytics: boolean;
-      prioritySupport?: boolean;
-    };
-    paymentFlow?: {
-      requiresPayment: boolean;
-      reason: 'pending_signup' | 'expired' | 'grace_period' | null;
-      gracePeriodEndsAt: Date | null;
-      daysUntilDowngrade: number | null;
-    };
-  };
   userAgent: {
     browser?: string;
     version?: string;
@@ -162,6 +136,7 @@ export interface IRequestContext {
     endTime?: number;
     duration?: number;
   };
+  entitlements?: ISubscriptionEntitlements;
   currentuser: ICurrentUser;
   service: { env: string };
   source: RequestSource;

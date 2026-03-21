@@ -1,11 +1,11 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import { User } from '@models/index';
+import { Lease, User } from '@models/index';
 import { IUserDocument } from '@interfaces/user.interface';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
-import { IUserRoleType, ROLES } from '@shared/constants/roles.constants';
-import { paginateResult, hashGenerator, createLogger } from '@utils/index';
 import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
+import { paginateResult, hashGenerator, createLogger, escapeRegExp } from '@utils/index';
+import { resolveHighestRole, IUserRoleType, ROLES } from '@shared/constants/roles.constants';
 
 import { BaseDAO } from './baseDAO';
 import { IFindOptions, dynamic } from './interfaces/baseDAO.interface';
@@ -153,7 +153,10 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    * @param token - The activation token.
    * @returns A promise that resolves to true if activation was successful, false otherwise.
    */
-  async activateAccount(token: string): Promise<boolean> {
+  async activateAccount(
+    token: string,
+    consentData: { acceptedBy: string }
+  ): Promise<string | null> {
     try {
       const query = {
         activationToken: token,
@@ -162,12 +165,16 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       };
 
       const result = await this.findFirst(query);
-      if (!result) return false;
+      if (!result) return null;
       result.isActive = true;
       result.activationToken = '';
       result.activationTokenExpiresAt = null;
+      result.consent = {
+        acceptedOn: new Date(),
+        acceptedBy: consentData.acceptedBy,
+      };
       await result.save();
-      return true;
+      return result._id.toString();
     } catch (error) {
       this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
@@ -305,7 +312,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     paginationOpts?: IFindOptions
   ): Promise<ListResultWithPagination<IUserDocument[]>> {
     try {
-      const { role, department, status } = filterOptions;
+      const { role, department, status, search } = filterOptions;
 
       const query: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
@@ -320,6 +327,16 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       if (role) {
         // const roles = Array.isArray(role) ? role : [role];
         query['cuids.roles'] = Array.isArray(role) ? { $in: role } : role;
+      }
+
+      if (search && search.trim()) {
+        const searchRegex = new RegExp(escapeRegExp(search.trim()), 'i');
+        query.$or = [
+          { firstName: { $regex: searchRegex } },
+          { lastName: { $regex: searchRegex } },
+          { email: { $regex: searchRegex } },
+          { phoneNumber: { $regex: searchRegex } },
+        ];
       }
 
       const pipeline: PipelineStage[] = [
@@ -634,6 +651,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         cuid: client.cuid,
         isConnected: true,
         roles: [invitationData.role],
+        primaryRole: invitationData.role,
         clientDisplayName: client.displayName,
         linkedVendorUid: invitationData.role === ROLES.VENDOR ? linkedVendorUid : null,
       };
@@ -677,15 +695,21 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       const existingConnection = user.cuids.find((c) => c.cuid === client.cuid);
 
       if (existingConnection) {
+        const allRoles = existingConnection.roles.includes(role)
+          ? existingConnection.roles
+          : [...existingConnection.roles, role];
+        const newPrimaryRole = resolveHighestRole(allRoles as IUserRoleType[]);
+
         const updateObj: any = {
           'cuids.$.isConnected': true,
           'cuids.$.clientDisplayName': client.clientDisplayName,
           'cuids.$.linkedVendorUid': role === ROLES.VENDOR ? linkedVendorUid : null,
+          'cuids.$.primaryRole': newPrimaryRole,
         };
 
         const updateOperation = existingConnection.roles.includes(role)
           ? { $set: updateObj }
-          : { $set: updateObj, $addToSet: { 'cuids.$.roles': role } }; // Add new role
+          : { $set: updateObj, $addToSet: { 'cuids.$.roles': role } };
 
         return await this.update(
           { _id: new Types.ObjectId(userId), 'cuids.cuid': client.cuid },
@@ -699,6 +723,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           cuid: client.cuid,
           isConnected: true,
           roles: [role],
+          primaryRole: role,
           clientDisplayName: client.clientDisplayName || '',
           linkedVendorUid: role === ROLES.VENDOR ? linkedVendorUid : null,
         };
@@ -761,8 +786,10 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         cuid: client.cuid,
         isConnected: true,
         roles: [userData.role],
+        primaryRole: userData.role,
         clientDisplayName: client.clientDisplayName || '',
         linkedVendorUid: userData.role === ROLES.VENDOR && linkedVendorUid ? linkedVendorUid : null,
+        requiresOnboarding: true,
       };
 
       const user = await this.insert(
@@ -965,14 +992,24 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     pagination?: IFindOptions
   ): Promise<import('@interfaces/user.interface').IPaginatedResult<IUserDocument[]>> {
     try {
+      const tenantMatch: Record<string, any> = {
+        'cuids.cuid': cuid,
+        'cuids.roles': 'tenant',
+        deletedAt: null,
+      };
+
+      if (filters?.search && filters.search.trim()) {
+        const searchRegex = new RegExp(escapeRegExp(filters.search.trim()), 'i');
+        tenantMatch.$or = [
+          { firstName: { $regex: searchRegex } },
+          { lastName: { $regex: searchRegex } },
+          { email: { $regex: searchRegex } },
+          { phoneNumber: { $regex: searchRegex } },
+        ];
+      }
+
       const pipeline: PipelineStage[] = [
-        {
-          $match: {
-            'cuids.cuid': cuid,
-            'cuids.roles': 'tenant',
-            deletedAt: null,
-          },
-        },
+        { $match: tenantMatch },
         {
           $lookup: {
             from: 'profiles',
@@ -1109,6 +1146,40 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           },
         },
         { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+        // Join active leases directly from the leases collection
+        {
+          $lookup: {
+            from: 'leases',
+            let: { userId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: ['$tenantId', '$$userId'] },
+                  status: 'active',
+                },
+              },
+              { $project: { 'fees.monthlyRent': 1, 'property.id': 1 } },
+            ],
+            as: 'activeLeasesDocs',
+          },
+        },
+        // Join prior (terminated/expired) leases for expiredLeases count
+        {
+          $lookup: {
+            from: 'leases',
+            let: { userId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: ['$tenantId', '$$userId'] },
+                  status: { $in: ['terminated', 'expired'] },
+                },
+              },
+              { $project: { _id: 1 } },
+            ],
+            as: 'priorLeasesDocs',
+          },
+        },
       ];
 
       // Apply filters if provided
@@ -1120,7 +1191,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         }
 
         if (filters.propertyId) {
-          matchConditions['profile.tenantInfo.activeLease.propertyId'] = filters.propertyId;
+          matchConditions['activeLeasesDocs.property.id'] = filters.propertyId;
         }
 
         if (Object.keys(matchConditions).length > 0) {
@@ -1134,24 +1205,33 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           $group: {
             _id: null,
             total: { $sum: 1 },
-            activeLeases: {
+            activeCount: {
               $sum: {
-                $cond: [{ $ne: ['$profile.tenantInfo.activeLease', null] }, 1, 0],
+                $cond: [{ $gt: [{ $size: '$activeLeasesDocs' }, 0] }, 1, 0],
+              },
+            },
+            expiredCount: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $eq: [{ $size: '$activeLeasesDocs' }, 0] },
+                      { $gt: [{ $size: '$priorLeasesDocs' }, 0] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
               },
             },
             totalRent: {
-              $sum: {
-                $ifNull: ['$profile.tenantInfo.activeLease.rentAmount', 0],
-              },
+              $sum: { $sum: '$activeLeasesDocs.fees.monthlyRent' },
             },
             backgroundCheckDistribution: {
               $push: '$profile.tenantInfo.backgroundCheckStatus',
             },
             propertyDistribution: {
-              $push: {
-                propertyId: '$profile.tenantInfo.activeLease.propertyId',
-                rentAmount: '$profile.tenantInfo.activeLease.rentAmount',
-              },
+              $push: { $arrayElemAt: ['$activeLeasesDocs.property.id', 0] },
             },
           },
         },
@@ -1159,25 +1239,21 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           $project: {
             _id: 0,
             total: 1,
-            activeLeases: 1,
-            expiredLeases: { $subtract: ['$total', '$activeLeases'] },
-            pendingLeases: { $literal: 0 }, // This would need additional logic based on lease dates
+            activeLeases: '$activeCount',
+            expiredLeases: '$expiredCount',
+            pendingLeases: { $literal: 0 },
             rentStatus: {
-              current: '$activeLeases', // Simplified - would need payment data
+              current: '$activeCount',
               late: { $literal: 0 },
               overdue: { $literal: 0 },
             },
             averageRent: {
-              $cond: [
-                { $gt: ['$activeLeases', 0] },
-                { $divide: ['$totalRent', '$activeLeases'] },
-                0,
-              ],
+              $cond: [{ $gt: ['$activeCount', 0] }, { $divide: ['$totalRent', '$activeCount'] }, 0],
             },
             occupancyRate: {
               $cond: [
                 { $gt: ['$total', 0] },
-                { $multiply: [{ $divide: ['$activeLeases', '$total'] }, 100] },
+                { $multiply: [{ $divide: ['$activeCount', '$total'] }, 100] },
                 0,
               ],
             },
@@ -1249,26 +1325,20 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       const stats: any = result[0];
 
-      // Process property distribution
-      const propertyMap = new Map<string, { count: number; totalRent: number; name?: string }>();
+      // Process property distribution — array of property ObjectIds (null entries filtered out)
+      const propertyMap = new Map<string, number>();
 
-      for (const prop of stats.distributionByProperty || []) {
-        if (prop.propertyId) {
-          const existing = propertyMap.get(prop.propertyId) || {
-            count: 0,
-            totalRent: 0,
-            name: `Property ${prop.propertyId}`,
-          };
-          existing.count++;
-          existing.totalRent += prop.rentAmount || 0;
-          propertyMap.set(prop.propertyId, existing);
+      for (const propId of stats.distributionByProperty || []) {
+        if (propId) {
+          const key = propId.toString();
+          propertyMap.set(key, (propertyMap.get(key) || 0) + 1);
         }
       }
 
-      stats.distributionByProperty = Array.from(propertyMap.entries()).map(([id, data]) => ({
+      stats.distributionByProperty = Array.from(propertyMap.entries()).map(([id, count]) => ({
         propertyId: id,
-        propertyName: data.name,
-        tenantCount: data.count,
+        propertyName: `Property ${id}`,
+        tenantCount: count,
       }));
 
       return stats as import('@interfaces/user.interface').ITenantStats;
@@ -1398,11 +1468,32 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       const tenant = result[0] as any;
 
-      // TODO: In a real implementation, you would fetch additional data from other collections:
-      // - Lease history from a leases collection
-      // - Payment history from a payments collection
-      // - Maintenance requests from a maintenance collection
-      // - Notes from a tenant_notes collection
+      const tenantId = typeof tenant._id === 'string' ? new Types.ObjectId(tenant._id) : tenant._id;
+
+      // Note: Payment metrics and history are now populated in the service layer
+      // This allows proper separation of concerns - UserDAO handles user data only
+
+      if (includeLeaseHistory) {
+        const leases = await Lease.find({
+          cuid,
+          tenantId,
+        })
+          .sort({ createdAt: -1 })
+          .limit(10)
+          .lean();
+
+        tenant.tenantInfo.leaseHistory = leases.map((lease: any) => ({
+          id: lease._id.toString(),
+          luid: lease.luid,
+          leaseNumber: lease.leaseNumber,
+          status: lease.status,
+          propertyName: lease.property?.address || 'Unknown Property',
+          unitNumber: lease.unit?.unitNumber || '',
+          monthlyRent: lease.fees?.monthlyRent || 0,
+          leaseStart: lease.duration?.startDate || lease.startDate,
+          leaseEnd: lease.duration?.endDate || lease.endDate,
+        }));
+      }
 
       return tenant as import('@interfaces/user.interface').IClientTenantDetails;
     } catch (error) {
@@ -1410,6 +1501,18 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         `Error getting tenant details for client ${cuid}, tenant ${tenantUid}:`,
         error
       );
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async clearOnboardingFlag(userId: string, cuid: string): Promise<void> {
+    try {
+      await this.update(
+        { _id: userId, 'cuids.cuid': cuid },
+        { $set: { 'cuids.$.requiresOnboarding': false } }
+      );
+    } catch (error) {
+      this.logger.error('Error clearing onboarding flag:', error);
       throw this.throwErrorHandler(error);
     }
   }

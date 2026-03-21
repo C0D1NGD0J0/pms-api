@@ -112,11 +112,23 @@ describe('Invitation Metadata Transfer', () => {
 
     invitationService = new InvitationService({
       ...mockDAOs,
-      ...mockQueues,
+      queueFactory: {
+        getQueue: jest.fn((queueName: string) => {
+          if (queueName.includes('email')) return mockQueues.emailQueue;
+          if (queueName.includes('invitation')) return mockQueues.invitationQueue;
+          return {} as any;
+        }),
+      } as any,
       emitterService,
       profileService,
       vendorService: mockVendorService,
       userService: mockUserService,
+      subscriptionService: {} as any,
+      leaseDAO: {} as any,
+      paymentProcessorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
+      paymentGatewayService: { createCustomer: jest.fn() } as any,
+      propertyDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
+      propertyUnitDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
     });
 
     jest.spyOn(profileService, 'initializeRoleInfo');

@@ -1,15 +1,22 @@
 import Logger from 'bunyan';
 import { Response, Request } from 'express';
 import { createLogger } from '@utils/index';
+import { envVariables } from '@shared/config';
+import { IdempotencyCache } from '@caching/index';
 import { LeaseService } from '@services/lease/lease.service';
+import { ClientService } from '@services/client/client.service';
+import { PaymentService } from '@services/payments/payments.service';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { BoldSignService } from '@services/external/esignature/boldSign.service';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 
 interface IConstructor {
   subscriptionService: SubscriptionService;
+  idempotencyCache: IdempotencyCache;
   boldSignService: BoldSignService;
+  paymentService: PaymentService;
   stripeService: StripeService;
+  clientService: ClientService;
   leaseService: LeaseService;
 }
 
@@ -18,21 +25,30 @@ export class WebhookController {
   private stripeService: StripeService;
   private boldSignService: BoldSignService;
   private subscriptionService: SubscriptionService;
+  private paymentService: PaymentService;
+  private clientService: ClientService;
+  private idempotencyCache: IdempotencyCache;
   private log: Logger;
 
-  constructor({ leaseService, boldSignService, subscriptionService, stripeService }: IConstructor) {
+  constructor({
+    leaseService,
+    boldSignService,
+    subscriptionService,
+    stripeService,
+    paymentService,
+    clientService,
+    idempotencyCache,
+  }: IConstructor) {
     this.leaseService = leaseService;
     this.stripeService = stripeService;
     this.boldSignService = boldSignService;
     this.subscriptionService = subscriptionService;
+    this.paymentService = paymentService;
+    this.clientService = clientService;
+    this.idempotencyCache = idempotencyCache;
     this.log = createLogger('WebhookController');
   }
 
-  /**
-   * Handle BoldSign webhook events
-   * Receives webhook notifications from BoldSign for document events
-   * POST /api/webhooks/boldsign
-   */
   handleBoldSignWebhook = async (req: Request, res: Response): Promise<Response> => {
     try {
       const { event, data } = req.body;
@@ -68,6 +84,10 @@ export class WebhookController {
     }
   };
 
+  /**
+   * Handle all Stripe webhook events
+   * POST /api/webhooks/stripe
+   */
   handleStripeWebhook = async (req: Request, res: Response): Promise<Response> => {
     try {
       const signature = req.headers['stripe-signature'];
@@ -76,54 +96,120 @@ export class WebhookController {
         return res.status(400).json({ success: false, message: 'Missing signature' });
       }
 
-      const payload = (req as any).rawBody || req.body;
-      const event = await this.stripeService.verifyWebhookSignature(payload, signature);
-
+      const rawBody = (req as any).rawBody ?? req.body;
+      const event = await this.stripeService.verifyWebhookSignature(rawBody, signature);
       this.log.info({ type: event.type, id: event.id }, 'Processing Stripe webhook event');
 
-      switch (event.type) {
-        case 'customer.subscription.updated': {
-          const subscription = event.data.object as any;
-          await this.handleSubscriptionUpdated(subscription);
-          break;
-        }
-
-        case 'customer.subscription.deleted': {
-          const subscription = event.data.object as any;
-          await this.handleSubscriptionCanceled(subscription);
-          break;
-        }
-
-        case 'invoice.payment_failed': {
-          const invoice = event.data.object as any;
-          await this.handlePaymentFailed(invoice);
-          break;
-        }
-
-        case 'invoice.paid': {
-          const invoice = event.data.object as any;
-          const stripeSubscriptionId =
-            invoice.subscription || invoice.parent?.subscription_details?.subscription;
-
-          if (invoice.billing_reason === 'subscription_create' && stripeSubscriptionId) {
-            await this.handleInitialSubscriptionPayment(invoice);
-          } else if (stripeSubscriptionId) {
-            await this.handleSubscriptionRenewal(invoice);
-          } else {
-            this.log.warn('No subscription ID found in invoice', {
-              invoiceId: invoice.id,
-              hasParent: !!invoice.parent,
-              parentType: invoice.parent?.type,
-            });
-          }
-          break;
-        }
-
-        default:
-          this.log.info({ type: event.type }, 'Unhandled webhook event type');
+      const claimed = await this.idempotencyCache.claimWebhookEvent(event.id);
+      if (!claimed) {
+        this.log.info({ eventId: event.id }, 'Duplicate webhook — skipping');
+        return res.status(200).json({ success: true, received: true });
       }
 
-      return res.status(200).json({ success: true, received: true });
+      try {
+        switch (event.type) {
+          case 'identity.verification_session.requires_input': {
+            const session = event.data.object as any;
+            await this.clientService.handleIdentityWebhookEvent('requires_input', session.id);
+            break;
+          }
+
+          // ── Identity verification ─────────────────────────────────────────────
+          case 'identity.verification_session.verified': {
+            const session = event.data.object as any;
+            await this.clientService.handleIdentityWebhookEvent('verified', session.id);
+            break;
+          }
+
+          // ── Dispute events ────────────────────────────────────────────────────
+          case 'charge.dispute.funds_reinstated': {
+            const dispute = event.data.object as any;
+            await this.paymentService.handleDisputeWon(dispute.id, dispute);
+            break;
+          }
+
+          // ── Subscription lifecycle ────────────────────────────────────────────
+          case 'customer.subscription.created': {
+            const subscription = event.data.object as any;
+            await this.subscriptionService.handleSubscriptionCreated({
+              stripeSubscriptionId: subscription.id,
+              stripeCustomerId: subscription.customer,
+            });
+            break;
+          }
+
+          case 'customer.subscription.updated': {
+            const subscription = event.data.object as any;
+            await this.subscriptionService.handleSubscriptionUpdated({
+              stripeSubscriptionId: subscription.id,
+              stripeCustomerId: subscription.customer,
+              status: subscription.status,
+              currentPeriodStart: subscription.current_period_start,
+              currentPeriodEnd: subscription.current_period_end,
+            });
+            break;
+          }
+
+          case 'customer.subscription.deleted': {
+            const subscription = event.data.object as any;
+            await this.subscriptionService.handleSubscriptionCanceled({
+              stripeSubscriptionId: subscription.id,
+              canceledAt: subscription.canceled_at,
+            });
+            break;
+          }
+
+          case 'invoice.payment_succeeded': {
+            const invoice = event.data.object as any;
+            // Rent invoices have no subscription ID
+            if (!invoice.subscription) {
+              await this.paymentService.handleInvoicePaymentSucceeded(invoice.id, invoice);
+            }
+            break;
+          }
+
+          case 'charge.dispute.created': {
+            const dispute = event.data.object as any;
+            await this.paymentService.handleDisputeCreated(dispute.id, dispute);
+            break;
+          }
+
+          case 'invoice.payment_failed': {
+            const invoice = event.data.object as any;
+            const hasSubscription =
+              !!invoice.subscription || !!invoice.parent?.subscription_details?.subscription;
+            if (hasSubscription) {
+              await this.subscriptionService.handleInvoicePaymentFailed(invoice);
+            } else {
+              await this.paymentService.handleInvoicePaymentFailed(invoice.id, invoice);
+            }
+            break;
+          }
+
+          // ── Rent payment events ───────────────────────────────────────────────
+          case 'charge.refunded': {
+            const charge = event.data.object as any;
+            await this.paymentService.handleChargeRefunded(charge.id, charge);
+            break;
+          }
+
+          // ── Invoice events (subscription vs rent distinguished by invoice.subscription) ──
+          case 'invoice.paid': {
+            const invoice = event.data.object as any;
+            await this.subscriptionService.handleInvoicePaid(invoice);
+            break;
+          }
+
+          default:
+            this.log.info({ type: event.type }, 'Unhandled Stripe webhook event type');
+        }
+
+        await this.idempotencyCache.markWebhookProcessed(event.id);
+        return res.status(200).json({ success: true, received: true });
+      } catch (processingError: any) {
+        await this.idempotencyCache.releaseWebhookClaim(event.id);
+        throw processingError;
+      }
     } catch (error: any) {
       this.log.error('Error processing Stripe webhook', {
         error: error.message,
@@ -136,162 +222,76 @@ export class WebhookController {
     }
   };
 
-  private async handleInitialSubscriptionPayment(invoice: any): Promise<void> {
+  /**
+   * Handle Stripe Connect webhook events (connected account events)
+   * POST /api/webhooks/stripe/connect
+   * Requires a separate Stripe webhook endpoint configured with "Listen to events on Connected accounts"
+   */
+  handleStripeConnectWebhook = async (req: Request, res: Response): Promise<Response> => {
     try {
-      const customerId = invoice.customer;
-
-      const stripeSubscriptionId =
-        invoice.subscription || invoice.parent?.subscription_details?.subscription;
-
-      const lineItemMetadata = invoice.lines?.data?.[0]?.metadata || {};
-      const clientId =
-        lineItemMetadata.clientId || invoice.metadata?.clientId || invoice.customer_email;
-
-      if (!customerId || !stripeSubscriptionId) {
-        this.log.warn('Missing required data', {
-          invoice: invoice.id,
-          hasCustomerId: !!customerId,
-          hasSubscriptionId: !!stripeSubscriptionId,
-          parent: invoice.parent,
-        });
-        return;
+      const signature = req.headers['stripe-signature'];
+      if (!signature || typeof signature !== 'string') {
+        this.log.warn('Missing Stripe signature header on Connect webhook');
+        return res.status(400).json({ success: false, message: 'Missing signature' });
       }
 
-      const subscriptionPeriod = invoice.lines?.data?.[0]?.period;
-      let cardLast4: string | undefined;
-      let cardBrand: string | undefined;
-      if (invoice.charge) {
-        try {
-          const chargeId = typeof invoice.charge === 'string' ? invoice.charge : invoice.charge.id;
-          const charge = await this.stripeService.getCharge(chargeId);
+      const rawBody = (req as any).rawBody ?? req.body;
+      const event = await this.stripeService.verifyWebhookSignature(
+        rawBody,
+        signature,
+        envVariables.STRIPE.CONNECT_WEBHOOK_SECRET
+      );
+      this.log.info(
+        { type: event.type, id: event.id, account: event.account },
+        'Processing Stripe Connect webhook event'
+      );
 
-          if (charge?.payment_method_details?.card) {
-            cardLast4 = charge.payment_method_details.card.last4 || undefined;
-            cardBrand = charge.payment_method_details.card.brand || undefined;
+      const claimed = await this.idempotencyCache.claimWebhookEvent(event.id);
+      if (!claimed) {
+        this.log.info({ eventId: event.id }, 'Duplicate Connect webhook — skipping');
+        return res.status(200).json({ success: true, received: true });
+      }
+
+      try {
+        switch (event.type) {
+          case 'account.updated': {
+            const account = event.data.object as any;
+            await this.paymentService.handleAccountUpdated(account.id, account);
+            break;
           }
-        } catch (error) {
-          this.log.warn({ error }, 'Failed to fetch card details, continuing without payment info');
+
+          case 'person.updated': {
+            const person = event.data.object as any;
+            this.log.info(
+              {
+                account: event.account,
+                person: person.id,
+                verification: person.verification?.status,
+              },
+              'Stripe person verification updated'
+            );
+            break;
+          }
+
+          default:
+            this.log.info({ type: event.type }, 'Unhandled Stripe Connect webhook event type');
         }
-      }
 
-      const result = await this.subscriptionService.handlePaymentSuccess({
-        stripeCustomerId: customerId,
-        stripeSubscriptionId,
-        currentPeriodStart: subscriptionPeriod?.start || invoice.period_start,
-        currentPeriodEnd: subscriptionPeriod?.end || invoice.period_end,
-        clientId,
-        cardLast4,
-        cardBrand,
-      });
-
-      if (result.success) {
-        this.log.info({ invoiceId: invoice.id }, 'Subscription activated successfully');
-      } else {
-        this.log.error(
-          { invoiceId: invoice.id, error: result.message },
-          'Failed to activate subscription'
-        );
+        await this.idempotencyCache.markWebhookProcessed(event.id);
+        return res.status(200).json({ success: true, received: true });
+      } catch (processingError: any) {
+        await this.idempotencyCache.releaseWebhookClaim(event.id);
+        throw processingError;
       }
-    } catch (error) {
-      this.log.error('Error handling initial subscription payment', {
-        error,
-        invoiceId: invoice.id,
+    } catch (error: any) {
+      this.log.error('Error processing Stripe Connect webhook', {
+        error: error.message,
+        stack: error.stack,
       });
-      throw error;
+      return res.status(400).json({
+        success: false,
+        message: error.message || 'Webhook processing failed',
+      });
     }
-  }
-
-  private async handleSubscriptionRenewal(invoice: any): Promise<void> {
-    try {
-      const stripeSubscriptionId =
-        invoice.subscription || invoice.parent?.subscription_details?.subscription;
-
-      if (!stripeSubscriptionId) {
-        this.log.warn('Missing subscription ID', {
-          invoiceId: invoice.id,
-          parent: invoice.parent,
-          subscription: invoice.subscription,
-        });
-        return;
-      }
-
-      const subscriptionPeriod = invoice.lines?.data?.[0]?.period;
-      await this.subscriptionService.handleSubscriptionRenewal({
-        stripeSubscriptionId,
-        currentPeriodStart: subscriptionPeriod?.start || invoice.period_start,
-        currentPeriodEnd: subscriptionPeriod?.end || invoice.period_end,
-      });
-    } catch (error) {
-      this.log.error('Error handling subscription renewal', { error, invoiceId: invoice.id });
-      throw error;
-    }
-  }
-
-  private async handlePaymentFailed(invoice: any): Promise<void> {
-    try {
-      const stripeSubscriptionId =
-        invoice.subscription || invoice.parent?.subscription_details?.subscription;
-
-      if (!stripeSubscriptionId) {
-        this.log.warn('Missing subscription ID in failed invoice', {
-          invoiceId: invoice.id,
-          parent: invoice.parent,
-          subscription: invoice.subscription,
-        });
-        return;
-      }
-
-      await this.subscriptionService.handlePaymentFailed({
-        stripeSubscriptionId,
-        invoiceId: invoice.id,
-        attemptCount: invoice.attempt_count,
-      });
-    } catch (error) {
-      this.log.error('Error handling payment failure', { error, invoiceId: invoice.id });
-      throw error;
-    }
-  }
-
-  private async handleSubscriptionUpdated(subscription: any): Promise<void> {
-    try {
-      const stripeSubscriptionId = subscription.id;
-      if (!stripeSubscriptionId) {
-        this.log.warn('Missing subscription ID in updated subscription');
-        return;
-      }
-
-      await this.subscriptionService.handleSubscriptionUpdated({
-        stripeSubscriptionId,
-        status: subscription.status,
-        currentPeriodEnd: subscription.current_period_end,
-      });
-    } catch (error) {
-      this.log.error('Error handling subscription update', {
-        error,
-        subscriptionId: subscription.id,
-      });
-      throw error;
-    }
-  }
-
-  private async handleSubscriptionCanceled(subscription: any): Promise<void> {
-    try {
-      const stripeSubscriptionId = subscription.id;
-      if (!stripeSubscriptionId) {
-        this.log.warn('Missing subscription ID in canceled subscription');
-        return;
-      }
-
-      await this.subscriptionService.handleSubscriptionCanceled({
-        stripeSubscriptionId,
-        canceledAt: subscription.canceled_at,
-      });
-    } catch (error) {
-      this.log.error('Error handling subscription cancellation', {
-        error,
-        subscriptionId: subscription.id,
-      });
-      throw error;
-    }
-  }
+  };
 }

@@ -1,11 +1,7 @@
 import { Types } from 'mongoose';
 import { VendorDAO } from '@dao/vendorDAO';
 import { Vendor, User } from '@models/index';
-import {
-  disconnectTestDatabase,
-  clearTestDatabase,
-  setupTestDatabase,
-} from '@tests/helpers';
+import { clearTestDatabase } from '@tests/helpers';
 
 describe('VendorDAO Integration Tests', () => {
   let vendorDAO: VendorDAO;
@@ -15,14 +11,8 @@ describe('VendorDAO Integration Tests', () => {
   let testCuid2: string;
 
   beforeAll(async () => {
-    await setupTestDatabase();
     vendorDAO = new VendorDAO({ vendorModel: Vendor });
   });
-
-  afterAll(async () => {
-    await disconnectTestDatabase();
-  });
-
   beforeEach(async () => {
     await clearTestDatabase();
     testUserId = new Types.ObjectId();
@@ -61,6 +51,7 @@ describe('VendorDAO Integration Tests', () => {
         companyName: 'ABC Plumbing Inc',
         businessType: 'Plumbing',
         registrationNumber: 'REG123456',
+        isPrimaryAccountHolder: true,
         connectedClients: [
           {
             cuid: testCuid,
@@ -86,6 +77,7 @@ describe('VendorDAO Integration Tests', () => {
         registrationNumber: 'REG789012',
         taxId: 'TAX-123',
         yearsInBusiness: 10,
+        isPrimaryAccountHolder: true,
         servicesOffered: {
           electrical: true,
           plumbing: true,
@@ -118,6 +110,7 @@ describe('VendorDAO Integration Tests', () => {
         companyName: 'Multi-Client Vendor',
         businessType: 'General Contractor',
         registrationNumber: 'REG-MULTI',
+        isPrimaryAccountHolder: true,
         connectedClients: [
           {
             cuid: testCuid,
@@ -144,6 +137,7 @@ describe('VendorDAO Integration Tests', () => {
         companyName: 'Located Vendor',
         businessType: 'HVAC',
         registrationNumber: 'REG-LOC',
+        isPrimaryAccountHolder: true,
         address: {
           street: 'Main St',
           streetNumber: '123',
@@ -154,7 +148,7 @@ describe('VendorDAO Integration Tests', () => {
           fullAddress: '123 Main St, Toronto, ON M5V 1A1',
           computedLocation: {
             type: 'Point' as const,
-            coordinates: [-79.3832, 43.6532],
+            coordinates: [-79.3832, 43.6532] as [number, number],
           },
         },
         connectedClients: [
@@ -178,6 +172,7 @@ describe('VendorDAO Integration Tests', () => {
         companyName: 'Insured Vendor',
         businessType: 'Roofing',
         registrationNumber: 'REG-INS',
+        isPrimaryAccountHolder: true,
         insuranceInfo: {
           provider: 'State Farm',
           policyNumber: 'POL-123',
@@ -829,7 +824,7 @@ describe('VendorDAO Integration Tests', () => {
       const result = await vendorDAO.getFilteredVendors(testCuid, {});
 
       expect(result.items.length).toBe(4);
-      expect(result.pagination.total).toBe(4);
+      expect(result.pagination!.total).toBe(4);
     });
 
     it('should filter vendors by business type', async () => {
@@ -914,35 +909,35 @@ describe('VendorDAO Integration Tests', () => {
       const result = await vendorDAO.getFilteredVendors(testCuid, {});
 
       expect(result.items.length).toBe(10);
-      expect(result.pagination.perPage).toBe(10);
-      expect(result.pagination.total).toBe(15);
-      expect(result.pagination.totalPages).toBe(2);
-      expect(result.pagination.currentPage).toBe(1);
-      expect(result.pagination.hasMoreResource).toBe(true);
+      expect(result.pagination!.perPage).toBe(10);
+      expect(result.pagination!.total).toBe(15);
+      expect(result.pagination!.totalPages).toBe(2);
+      expect(result.pagination!.currentPage).toBe(1);
+      expect(result.pagination!.hasMoreResource).toBe(true);
     });
 
     it('should paginate with custom limit', async () => {
       const result = await vendorDAO.getFilteredVendors(testCuid, {}, { limit: 5 });
 
       expect(result.items.length).toBe(5);
-      expect(result.pagination.perPage).toBe(5);
-      expect(result.pagination.totalPages).toBe(3);
+      expect(result.pagination!.perPage).toBe(5);
+      expect(result.pagination!.totalPages).toBe(3);
     });
 
     it('should skip records with offset', async () => {
       const result = await vendorDAO.getFilteredVendors(testCuid, {}, { skip: 10, limit: 10 });
 
       expect(result.items.length).toBe(5);
-      expect(result.pagination.currentPage).toBe(2);
-      expect(result.pagination.hasMoreResource).toBe(false);
+      expect(result.pagination!.currentPage).toBe(2);
+      expect(result.pagination!.hasMoreResource).toBe(false);
     });
 
     it('should return correct page information for last page', async () => {
       const result = await vendorDAO.getFilteredVendors(testCuid, {}, { skip: 10, limit: 10 });
 
-      expect(result.pagination.currentPage).toBe(2);
-      expect(result.pagination.totalPages).toBe(2);
-      expect(result.pagination.hasMoreResource).toBe(false);
+      expect(result.pagination!.currentPage).toBe(2);
+      expect(result.pagination!.totalPages).toBe(2);
+      expect(result.pagination!.hasMoreResource).toBe(false);
     });
   });
 

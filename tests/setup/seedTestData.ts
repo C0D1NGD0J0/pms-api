@@ -1,15 +1,15 @@
 import { Types } from 'mongoose';
 import { faker } from '@faker-js/faker';
 import { ROLES } from '@shared/constants/roles.constants';
-import { IUserDocument } from '@models/user/user.interface';
-import { ILeaseDocument } from '@models/lease/lease.interface';
-import { IClientDocument } from '@models/client/client.interface';
-import { IProfileDocument } from '@models/profile/profile.interface';
-import { IPropertyDocument } from '@models/property/property.interface';
-import { IInvitationDocument } from '@models/invitation/invitation.interface';
+import { IUserDocument } from '@interfaces/user.interface';
+import { ILeaseDocument } from '@interfaces/lease.interface';
+import { IClientDocument } from '@interfaces/client.interface';
+import { IProfileDocument } from '@interfaces/profile.interface';
+import { IPropertyDocument } from '@interfaces/property.interface';
+import { IInvitationDocument } from '@interfaces/invitation.interface';
+import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
+import { ISubscriptionDocument } from '@interfaces/subscription.interface';
 import { Subscription, Invitation, Profile, Client, User } from '@models/index';
-import { IPropertyUnitDocument } from '@models/propertyUnit/propertyUnit.interface';
-import { ISubscriptionDocument } from '@models/subscription/subscription.interface';
 
 export interface SeededTestData {
   invitations: {
@@ -360,7 +360,7 @@ export const seedTestData = async (): Promise<SeededTestData> => {
     startDate: new Date(),
     endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
     billingInterval: 'monthly',
-    paymentGateway: {
+    billing: {
       customerId: 'cus_test123',
       provider: 'stripe',
       planId: 'price_portfolio123',
@@ -379,7 +379,7 @@ export const seedTestData = async (): Promise<SeededTestData> => {
     startDate: new Date(),
     endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
     billingInterval: 'monthly',
-    paymentGateway: {
+    billing: {
       customerId: 'none',
       provider: 'none',
       planId: 'plan_essential',

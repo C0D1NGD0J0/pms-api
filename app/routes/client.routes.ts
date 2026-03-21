@@ -3,13 +3,19 @@ import { asyncWrapper } from '@utils/index';
 import { ClientController } from '@controllers/ClientController';
 import { ClientValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
-import { requireUserManagement, requirePermission, isAuthenticated } from '@shared/middlewares';
+import {
+  requireUserManagement,
+  requirePermission,
+  isAuthenticated,
+  basicLimiter,
+} from '@shared/middlewares';
 
 const router = Router();
 
 router.get(
   '/:cuid/client_details',
   isAuthenticated,
+  basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
   validateRequest({
     params: ClientValidations.clientIdParam,
@@ -23,6 +29,7 @@ router.get(
 router.patch(
   '/:cuid/client_details',
   isAuthenticated,
+  basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
   validateRequest({
     params: ClientValidations.clientIdParam,
@@ -37,6 +44,7 @@ router.patch(
 router.post(
   '/:cuid/users/:uid/disconnect',
   isAuthenticated,
+  basicLimiter(),
   requireUserManagement(),
   validateRequest({
     params: ClientValidations.userIdParam,
@@ -50,6 +58,7 @@ router.post(
 router.post(
   '/:cuid/users/:uid/reconnect',
   isAuthenticated,
+  basicLimiter(),
   requireUserManagement(),
   validateRequest({
     params: ClientValidations.userIdParam,
@@ -63,6 +72,7 @@ router.post(
 router.patch(
   '/:cuid/users/:uid/department',
   isAuthenticated,
+  basicLimiter(),
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
   validateRequest({
     params: ClientValidations.userIdParam,
@@ -71,6 +81,34 @@ router.patch(
   asyncWrapper((req, res) => {
     const clientController = req.container.resolve<ClientController>('clientController');
     return clientController.assignDepartment(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/verify-account',
+  isAuthenticated,
+  basicLimiter(),
+  requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+  }),
+  asyncWrapper((req, res) => {
+    const clientController = req.container.resolve<ClientController>('clientController');
+    return clientController.verifyAccount(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/identity_verification/session',
+  isAuthenticated,
+  basicLimiter(),
+  requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+  }),
+  asyncWrapper((req, res) => {
+    const clientController = req.container.resolve<ClientController>('clientController');
+    return clientController.initiateIdentityVerification(req, res);
   })
 );
 

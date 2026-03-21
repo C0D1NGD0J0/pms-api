@@ -216,9 +216,9 @@ describe('Property Routes Integration Tests', () => {
 
   beforeAll(() => {
     // Setup test app with routes
-    app = apiHelper.createApp((testApp) => {
+    app = apiHelper.createApp((testApp: Application) => {
       // Inject container and simulate authentication
-      testApp.use((req, res, next) => {
+      testApp.use((req: Request, res: Response, next: any) => {
         req.container = mockContainer as any;
         req.context = { currentuser: createMockCurrentUser() } as any;
         next();

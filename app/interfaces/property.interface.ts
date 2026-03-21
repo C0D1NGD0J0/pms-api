@@ -53,6 +53,7 @@ export interface IProperty {
   interiorAmenities?: InteriorAmenities;
   computedLocation?: ComputedLocation;
   financialDetails?: FinancialDetails;
+  operationalStatus: PropertyStatus;
   occupancyStatus: OccupancyStatus;
   documents?: MediaDocumentItem[];
   images?: PropertyImageItem[];
@@ -62,7 +63,7 @@ export interface IProperty {
   createdBy: Types.ObjectId;
   maxAllowedUnits?: number;
   address: AddressDetails;
-  status: PropertyStatus;
+  notes?: IPropertyNote[];
   owner: IPropertyOwner;
   yearBuilt?: number;
   cuid: string;
@@ -98,7 +99,7 @@ export interface IPropertyFilterQuery {
     };
     propertyType?: PropertyType;
     searchTerm?: string;
-    status?: PropertyStatus;
+    operationalStatus?: PropertyStatus;
     yearBuilt?: {
       max?: number;
       min?: number;
@@ -198,6 +199,38 @@ export interface FinancialDetails {
  */
 
 /**
+ * Property with Unit Info Interface
+ * Using intersection type for property with unit statistics
+ */
+export type IPropertyWithUnitInfo = {
+  unitInfo?: UnitInfo;
+  metrics?: {
+    monthlyRent: number;
+    annualRevenue: number;
+    occupancyRate: number;
+    monthlyNetIncome: number;
+  };
+  paymentHistory?: any[];
+  maintenanceHistory?: any[];
+} & Partial<{ property: IPropertyDocument }>;
+
+/**
+ * Media Document Item Interface
+ */
+export interface MediaDocumentItem {
+  documentType?: PropertyDocumentType;
+  status: MediaDocumentStatus;
+  uploadedBy: Types.ObjectId;
+  _id?: Types.ObjectId;
+  description?: string;
+  documentName: string;
+  externalUrl: string;
+  uploadedAt: Date;
+  key?: string;
+  url: string;
+}
+
+/**
  * Property Owner Interface
  */
 export interface IPropertyOwner {
@@ -232,21 +265,6 @@ export interface IAssignableUser {
 }
 
 /**
- * Unit Info Interface
- */
-export interface UnitInfo {
-  suggestedNextUnitNumber?: string;
-  availableSpaces?: number;
-  maxAllowedUnits?: number;
-  lastUnitNumber?: string;
-  currentUnits?: number;
-  statistics: UnitStats;
-  unitStats?: UnitStats;
-  canAddUnit?: boolean;
-  totalUnits: number;
-}
-
-/**
  * Property Specifications Interface
  */
 export interface PropertySpecifications {
@@ -263,21 +281,6 @@ export interface PropertySpecifications {
 }
 
 /**
- * Media Document Item Interface
- */
-export interface MediaDocumentItem {
-  documentType?: PropertyDocumentType;
-  status: MediaDocumentStatus;
-  uploadedBy: Types.ObjectId;
-  description?: string;
-  documentName: string;
-  externalUrl: string;
-  uploadedAt: Date;
-  key?: string;
-  url: string;
-}
-
-/**
  * Property Approval Entry Interface
  * Individual property approval tracking
  */
@@ -288,6 +291,20 @@ export interface PropertyApprovalEntry {
   timestamp: Date;
   notes?: string;
   metadata?: any;
+}
+
+/**
+ * Unit Info Interface
+ */
+export interface UnitInfo {
+  suggestedNextUnitNumber?: string;
+  availableSpaces?: number;
+  maxAllowedUnits?: number;
+  lastUnitNumber?: string;
+  currentUnits?: number;
+  unitStats?: UnitStats;
+  canAddUnit?: boolean;
+  totalUnits: number;
 }
 
 /**
@@ -302,6 +319,20 @@ export interface CommunityAmenities {
   elevator: boolean;
   doorman: boolean;
   parking: boolean;
+}
+
+/**
+ * Property Image Item Interface
+ */
+export interface PropertyImageItem {
+  status: MediaDocumentStatus;
+  uploadedBy: Types.ObjectId;
+  _id?: Types.ObjectId;
+  description?: string;
+  filename?: string;
+  uploadedAt: Date;
+  key?: string;
+  url: string;
 }
 
 /**
@@ -358,16 +389,19 @@ export interface InteriorAmenities {
 }
 
 /**
- * Property Image Item Interface
+ * Property Note Interface
+ * Individual note entry for property
  */
-export interface PropertyImageItem {
-  status: MediaDocumentStatus;
-  uploadedBy: Types.ObjectId;
-  description?: string;
-  filename?: string;
-  uploadedAt: Date;
-  key?: string;
-  url: string;
+export interface IPropertyNote {
+  author: {
+    uid: string;
+    name: string;
+  };
+  _id?: Types.ObjectId;
+  updatedAt?: Date;
+  createdAt: Date;
+  html?: string;
+  text: string;
 }
 
 /**
@@ -379,6 +413,12 @@ export type IPendingChanges = {
   updatedBy: Types.ObjectId;
   displayName: string;
 } & Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>>;
+
+/**
+ * ============================================================================
+ * MAIN PROPERTY INTERFACE
+ * ============================================================================
+ */
 
 /**
  * Property Utilities Interface
@@ -394,7 +434,7 @@ export interface PropertyUtilities {
 
 /**
  * ============================================================================
- * MAIN PROPERTY INTERFACE
+ * FORM DATA INTERFACES
  * ============================================================================
  */
 
@@ -412,7 +452,7 @@ export interface UnitStats {
 
 /**
  * ============================================================================
- * FORM DATA INTERFACES
+ * DOCUMENT INTERFACES (Mongoose Extensions)
  * ============================================================================
  */
 
@@ -431,7 +471,7 @@ export type PropertyDocumentType =
 
 /**
  * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
+ * POPULATED/ENRICHED INTERFACES
  * ============================================================================
  */
 
@@ -447,23 +487,9 @@ export type PropertyType =
   | 'industrial';
 
 /**
- * ============================================================================
- * POPULATED/ENRICHED INTERFACES
- * ============================================================================
+ * Media Document Status Types
  */
-
-/**
- * Property with Unit Info Interface
- * Using intersection type for property with unit statistics
- */
-export type IPropertyWithUnitInfo = Partial<{ property: IPropertyDocument }> & {
-  unitInfo: UnitInfo;
-};
-
-/**
- * Property Status Types
- */
-export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'construction' | 'inactive';
+export type MediaDocumentStatus = 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
 
 /**
  * ============================================================================
@@ -472,9 +498,9 @@ export type PropertyStatus = 'available' | 'occupied' | 'maintenance' | 'constru
  */
 
 /**
- * Media Document Status Types
+ * Property Status Types
  */
-export type MediaDocumentStatus = 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
+export type PropertyStatus = 'available' | 'maintenance' | 'construction' | 'inactive';
 
 /**
  * Property Approval Status Types
@@ -488,12 +514,12 @@ export type PropertyApprovalStatus = 'pending' | 'approved' | 'rejected' | 'draf
  */
 
 /**
- * New Property Type (for creation)
- * Using Omit to exclude pid
+ * Computed Location Interface
  */
-export type NewProperty = {
-  fullAddress: string;
-} & Omit<IProperty, 'pid'>;
+export interface ComputedLocation {
+  coordinates: number[];
+  type?: 'Point';
+}
 
 /**
  * ============================================================================
@@ -502,15 +528,17 @@ export type NewProperty = {
  */
 
 /**
+ * New Property Type (for creation)
+ * Using Omit to exclude pid
+ */
+export type NewProperty = {
+  fullAddress: string;
+} & Omit<IProperty, 'pid'>;
+
+/**
  * Occupancy Status Types
  */
 export type OccupancyStatus = 'vacant' | 'occupied' | 'partially_occupied';
-
-/**
- * Property Type Rules Collection
- * Using Record with string to allow dynamic access
- */
-export type PropertyTypeRules = Record<string, PropertyTypeRule>;
 
 /**
  * ============================================================================
@@ -519,11 +547,10 @@ export type PropertyTypeRules = Record<string, PropertyTypeRule>;
  */
 
 /**
- * Computed Location Interface
+ * Property Type Rules Collection
+ * Using Record with string to allow dynamic access
  */
-export interface ComputedLocation {
-  coordinates: number[];
-}
+export type PropertyTypeRules = Record<string, PropertyTypeRule>;
 
 /**
  * ============================================================================

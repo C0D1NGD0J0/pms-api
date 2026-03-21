@@ -172,7 +172,33 @@ export const RenewLeaseSchema = z.object({
   utilitiesIncluded: z.array(UtilityEnum).optional(),
 
   coTenants: z.array(CoTenantSchema).optional(),
-  internalNotes: z.string().optional(),
+  internalNotes: z
+    .array(
+      z.object({
+        note: z
+          .string()
+          .trim()
+          .min(1, 'Note text cannot be empty')
+          .max(2000, 'Note text cannot exceed 2000 characters'),
+        html: z.string().trim().max(10000, 'Note HTML cannot exceed 10000 characters').optional(),
+        author: z.string().min(1, 'Author name is required'),
+        authorId: z.string().min(1, 'Author ID is required'),
+        timestamp: z.union([z.date(), z.string()]).optional(),
+      })
+    )
+    .optional(),
+});
+
+export const InternalNoteSchema = z.object({
+  note: z
+    .string()
+    .trim()
+    .min(1, 'Note text cannot be empty')
+    .max(2000, 'Note text cannot exceed 2000 characters'),
+  html: z.string().trim().max(10000, 'Note HTML cannot exceed 10000 characters').optional(),
+  author: z.string().min(1, 'Author name is required'),
+  authorId: z.string().min(1, 'Author ID is required'),
+  timestamp: z.union([z.date(), z.string()]).optional(),
 });
 
 export const LegalTermsSchema = z.object({
@@ -224,7 +250,7 @@ const BaseLeaseSchemaObject = z.object({
   petPolicy: PetPolicySchema.optional(),
   renewalOptions: RenewalOptionsSchema.optional(),
   legalTerms: LegalTermsSchema.optional(),
-  internalNotes: z.string().max(2000, 'Internal notes must be at most 2000 characters').optional(),
+  internalNotes: z.array(InternalNoteSchema).optional(),
   leaseDocument: z.array(LeaseDocumentItemSchema).optional(),
 });
 
@@ -281,10 +307,7 @@ export const UpdateLeaseSchema = z
     petPolicy: PetPolicySchema.partial().optional(),
     renewalOptions: RenewalOptionsSchema.partial().optional(),
     legalTerms: LegalTermsSchema.optional(),
-    internalNotes: z
-      .string()
-      .max(2000, 'Internal notes must be at most 2000 characters')
-      .optional(),
+    internalNotes: z.array(InternalNoteSchema).optional(),
     leaseDocument: z.array(LeaseDocumentItemSchema).optional(),
     templateType: z
       .enum([

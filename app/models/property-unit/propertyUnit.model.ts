@@ -181,8 +181,9 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
     },
     notes: [
       {
-        title: { type: String, required: true },
-        content: { type: String, required: true },
+        title: { type: String, required: true, maxlength: 100 },
+        content: { type: String, required: true, trim: true, maxlength: 2000 },
+        html: { type: String, trim: true, maxlength: 10000 },
         createdAt: { type: Date, default: Date.now },
         createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
       },

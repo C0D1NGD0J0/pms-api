@@ -1,7 +1,7 @@
 import { Document, Types } from 'mongoose';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 
-import { IdentificationType } from './user.interface';
+import { IUserIdentificationType } from './user.interface';
 
 /**
  * ============================================================================
@@ -17,6 +17,7 @@ export enum EmployeeDepartment {
   OPERATIONS = 'operations', // Day-to-day property operations
   ACCOUNTING = 'accounting', // Financial operations and rent collection
   MANAGEMENT = 'management', // Executive and general management
+  SECURITY = 'security', // Security and access control
   OTHER = 'other', // Any other department not listed
 }
 
@@ -47,6 +48,7 @@ export enum DataRetentionPolicy {
  */
 export interface ITenantInfo {
   maintenanceRequests?: IMaintenanceRequestItem[];
+  paymentGatewayCustomers?: Map<string, string>;
   backgroundChecks?: IBackgroundCheckItem[];
   paymentHistory?: IPaymentHistoryItem[];
   rentalReferences?: IRentalReference[];
@@ -55,6 +57,8 @@ export interface ITenantInfo {
   employerInfo?: IEmployerInfoItem[];
   activeLeases?: IActiveLeaseItem[];
   notes?: INoteItem[];
+  propertyId?: string;
+  unitId?: string;
   pets?: IPet[];
 }
 
@@ -63,6 +67,10 @@ export interface ITenantInfo {
  * Used when updating profile data
  */
 export interface IProfileUpdateData {
+  policies?: {
+    tos?: { accepted?: boolean };
+    marketing?: { accepted?: boolean };
+  };
   settings?: {
     timeZone?: string;
     lang?: string;
@@ -97,6 +105,23 @@ export interface INotificationSettings {
 }
 
 /**
+ * Active Lease Item Interface
+ */
+export interface IActiveLeaseItem {
+  leaseId: string | Types.ObjectId;
+  propertyAddress?: string;
+  leaseNumber?: string;
+  monthlyRent?: number;
+  confirmedDate: Date;
+  unitNumber?: string;
+  confirmed: boolean;
+  startDate?: Date;
+  endDate?: Date;
+  luid?: string;
+  cuid: string;
+}
+
+/**
  * Populated User Interface
  */
 export interface IPopulatedUser {
@@ -116,23 +141,10 @@ export interface IPopulatedUser {
 }
 
 /**
- * Employer Info Item Interface
- */
-export interface IEmployerInfoItem {
-  companyAddress: string;
-  monthlyIncome: number;
-  contactPerson: string;
-  contactEmail: string;
-  companyName: string;
-  position: string;
-  cuid: string; // Track which client the employer info is associated with
-}
-
-/**
  * Personal Info Interface
  */
 export interface IPersonalInfo {
-  identification?: IdentificationType;
+  identification?: IUserIdentificationType;
   phoneNumber?: string;
   displayName: string;
   firstName: string;
@@ -145,19 +157,31 @@ export interface IPersonalInfo {
 }
 
 /**
- * ============================================================================
- * ENUMS
- * ============================================================================
+ * Profile Edit Data Interface
+ * Used when fetching profile data for editing/display
  */
+export interface IProfileEditData {
+  identification?: IUserIdentificationType;
+  personalInfo: IProfileEditPersonalInfo;
+  settings: IProfileEditSettings;
+  userType: ProfileUserType;
+  roles: IUserRoleType[];
+  policies?: IPolicies;
+}
 
 /**
- * Active Lease Item Interface
+ * Lease History Item Interface
  */
-export interface IActiveLeaseItem {
-  leaseId: string | Types.ObjectId; // Reference to Lease entity - all details fetched from there
-  confirmedDate: Date;
-  confirmed: boolean;
-  cuid: string; // Track which client the lease is associated with
+export interface ILeaseHistoryItem {
+  status: LeaseHistoryStatus;
+  leaseNumber?: string;
+  propertyName: string;
+  monthlyRent: number;
+  unitNumber: string;
+  leaseStart: Date;
+  leaseEnd: Date;
+  luid?: string;
+  id?: string;
 }
 
 /**
@@ -176,6 +200,12 @@ export interface IProfileDocument extends Document, IProfile {
 }
 
 /**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
+
+/**
  * Vendor Info Interface
  */
 export interface IVendorInfo {
@@ -183,12 +213,6 @@ export interface IVendorInfo {
   isLinkedAccount: boolean;
   linkedVendorUid?: string; // Reference to primary vendor (stays as string to match user model)
 }
-
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
 
 /**
  * Main Profile Interface
@@ -215,15 +239,16 @@ export interface IBackgroundCheckItem {
 }
 
 /**
- * Profile Edit Data Interface
- * Used when fetching profile data for editing/display
+ * Employer Info Item Interface
  */
-export interface IProfileEditData {
-  personalInfo: IProfileEditPersonalInfo;
-  identification?: IdentificationType;
-  settings: IProfileEditSettings;
-  userType: ProfileUserType;
-  roles: IUserRoleType[];
+export interface IEmployerInfoItem {
+  companyAddress: string;
+  monthlyIncome: number;
+  contactPerson: string;
+  contactEmail: string;
+  companyName: string;
+  position: string;
+  cuid: string;
 }
 
 /**
@@ -263,18 +288,6 @@ export interface ISettings {
 }
 
 /**
- * Lease History Item Interface
- */
-export interface ILeaseHistoryItem {
-  status: LeaseHistoryStatus;
-  propertyName: string;
-  unitNumber: string;
-  rentAmount: number;
-  leaseStart: Date;
-  leaseEnd: Date;
-}
-
-/**
  * GDPR Settings Interface
  */
 export interface IGDPRSettings {
@@ -282,6 +295,15 @@ export interface IGDPRSettings {
   dataProcessingConsent: boolean;
   processingConsentDate: Date;
   retentionExpiryDate: Date;
+}
+
+export interface ICompletionSection {
+  fields: ICompletionField[];
+  completedFields: number;
+  totalFields: number;
+  percent: number;
+  label: string;
+  key: string;
 }
 
 /**
@@ -302,6 +324,21 @@ export interface IProfileEditPersonalInfo extends IPersonalInfo {
   isActive: boolean;
   email: string;
   uid: string;
+}
+
+export interface IProfileCompletion {
+  sections: ICompletionSection[];
+  missingFields: string[];
+  percent: number;
+}
+
+/**
+ * Policies Interface
+ */
+export interface IPolicies {
+  marketing: IPolicyAcceptance;
+  privacy?: IPolicyAcceptance;
+  tos: IPolicyAcceptance;
 }
 
 /**
@@ -365,13 +402,17 @@ export interface IProfileEditSettings extends ISettings {
  */
 export type ProfileUserType = 'employee' | 'vendor' | 'tenant' | 'primary_account_holder';
 
-/**
- * Policies Interface
- */
-export interface IPolicies {
-  marketing: IPolicyAcceptance;
-  tos: IPolicyAcceptance;
+export interface ICompletionField {
+  filled: boolean;
+  label: string;
+  key: string;
 }
+
+/**
+ * ============================================================================
+ * FORM DATA INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Policy Acceptance Interface
@@ -396,12 +437,6 @@ export interface IAvatar {
 }
 
 /**
- * ============================================================================
- * FORM DATA INTERFACES
- * ============================================================================
- */
-
-/**
  * Maintenance Request Priority Type
  */
 export type MaintenanceRequestPriority = 'low' | 'medium' | 'high' | 'urgent';
@@ -415,9 +450,21 @@ export interface ClientVendorInfo {
 }
 
 /**
+ * ============================================================================
+ * DOCUMENT INTERFACES (Mongoose Extensions)
+ * ============================================================================
+ */
+
+/**
  * Note Type
  */
 export type NoteType = 'general' | 'payment' | 'maintenance' | 'lease';
+
+/**
+ * ============================================================================
+ * POPULATED/ENRICHED INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Lease History Status Type
@@ -430,19 +477,13 @@ export type LeaseHistoryStatus = 'completed' | 'active' | 'terminated';
 export type NotificationSettings = INotificationSettings;
 
 /**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
-
-/**
  * Payment Status Type
  */
 export type PaymentStatus = 'paid' | 'late' | 'pending';
 
 /**
  * ============================================================================
- * POPULATED/ENRICHED INTERFACES
+ * LEGACY INTERFACES (Backward Compatibility)
  * ============================================================================
  */
 
@@ -462,12 +503,6 @@ export type PaymentType = 'rent' | 'fee' | 'deposit';
 export type LoginType = 'otp' | 'password';
 
 /**
- * ============================================================================
- * LEGACY INTERFACES (Backward Compatibility)
- * ============================================================================
- */
-
-/**
  * Theme Type
  */
 export type ThemeType = 'light' | 'dark';
@@ -481,6 +516,12 @@ export type EmployeeInfo = IEmployeeInfo;
  * @deprecated Use IGDPRSettings instead
  */
 export type GDPRSettings = IGDPRSettings;
+
+/**
+ * ============================================================================
+ * PROFILE COMPLETION INTERFACES
+ * ============================================================================
+ */
 
 /**
  * @deprecated Use ITenantInfo instead

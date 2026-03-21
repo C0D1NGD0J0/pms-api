@@ -129,10 +129,9 @@ export function createLogger(name: string) {
 
   const logger = bunyan.createLogger({
     name,
-    level: LOG_LEVELS[process.env.LOG_LEVEL || 'info'],
+    level: LOG_LEVELS[(process.env.LOG_LEVEL || 'INFO').toUpperCase()] ?? LOG_LEVELS.INFO,
     streams: [
       {
-        level: 'trace',
         type: 'raw',
         stream,
       },
@@ -250,9 +249,7 @@ export function isValidPhoneNumber(phoneNumber: string): boolean {
       return false;
     }
 
-    const normalizedNumber = trimmedNumber.startsWith('+')
-      ? trimmedNumber
-      : `+${trimmedNumber}`;
+    const normalizedNumber = trimmedNumber.startsWith('+') ? trimmedNumber : `+${trimmedNumber}`;
     const parsedNumber = parsePhoneNumber(normalizedNumber);
     return !!parsedNumber && parsedNumber.isValid();
   } catch (error) {
@@ -895,3 +892,16 @@ export const determineTemplateType = (propertyType: string): string => {
 
   return typeMapping[propertyType] || 'residential-single-family';
 };
+
+/**
+ * Builds the expected Stripe callback URLs for payment processor flows.
+ * Single source of truth on the backend — validates URLs received from the frontend
+ * match these patterns. Update here when frontend routes change.
+ */
+export const getPaymentProcessorUrls = (baseUrl: string, cuid: string) => ({
+  kycReturnUrl: `${baseUrl}/client/${cuid}/account_settings/payment/success`,
+  refreshUrl: `${baseUrl}/client/${cuid}/account_settings/payment/refresh`,
+  accountUpdateReturnUrl: `${baseUrl}/client/${cuid}/account_settings?activeTab=payment`,
+});
+
+export const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

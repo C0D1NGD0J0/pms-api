@@ -9,6 +9,7 @@ import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { LeaseStatus, EventTypes } from '@interfaces/index';
 import { NotificationService } from '@services/notification';
+import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
@@ -53,6 +54,7 @@ import {
   PROPERTY_STAFF_ROLES,
   getRequestDuration,
   createLogger,
+  escapeRegExp,
   MoneyUtils,
 } from '@utils/index';
 
@@ -60,7 +62,11 @@ import { PropertyStatsService } from './propertyStats.service';
 import { PropertyApprovalService } from './propertyApproval.service';
 import { PropertyValidationService } from './propertyValidation.service';
 import { subscriptionPlanConfig } from '../subscription/subscription_plans.config';
-import { generatePendingChangesPreview, validateOccupancyStatusChange } from './propertyHelpers';
+import {
+  generatePendingChangesPreview,
+  validateOccupancyStatusChange,
+  filterPropertyByDepartment,
+} from './propertyHelpers';
 
 interface IConstructor {
   propertyApprovalService: PropertyApprovalService;
@@ -79,6 +85,7 @@ interface IConstructor {
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
+  paymentDAO: any;
 }
 
 export class PropertyService {
@@ -99,6 +106,7 @@ export class PropertyService {
   private readonly leaseDAO: LeaseDAO;
   private readonly notificationService: NotificationService;
   private readonly subscriptionDAO: SubscriptionDAO;
+  private readonly paymentDAO: any;
 
   constructor({
     clientDAO,
@@ -117,6 +125,7 @@ export class PropertyService {
     leaseDAO,
     notificationService,
     subscriptionDAO,
+    paymentDAO,
   }: IConstructor) {
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -135,24 +144,25 @@ export class PropertyService {
     this.leaseDAO = leaseDAO;
     this.notificationService = notificationService;
     this.subscriptionDAO = subscriptionDAO;
+    this.paymentDAO = paymentDAO;
 
     this.setupEventListeners();
   }
 
+  private readonly onUnitChanged = this.handleUnitChanged.bind(this);
+  private readonly onUnitBatchChanged = this.handleUnitBatchChanged.bind(this);
+  private readonly onLeaseActivated = this.handleLeaseActivated.bind(this);
+  private readonly onLeaseTerminated = this.handleLeaseTerminated.bind(this);
+
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.UNIT_CREATED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_UPDATED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_UNARCHIVED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged.bind(this));
-    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged.bind(this));
-
-    this.emitterService.on(
-      EventTypes.LEASE_ESIGNATURE_COMPLETED,
-      this.handleLeaseActivated.bind(this)
-    );
-
-    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
+    this.emitterService.on(EventTypes.UNIT_CREATED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_UPDATED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_ARCHIVED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_UNARCHIVED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_STATUS_CHANGED, this.onUnitChanged);
+    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchChanged);
+    this.emitterService.on(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
+    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
 
     this.log.info(t('property.logging.eventListenersInitialized'));
   }
@@ -458,6 +468,7 @@ export class PropertyService {
     });
 
     await this.propertyCache.cacheProperty(cuid, result.id, result);
+    await this.propertyCache.invalidateLeaseableProperties(cuid);
 
     if (approvalStatus === PropertyApprovalStatusEnum.PENDING) {
       try {
@@ -637,7 +648,7 @@ export class PropertyService {
     const filter: FilterQuery<IPropertyDocument> = {
       cuid,
       deletedAt: null,
-      status: { $ne: 'inactive' },
+      operationalStatus: { $ne: 'inactive' },
     };
 
     const userRole = currentuser.client.role;
@@ -656,8 +667,8 @@ export class PropertyService {
         filter.propertyType = { $in: filters.propertyType };
       }
 
-      if (filters.status) {
-        filter.status = { $in: filters.status };
+      if (filters.operationalStatus) {
+        filter.operationalStatus = { $in: filters.operationalStatus };
       }
 
       if (filters.occupancyStatus) {
@@ -692,10 +703,12 @@ export class PropertyService {
 
       if (filters.location) {
         if (filters.location.city) {
-          filter['address.city'] = { $regex: new RegExp(filters.location.city, 'i') };
+          filter['address.city'] = { $regex: new RegExp(escapeRegExp(filters.location.city), 'i') };
         }
         if (filters.location.state) {
-          filter['address.state'] = { $regex: new RegExp(filters.location.state, 'i') };
+          filter['address.state'] = {
+            $regex: new RegExp(escapeRegExp(filters.location.state), 'i'),
+          };
         }
         if (filters.location.postCode) {
           filter['address.postCode'] = filters.location.postCode;
@@ -722,6 +735,20 @@ export class PropertyService {
           filter[filters.dateRange.field] = dateFilter;
         }
       }
+
+      if (filters.searchTerm && filters.searchTerm.trim()) {
+        filter.$or = [
+          { name: { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+          { pid: { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+          { 'address.city': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+          { 'address.state': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+          { 'address.fullAddress': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
+        ];
+      }
+
+      if (filters.managedBy) {
+        filter.managedBy = new Types.ObjectId(filters.managedBy as string);
+      }
     }
 
     const opts: IPaginationQuery = {
@@ -733,21 +760,24 @@ export class PropertyService {
     };
 
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
+    const department = currentuser.employeeInfo?.department as EmployeeDepartment | undefined;
     const itemsWithPreview = properties.items.map((property) => {
       const propertyObj = property.toObject ? property.toObject() : property;
       const pendingChangesPreview = generatePendingChangesPreview(property, currentuser);
 
-      return {
+      const enriched = {
         ...propertyObj,
         ...(pendingChangesPreview && { pendingChangesPreview }),
         fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
       };
+
+      return filterPropertyByDepartment(enriched as IPropertyDocument, department);
     });
 
     return {
       success: true,
       data: {
-        items: itemsWithPreview,
+        items: itemsWithPreview as IPropertyDocument[],
         pagination: properties.pagination,
       },
     };
@@ -756,7 +786,8 @@ export class PropertyService {
   async getClientProperty(
     cuid: string,
     pid: string,
-    currentUser: ICurrentUser
+    currentUser: ICurrentUser,
+    include?: string[]
   ): Promise<ISuccessReturnData<IPropertyWithUnitInfo>> {
     if (!cuid || !pid) {
       throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
@@ -779,6 +810,72 @@ export class PropertyService {
 
     const unitInfo = await this.getUnitInfoForProperty(property);
 
+    // Fetch property manager details
+    let propertyManager = null;
+    if (property.managedBy) {
+      const managerProfile = await this.profileDAO.findFirst(
+        { user: property.managedBy, deletedAt: null },
+        {
+          select: 'personalInfo.firstName personalInfo.lastName personalInfo.phoneNumber user',
+          populate: { path: 'user', select: 'email' },
+        }
+      );
+
+      if (managerProfile) {
+        propertyManager = {
+          fullName:
+            `${managerProfile.personalInfo?.firstName || ''} ${managerProfile.personalInfo?.lastName || ''}`.trim(),
+          email: (managerProfile as any).user?.email || '',
+          phoneNumber: managerProfile.personalInfo?.phoneNumber || '',
+        };
+      }
+    }
+
+    // Calculate property metrics
+    const metrics = await this.calculatePropertyMetrics(cuid, property._id.toString(), unitInfo);
+
+    // Conditionally fetch payment history
+    let paymentHistory: any[] | undefined;
+    if (include?.includes('payments') || include?.includes('all')) {
+      const leasesResult = await this.leaseDAO.list(
+        {
+          'property.id': property._id.toString(),
+          cuid,
+          deletedAt: null,
+        },
+        { projection: '_id' },
+        true
+      );
+
+      const leaseIds = leasesResult.items.map((l: any) => l._id.toString());
+      if (leaseIds.length > 0) {
+        const paymentsResult = await this.paymentDAO.list(
+          {
+            cuid,
+            lease: { $in: leaseIds },
+            deletedAt: null,
+          },
+          {
+            sort: { dueDate: -1 },
+            limit: 50,
+            populate: [
+              { path: 'tenant', select: 'personalInfo.firstName personalInfo.lastName' },
+              { path: 'lease', select: 'leaseNumber property' },
+            ],
+          },
+          true
+        );
+        paymentHistory = paymentsResult.items;
+      }
+    }
+
+    // Conditionally fetch maintenance history (placeholder for future implementation)
+    let maintenanceHistory: any[] | undefined;
+    if (include?.includes('maintenance') || include?.includes('all')) {
+      // When maintenance is implemented, fetch it here
+      maintenanceHistory = [];
+    }
+
     const propertyObj = property.toObject ? property.toObject() : property;
     const pendingChangesPreview = generatePendingChangesPreview(property, currentUser);
 
@@ -786,13 +883,24 @@ export class PropertyService {
       ...propertyObj,
       ...(pendingChangesPreview && { pendingChangesPreview }),
       fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
+      manager: propertyManager,
     };
+
+    const department = currentUser.employeeInfo?.department as EmployeeDepartment | undefined;
+    const filteredProperty = filterPropertyByDepartment(
+      propertyWithPreview as IPropertyDocument,
+      department
+    );
+    const isSecurityDept = department === EmployeeDepartment.SECURITY;
 
     return {
       success: true,
       data: {
-        property: propertyWithPreview,
-        unitInfo,
+        property: filteredProperty as IPropertyDocument,
+        unitInfo: isSecurityDept ? undefined : unitInfo,
+        metrics: isSecurityDept ? undefined : metrics,
+        ...(!isSecurityDept && paymentHistory !== undefined && { paymentHistory }),
+        ...(!isSecurityDept && maintenanceHistory !== undefined && { maintenanceHistory }),
       },
     };
   }
@@ -981,6 +1089,7 @@ export class PropertyService {
       }
 
       await this.propertyCache.invalidateProperty(ctx.cuid, result.id);
+      await this.propertyCache.invalidateLeaseableProperties(ctx.cuid);
       await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
 
       // notify staff if their pending changes were overridden
@@ -1369,14 +1478,6 @@ export class PropertyService {
     availableSpaces: number;
     lastUnitNumber?: string;
     suggestedNextUnitNumber?: string;
-    statistics: {
-      occupied: number;
-      vacant: number;
-      maintenance: number;
-      available: number;
-      reserved: number;
-      inactive: number;
-    };
     totalUnits: number;
     unitStats: {
       occupied: number;
@@ -1388,6 +1489,83 @@ export class PropertyService {
     };
   }> {
     return this.propertyStatsService.getUnitInfoForProperty(property);
+  }
+
+  async calculatePropertyMetrics(
+    cuid: string,
+    propertyId: string,
+    unitInfo: any
+  ): Promise<{
+    monthlyRent: number;
+    annualRevenue: number;
+    occupancyRate: number;
+    monthlyNetIncome: number;
+  }> {
+    try {
+      // Get all active leases for this property
+      const leasesResult = await this.leaseDAO.list(
+        {
+          'property.id': propertyId,
+          cuid,
+          status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.RENEWED] },
+          deletedAt: null,
+        },
+        {},
+        true // lean query for performance
+      );
+
+      const activeLeases = leasesResult.items || [];
+
+      // Calculate monthly rent from active leases
+      let monthlyRent = activeLeases.reduce((sum: number, lease: any) => {
+        return sum + (lease.rentAmount || 0);
+      }, 0);
+
+      // If no active leases, calculate potential rent from occupied units
+      if (monthlyRent === 0 && unitInfo.unitStats?.occupied > 0) {
+        try {
+          const unitsResult = await this.propertyUnitDAO.findUnitsByPropertyId(propertyId, {
+            page: 1,
+            limit: 1000,
+          });
+
+          monthlyRent = unitsResult.items
+            .filter((unit: any) => unit.status === 'occupied')
+            .reduce((sum: number, unit: any) => {
+              return sum + (unit.fees?.rentAmount || 0);
+            }, 0);
+        } catch (err) {
+          this.log.warn('Error calculating rent from units:', err);
+        }
+      }
+
+      // Calculate annual revenue
+      const annualRevenue = monthlyRent * 12;
+
+      // Calculate occupancy rate
+      const totalUnits = unitInfo.totalUnits || 1;
+      const occupiedUnits = unitInfo.unitStats?.occupied || activeLeases.length;
+      const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
+
+      // Calculate net income (simplified: rent minus 10% for management/maintenance)
+      const monthlyNetIncome = Math.round(monthlyRent * 0.9);
+
+      return {
+        monthlyRent,
+        annualRevenue,
+        occupancyRate,
+        monthlyNetIncome,
+      };
+    } catch (error) {
+      this.log.error('Error calculating property metrics:', error);
+      // Return zero metrics on error instead of failing
+      return {
+        monthlyRent: 0,
+        annualRevenue: 0,
+        occupancyRate: 0,
+        monthlyNetIncome: 0,
+      };
+    }
   }
 
   async getAssignableUsers(
@@ -1448,10 +1626,25 @@ export class PropertyService {
         pipeline.push({
           $match: {
             $or: [
-              { email: { $regex: filters.search, $options: 'i' } },
-              { 'profile.personalInfo.displayName': { $regex: filters.search, $options: 'i' } },
-              { 'profile.personalInfo.firstName': { $regex: filters.search, $options: 'i' } },
-              { 'profile.personalInfo.lastName': { $regex: filters.search, $options: 'i' } },
+              { email: { $regex: escapeRegExp(filters.search), $options: 'i' } },
+              {
+                'profile.personalInfo.displayName': {
+                  $regex: escapeRegExp(filters.search),
+                  $options: 'i',
+                },
+              },
+              {
+                'profile.personalInfo.firstName': {
+                  $regex: escapeRegExp(filters.search),
+                  $options: 'i',
+                },
+              },
+              {
+                'profile.personalInfo.lastName': {
+                  $regex: escapeRegExp(filters.search),
+                  $options: 'i',
+                },
+              },
             ],
           },
         });
@@ -1619,8 +1812,11 @@ export class PropertyService {
       const filter: FilterQuery<IPropertyDocument> = {
         cuid,
         deletedAt: null,
-        status: 'available',
-        approvalStatus: PropertyApprovalStatusEnum.APPROVED,
+        operationalStatus: 'available',
+        $or: [
+          { approvalStatus: PropertyApprovalStatusEnum.APPROVED },
+          { approvalStatus: { $exists: false } },
+        ],
       };
 
       const properties = await this.propertyDAO.list(filter, {
@@ -1765,12 +1961,14 @@ export class PropertyService {
   cleanupEventListeners(): void {
     this.log.info(t('property.logging.cleaningUp'));
 
-    this.emitterService.off(EventTypes.UNIT_CREATED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_UPDATED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_ARCHIVED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_UNARCHIVED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_STATUS_CHANGED, this.handleUnitChanged);
-    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.handleUnitBatchChanged);
+    this.emitterService.off(EventTypes.UNIT_CREATED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_UPDATED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_ARCHIVED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_UNARCHIVED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_STATUS_CHANGED, this.onUnitChanged);
+    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchChanged);
+    this.emitterService.off(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
+    this.emitterService.off(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
 
     this.log.info(t('property.logging.eventListenersRemoved'));
   }

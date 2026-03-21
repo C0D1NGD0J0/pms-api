@@ -1,4 +1,5 @@
 import bunyan from 'bunyan';
+import { Types } from 'mongoose';
 import { container } from '@di/index';
 import { t } from '@shared/languages';
 import { UAParser } from 'ua-parser-js';
@@ -11,7 +12,6 @@ import { LanguageService } from '@shared/languages/language.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { InvalidRequestError, UnauthorizedError, ForbiddenError } from '@shared/customErrors';
 import { extractMulterFiles, generateShortUID, JWT_KEY_NAMES, createLogger } from '@utils/index';
-import { PermissionResource, PermissionAction, ICurrentUser, EventTypes } from '@interfaces/index';
 import {
   EventEmitterService,
   SubscriptionService,
@@ -22,8 +22,18 @@ import {
   RateLimitOptions,
   IPermissionCheck,
   RequestSource,
+  AppRequest,
   TokenType,
 } from '@interfaces/utils.interface';
+import {
+  ISubscriptionEntitlements,
+  ISubscriptionStatus,
+  PermissionResource,
+  PermissionAction,
+  PermissionScope,
+  ICurrentUser,
+  EventTypes,
+} from '@interfaces/index';
 
 import { rateLimiterFactory } from './rateLimiterFactory';
 
@@ -40,6 +50,7 @@ interface PermissionCheck {
   resource: PermissionResource | string;
   action: PermissionAction | string;
 }
+const logger = createLogger('MiddlewareLogger');
 
 export const scopedMiddleware = (req: Request, res: Response, next: NextFunction) => {
   const scope = container.createScope();
@@ -81,7 +92,7 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
 
     const currentUserResp = await authCache.getCurrentUser(payload.data?.sub as string);
     if (!currentUserResp.success) {
-      console.error('User not found in cache, fetching from database...');
+      logger.error('User not found in cache, fetching from database...');
       const _currentuser = await profileDAO.generateCurrentUserInfo(payload.data?.sub as string);
       if (_currentuser) {
         await authCache.saveCurrentUser(_currentuser);
@@ -120,7 +131,7 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       }
       return next(new UnauthorizedError({ message: 'Session expired.' }));
     }
-    console.log(error);
+    logger.error(error);
     return next(new UnauthorizedError());
   }
 };
@@ -132,7 +143,7 @@ export const diskUpload =
     const uploadMiddleware = diskStorage.uploadMiddleware(fieldNames);
     uploadMiddleware(req, res, (err: any) => {
       if (err) {
-        console.error('❌ [ERROR] diskUpload middleware failed:', err);
+        logger.error('❌ [ERROR] diskUpload middleware failed:', err);
       }
       next(err);
     });
@@ -242,6 +253,7 @@ export const requestLogger =
         referer: req.get('referer') || '-',
       };
       const responseObject = {
+        requestId: (req as any).context?.requestId,
         method: req.method,
         url: req.originalUrl,
         statusCode: res.statusCode,
@@ -335,7 +347,7 @@ export const setUserLanguage = async (req: Request, _res: Response, next: NextFu
 
     next();
   } catch (error) {
-    console.error('Error in setUserLanguage middleware:', error);
+    logger.error('Error in setUserLanguage middleware:', error);
     next();
   }
 };
@@ -370,7 +382,7 @@ export const subscriptionEntitlements = async (
 
     next();
   } catch (error) {
-    console.error('Error in subscriptionEntitlements middleware:', error);
+    logger.error('Error in subscriptionEntitlements middleware:', error);
     next();
   }
 };
@@ -382,11 +394,16 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
       ? (sourceHeader as RequestSource)
       : RequestSource.UNKNOWN;
 
+    const rawRequestId = req.headers['x-request-id'];
+    const requestId =
+      (Array.isArray(rawRequestId) ? rawRequestId[0] : rawRequestId) || generateShortUID(12);
+    res.setHeader('X-Request-ID', requestId);
+
     const uaParser = new UAParser(req.headers['user-agent'] as string);
     const uaResult = uaParser.getResult();
     req.context = {
       timestamp: new Date(),
-      requestId: generateShortUID(12),
+      requestId,
       source,
       ip: req.ip || req.socket.remoteAddress || '',
       userAgent: {
@@ -418,7 +435,7 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
     };
     next();
   } catch (error) {
-    console.error('Error in context middleware:', error);
+    logger.error('Error in context middleware:', error);
     next(error);
   }
 };
@@ -461,7 +478,7 @@ export const requirePermission = (
       // Check client context for client-specific resources
       const clientId = req.params.clientId || req.params.cuid;
       if (clientId && currentuser.client.cuid !== clientId) {
-        console.error('Client ID mismatch: ', { clientId, userClientId: currentuser.client.cuid });
+        logger.error('Client ID mismatch: ', { clientId, userClientId: currentuser.client.cuid });
         return next(new ForbiddenError({ message: t('auth.errors.clientAccessDenied') }));
       }
 
@@ -469,7 +486,7 @@ export const requirePermission = (
       if (resource === PermissionResource.CLIENT) {
         const restrictedRoles = ROLE_GROUPS.EXTERNAL_ROLES;
         if (restrictedRoles.includes(currentuser.client.role as any)) {
-          console.log('Insufficient role for CLIENT resource:', {
+          logger.error('Insufficient role for CLIENT resource:', {
             role: currentuser.client.role,
             resource,
             action,
@@ -486,7 +503,7 @@ export const requirePermission = (
       );
 
       if (!hasPermission.granted) {
-        console.warn('Permission denied:', {
+        logger.warn('Permission denied:', {
           userId: currentuser.sub,
           resource,
           action,
@@ -505,10 +522,60 @@ export const requirePermission = (
 
       next();
     } catch (error) {
-      console.error('Error in requirePermission middleware:', error);
+      logger.error('Error in requirePermission middleware:', error);
       return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
     }
   };
+};
+
+/**
+ * Check if the current user's subscription entitles them to a specific feature.
+ * Requires `subscriptionEntitlements` middleware to have run first.
+ */
+export const requireFeature = (featureName: keyof ISubscriptionEntitlements['entitlements']) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const entitlements = req.context?.entitlements?.entitlements;
+    if (!entitlements) {
+      return next(new ForbiddenError({ message: t('auth.errors.entitlementsUnavailable') }));
+    }
+    if (!entitlements[featureName]) {
+      return next(new ForbiddenError({ message: t('auth.errors.featureNotEntitled') }));
+    }
+    next();
+  };
+};
+
+/**
+ * Blocks requests when the client's subscription is not in an active state.
+ * Requires `subscriptionEntitlements` middleware to have run first.
+ * Fails open (allows request) when entitlements could not be loaded, so a
+ * subscription service outage does not break the application.
+ */
+export const requireActiveSubscription = (req: Request, _res: Response, next: NextFunction) => {
+  const entitlements = req.context?.entitlements;
+  if (!entitlements) {
+    return next();
+  }
+  const { status } = entitlements.plan;
+  if (status === ISubscriptionStatus.INACTIVE || status === ISubscriptionStatus.PENDING_PAYMENT) {
+    return next(new ForbiddenError({ message: t('auth.errors.subscriptionInactive') }));
+  }
+  next();
+};
+
+/**
+ * Ensures the client account is verified before allowing business-critical actions.
+ * Must run after isAuthenticated.
+ */
+export const requireVerifiedClient = (req: Request, _res: Response, next: NextFunction) => {
+  const currentuser = validateUserAndConnection(req, next);
+  if (!currentuser) return;
+
+  if (!currentuser.client.isVerified) {
+    return next(new ForbiddenError({ message: t('auth.errors.clientNotVerified') }));
+  }
+
+  next();
 };
 
 /**
@@ -537,7 +604,7 @@ export const requireAnyPermission = (permissions: PermissionCheck[]) => {
       // No valid permissions found
       return next(new ForbiddenError({ message: t('auth.errors.insufficientPermissions') }));
     } catch (error) {
-      console.error('Error in requireAnyPermission middleware:', error);
+      logger.error('Error in requireAnyPermission middleware:', error);
       return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
     }
   };
@@ -575,7 +642,7 @@ export const requireAllPermissions = (permissions: PermissionCheck[]) => {
 
       next();
     } catch (error) {
-      console.error('Error in requireAllPermissions middleware:', error);
+      logger.error('Error in requireAllPermissions middleware:', error);
       return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
     }
   };
@@ -615,17 +682,25 @@ export const requirePermissionWithContext = (
       }
 
       // Extract resource context if provided
-      let context = {};
+      let context: Record<string, any> = {};
+      let scope: PermissionScope | undefined;
       if (contextExtractor) {
         try {
           const extractedContext = contextExtractor(req);
+          // Auto-determine scope: if ownerId matches the current user, use MINE scope
+          const ownerId = extractedContext?.ownerId;
+          if (ownerId) {
+            const isOwner = ownerId === currentuser.uid || ownerId === currentuser.sub;
+            scope = isOwner ? PermissionScope.MINE : PermissionScope.ANY;
+          }
           context = {
             clientId: currentuser.client.cuid,
             userId: currentuser.sub,
+            resourceOwnerId: extractedContext?.ownerId,
             ...extractedContext,
           };
         } catch (error) {
-          console.warn('Error extracting resource context:', error);
+          logger.warn('Error extracting resource context:', error);
         }
       }
 
@@ -636,6 +711,7 @@ export const requirePermissionWithContext = (
         role: currentuser.client.role,
         resource: resource as PermissionResource,
         action: action as string,
+        scope: scope ?? PermissionScope.ANY,
         context: {
           clientId: currentuser.client.cuid,
           userId: currentuser.sub,
@@ -659,7 +735,7 @@ export const requirePermissionWithContext = (
 
       next();
     } catch (error) {
-      console.error('Error in requirePermissionWithContext middleware:', error);
+      logger.error('Error in requirePermissionWithContext middleware:', error);
       return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
     }
   };
@@ -696,4 +772,77 @@ export const requireUserPermission = (action: PermissionAction | string) => {
     resourceId: req.params.userId || req.params.uid,
     ownerId: req.params.userId || req.params.uid, // For "mine" scope validation
   }));
+};
+
+/**
+ * Throws ForbiddenError if the requesting user is the tenant on the resource.
+ * Prevents dual-role users (e.g. staff+tenant) from modifying records where
+ * they are personally the tenant — a conflict-of-interest guard.
+ */
+export function preventTenantConflict(
+  requestingUserId: string,
+  tenantId: Types.ObjectId | string | null | undefined,
+  message = 'You cannot modify a record where you are the tenant.'
+): void {
+  if (tenantId && requestingUserId === tenantId.toString()) {
+    throw new ForbiddenError({ message });
+  }
+}
+
+export const idempotency = async (
+  req: AppRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
+
+  if (!idempotencyKey) {
+    res.status(400).json({ success: false, message: 'Idempotency-Key header is required' });
+    return;
+  }
+
+  const { idempotencyCache } = req.container.cradle;
+  const userId = req.context?.currentuser?.sub ?? 'anonymous';
+  const cuid = req.params?.cuid ?? 'global';
+  const routePath = req.route?.path ?? req.path;
+
+  try {
+    const cached = await idempotencyCache.getCachedRouteResponse(
+      req.method,
+      routePath,
+      userId,
+      cuid,
+      idempotencyKey
+    );
+    if (cached) {
+      logger.info({ idempotencyKey, cuid }, 'Returning cached idempotent response');
+      res.status(cached.statusCode).json(cached.body);
+      return;
+    }
+
+    const originalJson = res.json.bind(res);
+    res.json = (body: any): Response => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        idempotencyCache
+          .cacheRouteResponse(
+            req.method,
+            routePath,
+            userId,
+            cuid,
+            idempotencyKey,
+            res.statusCode,
+            body
+          )
+          .catch((err: unknown) =>
+            logger.error({ err, idempotencyKey, cuid }, 'Failed to cache idempotent response')
+          );
+      }
+      return originalJson(body);
+    };
+
+    next();
+  } catch (err) {
+    logger.error({ err, idempotencyKey }, 'Idempotency middleware error');
+    next(); // fail open
+  }
 };

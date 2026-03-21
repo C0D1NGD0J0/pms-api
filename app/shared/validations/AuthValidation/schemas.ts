@@ -238,6 +238,25 @@ export const AccountActivationSchema = z.object({
     ),
 });
 
+export const ConsentBodySchema = z.object({
+  firstName: z
+    .string({ message: 'First name is required' })
+    .min(1, { message: 'First name is required' })
+    .max(50, { message: 'First name must be 50 characters or fewer' }),
+  lastName: z
+    .string({ message: 'Last name is required' })
+    .min(1, { message: 'Last name is required' })
+    .max(50, { message: 'Last name must be 50 characters or fewer' }),
+  consentDate: z
+    .string({ message: 'Consent date is required' })
+    .refine((val) => dayjs(val, 'YYYY-MM-DD', true).isValid(), {
+      message: 'Invalid date format (expected YYYY-MM-DD)',
+    })
+    .refine((val) => dayjs(val).isSame(dayjs(), 'day'), {
+      message: "Consent date must be today's date",
+    }),
+});
+
 export const ForgotPasswordSchema = z.object({
   email: z
     .string({ message: "Email can't be blank" })
@@ -334,6 +353,39 @@ export const TenantSchema = z.object({
   activeLeaseAgreement: z.string().optional(),
   maintenanceRequests: z.array(z.string()).optional(),
 });
+
+export const completeOnboardingSchema = z
+  .object({
+    policies: z.object({
+      tos: z.object({
+        accepted: z.literal(true, { message: 'You must accept the Terms of Service' }),
+      }),
+      privacy: z.object({
+        accepted: z.literal(true, { message: 'You must accept the Privacy Policy' }),
+      }),
+      marketing: z.object({ accepted: z.boolean() }),
+    }),
+    newPassword: z
+      .string()
+      .min(8, 'Password must be at least 8 characters')
+      .max(15, 'Password must be at most 15 characters')
+      .regex(
+        /^(?=.*[A-Z])(?=.*\d)/,
+        'Password must contain at least one uppercase letter and one number'
+      )
+      .optional(),
+    confirmPassword: z.string().optional(),
+    lang: z
+      .string()
+      .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Invalid language code')
+      .optional(),
+    timeZone: z.string().min(3).max(50).optional(),
+    location: z.string().min(2).max(100).optional(),
+  })
+  .refine((d) => !d.newPassword || d.newPassword === d.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
 
 export const ClientSchema = z.object({
   admin: z.string(),

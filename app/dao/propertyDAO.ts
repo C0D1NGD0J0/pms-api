@@ -1,5 +1,5 @@
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
+import { createLogger, escapeRegExp } from '@utils/index';
 import { ClientSession, FilterQuery, Types, Model } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery, UploadResult } from '@interfaces/index';
 import { PropertyUnitStatusEnum, IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
@@ -41,7 +41,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     clientId: string,
     filters: {
       propertyType?: PropertyType[];
-      status?: PropertyStatus[];
+      operationalStatus?: PropertyStatus[];
       occupancyStatus?: OccupancyStatus[];
       priceRange?: { min?: number; max?: number };
       areaRange?: { min?: number; max?: number };
@@ -61,8 +61,8 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         query.propertyType = { $in: filters.propertyType };
       }
 
-      if (filters.status && filters.status.length > 0) {
-        query.status = { $in: filters.status };
+      if (filters.operationalStatus && filters.operationalStatus.length > 0) {
+        query.operationalStatus = { $in: filters.operationalStatus };
       }
 
       if (filters.occupancyStatus && filters.occupancyStatus.length > 0) {
@@ -98,12 +98,12 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       if (filters.location) {
         if (filters.location.city) {
           query['address.city'] = {
-            $regex: new RegExp(filters.location.city, 'i'),
+            $regex: new RegExp(escapeRegExp(filters.location.city), 'i'),
           };
         }
         if (filters.location.state) {
           query['address.state'] = {
-            $regex: new RegExp(filters.location.state, 'i'),
+            $regex: new RegExp(escapeRegExp(filters.location.state), 'i'),
           };
         }
         if (filters.location.postCode) {
@@ -412,7 +412,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
 
       const normalizedAddress = address.trim().toLowerCase();
       const query = {
-        'address.fullAddress': { $regex: new RegExp(`^${normalizedAddress}$`, 'i') },
+        'address.fullAddress': { $regex: new RegExp(`^${escapeRegExp(normalizedAddress)}$`, 'i') },
         cuid: clientId,
         deletedAt: null,
       };

@@ -75,4 +75,14 @@ export class ClientController {
     const result = await this.clientService.assignDepartment(req.context, uid, department);
     res.status(httpStatusCodes.OK).json(result);
   };
+
+  verifyAccount = async (req: AppRequest, res: Response) => {
+    const result = await this.clientService.verifyAccount(req.context);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  initiateIdentityVerification = async (req: AppRequest, res: Response) => {
+    const result = await this.clientService.initiateIdentityVerification(req.context);
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

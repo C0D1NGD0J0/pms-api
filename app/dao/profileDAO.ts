@@ -2,9 +2,9 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import ROLES from '@shared/constants/roles.constants';
 import { BadRequestError } from '@shared/customErrors';
-import { generateShortUID, createLogger } from '@utils/index';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { ListResultWithPagination, ICurrentUser } from '@interfaces/index';
+import { generateShortUID, createLogger, escapeRegExp } from '@utils/index';
 import { PipelineStage, ClientSession, FilterQuery, Types, Model } from 'mongoose';
 
 import { BaseDAO } from './baseDAO';
@@ -264,12 +264,12 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
       // Create a search filter that looks across various fields
       const filter: FilterQuery<IProfileDocument> = {
         $or: [
-          { 'personalInfo.displayName': { $regex: searchTerm, $options: 'i' } },
-          { 'personalInfo.firstName': { $regex: searchTerm, $options: 'i' } },
-          { 'personalInfo.lastName': { $regex: searchTerm, $options: 'i' } },
-          { 'personalInfo.bio': { $regex: searchTerm, $options: 'i' } },
-          { 'personalInfo.headline': { $regex: searchTerm, $options: 'i' } },
-          { 'personalInfo.location': { $regex: searchTerm, $options: 'i' } },
+          { 'personalInfo.displayName': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
+          { 'personalInfo.firstName': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
+          { 'personalInfo.lastName': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
+          { 'personalInfo.bio': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
+          { 'personalInfo.headline': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
+          { 'personalInfo.location': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
         ],
       };
 
@@ -362,7 +362,12 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                     ],
                   },
                 },
-                in: { $arrayElemAt: ['$$activeClientData.roles', 0] },
+                in: {
+                  $ifNull: [
+                    '$$activeClientData.primaryRole',
+                    { $arrayElemAt: ['$$activeClientData.roles', 0] },
+                  ],
+                },
               },
             },
           },
@@ -386,6 +391,27 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         {
           $addFields: {
             subscriptionInfo: { $arrayElemAt: ['$subscriptionData', 0] },
+          },
+        },
+
+        // Add payment processor lookup for active client (SUPER_ADMIN only)
+        {
+          $lookup: {
+            from: 'paymentprocessors',
+            let: { activeCuid: '$userData.activecuid' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: ['$cuid', '$$activeCuid'] },
+                },
+              },
+            ],
+            as: 'paymentProcessorData',
+          },
+        },
+        {
+          $addFields: {
+            paymentProcessorInfo: { $arrayElemAt: ['$paymentProcessorData', 0] },
           },
         },
 
@@ -428,12 +454,31 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                       0,
                     ],
                   },
+                  activeClientData: {
+                    $arrayElemAt: [
+                      {
+                        $filter: {
+                          input: '$clientsData',
+                          as: 'cd',
+                          cond: { $eq: ['$$cd.cuid', '$userData.activecuid'] },
+                        },
+                      },
+                      0,
+                    ],
+                  },
                 },
                 in: {
                   cuid: '$$activeClient.cuid',
                   clientDisplayName: '$$activeClient.clientDisplayName',
-                  role: { $arrayElemAt: ['$$activeClient.roles', 0] },
+                  role: {
+                    $ifNull: [
+                      '$$activeClient.primaryRole',
+                      { $arrayElemAt: ['$$activeClient.roles', 0] },
+                    ],
+                  },
                   linkedVendorUid: '$$activeClient.linkedVendorUid',
+                  isVerified: { $ifNull: ['$$activeClientData.isVerified', false] },
+                  requiresOnboarding: { $ifNull: ['$$activeClient.requiresOnboarding', false] },
                   isPrimaryVendor: {
                     $cond: {
                       if: {
@@ -538,7 +583,18 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                     in: {
                       plan: {
                         name: '$$sub.planName',
-                        status: '$$sub.status',
+                        status: {
+                          $cond: {
+                            if: {
+                              $and: [
+                                { $eq: ['$$sub.status', 'active'] },
+                                { $eq: [{ $ifNull: ['$$sub.billing.subscriberId', ''] }, ''] },
+                              ],
+                            },
+                            then: 'pending_payment',
+                            else: '$$sub.status',
+                          },
+                        },
                         billingInterval: '$$sub.billingInterval',
                       },
                       entitlements: {
@@ -549,6 +605,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                             RepairRequestService: false,
                             VisitorPassService: false,
                             reportingAnalytics: false,
+                            leaseTemplates: false,
                           },
                         ],
                       },
@@ -558,7 +615,22 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                             if: {
                               $and: [
                                 '$$isSuperAdmin',
-                                { $eq: ['$$sub.status', 'pending_payment'] },
+                                {
+                                  $or: [
+                                    { $eq: ['$$sub.status', 'pending_payment'] },
+                                    {
+                                      $and: [
+                                        { $eq: ['$$sub.status', 'active'] },
+                                        {
+                                          $eq: [
+                                            { $ifNull: ['$$sub.billing.subscriberId', ''] },
+                                            '',
+                                          ],
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
                               ],
                             },
                             then: true,
@@ -650,6 +722,35 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                       },
                     },
                   },
+                },
+                else: '$$REMOVE',
+              },
+            },
+
+            // Payment processor status — only exposed for SUPER_ADMIN
+            paymentProcessor: {
+              $cond: {
+                if: {
+                  $and: [
+                    { $ne: ['$paymentProcessorInfo', null] },
+                    { $eq: ['$activeClientRole', 'super-admin'] },
+                  ],
+                },
+                then: {
+                  isSetup: { $literal: true },
+                  chargesEnabled: { $ifNull: ['$paymentProcessorInfo.chargesEnabled', false] },
+                  payoutsEnabled: { $ifNull: ['$paymentProcessorInfo.payoutsEnabled', false] },
+                  needsOnboarding: {
+                    $not: {
+                      $and: [
+                        { $ifNull: ['$paymentProcessorInfo.chargesEnabled', false] },
+                        { $ifNull: ['$paymentProcessorInfo.payoutsEnabled', false] },
+                      ],
+                    },
+                  },
+                  accountId: { $ifNull: ['$paymentProcessorInfo.accountId', null] },
+                  accountType: { $ifNull: ['$paymentProcessorInfo.accountType', null] },
+                  onboardedAt: { $ifNull: ['$paymentProcessorInfo.onboardedAt', null] },
                 },
                 else: '$$REMOVE',
               },

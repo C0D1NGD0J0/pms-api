@@ -61,13 +61,8 @@ export const CompanyProfileSchema = z.object({
 });
 
 export const ClientIdentificationSchema = z.object({
-  idType: z.enum(['passport', 'driverLicense', 'nationalId', 'other']),
-  issueDate: z.string().datetime('Invalid issue date format'),
-  expiryDate: z.string().datetime('Invalid expiry date format'),
-  idNumber: z.string().trim().min(1, 'ID number is required'),
-  authority: z.string().trim().optional(),
-  issuingState: z.string().trim().min(1, 'Issuing state is required'),
   dataProcessingConsent: z.boolean().default(false),
+  processingConsentDate: z.string().datetime('Invalid date format').optional(),
 });
 
 export const ClientSubscriptionSchema = z.object({
@@ -98,10 +93,10 @@ export const AssignRoleSchema = z.object({
 
 export const AssignDepartmentSchema = z.object({
   department: z
-    .enum(['maintenance', 'operations', 'accounting', 'management'], {
+    .enum(['maintenance', 'operations', 'accounting', 'management', 'other', 'security'], {
       errorMap: () => ({
         message:
-          'Invalid department. Must be one of: maintenance, operations, accounting, management',
+          'Invalid department. Must be one of: maintenance, operations, accounting, management, other, security',
       }),
     })
     .describe('Department to assign to the employee'),
@@ -151,7 +146,7 @@ export const TenantDetailsIncludeQuerySchema = z.object({
 
 export const UpdateClientDetailsSchema = z
   .object({
-    identification: ClientIdentificationSchema.partial().optional(),
+    dataProcessingConsent: z.boolean().optional(),
     companyProfile: CompanyProfileSchema.partial().optional(),
     displayName: z.string().trim().min(1, 'Display name cannot be empty').optional(),
     settings: ClientSettingsSchema.partial().optional(),
@@ -159,21 +154,6 @@ export const UpdateClientDetailsSchema = z
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided for update',
   })
-  .refine(
-    (data) => {
-      if (data.identification?.idType && !data.identification?.idNumber) {
-        return false;
-      }
-      if (data.identification?.idNumber && !data.identification?.idType) {
-        return false;
-      }
-      return true;
-    },
-    {
-      message: 'When updating identification, both idType and idNumber are required',
-      path: ['identification'],
-    }
-  )
   .refine(
     (data) => {
       if (data.companyProfile?.companyEmail) {

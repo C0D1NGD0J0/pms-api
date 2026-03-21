@@ -53,6 +53,7 @@ class EnvVariables {
   public SERVER: {
     PORT: number;
     ENV: string;
+    PROCESS_TYPE: 'api' | 'worker';
     CLAMDSCAN_SOCKET: string;
   };
   public CLAMAV: {
@@ -75,8 +76,8 @@ class EnvVariables {
     SECRET_KEY: string;
     PUBLIC_KEY: string;
     REDIRECT_URL: string;
-    TEST_KEY: string;
     WEBHOOK_SECRET: string;
+    CONNECT_WEBHOOK_SECRET: string;
   };
   public BOLDSIGN: {
     API_KEY: string;
@@ -93,6 +94,7 @@ class EnvVariables {
     this.SERVER = {
       PORT: Number(process.env.PORT),
       ENV: process.env.NODE_ENV || 'dev',
+      PROCESS_TYPE: (process.env.PROCESS_TYPE as 'api' | 'worker') || 'api',
       CLAMDSCAN_SOCKET: process.env.CLAMDSCAN_SOCKET || '/tmp/clamd.sock',
     };
     this.AUTH_COOKIE = {
@@ -150,7 +152,7 @@ class EnvVariables {
         PROVIDER_HOST: process.env.EMAIL_PROVIDER_HOST_PROD || '',
         PROVIDER_PORT: Number(process.env.EMAIL_PROVIDER_PORT_PROD),
         PROVIDER_USERNAME: process.env.EMAIL_PROVIDER_USERNAME_PROD || '',
-        PROVIDER_PASSWORD: process.env.EMAIL_PROVIDER_USERNAME_PROD || '',
+        PROVIDER_PASSWORD: process.env.EMAIL_PROVIDER_PASSWORD_PROD || '',
       },
       APP_EMAIL_ADDRESS: process.env.APP_EMAIL_ADDRESS || '',
     };
@@ -160,9 +162,9 @@ class EnvVariables {
     this.STRIPE = {
       SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
       PUBLIC_KEY: process.env.STRIPE_PUBLIC_KEY || '',
-      TEST_KEY: process.env.STRIPE_TEST_KEY || '',
       REDIRECT_URL: process.env.STRIPE_REDIRECT_URL || '',
       WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
+      CONNECT_WEBHOOK_SECRET: process.env.STRIPE_CONNECT_WEBHOOK_SECRET || '',
     };
     this.BOLDSIGN = {
       API_KEY: process.env.BOLDSIGN_API_KEY || '',
@@ -222,8 +224,8 @@ class EnvVariables {
         console.error('❌ Environment validation failed:', errorMsg);
         throw new Error(errorMsg);
       }
-    } else {
-      // In development/test, just warn about missing variables
+    } else if (this.SERVER.ENV !== 'test') {
+      // In development, warn about missing variables (skip in test to reduce noise)
       const validateObject = (obj: any, parentKey: string = '') => {
         for (const [key, value] of Object.entries(obj)) {
           const fullKey = parentKey ? `${parentKey}.${key}` : key;

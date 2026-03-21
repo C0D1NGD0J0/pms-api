@@ -35,6 +35,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
 
     mockSubscriptionDAO = {
       findFirst: jest.fn(),
+      findById: jest.fn(),
       update: jest.fn(),
       startSession: jest.fn().mockResolvedValue(mockSession),
       withTransaction: jest.fn((session, callback) => callback(session)),
@@ -74,9 +75,10 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       authCache: mockAuthCache,
       paymentGatewayService: mockPaymentGatewayService,
       sseService: mockSSEService,
-      stripeService: {} as any,
       userDAO: {} as any,
       emitterService: mockEmitterService,
+      propertyDAO: {} as any,
+      propertyUnitDAO: {} as any,
     });
   });
 
@@ -88,7 +90,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
         planName: 'growth',
         status: ISubscriptionStatus.ACTIVE,
         billingInterval: 'monthly',
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
           planId: 'price_growth_monthly',
@@ -99,8 +101,8 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
         billingInterval: 'annual',
-        paymentGateway: {
-          ...mockSubscription.paymentGateway,
+        billing: {
+          ...mockSubscription.billing,
           planId: 'price_growth_annual',
         },
       } as any);
@@ -127,8 +129,8 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
           $set: {
             billingInterval: 'annual',
             entitlements: expect.any(Object),
-            'paymentGateway.planId': 'price_growth_annual',
-            'paymentGateway.planLookUpKey': 'growth_annual',
+            'billing.planId': 'price_growth_annual',
+            'billing.planLookUpKey': 'growth_annual',
           },
         },
         undefined,
@@ -144,7 +146,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
         cuid: 'client123',
         planName: 'growth',
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
           planId: 'price_growth_monthly',
         },
@@ -153,8 +155,8 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        paymentGateway: {
-          ...mockSubscription.paymentGateway,
+        billing: {
+          ...mockSubscription.billing,
           planId: 'price_portfolio_monthly',
         },
       } as any);
@@ -175,7 +177,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
         _id: new Types.ObjectId(),
         cuid: 'client123',
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           subscriberId: null, // Missing!
         },
       };
@@ -187,7 +189,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
           priceId: 'price_growth_annual',
           billingInterval: 'annual',
         })
-      ).rejects.toThrow('No active Stripe subscription found');
+      ).rejects.toThrow('Client subscription not found');
 
       expect(mockPaymentGatewayService.updateSubscription).not.toHaveBeenCalled();
     });
@@ -216,7 +218,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
         cuid: 'client123',
         planName: 'growth',
         status: ISubscriptionStatus.ACTIVE,
-        paymentGateway: {
+        billing: {
           subscriberId: 'sub_stripe123',
         },
       };

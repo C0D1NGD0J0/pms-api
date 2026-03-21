@@ -4,6 +4,7 @@
       "$extend": ["admin"],
       "subscription": ["read:any", "update:any", "manage:any"],
       "billing": ["read:any", "update:any", "manage:any"],
+      "client": ["update:mine", "read:mine", "settings:mine", "manage_users:mine"],
       "payment": ["create:any", "read:any", "update:any"]
     },
     "admin": {
@@ -86,6 +87,11 @@
           "user": ["read:any", "update:any", "list:any"],
           "report": ["read:any", "create:any", "list:any"],
           "client": ["read:mine", "settings:mine"]
+        },
+        "security": {
+          "property": ["read:any", "list:any"],
+          "user": ["read:mine", "update:mine"],
+          "client": ["read:mine"]
         }
       }
     },

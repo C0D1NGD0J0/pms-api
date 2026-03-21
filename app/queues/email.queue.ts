@@ -1,5 +1,5 @@
 import { EmailWorker } from '@workers/index';
-import { QUEUE_NAMES, JOB_NAME } from '@utils/constants';
+import { QUEUE_NAMES } from '@utils/constants';
 import { IEmailOptions } from '@interfaces/utils.interface';
 
 import { BaseQueue } from './base.queue';
@@ -14,9 +14,11 @@ export class EmailQueue extends BaseQueue {
   constructor({ emailWorker }: IConstructor) {
     super({ queueName: QUEUE_NAMES.EMAIL_QUEUE });
     this.emailWorker = emailWorker;
-    this.processQueueJobs(JOB_NAME.ACCOUNT_ACTIVATION_JOB, 5, this.emailWorker.sendMail);
-    this.processQueueJobs(JOB_NAME.INVITATION_JOB, 5, this.emailWorker.sendMail);
-    this.processQueueJobs(JOB_NAME.LEASE_ENDING_SOON_JOB, 5, this.emailWorker.sendMail);
+    // Single wildcard processor handles all email job types (accountActivationJob,
+    // invitationJob, leaseEndingSoonJob, etc.). Jobs are still added with specific
+    // names for tracking. Using one processor avoids BRPOPLPUSH contention that
+    // occurs when multiple named processors share one blocking Redis connection.
+    this.processQueueJobs('*', 3, this.emailWorker.sendMail);
   }
 
   addToEmailQueue(queuename: string, data: IEmailOptions<unknown>): void {

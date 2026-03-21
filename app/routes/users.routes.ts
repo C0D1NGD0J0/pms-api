@@ -5,14 +5,6 @@ import { ClientController } from '@controllers/ClientController';
 import { PropertyController } from '@controllers/PropertyController';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
-  requireUserManagement,
-  requirePermission,
-  isAuthenticated,
-  basicLimiter,
-  diskUpload,
-  scanFile,
-} from '@shared/middlewares';
-import {
   PropertyValidations,
   ProfileValidations,
   ClientValidations,
@@ -20,6 +12,15 @@ import {
   UserValidations,
   validateRequest,
 } from '@shared/validations';
+import {
+  requireUserManagement,
+  requireUserPermission,
+  requirePermission,
+  isAuthenticated,
+  basicLimiter,
+  diskUpload,
+  scanFile,
+} from '@shared/middlewares';
 
 const router = Router();
 
@@ -140,6 +141,19 @@ router.get(
 );
 
 router.get(
+  '/:cuid/profile-completion',
+  basicLimiter(),
+  isAuthenticated,
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getProfileCompletion(req, res);
+  })
+);
+
+router.get(
   '/:cuid/profile_details',
   basicLimiter(),
   isAuthenticated,
@@ -245,7 +259,7 @@ router.get(
   '/:cuid/client_tenant/:uid',
   basicLimiter(),
   isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  requireUserPermission(PermissionAction.READ),
   validateRequest({
     params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
     query: ClientValidations.tenantDetailsIncludeQuery,

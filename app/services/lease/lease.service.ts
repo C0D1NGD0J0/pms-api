@@ -12,6 +12,7 @@ import { QueueFactory } from '@services/queue';
 import { IUserBasicInfo } from '@dao/interfaces';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { ESignatureQueue, PdfQueue } from '@queues/index';
+import { preventTenantConflict } from '@shared/middlewares';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
@@ -547,9 +548,9 @@ export class LeaseService {
           tenant: {
             id: lease.tenantId,
             fullname: lease.tenantInfo?.fullname,
-            email: (lease.tenantInfo as any).user?.email,
-            phone: (lease.tenantInfo as any).personalInfo?.phoneNumber,
-            avatar: (lease.tenantInfo as any).personalInfo?.avatar,
+            email: (lease.tenantInfo as any)?.user?.email,
+            phone: (lease.tenantInfo as any)?.personalInfo?.phoneNumber,
+            avatar: (lease.tenantInfo as any)?.personalInfo?.avatar,
           },
         },
         property: lease.propertyInfo || lease.property,
@@ -613,17 +614,12 @@ export class LeaseService {
         throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
       }
 
-      // Prevent conflict of interest: tenants cannot update their own lease
-      const tenantIdStr =
-        typeof lease.tenantId === 'object' && lease.tenantId !== null
-          ? (lease.tenantId as any)._id?.toString() || lease.tenantId.toString()
-          : lease.tenantId?.toString();
-
-      if (tenantIdStr === currentUser.sub && currentUser.client.role === 'tenant') {
-        throw new ForbiddenError({
-          message: t('lease.errors.cannotUpdateOwnLease'),
-        });
-      }
+      // Prevent conflict of interest: cannot update a lease where you are the tenant
+      preventTenantConflict(
+        currentUser.sub,
+        lease.tenantId as any,
+        t('lease.errors.cannotUpdateOwnLease')
+      );
 
       if (
         lease.status === LeaseStatus.PENDING_SIGNATURE &&
@@ -773,6 +769,8 @@ export class LeaseService {
       throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
     }
 
+    preventTenantConflict(userId, lease.tenantId as any);
+
     // Only DRAFT and CANCELLED leases can be deleted
     if (lease.status !== LeaseStatus.DRAFT && lease.status !== LeaseStatus.CANCELLED) {
       throw new ValidationRequestError({
@@ -825,6 +823,10 @@ export class LeaseService {
     if (!lease) {
       throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
     }
+
+    // tenantId may be populated (full document) — extract _id when that's the case
+    const tenantRef = (lease.tenantId as any)?._id ?? lease.tenantId;
+    preventTenantConflict(currentUser.sub, tenantRef);
 
     if (lease.status !== LeaseStatus.ACTIVE) {
       throw new ValidationRequestError({
@@ -2595,10 +2597,10 @@ export class LeaseService {
     }
 
     return {
-      tenantName: lease.tenantInfo?.fullname,
+      tenantName: lease.tenantInfo?.fullname || 'Tenant',
       propertyAddress: lease.property.address,
       leaseNumber: lease.leaseNumber,
-      unitNumber: lease.property.unitNumber,
+      unitNumber: lease.property.unitNumber || '',
       endDate: lease.duration.endDate,
       daysRemaining,
 
@@ -2615,9 +2617,9 @@ export class LeaseService {
       responseDeadline,
 
       // Property manager info
-      propertyManagerName: propertyManager?.fullName,
-      propertyManagerEmail: propertyManager?.email,
-      propertyManagerPhone: propertyManager?.phone,
+      propertyManagerName: propertyManager?.fullName || 'Property Manager',
+      propertyManagerEmail: propertyManager?.email || envVariables.EMAIL.APP_EMAIL_ADDRESS,
+      propertyManagerPhone: propertyManager?.phone || '',
 
       // URLs
       renewalUrl: `${envVariables.FRONTEND.URL}/leases/${lease.luid}/lease_renewal_confirmation`,

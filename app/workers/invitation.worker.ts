@@ -1,6 +1,6 @@
+import { Job } from 'bull';
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
-import { DoneCallback, Job } from 'bull';
 import { EmailQueue } from '@queues/index';
 import { VendorDAO } from '@dao/vendorDAO';
 import { envVariables } from '@shared/config';
@@ -95,7 +95,7 @@ export class InvitationWorker {
     this.log = createLogger('InvitationWorker');
   }
 
-  processCsvValidation = async (job: Job<CsvJobData>, done: DoneCallback) => {
+  processCsvValidation = async (job: Job<CsvJobData>) => {
     job.progress(10);
     const { csvFilePath, clientInfo, userId } = job.data;
     this.log.info(
@@ -156,7 +156,11 @@ export class InvitationWorker {
         );
       }
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
-      done(null, {
+      this.log.info(
+        `Done processing invitation CSV validation job ${job.id} for client ${clientInfo.cuid}`
+      );
+
+      return {
         processId: job.id,
         validCount: result.validInvitations.length,
         errorCount: result.errors ? result.errors.length : 0,
@@ -164,18 +168,15 @@ export class InvitationWorker {
         success: true,
         totalRows: result.totalRows,
         finishedAt: result.finishedAt,
-      });
-      this.log.info(
-        `Done processing invitation CSV validation job ${job.id} for client ${clientInfo.cuid}`
-      );
+      };
     } catch (error) {
       this.log.error(`Error processing invitation CSV validation job ${job.id}:`, error);
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
-      done(error, null);
+      throw error;
     }
   };
 
-  processCsvImport = async (job: Job<CsvJobData>, done: DoneCallback) => {
+  processCsvImport = async (job: Job<CsvJobData>) => {
     const { csvFilePath, clientInfo, userId } = job.data;
 
     job.progress(10);
@@ -207,15 +208,14 @@ export class InvitationWorker {
           'job-notification'
         );
 
-        done(null, {
+        return {
           success: false,
           processId: job.id,
           data: null,
           finishedAt: new Date(),
           errors: csvResult.errors,
           message: 'No valid invitations found in CSV',
-        });
-        return;
+        };
       }
 
       const results = [];
@@ -286,7 +286,11 @@ export class InvitationWorker {
         'job-notification'
       );
 
-      done(null, {
+      this.log.info(
+        `Done processing invitation CSV import job ${job.id} for client ${clientInfo.cuid}. Success: ${successCount}, Failed: ${failedCount}`
+      );
+
+      return {
         success: true,
         processId: job.id,
         data: {
@@ -297,11 +301,7 @@ export class InvitationWorker {
         },
         finishedAt: new Date(),
         message: `Processed ${successCount} invitations successfully, ${failedCount} failed`,
-      });
-
-      this.log.info(
-        `Done processing invitation CSV import job ${job.id} for client ${clientInfo.cuid}. Success: ${successCount}, Failed: ${failedCount}`
-      );
+      };
     } catch (error) {
       this.log.error(`Error processing invitation CSV import job ${job.id}:`, error);
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
@@ -321,7 +321,7 @@ export class InvitationWorker {
         'job-notification'
       );
 
-      done(error, null);
+      throw error;
     }
   };
 
@@ -464,7 +464,7 @@ export class InvitationWorker {
     return invitation;
   }
 
-  processCsvBulkUserValidation = async (job: Job<CsvJobData>, done: DoneCallback) => {
+  processCsvBulkUserValidation = async (job: Job<CsvJobData>) => {
     job.progress(10);
     const { csvFilePath, clientInfo, userId, bulkCreateOptions } = job.data;
     this.log.info(
@@ -480,8 +480,11 @@ export class InvitationWorker {
       job.progress(100);
 
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+      this.log.info(
+        `Done processing bulk user CSV validation job ${job.id} for client ${clientInfo.cuid}`
+      );
 
-      done(null, {
+      return {
         processId: job.id,
         validCount: result.validInvitations.length,
         errorCount: result.errors ? result.errors.length : 0,
@@ -491,18 +494,15 @@ export class InvitationWorker {
         finishedAt: result.finishedAt,
         mode: 'bulk_create',
         options: bulkCreateOptions,
-      });
-      this.log.info(
-        `Done processing bulk user CSV validation job ${job.id} for client ${clientInfo.cuid}`
-      );
+      };
     } catch (error) {
       this.log.error(`Error processing bulk user CSV validation job ${job.id}:`, error);
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
-      done(error, null);
+      throw error;
     }
   };
 
-  processCsvBulkUserImport = async (job: Job<CsvJobData>, done: DoneCallback) => {
+  processCsvBulkUserImport = async (job: Job<CsvJobData>) => {
     const { csvFilePath, clientInfo, userId, bulkCreateOptions } = job.data;
 
     job.progress(10);
@@ -517,7 +517,7 @@ export class InvitationWorker {
 
       if (!csvResult.validInvitations.length) {
         this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
-        done(null, {
+        return {
           success: false,
           processId: job.id,
           data: null,
@@ -525,8 +525,7 @@ export class InvitationWorker {
           errors: csvResult.errors,
           message: 'No valid users found in CSV',
           mode: 'bulk_create',
-        });
-        return;
+        };
       }
 
       const results = [];
@@ -573,7 +572,11 @@ export class InvitationWorker {
 
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
 
-      done(null, {
+      this.log.info(
+        `Done processing bulk user CSV import job ${job.id} for client ${clientInfo.cuid}. Success: ${successCount}, Failed: ${failedCount}`
+      );
+
+      return {
         success: true,
         processId: job.id,
         data: {
@@ -586,15 +589,11 @@ export class InvitationWorker {
         },
         finishedAt: new Date(),
         message: `Created ${successCount} users successfully, ${failedCount} failed`,
-      });
-
-      this.log.info(
-        `Done processing bulk user CSV import job ${job.id} for client ${clientInfo.cuid}. Success: ${successCount}, Failed: ${failedCount}`
-      );
+      };
     } catch (error) {
       this.log.error(`Error processing bulk user CSV import job ${job.id}:`, error);
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
-      done(error, null);
+      throw error;
     }
   };
 
@@ -707,11 +706,15 @@ export class InvitationWorker {
       timeZone: 'UTC',
       policies: {
         tos: {
-          accepted: true, // Auto-accept for bulk created users
-          acceptedOn: new Date(),
+          accepted: false,
+          acceptedOn: null,
+        },
+        privacy: {
+          accepted: false,
+          acceptedOn: null,
         },
         marketing: {
-          accepted: false, // Conservative default - no marketing consent
+          accepted: false,
           acceptedOn: null,
         },
       },

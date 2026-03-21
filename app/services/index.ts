@@ -8,6 +8,7 @@ export * from './mediaUpload';
 export * from './fileUpload';
 export * from './invitation';
 export * from './permission';
+export * from './payments';
 export * from './external';
 export * from './property';
 export * from './profile';

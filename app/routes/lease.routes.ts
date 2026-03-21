@@ -10,6 +10,7 @@ import {
   isAuthenticated,
   requireFeature,
   basicLimiter,
+  idempotency,
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
@@ -71,6 +72,7 @@ router
   .post(
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     requireVerifiedClient,
+    idempotency,
     diskUpload(['document']),
     scanFile,
     validateRequest({
@@ -88,6 +90,7 @@ router.post(
   '/:cuid/:leaseId/pdf',
   // Generate PDF from lease JSON data using Puppeteer + EJS template
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  idempotency,
   validateRequest({
     params: UtilsValidations.cuidAndLeaseId,
   }),
@@ -124,6 +127,7 @@ router
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     diskUpload(['document']),
     scanFile,
+    idempotency,
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),
       body: LeaseValidations.updateLease,
@@ -150,6 +154,7 @@ router.post(
   // Activate lease (after all signatures complete, marks unit as occupied)
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   requireVerifiedClient,
+  idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     body: LeaseValidations.activateLease,
@@ -164,6 +169,7 @@ router.post(
   '/:cuid/:luid/terminate',
   // Terminate lease early (tenant moves out before end date)
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     body: LeaseValidations.terminateLease,
@@ -182,6 +188,7 @@ router
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     diskUpload(['document']),
     scanFile,
+    idempotency,
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     }),
@@ -221,6 +228,7 @@ router
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     subscriptionEntitlements,
     requireFeature('eSignature'),
+    idempotency,
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),
       body: LeaseValidations.signatureAction,
@@ -249,6 +257,7 @@ router.post(
   '/:cuid/:luid/pdf',
   // Generate PDF from lease JSON data using Puppeteer + EJS template
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
   }),
@@ -301,6 +310,7 @@ router
   .post(
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     requireVerifiedClient,
+    idempotency,
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),
       body: LeaseValidations.renewLease,

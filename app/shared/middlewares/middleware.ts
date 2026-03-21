@@ -22,6 +22,7 @@ import {
   RateLimitOptions,
   IPermissionCheck,
   RequestSource,
+  AppRequest,
   TokenType,
 } from '@interfaces/utils.interface';
 import {
@@ -49,6 +50,7 @@ interface PermissionCheck {
   resource: PermissionResource | string;
   action: PermissionAction | string;
 }
+const logger = createLogger('MiddlewareLogger');
 
 export const scopedMiddleware = (req: Request, res: Response, next: NextFunction) => {
   const scope = container.createScope();
@@ -90,7 +92,7 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
 
     const currentUserResp = await authCache.getCurrentUser(payload.data?.sub as string);
     if (!currentUserResp.success) {
-      console.error('User not found in cache, fetching from database...');
+      logger.error('User not found in cache, fetching from database...');
       const _currentuser = await profileDAO.generateCurrentUserInfo(payload.data?.sub as string);
       if (_currentuser) {
         await authCache.saveCurrentUser(_currentuser);
@@ -129,7 +131,7 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       }
       return next(new UnauthorizedError({ message: 'Session expired.' }));
     }
-    console.log(error);
+    logger.error(error);
     return next(new UnauthorizedError());
   }
 };
@@ -141,7 +143,7 @@ export const diskUpload =
     const uploadMiddleware = diskStorage.uploadMiddleware(fieldNames);
     uploadMiddleware(req, res, (err: any) => {
       if (err) {
-        console.error('❌ [ERROR] diskUpload middleware failed:', err);
+        logger.error('❌ [ERROR] diskUpload middleware failed:', err);
       }
       next(err);
     });
@@ -251,6 +253,7 @@ export const requestLogger =
         referer: req.get('referer') || '-',
       };
       const responseObject = {
+        requestId: (req as any).context?.requestId,
         method: req.method,
         url: req.originalUrl,
         statusCode: res.statusCode,
@@ -344,7 +347,7 @@ export const setUserLanguage = async (req: Request, _res: Response, next: NextFu
 
     next();
   } catch (error) {
-    console.error('Error in setUserLanguage middleware:', error);
+    logger.error('Error in setUserLanguage middleware:', error);
     next();
   }
 };
@@ -379,7 +382,7 @@ export const subscriptionEntitlements = async (
 
     next();
   } catch (error) {
-    console.error('Error in subscriptionEntitlements middleware:', error);
+    logger.error('Error in subscriptionEntitlements middleware:', error);
     next();
   }
 };
@@ -391,11 +394,14 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
       ? (sourceHeader as RequestSource)
       : RequestSource.UNKNOWN;
 
+    const requestId = (req.headers['x-request-id'] as string | undefined) || generateShortUID(12);
+    res.setHeader('X-Request-ID', requestId);
+
     const uaParser = new UAParser(req.headers['user-agent'] as string);
     const uaResult = uaParser.getResult();
     req.context = {
       timestamp: new Date(),
-      requestId: generateShortUID(12),
+      requestId,
       source,
       ip: req.ip || req.socket.remoteAddress || '',
       userAgent: {
@@ -427,7 +433,7 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
     };
     next();
   } catch (error) {
-    console.error('Error in context middleware:', error);
+    logger.error('Error in context middleware:', error);
     next(error);
   }
 };
@@ -470,7 +476,7 @@ export const requirePermission = (
       // Check client context for client-specific resources
       const clientId = req.params.clientId || req.params.cuid;
       if (clientId && currentuser.client.cuid !== clientId) {
-        console.error('Client ID mismatch: ', { clientId, userClientId: currentuser.client.cuid });
+        logger.error('Client ID mismatch: ', { clientId, userClientId: currentuser.client.cuid });
         return next(new ForbiddenError({ message: t('auth.errors.clientAccessDenied') }));
       }
 
@@ -478,7 +484,7 @@ export const requirePermission = (
       if (resource === PermissionResource.CLIENT) {
         const restrictedRoles = ROLE_GROUPS.EXTERNAL_ROLES;
         if (restrictedRoles.includes(currentuser.client.role as any)) {
-          console.log('Insufficient role for CLIENT resource:', {
+          logger.error('Insufficient role for CLIENT resource:', {
             role: currentuser.client.role,
             resource,
             action,
@@ -495,7 +501,7 @@ export const requirePermission = (
       );
 
       if (!hasPermission.granted) {
-        console.warn('Permission denied:', {
+        logger.warn('Permission denied:', {
           userId: currentuser.sub,
           resource,
           action,
@@ -514,7 +520,7 @@ export const requirePermission = (
 
       next();
     } catch (error) {
-      console.error('Error in requirePermission middleware:', error);
+      logger.error('Error in requirePermission middleware:', error);
       return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
     }
   };
@@ -596,7 +602,7 @@ export const requireAnyPermission = (permissions: PermissionCheck[]) => {
       // No valid permissions found
       return next(new ForbiddenError({ message: t('auth.errors.insufficientPermissions') }));
     } catch (error) {
-      console.error('Error in requireAnyPermission middleware:', error);
+      logger.error('Error in requireAnyPermission middleware:', error);
       return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
     }
   };
@@ -634,7 +640,7 @@ export const requireAllPermissions = (permissions: PermissionCheck[]) => {
 
       next();
     } catch (error) {
-      console.error('Error in requireAllPermissions middleware:', error);
+      logger.error('Error in requireAllPermissions middleware:', error);
       return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
     }
   };
@@ -692,7 +698,7 @@ export const requirePermissionWithContext = (
             ...extractedContext,
           };
         } catch (error) {
-          console.warn('Error extracting resource context:', error);
+          logger.warn('Error extracting resource context:', error);
         }
       }
 
@@ -727,7 +733,7 @@ export const requirePermissionWithContext = (
 
       next();
     } catch (error) {
-      console.error('Error in requirePermissionWithContext middleware:', error);
+      logger.error('Error in requirePermissionWithContext middleware:', error);
       return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
     }
   };
@@ -780,3 +786,51 @@ export function preventTenantConflict(
     throw new ForbiddenError({ message });
   }
 }
+
+export const idempotency = async (
+  req: AppRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
+
+  if (!idempotencyKey) {
+    res.status(400).json({ success: false, message: 'Idempotency-Key header is required' });
+    return;
+  }
+
+  const { idempotencyCache } = req.container.cradle;
+  const userId = req.context?.currentuser?.sub ?? 'anonymous';
+  const cuid = req.params?.cuid ?? 'global';
+
+  try {
+    const cached = await idempotencyCache.getCachedRouteResponse(
+      req.method,
+      userId,
+      cuid,
+      idempotencyKey
+    );
+    if (cached) {
+      logger.info({ idempotencyKey, cuid }, 'Returning cached idempotent response');
+      res.status(cached.statusCode).json(cached.body);
+      return;
+    }
+
+    const originalJson = res.json.bind(res);
+    res.json = (body: any): Response => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        idempotencyCache
+          .cacheRouteResponse(req.method, userId, cuid, idempotencyKey, res.statusCode, body)
+          .catch((err: unknown) =>
+            logger.error({ err, idempotencyKey, cuid }, 'Failed to cache idempotent response')
+          );
+      }
+      return originalJson(body);
+    };
+
+    next();
+  } catch (err) {
+    logger.error({ err, idempotencyKey }, 'Idempotency middleware error');
+    next(); // fail open
+  }
+};

@@ -1,4 +1,11 @@
 import { Types } from 'mongoose';
+
+// Break the circular import chain: payments.service → @shared/middlewares → @di/index → registerResources → payments.service (undefined)
+jest.mock('@shared/middlewares', () => ({
+  preventTenantConflict: jest.requireActual('@shared/middlewares/middleware').preventTenantConflict,
+}));
+jest.mock('@di/index', () => ({ container: {} }));
+
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { PaymentService } from '@services/payments/payments.service';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
@@ -437,7 +444,7 @@ describe('PaymentService - recordManualPayment', () => {
       processingFee: 0,
     } as any);
 
-    const result = await paymentService.recordManualPayment(CUID, USER_ID, makeData());
+    const result = await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData());
 
     expect(result.success).toBe(true);
     expect(result.data.status).toBe(PaymentRecordStatus.PAID);
@@ -452,7 +459,7 @@ describe('PaymentService - recordManualPayment', () => {
     mockLeaseDAO.findById.mockResolvedValue(makeLease() as any);
     mockPaymentDAO.insert.mockResolvedValue({} as any);
 
-    await paymentService.recordManualPayment(CUID, USER_ID, makeData({ paidAt }));
+    await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData({ paidAt }));
 
     const insertCall = mockPaymentDAO.insert.mock.calls[0][0];
     expect(insertCall.dueDate).toEqual(paidAt);
@@ -464,7 +471,7 @@ describe('PaymentService - recordManualPayment', () => {
     mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
     mockPaymentDAO.insert.mockResolvedValue({} as any);
 
-    const result = await paymentService.recordManualPayment(CUID, USER_ID, makeData({ leaseId: undefined }));
+    const result = await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData({ leaseId: undefined }));
 
     expect(result.success).toBe(true);
     expect(mockLeaseDAO.findById).not.toHaveBeenCalled();
@@ -476,7 +483,7 @@ describe('PaymentService - recordManualPayment', () => {
     mockLeaseDAO.findById.mockResolvedValue(makeLease() as any);
     mockPaymentDAO.insert.mockResolvedValue({} as any);
 
-    await paymentService.recordManualPayment(CUID, USER_ID, makeData({
+    await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData({
       receipt: { url: 'https://s3.aws.com/receipts/receipt.pdf', filename: 'receipt.pdf', key: 'receipts/abc123.pdf' },
     }));
 
@@ -486,15 +493,15 @@ describe('PaymentService - recordManualPayment', () => {
 
   it('should throw NotFoundError when client, profile, or lease is not found', async () => {
     mockClientDAO.findFirst.mockResolvedValue(null);
-    await expect(paymentService.recordManualPayment(CUID, USER_ID, makeData())).rejects.toThrow(NotFoundError);
+    await expect(paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())).rejects.toThrow(NotFoundError);
 
     mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
     mockProfileDAO.findFirst.mockResolvedValue(null);
-    await expect(paymentService.recordManualPayment(CUID, USER_ID, makeData())).rejects.toThrow(NotFoundError);
+    await expect(paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())).rejects.toThrow(NotFoundError);
 
     mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
     mockLeaseDAO.findById.mockResolvedValue(null);
-    await expect(paymentService.recordManualPayment(CUID, USER_ID, makeData())).rejects.toThrow(NotFoundError);
+    await expect(paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())).rejects.toThrow(NotFoundError);
   });
 
   it('should throw NotFoundError when lease belongs to a different client', async () => {
@@ -502,7 +509,7 @@ describe('PaymentService - recordManualPayment', () => {
     mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
     mockLeaseDAO.findById.mockResolvedValue(makeLease({ cuid: 'DIFFERENT_CUID' }) as any);
 
-    await expect(paymentService.recordManualPayment(CUID, USER_ID, makeData())).rejects.toThrow(NotFoundError);
+    await expect(paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())).rejects.toThrow(NotFoundError);
   });
 });
 
@@ -515,6 +522,9 @@ describe('PaymentService - refundPayment', () => {
   let mockPaymentDAO: jest.Mocked<PaymentDAO>;
   let mockPaymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
   let mockPaymentGatewayService: jest.Mocked<PaymentGatewayService>;
+  let mockProfileDAO: jest.Mocked<ProfileDAO>;
+
+  const ADMIN_ID = new Types.ObjectId().toString();
 
   const makePaidPayment = (overrides: Record<string, any> = {}) => ({
     _id: new Types.ObjectId(),
@@ -536,7 +546,13 @@ describe('PaymentService - refundPayment', () => {
     mockPaymentDAO = { findFirst: jest.fn(), updateById: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
     mockPaymentProcessorDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockPaymentGatewayService = { createRefund: jest.fn() } as unknown as jest.Mocked<PaymentGatewayService>;
-    paymentService = makeServiceWithMocks({ paymentDAO: mockPaymentDAO, paymentProcessorDAO: mockPaymentProcessorDAO, paymentGatewayService: mockPaymentGatewayService });
+    mockProfileDAO = { findFirst: jest.fn().mockResolvedValue(null) } as unknown as jest.Mocked<ProfileDAO>;
+    paymentService = makeServiceWithMocks({
+      paymentDAO: mockPaymentDAO,
+      paymentProcessorDAO: mockPaymentProcessorDAO,
+      paymentGatewayService: mockPaymentGatewayService,
+      profileDAO: mockProfileDAO,
+    });
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -548,7 +564,7 @@ describe('PaymentService - refundPayment', () => {
     mockPaymentGatewayService.createRefund.mockResolvedValue({ success: true, data: { refundId: 're_test_123', status: 'succeeded', amount: 150000, currency: 'usd' } } as any);
     mockPaymentDAO.updateById.mockResolvedValue({ ...payment, status: PaymentRecordStatus.REFUNDED, refund: { refundedAt: new Date(), amount: 150000 } } as any);
 
-    const result = await paymentService.refundPayment(CUID, PYTUID, {});
+    const result = await paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {});
 
     expect(result.success).toBe(true);
     expect(result.data.status).toBe(PaymentRecordStatus.REFUNDED);
@@ -561,7 +577,7 @@ describe('PaymentService - refundPayment', () => {
     mockPaymentGatewayService.createRefund.mockResolvedValue({ success: true, data: {} } as any);
     mockPaymentDAO.updateById.mockResolvedValue({ ...payment, status: PaymentRecordStatus.REFUNDED } as any);
 
-    await paymentService.refundPayment(CUID, PYTUID, { amount: 50000, reason: 'Partial refund' });
+    await paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, { amount: 50000, reason: 'Partial refund' });
 
     expect(mockPaymentGatewayService.createRefund).toHaveBeenCalledWith(
       'stripe',
@@ -579,7 +595,7 @@ describe('PaymentService - refundPayment', () => {
     mockPaymentGatewayService.createRefund.mockResolvedValue({ success: true, data: {} } as any);
     mockPaymentDAO.updateById.mockResolvedValue({} as any);
 
-    await paymentService.refundPayment(CUID, PYTUID, {});
+    await paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {});
     expect(mockPaymentDAO.updateById.mock.calls[0][1]).toMatchObject({ status: PaymentRecordStatus.REFUNDED, 'refund.amount': 200000 });
     expect(mockPaymentDAO.updateById.mock.calls[0][1]['refund.refundedAt']).toBeInstanceOf(Date);
 
@@ -589,46 +605,46 @@ describe('PaymentService - refundPayment', () => {
     mockPaymentGatewayService.createRefund.mockResolvedValue({ success: true, data: {} } as any);
     mockPaymentDAO.updateById.mockResolvedValue({} as any);
 
-    await paymentService.refundPayment(CUID, PYTUID, { amount: 75000 });
+    await paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, { amount: 75000 });
     expect(mockPaymentDAO.updateById.mock.calls[0][1]['refund.amount']).toBe(75000);
   });
 
   it('should throw BadRequestError when cuid or pytuid is missing', async () => {
-    await expect(paymentService.refundPayment('', PYTUID, {})).rejects.toThrow(BadRequestError);
-    await expect(paymentService.refundPayment(CUID, '', {})).rejects.toThrow(BadRequestError);
+    await expect(paymentService.refundPayment('', PYTUID, ADMIN_ID, {})).rejects.toThrow(BadRequestError);
+    await expect(paymentService.refundPayment(CUID, '', ADMIN_ID, {})).rejects.toThrow(BadRequestError);
   });
 
   it('should throw NotFoundError when payment does not exist', async () => {
     mockPaymentDAO.findFirst.mockResolvedValue(null);
-    await expect(paymentService.refundPayment(CUID, PYTUID, {})).rejects.toThrow(NotFoundError);
+    await expect(paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {})).rejects.toThrow(NotFoundError);
   });
 
   it('should throw BadRequestError when payment is not PAID (PENDING or CANCELLED)', async () => {
     mockPaymentDAO.findFirst.mockResolvedValue(makePaidPayment({ status: PaymentRecordStatus.PENDING }) as any);
-    await expect(paymentService.refundPayment(CUID, PYTUID, {})).rejects.toThrow(BadRequestError);
+    await expect(paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {})).rejects.toThrow(BadRequestError);
 
     mockPaymentDAO.findFirst.mockResolvedValue(makePaidPayment({ status: PaymentRecordStatus.CANCELLED }) as any);
-    await expect(paymentService.refundPayment(CUID, PYTUID, {})).rejects.toThrow(BadRequestError);
+    await expect(paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {})).rejects.toThrow(BadRequestError);
   });
 
   it('should throw BadRequestError when payment has no gatewayChargeId (manual entry)', async () => {
     mockPaymentDAO.findFirst.mockResolvedValue(makePaidPayment({ gatewayChargeId: null }) as any);
-    await expect(paymentService.refundPayment(CUID, PYTUID, {})).rejects.toThrow(BadRequestError);
+    await expect(paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {})).rejects.toThrow(BadRequestError);
   });
 
   it('should throw BadRequestError when partial refund amount exceeds baseAmount', async () => {
     mockPaymentDAO.findFirst.mockResolvedValue(makePaidPayment({ baseAmount: 100000 }) as any);
-    await expect(paymentService.refundPayment(CUID, PYTUID, { amount: 200000 })).rejects.toThrow(BadRequestError);
+    await expect(paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, { amount: 200000 })).rejects.toThrow(BadRequestError);
     expect(mockPaymentGatewayService.createRefund).not.toHaveBeenCalled();
   });
 
   it('should throw BadRequestError when payment processor is not configured or has no accountId', async () => {
     mockPaymentDAO.findFirst.mockResolvedValue(makePaidPayment() as any);
     mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
-    await expect(paymentService.refundPayment(CUID, PYTUID, {})).rejects.toThrow(BadRequestError);
+    await expect(paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {})).rejects.toThrow(BadRequestError);
 
     mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor({ accountId: null }) as any);
-    await expect(paymentService.refundPayment(CUID, PYTUID, {})).rejects.toThrow(BadRequestError);
+    await expect(paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {})).rejects.toThrow(BadRequestError);
   });
 });
 

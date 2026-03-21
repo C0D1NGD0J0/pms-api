@@ -6,9 +6,16 @@ import { ProfileDAO } from '@dao/profileDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { InvitationDAO } from '@dao/invitationDAO';
 import { ForbiddenError } from '@shared/customErrors';
-import { LeaseService } from '@services/lease/lease.service';
 import { ILeaseFormData } from '@interfaces/lease.interface';
 import { IRequestContext } from '@interfaces/utils.interface';
+
+// Break the circular import chain: lease.service → @shared/middlewares → @di/index → registerResources → lease.service (undefined)
+jest.mock('@shared/middlewares', () => ({
+  preventTenantConflict: jest.requireActual('@shared/middlewares/middleware').preventTenantConflict,
+}));
+jest.mock('@di/index', () => ({ container: {} }));
+
+import { LeaseService } from '@services/lease/lease.service';
 
 describe('LeaseService - Tenant Self-Assignment Prevention', () => {
   let leaseService: LeaseService;

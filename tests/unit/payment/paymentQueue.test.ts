@@ -56,10 +56,10 @@ describe('PaymentQueue', () => {
       expect((queue as any).processQueueJobs).toHaveBeenCalledTimes(3);
     });
 
-    it('should register CREATE_RENT_INVOICE_JOB processor with concurrency 5', () => {
+    it('should register CREATE_RENT_INVOICE_JOB processor with concurrency 3', () => {
       expect((queue as any).processQueueJobs).toHaveBeenCalledWith(
         JOB_NAME.CREATE_RENT_INVOICE_JOB,
-        5,
+        3,
         mockWorker.handleCreateRentInvoice
       );
     });
@@ -67,15 +67,15 @@ describe('PaymentQueue', () => {
     it('should register RETRY_FAILED_INVOICE_JOB processor', () => {
       expect((queue as any).processQueueJobs).toHaveBeenCalledWith(
         JOB_NAME.RETRY_FAILED_INVOICE_JOB,
-        2,
+        1,
         mockWorker.handleCreateRentInvoice
       );
     });
 
-    it('should register CANCEL_PAYMENT_JOB processor with concurrency 10', () => {
+    it('should register CANCEL_PAYMENT_JOB processor with concurrency 3', () => {
       expect((queue as any).processQueueJobs).toHaveBeenCalledWith(
         JOB_NAME.CANCEL_PAYMENT_JOB,
-        10,
+        3,
         mockWorker.handleCancelPayment
       );
     });

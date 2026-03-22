@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { VendorController } from '@controllers/VendorController';
-import { requirePermission, isAuthenticated } from '@shared/middlewares';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
+import { requirePermission, isAuthenticated, basicLimiter } from '@shared/middlewares';
 import {
   ClientValidations,
   VendorValidations,
@@ -11,6 +11,7 @@ import {
 } from '@shared/validations';
 
 const router = Router();
+router.use(basicLimiter());
 
 router.get(
   '/:cuid/vendors/stats',

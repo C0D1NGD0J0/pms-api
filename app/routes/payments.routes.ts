@@ -100,6 +100,7 @@ router.patch(
 router.post(
   '/:cuid/:pytuid/refund',
   isAuthenticated,
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
   requireVerifiedClient,
   idempotency,
@@ -116,6 +117,7 @@ router.post(
 router.post(
   '/:cuid/payout-account',
   isAuthenticated,
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   requireVerifiedClient,
   idempotency,
@@ -132,6 +134,7 @@ router.post(
 router.get(
   '/:cuid/payout-account/onboard',
   isAuthenticated,
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   requireVerifiedClient,
   validateRequest({ params: UtilsValidations.cuid }),

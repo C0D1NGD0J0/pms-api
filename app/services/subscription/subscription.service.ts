@@ -282,7 +282,7 @@ export class SubscriptionService {
         billingInterval,
         entitlements: config.features,
         billing: {
-          customerId: isPaidPlan ? '' : 'none', // will be set via webhook after payment
+          customerId: 'none', // will be updated by Stripe webhook after payment
           provider: isPaidPlan ? IPaymentGatewayProvider.STRIPE : IPaymentGatewayProvider.NONE,
           planId: planId || 'none',
           planLookUpKey: planLookUpKey,
@@ -1153,6 +1153,17 @@ export class SubscriptionService {
         throw new BadRequestError({ message: 'Cannot update canceled/inactive subscription' });
       }
 
+      // Free plan: activate directly without Stripe checkout
+      if (checkoutData.planName === 'essential') {
+        await this.subscriptionDAO.downgradeToStarter(subscription._id.toString());
+        await this.notifyAccountAdminViaSSE(cuid, {
+          type: 'subscription_activated',
+          subscription: { plan: 'essential', status: 'active' },
+          message: 'Essential plan activated',
+        });
+        return { data: { activated: true }, success: true };
+      }
+
       const hasActiveStripeSubscription = !!subscription.billing?.subscriberId;
       const isInitialPayment =
         subscription.status === ISubscriptionStatus.PENDING_PAYMENT || !hasActiveStripeSubscription;
@@ -1483,6 +1494,7 @@ export class SubscriptionService {
         throw new BadRequestError({ message: 'Subscription not found' });
       }
 
+      const wasFirstActivation = subscription.status === ISubscriptionStatus.PENDING_PAYMENT;
       const updateData: any = {};
       if (status === 'active') {
         updateData.status = ISubscriptionStatus.ACTIVE;
@@ -1610,7 +1622,10 @@ export class SubscriptionService {
           : `Your subscription status has been updated to ${status}`;
 
       await this.notifyAccountAdminViaSSE(updatedSubscription.cuid, {
-        type: 'subscription_updated',
+        type:
+          wasFirstActivation && status === 'active'
+            ? 'subscription_activated'
+            : 'subscription_updated',
         subscription: {
           plan: updatedSubscription.planName,
           status: updatedSubscription.status,

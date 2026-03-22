@@ -56,6 +56,7 @@ export class App implements IAppSetup {
   };
 
   private securityMiddleware(app: Application): void {
+    app.set('trust proxy', 1); // Trust Railway's load balancer (1 hop)
     app.use(hpp());
     app.use(helmet());
     app.use(

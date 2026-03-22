@@ -26,11 +26,12 @@ export class RedisService {
     const productionConfig = {
       socket: {
         reconnectStrategy: (retries: number) => {
-          if (retries > 5) {
-            return new Error('Too many reconnect attempts');
+          // In cloud environments (Railway), Redis may restart temporarily.
+          // Never permanently close the client — keep retrying with exponential backoff.
+          if (retries > 10) {
+            this.log.warn(`Redis reconnect attempt ${retries} — connection degraded`);
           }
-          // Exponential backoff to reduce connection attempts
-          return Math.min(retries * 500, 10000);
+          return Math.min(retries * 1000, 30000); // cap at 30s between retries
         },
         connectTimeout: 30000,
         keepAlive: 120000, // 2 minutes - reduced frequency

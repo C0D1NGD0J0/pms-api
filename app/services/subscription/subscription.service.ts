@@ -1117,7 +1117,12 @@ export class SubscriptionService {
       planName?: string;
       priceId: string;
     }
-  ): IPromiseReturnedData<{ checkoutUrl?: string; sessionId?: string; message?: string }> {
+  ): IPromiseReturnedData<{
+    checkoutUrl?: string;
+    sessionId?: string;
+    message?: string;
+    activated?: boolean;
+  }> {
     try {
       const { currentuser } = ctx;
       const cuid = currentuser!.client.cuid;

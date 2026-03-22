@@ -25,22 +25,6 @@ export interface ICompletionField {
 
 const DEFAULT_AVATAR_PATTERN = 'lorempixel.com';
 
-function isDefaultAvatarUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    const hostname = parsed.hostname.toLowerCase();
-    const defaultHost = DEFAULT_AVATAR_PATTERN.toLowerCase();
-
-    return (
-      hostname === defaultHost ||
-      hostname.endsWith('.' + defaultHost)
-    );
-  } catch {
-    // If the URL is invalid, conservatively treat it as non-default.
-    return false;
-  }
-}
-
 export function computeProfileCompletion(
   profile: IProfileDocument,
   client: IClientDocument,
@@ -176,6 +160,19 @@ function scoreSection(
     totalFields,
     fields,
   };
+}
+
+function isDefaultAvatarUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    const defaultHost = DEFAULT_AVATAR_PATTERN.toLowerCase();
+
+    return hostname === defaultHost || hostname.endsWith('.' + defaultHost);
+  } catch {
+    // If the URL is invalid, conservatively treat it as non-default.
+    return false;
+  }
 }
 
 function isCustomAvatar(url?: string): boolean {

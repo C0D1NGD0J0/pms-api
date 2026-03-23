@@ -1,7 +1,12 @@
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { Subscription } from '@models/index';
-import { ISubscriptionDocument, IPaymentGateway } from '@interfaces/subscription.interface';
+import {
+  IPaymentGatewayProvider,
+  ISubscriptionDocument,
+  ISubscriptionStatus,
+  IPaymentGateway,
+} from '@interfaces/subscription.interface';
 
 import { BaseDAO } from './baseDAO';
 import { IFindOptions } from './interfaces/baseDAO.interface';
@@ -70,6 +75,30 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
       );
     } catch (error) {
       this.logger.error({ error, subscriptionId }, 'Error downgrading subscription');
+      this.throwErrorHandler(error);
+    }
+  }
+
+  async activateEssentialPlan(
+    subscriptionId: string | Types.ObjectId
+  ): Promise<ISubscriptionDocument | null> {
+    try {
+      return await this.update(
+        { _id: new Types.ObjectId(subscriptionId) },
+        {
+          $set: {
+            planName: 'essential',
+            status: ISubscriptionStatus.ACTIVE,
+            totalMonthlyPrice: 0,
+            pendingDowngradeAt: null,
+            'billing.subscriberId': null,
+            'billing.customerId': null,
+            'billing.provider': IPaymentGatewayProvider.NONE,
+          },
+        }
+      );
+    } catch (error) {
+      this.logger.error({ error, subscriptionId }, 'Error activating essential plan');
       this.throwErrorHandler(error);
     }
   }

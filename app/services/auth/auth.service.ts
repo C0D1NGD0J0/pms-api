@@ -218,7 +218,10 @@ export class AuthService {
               isConnected: true,
               roles: [IUserRole.SUPER_ADMIN],
               primaryRole: IUserRole.SUPER_ADMIN,
-              clientDisplayName: signupData.displayName || 'Property Manager',
+              clientDisplayName:
+                signupData.displayName ||
+                signupData.companyProfile?.tradingName ||
+                `${signupData.firstName} ${signupData.lastName}`,
             },
           ],
         },

@@ -282,7 +282,7 @@ export class SubscriptionService {
         billingInterval,
         entitlements: config.features,
         billing: {
-          customerId: 'none', // will be updated by Stripe webhook after payment
+          customerId: 'none', // placeholder; will be updated when a Stripe customer is created
           provider: isPaidPlan ? IPaymentGatewayProvider.STRIPE : IPaymentGatewayProvider.NONE,
           planId: planId || 'none',
           planLookUpKey: planLookUpKey,
@@ -1160,7 +1160,7 @@ export class SubscriptionService {
 
       // Free plan: activate directly without Stripe checkout
       if (checkoutData.planName === 'essential') {
-        await this.subscriptionDAO.downgradeToStarter(subscription._id.toString());
+        await this.subscriptionDAO.activateEssentialPlan(subscription._id.toString());
         await this.notifyAccountAdminViaSSE(cuid, {
           type: 'subscription_activated',
           subscription: { plan: 'essential', status: 'active' },

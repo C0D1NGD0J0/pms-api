@@ -47,6 +47,9 @@ export interface ISubscriptionDAO {
     subscriptionId: string | Types.ObjectId,
     endDate: Date
   ): Promise<ISubscriptionDocument | null>;
+  activateEssentialPlan(
+    subscriptionId: string | Types.ObjectId
+  ): Promise<ISubscriptionDocument | null>;
   downgradeToStarter(
     subscriptionId: string | Types.ObjectId
   ): Promise<ISubscriptionDocument | null>;

@@ -1,5 +1,6 @@
 import ejs from 'ejs';
 import Logger from 'bunyan';
+import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 import Mail from 'nodemailer/lib/mailer';
 import { createLogger } from '@utils/index';
@@ -22,12 +23,14 @@ interface EmailTemplateData {
 
 export class MailService {
   private readonly transporter: nodemailer.Transporter;
+  private readonly resendClient: Resend;
   private readonly log: Logger;
   private readonly templateCache: Map<string, EmailTemplate> = new Map();
 
   constructor() {
     this.log = createLogger('MailerService');
     this.transporter = this.buildMailTransporter();
+    this.resendClient = new Resend(envVariables.EMAIL.PROD.PROVIDER_PASSWORD);
   }
 
   /**
@@ -39,22 +42,32 @@ export class MailService {
   async sendMail(data: MailOptions, mailType: MailType): Promise<void> {
     try {
       const { html, text } = await this.getEmailTemplate(data.data, mailType);
+      const layoutData = { appName: envVariables.APP_NAME, year: new Date().getFullYear() };
+      const renderedHtml = await this.renderLayoutTemplate(html, layoutData);
+      const renderedText = await this.renderLayoutTemplate(text, layoutData);
 
-      const mailOptions: Mail.Options = {
-        from: envVariables.EMAIL.APP_EMAIL_ADDRESS,
-        to: data.to,
-        subject: data.subject || this.getDefaultSubject(mailType),
-        html: await this.renderLayoutTemplate(html, {
-          appName: envVariables.APP_NAME,
-          year: new Date().getFullYear(),
-        }),
-        text: await this.renderLayoutTemplate(text, {
-          appName: envVariables.APP_NAME,
-          year: new Date().getFullYear(),
-        }),
-      };
+      if (envVariables.SERVER.ENV === 'production') {
+        const { error } = await this.resendClient.emails.send({
+          from: envVariables.EMAIL.APP_EMAIL_ADDRESS,
+          to: data.to as string | string[],
+          subject: data.subject || this.getDefaultSubject(mailType),
+          html: renderedHtml,
+          text: renderedText || undefined,
+        });
 
-      await this.transporter.sendMail(mailOptions);
+        if (error) {
+          throw new Error(`Resend API error: ${error.message}`);
+        }
+      } else {
+        await this.transporter.sendMail({
+          from: envVariables.EMAIL.APP_EMAIL_ADDRESS,
+          to: data.to,
+          subject: data.subject || this.getDefaultSubject(mailType),
+          html: renderedHtml,
+          text: renderedText,
+        });
+      }
+
       this.log.info(`Email sent: ${mailType} mail.`);
     } catch (error) {
       this.log.error(

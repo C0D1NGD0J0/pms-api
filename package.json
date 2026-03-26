@@ -98,6 +98,7 @@
     "perfect-express-sanitizer": "^2.0.2",
     "puppeteer": "^24.27.0",
     "redis": "^4.7.0",
+    "resend": "^6.9.4",
     "sanitize-html": "^2.14.0",
     "slugify": "^1.6.6",
     "socket.io": "^4.8.1",

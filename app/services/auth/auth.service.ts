@@ -280,7 +280,7 @@ export class AuthService {
         },
         session
       );
-
+      console.log(client.toJSON(), 'Profile created with ID:', profile._id.toString());
       const subscriptionResult = await this.subscriptionService.createSubscription(
         client._id.toString(),
         {

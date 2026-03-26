@@ -244,6 +244,7 @@ export class SubscriptionService {
       }
 
       const client = await this.clientDAO.findById(clientId);
+      console.log(client?.toJSON(), 'Creating subscription for client');
       if (!client) {
         throw new BadRequestError({ message: 'Client not found for subscription' });
       }

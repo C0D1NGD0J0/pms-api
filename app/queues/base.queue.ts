@@ -345,6 +345,11 @@ export class BaseQueue<T extends JobData = JobData> {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
+      // Resume before closing so the paused flag is cleared in Redis.
+      // Without this, the flag persists after the process exits and causes
+      // queues to appear paused on the next deployment.
+      await this.queue.resume();
+
       this.queue.removeAllListeners();
       if (this.dlq) {
         this.dlq.removeAllListeners();

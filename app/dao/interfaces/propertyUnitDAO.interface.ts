@@ -1,3 +1,4 @@
+import { ClientSession } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
 import {
   PropertyUnitInspection,
@@ -26,6 +27,17 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
   }>;
 
   /**
+   * Find all units for a specific property
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to an array of property unit documents
+   */
+  findUnitsByPropertyId(
+    propertyId: string,
+    opts?: IPaginationQuery,
+    session?: ClientSession
+  ): ListResultWithPagination<IPropertyUnitDocument[]>;
+
+  /**
    * Add a new inspection record to a unit
    * @param unitId - The property unit ID
    * @param inspectionData - The inspection data
@@ -50,16 +62,6 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
     status: PropertyUnitStatus,
     userId: string
   ): Promise<IPropertyUnitDocument | null>;
-
-  /**
-   * Find all units for a specific property
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to an array of property unit documents
-   */
-  findUnitsByPropertyId(
-    propertyId: string,
-    opts?: IPaginationQuery
-  ): ListResultWithPagination<IPropertyUnitDocument[]>;
 
   /**
    * Find units by specific status

@@ -30,7 +30,9 @@ export interface IBaseDAO<T extends Document> {
     opts?: {
       projection?: string | Record<string, any>;
       populate?: string | Array<string | PopulateOptions> | PopulateOptions;
-    } & IPaginationQuery
+    } & IPaginationQuery,
+    useLean?: boolean,
+    session?: ClientSession
   ): ListResultWithPagination<T[]>;
 
   /**
@@ -93,6 +95,14 @@ export interface IBaseDAO<T extends Document> {
   findById(id: string | Types.ObjectId, session?: ClientSession): Promise<T | null>;
 
   /**
+   * Count the number of documents in the collection that match the filter.
+   *
+   * @param filter - Query used to filter the documents.
+   * @returns A promise that resolves to the count of documents that match the filter.
+   */
+  countDocuments(filter: FilterQuery<T>, session?: ClientSession): Promise<number>;
+
+  /**
    * Perform an aggregation operation on the collection.
    *
    * @param pipeline - An array of aggregation stages to be executed.
@@ -125,14 +135,6 @@ export interface IBaseDAO<T extends Document> {
    * @returns A promise that resolves to true if the document was successfully deleted, or false if not.
    */
   deleteItem(query: Record<string, string>): Promise<boolean>;
-
-  /**
-   * Count the number of documents in the collection that match the filter.
-   *
-   * @param filter - Query used to filter the documents.
-   * @returns A promise that resolves to the count of documents that match the filter.
-   */
-  countDocuments(filter: FilterQuery<T>): Promise<number>;
 
   /**
    * Start a new MongoDB session for transaction operations.

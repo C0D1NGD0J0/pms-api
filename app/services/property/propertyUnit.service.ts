@@ -840,7 +840,7 @@ export class PropertyUnitService {
 
     const session = await this.propertyUnitDAO.startSession();
     const result = await this.propertyUnitDAO.withTransaction(session, async (session) => {
-      const canAddUnits = await this.propertyDAO.canAddUnitToProperty(property.id);
+      const canAddUnits = await this.propertyDAO.canAddUnitToProperty(property.id, session);
       if (!canAddUnits.canAdd) {
         this.log.error(
           {
@@ -882,11 +882,11 @@ export class PropertyUnitService {
         });
       }
 
-      const existingUnits = await this.propertyDAO.getPropertyUnits(property.id, {
-        limit: 1000,
-        skip: 0,
-        page: 1,
-      });
+      const existingUnits = await this.propertyDAO.getPropertyUnits(
+        property.id,
+        { limit: 1000, skip: 0, page: 1 },
+        session
+      );
       const unitFormValues = existingUnits.items.map((u: any) => ({
         unitNumber: u.unitNumber,
         unitType: u.unitType,

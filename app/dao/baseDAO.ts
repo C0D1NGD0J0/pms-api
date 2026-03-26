@@ -99,7 +99,8 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       projection?: string | Record<string, any>;
       populate?: string | Array<string | PopulateOptions> | PopulateOptions;
     } & IPaginationQuery,
-    useLean = false
+    useLean = false,
+    session?: ClientSession
   ): ListResultWithPagination<T[]> {
     try {
       let query: any = this.model.find(filter);
@@ -124,7 +125,11 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
         }
       }
 
-      const count = await this.model.countDocuments(filter).exec();
+      if (session) query = query.session(session);
+
+      let countQuery = this.model.countDocuments(filter);
+      if (session) countQuery = countQuery.session(session);
+      const count = await countQuery.exec();
       const result = await query.exec();
       const pagination = paginateResult(count, options?.skip, options?.limit);
 
@@ -398,9 +403,11 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @param filter - Query used to filter the documents.
    * @returns A promise that resolves to the count of documents that match the filter.
    */
-  async countDocuments(filter: FilterQuery<T>): Promise<number> {
+  async countDocuments(filter: FilterQuery<T>, session?: ClientSession): Promise<number> {
     try {
-      return await this.model.countDocuments(filter).exec();
+      let query = this.model.countDocuments(filter);
+      if (session) query = query.session(session);
+      return await query.exec();
     } catch (error: unknown) {
       throw this.throwErrorHandler(error);
     }

@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
-import { FilterQuery, Model, Types } from 'mongoose';
+import { ClientSession, FilterQuery, Model, Types } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
 import {
   PropertyUnitStatusEnum,
@@ -30,7 +30,8 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     opts: IPaginationQuery = {
       page: 1,
       limit: 1000,
-    }
+    },
+    session?: ClientSession
   ): ListResultWithPagination<IPropertyUnitDocument[]> {
     try {
       if (!propertyId) {
@@ -69,7 +70,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         ],
       };
 
-      const result = await this.list(query, updatedOpts);
+      const result = await this.list(query, updatedOpts, false, session);
       return result;
     } catch (error) {
       this.logger.error('Error in findUnitsByProperty:', error);

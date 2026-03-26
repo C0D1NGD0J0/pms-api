@@ -77,6 +77,20 @@ export interface IPropertyDAO {
   ): ListResultWithPagination<IPropertyDocument[]>;
 
   /**
+   * Check if a property can accommodate more units
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to whether the property can have more units
+   */
+  canAddUnitToProperty(
+    propertyId: string,
+    session?: ClientSession
+  ): Promise<{
+    canAdd: boolean;
+    currentCount: number;
+    maxCapacity: number;
+  }>;
+
+  /**
    * Update property occupancy status
    * @param propertyId - The property ID
    * @param status - The new occupancy status
@@ -90,6 +104,17 @@ export interface IPropertyDAO {
     maxAllowedUnits: number,
     userId: string
   ): Promise<IPropertyDocument | null>;
+
+  /**
+   * Get all units for a property
+   * @param propertyId - The property ID
+   * @returns A promise that resolves to an array of property unit documents
+   */
+  getPropertyUnits(
+    propertyId: string,
+    opts: IPaginationQuery,
+    session?: ClientSession
+  ): ListResultWithPagination<IPropertyUnitDocument[]>;
 
   /**
    * Check if a property can be archived (has no active units)
@@ -153,27 +178,6 @@ export interface IPropertyDAO {
     clientId: string,
     opts?: IFindOptions
   ): Promise<IPropertyDocument | null>;
-
-  /**
-   * Check if a property can accommodate more units
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to whether the property can have more units
-   */
-  canAddUnitToProperty(propertyId: string): Promise<{
-    canAdd: boolean;
-    currentCount: number;
-    maxCapacity: number;
-  }>;
-
-  /**
-   * Get all units for a property
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to an array of property unit documents
-   */
-  getPropertyUnits(
-    propertyId: string,
-    opts: IPaginationQuery
-  ): ListResultWithPagination<IPropertyUnitDocument[]>;
 
   /**
    * Create a new property with validation

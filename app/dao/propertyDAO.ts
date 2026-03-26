@@ -615,14 +615,15 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
    */
   async getPropertyUnits(
     propertyId: string,
-    opts: IPaginationQuery
+    opts: IPaginationQuery,
+    session?: ClientSession
   ): ListResultWithPagination<IPropertyUnitDocument[]> {
     try {
       if (!propertyId) {
         throw new Error('Property ID is required');
       }
 
-      return await this.propertyUnitDAO.findUnitsByPropertyId(propertyId, opts);
+      return await this.propertyUnitDAO.findUnitsByPropertyId(propertyId, opts, session);
     } catch (error) {
       this.logger.error('Error in getPropertyUnits:', error);
       throw this.throwErrorHandler(error);
@@ -672,7 +673,10 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
    * @param propertyId - The property ID
    * @returns A promise that resolves to whether the property can have more units
    */
-  async canAddUnitToProperty(propertyId: string): Promise<{
+  async canAddUnitToProperty(
+    propertyId: string,
+    session?: ClientSession
+  ): Promise<{
     canAdd: boolean;
     currentCount: number;
     maxCapacity: number;
@@ -682,7 +686,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property ID is required');
       }
 
-      const property = await this.findById(propertyId);
+      const property = await this.findById(propertyId, session);
       if (!property) {
         throw new Error('Property not found');
       }
@@ -690,8 +694,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       // Count ALL units (active + archived) against the maxAllowedUnits limit
       // This prevents users from exceeding limits by archiving/unarchiving units
       // Note: This is consistent with PropertyUnitDAO.getPropertyUnitInfo() which also counts all units
-      const units = await this.propertyUnitDAO.countDocuments({ propertyId });
-      const currentCount = units;
+      const currentCount = await this.propertyUnitDAO.countDocuments({ propertyId }, session);
       const maxCapacity = property.maxAllowedUnits || 0;
       const canAdd = maxCapacity === 0 || currentCount < maxCapacity;
       return {

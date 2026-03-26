@@ -41,7 +41,7 @@
 # Location: Railway Dashboard → pms-api → Settings → Variables
 #
 # REQUIRED Variables (override TOML defaults):
-#   START_COMMAND=npm run start:api
+#   START_COMMAND=node dist/server.js
 #   PROCESS_TYPE=api
 #
 # OPTIONAL Variables:
@@ -64,8 +64,8 @@
 # Then: Settings → Variables
 #
 # CRITICAL Variables (MUST override TOML defaults):
-#   START_COMMAND=npm run start:worker  ⚠️  WITHOUT THIS, WORKER WON'T START!
-#   PROCESS_TYPE=worker                 ⚠️  REQUIRED FOR CORRECT BEHAVIOR!
+#   START_COMMAND=node dist/worker_process.js  ⚠️  WITHOUT THIS, WORKER WON'T START!
+#   PROCESS_TYPE=worker                        ⚠️  REQUIRED FOR CORRECT BEHAVIOR!
 #
 # SHARED Variables (copy ALL from pms-api service):
 #   [Copy every single env var from pms-api service]
@@ -97,7 +97,7 @@ builder = "dockerfile"
 
 [deploy]
 # Default to API service for backward compatibility
-startCommand = "npm run start:api"
+startCommand = "node dist/server.js"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 healthcheckPath = "/api/v1/healthcheck"

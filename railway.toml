@@ -102,8 +102,9 @@ builder = "dockerfile"
 # pms-worker: set START_COMMAND=node dist/worker_process.js in Railway Variables
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
-healthcheckPath = "/api/v1/healthcheck"
-healthcheckTimeout = 300
+# healthcheckPath removed — configure it only for pms-api in Railway Dashboard
+# (Settings → Health Check → Path: /api/v1/healthcheck, Timeout: 300s)
+# The worker has no HTTP server so a shared healthcheck always kills it
 
 [env]
 NODE_ENV = "production"

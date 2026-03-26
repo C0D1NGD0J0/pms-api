@@ -7,7 +7,8 @@
     "node": ">=22.0.0 <23.0.0"
   },
   "scripts": {
-    "build": "rm -rf ./dist && tsc -p ./tsconfig.build.json && tsc-alias && mkdir -p dist/app/templates/lease && cp -r app/templates/lease/* dist/app/templates/lease/ && mkdir -p dist/app/shared/languages/locales && cp app/shared/languages/locales/*.json dist/app/shared/languages/locales/",
+    "build": "rm -rf ./dist && tsc -p ./tsconfig.build.json && tsc-alias",
+    "postbuild": "node post-build-assets.js",
     "prettier:check": "prettier --check './app/**/*.{ts,json,js}' './tests/**/*.{ts,json,js}'",
     "prettier:write": "prettier --write './app/**/*.{ts,json,js}' './tests/**/*.{ts,json,js}'",
     "lint:fix": "eslint './app/**/*.{ts,js}' './tests/**/*.{ts,js}' --fix",

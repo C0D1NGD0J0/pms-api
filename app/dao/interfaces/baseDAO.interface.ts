@@ -33,12 +33,6 @@ export interface IBaseDAO<T extends Document> {
     } & IPaginationQuery
   ): ListResultWithPagination<T[]>;
 
-  updateMany(
-    filter: FilterQuery<T>,
-    data: UpdateQuery<T>,
-    session?: ClientSession
-  ): Promise<UpdateWriteOpResult>;
-
   /**
    * Find the first document that matches the filter.
    *
@@ -49,8 +43,15 @@ export interface IBaseDAO<T extends Document> {
   findFirst(
     filter: FilterQuery<T>,
     opts?: IFindOptions,
-    select?: Record<string, number>
+    select?: Record<string, number>,
+    session?: ClientSession
   ): Promise<T | null>;
+
+  updateMany(
+    filter: FilterQuery<T>,
+    data: UpdateQuery<T>,
+    session?: ClientSession
+  ): Promise<UpdateWriteOpResult>;
 
   /**
    * Execute operations within a transaction using the provided session.
@@ -82,6 +83,14 @@ export interface IBaseDAO<T extends Document> {
    * @returns A promise that resolves to the updated document or null if no document is found.
    */
   update(filter: FilterQuery<T> | Types.ObjectId, data: UpdateQuery<T>): Promise<T | null>;
+
+  /**
+   * Find a document by its unique identifier.
+   *
+   * @param id - The unique identifier of the document.
+   * @returns A promise that resolves to the found document or null if no document is found.
+   */
+  findById(id: string | Types.ObjectId, session?: ClientSession): Promise<T | null>;
 
   /**
    * Perform an aggregation operation on the collection.
@@ -116,14 +125,6 @@ export interface IBaseDAO<T extends Document> {
    * @returns A promise that resolves to true if the document was successfully deleted, or false if not.
    */
   deleteItem(query: Record<string, string>): Promise<boolean>;
-
-  /**
-   * Find a document by its unique identifier.
-   *
-   * @param id - The unique identifier of the document.
-   * @returns A promise that resolves to the found document or null if no document is found.
-   */
-  findById(id: string | Types.ObjectId): Promise<T | null>;
 
   /**
    * Count the number of documents in the collection that match the filter.

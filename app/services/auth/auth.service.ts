@@ -192,9 +192,14 @@ export class AuthService {
     const session = await this.userDAO.startSession();
     const result = await this.userDAO.withTransaction(session, async (session) => {
       const _userId = new Types.ObjectId();
-      const clientId = generateShortUID();
+      const clientUid = generateShortUID();
 
-      const alreadyExists = await this.userDAO.findFirst({ email: signupData.email });
+      const alreadyExists = await this.userDAO.findFirst(
+        { email: signupData.email },
+        undefined,
+        undefined,
+        session
+      );
       if (alreadyExists) {
         throw new ValidationRequestError({
           message: 'Validation failed',
@@ -207,14 +212,14 @@ export class AuthService {
           uid: generateShortUID(),
           _id: _userId,
           isActive: false,
-          activecuid: clientId,
+          activecuid: clientUid,
           email: signupData.email,
           password: signupData.password,
           activationToken: hashGenerator({}),
           activationTokenExpiresAt: dayjs().add(2, 'hour').toDate(),
           cuids: [
             {
-              cuid: clientId,
+              cuid: clientUid,
               isConnected: true,
               roles: [IUserRole.SUPER_ADMIN],
               primaryRole: IUserRole.SUPER_ADMIN,
@@ -246,7 +251,7 @@ export class AuthService {
       }
       const client = await this.clientDAO.insert(
         {
-          cuid: clientId,
+          cuid: clientUid,
           accountAdmin: _userId,
           displayName: signupData.displayName,
           accountType: {
@@ -280,7 +285,6 @@ export class AuthService {
         },
         session
       );
-      console.log(client.toJSON(), 'Profile created with ID:', profile._id.toString());
       const subscriptionResult = await this.subscriptionService.createSubscription(
         client._id.toString(),
         {
@@ -302,7 +306,7 @@ export class AuthService {
       return {
         userId: _userId.toString(),
         clientId: client._id.toString(),
-        cuid: clientId,
+        cuid: clientUid,
         email: user.email,
         planName: signupData.accountType.planName,
         planId: signupData.accountType.planId,

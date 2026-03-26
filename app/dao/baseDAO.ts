@@ -50,7 +50,8 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
   async findFirst(
     filter: FilterQuery<T>,
     opts?: IFindOptions,
-    select?: Record<string, number>
+    select?: Record<string, number>,
+    session?: ClientSession
   ): Promise<T | null> {
     try {
       let query: any = this.model.findOne(filter);
@@ -74,6 +75,8 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
           query = query.populate(opts.populate);
         }
       }
+
+      if (session) query = query.session(session);
 
       return await query.exec();
     } catch (error: any) {
@@ -379,10 +382,11 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @param id - The unique identifier of the document.
    * @returns A promise that resolves to the found document or null if no document is found.
    */
-  async findById(id: string | Types.ObjectId): Promise<T | null> {
+  async findById(id: string | Types.ObjectId, session?: ClientSession): Promise<T | null> {
     try {
-      const result = await this.model.findById(new Types.ObjectId(id)).exec();
-      return result;
+      let query = this.model.findById(new Types.ObjectId(id));
+      if (session) query = query.session(session);
+      return await query.exec();
     } catch (error: unknown) {
       throw this.throwErrorHandler(error);
     }

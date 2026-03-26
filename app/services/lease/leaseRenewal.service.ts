@@ -200,12 +200,17 @@ export class LeaseRenewalService {
 
     const session = await this.leaseDAO.startSession();
     const renewalLease = await this.leaseDAO.withTransaction(session, async (session) => {
-      const existingRenewal = await this.leaseDAO.findFirst({
-        previousLeaseId: existingLease._id,
-        cuid,
-        deletedAt: null,
-        status: { $in: ['draft_renewal', 'pending_signature', 'active', 'ready_for_signature'] },
-      });
+      const existingRenewal = await this.leaseDAO.findFirst(
+        {
+          previousLeaseId: existingLease._id,
+          cuid,
+          deletedAt: null,
+          status: { $in: ['draft_renewal', 'pending_signature', 'active', 'ready_for_signature'] },
+        },
+        undefined,
+        undefined,
+        session
+      );
 
       if (existingRenewal) {
         if (isSystemCall) {

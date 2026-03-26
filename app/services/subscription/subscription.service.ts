@@ -243,8 +243,7 @@ export class SubscriptionService {
         throw new BadRequestError({ message: 'Missing required subscription data' });
       }
 
-      const client = await this.clientDAO.findById(clientId);
-      console.log(client?.toJSON(), 'Creating subscription for client');
+      const client = await this.clientDAO.findById(clientId, session);
       if (!client) {
         throw new BadRequestError({ message: 'Client not found for subscription' });
       }
@@ -321,13 +320,13 @@ export class SubscriptionService {
           throw new InternalServerError({ message: 'Internal system error' });
         }
 
-        const subscription = await this.subscriptionDAO.findById(subscriptionId);
+        const subscription = await this.subscriptionDAO.findById(subscriptionId, cxtsession);
         if (!subscription) {
           throw new BadRequestError({ message: 'Client subscription not found' });
         }
 
         const clientId = subscription.client.toString();
-        const client = await this.clientDAO.findById(clientId);
+        const client = await this.clientDAO.findById(clientId, cxtsession);
         if (!client) {
           throw new BadRequestError({ message: 'Client not found' });
         }
@@ -419,7 +418,12 @@ export class SubscriptionService {
         const { currentuser } = ctx;
         const cuid = currentuser!.client.cuid;
 
-        const subscription = await this.subscriptionDAO.findFirst({ cuid });
+        const subscription = await this.subscriptionDAO.findFirst(
+          { cuid },
+          undefined,
+          undefined,
+          cxtsession
+        );
         if (!subscription) {
           throw new BadRequestError({ message: 'Subscription not found' });
         }
@@ -844,7 +848,12 @@ export class SubscriptionService {
 
     try {
       const result = await this.subscriptionDAO.withTransaction(session, async (cxtsession) => {
-        const subscription = await this.subscriptionDAO.findFirst({ cuid });
+        const subscription = await this.subscriptionDAO.findFirst(
+          { cuid },
+          undefined,
+          undefined,
+          cxtsession
+        );
         if (!subscription) {
           throw new BadRequestError({ message: 'Subscription not found' });
         }
@@ -1338,9 +1347,12 @@ export class SubscriptionService {
       const result = await this.subscriptionDAO.withTransaction(session, async (cxtsession) => {
         const { stripeSubscriptionId, invoiceId, attemptCount } = data;
 
-        const subscription = await this.subscriptionDAO.findFirst({
-          'billing.subscriberId': stripeSubscriptionId,
-        });
+        const subscription = await this.subscriptionDAO.findFirst(
+          { 'billing.subscriberId': stripeSubscriptionId },
+          undefined,
+          undefined,
+          cxtsession
+        );
 
         if (!subscription) {
           this.log.error({ stripeSubscriptionId }, 'Subscription not found for payment failure');
@@ -1659,9 +1671,12 @@ export class SubscriptionService {
       const result = await this.subscriptionDAO.withTransaction(session, async (cxtsession) => {
         const { stripeSubscriptionId, canceledAt } = data;
 
-        const subscription = await this.subscriptionDAO.findFirst({
-          'billing.subscriberId': stripeSubscriptionId,
-        });
+        const subscription = await this.subscriptionDAO.findFirst(
+          { 'billing.subscriberId': stripeSubscriptionId },
+          undefined,
+          undefined,
+          cxtsession
+        );
 
         if (!subscription) {
           this.log.error({ stripeSubscriptionId }, 'Subscription not found for cancellation');

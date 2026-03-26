@@ -8,6 +8,7 @@ const router: Router = express.Router();
 
 router.post(
   '/signup',
+  basicLimiter({ max: 5, windowMs: 60 * 60 * 1000 }),
   validateRequest({ body: AuthValidations.signup }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -17,6 +18,7 @@ router.post(
 
 router.post(
   '/login',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   validateRequest({
     body: AuthValidations.login,
   }),
@@ -37,6 +39,7 @@ router.get(
 
 router.patch(
   '/:cuid/account_activation',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   validateRequest({
     query: AuthValidations.activationToken,
     body: AuthValidations.consentBody,
@@ -49,6 +52,7 @@ router.patch(
 
 router.patch(
   '/resend_activation_link',
+  basicLimiter({ max: 3, windowMs: 15 * 60 * 1000 }),
   validateRequest({
     body: AuthValidations.resendActivation,
   }),
@@ -61,6 +65,7 @@ router.patch(
 router.patch(
   '/switch_client_account',
   isAuthenticated,
+  basicLimiter(),
   validateRequest({
     body: AuthValidations.resendActivation,
   }),
@@ -72,6 +77,7 @@ router.patch(
 
 router.patch(
   '/forgot_password',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   validateRequest({
     body: AuthValidations.emailValidation,
   }),
@@ -83,6 +89,7 @@ router.patch(
 
 router.patch(
   '/reset_password',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   validateRequest({
     body: AuthValidations.resetPassword,
   }),
@@ -103,6 +110,7 @@ router.delete(
 
 router.post(
   '/refresh_token',
+  basicLimiter({ max: 10, windowMs: 5 * 60 * 1000 }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.refreshToken(req, res);

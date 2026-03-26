@@ -49,6 +49,7 @@ router.post(
 
 router.post(
   '/:cuid/validate_csv',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   diskUpload(['csv_file']),
   scanFile,
@@ -63,6 +64,7 @@ router.post(
 
 router.post(
   '/:cuid/import_properties_csv',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   diskUpload(['csv_file']),
   scanFile,

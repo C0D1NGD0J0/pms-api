@@ -218,9 +218,10 @@ export class AuthService {
               isConnected: true,
               roles: [IUserRole.SUPER_ADMIN],
               primaryRole: IUserRole.SUPER_ADMIN,
-              clientDisplayName: signupData.accountType.isEnterpriseAccount
-                ? signupData.companyProfile?.tradingName || signupData.displayName
-                : `${signupData.firstName} ${signupData.lastName}`,
+              clientDisplayName:
+                signupData.displayName ||
+                signupData.companyProfile?.tradingName ||
+                `${signupData.firstName} ${signupData.lastName}`,
             },
           ],
         },
@@ -507,26 +508,34 @@ export class AuthService {
       throw new BadRequestError({ message: t('auth.errors.activationTokenMissing') });
     }
 
+    const pendingUser = await this.userDAO.findFirst(
+      {
+        activationToken: token.trim(),
+        activationTokenExpiresAt: { $gt: new Date() },
+        isActive: false,
+      },
+      { populate: 'profile' }
+    );
+
+    if (!pendingUser) {
+      throw new NotFoundError({ message: t('auth.errors.invalidActivationToken') });
+    }
+
+    const storedFirst = pendingUser.profile?.personalInfo?.firstName?.trim().toLowerCase() ?? '';
+    const storedLast = pendingUser.profile?.personalInfo?.lastName?.trim().toLowerCase() ?? '';
+    const givenFirst = consentData.firstName.trim().toLowerCase();
+    const givenLast = consentData.lastName.trim().toLowerCase();
+
+    if (storedFirst && storedLast && (storedFirst !== givenFirst || storedLast !== givenLast)) {
+      throw new ValidationRequestError({
+        message: t('auth.errors.consentNameMismatch'),
+      });
+    }
+
     const acceptedBy = `${consentData.firstName} ${consentData.lastName}`.trim();
     const userId = await this.userDAO.activateAccount(token.trim(), { acceptedBy });
     if (!userId) {
-      const msg = t('auth.errors.invalidActivationToken');
-      throw new NotFoundError({ message: msg });
-    }
-
-    try {
-      const profile = await this.profileDAO.getProfileByUserId(userId);
-      if (profile && !profile.personalInfo?.firstName) {
-        await this.profileDAO.updatePersonalInfo(profile._id.toString(), {
-          firstName: consentData.firstName,
-          lastName: consentData.lastName,
-        });
-      }
-    } catch (err: any) {
-      this.log.error('Failed to update profile personalInfo after activation', {
-        userId,
-        error: err.message,
-      });
+      throw new NotFoundError({ message: t('auth.errors.invalidActivationToken') });
     }
 
     return { success: true, data: null, message: t('auth.success.accountActivated') };

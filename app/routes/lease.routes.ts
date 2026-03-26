@@ -89,6 +89,7 @@ router
 router.post(
   '/:cuid/:leaseId/pdf',
   // Generate PDF from lease JSON data using Puppeteer + EJS template
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   idempotency,
   validateRequest({
@@ -152,6 +153,7 @@ router
 router.post(
   '/:cuid/:luid/activate',
   // Activate lease (after all signatures complete, marks unit as occupied)
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   requireVerifiedClient,
   idempotency,
@@ -168,6 +170,7 @@ router.post(
 router.post(
   '/:cuid/:luid/terminate',
   // Terminate lease early (tenant moves out before end date)
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   idempotency,
   validateRequest({
@@ -225,6 +228,7 @@ router
   .route('/:cuid/:luid/signature_request')
   .post(
     // Send for e-signature OR mark as manually signed OR cancel signing
+    basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     subscriptionEntitlements,
     requireFeature('eSignature'),
@@ -256,6 +260,7 @@ router
 router.post(
   '/:cuid/:luid/pdf',
   // Generate PDF from lease JSON data using Puppeteer + EJS template
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   idempotency,
   validateRequest({

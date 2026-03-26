@@ -24,11 +24,17 @@ export class LanguageService implements ILanguageService {
    */
   t(key: LanguageKey, params?: LanguageParams): string {
     if (!this.initialized) {
-      // Auto-initialize on first use
-      this.initialize().catch((error) => {
-        console.error('Failed to auto-initialize language service:', error);
-      });
-      return key; // Return key as fallback until initialized
+      // Sync with the shared I18nextConfig in case another LanguageService
+      // instance (e.g. DI-injected via middleware) already initialized i18next.
+      if (this.i18nextConfig.isInitialized()) {
+        this.initialized = true;
+      } else {
+        // Auto-initialize on first use
+        this.initialize().catch((error) => {
+          console.error('Failed to auto-initialize language service:', error);
+        });
+        return key; // Return key as fallback until initialized
+      }
     }
 
     try {

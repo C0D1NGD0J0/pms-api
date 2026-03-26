@@ -22,6 +22,7 @@ router.patch(
 
 router.get(
   '/:cuid/my-notifications/stream',
+  basicLimiter({ max: 10, windowMs: 5 * 60 * 1000 }),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<NotificationController>('notificationController');
@@ -31,6 +32,7 @@ router.get(
 
 router.get(
   '/:cuid/announcements/stream',
+  basicLimiter({ max: 10, windowMs: 5 * 60 * 1000 }),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<NotificationController>('notificationController');

@@ -488,21 +488,45 @@ export const getLocationDetails = (location: string): string | null => {
 
   const normalizedLocation = location.trim().toLowerCase();
 
+  // Exact city match
   const matchingCity = getCachedCities().find(
     (city) => city.name.toLowerCase() === normalizedLocation
   );
-
   if (matchingCity) {
     const country = Country.getCountryByCode(matchingCity.countryCode);
     return `${matchingCity.name}, ${country?.name}`;
   }
+
+  // Exact country match
   const matchingCountry = getCachedCountries().find(
     (country) => country.name.toLowerCase() === normalizedLocation
   );
-
   if (matchingCountry) {
     return `${matchingCountry.name}`;
   }
+
+  // Compound format: "City[, State/Province], Country"
+  const parts = location
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (parts.length >= 2) {
+    const cityPart = parts[0].toLowerCase();
+    const countryPart = parts[parts.length - 1].toLowerCase();
+
+    const country = getCachedCountries().find(
+      (c) => c.name.toLowerCase() === countryPart || c.isoCode.toLowerCase() === countryPart
+    );
+
+    if (country) {
+      const city = getCachedCities().find(
+        (c) => c.name.toLowerCase() === cityPart && c.countryCode === country.isoCode
+      );
+      // Return verified city+country, or fall back to raw city part + verified country
+      return city ? `${city.name}, ${country.name}` : `${parts[0]}, ${country.name}`;
+    }
+  }
+
   return null;
 };
 

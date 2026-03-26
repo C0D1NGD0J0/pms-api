@@ -18,6 +18,7 @@
       "unableToSelectAccount": "We no fit select dis account.",
       "activationTokenMissing": "Activation token no dey.",
       "invalidActivationToken": "Dis activation token no correct or don expire.",
+      "consentNameMismatch": "Di name wey you enter no match wetin you use register.",
       "emailRequired": "Email dey needed to send activation link again.",
       "userEmailRequired": "User email dey needed.",
       "noRecordFound": "We no find any record with dis email.",

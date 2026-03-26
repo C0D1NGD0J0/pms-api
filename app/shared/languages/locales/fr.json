@@ -18,6 +18,7 @@
       "unableToSelectAccount": "Impossible de sélectionner le compte.",
       "activationTokenMissing": "Jeton d'activation manquant.",
       "invalidActivationToken": "Jeton d'activation invalide ou expiré.",
+      "consentNameMismatch": "Le nom saisi ne correspond pas à vos informations d'inscription.",
       "emailRequired": "Email requis pour renvoyer le lien d'activation.",
       "userEmailRequired": "Email utilisateur requis.",
       "noRecordFound": "Aucun enregistrement trouvé avec l'email fourni.",

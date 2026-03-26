@@ -282,7 +282,7 @@ export class SubscriptionService {
         billingInterval,
         entitlements: config.features,
         billing: {
-          customerId: isPaidPlan ? '' : 'none', // will be set via webhook after payment
+          customerId: 'none', // placeholder; will be updated when a Stripe customer is created
           provider: isPaidPlan ? IPaymentGatewayProvider.STRIPE : IPaymentGatewayProvider.NONE,
           planId: planId || 'none',
           planLookUpKey: planLookUpKey,
@@ -1117,7 +1117,12 @@ export class SubscriptionService {
       planName?: string;
       priceId: string;
     }
-  ): IPromiseReturnedData<{ checkoutUrl?: string; sessionId?: string; message?: string }> {
+  ): IPromiseReturnedData<{
+    checkoutUrl?: string;
+    sessionId?: string;
+    message?: string;
+    activated?: boolean;
+  }> {
     try {
       const { currentuser } = ctx;
       const cuid = currentuser!.client.cuid;
@@ -1151,6 +1156,17 @@ export class SubscriptionService {
       // Block only inactive subscriptions
       if (subscription.status === ISubscriptionStatus.INACTIVE) {
         throw new BadRequestError({ message: 'Cannot update canceled/inactive subscription' });
+      }
+
+      // Free plan: activate directly without Stripe checkout
+      if (checkoutData.planName === 'essential') {
+        await this.subscriptionDAO.activateEssentialPlan(subscription._id.toString());
+        await this.notifyAccountAdminViaSSE(cuid, {
+          type: 'subscription_activated',
+          subscription: { plan: 'essential', status: 'active' },
+          message: 'Essential plan activated',
+        });
+        return { data: { activated: true }, success: true };
       }
 
       const hasActiveStripeSubscription = !!subscription.billing?.subscriberId;
@@ -1483,6 +1499,7 @@ export class SubscriptionService {
         throw new BadRequestError({ message: 'Subscription not found' });
       }
 
+      const wasFirstActivation = subscription.status === ISubscriptionStatus.PENDING_PAYMENT;
       const updateData: any = {};
       if (status === 'active') {
         updateData.status = ISubscriptionStatus.ACTIVE;
@@ -1610,7 +1627,10 @@ export class SubscriptionService {
           : `Your subscription status has been updated to ${status}`;
 
       await this.notifyAccountAdminViaSSE(updatedSubscription.cuid, {
-        type: 'subscription_updated',
+        type:
+          wasFirstActivation && status === 'active'
+            ? 'subscription_activated'
+            : 'subscription_updated',
         subscription: {
           plan: updatedSubscription.planName,
           status: updatedSubscription.status,

@@ -18,6 +18,7 @@
       "unableToSelectAccount": "Unable to select account.",
       "activationTokenMissing": "Activation token missing.",
       "invalidActivationToken": "Invalid or expired activation token.",
+      "consentNameMismatch": "The name you entered does not match your registration details.",
       "emailRequired": "Email is required to resend activation link.",
       "userEmailRequired": "User email is required.",
       "noRecordFound": "No record found with email provided.",

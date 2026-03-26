@@ -40,9 +40,9 @@
 # ----------------------------------------------
 # Location: Railway Dashboard → pms-api → Settings → Variables
 #
-# REQUIRED Variables (override TOML defaults):
-#   START_COMMAND=node dist/server.js
+# REQUIRED Variables:
 #   PROCESS_TYPE=api
+# (no START_COMMAND needed — Dockerfile defaults to node dist/server.js)
 #
 # OPTIONAL Variables:
 #   ENABLE_BULL_BOARD=true  (enables /admin/queues monitoring)
@@ -63,7 +63,7 @@
 # Location: Railway Dashboard → + New → GitHub Repo → Same repo as API
 # Then: Settings → Variables
 #
-# CRITICAL Variables (MUST override TOML defaults):
+# CRITICAL Variables (MUST be set in Railway Variables):
 #   START_COMMAND=node dist/worker_process.js  ⚠️  WITHOUT THIS, WORKER WON'T START!
 #   PROCESS_TYPE=worker                        ⚠️  REQUIRED FOR CORRECT BEHAVIOR!
 #
@@ -96,8 +96,10 @@
 builder = "dockerfile"
 
 [deploy]
-# Default to API service for backward compatibility
-startCommand = "node dist/server.js"
+# No startCommand here — Railway falls through to Dockerfile CMD:
+#   CMD ["sh", "-c", "exec ${START_COMMAND:-node dist/server.js}"]
+# pms-api:    no START_COMMAND set → defaults to node dist/server.js
+# pms-worker: set START_COMMAND=node dist/worker_process.js in Railway Variables
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 healthcheckPath = "/api/v1/healthcheck"

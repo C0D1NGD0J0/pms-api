@@ -1366,7 +1366,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             uid: tenantUid,
             'cuids.cuid': cuid,
             'cuids.roles': 'tenant',
-            'cuids.isConnected': true,
             deletedAt: null,
           },
         },
@@ -1386,6 +1385,22 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             email: 1,
             isActive: 1,
             createdAt: 1,
+            isConnected: {
+              $let: {
+                vars: {
+                  conn: {
+                    $first: {
+                      $filter: {
+                        input: { $ifNull: ['$cuids', []] },
+                        as: 'c',
+                        cond: { $eq: ['$$c.cuid', cuid] },
+                      },
+                    },
+                  },
+                },
+                in: { $ifNull: ['$$conn.isConnected', false] },
+              },
+            },
             firstName: { $ifNull: ['$profile.personalInfo.firstName', ''] },
             lastName: { $ifNull: ['$profile.personalInfo.lastName', ''] },
             fullName: {

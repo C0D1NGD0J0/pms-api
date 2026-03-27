@@ -1585,7 +1585,7 @@ export class UserService {
           isActive: (rawTenantDetails as any).isActive ?? true,
           userType: 'tenant' as const,
         },
-        status: (rawTenantDetails as any).isActive ? ('Active' as const) : ('Inactive' as const),
+        status: (rawTenantDetails as any).isConnected ? ('Active' as const) : ('Inactive' as const),
         userType: 'tenant' as const,
         roles: ['tenant'],
         tenantInfo: rawTenantDetails.tenantInfo,
@@ -2180,25 +2180,15 @@ export class UserService {
       };
 
       // TODO: Check for active leases when lease feature is implemented
-      // const activeLeases = await this.leaseDAO.getActiveLeasesByTenant(uid);
-      // if (activeLeases.length > 0) {
-      //   throw new BadRequestError({
-      //     message: 'Cannot deactivate tenant with active leases',
-      //   });
-      // }
+      const activeLeases = await this.leaseDAO.getActiveLeaseByTenant(cuid, uid);
+      if (activeLeases?.status === 'active') {
+        throw new BadRequestError({
+          message: 'Cannot deactivate tenant with active leases',
+        });
+      }
 
-      // 1. Soft delete the user
-      await this.userDAO.updateById(user._id.toString(), {
-        deletedAt: new Date(),
-        isActive: false,
-      });
-
-      deactivationSummary.actions.push({
-        action: 'user_soft_deleted',
-        timestamp: new Date(),
-      });
-
-      // 2. Disconnect tenant from this client
+      // 1. Disconnect tenant from this client (per-client only — no global soft delete,
+      //    so the re-invite flow can find and reconnect the same user account)
       await this.userDAO.updateById(
         user._id.toString(),
         {

@@ -118,7 +118,9 @@
       "filteredUsersRetrieved": "Users retrieved successfully",
       "retrieved": "Client details retrieved successfully",
       "verified": "Account verified successfully",
-      "updated": "Client updated successfully"
+      "updated": "Client updated successfully",
+      "userArchived": "User archived successfully",
+      "tenantStatsRetrieved": "Tenant statistics retrieved successfully"
     },
     "logging": {
       "validationCompleted": "Client validation completed"

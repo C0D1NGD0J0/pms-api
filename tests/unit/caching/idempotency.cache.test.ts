@@ -185,7 +185,7 @@ describe('IdempotencyCache', () => {
       expect(result!.body).toEqual({ id: 'abc', success: true });
     });
 
-    it('should derive the Redis key from an MD5 hash of method:routePath:userId:cuid:idempotencyKey', async () => {
+    it('should derive the Redis key from a SHA-256 hash of method:routePath:userId:cuid:idempotencyKey', async () => {
       // Arrange
       mockClient.GET.mockReturnValue(Promise.resolve(null));
       const method = 'PUT';
@@ -195,7 +195,7 @@ describe('IdempotencyCache', () => {
       const idempotencyKey = 'idem-key-xyz';
 
       const expectedHash = crypto
-        .createHash('md5')
+        .createHash('sha256')
         .update(`${method}:${routePath}:${userId}:${cuid}:${idempotencyKey}`)
         .digest('hex');
       const expectedKey = `idmp:r:${expectedHash}`;
@@ -222,7 +222,7 @@ describe('IdempotencyCache', () => {
   // ── cacheRouteResponse ───────────────────────────────────────────────────
 
   describe('cacheRouteResponse', () => {
-    it('should call SETEX with an MD5-hashed route key and the 24 h TTL', async () => {
+    it('should call SETEX with a SHA-256-hashed route key and the 24 h TTL', async () => {
       // Arrange
       mockClient.SETEX.mockReturnValue(Promise.resolve('OK'));
 
@@ -235,7 +235,7 @@ describe('IdempotencyCache', () => {
       const body = { success: true, data: { result: 42 } };
 
       const expectedHash = crypto
-        .createHash('md5')
+        .createHash('sha256')
         .update(`${method}:${routePath}:${userId}:${cuid}:${idempotencyKey}`)
         .digest('hex');
       const expectedKey = `idmp:r:${expectedHash}`;

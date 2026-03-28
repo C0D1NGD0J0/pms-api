@@ -108,7 +108,7 @@ describe('PropertyUnitService Integration Tests', () => {
               specifications: {
                 totalArea: 850,
                 bedrooms: 2,
-                bathbedrooms: 1,
+                bathrooms: 1,
               },
               fees: {
                 rentAmount: 1500,
@@ -293,7 +293,7 @@ describe('PropertyUnitService Integration Tests', () => {
             unitNumber: `${101 + i}`,
             unitType: '2BR',
             floor: 1,
-            specifications: { totalArea: 850, bedbedrooms: 2, bathrooms: 1 },
+            specifications: { totalArea: 850, bedrooms: 2, bathrooms: 1 },
             fees: { rentAmount: 1500, currency: 'USD' },
             status: 'available' as const,
           })),
@@ -545,8 +545,8 @@ describe('PropertyUnitService Integration Tests', () => {
         unitNumber: '101',
         floor: 1,
         status: 'available',
-        bedbedrooms: 1,
-        bathbedrooms: 1,
+        bedrooms: 1,
+        bathrooms: 1,
         monthlyRent: 1200,
       });
 
@@ -554,8 +554,8 @@ describe('PropertyUnitService Integration Tests', () => {
         unitNumber: '102',
         floor: 1,
         status: 'occupied',
-        bedbedrooms: 2,
-        bathbedrooms: 1,
+        bedrooms: 2,
+        bathrooms: 1,
         monthlyRent: 1500,
       });
 
@@ -563,8 +563,8 @@ describe('PropertyUnitService Integration Tests', () => {
         unitNumber: '201',
         floor: 2,
         status: 'available',
-        bedbedrooms: 2,
-        bathbedrooms: 2,
+        bedrooms: 2,
+        bathrooms: 2,
         monthlyRent: 1800,
       });
     });

@@ -9,12 +9,12 @@ import { BadRequestError, NotFoundError } from '@shared/customErrors';
 
 const MIME_ALLOWLIST: Record<string, string[]> = {
   jpeg: ['image/jpeg'],
-  jpg: ['image/jpg'],
+  jpg: ['image/jpeg', 'image/jpg'],
   png: ['image/png'],
   pdf: ['application/pdf'],
   mp4: ['video/mp4'],
+  mov: ['video/quicktime'],
   csv: ['text/csv', 'application/csv', 'text/plain'],
-  'x-matroska': ['video/x-matroska'],
 };
 
 interface FieldSizeConfig {
@@ -29,18 +29,7 @@ export class DiskStorage {
   private upload: multer.Multer;
   private readonly storagePath = 'uploads/';
   private currentFieldPatterns: string[] = [];
-  private readonly allowedExtensions = [
-    'jpeg',
-    'jpg',
-    'png',
-    'pdf',
-    'mp4',
-    'csv',
-    'mov',
-    'x-matroska',
-    'doc',
-    'docx',
-  ];
+  private readonly allowedExtensions = ['jpeg', 'jpg', 'png', 'pdf', 'mp4', 'mov', 'csv'];
   private fieldConfigs: FieldSizeConfig[] = [
     {
       name: 'profile_image',
@@ -58,7 +47,7 @@ export class DiskStorage {
       name: 'videos',
       maxCount: 1,
       maxSize: 100 * 1024 * 1024, // 100MB
-      fileTypes: ['mp4', 'avi', 'mov'],
+      fileTypes: ['mp4', 'mov'],
     },
     {
       name: 'csv_file',
@@ -70,13 +59,13 @@ export class DiskStorage {
       name: 'documents.items[*].file', // Wildcard pattern for documents
       maxCount: 1,
       maxSize: 20 * 1024 * 1024, // 20MB
-      fileTypes: ['pdf', 'jpeg', 'jpg', 'png', 'doc', 'docx'],
+      fileTypes: ['pdf', 'jpeg', 'jpg', 'png'],
     },
     {
       name: 'documents[*].file', // Property documents pattern
       maxCount: 10,
       maxSize: 10 * 1024 * 1024, // 10MB
-      fileTypes: ['pdf', 'jpeg', 'jpg', 'png', 'doc', 'docx'],
+      fileTypes: ['pdf', 'jpeg', 'jpg', 'png'],
     },
     {
       name: 'images[*].file', // Property images pattern
@@ -100,7 +89,7 @@ export class DiskStorage {
       name: 'leaseDocument[*].file',
       maxCount: 10,
       maxSize: 10 * 1024 * 1024, // 10MB
-      fileTypes: ['pdf', 'doc', 'docx'],
+      fileTypes: ['pdf'],
     },
   ];
 
@@ -121,17 +110,15 @@ export class DiskStorage {
         (c) => c.name === p || this.matchesPattern(p, c.name) || this.matchesPattern(c.name, p)
       )
     );
-    const maxFileSizeForPatterns = matchedConfigs.reduce(
-      (max, c) => {
-        return c && c.maxSize > max ? c.maxSize : max;
-      },
-      5 * 1024 * 1024
-    );
+    const maxFileSizeForPatterns = matchedConfigs.reduce<number | null>((max, c) => {
+      if (!c) return max;
+      return max === null ? c.maxSize : Math.max(max, c.maxSize);
+    }, null);
 
     this.upload = multer({
       storage: this.createDiskStorage(),
       fileFilter: this.fieldSpecificFilter,
-      limits: { fileSize: maxFileSizeForPatterns },
+      ...(maxFileSizeForPatterns !== null && { limits: { fileSize: maxFileSizeForPatterns } }),
     });
 
     return (req: Request, res: Response, next: NextFunction): void => {
@@ -182,7 +169,7 @@ export class DiskStorage {
       const invalidFiles: string[] = [];
 
       for (const file of fileList) {
-        const declaredExt = file.mimetype.split('/')[1]?.toLowerCase();
+        const declaredExt = path.extname(file.originalname).replace('.', '').toLowerCase();
         const allowedMimes = MIME_ALLOWLIST[declaredExt] ?? [];
 
         let detectedType: { mime: string } | undefined;
@@ -347,7 +334,7 @@ export class DiskStorage {
       cb(new Error(`Unexpected field: ${file.fieldname}`));
       return;
     }
-    const fileExt = file.mimetype.split('/')[1]?.toLowerCase();
+    const fileExt = path.extname(file.originalname).replace('.', '').toLowerCase();
     if (!fileExt || !this.allowedExtensions.includes(fileExt)) {
       cb(new Error(`File type not supported. Allowed types: ${this.allowedExtensions.join(', ')}`));
       return;

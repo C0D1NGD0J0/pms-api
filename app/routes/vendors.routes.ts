@@ -100,6 +100,7 @@ router.patch(
 // Toggle team member active status (ADMIN/MANAGER or primaryAccountHolder)
 router.patch(
   '/:cuid/vendor/:vuid/team_members/:uid/status',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
   validateRequest({

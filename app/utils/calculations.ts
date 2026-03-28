@@ -10,7 +10,7 @@ export const calcOccupancyRate = (occupied: number, total: number): number =>
   calcPercentage(occupied, total);
 
 export const calcCollectionRate = (collected: number, expected: number): number =>
-  calcPercentage(collected, expected || 1);
+  calcPercentage(collected, expected);
 
 // ── Date / Time helpers ───────────────────────────────────────────────────────
 

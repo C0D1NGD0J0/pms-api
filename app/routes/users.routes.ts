@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
+import { ROLES } from '@shared/constants/roles.constants';
 import { UserController } from '@controllers/UserController';
 import { ClientController } from '@controllers/ClientController';
 import { PropertyController } from '@controllers/PropertyController';
@@ -244,6 +245,7 @@ router.get(
 
 router.get(
   '/:cuid/stats',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
@@ -338,7 +340,9 @@ router.get(
     const { uid } = req.params;
     const requestingUserId = req.context.currentuser?.sub;
     const isSelf = requestingUserId === uid;
-    const isAdmin = ['super_admin', 'admin'].includes(req.context.currentuser?.client?.role);
+    const isAdmin = [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(
+      req.context.currentuser?.client?.role
+    );
 
     if (!isSelf && !isAdmin) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
@@ -367,7 +371,9 @@ router.delete(
     const { uid } = req.params;
     const requestingUserId = req.context.currentuser?.sub;
     const isSelf = requestingUserId === uid;
-    const isAdmin = ['super_admin', 'admin'].includes(req.context.currentuser?.client?.role);
+    const isAdmin = [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(
+      req.context.currentuser?.client?.role
+    );
 
     if (!isSelf && !isAdmin) {
       return res.status(403).json({ success: false, message: 'Forbidden' });

@@ -162,6 +162,18 @@ export const clientVendorsQuerySchema = z.object({
   skip: z.number().min(0).default(0),
 });
 
+// Update team member schema
+export const updateTeamMemberSchema = z.object({
+  firstName: z.string().min(1, 'First name cannot be empty').max(100).optional(),
+  lastName: z.string().min(1, 'Last name cannot be empty').max(100).optional(),
+  phoneNumber: z.string().min(7, 'Phone number must be at least 7 characters').max(20).optional(),
+});
+
+// Toggle team member status schema
+export const toggleTeamMemberStatusSchema = z.object({
+  isActive: z.boolean({ required_error: 'isActive is required' }),
+});
+
 // Vendor filter query schema (for filtered vendors endpoint)
 export const vendorFilterQuerySchema = z.object({
   pagination: z

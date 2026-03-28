@@ -326,6 +326,61 @@ router.delete(
   })
 );
 
+// DSAR — Data Subject Access Requests
+router.get(
+  '/:cuid/dsar/:uid/export',
+  basicLimiter(),
+  isAuthenticated,
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+  }),
+  asyncWrapper(async (req, res) => {
+    const { uid } = req.params;
+    const requestingUserId = req.context.currentuser?.sub;
+    const isSelf = requestingUserId === uid;
+    const isAdmin = ['super_admin', 'admin'].includes(req.context.currentuser?.client?.role);
+
+    if (!isSelf && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
+    const dsarService =
+      req.container.resolve<import('@services/dsar/dsar.service').DSARService>('dsarService');
+    const data = await dsarService.exportUserData(uid);
+
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="dsar-export-${uid}-${Date.now()}.json"`
+    );
+    return res.status(200).json(data);
+  })
+);
+
+router.delete(
+  '/:cuid/dsar/:uid/anonymise',
+  basicLimiter(),
+  isAuthenticated,
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+  }),
+  asyncWrapper(async (req, res) => {
+    const { uid } = req.params;
+    const requestingUserId = req.context.currentuser?.sub;
+    const isSelf = requestingUserId === uid;
+    const isAdmin = ['super_admin', 'admin'].includes(req.context.currentuser?.client?.role);
+
+    if (!isSelf && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
+    const dsarService =
+      req.container.resolve<import('@services/dsar/dsar.service').DSARService>('dsarService');
+    await dsarService.anonymiseUser(uid, requestingUserId ?? uid);
+
+    return res.status(200).json({ success: true, message: 'Account data anonymised' });
+  })
+);
+
 // Development/Testing endpoint to initialize all queues for Bull Dashboard
 router.post(
   '/:cuid/initialize-queues',

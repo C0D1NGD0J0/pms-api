@@ -34,6 +34,7 @@ import {
   PROPERTY_STAFF_ROLES,
   getRequestDuration,
   createLogger,
+  megabytes,
 } from '@utils/index';
 
 interface IConstructor {
@@ -1005,7 +1006,7 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('propertyUnit.errors.noCsvUploaded') });
     }
 
-    if (csvFile.fileSize > 10 * 1024 * 1024) {
+    if (csvFile.fileSize > megabytes(10)) {
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
       throw new BadRequestError({ message: t('propertyUnit.errors.fileTooLarge') });
     }
@@ -1065,7 +1066,7 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('propertyUnit.errors.noCsvUploaded') });
     }
 
-    if (csvFile.fileSize > 10 * 1024 * 1024) {
+    if (csvFile.fileSize > megabytes(10)) {
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
       throw new BadRequestError({ message: t('propertyUnit.errors.fileTooLarge') });
     }

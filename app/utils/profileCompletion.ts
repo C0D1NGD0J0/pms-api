@@ -2,6 +2,8 @@ import { IClientDocument } from '@interfaces/client.interface';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { IUserRoleType, ROLES } from '@shared/constants/roles.constants';
 
+import { calcPercentage } from './calculations';
+
 export interface ICompletionSection {
   fields: ICompletionField[];
   completedFields: number;
@@ -129,7 +131,7 @@ export function computeProfileCompletion(
   // ── Overall ───────────────────────────────────────────────────────────────
   const totalFields = sections.reduce((a, s) => a + s.totalFields, 0);
   const completedFields = sections.reduce((a, s) => a + s.completedFields, 0);
-  const percent = totalFields > 0 ? Math.round((completedFields / totalFields) * 100) : 0;
+  const percent = totalFields > 0 ? calcPercentage(completedFields, totalFields) : 0;
 
   const missingFields = sections.flatMap((s) =>
     s.fields.filter((f) => !f.filled).map((f) => f.label)
@@ -155,7 +157,7 @@ function scoreSection(
   return {
     key,
     label,
-    percent: totalFields > 0 ? Math.round((completedFields / totalFields) * 100) : 100,
+    percent: totalFields > 0 ? calcPercentage(completedFields, totalFields) : 100,
     completedFields,
     totalFields,
     fields,

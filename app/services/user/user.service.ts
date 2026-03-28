@@ -1,13 +1,15 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
-import { createLogger } from '@utils/index';
+import { EmailQueue } from '@queues/index';
 import { EventTypes } from '@interfaces/index';
+import { QueueFactory } from '@services/queue';
 import { UserCache } from '@caching/user.cache';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { EventEmitterService, VendorService } from '@services/index';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { PermissionService } from '@services/permission/permission.service';
+import { calcDaysElapsed, createLogger, JOB_NAME, daysInMs } from '@utils/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { PropertyDAO, ProfileDAO, PaymentDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
@@ -17,6 +19,7 @@ import {
   PermissionAction,
   IRequestContext,
   IPaginateResult,
+  MailType,
 } from '@interfaces/utils.interface';
 import {
   IUserPopulatedDocument,
@@ -36,6 +39,7 @@ interface IConstructor {
   permissionService: PermissionService;
   emitterService: EventEmitterService;
   vendorService: VendorService;
+  queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   paymentDAO: PaymentDAO;
@@ -57,6 +61,7 @@ export class UserService {
   private readonly vendorService: VendorService;
   private readonly emitterService: EventEmitterService;
   private readonly permissionService: PermissionService;
+  private readonly queueFactory: QueueFactory;
 
   constructor({
     userDAO,
@@ -69,6 +74,7 @@ export class UserService {
     vendorService,
     emitterService,
     permissionService,
+    queueFactory,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
@@ -81,6 +87,7 @@ export class UserService {
     this.emitterService = emitterService;
     this.log = createLogger('UserService');
     this.permissionService = permissionService;
+    this.queueFactory = queueFactory;
 
     this.setupEventListeners();
   }
@@ -776,8 +783,7 @@ export class UserService {
   private calculateTenure(hireDate: Date): string {
     const now = new Date();
     const hire = new Date(hireDate);
-    const diffTime = Math.abs(now.getTime() - hire.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = calcDaysElapsed(hire, now);
     const years = Math.floor(diffDays / 365);
     const months = Math.floor((diffDays % 365) / 30);
 
@@ -982,7 +988,7 @@ export class UserService {
           dataRetentionPolicy: 'standard',
           dataProcessingConsent: true,
           processingConsentDate: new Date(),
-          retentionExpiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+          retentionExpiryDate: new Date(Date.now() + daysInMs(365)),
         },
       },
       policies: {
@@ -2081,8 +2087,41 @@ export class UserService {
         createdAt: new Date(),
       });
 
+      this.emitterService.emit(EventTypes.USER_DISCONNECTED, {
+        disconnectedBy: currentUser.sub,
+        userId: user._id.toString(),
+        uid: user.uid,
+        cuid,
+      });
+
       if (isEmployee) {
         this.log.info('USER_ARCHIVED event emitted for seat tracking', { uid, cuid, roles });
+      }
+
+      // Send disconnection notification to the affected user
+      try {
+        const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
+        emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_DISCONNECTED_JOB, {
+          to: user.email,
+          subject: 'Your Account Connection Has Been Removed',
+          emailType: MailType.ACCOUNT_DISCONNECTED,
+          client: { cuid, id: client._id.toString() },
+          data: {
+            fullname: user.fullname || user.email,
+            companyName:
+              client.displayName ||
+              (client as any).companyProfile?.legalEntityName ||
+              'your account',
+            disconnectedAt: new Date().toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            }),
+            roles: roles.join(', '),
+          },
+        });
+      } catch (emailError) {
+        this.log.error('Failed to queue disconnection email', { uid, error: emailError });
       }
 
       return {
@@ -2208,6 +2247,13 @@ export class UserService {
       // 3. Invalidate caches
       await this.userCache.invalidateUserDetail(cuid, uid);
       await this.userCache.invalidateUserLists(cuid);
+
+      this.emitterService.emit(EventTypes.USER_DISCONNECTED, {
+        disconnectedBy: context.currentuser.sub,
+        userId: user._id.toString(),
+        uid: user.uid,
+        cuid,
+      });
 
       this.log.info('Tenant deactivated successfully', {
         cuid,

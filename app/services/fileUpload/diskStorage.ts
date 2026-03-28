@@ -3,8 +3,22 @@ import path from 'path';
 import multer from 'multer';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
+import { fromFile as fileTypeFromFile } from 'file-type';
 import { NextFunction, Response, Request } from 'express';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
+
+const MIME_ALLOWLIST: Record<string, string[]> = {
+  jpeg: ['image/jpeg'],
+  jpg: ['image/jpeg'],
+  png: ['image/png'],
+  pdf: ['application/pdf'],
+  mp4: ['video/mp4'],
+  mov: ['video/quicktime'],
+  csv: ['text/csv', 'application/csv', 'text/plain'],
+  doc: ['application/msword'],
+  docx: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  'x-matroska': ['video/x-matroska'],
+};
 
 interface FieldSizeConfig {
   fileTypes?: string[];
@@ -103,12 +117,24 @@ export class DiskStorage {
   }
 
   uploadMiddleware = (fieldPatterns: string[]) => {
-    // Store patterns for use in filter
     this.currentFieldPatterns = fieldPatterns;
+
+    const matchedConfigs = fieldPatterns.map((p) =>
+      this.fieldConfigs.find(
+        (c) => c.name === p || this.matchesPattern(p, c.name) || this.matchesPattern(c.name, p)
+      )
+    );
+    const maxFileSizeForPatterns = matchedConfigs.reduce(
+      (max, c) => {
+        return c && c.maxSize > max ? c.maxSize : max;
+      },
+      5 * 1024 * 1024
+    );
 
     this.upload = multer({
       storage: this.createDiskStorage(),
       fileFilter: this.fieldSpecificFilter,
+      limits: { fileSize: maxFileSizeForPatterns },
     });
 
     return (req: Request, res: Response, next: NextFunction): void => {
@@ -129,6 +155,9 @@ export class DiskStorage {
               case 'LIMIT_FILE_COUNT':
                 errorMessage = 'Too many files uploaded';
                 break;
+              case 'LIMIT_FILE_SIZE':
+                errorMessage = 'File exceeds the maximum allowed size';
+                break;
               default:
                 errorMessage = err.message;
             }
@@ -141,6 +170,61 @@ export class DiskStorage {
         }
         next();
       });
+    };
+  };
+
+  validateMagicBytes = () => {
+    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      const files = req.files;
+      if (!files) return next();
+
+      const fileList: Express.Multer.File[] = Array.isArray(files)
+        ? files
+        : Object.values(files).flat();
+
+      const invalidFiles: string[] = [];
+
+      for (const file of fileList) {
+        const declaredExt = file.mimetype.split('/')[1]?.toLowerCase();
+        const allowedMimes = MIME_ALLOWLIST[declaredExt] ?? [];
+
+        let detectedType: { mime: string } | undefined;
+        try {
+          detectedType = await fileTypeFromFile(file.path);
+        } catch {
+          invalidFiles.push(file.originalname);
+          await fs.promises.unlink(file.path).catch(() => {});
+          continue;
+        }
+
+        if (!detectedType) {
+          const isTextFormat = ['csv', 'txt'].includes(declaredExt);
+          if (!isTextFormat) {
+            invalidFiles.push(file.originalname);
+            await fs.promises.unlink(file.path).catch(() => {});
+          }
+          continue;
+        }
+
+        if (!allowedMimes.includes(detectedType.mime)) {
+          this.log.warn(
+            `Magic byte mismatch for ${file.originalname}: declared=${file.mimetype}, detected=${detectedType.mime}`
+          );
+          invalidFiles.push(file.originalname);
+          await fs.promises.unlink(file.path).catch(() => {});
+        }
+      }
+
+      if (invalidFiles.length > 0) {
+        return next(
+          new BadRequestError({
+            message: `Invalid file type detected: ${invalidFiles.join(', ')}`,
+            statusCode: 400,
+          })
+        );
+      }
+
+      next();
     };
   };
 
@@ -285,16 +369,6 @@ export class DiskStorage {
         );
         return;
       }
-    }
-
-    if (fieldConfig && fieldConfig.maxSize && file.size > fieldConfig.maxSize) {
-      this.log.warn(`${file.originalname} exceeds size limit for ${file.fieldname}`);
-      return cb(
-        new BadRequestError({
-          message: `${file.originalname} exceeds max allowed size of ${Math.round(fieldConfig.maxSize / (1024 * 1024))}MB for field "${file.fieldname}"`,
-          statusCode: 400,
-        })
-      );
     }
 
     cb(null, true);

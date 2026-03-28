@@ -304,7 +304,7 @@ export class PropertyUnitService {
 
   async getPropertyUnit(cxt: IRequestContext) {
     const { request, currentuser } = cxt;
-    const { cuid, pid, unitId } = request.params;
+    const { cuid, pid, puid: unitId } = request.params;
     const start = process.hrtime.bigint();
     if (!pid || !cuid || !unitId) {
       this.log.error(
@@ -341,11 +341,8 @@ export class PropertyUnitService {
       });
     }
 
-    const unit = await this.propertyUnitDAO.findFirst({
-      _id: new Types.ObjectId(unitId),
-      propertyId: property._id,
-    });
-    if (!unit) {
+    const unit = await this.propertyUnitDAO.getUnitWithDetails(unitId);
+    if (!unit || unit.propertyId?.toString() !== property._id?.toString()) {
       this.log.error(
         {
           cuid,
@@ -424,7 +421,7 @@ export class PropertyUnitService {
   async updatePropertyUnit(cxt: IRequestContext, updateData: Partial<IPropertyUnit>) {
     const currentuser = cxt.currentuser!;
     const start = process.hrtime.bigint();
-    const { cuid, pid, unitId } = cxt.request.params;
+    const { cuid, pid, puid: unitId } = cxt.request.params;
 
     if (!pid || !cuid || !unitId) {
       this.log.error(
@@ -460,7 +457,7 @@ export class PropertyUnitService {
     }
 
     const unit = await this.propertyUnitDAO.findFirst({
-      _id: new Types.ObjectId(unitId),
+      puid: unitId,
       deletedAt: null,
       propertyId: property._id,
     });
@@ -604,7 +601,7 @@ export class PropertyUnitService {
     // 1. Always apply operational changes directly
     if (Object.keys(operationalChanges).length > 0) {
       updatedUnit = await this.propertyUnitDAO.update(
-        { _id: new Types.ObjectId(unitId), propertyId: property._id },
+        { puid: unitId, propertyId: property._id },
         {
           $set: {
             ...operationalChanges,
@@ -677,7 +674,7 @@ export class PropertyUnitService {
 
   async archiveUnit(cxt: IRequestContext) {
     const currentuser = cxt.currentuser!;
-    const { cuid, pid, unitId } = cxt.request.params;
+    const { cuid, pid, puid: unitId } = cxt.request.params;
 
     // Get property info for event emission
     const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
@@ -685,9 +682,9 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
     }
 
-    // Get the unit to find its _id
+    // Get the unit by puid
     const unit = await this.propertyUnitDAO.findFirst({
-      _id: new Types.ObjectId(unitId),
+      puid: unitId,
       propertyId: property._id,
       deletedAt: null,
     });
@@ -732,7 +729,7 @@ export class PropertyUnitService {
 
   async unarchivePropertyUnit(cxt: IRequestContext): Promise<ISuccessReturnData> {
     const currentuser = cxt.currentuser!;
-    const { cuid, pid, unitId } = cxt.request.params;
+    const { cuid, pid, puid: unitId } = cxt.request.params;
 
     if (!cuid || !pid || !unitId) {
       throw new BadRequestError({ message: t('propertyUnit.errors.requiredFieldsMissing') });
@@ -743,9 +740,9 @@ export class PropertyUnitService {
       throw new NotFoundError({ message: t('property.errors.notFound') });
     }
 
-    // Find archived unit
+    // Find archived unit by puid
     const unit = await this.propertyUnitDAO.findFirst({
-      _id: new Types.ObjectId(unitId),
+      puid: unitId,
       propertyId: new Types.ObjectId(property.id),
       deletedAt: { $ne: null },
     });

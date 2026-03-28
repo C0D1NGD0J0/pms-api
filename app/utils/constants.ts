@@ -69,6 +69,7 @@ export const JOB_NAME = {
   CREATE_RENT_INVOICE_JOB: 'createRentInvoiceJob',
   RETRY_FAILED_INVOICE_JOB: 'retryFailedInvoiceJob',
   CANCEL_PAYMENT_JOB: 'cancelPaymentJob',
+  ACCOUNT_DISCONNECTED_JOB: 'accountDisconnectedJob',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {
@@ -111,7 +112,6 @@ export const HIGH_IMPACT_UNIT_FIELDS = [
   'status',
   'unitNumber',
   'specifications.bedrooms',
-  'specifications.rooms',
   'specifications.bathrooms',
   'specifications.totalArea',
   'currentLease',

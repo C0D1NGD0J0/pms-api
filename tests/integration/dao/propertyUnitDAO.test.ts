@@ -5,7 +5,8 @@ import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import {
   PropertyUnitStatusEnum,
   PropertyUnitTypeEnum,
-  InspectionStatusEnum,} from '@interfaces/propertyUnit.interface';
+  InspectionStatusEnum,
+} from '@interfaces/propertyUnit.interface';
 
 describe('PropertyUnitDAO Integration Tests', () => {
   let propertyUnitDAO: PropertyUnitDAO;
@@ -25,6 +26,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
     // Create test units
     await PropertyUnit.insertMany([
       {
+        puid: 'test-puid-101',
         propertyId: testPropertyId,
         cuid: testCuid,
         unitNumber: '101',
@@ -47,6 +49,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
         managedBy: testUserId,
       },
       {
+        puid: 'test-puid-102',
         propertyId: testPropertyId,
         cuid: testCuid,
         unitNumber: '102',
@@ -70,6 +73,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
         currentLease: new Types.ObjectId(),
       },
       {
+        puid: 'test-puid-201',
         propertyId: testPropertyId,
         cuid: testCuid,
         unitNumber: '201',
@@ -724,6 +728,61 @@ describe('PropertyUnitDAO Integration Tests', () => {
     it('should suggest 101 for unknown property type', () => {
       const result = propertyUnitDAO.getSuggestedStartingUnitNumber('unknown');
       expect(result).toBe('101');
+    });
+  });
+
+  describe('getUnitWithDetails', () => {
+    it('should find unit by puid', async () => {
+      const result = await propertyUnitDAO.getUnitWithDetails('test-puid-101');
+
+      expect(result).not.toBeNull();
+      expect(result?.puid).toBe('test-puid-101');
+      expect(result?.unitNumber).toBe('101');
+      expect(result?.status).toBe(PropertyUnitStatusEnum.AVAILABLE);
+    });
+
+    it('should return unit with correct fields', async () => {
+      const result = await propertyUnitDAO.getUnitWithDetails('test-puid-101');
+
+      expect(result?.fees.rentAmount).toBe(1000);
+      expect(result?.specifications.totalArea).toBe(500);
+      expect(result?.floor).toBe(1);
+      expect(result?.unitType).toBe(PropertyUnitTypeEnum.RESIDENTIAL);
+    });
+
+    it('should populate currentLease when present', async () => {
+      const result = await propertyUnitDAO.getUnitWithDetails('test-puid-102');
+
+      expect(result).not.toBeNull();
+      expect(result?.unitNumber).toBe('102');
+      // currentLease is an ObjectId for unit-102 (not a real lease doc),
+      // so populate returns null for a dangling ref — just verify field is accessible
+      expect(result).toHaveProperty('currentLease');
+    });
+
+    it('should return null for non-existent puid', async () => {
+      const result = await propertyUnitDAO.getUnitWithDetails('non-existent-puid');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null for soft-deleted unit', async () => {
+      await PropertyUnit.updateOne({ puid: 'test-puid-101' }, { deletedAt: new Date() });
+
+      const result = await propertyUnitDAO.getUnitWithDetails('test-puid-101');
+
+      expect(result).toBeNull();
+    });
+
+    it('should throw error if unitId is empty', async () => {
+      await expect(propertyUnitDAO.getUnitWithDetails('')).rejects.toThrow();
+    });
+
+    it('should find unit regardless of status', async () => {
+      const maintenance = await propertyUnitDAO.getUnitWithDetails('test-puid-201');
+
+      expect(maintenance).not.toBeNull();
+      expect(maintenance?.status).toBe(PropertyUnitStatusEnum.MAINTENANCE);
     });
   });
 });

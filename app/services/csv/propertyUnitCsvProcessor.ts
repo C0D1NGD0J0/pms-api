@@ -86,7 +86,7 @@ export class PropertyUnitCsvProcessor {
       description: row.description,
       specifications: {
         totalArea: row.specifications_totalArea,
-        rooms: row.specifications_bedrooms, // Model uses 'rooms' not 'bedrooms'
+        bedrooms: row.specifications_bedrooms,
         bathrooms: row.specifications_bathrooms,
         maxOccupants: row.specifications_maxOccupants,
       },

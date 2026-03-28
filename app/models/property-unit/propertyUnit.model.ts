@@ -96,7 +96,7 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
         min: 0,
         required: true,
       },
-      rooms: {
+      bedrooms: {
         type: Number,
         min: 0,
         default: 1,

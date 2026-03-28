@@ -16,10 +16,6 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     this.logger = createLogger('VendorDAO');
   }
 
-  /**
-   * Get filtered vendors for a client with optimized pagination
-   * This method handles all vendor filtering at the database level
-   */
   async getFilteredVendors(
     cuid: string,
     filterOptions: IVendorFilterOptions,
@@ -117,9 +113,6 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  /**
-   * Create a new vendor entity
-   */
   async createVendor(vendorData: NewVendor, session?: ClientSession): Promise<IVendorDocument> {
     try {
       const savedVendor = await this.insert(vendorData, session);
@@ -131,9 +124,6 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  /**
-   * Get vendor by ID
-   */
   async getVendorById(vendorId: string | Types.ObjectId): Promise<IVendorDocument | null> {
     try {
       const vendorIdStr = vendorId.toString();
@@ -154,9 +144,6 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  /**
-   * Get vendor by VUID (vendor unique identifier)
-   */
   async getVendorByVuid(vuid: string): Promise<IVendorDocument | null> {
     try {
       return await this.findFirst({ vuid, deletedAt: null });
@@ -166,9 +153,6 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  /**
-   * Get vendor by primary account holder (user ID) - most common lookup
-   */
   async getVendorByPrimaryAccountHolder(
     userId: string | Types.ObjectId
   ): Promise<IVendorDocument | null> {
@@ -180,9 +164,6 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  /**
-   * Find vendor by registration number (for uniqueness validation)
-   */
   async findByRegistrationNumber(registrationNumber: string): Promise<IVendorDocument | null> {
     try {
       return await this.findFirst({
@@ -197,9 +178,6 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  /**
-   * Find vendor by company name (for uniqueness validation)
-   */
   async findByCompanyName(companyName: string): Promise<IVendorDocument | null> {
     try {
       return await this.findFirst({
@@ -212,9 +190,6 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  /**
-   * Update vendor information
-   */
   async updateVendor(
     vendorId: string | Types.ObjectId,
     updateData: Partial<IVendor>,
@@ -255,9 +230,6 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  /**
-   * Get all vendors for a client (similar to getFilteredUsers)
-   */
   async getClientVendors(cuid: string): Promise<ListResultWithPagination<IVendorDocument[]>> {
     try {
       // Find vendors where connectedClients contains this cuid
@@ -275,12 +247,6 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  /**
-   * Get vendor statistics for a client (only counts primary vendors)
-   * @param cuid - Client ID
-   * @param filterOptions - Filter options
-   * @returns Statistics about vendors for the client
-   */
   async getClientVendorStats(
     cuid: string,
     filterOptions: { status?: 'active' | 'inactive' }

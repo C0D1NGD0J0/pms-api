@@ -21,9 +21,6 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     this.logger = createLogger('NotificationDAO');
   }
 
-  /**
-   * Create a notification with automatic UID generation
-   */
   async create(data: Partial<INotification>): Promise<INotificationDocument> {
     try {
       return await this.insert(data);
@@ -33,9 +30,6 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     }
   }
 
-  /**
-   * Bulk create multiple notifications
-   */
   async bulkCreate(notifications: Partial<INotification>[]): Promise<INotificationDocument[]> {
     try {
       return await this.insertMany(notifications);
@@ -45,9 +39,6 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     }
   }
 
-  /**
-   * Find notification by NUID with multi-tenant security
-   */
   async findByNuid(nuid: string, cuid: string): Promise<INotificationDocument | null> {
     try {
       const filter: FilterQuery<INotificationDocument> = { nuid, cuid };
@@ -58,22 +49,15 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     }
   }
 
-  /**
-   * Delete notification by NUID with multi-tenant security
-   */
   async deleteByNuid(nuid: string, cuid: string): Promise<boolean> {
     try {
-      const result = await this.deleteItem({ nuid, cuid });
-      return result;
+      return await this.deleteItem({ nuid, cuid });
     } catch (error) {
       this.logger.error('Error deleting notification by NUID:', error);
       throw this.throwErrorHandler(error);
     }
   }
 
-  /**
-   * Find notifications for a specific user with filtering and pagination
-   */
   async findForUser(
     userId: string,
     cuid: string,
@@ -197,9 +181,6 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     }
   }
 
-  /**
-   * Get unread notification count for a user
-   */
   async getUnreadCount(
     userId: string,
     cuid: string,
@@ -241,9 +222,6 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     }
   }
 
-  /**
-   * Get unread notification count by type for a user
-   */
   async getUnreadCountByType(userId: string, cuid: string): Promise<Record<string, number>> {
     try {
       const pipeline: PipelineStage[] = [
@@ -286,9 +264,6 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     }
   }
 
-  /**
-   * Mark all individual notifications as read for a user
-   */
   async markAllAsReadForUser(userId: string, cuid: string): Promise<{ modifiedCount: number }> {
     try {
       const filter: FilterQuery<INotificationDocument> = {
@@ -312,9 +287,6 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     }
   }
 
-  /**
-   * Find notifications by resource reference
-   */
   async findByResource(
     resourceName: string,
     resourceId: string,
@@ -336,9 +308,6 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     }
   }
 
-  /**
-   * Find notification by ID
-   */
   async findById(id: string): Promise<INotificationDocument | null> {
     try {
       return await this.findFirst({ _id: new Types.ObjectId(id) });
@@ -348,9 +317,6 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     }
   }
 
-  /**
-   * Update notification by ID
-   */
   async updateById(
     id: string,
     updates: Partial<INotification>
@@ -363,9 +329,6 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     }
   }
 
-  /**
-   * Cleanup old notifications
-   */
   async cleanup(olderThanDays: number = 90): Promise<{ deletedCount: number }> {
     try {
       const cutoffDate = new Date();

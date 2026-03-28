@@ -99,5 +99,12 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
    */
   getUnitCountsByStatus(propertyId: string): Promise<Record<PropertyUnitStatus, number>>;
 
+  /**
+   * Find a single unit by ID with currentLease and tenant populated
+   * @param unitId - The unit MongoDB _id
+   * @returns The unit document with populated currentLease and tenantId, or null
+   */
+  getUnitWithDetails(unitId: string): Promise<IPropertyUnitDocument | null>;
+
   getSuggestedStartingUnitNumber(propertyType: string): string | null;
 }

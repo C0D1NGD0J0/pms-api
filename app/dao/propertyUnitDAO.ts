@@ -20,11 +20,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     this.logger = createLogger('PropertyUnitDAO');
   }
 
-  /**
-   * Find all units for a specific property
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to an array of property unit documents
-   */
   async findUnitsByPropertyId(
     propertyId: string,
     opts: IPaginationQuery = {
@@ -78,12 +73,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     }
   }
 
-  /**
-   * Find a specific unit by its number within a property
-   * @param unitNumber - The unit number
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to the property unit document or null if not found
-   */
   async findUnitByNumberAndProperty(
     unitNumber: string,
     propertyId: string
@@ -106,11 +95,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     }
   }
 
-  /**
-   * Find units with available status
-   * @param propertyId - Optional property ID to filter by
-   * @returns A promise that resolves to an array of available property unit documents
-   */
   async findAvailableUnits(propertyId?: string): ListResultWithPagination<IPropertyUnitDocument[]> {
     try {
       const query: FilterQuery<IPropertyUnitDocument> = {
@@ -134,12 +118,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     }
   }
 
-  /**
-   * Find units by specific status
-   * @param status - The property unit status to filter by
-   * @param propertyId - Optional property ID to filter by
-   * @returns A promise that resolves to an array of property unit documents with the specified status
-   */
   async findUnitsByStatus(
     status: PropertyUnitStatus,
     propertyId?: string
@@ -170,11 +148,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     }
   }
 
-  /**
-   * Get count of units grouped by status
-   * @param propertyId - Optional property ID to filter by
-   * @returns A promise that resolves to an object with counts for each status
-   */
   async getUnitCountsByStatus(propertyId: string): Promise<Record<PropertyUnitStatus, number>> {
     try {
       const match: FilterQuery<IPropertyUnitDocument> = {
@@ -219,13 +192,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     }
   }
 
-  /**
-   * Update unit status with appropriate validation
-   * @param unitId - The property unit ID
-   * @param status - The new status
-   * @param userId - The ID of the user performing the update
-   * @returns A promise that resolves to the updated property unit document or null if not found
-   */
   async updateUnitStatus(
     unitId: string,
     status: PropertyUnitStatus,
@@ -272,13 +238,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     }
   }
 
-  /**
-   * Add a new inspection record to a property unit
-   * @param unitId - The property unit ID
-   * @param inspectionData - The inspection data
-   * @param userId - The ID of the user performing the action
-   * @returns A promise that resolves to the updated property unit document or null if not found
-   */
   async addInspection(
     unitId: string,
     inspectionData: Partial<PropertyUnitInspection>,
@@ -327,11 +286,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     }
   }
 
-  /**
-   * Get comprehensive unit information for a property
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to unit information and statistics
-   */
   async getPropertyUnitInfo(propertyId: string): Promise<{
     currentUnits: number;
     unitStats: {
@@ -418,11 +372,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     }
   }
 
-  /**
-   * Get existing unit numbers for a property
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to an array of existing unit numbers
-   */
   async getExistingUnitNumbers(propertyId: string): Promise<string[]> {
     try {
       if (!propertyId) {
@@ -444,12 +393,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     }
   }
 
-  /**
-   * Generate next available unit number using different patterns
-   * @param propertyId - The property ID
-   * @param pattern - The numbering pattern to use
-   * @returns A promise that resolves to the next available unit number
-   */
   async getNextAvailableUnitNumber(
     propertyId: string,
     pattern: 'sequential' | 'floorBased' | 'custom' = 'sequential'
@@ -467,12 +410,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     }
   }
 
-  /**
-   * Generate unit number based on existing numbers and pattern
-   * @param existingNumbers - Array of existing unit numbers
-   * @param pattern - The numbering pattern to use
-   * @returns The next available unit number
-   */
   private generateUnitNumber(
     existingNumbers: string[],
     pattern: 'sequential' | 'floorBased' | 'custom'
@@ -491,9 +428,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     }
   }
 
-  /**
-   * Generate sequential unit number (101, 102, 103...)
-   */
   private generateSequentialNumber(existing: Set<string>): string {
     let nextNum = 101;
     while (existing.has(nextNum.toString())) {
@@ -502,12 +436,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     return nextNum.toString();
   }
 
-  /**
-   * Generate floor-based unit number (Floor 1: 101-110, Floor 2: 201-210, etc.)
-   */
   private generateFloorBasedNumber(existing: Set<string>, _existingNumbers: string[]): string {
-    // Start from floor 1, unit 01
-
     // Start from floor 1, unit 01
     let floor = 1;
     let unit = 1;
@@ -531,9 +460,6 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     return `${floor}01`;
   }
 
-  /**
-   * Generate custom pattern unit number based on existing patterns
-   */
   private generateCustomPatternNumber(existing: Set<string>, existingNumbers: string[]): string {
     if (existingNumbers.length === 0) {
       return 'A-1001'; // Default custom pattern
@@ -621,6 +547,33 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     } else {
       // Default to letter prefix pattern
       return 'A-1001';
+    }
+  }
+
+  async getUnitWithDetails(unitId: string): Promise<IPropertyUnitDocument | null> {
+    try {
+      if (!unitId) {
+        throw new Error('Unit ID is required');
+      }
+
+      return await this.findFirst(
+        { puid: unitId, deletedAt: null },
+        {
+          populate: [
+            {
+              path: 'currentLease',
+              select: 'luid leaseNumber status duration fees tenantId',
+              populate: {
+                path: 'tenantId',
+                select: 'uid userId personalInfo.firstName personalInfo.lastName contactInfo.email',
+              },
+            },
+          ],
+        }
+      );
+    } catch (error) {
+      this.logger.error('Error in getUnitWithDetails:', error);
+      throw this.throwErrorHandler(error);
     }
   }
 

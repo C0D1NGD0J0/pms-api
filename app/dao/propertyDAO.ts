@@ -30,13 +30,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     this.logger = createLogger('PropertyDAO');
   }
 
-  /**
-   * Get properties by various filter criteria
-   * @param clientId - The client ID
-   * @param filters - Filter criteria (type, status, occupancy, etc.)
-   * @param pagination - Pagination options
-   * @returns A promise that resolves to filtered properties with pagination
-   */
   async getFilteredProperties(
     clientId: string,
     filters: {
@@ -136,14 +129,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Update property occupancy status
-   * @param propertyId - The property ID
-   * @param status - The new occupancy status
-   * @param maxAllowedUnits - The new occupancy rate percentage
-   * @param userId - The ID of the user performing the update
-   * @returns A promise that resolves to the updated property document
-   */
   async updatePropertyOccupancy(
     propertyId: string,
     status: OccupancyStatus,
@@ -175,13 +160,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Get properties by client ID
-   * @param clientId - The client ID
-   * @param filter - Additional filter criteria
-   * @param opts - Additional options for the query
-   * @returns A promise that resolves to an array of property documents
-   */
   async getPropertiesByClientId(
     clientId: string,
     filter: FilterQuery<IPropertyDocument> = {},
@@ -232,13 +210,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Update property documents/photos
-   * @param propertyId - The property ID
-   * @param uploadData - The upload data to add
-   * @param userId - The ID of the user performing the action
-   * @returns A promise that resolves to the updated property document
-   */
   async updatePropertyDocument(
     propertyUid: string,
     uploadData: UploadResult[],
@@ -340,13 +311,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Find properties within a geographic radius
-   * @param clientId - The client ID
-   * @param coordinates - [longitude, latitude] coordinates
-   * @param radiusInKm - Radius in kilometers
-   * @returns A promise that resolves to properties within the radius
-   */
   async findPropertiesNearby(
     clientId: string,
     coordinates: [number, number],
@@ -393,13 +357,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Find a property by its address
-   * @param address - The property address
-   * @param clientId - The client ID
-   * @param opts - Additional options for the query
-   * @returns A promise that resolves to the property document or null if not found
-   */
   async findPropertyByAddress(
     address: string,
     clientId: string,
@@ -424,12 +381,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Create a new property with validation
-   * @param propertyData - The property data
-   * @param session - Optional MongoDB session for transactions
-   * @returns A promise that resolves to the created property document
-   */
   async createProperty(
     propertyData: Partial<IProperty>,
     session?: ClientSession
@@ -442,13 +393,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Remove a property document
-   * @param propertyId - The property ID
-   * @param documentId - The document ID to remove
-   * @param userId - The ID of the user performing the action
-   * @returns A promise that resolves to the updated property document
-   */
   async removePropertyDocument(
     propertyId: string,
     documentId: string,
@@ -471,13 +415,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Remove a property image
-   * @param propertyId - The property ID
-   * @param imageId - The image ID to remove
-   * @param userId - The ID of the user performing the action
-   * @returns A promise that resolves to the updated property document
-   */
   async removePropertyImage(
     propertyId: string,
     imageId: string,
@@ -500,14 +437,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Remove property media (documents or images) by type and ID
-   * @param propertyId - The property ID
-   * @param mediaId - The media ID to remove
-   * @param mediaType - The type of media ('document' or 'image')
-   * @param userId - The ID of the user performing the action
-   * @returns A promise that resolves to the updated property document
-   */
   async removePropertyMedia(
     propertyId: string,
     mediaId: string,
@@ -539,12 +468,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Search properties by various criteria
-   * @param query - The search query
-   * @param clientId - The client ID
-   * @returns A promise that resolves to an array of property documents
-   */
   searchProperties(query: string, clientId: string): ListResultWithPagination<IPropertyDocument[]> {
     if (!clientId) {
       throw new Error('Client ID is required');
@@ -559,12 +482,12 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       cuid: clientId,
       deletedAt: null,
       $or: [
-        { name: { $regex: query, $options: 'i' } },
-        { pid: { $regex: query, $options: 'i' } },
-        { 'address.city': { $regex: query, $options: 'i' } },
-        { 'address.state': { $regex: query, $options: 'i' } },
-        { 'address.postCode': { $regex: query, $options: 'i' } },
-        { 'address.fullAddress': { $regex: query, $options: 'i' } },
+        { name: { $regex: escapeRegExp(query), $options: 'i' } },
+        { pid: { $regex: escapeRegExp(query), $options: 'i' } },
+        { 'address.city': { $regex: escapeRegExp(query), $options: 'i' } },
+        { 'address.state': { $regex: escapeRegExp(query), $options: 'i' } },
+        { 'address.postCode': { $regex: escapeRegExp(query), $options: 'i' } },
+        { 'address.fullAddress': { $regex: escapeRegExp(query), $options: 'i' } },
       ],
     };
 
@@ -579,12 +502,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Archive a property (soft delete) - now checks if property can be archived first
-   * @param propertyId - The property ID
-   * @param userId - The ID of the user performing the action
-   * @returns A promise that resolves to true if successful
-   */
   async archiveProperty(propertyId: string, userId: string): Promise<boolean> {
     if (!propertyId || !userId) {
       throw new Error('Property ID and user ID are required');
@@ -608,11 +525,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     return !!result;
   }
 
-  /**
-   * Get all units for a property
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to an array of property unit documents
-   */
   async getPropertyUnits(
     propertyId: string,
     opts: IPaginationQuery,
@@ -630,11 +542,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Get unit count by status for a property
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to counts of units by status
-   */
   async getUnitCountsByStatus(propertyId: string): Promise<{
     total: number;
     available: number;
@@ -668,11 +575,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Check if a property can accommodate more units
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to whether the property can have more units
-   */
   async canAddUnitToProperty(
     propertyId: string,
     session?: ClientSession
@@ -708,13 +610,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Extended validation for unit compatibility with property type
-   * Used internally for more detailed validation than the interface method provides
-   * @param propertyId - The property ID
-   * @param unitType - Property unit type to check compatibility
-   * @returns Detailed validation result with reason if incompatible
-   */
   async validateUnitToPropertyCompatibility(
     propertyId: string,
     unitType?: string
@@ -779,12 +674,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Check if a unit type is compatible with a property type
-   * @param propertyType - The property type
-   * @param unitType - The unit type
-   * @returns Boolean indicating if the unit type is compatible with the property type
-   */
   private isUnitTypeCompatibleWithProperty(propertyType: string, unitType: string): boolean {
     const compatibilityMap: Record<string, string[]> = {
       apartment: ['studio', '1BR', '2BR', '3BR', '4BR+', 'penthouse', 'loft'],
@@ -800,12 +689,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     return compatibleUnitTypes.includes(unitType);
   }
 
-  /**
-   * Recalculate and update property occupancy status based on its units
-   * @param propertyId - The property ID
-   * @param userId - The ID of the user triggering the update
-   * @returns A promise that resolves to the updated property
-   */
   async syncPropertyOccupancyWithUnits(
     propertyId: string,
     userId: string
@@ -840,12 +723,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Enhanced sync that correctly determines occupancy status based on existing units only
-   * @param propertyId - The property ID
-   * @param userId - The ID of the user triggering the update
-   * @returns A promise that resolves to the updated property
-   */
   async syncPropertyOccupancyWithUnitsEnhanced(
     propertyId: string,
     userId: string
@@ -902,11 +779,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Check if a property can be archived (has no active units)
-   * @param propertyId - The property ID
-   * @returns A promise that resolves to whether the property can be archived and why if not
-   */
   async canArchiveProperty(propertyId: string): Promise<{
     canArchive: boolean;
     activeUnitCount?: number;
@@ -934,12 +806,6 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
-  /**
-   * Find property with active media only (filters out deleted images/documents at database level)
-   * @param filter - The filter criteria for finding the property
-   * @param opts - Additional options for the query
-   * @returns A promise that resolves to the property document with only active media or null if not found
-   */
   async findPropertyWithActiveMedia(
     filter: FilterQuery<IPropertyDocument>,
     opts?: IFindOptions

@@ -18,9 +18,6 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     this.logger = createLogger('SubscriptionDAO');
   }
 
-  /**
-   * Find subscription by payment gateway ID (Stripe customer ID, etc.)
-   */
   async findByPaymentGatewayId(
     paymentGatewayId: string,
     opts?: IFindOptions
@@ -33,9 +30,6 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     }
   }
 
-  /**
-   * Update subscription status
-   */
   async updateStatus(
     subscriptionId: string | Types.ObjectId,
     status: 'active' | 'inactive' | 'pending_payment'
@@ -103,9 +97,6 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     }
   }
 
-  /**
-   * Cancel a subscription
-   */
   async cancelSubscription(
     subscriptionId: string | Types.ObjectId,
     canceledAt: Date = new Date()
@@ -126,9 +117,6 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     }
   }
 
-  /**
-   * Update payment gateway information
-   */
   async updatePaymentGateway(
     subscriptionId: string | Types.ObjectId,
     paymentGateway: IPaymentGateway
@@ -146,9 +134,6 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     }
   }
 
-  /**
-   * Update subscription end date
-   */
   async updateEndDate(
     subscriptionId: string | Types.ObjectId,
     endDate: Date
@@ -166,9 +151,6 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     }
   }
 
-  /**
-   * Update both property and unit counts
-   */
   async updateUsage(
     subscriptionId: string | Types.ObjectId,
     properties: number,
@@ -190,9 +172,6 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     }
   }
 
-  /**
-   * Bulk expire subscriptions past their end date
-   */
   async bulkExpireSubscriptions(expiredDate: Date = new Date()): Promise<number> {
     try {
       const result = await this.updateMany(
@@ -215,15 +194,6 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     }
   }
 
-  /**
-   * Update resource count (property, unit, or seat) with optional limit check
-   * @param resourceName - The resource type ('property' | 'propertyUnit' | 'seat')
-   * @param clientId - The client ID
-   * @param delta - Amount to increment/decrement (positive or negative)
-   * @param maxLimit - Optional maximum allowed count (for limit checks during increment)
-   * @param session - Optional MongoDB session for transactions
-   * @returns ISubscriptionDocument if updated, null if limit reached
-   */
   async updateResourceCount(
     resourceName: 'property' | 'propertyUnit' | 'seat',
     clientId: string | Types.ObjectId,
@@ -282,9 +252,6 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     }
   }
 
-  /**
-   * Update plan and price
-   */
   async updatePlanAndPrice(
     clientId: string | Types.ObjectId,
     planName: 'essential' | 'growth' | 'portfolio',
@@ -309,9 +276,6 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     }
   }
 
-  /**
-   * Update additional seats
-   */
   async updateAdditionalSeats(
     clientId: string | Types.ObjectId,
     additionalSeatsCount: number,
@@ -353,9 +317,6 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     }
   }
 
-  /**
-   * Find all subscriptions pending downgrade past the threshold
-   */
   async findPendingDowngrades(thresholdDate: Date): Promise<ISubscriptionDocument[]> {
     try {
       const result = await this.list({

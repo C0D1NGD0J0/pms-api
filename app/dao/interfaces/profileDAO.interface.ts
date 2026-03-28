@@ -142,6 +142,18 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   ): Promise<IProfileDocument | null>;
 
   /**
+   * Updates tenant information for a profile.
+   *
+   * @param profileId - The ID of the profile to update
+   * @param tenantInfo - Object containing tenant information fields to update
+   * @returns A promise that resolves to the updated profile or null if profile not found
+   */
+  updateTenantInfo(
+    profileId: string,
+    tenantInfo: Partial<IProfileDocument['tenantInfo']>
+  ): Promise<IProfileDocument | null>;
+
+  /**
    * Updates locale settings (timezone and language) for a profile.
    *
    * @param profileId - The ID of the profile to update

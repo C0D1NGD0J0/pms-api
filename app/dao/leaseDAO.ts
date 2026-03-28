@@ -313,10 +313,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           'property.unitId': unitId,
           deletedAt: null,
           status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT] },
-          $and: [
-            { 'duration.startDate': { $lte: endDate } },
-            { 'duration.endDate': { $gte: startDate } },
-          ],
+          'duration.startDate': { $lte: endDate },
+          'duration.endDate': { $gte: startDate },
         };
 
         if (excludeLeaseId) {
@@ -348,10 +346,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           'property.unitId': { $exists: false },
           deletedAt: null,
           status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT] },
-          $and: [
-            { 'duration.startDate': { $lte: endDate } },
-            { 'duration.endDate': { $gte: startDate } },
-          ],
+          'duration.startDate': { $lte: endDate },
+          'duration.endDate': { $gte: startDate },
         };
 
         if (excludeLeaseId) {
@@ -400,10 +396,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         'property.id': propertyId,
         $or: [{ 'property.unitId': { $exists: false } }, { 'property.unitId': null }],
         status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT] },
-        $and: [
-          { 'duration.startDate': { $lte: endDate } },
-          { 'duration.endDate': { $gte: startDate } },
-        ],
+        'duration.startDate': { $lte: endDate },
+        'duration.endDate': { $gte: startDate },
         deletedAt: null,
       };
 
@@ -438,10 +432,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         'property.id': propertyId,
         'property.unitId': { $exists: true, $ne: null },
         status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT] },
-        $and: [
-          { 'duration.startDate': { $lte: endDate } },
-          { 'duration.endDate': { $gte: startDate } },
-        ],
+        'duration.startDate': { $lte: endDate },
+        'duration.endDate': { $gte: startDate },
         deletedAt: null,
       };
 

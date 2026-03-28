@@ -254,9 +254,12 @@ describe('SubscriptionService - Webhook Handlers', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockSubscriptionDAO.findFirst).toHaveBeenCalledWith({
-        'billing.subscriberId': 'sub_test123',
-      });
+      expect(mockSubscriptionDAO.findFirst).toHaveBeenCalledWith(
+        { 'billing.subscriberId': 'sub_test123' },
+        undefined,
+        undefined,
+        mockSession
+      );
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
         {
@@ -319,9 +322,12 @@ describe('SubscriptionService - Webhook Handlers', () => {
         attempt_count: 1,
       });
 
-      expect(mockSubscriptionDAO.findFirst).toHaveBeenCalledWith({
-        'billing.subscriberId': 'sub_test123',
-      });
+      expect(mockSubscriptionDAO.findFirst).toHaveBeenCalledWith(
+        { 'billing.subscriberId': 'sub_test123' },
+        undefined,
+        undefined,
+        mockSession
+      );
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
         { $set: { status: ISubscriptionStatus.INACTIVE } },
@@ -662,9 +668,12 @@ describe('SubscriptionService - Webhook Handlers', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockSubscriptionDAO.findFirst).toHaveBeenCalledWith({
-        'billing.subscriberId': 'sub_test123',
-      });
+      expect(mockSubscriptionDAO.findFirst).toHaveBeenCalledWith(
+        { 'billing.subscriberId': 'sub_test123' },
+        undefined,
+        undefined,
+        mockSession
+      );
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
         {

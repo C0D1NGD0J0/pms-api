@@ -123,6 +123,7 @@ describe('idempotency middleware', () => {
       // Assert
       expect(cache.getCachedRouteResponse).toHaveBeenCalledWith(
         'PUT',
+        undefined,
         'user-999',
         'cuid-xyz',
         'idem-key-put'
@@ -177,6 +178,7 @@ describe('idempotency middleware', () => {
       // Assert
       expect(cache.cacheRouteResponse).toHaveBeenCalledWith(
         'POST',
+        undefined,
         'user-abc',
         'cuid-abc',
         'idem-cache-2xx',
@@ -296,6 +298,7 @@ describe('idempotency middleware', () => {
       // Assert
       expect(cache.getCachedRouteResponse).toHaveBeenCalledWith(
         expect.any(String),
+        undefined,
         'anonymous',
         expect.any(String),
         'idem-anon'
@@ -319,6 +322,7 @@ describe('idempotency middleware', () => {
       // Assert
       expect(cache.getCachedRouteResponse).toHaveBeenCalledWith(
         expect.any(String),
+        undefined,
         expect.any(String),
         'global',
         'idem-global'

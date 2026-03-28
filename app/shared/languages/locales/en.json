@@ -407,6 +407,9 @@
     "invitation": {
       "subject": "You've been invited to join {{companyName}}",
       "reminderSubject": "Reminder: You've been invited to join {{companyName}}"
+    },
+    "accountDisconnected": {
+      "subject": "Your Account Connection Has Been Removed"
     }
   },
   "system": {

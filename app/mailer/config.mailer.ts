@@ -103,6 +103,13 @@ export class MailService {
       case MailType.LEASE_PAYMENT_REMINDER:
         template = await this.buildTemplate('payment-reminder', emailData, 'lease');
         break;
+      case MailType.ACCOUNT_DISCONNECTED:
+        template = await this.buildTemplate(
+          'accountDisconnected',
+          emailData,
+          'accountDisconnected'
+        );
+        break;
       case MailType.INVITATION_REMINDER:
         template = await this.buildTemplate('reminder', emailData, 'invitation');
         break;
@@ -259,6 +266,7 @@ export class MailService {
       [MailType.LEASE_TERMINATED]: 'Lease Termination Notice',
       [MailType.LEASE_PAYMENT_REMINDER]: 'Rent Payment Reminder',
       [MailType.LEASE_ENDING_SOON]: 'Your Lease is Ending Soon',
+      [MailType.ACCOUNT_DISCONNECTED]: 'Your Account Connection Has Been Removed',
     };
 
     return subjectMap[mailType] || subjectMap.default;

@@ -128,6 +128,7 @@ describe('AuthController Integration Tests', () => {
       authCache: mockAuthCache as any,
       vendorService,
       subscriptionService: {} as any,
+      emitterService: { on: jest.fn(), emit: jest.fn() } as any,
     });
 
     authController = new AuthController({ authService });

@@ -26,6 +26,9 @@ import {
   convertUserRoleToEnum,
   createSafeMongoUpdate,
   PROPERTY_STAFF_ROLES,
+  calcDaysRemaining,
+  calcLeaseProgress,
+  calcDaysElapsed,
   MoneyUtils,
 } from '@utils/index';
 
@@ -937,14 +940,8 @@ export const buildLeaseTimeline = (lease: ILeaseDocument): any => {
   const startDate = new Date(lease.duration.startDate);
   const endDate = new Date(lease.duration.endDate);
 
-  const daysRemaining = Math.max(
-    0,
-    Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-  );
-  const daysElapsed = Math.max(
-    0,
-    Math.ceil((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-  );
+  const daysRemaining = calcDaysRemaining(endDate, now);
+  const daysElapsed = calcDaysElapsed(startDate, now);
 
   return {
     created: lease.createdAt,
@@ -956,7 +953,7 @@ export const buildLeaseTimeline = (lease: ILeaseDocument): any => {
     daysElapsed,
     isActive: lease.status === LeaseStatus.ACTIVE,
     isExpiringSoon: daysRemaining > 0 && daysRemaining <= 60,
-    progress: (daysElapsed / (daysElapsed + daysRemaining)) * 100,
+    progress: calcLeaseProgress(daysElapsed, daysRemaining),
   };
 };
 
@@ -1080,7 +1077,7 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
   today.setHours(0, 0, 0, 0);
   endDate.setHours(0, 0, 0, 0);
 
-  const daysUntilExpiry = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const daysUntilExpiry = calcDaysRemaining(endDate, today);
 
   const renewalWindowDays = lease.renewalOptions?.noticePeriodDays || 60;
   const isWithinWindow = daysUntilExpiry <= renewalWindowDays && daysUntilExpiry > 0;

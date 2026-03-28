@@ -1,7 +1,7 @@
 import Logger from 'bunyan';
 import { ClientSession, Types, Model } from 'mongoose';
-import { createLogger, escapeRegExp } from '@utils/index';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
+import { calcPercentage, createLogger, escapeRegExp } from '@utils/index';
 import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
 
 import { BaseDAO } from './baseDAO';
@@ -311,7 +311,7 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
         .map(([type, count]) => ({
           name: type,
           value: count,
-          percentage: totalVendors > 0 ? Math.round((count / totalVendors) * 100) : 0,
+          percentage: calcPercentage(count, totalVendors),
         }))
         .sort((a, b) => b.value - a.value);
 
@@ -335,7 +335,7 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
         .map(([service, count]) => ({
           name: service,
           value: count,
-          percentage: totalVendors > 0 ? Math.round((count / totalVendors) * 100) : 0,
+          percentage: calcPercentage(count, totalVendors),
         }))
         .sort((a, b) => b.value - a.value);
 

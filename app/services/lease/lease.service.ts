@@ -64,6 +64,7 @@ import {
   convertUserRoleToEnum,
   PROPERTY_STAFF_ROLES,
   LEASE_CONSTANTS,
+  calcDaysElapsed,
   createLogger,
   MoneyUtils,
   JOB_NAME,
@@ -2754,9 +2755,7 @@ export class LeaseService {
 
       for (const lease of expiredLeases.items) {
         try {
-          const daysPastExpiry = Math.ceil(
-            (today.getTime() - lease.duration.endDate.getTime()) / (1000 * 60 * 60 * 24)
-          );
+          const daysPastExpiry = calcDaysElapsed(lease.duration.endDate, today);
 
           this.log.info(`Processing lease ${lease.luid} (${daysPastExpiry} days past end date)`);
 

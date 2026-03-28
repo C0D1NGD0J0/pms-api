@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
 import { FilterQuery, Model } from 'mongoose';
+import { calcPercentage, createLogger, msToDays } from '@utils/index';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { PaymentRecordStatus, PaymentRecordType, IPaymentDocument } from '@interfaces/index';
 
@@ -274,14 +274,14 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       });
       const onTimePaymentRate =
         paymentsWithDueDate.length > 0
-          ? Math.round((onTimePayments.length / paymentsWithDueDate.length) * 100)
+          ? calcPercentage(onTimePayments.length, paymentsWithDueDate.length)
           : 0;
 
       const delaysInDays = paymentsWithDueDate.map((p: any) => {
         const dueDate = new Date(p.dueDate);
         const paidDate = new Date(p.paidAt);
         const diffMs = paidDate.getTime() - dueDate.getTime();
-        return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+        return Math.max(0, msToDays(diffMs));
       });
       const averagePaymentDelay =
         delaysInDays.length > 0

@@ -9,14 +9,11 @@ import { BadRequestError, NotFoundError } from '@shared/customErrors';
 
 const MIME_ALLOWLIST: Record<string, string[]> = {
   jpeg: ['image/jpeg'],
-  jpg: ['image/jpeg'],
+  jpg: ['image/jpg'],
   png: ['image/png'],
   pdf: ['application/pdf'],
   mp4: ['video/mp4'],
-  mov: ['video/quicktime'],
   csv: ['text/csv', 'application/csv', 'text/plain'],
-  doc: ['application/msword'],
-  docx: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
   'x-matroska': ['video/x-matroska'],
 };
 

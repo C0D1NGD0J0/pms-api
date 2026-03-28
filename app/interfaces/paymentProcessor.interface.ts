@@ -7,9 +7,12 @@ export enum PaymentProcessorAccountType {
 
 export interface IPaymentProcessor {
   accountType: PaymentProcessorAccountType;
+  payoutsBlockedReason?: string;
   detailsSubmitted: boolean;
+  payoutsBlocked?: boolean;
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
+  payoutsBlockedAt?: Date;
   client: Types.ObjectId;
   onboardedAt?: Date;
   accountId: string;

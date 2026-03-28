@@ -71,6 +71,8 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       reason: { type: String, trim: true },
     },
     dispute: {
+      status: { type: String, enum: ['open', 'won', 'lost'] },
+      resolvedAt: { type: Date },
       disputeId: { type: String },
       amount: {
         type: Number,

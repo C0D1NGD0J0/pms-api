@@ -1,7 +1,10 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
+import { JOB_NAME } from '@utils/index';
 import ProfileDAO from '@dao/profileDAO';
+import { EmailQueue } from '@queues/index';
 import { envVariables } from '@shared/config';
+import { QueueFactory } from '@services/queue';
 import { AuthCache } from '@caching/auth.cache';
 import { SSEService } from '@services/sse/sse.service';
 import { ClientValidations } from '@shared/validations';
@@ -11,11 +14,11 @@ import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { IClientDocument, IClientStats } from '@interfaces/client.interface';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { IIdentitySessionResponse } from '@interfaces/paymentGateway.interface';
-import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { NotificationService } from '@services/notification/notification.service';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
+import { ISuccessReturnData, IRequestContext, MailType } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { SubscriptionDAO, PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
@@ -25,8 +28,10 @@ import {
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
 import {
+  PaymentDisputeReversalFailedPayload,
   PaymentProcessorVerifiedPayload,
   PaymentDisputeCreatedPayload,
+  PaymentDisputeLostPayload,
   PaymentDisputeWonPayload,
   EventTypes,
 } from '@interfaces/events.interface';
@@ -38,6 +43,7 @@ interface IConstructor {
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   propertyUnitDAO: PropertyUnitDAO;
+  queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   sseService: SSEService;
@@ -60,6 +66,7 @@ export class ClientService {
   private readonly notificationService: NotificationService;
   private readonly emitterService: EventEmitterService;
   private readonly paymentGatewayService: PaymentGatewayService;
+  private readonly queueFactory: QueueFactory;
 
   constructor({
     clientDAO,
@@ -74,6 +81,7 @@ export class ClientService {
     notificationService,
     emitterService,
     paymentGatewayService,
+    queueFactory,
   }: IConstructor) {
     this.log = createLogger('ClientService');
     this.clientDAO = clientDAO;
@@ -88,6 +96,7 @@ export class ClientService {
     this.notificationService = notificationService;
     this.subscriptionService = subscriptionService;
     this.paymentGatewayService = paymentGatewayService;
+    this.queueFactory = queueFactory;
     this.setupEventListeners();
   }
 
@@ -577,6 +586,14 @@ export class ClientService {
       }
     );
 
+    // Kill the user's session for this client immediately
+    this.emitterService.emit(EventTypes.USER_DISCONNECTED, {
+      disconnectedBy: currentuser.sub,
+      userId: user._id.toString(),
+      uid: user.uid,
+      cuid: clientId,
+    });
+
     // Emit event for subscription seat tracking (employee roles only)
     const EMPLOYEE_ROLES = ['super-admin', 'admin', 'manager', 'staff'];
     const isEmployee = clientConnection.roles.some((role) => EMPLOYEE_ROLES.includes(role));
@@ -594,6 +611,36 @@ export class ClientService {
         userId: targetUserId,
         cuid: clientId,
         roles: clientConnection.roles,
+      });
+    }
+
+    // Send disconnection notification to the affected user
+    try {
+      const client = await this.clientDAO.getClientByCuid(clientId);
+      const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
+      emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_DISCONNECTED_JOB, {
+        to: user.email,
+        subject: 'Your Account Connection Has Been Removed',
+        emailType: MailType.ACCOUNT_DISCONNECTED,
+        client: { cuid: clientId, id: client?._id.toString() || '' },
+        data: {
+          fullname: user.email,
+          companyName:
+            client?.displayName ||
+            (client as any)?.companyProfile?.legalEntityName ||
+            'your account',
+          disconnectedAt: new Date().toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          }),
+          roles: clientConnection.roles.join(', '),
+        },
+      });
+    } catch (emailError) {
+      this.log.error('Failed to queue disconnection email', {
+        targetUserId,
+        error: emailError,
       });
     }
 
@@ -685,7 +732,7 @@ export class ClientService {
     await this.profileDAO.updateCommonEmployeeInfo(profile._id.toString(), {
       department: department,
     });
-    await this.authCache.invalidateUserSession(user._id.toString());
+    await this.authCache.invalidateUserSession(user._id.toString(), clientId);
 
     this.log.info(
       {
@@ -877,6 +924,11 @@ export class ClientService {
       this.handleDisputeCreated.bind(this)
     );
     this.emitterService.on(EventTypes.PAYMENT_DISPUTE_WON, this.handleDisputeWon.bind(this));
+    this.emitterService.on(EventTypes.PAYMENT_DISPUTE_LOST, this.handleDisputeLost.bind(this));
+    this.emitterService.on(
+      EventTypes.PAYMENT_DISPUTE_REVERSAL_FAILED,
+      this.handleDisputeReversalFailed.bind(this)
+    );
   }
 
   private async handlePaymentProcessorVerified({
@@ -971,6 +1023,55 @@ export class ClientService {
       });
     } catch (error) {
       this.log.error({ error, cuid }, 'Failed to handle dispute won event');
+    }
+  }
+
+  private async handleDisputeLost({
+    cuid,
+    amount,
+    currency,
+    disputeId,
+    invoiceNumber,
+    chargeId,
+  }: PaymentDisputeLostPayload): Promise<void> {
+    try {
+      const amountFormatted = `${(amount / 100).toFixed(2)} ${currency.toUpperCase()}`;
+      await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        priority: NotificationPriorityEnum.HIGH,
+        title: 'Dispute Lost — Payouts Blocked',
+        message: `The dispute for invoice ${invoiceNumber} was lost. ${amountFormatted} has been debited from the platform account. Payouts have been blocked pending review.`,
+        cuid,
+        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        metadata: { disputeId, chargeId, invoiceNumber, amount, currency },
+      });
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Failed to handle dispute lost event');
+    }
+  }
+
+  private async handleDisputeReversalFailed({
+    cuid,
+    disputeId,
+    transferId,
+    amount,
+    currency,
+  }: PaymentDisputeReversalFailedPayload): Promise<void> {
+    try {
+      const amountFormatted = `${(amount / 100).toFixed(2)} ${currency.toUpperCase()}`;
+      await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        priority: NotificationPriorityEnum.HIGH,
+        title: 'Dispute Transfer Reversal Failed — Payouts Blocked',
+        message: `The transfer reversal for dispute ${disputeId} failed (${amountFormatted}). Payouts have been blocked automatically. Manual review required.`,
+        cuid,
+        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        metadata: { disputeId, transferId, amount, currency },
+      });
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Failed to handle dispute reversal failed event');
     }
   }
 }

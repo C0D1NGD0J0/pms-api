@@ -55,6 +55,16 @@ const PaymentProcessorSchema = new Schema<IPaymentProcessorDocument>(
       required: true,
       default: false,
     },
+    payoutsBlocked: {
+      type: Boolean,
+      default: false,
+    },
+    payoutsBlockedReason: {
+      type: String,
+    },
+    payoutsBlockedAt: {
+      type: Date,
+    },
     onboardedAt: {
       type: Date,
     },

@@ -189,6 +189,62 @@ export const EDITABLE_FIELDS_BY_LEASE_STATUS: Record<string, string[]> = {
 };
 
 /**
+ * ISO-2 country codes supported by Stripe Connect.
+ * Users signing up from countries not in this list will be blocked at signup
+ * until an alternative payment provider (e.g. Paystack) is integrated.
+ * Source: https://stripe.com/global (last updated 2026-03)
+ */
+export const STRIPE_SUPPORTED_COUNTRY_CODES: string[] = [
+  'AU',
+  'AT',
+  'BE',
+  'BR',
+  'BG',
+  'CA',
+  'HR',
+  'CY',
+  'CZ',
+  'DK',
+  'EE',
+  'FI',
+  'FR',
+  'DE',
+  'GI',
+  'GR',
+  'HK',
+  'HU',
+  'IN',
+  'ID',
+  'IE',
+  'IT',
+  'JP',
+  'LV',
+  'LI',
+  'LT',
+  'LU',
+  'MY',
+  'MT',
+  'MX',
+  'NL',
+  'NZ',
+  'NO',
+  'PL',
+  'PT',
+  'RO',
+  'SG',
+  'SK',
+  'SI',
+  'ES',
+  'SE',
+  'CH',
+  'TH',
+  'AE',
+  'GB',
+  'US',
+  'TW',
+];
+
+/**
  * Constants for lease thresholds and configuration
  */
 export const LEASE_CONSTANTS = {

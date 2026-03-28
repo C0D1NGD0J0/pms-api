@@ -101,7 +101,8 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     try {
       const updateFields: Record<string, any> = {};
 
-      for (const [key, value] of Object.entries(tenantInfo)) {
+      const safeInfo: Record<string, any> = tenantInfo ?? {};
+      for (const [key, value] of Object.entries(safeInfo)) {
         updateFields[`tenantInfo.${key}`] = value;
       }
 

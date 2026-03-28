@@ -531,6 +531,28 @@ export const getLocationDetails = (location: string): string | null => {
 };
 
 /**
+ * Extracts the ISO-2 country code from a location string.
+ * Relies on getLocationDetails() to normalize the input first.
+ * Returns null if the country cannot be resolved.
+ *
+ * @example
+ * getCountryCodeFromLocation('Lagos, Nigeria') // → 'NG'
+ * getCountryCodeFromLocation('Toronto, ON')    // → 'CA'
+ * getCountryCodeFromLocation('Japan')          // → 'JP'
+ */
+export const getCountryCodeFromLocation = (location: string): string | null => {
+  const normalized = getLocationDetails(location);
+  if (!normalized) return null;
+  // normalized is "City, Country" or "Country"
+  const parts = normalized.split(', ');
+  const countryName = parts[parts.length - 1].trim();
+  const match = getCachedCountries().find(
+    (c) => c.name.toLowerCase() === countryName.toLowerCase()
+  );
+  return match?.isoCode ?? null;
+};
+
+/**
  * Converts time expressions like '1d', '120min', '60s', '1 day', '2 days', '120 mins' into seconds and milliseconds.
  * Supported units are 'd' (days), 'h' (hours), 'm' (minutes), 's' (seconds), 'day', 'days', 'min', 'mins'.
  *

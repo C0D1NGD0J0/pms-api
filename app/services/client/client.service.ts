@@ -943,7 +943,7 @@ export class ClientService {
         return;
       }
 
-      await this.authCache.invalidateCurrentUser(adminId);
+      await this.authCache.invalidateCurrentUser(adminId, cuid);
 
       await this.sseService.sendToUser(
         adminId,

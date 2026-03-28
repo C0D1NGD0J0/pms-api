@@ -39,7 +39,8 @@
       "featureNotEntitled": "This feature is not available on your current subscription plan. Please upgrade to access it.",
       "clientNotVerified": "Your account must be verified before performing this action. Please complete account verification.",
       "superAdminRequired": "Super administrator privileges are required to perform this action",
-      "subscriptionInactive": "Your subscription is not active. Please renew your plan to continue."
+      "subscriptionInactive": "Your subscription is not active. Please renew your plan to continue.",
+      "unsupportedCountry": "We're not yet available in {{country}}. Our payment processor does not support this country. Please contact support if you believe this is an error."
     },
     "success": {
       "tokenRefreshed": "Token refreshed successfully",

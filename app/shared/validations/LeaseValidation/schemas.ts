@@ -3,7 +3,7 @@ import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
 
-import { getContainer } from '../UtilsValidation';
+import { getContainer, calendarDate } from '../UtilsValidation';
 
 export const isValidProperty = async (propertyId: string, cuid: string) => {
   try {
@@ -105,27 +105,11 @@ export const LeaseFeesSchema = z.object({
 });
 
 export const LeaseDurationSchema = z.object({
-  startDate: z.coerce.date({
-    errorMap: () => ({ message: 'Start date must be a valid date' }),
-  }),
-  endDate: z.coerce.date({
-    errorMap: () => ({ message: 'End date must be a valid date' }),
-  }),
-  moveInDate: z.coerce
-    .date({
-      errorMap: () => ({ message: 'Move-in date must be a valid date' }),
-    })
-    .optional(),
-  moveOutDate: z.coerce
-    .date({
-      errorMap: () => ({ message: 'Move-out date must be a valid date' }),
-    })
-    .optional(),
-  terminationDate: z.coerce
-    .date({
-      errorMap: () => ({ message: 'Termination date must be a valid date' }),
-    })
-    .optional(),
+  startDate: calendarDate('Start date must be a valid date'),
+  endDate: calendarDate('End date must be a valid date'),
+  moveInDate: calendarDate('Move-in date must be a valid date').optional(),
+  moveOutDate: calendarDate('Move-out date must be a valid date').optional(),
+  terminationDate: calendarDate('Termination date must be a valid date').optional(),
 });
 
 export const LeasePropertySchema = z.object({
@@ -161,8 +145,8 @@ export const RenewalOptionsSchema = z.object({
 export const RenewLeaseSchema = z.object({
   duration: z
     .object({
-      startDate: z.coerce.date().optional(),
-      endDate: z.coerce.date().optional(),
+      startDate: calendarDate().optional(),
+      endDate: calendarDate().optional(),
     })
     .optional(),
 
@@ -405,30 +389,16 @@ export const FilterLeasesSchema = z.object({
 
 // Activate Lease Schema
 export const ActivateLeaseSchema = z.object({
-  moveInDate: z.coerce
-    .date({
-      errorMap: () => ({ message: 'Move-in date must be a valid date' }),
-    })
-    .optional(),
-  signedDate: z.coerce
-    .date({
-      errorMap: () => ({ message: 'Signed date must be a valid date' }),
-    })
-    .optional(),
+  moveInDate: calendarDate('Move-in date must be a valid date').optional(),
+  signedDate: calendarDate('Signed date must be a valid date').optional(),
   notes: z.string().max(500, 'Notes must be at most 500 characters').optional(),
 });
 
 // Terminate Lease Schema
 export const TerminateLeaseSchema = z
   .object({
-    terminationDate: z.coerce.date({
-      errorMap: () => ({ message: 'Termination date must be a valid date' }),
-    }),
-    moveOutDate: z.coerce
-      .date({
-        errorMap: () => ({ message: 'Move-out date must be a valid date' }),
-      })
-      .optional(),
+    terminationDate: calendarDate('Termination date must be a valid date'),
+    moveOutDate: calendarDate('Move-out date must be a valid date').optional(),
     terminationReason: z
       .string()
       .min(10, 'Termination reason must be at least 10 characters')

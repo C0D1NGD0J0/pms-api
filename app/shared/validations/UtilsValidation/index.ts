@@ -17,6 +17,34 @@ export const getContainer = async () => {
   return container;
 };
 
+/**
+ * Zod schema for a real calendar date that rejects impossible dates like Feb 30 or Jan 32.
+ * z.coerce.date() silently overflows these (e.g. Feb 29 on a non-leap year → Mar 1),
+ * so this validates the date components match after construction.
+ *
+ * Accepts ISO strings ("2027-03-15", "2027-03-15T10:00:00Z") and Date objects.
+ */
+export const calendarDate = (errorMessage?: string) =>
+  z
+    .union([z.string(), z.date()])
+    .refine(
+      (val): boolean => {
+        if (val instanceof Date) return !isNaN(val.getTime());
+        const d = new Date(val as string);
+        if (isNaN(d.getTime())) return false;
+        const dateOnly = (val as string).split('T')[0];
+        const parts = dateOnly.split('-');
+        if (parts.length !== 3) return false;
+        const [year, month, day] = parts.map(Number);
+        if (isNaN(year) || isNaN(month) || isNaN(day)) return false;
+        return (
+          d.getUTCFullYear() === year && d.getUTCMonth() + 1 === month && d.getUTCDate() === day
+        );
+      },
+      { message: errorMessage ?? 'Invalid date: this day does not exist in the calendar' }
+    )
+    .transform((val) => (val instanceof Date ? val : new Date(val as string)));
+
 export const ValidateCuidSchema = z.object({
   cuid: z.string().refine(
     async (cuid) => {

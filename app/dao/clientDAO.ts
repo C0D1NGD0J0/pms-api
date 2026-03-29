@@ -27,9 +27,14 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     this.logger = createLogger('ClientDAO');
   }
 
-  /**
-   * @inheritdoc
-   */
+  private buildNestedUpdate(prefix: string, data: Record<string, any>): Record<string, any> {
+    const updateObj: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      updateObj[`${prefix}.${key}`] = value;
+    }
+    return updateObj;
+  }
+
   async getClientByCuid(cuid: string, opts?: IFindOptions): Promise<IClientDocument | null> {
     try {
       const query = { cuid };
@@ -40,30 +45,18 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async updateAccountType(
     clientId: string,
     data: IClientDocument['accountType']
   ): Promise<IClientDocument | null> {
     try {
-      const updateObj: Record<string, any> = {};
-
-      for (const [key, value] of Object.entries(data)) {
-        updateObj[`accountType.${key}`] = value;
-      }
-
-      return await this.updateById(clientId, { $set: updateObj });
+      return await this.updateById(clientId, { $set: this.buildNestedUpdate('accountType', data) });
     } catch (error) {
       this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async createClient(clientData: Partial<IClientDocument>): Promise<IClientDocument> {
     try {
       if (!clientData.cuid) {
@@ -77,9 +70,6 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async getClientsByAccountAdmin(
     adminId: string,
     opts?: IFindOptions
@@ -93,51 +83,34 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async updateCompanyInfo(
     clientId: string,
     companyInfo: Partial<ICompanyProfile>
   ): Promise<IClientDocument | null> {
     try {
-      const updateObj: Record<string, any> = {};
-
-      for (const [key, value] of Object.entries(companyInfo)) {
-        updateObj[`companyProfile.${key}`] = value;
-      }
-
-      return await this.updateById(clientId, { $set: updateObj });
+      return await this.updateById(clientId, {
+        $set: this.buildNestedUpdate('companyProfile', companyInfo),
+      });
     } catch (error) {
       this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async updateClientSettings(
     clientId: string,
     settings: Partial<IClientSettings>
   ): Promise<IClientDocument | null> {
     try {
-      const updateObj: Record<string, any> = {};
-
-      for (const [key, value] of Object.entries(settings)) {
-        updateObj[`settings.${key}`] = value;
-      }
-
-      return await this.updateById(clientId, { $set: updateObj });
+      return await this.updateById(clientId, {
+        $set: this.buildNestedUpdate('settings', settings),
+      });
     } catch (error) {
       this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async updateDataProcessingConsent(
     clientId: string,
     consent: boolean
@@ -152,9 +125,6 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async updateSubscription(
     clientId: string,
     subscriptionId: string | null
@@ -171,9 +141,6 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async doesClientExist(cuid: string): Promise<boolean> {
     try {
       const count = await this.countDocuments({ cuid });
@@ -184,9 +151,6 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async searchClients(
     searchTerm: string,
     opts?: IFindOptions

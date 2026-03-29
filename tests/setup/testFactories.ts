@@ -269,7 +269,7 @@ export const createTestPropertyUnit = async (
     },
     specifications: {
       totalArea: squareFeet, // Required field
-      rooms: options.bedrooms || 2, // Note: 'rooms' is the actual field name in the model
+      bedrooms: options.bedrooms || 2,
       bathrooms: options.bathrooms || 1,
     },
     managedBy: new Types.ObjectId(), // Required field

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { UserController } from '@controllers/UserController';
+import { DSARController } from '@controllers/DSARController';
 import { ClientController } from '@controllers/ClientController';
 import { PropertyController } from '@controllers/PropertyController';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
@@ -244,6 +245,7 @@ router.get(
 
 router.get(
   '/:cuid/stats',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
@@ -323,6 +325,33 @@ router.delete(
   asyncWrapper((req, res) => {
     const userController = req.container.resolve<UserController>('userController');
     return userController.archiveUser(req, res);
+  })
+);
+
+// DSAR — Data Subject Access Requests
+router.get(
+  '/:cuid/dsar/:uid/export',
+  basicLimiter(),
+  isAuthenticated,
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+  }),
+  asyncWrapper((req, res) => {
+    const dsarController = req.container.resolve<DSARController>('dsarController');
+    return dsarController.exportUserData(req, res);
+  })
+);
+
+router.delete(
+  '/:cuid/dsar/:uid/anonymise',
+  basicLimiter(),
+  isAuthenticated,
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+  }),
+  asyncWrapper((req, res) => {
+    const dsarController = req.container.resolve<DSARController>('dsarController');
+    return dsarController.anonymiseUser(req, res);
   })
 );
 

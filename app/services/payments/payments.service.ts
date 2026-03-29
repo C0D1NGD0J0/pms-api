@@ -7,11 +7,11 @@ import { EventTypes } from '@interfaces/events.interface';
 import { preventTenantConflict } from '@shared/middlewares';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionPlanConfig } from '@services/subscription';
-import { getPaymentProcessorUrls, createLogger } from '@utils/index';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IPromiseReturnedData, IPaginateResult } from '@interfaces/utils.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import { getPaymentProcessorUrls, calcCollectionRate, createLogger, daysInMs } from '@utils/index';
 import {
   PaymentProcessorDAO,
   SubscriptionDAO,
@@ -133,7 +133,7 @@ export class PaymentService implements ICronProvider {
   private async queueWeeklyRentInvoices(): Promise<void> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const sevenDaysLater = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const sevenDaysLater = new Date(today.getTime() + daysInMs(7));
 
     const { items: leases } = await this.leaseDAO.list(
       { status: LeaseStatus.ACTIVE, 'fees.acceptedPaymentMethod': 'auto-debit', deletedAt: null },
@@ -182,7 +182,7 @@ export class PaymentService implements ICronProvider {
   private async queueDailySafetyNetInvoices(): Promise<void> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    const tomorrow = new Date(today.getTime() + daysInMs(1));
 
     const { items: leases } = await this.leaseDAO.list(
       {
@@ -1230,12 +1230,38 @@ export class PaymentService implements ICronProvider {
       const transferId = typeof transferRaw === 'string' ? transferRaw : (transferRaw as any)?.id;
 
       if (transferId) {
-        await this.paymentGatewayService.createTransferReversal(
-          IPaymentGatewayProvider.STRIPE,
-          transferId,
-          amount
-        );
-        this.log.info('Transfer reversed for dispute', { disputeId, transferId, amount });
+        try {
+          await this.paymentGatewayService.createTransferReversal(
+            IPaymentGatewayProvider.STRIPE,
+            transferId,
+            amount
+          );
+          this.log.info('Transfer reversed for dispute', { disputeId, transferId, amount });
+        } catch (reversalError: any) {
+          this.log.error('Transfer reversal failed — blocking payouts', {
+            disputeId,
+            transferId,
+            error: reversalError,
+          });
+          await this.paymentProcessorDAO.update(
+            { cuid: payment.cuid },
+            {
+              $set: {
+                payoutsBlocked: true,
+                payoutsBlockedReason: `Transfer reversal failed for dispute ${disputeId}`,
+                payoutsBlockedAt: new Date(),
+              },
+            }
+          );
+          this.emitterService.emit(EventTypes.PAYMENT_DISPUTE_REVERSAL_FAILED, {
+            cuid: payment.cuid,
+            pytuid: payment.pytuid,
+            disputeId,
+            transferId,
+            amount,
+            currency,
+          });
+        }
       } else {
         this.log.warn('No transfer on charge — skipping reversal', { chargeId, disputeId });
       }
@@ -1248,6 +1274,7 @@ export class PaymentService implements ICronProvider {
             'dispute.amount': amount,
             'dispute.reason': reason,
             'dispute.disputedAt': new Date(),
+            'dispute.status': 'open',
           },
         }
       );
@@ -1312,6 +1339,11 @@ export class PaymentService implements ICronProvider {
         metadata: { disputeId, reason: 'dispute_won', invoiceNumber: payment.invoiceNumber },
       });
 
+      await this.paymentDAO.update(
+        { _id: payment._id },
+        { $set: { 'dispute.status': 'won', 'dispute.resolvedAt': new Date() } }
+      );
+
       this.emitterService.emit(EventTypes.PAYMENT_DISPUTE_WON, {
         cuid: payment.cuid,
         pytuid: payment.pytuid,
@@ -1330,6 +1362,64 @@ export class PaymentService implements ICronProvider {
       return { success: true, data: undefined, message: 'Dispute won handled' };
     } catch (error: any) {
       this.log.error('Error handling dispute won', { disputeId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Webhook handler: charge.dispute.closed (status=lost)
+   * Blocks PM payouts — platform is liable for the disputed amount.
+   */
+  async handleDisputeLost(disputeId: string, disputeData: any): IPromiseReturnedData<void> {
+    try {
+      const chargeId =
+        typeof disputeData.charge === 'string' ? disputeData.charge : disputeData.charge?.id;
+      const amount: number = disputeData.amount;
+      const currency: string = disputeData.currency;
+
+      const payment = await this.paymentDAO.findFirst({
+        gatewayChargeId: chargeId,
+        deletedAt: null,
+      });
+      if (!payment) {
+        this.log.warn('Payment not found for lost dispute charge', { chargeId, disputeId });
+        return { success: false, data: undefined, message: 'Payment record not found' };
+      }
+
+      await this.paymentProcessorDAO.update(
+        { cuid: payment.cuid },
+        {
+          $set: {
+            payoutsBlocked: true,
+            payoutsBlockedReason: `Dispute ${disputeId} lost — funds debited from platform account`,
+            payoutsBlockedAt: new Date(),
+          },
+        }
+      );
+
+      await this.paymentDAO.update(
+        { _id: payment._id },
+        { $set: { 'dispute.status': 'lost', 'dispute.resolvedAt': new Date() } }
+      );
+
+      this.emitterService.emit(EventTypes.PAYMENT_DISPUTE_LOST, {
+        cuid: payment.cuid,
+        pytuid: payment.pytuid,
+        disputeId,
+        invoiceNumber: payment.invoiceNumber,
+        chargeId,
+        amount,
+        currency,
+      });
+
+      this.log.info('Dispute lost — payouts blocked, PM notified', {
+        disputeId,
+        chargeId,
+        pytuid: payment.pytuid,
+      });
+      return { success: true, data: undefined, message: 'Dispute lost handled' };
+    } catch (error: any) {
+      this.log.error('Error handling dispute lost', { disputeId, error });
       throw error;
     }
   }
@@ -1416,8 +1506,7 @@ export class PaymentService implements ICronProvider {
       // collectionRate = what percentage of expected revenue has actually been collected.
       // Formula: (collected / expectedRevenue) * 100, rounded to nearest integer.
       // Example: collected=$453,818 / expected=$537,418 = ~84%
-      const collectionRate =
-        expectedRevenue > 0 ? Math.round((collected / expectedRevenue) * 100) : 0;
+      const collectionRate = calcCollectionRate(collected, expectedRevenue);
 
       return {
         success: true,

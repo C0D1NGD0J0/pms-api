@@ -12,7 +12,7 @@ export class IdempotencyCache extends BaseCache {
     super({ redisService });
   }
 
-  /** Compact, collision-resistant key: idmp:r:{MD5(method:routePath:userId:cuid:idempotencyKey)} */
+  /** Compact, collision-resistant key: idmp:r:{SHA-256(method:routePath:userId:cuid:idempotencyKey)} */
   private routeKey(
     method: string,
     routePath: string,
@@ -21,7 +21,7 @@ export class IdempotencyCache extends BaseCache {
     idempotencyKey: string
   ): string {
     const hash = crypto
-      .createHash('md5')
+      .createHash('sha256')
       .update(`${method}:${routePath}:${userId}:${cuid}:${idempotencyKey}`)
       .digest('hex');
     return `idmp:r:${hash}`;

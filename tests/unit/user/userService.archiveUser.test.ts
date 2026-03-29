@@ -15,6 +15,7 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
   let mockClientDAO: jest.Mocked<ClientDAO>;
   let mockPropertyDAO: jest.Mocked<PropertyDAO>;
   let mockEmitterService: jest.Mocked<EventEmitterService>;
+  let mockAddToEmailQueue: jest.Mock;
 
   const testCuid = 'client123';
   const testUid = 'user123';
@@ -54,6 +55,8 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
       emit: jest.fn(),
     } as any;
 
+    mockAddToEmailQueue = jest.fn();
+
     const mockPermissionService = {
       canAccessResource: jest.fn().mockResolvedValue(true),
     };
@@ -61,6 +64,10 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
     const mockUserCache = {
       invalidateUserDetail: jest.fn().mockResolvedValue(true),
       invalidateUserLists: jest.fn().mockResolvedValue(true),
+    };
+
+    const mockQueueFactory = {
+      getQueue: jest.fn().mockReturnValue({ addToEmailQueue: mockAddToEmailQueue }),
     };
 
     userService = new UserService({
@@ -74,6 +81,7 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
       vendorService: {} as any,
       emitterService: mockEmitterService,
       permissionService: mockPermissionService as any,
+      queueFactory: mockQueueFactory as any,
     });
   });
 
@@ -422,6 +430,60 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
           roles: ['vendor'],
         })
       );
+    });
+  });
+
+  describe('Account Disconnection Email', () => {
+    it('should queue a disconnection email after archiving a user', async () => {
+      const archivedUser = {
+        _id: mockUserId,
+        uid: testUid,
+        email: 'user@example.com',
+        fullname: 'Jane Doe',
+        cuids: [{ cuid: testCuid, roles: ['staff'], isConnected: true }],
+      };
+
+      mockUserDAO.getUserByUId.mockResolvedValue(archivedUser as any);
+      mockUserDAO.updateById.mockResolvedValue(archivedUser as any);
+      mockClientDAO.getClientByCuid.mockResolvedValue({
+        _id: mockClientId,
+        cuid: testCuid,
+        displayName: 'Acme Properties',
+        accountAdmin: new Types.ObjectId(),
+      } as any);
+
+      await userService.archiveUser(testCuid, testUid, mockCurrentUser as any);
+
+      expect(mockAddToEmailQueue).toHaveBeenCalledWith(
+        'accountDisconnectedJob',
+        expect.objectContaining({
+          to: 'user@example.com',
+          emailType: 'ACCOUNT_DISCONNECTED',
+          data: expect.objectContaining({
+            fullname: 'Jane Doe',
+            companyName: 'Acme Properties',
+            roles: 'staff',
+          }),
+        })
+      );
+    });
+
+    it('should not throw if email queuing fails', async () => {
+      const archivedUser = {
+        _id: mockUserId,
+        uid: testUid,
+        email: 'user@example.com',
+        cuids: [{ cuid: testCuid, roles: ['staff'], isConnected: true }],
+      };
+
+      mockUserDAO.getUserByUId.mockResolvedValue(archivedUser as any);
+      mockUserDAO.updateById.mockResolvedValue(archivedUser as any);
+      mockAddToEmailQueue.mockImplementation(() => {
+        throw new Error('Queue unavailable');
+      });
+
+      const result = await userService.archiveUser(testCuid, testUid, mockCurrentUser as any);
+      expect(result.success).toBe(true);
     });
   });
 

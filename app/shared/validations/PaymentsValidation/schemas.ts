@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
+import { calendarDate } from '../UtilsValidation';
+
 export const createPayment = z.object({
   paymentType: z.enum(['rent', 'maintenance', 'late_fee']),
   leaseId: z.string().min(1, 'Lease ID is required'),
   tenantId: z.string().min(1, 'Tenant ID is required'),
-  dueDate: z.coerce.date(),
+  dueDate: calendarDate(),
   daysLate: z.number().int().min(0).optional(),
   description: z.string().optional(),
   period: z
@@ -21,7 +23,7 @@ export const recordManualPayment = z.object({
   status: z.enum(['paid', 'pending', 'overdue', 'failed', 'cancelled']).optional(),
   baseAmount: z.number().int().min(0, 'Base amount must be a positive number'),
   processingFee: z.number().int().min(0, 'Processing fee cannot be negative').optional(),
-  paidAt: z.coerce.date(),
+  paidAt: calendarDate(),
   tenantId: z.string().min(1, 'Tenant ID is required'),
   leaseId: z.string().optional(),
   description: z.string().optional(),

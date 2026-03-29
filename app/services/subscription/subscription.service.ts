@@ -3,9 +3,9 @@ import { UserDAO } from '@dao/userDAO';
 import { ClientSession } from 'mongodb';
 import { AuthCache } from '@caching/index';
 import { ClientDAO } from '@dao/clientDAO';
-import { createLogger } from '@utils/index';
 import { Subscription } from '@models/index';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { createLogger, msToDays } from '@utils/index';
 import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
@@ -114,7 +114,7 @@ export class SubscriptionService {
       }
 
       const accountAdminId = client.accountAdmin.toString();
-      const cacheResult = await this.authCache.invalidateCurrentUser(accountAdminId);
+      const cacheResult = await this.authCache.invalidateCurrentUser(accountAdminId, cuid);
       if (!cacheResult.success) {
         this.log.error(
           { userId: accountAdminId, error: cacheResult.error },
@@ -544,7 +544,7 @@ export class SubscriptionService {
 
         if (subscription.pendingDowngradeAt) {
           const msUntilDowngrade = subscription.pendingDowngradeAt.getTime() - now.getTime();
-          daysUntilDowngrade = Math.ceil(msUntilDowngrade / (1000 * 60 * 60 * 24));
+          daysUntilDowngrade = msToDays(msUntilDowngrade);
 
           if (daysUntilDowngrade <= 1) {
             reason = 'grace_period';

@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
 import { FilterQuery, Model } from 'mongoose';
+import { calcPercentage, createLogger, msToDays } from '@utils/index';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { PaymentRecordStatus, PaymentRecordType, IPaymentDocument } from '@interfaces/index';
 
@@ -16,9 +16,6 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     this.log = createLogger('PaymentDAO');
   }
 
-  /**
-   * Find payments by client with filters
-   */
   async findByCuid(
     cuid: string,
     filters?: {
@@ -59,9 +56,6 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     }
   }
 
-  /**
-   * Find payment by pid (multi-tenant safe)
-   */
   async findByPid(
     pid: string,
     cuid: string,
@@ -79,9 +73,6 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     }
   }
 
-  /**
-   * Find payments by tenant
-   */
   async findByTenant(
     tenantId: string,
     cuid: string,
@@ -116,9 +107,6 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     }
   }
 
-  /**
-   * Find payments by lease
-   */
   async findByLease(
     leaseId: string,
     cuid: string,
@@ -144,9 +132,6 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     }
   }
 
-  /**
-   * Find overdue payments (for cron)
-   */
   async findOverduePayments(): ListResultWithPagination<IPaymentDocument[]> {
     try {
       return await this.list({
@@ -160,9 +145,6 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     }
   }
 
-  /**
-   * Find payment for specific month/year (rent generation check)
-   */
   async findByPeriod(
     cuid: string,
     leaseId: string,
@@ -200,9 +182,6 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     }
   }
 
-  /**
-   * Find by gateway payment ID (Stripe invoice ID)
-   */
   async findByGatewayId(
     gatewayPaymentId: string,
     opts?: IFindOptions
@@ -219,9 +198,6 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     }
   }
 
-  /**
-   * Update payment status
-   */
   async updateStatus(
     pid: string,
     cuid: string,
@@ -250,9 +226,6 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     }
   }
 
-  /**
-   * Get tenant payment metrics and history
-   */
   async getTenantPaymentMetrics(
     cuid: string,
     tenantId: string,
@@ -301,14 +274,14 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       });
       const onTimePaymentRate =
         paymentsWithDueDate.length > 0
-          ? Math.round((onTimePayments.length / paymentsWithDueDate.length) * 100)
+          ? calcPercentage(onTimePayments.length, paymentsWithDueDate.length)
           : 0;
 
       const delaysInDays = paymentsWithDueDate.map((p: any) => {
         const dueDate = new Date(p.dueDate);
         const paidDate = new Date(p.paidAt);
         const diffMs = paidDate.getTime() - dueDate.getTime();
-        return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+        return Math.max(0, msToDays(diffMs));
       });
       const averagePaymentDelay =
         delaysInDays.length > 0

@@ -82,6 +82,37 @@ router.get(
   })
 );
 
+// Update team member profile fields (ADMIN/MANAGER or primaryAccountHolder)
+router.patch(
+  '/:cuid/vendor/:vuid/team_members/:uid',
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
+    body: VendorValidations.updateTeamMember,
+  }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.updateTeamMember(req, res);
+  })
+);
+
+// Toggle team member active status (ADMIN/MANAGER or primaryAccountHolder)
+router.patch(
+  '/:cuid/vendor/:vuid/team_members/:uid/status',
+  basicLimiter(),
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
+    body: VendorValidations.toggleTeamMemberStatus,
+  }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.toggleTeamMemberStatus(req, res);
+  })
+);
+
 // Update vendor business details (primaryAccountHolder only)
 router.patch(
   '/:cuid/vendor/:vuid',

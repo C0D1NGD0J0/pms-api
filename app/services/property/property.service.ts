@@ -53,9 +53,13 @@ import {
   convertUserRoleToEnum,
   PROPERTY_STAFF_ROLES,
   getRequestDuration,
+  calcOccupancyRate,
+  calcTotalPages,
   createLogger,
   escapeRegExp,
   MoneyUtils,
+  megabytes,
+  calcSkip,
 } from '@utils/index';
 
 import { PropertyStatsService } from './propertyStats.service';
@@ -605,7 +609,7 @@ export class PropertyService {
       throw new BadRequestError({ message: t('property.errors.unableToValidateCsv') });
     }
 
-    if (csvFile.fileSize > 10 * 1024 * 1024) {
+    if (csvFile.fileSize > megabytes(10)) {
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
       throw new BadRequestError({ message: t('property.errors.fileTooLarge') });
     }
@@ -756,7 +760,7 @@ export class PropertyService {
       sort: pagination.sort,
       sortBy: pagination.sortBy,
       limit: Math.max(1, Math.min(pagination.limit || 10, 100)),
-      skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
+      skip: calcSkip(pagination.page || 1, pagination.limit || 10),
     };
 
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
@@ -1545,7 +1549,7 @@ export class PropertyService {
       // Calculate occupancy rate
       const totalUnits = unitInfo.totalUnits || 1;
       const occupiedUnits = unitInfo.unitStats?.occupied || activeLeases.length;
-      const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
+      const occupancyRate = calcOccupancyRate(occupiedUnits, totalUnits);
 
       // Calculate net income (simplified: rent minus 10% for management/maintenance)
       const monthlyNetIncome = Math.round(monthlyRent * 0.9);
@@ -1698,7 +1702,7 @@ export class PropertyService {
       ]);
 
       const total = (totalCountResult[0] as any)?.total || 0;
-      const totalPages = Math.ceil(total / limit);
+      const totalPages = calcTotalPages(total, limit);
 
       const result = {
         items: users as unknown as IAssignableUser[],

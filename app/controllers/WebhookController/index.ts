@@ -186,6 +186,16 @@ export class WebhookController {
             break;
           }
 
+          case 'charge.dispute.closed': {
+            const dispute = event.data.object as any;
+            if (dispute.status === 'won') {
+              await this.paymentService.handleDisputeWon(dispute.id, dispute);
+            } else if (dispute.status === 'lost') {
+              await this.paymentService.handleDisputeLost(dispute.id, dispute);
+            }
+            break;
+          }
+
           // ── Rent payment events ───────────────────────────────────────────────
           case 'charge.refunded': {
             const charge = event.data.object as any;

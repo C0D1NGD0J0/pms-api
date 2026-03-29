@@ -18,9 +18,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     this.logger = createLogger('ProfileDAO');
   }
 
-  /**
-   * @inheritdoc
-   */
   async updatePersonalInfo(
     profileId: string,
     personalInfo: Partial<IProfileDocument['personalInfo']>
@@ -39,9 +36,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async updateAvatar(
     profileId: string,
     avatarData: { url: string; filename?: string; key?: string }
@@ -56,9 +50,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async updateTheme(profileId: string, theme: 'light' | 'dark'): Promise<IProfileDocument | null> {
     try {
       return await this.updateById(profileId, {
@@ -70,9 +61,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async updateLoginType(
     profileId: string,
     loginType: 'otp' | 'password'
@@ -87,9 +75,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async updateGDPRSettings(
     profileId: string,
     gdprSettings: Partial<IProfileDocument['settings']['gdprSettings']>
@@ -109,9 +94,25 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
-  /**
-   * @inheritdoc
-   */
+  async updateTenantInfo(
+    profileId: string,
+    tenantInfo: Partial<IProfileDocument['tenantInfo']>
+  ): Promise<IProfileDocument | null> {
+    try {
+      const updateFields: Record<string, any> = {};
+
+      const safeInfo: Record<string, any> = tenantInfo ?? {};
+      for (const [key, value] of Object.entries(safeInfo)) {
+        updateFields[`tenantInfo.${key}`] = value;
+      }
+
+      return await this.updateById(profileId, { $set: updateFields });
+    } catch (error) {
+      this.logger.error(`Error updating tenant info for profile ${profileId}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
   async updateIdentification(
     profileId: string,
     identificationData: {
@@ -137,9 +138,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async updateNotificationPreferences(
     profileId: string,
     preferences: {
@@ -204,9 +202,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async updateLocaleSettings(
     profileId: string,
     settings: { timeZone?: string; lang?: string }
@@ -229,9 +224,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async createUserProfile(
     userId: string | Types.ObjectId,
     profileData: Partial<IProfileDocument>,
@@ -253,9 +245,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async searchProfiles(
     searchTerm: string,
     opts?: IFindOptions
@@ -280,9 +269,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
-  /**
-   * @inheritdoc
-   */
   async getProfileByUserId(userId: string | Types.ObjectId): Promise<IProfileDocument | null> {
     try {
       const objectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;

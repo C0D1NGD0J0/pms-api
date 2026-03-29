@@ -28,6 +28,12 @@ interface IInvitationAggregationResult {
 }
 
 export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvitationDAO {
+  private static readonly ACTOR_POPULATE = [
+    { path: 'invitedBy', select: 'email fullname' },
+    { path: 'acceptedBy', select: 'email fullname' },
+    { path: 'revokedBy', select: 'email fullname' },
+  ];
+
   constructor() {
     super(Invitation);
   }
@@ -93,16 +99,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
 
   async findByIuid(iuid: string, clientId: string): Promise<IInvitationDocument | null> {
     try {
-      return await this.findFirst(
-        { iuid, clientId },
-        {
-          populate: [
-            { path: 'invitedBy', select: 'email fullname' },
-            { path: 'acceptedBy', select: 'email fullname' },
-            { path: 'revokedBy', select: 'email fullname' },
-          ],
-        }
-      );
+      return await this.findFirst({ iuid, clientId }, { populate: InvitationDAO.ACTOR_POPULATE });
     } catch (error) {
       this.logger.error('Error finding invitation by ID:', error);
       throw this.throwErrorHandler(error);
@@ -111,16 +108,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
 
   async findByIuidUnsecured(iuid: string): Promise<IInvitationDocument | null> {
     try {
-      return await this.findFirst(
-        { iuid },
-        {
-          populate: [
-            { path: 'invitedBy', select: 'email fullname' },
-            { path: 'acceptedBy', select: 'email fullname' },
-            { path: 'revokedBy', select: 'email fullname' },
-          ],
-        }
-      );
+      return await this.findFirst({ iuid }, { populate: InvitationDAO.ACTOR_POPULATE });
     } catch (error) {
       this.logger.error('Error finding invitation by ID (unsecured):', error);
       throw this.throwErrorHandler(error);
@@ -174,11 +162,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         skip,
         limit,
         sort,
-        populate: [
-          { path: 'invitedBy', select: 'email fullname' },
-          { path: 'acceptedBy', select: 'email fullname' },
-          { path: 'revokedBy', select: 'email fullname' },
-        ],
+        populate: InvitationDAO.ACTOR_POPULATE,
       };
 
       const result = await this.list(filter, options);
@@ -276,22 +260,18 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     session?: ClientSession
   ): Promise<IInvitationDocument | null> {
     try {
-      const updateData: any = {
-        $set: {
-          status: 'declined',
-          declineReason: reason || '',
-          declinedAt: new Date(),
+      return await this.update(
+        { iuid, clientId },
+        {
+          $set: {
+            status: 'declined',
+            declineReason: reason || '',
+            declinedAt: new Date(),
+          },
+          $unset: { invitationToken: 1 },
         },
-        $unset: {
-          invitationToken: 1,
-        },
-      };
-
-      if (reason) {
-        updateData.$set.declineReason = reason;
-      }
-
-      return await this.update({ iuid, clientId }, updateData, { session });
+        { session }
+      );
     } catch (error) {
       this.logger.error('Error declining invitation:', error);
       throw this.throwErrorHandler(error);
@@ -473,14 +453,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     try {
       const result = await this.list(
         { inviteeEmail: email.toLowerCase(), clientId },
-        {
-          sort: { createdAt: -1 },
-          populate: [
-            { path: 'invitedBy', select: 'email fullname' },
-            { path: 'acceptedBy', select: 'email fullname' },
-            { path: 'revokedBy', select: 'email fullname' },
-          ],
-        }
+        { sort: { createdAt: -1 }, populate: InvitationDAO.ACTOR_POPULATE }
       );
 
       return result.items;

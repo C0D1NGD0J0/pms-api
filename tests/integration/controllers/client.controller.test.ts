@@ -89,6 +89,7 @@ describe('ClientController Integration Tests', () => {
       emitterService: {} as any,
       paymentDAO: {} as any,
       leaseDAO: {} as any,
+      queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
 
     const authCache = {
@@ -117,6 +118,7 @@ describe('ClientController Integration Tests', () => {
       notificationService: {} as any,
       sseService: {} as any,
       paymentGatewayService: {} as any,
+      queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
 
     clientController = new ClientController({ clientService });

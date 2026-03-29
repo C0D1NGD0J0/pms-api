@@ -92,6 +92,7 @@ describe('UserController Integration Tests', () => {
       emitterService: {} as any,
       paymentDAO: {} as any,
       leaseDAO: {} as any,
+      queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
 
     const mockMediaUploadService = {
@@ -137,6 +138,7 @@ describe('UserController Integration Tests', () => {
       notificationService: {} as any,
       sseService: {} as any,
       paymentGatewayService: {} as any,
+      queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
 
     userController = new UserController({

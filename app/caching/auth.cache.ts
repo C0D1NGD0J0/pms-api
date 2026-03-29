@@ -49,6 +49,7 @@ export class AuthCache extends BaseCache {
    */
   async saveRefreshToken(
     userId: string,
+    cuid: string,
     refreshToken: string,
     rememberMe = false
   ): Promise<ISuccessReturnData> {
@@ -61,7 +62,7 @@ export class AuthCache extends BaseCache {
         };
       }
       const ttl = rememberMe ? this.ExtendedRefreshTokenTTL : this.REFRESH_TOKEN_TTL;
-      const key = `${this.KEY_PREFIXES.TOKEN}:${userId}`;
+      const key = `${this.KEY_PREFIXES.TOKEN}:${cuid}:${userId}`;
       await this.client.SETEX(key, ttl, refreshToken);
       return { success: true, data: null };
     } catch (error) {
@@ -77,9 +78,9 @@ export class AuthCache extends BaseCache {
   /**
    * Retrieves a stored refresh token
    */
-  async getRefreshToken(userId: string): Promise<ISuccessReturnData<string | null>> {
+  async getRefreshToken(userId: string, cuid: string): Promise<ISuccessReturnData<string | null>> {
     try {
-      const key = `${this.KEY_PREFIXES.TOKEN}:${userId}`;
+      const key = `${this.KEY_PREFIXES.TOKEN}:${cuid}:${userId}`;
       const refreshToken = await this.client.get(key);
 
       if (!refreshToken) {
@@ -104,7 +105,7 @@ export class AuthCache extends BaseCache {
   /**
    * Removes user session data and tokens from cache
    */
-  async invalidateUserSession(userId: string): Promise<ISuccessReturnData> {
+  async invalidateUserSession(userId: string, cuid: string): Promise<ISuccessReturnData> {
     try {
       if (!userId) {
         return {
@@ -114,8 +115,8 @@ export class AuthCache extends BaseCache {
         };
       }
 
-      const currentuserKey = `${this.KEY_PREFIXES.USER}:${userId}`;
-      const refreshTokenKey = `${this.KEY_PREFIXES.TOKEN}:${userId}`;
+      const currentuserKey = `${this.KEY_PREFIXES.USER}:${cuid}:${userId}`;
+      const refreshTokenKey = `${this.KEY_PREFIXES.TOKEN}:${cuid}:${userId}`;
 
       await this.deleteItems([currentuserKey, refreshTokenKey]);
       return { data: null, success: true };
@@ -142,7 +143,7 @@ export class AuthCache extends BaseCache {
         };
       }
 
-      const key = `${this.KEY_PREFIXES.USER}:${userData.sub}`;
+      const key = `${this.KEY_PREFIXES.USER}:${userData.client.cuid}:${userData.sub}`;
       const ttl = rememberMe ? this.ExtendedUserCacheTTL : this.USER_CACHE_TTL;
 
       return await this.setItem(key, JSON.stringify(userData), ttl);
@@ -159,9 +160,12 @@ export class AuthCache extends BaseCache {
   /**
    * Retrieves current user info from cache
    */
-  async getCurrentUser(userId: string): Promise<ISuccessReturnData<ICurrentUser | null>> {
+  async getCurrentUser(
+    userId: string,
+    cuid: string
+  ): Promise<ISuccessReturnData<ICurrentUser | null>> {
     try {
-      const key = `${this.KEY_PREFIXES.USER}:${userId}`;
+      const key = `${this.KEY_PREFIXES.USER}:${cuid}:${userId}`;
       const result = await this.getItem<ICurrentUser>(key);
       return {
         ...result,
@@ -182,11 +186,12 @@ export class AuthCache extends BaseCache {
    */
   async updateCurrentUserProperty(
     userId: string,
+    cuid: string,
     property: keyof ICurrentUser,
     value: any
   ): Promise<ISuccessReturnData> {
     try {
-      const key = `${this.KEY_PREFIXES.USER}:${userId}`;
+      const key = `${this.KEY_PREFIXES.USER}:${cuid}:${userId}`;
       const userResponse = await this.getItem<ICurrentUser>(key);
 
       if (!userResponse.success || !userResponse.data) {
@@ -216,9 +221,9 @@ export class AuthCache extends BaseCache {
   /**
    * Removes refresh token from cache
    */
-  async deleteRefreshToken(userId: string): Promise<ISuccessReturnData> {
+  async deleteRefreshToken(userId: string, cuid: string): Promise<ISuccessReturnData> {
     try {
-      const key = `${this.KEY_PREFIXES.TOKEN}:${userId}`;
+      const key = `${this.KEY_PREFIXES.TOKEN}:${cuid}:${userId}`;
       await this.client.del(key);
       return { success: true, data: null };
     } catch (error) {
@@ -235,7 +240,7 @@ export class AuthCache extends BaseCache {
    * Invalidates cached current user data
    * Used when subscription data changes to force fresh data fetch
    */
-  async invalidateCurrentUser(userId: string): Promise<ISuccessReturnData> {
+  async invalidateCurrentUser(userId: string, cuid: string): Promise<ISuccessReturnData> {
     try {
       if (!userId) {
         return {
@@ -245,7 +250,7 @@ export class AuthCache extends BaseCache {
         };
       }
 
-      const key = `${this.KEY_PREFIXES.USER}:${userId}`;
+      const key = `${this.KEY_PREFIXES.USER}:${cuid}:${userId}`;
       await this.deleteItems([key]);
       return { data: null, success: true };
     } catch (error) {

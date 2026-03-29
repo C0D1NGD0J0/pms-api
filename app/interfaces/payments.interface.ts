@@ -27,18 +27,20 @@ export enum PaymentRecordType {
 }
 
 export interface IPaymentDocument extends Document {
+  dispute?: {
+    status?: 'open' | 'won' | 'lost';
+    resolvedAt?: Date;
+    disputeId?: string;
+    amount?: number;
+    reason?: string;
+    disputedAt?: Date;
+  };
   receipt?: {
     url?: string;
     filename?: string;
     key?: string;
     uploadedAt?: Date;
     uploadedBy?: Types.ObjectId;
-  };
-  dispute?: {
-    disputeId?: string;
-    amount?: number;
-    reason?: string;
-    disputedAt?: Date;
   };
   refund?: {
     refundedAt?: Date;

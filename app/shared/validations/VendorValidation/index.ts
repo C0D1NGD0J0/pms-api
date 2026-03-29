@@ -1,6 +1,8 @@
 import {
+  toggleTeamMemberStatusSchema,
   clientVendorsQuerySchema,
   vendorFilterQuerySchema,
+  updateTeamMemberSchema,
   vendorIdParamSchema,
   createVendorSchema,
   updateVendorSchema,
@@ -15,11 +17,16 @@ export const VendorValidations = {
   vendorIdParam: vendorIdParamSchema,
   clientVendorsQuery: clientVendorsQuerySchema,
   vendorFilterQuery: vendorFilterQuerySchema,
+  // Team member operations
+  updateTeamMember: updateTeamMemberSchema,
+  toggleTeamMemberStatus: toggleTeamMemberStatusSchema,
 };
 
 export {
+  toggleTeamMemberStatusSchema,
   clientVendorsQuerySchema,
   vendorFilterQuerySchema,
+  updateTeamMemberSchema,
   vendorIdParamSchema,
   createVendorSchema,
   updateVendorSchema,

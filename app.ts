@@ -83,7 +83,7 @@ export class App implements IAppSetup {
     }
     app.use(
       express.json({
-        limit: '200mb',
+        limit: '2mb',
         verify: (req: any, res, buf) => {
           if (
             req.originalUrl === '/api/v1/webhooks/stripe' ||
@@ -94,7 +94,7 @@ export class App implements IAppSetup {
         },
       })
     );
-    app.use(urlencoded({ extended: true, limit: '200mb' }));
+    app.use(urlencoded({ extended: true, limit: '2mb' }));
     app.use(cookieParser());
     app.use(compression());
     app.use(scopedMiddleware);

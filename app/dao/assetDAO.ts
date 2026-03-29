@@ -33,12 +33,6 @@ export class AssetDAO extends BaseDAO<IAssetDocument> implements IAssetDAO {
     this.logger = createLogger('AssetDAO');
   }
 
-  /**
-   * Create a new asset record.
-   *
-   * @param assetData - The data for the new asset.
-   * @returns A promise that resolves to the created asset document.
-   */
   async createAsset(assetData: Partial<IAssetDocument>): Promise<IAssetDocument> {
     try {
       return await this.insert(assetData);
@@ -48,13 +42,6 @@ export class AssetDAO extends BaseDAO<IAssetDocument> implements IAssetDAO {
     }
   }
 
-  /**
-   * Get an asset by ID.
-   *
-   * @param id - The ID of the asset.
-   * @param opts - Additional options for the query.
-   * @returns A promise that resolves to the found asset document or null if no asset is found.
-   */
   async getAssetById(id: string, opts?: IFindOptions): Promise<IAssetDocument | null> {
     try {
       if (!id) {
@@ -69,14 +56,6 @@ export class AssetDAO extends BaseDAO<IAssetDocument> implements IAssetDAO {
     }
   }
 
-  /**
-   * Get assets by resource type and ID.
-   *
-   * @param resourceType - The type of resource (e.g., 'User', 'Property').
-   * @param resourceId - The ID of the resource.
-   * @param opts - Additional options for the query.
-   * @returns A promise that resolves to an array of asset documents.
-   */
   async getAssetsByResource(
     resourceType: string,
     resourceId: string,
@@ -96,15 +75,6 @@ export class AssetDAO extends BaseDAO<IAssetDocument> implements IAssetDAO {
     }
   }
 
-  /**
-   * Get assets by field name for a specific resource.
-   *
-   * @param resourceType - The type of resource (e.g., 'User', 'Property').
-   * @param resourceId - The ID of the resource.
-   * @param fieldName - The field name (e.g., 'avatar', 'documents').
-   * @param opts - Additional options for the query.
-   * @returns A promise that resolves to an array of asset documents.
-   */
   async getAssetsByFieldName(
     resourceType: string,
     resourceId: string,
@@ -130,12 +100,6 @@ export class AssetDAO extends BaseDAO<IAssetDocument> implements IAssetDAO {
     }
   }
 
-  /**
-   * Soft delete an asset by setting its status to 'deleted'.
-   *
-   * @param id - The ID of the asset to delete.
-   * @returns A promise that resolves to true if the asset was successfully soft deleted.
-   */
   async softDeleteAsset(id: string): Promise<boolean> {
     try {
       const result = await this.updateById(id, {
@@ -150,12 +114,6 @@ export class AssetDAO extends BaseDAO<IAssetDocument> implements IAssetDAO {
     }
   }
 
-  /**
-   * Delete assets by their S3 keys (for cleanup operations).
-   *
-   * @param s3Keys - Array of S3 keys to delete.
-   * @returns A promise that resolves to true if all assets were successfully deleted.
-   */
   async deleteAssetsByS3Keys(s3Keys: string[]): Promise<boolean> {
     try {
       if (!s3Keys || s3Keys.length === 0) {
@@ -177,13 +135,6 @@ export class AssetDAO extends BaseDAO<IAssetDocument> implements IAssetDAO {
     }
   }
 
-  /**
-   * Get asset statistics for a resource.
-   *
-   * @param resourceType - The type of resource.
-   * @param resourceId - The ID of the resource.
-   * @returns A promise that resolves to asset statistics.
-   */
   async getAssetStats(
     resourceType: string,
     resourceId: string

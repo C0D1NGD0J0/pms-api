@@ -11,16 +11,10 @@ import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { PlanName } from '@interfaces/subscription.interface';
 import { IActiveAccountInfo } from '@interfaces/client.interface';
+import { UserDisconnectedPayload, EventTypes } from '@interfaces/events.interface';
+import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
 import { SubscriptionService, AuthTokenService, VendorService } from '@services/index';
-import {
-  getLocationDetails,
-  generateShortUID,
-  hashGenerator,
-  JWT_KEY_NAMES,
-  createLogger,
-  JOB_NAME,
-} from '@utils/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -29,9 +23,20 @@ import {
   ForbiddenError,
   NotFoundError,
 } from '@shared/customErrors';
+import {
+  STRIPE_SUPPORTED_COUNTRY_CODES,
+  getCountryCodeFromLocation,
+  getLocationDetails,
+  generateShortUID,
+  hashGenerator,
+  JWT_KEY_NAMES,
+  createLogger,
+  JOB_NAME,
+} from '@utils/index';
 
 interface IConstructor {
   subscriptionService: SubscriptionService;
+  emitterService: EventEmitterService;
   tokenService: AuthTokenService;
   vendorService: VendorService;
   queueFactory: QueueFactory;
@@ -51,6 +56,7 @@ export class AuthService {
   private readonly tokenService: AuthTokenService;
   private readonly vendorService: VendorService;
   private readonly subscriptionService: SubscriptionService;
+  private readonly emitterService: EventEmitterService;
 
   constructor({
     userDAO,
@@ -61,6 +67,7 @@ export class AuthService {
     authCache,
     vendorService,
     subscriptionService,
+    emitterService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -70,7 +77,9 @@ export class AuthService {
     this.tokenService = tokenService;
     this.vendorService = vendorService;
     this.subscriptionService = subscriptionService;
+    this.emitterService = emitterService;
     this.log = createLogger('AuthService');
+    this.setupEventListeners();
   }
 
   async refreshToken(data: { refreshToken: string; userId: string }): Promise<
@@ -87,12 +96,7 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.invalidRefreshToken') });
     }
 
-    const storedRefreshToken = await this.authCache.getRefreshToken(userId);
-    if (!storedRefreshToken.success) {
-      this.log.error('RefreshToken does not match stored token or expired');
-      throw new UnauthorizedError();
-    }
-
+    // Decode first to extract cuid for client-scoped Redis lookup
     const decoded = await this.tokenService.verifyJwtToken(
       JWT_KEY_NAMES.REFRESH_TOKEN as TokenType,
       refreshToken
@@ -103,14 +107,34 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.tokenExpired') });
     }
 
+    const cuid = decoded.data.cuid;
+
+    const storedRefreshToken = await this.authCache.getRefreshToken(userId, cuid);
+    if (!storedRefreshToken.success) {
+      this.log.error('RefreshToken does not match stored token or expired');
+      throw new UnauthorizedError();
+    }
+
+    // Guard: reject if user has been disconnected from this client
+    const user = await this.userDAO.getUserById(userId);
+    if (!user) {
+      throw new UnauthorizedError({ message: t('auth.errors.tokenExpired') });
+    }
+    const clientEntry = user.cuids?.find((c) => c.cuid === cuid);
+    if (!clientEntry?.isConnected) {
+      this.log.warn({ userId, cuid }, 'Refresh rejected — user disconnected from client');
+      throw new UnauthorizedError({ message: t('auth.errors.tokenExpired') });
+    }
+
     const tokens = this.tokenService.createJwtTokens({
       sub: userId,
       rememberMe: decoded.data.rememberMe,
-      cuid: decoded.data.cuid,
+      cuid,
     });
 
     const saved = await this.authCache.saveRefreshToken(
       userId,
+      cuid,
       tokens.refreshToken,
       decoded.data.rememberMe
     );
@@ -189,6 +213,16 @@ export class AuthService {
   }
 
   async signup(signupData: ISignupData): Promise<ISuccessReturnData> {
+    const countryCode = getCountryCodeFromLocation(signupData.location);
+    if (!countryCode || !STRIPE_SUPPORTED_COUNTRY_CODES.includes(countryCode)) {
+      const normalizedLocation = getLocationDetails(signupData.location);
+      const locationParts = normalizedLocation?.split(', ') ?? [];
+      const countryName = locationParts[locationParts.length - 1] || signupData.location;
+      throw new BadRequestError({
+        message: t('auth.errors.unsupportedCountry', { country: countryName }),
+      });
+    }
+
     const session = await this.userDAO.startSession();
     const result = await this.userDAO.withTransaction(session, async (session) => {
       const _userId = new Types.ObjectId();
@@ -383,7 +417,12 @@ export class AuthService {
       rememberMe,
       cuid: activeAccount.cuid,
     });
-    await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, rememberMe);
+    await this.authCache.saveRefreshToken(
+      user._id.toString(),
+      activeAccount.cuid,
+      tokens.refreshToken,
+      rememberMe
+    );
     const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
     currentuser && (await this.authCache.saveCurrentUser(currentuser));
 
@@ -485,7 +524,7 @@ export class AuthService {
       rememberMe: false,
       cuid: activeAccount.cuid,
     });
-    await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, false);
+    await this.authCache.saveRefreshToken(user._id.toString(), newcuid, tokens.refreshToken, false);
 
     const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
     currentuser && (await this.authCache.saveCurrentUser(currentuser));
@@ -651,7 +690,7 @@ export class AuthService {
       throw new ForbiddenError({ message: t('auth.errors.invalidAuthTokenLogout') });
     }
 
-    await this.authCache.invalidateUserSession(payload.data.sub as string);
+    await this.authCache.invalidateUserSession(payload.data.sub as string, payload.data.cuid);
     return { success: true, data: null, message: t('auth.success.logoutSuccessful') };
   }
 
@@ -684,7 +723,7 @@ export class AuthService {
       });
 
       // Cache tokens and user info
-      await this.authCache.saveRefreshToken(user._id.toString(), tokens.refreshToken, false);
+      await this.authCache.saveRefreshToken(user._id.toString(), cuid, tokens.refreshToken, false);
 
       const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
       currentuser && (await this.authCache.saveCurrentUser(currentuser));
@@ -775,8 +814,25 @@ export class AuthService {
     });
 
     await this.userDAO.clearOnboardingFlag(userId, cuid);
-    await this.authCache.invalidateCurrentUser(userId);
+    await this.authCache.invalidateCurrentUser(userId, cuid);
 
     return { success: true, message: t('auth.success.onboardingCompleted'), data: null };
   }
+
+  private setupEventListeners(): void {
+    this.emitterService.on(EventTypes.USER_DISCONNECTED, this.handleUserDisconnected.bind(this));
+  }
+
+  private handleUserDisconnected = async (payload: UserDisconnectedPayload): Promise<void> => {
+    try {
+      const { userId, cuid } = payload;
+      await this.authCache.invalidateUserSession(userId, cuid);
+      this.log.info({ userId, cuid }, 'Session invalidated for disconnected user');
+    } catch (error: any) {
+      this.log.error(
+        { error: error.message, payload },
+        'Failed to invalidate session for disconnected user'
+      );
+    }
+  };
 }

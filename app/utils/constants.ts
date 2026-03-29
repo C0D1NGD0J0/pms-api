@@ -69,6 +69,7 @@ export const JOB_NAME = {
   CREATE_RENT_INVOICE_JOB: 'createRentInvoiceJob',
   RETRY_FAILED_INVOICE_JOB: 'retryFailedInvoiceJob',
   CANCEL_PAYMENT_JOB: 'cancelPaymentJob',
+  ACCOUNT_DISCONNECTED_JOB: 'accountDisconnectedJob',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {
@@ -111,7 +112,6 @@ export const HIGH_IMPACT_UNIT_FIELDS = [
   'status',
   'unitNumber',
   'specifications.bedrooms',
-  'specifications.rooms',
   'specifications.bathrooms',
   'specifications.totalArea',
   'currentLease',
@@ -187,6 +187,62 @@ export const EDITABLE_FIELDS_BY_LEASE_STATUS: Record<string, string[]> = {
   terminated: ['internalNotes'], // Admin/Manager only
   cancelled: ['internalNotes'], // Admin/Manager only
 };
+
+/**
+ * ISO-2 country codes supported by Stripe Connect.
+ * Users signing up from countries not in this list will be blocked at signup
+ * until an alternative payment provider (e.g. Paystack) is integrated.
+ * Source: https://stripe.com/global (last updated 2026-03)
+ */
+export const STRIPE_SUPPORTED_COUNTRY_CODES: string[] = [
+  'AU',
+  'AT',
+  'BE',
+  'BR',
+  'BG',
+  'CA',
+  'HR',
+  'CY',
+  'CZ',
+  'DK',
+  'EE',
+  'FI',
+  'FR',
+  'DE',
+  'GI',
+  'GR',
+  'HK',
+  'HU',
+  'IN',
+  'ID',
+  'IE',
+  'IT',
+  'JP',
+  'LV',
+  'LI',
+  'LT',
+  'LU',
+  'MY',
+  'MT',
+  'MX',
+  'NL',
+  'NZ',
+  'NO',
+  'PL',
+  'PT',
+  'RO',
+  'SG',
+  'SK',
+  'SI',
+  'ES',
+  'SE',
+  'CH',
+  'TH',
+  'AE',
+  'GB',
+  'US',
+  'TW',
+];
 
 /**
  * Constants for lease thresholds and configuration

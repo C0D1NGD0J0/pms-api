@@ -424,7 +424,7 @@ describe('PaymentService - recordManualPayment', () => {
     mockPaymentDAO = { insert: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
     mockClientDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<ClientDAO>;
     mockProfileDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<ProfileDAO>;
-    mockLeaseDAO = { findById: jest.fn() } as unknown as jest.Mocked<LeaseDAO>;
+    mockLeaseDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<LeaseDAO>;
     paymentService = makeServiceWithMocks({ paymentDAO: mockPaymentDAO, clientDAO: mockClientDAO, profileDAO: mockProfileDAO, leaseDAO: mockLeaseDAO });
   });
 
@@ -433,7 +433,7 @@ describe('PaymentService - recordManualPayment', () => {
   it('should create a manual payment with status PAID, processingFee 0, and isManualEntry true', async () => {
     mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
     mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
-    mockLeaseDAO.findById.mockResolvedValue(makeLease() as any);
+    mockLeaseDAO.findFirst.mockResolvedValue(makeLease() as any);
     mockPaymentDAO.insert.mockResolvedValue({
       pytuid: 'PYT001',
       cuid: CUID,
@@ -456,7 +456,7 @@ describe('PaymentService - recordManualPayment', () => {
     const paidAt = new Date('2026-03-15');
     mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
     mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
-    mockLeaseDAO.findById.mockResolvedValue(makeLease() as any);
+    mockLeaseDAO.findFirst.mockResolvedValue(makeLease() as any);
     mockPaymentDAO.insert.mockResolvedValue({} as any);
 
     await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData({ paidAt }));
@@ -474,13 +474,13 @@ describe('PaymentService - recordManualPayment', () => {
     const result = await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData({ leaseId: undefined }));
 
     expect(result.success).toBe(true);
-    expect(mockLeaseDAO.findById).not.toHaveBeenCalled();
+    expect(mockLeaseDAO.findFirst).not.toHaveBeenCalled();
   });
 
   it('should include receipt data when provided', async () => {
     mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
     mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
-    mockLeaseDAO.findById.mockResolvedValue(makeLease() as any);
+    mockLeaseDAO.findFirst.mockResolvedValue(makeLease() as any);
     mockPaymentDAO.insert.mockResolvedValue({} as any);
 
     await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData({
@@ -500,14 +500,15 @@ describe('PaymentService - recordManualPayment', () => {
     await expect(paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())).rejects.toThrow(NotFoundError);
 
     mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
-    mockLeaseDAO.findById.mockResolvedValue(null);
+    mockLeaseDAO.findFirst.mockResolvedValue(null);
     await expect(paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())).rejects.toThrow(NotFoundError);
   });
 
   it('should throw NotFoundError when lease belongs to a different client', async () => {
     mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
     mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
-    mockLeaseDAO.findById.mockResolvedValue(makeLease({ cuid: 'DIFFERENT_CUID' }) as any);
+    // The DAO query includes cuid as a filter, so a cross-client lease returns null
+    mockLeaseDAO.findFirst.mockResolvedValue(null);
 
     await expect(paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())).rejects.toThrow(NotFoundError);
   });
@@ -808,7 +809,7 @@ describe('PaymentService - handleDisputeWon', () => {
   });
 
   beforeEach(() => {
-    mockPaymentDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
+    mockPaymentDAO = { findFirst: jest.fn(), update: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
     mockPaymentProcessorDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockPaymentGatewayService = { createTransfer: jest.fn() } as unknown as jest.Mocked<PaymentGatewayService>;
     mockEmitterService = { emit: jest.fn(), on: jest.fn() };
@@ -825,6 +826,7 @@ describe('PaymentService - handleDisputeWon', () => {
   it('should re-transfer funds to PM and emit event on dispute won', async () => {
     const payment = makePaymentRecord();
     mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
+    mockPaymentDAO.update.mockResolvedValue(payment as any);
     mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
     mockPaymentGatewayService.createTransfer.mockResolvedValue({ success: true, data: { transferId: 'tr_new_123', amount: 150000 } } as any);
 

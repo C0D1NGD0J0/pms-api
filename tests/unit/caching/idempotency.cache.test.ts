@@ -12,7 +12,8 @@ jest.mock('@utils/helpers', () => ({
   })),
 }));
 
-const WEBHOOK_TTL = 60 * 60 * 24 * 3; // 72 hours
+const WEBHOOK_LOCK_TTL = 60 * 30; // 30 min processing lock
+const WEBHOOK_PROCESSED_TTL = 60 * 60 * 24 * 3; // 72 hours processed status
 const ROUTE_TTL = 60 * 60 * 24; // 24 hours
 
 /** Build a minimal mock Redis client */
@@ -71,7 +72,7 @@ describe('IdempotencyCache', () => {
       expect(result).toBe(true);
       expect(mockClient.SET).toHaveBeenCalledWith('idmp:wh:evt_abc123', 'processing', {
         NX: true,
-        EX: WEBHOOK_TTL,
+        EX: WEBHOOK_LOCK_TTL,
       });
     });
 
@@ -115,7 +116,7 @@ describe('IdempotencyCache', () => {
       // Assert
       expect(mockClient.SETEX).toHaveBeenCalledWith(
         'idmp:wh:evt_done456',
-        WEBHOOK_TTL,
+        WEBHOOK_PROCESSED_TTL,
         'processed'
       );
     });
@@ -164,7 +165,7 @@ describe('IdempotencyCache', () => {
       mockClient.GET.mockReturnValue(Promise.resolve(null));
 
       // Act
-      const result = await cache.getCachedRouteResponse('POST', 'user1', 'cuid1', 'key1');
+      const result = await cache.getCachedRouteResponse('POST', '/api/v1/test', 'user1', 'cuid1', 'key1');
 
       // Assert
       expect(result).toBeNull();
@@ -176,7 +177,7 @@ describe('IdempotencyCache', () => {
       mockClient.GET.mockReturnValue(Promise.resolve(JSON.stringify(payload)));
 
       // Act
-      const result = await cache.getCachedRouteResponse('POST', 'user1', 'cuid1', 'key1');
+      const result = await cache.getCachedRouteResponse('POST', '/api/v1/test', 'user1', 'cuid1', 'key1');
 
       // Assert
       expect(result).toEqual(payload);
@@ -184,22 +185,23 @@ describe('IdempotencyCache', () => {
       expect(result!.body).toEqual({ id: 'abc', success: true });
     });
 
-    it('should derive the Redis key from an MD5 hash of method:userId:cuid:idempotencyKey', async () => {
+    it('should derive the Redis key from a SHA-256 hash of method:routePath:userId:cuid:idempotencyKey', async () => {
       // Arrange
       mockClient.GET.mockReturnValue(Promise.resolve(null));
       const method = 'PUT';
+      const routePath = '/api/v1/resource';
       const userId = 'user42';
       const cuid = 'cuid99';
       const idempotencyKey = 'idem-key-xyz';
 
       const expectedHash = crypto
-        .createHash('md5')
-        .update(`${method}:${userId}:${cuid}:${idempotencyKey}`)
+        .createHash('sha256')
+        .update(`${method}:${routePath}:${userId}:${cuid}:${idempotencyKey}`)
         .digest('hex');
       const expectedKey = `idmp:r:${expectedHash}`;
 
       // Act
-      await cache.getCachedRouteResponse(method, userId, cuid, idempotencyKey);
+      await cache.getCachedRouteResponse(method, routePath, userId, cuid, idempotencyKey);
 
       // Assert
       expect(mockClient.GET).toHaveBeenCalledWith(expectedKey);
@@ -210,7 +212,7 @@ describe('IdempotencyCache', () => {
       mockClient.GET.mockReturnValue(Promise.resolve('not-json'));
 
       // Act
-      const result = await cache.getCachedRouteResponse('GET', 'u', 'c', 'k');
+      const result = await cache.getCachedRouteResponse('GET', '/path', 'u', 'c', 'k');
 
       // Assert — BaseCache.deserialize returns null for invalid JSON
       expect(result).toBeNull();
@@ -220,11 +222,12 @@ describe('IdempotencyCache', () => {
   // ── cacheRouteResponse ───────────────────────────────────────────────────
 
   describe('cacheRouteResponse', () => {
-    it('should call SETEX with an MD5-hashed route key and the 24 h TTL', async () => {
+    it('should call SETEX with a SHA-256-hashed route key and the 24 h TTL', async () => {
       // Arrange
       mockClient.SETEX.mockReturnValue(Promise.resolve('OK'));
 
       const method = 'POST';
+      const routePath = '/api/v1/resource';
       const userId = 'userA';
       const cuid = 'cuidB';
       const idempotencyKey = 'idem-abc';
@@ -232,13 +235,13 @@ describe('IdempotencyCache', () => {
       const body = { success: true, data: { result: 42 } };
 
       const expectedHash = crypto
-        .createHash('md5')
-        .update(`${method}:${userId}:${cuid}:${idempotencyKey}`)
+        .createHash('sha256')
+        .update(`${method}:${routePath}:${userId}:${cuid}:${idempotencyKey}`)
         .digest('hex');
       const expectedKey = `idmp:r:${expectedHash}`;
 
       // Act
-      await cache.cacheRouteResponse(method, userId, cuid, idempotencyKey, statusCode, body);
+      await cache.cacheRouteResponse(method, routePath, userId, cuid, idempotencyKey, statusCode, body);
 
       // Assert
       expect(mockClient.SETEX).toHaveBeenCalledWith(
@@ -253,7 +256,7 @@ describe('IdempotencyCache', () => {
       mockClient.SETEX.mockReturnValue(Promise.resolve('OK'));
 
       // Act
-      await cache.cacheRouteResponse('DELETE', 'u', 'c', 'k', 204, null);
+      await cache.cacheRouteResponse('DELETE', '/path', 'u', 'c', 'k', 204, null);
 
       // Assert
       const storedValue = mockClient.SETEX.mock.calls[0][2] as string;
@@ -265,8 +268,8 @@ describe('IdempotencyCache', () => {
       // Arrange
       mockClient.SETEX.mockReturnValue(Promise.resolve('OK'));
 
-      await cache.cacheRouteResponse('POST', 'u1', 'c1', 'k1', 200, {});
-      await cache.cacheRouteResponse('POST', 'u1', 'c1', 'k1', 200, {});
+      await cache.cacheRouteResponse('POST', '/route', 'u1', 'c1', 'k1', 200, {});
+      await cache.cacheRouteResponse('POST', '/route', 'u1', 'c1', 'k1', 200, {});
 
       // Assert — both calls should use the same key
       const key1 = mockClient.SETEX.mock.calls[0][0];
@@ -278,8 +281,8 @@ describe('IdempotencyCache', () => {
       // Arrange
       mockClient.SETEX.mockReturnValue(Promise.resolve('OK'));
 
-      await cache.cacheRouteResponse('POST', 'userA', 'cuid1', 'key1', 200, {});
-      await cache.cacheRouteResponse('POST', 'userB', 'cuid1', 'key1', 200, {});
+      await cache.cacheRouteResponse('POST', '/route', 'userA', 'cuid1', 'key1', 200, {});
+      await cache.cacheRouteResponse('POST', '/route', 'userB', 'cuid1', 'key1', 200, {});
 
       // Assert
       const key1 = mockClient.SETEX.mock.calls[0][0];

@@ -164,6 +164,31 @@ export class VendorController {
     }
   };
 
+  updateTeamMember = async (req: AppRequest, res: Response): Promise<void> => {
+    const { cuid, vuid, uid } = req.params;
+    const result = await this.vendorService.updateTeamMember(
+      req.context,
+      cuid,
+      vuid,
+      uid,
+      req.body
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  toggleTeamMemberStatus = async (req: AppRequest, res: Response): Promise<void> => {
+    const { cuid, vuid, uid } = req.params;
+    const { isActive } = req.body;
+    const result = await this.vendorService.toggleTeamMemberStatus(
+      req.context,
+      cuid,
+      vuid,
+      uid,
+      isActive
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   updateVendorDetails = async (req: AppRequest, res: Response): Promise<void> => {
     const { cuid, vuid } = req.params;
     const updateData = req.body;

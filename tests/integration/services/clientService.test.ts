@@ -30,6 +30,9 @@ const setupServices = () => {
     invalidateUserCache: jest.fn().mockResolvedValue(undefined),
   } as any;
 
+  const mockEmailQueue = { addToEmailQueue: jest.fn() };
+  const mockQueueFactory = { getQueue: jest.fn().mockReturnValue(mockEmailQueue) };
+
   const clientService = new ClientService({
     clientDAO,
     userDAO,
@@ -43,6 +46,7 @@ const setupServices = () => {
     notificationService: {} as any,
     sseService: {} as any,
     paymentGatewayService: {} as any,
+    queueFactory: mockQueueFactory as any,
   });
 
   return { clientService, clientDAO, userDAO, profileDAO, propertyDAO };

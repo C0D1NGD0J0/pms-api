@@ -1,10 +1,10 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import { Lease, User } from '@models/index';
+import { Lease } from '@models/index';
 import { IUserDocument } from '@interfaces/user.interface';
 import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
+import { hashGenerator, createLogger, escapeRegExp } from '@utils/index';
 import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
-import { paginateResult, hashGenerator, createLogger, escapeRegExp } from '@utils/index';
 import { resolveHighestRole, IUserRoleType, ROLES } from '@shared/constants/roles.constants';
 
 import { BaseDAO } from './baseDAO';
@@ -19,13 +19,54 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     this.logger = createLogger('UserDAO');
   }
 
-  /**
-   * Get a user by ID.
-   *
-   * @param id - The ID of the user.
-   * @param opts - Additional options for the query.
-   * @returns A promise that resolves to the found user document or null if no user is found.
-   */
+  private static readonly PROFILE_LOOKUP_STAGES: PipelineStage[] = [
+    { $lookup: { from: 'profiles', localField: '_id', foreignField: 'user', as: 'profile' } },
+    { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+  ];
+
+  private static readonly SENSITIVE_FIELD_EXCLUSIONS: PipelineStage = {
+    $project: {
+      password: 0,
+      activationToken: 0,
+      passwordResetToken: 0,
+      activationTokenExpiresAt: 0,
+      passwordResetTokenExpiresAt: 0,
+      'profile.__v': 0,
+    },
+  };
+
+  private async paginateAggregation(
+    pipeline: PipelineStage[],
+    opts?: IFindOptions
+  ): Promise<{ items: any[]; pagination: any }> {
+    const limit = opts?.limit || 10;
+    const skip = opts?.skip || 0;
+    const sortDir = opts?.sort === 'asc' ? 1 : -1;
+    const sortBy = opts?.sortBy || 'createdAt';
+
+    const countPipeline = [...pipeline, { $count: 'total' }];
+    pipeline.push({ $sort: { [sortBy]: sortDir } }, { $skip: skip }, { $limit: limit });
+
+    const [items, countResult] = await Promise.all([
+      this.aggregate(pipeline),
+      this.aggregate(countPipeline),
+    ]);
+
+    const total = (countResult[0] as any)?.total ?? 0;
+    const totalPages = Math.ceil(total / limit);
+    return {
+      items,
+      pagination: {
+        total,
+        totalPages,
+        page: Math.floor(skip / limit) + 1,
+        limit,
+        hasNext: skip + limit < total,
+        hasPrev: skip > 0,
+      },
+    };
+  }
+
   async getUserById(id: string, opts?: IFindOptions): Promise<IUserDocument | null> {
     try {
       if (!id) {
@@ -40,13 +81,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Get a user by UID.
-   *
-   * @param uid - The UID of the user.
-   * @param opts - Additional options for the query.
-   * @returns A promise that resolves to the found user document or null if no user is found.
-   */
   async getUserByUId(uid: string, opts?: dynamic): Promise<IUserDocument | null> {
     try {
       const query = { uid };
@@ -57,13 +91,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * List users with optional filtering and projection.
-   *
-   * @param query - Filter criteria for the query.
-   * @param opts - Additional options for the query.
-   * @returns A promise that resolves to an array of user documents.
-   */
   async listUsers(
     query: Record<string, any>,
     opts?: IFindOptions
@@ -76,13 +103,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Get a user by email address.
-   *
-   * @param email - The email address of the user.
-   * @param opts - Additional options for the query.
-   * @returns A promise that resolves to the found user document or null if no user is found.
-   */
   async getActiveUserByEmail(email: string, opts?: dynamic): Promise<IUserDocument | null> {
     try {
       const query = { email, deletedAt: null, isActive: true };
@@ -93,13 +113,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Verify user credentials for authentication.
-   *
-   * @param email - The user's email address.
-   * @param password - The user's password.
-   * @returns A promise that resolves to the user document if credentials are valid, or null otherwise.
-   */
   async verifyCredentials(email: string, password: string): Promise<IUserDocument | null> {
     try {
       const user = await this.getActiveUserByEmail(email);
@@ -113,25 +126,18 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Generate and save an activation token for a user.
-   *
-   * @param userId - The ID of the user to generate a token for.
-   * @returns A promise that resolves to the generated token.
-   */
   async createActivationToken(userId?: string, email?: string): Promise<IUserDocument | null> {
     try {
       if (!userId && !email) {
         throw new Error('User ID or email is required to create activation token.');
       }
       const token = hashGenerator({});
-      const filter: FilterQuery<typeof User> = { deletedAt: null, isActive: false };
-      if (userId) {
-        filter.$or = [{ _id: userId }];
-        if (email) {
-          filter.$or.push({ email });
-        }
-      } else if (email) {
+      const filter: FilterQuery<IUserDocument> = { deletedAt: null, isActive: false };
+      if (userId && email) {
+        filter.$or = [{ _id: userId }, { email }];
+      } else if (userId) {
+        filter._id = userId as any;
+      } else {
         filter.email = email;
       }
 
@@ -147,12 +153,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Activate a user account using a token.
-   *
-   * @param token - The activation token.
-   * @returns A promise that resolves to true if activation was successful, false otherwise.
-   */
   async activateAccount(
     token: string,
     consentData: { acceptedBy: string }
@@ -181,14 +181,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Associate a user with a client (multi-tenant functionality).
-   *
-   * @param userId - The ID of the user.
-   * @param clientId - The ID of the client to associate with.
-   * @param role - The role of the user for this client.
-   * @returns A promise that resolves to true if the association was created successfully.
-   */
   async associateUserWithClient(
     userId: string,
     clientId: string,
@@ -236,14 +228,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Get users associated with a specific client.
-   *
-   * @param clientId - The ID of the client.
-   * @param filter - Additional filter criteria.
-   * @param opts - Additional options for the query.
-   * @returns A promise that resolves to an array of user documents.
-   */
   async getUsersByClientId(
     clientId: string,
     filter: FilterQuery<IUserDocument> = {},
@@ -264,14 +248,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Get users with a specific role for a client
-   *
-   * @param cuid - The client CUID
-   * @param role - The role to filter by
-   * @param opts - Additional options for the query
-   * @returns A promise that resolves to an array of user documents with the specified role
-   */
   async getUsersByClientIdAndRole(
     cuid: string,
     role: IUserRoleType,
@@ -298,14 +274,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Get users filtered by type (employee, tenant, vendor) and other criteria
-   *
-   * @param cuid - The client CUID
-   * @param filterOptions - Options to filter users by (type, role, department, status, search)
-   * @param paginationOpts - Pagination and sorting options
-   * @returns A promise that resolves to an array of filtered user documents with pagination info
-   */
   async getUsersByFilteredType(
     cuid: string,
     filterOptions: IUserFilterOptions,
@@ -339,76 +307,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         ];
       }
 
-      const pipeline: PipelineStage[] = [
-        { $match: query },
-        {
-          $lookup: {
-            from: 'profiles',
-            localField: '_id',
-            foreignField: 'user',
-            as: 'profile',
-          },
-        },
-        { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
-      ];
-
-      // Apply strict role filtering in aggregation pipeline
-      // if (role) {
-      //   const requestedRoles = Array.isArray(role) ? role : [role];
-      //   pipeline.push(
-      //     // Add a field to check if user's roles are strictly within requested roles
-      //     {
-      //       $addFields: {
-      //         clientConnection: {
-      //           $filter: {
-      //             input: '$cuids',
-      //             as: 'c',
-      //             cond: {
-      //               $and: [{ $eq: ['$$c.cuid', cuid] }, { $eq: ['$$c.isConnected', true] }],
-      //             },
-      //           },
-      //         },
-      //       },
-      //     },
-      //     {
-      //       $match: {
-      //         $expr: {
-      //           $and: [
-      //             // Must have the client connection
-      //             { $gt: [{ $size: '$clientConnection' }, 0] },
-      //             // All roles must be within requested roles (strict subset)
-      //             {
-      //               $setIsSubset: [
-      //                 { $arrayElemAt: ['$clientConnection.roles', 0] },
-      //                 requestedRoles,
-      //               ],
-      //             },
-      //             // Must have at least one of the requested roles
-      //             {
-      //               $gt: [
-      //                 {
-      //                   $size: {
-      //                     $setIntersection: [
-      //                       { $arrayElemAt: ['$clientConnection.roles', 0] },
-      //                       requestedRoles,
-      //                     ],
-      //                   },
-      //                 },
-      //                 0,
-      //               ],
-      //             },
-      //           ],
-      //         },
-      //       },
-      //     },
-      //     // Clean up the temporary field
-      //     {
-      //       $project: {
-      //         clientConnection: 0,
-      //       },
-      //     }
-      //   );
-      // }
+      const pipeline: PipelineStage[] = [{ $match: query }, ...UserDAO.PROFILE_LOOKUP_STAGES];
 
       if (department) {
         pipeline.push({
@@ -418,73 +317,29 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         });
       }
 
-      pipeline.push({
-        $project: {
-          password: 0,
-          activationToken: 0,
-          passwordResetToken: 0,
-          activationTokenExpiresAt: 0,
-          passwordResetTokenExpiresAt: 0,
-          'profile.__v': 0,
-        },
-      });
+      pipeline.push(UserDAO.SENSITIVE_FIELD_EXCLUSIONS);
 
-      // Handle pagination
-      const limit = paginationOpts?.limit || 10;
-      const skip = paginationOpts?.skip || 0;
-      const sort = paginationOpts?.sort || 'desc';
-      const sortBy = paginationOpts?.sortBy || 'createdAt';
-
-      const countPipeline = [...pipeline, { $count: 'total' }];
-
-      pipeline.push(
-        { $sort: { [sortBy]: sort === 'desc' ? -1 : 1 } },
-        { $skip: skip },
-        { $limit: limit }
-      );
-
-      const [users, countResult] = await Promise.all([
-        this.aggregate(pipeline),
-        this.aggregate(countPipeline),
-      ]);
-
-      const total = countResult.length > 0 ? (countResult[0] as any).total : 0;
-      const pagination = paginateResult(total, skip, limit);
-
-      return {
-        items: users,
-        pagination,
-      };
+      return await this.paginateAggregation(pipeline, paginationOpts);
     } catch (error) {
       this.logger.error(`Error getting filtered users for client ${cuid}:`, error);
       throw this.throwErrorHandler(error);
     }
   }
 
-  /**
-   * Search for users by name, email, or other criteria.
-   *
-   * @param query - The search query string.
-   * @param clientId - The ID of the client context to search within.
-   * @returns A promise that resolves to an array of matching user documents.
-   */
   async searchUsers(query: string, clientId: string): Promise<IUserDocument[]> {
     try {
-      const searchPipeline: PipelineStage[] = [
+      const searchRegex = new RegExp(escapeRegExp(query.trim()), 'i');
+      const pipeline: PipelineStage[] = [
         {
           $match: {
-            $and: [
-              { 'cuids.cuid': clientId },
-              { 'cuids.isConnected': true },
-              { deletedAt: null },
-              {
-                $or: [
-                  { firstName: { $regex: query, $options: 'i' } },
-                  { lastName: { $regex: query, $options: 'i' } },
-                  { email: { $regex: query, $options: 'i' } },
-                  { phoneNumber: { $regex: query, $options: 'i' } },
-                ],
-              },
+            'cuids.cuid': clientId,
+            'cuids.isConnected': true,
+            deletedAt: null,
+            $or: [
+              { firstName: searchRegex },
+              { lastName: searchRegex },
+              { email: searchRegex },
+              { phoneNumber: searchRegex },
             ],
           },
         },
@@ -499,19 +354,13 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         },
       ];
 
-      return await this.aggregate(searchPipeline);
+      return await this.aggregate(pipeline);
     } catch (error) {
       this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
   }
 
-  /**
-   * Check if an email address is already in use.
-   *
-   * @param email - The email address to check.
-   * @returns A promise that resolves to true if the email is unique, false otherwise.
-   */
   async isEmailUnique(email: string): Promise<boolean> {
     try {
       const user = await this.getActiveUserByEmail(email);
@@ -522,13 +371,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Remove a client association from a user.
-   *
-   * @param userId - The ID of the user.
-   * @param clientId - The ID of the client to remove association with.
-   * @returns A promise that resolves to true if the association was removed successfully.
-   */
   async removeClientAssociation(userId: string, clientId: string): Promise<boolean> {
     try {
       const result = await this.update(
@@ -543,12 +385,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Get all client associations for a user.
-   *
-   * @param userId - The ID of the user.
-   * @returns A promise that resolves to an array of client associations.
-   */
   async getUserClientAssociations(userId: string): Promise<any[]> {
     try {
       const user = await this.getUserById(userId, { projection: { cuids: 1 } });
@@ -564,13 +400,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Reset a user's password using a token.
-   *
-   * @param token - The password reset token.
-   * @param newPassword - The new password.
-   * @returns A promise that resolves to true if the password was reset successfully, false otherwise.
-   */
   async resetPassword(token: string, password: string): Promise<IUserDocument | null> {
     try {
       const user = await this.findFirst({
@@ -593,12 +422,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Create a password reset token for a user.
-   *
-   * @param email - The email address of the user.
-   * @returns A promise that resolves to the reset token or null if the user doesn't exist.
-   */
   async createPasswordResetToken(email: string): Promise<IUserDocument | null> {
     try {
       let user = await this.getActiveUserByEmail(email);
@@ -749,14 +572,12 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
    */
   async getUserWithClientAccess(email: string, cuid: string): Promise<IUserDocument | null> {
     try {
-      const user = await this.findFirst({
+      return await this.findFirst({
         email: email.toLowerCase(),
         deletedAt: null,
         'cuids.cuid': cuid,
         'cuids.isConnected': true,
       });
-
-      return user;
     } catch (error) {
       this.logger.error('Error checking user client access:', error);
       throw this.throwErrorHandler(error);
@@ -812,13 +633,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Get all users linked to a primary vendor
-   * @param primaryVendorId - The ID of the primary vendor
-   * @param cuid - Client ID
-   * @param opts - Query options
-   * @returns Promise resolving to linked vendor users
-   */
   async getLinkedVendorUsers(
     vendorUid: string,
     cuid: string,
@@ -832,21 +646,13 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         deletedAt: null,
       };
 
-      return await this.list(query, {
-        ...opts,
-      });
+      return await this.list(query, opts);
     } catch (error) {
       this.logger.error(`Error getting linked vendor users for vendor ${vendorUid}:`, error);
       throw this.throwErrorHandler(error);
     }
   }
 
-  /**
-   * Rebuild missing profiles for users
-   * This method identifies users without profiles and creates minimal profiles for them
-   * @param cuid - Optional client ID to limit the rebuild scope
-   * @returns Promise resolving to rebuild statistics
-   */
   async rebuildMissingProfiles(
     cuid?: string,
     profileDAO?: any
@@ -979,13 +785,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  /**
-   * Get tenants by client with filtering and pagination
-   * @param cuid - Client unique identifier
-   * @param filters - Optional tenant-specific filters
-   * @param pagination - Optional pagination parameters
-   * @returns Promise resolving to paginated tenant users with tenant-specific data
-   */
   async getTenantsByClient(
     cuid: string,
     filters?: import('@interfaces/user.interface').ITenantFilterOptions,
@@ -1008,18 +807,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         ];
       }
 
-      const pipeline: PipelineStage[] = [
-        { $match: tenantMatch },
-        {
-          $lookup: {
-            from: 'profiles',
-            localField: '_id',
-            foreignField: 'user',
-            as: 'profile',
-          },
-        },
-        { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
-      ];
+      const pipeline: PipelineStage[] = [{ $match: tenantMatch }, ...UserDAO.PROFILE_LOOKUP_STAGES];
 
       if (filters) {
         const matchConditions: any = {};
@@ -1069,60 +857,15 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         }
       }
 
-      pipeline.push({
-        $project: {
-          password: 0,
-          activationToken: 0,
-          passwordResetToken: 0,
-          activationTokenExpiresAt: 0,
-          passwordResetTokenExpiresAt: 0,
-          'profile.__v': 0,
-        },
-      });
+      pipeline.push(UserDAO.SENSITIVE_FIELD_EXCLUSIONS);
 
-      const limit = pagination?.limit || 10;
-      const skip = pagination?.skip || 0;
-      const sort = pagination?.sort || 'desc';
-      const sortBy = pagination?.sortBy || 'createdAt';
-
-      const countPipeline = [...pipeline, { $count: 'total' }];
-
-      pipeline.push(
-        { $sort: { [sortBy]: sort === 'desc' ? -1 : 1 } },
-        { $skip: skip },
-        { $limit: limit }
-      );
-
-      const [tenants, countResult] = await Promise.all([
-        this.aggregate(pipeline),
-        this.aggregate(countPipeline),
-      ]);
-
-      const total = countResult.length > 0 ? (countResult[0] as any).total : 0;
-
-      return {
-        items: tenants,
-        pagination: {
-          total,
-          page: Math.floor(skip / limit) + 1,
-          limit,
-          totalPages: Math.ceil(total / limit),
-          hasNext: skip + limit < total,
-          hasPrev: skip > 0,
-        },
-      };
+      return await this.paginateAggregation(pipeline, pagination);
     } catch (error) {
       this.logger.error(`Error getting tenants for client ${cuid}:`, error);
       throw this.throwErrorHandler(error);
     }
   }
 
-  /**
-   * Get tenant statistics for a client
-   * @param cuid - Client unique identifier
-   * @param filters - Optional tenant filters
-   * @returns Promise resolving to tenant statistics
-   */
   async getTenantStats(
     cuid: string,
     filters?: import('@interfaces/user.interface').ITenantFilterOptions
@@ -1137,15 +880,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             deletedAt: null,
           },
         },
-        {
-          $lookup: {
-            from: 'profiles',
-            localField: '_id',
-            foreignField: 'user',
-            as: 'profile',
-          },
-        },
-        { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+        ...UserDAO.PROFILE_LOOKUP_STAGES,
         // Join active leases directly from the leases collection
         {
           $lookup: {
@@ -1366,19 +1101,10 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             uid: tenantUid,
             'cuids.cuid': cuid,
             'cuids.roles': 'tenant',
-            'cuids.isConnected': true,
             deletedAt: null,
           },
         },
-        {
-          $lookup: {
-            from: 'profiles',
-            localField: '_id',
-            foreignField: 'user',
-            as: 'profile',
-          },
-        },
-        { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+        ...UserDAO.PROFILE_LOOKUP_STAGES,
         {
           $project: {
             _id: 1,
@@ -1386,6 +1112,22 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             email: 1,
             isActive: 1,
             createdAt: 1,
+            isConnected: {
+              $let: {
+                vars: {
+                  conn: {
+                    $first: {
+                      $filter: {
+                        input: { $ifNull: ['$cuids', []] },
+                        as: 'c',
+                        cond: { $eq: ['$$c.cuid', cuid] },
+                      },
+                    },
+                  },
+                },
+                in: { $ifNull: ['$$conn.isConnected', false] },
+              },
+            },
             firstName: { $ifNull: ['$profile.personalInfo.firstName', ''] },
             lastName: { $ifNull: ['$profile.personalInfo.lastName', ''] },
             fullName: {

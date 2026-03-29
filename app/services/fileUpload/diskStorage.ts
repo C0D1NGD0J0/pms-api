@@ -3,8 +3,19 @@ import path from 'path';
 import multer from 'multer';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
+import { fromFile as fileTypeFromFile } from 'file-type';
 import { NextFunction, Response, Request } from 'express';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
+
+const MIME_ALLOWLIST: Record<string, string[]> = {
+  jpeg: ['image/jpeg'],
+  jpg: ['image/jpeg', 'image/jpg'],
+  png: ['image/png'],
+  pdf: ['application/pdf'],
+  mp4: ['video/mp4'],
+  mov: ['video/quicktime'],
+  csv: ['text/csv', 'application/csv', 'text/plain'],
+};
 
 interface FieldSizeConfig {
   fileTypes?: string[];
@@ -18,18 +29,7 @@ export class DiskStorage {
   private upload: multer.Multer;
   private readonly storagePath = 'uploads/';
   private currentFieldPatterns: string[] = [];
-  private readonly allowedExtensions = [
-    'jpeg',
-    'jpg',
-    'png',
-    'pdf',
-    'mp4',
-    'csv',
-    'mov',
-    'x-matroska',
-    'doc',
-    'docx',
-  ];
+  private readonly allowedExtensions = ['jpeg', 'jpg', 'png', 'pdf', 'mp4', 'mov', 'csv'];
   private fieldConfigs: FieldSizeConfig[] = [
     {
       name: 'profile_image',
@@ -47,7 +47,7 @@ export class DiskStorage {
       name: 'videos',
       maxCount: 1,
       maxSize: 100 * 1024 * 1024, // 100MB
-      fileTypes: ['mp4', 'avi', 'mov'],
+      fileTypes: ['mp4', 'mov'],
     },
     {
       name: 'csv_file',
@@ -59,13 +59,13 @@ export class DiskStorage {
       name: 'documents.items[*].file', // Wildcard pattern for documents
       maxCount: 1,
       maxSize: 20 * 1024 * 1024, // 20MB
-      fileTypes: ['pdf', 'jpeg', 'jpg', 'png', 'doc', 'docx'],
+      fileTypes: ['pdf', 'jpeg', 'jpg', 'png'],
     },
     {
       name: 'documents[*].file', // Property documents pattern
       maxCount: 10,
       maxSize: 10 * 1024 * 1024, // 10MB
-      fileTypes: ['pdf', 'jpeg', 'jpg', 'png', 'doc', 'docx'],
+      fileTypes: ['pdf', 'jpeg', 'jpg', 'png'],
     },
     {
       name: 'images[*].file', // Property images pattern
@@ -89,7 +89,7 @@ export class DiskStorage {
       name: 'leaseDocument[*].file',
       maxCount: 10,
       maxSize: 10 * 1024 * 1024, // 10MB
-      fileTypes: ['pdf', 'doc', 'docx'],
+      fileTypes: ['pdf'],
     },
   ];
 
@@ -103,12 +103,22 @@ export class DiskStorage {
   }
 
   uploadMiddleware = (fieldPatterns: string[]) => {
-    // Store patterns for use in filter
     this.currentFieldPatterns = fieldPatterns;
+
+    const matchedConfigs = fieldPatterns.map((p) =>
+      this.fieldConfigs.find(
+        (c) => c.name === p || this.matchesPattern(p, c.name) || this.matchesPattern(c.name, p)
+      )
+    );
+    const maxFileSizeForPatterns = matchedConfigs.reduce<number | null>((max, c) => {
+      if (!c) return max;
+      return max === null ? c.maxSize : Math.max(max, c.maxSize);
+    }, null);
 
     this.upload = multer({
       storage: this.createDiskStorage(),
       fileFilter: this.fieldSpecificFilter,
+      ...(maxFileSizeForPatterns !== null && { limits: { fileSize: maxFileSizeForPatterns } }),
     });
 
     return (req: Request, res: Response, next: NextFunction): void => {
@@ -129,6 +139,9 @@ export class DiskStorage {
               case 'LIMIT_FILE_COUNT':
                 errorMessage = 'Too many files uploaded';
                 break;
+              case 'LIMIT_FILE_SIZE':
+                errorMessage = 'File exceeds the maximum allowed size';
+                break;
               default:
                 errorMessage = err.message;
             }
@@ -141,6 +154,61 @@ export class DiskStorage {
         }
         next();
       });
+    };
+  };
+
+  validateMagicBytes = () => {
+    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      const files = req.files;
+      if (!files) return next();
+
+      const fileList: Express.Multer.File[] = Array.isArray(files)
+        ? files
+        : Object.values(files).flat();
+
+      const invalidFiles: string[] = [];
+
+      for (const file of fileList) {
+        const declaredExt = path.extname(file.originalname).replace('.', '').toLowerCase();
+        const allowedMimes = MIME_ALLOWLIST[declaredExt] ?? [];
+
+        let detectedType: { mime: string } | undefined;
+        try {
+          detectedType = await fileTypeFromFile(file.path);
+        } catch {
+          invalidFiles.push(file.originalname);
+          await fs.promises.unlink(file.path).catch(() => {});
+          continue;
+        }
+
+        if (!detectedType) {
+          const isTextFormat = ['csv', 'txt'].includes(declaredExt);
+          if (!isTextFormat) {
+            invalidFiles.push(file.originalname);
+            await fs.promises.unlink(file.path).catch(() => {});
+          }
+          continue;
+        }
+
+        if (!allowedMimes.includes(detectedType.mime)) {
+          this.log.warn(
+            `Magic byte mismatch for ${file.originalname}: declared=${file.mimetype}, detected=${detectedType.mime}`
+          );
+          invalidFiles.push(file.originalname);
+          await fs.promises.unlink(file.path).catch(() => {});
+        }
+      }
+
+      if (invalidFiles.length > 0) {
+        return next(
+          new BadRequestError({
+            message: `Invalid file type detected: ${invalidFiles.join(', ')}`,
+            statusCode: 400,
+          })
+        );
+      }
+
+      next();
     };
   };
 
@@ -266,7 +334,7 @@ export class DiskStorage {
       cb(new Error(`Unexpected field: ${file.fieldname}`));
       return;
     }
-    const fileExt = file.mimetype.split('/')[1]?.toLowerCase();
+    const fileExt = path.extname(file.originalname).replace('.', '').toLowerCase();
     if (!fileExt || !this.allowedExtensions.includes(fileExt)) {
       cb(new Error(`File type not supported. Allowed types: ${this.allowedExtensions.join(', ')}`));
       return;
@@ -285,16 +353,6 @@ export class DiskStorage {
         );
         return;
       }
-    }
-
-    if (fieldConfig && fieldConfig.maxSize && file.size > fieldConfig.maxSize) {
-      this.log.warn(`${file.originalname} exceeds size limit for ${file.fieldname}`);
-      return cb(
-        new BadRequestError({
-          message: `${file.originalname} exceeds max allowed size of ${Math.round(fieldConfig.maxSize / (1024 * 1024))}MB for field "${file.fieldname}"`,
-          statusCode: 400,
-        })
-      );
     }
 
     cb(null, true);

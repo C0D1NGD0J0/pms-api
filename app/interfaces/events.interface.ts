@@ -12,6 +12,7 @@ import {
 } from './lease.interface';
 
 export enum EventTypes {
+  PAYMENT_DISPUTE_REVERSAL_FAILED = 'payment:dispute:reversal:failed',
   LEASE_ESIGNATURE_REQUESTED = 'lease:esignature:requested',
   LEASE_ESIGNATURE_COMPLETED = 'lease:esignature:completed',
   PAYMENT_PROCESSOR_VERIFIED = 'payment:processor:verified',
@@ -27,6 +28,7 @@ export enum EventTypes {
   USER_SIGNUP_INITIATED = 'user:signup:initiated',
   LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
   PDF_GENERATION_FAILED = 'pdf:generation:failed',
+  PAYMENT_DISPUTE_LOST = 'payment:dispute:lost',
   PAYMENT_DISPUTE_WON = 'payment:dispute:won',
   INVITATION_ACCEPTED = 'invitation:accepted',
   DELETE_ASSET_FAILED = 'delete:asset:failed',
@@ -38,6 +40,7 @@ export enum EventTypes {
   UNIT_BATCH_CREATED = 'unit:batch:created',
   PAYMENT_SUCCEEDED = 'payment:succeeded',
   IDENTITY_VERIFIED = 'identity:verified',
+  USER_DISCONNECTED = 'user:disconnected',
   PAYMENT_REFUNDED = 'payment:refunded',
   LEASE_TERMINATED = 'lease:terminated',
   PROPERTY_CREATED = 'property:created',
@@ -104,10 +107,13 @@ export type EventPayloadMap = {
   [EventTypes.INVITATION_REVOKED]: InvitationEventPayload;
   [EventTypes.USER_ARCHIVED]: UserArchivePayload;
   [EventTypes.USER_UNARCHIVED]: UserArchivePayload;
+  [EventTypes.USER_DISCONNECTED]: UserDisconnectedPayload;
   [EventTypes.LEASE_RENEWAL_REQUESTED]: LeaseRenewalRequestedPayload;
   [EventTypes.PAYMENT_PROCESSOR_VERIFIED]: PaymentProcessorVerifiedPayload;
   [EventTypes.PAYMENT_DISPUTE_CREATED]: PaymentDisputeCreatedPayload;
   [EventTypes.PAYMENT_DISPUTE_WON]: PaymentDisputeWonPayload;
+  [EventTypes.PAYMENT_DISPUTE_LOST]: PaymentDisputeLostPayload;
+  [EventTypes.PAYMENT_DISPUTE_REVERSAL_FAILED]: PaymentDisputeReversalFailedPayload;
   [EventTypes.PAYMENT_SUCCEEDED]: PaymentSucceededPayload;
   [EventTypes.PAYMENT_FAILED]: PaymentFailedPayload;
   [EventTypes.PAYMENT_REFUNDED]: PaymentRefundedPayload;
@@ -284,6 +290,16 @@ export type JobType =
   | 'report_generation'
   | 'bulk_operation';
 
+export interface PaymentDisputeLostPayload {
+  invoiceNumber: string;
+  disputeId: string;
+  chargeId: string;
+  currency: string;
+  pytuid: string;
+  amount: number;
+  cuid: string;
+}
+
 export interface EmailFailedPayload {
   error: {
     message: string;
@@ -299,6 +315,15 @@ export interface PaymentDisputeWonPayload {
   invoiceNumber: string;
   disputeId: string;
   chargeId: string;
+  currency: string;
+  pytuid: string;
+  amount: number;
+  cuid: string;
+}
+
+export interface PaymentDisputeReversalFailedPayload {
+  transferId: string;
+  disputeId: string;
   currency: string;
   pytuid: string;
   amount: number;
@@ -341,6 +366,13 @@ export interface PaymentRefundedPayload {
   chargeId: string;
   pytuid: string;
   cuid: string;
+}
+
+export interface UserDisconnectedPayload {
+  disconnectedBy: string;
+  userId: string;
+  cuid: string;
+  uid: string;
 }
 
 export interface EventMetadata {

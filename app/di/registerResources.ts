@@ -6,6 +6,7 @@ import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { GeoCoderService } from '@services/external';
 import { ClamScannerService } from '@shared/config/index';
+import { DSARService } from '@services/dsar/dsar.service';
 import { AssetService } from '@services/asset/asset.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
@@ -92,6 +93,7 @@ import {
   AdminController,
   UserController,
   AuthController,
+  DSARController,
 } from '@controllers/index';
 import {
   PropertyApprovalService,
@@ -141,6 +143,7 @@ const ControllerResources = {
   emailTemplateController: asClass(EmailTemplateController).scoped(),
   webhookController: asClass(WebhookController).scoped(),
   paymentController: asClass(PaymentController).scoped(),
+  dsarController: asClass(DSARController).scoped(),
 };
 
 const ModelResources = {
@@ -196,6 +199,7 @@ const ServiceResources = {
   paymentService: asClass(PaymentService).singleton(),
   paymentGatewayService: asClass(PaymentGatewayService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
+  dsarService: asClass(DSARService).singleton(),
 };
 
 const DAOResources = {

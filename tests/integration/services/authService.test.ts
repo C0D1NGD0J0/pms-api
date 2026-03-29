@@ -44,6 +44,7 @@ describe('AuthService Integration Tests', () => {
       authCache: mockAuthCache as any,
       vendorService,
       subscriptionService: mockSubscriptionService as any,
+      emitterService: { on: jest.fn(), emit: jest.fn() } as any,
     });
   });
 
@@ -417,14 +418,27 @@ describe('AuthService Integration Tests', () => {
 
   describe('refreshToken', () => {
     it('should generate new tokens with valid refresh token', async () => {
-      const userId = 'user-123';
+      const client = await createTestClient();
+      const user = await createTestUser(client.cuid, {
+        isActive: true,
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
+      });
+      const userId = user._id.toString();
       const refreshToken = 'valid-refresh-token';
 
-      mockAuthCache.getRefreshToken.mockResolvedValueOnce({ success: true });
+      // Decode happens first now (to extract cuid for scoped cache key)
       mockTokenService.verifyJwtToken.mockResolvedValueOnce({
         success: true,
-        data: { sub: userId, rememberMe: false, cuid: 'test-cuid' },
+        data: { sub: userId, rememberMe: false, cuid: client.cuid },
       });
+      mockAuthCache.getRefreshToken.mockResolvedValueOnce({ success: true });
       mockAuthCache.saveRefreshToken.mockResolvedValueOnce({ success: true });
 
       const result = await authService.refreshToken({ refreshToken, userId });
@@ -439,17 +453,21 @@ describe('AuthService Integration Tests', () => {
       const userId = 'user-123';
       const refreshToken = 'invalid-token';
 
-      mockAuthCache.getRefreshToken.mockResolvedValueOnce({ success: false });
+      // Decode fails first — no Redis lookup needed
+      mockTokenService.verifyJwtToken.mockResolvedValueOnce({ success: false });
 
       await expect(authService.refreshToken({ refreshToken, userId })).rejects.toThrow();
     });
 
-    it('should reject expired refresh token', async () => {
+    it('should reject when token not found in cache', async () => {
       const userId = 'user-123';
-      const refreshToken = 'expired-token';
+      const refreshToken = 'valid-but-not-in-cache-token';
 
-      mockAuthCache.getRefreshToken.mockResolvedValueOnce({ success: true });
-      mockTokenService.verifyJwtToken.mockResolvedValueOnce({ success: false });
+      mockTokenService.verifyJwtToken.mockResolvedValueOnce({
+        success: true,
+        data: { sub: userId, rememberMe: false, cuid: 'test-cuid' },
+      });
+      mockAuthCache.getRefreshToken.mockResolvedValueOnce({ success: false });
 
       await expect(authService.refreshToken({ refreshToken, userId })).rejects.toThrow();
     });
@@ -554,18 +572,19 @@ describe('AuthService Integration Tests', () => {
   describe('logout', () => {
     it('should invalidate user session with valid access token', async () => {
       const userId = 'user-123';
+      const cuid = 'test-cuid';
       const accessToken = 'valid-access-token';
 
       mockTokenService.verifyJwtToken.mockResolvedValueOnce({
         success: true,
-        data: { sub: userId },
+        data: { sub: userId, cuid },
       });
-      mockAuthCache.invalidateUserSession = jest.fn().mockResolvedValueOnce({ success: true });
+      mockAuthCache.invalidateUserSession.mockResolvedValueOnce({ success: true });
 
       const result = await authService.logout(accessToken);
 
       expect(result.success).toBe(true);
-      expect(mockAuthCache.invalidateUserSession).toHaveBeenCalledWith(userId);
+      expect(mockAuthCache.invalidateUserSession).toHaveBeenCalledWith(userId, cuid);
     });
 
     it('should reject logout with invalid token', async () => {

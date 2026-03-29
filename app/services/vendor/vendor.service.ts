@@ -4,6 +4,7 @@ import { UserDAO } from '@dao/userDAO';
 import { VendorDAO } from '@dao/vendorDAO';
 import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
+import { ProfileDAO } from '@dao/profileDAO';
 import { ClientSession, Types } from 'mongoose';
 import { VendorCache } from '@caching/vendor.cache';
 import { PermissionService } from '@services/permission';
@@ -29,6 +30,7 @@ import {
 interface IConstructor {
   permissionService: PermissionService;
   vendorCache: VendorCache;
+  profileDAO: ProfileDAO;
   vendorDAO: VendorDAO;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
@@ -39,13 +41,22 @@ export class VendorService {
   private userDAO: UserDAO;
   private vendorDAO: VendorDAO;
   private clientDAO: ClientDAO;
+  private profileDAO: ProfileDAO;
   private vendorCache: VendorCache;
   private permissionService: PermissionService;
 
-  constructor({ vendorDAO, userDAO, clientDAO, vendorCache, permissionService }: IConstructor) {
+  constructor({
+    vendorDAO,
+    userDAO,
+    clientDAO,
+    profileDAO,
+    vendorCache,
+    permissionService,
+  }: IConstructor) {
     this.vendorDAO = vendorDAO;
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
+    this.profileDAO = profileDAO;
     this.vendorCache = vendorCache;
     this.permissionService = permissionService;
     this.logger = createLogger('VendorService');
@@ -727,6 +738,135 @@ export class VendorService {
     }
 
     return tags;
+  }
+
+  async updateTeamMember(
+    cxt: IRequestContext,
+    cuid: string,
+    vuid: string,
+    uid: string,
+    updateData: { firstName?: string; lastName?: string; phoneNumber?: string }
+  ): Promise<ISuccessReturnData<any>> {
+    const currentuser = cxt.currentuser!;
+    try {
+      const vendor = await this.vendorDAO.findFirst({ vuid });
+      if (!vendor) throw new NotFoundError({ message: t('vendor.errors.notFound') });
+
+      const vendorConnection = vendor.connectedClients?.find((c: any) => c.cuid === cuid);
+      if (!vendorConnection) {
+        throw new NotFoundError({ message: t('vendor.errors.notAssociatedWithClient') });
+      }
+
+      const allowedRoles = [IUserRole.SUPER_ADMIN, IUserRole.MANAGER, IUserRole.ADMIN].includes(
+        currentuser.client.role as IUserRole
+      );
+      const isPrimaryVendor =
+        vendorConnection.primaryAccountHolder.toString() === currentuser.sub.toString();
+
+      if (!allowedRoles && !isPrimaryVendor) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'update',
+            resource: 'team member',
+          }),
+        });
+      }
+
+      const user = await this.userDAO.findFirst({ uid });
+      if (!user) throw new NotFoundError({ message: t('user.errors.notFound') });
+
+      // Update top-level User fields
+      const userUpdate: any = {};
+      if (updateData.firstName) userUpdate.firstName = updateData.firstName;
+      if (updateData.lastName) userUpdate.lastName = updateData.lastName;
+      if (Object.keys(userUpdate).length > 0) {
+        await this.userDAO.updateById(user._id.toString(), { $set: userUpdate });
+      }
+
+      // Update Profile personalInfo fields
+      const profileUpdate: any = {};
+      if (updateData.firstName) profileUpdate.firstName = updateData.firstName;
+      if (updateData.lastName) profileUpdate.lastName = updateData.lastName;
+      if (updateData.phoneNumber) profileUpdate.phoneNumber = updateData.phoneNumber;
+
+      if (Object.keys(profileUpdate).length > 0) {
+        const profile = await this.profileDAO.getProfileByUserId(user._id.toString());
+        if (profile) {
+          await this.profileDAO.updatePersonalInfo(profile._id.toString(), profileUpdate);
+        }
+      }
+
+      return {
+        success: true,
+        data: { uid, ...updateData },
+        message: 'Team member updated successfully',
+      };
+    } catch (error) {
+      this.logger.error('Error updating team member:', {
+        cuid,
+        vuid,
+        uid,
+        error: error.message || error,
+      });
+      throw error;
+    }
+  }
+
+  async toggleTeamMemberStatus(
+    cxt: IRequestContext,
+    cuid: string,
+    vuid: string,
+    uid: string,
+    isActive: boolean
+  ): Promise<ISuccessReturnData<any>> {
+    const currentuser = cxt.currentuser!;
+    try {
+      const vendor = await this.vendorDAO.findFirst({ vuid });
+      if (!vendor) throw new NotFoundError({ message: t('vendor.errors.notFound') });
+
+      const vendorConnection = vendor.connectedClients?.find((c: any) => c.cuid === cuid);
+      if (!vendorConnection) {
+        throw new NotFoundError({ message: t('vendor.errors.notAssociatedWithClient') });
+      }
+
+      const allowedRoles = [IUserRole.SUPER_ADMIN, IUserRole.MANAGER, IUserRole.ADMIN].includes(
+        currentuser.client.role as IUserRole
+      );
+      const isPrimaryVendor =
+        vendorConnection.primaryAccountHolder.toString() === currentuser.sub.toString();
+
+      if (!allowedRoles && !isPrimaryVendor) {
+        throw new ForbiddenError({
+          message: t('client.errors.insufficientPermissions', {
+            action: 'update',
+            resource: 'team member status',
+          }),
+        });
+      }
+
+      const user = await this.userDAO.findFirst({ uid });
+      if (!user) throw new NotFoundError({ message: t('user.errors.notFound') });
+
+      if (user.uid === currentuser.uid) {
+        throw new BadRequestError({ message: 'You cannot change your own active status' });
+      }
+
+      await this.userDAO.updateById(user._id.toString(), { $set: { isActive } });
+
+      return {
+        success: true,
+        data: { uid, isActive },
+        message: `Team member ${isActive ? 'activated' : 'deactivated'} successfully`,
+      };
+    } catch (error) {
+      this.logger.error('Error toggling team member status:', {
+        cuid,
+        vuid,
+        uid,
+        error: error.message || error,
+      });
+      throw error;
+    }
   }
 
   async getVendorStats(

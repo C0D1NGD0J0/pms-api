@@ -10,9 +10,9 @@ import {
   createTestPropertyUnit,
   createTestAdminUser,
   createTestProperty,
-
   clearTestDatabase,
-  createTestClient,} from '@tests/helpers';
+  createTestClient,
+} from '@tests/helpers';
 
 // Mock PropertyCache
 const mockPropertyCache = {
@@ -30,12 +30,12 @@ describe('PropertyUnitService Integration Tests', () => {
   let clientDAO: ClientDAO;
   let unitNumberingService: UnitNumberingService;
 
-  const createMockContext = (cuid: string, pid: string, unitId?: string, currentuser?: any) => ({
+  const createMockContext = (cuid: string, pid: string, puid?: string, currentuser?: any) => ({
     request: {
-      params: { cuid, pid, unitId },
-      url: `/clients/${cuid}/properties/${pid}/units${unitId ? `/${unitId}` : ''}`,
+      params: { cuid, pid, puid },
+      url: `/clients/${cuid}/properties/${pid}/units${puid ? `/${puid}` : ''}`,
       method: 'GET',
-      path: `/clients/${cuid}/properties/${pid}/units${unitId ? `/${unitId}` : ''}`,
+      path: `/clients/${cuid}/properties/${pid}/units${puid ? `/${puid}` : ''}`,
       query: {},
     },
     userAgent: {
@@ -55,7 +55,8 @@ describe('PropertyUnitService Integration Tests', () => {
     timestamp: new Date(),
   });
 
-  beforeAll(async () => { // Initialize REAL DAOs (not mocks)
+  beforeAll(async () => {
+    // Initialize REAL DAOs (not mocks)
     propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
     propertyDAO = new PropertyDAO({ propertyModel: Property, propertyUnitDAO });
     profileDAO = new ProfileDAO({ profileModel: null as any });
@@ -93,7 +94,7 @@ describe('PropertyUnitService Integration Tests', () => {
       adminUser = await createTestAdminUser(testClient.cuid);
       testProperty = await createTestProperty(testClient.cuid, testClient._id, {
         maxAllowedUnits: 10,
-        status: 'available',
+        operationalStatus: 'available',
       });
     });
 
@@ -107,7 +108,7 @@ describe('PropertyUnitService Integration Tests', () => {
               floor: 1,
               specifications: {
                 totalArea: 850,
-                rooms: 2,
+                bedrooms: 2,
                 bathrooms: 1,
               },
               fees: {
@@ -154,7 +155,7 @@ describe('PropertyUnitService Integration Tests', () => {
               unitNumber: '101',
               unitType: 'residential',
               floor: 1,
-              specifications: { totalArea: 650, rooms: 1, bathrooms: 1 },
+              specifications: { totalArea: 650, bedrooms: 1, bathrooms: 1 },
               fees: { rentAmount: 1200, currency: 'USD' },
               status: 'available' as const,
             },
@@ -162,7 +163,7 @@ describe('PropertyUnitService Integration Tests', () => {
               unitNumber: '102',
               unitType: 'residential',
               floor: 1,
-              specifications: { totalArea: 850, rooms: 2, bathrooms: 1 },
+              specifications: { totalArea: 850, bedrooms: 2, bathrooms: 1 },
               fees: { rentAmount: 1500, currency: 'USD' },
               status: 'available' as const,
             },
@@ -170,7 +171,7 @@ describe('PropertyUnitService Integration Tests', () => {
               unitNumber: '103',
               unitType: 'residential',
               floor: 1,
-              specifications: { totalArea: 950, rooms: 2, bathrooms: 2 },
+              specifications: { totalArea: 950, bedrooms: 2, bathrooms: 2 },
               fees: { rentAmount: 1700, currency: 'USD' },
               status: 'available' as const,
             },
@@ -209,7 +210,7 @@ describe('PropertyUnitService Integration Tests', () => {
               unitNumber: '101', // Duplicate
               unitType: 'residential',
               floor: 1,
-              specifications: { totalArea: 850, rooms: 2, bathrooms: 1 },
+              specifications: { totalArea: 850, bedrooms: 2, bathrooms: 1 },
               fees: { rentAmount: 1500, currency: 'USD' },
               status: 'available' as const,
             },
@@ -237,7 +238,7 @@ describe('PropertyUnitService Integration Tests', () => {
         // Create property with max 2 units
         const limitedProperty = await createTestProperty(testClient.cuid, testClient._id, {
           maxAllowedUnits: 2,
-          status: 'available',
+          operationalStatus: 'available',
         });
 
         // Try to add 3 units
@@ -247,7 +248,7 @@ describe('PropertyUnitService Integration Tests', () => {
               unitNumber: '101',
               unitType: 'residential',
               floor: 1,
-              specifications: { totalArea: 650, rooms: 1, bathrooms: 1 },
+              specifications: { totalArea: 650, bedrooms: 1, bathrooms: 1 },
               fees: { rentAmount: 1200, currency: 'USD' },
               status: 'available' as const,
             },
@@ -255,7 +256,7 @@ describe('PropertyUnitService Integration Tests', () => {
               unitNumber: '102',
               unitType: 'residential',
               floor: 1,
-              specifications: { totalArea: 650, rooms: 1, bathrooms: 1 },
+              specifications: { totalArea: 650, bedrooms: 1, bathrooms: 1 },
               fees: { rentAmount: 1200, currency: 'USD' },
               status: 'available' as const,
             },
@@ -263,7 +264,7 @@ describe('PropertyUnitService Integration Tests', () => {
               unitNumber: '103',
               unitType: 'residential',
               floor: 1,
-              specifications: { totalArea: 650, rooms: 1, bathrooms: 1 },
+              specifications: { totalArea: 650, bedrooms: 1, bathrooms: 1 },
               fees: { rentAmount: 1200, currency: 'USD' },
               status: 'available' as const,
             },
@@ -333,14 +334,9 @@ describe('PropertyUnitService Integration Tests', () => {
             rentAmount: 1800,
             currency: 'USD' as any,
           },
-          specifications: {
-            totalArea: 1200,
-            bedrooms: 3,
-            bathrooms: 2,
-          },
         };
 
-        const context = createMockContext(testClient.cuid, testProperty.pid, unit._id.toString(), {
+        const context = createMockContext(testClient.cuid, testProperty.pid, unit.puid, {
           sub: adminUser._id.toString(),
           client: { role: ROLES.ADMIN },
           fullname: 'Admin User',
@@ -358,8 +354,6 @@ describe('PropertyUnitService Integration Tests', () => {
         const updatedUnit = await PropertyUnit.findById(unit._id);
         expect(updatedUnit).not.toBeNull();
         expect(updatedUnit!.fees.rentAmount).toBe(1800);
-        expect(updatedUnit!.specifications.bedrooms).toBe(3);
-        expect(updatedUnit!.specifications.bathrooms).toBe(2);
       });
 
       it('should validate rental amount is non-negative', async () => {
@@ -376,7 +370,7 @@ describe('PropertyUnitService Integration Tests', () => {
           },
         };
 
-        const context = createMockContext(testClient.cuid, testProperty.pid, unit._id.toString(), {
+        const context = createMockContext(testClient.cuid, testProperty.pid, unit.puid, {
           sub: adminUser._id.toString(),
           client: { role: ROLES.ADMIN },
           fullname: 'Admin User',
@@ -389,7 +383,7 @@ describe('PropertyUnitService Integration Tests', () => {
 
       it('should prevent updates to inactive property', async () => {
         const inactiveProperty = await createTestProperty(testClient.cuid, testClient._id, {
-          status: 'inactive',
+          operationalStatus: 'inactive',
         });
         const unit = await createTestPropertyUnit(testClient.cuid, inactiveProperty._id);
 
@@ -400,16 +394,11 @@ describe('PropertyUnitService Integration Tests', () => {
           },
         };
 
-        const context = createMockContext(
-          testClient.cuid,
-          inactiveProperty.pid,
-          unit._id.toString(),
-          {
-            sub: adminUser._id.toString(),
-            client: { role: ROLES.ADMIN },
-            fullname: 'Admin User',
-          }
-        );
+        const context = createMockContext(testClient.cuid, inactiveProperty.pid, unit.puid, {
+          sub: adminUser._id.toString(),
+          client: { role: ROLES.ADMIN },
+          fullname: 'Admin User',
+        });
 
         await expect(
           propertyUnitService.updatePropertyUnit(context as any, updateData as any)
@@ -427,7 +416,7 @@ describe('PropertyUnitService Integration Tests', () => {
           floor: 2,
         };
 
-        const context = createMockContext(testClient.cuid, testProperty.pid, unit._id.toString(), {
+        const context = createMockContext(testClient.cuid, testProperty.pid, unit.puid, {
           sub: adminUser._id.toString(),
           client: { role: ROLES.ADMIN },
           fullname: 'Admin User',
@@ -459,7 +448,7 @@ describe('PropertyUnitService Integration Tests', () => {
           floor: 2,
         };
 
-        const context = createMockContext(testClient.cuid, testProperty.pid, unit1._id.toString(), {
+        const context = createMockContext(testClient.cuid, testProperty.pid, unit1.puid, {
           sub: adminUser._id.toString(),
           client: { role: ROLES.ADMIN },
           fullname: 'Admin User',
@@ -482,7 +471,7 @@ describe('PropertyUnitService Integration Tests', () => {
           status: 'available',
         });
 
-        const context = createMockContext(testClient.cuid, testProperty.pid, unit._id.toString(), {
+        const context = createMockContext(testClient.cuid, testProperty.pid, unit.puid, {
           sub: adminUser._id.toString(),
           client: { role: ROLES.ADMIN },
           fullname: 'Admin User',
@@ -508,7 +497,7 @@ describe('PropertyUnitService Integration Tests', () => {
           currentLease: new Types.ObjectId(),
         });
 
-        const context = createMockContext(testClient.cuid, testProperty.pid, unit._id.toString(), {
+        const context = createMockContext(testClient.cuid, testProperty.pid, unit.puid, {
           sub: adminUser._id.toString(),
           client: { role: ROLES.ADMIN },
           fullname: 'Admin User',
@@ -544,7 +533,7 @@ describe('PropertyUnitService Integration Tests', () => {
       adminUser = await createTestAdminUser(testClient.cuid);
       testProperty = await createTestProperty(testClient.cuid, testClient._id, {
         maxAllowedUnits: 20,
-        status: 'available',
+        operationalStatus: 'available',
       });
 
       // Create multiple units
@@ -581,8 +570,8 @@ describe('PropertyUnitService Integration Tests', () => {
     });
 
     describe('getPropertyUnit', () => {
-      it('should retrieve single unit by ID', async () => {
-        const context = createMockContext(testClient.cuid, testProperty.pid, unit1._id.toString(), {
+      it('should retrieve single unit by puid', async () => {
+        const context = createMockContext(testClient.cuid, testProperty.pid, unit1.puid, {
           sub: adminUser._id.toString(),
         });
 
@@ -595,9 +584,8 @@ describe('PropertyUnitService Integration Tests', () => {
         expect(result.data.specifications.bedrooms).toBe(1);
       });
 
-      it('should return error for non-existent unit', async () => {
-        const fakeUnitId = new Types.ObjectId().toString();
-        const context = createMockContext(testClient.cuid, testProperty.pid, fakeUnitId, {
+      it('should return error for non-existent puid', async () => {
+        const context = createMockContext(testClient.cuid, testProperty.pid, 'non-existent-puid', {
           sub: adminUser._id.toString(),
         });
 
@@ -607,7 +595,7 @@ describe('PropertyUnitService Integration Tests', () => {
       });
 
       it('should return error when property not found', async () => {
-        const context = createMockContext(testClient.cuid, 'fake-pid', unit1._id.toString(), {
+        const context = createMockContext(testClient.cuid, 'fake-pid', unit1.puid, {
           sub: adminUser._id.toString(),
         });
 

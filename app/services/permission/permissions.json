@@ -11,7 +11,7 @@
       "$extend": ["manager"],
       "property": ["create:any", "read:any", "update:any", "delete:any"],
       "lease": ["create:any", "list:any", "read:any", "update:any"],
-      "user": ["remove:any", "assign_roles:any"],
+      "user": ["remove:any", "delete:any", "assign_roles:any"],
       "client": ["read:mine", "settings:mine", "manage_users:mine"],
       "invitation": [
         "send:any",
@@ -121,7 +121,7 @@
       "description": "Property management operations"
     },
     "user": {
-      "actions": ["invite", "read", "update", "remove", "list", "assign_roles"],
+      "actions": ["invite", "read", "update", "remove", "delete", "list", "assign_roles"],
       "scopes": ["any", "mine"],
       "description": "User management operations"
     },

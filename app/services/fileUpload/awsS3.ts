@@ -1,5 +1,6 @@
 import fs from 'fs';
 import Logger from 'bunyan';
+import { randomUUID } from 'crypto';
 import { createLogger } from '@utils/index';
 import { Upload } from '@aws-sdk/lib-storage';
 import { envVariables } from '@shared/config';
@@ -36,7 +37,8 @@ export class S3Service {
       try {
         this.log.debug(`Uploading file: ${file.fileName}`);
         const fileStream = fs.createReadStream(file.path);
-        const s3Key = `${context.resourceName}_${file.originalFileName || file.fileName}`;
+        const ext = file.mimeType?.split('/')[1] ?? 'bin';
+        const s3Key = `${context.resourceName}/${randomUUID()}.${ext}`;
 
         const params = {
           Bucket: this.bucketName,

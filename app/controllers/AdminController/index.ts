@@ -66,7 +66,7 @@ export class AdminController {
         message: `Invalid cache type. Must be one of: ${CACHE_TYPES.join(', ')}`,
       });
     }
-    if (!cuid && type !== 'auth') {
+    if (!cuid) {
       throw new BadRequestError({ message: 'cuid is required' });
     }
 
@@ -123,7 +123,7 @@ export class AdminController {
             message: 'id (userId) is required for auth cache invalidation',
           });
         }
-        await this.authCache.invalidateUserSession(id);
+        await this.authCache.invalidateUserSession(id, cuid);
         deletedCount = 1;
         break;
     }

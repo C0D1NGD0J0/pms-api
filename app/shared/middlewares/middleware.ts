@@ -90,7 +90,10 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       return next(new UnauthorizedError({ message: 'Invalid authentication token' }));
     }
 
-    const currentUserResp = await authCache.getCurrentUser(payload.data?.sub as string);
+    const currentUserResp = await authCache.getCurrentUser(
+      payload.data?.sub as string,
+      payload.data.cuid
+    );
     if (!currentUserResp.success) {
       logger.error('User not found in cache, fetching from database...');
       const _currentuser = await profileDAO.generateCurrentUserInfo(payload.data?.sub as string);
@@ -144,8 +147,9 @@ export const diskUpload =
     uploadMiddleware(req, res, (err: any) => {
       if (err) {
         logger.error('❌ [ERROR] diskUpload middleware failed:', err);
+        return next(err);
       }
-      next(err);
+      diskStorage.validateMagicBytes()(req, res, next);
     });
   };
 
@@ -417,7 +421,13 @@ export const contextBuilder = (req: Request, res: Response, next: NextFunction) 
       request: {
         path: req.path,
         method: req.method,
-        params: req.params,
+        get params() {
+          return req.params;
+        },
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        set params(_value: Record<string, any>) {
+          // no-op: getter always returns the live req.params
+        },
         url: req.originalUrl,
         query: req.query as Record<string, any>,
       },

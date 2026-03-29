@@ -93,6 +93,7 @@ import {
   AdminController,
   UserController,
   AuthController,
+  DSARController,
 } from '@controllers/index';
 import {
   PropertyApprovalService,
@@ -142,6 +143,7 @@ const ControllerResources = {
   emailTemplateController: asClass(EmailTemplateController).scoped(),
   webhookController: asClass(WebhookController).scoped(),
   paymentController: asClass(PaymentController).scoped(),
+  dsarController: asClass(DSARController).scoped(),
 };
 
 const ModelResources = {

@@ -9,5 +9,6 @@ export * from './ClientController';
 export * from './VendorController';
 export * from './AdminController';
 export * from './LeaseController';
+export * from './DSARController';
 export * from './UserController';
 export * from './AuthController';

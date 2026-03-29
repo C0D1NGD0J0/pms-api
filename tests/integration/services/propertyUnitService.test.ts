@@ -10,9 +10,9 @@ import {
   createTestPropertyUnit,
   createTestAdminUser,
   createTestProperty,
-
   clearTestDatabase,
-  createTestClient,} from '@tests/helpers';
+  createTestClient,
+} from '@tests/helpers';
 
 // Mock PropertyCache
 const mockPropertyCache = {
@@ -55,7 +55,8 @@ describe('PropertyUnitService Integration Tests', () => {
     timestamp: new Date(),
   });
 
-  beforeAll(async () => { // Initialize REAL DAOs (not mocks)
+  beforeAll(async () => {
+    // Initialize REAL DAOs (not mocks)
     propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
     propertyDAO = new PropertyDAO({ propertyModel: Property, propertyUnitDAO });
     profileDAO = new ProfileDAO({ profileModel: null as any });
@@ -93,7 +94,7 @@ describe('PropertyUnitService Integration Tests', () => {
       adminUser = await createTestAdminUser(testClient.cuid);
       testProperty = await createTestProperty(testClient.cuid, testClient._id, {
         maxAllowedUnits: 10,
-        status: 'available',
+        operationalStatus: 'available',
       });
     });
 
@@ -237,7 +238,7 @@ describe('PropertyUnitService Integration Tests', () => {
         // Create property with max 2 units
         const limitedProperty = await createTestProperty(testClient.cuid, testClient._id, {
           maxAllowedUnits: 2,
-          status: 'available',
+          operationalStatus: 'available',
         });
 
         // Try to add 3 units
@@ -393,16 +394,11 @@ describe('PropertyUnitService Integration Tests', () => {
           },
         };
 
-        const context = createMockContext(
-          testClient.cuid,
-          inactiveProperty.pid,
-          unit.puid,
-          {
-            sub: adminUser._id.toString(),
-            client: { role: ROLES.ADMIN },
-            fullname: 'Admin User',
-          }
-        );
+        const context = createMockContext(testClient.cuid, inactiveProperty.pid, unit.puid, {
+          sub: adminUser._id.toString(),
+          client: { role: ROLES.ADMIN },
+          fullname: 'Admin User',
+        });
 
         await expect(
           propertyUnitService.updatePropertyUnit(context as any, updateData as any)
@@ -537,7 +533,7 @@ describe('PropertyUnitService Integration Tests', () => {
       adminUser = await createTestAdminUser(testClient.cuid);
       testProperty = await createTestProperty(testClient.cuid, testClient._id, {
         maxAllowedUnits: 20,
-        status: 'available',
+        operationalStatus: 'available',
       });
 
       // Create multiple units

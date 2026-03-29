@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
-import { ROLES } from '@shared/constants/roles.constants';
 import { UserController } from '@controllers/UserController';
+import { DSARController } from '@controllers/DSARController';
 import { ClientController } from '@controllers/ClientController';
 import { PropertyController } from '@controllers/PropertyController';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
@@ -336,27 +336,9 @@ router.get(
   validateRequest({
     params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
   }),
-  asyncWrapper(async (req, res) => {
-    const { uid } = req.params;
-    const requestingUserId = req.context.currentuser?.sub;
-    const isSelf = requestingUserId === uid;
-    const isAdmin = [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(
-      req.context.currentuser?.client?.role
-    );
-
-    if (!isSelf && !isAdmin) {
-      return res.status(403).json({ success: false, message: 'Forbidden' });
-    }
-
-    const dsarService =
-      req.container.resolve<import('@services/dsar/dsar.service').DSARService>('dsarService');
-    const data = await dsarService.exportUserData(uid);
-
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="dsar-export-${uid}-${Date.now()}.json"`
-    );
-    return res.status(200).json(data);
+  asyncWrapper((req, res) => {
+    const dsarController = req.container.resolve<DSARController>('dsarController');
+    return dsarController.exportUserData(req, res);
   })
 );
 
@@ -367,23 +349,9 @@ router.delete(
   validateRequest({
     params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
   }),
-  asyncWrapper(async (req, res) => {
-    const { uid } = req.params;
-    const requestingUserId = req.context.currentuser?.sub;
-    const isSelf = requestingUserId === uid;
-    const isAdmin = [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(
-      req.context.currentuser?.client?.role
-    );
-
-    if (!isSelf && !isAdmin) {
-      return res.status(403).json({ success: false, message: 'Forbidden' });
-    }
-
-    const dsarService =
-      req.container.resolve<import('@services/dsar/dsar.service').DSARService>('dsarService');
-    await dsarService.anonymiseUser(uid, requestingUserId ?? uid);
-
-    return res.status(200).json({ success: true, message: 'Account data anonymised' });
+  asyncWrapper((req, res) => {
+    const dsarController = req.container.resolve<DSARController>('dsarController');
+    return dsarController.anonymiseUser(req, res);
   })
 );
 

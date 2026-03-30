@@ -167,7 +167,7 @@ export function setAuthCookies(
     opts = {
       path: '/api/v1/auth/refresh_token', // Only accessible on the refresh endpoint
       httpOnly: true,
-      sameSite: (envVariables.SERVER.ENV === 'production' ? 'none' : 'lax') as 'none' | 'lax',
+      sameSite: 'lax' as const,
       secure: envVariables.SERVER.ENV !== 'development',
     };
     bearerJwt = `Bearer ${data.refreshToken}`;
@@ -183,7 +183,7 @@ export function setAuthCookies(
     opts = {
       path: '/',
       httpOnly: true,
-      sameSite: (envVariables.SERVER.ENV === 'production' ? 'none' : 'lax') as 'none' | 'lax',
+      sameSite: 'lax' as const,
       secure: envVariables.SERVER.ENV !== 'development',
     };
     bearerJwt = `Bearer ${data.accessToken}`;

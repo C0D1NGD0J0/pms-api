@@ -103,6 +103,8 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
             },
             message: (props: any) => `${props.value} is not a valid URL!`,
           },
+          required: true,
+          default: '',
         },
         key: { type: String },
         status: {
@@ -123,7 +125,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
         uploadedAt: { type: Date, default: Date.now },
         uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
         description: { type: String, trim: true, maxlength: 150 },
-        documentName: { type: String, trim: true, maxlength: 100 },
+        filename: { type: String, trim: true, maxlength: 100 },
       },
     ],
     isBillable: { type: Boolean, default: false },

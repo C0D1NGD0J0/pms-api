@@ -10,6 +10,7 @@ echo "🔍 Running final lint check..."
 if ! npm run lint; then
   echo "❌ Lint errors found! Push aborted."
   echo "💡 Please run 'npm run lint:fix' to fix issues and commit again."
+  exit 1
 fi
 
 # echo "🧪 Running tests..."

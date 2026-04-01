@@ -3,6 +3,7 @@ import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
 import { ResourceContext } from '@interfaces/utils.interface';
 import {
+  NotificationPriorityEnum,
   INotificationDocument,
   NotificationTypeEnum,
   RecipientTypeEnum,
@@ -76,8 +77,8 @@ const NotificationSchema = new Schema<INotificationDocument>(
     },
     priority: {
       type: String,
-      enum: ['low', 'medium', 'high', 'urgent'],
-      default: 'medium',
+      enum: Object.values(NotificationPriorityEnum),
+      default: NotificationPriorityEnum.MEDIUM,
     },
     resourceInfo: {
       type: ResourceSchema,

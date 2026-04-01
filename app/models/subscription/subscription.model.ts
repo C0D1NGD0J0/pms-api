@@ -1,6 +1,6 @@
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/index';
-import { ISubscriptionDocument } from '@interfaces/index';
+import { ISubscriptionDocument, ISubscriptionStatus } from '@interfaces/index';
 
 const SubscriptionSchema = new Schema<ISubscriptionDocument>(
   {
@@ -23,9 +23,9 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     },
     status: {
       type: String,
-      enum: ['active', 'inactive', 'pending_payment'],
+      enum: Object.values(ISubscriptionStatus),
       required: true,
-      default: 'active',
+      default: ISubscriptionStatus.ACTIVE,
       index: true,
     },
     startDate: { type: Date, required: true },

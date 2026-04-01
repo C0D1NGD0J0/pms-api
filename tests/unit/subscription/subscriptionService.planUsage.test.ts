@@ -220,6 +220,16 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
       expect(result.data.verification.daysRemaining).toBe(5);
     });
 
+    it('should return null data when subscription record not found', async () => {
+      mockSubscriptionDAO.findFirst.mockResolvedValue(null);
+      mockClientDAO.findFirst.mockResolvedValue(null);
+
+      const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeNull();
+    });
+
     it('should throw BadRequestError when client not found', async () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),

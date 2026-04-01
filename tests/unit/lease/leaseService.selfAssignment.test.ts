@@ -130,7 +130,6 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       leaseSignatureService: {} as any,
       leaseDocumentService: {} as any,
       leaseRenewalService: {} as any,
-      pdfGeneratorService: {} as any,
       mediaUploadService: {} as any,
       leasePdfService: {} as any,
       boldSignService: {} as any,

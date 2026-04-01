@@ -20,6 +20,7 @@ export class EventsRegistryCache extends BaseCache {
 
       const key = `${this.KEY_PREFIX}:events`;
       await this.client.sAdd(key, eventType.toString());
+      await this.client.expire(key, this.DEFAULT_TTL);
       return { success: true, data: null };
     } catch (error) {
       this.log.error('Failed to register event:', error);

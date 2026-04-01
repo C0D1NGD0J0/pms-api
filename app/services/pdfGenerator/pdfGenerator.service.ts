@@ -16,7 +16,7 @@ export class PdfGeneratorService {
   private readonly logger: Logger;
   private stats: PdfGeneratorStats;
   private browserLaunchTime: Date | null = null;
-  private readonly BROWSER_IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes idle timeout
+  private readonly BROWSER_IDLE_TIMEOUT = 60 * 1000; // 60 seconds idle timeout
 
   constructor() {
     this.logger = createLogger('PdfGeneratorService');
@@ -202,6 +202,14 @@ export class PdfGeneratorService {
         '--no-zygote',
         '--single-process',
         '--disable-web-security',
+        // Memory-saving flags (process/feature only — no rendering impact)
+        '--disable-extensions',
+        '--disable-sync',
+        '--disable-default-apps',
+        '--disable-component-update',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--metrics-recording-only',
       ];
 
       // Use system Chrome if available (production), otherwise use bundled Chrome (local development)

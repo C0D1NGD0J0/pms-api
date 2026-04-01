@@ -478,9 +478,14 @@ export class LeasePdfService {
   }
 
   /**
-   * Setup event listeners for PDF-related events
+   * Setup event listeners for PDF-related events.
+   * Only registered in the worker process — Puppeteer must not run in the API process.
    */
   private setupEventListeners(): void {
+    if (process.env.PROCESS_TYPE !== 'worker') {
+      return;
+    }
+
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
 

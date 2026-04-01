@@ -195,7 +195,6 @@ const setupServices = () => {
     userService,
     invitationService,
     notificationService,
-    pdfGeneratorService,
     mediaUploadService,
     boldSignService,
     mailerService,

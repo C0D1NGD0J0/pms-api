@@ -818,6 +818,23 @@ export interface LeaseESignatureRequestedPayload {
  */
 
 /**
+ * Lease Template Types
+ */
+export type LeaseTemplateType =
+  | 'generic'
+  | 'residential-single-family'
+  | 'residential-apartment'
+  | 'commercial-office'
+  | 'commercial-retail'
+  | 'short-term-rental';
+
+/**
+ * ============================================================================
+ * E-SIGNATURE PAYLOAD INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Payment Method Types
  */
 export type PaymentMethodType =
@@ -829,22 +846,6 @@ export type PaymentMethodType =
   | 'credit_card'
   | 'debit_card'
   | 'mobile_payment';
-
-/**
- * ============================================================================
- * E-SIGNATURE PAYLOAD INTERFACES
- * ============================================================================
- */
-
-/**
- * Lease Template Types
- */
-export type LeaseTemplateType =
-  | 'residential-single-family'
-  | 'residential-apartment'
-  | 'commercial-office'
-  | 'commercial-retail'
-  | 'short-term-rental';
 
 /**
  * Lease Termination Data Interface

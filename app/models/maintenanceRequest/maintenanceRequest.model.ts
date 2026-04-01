@@ -98,7 +98,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
           validate: {
             validator: function (v: string) {
               // Basic URL validation
-              return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
+              return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})[/\w.- ]*\/?$/.test(v);
             },
             message: (props: any) => `${props.value} is not a valid URL!`,
           },
@@ -114,7 +114,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
           validate: {
             validator: function (v: string) {
               // Basic URL validation
-              return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
+              return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})[/\w.- ]*\/?$/.test(v);
             },
             message: (props: any) => `${props.value} is not a valid URL!`,
           },

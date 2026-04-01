@@ -4,6 +4,7 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import sanitizeHtml from 'sanitize-html';
+import { PdfQueue } from '@queues/index';
 import { LeaseCache } from '@caching/index';
 import { MailService } from '@mailer/index';
 import { envVariables } from '@shared/config';
@@ -11,20 +12,15 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
 import { IUserBasicInfo } from '@dao/interfaces';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
-import { ESignatureQueue, PdfQueue } from '@queues/index';
+import { EventTypes } from '@interfaces/events.interface';
 import { preventTenantConflict } from '@shared/middlewares';
 import { IUserRole } from '@shared/constants/roles.constants';
+import { MediaUploadService, UserService } from '@services/index';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
-import { PdfGeneratorService, MediaUploadService, UserService } from '@services/index';
 import { IPropertyDocument, IProfileWithUser, OwnershipType, ICronJob } from '@interfaces/index';
-import {
-  PdfGenerationRequestedPayload,
-  PdfGeneratedPayload,
-  EventTypes,
-} from '@interfaces/events.interface';
 import {
   EventEmitterService,
   NotificationService,
@@ -60,7 +56,6 @@ import {
 } from '@interfaces/utils.interface';
 import {
   PROPERTY_APPROVAL_ROLES,
-  determineTemplateType,
   convertUserRoleToEnum,
   PROPERTY_STAFF_ROLES,
   LEASE_CONSTANTS,
@@ -100,7 +95,6 @@ interface IConstructor {
   leaseDocumentService: LeaseDocumentService;
   leaseRenewalService: LeaseRenewalService;
   notificationService: NotificationService;
-  pdfGeneratorService: PdfGeneratorService;
   mediaUploadService: MediaUploadService;
   invitationService: InvitationService;
   emitterService: EventEmitterService;
@@ -136,7 +130,6 @@ export class LeaseService {
   private readonly emitterService: EventEmitterService;
   private readonly invitationService: InvitationService;
   private readonly mediaUploadService: MediaUploadService;
-  private readonly pdfGeneratorService: PdfGeneratorService;
   private readonly notificationService: NotificationService;
   private readonly leaseTemplateService: LeaseTemplateService;
   private readonly leaseRenewalService: LeaseRenewalService;
@@ -159,7 +152,6 @@ export class LeaseService {
     mailerService,
     mediaUploadService,
     notificationService,
-    pdfGeneratorService,
     profileDAO,
     propertyDAO,
     propertyUnitDAO,
@@ -183,7 +175,6 @@ export class LeaseService {
     this.log = createLogger('LeaseService');
     this.invitationService = invitationService;
     this.mediaUploadService = mediaUploadService;
-    this.pdfGeneratorService = pdfGeneratorService;
     this.notificationService = notificationService;
     this.leaseTemplateService = new LeaseTemplateService();
     this.leaseDocumentService = leaseDocumentService;
@@ -958,97 +949,6 @@ export class LeaseService {
     };
   }
 
-  async generateLeasePDF(
-    cuid: string,
-    leaseId: string,
-    templateType?: string
-  ): Promise<{
-    success: boolean;
-    pdfUrl?: string;
-    s3Key?: string;
-    error?: string;
-    metadata?: { fileSize?: number; generationTime?: number };
-  }> {
-    try {
-      const lease = await this.leaseDAO.findFirst(
-        { _id: new Types.ObjectId(leaseId), cuid, deletedAt: null },
-        {
-          populate: [
-            { path: 'property.id', select: '+owner +authorization' },
-            { path: 'property.unitId' },
-          ],
-        }
-      );
-
-      if (!lease) {
-        throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
-      }
-
-      if (lease.status === LeaseStatus.PENDING_SIGNATURE) {
-        throw new ValidationRequestError({
-          message: 'Cannot edit lease while pending signature. Withdraw it first.',
-        });
-      }
-
-      if (!lease.tenantId) {
-        throw new BadRequestError({
-          message: 'Lease tenant information is incomplete. Cannot generate PDF.',
-        });
-      }
-
-      const tenantDetails = await this.profileDAO.findFirst(
-        { user: lease.tenantId },
-        { populate: [{ path: 'user', select: 'email' }] }
-      );
-
-      if (!tenantDetails) {
-        throw new BadRequestError({
-          message: 'Tenant information is incomplete. Cannot generate PDF.',
-        });
-      }
-
-      const previewData = await this.generateLeasePreview(cuid, lease.luid);
-      const finalTemplateType =
-        templateType || determineTemplateType(lease.property.propertyType || '');
-      const html = await this.leaseTemplateService.transformAndRender(
-        previewData,
-        finalTemplateType
-      );
-
-      const pdfResult = await this.pdfGeneratorService.generatePdf(html, {
-        format: 'Letter',
-        printBackground: true,
-      });
-
-      if (!pdfResult.success || !pdfResult.buffer) {
-        throw new Error(pdfResult.error || 'PDF generation failed');
-      }
-
-      const fileName = `${Date.now()}_${lease.leaseNumber}.pdf`;
-      this.mediaUploadService.handleBuffer(pdfResult.buffer, fileName, {
-        primaryResourceId: leaseId,
-        uploadedBy: lease.createdBy?.toString() || 'system',
-        resourceContext: ResourceContext.LEASE,
-      });
-
-      return {
-        success: true,
-        pdfUrl: 'pending',
-        s3Key: 'pending',
-        metadata: {
-          fileSize: pdfResult.metadata?.fileSize,
-          generationTime: pdfResult.metadata?.generationTime,
-        },
-      };
-    } catch (error) {
-      this.log.error({ error, leaseId, cuid }, 'Failed to generate lease PDF');
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
-      };
-    }
-  }
-
   /**
    * Queue lease PDF generation (called by controller)
    * Adds job to queue and returns immediately
@@ -1797,136 +1697,9 @@ export class LeaseService {
 
   private setupEventListeners(): void {
     this.emitterService.on(
-      EventTypes.PDF_GENERATION_REQUESTED,
-      this.handlePdfGenerationRequest.bind(this)
-    );
-    this.emitterService.on(
-      EventTypes.PDF_GENERATED,
-      this.handlePdfGeneratedForESignature.bind(this)
-    );
-
-    this.emitterService.on(
       EventTypes.LEASE_ESIGNATURE_COMPLETED,
       this.handleLeaseActivatedEmail.bind(this)
     );
-  }
-
-  private handlePdfGenerationRequest = async (
-    payload: PdfGenerationRequestedPayload
-  ): Promise<void> => {
-    try {
-      const { jobId, resource, templateType, cuid, senderInfo } = payload;
-
-      this.log.info('Handling PDF generation request', { jobId, resourceId: resource.resourceId });
-
-      // Store senderInfo for later use when upload completes
-      if (senderInfo) {
-        this.leaseDocumentService.storePendingSenderInfo(resource.resourceId, senderInfo);
-      }
-
-      const result = await this.generateLeasePDF(cuid, resource.resourceId, templateType);
-
-      // Only emit PDF_GENERATED if PDF already existed (has real URL, not 'pending')
-      // Otherwise, wait for UPLOAD_COMPLETED event to emit PDF_GENERATED
-      if (result.success && result.pdfUrl?.startsWith('https://')) {
-        this.log.info('PDF already existed, emitting PDF_GENERATED immediately', {
-          leaseId: resource.resourceId,
-        });
-        this.emitterService.emit(EventTypes.PDF_GENERATED, {
-          jobId,
-          leaseId: resource.resourceId,
-          pdfUrl: result.pdfUrl,
-          s3Key: result.s3Key || '',
-          fileSize: result.metadata?.fileSize,
-          generationTime: result.metadata?.generationTime,
-          senderInfo,
-        });
-        // Clean up stored senderInfo
-        this.leaseDocumentService.clearPendingSenderInfo(resource.resourceId);
-      } else if (!result.success) {
-        this.emitterService.emit(EventTypes.PDF_GENERATION_FAILED, {
-          jobId,
-          resourceId: resource.resourceId,
-          error: result.error || 'PDF generation failed',
-        });
-        // Clean up stored senderInfo
-        this.leaseDocumentService.clearPendingSenderInfo(resource.resourceId);
-      } else {
-        // PDF is being uploaded, wait for UPLOAD_COMPLETED event
-        this.log.info('PDF upload in progress, waiting for UPLOAD_COMPLETED event', {
-          leaseId: resource.resourceId,
-        });
-      }
-    } catch (error) {
-      this.log.error('Error handling PDF generation request', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        payload,
-      });
-
-      this.emitterService.emit(EventTypes.PDF_GENERATION_FAILED, {
-        jobId: payload.jobId,
-        resourceId: payload.resource.resourceId,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-      // Clean up stored senderInfo
-      this.leaseDocumentService.clearPendingSenderInfo(payload.resource.resourceId);
-    }
-  };
-
-  private handlePdfGeneratedForESignature = async (payload: PdfGeneratedPayload): Promise<void> => {
-    try {
-      const { leaseId, s3Key, senderInfo } = payload;
-
-      this.log.info('PDF generated, checking if e-signature is pending', { leaseId });
-
-      // Check if lease is waiting for e-signature
-      const lease = await this.leaseDAO.findById(leaseId);
-
-      if (!lease) {
-        this.log.warn('Lease not found for PDF generation event', { leaseId });
-        return;
-      }
-
-      // Only re-queue if lease status is READY_FOR_SIGNATURE and signingMethod is electronic
-      if (
-        lease.signingMethod !== 'electronic' ||
-        ![LeaseStatus.READY_FOR_SIGNATURE].includes(lease.status)
-      ) {
-        this.log.info('Lease not waiting for e-signature, skipping', {
-          leaseId,
-          signingMethod: lease.signingMethod,
-          status: lease.status,
-        });
-        return;
-      }
-
-      // Re-queue e-signature job now that PDF is ready
-      this.log.info('Re-queueing e-signature job after PDF generation', { leaseId, s3Key });
-
-      const eSignatureQueue = this.queueFactory.getQueue('eSignatureQueue') as ESignatureQueue;
-      await eSignatureQueue.addToESignatureRequestQueue({
-        resource: {
-          resourceId: leaseId,
-          resourceName: 'lease',
-          actorId: lease.createdBy.toString(),
-          resourceType: 'document',
-          fieldName: 'eSignature',
-        },
-        cuid: lease.cuid,
-        luid: lease.luid,
-        leaseId,
-        senderInfo,
-      });
-    } catch (error) {
-      this.log.error('Error handling PDF generated event for e-signature', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        payload,
-      });
-    }
-  };
-
-  private async markLeaseDocumentsAsFailed(leaseId: string, errorMessage: string): Promise<void> {
-    return this.leaseDocumentService.markLeaseDocumentsAsFailed(leaseId, errorMessage);
   }
 
   /**

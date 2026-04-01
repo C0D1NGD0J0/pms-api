@@ -11,7 +11,7 @@ import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PaymentGatewayService } from '@services/paymentGateway';
-import { InternalServerError, UnauthorizedError, BadRequestError } from '@shared/customErrors';
+import { InternalServerError, BadRequestError } from '@shared/customErrors';
 import {
   ISubscriptionEntitlements,
   ISubscriptionPlanResponse,
@@ -159,6 +159,9 @@ export class SubscriptionService {
   }
 
   async getSubscriptionPlans(): IPromiseReturnedData<ISubscriptionPlanResponse[]> {
+    const STRIPE_PLANS_CACHE_KEY = 'subscription:stripe:plans';
+    const STRIPE_PLANS_CACHE_TTL = 60 * 60; // 1 hour
+
     let stripePriceMap: Map<
       string,
       {
@@ -168,9 +171,20 @@ export class SubscriptionService {
     > = new Map();
 
     try {
-      stripePriceMap = await this.paymentGatewayService.getProductsWithPrices(
-        IPaymentGatewayProvider.STRIPE
-      );
+      const cached = await this.authCache.client.GET(STRIPE_PLANS_CACHE_KEY);
+      if (cached) {
+        stripePriceMap = new Map(JSON.parse(cached));
+        this.log.info('Returning cached Stripe products');
+      } else {
+        stripePriceMap = await this.paymentGatewayService.getProductsWithPrices(
+          IPaymentGatewayProvider.STRIPE
+        );
+        await this.authCache.client.SETEX(
+          STRIPE_PLANS_CACHE_KEY,
+          STRIPE_PLANS_CACHE_TTL,
+          JSON.stringify(Array.from(stripePriceMap.entries()))
+        );
+      }
     } catch (error) {
       this.log.error({ error }, 'Error fetching plans from payment gateway');
       this.log.warn('Falling back to config prices');
@@ -525,7 +539,8 @@ export class SubscriptionService {
       });
 
       if (!subscription) {
-        throw new UnauthorizedError({ message: 'Client subscription not found.' });
+        this.log.warn({ cuid }, 'No subscription record found for client — entitlements not set');
+        return { success: true, data: null };
       }
 
       const config = subscriptionPlanConfig.getConfig(subscription.planName);
@@ -650,14 +665,15 @@ export class SubscriptionService {
 
   async getSubscriptionPlanUsage(
     ctx: IRequestContext
-  ): IPromiseReturnedData<ISubscriptionPlanUsage> {
+  ): IPromiseReturnedData<ISubscriptionPlanUsage | null> {
     try {
       const cuid = ctx.request.params.cuid;
       const subscription = await this.subscriptionDAO.findFirst({
         cuid,
       });
       if (!subscription) {
-        throw new BadRequestError({ message: 'Subscription not found for client' });
+        this.log.warn({ cuid }, 'No subscription record found for client — returning null usage');
+        return { success: true, data: null };
       }
 
       await this.syncUsageCounters(subscription, cuid);

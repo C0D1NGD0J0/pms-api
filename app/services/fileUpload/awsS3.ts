@@ -53,7 +53,7 @@ export class S3Service {
           params,
         });
 
-        upload.on('httpUploadProgress', (progress) => {
+        upload.on('httpUploadProgress', (progress: { loaded?: number; total?: number }) => {
           const percentage =
             progress.total && progress.loaded
               ? Math.round((progress.loaded / progress.total) * 100)

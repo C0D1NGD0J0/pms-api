@@ -88,7 +88,8 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
       options: {
         type: [String],
         enum: Object.values(AvailabilityWindow),
-        default: undefined,
+        required: true,
+        default: [],
       },
     },
     media: [

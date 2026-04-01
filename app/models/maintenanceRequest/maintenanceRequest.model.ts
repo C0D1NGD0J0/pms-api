@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/index';
 import uniqueValidator from 'mongoose-unique-validator';
@@ -10,6 +11,18 @@ import {
 } from '@interfaces/maintenanceRequest.interface';
 
 import { InvoiceSchema } from './invoice.schema';
+
+// Zod URL validator
+const urlSchema = z.string().url();
+
+const validateUrl = (v: string): boolean => {
+  try {
+    urlSchema.parse(v);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const CompletionNoteSchema = new Schema(
   {
@@ -97,10 +110,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
         url: {
           type: String,
           validate: {
-            validator: function (v: string) {
-              // Basic URL validation
-              return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})[/\w.- ]*\/?$/.test(v);
-            },
+            validator: validateUrl,
             message: (props: any) => `${props.value} is not a valid URL!`,
           },
           required: true,
@@ -115,10 +125,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
         externalUrl: {
           type: String,
           validate: {
-            validator: function (v: string) {
-              // Basic URL validation
-              return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})[/\w.- ]*\/?$/.test(v);
-            },
+            validator: validateUrl,
             message: (props: any) => `${props.value} is not a valid URL!`,
           },
         },

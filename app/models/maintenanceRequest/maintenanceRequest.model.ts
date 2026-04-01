@@ -107,7 +107,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
         key: { type: String },
         status: {
           type: String,
-          enum: ['active', 'inactive'], // if inactive it would be deleted via cron job ltr
+          enum: ['pending', 'processing', 'active', 'inactive', 'deleted'], // if inactive it would be deleted via cron job ltr
           default: 'active',
         },
         externalUrl: {

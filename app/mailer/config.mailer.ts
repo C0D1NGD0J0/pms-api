@@ -1,14 +1,13 @@
 import ejs from 'ejs';
 import Logger from 'bunyan';
 import { Resend } from 'resend';
-import nodemailer from 'nodemailer';
-import Mail from 'nodemailer/lib/mailer';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { MailType } from '@interfaces/utils.interface';
 import { ROLES } from '@shared/constants/roles.constants';
+import nodemailer, { SendMailOptions, Transporter } from 'nodemailer';
 
-interface MailOptions extends Mail.Options {
+interface MailOptions extends SendMailOptions {
   data: EmailTemplateData;
 }
 
@@ -22,7 +21,7 @@ interface EmailTemplateData {
 }
 
 export class MailService {
-  private readonly transporter: nodemailer.Transporter;
+  private readonly transporter: Transporter;
   private readonly resendClient: Resend;
   private readonly log: Logger;
   private readonly templateCache: Map<string, EmailTemplate> = new Map();
@@ -276,7 +275,7 @@ export class MailService {
    * Build mail transporter based on environment
    * @returns Nodemailer transporter
    */
-  private buildMailTransporter(): nodemailer.Transporter {
+  private buildMailTransporter(): Transporter {
     return nodemailer.createTransport(this.getEnvironmentTransportOptions());
   }
 

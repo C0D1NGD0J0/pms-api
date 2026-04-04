@@ -1,13 +1,13 @@
 import { Types } from 'mongoose';
+import { clearTestDatabase } from '@tests/helpers';
+import { MaintenanceRequestModel } from '@models/index';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import {
-  MaintenanceCategory,
   MaintenanceRequestPriority,
   MaintenanceRequestStatus,
+  MaintenanceCategory,
   InvoiceStatus,
 } from '@interfaces/maintenanceRequest.interface';
-import { MaintenanceRequestModel } from '@models/index';
-import { clearTestDatabase } from '@tests/helpers';
 
 const BASE_CUID = 'TEST_CLIENT_001';
 

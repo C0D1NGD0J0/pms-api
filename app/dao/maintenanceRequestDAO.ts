@@ -1,4 +1,4 @@
-import { FilterQuery, Types } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
 import {
   IMaintenanceRequestDocument,
@@ -14,7 +14,11 @@ export class MaintenanceRequestDAO
   extends BaseDAO<IMaintenanceRequestDocument>
   implements IMaintenanceRequestDAO
 {
-  constructor({ maintenanceRequestModel }: { maintenanceRequestModel: any }) {
+  constructor({
+    maintenanceRequestModel,
+  }: {
+    maintenanceRequestModel: Model<IMaintenanceRequestDocument>;
+  }) {
     super(maintenanceRequestModel);
   }
 

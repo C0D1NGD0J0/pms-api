@@ -11,8 +11,10 @@ import Subscription from '@models/subscription/subscription.model';
 import PropertyUnit from '@models/property-unit/propertyUnit.model';
 import NotificationModel from '@models/notification/notification.model';
 import { PaymentProcessor } from '@models/paymentProcessor/paymentProcessor.model';
+import MaintenanceRequestModel from '@models/maintenanceRequest/maintenanceRequest.model';
 
 export {
+  MaintenanceRequestModel,
   NotificationModel,
   PaymentProcessor,
   Subscription,

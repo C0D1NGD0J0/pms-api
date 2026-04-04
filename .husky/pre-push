@@ -7,7 +7,7 @@ npm audit --audit-level=high --omit=dev || {
 }
 
 echo "🔍 Running final lint check..."
-if ! npm run lint; then
+if ! npm run lint:fix; then
   echo "❌ Lint errors found! Push aborted."
   echo "💡 Please run 'npm run lint:fix' to fix issues and commit again."
   exit 1

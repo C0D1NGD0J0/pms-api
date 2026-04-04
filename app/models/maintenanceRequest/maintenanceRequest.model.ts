@@ -85,6 +85,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
     scheduledDate: { type: Date },
     estimatedCost: { type: Number, min: 0 },
     permissionToEnter: { type: Boolean, required: true, default: false },
+    hasPet: { type: Boolean, default: false },
     completedAt: { type: Date },
     completionNotes: { type: [CompletionNoteSchema], default: undefined },
     actualCost: { type: Number, min: 0 },

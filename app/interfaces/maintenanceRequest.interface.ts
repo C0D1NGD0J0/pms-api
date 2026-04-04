@@ -76,6 +76,7 @@ export interface IMaintenanceRequest {
   isBillable: boolean; // billing seam for expense integration
   completedAt?: Date;
   assignedAt?: Date;
+  hasPet?: boolean;
   mruid: string;
   title: string;
   cuid: string;
@@ -96,6 +97,7 @@ export interface ICreateMaintenanceRequest {
   permissionToEnter: boolean;
   preferredDate?: string; // ISO date string — advisory, must be in the future
   propertyId: string;
+  hasPet?: boolean;
   unitId?: string;
   title: string;
 }
@@ -190,6 +192,15 @@ export interface IAIAnalysis {
   reasoning?: string;
   processedAt?: Date;
   modelUsed?: string;
+}
+
+export interface IVendorStats {
+  avgCompletionDays?: number;
+  inProgress: number;
+  completed: number;
+  cancelled: number;
+  assigned: number;
+  total: number;
 }
 
 export interface IInvoiceLineItem {

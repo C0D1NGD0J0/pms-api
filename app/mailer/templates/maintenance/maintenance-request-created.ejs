@@ -1,0 +1,58 @@
+<table width="100%">
+  <tr>
+    <td class="content">
+      <h3>Hello <%= currentuser.firstName || currentuser.email %>,</h3>
+      <p>
+        We've received your maintenance request and it's been added to our queue. Our property
+        management team will review it and assign a vendor as soon as possible.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="background-color: #d1ecf1; padding: 20px; border-left: 4px solid #17a2b8; border-radius: 4px; margin-bottom: 16px;">
+      <h4 style="margin-top: 0; color: #0c5460;">Request Details</h4>
+      <table width="100%" style="border-collapse: collapse;">
+        <tr>
+          <td style="padding: 6px 0; color: #666; width: 40%;">Reference #:</td>
+          <td style="padding: 6px 0; font-weight: 600;"><%= request.mruid %></td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #666;">Title:</td>
+          <td style="padding: 6px 0; font-weight: 600;"><%= request.title %></td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #666;">Category:</td>
+          <td style="padding: 6px 0;"><%= request.category.replace(/_/g, ' ') %></td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #666;">Priority:</td>
+          <td style="padding: 6px 0;"><%= request.priority %></td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #666;">Status:</td>
+          <td style="padding: 6px 0;"><span style="color: #17a2b8; font-weight: 600;">Open</span></td>
+        </tr>
+        <% if (request.preferredDate) { %>
+        <tr>
+          <td style="padding: 6px 0; color: #666;">Preferred Date:</td>
+          <td style="padding: 6px 0;"><%= new Date(request.preferredDate).toLocaleDateString() %></td>
+        </tr>
+        <% } %>
+        <% if (request.availabilityWindows && request.availabilityWindows.length > 0) { %>
+        <tr>
+          <td style="padding: 6px 0; color: #666;">Availability:</td>
+          <td style="padding: 6px 0;"><%= request.availabilityWindows.join(', ').replace(/_/g, ' ') %></td>
+        </tr>
+        <% } %>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <p>Our team will review your request and assign a qualified vendor. You'll receive a notification once a vendor has been assigned.</p>
+      <p style="color: #666; font-size: 14px;">Keep your reference number for any follow-ups: <strong><%= request.mruid %></strong></p>
+    </td>
+  </tr>
+</table>

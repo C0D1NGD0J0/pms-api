@@ -1,0 +1,13 @@
+Vendor Declined Maintenance Assignment — Action Required
+
+A vendor has declined the maintenance request below. Please log in to reassign it.
+
+DETAILS
+-------
+Reference #:  <%= request.mruid %>
+Title:        <%= request.title %>
+Priority:     <%= request.priority %>
+Status:       Open — awaiting reassignment
+<% if (reason) { %>Vendor Reason: "<%= reason %>"
+<% } %>
+Please log in to the portal to assign a new vendor.

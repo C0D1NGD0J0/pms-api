@@ -1,0 +1,14 @@
+Invoice Submitted — Your Review Required
+
+A vendor has submitted an invoice for a maintenance request. Please review it.
+
+INVOICE SUMMARY
+---------------
+Reference #:    <%= request.mruid %>
+Job Title:      <%= request.title %>
+Amount:         $<%= (amount / 100).toFixed(2) %> <%= (request.invoice && request.invoice.currency) ? request.invoice.currency.toUpperCase() : 'USD' %>
+Submitted:      <%= new Date().toLocaleDateString() %>
+<% if (request.invoice && request.invoice.description) { %>Description:    <%= request.invoice.description %>
+<% } %>
+Log in to the portal to approve or reject this invoice.
+Approving will trigger the expense recording process.

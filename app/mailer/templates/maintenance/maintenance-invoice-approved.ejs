@@ -1,0 +1,48 @@
+<table width="100%">
+  <tr>
+    <td class="content">
+      <h3>Your Invoice Has Been Approved</h3>
+      <p>
+        Your invoice for the maintenance job below has been <strong>approved</strong> by the property manager.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="background-color: #d4edda; padding: 20px; border-left: 4px solid #28a745; border-radius: 4px; margin-bottom: 16px;">
+      <h4 style="margin-top: 0; color: #155724;">Invoice Approved</h4>
+      <table width="100%" style="border-collapse: collapse;">
+        <tr>
+          <td style="padding: 6px 0; color: #666; width: 40%;">Reference #:</td>
+          <td style="padding: 6px 0; font-weight: 600;"><%= request.mruid %></td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #666;">Job:</td>
+          <td style="padding: 6px 0; font-weight: 600;"><%= request.title %></td>
+        </tr>
+        <% if (request.invoice) { %>
+        <tr>
+          <td style="padding: 6px 0; color: #666;">Approved Amount:</td>
+          <td style="padding: 6px 0; font-size: 18px; font-weight: 600; color: #155724;">
+            $<%= (request.invoice.amount / 100).toFixed(2) %> <%= request.invoice.currency.toUpperCase() %>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #666;">Approved By:</td>
+          <td style="padding: 6px 0;"><%= approvedBy.firstName || approvedBy.email %></td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #666;">Approved On:</td>
+          <td style="padding: 6px 0;"><%= new Date().toLocaleDateString() %></td>
+        </tr>
+        <% } %>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <p>Payment will be processed according to the agreed payment terms. For payment questions, please contact the property manager directly.</p>
+    </td>
+  </tr>
+</table>

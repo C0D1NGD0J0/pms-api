@@ -1,0 +1,13 @@
+Invoice Rejected — Resubmission Required
+
+Your invoice for the maintenance job below has been rejected.
+
+DETAILS
+-------
+Reference #:  <%= request.mruid %>
+Job:          <%= request.title %>
+Rejected By:  <%= rejectedBy.firstName || rejectedBy.email %>
+Reason:       <%= rejectionReason %>
+
+Please log in to the portal to submit a revised invoice.
+If you believe this is an error, contact <%= rejectedBy.firstName || rejectedBy.email %><% if (rejectedBy.email) { %> at <%= rejectedBy.email %><% } %>.

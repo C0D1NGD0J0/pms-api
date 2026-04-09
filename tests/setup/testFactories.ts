@@ -8,7 +8,8 @@ import { IProfileDocument } from '@interfaces/profile.interface';
 import { IPropertyDocument } from '@interfaces/property.interface';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
 import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
-import { PropertyUnit, Invitation, Property, Profile, Client, Lease, User } from '@models/index';
+import { IVendorDocument } from '@interfaces/vendor.interface';
+import { PropertyUnit, Invitation, Property, Profile, Client, Lease, User, Vendor } from '@models/index';
 
 export interface CreateClientOptions {
   status?: 'active' | 'inactive' | 'suspended';
@@ -404,6 +405,38 @@ export const createTestLeaseScenario = async (): Promise<TestLeaseScenario> => {
   const unit = await createTestPropertyUnit(client.cuid, property._id);
 
   return { client, manager, property, tenant, unit };
+};
+
+export interface CreateVendorOptions {
+  isConnected?: boolean;
+}
+
+/**
+ * Create a test Vendor record connected to a client.
+ * The `primaryAccountHolder` is the User ID of the vendor user.
+ */
+export const createTestVendor = async (
+  cuid: string,
+  primaryAccountHolder: string | Types.ObjectId,
+  options: CreateVendorOptions = {}
+): Promise<IVendorDocument> => {
+  return Vendor.create({
+    companyName: faker.company.name(),
+    businessType: 'General Contractor',
+    registrationNumber: `REG-${faker.string.alphanumeric(10)}`,
+    connectedClients: [
+      {
+        cuid,
+        isConnected: options.isConnected ?? true,
+        primaryAccountHolder:
+          typeof primaryAccountHolder === 'string'
+            ? new Types.ObjectId(primaryAccountHolder)
+            : primaryAccountHolder,
+      },
+    ],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
 };
 
 export const generateUniqueEmail = (): string => {

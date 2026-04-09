@@ -1618,3 +1618,185 @@ describe('PaymentService - handleAccountUpdated', () => {
     expect(mockEmitterService.emit).not.toHaveBeenCalled();
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// getPayoutBalance
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - getPayoutBalance', () => {
+  let paymentService: PaymentService;
+  let mockPaymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
+  let mockPaymentGatewayService: jest.Mocked<PaymentGatewayService>;
+
+  const makeProcessor = (overrides: Record<string, any> = {}) => ({
+    _id: new Types.ObjectId(),
+    cuid: CUID,
+    accountId: 'acct_test_123',
+    payoutsEnabled: true,
+    chargesEnabled: true,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    mockPaymentProcessorDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<PaymentProcessorDAO>;
+    mockPaymentGatewayService = { getConnectBalance: jest.fn() } as unknown as jest.Mocked<PaymentGatewayService>;
+    paymentService = makeServiceWithMocks({
+      paymentProcessorDAO: mockPaymentProcessorDAO,
+      paymentGatewayService: mockPaymentGatewayService,
+    });
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('should return available and pending balances', async () => {
+    const processor = makeProcessor();
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(processor as any);
+    mockPaymentGatewayService.getConnectBalance.mockResolvedValue({
+      success: true,
+      data: {
+        available: [{ amount: 50000, currency: 'usd' }],
+        pending: [{ amount: 12000, currency: 'usd' }],
+      },
+    } as any);
+
+    const result = await paymentService.getPayoutBalance(CUID);
+
+    expect(result.success).toBe(true);
+    expect(result.data.available).toEqual([{ amount: 50000, currency: 'usd' }]);
+    expect(result.data.pending).toEqual([{ amount: 12000, currency: 'usd' }]);
+    expect(mockPaymentGatewayService.getConnectBalance).toHaveBeenCalledWith(
+      'stripe',
+      processor.accountId
+    );
+  });
+
+  it('should throw NotFoundError when no Connect account exists', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
+
+    await expect(paymentService.getPayoutBalance(CUID)).rejects.toThrow(NotFoundError);
+    expect(mockPaymentGatewayService.getConnectBalance).not.toHaveBeenCalled();
+  });
+
+  it('should throw BadRequestError when payoutsEnabled is false', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor({ payoutsEnabled: false }) as any);
+
+    await expect(paymentService.getPayoutBalance(CUID)).rejects.toThrow(BadRequestError);
+    expect(mockPaymentGatewayService.getConnectBalance).not.toHaveBeenCalled();
+  });
+
+  it('should throw BadRequestError when gateway returns failure', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockPaymentGatewayService.getConnectBalance.mockResolvedValue({
+      success: false,
+      data: null,
+      message: 'Stripe error',
+    } as any);
+
+    await expect(paymentService.getPayoutBalance(CUID)).rejects.toThrow(BadRequestError);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// getPayoutHistory
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - getPayoutHistory', () => {
+  let paymentService: PaymentService;
+  let mockPaymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
+  let mockPaymentGatewayService: jest.Mocked<PaymentGatewayService>;
+
+  const makeProcessor = (overrides: Record<string, any> = {}) => ({
+    _id: new Types.ObjectId(),
+    cuid: CUID,
+    accountId: 'acct_test_123',
+    payoutsEnabled: true,
+    chargesEnabled: true,
+    ...overrides,
+  });
+
+  const makeStripePayout = (id: string, overrides: Record<string, any> = {}) => ({
+    id,
+    amount: 30000,
+    currency: 'usd',
+    status: 'paid',
+    arrival_date: Math.floor(new Date('2026-04-01').getTime() / 1000),
+    created: Math.floor(new Date('2026-03-28').getTime() / 1000),
+    description: null,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    mockPaymentProcessorDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<PaymentProcessorDAO>;
+    mockPaymentGatewayService = { listConnectPayouts: jest.fn() } as unknown as jest.Mocked<PaymentGatewayService>;
+    paymentService = makeServiceWithMocks({
+      paymentProcessorDAO: mockPaymentProcessorDAO,
+      paymentGatewayService: mockPaymentGatewayService,
+    });
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('should return formatted payout list with pagination info', async () => {
+    const payout = makeStripePayout('po_001');
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockPaymentGatewayService.listConnectPayouts.mockResolvedValue({
+      success: true,
+      data: { data: [payout], has_more: false },
+    } as any);
+
+    const result = await paymentService.getPayoutHistory(CUID, { limit: 20 });
+
+    expect(result.success).toBe(true);
+    expect(result.data.payouts).toHaveLength(1);
+    expect(result.data.payouts[0]).toMatchObject({
+      id: 'po_001',
+      amount: 30000,
+      currency: 'usd',
+      status: 'paid',
+    });
+    expect(result.data.hasMore).toBe(false);
+    expect(result.data.nextCursor).toBeUndefined();
+  });
+
+  it('should set nextCursor when hasMore is true', async () => {
+    const payouts = [makeStripePayout('po_001'), makeStripePayout('po_002')];
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockPaymentGatewayService.listConnectPayouts.mockResolvedValue({
+      success: true,
+      data: { data: payouts, has_more: true },
+    } as any);
+
+    const result = await paymentService.getPayoutHistory(CUID, { limit: 2 });
+
+    expect(result.data.hasMore).toBe(true);
+    expect(result.data.nextCursor).toBe('po_002');
+  });
+
+  it('should pass cursor to gateway as starting_after', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockPaymentGatewayService.listConnectPayouts.mockResolvedValue({
+      success: true,
+      data: { data: [], has_more: false },
+    } as any);
+
+    await paymentService.getPayoutHistory(CUID, { limit: 5, cursor: 'po_cursor_abc' });
+
+    expect(mockPaymentGatewayService.listConnectPayouts).toHaveBeenCalledWith(
+      'stripe',
+      'acct_test_123',
+      { limit: 5, starting_after: 'po_cursor_abc' }
+    );
+  });
+
+  it('should throw NotFoundError when no Connect account exists', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
+
+    await expect(paymentService.getPayoutHistory(CUID, {})).rejects.toThrow(NotFoundError);
+  });
+
+  it('should throw BadRequestError when payoutsEnabled is false', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor({ payoutsEnabled: false }) as any);
+
+    await expect(paymentService.getPayoutHistory(CUID, {})).rejects.toThrow(BadRequestError);
+  });
+});

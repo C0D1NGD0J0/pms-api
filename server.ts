@@ -68,12 +68,12 @@ class Server {
     // Eagerly initialize all queues so Bull Board shows them immediately after startup.
     // Queues are otherwise lazy-loaded (only initialized when first used), which causes
     // Bull Board to appear empty after a server restart until the first job is enqueued.
-    if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
-      const { queueFactory } = container.cradle;
-      queueFactory.initializeAllQueues().catch((err: any) => {
-        this.log.warn('Queue pre-initialization for Bull Board failed (non-fatal):', err?.message);
-      });
-    }
+    // if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
+    //   const { queueFactory } = container.cradle;
+    //   queueFactory.initializeAllQueues().catch((err: any) => {
+    //     this.log.warn('Queue pre-initialization for Bull Board failed (non-fatal):', err?.message);
+    //   });
+    // }
 
     await this.startServers(this.expApp);
     this.initialized = true;
@@ -111,7 +111,7 @@ class Server {
     }
 
     httpServer.listen(this.PORT, '0.0.0.0', () => {
-      this.log.info('Server initialized...');
+      this.log.info('Server initialized...', { port: this.PORT });
     });
 
     httpServer.on('error', (error: any) => {
@@ -256,6 +256,7 @@ class Server {
         'authService',
         'leaseService',
         'clientService',
+        'maintenanceRequestService',
       ];
 
       // clean up services that have destroy/cleanup methods
@@ -276,7 +277,31 @@ class Server {
         }
       }
 
-      // Clean up queues - dynamically discover all registered queues
+      // sseService.cleanup() — closes all active SSE sessions
+      try {
+        if (container.hasRegistration('sseService')) {
+          const sseService = container.resolve('sseService') as any;
+          if (sseService && typeof sseService.cleanup === 'function') {
+            await sseService.cleanup();
+            this.log.info('Cleaned up sseService');
+          }
+        }
+      } catch (error) {
+        this.log.warn('Failed to cleanup sseService:', error);
+      }
+
+      try {
+        if (container.hasRegistration('baseIO')) {
+          const baseIO = container.resolve('baseIO') as any;
+          if (baseIO && typeof baseIO.disconnectAll === 'function') {
+            baseIO.disconnectAll();
+            this.log.info('Disconnected all Socket.IO clients');
+          }
+        }
+      } catch (error) {
+        this.log.warn('Failed to disconnect Socket.IO clients:', error);
+      }
+
       const queueNames = Object.keys(container.registrations).filter((name) =>
         name.endsWith('Queue')
       );
@@ -312,7 +337,7 @@ class Server {
 
     process.on('unhandledRejection', (reason, promise) => {
       this.log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-      // Don't shut down for unhandled rejections in production
+      // don't shut down for unhandled rejections in production
       if (this.SERVER_ENV === 'development') {
         this.shutdown(1);
       }
@@ -325,7 +350,7 @@ class Server {
 
     process.on('warning', (warning) => {
       if (warning.name === 'HeapSizeLimit' || warning.name === 'MemoryLimitError') {
-        console.warn('----WARNIGN----', warning);
+        console.warn('----WARNING----', warning);
       }
     });
 

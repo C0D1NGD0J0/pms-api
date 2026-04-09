@@ -14,7 +14,7 @@ const initializeDI = () => {
     ...registerResources,
   });
 
-  logger.info('DI container initialized...');
+  logger.debug('DI container initialized...');
   return container;
 };
 

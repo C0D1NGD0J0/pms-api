@@ -11,9 +11,12 @@ const MIME_ALLOWLIST: Record<string, string[]> = {
   jpeg: ['image/jpeg'],
   jpg: ['image/jpeg', 'image/jpg'],
   png: ['image/png'],
+  webp: ['image/webp'],
+  heic: ['image/heic', 'image/heif'],
   pdf: ['application/pdf'],
   mp4: ['video/mp4'],
   mov: ['video/quicktime'],
+  webm: ['video/webm'],
   csv: ['text/csv', 'application/csv', 'text/plain'],
 };
 
@@ -29,7 +32,18 @@ export class DiskStorage {
   private upload: multer.Multer;
   private readonly storagePath = 'uploads/';
   private currentFieldPatterns: string[] = [];
-  private readonly allowedExtensions = ['jpeg', 'jpg', 'png', 'pdf', 'mp4', 'mov', 'csv'];
+  private readonly allowedExtensions = [
+    'jpeg',
+    'jpg',
+    'png',
+    'webp',
+    'heic',
+    'pdf',
+    'mp4',
+    'mov',
+    'webm',
+    'csv',
+  ];
   private fieldConfigs: FieldSizeConfig[] = [
     {
       name: 'profile_image',
@@ -91,6 +105,12 @@ export class DiskStorage {
       maxSize: 10 * 1024 * 1024, // 10MB
       fileTypes: ['pdf'],
     },
+    {
+      name: 'media[*].file', // Maintenance request media (photos/videos of the issue)
+      maxCount: 9, // up to 8 images + 1 video (matches frontend MAX_IMAGES + 1 video slot)
+      maxSize: 150 * 1024 * 1024, // 150MB — matches frontend video limit; image size enforced at service layer
+      fileTypes: ['jpeg', 'jpg', 'png', 'webp', 'heic', 'mp4', 'mov', 'webm'],
+    },
   ];
 
   constructor() {
@@ -99,7 +119,7 @@ export class DiskStorage {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-    this.log.info(`DiskStorage initialized. Path: ${this.storagePath}`);
+    this.log.debug(`DiskStorage initialized. Path: ${this.storagePath}`);
   }
 
   uploadMiddleware = (fieldPatterns: string[]) => {

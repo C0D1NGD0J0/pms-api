@@ -171,7 +171,7 @@ class EnvVariables {
       API_URL: process.env.BOLDSIGN_API_URL || 'https://api.boldsign.com/v1',
       WEBHOOK_SECRET: process.env.BOLDSIGN_WEBHOOK_SECRET || '',
       DEFAULT_SENDER_NAME:
-        process.env.BOLDSIGN_DEFAULT_SENDER_NAME || this.APP_NAME || 'Property Management System',
+        process.env.BOLDSIGN_DEFAULT_SENDER_NAME || this.APP_NAME || 'PropertyDesk',
       DEFAULT_SENDER_EMAIL:
         process.env.BOLDSIGN_DEFAULT_SENDER_EMAIL ||
         process.env.APP_EMAIL_ADDRESS ||

@@ -107,7 +107,6 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       req.context.currentuser = currentUserResp.data as ICurrentUser;
     }
 
-    // Validate connection status
     if (req.context.currentuser) {
       const activeConnection = req.context.currentuser.clients.find(
         (c: any) => c.cuid === req.context.currentuser!.client.cuid
@@ -117,7 +116,6 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
         return next(new UnauthorizedError({ message: 'User connection inactive' }));
       }
 
-      // Populate user permissions using PermissionService
       if (permissionService) {
         req.context.currentuser = await permissionService.populateUserPermissions(
           req.context.currentuser
@@ -699,14 +697,19 @@ export const requirePermissionWithContext = (
           const extractedContext = contextExtractor(req);
           // Auto-determine scope: if ownerId matches the current user, use MINE scope
           const ownerId = extractedContext?.ownerId;
+          const isOwner = ownerId
+            ? ownerId === currentuser.uid || ownerId === currentuser.sub
+            : false;
           if (ownerId) {
-            const isOwner = ownerId === currentuser.uid || ownerId === currentuser.sub;
             scope = isOwner ? PermissionScope.MINE : PermissionScope.ANY;
           }
           context = {
             clientId: currentuser.client.cuid,
             userId: currentuser.sub,
-            resourceOwnerId: extractedContext?.ownerId,
+            // When ownership is confirmed via uid or sub, normalize resourceOwnerId to sub
+            // so validateMineScope's resourceOwnerId === userId comparison always works
+            // regardless of which identifier type (uid hash vs ObjectId) was in the URL param.
+            resourceOwnerId: isOwner ? currentuser.sub : extractedContext?.ownerId,
             ...extractedContext,
           };
         } catch (error) {

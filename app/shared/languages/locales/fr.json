@@ -374,7 +374,7 @@
     "forgotPassword": {
       "subject": "Réinitialisez votre mot de passe",
       "greeting": "Bonjour {{fullname}},",
-      "message": "Nous avons reçu une demande de réinitialisation de votre mot de passe. Cliquez sur le bouton ci-dessous pour définir un nouveau mot de passe pour votre compte Property Solutions.",
+      "message": "Nous avons reçu une demande de réinitialisation de votre mot de passe. Cliquez sur le bouton ci-dessous pour définir un nouveau mot de passe pour votre compte PropertyDesk.",
       "buttonText": "Réinitialiser le mot de passe",
       "alternativeText": "Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur:",
       "expiryText": "Ce lien expirera dans 1 heure. Si vous n'avez pas demandé de réinitialisation de mot de passe, veuillez ignorer cet email."
@@ -382,7 +382,7 @@
     "registration": {
       "subject": "Activez votre compte",
       "greeting": "Bonjour {{fullname}},",
-      "message": "Bienvenue chez Property Solutions! Pour terminer la configuration de votre compte, veuillez cliquer sur le bouton ci-dessous pour activer votre compte.",
+      "message": "Bienvenue chez PropertyDesk! Pour terminer la configuration de votre compte, veuillez cliquer sur le bouton ci-dessous pour activer votre compte.",
       "buttonText": "Activer le compte",
       "alternativeText": "Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur:",
       "expiryText": "Ce lien expirera dans 2 heures. Si vous n'avez pas créé de compte, veuillez ignorer cet email."

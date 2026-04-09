@@ -1,74 +1,80 @@
-<table width="100%">
+<table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h3>Hello <%= vendor.firstName || vendor.email %>,</h3>
+      <h2>New Job Assignment</h2>
+      <p>Hi <%= vendor.firstName || vendor.email %>,</p>
       <p>
-        A maintenance request has been assigned to you by <strong><%= assignedBy.firstName || assignedBy.email %></strong>.
-        Please review the details below and <strong>accept or decline within 24 hours</strong>.
+        <strong><%= assignedBy.firstName || assignedBy.email %></strong> has assigned you a maintenance request. Please review the details below and <strong>accept or decline within 24 hours</strong>.
       </p>
     </td>
   </tr>
 
   <tr>
-    <td class="content" style="background-color: #d1ecf1; padding: 20px; border-left: 4px solid #17a2b8; border-radius: 4px; margin-bottom: 16px;">
-      <h4 style="margin-top: 0; color: #0c5460;">Job Details</h4>
-      <table width="100%" style="border-collapse: collapse;">
-        <tr>
-          <td style="padding: 6px 0; color: #666; width: 40%;">Reference #:</td>
-          <td style="padding: 6px 0; font-weight: 600;"><%= request.mruid %></td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Title:</td>
-          <td style="padding: 6px 0; font-weight: 600;"><%= request.title %></td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Description:</td>
-          <td style="padding: 6px 0;"><%= request.description %></td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Category:</td>
-          <td style="padding: 6px 0;"><%= request.category.replace(/_/g, ' ') %></td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Priority:</td>
-          <td style="padding: 6px 0; font-weight: 600;"><%= request.priority.toUpperCase() %></td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Entry Permission:</td>
-          <td style="padding: 6px 0;"><%= request.permissionToEnter ? 'Granted' : 'Must coordinate with tenant' %></td>
-        </tr>
-        <% if (request.scheduledDate) { %>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Scheduled Date:</td>
-          <td style="padding: 6px 0; font-weight: 600;"><%= new Date(request.scheduledDate).toLocaleDateString() %></td>
-        </tr>
-        <% } %>
-        <% if (request.estimatedCost) { %>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Estimated Cost:</td>
-          <td style="padding: 6px 0;">$<%= (request.estimatedCost / 100).toFixed(2) %></td>
-        </tr>
-        <% } %>
-        <% if (request.preferredDate) { %>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Tenant Preferred Date:</td>
-          <td style="padding: 6px 0;"><%= new Date(request.preferredDate).toLocaleDateString() %></td>
-        </tr>
-        <% } %>
-        <% if (request.availabilityWindows && request.availabilityWindows.length > 0) { %>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Tenant Availability:</td>
-          <td style="padding: 6px 0;"><%= request.availabilityWindows.join(', ').replace(/_/g, ' ') %></td>
-        </tr>
-        <% } %>
-      </table>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <h3 style="margin-top: 0;">Job Details</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Reference #</td>
+            <td class="detail-value"><%= request.mruid %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Title</td>
+            <td class="detail-value"><%= request.title %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Description</td>
+            <td class="detail-value"><%= request.description %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Category</td>
+            <td class="detail-value"><%= request.category.replace(/_/g, ' ') %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Priority</td>
+            <td class="detail-value" style="font-weight: 600; text-transform: uppercase;"><%= request.priority %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Property Entry</td>
+            <td class="detail-value"><%= request.permissionToEnter ? 'Permission granted' : 'Must coordinate with resident' %></td>
+          </tr>
+          <% if (request.scheduledDate) { %>
+          <tr>
+            <td class="detail-label">Scheduled Date</td>
+            <td class="detail-value"><%= new Date(request.scheduledDate).toLocaleDateString() %></td>
+          </tr>
+          <% } %>
+          <% if (request.estimatedCost) { %>
+          <tr>
+            <td class="detail-label">Estimated Cost</td>
+            <td class="detail-value">$<%= (request.estimatedCost / 100).toFixed(2) %></td>
+          </tr>
+          <% } %>
+          <% if (request.preferredDate) { %>
+          <tr>
+            <td class="detail-label">Resident Preferred Date</td>
+            <td class="detail-value"><%= new Date(request.preferredDate).toLocaleDateString() %></td>
+          </tr>
+          <% } %>
+          <% if (request.availabilityWindows && request.availabilityWindows.length > 0) { %>
+          <tr>
+            <td class="detail-label">Resident Availability</td>
+            <td class="detail-value"><%= request.availabilityWindows.join(', ').replace(/_/g, ' ') %></td>
+          </tr>
+          <% } %>
+        </table>
+      </div>
     </td>
   </tr>
 
   <tr>
     <td class="content">
-      <p>Please log in to the portal to <strong>accept or decline</strong> this assignment. If you decline, the request will be reassigned to another vendor.</p>
-      <p style="color: #666; font-size: 14px;">Questions? Contact <strong><%= assignedBy.firstName || assignedBy.email %></strong><% if (assignedBy.email) { %> at <%= assignedBy.email %><% } %>.</p>
+      <p>
+        Log in to the portal to <strong>accept or decline</strong> this assignment. If you decline, the request will be reassigned to another vendor.
+      </p>
+      <p style="font-size: 14px; color: #64748b;">
+        Questions? Contact <strong><%= assignedBy.firstName || assignedBy.email %></strong><% if (assignedBy.email) { %> at <a href="mailto:<%= assignedBy.email %>"><%= assignedBy.email %></a><% } %>.
+      </p>
     </td>
   </tr>
 </table>

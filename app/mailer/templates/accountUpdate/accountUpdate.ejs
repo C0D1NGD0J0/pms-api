@@ -1,14 +1,15 @@
-<table width="100%">
+<table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h3>Hello <%= fullname %>,</h3>
+      <h2>Account Updated</h2>
+      <p>Hi <%= fullname %>,</p>
       <p>
-        This email is to inform you that, your account was recently updated at <%= updatedAt %>.
-        If you feel this update wasn't carried out by you please contact customer support.
+        Your PropertyDesk account was updated on <strong><%= updatedAt %></strong>.
       </p>
-      <p>
-        customer support email: <a href="mailto:support@myproperty.com"> Customer support</a>
-      </p>
+      <div class="notice-box warning">
+        <strong>Wasn't you?</strong> If you didn't make this change, please contact our support team at
+        <a href="mailto:support@propertydesk.com">support@propertydesk.com</a> right away.
+      </div>
     </td>
   </tr>
 </table>

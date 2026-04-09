@@ -1,0 +1,16 @@
+Work Order Rejected — Revision Required
+=========================================
+
+Your work order for maintenance request <%= request.mruid %> has been rejected.
+Please review the feedback below and resubmit via the portal.
+
+REJECTION DETAILS
+-----------------
+Request #:   <%= request.mruid %>
+Title:       <%= request.title %>
+Rejected By: <%= rejectedBy.firstName || rejectedBy.email %>
+Reason:      <%= rejectionReason %>
+
+Revise your work order to address the feedback above.
+You can resubmit as long as the request remains in Assigned status.
+

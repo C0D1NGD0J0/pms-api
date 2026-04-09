@@ -1,170 +1,142 @@
-<table width="100%">
+<table role="presentation" width="100%">
   <tr>
     <td class="content">
       <% if (notificationStage === 'final_reminder') { %>
-        <h2>⚠️ URGENT: Final Lease Expiry Notice</h2>
-        <p>Hello <%= tenantName %>,</p>
-        <p style="color: #dc3545; font-weight: 600;">
-          This is a final urgent reminder that your lease agreement for <strong><%= propertyAddress %></strong> expires in <%= daysRemaining %> days.
+        <h2>Final Notice: Lease Expiring in <%= daysRemaining %> Days</h2>
+        <p>Hi <%= tenantName %>,</p>
+        <p style="color: #991b1b; font-weight: 600;">
+          Your lease for <strong><%= propertyAddress %></strong> expires in <strong><%= daysRemaining %> days</strong>. Immediate action is required.
         </p>
       <% } else if (notificationStage === 'renewal_ready') { %>
-        <h2>📄 Your Lease Renewal is Ready</h2>
-        <p>Hello <%= tenantName %>,</p>
+        <h2>Your Lease Renewal is Ready</h2>
+        <p>Hi <%= tenantName %>,</p>
         <p>
-          Good news! Your renewal lease agreement for <strong><%= propertyAddress %></strong> is ready for your review.
+          Your renewal lease agreement for <strong><%= propertyAddress %></strong> is ready for your review and signature.
         </p>
       <% } else if (notificationStage === 'auto_renewal_signature') { %>
-        <h2>✍️ Action Required: Sign Your Auto-Renewal Agreement</h2>
-        <p>Hello <%= tenantName %>,</p>
+        <h2>Action Required: Sign Your Renewal Agreement</h2>
+        <p>Hi <%= tenantName %>,</p>
         <p>
-          Your lease at <strong><%= propertyAddress %></strong> will automatically renew in <%= daysRemaining %> days. Please sign the renewal agreement to confirm.
+          Your lease at <strong><%= propertyAddress %></strong> is set to auto-renew in <strong><%= daysRemaining %> days</strong>. Please sign the renewal agreement to confirm.
         </p>
       <% } else if (isAutoRenewing) { %>
-        <h2>🔄 Your Lease Will Auto-Renew</h2>
-        <p>Hello <%= tenantName %>,</p>
+        <h2>Your Lease Will Auto-Renew</h2>
+        <p>Hi <%= tenantName %>,</p>
         <p>
-          This is a friendly reminder that your lease agreement for <strong><%= propertyAddress %></strong> is set to automatically renew for <%= renewalTermMonths %> months.
+          Your lease at <strong><%= propertyAddress %></strong> is set to automatically renew for <strong><%= renewalTermMonths %> months</strong>.
         </p>
       <% } else { %>
-        <h2>⏰ Your Lease is Ending Soon</h2>
-        <p>Hello <%= tenantName %>,</p>
+        <h2>Your Lease is Ending Soon</h2>
+        <p>Hi <%= tenantName %>,</p>
         <p>
-          This is an important notice that your lease agreement for <strong><%= propertyAddress %></strong> is approaching its end date.
+          Your lease at <strong><%= propertyAddress %></strong> is approaching its end date. Please review your options below.
         </p>
       <% } %>
     </td>
   </tr>
 
   <tr>
-    <% if (isAutoRenewing) { %>
-    <td class="content" style="background-color: #d1ecf1; padding: 20px; border-left: 4px solid #17a2b8; border-radius: 4px;">
-      <h3 style="margin-top: 0; color: #0c5460;">Auto-Renewal Details</h3>
-    <% } else { %>
-    <td class="content" style="background-color: #fff3cd; padding: 20px; border-left: 4px solid #ffc107; border-radius: 4px;">
-      <h3 style="margin-top: 0; color: #856404;">Lease End Details</h3>
-    <% } %>
-      <table width="100%" style="border-collapse: collapse;">
-        <tr>
-          <td style="padding: 8px 0; color: #666; width: 40%;">Lease Number:</td>
-          <td style="padding: 8px 0; font-weight: 600;"><%= leaseNumber %></td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Property:</td>
-          <td style="padding: 8px 0; font-weight: 600;"><%= propertyAddress %></td>
-        </tr>
-        <% if (unitNumber) { %>
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Unit:</td>
-          <td style="padding: 8px 0; font-weight: 600;"><%= unitNumber %></td>
-        </tr>
-        <% } %>
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Lease End Date:</td>
-          <td style="padding: 8px 0; font-weight: 600; color: #e74c3c; font-size: 18px;"><%= new Date(endDate).toLocaleDateString() %></td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Days Remaining:</td>
-          <td style="padding: 8px 0; font-weight: 600;"><%= daysRemaining %> days</td>
-        </tr>
-      </table>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card <%= isAutoRenewing ? '' : 'warning' %>">
+        <h3 style="margin-top: 0;"><%= isAutoRenewing ? 'Auto-Renewal Details' : 'Lease End Details' %></h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Lease Number</td>
+            <td class="detail-value"><%= leaseNumber %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Property</td>
+            <td class="detail-value"><%= propertyAddress %></td>
+          </tr>
+          <% if (unitNumber) { %>
+          <tr>
+            <td class="detail-label">Unit</td>
+            <td class="detail-value"><%= unitNumber %></td>
+          </tr>
+          <% } %>
+          <tr>
+            <td class="detail-label">Lease End Date</td>
+            <td class="detail-value" style="color: #dc2626; font-weight: 600;"><%= new Date(endDate).toLocaleDateString() %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Days Remaining</td>
+            <td class="detail-value"><%= daysRemaining %> days</td>
+          </tr>
+        </table>
+      </div>
     </td>
   </tr>
 
   <tr>
     <td class="content">
       <% if (isAutoRenewing) { %>
-      <h3>Your Auto-Renewal Information</h3>
-      <div style="border: 2px solid #28a745; border-radius: 8px; padding: 20px; margin: 20px 0; background-color: #f1f9f4;">
-        <h4 style="margin-top: 0; color: #28a745;">✅ Good News - Your Lease Will Automatically Renew</h4>
-        <p style="margin: 10px 0; color: #555;">
-          Your lease is set to automatically renew for <strong><%= renewalTermMonths %> months</strong> at the current terms. No action is required on your part.
+      <div class="option-card option-renew">
+        <h4>Your Lease Will Automatically Renew</h4>
+        <p style="margin: 8px 0; color: #555;">
+          No action required. Your lease renews for <strong><%= renewalTermMonths %> months</strong> under the current terms.
         </p>
         <% if (renewalTerms) { %>
-        <p style="margin: 10px 0; color: #555; font-style: italic;">
-          <%= renewalTerms %>
-        </p>
+        <p style="margin: 8px 0; color: #555; font-style: italic; font-size: 14px;"><%= renewalTerms %></p>
         <% } %>
       </div>
-
-      <div style="border: 2px solid #ffc107; border-radius: 8px; padding: 20px; margin: 20px 0; background-color: #fff3cd;">
-        <h4 style="margin-top: 0; color: #856404;">💡 Want to Make Changes?</h4>
-        <p style="margin: 10px 0; color: #555;">
-          If you'd like to discuss the renewal terms or plan to move out instead, please contact us as soon as possible.
-        </p>
-        <p style="margin: 10px 0; color: #555;">
-          <strong>Notice Requirement:</strong> If you plan to move out, you must provide <%= noticePeriod %> days written notice by <strong><%= new Date(noticeDeadline).toLocaleDateString() %></strong>.
-        </p>
+      <div class="notice-box warning">
+        <strong>Planning to move out instead?</strong> You must provide <strong><%= noticePeriod %> days</strong> written notice by <strong><%= new Date(noticeDeadline).toLocaleDateString() %></strong>.
       </div>
       <% } else { %>
       <h3>Your Options</h3>
-      <p>You have the following options for when your lease ends:</p>
 
-      <div style="border: 2px solid #28a745; border-radius: 8px; padding: 20px; margin: 20px 0; background-color: #f1f9f4;">
-        <h4 style="margin-top: 0; color: #28a745;">✅ Option 1: Renew Your Lease</h4>
-        <p style="margin: 10px 0; color: #555;">
-          If you'd like to continue living here, we'd love to have you stay! Contact us to discuss renewal terms and any updated rates.
+      <div class="option-card option-renew">
+        <h4>Option 1 — Renew Your Lease</h4>
+        <p style="margin: 8px 0; color: #555;">
+          We'd love to have you stay. Contact us to discuss renewal terms and updated rates.
         </p>
         <% if (renewalUrl) { %>
-        <a href="<%= renewalUrl %>" style="display: inline-block; padding: 10px 20px; background-color: #28a745; color: white; text-decoration: none; border-radius: 4px; margin-top: 10px;">
-          Express Interest in Renewal
-        </a>
+        <p style="margin: 10px 0 0 0;">
+          <a href="<%= renewalUrl %>" style="color: #16a34a; font-weight: 600;">Express Interest in Renewal &rarr;</a>
+        </p>
         <% } %>
       </div>
 
-      <div style="border: 2px solid #17a2b8; border-radius: 8px; padding: 20px; margin: 20px 0; background-color: #f1f9fc;">
-        <h4 style="margin-top: 0; color: #17a2b8;">🔄 Option 2: Month-to-Month</h4>
-        <p style="margin: 10px 0; color: #555;">
+      <div class="option-card option-mtm">
+        <h4>Option 2 — Month-to-Month</h4>
+        <p style="margin: 8px 0; color: #555;">
           <% if (monthToMonthAvailable) { %>
-          You may be eligible to continue on a month-to-month basis. <%= monthToMonthTerms ? 'New terms: ' + monthToMonthTerms : 'Contact us for details.' %>
+          You may be eligible to continue on a month-to-month basis. <%= monthToMonthTerms ? monthToMonthTerms : 'Contact us for details.' %>
           <% } else { %>
-          Unfortunately, month-to-month arrangements are not available for this property. Please choose renewal or move-out.
+          Month-to-month arrangements are not available for this property. Please choose renewal or move-out.
           <% } %>
         </p>
       </div>
 
-      <div style="border: 2px solid #6c757d; border-radius: 8px; padding: 20px; margin: 20px 0; background-color: #f8f9fa;">
-        <h4 style="margin-top: 0; color: #6c757d;">📦 Option 3: Move Out</h4>
-        <p style="margin: 10px 0; color: #555;">
-          If you plan to move out, please provide written notice by <%= new Date(noticeDeadline).toLocaleDateString() %> as required by your lease agreement.
+      <div class="option-card option-move">
+        <h4>Option 3 — Move Out</h4>
+        <p style="margin: 8px 0; color: #555;">
+          If you plan to move out, provide written notice by <strong><%= new Date(noticeDeadline).toLocaleDateString() %></strong> as required by your lease.
         </p>
       </div>
       <% } %>
-    </td>
-  </tr>
 
-  <tr>
-    <td class="content">
-      <h3>Important Action Required</h3>
-      <div style="background-color: #f8d7da; padding: 15px; border-left: 4px solid #dc3545; margin: 20px 0;">
-        <p style="margin: 0; color: #721c24;">
-          <strong>⚠️ Notice Requirement:</strong> Your lease requires <%= noticePeriod %> days written notice if you plan to move out. The deadline to provide notice is <strong><%= new Date(noticeDeadline).toLocaleDateString() %></strong>.
-        </p>
+      <div class="notice-box danger" style="margin-top: 20px;">
+        <strong>Notice Deadline:</strong> Written notice is required <strong><%= noticePeriod %> days</strong> in advance if you plan to move out. Deadline: <strong><%= new Date(noticeDeadline).toLocaleDateString() %></strong>.
       </div>
 
-      <ul style="color: #555; line-height: 1.8;">
+      <ul style="margin-top: 16px; font-size: 14px; color: #475569;">
         <li><strong>Respond by:</strong> <%= new Date(responseDeadline).toLocaleDateString() %></li>
-        <li><strong>Contact Method:</strong> Email <%= propertyManagerEmail %> or call <%= propertyManagerPhone %></li>
-        <li><strong>Required Info:</strong> State clearly whether you're renewing, going month-to-month, or moving out</li>
+        <li><strong>Contact:</strong> <a href="mailto:<%= propertyManagerEmail %>"><%= propertyManagerEmail %></a> or <%= propertyManagerPhone %></li>
+        <li><strong>State clearly:</strong> whether you are renewing, going month-to-month, or moving out</li>
       </ul>
 
       <% if (renewalTerms) { %>
-      <div style="background-color: #d1ecf1; padding: 15px; border-left: 4px solid #17a2b8; margin: 20px 0;">
-        <p style="margin: 0; color: #0c5460;">
-          <strong>💡 Renewal Terms Preview:</strong><br />
-          <%= renewalTerms %>
-        </p>
+      <div class="notice-box info">
+        <strong>Renewal Terms:</strong><br /><%= renewalTerms %>
       </div>
       <% } %>
 
-      <p style="margin-top: 20px;">
-        Please don't hesitate to reach out if you have any questions about your options or need assistance with your decision. We're here to help make this process as smooth as possible.
-      </p>
-
-      <p style="color: #666; font-size: 14px; margin-top: 30px; border-top: 1px solid #ddd; padding-top: 20px;">
+      <p style="font-size: 13px; color: #64748b; margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
         Property Manager: <%= propertyManagerName %><br />
         Email: <%= propertyManagerEmail %><br />
         Phone: <%= propertyManagerPhone %><br />
-        Office Hours: <%= officeHours || 'Monday-Friday, 9am-5pm' %>
+        Office Hours: <%= officeHours || 'Monday–Friday, 9am–5pm' %>
       </p>
     </td>
   </tr>

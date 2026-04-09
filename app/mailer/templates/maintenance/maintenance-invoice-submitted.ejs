@@ -1,49 +1,50 @@
-<table width="100%">
+<table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h3>Invoice Submitted — Your Review Required</h3>
+      <h2>Invoice Submitted — Review Required</h2>
       <p>
-        A vendor has submitted an invoice for the maintenance request below.
-        Please review and approve or reject it at your earliest convenience.
+        A vendor has submitted an invoice for the maintenance request below. Please review and approve or reject it at your earliest convenience.
       </p>
     </td>
   </tr>
 
   <tr>
-    <td class="content" style="background-color: #d1ecf1; padding: 20px; border-left: 4px solid #17a2b8; border-radius: 4px; margin-bottom: 16px;">
-      <h4 style="margin-top: 0; color: #0c5460;">Invoice Summary</h4>
-      <table width="100%" style="border-collapse: collapse;">
-        <tr>
-          <td style="padding: 6px 0; color: #666; width: 40%;">Reference #:</td>
-          <td style="padding: 6px 0; font-weight: 600;"><%= request.mruid %></td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Job Title:</td>
-          <td style="padding: 6px 0; font-weight: 600;"><%= request.title %></td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Invoice Amount:</td>
-          <td style="padding: 6px 0; font-size: 18px; font-weight: 600; color: #062f4f;">
-            $<%= (amount / 100).toFixed(2) %> <%= (request.invoice && request.invoice.currency) ? request.invoice.currency.toUpperCase() : 'USD' %>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Submitted:</td>
-          <td style="padding: 6px 0;"><%= new Date().toLocaleDateString() %></td>
-        </tr>
-        <% if (request.invoice && request.invoice.description) { %>
-        <tr>
-          <td style="padding: 6px 0; color: #666; vertical-align: top;">Description:</td>
-          <td style="padding: 6px 0;"><%= request.invoice.description %></td>
-        </tr>
-        <% } %>
-      </table>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <h3 style="margin-top: 0;">Invoice Summary</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Reference #</td>
+            <td class="detail-value"><%= request.mruid %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Job Title</td>
+            <td class="detail-value"><%= request.title %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Invoice Amount</td>
+            <td class="detail-value" style="font-size: 18px; font-weight: 700; color: #062f4f;">
+              $<%= (amount / 100).toFixed(2) %> <%= (request.invoice && request.invoice.currency) ? request.invoice.currency.toUpperCase() : 'USD' %>
+            </td>
+          </tr>
+          <tr>
+            <td class="detail-label">Submitted</td>
+            <td class="detail-value"><%= new Date().toLocaleDateString() %></td>
+          </tr>
+          <% if (request.invoice && request.invoice.description) { %>
+          <tr>
+            <td class="detail-label">Description</td>
+            <td class="detail-value"><%= request.invoice.description %></td>
+          </tr>
+          <% } %>
+        </table>
+      </div>
     </td>
   </tr>
 
   <tr>
     <td class="content">
-      <p>Log in to the portal to <strong>approve or reject</strong> this invoice. Approving will trigger the expense recording process.</p>
+      <p>Log in to the portal to <strong>approve or reject</strong> this invoice. Approving will record it as a maintenance expense.</p>
     </td>
   </tr>
 </table>

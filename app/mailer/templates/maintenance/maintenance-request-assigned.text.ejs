@@ -1,21 +1,25 @@
-Hello <%= vendor.firstName || vendor.email %>,
+New Job Assignment
+==================
 
-A maintenance request has been assigned to you by <%= assignedBy.firstName || assignedBy.email %>.
+Hi <%= vendor.firstName || vendor.email %>,
+
+<%= assignedBy.firstName || assignedBy.email %> has assigned you a maintenance request.
 Please accept or decline within 24 hours.
 
 JOB DETAILS
 -----------
-Reference #:       <%= request.mruid %>
-Title:             <%= request.title %>
-Description:       <%= request.description %>
-Category:          <%= request.category.replace(/_/g, ' ') %>
-Priority:          <%= request.priority.toUpperCase() %>
-Entry Permission:  <%= request.permissionToEnter ? 'Granted' : 'Must coordinate with tenant' %>
-<% if (request.scheduledDate) { %>Scheduled Date:    <%= new Date(request.scheduledDate).toLocaleDateString() %>
-<% } %><% if (request.estimatedCost) { %>Estimated Cost:    $<%= (request.estimatedCost / 100).toFixed(2) %>
-<% } %><% if (request.preferredDate) { %>Tenant Preferred:  <%= new Date(request.preferredDate).toLocaleDateString() %>
-<% } %><% if (request.availabilityWindows && request.availabilityWindows.length > 0) { %>Tenant Available:  <%= request.availabilityWindows.join(', ').replace(/_/g, ' ') %>
+Reference #:    <%= request.mruid %>
+Title:          <%= request.title %>
+Description:    <%= request.description %>
+Category:       <%= request.category.replace(/_/g, ' ') %>
+Priority:       <%= request.priority.toUpperCase() %>
+Property Entry: <%= request.permissionToEnter ? 'Permission granted' : 'Must coordinate with resident' %>
+<% if (request.scheduledDate) { %>Scheduled Date: <%= new Date(request.scheduledDate).toLocaleDateString() %>
+<% } %><% if (request.estimatedCost) { %>Estimated Cost: $<%= (request.estimatedCost / 100).toFixed(2) %>
+<% } %><% if (request.preferredDate) { %>Resident Preferred Date: <%= new Date(request.preferredDate).toLocaleDateString() %>
+<% } %><% if (request.availabilityWindows && request.availabilityWindows.length > 0) { %>Resident Availability: <%= request.availabilityWindows.join(', ').replace(/_/g, ' ') %>
 <% } %>
 Log in to the portal to accept or decline this assignment.
 
 Questions? Contact <%= assignedBy.firstName || assignedBy.email %><% if (assignedBy.email) { %> at <%= assignedBy.email %><% } %>.
+

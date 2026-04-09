@@ -1,46 +1,48 @@
-<table width="100%">
+<table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h3>Vendor Declined Maintenance Assignment</h3>
+      <h2>Vendor Declined — Reassignment Required</h2>
       <p>
-        A vendor has declined the maintenance request below. You'll need to reassign it to another vendor.
+        A vendor has declined the maintenance request below. The request has been returned to <strong>Open</strong> status and requires reassignment.
       </p>
     </td>
   </tr>
 
   <tr>
-    <td class="content" style="background-color: #fff3cd; padding: 20px; border-left: 4px solid #ffc107; border-radius: 4px; margin-bottom: 16px;">
-      <h4 style="margin-top: 0; color: #856404;">Action Required: Reassign Vendor</h4>
-      <table width="100%" style="border-collapse: collapse;">
-        <tr>
-          <td style="padding: 6px 0; color: #666; width: 40%;">Reference #:</td>
-          <td style="padding: 6px 0; font-weight: 600;"><%= request.mruid %></td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Title:</td>
-          <td style="padding: 6px 0; font-weight: 600;"><%= request.title %></td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Priority:</td>
-          <td style="padding: 6px 0;"><%= request.priority %></td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #666;">Status:</td>
-          <td style="padding: 6px 0;"><span style="color: #17a2b8;">Open — awaiting reassignment</span></td>
-        </tr>
-        <% if (reason) { %>
-        <tr>
-          <td style="padding: 6px 0; color: #666; vertical-align: top;">Vendor Reason:</td>
-          <td style="padding: 6px 0; font-style: italic;">"<%= reason %>"</td>
-        </tr>
-        <% } %>
-      </table>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card warning">
+        <h3 style="margin-top: 0;">Action Required</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Reference #</td>
+            <td class="detail-value"><%= request.mruid %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Title</td>
+            <td class="detail-value"><%= request.title %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Priority</td>
+            <td class="detail-value"><%= request.priority %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Status</td>
+            <td class="detail-value" style="color: #0369a1;">Open — awaiting reassignment</td>
+          </tr>
+          <% if (reason) { %>
+          <tr>
+            <td class="detail-label">Vendor Reason</td>
+            <td class="detail-value" style="font-style: italic;">"<%= reason %>"</td>
+          </tr>
+          <% } %>
+        </table>
+      </div>
     </td>
   </tr>
 
   <tr>
     <td class="content">
-      <p>The request has been returned to <strong>Open</strong> status. Please log in to the portal to assign a new vendor.</p>
+      <p>Log in to the portal to assign a new vendor to this request.</p>
     </td>
   </tr>
 </table>

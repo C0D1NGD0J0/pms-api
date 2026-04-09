@@ -1,0 +1,48 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Work Order Approved — Proceed with Job</h2>
+      <p>
+        Your work order for maintenance request <strong><%= request.mruid %></strong> has been <strong style="color: #16a34a;">approved</strong>. You may now proceed with the work.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card success">
+        <h3 style="margin-top: 0;">Approved Work Order</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Request #</td>
+            <td class="detail-value"><%= request.mruid %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Title</td>
+            <td class="detail-value"><%= request.title %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Estimated Cost</td>
+            <td class="detail-value">$<%= (workOrder.estimatedCostInCents / 100).toFixed(2) %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Scope</td>
+            <td class="detail-value"><%= workOrder.scope %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Approved By</td>
+            <td class="detail-value"><%= approvedBy.firstName || approvedBy.email %></td>
+          </tr>
+        </table>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <p style="font-size: 14px; color: #64748b;">
+        Once the work is complete, submit your invoice through the portal to initiate payment.
+      </p>
+    </td>
+  </tr>
+</table>

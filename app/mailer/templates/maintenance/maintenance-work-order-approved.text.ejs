@@ -1,0 +1,16 @@
+Work Order Approved — Proceed with Job
+========================================
+
+Your work order for maintenance request <%= request.mruid %> has been approved.
+You may now proceed with the work.
+
+APPROVED WORK ORDER
+-------------------
+Request #:      <%= request.mruid %>
+Title:          <%= request.title %>
+Estimated Cost: $<%= (workOrder.estimatedCostInCents / 100).toFixed(2) %>
+Scope:          <%= workOrder.scope %>
+Approved By:    <%= approvedBy.firstName || approvedBy.email %>
+
+Once the work is complete, submit your invoice through the portal to initiate payment.
+

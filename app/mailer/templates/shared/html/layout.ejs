@@ -1,125 +1,270 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Property Management System</title>
-    <style type="text/css">
-        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
-        body {
-            margin: 0;
-            font-family: 'Roboto', sans-serif;
-        }
-        table {
-            border-spacing: 0;
-        }
-        td {
-            padding: 0;
-        }
-        img {
-            border: 0;
-        }
-        .wrapper {
-            width: 100%;
-            table-layout: fixed;
-            background-color: #f4f4f4;
-        }
-        .main {
-            min-width: 100%;
-            color: #062f4f;
-            max-width: 600px;
-            background-color: #fff;
-            box-shadow: 0 0 25px rgba(0,0,0,0.1);
-        }
-        .contact-info {
-            width: 100%;
-            padding: .5rem;
-            background-color: #062f4f;
-            color: white;
-        }
-        .contact-info ul {
-            margin: 0;
-            padding: 0;
-            text-align: center;
-            list-style-type: none;
-        }
-        .contact-info ul li {
-            padding: 0 10px;
-            display: inline-block;
-        }
-        .contact-info ul li a {
-            color: white;
-            font-size: 14px;
-            line-height: 1.4;
-            text-decoration: none;
-        }
-        .content {
-            padding: 20px 30px;
-            line-height: 1.6;
-        }
-        .content h1, .content h2, .content h3 {
-            color: #062f4f;
-            margin-bottom: 15px;
-        }
-        .cta {
-            padding-bottom: 30px;
-            text-align: center;
-        }
-        .signature {
-            text-align: center;
-            padding: 20px;
-            background-color: #f4f4f4;
-            font-size: 14px;
-            color: #666;
-        }
-        .btn {
-            background-color: #062f4f;
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 16px;
-            border-radius: 5px;
-            padding: 12px 24px;
-            color: #fff;
-            display: inline-block;
-            margin-top: 15px;
-            transition: background-color 0.3s ease;
-        }
-        .btn:hover {
-            background-color: #39a9e0;
-        }
-    </style>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <title>PropertyDesk</title>
+  <style type="text/css">
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    body, table, td, p, a, li {
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+    table, td {
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
+      border-collapse: collapse;
+    }
+    img {
+      -ms-interpolation-mode: bicubic;
+      border: 0;
+      outline: none;
+      text-decoration: none;
+    }
+    body {
+      margin: 0 !important;
+      padding: 0 !important;
+      font-family: 'Inter', Arial, Helvetica, sans-serif;
+      background-color: #f5f7fa;
+    }
+    .wrapper {
+      width: 100%;
+      table-layout: fixed;
+      background-color: #f5f7fa;
+    }
+    .main {
+      width: 100%;
+      max-width: 600px;
+      background-color: #ffffff;
+    }
+    .content {
+      padding: 28px 36px;
+      line-height: 1.65;
+      color: #1e293b;
+      font-size: 15px;
+    }
+    .content h1 {
+      color: #062f4f;
+      font-size: 22px;
+      font-weight: 700;
+      margin: 0 0 16px 0;
+      line-height: 1.3;
+    }
+    .content h2 {
+      color: #062f4f;
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 0 14px 0;
+      line-height: 1.3;
+    }
+    .content h3 {
+      color: #062f4f;
+      font-size: 17px;
+      font-weight: 600;
+      margin: 0 0 12px 0;
+    }
+    .content h4 {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0 0 10px 0;
+    }
+    .content p {
+      margin: 0 0 14px 0;
+    }
+    .content ul {
+      margin: 8px 0 16px 0;
+      padding-left: 22px;
+    }
+    .content li {
+      margin-bottom: 6px;
+    }
+    .content a {
+      color: #062f4f;
+    }
+    .cta {
+      text-align: center;
+      padding: 8px 36px 28px 36px;
+    }
+    .btn {
+      background-color: #062f4f;
+      color: #ffffff !important;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 15px;
+      border-radius: 6px;
+      padding: 14px 28px;
+      display: inline-block;
+      font-family: 'Inter', Arial, Helvetica, sans-serif;
+      text-align: center;
+    }
+    .btn-accent {
+      background-color: #39a9e0 !important;
+    }
+    .btn-muted {
+      background-color: #64748b !important;
+    }
+    .btn-success {
+      background-color: #16a34a !important;
+    }
+    .fallback-link {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 12px;
+      word-break: break-all;
+    }
+    .detail-card {
+      background-color: #f8fafc;
+      border-left: 4px solid #39a9e0;
+      padding: 20px 22px;
+      margin: 4px 0;
+    }
+    .detail-card.warning {
+      background-color: #fffbeb;
+      border-left-color: #f59e0b;
+    }
+    .detail-card.success {
+      background-color: #f0fdf4;
+      border-left-color: #22c55e;
+    }
+    .detail-card.danger {
+      background-color: #fef2f2;
+      border-left-color: #ef4444;
+    }
+    .detail-card.neutral {
+      background-color: #f8fafc;
+      border-left-color: #94a3b8;
+    }
+    .detail-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    .detail-table td {
+      padding: 7px 0;
+      vertical-align: top;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .detail-table tr:last-child td {
+      border-bottom: none;
+    }
+    .detail-label {
+      color: #64748b;
+      width: 38%;
+      padding-right: 12px;
+    }
+    .detail-value {
+      color: #1e293b;
+      font-weight: 500;
+    }
+    .notice-box {
+      border-radius: 6px;
+      padding: 16px 18px;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+    .notice-box.info {
+      background-color: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+    }
+    .notice-box.warning {
+      background-color: #fffbeb;
+      border: 1px solid #fde68a;
+      color: #92400e;
+    }
+    .notice-box.success {
+      background-color: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+    }
+    .notice-box.danger {
+      background-color: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+    }
+    .message-quote {
+      background-color: #f8fafc;
+      border-left: 3px solid #39a9e0;
+      padding: 14px 18px;
+      margin: 16px 0;
+      font-style: italic;
+      color: #475569;
+      font-size: 14px;
+    }
+    .credential-box {
+      background-color: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: 20px;
+      margin: 16px 0;
+    }
+    .credential-box h3 {
+      color: #1e40af !important;
+      margin-top: 0 !important;
+    }
+    code {
+      background-color: #e2e8f0;
+      padding: 2px 6px;
+      font-size: 13px;
+      font-family: 'Courier New', monospace;
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid #e2e8f0;
+      margin: 20px 0;
+    }
+    .option-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 18px 20px;
+      margin: 12px 0;
+    }
+    .option-card h4 {
+      margin-top: 0;
+    }
+    .option-card.option-renew { border-color: #86efac; background-color: #f0fdf4; }
+    .option-card.option-mtm   { border-color: #7dd3fc; background-color: #f0f9ff; }
+    .option-card.option-move  { border-color: #cbd5e1; background-color: #f8fafc; }
+  </style>
 </head>
 <body>
-  <div class="wrapper">
-    <table class="main" width="100%">
-      <tr>
-        <td height="9" style="background-color: #062f4f;"></td>
-      </tr>
-      <tr>
-        <td class="contact-info">
-          <ul>
-            <li><a href="#!">Property Solutions</a></li>
-            <li><a href="tel:+18005551234">+1 (800) 555-1234</a></li>
-            <li><a href="mailto:support@propertysolutions.com">support@propertysolutions.com</a></li>
-          </ul>
-        </td>
-      </tr>
-
-      <%- include("_header") %>
-
-      <tr>
-        <td style="padding: 0;">
-          <%- content %>
-        </td>
-      </tr>
-
-      <%- include("_footer", {year: year, appName: "Property Solutions"}) %>
-
-      <tr>
-        <td height="9" style="background-color: #062f4f;"></td>
-      </tr>
-    </table>
+  <!-- Hidden preheader: pushes preview text in inbox -->
+  <div style="display:none;max-height:0;overflow:hidden;font-size:1px;color:#f5f7fa;line-height:1px;mso-hide:all;">
+    PropertyDesk &mdash; Your property management platform.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
   </div>
+
+  <table role="presentation" class="wrapper" cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td align="center" style="padding: 28px 16px;">
+        <table role="presentation" class="main" cellpadding="0" cellspacing="0" width="600">
+
+          <%- include("_header") %>
+
+          <tr>
+            <td>
+              <%- content %>
+            </td>
+          </tr>
+
+          <%- include("_footer", { year: year, appName: "PropertyDesk" }) %>
+
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>

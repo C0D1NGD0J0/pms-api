@@ -1,9 +1,9 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>Invoice Rejected — Resubmission Required</h2>
+      <h2>Work Order Rejected — Revision Required</h2>
       <p>
-        Your invoice for the maintenance job below has been <strong style="color: #dc2626;">rejected</strong>. Please review the reason and submit a corrected invoice.
+        Your work order for maintenance request <strong><%= request.mruid %></strong> has been <strong style="color: #dc2626;">rejected</strong>. Please review the feedback below and resubmit.
       </p>
     </td>
   </tr>
@@ -14,11 +14,11 @@
         <h3 style="margin-top: 0;">Rejection Details</h3>
         <table class="detail-table">
           <tr>
-            <td class="detail-label">Reference #</td>
+            <td class="detail-label">Request #</td>
             <td class="detail-value"><%= request.mruid %></td>
           </tr>
           <tr>
-            <td class="detail-label">Job</td>
+            <td class="detail-label">Title</td>
             <td class="detail-value"><%= request.title %></td>
           </tr>
           <tr>
@@ -36,9 +36,8 @@
 
   <tr>
     <td class="content">
-      <p>Log in to the portal to submit a revised invoice addressing the reason above.</p>
-      <p style="font-size: 14px; color: #64748b;">
-        If you believe this rejection is in error, contact <strong><%= rejectedBy.firstName || rejectedBy.email %></strong><% if (rejectedBy.email) { %> at <a href="mailto:<%= rejectedBy.email %>"><%= rejectedBy.email %></a><% } %>.
+      <p>
+        Please revise your work order to address the feedback above and resubmit via the portal. You can resubmit as long as the request remains in <strong>Assigned</strong> status.
       </p>
     </td>
   </tr>

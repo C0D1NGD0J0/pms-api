@@ -122,6 +122,22 @@ export class PaymentController {
     return res.status(200).json(result);
   }
 
+  async getPayoutBalance(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const result = await this.paymentService.getPayoutBalance(cuid);
+    return res.status(200).json(result);
+  }
+
+  async getPayoutHistory(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const { limit, cursor } = req.query as { limit?: string; cursor?: string };
+    const result = await this.paymentService.getPayoutHistory(cuid, {
+      limit: limit ? Number(limit) : undefined,
+      cursor,
+    });
+    return res.status(200).json(result);
+  }
+
   async getPaymentStats(req: AppRequest, res: Response) {
     const { cuid } = req.params;
 

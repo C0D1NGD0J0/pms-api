@@ -41,4 +41,17 @@ router.post(
   })
 );
 
+/**
+ * Invoice webhooks (all events)
+ * Raw body is already preserved by global middleware in app.ts (line 81-89)
+ * which saves req.rawBody for /api/v1/webhooks/invoices/:source endpoint
+ */
+router.post(
+  '/invoices/:source',
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<WebhookController>('webhookController');
+    return controller.handleInvoiceWebhook(req, res);
+  })
+);
+
 export default router;

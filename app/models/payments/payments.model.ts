@@ -119,6 +119,10 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       uploadedAt: { type: Date },
       uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     },
+    vendorId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
     recordedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',

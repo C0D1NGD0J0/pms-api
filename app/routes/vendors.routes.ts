@@ -1,8 +1,13 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { VendorController } from '@controllers/VendorController';
-import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
-import { requirePermission, isAuthenticated, basicLimiter } from '@shared/middlewares';
+import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
+import {
+  requirePermissionWithContext,
+  requirePermission,
+  isAuthenticated,
+  basicLimiter,
+} from '@shared/middlewares';
 import {
   ClientValidations,
   VendorValidations,
@@ -41,11 +46,20 @@ router.get(
   })
 );
 
-// Single vendor details endpoint
+// Single vendor details endpoint — vendors read their own record (mine), managers use any
 router.get(
   '/:cuid/vendor_details/:vuid',
   isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.READ,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { resourceId: req.params.vuid, ownerId: req.context.currentuser.sub };
+      }
+      return { resourceId: req.params.vuid };
+    }
+  ),
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.vuid),
   }),
@@ -55,10 +69,20 @@ router.get(
   })
 );
 
+// Team members — managers use vendor:list:any; primary vendor uses vendor:list:mine
 router.get(
   '/:cuid/team_members/:vuid',
   isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  requirePermissionWithContext(
+    PermissionResource.VENDOR,
+    PermissionAction.LIST,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { ownerId: req.context.currentuser.sub };
+      }
+      return {};
+    }
+  ),
   validateRequest({
     params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
   }),

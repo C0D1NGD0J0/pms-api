@@ -9,8 +9,11 @@ import { PaymentService } from '@services/payments/payments.service';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { BoldSignService } from '@services/external/esignature/boldSign.service';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
+import { IInvoiceWebhookPayload, InvoiceSource } from '@interfaces/maintenanceRequest.interface';
 
 interface IConstructor {
+  maintenanceRequestService: MaintenanceRequestService;
   subscriptionService: SubscriptionService;
   idempotencyCache: IdempotencyCache;
   boldSignService: BoldSignService;
@@ -28,6 +31,7 @@ export class WebhookController {
   private paymentService: PaymentService;
   private clientService: ClientService;
   private idempotencyCache: IdempotencyCache;
+  private maintenanceRequestService: MaintenanceRequestService;
   private log: Logger;
 
   constructor({
@@ -38,6 +42,7 @@ export class WebhookController {
     paymentService,
     clientService,
     idempotencyCache,
+    maintenanceRequestService,
   }: IConstructor) {
     this.leaseService = leaseService;
     this.stripeService = stripeService;
@@ -46,6 +51,7 @@ export class WebhookController {
     this.paymentService = paymentService;
     this.clientService = clientService;
     this.idempotencyCache = idempotencyCache;
+    this.maintenanceRequestService = maintenanceRequestService;
     this.log = createLogger('WebhookController');
   }
 
@@ -303,5 +309,29 @@ export class WebhookController {
         message: error.message || 'Webhook processing failed',
       });
     }
+  };
+
+  handleInvoiceWebhook = async (req: Request, res: Response): Promise<void> => {
+    const source = req.params.source as InvoiceSource;
+    const rawBody = req.body as Buffer;
+    const headers = req.headers as Record<string, string>;
+
+    let payload: IInvoiceWebhookPayload;
+    try {
+      const parsed = JSON.parse(rawBody.toString());
+      payload = { ...parsed, source, rawPayload: parsed };
+    } catch {
+      res.status(400).json({ success: false, error: 'Invalid JSON payload' });
+      return;
+    }
+
+    // Respond 200 immediately to prevent provider retries, then process async
+    res.status(200).json({ received: true });
+
+    this.maintenanceRequestService
+      .handleInvoiceWebhook(source, rawBody, headers, payload)
+      .catch((err: unknown) => {
+        this.log.error('[WebhookController] invoice webhook processing error', err);
+      });
   };
 }

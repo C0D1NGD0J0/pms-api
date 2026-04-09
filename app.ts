@@ -112,7 +112,7 @@ export class App implements IAppSetup {
     app.use(setUserLanguage);
     app.use(
       `${this.BASE_PATH}/webhooks`,
-      // express.raw({ type: 'application/json' }),
+      express.raw({ type: 'application/json' }),
       routes.webhookRoutes
     );
     app.use(`${this.BASE_PATH}/healthcheck`, async (req, res) => {
@@ -168,7 +168,7 @@ export class App implements IAppSetup {
     app.use(`${this.BASE_PATH}/subscriptions`, routes.subscriptionRoutes);
     app.use(`${this.BASE_PATH}/payments`, routes.paymentRoutes);
     app.use(`${this.BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
-    // app.use(`${this.BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
+    app.use(`${this.BASE_PATH}/maintenance_requests`, routes.maintenanceRequestRoutes);
     app.all('*', (req: Request, res: Response) => {
       res.status(httpStatusCodes.NOT_FOUND).json({ message: 'Invalid endpoint.' });
     });

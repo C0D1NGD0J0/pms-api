@@ -372,6 +372,7 @@ export class MaintenanceRequestService {
       requestId: request._id.toString(),
       mruid: request.mruid,
       cuid,
+      tenantId: request.tenantId?.toString(),
       vendorId: vendorUserId.toString(),
       assignedBy: currentuser.sub,
       scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : undefined,
@@ -445,6 +446,7 @@ export class MaintenanceRequestService {
       requestId: request._id.toString(),
       mruid: request.mruid,
       cuid,
+      tenantId: request.tenantId?.toString(),
       vendorId: currentuser.sub,
     });
 
@@ -498,6 +500,7 @@ export class MaintenanceRequestService {
       requestId: request._id.toString(),
       mruid: request.mruid,
       cuid,
+      tenantId: request.tenantId?.toString(),
       vendorId: currentuser.sub,
       reason: data.reason,
     });
@@ -585,6 +588,8 @@ export class MaintenanceRequestService {
       requestId: request._id.toString(),
       mruid: request.mruid,
       cuid,
+      tenantId: request.tenantId?.toString() ?? '',
+      vendorId: request.vendorId?.toString(),
       completedBy: currentuser.sub,
       actualCost: data.actualCost,
     });
@@ -615,6 +620,8 @@ export class MaintenanceRequestService {
       requestId: request._id.toString(),
       mruid: request.mruid,
       cuid,
+      tenantId: request.tenantId?.toString() ?? '',
+      vendorId: request.vendorId?.toString(),
       reason: data.reason,
     });
 
@@ -922,6 +929,7 @@ export class MaintenanceRequestService {
         requestId: request._id.toString(),
         mruid: request.mruid,
         cuid,
+        vendorId: request.vendorId?.toString(),
         approvedBy: currentuser.sub,
       });
 
@@ -941,6 +949,7 @@ export class MaintenanceRequestService {
         requestId: request._id.toString(),
         mruid: request.mruid,
         cuid,
+        vendorId: request.vendorId?.toString(),
         rejectedBy: currentuser.sub,
         rejectionReason: data.rejectionReason!,
       });

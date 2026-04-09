@@ -105,6 +105,77 @@ export const NotificationMessages = {
       message:
         'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
     },
+    succeeded: {
+      title: 'Payment Received',
+      message: 'A payment of {{amount}} has been successfully processed',
+    },
+    failed: {
+      title: 'Payment Failed',
+      message: 'A payment of {{amount}} could not be processed',
+    },
+    refunded: {
+      title: 'Payment Refunded',
+      message: 'A refund of {{amount}} has been issued',
+    },
+  },
+
+  maintenance: {
+    requestCreated: {
+      title: 'New Maintenance Request',
+      message: 'A new {{priority}} priority request "{{title}}" has been submitted',
+    },
+    requestAssigned: {
+      title: 'Request Assigned',
+      message: 'Maintenance request {{mruid}} has been assigned to a vendor',
+    },
+    requestAssignedVendor: {
+      title: 'New Job Assigned',
+      message: 'You have been assigned maintenance request {{mruid}}',
+    },
+    requestAccepted: {
+      title: 'Vendor Accepted Request',
+      message: 'A vendor has accepted maintenance request {{mruid}}',
+    },
+    requestAcceptedTenant: {
+      title: 'Your Request is Being Handled',
+      message: 'A vendor has accepted your maintenance request {{mruid}}',
+    },
+    requestDeclined: {
+      title: 'Vendor Declined Request',
+      message: 'A vendor has declined maintenance request {{mruid}}',
+    },
+    requestCompleted: {
+      title: 'Maintenance Request Completed',
+      message: 'Maintenance request {{mruid}} has been marked as completed',
+    },
+    requestCancelled: {
+      title: 'Maintenance Request Cancelled',
+      message: 'Maintenance request {{mruid}} has been cancelled',
+    },
+    invoiceSubmitted: {
+      title: 'Invoice Submitted for Approval',
+      message: 'A vendor has submitted an invoice of {{amount}} for request {{mruid}}',
+    },
+    invoiceApproved: {
+      title: 'Invoice Approved',
+      message: 'Your invoice for request {{mruid}} has been approved',
+    },
+    invoiceRejected: {
+      title: 'Invoice Rejected',
+      message: 'Your invoice for request {{mruid}} was rejected',
+    },
+    workOrderSubmitted: {
+      title: 'Work Order Submitted',
+      message: 'A work order has been submitted for maintenance request {{mruid}}',
+    },
+    workOrderApproved: {
+      title: 'Work Order Approved',
+      message: 'Your work order for request {{mruid}} has been approved — proceed with the job',
+    },
+    workOrderRejected: {
+      title: 'Work Order Rejected',
+      message: 'Your work order for request {{mruid}} was rejected',
+    },
   },
 
   lease: {
@@ -146,12 +217,29 @@ export type NotificationMessageKey =
   | 'system.serverUpdate'
   | 'vendor.connected'
   | 'vendor.disconnected'
+  | 'maintenance.requestCreated'
+  | 'maintenance.requestAssigned'
+  | 'maintenance.requestAssignedVendor'
+  | 'maintenance.requestAccepted'
+  | 'maintenance.requestAcceptedTenant'
+  | 'maintenance.requestDeclined'
+  | 'maintenance.requestCompleted'
+  | 'maintenance.requestCancelled'
+  | 'maintenance.invoiceSubmitted'
+  | 'maintenance.invoiceApproved'
+  | 'maintenance.invoiceRejected'
+  | 'maintenance.workOrderSubmitted'
+  | 'maintenance.workOrderApproved'
+  | 'maintenance.workOrderRejected'
   | 'lease.pdfGenerationStarted'
   | 'lease.pdfGenerated'
   | 'lease.pdfGenerationFailed'
   | 'payment.disputeCreated'
   | 'payment.disputeWon'
-  | 'payment.payoutAccountVerified';
+  | 'payment.payoutAccountVerified'
+  | 'payment.succeeded'
+  | 'payment.failed'
+  | 'payment.refunded';
 
 /**
  * Get notification message template by dot notation key

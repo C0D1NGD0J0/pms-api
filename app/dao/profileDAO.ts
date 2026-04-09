@@ -401,6 +401,21 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
           },
         },
 
+        // Vendor document lookup — resolves vuid for vendor portal routing
+        {
+          $lookup: {
+            from: 'vendors',
+            localField: 'vendorInfo.vendorId',
+            foreignField: '_id',
+            as: 'vendorDocData',
+          },
+        },
+        {
+          $addFields: {
+            vendorDoc: { $arrayElemAt: ['$vendorDocData', 0] },
+          },
+        },
+
         // transform data into ICurrentUser structure
         {
           $project: {
@@ -535,6 +550,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                 if: '$vendorInfo',
                 then: {
                   vendorId: { $toString: '$vendorInfo.vendorId' },
+                  vuid: '$vendorDoc.vuid',
                   linkedVendorUid: '$vendorInfo.linkedVendorUid',
                   isPrimaryVendor: '$vendorInfo.isPrimaryVendor',
                   isLinkedAccount: '$vendorInfo.isLinkedAccount',

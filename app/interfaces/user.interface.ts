@@ -7,10 +7,10 @@ import { ISubscriptionEntitlements, ISubscriptionStatus, PlanName } from './subs
 import {
   EmployeeDepartment,
   IProfileDocument,
-  GDPRSettings,
-  EmployeeInfo,
-  VendorInfo,
-  TenantInfo,
+  IEmployeeInfo,
+  IGDPRSettings,
+  IVendorInfo,
+  ITenantInfo,
 } from './profile.interface';
 
 /**
@@ -75,6 +75,7 @@ export interface ICurrentUser {
   };
   vendorInfo?: {
     vendorId?: string;
+    vuid?: string;
     linkedVendorUid?: string;
     isPrimaryVendor?: boolean;
     isLinkedAccount?: boolean;
@@ -98,8 +99,8 @@ export interface ICurrentUser {
   clients: IClientUserConnections[];
   fullname: string | null;
   permissions: string[];
+  gdpr?: IGDPRSettings;
   displayName: string;
-  gdpr?: GDPRSettings;
   avatarUrl: string;
   isActive: boolean;
   email: string;
@@ -210,7 +211,7 @@ export interface IClientTenantDetails {
     daysCurrentLease: number;
     totalRentPaid: number;
   };
-  tenantInfo: TenantInfo;
+  tenantInfo: ITenantInfo;
   status: UserStatus;
   userType: 'tenant';
   joinedDate: Date;
@@ -303,8 +304,8 @@ export interface IUserDocument extends Document, IUser {
 export interface FilteredUser
   extends Pick<IUserDocument, 'uid' | 'email' | 'isActive' | 'createdAt'> {
   vendorInfo?: FilteredVendorInfo;
-  employeeInfo?: EmployeeInfo;
-  tenantInfo?: TenantInfo;
+  employeeInfo?: IEmployeeInfo;
+  tenantInfo?: ITenantInfo;
   roles: IUserRoleType[];
   isConnected: boolean;
   phoneNumber?: string;
@@ -549,7 +550,7 @@ export interface IBasePagination {
  * Extended Vendor Info Interface
  * Includes additional fields from getUsersByRole
  */
-export interface FilteredVendorInfo extends VendorInfo {
+export interface FilteredVendorInfo extends IVendorInfo {
   isPrimaryVendor?: boolean;
   isLinkedAccount: boolean;
   linkedVendorUid?: string;
@@ -725,9 +726,9 @@ export type RentStatus = 'current' | 'late' | 'overdue' | 'no_lease';
 
 /**
  * Tenant Detail Information
- * Extends TenantInfo from profile interface
+ * Extends ITenantInfo from profile interface
  */
-export interface ITenantDetailInfo extends TenantInfo {}
+export interface ITenantDetailInfo extends ITenantInfo {}
 
 /**
  * ============================================================================

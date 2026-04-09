@@ -3,16 +3,17 @@ import { IPropertyFilterQuery, EmployeeDepartment } from '@interfaces/index';
 
 export const httpStatusCodes = {
   OK: 200,
+  CREATED: 201,
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   BAD_REQUEST: 400,
-  UNPROCESSABLE: 422,
   UNAUTHORIZED: 401,
   RATE_LIMITER: 429,
+  UNPROCESSABLE: 422,
+  NOT_IMPLEMENTED: 501,
   EXPIRED_AUTH_TOKEN: 419,
   SERVICE_UNAVAILABLE: 503,
   INTERNAL_SERVER_ERROR: 500,
-  NOT_IMPLEMENTED: 501,
 };
 
 export const JWT_KEY_NAMES = {

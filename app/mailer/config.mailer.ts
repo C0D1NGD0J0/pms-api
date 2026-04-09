@@ -99,6 +99,34 @@ export class MailService {
     let template: EmailTemplate;
 
     switch (type) {
+      case MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT:
+        template = await this.buildTemplate(
+          'maintenance-work-order-submitted-tenant',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_WORK_ORDER_SUBMITTED:
+        template = await this.buildTemplate(
+          'maintenance-work-order-submitted',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_WORK_ORDER_APPROVED:
+        template = await this.buildTemplate(
+          'maintenance-work-order-approved',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_WORK_ORDER_REJECTED:
+        template = await this.buildTemplate(
+          'maintenance-work-order-rejected',
+          emailData,
+          'maintenance'
+        );
+        break;
       case MailType.MAINTENANCE_INVOICE_SUBMITTED:
         template = await this.buildTemplate(
           'maintenance-invoice-submitted',
@@ -287,7 +315,7 @@ export class MailService {
    * @returns Default subject line
    */
   private getDefaultSubject(mailType: MailType): string {
-    const defaultText = 'Notification from Property Management System';
+    const defaultText = 'Notification from PropertyDesk';
 
     const subjectMap: Record<MailType | 'default', string> = {
       [MailType.ACCOUNT_ACTIVATION]: 'Activate Your Account',
@@ -314,6 +342,10 @@ export class MailService {
       [MailType.MAINTENANCE_INVOICE_SUBMITTED]: 'Invoice Submitted for Review',
       [MailType.MAINTENANCE_INVOICE_APPROVED]: 'Invoice Approved',
       [MailType.MAINTENANCE_INVOICE_REJECTED]: 'Invoice Rejected',
+      [MailType.MAINTENANCE_WORK_ORDER_SUBMITTED]: 'Work Order Submitted — Review Required',
+      [MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT]: 'Work Order Submitted for Your Request',
+      [MailType.MAINTENANCE_WORK_ORDER_APPROVED]: 'Work Order Approved — Proceed with Job',
+      [MailType.MAINTENANCE_WORK_ORDER_REJECTED]: 'Work Order Rejected — Revision Required',
     };
 
     return subjectMap[mailType] || subjectMap.default;

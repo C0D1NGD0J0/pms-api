@@ -120,9 +120,10 @@ export function createLogger(name: string) {
     write: () => {},
   };
 
+  const resolvedEnv = envVariables.SERVER.ENV;
   const stream =
-    process.env.NODE_ENV === 'development' ||
-    process.env.NODE_ENV === 'dev' ||
+    resolvedEnv === 'development' ||
+    resolvedEnv === 'dev' ||
     Boolean(process.env.ENABLE_CONSOLE_LOGS)
       ? customStream
       : nullStream;

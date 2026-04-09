@@ -5,4 +5,5 @@ export const PaymentValidations = {
   recordManualPayment: schemas.recordManualPayment,
   createConnectAccount: schemas.createConnectAccount,
   refundPayment: schemas.refundPayment,
+  payoutHistoryQuery: schemas.payoutHistoryQuery,
 };

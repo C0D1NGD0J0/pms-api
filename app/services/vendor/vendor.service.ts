@@ -441,20 +441,22 @@ export class VendorService {
         });
       }
 
-      // Check permissions
-      const canAccess = await this.permissionService.canAccessResource(
-        currentuser,
-        PermissionResource.VENDOR,
-        PermissionAction.READ,
-        vendor
-      );
-      if (!canAccess) {
-        throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
-            action: 'view',
-            resource: 'vendor team',
-          }),
-        });
+      // For admin/manager roles, verify vendor:read:any permission
+      if (allowedRoles) {
+        const canAccess = await this.permissionService.canAccessResource(
+          currentuser,
+          PermissionResource.VENDOR,
+          PermissionAction.READ,
+          vendor
+        );
+        if (!canAccess) {
+          throw new ForbiddenError({
+            message: t('client.errors.insufficientPermissions', {
+              action: 'view',
+              resource: 'vendor team',
+            }),
+          });
+        }
       }
 
       // Fetch linked vendor users

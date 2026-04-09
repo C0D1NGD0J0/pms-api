@@ -261,7 +261,7 @@ export class MediaUploadService {
       resourceContext?: ResourceContext;
     }
   ): {
-    resourceName: 'property' | 'profile' | 'client' | 'lease';
+    resourceName: 'property' | 'profile' | 'client' | 'lease' | 'maintenance';
     resourceId: string;
     fieldName: string;
   } {
@@ -318,6 +318,14 @@ export class MediaUploadService {
         resourceName: 'lease',
         resourceId: context.primaryResourceId,
         fieldName: fieldName.split('.')[0] || 'leaseDocument',
+      };
+    }
+
+    if (fieldName.includes('media') || context.resourceContext === ResourceContext.MAINTENANCE) {
+      return {
+        resourceName: 'maintenance',
+        resourceId: context.primaryResourceId,
+        fieldName: 'media',
       };
     }
 

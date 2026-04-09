@@ -534,6 +534,49 @@ export class PaymentGatewayService {
     }
   }
 
+  async getConnectBalance(
+    provider: IPaymentGatewayProvider,
+    accountId: string
+  ): IPromiseReturnedData<any> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('getConnectBalance' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not support balance retrieval`);
+      }
+      const balance = await (providerInstance as any).getConnectBalance(accountId);
+      return { success: true, data: balance };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error fetching Connect balance');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to fetch Connect balance',
+      };
+    }
+  }
+
+  async listConnectPayouts(
+    provider: IPaymentGatewayProvider,
+    accountId: string,
+    options: { limit?: number; starting_after?: string } = {}
+  ): IPromiseReturnedData<any> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('listConnectPayouts' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not support payout listing`);
+      }
+      const result = await (providerInstance as any).listConnectPayouts(accountId, options);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error listing Connect payouts');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to list Connect payouts',
+      };
+    }
+  }
+
   async createInvoice(
     provider: IPaymentGatewayProvider,
     input: ICreateInvoiceInput

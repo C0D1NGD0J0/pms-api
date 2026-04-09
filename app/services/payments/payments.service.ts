@@ -3,7 +3,6 @@ import { FilterQuery, Types } from 'mongoose';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { PaymentQueue } from '@queues/payment.queue';
-import { EventTypes } from '@interfaces/events.interface';
 import { preventTenantConflict } from '@shared/middlewares';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionPlanConfig } from '@services/subscription';
@@ -11,6 +10,7 @@ import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IPromiseReturnedData, IPaginateResult } from '@interfaces/utils.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import { MaintenanceInvoiceApprovedPayload, EventTypes } from '@interfaces/events.interface';
 import { getPaymentProcessorUrls, calcCollectionRate, createLogger, daysInMs } from '@utils/index';
 import {
   PaymentProcessorDAO,
@@ -87,6 +87,10 @@ export class PaymentService implements ICronProvider {
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.paymentGatewayService = paymentGatewayService;
     this.subscriptionPlanConfig = subscriptionPlanConfig;
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_INVOICE_APPROVED,
+      this.handleMaintenanceInvoiceApproved.bind(this)
+    );
   }
 
   getCronJobs(): ICronJob[] {
@@ -796,6 +800,88 @@ export class PaymentService implements ICronProvider {
       };
     } catch (error) {
       this.log.error('Error creating login link', error);
+      throw error;
+    }
+  }
+
+  async getPayoutBalance(cuid: string): IPromiseReturnedData<any> {
+    try {
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor?.accountId) {
+        throw new NotFoundError({ message: 'No Connect account found for this client' });
+      }
+      if (!paymentProcessor.payoutsEnabled) {
+        throw new BadRequestError({ message: 'Payouts are not enabled for this account' });
+      }
+
+      const result = await this.paymentGatewayService.getConnectBalance(
+        IPaymentGatewayProvider.STRIPE,
+        paymentProcessor.accountId
+      );
+      if (!result.success || !result.data) {
+        throw new BadRequestError({ message: result.message || 'Failed to fetch balance' });
+      }
+
+      const balance = result.data;
+      return {
+        success: true,
+        data: {
+          available: balance.available.map((b: any) => ({
+            amount: b.amount,
+            currency: b.currency,
+          })),
+          pending: balance.pending.map((b: any) => ({ amount: b.amount, currency: b.currency })),
+        },
+      };
+    } catch (error) {
+      this.log.error('Error fetching payout balance', error);
+      throw error;
+    }
+  }
+
+  async getPayoutHistory(
+    cuid: string,
+    query: { limit?: number; cursor?: string }
+  ): IPromiseReturnedData<any> {
+    try {
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor?.accountId) {
+        throw new NotFoundError({ message: 'No Connect account found for this client' });
+      }
+      if (!paymentProcessor.payoutsEnabled) {
+        throw new BadRequestError({ message: 'Payouts are not enabled for this account' });
+      }
+
+      const result = await this.paymentGatewayService.listConnectPayouts(
+        IPaymentGatewayProvider.STRIPE,
+        paymentProcessor.accountId,
+        { limit: query.limit, starting_after: query.cursor }
+      );
+      if (!result.success || !result.data) {
+        throw new BadRequestError({ message: result.message || 'Failed to fetch payouts' });
+      }
+
+      const list = result.data;
+      const payouts = list.data.map((p: any) => ({
+        id: p.id,
+        amount: p.amount,
+        currency: p.currency,
+        status: p.status,
+        arrivalDate: new Date(p.arrival_date * 1000).toISOString(),
+        createdAt: new Date(p.created * 1000).toISOString(),
+        description: p.description ?? undefined,
+      }));
+
+      return {
+        success: true,
+        data: {
+          payouts,
+          hasMore: list.has_more,
+          nextCursor: list.has_more ? list.data[list.data.length - 1]?.id : undefined,
+        },
+      };
+    } catch (error) {
+      this.log.error('Error fetching payout history', error);
       throw error;
     }
   }
@@ -1575,6 +1661,51 @@ export class PaymentService implements ICronProvider {
       this.log.error({ error: error.message, cuid, pytuid }, 'Error cancelling payment');
       throw error;
     }
+  }
+
+  private handleMaintenanceInvoiceApproved = async (
+    payload: MaintenanceInvoiceApprovedPayload
+  ): Promise<void> => {
+    try {
+      await this.recordMaintenanceExpense(payload);
+    } catch (err: unknown) {
+      this.log.error(
+        { err, mruid: payload.mruid, cuid: payload.cuid },
+        '[PaymentService] Failed to record maintenance expense'
+      );
+    }
+  };
+
+  async recordMaintenanceExpense(payload: MaintenanceInvoiceApprovedPayload): Promise<void> {
+    const { cuid, mruid, vendorId, amount, approvedBy } = payload;
+
+    const vendorProfile = vendorId ? await this.profileDAO.getProfileByUserId(vendorId) : null;
+
+    if (!vendorProfile) {
+      this.log.warn(
+        { mruid, vendorId },
+        '[PaymentService] Skipping maintenance expense record: vendor profile not found'
+      );
+      return;
+    }
+
+    await this.paymentDAO.insert({
+      cuid,
+      paymentType: PaymentRecordType.MAINTENANCE,
+      paymentMethod: PaymentMethod.OTHER,
+      status: PaymentRecordStatus.PAID,
+      tenant: vendorProfile._id,
+      vendorId: new Types.ObjectId(vendorId!),
+      baseAmount: amount,
+      processingFee: 0,
+      description: `Maintenance expense for request ${mruid}`,
+      isManualEntry: true,
+      recordedBy: approvedBy ? new Types.ObjectId(approvedBy) : undefined,
+      dueDate: new Date(),
+      paidAt: new Date(),
+    });
+
+    this.log.info({ mruid, amount, cuid }, '[PaymentService] Maintenance expense recorded');
   }
 
   private calculateRentFees(

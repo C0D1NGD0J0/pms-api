@@ -564,6 +564,33 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async getConnectBalance(accountId: string): Promise<Stripe.Balance> {
+    try {
+      return await this.stripe.balance.retrieve({}, { stripeAccount: accountId });
+    } catch (error) {
+      this.log.error({ error, accountId }, 'Error fetching Connect balance');
+      throw error;
+    }
+  }
+
+  async listConnectPayouts(
+    accountId: string,
+    options: { limit?: number; starting_after?: string } = {}
+  ): Promise<Stripe.ApiList<Stripe.Payout>> {
+    try {
+      return await this.stripe.payouts.list(
+        {
+          limit: options.limit ?? 20,
+          ...(options.starting_after && { starting_after: options.starting_after }),
+        },
+        { stripeAccount: accountId }
+      );
+    } catch (error) {
+      this.log.error({ error, accountId }, 'Error listing Connect payouts');
+      throw error;
+    }
+  }
+
   async getInvoice(invoiceId: string): Promise<Stripe.Invoice> {
     try {
       return await this.stripe.invoices.retrieve(invoiceId);

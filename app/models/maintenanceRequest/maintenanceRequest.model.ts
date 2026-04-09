@@ -8,9 +8,20 @@ import {
   MaintenanceRequestStatus,
   MaintenanceCategory,
   AvailabilityWindow,
+  WorkOrderStatus,
 } from '@interfaces/maintenanceRequest.interface';
 
 import { InvoiceSchema } from './invoice.schema';
+
+const WorkOrderLineItemSchema = new Schema(
+  {
+    description: { type: String, required: true },
+    quantity: { type: Number, required: true, min: 0 },
+    unitPriceInCents: { type: Number, required: true, min: 0 },
+    amountInCents: { type: Number, required: true, min: 0 },
+  },
+  { _id: false }
+);
 
 // Zod URL validator
 const urlSchema = z.string().url();
@@ -123,13 +134,6 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
           enum: ['pending', 'processing', 'active', 'inactive', 'deleted'], // if inactive it would be deleted via cron job ltr
           default: 'active',
         },
-        externalUrl: {
-          type: String,
-          validate: {
-            validator: validateUrl,
-            message: (props: any) => `${props.value} is not a valid URL!`,
-          },
-        },
         uploadedAt: { type: Date, default: Date.now },
         uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
         description: { type: String, trim: true, maxlength: 150 },
@@ -137,6 +141,50 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
       },
     ],
     isBillable: { type: Boolean, default: false },
+    assignedTechnician: {
+      type: {
+        userId: { type: Schema.Types.ObjectId, ref: 'User' },
+        name: { type: String, maxlength: 100 },
+        phone: { type: String, maxlength: 20 },
+        email: { type: String, maxlength: 200 },
+      },
+      default: undefined,
+    },
+    workOrder: {
+      type: {
+        status: {
+          type: String,
+          enum: Object.values(WorkOrderStatus),
+        },
+        scope: { type: String, maxlength: 2000 },
+        estimatedCostInCents: { type: Number, min: 0 },
+        lineItems: { type: [WorkOrderLineItemSchema], default: undefined },
+        submittedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        reviewedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        rejectionReason: { type: String, maxlength: 500 },
+        notes: { type: String, maxlength: 500 },
+        submittedAt: { type: Date },
+        reviewedAt: { type: Date },
+      },
+      default: undefined,
+    },
+    workOrderHistory: {
+      type: [
+        {
+          status: { type: String, enum: Object.values(WorkOrderStatus) },
+          scope: { type: String, maxlength: 2000 },
+          estimatedCostInCents: { type: Number, min: 0 },
+          lineItems: { type: [WorkOrderLineItemSchema], default: undefined },
+          submittedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+          reviewedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+          rejectionReason: { type: String, maxlength: 500 },
+          notes: { type: String, maxlength: 500 },
+          submittedAt: { type: Date },
+          reviewedAt: { type: Date },
+        },
+      ],
+      default: undefined,
+    },
     deletedAt: { type: Date, index: true },
   },
   {

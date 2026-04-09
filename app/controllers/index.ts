@@ -1,6 +1,7 @@
 export * from './PropertyUnitController';
 export * from './NotificationController';
 export * from './SubscriptionController';
+export * from './MaintenanceController';
 export * from './InvitationController';
 export * from './PropertyController';
 export * from './PaymentController';

@@ -11,6 +11,7 @@ import invitationRoutes from './invitation.routes';
 import notificationRoutes from './notification.routes';
 import subscriptionRoutes from './subscription.routes';
 import emailTemplateRoutes from './emailTemplate.routes';
+import maintenanceRequestRoutes from './maintenanceRequest.routes';
 
 export const routes = {
   adminRoutes,
@@ -26,4 +27,5 @@ export const routes = {
   subscriptionRoutes,
   notificationRoutes,
   emailTemplateRoutes,
+  maintenanceRequestRoutes,
 };

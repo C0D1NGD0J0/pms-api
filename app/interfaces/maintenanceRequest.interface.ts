@@ -33,6 +33,12 @@ export enum MaintenanceRequestStatus {
   OPEN = 'open',
 }
 
+export enum WorkOrderStatus {
+  PENDING_REVIEW = 'pending_review',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
 export enum MaintenanceRequestPriority {
   MEDIUM = 'medium',
   URGENT = 'urgent',
@@ -65,12 +71,15 @@ export interface IMaintenanceRequest {
   vendorId?: Types.ObjectId | string; // User with role=vendor
   status: MaintenanceRequestStatus;
   media: MaintenanceRequestMedia[];
+  assignedTechnician?: ITechnician;
+  workOrderHistory?: IWorkOrder[];
   category: MaintenanceCategory;
   invoice?: IMaintenanceInvoice;
   locationDescription?: string;
   permissionToEnter: boolean;
   aiAnalysis?: IAIAnalysis;
   estimatedCost?: number;
+  workOrder?: IWorkOrder;
   scheduledDate?: Date;
   actualCost?: number;
   isBillable: boolean; // billing seam for expense integration
@@ -92,14 +101,14 @@ export interface ICreateMaintenanceRequest {
     html?: string;
   };
   priority?: MaintenanceRequestPriority;
+  media: MaintenanceRequestMedia[];
   category: MaintenanceCategory;
   locationDescription?: string;
   permissionToEnter: boolean;
-  preferredDate?: string; // ISO date string — advisory, must be in the future
-  propertyId: string;
   hasPet?: boolean;
-  unitId?: string;
+  puid?: string; // property unit resource UID
   title: string;
+  pid: string; // property resource UID
 }
 
 export interface IMaintenanceInvoice {
@@ -125,12 +134,25 @@ export interface IMaintenanceFilters {
   priority?: MaintenanceRequestPriority;
   category?: MaintenanceCategory;
   isBillable?: boolean;
-  propertyId?: string;
-  vendorId?: string;
-  tenantId?: string;
+  vendorUid?: string; // user resource UID of vendor
+  tenantUid?: string; // user resource UID of tenant
   dateFrom?: string;
-  unitId?: string;
   dateTo?: string;
+  puid?: string; // property unit resource UID
+  pid?: string; // property resource UID
+}
+
+export interface IWorkOrder {
+  lineItems?: IWorkOrderLineItem[];
+  estimatedCostInCents: number;
+  submittedBy: Types.ObjectId;
+  reviewedBy?: Types.ObjectId;
+  rejectionReason?: string;
+  status: WorkOrderStatus;
+  submittedAt: Date;
+  reviewedAt?: Date;
+  notes?: string;
+  scope: string;
 }
 
 export interface IInvoiceWebhookPayload {
@@ -178,6 +200,12 @@ export interface ISubmitInvoicePayload {
   amount: number;
 }
 
+export interface IRespondToAssignmentPayload {
+  technician?: { name: string; phone?: string; email?: string }; // optional on accept
+  action: 'accept' | 'decline';
+  reason?: string; // required when action === 'decline'
+}
+
 export interface IMaintenanceRequestDocument extends IMaintenanceRequest, Document {
   _id: Types.ObjectId;
   deletedAt?: Date;
@@ -203,6 +231,25 @@ export interface IVendorStats {
   total: number;
 }
 
+export interface ISubmitWorkOrderPayload {
+  lineItems?: IWorkOrderLineItem[];
+  estimatedCostInCents: number;
+  notes?: string;
+  scope: string;
+}
+
+export interface IReviewInvoicePayload {
+  action: 'approve' | 'reject';
+  rejectionReason?: string; // required when action === 'reject'
+}
+
+export interface IWorkOrderLineItem {
+  unitPriceInCents: number;
+  amountInCents: number;
+  description: string;
+  quantity: number;
+}
+
 export interface IInvoiceLineItem {
   unitPriceInCents: number;
   amountInCents: number;
@@ -213,7 +260,19 @@ export interface IInvoiceLineItem {
 export interface IAssignVendorPayload {
   scheduledDate?: string;
   estimatedCost?: number;
-  vendorId: string;
+  vuid: string; // vendor resource UID
+}
+
+export interface ITechnician {
+  userId?: Types.ObjectId | string;
+  phone?: string;
+  email?: string;
+  name: string;
+}
+
+export interface IReviewWorkOrderPayload {
+  action: 'approve' | 'reject';
+  rejectionReason?: string;
 }
 
 export interface ICompleteMaintenancePayload {
@@ -231,10 +290,10 @@ export interface IRejectInvoicePayload {
   rejectionReason: string;
 }
 
-export interface IDeclineAssignmentPayload {
+export interface ICancelMaintenancePayload {
   reason?: string;
 }
 
-export interface ICancelMaintenancePayload {
+export interface IDeclineAssignmentPayload {
   reason?: string;
 }

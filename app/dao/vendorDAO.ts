@@ -124,7 +124,10 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  async getVendorById(vendorId: string | Types.ObjectId): Promise<IVendorDocument | null> {
+  async getVendorById(
+    vendorId: string | Types.ObjectId,
+    cuid?: string
+  ): Promise<IVendorDocument | null> {
     try {
       const vendorIdStr = vendorId.toString();
 
@@ -132,11 +135,18 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
       const isObjectId = /^[0-9a-fA-F]{24}$/.test(vendorIdStr);
 
       if (isObjectId) {
-        // Use _id directly
-        return await this.findById(vendorId);
+        // Scope by cuid to prevent cross-tenant access via ObjectId
+        const query: Record<string, any> = {
+          _id: new Types.ObjectId(vendorIdStr),
+          deletedAt: null,
+        };
+        if (cuid) query['connectedClients.cuid'] = cuid;
+        return await this.findFirst(query);
       } else {
         // It's a vuid
-        return await this.findFirst({ vuid: vendorIdStr, deletedAt: null });
+        const query: Record<string, any> = { vuid: vendorIdStr, deletedAt: null };
+        if (cuid) query['connectedClients.cuid'] = cuid;
+        return await this.findFirst(query);
       }
     } catch (error) {
       this.logger.error(`Error getting vendor by ID ${vendorId}: ${error}`);
@@ -153,11 +163,11 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  async getVendorByPrimaryAccountHolder(
+  async getVendorByprimaryAccountHolderUserId(
     userId: string | Types.ObjectId
   ): Promise<IVendorDocument | null> {
     try {
-      return await this.findFirst({ 'connectedClients.primaryAccountHolder': userId });
+      return await this.findFirst({ 'connectedClients.primaryAccountHolderUserId': userId });
     } catch (error) {
       this.logger.error(`Error getting vendor by primary account holder ${userId}: ${error}`);
       throw error;
@@ -230,6 +240,30 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
+  async disconnectClient(vendorId: string, cuid: string): Promise<void> {
+    try {
+      await this.updateById(vendorId, { $set: { 'connectedClients.$[elem].isConnected': false } }, {
+        arrayFilters: [{ 'elem.cuid': cuid }],
+      } as any);
+      this.logger.info(`Vendor ${vendorId} disconnected from client ${cuid}`);
+    } catch (error) {
+      this.logger.error(`Error disconnecting vendor ${vendorId} from client ${cuid}: ${error}`);
+      throw error;
+    }
+  }
+
+  async reconnectClient(vendorId: string, cuid: string): Promise<void> {
+    try {
+      await this.updateById(vendorId, { $set: { 'connectedClients.$[elem].isConnected': true } }, {
+        arrayFilters: [{ 'elem.cuid': cuid }],
+      } as any);
+      this.logger.info(`Vendor ${vendorId} reconnected to client ${cuid}`);
+    } catch (error) {
+      this.logger.error(`Error reconnecting vendor ${vendorId} to client ${cuid}: ${error}`);
+      throw error;
+    }
+  }
+
   async getClientVendors(cuid: string): Promise<ListResultWithPagination<IVendorDocument[]>> {
     try {
       // Find vendors where connectedClients contains this cuid
@@ -280,7 +314,7 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
           {
             $lookup: {
               from: 'users',
-              localField: 'primaryAccountHolder',
+              localField: 'primaryAccountHolderUserId',
               foreignField: '_id',
               as: 'user',
             },

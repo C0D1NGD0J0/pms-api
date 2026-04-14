@@ -125,7 +125,7 @@ export class VendorController {
       }
 
       // Check if current user is the primary account holder
-      if (clientConnection.primaryAccountHolder?.toString() !== currentUser.uid) {
+      if (clientConnection.primaryAccountHolderUserId?.toString() !== currentUser.uid) {
         res.status(httpStatusCodes.FORBIDDEN).json({
           success: false,
           message: 'Only primary account holders can access vendor edit data',
@@ -147,7 +147,7 @@ export class VendorController {
         insuranceInfo: vendorDoc.insuranceInfo,
         yearsInBusiness: vendorDoc.yearsInBusiness,
         isConnected: clientConnection.isConnected,
-        primaryAccountHolder: clientConnection.primaryAccountHolder,
+        primaryAccountHolderUserId: clientConnection.primaryAccountHolderUserId,
       };
 
       res.status(httpStatusCodes.OK).json({
@@ -215,7 +215,7 @@ export class VendorController {
     }
 
     // Check if current user is the primary account holder
-    if (clientConnection.primaryAccountHolder?.toString() !== currentUser.uid) {
+    if (clientConnection.primaryAccountHolderUserId?.toString() !== currentUser.uid) {
       res.status(httpStatusCodes.FORBIDDEN).json({
         success: false,
         message: 'Only primary account holders can update vendor business information',
@@ -225,6 +225,48 @@ export class VendorController {
 
     // Update vendor information
     const result = await this.vendorService.updateVendorInfo(vuid, updateData);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  initiatePayoutOnboarding = async (req: AppRequest, res: Response) => {
+    const { cuid, vuid } = req.params;
+
+    const result = await this.vendorService.initiatePayoutOnboarding(
+      cuid as string,
+      vuid as string
+    );
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getPayoutOnboardingLink = async (req: AppRequest, res: Response) => {
+    const { cuid, vuid } = req.params;
+    const queryParams = (req.query.params || req.query) as Record<string, string>;
+    const { returnUrl, refreshUrl } = queryParams;
+
+    const result = await this.vendorService.getPayoutOnboardingLink(
+      cuid as string,
+      vuid as string,
+      returnUrl as string,
+      refreshUrl as string
+    );
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  syncPayoutAccountStatus = async (req: AppRequest, res: Response) => {
+    const { cuid, vuid } = req.params;
+
+    const result = await this.vendorService.syncPayoutAccountStatus(cuid as string, vuid as string);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getPayoutDashboardLink = async (req: AppRequest, res: Response) => {
+    const { cuid, vuid } = req.params;
+
+    const result = await this.vendorService.getPayoutDashboardLink(cuid as string, vuid as string);
 
     res.status(httpStatusCodes.OK).json(result);
   };

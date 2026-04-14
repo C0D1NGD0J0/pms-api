@@ -49,7 +49,7 @@ export class AuthController {
     }
 
     return res.status(httpStatusCodes.OK).json({
-      success: 200,
+      success: true,
       data: currentuser,
     });
   };
@@ -125,6 +125,19 @@ export class AuthController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  setupPaymentIntent = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const currentuser = req.context?.currentuser;
+    const { returnUrl, cancelUrl } = req.body;
+    const result = await this.authService.setupPaymentIntent(
+      cuid,
+      currentuser!,
+      returnUrl,
+      cancelUrl
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   refreshToken = async (req: Request, res: Response) => {
     let refreshToken = req.cookies?.[JWT_KEY_NAMES.REFRESH_TOKEN];
 
@@ -140,17 +153,7 @@ export class AuthController {
       refreshToken = refreshToken.split(' ')[1];
     }
 
-    // Extract user ID from the refresh token
-    const decoded = this.authService['tokenService'].decodeJwt(refreshToken);
-    if (!decoded.success || !decoded.data?.data?.sub) {
-      return res.status(httpStatusCodes.UNAUTHORIZED).json({
-        success: false,
-        message: t('auth.errors.invalidRefreshToken'),
-      });
-    }
-
-    const userId = decoded.data.data.sub;
-    const result = await this.authService.refreshToken({ refreshToken, userId });
+    const result = await this.authService.refreshToken({ refreshToken });
 
     // Set new tokens as cookies
     res = setAuthCookies(

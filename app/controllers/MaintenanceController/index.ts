@@ -120,11 +120,13 @@ export class MaintenanceController {
   }
 
   async reviewInvoice(req: AppRequest, res: Response) {
-    const { action, rejectionReason } = req.body;
+    const { action, rejectionReason, isBillable } = req.body;
 
     const result =
       action === 'approve'
-        ? await this.maintenanceRequestService.approveInvoice(req.context, req.params.mruid)
+        ? await this.maintenanceRequestService.approveInvoice(req.context, req.params.mruid, {
+            isBillable,
+          })
         : await this.maintenanceRequestService.rejectInvoice(req.context, req.params.mruid, {
             rejectionReason,
           });

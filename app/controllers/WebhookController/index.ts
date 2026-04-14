@@ -57,6 +57,15 @@ export class WebhookController {
 
   handleBoldSignWebhook = async (req: Request, res: Response): Promise<Response> => {
     try {
+      const signature = req.headers['x-boldsign-signature'];
+      if (!signature || typeof signature !== 'string') {
+        this.log.warn('Missing BoldSign signature header');
+        return res.status(400).json({ success: false, message: 'Missing signature' });
+      }
+
+      const rawBody = (req as any).rawBody ?? req.body;
+      this.boldSignService.verifyWebhookSignature(rawBody, signature);
+
       const { event, data } = req.body;
 
       if (event.eventType == 'Verification') {
@@ -73,10 +82,25 @@ export class WebhookController {
         });
       }
 
-      const processedData = this.boldSignService.processWebhookData(req.body);
-      await this.leaseService.handleESignatureWebhook(eventType, documentId, data, processedData);
+      // Deduplicate: BoldSign retries the same event if we don't respond in time.
+      // Key = documentId + eventType so different events on the same doc are processed independently.
+      const idempotencyKey = `boldsign:${documentId}:${eventType}`;
+      const claimed = await this.idempotencyCache.claimWebhookEvent(idempotencyKey);
+      if (!claimed) {
+        this.log.info({ documentId, eventType }, 'Duplicate BoldSign webhook — skipping');
+        return res.status(200).json({ success: true, received: true });
+      }
 
-      return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+      try {
+        const processedData = this.boldSignService.processWebhookData(req.body);
+        await this.leaseService.handleESignatureWebhook(eventType, documentId, data, processedData);
+
+        await this.idempotencyCache.markWebhookProcessed(idempotencyKey);
+        return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+      } catch (processingError: any) {
+        await this.idempotencyCache.releaseWebhookClaim(idempotencyKey);
+        throw processingError;
+      }
     } catch (error: any) {
       this.log.error('Error processing BoldSign webhook', {
         error: error.message,

@@ -7,7 +7,7 @@ export interface IVendor {
   connectedClients: {
     cuid: string;
     isConnected: boolean;
-    primaryAccountHolder: Types.ObjectId; // References the user who owns this vendor account
+    primaryAccountHolderUserId: Types.ObjectId; // References the user who owns this vendor account
   }[];
   servicesOffered?: VendorServicesOffered;
   insuranceInfo?: VendorInsuranceInfo;
@@ -105,4 +105,4 @@ export interface VendorContactPerson {
 /**
  * New Vendor Type (for creation)
  */
-export type NewVendor = { isPrimaryAccountHolder: boolean } & Omit<IVendor, 'vid'>;
+export type NewVendor = { isprimaryAccountHolderUserId: boolean } & Omit<IVendor, 'vid'>;

@@ -194,16 +194,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       acceptedPaymentMethod: {
         type: String,
         required: true,
-        enum: [
-          'bank_transfer',
-          'e-transfer',
-          'auto-debit',
-          'check',
-          'cash',
-          'credit_card',
-          'debit_card',
-          'mobile_payment',
-        ],
+        enum: ['auto-debit', 'cash', 'e-transfer', 'check'],
       },
     },
     coTenants: [
@@ -296,12 +287,12 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       },
       renewalTermMonths: {
         type: Number,
-        min: 1,
+        min: 0,
         max: 24,
       },
       noticePeriodDays: {
         type: Number,
-        min: 1,
+        min: 0,
         default: 30,
       },
       requireApproval: {
@@ -418,7 +409,6 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         userId: {
           type: Schema.Types.ObjectId,
           ref: 'User',
-          required: true,
         },
         coTenantInfo: {
           name: {
@@ -429,6 +419,21 @@ const LeaseSchema = new Schema<ILeaseDocument>(
             type: String,
             trim: true,
             match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email address'],
+          },
+        },
+        landlordInfo: {
+          name: {
+            type: String,
+            trim: true,
+          },
+          email: {
+            type: String,
+            trim: true,
+            match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email address'],
+          },
+          phone: {
+            type: String,
+            trim: true,
           },
         },
         role: {

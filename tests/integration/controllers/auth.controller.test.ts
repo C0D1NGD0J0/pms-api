@@ -127,6 +127,9 @@ describe('AuthController Integration Tests', () => {
       tokenService,
       authCache: mockAuthCache as any,
       vendorService,
+      leaseDAO: {} as any,
+      paymentProcessorDAO: {} as any,
+      paymentGatewayService: {} as any,
       subscriptionService: {} as any,
       emitterService: { on: jest.fn(), emit: jest.fn() } as any,
     });

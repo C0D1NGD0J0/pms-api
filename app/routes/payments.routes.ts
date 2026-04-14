@@ -115,6 +115,21 @@ router.post(
 );
 
 router.post(
+  '/:cuid/:pytuid/pay',
+  isAuthenticated,
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.payPendingCharge(req, res);
+  })
+);
+
+router.post(
   '/:cuid/payout-account',
   isAuthenticated,
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),

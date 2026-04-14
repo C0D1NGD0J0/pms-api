@@ -34,6 +34,7 @@ import {
   UploadWorker,
   EmailWorker,
   CronWorker,
+  UserWorker,
   PdfWorker,
 } from '@workers/index';
 import {
@@ -47,6 +48,7 @@ import {
   UploadQueue,
   EmailQueue,
   CronQueue,
+  UserQueue,
   PdfQueue,
 } from '@queues/index';
 import {
@@ -108,6 +110,7 @@ import {
   PropertyStatsService,
   PropertyMediaService,
   LeaseDocumentService,
+  LeaseTemplateService,
   PdfGeneratorService,
   NotificationService,
   EventEmitterService,
@@ -207,6 +210,7 @@ const ServiceResources = {
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
   dsarService: asClass(DSARService).singleton(),
   maintenanceRequestService: asClass(MaintenanceRequestService).singleton(),
+  leaseTemplateService: asClass(LeaseTemplateService).singleton(),
 };
 
 const DAOResources = {
@@ -247,6 +251,7 @@ const WorkerResources = {
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
   propertyMediaWorker: asClass(PropertyMediaWorker).singleton(),
   paymentWorker: asClass(PaymentWorker).singleton(),
+  userWorker: asClass(UserWorker).singleton(),
 };
 
 const QueuesResources = {
@@ -261,6 +266,7 @@ const QueuesResources = {
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
   propertyMediaQueue: asClass(PropertyMediaQueue).singleton(),
   paymentQueue: asClass(PaymentQueue).singleton(),
+  userQueue: asClass(UserQueue).singleton(),
 };
 
 const UtilsResources = {
@@ -318,6 +324,9 @@ export const initQueues = (container: AwilixContainer) => {
     `💡 ${processType.toUpperCase()} process (${environment}): Queues will be initialized on-demand via QueueFactory`
   );
 };
+
+export const QUEUE_RESOURCE_NAMES = Object.keys(QueuesResources);
+export const SERVICE_RESOURCE_NAMES = Object.keys(ServiceResources);
 
 export const registerResources = {
   ...ControllerResources,

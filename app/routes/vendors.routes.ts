@@ -3,17 +3,18 @@ import { asyncWrapper } from '@utils/index';
 import { VendorController } from '@controllers/VendorController';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import {
-  requirePermissionWithContext,
-  requirePermission,
-  isAuthenticated,
-  basicLimiter,
-} from '@shared/middlewares';
-import {
   ClientValidations,
   VendorValidations,
   UtilsValidations,
   validateRequest,
 } from '@shared/validations';
+import {
+  requirePermissionWithContext,
+  requirePrimaryVendor,
+  requirePermission,
+  isAuthenticated,
+  basicLimiter,
+} from '@shared/middlewares';
 
 const router = Router();
 router.use(basicLimiter());
@@ -92,7 +93,7 @@ router.get(
   })
 );
 
-// Get vendor business data for editing (primaryAccountHolder only)
+// Get vendor business data for editing (primaryAccountHolderUserId only)
 router.get(
   '/:cuid/vendor/:vuid/edit',
   isAuthenticated,
@@ -106,13 +107,15 @@ router.get(
   })
 );
 
-// Update team member profile fields (ADMIN/MANAGER or primaryAccountHolder)
+// Update team member profile fields (ADMIN/MANAGER or primaryAccountHolderUserId)
 router.patch(
   '/:cuid/vendor/:vuid/team_members/:uid',
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
   validateRequest({
-    params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
+    params: ClientValidations.clientIdParam
+      .merge(UtilsValidations.vuid)
+      .merge(UtilsValidations.uid),
     body: VendorValidations.updateTeamMember,
   }),
   asyncWrapper((req, res) => {
@@ -121,14 +124,16 @@ router.patch(
   })
 );
 
-// Toggle team member active status (ADMIN/MANAGER or primaryAccountHolder)
+// Toggle team member active status (ADMIN/MANAGER or primaryAccountHolderUserId)
 router.patch(
   '/:cuid/vendor/:vuid/team_members/:uid/status',
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
   validateRequest({
-    params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
+    params: ClientValidations.clientIdParam
+      .merge(UtilsValidations.vuid)
+      .merge(UtilsValidations.uid),
     body: VendorValidations.toggleTeamMemberStatus,
   }),
   asyncWrapper((req, res) => {
@@ -137,7 +142,7 @@ router.patch(
   })
 );
 
-// Update vendor business details (primaryAccountHolder only)
+// Update vendor business details (primaryAccountHolderUserId only)
 router.patch(
   '/:cuid/vendor/:vuid',
   isAuthenticated,
@@ -149,6 +154,60 @@ router.patch(
   asyncWrapper((req, res) => {
     const vendorController = req.container.resolve<VendorController>('vendorController');
     return vendorController.updateVendorDetails(req, res);
+  })
+);
+
+// ── Payout account endpoints ──────────────────────────────────────────────────
+
+// Initiate payout account onboarding (creates provider account record)
+// Restricted to primary vendor account holders only
+router.post(
+  '/:cuid/vendor/:vuid/payout_account/initiate',
+  isAuthenticated,
+  requirePrimaryVendor,
+  validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.initiatePayoutOnboarding(req, res);
+  })
+);
+
+// Get provider-hosted KYC onboarding link
+// Restricted to primary vendor account holders only
+router.get(
+  '/:cuid/vendor/:vuid/payout_account/link',
+  isAuthenticated,
+  requirePrimaryVendor,
+  validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.getPayoutOnboardingLink(req, res);
+  })
+);
+
+// Sync payout account status from provider
+// Restricted to primary vendor account holders only
+router.post(
+  '/:cuid/vendor/:vuid/payout_account/sync',
+  isAuthenticated,
+  requirePrimaryVendor,
+  validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.syncPayoutAccountStatus(req, res);
+  })
+);
+
+// Get Stripe Express Dashboard login link for payout management
+// Restricted to primary vendor account holders only
+router.get(
+  '/:cuid/vendor/:vuid/payout_account/dashboard',
+  isAuthenticated,
+  requirePrimaryVendor,
+  validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.getPayoutDashboardLink(req, res);
   })
 );
 

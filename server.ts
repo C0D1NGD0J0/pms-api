@@ -5,6 +5,7 @@ import http from 'http';
 import { asValue } from 'awilix';
 import { createClient } from 'redis';
 import { container } from '@di/index';
+import { QUEUE_RESOURCE_NAMES, SERVICE_RESOURCE_NAMES } from '@di/registerResources';
 import * as Sentry from '@sentry/node';
 import { IAppSetup, App } from '@root/app';
 import { createLogger } from '@utils/index';
@@ -68,12 +69,16 @@ class Server {
     // Eagerly initialize all queues so Bull Board shows them immediately after startup.
     // Queues are otherwise lazy-loaded (only initialized when first used), which causes
     // Bull Board to appear empty after a server restart until the first job is enqueued.
-    // if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
-    //   const { queueFactory } = container.cradle;
-    //   queueFactory.initializeAllQueues().catch((err: any) => {
-    //     this.log.warn('Queue pre-initialization for Bull Board failed (non-fatal):', err?.message);
-    //   });
-    // }
+    if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
+      for (const name of QUEUE_RESOURCE_NAMES) {
+        try {
+          if (container.hasRegistration(name)) container.resolve(name);
+        } catch (err: any) {
+          this.log.warn(`Queue pre-init failed for ${name} (non-fatal): ${err?.message}`);
+        }
+      }
+      this.log.info('Queues pre-initialized for Bull Board');
+    }
 
     await this.startServers(this.expApp);
     this.initialized = true;
@@ -247,47 +252,25 @@ class Server {
     this.log.info('Cleaning up DI container and services...');
 
     try {
-      const servicesWithCleanup = [
-        'emitterService',
-        'propertyService',
-        'redisService',
-        'propertyUnitService',
-        'subscriptionService',
-        'authService',
-        'leaseService',
-        'clientService',
-        'maintenanceRequestService',
-      ];
-
-      // clean up services that have destroy/cleanup methods
-      for (const serviceName of servicesWithCleanup) {
+      // Dynamically clean up all registered services — checks destroy/cleanupEventListeners/cleanup
+      for (const serviceName of SERVICE_RESOURCE_NAMES) {
         try {
           if (container.hasRegistration(serviceName)) {
-            const service = container.resolve(serviceName);
+            const service = container.resolve(serviceName) as any;
             if (service && typeof service.destroy === 'function') {
               await service.destroy();
               this.log.info(`Cleaned up ${serviceName}`);
             } else if (service && typeof service.cleanupEventListeners === 'function') {
               service.cleanupEventListeners();
               this.log.info(`Cleaned up event listeners for ${serviceName}`);
+            } else if (service && typeof service.cleanup === 'function') {
+              await service.cleanup();
+              this.log.info(`Cleaned up ${serviceName}`);
             }
           }
         } catch (error) {
           this.log.warn(`Failed to cleanup ${serviceName}:`, error);
         }
-      }
-
-      // sseService.cleanup() — closes all active SSE sessions
-      try {
-        if (container.hasRegistration('sseService')) {
-          const sseService = container.resolve('sseService') as any;
-          if (sseService && typeof sseService.cleanup === 'function') {
-            await sseService.cleanup();
-            this.log.info('Cleaned up sseService');
-          }
-        }
-      } catch (error) {
-        this.log.warn('Failed to cleanup sseService:', error);
       }
 
       try {
@@ -302,11 +285,8 @@ class Server {
         this.log.warn('Failed to disconnect Socket.IO clients:', error);
       }
 
-      const queueNames = Object.keys(container.registrations).filter((name) =>
-        name.endsWith('Queue')
-      );
       let queueCount = 0;
-      for (const queueName of queueNames) {
+      for (const queueName of QUEUE_RESOURCE_NAMES) {
         try {
           if (container.hasRegistration(queueName)) {
             const queue = container.resolve(queueName);

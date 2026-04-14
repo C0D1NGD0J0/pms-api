@@ -87,7 +87,8 @@ export class App implements IAppSetup {
         verify: (req: any, res, buf) => {
           if (
             req.originalUrl === '/api/v1/webhooks/stripe' ||
-            req.originalUrl === '/api/v1/webhooks/stripe/connect'
+            req.originalUrl === '/api/v1/webhooks/stripe/connect' ||
+            req.originalUrl === '/api/v1/webhooks/boldsign'
           ) {
             req.rawBody = buf;
           }

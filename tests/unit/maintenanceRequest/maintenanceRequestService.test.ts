@@ -1,9 +1,6 @@
 import { Types } from 'mongoose';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
-import {
-  InvoiceStatus,
-  MaintenanceRequestStatus,
-} from '@interfaces/maintenanceRequest.interface';
+import { InvoiceStatus, MaintenanceRequestStatus } from '@interfaces/maintenanceRequest.interface';
 import { IRequestContext } from '@interfaces/utils.interface';
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
 
@@ -122,7 +119,9 @@ describe('MaintenanceRequestService - status transition validation', () => {
     const request = makeRequest(MaintenanceRequestStatus.OPEN, { vendorId: undefined });
     const vendorUserId = new Types.ObjectId();
     const vendorRecord = {
-      connectedClients: [{ cuid: testCuid, isConnected: true, primaryAccountHolder: vendorUserId }],
+      connectedClients: [
+        { cuid: testCuid, isConnected: true, primaryAccountHolderUserId: vendorUserId },
+      ],
     };
     const vendorUser = { _id: vendorUserId, email: 'vendor@test.com' };
 
@@ -272,9 +271,9 @@ describe('MaintenanceRequestService - vendor ownership checks', () => {
 
     // Caller is a different vendor
     const ctx = makeCtx('vendor', differentVendorId.toString());
-    await expect(service.acceptAssignment(ctx as IRequestContext, 'MR001', { action: 'accept' })).rejects.toThrow(
-      ForbiddenError
-    );
+    await expect(
+      service.acceptAssignment(ctx as IRequestContext, 'MR001', { action: 'accept' })
+    ).rejects.toThrow(ForbiddenError);
   });
 
   it('should throw ForbiddenError in declineAssignment when caller is not the assigned vendor', async () => {
@@ -404,7 +403,10 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
       vendorId: primaryVendorObjectId,
     });
     mockDAO.getByMruid.mockResolvedValue(request);
-    mockDAO.updateById.mockResolvedValue({ ...request, status: MaintenanceRequestStatus.IN_PROGRESS });
+    mockDAO.updateById.mockResolvedValue({
+      ...request,
+      status: MaintenanceRequestStatus.IN_PROGRESS,
+    });
 
     const ctx = makeLinkedCtx(teamMemberSub, primaryVendorUid);
     await expect(
@@ -501,7 +503,10 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
       vendorId: primaryVendorObjectId,
     });
     mockDAO.getByMruid.mockResolvedValue(request);
-    mockDAO.updateById.mockResolvedValue({ ...request, invoice: { status: InvoiceStatus.PENDING } });
+    mockDAO.updateById.mockResolvedValue({
+      ...request,
+      invoice: { status: InvoiceStatus.PENDING },
+    });
 
     const ctx = makeLinkedCtx(teamMemberSub, primaryVendorUid);
     await expect(

@@ -1259,7 +1259,7 @@ describe('PaymentService - handleInvoicePaymentSucceeded', () => {
 
     expect(result.success).toBe(true);
     expect(mockPaymentDAO.update).toHaveBeenCalledWith(
-      { _id: payment._id },
+      { _id: payment._id, cuid: payment.cuid },
       {
         $set: expect.objectContaining({
           status: PaymentRecordStatus.PAID,
@@ -1308,7 +1308,7 @@ describe('PaymentService - handleInvoicePaymentSucceeded', () => {
 
     expect(result.success).toBe(true);
     expect(mockPaymentDAO.update).toHaveBeenCalledWith(
-      { _id: payment._id },
+      { _id: payment._id, cuid: payment.cuid },
       expect.objectContaining({
         $set: expect.objectContaining({ status: PaymentRecordStatus.PAID }),
       })
@@ -1362,7 +1362,7 @@ describe('PaymentService - handleInvoicePaymentFailed', () => {
 
     expect(result.success).toBe(true);
     expect(mockPaymentDAO.update).toHaveBeenCalledWith(
-      { _id: payment._id },
+      { _id: payment._id, cuid: payment.cuid },
       { $set: { status: PaymentRecordStatus.FAILED } }
     );
     expect(mockEmitterService.emit).toHaveBeenCalledWith(
@@ -1428,7 +1428,7 @@ describe('PaymentService - handleChargeRefunded', () => {
 
     expect(result.success).toBe(true);
     expect(mockPaymentDAO.update).toHaveBeenCalledWith(
-      { _id: payment._id },
+      { _id: payment._id, cuid: payment.cuid },
       {
         $set: expect.objectContaining({
           status: PaymentRecordStatus.REFUNDED,
@@ -1467,7 +1467,7 @@ describe('PaymentService - handleChargeRefunded', () => {
     await paymentService.handleChargeRefunded(CHARGE_ID, {});
 
     expect(mockPaymentDAO.update).toHaveBeenCalledWith(
-      { _id: payment._id },
+      { _id: payment._id, cuid: payment.cuid },
       expect.objectContaining({
         $set: expect.objectContaining({ 'refund.amount': 0 }),
       })

@@ -1,3 +1,5 @@
+import { t } from '@shared/languages';
+
 export const NotificationMessages = {
   property: {
     approvalRequired: {
@@ -242,6 +244,43 @@ export type NotificationMessageKey =
   | 'payment.refunded';
 
 /**
+ * Helper function to get formatted notification message by key.
+ * Resolves strings via i18n (t()) so they respect the current language.
+ * Falls back to the hardcoded NotificationMessages template if the i18n key is missing.
+ * @param key - Message key in dot notation (e.g., 'maintenance.requestCreated')
+ * @param variables - Variables for interpolation
+ * @returns Formatted message in the current language
+ */
+export function getFormattedNotification(
+  key: string,
+  variables: Record<string, any>
+): { title: string; message: string } {
+  const i18nParams = Object.fromEntries(
+    Object.entries(variables).map(([k, v]) => [k, v?.toString() ?? ''])
+  );
+
+  const titleKey = `notifications.${key}.title`;
+  const messageKey = `notifications.${key}.message`;
+
+  const titleResult = t(titleKey, i18nParams);
+  const messageResult = t(messageKey, i18nParams);
+
+  // t() returns the key itself when the translation is missing — fall back to hardcoded template
+  if (titleResult === titleKey || messageResult === messageKey) {
+    const template = getNotificationTemplate(key);
+    if (!template) {
+      return {
+        title: 'Notification',
+        message: `Notification template '${key}' not found`,
+      };
+    }
+    return formatNotificationMessage(template, variables);
+  }
+
+  return { title: titleResult, message: messageResult };
+}
+
+/**
  * Get notification message template by dot notation key
  * @param key - Dot notation key (e.g., 'property.approved')
  * @returns Message template or null if not found
@@ -286,26 +325,4 @@ export function formatNotificationMessage(
   );
 
   return { title, message };
-}
-
-/**
- * Helper function to get formatted notification message by key
- * @param key - Message key in dot notation
- * @param variables - Variables for substitution
- * @returns Formatted message or fallback message if template not found
- */
-export function getFormattedNotification(
-  key: string,
-  variables: Record<string, any>
-): { title: string; message: string } {
-  const template = getNotificationTemplate(key);
-
-  if (!template) {
-    return {
-      title: 'Notification',
-      message: `Notification template '${key}' not found`,
-    };
-  }
-
-  return formatNotificationMessage(template, variables);
 }

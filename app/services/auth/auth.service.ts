@@ -7,14 +7,17 @@ import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { ISignupData } from '@interfaces/user.interface';
-import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { PlanName } from '@interfaces/subscription.interface';
+import { PaymentMethodType } from '@interfaces/lease.interface';
 import { IActiveAccountInfo } from '@interfaces/client.interface';
 import { UserDisconnectedPayload, EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
+import { IPaymentGatewayProvider, PlanName } from '@interfaces/subscription.interface';
 import { SubscriptionService, AuthTokenService, VendorService } from '@services/index';
+import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import { PaymentProcessorDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -34,8 +37,12 @@ import {
   JOB_NAME,
 } from '@utils/index';
 
+const ELECTRONIC_PAYMENT_METHODS = new Set<PaymentMethodType>(['auto-debit']);
+
 interface IConstructor {
+  paymentGatewayService: PaymentGatewayService;
   subscriptionService: SubscriptionService;
+  paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
   tokenService: AuthTokenService;
   vendorService: VendorService;
@@ -43,6 +50,7 @@ interface IConstructor {
   profileDAO: ProfileDAO;
   authCache: AuthCache;
   clientDAO: ClientDAO;
+  leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
 
@@ -55,6 +63,9 @@ export class AuthService {
   private readonly queueFactory: QueueFactory;
   private readonly tokenService: AuthTokenService;
   private readonly vendorService: VendorService;
+  private readonly leaseDAO: LeaseDAO;
+  private readonly paymentProcessorDAO: PaymentProcessorDAO;
+  private readonly paymentGatewayService: PaymentGatewayService;
   private readonly subscriptionService: SubscriptionService;
   private readonly emitterService: EventEmitterService;
 
@@ -66,6 +77,9 @@ export class AuthService {
     tokenService,
     authCache,
     vendorService,
+    leaseDAO,
+    paymentProcessorDAO,
+    paymentGatewayService,
     subscriptionService,
     emitterService,
   }: IConstructor) {
@@ -76,27 +90,30 @@ export class AuthService {
     this.queueFactory = queueFactory;
     this.tokenService = tokenService;
     this.vendorService = vendorService;
+    this.leaseDAO = leaseDAO;
+    this.paymentProcessorDAO = paymentProcessorDAO;
+    this.paymentGatewayService = paymentGatewayService;
     this.subscriptionService = subscriptionService;
     this.emitterService = emitterService;
     this.log = createLogger('AuthService');
     this.setupEventListeners();
   }
 
-  async refreshToken(data: { refreshToken: string; userId: string }): Promise<
+  async refreshToken(data: { refreshToken: string }): Promise<
     ISuccessReturnData<{
       accessToken: string;
       refreshToken: string;
       rememberMe: boolean;
     }>
   > {
-    const { refreshToken, userId } = data;
+    const { refreshToken } = data;
 
-    if (!refreshToken || !userId) {
-      this.log.error('RefreshToken or userId missing');
+    if (!refreshToken) {
+      this.log.error('RefreshToken missing');
       throw new UnauthorizedError({ message: t('auth.errors.invalidRefreshToken') });
     }
 
-    // Decode first to extract cuid for client-scoped Redis lookup
+    // Verify signature first — userId and cuid are derived from the verified payload only
     const decoded = await this.tokenService.verifyJwtToken(
       JWT_KEY_NAMES.REFRESH_TOKEN as TokenType,
       refreshToken
@@ -107,6 +124,7 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.tokenExpired') });
     }
 
+    const userId = decoded.data.sub;
     const cuid = decoded.data.cuid;
 
     const storedRefreshToken = await this.authCache.getRefreshToken(userId, cuid);
@@ -352,7 +370,7 @@ export class AuthService {
           emailType: MailType.ACCOUNT_ACTIVATION,
           data: {
             fullname: profile.fullname,
-            activationUrl: `${process.env.FRONTEND_URL}/account_activation/${client.cuid}?t=${user.activationToken}`,
+            activationUrl: `${envVariables.FRONTEND.URL}/account_activation/${client.cuid}?t=${user.activationToken}`,
           },
         },
       };
@@ -817,6 +835,104 @@ export class AuthService {
     await this.authCache.invalidateCurrentUser(userId, cuid);
 
     return { success: true, message: t('auth.success.onboardingCompleted'), data: null };
+  }
+
+  /**
+   * Determine whether a tenant needs to save a payment method during onboarding.
+   * Returns a SetupIntent client_secret for electronic-payment leases, or
+   * informational data for non-electronic leases.
+   */
+  async setupPaymentIntent(
+    cuid: string,
+    currentuser: ICurrentUser,
+    returnUrl: string,
+    cancelUrl: string
+  ): Promise<
+    ISuccessReturnData<{
+      requiresSetup: boolean;
+      url?: string;
+      paymentMethod?: string;
+      reason?: string;
+    }>
+  > {
+    try {
+      if (currentuser.client.role !== 'tenant') {
+        throw new BadRequestError({ message: 'Only tenants can set up a payment method.' });
+      }
+
+      const lease = await this.leaseDAO.getActiveLeaseByTenant(cuid, currentuser.sub);
+      if (!lease) {
+        return { success: true, data: { requiresSetup: false, reason: 'no_active_lease' } };
+      }
+
+      const paymentMethod = lease.fees?.acceptedPaymentMethod;
+      if (!paymentMethod || !ELECTRONIC_PAYMENT_METHODS.has(paymentMethod)) {
+        return {
+          success: true,
+          data: { requiresSetup: false, paymentMethod: paymentMethod ?? 'unspecified' },
+        };
+      }
+
+      // Electronic lease — create hosted Stripe Checkout session in setup mode
+      const processor = await this.paymentProcessorDAO.findFirst({
+        cuid,
+        ownerType: 'client',
+        deletedAt: null,
+      });
+      if (!processor) {
+        throw new NotFoundError({ message: 'Client payment processor not configured.' });
+      }
+
+      const tenantProfile = await this.profileDAO.findFirst({
+        user: new Types.ObjectId(currentuser.sub),
+      });
+      if (!tenantProfile) {
+        throw new NotFoundError({ message: t('profile.errors.notFound') });
+      }
+
+      let customerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get(processor.accountId);
+
+      if (!customerId) {
+        const customerResult = await this.paymentGatewayService.createCustomer({
+          provider: IPaymentGatewayProvider.STRIPE,
+          email: currentuser.email,
+          metadata: { cuid, tenantId: currentuser.sub },
+          connectedAccountId: processor.accountId,
+        });
+
+        if (!customerResult.success || !customerResult.data) {
+          throw new BadRequestError({ message: 'Failed to create payment customer.' });
+        }
+        customerId = customerResult.data.customerId;
+
+        await this.profileDAO.updateById(tenantProfile._id.toString(), {
+          $set: {
+            [`tenantInfo.paymentGatewayCustomers.${processor.accountId}`]: customerId,
+          },
+        });
+      }
+
+      const sessionResult = await this.paymentGatewayService.createSetupCheckoutSession(
+        IPaymentGatewayProvider.STRIPE,
+        { customerId, successUrl: returnUrl, cancelUrl }
+      );
+
+      if (!sessionResult.success || !sessionResult.data) {
+        throw new BadRequestError({ message: 'Failed to create payment setup session.' });
+      }
+
+      return {
+        success: true,
+        data: {
+          requiresSetup: true,
+          url: sessionResult.data.url,
+          paymentMethod,
+        },
+      };
+    } catch (error: any) {
+      this.log.error({ error: error.message, cuid }, 'Error creating payment setup session');
+      throw error;
+    }
   }
 
   private setupEventListeners(): void {

@@ -742,4 +742,33 @@ export class PaymentGatewayService {
       };
     }
   }
+
+  /**
+   * Create a SetupIntent for saving a payment method without charging.
+   * Used during tenant onboarding for electronic-payment leases.
+   */
+  async createSetupCheckoutSession(
+    provider: IPaymentGatewayProvider,
+    opts: { customerId: string; successUrl: string; cancelUrl: string }
+  ): IPromiseReturnedData<{ url: string } | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('createSetupCheckoutSession' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement createSetupCheckoutSession`);
+      }
+      const result = await (providerInstance as any).createSetupCheckoutSession(
+        opts.customerId,
+        opts.successUrl,
+        opts.cancelUrl
+      );
+      return { success: true, data: { url: result.url } };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error creating setup checkout session');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to create setup checkout session',
+      };
+    }
+  }
 }

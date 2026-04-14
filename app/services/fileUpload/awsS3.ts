@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { Upload } from '@aws-sdk/lib-storage';
 import { envVariables } from '@shared/config';
 import { createLogger, retryAsync } from '@utils/index';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ResourceInfo, UploadedFile, UploadResult } from '@interfaces/index';
 import {
@@ -38,11 +39,22 @@ export class S3Service {
         accessKeyId: envVariables.AWS.ACCESS_KEY,
         secretAccessKey: envVariables.AWS.SECRET_KEY,
       },
+      requestHandler: new NodeHttpHandler({
+        connectionTimeout: 10_000,
+        requestTimeout: 30_000,
+      }),
     });
   }
 
   async uploadFiles(files: UploadedFile[], context: ResourceInfo): Promise<UploadResult[]> {
-    this.log.info(`Uploading ${files.length} files to S3 for resource ${context.resourceId}`);
+    this.log.info(
+      {
+        fileCount: files.length,
+        resourceId: context.resourceId,
+        resourceName: context.resourceName,
+      },
+      `Starting S3 upload for ${files.length} files`
+    );
     const results: UploadResult[] = [];
 
     for (const file of files) {

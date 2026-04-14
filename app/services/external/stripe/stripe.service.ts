@@ -674,7 +674,7 @@ export class StripeService implements IPaymentProvider {
         description,
         metadata: {
           cuid,
-          leaseUid,
+          ...(leaseUid ? { leaseUid } : {}),
         },
         application_fee_amount: applicationFeeAmount,
         transfer_data: {
@@ -806,6 +806,31 @@ export class StripeService implements IPaymentProvider {
       };
     } catch (error) {
       this.log.error({ error }, 'Error retrieving Stripe Identity verification session');
+      throw error;
+    }
+  }
+
+  /**
+   * Create a SetupIntent to collect and save a payment method without an immediate charge.
+   * Used during tenant onboarding to save the card via a hosted Stripe Checkout session.
+   */
+  async createSetupCheckoutSession(
+    customerId: string,
+    successUrl: string,
+    cancelUrl: string
+  ): Promise<{ url: string }> {
+    try {
+      const session = await this.stripe.checkout.sessions.create({
+        mode: 'setup',
+        customer: customerId,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      });
+
+      this.log.info({ sessionId: session.id, customerId }, 'Created setup checkout session');
+      return { url: session.url ?? '' };
+    } catch (error) {
+      this.log.error({ error, customerId }, 'Error creating Stripe setup checkout session');
       throw error;
     }
   }

@@ -1151,6 +1151,12 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             },
             phoneNumber: '$profile.personalInfo.phoneNumber',
             avatar: '$profile.personalInfo.avatar',
+            location: { $ifNull: ['$profile.personalInfo.location', ''] },
+            dob: '$profile.personalInfo.dob',
+            headline: { $ifNull: ['$profile.personalInfo.headline', ''] },
+            bio: { $ifNull: ['$profile.personalInfo.bio', ''] },
+            settings: { $ifNull: ['$profile.settings', {}] },
+            policies: { $ifNull: ['$profile.policies', {}] },
             joinedDate: '$createdAt',
             tenantInfo: {
               employerInfo: {

@@ -115,6 +115,49 @@ export interface ICurrentUser {
 }
 
 /**
+ * Client Tenant Details Interface
+ * Comprehensive tenant details for property management view
+ * Used by getTenantManagementDetails endpoint
+ */
+export interface IClientTenantDetails {
+  profile: Pick<
+    IBaseUserProfile,
+    | 'firstName'
+    | 'lastName'
+    | 'fullName'
+    | 'displayName'
+    | 'avatar'
+    | 'phoneNumber'
+    | 'email'
+    | 'roles'
+    | 'uid'
+    | 'id'
+    | 'isActive'
+  > & {
+    userType: 'tenant';
+    location?: string;
+    dob?: Date | string | null;
+    headline?: string;
+    bio?: string;
+    settings?: Record<string, any>;
+    policies?: Record<string, any>;
+  };
+  tenantMetrics?: {
+    onTimePaymentRate: number;
+    averagePaymentDelay: number;
+    totalMaintenanceRequests: number;
+    currentRentStatus: RentStatus;
+    daysCurrentLease: number;
+    totalRentPaid: number;
+  };
+  tenantInfo: ITenantInfo;
+  status: UserStatus;
+  userType: 'tenant';
+  joinedDate: Date;
+  roles: string[];
+}
+
+/**
  * Vendor Detail Information
  * Complete vendor profile and metrics
  */
@@ -187,42 +230,6 @@ export interface IEmployeeDetailInfo {
   skills: string[];
   tags: string[];
   tenure: string;
-}
-
-/**
- * Client Tenant Details Interface
- * Comprehensive tenant details for property management view
- * Used by getTenantManagementDetails endpoint
- */
-export interface IClientTenantDetails {
-  profile: Pick<
-    IBaseUserProfile,
-    | 'firstName'
-    | 'lastName'
-    | 'fullName'
-    | 'avatar'
-    | 'phoneNumber'
-    | 'email'
-    | 'roles'
-    | 'uid'
-    | 'id'
-    | 'isActive'
-  > & {
-    userType: 'tenant';
-  };
-  tenantMetrics?: {
-    onTimePaymentRate: number;
-    averagePaymentDelay: number;
-    totalMaintenanceRequests: number;
-    currentRentStatus: RentStatus;
-    daysCurrentLease: number;
-    totalRentPaid: number;
-  };
-  tenantInfo: ITenantInfo;
-  status: UserStatus;
-  userType: 'tenant';
-  joinedDate: Date;
-  roles: string[];
 }
 
 /**

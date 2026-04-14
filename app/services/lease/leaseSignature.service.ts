@@ -165,8 +165,9 @@ export class LeaseSignatureService {
       });
     }
 
-    if (property.managedBy) {
-      await fetchPropertyManagerWithUser(this.profileDAO, property.managedBy);
+    const effectiveManagedBy = lease.property.managedBy || property.managedBy;
+    if (effectiveManagedBy) {
+      await fetchPropertyManagerWithUser(this.profileDAO, effectiveManagedBy);
     }
 
     let senderInfo: { email: string; name: string } = {
@@ -529,15 +530,16 @@ export class LeaseSignatureService {
               { select: '+owner' }
             );
 
-            // Check if signer is the PM
-            if (property?.managedBy) {
+            // Check if signer is the PM — lease-level managedBy overrides property-level
+            const effectivePmId = lease.property.managedBy || property?.managedBy;
+            if (effectivePmId) {
               const pm = await this.profileDAO.findFirst(
-                { user: property.managedBy },
+                { user: effectivePmId },
                 { populate: 'user' }
               );
               const pmUser = pm?.user && typeof pm.user === 'object' ? (pm.user as any) : null;
               if (pmUser?.email === recentSigner.email) {
-                signerId = property.managedBy as Types.ObjectId;
+                signerId = effectivePmId as Types.ObjectId;
                 signerRole = 'property_manager';
               }
             }

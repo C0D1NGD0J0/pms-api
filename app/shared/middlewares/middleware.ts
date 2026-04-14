@@ -5,6 +5,7 @@ import { UAParser } from 'ua-parser-js';
 import ProfileDAO from '@dao/profileDAO';
 import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
+export { preventTenantConflict } from '@utils/helpers';
 import { NextFunction, Response, Request } from 'express';
 import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { LanguageService } from '@shared/languages/language.service';
@@ -812,9 +813,6 @@ export const requireUserPermission = (action: PermissionAction | string) => {
     ownerId: req.params.userId || req.params.uid, // For "mine" scope validation
   }));
 };
-
-// Re-exported from utils to avoid circular dependency with DI container.
-export { preventTenantConflict } from '@utils/tenantConflict';
 
 export const idempotency = async (
   req: AppRequest,

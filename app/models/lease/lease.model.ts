@@ -105,6 +105,11 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         required: [true, 'Property address is required'],
         trim: true,
       },
+      managedBy: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        index: true,
+      },
     },
     duration: {
       startDate: {

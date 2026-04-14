@@ -4,14 +4,19 @@ import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { PaymentQueue } from '@queues/payment.queue';
 import { EventEmitterService } from '@services/eventEmitter';
-import { preventTenantConflict } from '@utils/tenantConflict';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IPromiseReturnedData, IPaginateResult } from '@interfaces/utils.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenanceInvoiceApprovedPayload, EventTypes } from '@interfaces/events.interface';
-import { getPaymentProcessorUrls, calcCollectionRate, createLogger, daysInMs } from '@utils/index';
+import {
+  getPaymentProcessorUrls,
+  preventTenantConflict,
+  calcCollectionRate,
+  createLogger,
+  daysInMs,
+} from '@utils/index';
 import {
   PaymentProcessorDAO,
   SubscriptionDAO,

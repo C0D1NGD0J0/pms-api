@@ -6,6 +6,7 @@ import { Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
 import { parsePhoneNumber } from 'libphonenumber-js';
+import { ForbiddenError } from '@shared/customErrors';
 import { Country, State, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
@@ -952,3 +953,21 @@ export const getPaymentProcessorUrls = (baseUrl: string, cuid: string) => ({
 });
 
 export const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Throws ForbiddenError if the requesting user is the tenant on the resource.
+ * Prevents dual-role users (e.g. staff+tenant) from modifying records where
+ * they are personally the tenant — a conflict-of-interest guard.
+ *
+ * @param requestingUserId - The User `_id` ObjectId as a string (from `currentuser.sub`)
+ * @param tenantId - The lease/record `tenantId` field (User `_id` ObjectId or string)
+ */
+export function preventTenantConflict(
+  requestingUserId: string,
+  tenantId: Types.ObjectId | string | null | undefined,
+  message = 'You cannot modify a record where you are the tenant.'
+): void {
+  if (tenantId && requestingUserId === tenantId.toString()) {
+    throw new ForbiddenError({ message });
+  }
+}

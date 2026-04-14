@@ -307,6 +307,28 @@ export interface ILeaseFilterOptions {
  */
 
 /**
+ * Property Reference Interface
+ * Links lease to property and unit
+ * Includes essential property information for lease documents
+ */
+export interface ILeaseProperty {
+  specifications?: {
+    totalArea?: number; // Square footage
+    bedrooms?: number;
+    bathrooms?: number;
+    parkingSpaces?: number;
+    floors?: number;
+  };
+  managedBy?: Types.ObjectId | string;
+  unitId?: Types.ObjectId | string;
+  propertyType?: LeasePropertyType;
+  address: AddressDetails | string; // Support both detailed address object and simple string
+  id: Types.ObjectId | string;
+  unitNumber?: string; // Unit/Suite number from property unit
+  name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
+}
+
+/**
  * Lease Financial Summary Interface
  * Financial information and payment tracking
  */
@@ -326,27 +348,6 @@ export interface ILeaseFinancialSummary {
   totalPaid: number;
   totalOwed: number;
   currency: string;
-}
-
-/**
- * Property Reference Interface
- * Links lease to property and unit
- * Includes essential property information for lease documents
- */
-export interface ILeaseProperty {
-  specifications?: {
-    totalArea?: number; // Square footage
-    bedrooms?: number;
-    bathrooms?: number;
-    parkingSpaces?: number;
-    floors?: number;
-  };
-  unitId?: Types.ObjectId | string;
-  propertyType?: LeasePropertyType;
-  address: AddressDetails | string; // Support both detailed address object and simple string
-  id: Types.ObjectId | string;
-  unitNumber?: string; // Unit/Suite number from property unit
-  name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
 }
 
 /**

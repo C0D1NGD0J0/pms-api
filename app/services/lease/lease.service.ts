@@ -13,7 +13,6 @@ import { QueueFactory } from '@services/queue';
 import { IUserBasicInfo } from '@dao/interfaces';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
-import { preventTenantConflict } from '@utils/tenantConflict';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { MediaUploadService, UserService } from '@services/index';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
@@ -58,6 +57,7 @@ import {
 import {
   PROPERTY_APPROVAL_ROLES,
   convertUserRoleToEnum,
+  preventTenantConflict,
   PROPERTY_STAFF_ROLES,
   LEASE_CONSTANTS,
   calcDaysElapsed,

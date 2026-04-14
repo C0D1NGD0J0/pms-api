@@ -387,6 +387,15 @@ export const completeOnboardingSchema = z
     path: ['confirmPassword'],
   });
 
+export const SwitchClientAccountSchema = z.object({
+  clientId: z.string({ message: 'clientId is required' }).min(1, 'clientId cannot be empty'),
+});
+
+export const SetupPaymentIntentSchema = z.object({
+  returnUrl: z.string({ message: 'returnUrl is required' }).url('returnUrl must be a valid URL'),
+  cancelUrl: z.string({ message: 'cancelUrl is required' }).url('cancelUrl must be a valid URL'),
+});
+
 export const ClientSchema = z.object({
   admin: z.string(),
   accountType: z.object({

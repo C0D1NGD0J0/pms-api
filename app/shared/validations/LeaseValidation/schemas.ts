@@ -65,7 +65,7 @@ export const LeaseTypeEnum = z.enum(['fixed_term', 'month_to_month']);
 
 export const SigningMethodEnum = z.enum(['electronic', 'manual', 'pending']);
 
-export const PaymentMethodEnum = z.enum(['e-transfer', 'credit_card', 'crypto']);
+export const PaymentMethodEnum = z.enum(['auto-debit', 'cash', 'e-transfer', 'check']);
 
 export const UtilityEnum = z.enum([
   'water',
@@ -93,10 +93,10 @@ export const LeaseFeesSchema = z.object({
   currency: z.string().length(3, 'Currency must be a 3-letter code').default('USD'),
   rentDueDay: z.coerce.number().int().min(1, 'Rent due day must be between 1-31').max(31),
   securityDeposit: z.coerce.number().min(0, 'Security deposit must be non-negative'),
-  lateFeeAmount: z.number().min(0, 'Late fee amount must be non-negative').optional(),
-  lateFeeDays: z.number().int().min(1, 'Late fee days must be at least 1').optional(),
+  lateFeeAmount: z.coerce.number().min(0, 'Late fee amount must be non-negative').optional(),
+  lateFeeDays: z.coerce.number().int().min(1, 'Late fee days must be at least 1').optional(),
   lateFeeType: z.enum(['fixed', 'percentage']).optional(),
-  lateFeePercentage: z
+  lateFeePercentage: z.coerce
     .number()
     .min(0, 'Late fee percentage must be non-negative')
     .max(100, 'Late fee percentage cannot exceed 100')
@@ -133,13 +133,59 @@ export const PetPolicySchema = z.object({
   monthlyFee: z.coerce.number().min(0, 'Pet monthly fee must be non-negative').optional(),
 });
 
-export const RenewalOptionsSchema = z.object({
+// Base object kept separate so .partial() can be called in Update/Renew schemas
+// (ZodEffects from superRefine does not support .partial())
+const RenewalOptionsBaseSchema = z.object({
   autoRenew: z.boolean().default(false),
-  daysBeforeExpiryToGenerateRenewal: z.number().min(1).optional(),
-  daysBeforeExpiryToAutoSendSignature: z.number().min(1).optional(),
+  daysBeforeExpiryToGenerateRenewal: z.coerce.number().min(0).optional(),
+  daysBeforeExpiryToAutoSendSignature: z.coerce.number().min(0).optional(),
   enableAutoSendForSignature: z.boolean().optional(),
-  noticePeriodDays: z.number().int().min(1, 'Notice period must be at least 1 day').optional(),
-  renewalTermMonths: z.number().int().min(1, 'Renewal term must be at least 1 month').optional(),
+  noticePeriodDays: z.coerce.number().int().min(0).optional(),
+  renewalTermMonths: z.coerce.number().int().min(0).optional(),
+});
+
+export const RenewalOptionsSchema = RenewalOptionsBaseSchema.superRefine((data, ctx) => {
+  if (!data.autoRenew) return;
+  if ((data.noticePeriodDays ?? 0) < 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_small,
+      minimum: 1,
+      inclusive: true,
+      type: 'number',
+      message: 'Notice period must be at least 1 day',
+      path: ['noticePeriodDays'],
+    });
+  }
+  if ((data.renewalTermMonths ?? 0) < 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_small,
+      minimum: 1,
+      inclusive: true,
+      type: 'number',
+      message: 'Renewal term must be at least 1 month',
+      path: ['renewalTermMonths'],
+    });
+  }
+  if ((data.daysBeforeExpiryToGenerateRenewal ?? 0) < 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_small,
+      minimum: 1,
+      inclusive: true,
+      type: 'number',
+      message: 'Days before expiry to generate renewal must be at least 1',
+      path: ['daysBeforeExpiryToGenerateRenewal'],
+    });
+  }
+  if ((data.daysBeforeExpiryToAutoSendSignature ?? 0) < 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_small,
+      minimum: 1,
+      inclusive: true,
+      type: 'number',
+      message: 'Days before expiry to auto-send signature must be at least 1',
+      path: ['daysBeforeExpiryToAutoSendSignature'],
+    });
+  }
 });
 
 export const RenewLeaseSchema = z.object({
@@ -151,7 +197,7 @@ export const RenewLeaseSchema = z.object({
     .optional(),
 
   fees: LeaseFeesSchema.partial().optional(),
-  renewalOptions: RenewalOptionsSchema.partial().optional(),
+  renewalOptions: RenewalOptionsBaseSchema.partial().optional(),
   petPolicy: PetPolicySchema.partial().optional(),
   utilitiesIncluded: z.array(UtilityEnum).optional(),
 
@@ -193,7 +239,7 @@ export const LegalTermsSchema = z.object({
 
 export const TenantInfoSchema = z.object({
   id: z.string().min(1, 'Tenant ID must be provided').nullable().optional(),
-  email: z.string().email('Invalid email format').nullable().optional(),
+  email: z.string().email('Invalid email format').or(z.literal('')).nullable().optional(),
 });
 
 export const LeaseDocumentItemSchema = z.object({
@@ -289,7 +335,7 @@ export const UpdateLeaseSchema = z
     utilitiesIncluded: z.array(UtilityEnum).optional(),
     coTenants: z.array(CoTenantSchema).optional(),
     petPolicy: PetPolicySchema.partial().optional(),
-    renewalOptions: RenewalOptionsSchema.partial().optional(),
+    renewalOptions: RenewalOptionsBaseSchema.partial().optional(),
     legalTerms: LegalTermsSchema.optional(),
     internalNotes: z.array(InternalNoteSchema).optional(),
     leaseDocument: z.array(LeaseDocumentItemSchema).optional(),
@@ -538,4 +584,15 @@ export const LeaseIdParamSchema = z.object({
   leaseId: z.string().refine((id) => Types.ObjectId.isValid(id), {
     message: 'Invalid lease ID format',
   }),
+});
+
+export const ApproveLeaseSchema = z.object({
+  notes: z.string().max(1000, 'Notes must be at most 1000 characters').optional(),
+});
+
+export const RejectLeaseSchema = z.object({
+  reason: z
+    .string()
+    .min(10, 'Rejection reason must be at least 10 characters')
+    .max(1000, 'Rejection reason must be at most 1000 characters'),
 });

@@ -528,5 +528,190 @@
     "errors": {
       "invalidUserRole": "Rôle utilisateur invalide spécifié"
     }
+  },
+
+  "notifications": {
+    "property": {
+      "approvalRequired": {
+        "title": "Approbation de propriété requise",
+        "message": "{{propertyName}} à {{address}} nécessite votre approbation"
+      },
+      "approved": {
+        "title": "Propriété approuvée",
+        "message": "La mise à jour de {{propertyName}} a été approuvée par {{approverName}}"
+      },
+      "rejected": {
+        "title": "Propriété rejetée",
+        "message": "La mise à jour de {{propertyName}} a été rejetée. Raison : {{reason}}"
+      },
+      "updated": {
+        "title": "Propriété mise à jour",
+        "message": "{{propertyName}} a été mis à jour par {{updatedBy}}"
+      },
+      "statusChanged": {
+        "title": "Statut de propriété modifié",
+        "message": "Le statut de {{propertyName}} a été changé en {{newStatus}}"
+      },
+      "pendingChanges": {
+        "title": "Modifications soumises",
+        "message": "Les modifications apportées à {{propertyName}} ont été soumises pour approbation"
+      }
+    },
+    "task": {
+      "completed": {
+        "title": "Tâche terminée",
+        "message": "Votre tâche {{taskType}} a été traitée avec succès"
+      },
+      "failed": {
+        "title": "Tâche échouée",
+        "message": "Votre tâche {{taskType}} a échoué : {{errorMessage}}"
+      },
+      "csvImportCompleted": {
+        "title": "Importation CSV terminée",
+        "message": "Votre importation CSV {{entityType}} est terminée. {{successCount}} éléments traités avec succès"
+      },
+      "csvImportFailed": {
+        "title": "Importation CSV échouée",
+        "message": "Votre importation CSV {{entityType}} a échoué : {{errorMessage}}"
+      }
+    },
+    "user": {
+      "invitation": {
+        "received": {
+          "title": "Nouvelle invitation",
+          "message": "Vous avez été invité à rejoindre {{companyName}} en tant que {{role}}"
+        },
+        "reminder": {
+          "title": "Rappel d'invitation",
+          "message": "Rappel : Votre invitation à rejoindre {{companyName}} expire bientôt"
+        }
+      },
+      "accountUpdated": {
+        "title": "Compte mis à jour",
+        "message": "Vos informations de compte ont été mises à jour par {{updatedBy}}"
+      }
+    },
+    "system": {
+      "maintenance": {
+        "title": "Maintenance du système",
+        "message": "Maintenance programmée le {{date}} de {{startTime}} à {{endTime}}"
+      },
+      "announcement": {
+        "title": "{{title}}",
+        "message": "{{message}}"
+      },
+      "serverUpdate": {
+        "title": "Mise à jour du système",
+        "message": "Le système sera mis à jour le {{date}}. Temps d'arrêt prévu : {{duration}}"
+      }
+    },
+    "vendor": {
+      "connected": {
+        "title": "Prestataire connecté",
+        "message": "{{vendorName}} a été connecté à votre compte"
+      },
+      "disconnected": {
+        "title": "Prestataire déconnecté",
+        "message": "{{vendorName}} a été déconnecté de votre compte"
+      }
+    },
+    "maintenance": {
+      "requestCreated": {
+        "title": "Nouvelle demande de maintenance",
+        "message": "Une nouvelle demande de priorité {{priority}} \"{{title}}\" a été soumise"
+      },
+      "requestAssigned": {
+        "title": "Demande assignée",
+        "message": "La demande de maintenance {{mruid}} a été assignée à un prestataire"
+      },
+      "requestAssignedVendor": {
+        "title": "Nouveau travail assigné",
+        "message": "Vous avez été assigné à la demande de maintenance {{mruid}}"
+      },
+      "requestAccepted": {
+        "title": "Demande acceptée par le prestataire",
+        "message": "Un prestataire a accepté la demande de maintenance {{mruid}}"
+      },
+      "requestAcceptedTenant": {
+        "title": "Votre demande est en cours de traitement",
+        "message": "Un prestataire a accepté votre demande de maintenance {{mruid}}"
+      },
+      "requestDeclined": {
+        "title": "Demande refusée par le prestataire",
+        "message": "Un prestataire a refusé la demande de maintenance {{mruid}}"
+      },
+      "requestCompleted": {
+        "title": "Demande de maintenance terminée",
+        "message": "La demande de maintenance {{mruid}} a été marquée comme terminée"
+      },
+      "requestCancelled": {
+        "title": "Demande de maintenance annulée",
+        "message": "La demande de maintenance {{mruid}} a été annulée"
+      },
+      "invoiceSubmitted": {
+        "title": "Facture soumise pour approbation",
+        "message": "Un prestataire a soumis une facture de {{amount}} pour la demande {{mruid}}"
+      },
+      "invoiceApproved": {
+        "title": "Facture approuvée",
+        "message": "Votre facture pour la demande {{mruid}} a été approuvée"
+      },
+      "invoiceRejected": {
+        "title": "Facture rejetée",
+        "message": "Votre facture pour la demande {{mruid}} a été rejetée"
+      },
+      "workOrderSubmitted": {
+        "title": "Bon de travail soumis",
+        "message": "Un bon de travail a été soumis pour la demande de maintenance {{mruid}}"
+      },
+      "workOrderApproved": {
+        "title": "Bon de travail approuvé",
+        "message": "Votre bon de travail pour la demande {{mruid}} a été approuvé — procédez au travail"
+      },
+      "workOrderRejected": {
+        "title": "Bon de travail rejeté",
+        "message": "Votre bon de travail pour la demande {{mruid}} a été rejeté"
+      }
+    },
+    "lease": {
+      "pdfGenerationStarted": {
+        "title": "Génération du PDF du bail démarrée",
+        "message": "Génération du PDF pour le bail {{leaseNumber}}. Vous serez notifié quand il sera prêt."
+      },
+      "pdfGenerated": {
+        "title": "PDF du bail prêt",
+        "message": "Le PDF pour le bail {{leaseNumber}} a été généré et est disponible en téléchargement."
+      },
+      "pdfGenerationFailed": {
+        "title": "Échec de la génération du PDF du bail",
+        "message": "Échec de la génération du PDF pour le bail {{leaseNumber}} : {{errorMessage}}"
+      }
+    },
+    "payment": {
+      "disputeCreated": {
+        "title": "Litige de paiement ouvert",
+        "message": "Un litige de {{amount}} a été déposé pour la facture {{invoiceNumber}}. Le virement a été annulé en attente de résolution."
+      },
+      "disputeWon": {
+        "title": "Litige résolu — Fonds restitués",
+        "message": "Le litige pour la facture {{invoiceNumber}} a été résolu en votre faveur. {{amount}} a été retransféré sur votre compte."
+      },
+      "payoutAccountVerified": {
+        "title": "Compte de paiement vérifié",
+        "message": "Votre compte de paiement a été vérifié. Vous pouvez maintenant recevoir les loyers directement sur votre compte bancaire."
+      },
+      "succeeded": {
+        "title": "Paiement reçu",
+        "message": "Un paiement de {{amount}} a été traité avec succès"
+      },
+      "failed": {
+        "title": "Paiement échoué",
+        "message": "Un paiement de {{amount}} n'a pas pu être traité"
+      },
+      "refunded": {
+        "title": "Paiement remboursé",
+        "message": "Un remboursement de {{amount}} a été émis"
+      }
+    }
   }
 }

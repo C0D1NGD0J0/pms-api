@@ -155,7 +155,6 @@ const setupServices = () => {
 
   const leaseDocumentService = new LeaseDocumentService({
     leaseDAO,
-    emitterService,
   } as any);
 
   const leasePdfService = new LeasePdfService({
@@ -294,7 +293,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
       expect(result.data.luid).toBeDefined();
-      expect(result.data.status).toBe(LeaseStatus.DRAFT);
+      expect(result.data.status).toBe(LeaseStatus.READY_FOR_SIGNATURE); // Auto-approved → ready for signature
       expect(result.data.approvalStatus).toBe('approved'); // Manager auto-approves
 
       // Verify lease was saved to database
@@ -475,6 +474,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.approvalStatus).toBe('pending');
+      expect(result.data.status).toBe(LeaseStatus.DRAFT); // Staff-created lease stays DRAFT until approved
     });
 
     it('should reject lease creation with invalid property', async () => {
@@ -950,10 +950,12 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.approvalStatus).toBe('approved');
+      expect(result.data.status).toBe(LeaseStatus.READY_FOR_SIGNATURE); // DRAFT → READY_FOR_SIGNATURE on approval
 
       // Verify in database
       const approvedLease = await Lease.findOne({ luid: lease.luid });
       expect(approvedLease?.approvalStatus).toBe('approved');
+      expect(approvedLease?.status).toBe(LeaseStatus.READY_FOR_SIGNATURE);
     });
 
     it('should reject approval by non-admin', async () => {

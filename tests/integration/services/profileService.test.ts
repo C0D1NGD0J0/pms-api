@@ -9,13 +9,14 @@ import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { ProfileBackgroundCheckStatus } from '@interfaces/profile.interface';
 
-import { setupAllExternalMocks,
-
+import {
+  setupAllExternalMocks,
   clearTestDatabase,
   createTestClient,
   createTestUser,
   SeededTestData,
-  seedTestData,} from '../../helpers';
+  seedTestData,
+} from '../../helpers';
 
 const setupServices = () => {
   const profileDAO = new ProfileDAO({ profileModel: Profile });
@@ -222,7 +223,7 @@ describe('ProfileService Integration Tests - Write Operations', () => {
           {
             cuid: client.cuid,
             isConnected: true,
-            primaryAccountHolder: user._id,
+            primaryAccountHolderUserId: user._id,
           },
         ],
       });
@@ -244,7 +245,7 @@ describe('ProfileService Integration Tests - Write Operations', () => {
 
       // Verify vendor entity was updated
       const updatedVendor = await Vendor.findOne({
-        'connectedClients.primaryAccountHolder': user._id,
+        'connectedClients.primaryAccountHolderUserId': user._id,
       });
       expect(updatedVendor?.companyName).toBe('Updated Plumbing Co');
       expect(updatedVendor?.businessType).toBe('Electrician');

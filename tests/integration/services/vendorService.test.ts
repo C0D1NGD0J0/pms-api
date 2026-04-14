@@ -6,13 +6,14 @@ import { ProfileDAO, VendorDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 
-import { setupAllExternalMocks,
-
+import {
+  setupAllExternalMocks,
   clearTestDatabase,
   createTestClient,
   createTestUser,
   SeededTestData,
-  seedTestData,} from '../../helpers';
+  seedTestData,
+} from '../../helpers';
 
 const setupServices = () => {
   const vendorDAO = new VendorDAO({ vendorModel: Vendor });
@@ -76,7 +77,7 @@ describe('VendorService Integration Tests - Write Operations', () => {
             clientId: client._id.toString(),
             cuid: client.cuid,
             isActive: true,
-            primaryAccountHolder: user._id.toString(),
+            primaryAccountHolderUserId: user._id.toString(),
           },
         ],
       };
@@ -104,7 +105,7 @@ describe('VendorService Integration Tests - Write Operations', () => {
             clientId: client._id.toString(),
             cuid: client.cuid,
             isActive: true,
-            primaryAccountHolder: user._id.toString(),
+            primaryAccountHolderUserId: user._id.toString(),
           },
         ],
       };
@@ -131,7 +132,7 @@ describe('VendorService Integration Tests - Write Operations', () => {
             clientId: client._id,
             cuid: client.cuid,
             isActive: true,
-            primaryAccountHolder: user._id,
+            primaryAccountHolderUserId: user._id,
           },
         ],
       });
@@ -147,7 +148,7 @@ describe('VendorService Integration Tests - Write Operations', () => {
             clientId: client2._id.toString(),
             cuid: client2.cuid,
             isActive: true,
-            primaryAccountHolder: user._id.toString(),
+            primaryAccountHolderUserId: user._id.toString(),
           },
         ],
       };
@@ -179,7 +180,7 @@ describe('VendorService Integration Tests - Write Operations', () => {
             clientId: client._id,
             cuid: client.cuid,
             isActive: true,
-            primaryAccountHolder: user._id,
+            primaryAccountHolderUserId: user._id,
           },
         ],
       });
@@ -311,7 +312,7 @@ describe('VendorService Integration Tests - Read Operations', () => {
         {
           cuid: testClient.cuid,
           isConnected: true,
-          primaryAccountHolder: testVendorUser._id,
+          primaryAccountHolderUserId: testVendorUser._id,
         },
       ],
     });
@@ -327,7 +328,9 @@ describe('VendorService Integration Tests - Read Operations', () => {
       // Verify the user is in connectedClients
       const clientConnection = result?.connectedClients.find((cc) => cc.cuid === testClient.cuid);
       expect(clientConnection).toBeDefined();
-      expect(clientConnection?.primaryAccountHolder.toString()).toBe(testVendorUser._id.toString());
+      expect(clientConnection?.primaryAccountHolderUserId.toString()).toBe(
+        testVendorUser._id.toString()
+      );
     });
 
     it('should return null when vendor not found', async () => {

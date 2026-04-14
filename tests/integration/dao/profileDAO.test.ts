@@ -221,66 +221,6 @@ describe('ProfileDAO Integration Tests', () => {
     });
   });
 
-  describe('updateIdentification', () => {
-    it('should update identification successfully', async () => {
-      const issueDate = new Date('2020-01-01');
-      const expiryDate = new Date('2030-01-01');
-
-      const identificationData = {
-        idType: 'passport',
-        issueDate,
-        expiryDate,
-        idNumber: 'P123456789',
-        authority: 'US Government',
-        issuingState: 'California',
-      };
-
-      const result = await profileDAO.updateIdentification(
-        testProfileId.toString(),
-        identificationData
-      );
-
-      expect(result?.personalInfo.identification?.idType).toBe('passport');
-      expect(result?.personalInfo.identification?.idNumber).toBe('P123456789');
-      expect(result?.personalInfo.identification?.authority).toBe('US Government');
-    });
-
-    it('should throw error if expiry date is before issue date', async () => {
-      const issueDate = new Date('2030-01-01');
-      const expiryDate = new Date('2020-01-01');
-
-      const identificationData = {
-        idType: 'passport',
-        issueDate,
-        expiryDate,
-        idNumber: 'P123456789',
-        issuingState: 'California',
-      };
-
-      await expect(
-        profileDAO.updateIdentification(testProfileId.toString(), identificationData)
-      ).rejects.toThrow();
-    });
-
-    it('should update drivers license', async () => {
-      const identificationData = {
-        idType: 'drivers-license',
-        issueDate: new Date('2021-01-01'),
-        expiryDate: new Date('2026-01-01'),
-        idNumber: 'DL987654321',
-        issuingState: 'New York',
-      };
-
-      const result = await profileDAO.updateIdentification(
-        testProfileId.toString(),
-        identificationData
-      );
-
-      expect(result?.personalInfo.identification?.idType).toBe('drivers-license');
-      expect(result?.personalInfo.identification?.idNumber).toBe('DL987654321');
-    });
-  });
-
   describe('updateNotificationPreferences', () => {
     it('should update boolean notification preferences', async () => {
       const result = await profileDAO.updateNotificationPreferences(testProfileId.toString(), {

@@ -184,6 +184,25 @@ const DescriptionSchema = z.object({
   html: z.string().max(2000, 'Description HTML must be at most 2000 characters').optional(),
 });
 
+const OwnerSchema = z.object({
+  type: z.enum(['company_owned', 'external_owner', 'self_owned']).default('company_owned'),
+  name: z.string().trim().max(200, 'Owner name must be at most 200 characters').optional(),
+  email: z.string().trim().email('Invalid owner email format').optional(),
+  phone: z.string().trim().max(20, 'Phone number must be at most 20 characters').optional(),
+  taxId: z.string().trim().max(50, 'Tax ID must be at most 50 characters').optional(),
+  notes: z.string().trim().max(500, 'Owner notes must be at most 500 characters').optional(),
+});
+
+const AuthorizationSchema = z.object({
+  isActive: z.boolean().default(true),
+  expiresAt: z.union([z.string(), z.date(), z.null()]).optional().nullable(),
+  notes: z
+    .string()
+    .trim()
+    .max(500, 'Authorization notes must be at most 500 characters')
+    .optional(),
+});
+
 const CreatePropertySchema = z.object({
   name: z
     .string()
@@ -248,6 +267,8 @@ const CreatePropertySchema = z.object({
       })
     )
     .optional(),
+  owner: OwnerSchema.optional(),
+  authorization: AuthorizationSchema.optional(),
 });
 
 export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefine(

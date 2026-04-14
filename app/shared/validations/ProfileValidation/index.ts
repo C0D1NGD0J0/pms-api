@@ -29,18 +29,6 @@ const personalInfoSchema = z.object({
   phoneNumber: z.string().max(20).optional(),
   bio: z.string().min(2).max(700).optional(),
   headline: z.string().min(2).max(50).optional(),
-  identification: z
-    .object({
-      idType: z
-        .enum(['passport', 'drivers-license', 'national-id', 'corporation-license'])
-        .optional(),
-      issueDate: z.date().optional(),
-      expiryDate: z.date().optional(),
-      idNumber: z.string().optional(),
-      authority: z.string().optional(),
-      issuingState: z.string().optional(),
-    })
-    .optional(),
 });
 
 const settingsSchema = z.object({
@@ -68,15 +56,6 @@ const settingsSchema = z.object({
       dataProcessingConsent: z.boolean().optional(),
     })
     .optional(),
-});
-
-const identificationSchema = z.object({
-  idType: z.enum(['passport', 'drivers-license', 'national-id', 'corporation-license']).optional(),
-  issueDate: z.date().optional(),
-  expiryDate: z.date().optional(),
-  idNumber: z.string().optional(),
-  authority: z.string().optional(),
-  issuingState: z.string().optional(),
 });
 
 const profileMetaSchema = z.object({
@@ -287,7 +266,6 @@ export const ProfileValidations = {
   updateUserInfo: userInfoSchema,
   updatePersonalInfo: personalInfoSchema,
   updateSettings: settingsSchema,
-  updateIdentification: identificationSchema,
   updateProfileMeta: profileMetaSchema,
   updateEmployeeInfo: employeeInfoSchema,
   updateVendorInfo: vendorInfoSchema,

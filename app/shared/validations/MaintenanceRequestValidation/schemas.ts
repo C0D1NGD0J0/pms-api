@@ -214,6 +214,7 @@ export const MaintenanceSchemas = {
   invoiceReviewBody: z
     .object({
       action: z.enum(['approve', 'reject']),
+      isBillable: z.boolean().optional(),
       rejectionReason: z
         .string()
         .min(10, 'Please provide a reason of at least 10 characters')

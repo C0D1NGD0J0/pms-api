@@ -1,5 +1,4 @@
 import bunyan from 'bunyan';
-import { Types } from 'mongoose';
 import { container } from '@di/index';
 import { t } from '@shared/languages';
 import { UAParser } from 'ua-parser-js';
@@ -113,7 +112,14 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       );
 
       if (!activeConnection || !activeConnection.isConnected) {
-        return next(new UnauthorizedError({ message: 'User connection inactive' }));
+        const isVendor = activeConnection?.roles?.includes('vendor');
+        const isVendorPayoutRoute = /\/vendor[s]?\/[^/]+\/payout/.test(req.path);
+        const isCurrentUserRoute = /\/auth\/[^/]+\/me$/.test(req.path);
+        if (isVendor && (isVendorPayoutRoute || isCurrentUserRoute)) {
+          // Disconnected vendors retain access to payout routes and their own user context
+        } else {
+          return next(new UnauthorizedError({ message: 'User connection inactive' }));
+        }
       }
 
       if (permissionService) {
@@ -537,6 +543,26 @@ export const requirePermission = (
 };
 
 /**
+ * Restrict access to primary vendor users only.
+ * Must be placed after isAuthenticated.
+ */
+export const requirePrimaryVendor = (req: Request, _res: Response, next: NextFunction) => {
+  const currentUser = req.context?.currentuser;
+  if (!currentUser?.vendorInfo?.isPrimaryVendor) {
+    return next(
+      new ForbiddenError({
+        message: t('auth.errors.insufficientPermissions', {
+          resource: 'payout',
+          action: 'manage',
+          reason: 'Only primary vendor account holders can manage payout settings',
+        }),
+      })
+    );
+  }
+  next();
+};
+
+/**
  * Check if the current user's subscription entitles them to a specific feature.
  * Requires `subscriptionEntitlements` middleware to have run first.
  */
@@ -787,20 +813,8 @@ export const requireUserPermission = (action: PermissionAction | string) => {
   }));
 };
 
-/**
- * Throws ForbiddenError if the requesting user is the tenant on the resource.
- * Prevents dual-role users (e.g. staff+tenant) from modifying records where
- * they are personally the tenant — a conflict-of-interest guard.
- */
-export function preventTenantConflict(
-  requestingUserId: string,
-  tenantId: Types.ObjectId | string | null | undefined,
-  message = 'You cannot modify a record where you are the tenant.'
-): void {
-  if (tenantId && requestingUserId === tenantId.toString()) {
-    throw new ForbiddenError({ message });
-  }
-}
+// Re-exported from utils to avoid circular dependency with DI container.
+export { preventTenantConflict } from '@utils/tenantConflict';
 
 export const idempotency = async (
   req: AppRequest,

@@ -43,6 +43,7 @@ export const QUEUE_NAMES = {
   LEASE_SIGNATURE_REQUEST_QUEUE: 'leaseSignatureRequestQueue',
   PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
   PAYMENT_QUEUE: 'paymentQueue',
+  USER_QUEUE: 'userQueue',
 };
 
 export const JOB_NAME = {
@@ -71,6 +72,7 @@ export const JOB_NAME = {
   RETRY_FAILED_INVOICE_JOB: 'retryFailedInvoiceJob',
   CANCEL_PAYMENT_JOB: 'cancelPaymentJob',
   ACCOUNT_DISCONNECTED_JOB: 'accountDisconnectedJob',
+  VENDOR_TEAM_DISCONNECT_JOB: 'vendorTeamDisconnectJob',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {
@@ -97,7 +99,7 @@ export const PROPERTY_CREATION_ALLOWED_DEPARTMENTS: EmployeeDepartment[] = [
 /**
  * Roles that can approve/reject properties immediately
  */
-export const PROPERTY_APPROVAL_ROLES = [IUserRole.ADMIN, IUserRole.MANAGER];
+export const PROPERTY_APPROVAL_ROLES = [IUserRole.SUPER_ADMIN, IUserRole.ADMIN, IUserRole.MANAGER];
 
 /**
  * Roles that require approval for property creation

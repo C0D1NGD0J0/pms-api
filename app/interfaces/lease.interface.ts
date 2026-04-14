@@ -177,12 +177,12 @@ export interface ILeaseFormData {
   utilitiesIncluded?: UtilityType[];
   renewalOptions?: IRenewalOptions;
   templateType?: LeaseTemplateType;
+  internalNotes?: IInternalNote[];
   requiresNotarization?: boolean;
   signingMethod?: SigningMethod;
   legalTerms?: ILegalTerms;
   coTenants?: ICoTenant[];
   petPolicy?: IPetPolicy;
-  internalNotes?: string;
   leaseNumber: string;
   type: LeaseType;
 }
@@ -466,6 +466,29 @@ export interface IRentRollItem {
   luid: string;
 }
 
+/**
+ * Signature Interface
+ * Individual signature tracking
+ */
+export interface ILeaseSignature {
+  landlordInfo?: {
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  coTenantInfo?: {
+    name: string;
+    email: string;
+    phone: string;
+  };
+  signatureMethod: 'manual' | 'electronic';
+  userId?: Types.ObjectId | string;
+  providerSignatureId?: string;
+  ipAddress?: string;
+  role: SignerRole;
+  signedAt?: Date;
+}
+
 export interface LeaseESignatureCompletedPayload {
   signers: Array<{
     name: string;
@@ -552,24 +575,6 @@ export interface ILeaseListItem {
   startDate: Date;
   endDate: Date;
   luid: string;
-}
-
-/**
- * Signature Interface
- * Individual signature tracking
- */
-export interface ILeaseSignature {
-  coTenantInfo?: {
-    name: string;
-    email: string;
-    phone: string;
-  };
-  signatureMethod: 'manual' | 'electronic';
-  userId?: Types.ObjectId | string;
-  providerSignatureId?: string;
-  ipAddress?: string;
-  role: SignerRole;
-  signedAt?: Date;
 }
 
 /**
@@ -835,19 +840,6 @@ export type LeaseTemplateType =
  */
 
 /**
- * Payment Method Types
- */
-export type PaymentMethodType =
-  | 'bank_transfer'
-  | 'e-transfer'
-  | 'auto-debit'
-  | 'check'
-  | 'cash'
-  | 'credit_card'
-  | 'debit_card'
-  | 'mobile_payment';
-
-/**
  * Lease Termination Data Interface
  * Used when terminating a lease
  */
@@ -920,12 +912,6 @@ export interface ILeaseDuration {
 }
 
 /**
- * ============================================================================
- * ACTION DATA INTERFACES
- * ============================================================================
- */
-
-/**
  * Pet Policy Interface
  * Defines pet rules and associated fees
  */
@@ -936,6 +922,12 @@ export interface IPetPolicy {
   types?: string[];
   maxPets?: number;
 }
+
+/**
+ * ============================================================================
+ * ACTION DATA INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Property Types (for lease context)
@@ -959,12 +951,6 @@ export interface ILeaseActivationData {
 }
 
 /**
- * ============================================================================
- * QUERY & FILTER INTERFACES
- * ============================================================================
- */
-
-/**
  * Co-Tenant Interface
  * Additional tenants on the lease
  */
@@ -974,6 +960,12 @@ export interface ICoTenant {
   phone: string;
   name: string;
 }
+
+/**
+ * ============================================================================
+ * QUERY & FILTER INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Legal Terms Interface
@@ -986,21 +978,26 @@ export interface ILegalTerms {
 }
 
 /**
+ * Signer/Participant Role Types
+ */
+export type SignerRole = 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
+
+/**
  * ============================================================================
  * REPORTING INTERFACES
  * ============================================================================
  */
 
 /**
- * Signer/Participant Role Types
- */
-export type SignerRole = 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
-
-/**
  * Lease Approval Status Type
  * Tracks the approval state of a lease
  */
 export type LeaseApprovalStatus = 'approved' | 'rejected' | 'pending' | 'draft';
+
+/**
+ * Payment Method Types
+ */
+export type PaymentMethodType = 'auto-debit' | 'cash' | 'e-transfer' | 'check';
 
 /**
  * Late Fee Types

@@ -54,15 +54,17 @@ export interface ICurrentUser {
       daysUntilDowngrade: number | null;
     };
   };
-  /** Only populated for super-admin users who have completed payment processor onboarding */
-  paymentProcessor?: {
-    isSetup: boolean;
-    chargesEnabled: boolean;
-    payoutsEnabled: boolean;
-    needsOnboarding: boolean;
-    accountId: string | null;
-    accountType: PaymentProcessorAccountType | null;
-    onboardedAt: Date | null;
+  vendorInfo?: {
+    vendorId?: string;
+    vuid?: string;
+    linkedVendorUid?: string;
+    isPrimaryVendor?: boolean;
+    isLinkedAccount?: boolean;
+    payoutAccount?: {
+      isSetup: boolean;
+      payoutsEnabled: boolean;
+      chargesEnabled: boolean;
+    };
   };
   client: {
     clientSettings?: any;
@@ -72,13 +74,17 @@ export interface ICurrentUser {
     role: IUserRoleType;
     isVerified: boolean;
     requiresOnboarding?: boolean;
+    vendorPayoutMode?: 'express' | 'platform_hold';
   };
-  vendorInfo?: {
-    vendorId?: string;
-    vuid?: string;
-    linkedVendorUid?: string;
-    isPrimaryVendor?: boolean;
-    isLinkedAccount?: boolean;
+  /** Only populated for super-admin users who have completed payment processor onboarding */
+  paymentProcessor?: {
+    isSetup: boolean;
+    chargesEnabled: boolean;
+    payoutsEnabled: boolean;
+    needsOnboarding: boolean;
+    accountId: string | null;
+    accountType: PaymentProcessorAccountType | null;
+    onboardedAt: Date | null;
   };
   tenantInfo?: {
     hasActiveLease?: boolean;
@@ -143,6 +149,7 @@ export interface IVendorDetailInfo {
   companyName: string;
   tags: string[];
   taxId: string;
+  vuid: string;
 }
 
 /**
@@ -254,7 +261,16 @@ export interface ITenantStats {
 export interface IUserDetailResponse {
   profile: Pick<
     IBaseUserProfile,
-    'firstName' | 'lastName' | 'fullName' | 'avatar' | 'email' | 'phoneNumber' | 'roles' | 'id'
+    | 'firstName'
+    | 'lastName'
+    | 'fullName'
+    | 'avatar'
+    | 'email'
+    | 'phoneNumber'
+    | 'roles'
+    | 'uid'
+    | 'id'
+    | 'isActive'
   > & {
     contact: Pick<IBaseContactInfo, 'email'> & { phone: string };
     userType: UserType;
@@ -412,19 +428,6 @@ export interface FilteredUserTenantInfo {
 }
 
 /**
- * User profile identification (for tenants, staff, etc.)
- * Separate from client KYC — stored on Profile.personalInfo.identification
- */
-export interface IUserIdentificationType {
-  idType?: 'passport' | 'drivers-license' | 'national-id' | 'corporation-license' | string;
-  expiryDate?: Date | string;
-  issueDate?: Date | string;
-  issuingState?: string;
-  authority?: string;
-  idNumber?: string;
-}
-
-/**
  * Vendor Team Member Response Interface
  */
 export interface IVendorTeamMember
@@ -489,6 +492,20 @@ export interface ISignupAccountType extends IAccountType {
 }
 
 /**
+ * User Property Interface
+ * Minimal property info for user context
+ */
+export interface IUserProperty {
+  propertyId: string;
+  occupancy: string;
+  location: string;
+  since: string;
+  units: number;
+  name: string;
+  pid: string;
+}
+
+/**
  * Base User Filter Options
  * Common filtering options for user queries
  */
@@ -498,6 +515,12 @@ export interface IUserFilterOptions {
   department?: string;
   search?: string;
 }
+
+/**
+ * ============================================================================
+ * CURRENT USER & SESSION INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Extended Pagination Interface
@@ -514,7 +537,7 @@ export interface IExtendedPagination {
 
 /**
  * ============================================================================
- * CURRENT USER & SESSION INTERFACES
+ * DETAIL INFO INTERFACES (Role-Specific)
  * ============================================================================
  */
 
@@ -527,12 +550,6 @@ export interface IUserStats {
   roleDistribution: StatsDistribution[];
   totalFilteredUsers: number;
 }
-
-/**
- * ============================================================================
- * DETAIL INFO INTERFACES (Role-Specific)
- * ============================================================================
- */
 
 /**
  * Base Pagination Interface
@@ -557,29 +574,17 @@ export interface FilteredVendorInfo extends IVendorInfo {
 }
 
 /**
- * Linked Vendor User Info
- */
-export interface ILinkedVendorUser
-  extends Pick<IBaseUserProfile, 'displayName' | 'isActive' | 'email' | 'uid'> {
-  phoneNumber?: string;
-}
-
-/**
  * ============================================================================
  * RESPONSE INTERFACES
  * ============================================================================
  */
 
 /**
- * User Property Interface
- * Minimal property info for user context
+ * Linked Vendor User Info
  */
-export interface IUserProperty {
-  occupancy: string;
-  location: string;
-  since: string;
-  units: number;
-  name: string;
+export interface ILinkedVendorUser
+  extends Pick<IBaseUserProfile, 'displayName' | 'isActive' | 'email' | 'uid'> {
+  phoneNumber?: string;
 }
 
 /**
@@ -735,11 +740,6 @@ export interface ITenantDetailInfo extends ITenantInfo {}
  * PAGINATION INTERFACES
  * ============================================================================
  */
-
-/**
- * @deprecated Use IIdentificationType (client KYC) or IUserIdentificationType (user profiles) instead
- */
-export type IdentificationType = IUserIdentificationType;
 
 /**
  * User Type Union

@@ -247,6 +247,18 @@ export interface UploadCompletedPayload {
   actorId: string;
 }
 
+export interface MaintenanceInvoiceApprovedPayload {
+  isBillable: boolean;
+  approvedBy: string;
+  requestId: string;
+  vendorId?: string;
+  tenantId?: string;
+  currency: string;
+  amount: number;
+  mruid: string;
+  cuid: string;
+}
+
 export interface PdfGeneratedPayload {
   senderInfo?: {
     email: string;
@@ -344,16 +356,6 @@ export interface MaintenanceRequestAssignedPayload {
   requestId: string;
   tenantId?: string;
   vendorId: string;
-  mruid: string;
-  cuid: string;
-}
-
-export interface MaintenanceInvoiceApprovedPayload {
-  approvedBy: string;
-  requestId: string;
-  vendorId?: string;
-  currency: string;
-  amount: number;
   mruid: string;
   cuid: string;
 }

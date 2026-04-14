@@ -308,12 +308,12 @@ export class ProfileService {
   ): Promise<{ profile: IProfileDocument; createdVendor?: any }> {
     try {
       const vendorData = {
-        isPrimaryAccountHolder: true,
+        isprimaryAccountHolderUserId: true,
         connectedClients: [
           {
             cuid: context.cuid,
             isConnected: true,
-            primaryAccountHolder: new Types.ObjectId(context.userId),
+            primaryAccountHolderUserId: new Types.ObjectId(context.userId),
           },
         ],
         ...vendorEntityData,
@@ -472,7 +472,6 @@ export class ProfileService {
           email: userDoc.data.profile.email,
           isActive: true,
         },
-        identification: profileDoc.personalInfo.identification,
         settings: {
           ...profileDoc.settings,
           timeZone: profileDoc.settings.timeZone || 'UTC',
@@ -660,11 +659,15 @@ export class ProfileService {
       const policiesUpdate: Record<string, unknown> = {};
       if (profileData.policies.tos?.accepted !== undefined) {
         policiesUpdate['policies.tos.accepted'] = profileData.policies.tos.accepted;
-        policiesUpdate['policies.tos.acceptedOn'] = profileData.policies.tos.accepted ? new Date() : null;
+        policiesUpdate['policies.tos.acceptedOn'] = profileData.policies.tos.accepted
+          ? new Date()
+          : null;
       }
       if (profileData.policies.marketing?.accepted !== undefined) {
         policiesUpdate['policies.marketing.accepted'] = profileData.policies.marketing.accepted;
-        policiesUpdate['policies.marketing.acceptedOn'] = profileData.policies.marketing.accepted ? new Date() : null;
+        policiesUpdate['policies.marketing.acceptedOn'] = profileData.policies.marketing.accepted
+          ? new Date()
+          : null;
       }
       if (Object.keys(policiesUpdate).length > 0) {
         result = await this.profileDAO.updateById(profileId, { $set: policiesUpdate });

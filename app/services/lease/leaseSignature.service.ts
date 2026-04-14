@@ -10,6 +10,7 @@ import { BadRequestError } from '@shared/customErrors';
 import { ESignatureQueue, PdfQueue } from '@queues/index';
 import { EventTypes } from '@interfaces/events.interface';
 import { ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
+import { OwnershipType } from '@interfaces/property.interface';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES, createLogger } from '@utils/index';
 import { EventEmitterService, NotificationService, BoldSignService } from '@services/index';
@@ -117,6 +118,16 @@ export class LeaseSignatureService {
     }
 
     const lease = await fetchLeaseByLuid(this.leaseDAO, luid, cuid);
+
+    // Heal stale DRAFT+approved leases created before the status-transition fix
+    if (lease.status === LeaseStatus.DRAFT && lease.approvalStatus === 'approved') {
+      await this.leaseDAO.update(
+        { _id: lease._id },
+        { $set: { status: LeaseStatus.READY_FOR_SIGNATURE } }
+      );
+      lease.status = LeaseStatus.READY_FOR_SIGNATURE;
+    }
+
     validateLeaseReadyForSignature(lease);
     if (lease.signingMethod !== 'electronic') {
       throw new BadRequestError({
@@ -126,7 +137,10 @@ export class LeaseSignatureService {
 
     await fetchTenantWithUser(this.profileDAO, lease.tenantId);
 
-    const property = await this.propertyDAO.findFirst({ _id: lease.property.id, deletedAt: null });
+    const property = await this.propertyDAO.findFirst(
+      { _id: lease.property.id, deletedAt: null },
+      { select: '+owner +authorization' }
+    );
     if (!property) {
       throw new BadRequestError({ message: 'Property not found' });
     }
@@ -137,6 +151,18 @@ export class LeaseSignatureService {
         lease.property.unitId as string
       );
       validateResourceAvailable(propertyUnit, 'unit');
+    }
+
+    // Pre-flight: if external owner must sign directly, ensure they have an email
+    const isExternalOwner = property.owner?.type === OwnershipType.EXTERNAL_OWNER;
+    const isPmAuthorized = property.isManagementAuthorized();
+    if (isExternalOwner && !isPmAuthorized && !property.owner?.email) {
+      throw new BadRequestError({
+        message:
+          'This property has an external owner who must sign the lease, ' +
+          'but no email address is on file. Please update the property owner ' +
+          "email or grant PM authorization to sign on the owner's behalf.",
+      });
     }
 
     if (property.managedBy) {
@@ -228,12 +254,52 @@ export class LeaseSignatureService {
    * Cancel an e-signature request
    */
   async cancelSignature(
-    _cuid: string,
+    cuid: string,
     leaseId: string,
     _userId: string
   ): IPromiseReturnedData<ILeaseDocument> {
     this.log.info(`Cancelling signature for lease ${leaseId}`);
-    throw new Error('cancelSignature not yet implemented');
+
+    const lease = await this.leaseDAO.findFirst({ luid: leaseId, cuid });
+    if (!lease) {
+      throw new BadRequestError({ message: 'Lease not found' });
+    }
+
+    if (lease.status !== LeaseStatus.PENDING_SIGNATURE) {
+      throw new BadRequestError({
+        message: 'Lease is not pending signature and cannot be cancelled',
+      });
+    }
+
+    const envelopeId = lease.eSignature?.envelopeId;
+    if (envelopeId) {
+      try {
+        await this.boldSignService.revokeDocument(
+          envelopeId,
+          'Signature request cancelled by manager'
+        );
+      } catch (revokeError: any) {
+        // Log but don't throw — the envelope may already be revoked or expired in BoldSign.
+        // We still need to revert the lease status locally.
+        this.log.warn('BoldSign revoke failed during cancel (proceeding to revert lease status)', {
+          envelopeId,
+          error: revokeError?.message || revokeError,
+        });
+      }
+    }
+
+    const updated = await this.leaseDAO.update(lease._id, {
+      'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
+      status: LeaseStatus.DRAFT,
+      updatedAt: new Date(),
+    });
+
+    if (!updated) {
+      throw new BadRequestError({ message: 'Failed to update lease status' });
+    }
+
+    this.log.info(`Signature cancelled, lease ${leaseId} reverted to draft`);
+    return { success: true, data: updated };
   }
 
   /**
@@ -431,6 +497,7 @@ export class LeaseSignatureService {
           let signerId: Types.ObjectId | undefined;
           let signerRole: 'tenant' | 'co_tenant' | 'landlord' | 'property_manager' = 'tenant';
           let coTenantInfo: { name: string; email: string } | undefined;
+          let landlordInfo: { name: string; email: string; phone?: string } | undefined;
 
           if (lease.tenantId) {
             const tenant = await this.profileDAO.findFirst(
@@ -456,8 +523,13 @@ export class LeaseSignatureService {
             }
           }
 
-          if (!signerId && lease.property?.id) {
-            const property = await this.propertyDAO.findFirst({ _id: lease.property.id });
+          if (!signerId && !coTenantInfo && lease.property?.id) {
+            const property = await this.propertyDAO.findFirst(
+              { _id: lease.property.id },
+              { select: '+owner' }
+            );
+
+            // Check if signer is the PM
             if (property?.managedBy) {
               const pm = await this.profileDAO.findFirst(
                 { user: property.managedBy },
@@ -469,6 +541,20 @@ export class LeaseSignatureService {
                 signerRole = 'property_manager';
               }
             }
+
+            // Check if signer is the external landlord/owner
+            if (
+              !signerId &&
+              property?.owner?.type === OwnershipType.EXTERNAL_OWNER &&
+              property.owner.email === recentSigner.email
+            ) {
+              signerRole = 'landlord';
+              landlordInfo = {
+                name: property.owner.name || recentSigner.name,
+                email: property.owner.email,
+                phone: property.owner.phone,
+              };
+            }
           }
 
           const signatureEntry: any = {
@@ -477,6 +563,7 @@ export class LeaseSignatureService {
             signedAt: recentSigner.signedAt,
             ...(signerId ? { userId: signerId } : {}),
             ...(coTenantInfo ? { coTenantInfo } : {}),
+            ...(landlordInfo ? { landlordInfo } : {}),
           };
 
           // check if signature already exists to prevent duplicates
@@ -490,6 +577,11 @@ export class LeaseSignatureService {
             // For co-tenants without userId, check by email
             signatureExists =
               lease.signatures?.some((sig) => sig.coTenantInfo?.email === coTenantInfo.email) ||
+              false;
+          } else if (landlordInfo) {
+            // For landlords without userId, check by email
+            signatureExists =
+              lease.signatures?.some((sig) => sig.landlordInfo?.email === landlordInfo!.email) ||
               false;
           }
 

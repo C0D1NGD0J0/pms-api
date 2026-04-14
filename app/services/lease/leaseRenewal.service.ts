@@ -8,7 +8,7 @@ import { UserService } from '@services/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
-import { preventTenantConflict } from '@shared/middlewares';
+import { preventTenantConflict } from '@utils/tenantConflict';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { IPropertyDocument, ICronJob } from '@interfaces/index';
 import { InvalidRequestError, BadRequestError } from '@shared/customErrors';

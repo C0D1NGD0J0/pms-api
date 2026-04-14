@@ -108,7 +108,11 @@ export class MaintenanceRequestService {
   private async resolvePrimaryVendorId(currentuser: ICurrentUser): Promise<Types.ObjectId | null> {
     const { linkedVendorUid } = currentuser.client;
     if (!linkedVendorUid) return null;
-    const primaryVendor = await this.userDAO.findFirst({ uid: linkedVendorUid, deletedAt: null });
+    const primaryVendor = await this.userDAO.findFirst({
+      uid: linkedVendorUid,
+      'cuids.cuid': currentuser.client.cuid,
+      deletedAt: null,
+    });
     return primaryVendor ? primaryVendor._id : null;
   }
 
@@ -155,6 +159,18 @@ export class MaintenanceRequestService {
   ): Promise<ISuccessReturnData> {
     const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
+
+    if (currentuser.client.role === ROLES.TENANT) {
+      const anyActiveLease = await this.leaseDAO.findFirst({
+        cuid,
+        tenantId: new Types.ObjectId(currentuser.sub),
+        status: LeaseStatus.ACTIVE,
+        deletedAt: null,
+      });
+      if (!anyActiveLease) {
+        throw new ForbiddenError({ message: t('maintenance.errors.noActiveLease') });
+      }
+    }
 
     const property = await this.propertyDAO.findFirst({
       pid: data.pid,
@@ -345,7 +361,7 @@ export class MaintenanceRequestService {
     if (!vendorRecord) throw new NotFoundError({ message: t('maintenance.errors.vendorNotFound') });
 
     const clientConn = vendorRecord.connectedClients.find((c) => c.cuid === cuid);
-    const vendorUserId = clientConn!.primaryAccountHolder;
+    const vendorUserId = clientConn!.primaryAccountHolderUserId;
     const vendorUser = await this.userDAO.findFirst({ _id: vendorUserId });
     if (!vendorUser) throw new NotFoundError({ message: t('maintenance.errors.vendorNotFound') });
 
@@ -711,7 +727,11 @@ export class MaintenanceRequestService {
     return { success: true, data: updated, message: t('maintenance.success.invoiceSubmitted') };
   }
 
-  async approveInvoice(ctx: IRequestContext, mruid: string): Promise<ISuccessReturnData> {
+  async approveInvoice(
+    ctx: IRequestContext,
+    mruid: string,
+    options?: { isBillable?: boolean }
+  ): Promise<ISuccessReturnData> {
     const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
     const request = await this.getRequestOrThrow(mruid, cuid);
@@ -721,21 +741,26 @@ export class MaintenanceRequestService {
       throw new BadRequestError({ message: t('maintenance.errors.invoiceNotPending') });
     }
 
+    const updateFields: Record<string, any> = {
+      'invoice.status': InvoiceStatus.APPROVED,
+      'invoice.reviewedBy': new Types.ObjectId(currentuser.sub),
+      'invoice.reviewedAt': new Date(),
+    };
+    if (options?.isBillable !== undefined) {
+      updateFields.isBillable = options.isBillable;
+    }
+
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
       return this.maintenanceRequestDAO.updateById(
         request._id.toString(),
-        {
-          $set: {
-            'invoice.status': InvoiceStatus.APPROVED,
-            'invoice.reviewedBy': new Types.ObjectId(currentuser.sub),
-            'invoice.reviewedAt': new Date(),
-          },
-        },
+        { $set: updateFields },
         undefined,
         session
       );
     });
+
+    const isBillable = options?.isBillable ?? request.isBillable;
 
     // Expense integration seam — expense service listens for this event
     this.emitterService.emit(EventTypes.MAINTENANCE_INVOICE_APPROVED, {
@@ -743,6 +768,8 @@ export class MaintenanceRequestService {
       mruid: request.mruid,
       cuid,
       vendorId: request.vendorId?.toString(),
+      tenantId: request.tenantId?.toString(),
+      isBillable,
       amount: request.invoice.amountInCents,
       currency: request.invoice.currency,
       approvedBy: currentuser.sub,

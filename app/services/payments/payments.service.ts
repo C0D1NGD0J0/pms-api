@@ -4,12 +4,17 @@ import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { PaymentQueue } from '@queues/payment.queue';
 import { EventEmitterService } from '@services/eventEmitter';
+import { PdfGeneratorService } from '@services/pdfGenerator';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
-import { IPromiseReturnedData, IPaginateResult } from '@interfaces/utils.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenanceInvoiceApprovedPayload, EventTypes } from '@interfaces/events.interface';
+import {
+  IPromiseReturnedData,
+  IPaginateResult,
+  IRequestContext,
+} from '@interfaces/utils.interface';
 import {
   getPaymentProcessorUrls,
   preventTenantConflict,
@@ -42,6 +47,7 @@ import {
 interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
   paymentGatewayService: PaymentGatewayService;
+  pdfGeneratorService: PdfGeneratorService;
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
@@ -65,6 +71,7 @@ export class PaymentService implements ICronProvider {
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
+  private readonly pdfGeneratorService: PdfGeneratorService;
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
 
   constructor({
@@ -79,6 +86,7 @@ export class PaymentService implements ICronProvider {
     paymentProcessorDAO,
     subscriptionPlanConfig,
     paymentGatewayService,
+    pdfGeneratorService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
@@ -91,6 +99,7 @@ export class PaymentService implements ICronProvider {
     this.log = createLogger('PaymentService');
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.paymentGatewayService = paymentGatewayService;
+    this.pdfGeneratorService = pdfGeneratorService;
     this.subscriptionPlanConfig = subscriptionPlanConfig;
     this.emitterService.on(
       EventTypes.MAINTENANCE_INVOICE_APPROVED,
@@ -126,6 +135,15 @@ export class PaymentService implements ICronProvider {
         enabled: true,
         service: 'PaymentService',
         description: 'Auto-charge tenant CC for maintenance invoices past their 5-day grace period',
+        timeout: 300000,
+      },
+      {
+        name: 'payment.mark-overdue',
+        schedule: '0 1 * * *', // 1 AM UTC daily — runs before the overdue charge cron
+        handler: this.markOverduePayments.bind(this),
+        enabled: true,
+        service: 'PaymentService',
+        description: 'Flip PENDING → OVERDUE for all payment types where dueDate has passed',
         timeout: 300000,
       },
     ];
@@ -435,12 +453,24 @@ export class PaymentService implements ICronProvider {
       status?: string;
       type?: string;
       tenantId?: string;
-      tenantUserId?: string;
       leaseId?: string;
-      skip?: number;
+      page?: number;
       limit?: number;
-    }
+    },
+    context?: IRequestContext
   ): IPromiseReturnedData<{ items: any[]; pagination?: IPaginateResult }> {
+    const page = filters?.page ?? 1;
+    const limit = filters?.limit ?? 10;
+    const skip = (page - 1) * limit;
+
+    let tenantUserId: string | undefined;
+    let tenantId: string | undefined = filters?.tenantId;
+
+    if (context?.currentuser?.client?.role === 'tenant') {
+      tenantUserId = context.currentuser.sub;
+      tenantId = undefined;
+    }
+
     try {
       const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
       if (!client) {
@@ -457,15 +487,15 @@ export class PaymentService implements ICronProvider {
       }
 
       // tenantUserId (User._id) takes precedence — resolve to Profile._id
-      if (filters?.tenantUserId) {
+      if (tenantUserId) {
         const profile = await this.profileDAO.findFirst({
-          user: new Types.ObjectId(filters.tenantUserId),
+          user: new Types.ObjectId(tenantUserId),
         });
         if (profile) {
           query.tenant = profile._id;
         }
-      } else if (filters?.tenantId) {
-        query.tenant = new Types.ObjectId(filters.tenantId);
+      } else if (tenantId) {
+        query.tenant = new Types.ObjectId(tenantId);
       }
 
       if (filters?.leaseId) {
@@ -488,8 +518,8 @@ export class PaymentService implements ICronProvider {
           ],
           projection:
             'pytuid paymentMethod paymentType baseAmount processingFee status dueDate paidAt period',
-          skip: filters?.skip,
-          limit: filters?.limit,
+          skip,
+          limit,
         },
         true
       );
@@ -1541,7 +1571,7 @@ export class PaymentService implements ICronProvider {
    */
   async getPaymentStats(
     cuid: string,
-    tenantUserId?: string
+    context?: IRequestContext
   ): IPromiseReturnedData<{
     expectedRevenue: number;
     collected: number;
@@ -1558,6 +1588,8 @@ export class PaymentService implements ICronProvider {
       }
 
       // When called by a tenant, scope stats to their own payments only
+      const tenantUserId =
+        context?.currentuser?.client?.role === 'tenant' ? context.currentuser.sub : undefined;
       const daoFilters: Record<string, any> = {};
       if (tenantUserId) {
         const profile = await this.profileDAO.findFirst({ user: new Types.ObjectId(tenantUserId) });
@@ -1579,9 +1611,15 @@ export class PaymentService implements ICronProvider {
       let overdue = 0; // Sum of all OVERDUE payments (baseAmount)
       let refunded = 0; // Sum of all REFUNDED amounts (refundAmount if partial, else baseAmount)
 
+      // Collection rate is rent-specific: how much expected rent has been collected.
+      // Maintenance charges, late fees, and deposits skew this metric if included.
+      let rentExpected = 0;
+      let rentCollected = 0;
+
       allPayments.forEach((payment) => {
         // baseAmount is stored in cents. Guard against missing values on legacy records.
         const amount = payment.baseAmount ?? 0;
+        const isRent = payment.paymentType === PaymentRecordType.RENT;
 
         switch (payment.status) {
           // CANCELLED and FAILED payments are excluded from all stats —
@@ -1601,6 +1639,7 @@ export class PaymentService implements ICronProvider {
           case PaymentRecordStatus.PENDING:
             expectedRevenue += amount;
             pending += amount;
+            if (isRent) rentExpected += amount;
             break;
 
           // OVERDUE: payment is past its due date and still unpaid.
@@ -1608,6 +1647,7 @@ export class PaymentService implements ICronProvider {
           case PaymentRecordStatus.OVERDUE:
             expectedRevenue += amount;
             overdue += amount;
+            if (isRent) rentExpected += amount;
             break;
 
           // PAID: payment was successfully collected.
@@ -1615,6 +1655,10 @@ export class PaymentService implements ICronProvider {
           case PaymentRecordStatus.PAID:
             expectedRevenue += amount;
             collected += amount;
+            if (isRent) {
+              rentExpected += amount;
+              rentCollected += amount;
+            }
             break;
 
           default:
@@ -1626,10 +1670,9 @@ export class PaymentService implements ICronProvider {
         }
       });
 
-      // collectionRate = what percentage of expected revenue has actually been collected.
-      // Formula: (collected / expectedRevenue) * 100, rounded to nearest integer.
-      // Example: collected=$453,818 / expected=$537,418 = ~84%
-      const collectionRate = calcCollectionRate(collected, expectedRevenue);
+      // collectionRate = rent collected / rent expected × 100.
+      // Scoped to RENT-only so maintenance charges and late fees don't skew the metric.
+      const collectionRate = calcCollectionRate(rentCollected, rentExpected);
 
       return {
         success: true,
@@ -1718,7 +1761,7 @@ export class PaymentService implements ICronProvider {
   };
 
   async recordMaintenanceExpense(payload: MaintenanceInvoiceApprovedPayload): Promise<void> {
-    const { cuid, mruid, vendorId, amount, approvedBy } = payload;
+    const { cuid, mruid, title, vendorId, amount, approvedBy } = payload;
 
     const vendorProfile = vendorId ? await this.profileDAO.getProfileByUserId(vendorId) : null;
 
@@ -1737,9 +1780,10 @@ export class PaymentService implements ICronProvider {
       status: PaymentRecordStatus.PAID,
       tenant: vendorProfile._id,
       vendorId: new Types.ObjectId(vendorId!),
+      maintenanceRequestUid: mruid,
       baseAmount: amount,
       processingFee: 0,
-      description: `Maintenance expense for request ${mruid}`,
+      description: `[${mruid}] ${title || 'Maintenance expense'}`,
       isManualEntry: true,
       recordedBy: approvedBy ? new Types.ObjectId(approvedBy) : undefined,
       dueDate: new Date(),
@@ -1776,6 +1820,7 @@ export class PaymentService implements ICronProvider {
       paymentMethod: PaymentMethod.ONLINE,
       status: PaymentRecordStatus.PENDING,
       tenant: tenantProfile._id,
+      maintenanceRequestUid: mruid,
       baseAmount: amount,
       processingFee: 0,
       description: `Maintenance charge for request ${mruid}`,
@@ -1789,6 +1834,55 @@ export class PaymentService implements ICronProvider {
       '[PaymentService] Maintenance charge created for tenant — due in %d days',
       GRACE_PERIOD_DAYS
     );
+  }
+
+  /**
+   * PM-initiated charge: creates a PENDING payment record linking the tenant to
+   * a specific maintenance request. Called explicitly by a property manager from
+   * the UI, as opposed to the event-driven createMaintenanceCharge() path.
+   */
+  async chargeForMaintenance(
+    cuid: string,
+    currentUserId: string,
+    body: { mruid: string; tenantId: string; amount: number; description?: string }
+  ): IPromiseReturnedData<IPaymentDocument> {
+    const { mruid, tenantId, amount, description } = body;
+
+    const client = await this.clientDAO.findFirst({ cuid });
+    if (!client) {
+      throw new NotFoundError({ message: 'Client not found' });
+    }
+
+    const tenantProfile = await this.profileDAO.getProfileByUserId(tenantId);
+    if (!tenantProfile) {
+      throw new NotFoundError({ message: 'Tenant profile not found' });
+    }
+
+    const GRACE_PERIOD_DAYS = 5;
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + GRACE_PERIOD_DAYS);
+
+    const payment = await this.paymentDAO.insert({
+      cuid,
+      paymentType: PaymentRecordType.MAINTENANCE,
+      paymentMethod: PaymentMethod.ONLINE,
+      status: PaymentRecordStatus.PENDING,
+      tenant: tenantProfile._id,
+      maintenanceRequestUid: mruid,
+      baseAmount: amount,
+      processingFee: 0,
+      description: description || `Maintenance charge for request ${mruid}`,
+      isManualEntry: false,
+      recordedBy: new Types.ObjectId(currentUserId),
+      dueDate,
+    });
+
+    this.log.info(
+      { mruid, amount, cuid, dueDate },
+      '[PaymentService] PM-initiated maintenance charge created'
+    );
+
+    return { success: true, data: payment };
   }
 
   /**
@@ -1907,6 +2001,59 @@ export class PaymentService implements ICronProvider {
   }
 
   /**
+   * Daily cron (1 AM): flip PENDING → OVERDUE for all payment types where dueDate has passed.
+   * Runs before the auto-charge cron so overdue maintenance payments are already flagged.
+   */
+  private async markOverduePayments(): Promise<void> {
+    try {
+      const { items: pastDuePayments } = await this.paymentDAO.findOverduePayments();
+
+      if (pastDuePayments.length === 0) {
+        this.log.info('[Cron] No payments to mark overdue');
+        return;
+      }
+
+      // Skip auto-debit payments (non-manual with a gateway ID already set) —
+      // those are handled by the auto-charge cron, not status-flipping.
+      const pendingIds = pastDuePayments
+        .filter(
+          (p) =>
+            p.status === PaymentRecordStatus.PENDING && !(p.gatewayPaymentId && !p.isManualEntry)
+        )
+        .map((p) => (p as any)._id);
+
+      if (pendingIds.length === 0) {
+        this.log.info('[Cron] All past-due payments already marked overdue');
+        return;
+      }
+
+      await this.paymentDAO.update(
+        { _id: { $in: pendingIds }, deletedAt: null },
+        { $set: { status: PaymentRecordStatus.OVERDUE } }
+      );
+
+      for (const payment of pastDuePayments.filter(
+        (p) => p.status === PaymentRecordStatus.PENDING && !(p.gatewayPaymentId && !p.isManualEntry)
+      )) {
+        this.emitterService.emit(EventTypes.PAYMENT_OVERDUE, {
+          cuid: payment.cuid,
+          pytuid: payment.pytuid,
+          dueDate: payment.dueDate,
+          amount: payment.baseAmount,
+          paymentType: payment.paymentType,
+        });
+      }
+
+      this.log.info(
+        { marked: pendingIds.length, total: pastDuePayments.length },
+        '[Cron] Marked overdue payments complete'
+      );
+    } catch (error: any) {
+      this.log.error({ error: error.message }, '[Cron] Failed to mark overdue payments');
+    }
+  }
+
+  /**
    * Daily cron: auto-charges tenant CC for maintenance payments past the 5-day grace period.
    * Only targets PENDING maintenance payments that haven't been submitted to Stripe yet.
    */
@@ -1990,5 +2137,178 @@ export class PaymentService implements ICronProvider {
       platformNetRevenue,
       applicationFee,
     };
+  }
+
+  async getTenantPaymentHistory(
+    cuid: string,
+    tenantUserId: string,
+    filters: { status?: string; from?: string; to?: string; page?: number; limit?: number }
+  ): IPromiseReturnedData<any> {
+    try {
+      const tenantProfile = await this.profileDAO.findFirst({
+        user: new Types.ObjectId(tenantUserId),
+      });
+      if (!tenantProfile) throw new NotFoundError({ message: 'Tenant profile not found' });
+
+      const query: FilterQuery<IPaymentDocument> = {
+        cuid,
+        tenant: tenantProfile._id,
+        deletedAt: null,
+      };
+      if (filters.status) query.status = filters.status;
+      if (filters.from || filters.to) {
+        query.dueDate = {};
+        if (filters.from) query.dueDate.$gte = new Date(filters.from);
+        if (filters.to) query.dueDate.$lte = new Date(filters.to);
+      }
+
+      const limit = filters.limit || 20;
+      const skip = ((filters.page || 1) - 1) * limit;
+      const result = await this.paymentDAO.list(
+        query,
+        {
+          sort: { dueDate: -1 },
+          limit,
+          skip,
+          populate: [{ path: 'lease', select: 'leaseNumber luid property' }],
+          projection:
+            'pytuid invoiceNumber status paymentType paymentMethod baseAmount processingFee dueDate paidAt period description receipt lease',
+        },
+        true
+      );
+
+      const items = (result.items || []).map((p: any) => ({
+        pytuid: p.pytuid,
+        invoiceNumber: p.invoiceNumber,
+        status: p.status,
+        paymentType: p.paymentType,
+        paymentMethod: p.paymentMethod,
+        baseAmount: p.baseAmount,
+        processingFee: p.processingFee || 0,
+        totalAmount: p.baseAmount + (p.processingFee || 0),
+        dueDate: p.dueDate,
+        paidAt: p.paidAt,
+        description: p.description,
+        period: p.period,
+        hasReceipt: !!p.receipt?.url,
+        leaseNumber: (p.lease as any)?.leaseNumber,
+      }));
+
+      return {
+        success: true,
+        data: { ...(result as any), items },
+        message: 'Payment history retrieved',
+      };
+    } catch (error) {
+      this.log.error('Error fetching tenant payment history', error);
+      throw error;
+    }
+  }
+
+  async getTenantPaymentById(
+    pytuid: string,
+    cuid: string,
+    tenantUserId: string
+  ): IPromiseReturnedData<any> {
+    try {
+      const tenantProfile = await this.profileDAO.findFirst({
+        user: new Types.ObjectId(tenantUserId),
+      });
+      if (!tenantProfile) throw new NotFoundError({ message: 'Tenant profile not found' });
+
+      const payment = await this.paymentDAO.findFirst(
+        { pytuid, cuid, tenant: tenantProfile._id, deletedAt: null },
+        { populate: [{ path: 'lease', select: 'leaseNumber luid' }] }
+      );
+      if (!payment) throw new NotFoundError({ message: 'Payment not found' });
+
+      return { success: true, data: payment, message: 'Payment retrieved' };
+    } catch (error) {
+      this.log.error('Error fetching tenant payment', error);
+      throw error;
+    }
+  }
+
+  async generateTenantReceipt(
+    pytuid: string,
+    cuid: string,
+    tenantUserId: string
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    try {
+      const tenantProfile = await this.profileDAO.findFirst(
+        { user: new Types.ObjectId(tenantUserId) },
+        { populate: { path: 'user', select: 'email' } }
+      );
+      if (!tenantProfile) throw new NotFoundError({ message: 'Tenant profile not found' });
+
+      const payment = await this.paymentDAO.findFirst(
+        { pytuid, cuid, tenant: tenantProfile._id, deletedAt: null },
+        { populate: [{ path: 'lease', select: 'leaseNumber property' }] }
+      );
+      if (!payment) throw new NotFoundError({ message: 'Payment not found' });
+      if ((payment.status as string) !== PaymentRecordStatus.PAID) {
+        throw new BadRequestError({ message: 'Receipt only available for paid payments' });
+      }
+
+      const tenantName =
+        `${tenantProfile.personalInfo?.firstName || ''} ${tenantProfile.personalInfo?.lastName || ''}`.trim() ||
+        'Tenant';
+      const lease = (payment as any).lease;
+      const propertyAddress =
+        typeof lease?.property?.address === 'string'
+          ? lease.property.address
+          : lease?.property?.address?.fullAddress || '';
+
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Helvetica, Arial, sans-serif; font-size: 12px; color: #1a1a1a; margin: 40px; }
+    .header { border-bottom: 2px solid #1a1a1a; padding-bottom: 16px; margin-bottom: 24px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .meta { color: #666; font-size: 11px; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    td { padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+    td:last-child { text-align: right; font-weight: 600; }
+    .total td { border-top: 2px solid #1a1a1a; border-bottom: none; font-weight: 700; font-size: 14px; }
+    .badge { display: inline-block; background: #dcfce7; color: #166534; padding: 3px 10px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Payment Receipt</h1>
+    <div class="meta">Invoice #${payment.invoiceNumber} &nbsp;·&nbsp; <span class="badge">PAID</span></div>
+  </div>
+  <table>
+    <tr><td>Tenant</td><td>${tenantName}</td></tr>
+    <tr><td>Property</td><td>${propertyAddress}</td></tr>
+    <tr><td>Lease</td><td>${lease?.leaseNumber || '—'}</td></tr>
+    <tr><td>Payment Type</td><td>${payment.paymentType.replace(/_/g, ' ')}</td></tr>
+    ${(payment as any).period ? `<tr><td>Period</td><td>${(payment as any).period.month}/${(payment as any).period.year}</td></tr>` : ''}
+    <tr><td>Due Date</td><td>${payment.dueDate.toLocaleDateString()}</td></tr>
+    <tr><td>Paid On</td><td>${payment.paidAt?.toLocaleDateString() || '—'}</td></tr>
+    <tr><td>Rent Amount</td><td>$${(payment.baseAmount / 100).toFixed(2)}</td></tr>
+    ${payment.processingFee > 0 ? `<tr><td>Processing Fee</td><td>$${(payment.processingFee / 100).toFixed(2)}</td></tr>` : ''}
+    <tr class="total"><td>Total Paid</td><td>$${((payment.baseAmount + (payment.processingFee || 0)) / 100).toFixed(2)}</td></tr>
+  </table>
+  <p style="color:#888; font-size:10px; margin-top:40px;">Generated ${new Date().toLocaleDateString()} · This is an official payment receipt.</p>
+</body>
+</html>`;
+
+      const result = await this.pdfGeneratorService.generatePdf(html, {
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' },
+        displayHeaderFooter: false,
+      });
+
+      if (!result.success || !result.buffer) throw new Error('Failed to generate receipt PDF');
+
+      return { buffer: result.buffer, filename: `receipt-${payment.invoiceNumber}.pdf` };
+    } catch (error) {
+      this.log.error('Error generating tenant receipt', error);
+      throw error;
+    }
   }
 }

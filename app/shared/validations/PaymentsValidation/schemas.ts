@@ -2,8 +2,15 @@ import { z } from 'zod';
 
 import { calendarDate } from '../UtilsValidation';
 
+export const chargeForMaintenance = z.object({
+  mruid: z.string().min(1, 'Maintenance request ID is required'),
+  tenantId: z.string().min(1, 'Tenant ID is required'),
+  amount: z.number().int().positive('Amount must be a positive integer (cents)'),
+  description: z.string().trim().max(500).optional(),
+});
+
 export const createPayment = z.object({
-  paymentType: z.enum(['rent', 'maintenance', 'late_fee']),
+  paymentType: z.enum(['rent', 'maintenance', 'late_fee', 'security_deposit', 'deposit_refund']),
   leaseId: z.string().min(1, 'Lease ID is required'),
   tenantId: z.string().min(1, 'Tenant ID is required'),
   dueDate: calendarDate(),
@@ -18,7 +25,7 @@ export const createPayment = z.object({
 });
 
 export const recordManualPayment = z.object({
-  paymentType: z.enum(['rent', 'maintenance', 'late_fee']),
+  paymentType: z.enum(['rent', 'maintenance', 'late_fee', 'security_deposit', 'deposit_refund']),
   paymentMethod: z.enum(['online', 'cash', 'check', 'bank_transfer', 'other']),
   status: z.enum(['paid', 'pending', 'overdue', 'failed', 'cancelled']).optional(),
   baseAmount: z.number().int().min(0, 'Base amount must be a positive number'),

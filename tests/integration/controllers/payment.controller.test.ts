@@ -3,8 +3,10 @@ import cookieParser from 'cookie-parser';
 import express, { Application } from 'express';
 import { clearTestDatabase } from '@tests/helpers';
 import { ROLES } from '@shared/constants/roles.constants';
+import { IClientDocument } from '@interfaces/client.interface';
 import { PaymentController } from '@controllers/PaymentController';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
+import { IProfileDocument, IUserDocument } from '@interfaces/index';
 import { PaymentService } from '@services/payments/payments.service';
 import { errorHandlerMiddleware } from '@shared/middlewares/error-handler';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
@@ -12,7 +14,14 @@ import { beforeEach, beforeAll, describe, expect, jest, it } from '@jest/globals
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { PaymentProcessor, PaymentModel, Profile, Client, Lease, User } from '@models/index';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
-import { PaymentProcessorDAO, PaymentDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import {
+  PaymentProcessorDAO,
+  PaymentDAO,
+  ProfileDAO,
+  ClientDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   PaymentRecordStatus,
   PaymentRecordType,
@@ -266,9 +275,10 @@ describe('PaymentController Integration Tests', () => {
     // Each test gets a fresh client + tenant — the outer beforeEach calls
     // clearTestDatabase() which wipes testClient from the DB, so we create
     // our own client per test to ensure chargeForMaintenance can find it.
-    let localClient: any;
-    let tenantUser: any;
-    let tenantProfile: any;
+    let localClient: IClientDocument;
+    let tenantUser: IUserDocument;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    let tenantProfile: IProfileDocument;
 
     beforeEach(async () => {
       localClient = await createTestClient();
@@ -297,8 +307,7 @@ describe('PaymentController Integration Tests', () => {
       expect(created!.isManualEntry).toBe(false);
 
       // dueDate should be ~5 days from now
-      const daysUntilDue =
-        (created!.dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+      const daysUntilDue = (created!.dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
       expect(daysUntilDue).toBeGreaterThan(4);
       expect(daysUntilDue).toBeLessThan(6);
     });

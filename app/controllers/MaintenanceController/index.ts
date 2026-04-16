@@ -68,18 +68,11 @@ export class MaintenanceController {
   }
 
   async respondToAssignment(req: AppRequest, res: Response) {
-    const { action, reason, technician } = req.body;
-
-    const result =
-      action === 'accept'
-        ? await this.maintenanceRequestService.acceptAssignment(req.context, req.params.mruid, {
-            action,
-            technician,
-          })
-        : await this.maintenanceRequestService.declineAssignment(req.context, req.params.mruid, {
-            reason,
-          });
-
+    const result = await this.maintenanceRequestService.respondToAssignment(
+      req.context,
+      req.params.mruid,
+      req.body
+    );
     return res.status(httpStatusCodes.OK).json(result);
   }
 
@@ -120,17 +113,11 @@ export class MaintenanceController {
   }
 
   async reviewInvoice(req: AppRequest, res: Response) {
-    const { action, rejectionReason, isBillable } = req.body;
-
-    const result =
-      action === 'approve'
-        ? await this.maintenanceRequestService.approveInvoice(req.context, req.params.mruid, {
-            isBillable,
-          })
-        : await this.maintenanceRequestService.rejectInvoice(req.context, req.params.mruid, {
-            rejectionReason,
-          });
-
+    const result = await this.maintenanceRequestService.reviewInvoice(
+      req.context,
+      req.params.mruid,
+      req.body
+    );
     return res.status(httpStatusCodes.OK).json(result);
   }
 
@@ -160,6 +147,27 @@ export class MaintenanceController {
       rawBody,
       req.headers as Record<string, string>,
       { ...req.body, rawPayload: req.body }
+    );
+    return res.status(httpStatusCodes.OK).json(result);
+  }
+
+  async getMyRequests(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const { page, limit, status } = req.query as any;
+    const result = await this.maintenanceRequestService.getTenantRequests(
+      cuid,
+      req.context.currentuser!.sub,
+      { page: Number(page) || 1, limit: Number(limit) || 10, status }
+    );
+    return res.status(httpStatusCodes.OK).json(result);
+  }
+
+  async getMyRequestById(req: AppRequest, res: Response) {
+    const { cuid, mruid } = req.params;
+    const result = await this.maintenanceRequestService.getTenantRequestById(
+      mruid,
+      cuid,
+      req.context.currentuser!.sub
     );
     return res.status(httpStatusCodes.OK).json(result);
   }

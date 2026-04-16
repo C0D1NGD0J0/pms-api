@@ -111,6 +111,23 @@ export interface ICreateMaintenanceRequest {
   pid: string; // property resource UID
 }
 
+export interface ITenantMaintenanceRequestView {
+  media: Array<{ url: string; filename?: string }>;
+  priority: MaintenanceRequestPriority;
+  timeline: IMaintenanceTimelineStep[];
+  status: MaintenanceRequestStatus;
+  category: MaintenanceCategory;
+  propertyAddress: string;
+  completionNote?: string;
+  scheduledDate?: Date;
+  description: string;
+  unitNumber?: string;
+  completedAt?: Date;
+  submittedAt: Date;
+  mruid: string;
+  title: string;
+}
+
 export interface IMaintenanceInvoice {
   lineItems?: IInvoiceLineItem[];
   submittedBy: Types.ObjectId;
@@ -229,6 +246,14 @@ export interface IVendorStats {
   cancelled: number;
   assigned: number;
   total: number;
+}
+
+export interface IMaintenanceTimelineStep {
+  status: MaintenanceRequestStatus;
+  reached: boolean;
+  timestamp?: Date;
+  label: string;
+  note?: string;
 }
 
 export interface ISubmitWorkOrderPayload {

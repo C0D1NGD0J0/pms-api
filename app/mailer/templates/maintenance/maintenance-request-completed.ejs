@@ -1,0 +1,54 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Maintenance Request Completed</h2>
+      <p>Hi <%= tenant && (tenant.firstName || tenant.email) ? (tenant.firstName || tenant.email) : 'Resident' %>,</p>
+      <p>
+        Your maintenance request has been <strong>completed</strong>. We hope everything is in order.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <h3 style="margin-top: 0;">Request Summary</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Reference #</td>
+            <td class="detail-value"><%= request.mruid %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Title</td>
+            <td class="detail-value"><%= request.title %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Category</td>
+            <td class="detail-value"><%= request.category.replace(/_/g, ' ') %></td>
+          </tr>
+          <% if (request.completedAt) { %>
+          <tr>
+            <td class="detail-label">Completed On</td>
+            <td class="detail-value"><%= new Date(request.completedAt).toLocaleDateString() %></td>
+          </tr>
+          <% } %>
+          <% if (request.completionNotes && request.completionNotes.length > 0) { %>
+          <tr>
+            <td class="detail-label">Completion Notes</td>
+            <td class="detail-value"><%= request.completionNotes[request.completionNotes.length - 1].note %></td>
+          </tr>
+          <% } %>
+        </table>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <p>If the issue has not been resolved or you have concerns, please contact your property manager.</p>
+      <p style="font-size: 14px; color: #64748b;">
+        Log in to the resident portal to view your request history.
+      </p>
+    </td>
+  </tr>
+</table>

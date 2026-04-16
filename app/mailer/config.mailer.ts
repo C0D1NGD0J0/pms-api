@@ -134,6 +134,13 @@ export class MailService {
           'maintenance'
         );
         break;
+      case MailType.MAINTENANCE_REQUEST_COMPLETED:
+        template = await this.buildTemplate(
+          'maintenance-request-completed',
+          emailData,
+          'maintenance'
+        );
+        break;
       case MailType.MAINTENANCE_REQUEST_ASSIGNED:
         template = await this.buildTemplate(
           'maintenance-request-assigned',
@@ -158,6 +165,13 @@ export class MailService {
       case MailType.MAINTENANCE_INVOICE_REJECTED:
         template = await this.buildTemplate(
           'maintenance-invoice-rejected',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_REQUEST_ACCEPTED:
+        template = await this.buildTemplate(
+          'maintenance-request-accepted',
           emailData,
           'maintenance'
         );
@@ -346,6 +360,8 @@ export class MailService {
       [MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT]: 'Work Order Submitted for Your Request',
       [MailType.MAINTENANCE_WORK_ORDER_APPROVED]: 'Work Order Approved — Proceed with Job',
       [MailType.MAINTENANCE_WORK_ORDER_REJECTED]: 'Work Order Rejected — Revision Required',
+      [MailType.MAINTENANCE_REQUEST_ACCEPTED]: 'Your Maintenance Request is Being Handled',
+      [MailType.MAINTENANCE_REQUEST_COMPLETED]: 'Your Maintenance Request Has Been Completed',
     };
 
     return subjectMap[mailType] || subjectMap.default;

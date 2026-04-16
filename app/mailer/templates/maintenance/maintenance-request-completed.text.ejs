@@ -1,0 +1,19 @@
+Maintenance Request Completed
+==============================
+
+Hi <%= tenant && (tenant.firstName || tenant.email) ? (tenant.firstName || tenant.email) : 'Resident' %>,
+
+Your maintenance request has been completed. We hope everything is in order.
+
+REQUEST SUMMARY
+---------------
+Reference #: <%= request.mruid %>
+Title:       <%= request.title %>
+Category:    <%= request.category.replace(/_/g, ' ') %>
+<% if (request.completedAt) { %>Completed:   <%= new Date(request.completedAt).toLocaleDateString() %>
+<% } %><% if (request.completionNotes && request.completionNotes.length > 0) { %>Notes:       <%= request.completionNotes[request.completionNotes.length - 1].note %>
+<% } %>
+If the issue has not been resolved or you have concerns, please contact your property manager.
+
+Log in to the resident portal to view your request history.
+

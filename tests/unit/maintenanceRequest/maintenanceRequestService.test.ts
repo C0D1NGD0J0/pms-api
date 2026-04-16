@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
-import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
-import { InvoiceStatus, MaintenanceRequestStatus } from '@interfaces/maintenanceRequest.interface';
 import { IRequestContext } from '@interfaces/utils.interface';
+import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
+import { MaintenanceRequestStatus, InvoiceStatus } from '@interfaces/maintenanceRequest.interface';
 
 // ---------------------------------------------------------------------------
 // Mock dependencies — only system-boundary objects need mocking here.
@@ -36,18 +36,6 @@ const mockEmitter = { emit: jest.fn() } as any;
 const testCuid = 'CLIENT001';
 const vendorObjectId = new Types.ObjectId();
 
-function makeCtx(role: string, sub?: string): Partial<IRequestContext> {
-  return {
-    currentuser: {
-      sub: sub ?? new Types.ObjectId().toString(),
-      email: 'user@example.com',
-      fullname: 'Test User',
-      client: { cuid: testCuid, role },
-    } as any,
-    request: { params: { cuid: testCuid } } as any,
-  };
-}
-
 // Context helper for vendor team members (linked accounts).
 // linkedVendorUid is the uid string of the primary vendor user.
 function makeLinkedCtx(sub: string, linkedVendorUid: string): Partial<IRequestContext> {
@@ -57,6 +45,18 @@ function makeLinkedCtx(sub: string, linkedVendorUid: string): Partial<IRequestCo
       email: 'team@example.com',
       fullname: 'Team Member',
       client: { cuid: testCuid, role: 'vendor', linkedVendorUid },
+    } as any,
+    request: { params: { cuid: testCuid } } as any,
+  };
+}
+
+function makeCtx(role: string, sub?: string): Partial<IRequestContext> {
+  return {
+    currentuser: {
+      sub: sub ?? new Types.ObjectId().toString(),
+      email: 'user@example.com',
+      fullname: 'Test User',
+      client: { cuid: testCuid, role },
     } as any,
     request: { params: { cuid: testCuid } } as any,
   };
@@ -291,7 +291,183 @@ describe('MaintenanceRequestService - vendor ownership checks', () => {
 });
 
 // ===========================================================================
-// 5. Invoice lifecycle guards — submitInvoice / approveInvoice / rejectInvoice
+// 5. Unified dispatch — respondToAssignment / reviewInvoice
+// ===========================================================================
+
+describe('MaintenanceRequestService - respondToAssignment dispatch', () => {
+  it('should call acceptAssignment when action is "accept"', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, {
+      vendorId: vendorObjectId,
+    });
+    mockDAO.getByMruid.mockResolvedValue(request);
+    mockDAO.updateById.mockResolvedValue({
+      ...request,
+      status: MaintenanceRequestStatus.IN_PROGRESS,
+    });
+
+    const ctx = makeCtx('vendor', vendorObjectId.toString());
+    const result = await service.respondToAssignment(ctx as IRequestContext, 'MR001', {
+      action: 'accept',
+      technician: { name: 'John Tech', phone: '555-0001', email: 'tech@vendor.com' },
+    });
+
+    expect(result).toMatchObject({ success: true });
+    expect(mockDAO.updateById).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        $set: expect.objectContaining({ status: MaintenanceRequestStatus.IN_PROGRESS }),
+      }),
+      undefined,
+      expect.anything()
+    );
+  });
+
+  it('should call declineAssignment when action is not "accept"', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, {
+      vendorId: vendorObjectId,
+    });
+    mockDAO.getByMruid.mockResolvedValue(request);
+    mockDAO.updateById.mockResolvedValue({
+      ...request,
+      status: MaintenanceRequestStatus.OPEN,
+      vendorId: undefined,
+    });
+
+    const ctx = makeCtx('vendor', vendorObjectId.toString());
+    const result = await service.respondToAssignment(ctx as IRequestContext, 'MR001', {
+      action: 'decline',
+      reason: 'Not available',
+    });
+
+    expect(result).toMatchObject({ success: true });
+    expect(mockDAO.updateById).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        $set: { status: MaintenanceRequestStatus.OPEN },
+        $unset: expect.objectContaining({ vendorId: 1 }),
+      }),
+      undefined,
+      expect.anything()
+    );
+  });
+
+  it('should propagate ForbiddenError from acceptAssignment when caller is not assigned vendor', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, {
+      vendorId: vendorObjectId,
+    });
+    mockDAO.getByMruid.mockResolvedValue(request);
+
+    const differentVendorId = new Types.ObjectId();
+    const ctx = makeCtx('vendor', differentVendorId.toString());
+    await expect(
+      service.respondToAssignment(ctx as IRequestContext, 'MR001', { action: 'accept' })
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it('should propagate ForbiddenError from declineAssignment when caller is not assigned vendor', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, {
+      vendorId: vendorObjectId,
+    });
+    mockDAO.getByMruid.mockResolvedValue(request);
+
+    const differentVendorId = new Types.ObjectId();
+    const ctx = makeCtx('vendor', differentVendorId.toString());
+    await expect(
+      service.respondToAssignment(ctx as IRequestContext, 'MR001', {
+        action: 'decline',
+        reason: 'Busy',
+      })
+    ).rejects.toThrow(ForbiddenError);
+  });
+});
+
+describe('MaintenanceRequestService - reviewInvoice dispatch', () => {
+  it('should call approveInvoice when action is "approve"', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.COMPLETED, {
+      invoice: { status: InvoiceStatus.PENDING, amountInCents: 10000, currency: 'usd' },
+    });
+    mockDAO.getByMruid.mockResolvedValue(request);
+    mockDAO.updateById.mockResolvedValue({
+      ...request,
+      invoice: { ...request.invoice, status: InvoiceStatus.APPROVED },
+    });
+
+    const ctx = makeCtx('admin');
+    const result = await service.reviewInvoice(ctx as IRequestContext, 'MR001', {
+      action: 'approve',
+      isBillable: true,
+    });
+
+    expect(result).toMatchObject({ success: true });
+    expect(mockDAO.updateById).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        $set: expect.objectContaining({ 'invoice.status': InvoiceStatus.APPROVED }),
+      }),
+      undefined,
+      expect.anything()
+    );
+  });
+
+  it('should call rejectInvoice when action is not "approve"', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.COMPLETED, {
+      invoice: { status: InvoiceStatus.PENDING, amountInCents: 10000, currency: 'usd' },
+    });
+    mockDAO.getByMruid.mockResolvedValue(request);
+    mockDAO.updateById.mockResolvedValue({
+      ...request,
+      invoice: {
+        ...request.invoice,
+        status: InvoiceStatus.REJECTED,
+        rejectionReason: 'Too expensive',
+      },
+    });
+
+    const ctx = makeCtx('admin');
+    const result = await service.reviewInvoice(ctx as IRequestContext, 'MR001', {
+      action: 'reject',
+      rejectionReason: 'Too expensive',
+    });
+
+    expect(result).toMatchObject({ success: true });
+    expect(mockDAO.updateById).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        $set: expect.objectContaining({ 'invoice.status': InvoiceStatus.REJECTED }),
+      }),
+      undefined,
+      expect.anything()
+    );
+  });
+
+  it('should propagate BadRequestError from approveInvoice when invoice is already approved', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.COMPLETED, {
+      invoice: { status: InvoiceStatus.APPROVED, amountInCents: 10000, currency: 'usd' },
+    });
+    mockDAO.getByMruid.mockResolvedValue(request);
+
+    const ctx = makeCtx('admin');
+    await expect(
+      service.reviewInvoice(ctx as IRequestContext, 'MR001', { action: 'approve' })
+    ).rejects.toThrow(BadRequestError);
+  });
+
+  it('should propagate BadRequestError from rejectInvoice when there is no invoice', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.COMPLETED, { invoice: undefined });
+    mockDAO.getByMruid.mockResolvedValue(request);
+
+    const ctx = makeCtx('admin');
+    await expect(
+      service.reviewInvoice(ctx as IRequestContext, 'MR001', {
+        action: 'reject',
+        rejectionReason: 'N/A',
+      })
+    ).rejects.toThrow(BadRequestError);
+  });
+});
+
+// ===========================================================================
+// 7. Invoice lifecycle guards — submitInvoice / approveInvoice / rejectInvoice
 // ===========================================================================
 
 describe('MaintenanceRequestService - invoice lifecycle guards', () => {
@@ -331,7 +507,7 @@ describe('MaintenanceRequestService - invoice lifecycle guards', () => {
 });
 
 // ===========================================================================
-// 6. Team member (linked account) access
+// 8. Team member (linked account) access
 // ===========================================================================
 
 describe('MaintenanceRequestService - team member (linked account) access', () => {

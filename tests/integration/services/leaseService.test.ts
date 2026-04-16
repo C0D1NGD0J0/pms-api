@@ -68,6 +68,14 @@ const setupServices = () => {
 
   const permissionService = new PermissionService();
 
+  const eventsRegistry = {
+    trackEvent: jest.fn().mockResolvedValue(undefined),
+    getEventLog: jest.fn().mockResolvedValue([]),
+    registerEvent: jest.fn().mockResolvedValue(undefined),
+  } as any;
+
+  const emitterService = new EventEmitterService({ eventsRegistry });
+
   const vendorService = new VendorService({
     vendorDAO,
     clientDAO,
@@ -75,7 +83,7 @@ const setupServices = () => {
     profileDAO,
     permissionService,
     queueFactory: mockQueueFactory as any,
-    emitterService: {} as any,
+    emitterService,
   } as any);
 
   const userService = new UserService({
@@ -88,17 +96,9 @@ const setupServices = () => {
     vendorService,
     leaseDAO,
     paymentDAO: {} as any,
-    emitterService: {} as any,
+    emitterService,
     queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
   });
-
-  const eventsRegistry = {
-    trackEvent: jest.fn().mockResolvedValue(undefined),
-    getEventLog: jest.fn().mockResolvedValue([]),
-    registerEvent: jest.fn().mockResolvedValue(undefined),
-  } as any;
-
-  const emitterService = new EventEmitterService({ eventsRegistry });
 
   const mailerService = {
     sendEmail: jest.fn().mockResolvedValue({ success: true }),
@@ -1497,6 +1497,173 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       // All returned leases should be active
       result.items.forEach((lease: any) => {
         expect(lease.status).toBe(LeaseStatus.ACTIVE);
+      });
+    });
+
+    describe('tenant context enforcement', () => {
+      let draftLease: any;
+      let pendingSignatureLease: any;
+
+      beforeEach(async () => {
+        // Seed a DRAFT lease belonging to the testTenant
+        draftLease = await Lease.create({
+          luid: `lease-draft-tenant-${Date.now()}`,
+          cuid: testClient.cuid,
+          clientId: testClient._id,
+          tenantId: testTenant._id,
+          property: { id: testProperty._id, address: testProperty.address.fullAddress },
+          duration: { startDate: new Date('2025-06-01'), endDate: new Date('2026-06-01') },
+          fees: { monthlyRent: 120000, securityDeposit: 240000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+          status: LeaseStatus.DRAFT,
+          approvalStatus: 'draft',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: `LEASE-DRAFT-CTX-${Date.now()}`,
+          createdBy: testManager._id,
+        });
+
+        // Seed a PENDING_SIGNATURE lease belonging to the testTenant
+        pendingSignatureLease = await Lease.create({
+          luid: `lease-pending-sig-${Date.now()}`,
+          cuid: testClient.cuid,
+          clientId: testClient._id,
+          tenantId: testTenant._id,
+          property: { id: testProperty._id, address: testProperty.address.fullAddress },
+          duration: { startDate: new Date('2025-07-01'), endDate: new Date('2026-07-01') },
+          fees: { monthlyRent: 130000, securityDeposit: 260000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+          status: LeaseStatus.PENDING_SIGNATURE,
+          approvalStatus: 'approved',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: `LEASE-PENDING-CTX-${Date.now()}`,
+          createdBy: testManager._id,
+          leaseDocuments: [{ url: 'https://test.com/lease.pdf', key: 's3-key-pending', filename: 'lease.pdf', documentType: 'lease_agreement', uploadedAt: new Date(), uploadedBy: testManager._id }],
+        });
+      });
+
+      afterEach(async () => {
+        if (draftLease) await Lease.findByIdAndDelete(draftLease._id);
+        if (pendingSignatureLease) await Lease.findByIdAndDelete(pendingSignatureLease._id);
+      });
+
+      it('should exclude DRAFT leases when called with a tenant context', async () => {
+        const tenantContext = {
+          currentuser: {
+            uid: testTenant.uid,
+            sub: testTenant._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.TENANT },
+          },
+        } as any;
+
+        const result = await leaseService.getFilteredLeases(
+          testClient.cuid,
+          {},
+          { limit: 50, skip: 0 },
+          tenantContext
+        );
+
+        expect(result.items).toBeInstanceOf(Array);
+        const statuses = result.items.map((l: any) => l.status);
+        expect(statuses).not.toContain(LeaseStatus.DRAFT);
+        expect(statuses).not.toContain(LeaseStatus.PENDING_SIGNATURE);
+        expect(statuses).not.toContain(LeaseStatus.DRAFT_RENEWAL);
+        expect(statuses).not.toContain(LeaseStatus.CANCELLED);
+        expect(statuses).not.toContain(LeaseStatus.READY_FOR_SIGNATURE);
+      });
+
+      it('should strip DRAFT from explicit status filter for tenant callers and fall back to allowed list', async () => {
+        const tenantContext = {
+          currentuser: {
+            uid: testTenant.uid,
+            sub: testTenant._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.TENANT },
+          },
+        } as any;
+
+        // Requesting only DRAFT — should be overridden to full allowed list
+        const result = await leaseService.getFilteredLeases(
+          testClient.cuid,
+          { status: LeaseStatus.DRAFT },
+          { limit: 50, skip: 0 },
+          tenantContext
+        );
+
+        expect(result.items).toBeInstanceOf(Array);
+        result.items.forEach((lease: any) => {
+          expect([
+            LeaseStatus.ACTIVE,
+            LeaseStatus.EXPIRED,
+            LeaseStatus.TERMINATED,
+            LeaseStatus.RENEWED,
+          ]).toContain(lease.status);
+        });
+      });
+
+      it('should scope results to the tenant\'s own leases via tenantId enforcement', async () => {
+        // Create a second tenant to verify isolation
+        const otherTenant = await createTestTenantUser(testClient.cuid, testClient._id);
+
+        const otherTenantLease = await Lease.create({
+          luid: `lease-other-tenant-${Date.now()}`,
+          cuid: testClient.cuid,
+          clientId: testClient._id,
+          tenantId: otherTenant._id,
+          property: { id: testProperty._id, address: testProperty.address.fullAddress },
+          duration: { startDate: new Date('2025-08-01'), endDate: new Date('2026-08-01') },
+          fees: { monthlyRent: 140000, securityDeposit: 280000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+          status: LeaseStatus.ACTIVE,
+          approvalStatus: 'approved',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: `LEASE-OTHER-TENANT-${Date.now()}`,
+          createdBy: testManager._id,
+          signedDate: new Date(),
+          signingMethod: 'electronic',
+          eSignature: { status: 'signed', provider: 'boldsign' },
+          signatures: [{ userId: otherTenant._id, signedAt: new Date(), role: 'tenant', signatureMethod: 'electronic' }],
+          leaseDocuments: [{ url: 'https://test.com/lease.pdf', key: 's3-key', filename: 'lease.pdf', documentType: 'lease_agreement', uploadedAt: new Date(), uploadedBy: testManager._id }],
+        });
+
+        try {
+          const tenantContext = {
+            currentuser: {
+              uid: testTenant.uid,
+              sub: testTenant._id.toString(),
+              client: { cuid: testClient.cuid, role: ROLES.TENANT },
+            },
+          } as any;
+
+          const result = await leaseService.getFilteredLeases(
+            testClient.cuid,
+            {},
+            { limit: 50, skip: 0 },
+            tenantContext
+          );
+
+          // tenantUid is the ObjectId stringified from the DAO transformation
+          const returnedTenantIds = result.items.map((l: any) => l.tenantUid);
+
+          // Should only include leases belonging to testTenant
+          returnedTenantIds.forEach((tid: string) => {
+            expect(tid).toBe(testTenant._id.toString());
+          });
+
+          // The other tenant's lease should not appear
+          const returnedLuids = result.items.map((l: any) => l.luid);
+          expect(returnedLuids).not.toContain(otherTenantLease.luid);
+        } finally {
+          await Lease.findByIdAndDelete(otherTenantLease._id);
+        }
+      });
+
+      it('should not enforce tenant restrictions when caller is admin (no context)', async () => {
+        const result = await leaseService.getFilteredLeases(
+          testClient.cuid,
+          {},
+          { limit: 50, skip: 0 }
+        );
+
+        expect(result.items).toBeInstanceOf(Array);
+        const statuses = result.items.map((l: any) => l.status);
+        // DRAFT lease seeded in beforeEach should be visible
+        expect(statuses).toContain(LeaseStatus.DRAFT);
       });
     });
   });

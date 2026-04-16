@@ -4,25 +4,26 @@ import { ROLES } from '@shared/constants/roles.constants';
 import { IUserDocument } from '@interfaces/user.interface';
 import { ILeaseDocument } from '@interfaces/lease.interface';
 import { IClientDocument } from '@interfaces/client.interface';
+import { IVendorDocument } from '@interfaces/vendor.interface';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { IPropertyDocument } from '@interfaces/property.interface';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
 import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
-import { IVendorDocument } from '@interfaces/vendor.interface';
 import {
   PropertyUnit,
   Invitation,
   Property,
   Profile,
   Client,
+  Vendor,
   Lease,
   User,
-  Vendor,
 } from '@models/index';
 
 export interface CreateClientOptions {
   status?: 'active' | 'inactive' | 'suspended';
   displayName?: string;
+  isVerified?: boolean;
   cuid?: string;
 }
 
@@ -56,6 +57,7 @@ export const createTestClient = async (
     cuid,
     displayName: options.displayName || faker.company.name(),
     status: options.status || 'active',
+    isVerified: options.isVerified ?? false,
     accountAdmin: adminUser._id,
     accountType: {
       category: 'individual',

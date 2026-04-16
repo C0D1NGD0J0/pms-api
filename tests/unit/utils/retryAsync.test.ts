@@ -1,5 +1,5 @@
-import { beforeEach, afterEach, describe, expect, jest, it } from '@jest/globals';
 import { retryAsync } from '@utils/retryAsync';
+import { beforeEach, afterEach, describe, expect, jest, it } from '@jest/globals';
 
 // jest.fn() returns Mock<UnknownFunction> — bridge to typed callback signatures
 const asCallback = <T>(mock: ReturnType<typeof jest.fn>) => mock as unknown as T;

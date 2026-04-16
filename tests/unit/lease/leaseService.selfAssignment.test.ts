@@ -6,8 +6,8 @@ import { ProfileDAO } from '@dao/profileDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { InvitationDAO } from '@dao/invitationDAO';
 import { ForbiddenError } from '@shared/customErrors';
-import { ILeaseFormData } from '@interfaces/lease.interface';
 import { IRequestContext } from '@interfaces/utils.interface';
+import { ILeaseFormData, LeaseStatus } from '@interfaces/lease.interface';
 
 // Break the circular import chain: lease.service → @shared/middlewares → @di/index → registerResources → lease.service (undefined)
 jest.mock('@shared/middlewares', () => ({
@@ -487,6 +487,181 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       await expect(
         leaseService.createLease(testCuid, leaseData, mockContext as IRequestContext)
       ).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe('getFilteredLeases - Tenant Context Enforcement', () => {
+    const TENANT_VISIBLE_STATUSES: LeaseStatus[] = [
+      LeaseStatus.ACTIVE,
+      LeaseStatus.EXPIRED,
+      LeaseStatus.TERMINATED,
+      LeaseStatus.RENEWED,
+    ];
+
+    const mockLeaseList = [
+      { luid: 'L-001', status: LeaseStatus.ACTIVE },
+      { luid: 'L-002', status: LeaseStatus.EXPIRED },
+    ];
+
+    const mockPagination = { total: 2, page: 1, perPage: 10, totalPages: 1, hasMoreResource: false };
+
+    beforeEach(() => {
+      // Provide full leaseCache mock required by getFilteredLeases
+      leaseService = new LeaseService({
+        leaseDAO: mockLeaseDAO,
+        userDAO: mockUserDAO,
+        clientDAO: mockClientDAO,
+        propertyDAO: mockPropertyDAO,
+        invitationDAO: mockInvitationDAO,
+        profileDAO: mockProfileDAO,
+        mailerService: {} as any,
+        invitationService: {} as any,
+        leaseCache: {
+          invalidateLease: jest.fn(),
+          invalidateLeaseLists: jest.fn(),
+          getClientLeases: jest.fn().mockResolvedValue({ success: false, data: null }),
+          saveClientLeases: jest.fn().mockResolvedValue(undefined),
+        } as any,
+        emitterService: { on: jest.fn(), off: jest.fn(), emit: jest.fn() } as any,
+        notificationService: {} as any,
+        leaseSignatureService: {} as any,
+        leaseDocumentService: {} as any,
+        leaseRenewalService: {} as any,
+        mediaUploadService: {} as any,
+        leasePdfService: {} as any,
+        boldSignService: {} as any,
+        propertyUnitDAO: {} as any,
+        queueFactory: {} as any,
+        userService: {} as any,
+      });
+
+      (mockLeaseDAO as any).getFilteredLeases = jest.fn().mockResolvedValue({
+        items: mockLeaseList,
+        pagination: mockPagination,
+      });
+    });
+
+    it('should pass filters through unchanged when caller is not a tenant', async () => {
+      const nonTenantContext: Partial<IRequestContext> = {
+        currentuser: {
+          sub: mockUserId.toString(),
+          email: 'admin@example.com',
+          fullname: 'Admin User',
+          client: { cuid: testCuid, role: 'admin' },
+        } as any,
+      };
+
+      await leaseService.getFilteredLeases(
+        testCuid,
+        { status: LeaseStatus.DRAFT },
+        { limit: 10, skip: 0 },
+        nonTenantContext as IRequestContext
+      );
+
+      const [, capturedFilters] = (mockLeaseDAO as any).getFilteredLeases.mock.calls[0];
+      expect(capturedFilters.status).toBe(LeaseStatus.DRAFT);
+    });
+
+    it('should pass filters through unchanged when no context is provided', async () => {
+      await leaseService.getFilteredLeases(
+        testCuid,
+        { status: LeaseStatus.DRAFT },
+        { limit: 10, skip: 0 }
+      );
+
+      const [, capturedFilters] = (mockLeaseDAO as any).getFilteredLeases.mock.calls[0];
+      expect(capturedFilters.status).toBe(LeaseStatus.DRAFT);
+    });
+
+    it('should restrict status to tenant-visible list when caller is a tenant with no status filter', async () => {
+      await leaseService.getFilteredLeases(
+        testCuid,
+        {},
+        { limit: 10, skip: 0 },
+        _mockTenantContext as IRequestContext
+      );
+
+      const [, capturedFilters] = (mockLeaseDAO as any).getFilteredLeases.mock.calls[0];
+      expect(Array.isArray(capturedFilters.status)).toBe(true);
+      expect(capturedFilters.status).toEqual(expect.arrayContaining(TENANT_VISIBLE_STATUSES));
+      expect(capturedFilters.status).toHaveLength(TENANT_VISIBLE_STATUSES.length);
+    });
+
+    it('should strip DRAFT from status filter and fall back to full allowed list when tenant requests DRAFT', async () => {
+      await leaseService.getFilteredLeases(
+        testCuid,
+        { status: LeaseStatus.DRAFT },
+        { limit: 10, skip: 0 },
+        _mockTenantContext as IRequestContext
+      );
+
+      const [, capturedFilters] = (mockLeaseDAO as any).getFilteredLeases.mock.calls[0];
+      expect(Array.isArray(capturedFilters.status)).toBe(true);
+      expect(capturedFilters.status).not.toContain(LeaseStatus.DRAFT);
+      expect(capturedFilters.status).toEqual(expect.arrayContaining(TENANT_VISIBLE_STATUSES));
+    });
+
+    it('should strip hidden statuses (DRAFT, DRAFT_RENEWAL, CANCELLED, READY_FOR_SIGNATURE, PENDING_SIGNATURE) when tenant requests them', async () => {
+      const hiddenStatuses = [
+        LeaseStatus.DRAFT,
+        LeaseStatus.DRAFT_RENEWAL,
+        LeaseStatus.CANCELLED,
+        LeaseStatus.READY_FOR_SIGNATURE,
+        LeaseStatus.PENDING_SIGNATURE,
+      ];
+
+      for (const hiddenStatus of hiddenStatuses) {
+        (mockLeaseDAO as any).getFilteredLeases.mockClear();
+
+        await leaseService.getFilteredLeases(
+          testCuid,
+          { status: hiddenStatus },
+          { limit: 10, skip: 0 },
+          _mockTenantContext as IRequestContext
+        );
+
+        const [, capturedFilters] = (mockLeaseDAO as any).getFilteredLeases.mock.calls[0];
+        expect(capturedFilters.status).not.toContain(hiddenStatus);
+      }
+    });
+
+    it('should keep only the tenant-visible portion when tenant requests a mixed status array', async () => {
+      await leaseService.getFilteredLeases(
+        testCuid,
+        { status: [LeaseStatus.ACTIVE, LeaseStatus.DRAFT] as any },
+        { limit: 10, skip: 0 },
+        _mockTenantContext as IRequestContext
+      );
+
+      const [, capturedFilters] = (mockLeaseDAO as any).getFilteredLeases.mock.calls[0];
+      expect(capturedFilters.status).toContain(LeaseStatus.ACTIVE);
+      expect(capturedFilters.status).not.toContain(LeaseStatus.DRAFT);
+    });
+
+    it('should force tenantId to context.currentuser.sub when tenant provides no tenantId', async () => {
+      await leaseService.getFilteredLeases(
+        testCuid,
+        {},
+        { limit: 10, skip: 0 },
+        _mockTenantContext as IRequestContext
+      );
+
+      const [, capturedFilters] = (mockLeaseDAO as any).getFilteredLeases.mock.calls[0];
+      expect(capturedFilters.tenantId).toBe(mockUserId.toString());
+    });
+
+    it('should preserve an explicitly provided tenantId for tenant callers', async () => {
+      const explicitTenantId = new Types.ObjectId().toString();
+
+      await leaseService.getFilteredLeases(
+        testCuid,
+        { tenantId: explicitTenantId } as any,
+        { limit: 10, skip: 0 },
+        _mockTenantContext as IRequestContext
+      );
+
+      const [, capturedFilters] = (mockLeaseDAO as any).getFilteredLeases.mock.calls[0];
+      expect(capturedFilters.tenantId).toBe(explicitTenantId);
     });
   });
 });

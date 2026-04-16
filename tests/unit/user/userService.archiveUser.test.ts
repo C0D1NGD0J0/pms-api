@@ -55,6 +55,7 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
 
     mockEmitterService = {
       emit: jest.fn(),
+      on: jest.fn(),
     } as any;
 
     mockAddToEmailQueue = jest.fn();

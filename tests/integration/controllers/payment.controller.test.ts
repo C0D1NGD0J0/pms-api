@@ -15,6 +15,11 @@ import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.s
 import { PaymentProcessor, PaymentModel, Profile, Client, Lease, User } from '@models/index';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
 import {
+  PaymentRecordStatus,
+  PaymentRecordType,
+  PaymentMethod,
+} from '@interfaces/payments.interface';
+import {
   PaymentProcessorDAO,
   PaymentDAO,
   ProfileDAO,
@@ -22,11 +27,6 @@ import {
   LeaseDAO,
   UserDAO,
 } from '@dao/index';
-import {
-  PaymentRecordStatus,
-  PaymentRecordType,
-  PaymentMethod,
-} from '@interfaces/payments.interface';
 
 describe('PaymentController Integration Tests', () => {
   let app: Application;

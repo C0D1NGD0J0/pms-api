@@ -1128,6 +1128,22 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
                 in: { $ifNull: ['$$conn.isConnected', false] },
               },
             },
+            isFormerTenant: {
+              $let: {
+                vars: {
+                  conn: {
+                    $first: {
+                      $filter: {
+                        input: { $ifNull: ['$cuids', []] },
+                        as: 'c',
+                        cond: { $eq: ['$$c.cuid', cuid] },
+                      },
+                    },
+                  },
+                },
+                in: { $ifNull: ['$$conn.isFormerTenant', false] },
+              },
+            },
             firstName: { $ifNull: ['$profile.personalInfo.firstName', ''] },
             lastName: { $ifNull: ['$profile.personalInfo.lastName', ''] },
             fullName: {

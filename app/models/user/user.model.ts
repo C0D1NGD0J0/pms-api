@@ -29,6 +29,8 @@ const UserSchema = new Schema<IUserDocument>(
         isConnected: { type: Boolean, required: true, default: false },
         requiresOnboarding: { type: Boolean, default: false },
         primaryRole: { type: String, default: null },
+        isFormerTenant: { type: Boolean, default: false },
+        leaseExpiredAt: { type: Date, default: null },
         _id: false,
       },
     ],

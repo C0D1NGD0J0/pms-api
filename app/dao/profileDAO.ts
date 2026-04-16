@@ -498,6 +498,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                       else: false,
                     },
                   },
+                  isFormerTenant: { $ifNull: ['$$activeClient.isFormerTenant', false] },
                 },
               },
             },

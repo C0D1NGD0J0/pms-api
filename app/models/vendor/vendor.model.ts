@@ -5,6 +5,10 @@ import { IVendorDocument } from '@interfaces/vendor.interface';
 
 const VendorSchema = new Schema<IVendorDocument>(
   {
+    isprimaryAccountHolderUserId: {
+      type: Boolean,
+      default: false,
+    },
     connectedClients: [
       {
         cuid: {

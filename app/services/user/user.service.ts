@@ -4,12 +4,12 @@ import { t } from '@shared/languages';
 import { QueueFactory } from '@services/queue';
 import { UserCache } from '@caching/user.cache';
 import { EmailQueue, UserQueue } from '@queues/index';
-import { IProfileDocument, EventTypes } from '@interfaces/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { EventEmitterService, VendorService } from '@services/index';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { PermissionService } from '@services/permission/permission.service';
 import { calcDaysElapsed, createLogger, JOB_NAME, daysInMs } from '@utils/index';
+import { LeaseExpiredPayload, IProfileDocument, EventTypes } from '@interfaces/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { PropertyDAO, ProfileDAO, PaymentDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
@@ -1651,6 +1651,7 @@ export class UserService {
         roles: ['tenant'],
         tenantInfo: rawTenantDetails.tenantInfo,
         tenantMetrics: rawTenantDetails.tenantMetrics,
+        isFormerTenant: (rawTenantDetails as any).isFormerTenant ?? false,
         joinedDate: (rawTenantDetails as any).joinedDate || (rawTenantDetails as any).createdAt,
       };
 
@@ -2333,6 +2334,45 @@ export class UserService {
   }
 
   private setupEventListeners(): void {
-    // Reserved for future event listeners
+    this.emitterService.on(EventTypes.LEASE_EXPIRED, this.handleLeaseExpired.bind(this));
+  }
+
+  private async handleLeaseExpired(payload: LeaseExpiredPayload): Promise<void> {
+    const { tenantId, cuid, expiredAt } = payload;
+    try {
+      // Guard: if tenant has any ongoing lease (including drafts in preparation), skip deactivation
+      const ongoingLeases = await this.leaseDAO.list({
+        tenantId: new Types.ObjectId(tenantId),
+        cuid,
+        status: { $in: ['active', 'pending_signature', 'draft'] },
+        deletedAt: null,
+      });
+
+      if ((ongoingLeases as any).items?.length > 0) {
+        this.log.info(
+          { tenantId, cuid },
+          'Tenant has ongoing leases — skipping former tenant transition'
+        );
+        return;
+      }
+
+      await this.userDAO.update(
+        { _id: new Types.ObjectId(tenantId), 'cuids.cuid': cuid },
+        {
+          $set: {
+            'cuids.$.isFormerTenant': true,
+            'cuids.$.leaseExpiredAt': expiredAt,
+            'cuids.$.isConnected': false,
+          },
+        }
+      );
+
+      const user = await this.userDAO.getUserById(tenantId);
+      if (user) await this.userCache.invalidateUserDetail(cuid, user.uid);
+
+      this.log.info({ tenantId, cuid }, 'Tenant auto-deactivated: no active lease remaining');
+    } catch (error) {
+      this.log.error({ error, tenantId, cuid }, 'Error handling lease expired event');
+    }
   }
 }

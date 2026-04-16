@@ -11,6 +11,7 @@ import { DSARService } from '@services/dsar/dsar.service';
 import { AssetService } from '@services/asset/asset.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
+import { ExpenseService } from '@services/expense/expense.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
@@ -58,6 +59,7 @@ import {
   PaymentModel,
   PropertyUnit,
   Subscription,
+  ExpenseModel,
   Invitation,
   Property,
   Profile,
@@ -77,6 +79,7 @@ import {
   PropertyDAO,
   PaymentDAO,
   ProfileDAO,
+  ExpenseDAO,
   ClientDAO,
   VendorDAO,
   LeaseDAO,
@@ -91,6 +94,7 @@ import {
   PropertyController,
   WebhookController,
   PaymentController,
+  ExpenseController,
   ClientController,
   VendorController,
   LeaseController,
@@ -152,6 +156,7 @@ const ControllerResources = {
   webhookController: asClass(WebhookController).scoped(),
   paymentController: asClass(PaymentController).scoped(),
   dsarController: asClass(DSARController).scoped(),
+  expenseController: asClass(ExpenseController).scoped(),
 };
 
 const ModelResources = {
@@ -169,6 +174,7 @@ const ModelResources = {
   paymentModel: asValue(PaymentModel),
   paymentProcessorModel: asValue(PaymentProcessor),
   maintenanceRequestModel: asValue(MaintenanceRequestModel),
+  expenseModel: asValue(ExpenseModel),
 };
 
 const ServiceResources = {
@@ -211,6 +217,7 @@ const ServiceResources = {
   dsarService: asClass(DSARService).singleton(),
   maintenanceRequestService: asClass(MaintenanceRequestService).singleton(),
   leaseTemplateService: asClass(LeaseTemplateService).singleton(),
+  expenseService: asClass(ExpenseService).singleton(),
 };
 
 const DAOResources = {
@@ -228,6 +235,7 @@ const DAOResources = {
   paymentDAO: asClass(PaymentDAO).singleton(),
   paymentProcessorDAO: asClass(PaymentProcessorDAO).singleton(),
   maintenanceRequestDAO: asClass(MaintenanceRequestDAO).singleton(),
+  expenseDAO: asClass(ExpenseDAO).singleton(),
 };
 
 const CacheResources = {

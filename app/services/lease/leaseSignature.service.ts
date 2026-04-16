@@ -2,7 +2,6 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { LeaseCache } from '@caching/index';
-import { envVariables } from '@shared/config';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
@@ -32,9 +31,11 @@ import {
   fetchPropertyManagerWithUser,
   validateResourceAvailable,
   fetchTenantWithUser,
+  findActiveLeasePDF,
   fetchPropertyUnit,
   validateUserRole,
   fetchLeaseByLuid,
+  buildSenderInfo,
 } from './leaseHelpers';
 
 interface IConstructor {
@@ -170,24 +171,9 @@ export class LeaseSignatureService {
       await fetchPropertyManagerWithUser(this.profileDAO, effectiveManagedBy);
     }
 
-    let senderInfo: { email: string; name: string } = {
-      email: envVariables.BOLDSIGN.DEFAULT_SENDER_EMAIL,
-      name: envVariables.BOLDSIGN.DEFAULT_SENDER_NAME,
-    };
-    if (
-      client.accountType?.isEnterpriseAccount &&
-      client.companyProfile?.companyEmail &&
-      client.companyProfile?.legalEntityName
-    ) {
-      senderInfo = {
-        email: client.companyProfile.companyEmail,
-        name: client.companyProfile.legalEntityName,
-      };
-    }
+    const senderInfo = buildSenderInfo(client);
 
-    const leasePDF = lease.leaseDocuments?.find(
-      (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
-    );
+    const leasePDF = findActiveLeasePDF(lease);
     if (!leasePDF || !leasePDF.key) {
       const pdfGeneratorQueue = this.queueFactory.getQueue('pdfGeneratorQueue') as PdfQueue;
       await pdfGeneratorQueue.addToPdfQueue({

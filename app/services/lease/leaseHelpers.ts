@@ -1,10 +1,17 @@
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
+import { envVariables } from '@shared/config';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { PropertyUnitDAO, ProfileDAO, LeaseDAO } from '@dao/index';
+import { IClientDocument } from '@interfaces/client.interface';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
-import { IPropertyUnitDocument, IPropertyDocument, IProfileWithUser } from '@interfaces/index';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
+import {
+  IPropertyUnitDocument,
+  IPropertyDocument,
+  IProfileWithUser,
+  OwnershipType,
+} from '@interfaces/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -1159,5 +1166,162 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
     },
     // renewalFormData is now available via separate endpoint: GET /leases/:cuid/:luid/renewal-form-data
     renewalFormData: includeFormData ? renewalFormData : undefined,
+  };
+}
+
+// SECTION 7: PDF & SIGNATURE HELPERS
+
+/**
+ * Returns the active lease agreement PDF document item, if one exists.
+ */
+export const findActiveLeasePDF = (lease: ILeaseDocument) =>
+  lease.leaseDocuments?.find(
+    (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
+  );
+
+/**
+ * Builds BoldSign sender info from client profile.
+ * Falls back to env defaults for non-enterprise accounts.
+ */
+export const buildSenderInfo = (client: IClientDocument): { email: string; name: string } => {
+  if (
+    client.accountType?.isEnterpriseAccount &&
+    client.companyProfile?.companyEmail &&
+    client.companyProfile?.legalEntityName
+  ) {
+    return {
+      email: client.companyProfile.companyEmail,
+      name: client.companyProfile.legalEntityName,
+    };
+  }
+  return {
+    email: envVariables.BOLDSIGN.DEFAULT_SENDER_EMAIL,
+    name: envVariables.BOLDSIGN.DEFAULT_SENDER_NAME,
+  };
+};
+
+/**
+ * Creates a system-level request context for cron/background calls
+ * that need to invoke service methods expecting IRequestContext.
+ */
+export const createSystemContext = (cuid: string, luid: string): IRequestContext =>
+  ({
+    request: { params: { cuid, luid } } as any,
+    currentuser: { uid: 'system', sub: 'system', client: { cuid, role: 'admin' } } as any,
+  }) as IRequestContext;
+
+export type LandlordInfo = {
+  landlordName?: string;
+  landlordAddress?: string;
+  landlordEmail?: string;
+  landlordPhone?: string;
+  isExternalOwner?: boolean;
+  managementCompanyName?: string;
+  managementCompanyAddress?: string;
+  managementCompanyEmail?: string;
+  managementCompanyPhone?: string;
+};
+
+interface LandlordInfoDAOs {
+  propertyDAO: PropertyDAO;
+  profileDAO: ProfileDAO;
+  clientDAO: ClientDAO;
+}
+
+/**
+ * Resolves landlord / management company info for a property.
+ * Pass `requireManagementAuth: true` when the caller needs the property
+ * to be explicitly authorized for management (e.g. lease creation).
+ */
+export async function buildLandlordInfo(
+  cuid: string,
+  propertyId: string,
+  daos: LandlordInfoDAOs,
+  options?: { requireManagementAuth?: boolean }
+): Promise<LandlordInfo> {
+  const { clientDAO, propertyDAO, profileDAO } = daos;
+
+  const client = await clientDAO.getClientByCuid(cuid);
+  if (!client) {
+    throw new BadRequestError({ message: 'Client not found' });
+  }
+
+  const property = await propertyDAO.findFirst(
+    { _id: propertyId, cuid, deletedAt: null },
+    { select: '+owner +authorization' }
+  );
+
+  if (!property) {
+    throw new BadRequestError({ message: 'Property not found' });
+  }
+
+  if (options?.requireManagementAuth && !property.isManagementAuthorized()) {
+    throw new BadRequestError({
+      message: 'Property has not been authorized for management.',
+    });
+  }
+
+  let managementInfo;
+  if (client.accountType.isEnterpriseAccount && client.companyProfile) {
+    managementInfo = {
+      managementCompanyName: client.companyProfile?.legalEntityName,
+      managementCompanyAddress: client.companyProfile?.companyAddress,
+      managementCompanyEmail: client.companyProfile?.companyEmail,
+      managementCompanyPhone: client.companyProfile?.companyPhone,
+    };
+
+    if (property.owner?.type === OwnershipType.EXTERNAL_OWNER && property.owner.name) {
+      return {
+        ...managementInfo,
+        landlordName: property.owner.name,
+        landlordAddress: property.owner.notes || 'N/A',
+        landlordEmail: property.owner.email || 'N/A',
+        landlordPhone: property.owner.phone || 'N/A',
+        isExternalOwner: true,
+      };
+    }
+
+    if (property.owner?.type === OwnershipType.COMPANY_OWNED) {
+      return {
+        landlordName: client.companyProfile?.legalEntityName || 'N/A',
+        landlordAddress: client.companyProfile?.companyAddress || 'N/A',
+        landlordEmail: client.companyProfile?.companyEmail || 'N/A',
+        landlordPhone: client.companyProfile?.companyPhone || 'N/A',
+        isExternalOwner: false,
+      };
+    }
+  }
+
+  if (!client.accountType.isEnterpriseAccount) {
+    if (
+      (property.owner?.type === OwnershipType.SELF_OWNED ||
+        property.owner?.type === OwnershipType.EXTERNAL_OWNER) &&
+      property.owner.name
+    ) {
+      return {
+        landlordName: property.owner.name,
+        landlordAddress: property.owner.notes || 'N/A',
+        landlordEmail: property.owner.email || 'N/A',
+        landlordPhone: property.owner.phone || 'N/A',
+        isExternalOwner: false,
+      };
+    }
+  }
+
+  const profile = (await profileDAO.findFirst(
+    { user: client.accountAdmin.toString() },
+    { populate: 'user' }
+  )) as unknown as IProfileWithUser;
+
+  return {
+    landlordName:
+      client.companyProfile?.legalEntityName ||
+      `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`,
+    landlordAddress:
+      client.companyProfile?.companyAddress || profile.personalInfo.location || 'N/A',
+    landlordEmail: client.companyProfile?.companyEmail || `${profile.user.email || 'N/A'}`,
+    landlordPhone:
+      client.companyProfile?.companyPhone || `${profile.personalInfo.phoneNumber || 'N/A'}`,
+    isExternalOwner: false,
   };
 }

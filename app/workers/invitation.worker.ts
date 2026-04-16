@@ -603,7 +603,7 @@ export class InvitationWorker {
   private async determineVendorLinking(
     userData: IInvitationCsvData,
     clientInfo: IClientInfo
-  ): Promise<{ vendorUid: string; primaryAccountHolderUserIdId: string } | null> {
+  ): Promise<{ vendorUid: string; primaryAccountHolderUserId: string } | null> {
     if (userData.role === ROLES.VENDOR && userData.linkedVendorUid) {
       const existingVendor = await this.vendorDAO.getVendorByVuid(userData.linkedVendorUid);
       if (existingVendor) {
@@ -613,7 +613,7 @@ export class InvitationWorker {
         if (vendorConnection && vendorConnection.isConnected) {
           return {
             vendorUid: existingVendor.vuid,
-            primaryAccountHolderUserIdId: vendorConnection.primaryAccountHolderUserId.toString(),
+            primaryAccountHolderUserId: vendorConnection.primaryAccountHolderUserId.toString(),
           };
         }
       }

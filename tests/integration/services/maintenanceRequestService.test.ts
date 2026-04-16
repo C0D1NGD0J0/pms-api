@@ -1,41 +1,42 @@
 import { Types } from 'mongoose';
-import { faker } from '@faker-js/faker';
-import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
-import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
-import { PropertyDAO } from '@dao/propertyDAO';
-import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { UserDAO } from '@dao/userDAO';
+import { faker } from '@faker-js/faker';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { VendorDAO } from '@dao/vendorDAO';
-import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
-import {
-  MaintenanceCategory,
-  MaintenanceRequestPriority,
-  MaintenanceRequestStatus,
-  InvoiceStatus,
-} from '@interfaces/maintenanceRequest.interface';
+import { PropertyDAO } from '@dao/propertyDAO';
+import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { ROLES } from '@shared/constants/roles.constants';
+import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
+import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
+import { beforeEach, beforeAll, afterAll, describe, expect, it } from '@jest/globals';
+import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
 import {
   MaintenanceRequestModel,
-  Property,
   PropertyUnit,
-  User,
-  Lease,
+  Property,
   Vendor,
+  Lease,
+  User,
 } from '@models/index';
 import {
-  clearTestDatabase,
-  createTestClient,
-  createTestProperty,
-  createTestPropertyUnit,
-  createTestUser,
-  createTestVendor,
-  setupAllExternalMocks,
-} from '../../helpers';
+  MaintenanceRequestPriority,
+  MaintenanceRequestStatus,
+  MaintenanceCategory,
+  InvoiceStatus,
+} from '@interfaces/maintenanceRequest.interface';
+
 import { mockQueueFactory } from '../../setup/externalMocks';
 import { mockRequestContext } from '../../helpers/mockRequestContext';
-import { beforeAll, beforeEach, afterAll, describe, expect, it } from '@jest/globals';
-import { setupTestDatabase, disconnectTestDatabase } from '../../setup/testDatabase';
+import { disconnectTestDatabase, setupTestDatabase } from '../../setup/testDatabase';
+import {
+  createTestPropertyUnit,
+  setupAllExternalMocks,
+  createTestProperty,
+  clearTestDatabase,
+  createTestClient,
+  createTestVendor,
+  createTestUser,
+} from '../../helpers';
 
 const setupService = () => {
   const userDAO = new UserDAO({ userModel: User });
@@ -679,6 +680,143 @@ describe('MaintenanceRequestService', () => {
       await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord1.vuid });
 
       await expect(service.acceptAssignment(vendor2Ctx, created.data.mruid, { action: 'accept' })).rejects.toThrow();
+    });
+  });
+
+  describe('respondToAssignment', () => {
+    it('should accept assignment via unified method and transition to in_progress', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
+
+      const service = setupService();
+      const managerCtx = mockRequestContext(managerUser, client.cuid) as any;
+      const vendorCtx = mockRequestContext(vendorUser, client.cuid) as any;
+
+      const created = await service.createRequest(managerCtx, {
+        pid: property.pid,
+        title: 'Unified accept test',
+        description: { text: 'Testing unified respondToAssignment accept path' },
+        category: MaintenanceCategory.PLUMBING,
+        permissionToEnter: true,
+        media: [],
+      });
+
+      await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
+
+      const result = await service.respondToAssignment(vendorCtx, created.data.mruid, {
+        action: 'accept',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.status).toBe(MaintenanceRequestStatus.IN_PROGRESS);
+    });
+
+    it('should decline assignment via unified method and return request to open', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
+
+      const service = setupService();
+      const managerCtx = mockRequestContext(managerUser, client.cuid) as any;
+      const vendorCtx = mockRequestContext(vendorUser, client.cuid) as any;
+
+      const created = await service.createRequest(managerCtx, {
+        pid: property.pid,
+        title: 'Unified decline test',
+        description: { text: 'Testing unified respondToAssignment decline path' },
+        category: MaintenanceCategory.GENERAL,
+        permissionToEnter: true,
+        media: [],
+      });
+
+      await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
+
+      const result = await service.respondToAssignment(vendorCtx, created.data.mruid, {
+        action: 'decline',
+        reason: 'Schedule conflict',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.status).toBe(MaintenanceRequestStatus.OPEN);
+      expect(result.data.vendorId).toBeUndefined();
+    });
+  });
+
+  describe('reviewInvoice', () => {
+    it('should approve invoice via unified method', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
+
+      const service = setupService();
+      const managerCtx = mockRequestContext(managerUser, client.cuid) as any;
+      const vendorCtx = mockRequestContext(vendorUser, client.cuid) as any;
+
+      const created = await service.createRequest(managerCtx, {
+        pid: property.pid,
+        title: 'Unified invoice approve test',
+        description: { text: 'Testing unified reviewInvoice approve path' },
+        category: MaintenanceCategory.PLUMBING,
+        permissionToEnter: true,
+        media: [],
+      });
+      await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
+      await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
+      await service.submitInvoice(vendorCtx, created.data.mruid, {
+        amount: 30000,
+        description: 'Fixed the issue',
+      });
+
+      const result = await service.reviewInvoice(managerCtx, created.data.mruid, {
+        action: 'approve',
+        isBillable: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.invoice.status).toBe(InvoiceStatus.APPROVED);
+    });
+
+    it('should reject invoice via unified method', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
+
+      const service = setupService();
+      const managerCtx = mockRequestContext(managerUser, client.cuid) as any;
+      const vendorCtx = mockRequestContext(vendorUser, client.cuid) as any;
+
+      const created = await service.createRequest(managerCtx, {
+        pid: property.pid,
+        title: 'Unified invoice reject test',
+        description: { text: 'Testing unified reviewInvoice reject path' },
+        category: MaintenanceCategory.ELECTRICAL,
+        permissionToEnter: true,
+        media: [],
+      });
+      await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
+      await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
+      await service.submitInvoice(vendorCtx, created.data.mruid, {
+        amount: 90000,
+        description: 'Extensive electrical work',
+      });
+
+      const result = await service.reviewInvoice(managerCtx, created.data.mruid, {
+        action: 'reject',
+        rejectionReason: 'Amount exceeds pre-approved budget',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.invoice.status).toBe(InvoiceStatus.REJECTED);
+      expect(result.data.invoice.rejectionReason).toBe('Amount exceeds pre-approved budget');
     });
   });
 

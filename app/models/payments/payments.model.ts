@@ -123,6 +123,11 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       type: Schema.Types.ObjectId,
       ref: 'User',
     },
+    maintenanceRequestUid: {
+      type: String,
+      index: true,
+      sparse: true,
+    },
     recordedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -195,7 +200,9 @@ PaymentSchema.virtual('daysOverdue').get(function (this: IPaymentDocument) {
   return Math.floor((Date.now() - this.dueDate.getTime()) / (1000 * 60 * 60 * 24));
 });
 
-PaymentSchema.pre('save', function (next) {
+// pre('validate') runs before Mongoose's required/unique checks,
+// ensuring invoiceNumber is always set before validation fires.
+PaymentSchema.pre('validate', function (next) {
   if (!this.invoiceNumber) {
     const date = new Date();
     const year = date.getFullYear();

@@ -10,8 +10,8 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { LeaseStatus, EventTypes } from '@interfaces/index';
 import { NotificationService } from '@services/notification';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
-import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
+import ROLES, { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
 import {
   PropertyUnitDAO,
@@ -810,6 +810,33 @@ export class PropertyService {
     });
     if (!property) {
       throw new NotFoundError({ message: t('property.errors.notFound') });
+    }
+
+    if (currentUser?.client?.role === ROLES.TENANT) {
+      const tenantLease = await this.leaseDAO.findFirst({
+        'property.id': property._id,
+        tenantId: new Types.ObjectId(currentUser.sub),
+        cuid,
+        deletedAt: null,
+      });
+
+      if (!tenantLease) {
+        throw new NotFoundError({ message: t('property.errors.notFound') });
+      }
+
+      const cuidsEntry = currentUser.clients?.find((c: any) => c.cuid === cuid);
+      if (cuidsEntry?.isFormerTenant) {
+        return {
+          success: true,
+          data: {
+            pid: property.pid,
+            name: property.name,
+            address: property.address,
+            propertyType: property.propertyType,
+          } as any,
+          message: 'Property retrieved',
+        };
+      }
     }
 
     const unitInfo = await this.getUnitInfoForProperty(property);

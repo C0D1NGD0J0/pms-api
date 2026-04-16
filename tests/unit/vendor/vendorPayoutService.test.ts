@@ -6,19 +6,19 @@ jest.mock('@shared/middlewares', () => ({
 }));
 jest.mock('@di/index', () => ({ container: {} }));
 
+import { VendorCache } from '@caching/vendor.cache';
+import { PermissionService } from '@services/permission';
 import { VendorService } from '@services/vendor/vendor.service';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
-import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import {
+  PaymentProcessorDAO,
+  ProfileDAO,
   VendorDAO,
   ClientDAO,
   UserDAO,
-  ProfileDAO,
-  PaymentProcessorDAO,
 } from '@dao/index';
-import { VendorCache } from '@caching/vendor.cache';
-import { PermissionService } from '@services/permission';
 
 // ── Shared constants ──────────────────────────────────────────────────────────
 

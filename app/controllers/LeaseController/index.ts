@@ -49,9 +49,6 @@ export class LeaseController {
 
   getFilteredLeases = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-
-    this.log.info('Raw query params:', req.query);
-
     const pagination = (req.query.pagination as any) || {};
     const filter = (req.query.filter as any) || {};
 
@@ -65,9 +62,15 @@ export class LeaseController {
     const filterOpts = {
       status: filter.status as any,
       search: filter.search as string | undefined,
+      tenantId: filter.tenantId as string | undefined,
     };
 
-    const result = await this.leaseService.getFilteredLeases(cuid, filterOpts, paginationOpts);
+    const result = await this.leaseService.getFilteredLeases(
+      cuid,
+      filterOpts,
+      paginationOpts,
+      req.context
+    );
     res.status(httpStatusCodes.OK).json(result);
   };
 

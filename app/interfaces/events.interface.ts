@@ -62,7 +62,9 @@ export enum EventTypes {
   INVITATION_SENT = 'invitation:sent',
   USER_UNARCHIVED = 'user:unarchived',
   UNIT_UNARCHIVED = 'unit:unarchived',
+  PAYMENT_OVERDUE = 'payment:overdue',
   PAYMENT_FAILED = 'payment:failed',
+  LEASE_EXPIRED = 'lease:expired',
   USER_ARCHIVED = 'user:archived',
   PDF_GENERATED = 'pdf:generated',
   LEASE_RENEWED = 'lease:renewed',
@@ -86,6 +88,7 @@ export type EventPayloadMap = {
   [EventTypes.LEASE_ESIGNATURE_COMPLETED]: LeaseESignatureCompletedPayload;
   [EventTypes.LEASE_ESIGNATURE_DECLINED]: LeaseESignatureDeclinedPayload;
   [EventTypes.LEASE_TERMINATED]: LeaseTerminatedPayload;
+  [EventTypes.LEASE_EXPIRED]: LeaseExpiredPayload;
   [EventTypes.DELETE_ASSET_COMPLETED]: DeleteAssetCompletedPayload;
   [EventTypes.DELETE_ASSET_FAILED]: DeleteAssetFailedPayload;
   [EventTypes.DELETE_LOCAL_ASSET]: DeleteLocalAssetPayload;
@@ -143,6 +146,7 @@ export type EventPayloadMap = {
   [EventTypes.PAYMENT_SUCCEEDED]: PaymentSucceededPayload;
   [EventTypes.PAYMENT_FAILED]: PaymentFailedPayload;
   [EventTypes.PAYMENT_REFUNDED]: PaymentRefundedPayload;
+  [EventTypes.PAYMENT_OVERDUE]: PaymentOverduePayload;
 };
 
 export interface UserSignupInitiatedPayload {
@@ -234,6 +238,19 @@ export interface InvitationEventPayload {
   cuid: string; // Client unique ID
 }
 
+export interface MaintenanceInvoiceApprovedPayload {
+  isBillable: boolean;
+  approvedBy: string;
+  requestId: string;
+  vendorId?: string;
+  tenantId?: string;
+  currency: string;
+  amount: number;
+  title: string;
+  mruid: string;
+  cuid: string;
+}
+
 export interface UploadCompletedPayload {
   senderInfo?: {
     email: string;
@@ -245,18 +262,6 @@ export interface UploadCompletedPayload {
   resourceId: string;
   fieldName: string;
   actorId: string;
-}
-
-export interface MaintenanceInvoiceApprovedPayload {
-  isBillable: boolean;
-  approvedBy: string;
-  requestId: string;
-  vendorId?: string;
-  tenantId?: string;
-  currency: string;
-  amount: number;
-  mruid: string;
-  cuid: string;
 }
 
 export interface PdfGeneratedPayload {
@@ -435,6 +440,15 @@ export interface MaintenanceInvoiceSubmittedPayload {
   cuid: string;
 }
 
+export interface LeaseExpiredPayload {
+  reason: 'terminated' | 'expired';
+  tenantId: string;
+  leaseId: string;
+  expiredAt: Date;
+  luid: string;
+  cuid: string;
+}
+
 export interface MaintenanceWorkOrderSubmittedPayload {
   estimatedCostInCents: number;
   requestId: string;
@@ -461,6 +475,8 @@ export interface MaintenanceInvoiceRejectedPayload {
   cuid: string;
 }
 
+// ── Payment domain events ────────────────────────────────────────────────────
+
 export interface MaintenanceRequestUpdatedPayload {
   previousStatus: string;
   requestId: string;
@@ -468,8 +484,6 @@ export interface MaintenanceRequestUpdatedPayload {
   mruid: string;
   cuid: string;
 }
-
-// ── Payment domain events ────────────────────────────────────────────────────
 
 export interface MaintenanceWorkOrderApprovedPayload {
   approvedBy: string;
@@ -493,6 +507,14 @@ export interface PropertyUpdatedPayload {
   status: 'success';
 }
 
+export interface PaymentOverduePayload {
+  paymentType: string;
+  pytuid: string;
+  amount: number;
+  dueDate: Date;
+  cuid: string;
+}
+
 export interface UserArchivePayload {
   archivedBy: string;
   createdAt: Date;
@@ -500,6 +522,8 @@ export interface UserArchivePayload {
   userId: string;
   cuid: string;
 }
+
+// ── Maintenance domain events ─────────────────────────────────────────────────
 
 export interface PaymentSucceededPayload {
   invoiceId: string;
@@ -515,8 +539,6 @@ export interface PaymentRefundedPayload {
   pytuid: string;
   cuid: string;
 }
-
-// ── Maintenance domain events ─────────────────────────────────────────────────
 
 export interface UserDisconnectedPayload {
   disconnectedBy: string;

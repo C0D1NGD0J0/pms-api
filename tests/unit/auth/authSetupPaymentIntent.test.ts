@@ -34,9 +34,9 @@ jest.mock('@utils/index', () => ({
 
 import { Types } from 'mongoose';
 import { AuthService } from '@services/auth/auth.service';
+import { ICurrentUser } from '@interfaces/user.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
-import { ICurrentUser } from '@interfaces/user.interface';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

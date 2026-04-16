@@ -23,6 +23,7 @@ import {
   MailType,
 } from '@interfaces/utils.interface';
 import {
+  ITenantMaintenanceRequestView,
   ICompleteMaintenancePayload,
   IMaintenanceRequestDocument,
   IRespondToAssignmentPayload,
@@ -466,6 +467,22 @@ export class MaintenanceRequestService {
       vendorId: currentuser.sub,
     });
 
+    // Notify tenant their request is now being actively worked on
+    if (request.tenantId) {
+      const tenantUser = await this.userDAO.findFirst({
+        _id: new Types.ObjectId(request.tenantId.toString()),
+        deletedAt: null,
+      });
+      if (tenantUser?.email) {
+        this.emailQueue.addToEmailQueue('maintenanceRequestAccepted', {
+          to: tenantUser.email,
+          emailType: MailType.MAINTENANCE_REQUEST_ACCEPTED,
+          subject: '',
+          data: { request: updated, tenant: tenantUser, vendor: currentuser },
+        });
+      }
+    }
+
     return { success: true, data: updated, message: t('maintenance.success.accepted') };
   }
 
@@ -530,6 +547,21 @@ export class MaintenanceRequestService {
     });
 
     return { success: true, data: updated, message: t('maintenance.success.declined') };
+  }
+
+  async respondToAssignment(
+    ctx: IRequestContext,
+    mruid: string,
+    body: {
+      action: string;
+      reason?: string;
+      technician?: { name: string; phone?: string; email?: string };
+    }
+  ): Promise<ISuccessReturnData> {
+    if (body.action === 'accept') {
+      return this.acceptAssignment(ctx, mruid, { action: 'accept', technician: body.technician });
+    }
+    return this.declineAssignment(ctx, mruid, { reason: body.reason });
   }
 
   async updateStatus(
@@ -609,6 +641,22 @@ export class MaintenanceRequestService {
       completedBy: currentuser.sub,
       actualCost: data.actualCost,
     });
+
+    // Notify tenant their request is complete
+    if (request.tenantId) {
+      const tenantUser = await this.userDAO.findFirst({
+        _id: new Types.ObjectId(request.tenantId.toString()),
+        deletedAt: null,
+      });
+      if (tenantUser?.email) {
+        this.emailQueue.addToEmailQueue('maintenanceRequestCompleted', {
+          to: tenantUser.email,
+          emailType: MailType.MAINTENANCE_REQUEST_COMPLETED,
+          subject: '',
+          data: { request: updated, tenant: tenantUser },
+        });
+      }
+    }
 
     return { success: true, data: updated, message: t('maintenance.success.completed') };
   }
@@ -766,6 +814,7 @@ export class MaintenanceRequestService {
     this.emitterService.emit(EventTypes.MAINTENANCE_INVOICE_APPROVED, {
       requestId: request._id.toString(),
       mruid: request.mruid,
+      title: request.title,
       cuid,
       vendorId: request.vendorId?.toString(),
       tenantId: request.tenantId?.toString(),
@@ -832,6 +881,17 @@ export class MaintenanceRequestService {
     });
 
     return { success: true, data: updated, message: t('maintenance.success.invoiceRejected') };
+  }
+
+  async reviewInvoice(
+    ctx: IRequestContext,
+    mruid: string,
+    body: { action: string; rejectionReason?: string; isBillable?: boolean }
+  ): Promise<ISuccessReturnData> {
+    if (body.action === 'approve') {
+      return this.approveInvoice(ctx, mruid, { isBillable: body.isBillable });
+    }
+    return this.rejectInvoice(ctx, mruid, { rejectionReason: body.rejectionReason ?? '' });
   }
 
   async submitWorkOrder(
@@ -1084,5 +1144,105 @@ export class MaintenanceRequestService {
       default:
         return true;
     }
+  }
+
+  async getTenantRequests(
+    cuid: string,
+    tenantUserId: string,
+    filters: { page?: number; limit?: number; status?: MaintenanceRequestStatus }
+  ): Promise<ISuccessReturnData> {
+    const query: Record<string, any> = {
+      cuid,
+      tenantId: new Types.ObjectId(tenantUserId),
+      deletedAt: null,
+    };
+    if (filters.status) query.status = filters.status;
+
+    const result = await this.maintenanceRequestDAO.listWithDetails(query, {
+      page: filters.page || 1,
+      limit: filters.limit || 10,
+    });
+
+    const items = ((result as any).items || []).map((req: IMaintenanceRequestDocument) =>
+      this.buildTenantView(req)
+    );
+    return { success: true, data: { ...(result as any), items } };
+  }
+
+  async getTenantRequestById(
+    mruid: string,
+    cuid: string,
+    tenantUserId: string
+  ): Promise<ISuccessReturnData> {
+    const req = await this.maintenanceRequestDAO.findFirst({
+      mruid,
+      cuid,
+      tenantId: new Types.ObjectId(tenantUserId),
+      deletedAt: null,
+    });
+    if (!req) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
+    return { success: true, data: this.buildTenantView(req) };
+  }
+
+  private buildTenantView(req: IMaintenanceRequestDocument): ITenantMaintenanceRequestView {
+    const ORDERED_STEPS = [
+      { status: MaintenanceRequestStatus.PENDING, label: 'Request Submitted' },
+      { status: MaintenanceRequestStatus.OPEN, label: 'Under Review' },
+      { status: MaintenanceRequestStatus.ASSIGNED, label: 'Technician Assigned' },
+      { status: MaintenanceRequestStatus.IN_PROGRESS, label: 'Work in Progress' },
+      { status: MaintenanceRequestStatus.COMPLETED, label: 'Completed' },
+    ];
+
+    const currentIndex = ORDERED_STEPS.findIndex((s) => s.status === req.status);
+
+    const timeline = ORDERED_STEPS.map((step, index) => {
+      const reached = index <= currentIndex;
+      const note =
+        step.status === MaintenanceRequestStatus.ASSIGNED && req.vendorId
+          ? 'A technician has been assigned'
+          : step.status === MaintenanceRequestStatus.COMPLETED && req.completionNotes?.length
+            ? (req.completionNotes[req.completionNotes.length - 1] as any).note
+            : undefined;
+
+      return {
+        status: step.status,
+        label: step.label,
+        reached,
+        timestamp: reached
+          ? step.status === MaintenanceRequestStatus.COMPLETED
+            ? req.completedAt
+            : req.createdAt
+          : undefined,
+        note,
+      };
+    });
+
+    const property = (req as any).propertyId as any;
+    const unit = (req as any).propertyUnitId as any;
+    const propertyAddress =
+      typeof property?.address === 'string'
+        ? property.address
+        : property?.address?.fullAddress || property?.name || 'Property';
+
+    const lastNote = req.completionNotes?.length
+      ? (req.completionNotes[req.completionNotes.length - 1] as any).note
+      : undefined;
+
+    return {
+      mruid: req.mruid,
+      title: req.title,
+      description: (req.description as any)?.text || '',
+      category: req.category,
+      priority: req.priority,
+      status: req.status,
+      propertyAddress,
+      unitNumber: typeof unit === 'object' ? unit?.unitNumber : undefined,
+      submittedAt: req.createdAt,
+      timeline,
+      scheduledDate: req.scheduledDate,
+      completedAt: req.completedAt,
+      completionNote: lastNote,
+      media: (req.media || []).map((m: any) => ({ url: m.url, filename: m.filename })),
+    };
   }
 }

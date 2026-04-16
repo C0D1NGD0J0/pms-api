@@ -456,17 +456,18 @@ describe('Maintenance Request Routes', () => {
   // ─── Respond to Assignment (accept/decline) ────────────────────────────────
 
   describe('PATCH /:cuid/:mruid/assignment', () => {
-    it('should accept an assignment', async () => {
+    it('should accept an assignment and forward full body to controller', async () => {
       const response = await request(app)
         .patch(`${baseUrl}/${mockCuid}/${mockMruid}/assignment`)
-        .send({ action: 'accept' })
+        .send({ action: 'accept', technician: { name: 'Jane Tech', phone: '555-1234' } })
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
+      expect(response.body.data.status).toBe('in_progress');
       expect(mockMaintenanceController.respondToAssignment).toHaveBeenCalled();
     });
 
-    it('should decline an assignment', async () => {
+    it('should decline an assignment and forward full body to controller', async () => {
       mockMaintenanceController.respondToAssignment.mockImplementationOnce(
         (_req: Request, res: Response) => {
           res.status(httpStatusCodes.OK).json({
@@ -483,6 +484,26 @@ describe('Maintenance Request Routes', () => {
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
+      expect(response.body.data.status).toBe('open');
+      expect(mockMaintenanceController.respondToAssignment).toHaveBeenCalled();
+    });
+
+    it('should return 403 when vendor is not the assigned vendor', async () => {
+      mockMaintenanceController.respondToAssignment.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.FORBIDDEN).json({
+            success: false,
+            message: 'You are not the assigned vendor for this request',
+          });
+        }
+      );
+
+      const response = await request(app)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/assignment`)
+        .send({ action: 'accept' })
+        .expect(httpStatusCodes.FORBIDDEN);
+
+      expect(response.body.success).toBe(false);
     });
   });
 
@@ -586,10 +607,10 @@ describe('Maintenance Request Routes', () => {
   // ─── Review Invoice ────────────────────────────────────────────────────────
 
   describe('PATCH /:cuid/:mruid/invoice_review', () => {
-    it('should approve an invoice', async () => {
+    it('should approve an invoice and forward full body to controller', async () => {
       const response = await request(app)
         .patch(`${baseUrl}/${mockCuid}/${mockMruid}/invoice_review`)
-        .send({ action: 'approve' })
+        .send({ action: 'approve', isBillable: true })
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -597,7 +618,7 @@ describe('Maintenance Request Routes', () => {
       expect(mockMaintenanceController.reviewInvoice).toHaveBeenCalled();
     });
 
-    it('should reject an invoice', async () => {
+    it('should reject an invoice and forward full body to controller', async () => {
       mockMaintenanceController.reviewInvoice.mockImplementationOnce(
         (_req: Request, res: Response) => {
           res.status(httpStatusCodes.OK).json({
@@ -615,6 +636,7 @@ describe('Maintenance Request Routes', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data.invoice.status).toBe('rejected');
+      expect(mockMaintenanceController.reviewInvoice).toHaveBeenCalled();
     });
 
     it('should return 400 when no invoice exists', async () => {

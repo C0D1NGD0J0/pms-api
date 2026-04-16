@@ -6,6 +6,7 @@ export * from './InvitationController';
 export * from './PropertyController';
 export * from './PaymentController';
 export * from './WebhookController';
+export * from './ExpenseController';
 export * from './ClientController';
 export * from './VendorController';
 export * from './AdminController';

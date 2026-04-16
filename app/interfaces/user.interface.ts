@@ -54,6 +54,17 @@ export interface ICurrentUser {
       daysUntilDowngrade: number | null;
     };
   };
+  client: {
+    clientSettings?: any;
+    cuid: string;
+    displayname: string;
+    linkedVendorUid?: string;
+    role: IUserRoleType;
+    isVerified: boolean;
+    requiresOnboarding?: boolean;
+    vendorPayoutMode?: 'express' | 'platform_hold';
+    isFormerTenant?: boolean;
+  };
   vendorInfo?: {
     vendorId?: string;
     vuid?: string;
@@ -65,16 +76,6 @@ export interface ICurrentUser {
       payoutsEnabled: boolean;
       chargesEnabled: boolean;
     };
-  };
-  client: {
-    clientSettings?: any;
-    cuid: string;
-    displayname: string;
-    linkedVendorUid?: string;
-    role: IUserRoleType;
-    isVerified: boolean;
-    requiresOnboarding?: boolean;
-    vendorPayoutMode?: 'express' | 'platform_hold';
   };
   /** Only populated for super-admin users who have completed payment processor onboarding */
   paymentProcessor?: {
@@ -151,6 +152,7 @@ export interface IClientTenantDetails {
     totalRentPaid: number;
   };
   tenantInfo: ITenantInfo;
+  isFormerTenant: boolean;
   status: UserStatus;
   userType: 'tenant';
   joinedDate: Date;

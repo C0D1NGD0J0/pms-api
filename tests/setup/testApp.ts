@@ -29,25 +29,31 @@ export const createTestApp = (): Application => {
  * that matches what the authentication middleware expects
  */
 export const createAuthToken = (user: any): string => {
-  // Get the active client info
   const activeCuid = user.activecuid;
   const clientInfo = user.cuids.find((c: any) => c.cuid === activeCuid);
 
-  // Create payload matching what the auth service creates
-  const payload = {
+  // Must match the shape AuthTokenService.generateToken produces:
+  // jwt.sign({ data: payload }, secret, options)
+  // verifyJwtToken reads decoded.data.sub and decoded.data.cuid
+  const data = {
     uid: user.uid,
     sub: user._id.toString(),
     email: user.email,
-    type: 'access',
+    cuid: activeCuid,
+    rememberMe: false,
     client: {
       cuid: activeCuid,
       role: clientInfo?.roles[0] || 'staff',
     },
-    iat: Math.floor(Date.now() / 1000),
   };
 
-  // Use the actual JWT secret from env config
   const secret = envVariables.JWT.SECRET || 'WeAreUnited4Life';
-
-  return jwt.sign(payload, secret, { expiresIn: '1h' });
+  return jwt.sign({ data }, secret, { expiresIn: '1h' });
 };
+
+/**
+ * Returns a supertest-compatible cookie header string for the given token.
+ * The auth middleware reads from req.cookies['accessToken'] only —
+ * Authorization headers are not supported.
+ */
+export const authCookie = (token: string): string => `accessToken=${token}`;

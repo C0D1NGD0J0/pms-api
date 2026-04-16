@@ -3,6 +3,14 @@ import { Document, Types } from 'mongoose';
 import { ILeaseDocument } from './lease.interface';
 import { IProfileDocument } from './profile.interface';
 
+export enum PaymentRecordType {
+  SECURITY_DEPOSIT = 'security_deposit',
+  DEPOSIT_REFUND = 'deposit_refund',
+  MAINTENANCE = 'maintenance',
+  LATE_FEE = 'late_fee',
+  RENT = 'rent',
+}
+
 export enum PaymentRecordStatus {
   CANCELLED = 'cancelled',
   REFUNDED = 'refunded',
@@ -18,12 +26,6 @@ export enum PaymentMethod {
   CHECK = 'check',
   OTHER = 'other',
   CASH = 'cash',
-}
-
-export enum PaymentRecordType {
-  MAINTENANCE = 'maintenance',
-  LATE_FEE = 'late_fee',
-  RENT = 'rent',
 }
 
 export interface IPaymentDocument extends Document {
@@ -53,6 +55,7 @@ export interface IPaymentDocument extends Document {
     createdAt: Date;
   }[];
   paymentType: PaymentRecordType;
+  maintenanceRequestUid?: string; // mruid — links maintenance expense/charge back to its request
   paymentMethod: PaymentMethod;
   status: PaymentRecordStatus;
   recordedBy?: Types.ObjectId; // User who recorded manual payment

@@ -5,6 +5,7 @@ import Client from '@models/client/client.model';
 import Vendor from '@models/vendor/vendor.model';
 import Profile from '@models/profile/profile.model';
 import Property from '@models/property/property.model';
+import ExpenseModel from '@models/expense/expense.model';
 import PaymentModel from '@models/payments/payments.model';
 import Invitation from '@models/invitation/invitation.model';
 import Subscription from '@models/subscription/subscription.model';
@@ -17,6 +18,7 @@ export {
   MaintenanceRequestModel,
   NotificationModel,
   PaymentProcessor,
+  ExpenseModel,
   Subscription,
   PropertyUnit,
   PaymentModel,

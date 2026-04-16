@@ -7,7 +7,6 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
 import { ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
 import { determineTemplateType, createLogger } from '@utils/index';
-import { IProfileWithUser, OwnershipType } from '@interfaces/index';
 import { PdfGeneratorService, MediaUploadService } from '@services/index';
 import { EventEmitterService, NotificationService } from '@services/index';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
@@ -22,6 +21,7 @@ import {
   EventTypes,
 } from '@interfaces/events.interface';
 
+import { buildLandlordInfo } from './leaseHelpers';
 import { LeaseTemplateService } from './leaseTemplateService';
 
 interface IConstructor {
@@ -258,7 +258,11 @@ export class LeasePdfService {
 
     const propertyId =
       typeof lease.property.id === 'string' ? lease.property.id : lease.property.id.toString();
-    const landlordInfo = await this.buildLandlordInfo(cuid, propertyId);
+    const landlordInfo = await buildLandlordInfo(cuid, propertyId, {
+      clientDAO: this.clientDAO,
+      propertyDAO: this.propertyDAO,
+      profileDAO: this.profileDAO,
+    });
 
     const baseData = {
       leaseNumber: lease.leaseNumber,
@@ -378,104 +382,6 @@ export class LeasePdfService {
       });
       // Don't throw - notification failure shouldn't break PDF generation flow
     }
-  }
-
-  /**
-   * Build landlord information for lease preview
-   */
-  private async buildLandlordInfo(
-    cuid: string,
-    propertyId: string
-  ): Promise<{
-    landlordName?: string;
-    landlordAddress?: string;
-    landlordEmail?: string;
-    landlordPhone?: string;
-    isExternalOwner?: boolean;
-    managementCompanyName?: string;
-    managementCompanyAddress?: string;
-    managementCompanyEmail?: string;
-    managementCompanyPhone?: string;
-  }> {
-    const client = await this.clientDAO.getClientByCuid(cuid);
-    if (!client) {
-      throw new BadRequestError({ message: 'Client not found' });
-    }
-
-    const property = await this.propertyDAO.findFirst(
-      { _id: propertyId, cuid, deletedAt: null },
-      {
-        select: '+owner +authorization',
-      }
-    );
-
-    if (!property) {
-      throw new BadRequestError({ message: 'Property not found' });
-    }
-
-    let managementInfo;
-    if (client.accountType.isEnterpriseAccount && client.companyProfile) {
-      managementInfo = {
-        managementCompanyName: client.companyProfile?.legalEntityName,
-        managementCompanyAddress: client.companyProfile?.companyAddress,
-        managementCompanyEmail: client.companyProfile?.companyEmail,
-        managementCompanyPhone: client.companyProfile?.companyPhone,
-      };
-
-      if (property.owner?.type === OwnershipType.EXTERNAL_OWNER && property.owner.name) {
-        return {
-          ...managementInfo,
-          landlordName: property.owner.name,
-          landlordAddress: property.owner.notes || 'N/A',
-          landlordEmail: property.owner.email || 'N/A',
-          landlordPhone: property.owner.phone || 'N/A',
-          isExternalOwner: true,
-        };
-      }
-
-      if (property.owner?.type === OwnershipType.COMPANY_OWNED) {
-        return {
-          landlordName: client.companyProfile?.legalEntityName || 'N/A',
-          landlordAddress: client.companyProfile?.companyAddress || 'N/A',
-          landlordEmail: client.companyProfile?.companyEmail || 'N/A',
-          landlordPhone: client.companyProfile?.companyPhone || 'N/A',
-          isExternalOwner: false,
-        };
-      }
-    }
-
-    if (!client.accountType.isEnterpriseAccount) {
-      if (
-        (property.owner?.type === OwnershipType.SELF_OWNED ||
-          property.owner?.type === OwnershipType.EXTERNAL_OWNER) &&
-        property.owner.name
-      ) {
-        return {
-          landlordName: property.owner.name,
-          landlordAddress: property.owner.notes || 'N/A',
-          landlordEmail: property.owner.email || 'N/A',
-          landlordPhone: property.owner.phone || 'N/A',
-          isExternalOwner: false,
-        };
-      }
-    }
-
-    const profile = (await this.profileDAO.findFirst(
-      { user: client.accountAdmin.toString() },
-      { populate: 'user' }
-    )) as unknown as IProfileWithUser;
-
-    return {
-      landlordName:
-        client.companyProfile?.legalEntityName ||
-        `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`,
-      landlordAddress:
-        client.companyProfile?.companyAddress || profile.personalInfo.location || 'N/A',
-      landlordEmail: client.companyProfile?.companyEmail || `${profile.user.email || 'N/A'}`,
-      landlordPhone:
-        client.companyProfile?.companyPhone || `${profile.personalInfo.phoneNumber || 'N/A'}`,
-      isExternalOwner: false,
-    };
   }
 
   /**

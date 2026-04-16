@@ -337,17 +337,18 @@ export class WebhookController {
 
   handleInvoiceWebhook = async (req: Request, res: Response): Promise<void> => {
     const source = req.params.source as InvoiceSource;
-    const rawBody = req.body as Buffer;
+    const rawBody = (req as any).rawBody as Buffer;
     const headers = req.headers as Record<string, string>;
 
-    let payload: IInvoiceWebhookPayload;
-    try {
-      const parsed = JSON.parse(rawBody.toString());
-      payload = { ...parsed, source, rawPayload: parsed };
-    } catch {
-      res.status(400).json({ success: false, error: 'Invalid JSON payload' });
+    if (!rawBody) {
+      res.status(400).json({ success: false, error: 'Raw body unavailable' });
       return;
     }
+
+    // req.body is already parsed by express.json(); rawBody is the raw Buffer
+    // preserved by the verify callback in app.ts for signature verification
+    const parsed = req.body;
+    const payload: IInvoiceWebhookPayload = { ...parsed, source, rawPayload: parsed };
 
     // Respond 200 immediately to prevent provider retries, then process async
     res.status(200).json({ received: true });

@@ -88,7 +88,8 @@ export class App implements IAppSetup {
           if (
             req.originalUrl === '/api/v1/webhooks/stripe' ||
             req.originalUrl === '/api/v1/webhooks/stripe/connect' ||
-            req.originalUrl === '/api/v1/webhooks/boldsign'
+            req.originalUrl === '/api/v1/webhooks/boldsign' ||
+            req.originalUrl.startsWith('/api/v1/webhooks/invoices/')
           ) {
             req.rawBody = buf;
           }
@@ -170,6 +171,7 @@ export class App implements IAppSetup {
     app.use(`${this.BASE_PATH}/payments`, routes.paymentRoutes);
     app.use(`${this.BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
     app.use(`${this.BASE_PATH}/maintenance_requests`, routes.maintenanceRequestRoutes);
+    app.use(`${this.BASE_PATH}/expenses`, routes.expenseRoutes);
     app.all('*', (req: Request, res: Response) => {
       res.status(httpStatusCodes.NOT_FOUND).json({ message: 'Invalid endpoint.' });
     });

@@ -560,6 +560,29 @@ export interface IRentRollReport {
 }
 
 /**
+ * Lease Document Item Interface
+ * Tracks uploaded lease documents
+ */
+export interface ILeaseDocumentItem {
+  status: 'active' | 'inactive' | 'failed' | 'deleted';
+  documentType?: 'lease_agreement' | 'other';
+  uploadedBy: Types.ObjectId | string;
+  mimeType?: string;
+  uploadedAt?: Date;
+  filename: string;
+  error?: string;
+  size?: number;
+  url: string;
+  key: string;
+}
+
+/**
+ * ============================================================================
+ * MAIN LEASE INTERFACE
+ * ============================================================================
+ */
+
+/**
  * Lease List Item Interface
  * Simplified lease data for list views
  */
@@ -580,7 +603,7 @@ export interface ILeaseListItem {
 
 /**
  * ============================================================================
- * MAIN LEASE INTERFACE
+ * FORM DATA INTERFACES
  * ============================================================================
  */
 
@@ -601,12 +624,6 @@ export interface ILeaseFees {
 }
 
 /**
- * ============================================================================
- * FORM DATA INTERFACES
- * ============================================================================
- */
-
-/**
  * E-Signature Interface
  * Tracks electronic signature provider details
  */
@@ -620,22 +637,6 @@ export interface ILeaseESignature {
   completedAt?: Date;
   failedAt?: Date;
   sentAt?: Date;
-}
-
-/**
- * Lease Document Item Interface
- * Tracks uploaded lease documents
- */
-export interface ILeaseDocumentItem {
-  documentType?: 'lease_agreement' | 'other';
-  uploadedBy: Types.ObjectId | string;
-  status: 'active' | 'inactive';
-  mimeType?: string;
-  uploadedAt?: Date;
-  filename: string;
-  size?: number;
-  url: string;
-  key: string;
 }
 
 export interface LeaseTerminatedPayload {

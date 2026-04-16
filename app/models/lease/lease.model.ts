@@ -355,8 +355,12 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         },
         status: {
           type: String,
-          enum: ['active', 'inactive'],
+          enum: ['active', 'inactive', 'failed', 'deleted'],
           default: 'active',
+        },
+        error: {
+          type: String,
+          default: null,
         },
         _id: false,
       },
@@ -478,7 +482,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         },
         html: {
           type: String,
-          required: true,
+          required: false,
           maxlength: 10000,
         },
         author: {

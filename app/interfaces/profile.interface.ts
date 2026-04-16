@@ -1,8 +1,6 @@
 import { Document, Types } from 'mongoose';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 
-import { IUserIdentificationType } from './user.interface';
-
 /**
  * ============================================================================
  * BASE TYPE DEFINITIONS (Single Source of Truth)
@@ -141,35 +139,6 @@ export interface IPopulatedUser {
 }
 
 /**
- * Personal Info Interface
- */
-export interface IPersonalInfo {
-  identification?: IUserIdentificationType;
-  phoneNumber?: string;
-  displayName: string;
-  firstName: string;
-  headline?: string;
-  lastName: string;
-  location: string;
-  avatar?: IAvatar;
-  bio?: string;
-  dob?: Date;
-}
-
-/**
- * Profile Edit Data Interface
- * Used when fetching profile data for editing/display
- */
-export interface IProfileEditData {
-  identification?: IUserIdentificationType;
-  personalInfo: IProfileEditPersonalInfo;
-  settings: IProfileEditSettings;
-  userType: ProfileUserType;
-  roles: IUserRoleType[];
-  policies?: IPolicies;
-}
-
-/**
  * Lease History Item Interface
  */
 export interface ILeaseHistoryItem {
@@ -200,10 +169,17 @@ export interface IProfileDocument extends Document, IProfile {
 }
 
 /**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
+ * Employee Info Interface
  */
+export interface IEmployeeInfo {
+  emergencyContact?: IEmergencyContact;
+  department?: EmployeeDepartment;
+  clientSpecificSettings?: any;
+  employeeId?: string;
+  reportsTo?: string;
+  jobTitle?: string;
+  startDate?: Date;
+}
 
 /**
  * Vendor Info Interface
@@ -213,6 +189,12 @@ export interface IVendorInfo {
   isLinkedAccount: boolean;
   linkedVendorUid?: string; // Reference to primary vendor (stays as string to match user model)
 }
+
+/**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
 
 /**
  * Main Profile Interface
@@ -225,6 +207,21 @@ export interface IProfile {
   user: Types.ObjectId;
   settings: ISettings;
   policies: IPolicies;
+}
+
+/**
+ * Personal Info Interface
+ */
+export interface IPersonalInfo {
+  phoneNumber?: string;
+  displayName: string;
+  firstName: string;
+  headline?: string;
+  lastName: string;
+  location: string;
+  avatar?: IAvatar;
+  bio?: string;
+  dob?: Date;
 }
 
 /**
@@ -264,15 +261,15 @@ export interface IMaintenanceRequestItem {
 }
 
 /**
- * Employee Info Interface
+ * Profile Edit Data Interface
+ * Used when fetching profile data for editing/display
  */
-export interface IEmployeeInfo {
-  department?: EmployeeDepartment;
-  clientSpecificSettings?: any;
-  employeeId?: string;
-  reportsTo?: string;
-  jobTitle?: string;
-  startDate?: Date;
+export interface IProfileEditData {
+  personalInfo: IProfileEditPersonalInfo;
+  settings: IProfileEditSettings;
+  userType: ProfileUserType;
+  roles: IUserRoleType[];
+  policies?: IPolicies;
 }
 
 /**

@@ -177,12 +177,12 @@ export interface ILeaseFormData {
   utilitiesIncluded?: UtilityType[];
   renewalOptions?: IRenewalOptions;
   templateType?: LeaseTemplateType;
+  internalNotes?: IInternalNote[];
   requiresNotarization?: boolean;
   signingMethod?: SigningMethod;
   legalTerms?: ILegalTerms;
   coTenants?: ICoTenant[];
   petPolicy?: IPetPolicy;
-  internalNotes?: string;
   leaseNumber: string;
   type: LeaseType;
 }
@@ -307,6 +307,28 @@ export interface ILeaseFilterOptions {
  */
 
 /**
+ * Property Reference Interface
+ * Links lease to property and unit
+ * Includes essential property information for lease documents
+ */
+export interface ILeaseProperty {
+  specifications?: {
+    totalArea?: number; // Square footage
+    bedrooms?: number;
+    bathrooms?: number;
+    parkingSpaces?: number;
+    floors?: number;
+  };
+  managedBy?: Types.ObjectId | string;
+  unitId?: Types.ObjectId | string;
+  propertyType?: LeasePropertyType;
+  address: AddressDetails | string; // Support both detailed address object and simple string
+  id: Types.ObjectId | string;
+  unitNumber?: string; // Unit/Suite number from property unit
+  name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
+}
+
+/**
  * Lease Financial Summary Interface
  * Financial information and payment tracking
  */
@@ -326,27 +348,6 @@ export interface ILeaseFinancialSummary {
   totalPaid: number;
   totalOwed: number;
   currency: string;
-}
-
-/**
- * Property Reference Interface
- * Links lease to property and unit
- * Includes essential property information for lease documents
- */
-export interface ILeaseProperty {
-  specifications?: {
-    totalArea?: number; // Square footage
-    bedrooms?: number;
-    bathrooms?: number;
-    parkingSpaces?: number;
-    floors?: number;
-  };
-  unitId?: Types.ObjectId | string;
-  propertyType?: LeasePropertyType;
-  address: AddressDetails | string; // Support both detailed address object and simple string
-  id: Types.ObjectId | string;
-  unitNumber?: string; // Unit/Suite number from property unit
-  name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
 }
 
 /**
@@ -466,6 +467,29 @@ export interface IRentRollItem {
   luid: string;
 }
 
+/**
+ * Signature Interface
+ * Individual signature tracking
+ */
+export interface ILeaseSignature {
+  landlordInfo?: {
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  coTenantInfo?: {
+    name: string;
+    email: string;
+    phone: string;
+  };
+  signatureMethod: 'manual' | 'electronic';
+  userId?: Types.ObjectId | string;
+  providerSignatureId?: string;
+  ipAddress?: string;
+  role: SignerRole;
+  signedAt?: Date;
+}
+
 export interface LeaseESignatureCompletedPayload {
   signers: Array<{
     name: string;
@@ -536,6 +560,29 @@ export interface IRentRollReport {
 }
 
 /**
+ * Lease Document Item Interface
+ * Tracks uploaded lease documents
+ */
+export interface ILeaseDocumentItem {
+  status: 'active' | 'inactive' | 'failed' | 'deleted';
+  documentType?: 'lease_agreement' | 'other';
+  uploadedBy: Types.ObjectId | string;
+  mimeType?: string;
+  uploadedAt?: Date;
+  filename: string;
+  error?: string;
+  size?: number;
+  url: string;
+  key: string;
+}
+
+/**
+ * ============================================================================
+ * MAIN LEASE INTERFACE
+ * ============================================================================
+ */
+
+/**
  * Lease List Item Interface
  * Simplified lease data for list views
  */
@@ -555,26 +602,8 @@ export interface ILeaseListItem {
 }
 
 /**
- * Signature Interface
- * Individual signature tracking
- */
-export interface ILeaseSignature {
-  coTenantInfo?: {
-    name: string;
-    email: string;
-    phone: string;
-  };
-  signatureMethod: 'manual' | 'electronic';
-  userId?: Types.ObjectId | string;
-  providerSignatureId?: string;
-  ipAddress?: string;
-  role: SignerRole;
-  signedAt?: Date;
-}
-
-/**
  * ============================================================================
- * MAIN LEASE INTERFACE
+ * FORM DATA INTERFACES
  * ============================================================================
  */
 
@@ -595,12 +624,6 @@ export interface ILeaseFees {
 }
 
 /**
- * ============================================================================
- * FORM DATA INTERFACES
- * ============================================================================
- */
-
-/**
  * E-Signature Interface
  * Tracks electronic signature provider details
  */
@@ -614,22 +637,6 @@ export interface ILeaseESignature {
   completedAt?: Date;
   failedAt?: Date;
   sentAt?: Date;
-}
-
-/**
- * Lease Document Item Interface
- * Tracks uploaded lease documents
- */
-export interface ILeaseDocumentItem {
-  documentType?: 'lease_agreement' | 'other';
-  uploadedBy: Types.ObjectId | string;
-  status: 'active' | 'inactive';
-  mimeType?: string;
-  uploadedAt?: Date;
-  filename: string;
-  size?: number;
-  url: string;
-  key: string;
 }
 
 export interface LeaseTerminatedPayload {
@@ -835,19 +842,6 @@ export type LeaseTemplateType =
  */
 
 /**
- * Payment Method Types
- */
-export type PaymentMethodType =
-  | 'bank_transfer'
-  | 'e-transfer'
-  | 'auto-debit'
-  | 'check'
-  | 'cash'
-  | 'credit_card'
-  | 'debit_card'
-  | 'mobile_payment';
-
-/**
  * Lease Termination Data Interface
  * Used when terminating a lease
  */
@@ -920,12 +914,6 @@ export interface ILeaseDuration {
 }
 
 /**
- * ============================================================================
- * ACTION DATA INTERFACES
- * ============================================================================
- */
-
-/**
  * Pet Policy Interface
  * Defines pet rules and associated fees
  */
@@ -936,6 +924,12 @@ export interface IPetPolicy {
   types?: string[];
   maxPets?: number;
 }
+
+/**
+ * ============================================================================
+ * ACTION DATA INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Property Types (for lease context)
@@ -959,12 +953,6 @@ export interface ILeaseActivationData {
 }
 
 /**
- * ============================================================================
- * QUERY & FILTER INTERFACES
- * ============================================================================
- */
-
-/**
  * Co-Tenant Interface
  * Additional tenants on the lease
  */
@@ -974,6 +962,12 @@ export interface ICoTenant {
   phone: string;
   name: string;
 }
+
+/**
+ * ============================================================================
+ * QUERY & FILTER INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Legal Terms Interface
@@ -986,21 +980,26 @@ export interface ILegalTerms {
 }
 
 /**
+ * Signer/Participant Role Types
+ */
+export type SignerRole = 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
+
+/**
  * ============================================================================
  * REPORTING INTERFACES
  * ============================================================================
  */
 
 /**
- * Signer/Participant Role Types
- */
-export type SignerRole = 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
-
-/**
  * Lease Approval Status Type
  * Tracks the approval state of a lease
  */
 export type LeaseApprovalStatus = 'approved' | 'rejected' | 'pending' | 'draft';
+
+/**
+ * Payment Method Types
+ */
+export type PaymentMethodType = 'auto-debit' | 'cash' | 'e-transfer' | 'check';
 
 /**
  * Late Fee Types

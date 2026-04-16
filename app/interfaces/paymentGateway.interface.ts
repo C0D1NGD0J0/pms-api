@@ -104,8 +104,8 @@ export interface ICreateInvoiceInput {
   tenantCustomerId: string;
   autoChargeDueDate: Date;
   description: string;
+  leaseUid?: string;
   currency: string;
-  leaseUid: string;
   cuid: string;
 }
 

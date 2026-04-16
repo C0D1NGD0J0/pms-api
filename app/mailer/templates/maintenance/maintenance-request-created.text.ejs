@@ -1,0 +1,19 @@
+Maintenance Request Received
+=============================
+
+Hi <%= currentuser.firstName || currentuser.email %>,
+
+We've received your maintenance request and added it to the queue. You'll be notified once a vendor is assigned.
+
+REQUEST DETAILS
+---------------
+Reference #: <%= request.mruid %>
+Title:       <%= request.title %>
+Category:    <%= request.category.replace(/_/g, ' ') %>
+Priority:    <%= request.priority %>
+Status:      Open
+<% if (request.preferredDate) { %>Preferred Date: <%= new Date(request.preferredDate).toLocaleDateString() %>
+<% } %><% if (request.availabilityWindows && request.availabilityWindows.length > 0) { %>Availability:   <%= request.availabilityWindows.join(', ').replace(/_/g, ' ') %>
+<% } %>
+Keep your reference number for follow-ups: <%= request.mruid %>
+

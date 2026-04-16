@@ -7,10 +7,10 @@ import { ISubscriptionEntitlements, ISubscriptionStatus, PlanName } from './subs
 import {
   EmployeeDepartment,
   IProfileDocument,
-  GDPRSettings,
-  EmployeeInfo,
-  VendorInfo,
-  TenantInfo,
+  IEmployeeInfo,
+  IGDPRSettings,
+  IVendorInfo,
+  ITenantInfo,
 } from './profile.interface';
 
 /**
@@ -54,15 +54,17 @@ export interface ICurrentUser {
       daysUntilDowngrade: number | null;
     };
   };
-  /** Only populated for super-admin users who have completed payment processor onboarding */
-  paymentProcessor?: {
-    isSetup: boolean;
-    chargesEnabled: boolean;
-    payoutsEnabled: boolean;
-    needsOnboarding: boolean;
-    accountId: string | null;
-    accountType: PaymentProcessorAccountType | null;
-    onboardedAt: Date | null;
+  vendorInfo?: {
+    vendorId?: string;
+    vuid?: string;
+    linkedVendorUid?: string;
+    isPrimaryVendor?: boolean;
+    isLinkedAccount?: boolean;
+    payoutAccount?: {
+      isSetup: boolean;
+      payoutsEnabled: boolean;
+      chargesEnabled: boolean;
+    };
   };
   client: {
     clientSettings?: any;
@@ -72,12 +74,17 @@ export interface ICurrentUser {
     role: IUserRoleType;
     isVerified: boolean;
     requiresOnboarding?: boolean;
+    vendorPayoutMode?: 'express' | 'platform_hold';
   };
-  vendorInfo?: {
-    vendorId?: string;
-    linkedVendorUid?: string;
-    isPrimaryVendor?: boolean;
-    isLinkedAccount?: boolean;
+  /** Only populated for super-admin users who have completed payment processor onboarding */
+  paymentProcessor?: {
+    isSetup: boolean;
+    chargesEnabled: boolean;
+    payoutsEnabled: boolean;
+    needsOnboarding: boolean;
+    accountId: string | null;
+    accountType: PaymentProcessorAccountType | null;
+    onboardedAt: Date | null;
   };
   tenantInfo?: {
     hasActiveLease?: boolean;
@@ -98,13 +105,56 @@ export interface ICurrentUser {
   clients: IClientUserConnections[];
   fullname: string | null;
   permissions: string[];
+  gdpr?: IGDPRSettings;
   displayName: string;
-  gdpr?: GDPRSettings;
   avatarUrl: string;
   isActive: boolean;
   email: string;
   sub: string;
   uid: string;
+}
+
+/**
+ * Client Tenant Details Interface
+ * Comprehensive tenant details for property management view
+ * Used by getTenantManagementDetails endpoint
+ */
+export interface IClientTenantDetails {
+  profile: Pick<
+    IBaseUserProfile,
+    | 'firstName'
+    | 'lastName'
+    | 'fullName'
+    | 'displayName'
+    | 'avatar'
+    | 'phoneNumber'
+    | 'email'
+    | 'roles'
+    | 'uid'
+    | 'id'
+    | 'isActive'
+  > & {
+    userType: 'tenant';
+    location?: string;
+    dob?: Date | string | null;
+    headline?: string;
+    bio?: string;
+    settings?: Record<string, any>;
+    policies?: Record<string, any>;
+  };
+  tenantMetrics?: {
+    onTimePaymentRate: number;
+    averagePaymentDelay: number;
+    totalMaintenanceRequests: number;
+    currentRentStatus: RentStatus;
+    daysCurrentLease: number;
+    totalRentPaid: number;
+  };
+  tenantInfo: ITenantInfo;
+  status: UserStatus;
+  userType: 'tenant';
+  joinedDate: Date;
+  roles: string[];
 }
 
 /**
@@ -142,6 +192,7 @@ export interface IVendorDetailInfo {
   companyName: string;
   tags: string[];
   taxId: string;
+  vuid: string;
 }
 
 /**
@@ -182,42 +233,6 @@ export interface IEmployeeDetailInfo {
 }
 
 /**
- * Client Tenant Details Interface
- * Comprehensive tenant details for property management view
- * Used by getTenantManagementDetails endpoint
- */
-export interface IClientTenantDetails {
-  profile: Pick<
-    IBaseUserProfile,
-    | 'firstName'
-    | 'lastName'
-    | 'fullName'
-    | 'avatar'
-    | 'phoneNumber'
-    | 'email'
-    | 'roles'
-    | 'uid'
-    | 'id'
-    | 'isActive'
-  > & {
-    userType: 'tenant';
-  };
-  tenantMetrics?: {
-    onTimePaymentRate: number;
-    averagePaymentDelay: number;
-    totalMaintenanceRequests: number;
-    currentRentStatus: RentStatus;
-    daysCurrentLease: number;
-    totalRentPaid: number;
-  };
-  tenantInfo: TenantInfo;
-  status: UserStatus;
-  userType: 'tenant';
-  joinedDate: Date;
-  roles: string[];
-}
-
-/**
  * Tenant Statistics Interface
  * Comprehensive tenant metrics and distribution
  */
@@ -253,7 +268,16 @@ export interface ITenantStats {
 export interface IUserDetailResponse {
   profile: Pick<
     IBaseUserProfile,
-    'firstName' | 'lastName' | 'fullName' | 'avatar' | 'email' | 'phoneNumber' | 'roles' | 'id'
+    | 'firstName'
+    | 'lastName'
+    | 'fullName'
+    | 'avatar'
+    | 'email'
+    | 'phoneNumber'
+    | 'roles'
+    | 'uid'
+    | 'id'
+    | 'isActive'
   > & {
     contact: Pick<IBaseContactInfo, 'email'> & { phone: string };
     userType: UserType;
@@ -303,8 +327,8 @@ export interface IUserDocument extends Document, IUser {
 export interface FilteredUser
   extends Pick<IUserDocument, 'uid' | 'email' | 'isActive' | 'createdAt'> {
   vendorInfo?: FilteredVendorInfo;
-  employeeInfo?: EmployeeInfo;
-  tenantInfo?: TenantInfo;
+  employeeInfo?: IEmployeeInfo;
+  tenantInfo?: ITenantInfo;
   roles: IUserRoleType[];
   isConnected: boolean;
   phoneNumber?: string;
@@ -411,19 +435,6 @@ export interface FilteredUserTenantInfo {
 }
 
 /**
- * User profile identification (for tenants, staff, etc.)
- * Separate from client KYC — stored on Profile.personalInfo.identification
- */
-export interface IUserIdentificationType {
-  idType?: 'passport' | 'drivers-license' | 'national-id' | 'corporation-license' | string;
-  expiryDate?: Date | string;
-  issueDate?: Date | string;
-  issuingState?: string;
-  authority?: string;
-  idNumber?: string;
-}
-
-/**
  * Vendor Team Member Response Interface
  */
 export interface IVendorTeamMember
@@ -488,6 +499,20 @@ export interface ISignupAccountType extends IAccountType {
 }
 
 /**
+ * User Property Interface
+ * Minimal property info for user context
+ */
+export interface IUserProperty {
+  propertyId: string;
+  occupancy: string;
+  location: string;
+  since: string;
+  units: number;
+  name: string;
+  pid: string;
+}
+
+/**
  * Base User Filter Options
  * Common filtering options for user queries
  */
@@ -497,6 +522,12 @@ export interface IUserFilterOptions {
   department?: string;
   search?: string;
 }
+
+/**
+ * ============================================================================
+ * CURRENT USER & SESSION INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Extended Pagination Interface
@@ -513,7 +544,7 @@ export interface IExtendedPagination {
 
 /**
  * ============================================================================
- * CURRENT USER & SESSION INTERFACES
+ * DETAIL INFO INTERFACES (Role-Specific)
  * ============================================================================
  */
 
@@ -526,12 +557,6 @@ export interface IUserStats {
   roleDistribution: StatsDistribution[];
   totalFilteredUsers: number;
 }
-
-/**
- * ============================================================================
- * DETAIL INFO INTERFACES (Role-Specific)
- * ============================================================================
- */
 
 /**
  * Base Pagination Interface
@@ -549,18 +574,10 @@ export interface IBasePagination {
  * Extended Vendor Info Interface
  * Includes additional fields from getUsersByRole
  */
-export interface FilteredVendorInfo extends VendorInfo {
+export interface FilteredVendorInfo extends IVendorInfo {
   isPrimaryVendor?: boolean;
   isLinkedAccount: boolean;
   linkedVendorUid?: string;
-}
-
-/**
- * Linked Vendor User Info
- */
-export interface ILinkedVendorUser
-  extends Pick<IBaseUserProfile, 'displayName' | 'isActive' | 'email' | 'uid'> {
-  phoneNumber?: string;
 }
 
 /**
@@ -570,15 +587,11 @@ export interface ILinkedVendorUser
  */
 
 /**
- * User Property Interface
- * Minimal property info for user context
+ * Linked Vendor User Info
  */
-export interface IUserProperty {
-  occupancy: string;
-  location: string;
-  since: string;
-  units: number;
-  name: string;
+export interface ILinkedVendorUser
+  extends Pick<IBaseUserProfile, 'displayName' | 'isActive' | 'email' | 'uid'> {
+  phoneNumber?: string;
 }
 
 /**
@@ -725,20 +738,15 @@ export type RentStatus = 'current' | 'late' | 'overdue' | 'no_lease';
 
 /**
  * Tenant Detail Information
- * Extends TenantInfo from profile interface
+ * Extends ITenantInfo from profile interface
  */
-export interface ITenantDetailInfo extends TenantInfo {}
+export interface ITenantDetailInfo extends ITenantInfo {}
 
 /**
  * ============================================================================
  * PAGINATION INTERFACES
  * ============================================================================
  */
-
-/**
- * @deprecated Use IIdentificationType (client KYC) or IUserIdentificationType (user profiles) instead
- */
-export type IdentificationType = IUserIdentificationType;
 
 /**
  * User Type Union

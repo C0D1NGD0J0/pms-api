@@ -115,6 +115,21 @@ router.post(
 );
 
 router.post(
+  '/:cuid/:pytuid/pay',
+  isAuthenticated,
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.payPendingCharge(req, res);
+  })
+);
+
+router.post(
   '/:cuid/payout-account',
   isAuthenticated,
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
@@ -163,6 +178,30 @@ router.get(
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
     return controller.getLoginLink(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/payout-account/balance',
+  isAuthenticated,
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.getPayoutBalance(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/payout-account/history',
+  isAuthenticated,
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  validateRequest({ params: UtilsValidations.cuid, query: PaymentValidations.payoutHistoryQuery }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.getPayoutHistory(req, res);
   })
 );
 

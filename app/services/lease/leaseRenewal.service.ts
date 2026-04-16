@@ -8,11 +8,9 @@ import { UserService } from '@services/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
-import { preventTenantConflict } from '@shared/middlewares';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { IPropertyDocument, ICronJob } from '@interfaces/index';
 import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
-import { convertUserRoleToEnum, LEASE_CONSTANTS, createLogger } from '@utils/index';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { ILeaseDocument, ILeaseFormData, LeaseStatus } from '@interfaces/lease.interface';
 import { EventEmitterService, NotificationService, InvitationService } from '@services/index';
@@ -21,6 +19,12 @@ import {
   ISuccessReturnData,
   IRequestContext,
 } from '@interfaces/utils.interface';
+import {
+  convertUserRoleToEnum,
+  preventTenantConflict,
+  LEASE_CONSTANTS,
+  createLogger,
+} from '@utils/index';
 import {
   NotificationPriorityEnum,
   NotificationTypeEnum,

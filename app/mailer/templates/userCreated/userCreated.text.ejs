@@ -1,47 +1,37 @@
-Your Account Has Been Created
+Your Account is Ready
+=====================
 
 Hi <%= firstName %>,
 
-Welcome to <%= companyName %>! Your account has been set up and you're ready to get started.
+Your PropertyDesk account at <%= companyName %> has been set up.
 
 <% if (role === ROLES.VENDOR) { %>
-As a vendor partner, you'll have access to our vendor portal where you can manage service requests, submit invoices, and communicate with our team.
-<% if (vendorCompanyName) { %>
-
-Your company <%= vendorCompanyName %> is now registered in our system.
-<% } %>
+As a vendor partner, you have access to the vendor portal to receive work orders, submit invoices, and coordinate with the team.
+<% if (vendorCompanyName) { %>Your company <%= vendorCompanyName %> is registered in our system.<% } %>
 <% } else if (role === ROLES.TENANT) { %>
-As a tenant, you'll have access to your resident portal where you can submit maintenance requests, pay rent, and stay connected with your property management team.
+As a resident, your portal gives you 24/7 access to submit maintenance requests, pay rent, and communicate with your property management team.
 <% } else { %>
-As a team member with <%= role %> access, you'll be able to manage properties, work with tenants and vendors, and collaborate with your colleagues.
-<% if (department) { %>
-
-You've been assigned to the <%= department %> department<% if (jobTitle) { %> as <%= jobTitle %><% } %>.
-<% } %>
+As a <%= role %> team member, you can manage properties, work with residents and vendors, and collaborate with your team.
+<% if (department) { %>You've been assigned to the <%= department %> department<% if (jobTitle) { %> as <%= jobTitle %><% } %>.<% } %>
 <% } %>
 
 <% if (customMessage) { %>
-
-Personal Message:
+A message from your team:
 "<%= customMessage %>"
-<% } %>
 
+<% } %>
 YOUR LOGIN CREDENTIALS
-======================
-Email: <%= email %>
+----------------------
+Email:              <%= email %>
 Temporary Password: <%= temporaryPassword %>
 
-IMPORTANT: Please change your password after your first login for security.
-
-Ready to get started? Log in to your account here:
-<%= loginUrl %>
+Please change your password immediately after your first login.
 
 <% if (expectedStartDate) { %>
 Your expected start date is <%= new Date(expectedStartDate).toLocaleDateString() %>.
 <% } %>
 
-If you have any questions, please contact your administrator.
-Keep your login credentials secure and don't share them with anyone.
+Log in here: <%= loginUrl %>
 
----
-This email was sent by <%= companyName %>'s property management system.
+If you have any questions, contact your administrator.
+

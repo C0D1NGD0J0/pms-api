@@ -61,47 +61,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
         minlength: 2,
         trim: true,
       },
-      identification: {
-        idType: {
-          type: String,
-          enum: ['passport', 'drivers-license', 'national-id', 'corporation-license'],
-          required: function (this: IProfileDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.identification');
-          },
-        },
-        issueDate: {
-          type: Date,
-          required: function (this: IProfileDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.issueDate');
-          },
-        },
-        expiryDate: {
-          type: Date,
-          required: function (this: IProfileDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.expiryDate');
-          },
-        },
-        idNumber: {
-          type: String,
-          trim: true,
-          required: function (this: IProfileDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.idNumber');
-          },
-        },
-        authority: { type: String, trim: true },
-        issuingState: {
-          type: String,
-          trim: true,
-          required: function (this: IProfileDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.issuingState');
-          },
-        },
-      },
     },
     user: {
       required: true,

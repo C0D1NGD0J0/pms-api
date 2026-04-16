@@ -1,31 +1,28 @@
-<table width="100%">
+<table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>Your Account Has Been Created</h2>
+      <h2>Your Account is Ready</h2>
       <p>Hi <%= firstName %>,</p>
       <p>
-        Welcome to <strong><%= companyName %></strong>! Your account has been set up and you're ready to get started.
+        Your PropertyDesk account at <strong><%= companyName %></strong> has been set up. Here's what you need to know before you log in.
       </p>
-      
+
       <% if (role === ROLES.VENDOR) { %>
         <p>
-          As a vendor partner, you'll have access to our vendor portal where you can manage service requests, 
-          submit invoices, and communicate with our team.
+          As a vendor partner, you have access to the vendor portal to receive work orders, submit invoices, and coordinate directly with the property management team.
         </p>
         <% if (vendorCompanyName) { %>
         <p>
-          Your company <strong><%= vendorCompanyName %></strong> is now registered in our system.
+          Your company <strong><%= vendorCompanyName %></strong> is registered in our system.
         </p>
         <% } %>
       <% } else if (role === ROLES.TENANT) { %>
         <p>
-          As a tenant, you'll have access to your resident portal where you can submit maintenance requests, 
-          pay rent, and stay connected with your property management team.
+          As a resident, your portal gives you 24/7 access to submit maintenance requests, pay rent, and communicate with your property management team.
         </p>
       <% } else { %>
         <p>
-          As a team member with <strong><%= role %></strong> access, you'll be able to manage properties, 
-          work with tenants and vendors, and collaborate with your colleagues.
+          As a <strong><%= role %></strong> team member, you can manage properties, work with residents and vendors, and collaborate with your team.
         </p>
         <% if (department) { %>
         <p>
@@ -35,43 +32,46 @@
       <% } %>
 
       <% if (customMessage) { %>
-      <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #28a745; margin: 20px 0;">
-        <p style="margin: 0; font-style: italic;">
-          "<%= customMessage %>"
-        </p>
+      <div class="message-quote">
+        "<%= customMessage %>"
       </div>
       <% } %>
-
-      <div style="background-color: #e7f3ff; padding: 20px; border-radius: 5px; margin: 20px 0;">
-        <h3 style="color: #0066cc; margin-top: 0;">Your Login Credentials</h3>
-        <p style="margin: 5px 0;"><strong>Email:</strong> <%= email %></p>
-        <p style="margin: 5px 0;"><strong>Temporary Password:</strong> <code style="background-color: #fff; padding: 3px 6px; border-radius: 3px;"><%= temporaryPassword %></code></p>
-        <p style="font-size: 14px; color: #666; margin-top: 15px;">
-          <strong>Important:</strong> Please change your password after your first login for security.
-        </p>
-      </div>
-
-      <p>
-        Ready to get started? Click below to log in to your account.
-      </p>
     </td>
   </tr>
 
   <tr>
-    <td class="content cta">
-      <a href="<%= loginUrl %>" class="btn">Log In to Your Account</a>
-      <p style="font-size: 14px; color: #666; margin-top: 15px">
-        If the button doesn't work, copy and paste this link in your browser:<br />
-        <%= loginUrl %>
+    <td class="content" style="padding-top: 0;">
+      <div class="credential-box">
+        <h3>Your Login Credentials</h3>
+        <table role="presentation" width="100%" style="font-size: 14px;">
+          <tr>
+            <td style="padding: 5px 0; color: #64748b; width: 35%;">Email</td>
+            <td style="padding: 5px 0; font-weight: 600;"><%= email %></td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0; color: #64748b;">Temporary Password</td>
+            <td style="padding: 5px 0;"><code><%= temporaryPassword %></code></td>
+          </tr>
+        </table>
+        <p style="font-size: 13px; color: #64748b; margin: 12px 0 0 0;">
+          For your security, please change your password immediately after your first login.
+        </p>
+      </div>
+
+      <% if (expectedStartDate) { %>
+      <p style="font-size: 14px; color: #64748b;">
+        Your expected start date is <strong><%= new Date(expectedStartDate).toLocaleDateString() %></strong>.
       </p>
-      <p style="font-size: 12px; color: #999">
-        <% if (expectedStartDate) { %>
-        Your expected start date is <%= new Date(expectedStartDate).toLocaleDateString() %>.
-        <br />
-        <% } %>
-        If you have any questions, please contact your administrator.
-        <br />
-        Keep your login credentials secure and don't share them with anyone.
+      <% } %>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="cta">
+      <%- include("../shared/html/_button", { url: loginUrl, label: "Log In to PropertyDesk" }) %>
+      <p class="fallback-link">
+        Button not working? Copy and paste this link into your browser:<br />
+        <%= loginUrl %>
       </p>
     </td>
   </tr>

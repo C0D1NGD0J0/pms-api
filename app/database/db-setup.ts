@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
+import { retryAsync } from '@utils/retryAsync';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
 import { RedisService } from './redis-setup';
@@ -60,13 +61,25 @@ export class DatabaseService implements IDatabaseService {
       mongoose.set('strictQuery', true);
 
       const url = this.getDatabaseUrl(env);
-      await mongoose.connect(url, {
+      const mongoOptions = {
         family: 4,
         minPoolSize: parseInt(process.env.MONGO_MIN_POOL_SIZE ?? '1'),
         maxPoolSize: parseInt(process.env.MONGO_MAX_POOL_SIZE ?? '5'),
         socketTimeoutMS: 45000,
         connectTimeoutMS: 10000,
         serverSelectionTimeoutMS: 15000,
+      };
+
+      await retryAsync(() => mongoose.connect(url, mongoOptions), {
+        attempts: 5,
+        backoff: 'exponential',
+        delay: 1000,
+        retryOn: () => true,
+        onRetry: (err, attempt) => {
+          this.log.warn(
+            `MongoDB connection attempt ${attempt} failed — retrying... (${err.message})`
+          );
+        },
       });
 
       await this.redisService.connect();

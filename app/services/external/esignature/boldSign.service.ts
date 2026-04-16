@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Readable } from 'stream';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
@@ -61,7 +62,7 @@ export class BoldSignService {
       (fileStream as any).path = params.pdfFileName;
       sendForSign.files = [fileStream as any];
 
-      sendForSign.expiryDays = params.expiryDays || 30;
+      sendForSign.expiryDays = params.expiryDays || 3;
       sendForSign.reminderSettings = {
         reminderDays: 5,
         reminderCount: 3,
@@ -156,6 +157,46 @@ export class BoldSignService {
         : undefined,
       completedSignerEmails: completedSigners.map((s: any) => s.signerEmail),
     };
+  }
+
+  verifyWebhookSignature(rawBody: Buffer | string, signatureHeader: string): void {
+    if (!signatureHeader) {
+      throw new Error('Missing BoldSign signature header');
+    }
+
+    const parts: { timestamp: string; signatures: string[] } = { timestamp: '', signatures: [] };
+    for (const part of signatureHeader.split(',')) {
+      const [key, value] = part.trim().split('=', 2);
+      if (key === 't') parts.timestamp = value;
+      else if (key === 's0' || key === 's1') parts.signatures.push(value);
+    }
+
+    if (!parts.timestamp || parts.signatures.length === 0) {
+      throw new Error('Invalid BoldSign signature header format');
+    }
+
+    const payload = `${parts.timestamp}.${rawBody.toString()}`;
+    const expected = crypto
+      .createHmac('sha256', this.webhookSecret)
+      .update(payload, 'utf8')
+      .digest('hex');
+
+    const isValid = parts.signatures.some((sig) => {
+      try {
+        return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(sig, 'hex'));
+      } catch {
+        return false;
+      }
+    });
+
+    if (!isValid) {
+      throw new Error('BoldSign webhook signature verification failed');
+    }
+
+    const age = Math.floor(Date.now() / 1000) - parseInt(parts.timestamp, 10);
+    if (age > 300) {
+      throw new Error('BoldSign webhook timestamp too old');
+    }
   }
 
   async revokeDocument(documentId: string, reason: string) {

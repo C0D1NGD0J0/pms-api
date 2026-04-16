@@ -8,7 +8,17 @@ import { IProfileDocument } from '@interfaces/profile.interface';
 import { IPropertyDocument } from '@interfaces/property.interface';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
 import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
-import { PropertyUnit, Invitation, Property, Profile, Client, Lease, User } from '@models/index';
+import { IVendorDocument } from '@interfaces/vendor.interface';
+import {
+  PropertyUnit,
+  Invitation,
+  Property,
+  Profile,
+  Client,
+  Lease,
+  User,
+  Vendor,
+} from '@models/index';
 
 export interface CreateClientOptions {
   status?: 'active' | 'inactive' | 'suspended';
@@ -106,7 +116,10 @@ export const createTestUser = async (
   });
 };
 
-export const createTestAdminUser = async (clientCuid: string, clientId?: string | Types.ObjectId): Promise<IUserDocument> => {
+export const createTestAdminUser = async (
+  clientCuid: string,
+  clientId?: string | Types.ObjectId
+): Promise<IUserDocument> => {
   const user = await createTestUser(clientCuid, { roles: [ROLES.ADMIN] });
   // Create profile for user
   if (clientId) {
@@ -115,7 +128,10 @@ export const createTestAdminUser = async (clientCuid: string, clientId?: string 
   return user;
 };
 
-export const createTestManagerUser = async (clientCuid: string, clientId?: string | Types.ObjectId): Promise<IUserDocument> => {
+export const createTestManagerUser = async (
+  clientCuid: string,
+  clientId?: string | Types.ObjectId
+): Promise<IUserDocument> => {
   const user = await createTestUser(clientCuid, { roles: [ROLES.MANAGER] });
   // Create profile for user
   if (clientId) {
@@ -124,7 +140,10 @@ export const createTestManagerUser = async (clientCuid: string, clientId?: strin
   return user;
 };
 
-export const createTestTenantUser = async (clientCuid: string, clientId?: string | Types.ObjectId): Promise<IUserDocument> => {
+export const createTestTenantUser = async (
+  clientCuid: string,
+  clientId?: string | Types.ObjectId
+): Promise<IUserDocument> => {
   const user = await createTestUser(clientCuid, { roles: [ROLES.TENANT] });
   // Create profile for user
   if (clientId) {
@@ -151,7 +170,10 @@ export const createTestInvitation = async (
 
   if (typeof clientIdOrDoc === 'object' && '_id' in clientIdOrDoc) {
     clientId = clientIdOrDoc._id;
-  } else if (typeof clientIdOrDoc === 'object' && (clientIdOrDoc as object) instanceof Types.ObjectId) {
+  } else if (
+    typeof clientIdOrDoc === 'object' &&
+    (clientIdOrDoc as object) instanceof Types.ObjectId
+  ) {
     clientId = clientIdOrDoc;
   } else {
     clientId = new Types.ObjectId(clientIdOrDoc as string);
@@ -404,6 +426,38 @@ export const createTestLeaseScenario = async (): Promise<TestLeaseScenario> => {
   const unit = await createTestPropertyUnit(client.cuid, property._id);
 
   return { client, manager, property, tenant, unit };
+};
+
+export interface CreateVendorOptions {
+  isConnected?: boolean;
+}
+
+/**
+ * Create a test Vendor record connected to a client.
+ * The `primaryAccountHolderUserId` is the User ID of the vendor user.
+ */
+export const createTestVendor = async (
+  cuid: string,
+  primaryAccountHolderUserId: string | Types.ObjectId,
+  options: CreateVendorOptions = {}
+): Promise<IVendorDocument> => {
+  return Vendor.create({
+    companyName: faker.company.name(),
+    businessType: 'General Contractor',
+    registrationNumber: `REG-${faker.string.alphanumeric(10)}`,
+    connectedClients: [
+      {
+        cuid,
+        isConnected: options.isConnected ?? true,
+        primaryAccountHolderUserId:
+          typeof primaryAccountHolderUserId === 'string'
+            ? new Types.ObjectId(primaryAccountHolderUserId)
+            : primaryAccountHolderUserId,
+      },
+    ],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
 };
 
 export const generateUniqueEmail = (): string => {

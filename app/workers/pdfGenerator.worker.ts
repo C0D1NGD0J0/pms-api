@@ -32,6 +32,9 @@ export class PdfWorker {
 
     job.progress(100);
     this.log.info(`PDF generation request emitted for job ${job.id}`);
+    job.finished().catch((err) => {
+      this.log.error({ err, jobId: job.id }, 'Error in PDF generation job');
+    });
     return {
       success: true,
       resource,

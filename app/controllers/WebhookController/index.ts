@@ -9,8 +9,11 @@ import { PaymentService } from '@services/payments/payments.service';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { BoldSignService } from '@services/external/esignature/boldSign.service';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
+import { IInvoiceWebhookPayload, InvoiceSource } from '@interfaces/maintenanceRequest.interface';
 
 interface IConstructor {
+  maintenanceRequestService: MaintenanceRequestService;
   subscriptionService: SubscriptionService;
   idempotencyCache: IdempotencyCache;
   boldSignService: BoldSignService;
@@ -28,6 +31,7 @@ export class WebhookController {
   private paymentService: PaymentService;
   private clientService: ClientService;
   private idempotencyCache: IdempotencyCache;
+  private maintenanceRequestService: MaintenanceRequestService;
   private log: Logger;
 
   constructor({
@@ -38,6 +42,7 @@ export class WebhookController {
     paymentService,
     clientService,
     idempotencyCache,
+    maintenanceRequestService,
   }: IConstructor) {
     this.leaseService = leaseService;
     this.stripeService = stripeService;
@@ -46,11 +51,21 @@ export class WebhookController {
     this.paymentService = paymentService;
     this.clientService = clientService;
     this.idempotencyCache = idempotencyCache;
+    this.maintenanceRequestService = maintenanceRequestService;
     this.log = createLogger('WebhookController');
   }
 
   handleBoldSignWebhook = async (req: Request, res: Response): Promise<Response> => {
     try {
+      const signature = req.headers['x-boldsign-signature'];
+      if (!signature || typeof signature !== 'string') {
+        this.log.warn('Missing BoldSign signature header');
+        return res.status(400).json({ success: false, message: 'Missing signature' });
+      }
+
+      const rawBody = (req as any).rawBody ?? req.body;
+      this.boldSignService.verifyWebhookSignature(rawBody, signature);
+
       const { event, data } = req.body;
 
       if (event.eventType == 'Verification') {
@@ -67,10 +82,25 @@ export class WebhookController {
         });
       }
 
-      const processedData = this.boldSignService.processWebhookData(req.body);
-      await this.leaseService.handleESignatureWebhook(eventType, documentId, data, processedData);
+      // Deduplicate: BoldSign retries the same event if we don't respond in time.
+      // Key = documentId + eventType so different events on the same doc are processed independently.
+      const idempotencyKey = `boldsign:${documentId}:${eventType}`;
+      const claimed = await this.idempotencyCache.claimWebhookEvent(idempotencyKey);
+      if (!claimed) {
+        this.log.info({ documentId, eventType }, 'Duplicate BoldSign webhook — skipping');
+        return res.status(200).json({ success: true, received: true });
+      }
 
-      return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+      try {
+        const processedData = this.boldSignService.processWebhookData(req.body);
+        await this.leaseService.handleESignatureWebhook(eventType, documentId, data, processedData);
+
+        await this.idempotencyCache.markWebhookProcessed(idempotencyKey);
+        return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+      } catch (processingError: any) {
+        await this.idempotencyCache.releaseWebhookClaim(idempotencyKey);
+        throw processingError;
+      }
     } catch (error: any) {
       this.log.error('Error processing BoldSign webhook', {
         error: error.message,
@@ -303,5 +333,30 @@ export class WebhookController {
         message: error.message || 'Webhook processing failed',
       });
     }
+  };
+
+  handleInvoiceWebhook = async (req: Request, res: Response): Promise<void> => {
+    const source = req.params.source as InvoiceSource;
+    const rawBody = (req as any).rawBody as Buffer;
+    const headers = req.headers as Record<string, string>;
+
+    if (!rawBody) {
+      res.status(400).json({ success: false, error: 'Raw body unavailable' });
+      return;
+    }
+
+    // req.body is already parsed by express.json(); rawBody is the raw Buffer
+    // preserved by the verify callback in app.ts for signature verification
+    const parsed = req.body;
+    const payload: IInvoiceWebhookPayload = { ...parsed, source, rawPayload: parsed };
+
+    // Respond 200 immediately to prevent provider retries, then process async
+    res.status(200).json({ received: true });
+
+    this.maintenanceRequestService
+      .handleInvoiceWebhook(source, rawBody, headers, payload)
+      .catch((err: unknown) => {
+        this.log.error('[WebhookController] invoice webhook processing error', err);
+      });
   };
 }

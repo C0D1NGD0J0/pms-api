@@ -564,6 +564,33 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async getConnectBalance(accountId: string): Promise<Stripe.Balance> {
+    try {
+      return await this.stripe.balance.retrieve({}, { stripeAccount: accountId });
+    } catch (error) {
+      this.log.error({ error, accountId }, 'Error fetching Connect balance');
+      throw error;
+    }
+  }
+
+  async listConnectPayouts(
+    accountId: string,
+    options: { limit?: number; starting_after?: string } = {}
+  ): Promise<Stripe.ApiList<Stripe.Payout>> {
+    try {
+      return await this.stripe.payouts.list(
+        {
+          limit: options.limit ?? 20,
+          ...(options.starting_after && { starting_after: options.starting_after }),
+        },
+        { stripeAccount: accountId }
+      );
+    } catch (error) {
+      this.log.error({ error, accountId }, 'Error listing Connect payouts');
+      throw error;
+    }
+  }
+
   async getInvoice(invoiceId: string): Promise<Stripe.Invoice> {
     try {
       return await this.stripe.invoices.retrieve(invoiceId);
@@ -647,7 +674,7 @@ export class StripeService implements IPaymentProvider {
         description,
         metadata: {
           cuid,
-          leaseUid,
+          ...(leaseUid ? { leaseUid } : {}),
         },
         application_fee_amount: applicationFeeAmount,
         transfer_data: {
@@ -779,6 +806,31 @@ export class StripeService implements IPaymentProvider {
       };
     } catch (error) {
       this.log.error({ error }, 'Error retrieving Stripe Identity verification session');
+      throw error;
+    }
+  }
+
+  /**
+   * Create a SetupIntent to collect and save a payment method without an immediate charge.
+   * Used during tenant onboarding to save the card via a hosted Stripe Checkout session.
+   */
+  async createSetupCheckoutSession(
+    customerId: string,
+    successUrl: string,
+    cancelUrl: string
+  ): Promise<{ url: string }> {
+    try {
+      const session = await this.stripe.checkout.sessions.create({
+        mode: 'setup',
+        customer: customerId,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      });
+
+      this.log.info({ sessionId: session.id, customerId }, 'Created setup checkout session');
+      return { url: session.url ?? '' };
+    } catch (error) {
+      this.log.error({ error, customerId }, 'Error creating Stripe setup checkout session');
       throw error;
     }
   }

@@ -67,7 +67,7 @@ router.patch(
   isAuthenticated,
   basicLimiter(),
   validateRequest({
-    body: AuthValidations.resendActivation,
+    body: AuthValidations.switchClientAccount,
   }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -125,6 +125,19 @@ router.post(
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.completeOnboarding(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/setup_payment_intent',
+  isAuthenticated,
+  basicLimiter(),
+  validateRequest({
+    body: AuthValidations.setupPaymentIntent,
+  }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.setupPaymentIntent(req, res);
   })
 );
 

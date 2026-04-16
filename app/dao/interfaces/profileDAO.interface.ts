@@ -29,25 +29,6 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   ): Promise<IProfileDocument | null>;
 
   /**
-   * Updates identification documents for a profile.
-   *
-   * @param profileId - The ID of the profile to update
-   * @param identificationData - Object containing identification details
-   * @returns A promise that resolves to the updated profile or null if profile not found
-   */
-  updateIdentification(
-    profileId: string,
-    identificationData: {
-      idType: string;
-      issueDate: Date;
-      expiryDate: Date;
-      idNumber: string;
-      authority?: string;
-      issuingState: string;
-    }
-  ): Promise<IProfileDocument | null>;
-
-  /**
    * Updates vendor reference information (vendorId, linkedVendorUid, isLinkedAccount).
    * Note: Vendor business data is now stored in the vendor collection.
    * This method only updates vendor reference fields in the profile.

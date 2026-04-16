@@ -99,6 +99,76 @@ export class MailService {
     let template: EmailTemplate;
 
     switch (type) {
+      case MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT:
+        template = await this.buildTemplate(
+          'maintenance-work-order-submitted-tenant',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_WORK_ORDER_SUBMITTED:
+        template = await this.buildTemplate(
+          'maintenance-work-order-submitted',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_WORK_ORDER_APPROVED:
+        template = await this.buildTemplate(
+          'maintenance-work-order-approved',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_WORK_ORDER_REJECTED:
+        template = await this.buildTemplate(
+          'maintenance-work-order-rejected',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_INVOICE_SUBMITTED:
+        template = await this.buildTemplate(
+          'maintenance-invoice-submitted',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_REQUEST_ASSIGNED:
+        template = await this.buildTemplate(
+          'maintenance-request-assigned',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_REQUEST_DECLINED:
+        template = await this.buildTemplate(
+          'maintenance-request-declined',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_INVOICE_APPROVED:
+        template = await this.buildTemplate(
+          'maintenance-invoice-approved',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_INVOICE_REJECTED:
+        template = await this.buildTemplate(
+          'maintenance-invoice-rejected',
+          emailData,
+          'maintenance'
+        );
+        break;
+      case MailType.MAINTENANCE_REQUEST_CREATED:
+        template = await this.buildTemplate(
+          'maintenance-request-created',
+          emailData,
+          'maintenance'
+        );
+        break;
       case MailType.LEASE_PAYMENT_REMINDER:
         template = await this.buildTemplate('payment-reminder', emailData, 'lease');
         break;
@@ -245,7 +315,7 @@ export class MailService {
    * @returns Default subject line
    */
   private getDefaultSubject(mailType: MailType): string {
-    const defaultText = 'Notification from Property Management System';
+    const defaultText = 'Notification from PropertyDesk';
 
     const subjectMap: Record<MailType | 'default', string> = {
       [MailType.ACCOUNT_ACTIVATION]: 'Activate Your Account',
@@ -266,6 +336,16 @@ export class MailService {
       [MailType.LEASE_PAYMENT_REMINDER]: 'Rent Payment Reminder',
       [MailType.LEASE_ENDING_SOON]: 'Your Lease is Ending Soon',
       [MailType.ACCOUNT_DISCONNECTED]: 'Your Account Connection Has Been Removed',
+      [MailType.MAINTENANCE_REQUEST_CREATED]: 'Maintenance Request Submitted',
+      [MailType.MAINTENANCE_REQUEST_ASSIGNED]: 'Maintenance Request Assigned',
+      [MailType.MAINTENANCE_REQUEST_DECLINED]: 'Maintenance Request Assignment Declined',
+      [MailType.MAINTENANCE_INVOICE_SUBMITTED]: 'Invoice Submitted for Review',
+      [MailType.MAINTENANCE_INVOICE_APPROVED]: 'Invoice Approved',
+      [MailType.MAINTENANCE_INVOICE_REJECTED]: 'Invoice Rejected',
+      [MailType.MAINTENANCE_WORK_ORDER_SUBMITTED]: 'Work Order Submitted — Review Required',
+      [MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT]: 'Work Order Submitted for Your Request',
+      [MailType.MAINTENANCE_WORK_ORDER_APPROVED]: 'Work Order Approved — Proceed with Job',
+      [MailType.MAINTENANCE_WORK_ORDER_REJECTED]: 'Work Order Rejected — Revision Required',
     };
 
     return subjectMap[mailType] || subjectMap.default;

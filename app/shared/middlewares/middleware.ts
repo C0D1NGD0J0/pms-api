@@ -1,11 +1,11 @@
 import bunyan from 'bunyan';
-import { Types } from 'mongoose';
 import { container } from '@di/index';
 import { t } from '@shared/languages';
 import { UAParser } from 'ua-parser-js';
 import ProfileDAO from '@dao/profileDAO';
 import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
+export { preventTenantConflict } from '@utils/helpers';
 import { NextFunction, Response, Request } from 'express';
 import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { LanguageService } from '@shared/languages/language.service';
@@ -107,17 +107,22 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       req.context.currentuser = currentUserResp.data as ICurrentUser;
     }
 
-    // Validate connection status
     if (req.context.currentuser) {
       const activeConnection = req.context.currentuser.clients.find(
         (c: any) => c.cuid === req.context.currentuser!.client.cuid
       );
 
       if (!activeConnection || !activeConnection.isConnected) {
-        return next(new UnauthorizedError({ message: 'User connection inactive' }));
+        const isVendor = activeConnection?.roles?.includes('vendor');
+        const isVendorPayoutRoute = /\/vendor[s]?\/[^/]+\/payout/.test(req.path);
+        const isCurrentUserRoute = /\/auth\/[^/]+\/me$/.test(req.path);
+        if (isVendor && (isVendorPayoutRoute || isCurrentUserRoute)) {
+          // Disconnected vendors retain access to payout routes and their own user context
+        } else {
+          return next(new UnauthorizedError({ message: 'User connection inactive' }));
+        }
       }
 
-      // Populate user permissions using PermissionService
       if (permissionService) {
         req.context.currentuser = await permissionService.populateUserPermissions(
           req.context.currentuser
@@ -539,6 +544,26 @@ export const requirePermission = (
 };
 
 /**
+ * Restrict access to primary vendor users only.
+ * Must be placed after isAuthenticated.
+ */
+export const requirePrimaryVendor = (req: Request, _res: Response, next: NextFunction) => {
+  const currentUser = req.context?.currentuser;
+  if (!currentUser?.vendorInfo?.isPrimaryVendor) {
+    return next(
+      new ForbiddenError({
+        message: t('auth.errors.insufficientPermissions', {
+          resource: 'payout',
+          action: 'manage',
+          reason: 'Only primary vendor account holders can manage payout settings',
+        }),
+      })
+    );
+  }
+  next();
+};
+
+/**
  * Check if the current user's subscription entitles them to a specific feature.
  * Requires `subscriptionEntitlements` middleware to have run first.
  */
@@ -699,14 +724,19 @@ export const requirePermissionWithContext = (
           const extractedContext = contextExtractor(req);
           // Auto-determine scope: if ownerId matches the current user, use MINE scope
           const ownerId = extractedContext?.ownerId;
+          const isOwner = ownerId
+            ? ownerId === currentuser.uid || ownerId === currentuser.sub
+            : false;
           if (ownerId) {
-            const isOwner = ownerId === currentuser.uid || ownerId === currentuser.sub;
             scope = isOwner ? PermissionScope.MINE : PermissionScope.ANY;
           }
           context = {
             clientId: currentuser.client.cuid,
             userId: currentuser.sub,
-            resourceOwnerId: extractedContext?.ownerId,
+            // When ownership is confirmed via uid or sub, normalize resourceOwnerId to sub
+            // so validateMineScope's resourceOwnerId === userId comparison always works
+            // regardless of which identifier type (uid hash vs ObjectId) was in the URL param.
+            resourceOwnerId: isOwner ? currentuser.sub : extractedContext?.ownerId,
             ...extractedContext,
           };
         } catch (error) {
@@ -783,21 +813,6 @@ export const requireUserPermission = (action: PermissionAction | string) => {
     ownerId: req.params.userId || req.params.uid, // For "mine" scope validation
   }));
 };
-
-/**
- * Throws ForbiddenError if the requesting user is the tenant on the resource.
- * Prevents dual-role users (e.g. staff+tenant) from modifying records where
- * they are personally the tenant — a conflict-of-interest guard.
- */
-export function preventTenantConflict(
-  requestingUserId: string,
-  tenantId: Types.ObjectId | string | null | undefined,
-  message = 'You cannot modify a record where you are the tenant.'
-): void {
-  if (tenantId && requestingUserId === tenantId.toString()) {
-    throw new ForbiddenError({ message });
-  }
-}
 
 export const idempotency = async (
   req: AppRequest,

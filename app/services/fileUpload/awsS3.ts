@@ -1,9 +1,10 @@
 import fs from 'fs';
 import Logger from 'bunyan';
 import { randomUUID } from 'crypto';
-import { createLogger } from '@utils/index';
 import { Upload } from '@aws-sdk/lib-storage';
 import { envVariables } from '@shared/config';
+import { createLogger, retryAsync } from '@utils/index';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ResourceInfo, UploadedFile, UploadResult } from '@interfaces/index';
 import {
@@ -12,6 +13,18 @@ import {
   GetObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+
+const PERMANENT_S3_ERRORS = new Set([
+  'InvalidObjectState',
+  'AccessDenied',
+  'NoSuchBucket',
+  'NoSuchKey',
+]);
+
+const isPermanentS3Error = (err: Error): boolean => {
+  const code = (err as any).name ?? (err as any).Code ?? '';
+  return PERMANENT_S3_ERRORS.has(code);
+};
 
 export class S3Service {
   private readonly s3: S3Client;
@@ -26,11 +39,22 @@ export class S3Service {
         accessKeyId: envVariables.AWS.ACCESS_KEY,
         secretAccessKey: envVariables.AWS.SECRET_KEY,
       },
+      requestHandler: new NodeHttpHandler({
+        connectionTimeout: 10_000,
+        requestTimeout: 30_000,
+      }),
     });
   }
 
   async uploadFiles(files: UploadedFile[], context: ResourceInfo): Promise<UploadResult[]> {
-    this.log.info(`Uploading ${files.length} files to S3 for resource ${context.resourceId}`);
+    this.log.info(
+      {
+        fileCount: files.length,
+        resourceId: context.resourceId,
+        resourceName: context.resourceName,
+      },
+      `Starting S3 upload for ${files.length} files`
+    );
     const results: UploadResult[] = [];
 
     for (const file of files) {
@@ -126,19 +150,24 @@ export class S3Service {
       throw new Error('S3 key is required');
     }
 
+    this.log.debug(`Generating signed URL for ${s3Key}`);
+
     try {
-      this.log.debug(`Generating signed URL for ${s3Key}`);
-
-      const command = new GetObjectCommand({
-        Bucket: this.bucketName,
-        Key: s3Key,
-      });
-
-      const url = await getSignedUrl(this.s3, command, {
-        expiresIn: 3600, // 1 hour expiration
-      });
-
-      return url;
+      return await retryAsync(
+        async () => {
+          const command = new GetObjectCommand({
+            Bucket: this.bucketName,
+            Key: s3Key,
+          });
+          return getSignedUrl(this.s3, command, { expiresIn: 3600 });
+        },
+        {
+          attempts: 2,
+          backoff: 'fixed',
+          delay: 300,
+          retryOn: (err) => !isPermanentS3Error(err),
+        }
+      );
     } catch (error) {
       this.log.error(`Error generating signed URL for ${s3Key}:`, error);
       throw new Error(
@@ -153,29 +182,34 @@ export class S3Service {
     }
 
     try {
-      const command = new GetObjectCommand({
-        Bucket: this.bucketName,
-        Key: s3Key,
-      });
+      const buffer = await retryAsync(
+        async () => {
+          const command = new GetObjectCommand({
+            Bucket: this.bucketName,
+            Key: s3Key,
+          });
 
-      const response = await this.s3.send(command);
+          const response = await this.s3.send(command);
 
-      if (!response.Body) {
-        throw new Error('Empty response body from S3');
-      }
+          if (!response.Body) {
+            throw new Error('Empty response body from S3');
+          }
 
-      // Convert stream to buffer
-      const chunks: Uint8Array[] = [];
-      for await (const chunk of response.Body as any) {
-        chunks.push(chunk);
-      }
+          const chunks: Uint8Array[] = [];
+          for await (const chunk of response.Body as any) {
+            chunks.push(chunk);
+          }
+          return Buffer.concat(chunks);
+        },
+        {
+          attempts: 2,
+          backoff: 'fixed',
+          delay: 500,
+          retryOn: (err) => !isPermanentS3Error(err),
+        }
+      );
 
-      const buffer = Buffer.concat(chunks);
-
-      this.log.info(`Downloaded file buffer from S3: ${s3Key}`, {
-        size: buffer.length,
-      });
-
+      this.log.info(`Downloaded file buffer from S3: ${s3Key}`, { size: buffer.length });
       return buffer;
     } catch (error: any) {
       this.log.error(`Error downloading file buffer from S3: ${s3Key}`, error);

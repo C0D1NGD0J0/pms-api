@@ -56,6 +56,7 @@ export interface IPaymentDocument extends Document {
   paymentMethod: PaymentMethod;
   status: PaymentRecordStatus;
   recordedBy?: Types.ObjectId; // User who recorded manual payment
+  vendorId?: Types.ObjectId; // Set for maintenance expense records (vendor who submitted the invoice)
   gatewayPaymentId?: string;
   gatewayChargeId?: string;
   period?: IPaymentPeriod;

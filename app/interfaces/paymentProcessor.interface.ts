@@ -7,27 +7,34 @@ export enum PaymentProcessorAccountType {
 
 export interface IPaymentProcessor {
   accountType: PaymentProcessorAccountType;
+  ownerType?: 'client' | 'vendor';
   payoutsBlockedReason?: string;
   detailsSubmitted: boolean;
   payoutsBlocked?: boolean;
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
   payoutsBlockedAt?: Date;
+  /** Set when this processor belongs to a vendor rather than the client/PM */
+  vendor?: Types.ObjectId;
   client: Types.ObjectId;
   onboardedAt?: Date;
   accountId: string;
   deletedAt?: Date;
   ppuid: string;
+  vuid?: string;
   cuid: string;
 }
 
 export interface IPaymentProcessorFormData {
   accountType: PaymentProcessorAccountType;
+  ownerType?: 'client' | 'vendor';
   detailsSubmitted?: boolean;
   chargesEnabled?: boolean;
   payoutsEnabled?: boolean;
+  vendor?: Types.ObjectId;
   client: Types.ObjectId;
   accountId: string;
+  vuid?: string;
   cuid: string;
 }
 

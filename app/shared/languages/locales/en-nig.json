@@ -375,7 +375,7 @@
     "forgotPassword": {
       "subject": "Reset Your Password",
       "greeting": "Hello {{fullname}},",
-      "message": "We receive request to reset your password. Click the button below to set new password for your Property Solutions account.",
+      "message": "We receive request to reset your password. Click the button below to set new password for your PropertyDesk account.",
       "buttonText": "Reset Password",
       "alternativeText": "If the button no work, copy and paste dis link for your browser:",
       "expiryText": "Dis link go expire for 1 hour. If you no request password reset, please ignore dis email."
@@ -383,7 +383,7 @@
     "registration": {
       "subject": "Activate Your Account",
       "greeting": "Hello {{fullname}},",
-      "message": "Welcome to Property Solutions! To complete your account setup, please click the button below to activate your account.",
+      "message": "Welcome to PropertyDesk! To complete your account setup, please click the button below to activate your account.",
       "buttonText": "Activate Account",
       "alternativeText": "If the button no work, copy and paste dis link for your browser:",
       "expiryText": "Dis link go expire for 2 hours. If you no create account, please ignore dis email."

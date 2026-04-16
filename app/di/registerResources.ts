@@ -4,14 +4,13 @@ import { MailService } from '@mailer/index';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
+import { LanguageService } from '@shared/languages';
 import { GeoCoderService } from '@services/external';
 import { ClamScannerService } from '@shared/config/index';
 import { DSARService } from '@services/dsar/dsar.service';
 import { AssetService } from '@services/asset/asset.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
-import { LanguageService } from '@shared/languages/language.service';
-import { PaymentService } from '@services/payments/payments.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
@@ -26,6 +25,34 @@ import {
   UserCache,
 } from '@caching/index';
 import {
+  PropertyMediaWorker,
+  PropertyUnitWorker,
+  InvitationWorker,
+  ESignatureWorker,
+  PropertyWorker,
+  PaymentWorker,
+  UploadWorker,
+  EmailWorker,
+  CronWorker,
+  UserWorker,
+  PdfWorker,
+} from '@workers/index';
+import {
+  PropertyMediaQueue,
+  PropertyUnitQueue,
+  InvitationQueue,
+  ESignatureQueue,
+  EventBusQueue,
+  PropertyQueue,
+  PaymentQueue,
+  UploadQueue,
+  EmailQueue,
+  CronQueue,
+  UserQueue,
+  PdfQueue,
+} from '@queues/index';
+import {
+  MaintenanceRequestModel,
   NotificationModel,
   PaymentProcessor,
   PaymentModel,
@@ -41,31 +68,7 @@ import {
   User,
 } from '@models/index';
 import {
-  PropertyMediaWorker,
-  PropertyUnitWorker,
-  InvitationWorker,
-  ESignatureWorker,
-  PropertyWorker,
-  PaymentWorker,
-  UploadWorker,
-  EmailWorker,
-  CronWorker,
-  PdfWorker,
-} from '@workers/index';
-import {
-  PropertyMediaQueue,
-  PropertyUnitQueue,
-  InvitationQueue,
-  ESignatureQueue,
-  EventBusQueue,
-  PropertyQueue,
-  PaymentQueue,
-  UploadQueue,
-  EmailQueue,
-  CronQueue,
-  PdfQueue,
-} from '@queues/index';
-import {
+  MaintenanceRequestDAO,
   PaymentProcessorDAO,
   PropertyUnitDAO,
   NotificationDAO,
@@ -83,6 +86,7 @@ import {
   NotificationController,
   SubscriptionController,
   PropertyUnitController,
+  MaintenanceController,
   InvitationController,
   PropertyController,
   WebhookController,
@@ -96,6 +100,7 @@ import {
   DSARController,
 } from '@controllers/index';
 import {
+  MaintenanceRequestService,
   PropertyApprovalService,
   InvitationCsvProcessor,
   subscriptionPlanConfig,
@@ -105,6 +110,7 @@ import {
   PropertyStatsService,
   PropertyMediaService,
   LeaseDocumentService,
+  LeaseTemplateService,
   PdfGeneratorService,
   NotificationService,
   EventEmitterService,
@@ -117,6 +123,7 @@ import {
   PropertyService,
   BoldSignService,
   LeasePdfService,
+  PaymentService,
   ProfileService,
   StripeService,
   ClientService,
@@ -129,6 +136,7 @@ import {
 } from '@services/index';
 
 const ControllerResources = {
+  maintenanceController: asClass(MaintenanceController).scoped(),
   adminController: asClass(AdminController).scoped(),
   authController: asClass(AuthController).scoped(),
   userController: asClass(UserController).scoped(),
@@ -160,6 +168,7 @@ const ModelResources = {
   notificationModel: asValue(NotificationModel),
   paymentModel: asValue(PaymentModel),
   paymentProcessorModel: asValue(PaymentProcessor),
+  maintenanceRequestModel: asValue(MaintenanceRequestModel),
 };
 
 const ServiceResources = {
@@ -200,6 +209,8 @@ const ServiceResources = {
   paymentGatewayService: asClass(PaymentGatewayService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
   dsarService: asClass(DSARService).singleton(),
+  maintenanceRequestService: asClass(MaintenanceRequestService).singleton(),
+  leaseTemplateService: asClass(LeaseTemplateService).singleton(),
 };
 
 const DAOResources = {
@@ -216,6 +227,7 @@ const DAOResources = {
   notificationDAO: asClass(NotificationDAO).singleton(),
   paymentDAO: asClass(PaymentDAO).singleton(),
   paymentProcessorDAO: asClass(PaymentProcessorDAO).singleton(),
+  maintenanceRequestDAO: asClass(MaintenanceRequestDAO).singleton(),
 };
 
 const CacheResources = {
@@ -239,6 +251,7 @@ const WorkerResources = {
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
   propertyMediaWorker: asClass(PropertyMediaWorker).singleton(),
   paymentWorker: asClass(PaymentWorker).singleton(),
+  userWorker: asClass(UserWorker).singleton(),
 };
 
 const QueuesResources = {
@@ -253,6 +266,7 @@ const QueuesResources = {
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
   propertyMediaQueue: asClass(PropertyMediaQueue).singleton(),
   paymentQueue: asClass(PaymentQueue).singleton(),
+  userQueue: asClass(UserQueue).singleton(),
 };
 
 const UtilsResources = {
@@ -288,11 +302,11 @@ export const initQueues = (container: AwilixContainer) => {
     envVariables.CLAMAV && (envVariables.CLAMAV.HOST || envVariables.CLAMAV.SOCKET);
 
   if (!hasClamAVConfig) {
-    logger.info('ClamAV not configured - virus scanning disabled');
+    logger.debug('ClamAV not configured - virus scanning disabled');
   } else {
     try {
       container.resolve('clamScanner');
-      logger.info('ClamAV scanner initialized');
+      logger.debug('ClamAV scanner initialized');
     } catch (error) {
       logger.error(
         { error },
@@ -306,10 +320,13 @@ export const initQueues = (container: AwilixContainer) => {
   const processType = envVariables.SERVER.PROCESS_TYPE;
   const environment = envVariables.SERVER.ENV;
 
-  logger.info(
+  logger.debug(
     `💡 ${processType.toUpperCase()} process (${environment}): Queues will be initialized on-demand via QueueFactory`
   );
 };
+
+export const QUEUE_RESOURCE_NAMES = Object.keys(QueuesResources);
+export const SERVICE_RESOURCE_NAMES = Object.keys(ServiceResources);
 
 export const registerResources = {
   ...ControllerResources,

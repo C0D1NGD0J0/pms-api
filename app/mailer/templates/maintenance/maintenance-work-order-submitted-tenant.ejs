@@ -1,0 +1,44 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Work Order Submitted for Your Request</h2>
+      <p>
+        The vendor assigned to your maintenance request <strong><%= request.mruid %></strong> has submitted a work order. The property manager is currently reviewing it — no action is required from you at this time.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <h3 style="margin-top: 0;">Summary</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Request #</td>
+            <td class="detail-value"><%= request.mruid %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Title</td>
+            <td class="detail-value"><%= request.title %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Estimated Cost</td>
+            <td class="detail-value">$<%= (workOrder.estimatedCostInCents / 100).toFixed(2) %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Scope</td>
+            <td class="detail-value"><%= workOrder.scope %></td>
+          </tr>
+        </table>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <p style="font-size: 14px; color: #64748b;">
+        You'll receive another update once the work order is reviewed and the vendor is ready to begin.
+      </p>
+    </td>
+  </tr>
+</table>

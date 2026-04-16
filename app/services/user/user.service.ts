@@ -1,10 +1,10 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
-import { EmailQueue } from '@queues/index';
-import { EventTypes } from '@interfaces/index';
 import { QueueFactory } from '@services/queue';
 import { UserCache } from '@caching/user.cache';
+import { EmailQueue, UserQueue } from '@queues/index';
+import { IProfileDocument, EventTypes } from '@interfaces/index';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { EventEmitterService, VendorService } from '@services/index';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
@@ -31,6 +31,7 @@ import {
   ITenantDetailInfo,
   IPaginatedResult,
   IUserProperty,
+  IUserDocument,
   ICurrentUser,
   IUserStats,
 } from '@interfaces/user.interface';
@@ -317,11 +318,11 @@ export class UserService {
                 businessType: vendorEntity.businessType || 'General Contractor',
                 serviceType: vendorEntity.businessType || 'General Contractor',
                 contactPerson: vendorEntity.contactPerson?.name || fullName,
-                rating: 4.5, // placeholder
-                reviewCount: 15, // placeholder
-                completedJobs: 25, // placeholder
-                averageServiceCost: 250, // placeholder
-                averageResponseTime: '2h', // placeholder
+                rating: 0,
+                reviewCount: 0,
+                completedJobs: 0,
+                averageServiceCost: 0,
+                averageResponseTime: 'N/A',
                 isLinkedAccount: !!clientConnection.linkedVendorUid,
                 isPrimaryVendor: !clientConnection.linkedVendorUid,
                 linkedVendorUid: clientConnection.linkedVendorUid || null,
@@ -436,6 +437,7 @@ export class UserService {
       return properties.map((property: any) => ({
         name: property.name || '',
         propertyId: property.id || '',
+        pid: property.pid || '',
         location: this.formatPropertyLocation(property.address),
         units: property.maxAllowedUnits || 0,
         occupancy: this.formatOccupancy(property.occupancyStatus),
@@ -536,8 +538,8 @@ export class UserService {
   }
 
   private async buildEmployeeInfo(
-    user: any,
-    profile: any,
+    user: IUserDocument,
+    profile: { contactInfo?: any } & IProfileDocument,
     roles: any,
     userManagedProperties: IUserProperty[]
   ): Promise<IEmployeeDetailInfo> {
@@ -547,21 +549,21 @@ export class UserService {
     const hireDate = employeeInfo.startDate || user.createdAt;
     const tenure = this.calculateTenure(hireDate);
 
-    // Resolve supervisor name: reportsTo may be stored as a MongoDB ObjectId string
-    let directManager = employeeInfo.reportsTo || '';
-    if (directManager && /^[a-f0-9]{24}$/i.test(directManager)) {
-      try {
-        const supervisor = await this.userDAO.findFirst(
-          { _id: new Types.ObjectId(directManager) },
-          { populate: [{ path: 'profile', select: 'personalInfo' }] }
-        );
-        if (supervisor?.profile?.personalInfo) {
-          const { firstName, lastName } = supervisor.profile.personalInfo as any;
-          const resolvedName = `${firstName || ''} ${lastName || ''}`.trim();
-          if (resolvedName) directManager = resolvedName;
+    // Resolve supervisor name from reportsTo (ObjectId ref to User)
+    let directManager = '';
+    const reportsToId = employeeInfo.reportsTo;
+    if (reportsToId) {
+      const idStr = reportsToId.toString();
+      if (Types.ObjectId.isValid(idStr)) {
+        const supervisorProfile = await this.profileDAO.findFirst({
+          user: new Types.ObjectId(idStr),
+        });
+        if (supervisorProfile?.personalInfo) {
+          const { firstName, lastName, displayName } = supervisorProfile.personalInfo;
+          directManager = displayName || `${firstName || ''} ${lastName || ''}`.trim();
         }
-      } catch {
-        // keep raw ID if supervisor lookup fails
+      } else {
+        directManager = idStr;
       }
     }
 
@@ -569,18 +571,65 @@ export class UserService {
       employeeId: employeeInfo.employeeId || '',
       hireDate: hireDate,
       tenure: tenure,
-      employmentType: employeeInfo.employmentType || 'Full-Time',
+      employmentType: 'Full-Time',
       department: employeeInfo.department || 'operations',
       position: this.determinePrimaryRole(roles),
       directManager,
 
-      // Skills and expertise
-      skills: employeeInfo.skills || [
-        'Property Management',
-        'Tenant Relations',
-        'Maintenance Coordination',
-        'Financial Reporting',
-      ],
+      // Skills and expertise — keyed by department
+      skills: (() => {
+        const dept = (employeeInfo.department || 'other') as string;
+        const DEPT_SKILLS: Record<string, string[]> = {
+          maintenance: [
+            'HVAC Systems',
+            'Plumbing & Electrical',
+            'Preventive Maintenance',
+            'Work Order Management',
+            'Safety Compliance',
+            'Vendor Coordination',
+          ],
+          operations: [
+            'Property Management',
+            'Tenant Relations',
+            'Lease Administration',
+            'Facility Oversight',
+            'Move-In / Move-Out Coordination',
+            'Vendor Management',
+          ],
+          accounting: [
+            'Rent Collection',
+            'Financial Reporting',
+            'Accounts Payable / Receivable',
+            'Budgeting & Forecasting',
+            'Reconciliation',
+            'Compliance & Auditing',
+          ],
+          management: [
+            'Strategic Planning',
+            'Team Leadership',
+            'Portfolio Management',
+            'Stakeholder Communication',
+            'Policy Development',
+            'Performance Oversight',
+          ],
+          security: [
+            'Access Control',
+            'Incident Reporting',
+            'Surveillance Monitoring',
+            'Emergency Response',
+            'Patrol Coordination',
+            'Safety Inspections',
+          ],
+          other: [
+            'Administrative Support',
+            'Communication',
+            'Record Keeping',
+            'Customer Service',
+            'Problem Solving',
+          ],
+        };
+        return DEPT_SKILLS[dept] ?? DEPT_SKILLS['other'];
+      })(),
 
       // Office information
       officeInfo: {
@@ -603,18 +652,18 @@ export class UserService {
           (sum: number, p: any) => sum + (p.units || 0),
           0
         ),
-        tasksCompleted: 47, // placeholder
-        onTimeRate: '98%', // placeholder
-        rating: '4.8', // placeholder
-        activeTasks: 8, // placeholder
+        tasksCompleted: 0,
+        onTimeRate: 'N/A',
+        rating: 'N/A',
+        activeTasks: 0,
       },
 
       // Performance metrics
       performance: {
-        taskCompletionRate: '98%',
-        tenantSatisfaction: '4.8/5',
-        avgOccupancyRate: '92%',
-        avgResponseTime: '12h',
+        taskCompletionRate: 'N/A',
+        tenantSatisfaction: 'N/A',
+        avgOccupancyRate: 'N/A',
+        avgResponseTime: 'N/A',
       },
 
       // Employment tags/badges
@@ -658,6 +707,7 @@ export class UserService {
     }
 
     return {
+      vuid: vendorInfo?.vuid || '',
       companyName: vendorInfo?.companyName || _personalInfo.displayName || '',
       businessType: vendorInfo?.businessType || 'General Contractor',
       yearsInBusiness: vendorInfo?.yearsInBusiness || 0,
@@ -890,8 +940,6 @@ export class UserService {
     // Certifications (placeholder)
     if (employeeInfo.certifications && employeeInfo.certifications.length > 0) {
       tags.push('Certified');
-    } else {
-      tags.push('Certified'); // Default for demo
     }
 
     // Access levels (placeholder)
@@ -1582,9 +1630,16 @@ export class UserService {
           firstName: (rawTenantDetails as any).firstName || '',
           lastName: (rawTenantDetails as any).lastName || '',
           fullName: (rawTenantDetails as any).fullName || '',
+          displayName: (rawTenantDetails as any).displayName || '',
           avatar: (rawTenantDetails as any).avatar?.url || (rawTenantDetails as any).avatar || '',
           phoneNumber: (rawTenantDetails as any).phoneNumber || '',
           email: (rawTenantDetails as any).email || '',
+          location: (rawTenantDetails as any).location || '',
+          dob: (rawTenantDetails as any).dob || null,
+          headline: (rawTenantDetails as any).headline || '',
+          bio: (rawTenantDetails as any).bio || '',
+          settings: (rawTenantDetails as any).settings || {},
+          policies: (rawTenantDetails as any).policies || {},
           roles: ['tenant'],
           uid: (rawTenantDetails as any).uid || '',
           id: (rawTenantDetails as any)._id?.toString() || '',
@@ -1981,35 +2036,35 @@ export class UserService {
             const linkedUsers = await this.userDAO.getLinkedVendorUsers(user._id.toString(), cuid);
 
             if (linkedUsers.items.length > 0) {
-              this.log.info('Archiving linked vendor accounts', {
+              this.log.info('Queueing background disconnect for linked vendor team members', {
                 uid,
                 vendorId: vendor.vuid,
                 linkedAccountCount: linkedUsers.items.length,
               });
 
-              // Disconnect all linked vendor accounts (soft delete - preserve data)
-              for (const linkedUser of linkedUsers.items) {
-                // Only disconnect - no hard delete for compliance/audit
-                await this.userDAO.updateById(
-                  linkedUser._id.toString(),
-                  {
-                    $set: { 'cuids.$[elem].isConnected': false },
-                  },
-                  {
-                    arrayFilters: [{ 'elem.cuid': cuid }],
-                  } as any
-                );
+              const companyName =
+                client.displayName ||
+                (client as any).companyProfile?.legalEntityName ||
+                'your account';
 
-                // Invalidate cache for linked user
-                await this.userCache.invalidateUserDetail(cuid, linkedUser.uid);
-              }
+              const userQueue = this.queueFactory.getQueue('userQueue') as UserQueue;
+              await userQueue.addVendorTeamDisconnectJob({
+                primaryVendorUserId: user._id.toString(),
+                vendorId: vendor._id.toString(),
+                cuid,
+                clientId: client._id.toString(),
+                companyName,
+              });
 
               archivalSummary.actions.push({
-                action: 'linked_vendor_accounts_archived',
+                action: 'linked_vendor_accounts_queued_for_disconnect',
                 count: linkedUsers.items.length,
                 vendorId: vendor.vuid,
               });
             }
+
+            // Disconnect vendor from this client in the Vendor document
+            await this.vendorService.disconnectFromClient(vendor._id.toString(), cuid);
 
             // Note: Vendor entity itself is not deleted, just marked inactive via user deletion
             archivalSummary.actions.push({

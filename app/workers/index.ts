@@ -8,3 +8,4 @@ export * from './payment.worker';
 export * from './upload.worker';
 export * from './email.worker';
 export * from './cron.worker';
+export * from './user.worker';

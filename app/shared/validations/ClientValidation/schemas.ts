@@ -28,6 +28,7 @@ export const ClientSettingsSchema = z.object({
     .string()
     .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Invalid language code format')
     .optional(),
+  vendorPayoutMode: z.enum(['express', 'platform_hold']).optional(),
 });
 
 export const CompanyProfileSchema = z.object({

@@ -1,0 +1,16 @@
+Vendor Declined — Reassignment Required
+=========================================
+
+A vendor has declined the maintenance request below.
+The request has been returned to Open status and requires reassignment.
+
+DETAILS
+-------
+Reference #: <%= request.mruid %>
+Title:       <%= request.title %>
+Priority:    <%= request.priority %>
+Status:      Open — awaiting reassignment
+<% if (reason) { %>Vendor Reason: "<%= reason %>"
+<% } %>
+Log in to the portal to assign a new vendor.
+

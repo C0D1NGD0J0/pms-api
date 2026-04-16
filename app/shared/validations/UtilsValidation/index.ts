@@ -222,11 +222,16 @@ export const ValidatePytUidSchema = z.object({
   ),
 });
 
+export const ValidateUidSchema = z.object({
+  uid: z.string().min(1, 'uid is required'),
+});
+
 export const UtilsValidations = {
   cuid: ValidateCuidSchema,
   vuid: ValidateVuidSchema,
   luid: ValidateLuidSchema,
   nuid: ValidateNuidSchema,
+  uid: ValidateUidSchema,
   unitPuid: ValidateUnitPuid,
   pytuid: ValidatePytUidSchema,
   isUniqueEmail: ValidateEmailSchema,

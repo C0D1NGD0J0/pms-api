@@ -13,7 +13,6 @@ import { QueueFactory } from '@services/queue';
 import { IUserBasicInfo } from '@dao/interfaces';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
-import { preventTenantConflict } from '@shared/middlewares';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { MediaUploadService, UserService } from '@services/index';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
@@ -42,6 +41,7 @@ import {
   ILeaseFilterOptions,
   ILeaseDocument,
   ILeaseFormData,
+  ILeaseListItem,
   SigningMethod,
   LeaseStatus,
 } from '@interfaces/lease.interface';
@@ -57,6 +57,7 @@ import {
 import {
   PROPERTY_APPROVAL_ROLES,
   convertUserRoleToEnum,
+  preventTenantConflict,
   PROPERTY_STAFF_ROLES,
   LEASE_CONSTANTS,
   calcDaysElapsed,
@@ -345,7 +346,13 @@ export class LeaseService {
         templateType: data.templateType || 'residential-single-family',
         landlordName: landlordInfo.landlordName,
         fees: MoneyUtils.parseLeaseFees(data.fees),
-        internalNotes: data.internalNotes ? sanitizeHtml(data.internalNotes) : undefined,
+        internalNotes: data.internalNotes?.length
+          ? data.internalNotes.map((n: any) => ({
+              ...n,
+              note: sanitizeHtml(n.note ?? ''),
+              html: n.html ? sanitizeHtml(n.html) : undefined,
+            }))
+          : undefined,
         legalTerms: data.legalTerms
           ? {
               text: data.legalTerms.text ? sanitizeHtml(data.legalTerms.text) : undefined,
@@ -364,6 +371,7 @@ export class LeaseService {
         },
         approvalStatus,
         approvalDetails,
+        ...(approvalStatus === 'approved' && { status: LeaseStatus.READY_FOR_SIGNATURE }),
         useInvitationIdAsTenantId: tenantInfo.useInvitationIdAsTenantId,
         metadata: {
           ...landlordInfo,
@@ -427,7 +435,7 @@ export class LeaseService {
     cuid: string,
     filters: ILeaseFilterOptions,
     options: any
-  ): ListResultWithPagination<ILeaseDocument[]> {
+  ): ListResultWithPagination<ILeaseListItem[]> {
     this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
 
     try {
@@ -440,9 +448,7 @@ export class LeaseService {
         });
 
         return {
-          success: true,
-          data: cachedResult.data.leases,
-          message: 'Leases retrieved successfully (cached)',
+          items: cachedResult.data.leases,
           pagination: {
             currentPage: options.page || 1,
             perPage: options.limit || 10,
@@ -452,7 +458,7 @@ export class LeaseService {
               (options.page || 1) <
               Math.ceil(cachedResult.data.pagination.total / (options.limit || 10)),
           },
-        } as any;
+        };
       }
       const result = await this.leaseDAO.getFilteredLeases(cuid, filters, options);
 
@@ -463,11 +469,9 @@ export class LeaseService {
       });
 
       return {
-        success: true,
-        data: result.items,
-        message: 'Leases retrieved successfully',
+        items: result.items,
         pagination: result.pagination,
-      } as any;
+      };
     } catch (error) {
       this.log.error('Error getting filtered leases:', error);
       throw error;
@@ -1417,6 +1421,10 @@ export class LeaseService {
       $push: { approvalDetails: approvalEntry },
       $set: {
         approvalStatus: 'approved',
+        ...(lease.status === LeaseStatus.DRAFT &&
+          !lease.pendingChanges && {
+            status: LeaseStatus.READY_FOR_SIGNATURE,
+          }),
         lastModifiedBy: [
           {
             userId: currentuser.sub,
@@ -2746,7 +2754,6 @@ export class LeaseService {
    * Cleanup event listeners
    */
   cleanupEventListeners(): void {
-    this.leaseDocumentService.cleanupEventListeners();
     this.leaseSignatureService.cleanupEventListeners();
     this.log.info('Lease service event listeners removed');
   }

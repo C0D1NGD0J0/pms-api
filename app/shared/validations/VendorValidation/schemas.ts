@@ -116,7 +116,7 @@ export const createVendorSchema = z.object({
   reviewCount: z.number().min(0).default(0),
 });
 
-// Update vendor schema (all fields optional except primaryAccountHolder validation)
+// Update vendor schema (all fields optional except primaryAccountHolderUserId validation)
 export const updateVendorSchema = z.object({
   companyName: z.string().min(1, 'Company name cannot be empty').max(200).optional(),
   businessType: businessTypesEnum.optional(),

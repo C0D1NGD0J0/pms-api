@@ -51,3 +51,8 @@ export const createConnectAccount = z.object({
   email: z.string().email(),
   country: z.string().length(2).toUpperCase(),
 });
+
+export const payoutHistoryQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20).optional(),
+  cursor: z.string().optional(),
+});

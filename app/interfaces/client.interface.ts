@@ -85,6 +85,23 @@ export interface IClientUserConnections {
 }
 
 /**
+ * Client Settings Interface
+ * User preferences and configuration
+ */
+export interface IClientSettings {
+  notificationPreferences: NotificationPreferences;
+  vendorPayoutMode?: 'express' | 'platform_hold';
+  timeZone: string;
+  lang: string;
+}
+
+/**
+ * ============================================================================
+ * POPULATED/ENRICHED INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Populated Account Admin Type
  * Essential user information for client admin
  */
@@ -97,7 +114,7 @@ export type PopulatedAccountAdmin = Pick<
 
 /**
  * ============================================================================
- * POPULATED/ENRICHED INTERFACES
+ * DOCUMENT INTERFACES (Mongoose Extensions)
  * ============================================================================
  */
 
@@ -108,22 +125,6 @@ export type PopulatedAccountAdmin = Pick<
 export type IPopulatedClientDocument = {
   accountAdmin: IUserDocument | Types.ObjectId;
 } & Omit<IClientDocument, 'accountAdmin'>;
-
-/**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
-
-/**
- * Client Settings Interface
- * User preferences and configuration
- */
-export interface IClientSettings {
-  notificationPreferences: NotificationPreferences;
-  timeZone: string;
-  lang: string;
-}
 
 /**
  * Simplified client info for passing around client context

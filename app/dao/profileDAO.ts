@@ -113,31 +113,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
-  async updateIdentification(
-    profileId: string,
-    identificationData: {
-      idType: string;
-      issueDate: Date;
-      expiryDate: Date;
-      idNumber: string;
-      authority?: string;
-      issuingState: string;
-    }
-  ): Promise<IProfileDocument | null> {
-    try {
-      if (identificationData.expiryDate <= identificationData.issueDate) {
-        throw new Error('Expiry date must be after issue date');
-      }
-
-      return await this.updateById(profileId, {
-        $set: { 'personalInfo.identification': identificationData },
-      });
-    } catch (error) {
-      this.logger.error(`Error updating identification for profile ${profileId}:`, error);
-      throw this.throwErrorHandler(error);
-    }
-  }
-
   async updateNotificationPreferences(
     profileId: string,
     preferences: {
@@ -322,6 +297,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   cuid: '$cuid',
                   clientDisplayName: '$displayName',
                   isVerified: 1,
+                  vendorPayoutMode: '$settings.vendorPayoutMode',
                 },
               },
             ],
@@ -401,6 +377,48 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
           },
         },
 
+        // Vendor document lookup — resolves vuid for vendor portal routing
+        {
+          $lookup: {
+            from: 'vendors',
+            localField: 'vendorInfo.vendorId',
+            foreignField: '_id',
+            as: 'vendorDocData',
+          },
+        },
+        {
+          $addFields: {
+            vendorDoc: { $arrayElemAt: ['$vendorDocData', 0] },
+          },
+        },
+
+        // Vendor payout account lookup (ownerType: 'vendor') — generic provider-agnostic projection
+        {
+          $lookup: {
+            from: 'paymentprocessors',
+            let: { vuid: '$vendorDoc.vuid', activeCuid: '$userData.activecuid' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$vuid', '$$vuid'] },
+                      { $eq: ['$cuid', '$$activeCuid'] },
+                      { $eq: ['$ownerType', 'vendor'] },
+                    ],
+                  },
+                },
+              },
+            ],
+            as: 'vendorPayoutData',
+          },
+        },
+        {
+          $addFields: {
+            vendorPayoutInfo: { $arrayElemAt: ['$vendorPayoutData', 0] },
+          },
+        },
+
         // transform data into ICurrentUser structure
         {
           $project: {
@@ -465,6 +483,9 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   linkedVendorUid: '$$activeClient.linkedVendorUid',
                   isVerified: { $ifNull: ['$$activeClientData.isVerified', false] },
                   requiresOnboarding: { $ifNull: ['$$activeClient.requiresOnboarding', false] },
+                  vendorPayoutMode: {
+                    $ifNull: ['$$activeClientData.vendorPayoutMode', 'platform_hold'],
+                  },
                   isPrimaryVendor: {
                     $cond: {
                       if: {
@@ -535,9 +556,27 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                 if: '$vendorInfo',
                 then: {
                   vendorId: { $toString: '$vendorInfo.vendorId' },
+                  vuid: '$vendorDoc.vuid',
                   linkedVendorUid: '$vendorInfo.linkedVendorUid',
-                  isPrimaryVendor: '$vendorInfo.isPrimaryVendor',
+                  isPrimaryVendor: {
+                    $cond: {
+                      if: { $ifNull: ['$vendorInfo.isLinkedAccount', true] },
+                      then: false,
+                      else: true,
+                    },
+                  },
                   isLinkedAccount: '$vendorInfo.isLinkedAccount',
+                  payoutAccount: {
+                    $cond: {
+                      if: '$vendorPayoutInfo',
+                      then: {
+                        isSetup: { $ifNull: ['$vendorPayoutInfo.detailsSubmitted', false] },
+                        payoutsEnabled: { $ifNull: ['$vendorPayoutInfo.payoutsEnabled', false] },
+                        chargesEnabled: { $ifNull: ['$vendorPayoutInfo.chargesEnabled', false] },
+                      },
+                      else: { isSetup: false, payoutsEnabled: false, chargesEnabled: false },
+                    },
+                  },
                 },
                 else: '$$REMOVE',
               },

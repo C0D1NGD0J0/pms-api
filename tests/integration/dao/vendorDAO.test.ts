@@ -40,7 +40,9 @@ describe('VendorDAO Integration Tests', () => {
       lastName: 'User2',
       password: 'hashed',
       activecuid: testCuid2,
-      cuids: [{ cuid: testCuid2, clientDisplayName: 'Test Client 2', roles: [], isConnected: true }],
+      cuids: [
+        { cuid: testCuid2, clientDisplayName: 'Test Client 2', roles: [], isConnected: true },
+      ],
       isActive: true,
     });
   });
@@ -51,12 +53,12 @@ describe('VendorDAO Integration Tests', () => {
         companyName: 'ABC Plumbing Inc',
         businessType: 'Plumbing',
         registrationNumber: 'REG123456',
-        isPrimaryAccountHolder: true,
+        isprimaryAccountHolderUserId: true,
         connectedClients: [
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       };
@@ -77,7 +79,7 @@ describe('VendorDAO Integration Tests', () => {
         registrationNumber: 'REG789012',
         taxId: 'TAX-123',
         yearsInBusiness: 10,
-        isPrimaryAccountHolder: true,
+        isprimaryAccountHolderUserId: true,
         servicesOffered: {
           electrical: true,
           plumbing: true,
@@ -92,7 +94,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       };
@@ -110,17 +112,17 @@ describe('VendorDAO Integration Tests', () => {
         companyName: 'Multi-Client Vendor',
         businessType: 'General Contractor',
         registrationNumber: 'REG-MULTI',
-        isPrimaryAccountHolder: true,
+        isprimaryAccountHolderUserId: true,
         connectedClients: [
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
           {
             cuid: testCuid2,
             isConnected: false,
-            primaryAccountHolder: testUserId2,
+            primaryAccountHolderUserId: testUserId2,
           },
         ],
       };
@@ -137,7 +139,7 @@ describe('VendorDAO Integration Tests', () => {
         companyName: 'Located Vendor',
         businessType: 'HVAC',
         registrationNumber: 'REG-LOC',
-        isPrimaryAccountHolder: true,
+        isprimaryAccountHolderUserId: true,
         address: {
           street: 'Main St',
           streetNumber: '123',
@@ -155,7 +157,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       };
@@ -172,7 +174,7 @@ describe('VendorDAO Integration Tests', () => {
         companyName: 'Insured Vendor',
         businessType: 'Roofing',
         registrationNumber: 'REG-INS',
-        isPrimaryAccountHolder: true,
+        isprimaryAccountHolderUserId: true,
         insuranceInfo: {
           provider: 'State Farm',
           policyNumber: 'POL-123',
@@ -183,7 +185,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       };
@@ -206,7 +208,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -227,7 +229,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -262,7 +264,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -283,7 +285,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -310,7 +312,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -321,7 +323,7 @@ describe('VendorDAO Integration Tests', () => {
     });
   });
 
-  describe('getVendorByPrimaryAccountHolder', () => {
+  describe('getVendorByprimaryAccountHolderUserId', () => {
     it('should find vendor by primary account holder user ID', async () => {
       await Vendor.create({
         companyName: 'Account Holder Vendor',
@@ -331,21 +333,23 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
 
-      const vendor = await vendorDAO.getVendorByPrimaryAccountHolder(testUserId);
+      const vendor = await vendorDAO.getVendorByprimaryAccountHolderUserId(testUserId);
 
       expect(vendor).not.toBeNull();
       expect(vendor?.companyName).toBe('Account Holder Vendor');
-      expect(vendor?.connectedClients[0].primaryAccountHolder.toString()).toBe(testUserId.toString());
+      expect(vendor?.connectedClients[0].primaryAccountHolderUserId.toString()).toBe(
+        testUserId.toString()
+      );
     });
 
     it('should return null for non-existent account holder', async () => {
       const fakeUserId = new Types.ObjectId();
-      const vendor = await vendorDAO.getVendorByPrimaryAccountHolder(fakeUserId);
+      const vendor = await vendorDAO.getVendorByprimaryAccountHolderUserId(fakeUserId);
 
       expect(vendor).toBeNull();
     });
@@ -359,17 +363,17 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
           {
             cuid: testCuid2,
             isConnected: true,
-            primaryAccountHolder: testUserId2,
+            primaryAccountHolderUserId: testUserId2,
           },
         ],
       });
 
-      const vendor = await vendorDAO.getVendorByPrimaryAccountHolder(testUserId2);
+      const vendor = await vendorDAO.getVendorByprimaryAccountHolderUserId(testUserId2);
 
       expect(vendor).not.toBeNull();
       expect(vendor?.companyName).toBe('Multi-Client Account Holder');
@@ -386,7 +390,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -406,7 +410,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -433,7 +437,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -454,7 +458,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -474,7 +478,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -501,7 +505,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -522,7 +526,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -546,7 +550,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -574,7 +578,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -605,7 +609,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -642,7 +646,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -666,7 +670,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -679,7 +683,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: false,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -692,7 +696,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid2,
             isConnected: true,
-            primaryAccountHolder: testUserId2,
+            primaryAccountHolderUserId: testUserId2,
           },
         ],
       });
@@ -722,7 +726,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });
@@ -760,7 +764,7 @@ describe('VendorDAO Integration Tests', () => {
             {
               cuid: testCuid,
               isConnected: true,
-              primaryAccountHolder: testUserId,
+              primaryAccountHolderUserId: testUserId,
             },
           ],
         },
@@ -779,7 +783,7 @@ describe('VendorDAO Integration Tests', () => {
             {
               cuid: testCuid,
               isConnected: true,
-              primaryAccountHolder: testUserId,
+              primaryAccountHolderUserId: testUserId,
             },
           ],
         },
@@ -798,7 +802,7 @@ describe('VendorDAO Integration Tests', () => {
             {
               cuid: testCuid,
               isConnected: false,
-              primaryAccountHolder: testUserId,
+              primaryAccountHolderUserId: testUserId,
             },
           ],
         },
@@ -813,7 +817,7 @@ describe('VendorDAO Integration Tests', () => {
             {
               cuid: testCuid,
               isConnected: true,
-              primaryAccountHolder: testUserId,
+              primaryAccountHolderUserId: testUserId,
             },
           ],
         },
@@ -843,7 +847,9 @@ describe('VendorDAO Integration Tests', () => {
 
       expect(result.items.length).toBe(3);
       expect(
-        result.items.every((v) => v.connectedClients.some((c) => c.cuid === testCuid && c.isConnected))
+        result.items.every((v) =>
+          v.connectedClients.some((c) => c.cuid === testCuid && c.isConnected)
+        )
       ).toBe(true);
     });
 
@@ -897,7 +903,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       }));
@@ -956,7 +962,7 @@ describe('VendorDAO Integration Tests', () => {
             {
               cuid: testCuid,
               isConnected: true,
-              primaryAccountHolder: testUserId,
+              primaryAccountHolderUserId: testUserId,
             },
           ],
         },
@@ -971,7 +977,7 @@ describe('VendorDAO Integration Tests', () => {
             {
               cuid: testCuid,
               isConnected: true,
-              primaryAccountHolder: testUserId,
+              primaryAccountHolderUserId: testUserId,
             },
           ],
         },
@@ -987,7 +993,7 @@ describe('VendorDAO Integration Tests', () => {
             {
               cuid: testCuid,
               isConnected: true,
-              primaryAccountHolder: testUserId,
+              primaryAccountHolderUserId: testUserId,
             },
           ],
         },
@@ -1002,7 +1008,7 @@ describe('VendorDAO Integration Tests', () => {
             {
               cuid: testCuid,
               isConnected: true,
-              primaryAccountHolder: testUserId,
+              primaryAccountHolderUserId: testUserId,
             },
           ],
         },
@@ -1079,7 +1085,7 @@ describe('VendorDAO Integration Tests', () => {
           {
             cuid: testCuid,
             isConnected: true,
-            primaryAccountHolder: testUserId,
+            primaryAccountHolderUserId: testUserId,
           },
         ],
       });

@@ -15,7 +15,7 @@ const VendorSchema = new Schema<IVendorDocument>(
           type: Boolean,
           default: false,
         },
-        primaryAccountHolder: {
+        primaryAccountHolderUserId: {
           type: Schema.Types.ObjectId,
           ref: 'User',
           required: true,

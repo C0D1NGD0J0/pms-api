@@ -87,7 +87,9 @@ export class App implements IAppSetup {
         verify: (req: any, res, buf) => {
           if (
             req.originalUrl === '/api/v1/webhooks/stripe' ||
-            req.originalUrl === '/api/v1/webhooks/stripe/connect'
+            req.originalUrl === '/api/v1/webhooks/stripe/connect' ||
+            req.originalUrl === '/api/v1/webhooks/boldsign' ||
+            req.originalUrl.startsWith('/api/v1/webhooks/invoices/')
           ) {
             req.rawBody = buf;
           }
@@ -112,7 +114,7 @@ export class App implements IAppSetup {
     app.use(setUserLanguage);
     app.use(
       `${this.BASE_PATH}/webhooks`,
-      // express.raw({ type: 'application/json' }),
+      express.raw({ type: 'application/json' }),
       routes.webhookRoutes
     );
     app.use(`${this.BASE_PATH}/healthcheck`, async (req, res) => {
@@ -168,7 +170,8 @@ export class App implements IAppSetup {
     app.use(`${this.BASE_PATH}/subscriptions`, routes.subscriptionRoutes);
     app.use(`${this.BASE_PATH}/payments`, routes.paymentRoutes);
     app.use(`${this.BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
-    // app.use(`${this.BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
+    app.use(`${this.BASE_PATH}/maintenance_requests`, routes.maintenanceRequestRoutes);
+    app.use(`${this.BASE_PATH}/expenses`, routes.expenseRoutes);
     app.all('*', (req: Request, res: Response) => {
       res.status(httpStatusCodes.NOT_FOUND).json({ message: 'Invalid endpoint.' });
     });

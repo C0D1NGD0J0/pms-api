@@ -1,0 +1,27 @@
+<%
+  // Params: url (string), label (string), colorClass (optional: 'btn-accent' | 'btn-muted' | 'btn-success')
+  var _btnColor = (typeof colorClass !== 'undefined' && colorClass) ? colorClass : '';
+  var _btnBg = '#062f4f';
+  if (_btnColor === 'btn-accent')   _btnBg = '#39a9e0';
+  if (_btnColor === 'btn-muted')    _btnBg = '#64748b';
+  if (_btnColor === 'btn-success')  _btnBg = '#16a34a';
+%>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+  <tr>
+    <td align="center">
+      <!--[if mso]>
+      <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="<%- url %>"
+        style="height:48px;v-text-anchor:middle;width:220px;" arcsize="12%"
+        strokecolor="<%= _btnBg %>" fillcolor="<%= _btnBg %>">
+        <w:anchorlock/>
+        <center style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;">
+          <%- label %>
+        </center>
+      </v:roundrect>
+      <![endif]-->
+      <!--[if !mso]><!-->
+      <a href="<%- url %>" class="btn <%= _btnColor %>" style="background-color:<%= _btnBg %>;"><%- label %></a>
+      <!--<![endif]-->
+    </td>
+  </tr>
+</table>

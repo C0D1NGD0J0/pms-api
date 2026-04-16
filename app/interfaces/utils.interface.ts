@@ -8,6 +8,16 @@ import { IInvalidCsvProperty } from './csv.interface';
 import { ISubscriptionEntitlements } from './subscription.interface';
 
 export enum MailType {
+  MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT = 'MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT',
+  MAINTENANCE_WORK_ORDER_SUBMITTED = 'MAINTENANCE_WORK_ORDER_SUBMITTED',
+  MAINTENANCE_WORK_ORDER_APPROVED = 'MAINTENANCE_WORK_ORDER_APPROVED',
+  MAINTENANCE_WORK_ORDER_REJECTED = 'MAINTENANCE_WORK_ORDER_REJECTED',
+  MAINTENANCE_INVOICE_SUBMITTED = 'MAINTENANCE_INVOICE_SUBMITTED',
+  MAINTENANCE_REQUEST_ASSIGNED = 'MAINTENANCE_REQUEST_ASSIGNED',
+  MAINTENANCE_REQUEST_DECLINED = 'MAINTENANCE_REQUEST_DECLINED',
+  MAINTENANCE_INVOICE_APPROVED = 'MAINTENANCE_INVOICE_APPROVED',
+  MAINTENANCE_INVOICE_REJECTED = 'MAINTENANCE_INVOICE_REJECTED',
+  MAINTENANCE_REQUEST_CREATED = 'MAINTENANCE_REQUEST_CREATED',
   LEASE_APPLICATION_UPDATE = 'LEASE_APPLICATION_UPDATE',
   LEASE_PAYMENT_REMINDER = 'LEASE_PAYMENT_REMINDER',
   LEASE_SIGNOFF_REQUEST = 'LEASE_SIGNOFF_REQUEST',
@@ -179,7 +189,7 @@ export interface IAWSFileUploadResponse {
 }
 
 export interface ResourceInfo {
-  resourceName: 'property' | 'profile' | 'client' | 'lease'; //name of the resource
+  resourceName: 'property' | 'profile' | 'client' | 'lease' | 'maintenance'; //name of the resource
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
   resourceId: string; //id of the resource
   fieldName: string; //name of the field

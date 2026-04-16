@@ -190,6 +190,11 @@ const ClientSchema = new Schema<IClientDocument>(
           default: true,
         },
       },
+      vendorPayoutMode: {
+        type: String,
+        enum: ['express', 'platform_hold'],
+        default: 'platform_hold',
+      },
       timeZone: {
         type: String,
         default: 'UTC',

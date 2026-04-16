@@ -10,7 +10,7 @@ import {
 describe('Lease Helpers', () => {
   describe('validateImmutableFields', () => {
     it('should pass when no immutable fields updated', () => {
-      expect(() => validateImmutableFields({ internalNotes: 'Test' })).not.toThrow();
+      expect(() => validateImmutableFields({ internalNotes: [] })).not.toThrow();
     });
 
     it('should throw error for immutable field updates', () => {
@@ -35,7 +35,7 @@ describe('Lease Helpers', () => {
 
     it('should allow internalNotes for ACTIVE status', () => {
       expect(() =>
-        validateAllowedFields({ internalNotes: 'Test' }, LeaseStatus.ACTIVE)
+        validateAllowedFields({ internalNotes: [] }, LeaseStatus.ACTIVE)
       ).not.toThrow();
     });
   });
@@ -50,7 +50,7 @@ describe('Lease Helpers', () => {
     });
 
     it('should return false for low-impact changes', () => {
-      expect(hasHighImpactChanges({ internalNotes: 'Test' } as any)).toBe(false);
+      expect(hasHighImpactChanges({ internalNotes: [] } as any)).toBe(false);
     });
   });
 

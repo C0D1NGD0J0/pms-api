@@ -49,7 +49,7 @@ export class ClamScannerService {
 
     const envConfig = envVariables.SERVER.ENV === 'production' ? prodConfig : devConfig;
 
-    this.log.info(
+    this.log.debug(
       `ClamAV Environment: ${envVariables.SERVER.ENV}, using ${envVariables.SERVER.ENV === 'production' ? 'TCP' : 'socket'} connection`
     );
 
@@ -70,7 +70,7 @@ export class ClamScannerService {
       .then((clam) => {
         this.clamscan = clam;
         this.isInitialized = true;
-        this.log.info('ClamAV scanner initialized successfully');
+        this.log.debug('ClamAV scanner initialized successfully');
       })
       .catch((err: any) => {
         this.isInitialized = false;

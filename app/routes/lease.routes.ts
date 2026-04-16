@@ -102,9 +102,12 @@ router.post(
 );
 
 router.get(
-  '/pdf-status/:jobId',
+  '/:cuid/pdf-status/:jobId',
   // Get PDF generation job status
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<LeaseController>('leaseController');
     return controller.getPdfJobStatus(req, res);
@@ -204,7 +207,7 @@ router
     // Get/download lease document
     requirePermission(PermissionResource.LEASE, PermissionAction.READ),
     validateRequest({
-      params: UtilsValidations.cuid,
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<LeaseController>('leaseController');
@@ -215,7 +218,7 @@ router
     // Remove lease document
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     validateRequest({
-      params: UtilsValidations.cuid,
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<LeaseController>('leaseController');
@@ -325,5 +328,32 @@ router
       return controller.renewLease(req, res);
     })
   );
+
+// Lease Approval Routes
+router.post(
+  '/:cuid/:luid/approve',
+  requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.approveLease,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.approveLease(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/:luid/reject',
+  requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.rejectLease,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.rejectLease(req, res);
+  })
+);
 
 export default router;

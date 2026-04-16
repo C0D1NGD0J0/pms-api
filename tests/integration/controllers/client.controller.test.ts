@@ -111,6 +111,7 @@ describe('ClientController Integration Tests', () => {
       profileDAO,
       propertyDAO,
       propertyUnitDAO,
+      vendorDAO: {} as any,
       authCache,
       subscriptionDAO,
       subscriptionService: {} as any,

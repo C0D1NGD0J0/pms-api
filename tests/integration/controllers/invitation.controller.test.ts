@@ -85,6 +85,9 @@ describe('InvitationController Integration Tests', () => {
       tokenService: mockTokenService,
       authCache: mockAuthCache,
       vendorService,
+      leaseDAO: {} as any,
+      paymentProcessorDAO: {} as any,
+      paymentGatewayService: {} as any,
       subscriptionService: {} as any,
       emitterService: { on: jest.fn(), emit: jest.fn() } as any,
     });

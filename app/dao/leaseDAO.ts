@@ -802,37 +802,62 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
   async updateLeaseDocuments(
     leaseId: string,
     uploadResults: UploadResult[],
-    userId: string
+    userId: string,
+    cuid?: string
   ): Promise<ILeaseDocument | null> {
     try {
       if (!leaseId || !uploadResults.length) {
         throw new Error('Lease ID and upload results are required');
       }
 
-      const lease = await this.findFirst({ _id: new Types.ObjectId(leaseId), deletedAt: null });
+      const baseQuery: Record<string, any> = { _id: new Types.ObjectId(leaseId), deletedAt: null };
+      if (cuid) baseQuery.cuid = cuid;
+      const lease = await this.findFirst(baseQuery);
       if (!lease) {
         throw new Error('Lease not found');
       }
 
-      // Process lease document uploads
-      const processedDocuments = uploadResults.map((upload) => {
-        // Derive mimeType from filename extension
-        const ext = upload.filename.split('.').pop()?.toLowerCase();
-        let mimeType = 'application/pdf'; // default
-        if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-        else if (ext === 'png') mimeType = 'image/png';
+      // Deduplicate: skip documents whose S3 key already exists in the lease
+      const existingKeys = new Set(
+        (lease.leaseDocuments || []).map((doc: any) => doc.key).filter(Boolean)
+      );
 
-        return {
-          documentType: (upload as any).documentType || 'lease_agreement',
-          filename: upload.filename,
-          url: upload.url,
-          key: upload.key,
-          mimeType,
-          size: upload.size,
-          uploadedBy: new Types.ObjectId((upload as any).actorId || userId),
-          uploadedAt: new Date(),
-        };
-      });
+      // Process lease document uploads
+      const processedDocuments = uploadResults
+        .filter((upload) => {
+          if (existingKeys.has(upload.key)) {
+            this.log.warn('Skipping duplicate document (key already exists)', {
+              leaseId,
+              key: upload.key,
+            });
+            return false;
+          }
+          return true;
+        })
+        .map((upload) => {
+          // Derive mimeType from filename extension
+          const ext = upload.filename.split('.').pop()?.toLowerCase();
+          let mimeType = 'application/pdf'; // default
+          if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+          else if (ext === 'png') mimeType = 'image/png';
+
+          return {
+            documentType: (upload as any).documentType || 'lease_agreement',
+            status: 'active',
+            filename: upload.filename,
+            url: upload.url,
+            key: upload.key,
+            mimeType,
+            size: upload.size,
+            uploadedBy: new Types.ObjectId((upload as any).actorId || userId),
+            uploadedAt: new Date(),
+          };
+        });
+
+      if (processedDocuments.length === 0) {
+        this.log.info('All documents already exist, skipping update', { leaseId });
+        return lease;
+      }
 
       // Check if any of the new documents is a lease_agreement
       const hasLeaseAgreement = processedDocuments.some(
@@ -846,7 +871,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         });
 
         await this.update(
-          { _id: new Types.ObjectId(leaseId), deletedAt: null },
+          baseQuery,
           {
             $set: {
               'leaseDocuments.$[elem].status': 'inactive',
@@ -884,10 +909,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         hasLeaseAgreement,
       });
 
-      return await this.update(
-        { _id: new Types.ObjectId(leaseId), deletedAt: null },
-        updateOperation
-      );
+      return await this.update(baseQuery, updateOperation);
     } catch (error: any) {
       this.log.error('Error updating lease documents:', error);
       throw error;
@@ -900,15 +922,16 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
   async updateLeaseDocumentStatus(
     leaseId: string,
     status: 'active' | 'failed' | 'deleted',
-    errorMessage?: string
+    errorMessage?: string,
+    cuid?: string
   ): Promise<ILeaseDocument | null> {
     try {
       const updateData: any = {
-        'leaseDocument.$[].status': status,
+        'leaseDocuments.$[].status': status,
       };
 
       if (errorMessage) {
-        updateData['leaseDocument.$[].error'] = errorMessage;
+        updateData['leaseDocuments.$[].error'] = errorMessage;
       }
 
       this.log.info('Updating lease document status', {
@@ -918,9 +941,11 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       });
 
       // leaseId could be either luid or _id, try to determine which
-      const query = Types.ObjectId.isValid(leaseId)
+      const query: Record<string, any> = Types.ObjectId.isValid(leaseId)
         ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
         : { luid: leaseId, deletedAt: null };
+
+      if (cuid) query.cuid = cuid;
 
       return await this.update(query, { $set: updateData });
     } catch (error: any) {
@@ -931,6 +956,11 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
 
   /**
    * Get tenant information for a lease (handles both invitation and user)
+   */
+  /**
+   * Internal-only helper: lease must already be fetched with cuid scoping before calling this.
+   * `lease.tenantId` is the User or Invitation _id (ObjectId). This method does NOT re-verify
+   * tenant ownership — it relies on the caller having already scoped the lease query by cuid.
    */
   async getTenantInfo(lease: ILeaseDocument): Promise<{
     type: 'invitation' | 'user';

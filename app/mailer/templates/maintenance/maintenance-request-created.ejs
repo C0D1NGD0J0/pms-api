@@ -1,0 +1,56 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Maintenance Request Received</h2>
+      <p>Hi <%= currentuser.firstName || currentuser.email %>,</p>
+      <p>
+        We've received your maintenance request and added it to the queue. Our team will review it and assign a vendor as soon as possible. You'll be notified once someone is assigned.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <h3 style="margin-top: 0;">Request Details</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Reference #</td>
+            <td class="detail-value"><%= request.mruid %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Title</td>
+            <td class="detail-value"><%= request.title %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Category</td>
+            <td class="detail-value"><%= request.category.replace(/_/g, ' ') %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Priority</td>
+            <td class="detail-value"><%= request.priority %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Status</td>
+            <td class="detail-value" style="color: #0369a1; font-weight: 600;">Open</td>
+          </tr>
+          <% if (request.preferredDate) { %>
+          <tr>
+            <td class="detail-label">Preferred Date</td>
+            <td class="detail-value"><%= new Date(request.preferredDate).toLocaleDateString() %></td>
+          </tr>
+          <% } %>
+          <% if (request.availabilityWindows && request.availabilityWindows.length > 0) { %>
+          <tr>
+            <td class="detail-label">Availability</td>
+            <td class="detail-value"><%= request.availabilityWindows.join(', ').replace(/_/g, ' ') %></td>
+          </tr>
+          <% } %>
+        </table>
+      </div>
+      <p style="font-size: 13px; color: #64748b; margin-top: 12px;">
+        Keep your reference number for follow-ups: <strong><%= request.mruid %></strong>
+      </p>
+    </td>
+  </tr>
+</table>

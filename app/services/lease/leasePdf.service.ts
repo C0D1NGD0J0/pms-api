@@ -151,11 +151,18 @@ export class LeasePdfService {
       }
 
       const fileName = `${Date.now()}_${lease.leaseNumber}.pdf`;
-      this.mediaUploadService.handleBuffer(pdfResult.buffer, fileName, {
-        primaryResourceId: leaseId,
-        uploadedBy: lease.createdBy?.toString() || 'system',
-        resourceContext: ResourceContext.LEASE,
-      });
+      this.mediaUploadService
+        .handleBuffer(pdfResult.buffer, fileName, {
+          primaryResourceId: leaseId,
+          uploadedBy: lease.createdBy?.toString() || 'system',
+          resourceContext: ResourceContext.LEASE,
+        })
+        .catch((bufferError) => {
+          this.log.error(
+            { error: bufferError, leaseId, fileName },
+            'Failed to queue PDF buffer for upload'
+          );
+        });
 
       return {
         success: true,
@@ -404,12 +411,6 @@ export class LeasePdfService {
 
     if (!property) {
       throw new BadRequestError({ message: 'Property not found' });
-    }
-
-    if (!property.isManagementAuthorized()) {
-      throw new BadRequestError({
-        message: 'Property has not been authorized for management.',
-      });
     }
 
     let managementInfo;

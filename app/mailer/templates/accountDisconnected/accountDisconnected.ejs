@@ -1,21 +1,18 @@
-<table width="100%">
+<table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h3>Hello <%= fullname %>,</h3>
+      <h2>Account Access Removed</h2>
+      <p>Hi <%= fullname %>,</p>
       <p>
-        We're writing to let you know that your account connection to <strong><%= companyName %></strong>
-        has been removed as of <%= disconnectedAt %>.
+        Your connection to <strong><%= companyName %></strong> on PropertyDesk has been removed as of <strong><%= disconnectedAt %></strong>.
       </p>
       <p>
-        Your roles at this organisation (<%= roles %>) have been revoked. You will no longer be able to
-        access the platform under this account.
+        Your role(s) — <strong><%= roles %></strong> — have been revoked and you no longer have access to this organisation's workspace.
       </p>
-      <p>
-        If you believe this was done in error, please reach out to your account administrator directly.
-      </p>
-      <p>
-        For further assistance, contact our support team:
-        <a href="mailto:support@myproperty.com">Customer Support</a>
+      <hr class="divider" />
+      <p style="font-size: 14px; color: #64748b;">
+        If you believe this was done in error, contact your account administrator directly. For further assistance, reach our support team at
+        <a href="mailto:support@propertydesk.com">support@propertydesk.com</a>.
       </p>
     </td>
   </tr>

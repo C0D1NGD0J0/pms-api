@@ -2,7 +2,6 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/helpers';
 import { ICurrentUser } from '@interfaces/user.interface';
-import { EventTypes } from '@interfaces/events.interface';
 import { ResourceContext } from '@interfaces/utils.interface';
 import { NotificationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES } from '@utils/constants';
@@ -21,6 +20,24 @@ import {
   NotificationTypeEnum,
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
+import {
+  MaintenanceWorkOrderSubmittedPayload,
+  MaintenanceWorkOrderApprovedPayload,
+  MaintenanceWorkOrderRejectedPayload,
+  MaintenanceRequestCompletedPayload,
+  MaintenanceRequestCancelledPayload,
+  MaintenanceInvoiceSubmittedPayload,
+  MaintenanceRequestAssignedPayload,
+  MaintenanceRequestAcceptedPayload,
+  MaintenanceRequestDeclinedPayload,
+  MaintenanceInvoiceApprovedPayload,
+  MaintenanceInvoiceRejectedPayload,
+  MaintenanceRequestCreatedPayload,
+  PaymentSucceededPayload,
+  PaymentRefundedPayload,
+  PaymentFailedPayload,
+  EventTypes,
+} from '@interfaces/events.interface';
 
 import { getFormattedNotification, NotificationMessageKey } from './notificationMessages';
 
@@ -1890,6 +1907,58 @@ export class NotificationService {
       EventTypes.LEASE_ESIGNATURE_COMPLETED,
       this.handleLeaseActivated.bind(this)
     );
+
+    // Maintenance request events
+    this.emitterService.on(EventTypes.MAINTENANCE_REQUEST_CREATED, this.handleMRCreated.bind(this));
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_REQUEST_ASSIGNED,
+      this.handleMRAssigned.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_REQUEST_ACCEPTED,
+      this.handleMRAccepted.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_REQUEST_DECLINED,
+      this.handleMRDeclined.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_REQUEST_COMPLETED,
+      this.handleMRCompleted.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_REQUEST_CANCELLED,
+      this.handleMRCancelled.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_INVOICE_SUBMITTED,
+      this.handleInvoiceSubmitted.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_INVOICE_APPROVED,
+      this.handleInvoiceApproved.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_INVOICE_REJECTED,
+      this.handleInvoiceRejected.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_WORK_ORDER_SUBMITTED,
+      this.handleWorkOrderSubmitted.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_WORK_ORDER_APPROVED,
+      this.handleWorkOrderApproved.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_WORK_ORDER_REJECTED,
+      this.handleWorkOrderRejected.bind(this)
+    );
+
+    // Payment events
+    this.emitterService.on(EventTypes.PAYMENT_SUCCEEDED, this.handlePaymentSucceeded.bind(this));
+    this.emitterService.on(EventTypes.PAYMENT_FAILED, this.handlePaymentFailed.bind(this));
+    this.emitterService.on(EventTypes.PAYMENT_REFUNDED, this.handlePaymentRefunded.bind(this));
   }
 
   private async handleLeaseActivated(payload: any): Promise<void> {
@@ -1928,6 +1997,430 @@ export class NotificationService {
         error: error instanceof Error ? error.message : 'Unknown error',
         payload,
       });
+    }
+  }
+
+  // ── Maintenance request handlers ───────────────────────────────────────────
+
+  private async handleMRCreated(payload: MaintenanceRequestCreatedPayload): Promise<void> {
+    try {
+      const { cuid, mruid, title, priority } = payload;
+      const { title: nTitle, message } = getFormattedNotification('maintenance.requestCreated', {
+        priority,
+        title,
+        mruid,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: ['admin', 'staff'],
+        priority: NotificationPriorityEnum.MEDIUM,
+        title: nTitle,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending MR created notification', { error, payload });
+    }
+  }
+
+  private async handleMRAssigned(payload: MaintenanceRequestAssignedPayload): Promise<void> {
+    try {
+      const { cuid, mruid, tenantId, vendorId } = payload;
+      if (tenantId) {
+        const { title, message } = getFormattedNotification('maintenance.requestAssigned', {
+          mruid,
+        });
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: new Types.ObjectId(tenantId),
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.MEDIUM,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      }
+      const { title, message } = getFormattedNotification('maintenance.requestAssignedVendor', {
+        mruid,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipient: new Types.ObjectId(vendorId),
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending MR assigned notification', { error, payload });
+    }
+  }
+
+  private async handleMRAccepted(payload: MaintenanceRequestAcceptedPayload): Promise<void> {
+    try {
+      const { cuid, mruid, tenantId } = payload;
+      if (tenantId) {
+        const { title, message } = getFormattedNotification('maintenance.requestAcceptedTenant', {
+          mruid,
+        });
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: new Types.ObjectId(tenantId),
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.MEDIUM,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      }
+      const { title, message } = getFormattedNotification('maintenance.requestAccepted', { mruid });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: ['admin', 'staff'],
+        priority: NotificationPriorityEnum.LOW,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending MR accepted notification', { error, payload });
+    }
+  }
+
+  private async handleMRDeclined(payload: MaintenanceRequestDeclinedPayload): Promise<void> {
+    try {
+      const { cuid, mruid } = payload;
+      const { title, message } = getFormattedNotification('maintenance.requestDeclined', { mruid });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: ['admin', 'staff'],
+        priority: NotificationPriorityEnum.HIGH,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending MR declined notification', { error, payload });
+    }
+  }
+
+  private async handleMRCompleted(payload: MaintenanceRequestCompletedPayload): Promise<void> {
+    try {
+      const { cuid, mruid, tenantId } = payload;
+      if (tenantId) {
+        const { title, message } = getFormattedNotification('maintenance.requestCompleted', {
+          mruid,
+        });
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: new Types.ObjectId(tenantId),
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.MEDIUM,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      }
+      const { title, message } = getFormattedNotification('maintenance.requestCompleted', {
+        mruid,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: ['admin', 'staff'],
+        priority: NotificationPriorityEnum.LOW,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending MR completed notification', { error, payload });
+    }
+  }
+
+  private async handleMRCancelled(payload: MaintenanceRequestCancelledPayload): Promise<void> {
+    try {
+      const { cuid, mruid, tenantId, vendorId } = payload;
+      const { title, message } = getFormattedNotification('maintenance.requestCancelled', {
+        mruid,
+      });
+      if (tenantId) {
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: new Types.ObjectId(tenantId),
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.MEDIUM,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      }
+      if (vendorId) {
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: new Types.ObjectId(vendorId),
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.MEDIUM,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      }
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: ['admin', 'staff'],
+        priority: NotificationPriorityEnum.LOW,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending MR cancelled notification', { error, payload });
+    }
+  }
+
+  private async handleInvoiceSubmitted(payload: MaintenanceInvoiceSubmittedPayload): Promise<void> {
+    try {
+      const { cuid, mruid, amount, currency } = payload;
+      const fmt = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency || 'USD',
+      }).format((amount || 0) / 100);
+      const { title, message } = getFormattedNotification('maintenance.invoiceSubmitted', {
+        mruid,
+        amount: fmt,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: ['admin', 'staff'],
+        priority: NotificationPriorityEnum.HIGH,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending invoice submitted notification', { error, payload });
+    }
+  }
+
+  private async handleInvoiceApproved(payload: MaintenanceInvoiceApprovedPayload): Promise<void> {
+    try {
+      const { cuid, mruid, vendorId, amount, currency } = payload;
+      if (!vendorId) return;
+      const fmt = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency || 'USD',
+      }).format((amount || 0) / 100);
+      const { title, message } = getFormattedNotification('maintenance.invoiceApproved', {
+        mruid,
+        amount: fmt,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipient: new Types.ObjectId(vendorId),
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { mruid },
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetVendor: vendorId,
+        priority: NotificationPriorityEnum.LOW,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending invoice approved notification', { error, payload });
+    }
+  }
+
+  private async handleInvoiceRejected(payload: MaintenanceInvoiceRejectedPayload): Promise<void> {
+    try {
+      const { cuid, mruid, vendorId } = payload;
+      if (!vendorId) return;
+      const { title, message } = getFormattedNotification('maintenance.invoiceRejected', { mruid });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipient: new Types.ObjectId(vendorId),
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending invoice rejected notification', { error, payload });
+    }
+  }
+
+  private async handleWorkOrderSubmitted(
+    payload: MaintenanceWorkOrderSubmittedPayload
+  ): Promise<void> {
+    try {
+      const { cuid, mruid } = payload;
+      const { title, message } = getFormattedNotification('maintenance.workOrderSubmitted', {
+        mruid,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: ['admin', 'staff'],
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending work order submitted notification', { error, payload });
+    }
+  }
+
+  private async handleWorkOrderApproved(
+    payload: MaintenanceWorkOrderApprovedPayload
+  ): Promise<void> {
+    try {
+      const { cuid, mruid, vendorId } = payload;
+      if (!vendorId) return;
+      const { title, message } = getFormattedNotification('maintenance.workOrderApproved', {
+        mruid,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipient: new Types.ObjectId(vendorId),
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { mruid },
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetVendor: vendorId,
+        priority: NotificationPriorityEnum.LOW,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending work order approved notification', { error, payload });
+    }
+  }
+
+  private async handleWorkOrderRejected(
+    payload: MaintenanceWorkOrderRejectedPayload
+  ): Promise<void> {
+    try {
+      const { cuid, mruid, vendorId } = payload;
+      if (!vendorId) return;
+      const { title, message } = getFormattedNotification('maintenance.workOrderRejected', {
+        mruid,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipient: new Types.ObjectId(vendorId),
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending work order rejected notification', { error, payload });
+    }
+  }
+
+  // ── Payment handlers ────────────────────────────────────────────────────────
+
+  private async handlePaymentSucceeded(payload: PaymentSucceededPayload): Promise<void> {
+    try {
+      const { cuid, amount } = payload;
+      const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+        (amount || 0) / 100
+      );
+      const { title, message } = getFormattedNotification('payment.succeeded', { amount: fmt });
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        cuid,
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: ['admin'],
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { pytuid: payload.pytuid },
+      });
+    } catch (error) {
+      this.log.error('Error sending payment succeeded notification', { error, payload });
+    }
+  }
+
+  private async handlePaymentFailed(payload: PaymentFailedPayload): Promise<void> {
+    try {
+      const { cuid } = payload;
+      const { title, message } = getFormattedNotification('payment.failed', { amount: '—' });
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        cuid,
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: ['admin'],
+        priority: NotificationPriorityEnum.HIGH,
+        title,
+        message,
+        metadata: { pytuid: payload.pytuid },
+      });
+    } catch (error) {
+      this.log.error('Error sending payment failed notification', { error, payload });
+    }
+  }
+
+  private async handlePaymentRefunded(payload: PaymentRefundedPayload): Promise<void> {
+    try {
+      const { cuid, refundAmount } = payload;
+      const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+        (refundAmount || 0) / 100
+      );
+      const { title, message } = getFormattedNotification('payment.refunded', { amount: fmt });
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        cuid,
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: ['admin'],
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { pytuid: payload.pytuid },
+      });
+    } catch (error) {
+      this.log.error('Error sending payment refunded notification', { error, payload });
     }
   }
 

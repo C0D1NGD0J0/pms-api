@@ -10,3 +10,4 @@ export * from './upload.queue';
 export * from './email.queue';
 export * from './cron.queue';
 export * from './base.queue';
+export * from './user.queue';

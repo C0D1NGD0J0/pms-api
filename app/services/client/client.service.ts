@@ -20,8 +20,15 @@ import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.s
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import { ISuccessReturnData, IRequestContext, MailType } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
-import { SubscriptionDAO, PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
+import {
+  SubscriptionDAO,
+  PropertyUnitDAO,
+  PropertyDAO,
+  ClientDAO,
+  VendorDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   NotificationPriorityEnum,
   NotificationTypeEnum,
@@ -47,6 +54,7 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   sseService: SSEService;
+  vendorDAO: VendorDAO;
   clientDAO: ClientDAO;
   authCache: AuthCache;
   userDAO: UserDAO;
@@ -57,6 +65,7 @@ export class ClientService {
   private readonly clientDAO: ClientDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
+  private readonly vendorDAO: VendorDAO;
   private readonly userDAO: UserDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly authCache: AuthCache;
@@ -72,6 +81,7 @@ export class ClientService {
     clientDAO,
     propertyDAO,
     propertyUnitDAO,
+    vendorDAO,
     userDAO,
     profileDAO,
     authCache,
@@ -87,6 +97,7 @@ export class ClientService {
     this.clientDAO = clientDAO;
     this.propertyDAO = propertyDAO;
     this.propertyUnitDAO = propertyUnitDAO;
+    this.vendorDAO = vendorDAO;
     this.emitterService = emitterService;
     this.userDAO = userDAO;
     this.profileDAO = profileDAO;
@@ -665,6 +676,11 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
+    const user = await this.userDAO.getUserById(targetUserId);
+    if (!user) {
+      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+    }
+
     await this.userDAO.updateById(
       targetUserId,
       {
@@ -674,6 +690,20 @@ export class ClientService {
         arrayFilters: [{ 'elem.cuid': clientId }],
       }
     );
+
+    // If this is a primary vendor, restore the Vendor document's connection status
+    const clientConnection = user.cuids.find((c) => c.cuid === clientId);
+    const isVendor = clientConnection?.roles?.includes(IUserRole.VENDOR as any);
+    const isPrimaryVendor = isVendor && !clientConnection?.linkedVendorUid;
+
+    if (isPrimaryVendor) {
+      const vendor = await this.vendorDAO.getVendorByprimaryAccountHolderUserId(
+        user._id.toString()
+      );
+      if (vendor) {
+        await this.vendorDAO.reconnectClient(vendor._id.toString(), clientId);
+      }
+    }
 
     this.log.info(
       {

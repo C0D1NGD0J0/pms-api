@@ -71,6 +71,20 @@ const PaymentProcessorSchema = new Schema<IPaymentProcessorDocument>(
     deletedAt: {
       type: Date,
     },
+    vendor: {
+      type: Schema.Types.ObjectId,
+      ref: 'Vendor',
+      index: true,
+    },
+    vuid: {
+      type: String,
+      index: true,
+    },
+    ownerType: {
+      type: String,
+      enum: ['client', 'vendor'],
+      default: 'client',
+    },
   },
   {
     timestamps: true,
@@ -85,6 +99,7 @@ PaymentProcessorSchema.plugin(uniqueValidator, {
 
 PaymentProcessorSchema.index({ cuid: 1 });
 PaymentProcessorSchema.index({ accountId: 1 }, { unique: true });
+PaymentProcessorSchema.index({ vuid: 1, cuid: 1 });
 
 PaymentProcessorSchema.pre('save', function (next) {
   logger.info({ ppuid: this.ppuid, cuid: this.cuid }, 'Saving payment processor');

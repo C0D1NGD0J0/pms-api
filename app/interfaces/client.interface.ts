@@ -55,6 +55,22 @@ export interface IClientDocument extends Document, IClient {
 }
 
 /**
+ * Client User Connections Interface
+ * Represents the connection between a user and a client
+ */
+export interface IClientUserConnections {
+  requiresOnboarding?: boolean;
+  primaryRole: IUserRoleType;
+  clientDisplayName: string;
+  linkedVendorUid?: string;
+  isFormerTenant?: boolean;
+  roles: IUserRoleType[];
+  leaseExpiredAt?: Date;
+  isConnected: boolean;
+  cuid: string;
+}
+
+/**
  * Company Profile Interface
  * Business entity information for corporate clients
  */
@@ -68,20 +84,6 @@ export interface ICompanyProfile {
   tradingName?: string;
   industry?: string;
   website?: string;
-}
-
-/**
- * Client User Connections Interface
- * Represents the connection between a user and a client
- */
-export interface IClientUserConnections {
-  requiresOnboarding?: boolean;
-  primaryRole: IUserRoleType;
-  clientDisplayName: string;
-  linkedVendorUid?: string;
-  roles: IUserRoleType[];
-  isConnected: boolean;
-  cuid: string;
 }
 
 /**

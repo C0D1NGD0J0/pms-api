@@ -14,12 +14,12 @@ import { IUserBasicInfo } from '@dao/interfaces';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
+import { IPropertyDocument, ICronJob } from '@interfaces/index';
 import { MediaUploadService, UserService } from '@services/index';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
-import { IPropertyDocument, IProfileWithUser, OwnershipType, ICronJob } from '@interfaces/index';
 import {
   EventEmitterService,
   NotificationService,
@@ -86,6 +86,7 @@ import {
   handleActiveUpdate,
   buildLeaseTimeline,
   getUserPermissions,
+  buildLandlordInfo,
   filterLeaseByRole,
   handleDraftUpdate,
   fetchLeaseByLuid,
@@ -325,7 +326,16 @@ export class LeaseService {
         timestamp: new Date(),
       });
     }
-    const landlordInfo = await this.buildLandlordInfo(cuid, data.property.id.toString());
+    const landlordInfo = await buildLandlordInfo(
+      cuid,
+      data.property.id.toString(),
+      {
+        clientDAO: this.clientDAO,
+        propertyDAO: this.propertyDAO,
+        profileDAO: this.profileDAO,
+      },
+      { requireManagementAuth: true }
+    );
 
     const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
     const hasUnitNumber = !!data.property.unitId;
@@ -434,8 +444,27 @@ export class LeaseService {
   async getFilteredLeases(
     cuid: string,
     filters: ILeaseFilterOptions,
-    options: any
+    options: any,
+    context?: IRequestContext
   ): ListResultWithPagination<ILeaseListItem[]> {
+    const TENANT_VISIBLE_STATUSES: LeaseStatus[] = [
+      LeaseStatus.ACTIVE,
+      LeaseStatus.EXPIRED,
+      LeaseStatus.TERMINATED,
+      LeaseStatus.RENEWED,
+    ];
+
+    if (context?.currentuser?.client?.role === 'tenant') {
+      const requested = filters.status;
+      const arr = requested ? (Array.isArray(requested) ? requested : [requested]) : [];
+      const safe = arr.filter((s) => TENANT_VISIBLE_STATUSES.includes(s));
+      filters = {
+        ...filters,
+        status: safe.length ? safe : TENANT_VISIBLE_STATUSES,
+        tenantId: filters.tenantId ?? context.currentuser.sub,
+      };
+    }
+
     this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
 
     try {
@@ -891,6 +920,15 @@ export class LeaseService {
       terminatedBy: currentUser.sub,
     });
 
+    this.emitterService.emit(EventTypes.LEASE_EXPIRED, {
+      leaseId: terminatedLease._id.toString(),
+      luid: terminatedLease.luid,
+      cuid,
+      tenantId: terminatedLease.tenantId.toString(),
+      expiredAt: new Date(),
+      reason: 'terminated',
+    });
+
     try {
       const tenantProfile = await this.profileDAO.findFirst(
         { user: new Types.ObjectId(lease.tenantId) },
@@ -965,7 +1003,7 @@ export class LeaseService {
   ): Promise<{ success: boolean; jobId?: string | number; error?: string }> {
     try {
       const lease = await this.leaseDAO.findFirst({
-        _id: new Types.ObjectId(leaseId),
+        luid: leaseId,
         cuid,
         deletedAt: null,
       });
@@ -1126,110 +1164,6 @@ export class LeaseService {
     return this.leaseSignatureService.getSignatureDetails(cuid, leaseId);
   }
 
-  /**
-   * Helper method to build landlord and management company info based on property ownership
-   */
-  private async buildLandlordInfo(
-    cuid: string,
-    propertyId: string
-  ): Promise<{
-    landlordName?: string;
-    landlordAddress?: string;
-    landlordEmail?: string;
-    landlordPhone?: string;
-    isExternalOwner?: boolean;
-    managementCompanyName?: string;
-    managementCompanyAddress?: string;
-    managementCompanyEmail?: string;
-    managementCompanyPhone?: string;
-  }> {
-    const client = await this.clientDAO.getClientByCuid(cuid);
-    if (!client) {
-      throw new BadRequestError({ message: 'Client not found' });
-    }
-
-    const property = await this.propertyDAO.findFirst(
-      { _id: propertyId, cuid, deletedAt: null },
-      {
-        select: '+owner +authorization',
-      }
-    );
-
-    if (!property) {
-      throw new BadRequestError({ message: 'Property not found' });
-    }
-
-    if (!property.isManagementAuthorized()) {
-      throw new BadRequestError({
-        message: 'Property has not been authorized for management.',
-      });
-    }
-
-    let managementInfo;
-    if (client.accountType.isEnterpriseAccount && client.companyProfile) {
-      managementInfo = {
-        managementCompanyName: client.companyProfile?.legalEntityName,
-        managementCompanyAddress: client.companyProfile?.companyAddress,
-        managementCompanyEmail: client.companyProfile?.companyEmail,
-        managementCompanyPhone: client.companyProfile?.companyPhone,
-      };
-
-      if (property.owner?.type === OwnershipType.EXTERNAL_OWNER && property.owner.name) {
-        return {
-          ...managementInfo,
-          landlordName: property.owner.name,
-          landlordAddress: property.owner.notes || 'N/A',
-          landlordEmail: property.owner.email || 'N/A',
-          landlordPhone: property.owner.phone || 'N/A',
-          isExternalOwner: true,
-        };
-      }
-
-      if (property.owner?.type === OwnershipType.COMPANY_OWNED) {
-        return {
-          landlordName: client.companyProfile?.legalEntityName || 'N/A',
-          landlordAddress: client.companyProfile?.companyAddress || 'N/A',
-          landlordEmail: client.companyProfile?.companyEmail || 'N/A',
-          landlordPhone: client.companyProfile?.companyPhone || 'N/A',
-          isExternalOwner: false,
-        };
-      }
-    }
-
-    if (!client.accountType.isEnterpriseAccount) {
-      if (
-        (property.owner?.type === OwnershipType.SELF_OWNED ||
-          property.owner?.type === OwnershipType.EXTERNAL_OWNER) &&
-        property.owner.name
-      ) {
-        return {
-          landlordName: property.owner.name,
-          landlordAddress: property.owner.notes || 'N/A',
-          landlordEmail: property.owner.email || 'N/A',
-          landlordPhone: property.owner.phone || 'N/A',
-          isExternalOwner: false,
-        };
-      }
-    }
-
-    const profile = (await this.profileDAO.findFirst(
-      { user: client.accountAdmin.toString() },
-      { populate: 'user' }
-    )) as unknown as IProfileWithUser;
-
-    return {
-      landlordName:
-        client.companyProfile?.legalEntityName ||
-        `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`,
-      landlordAddress:
-        client.companyProfile?.companyAddress || profile.personalInfo.location || 'N/A',
-      landlordEmail: client.companyProfile?.companyEmail || `${profile.user.email || 'N/A'}`,
-      landlordPhone:
-        client.companyProfile?.companyPhone || `${profile.personalInfo.phoneNumber || 'N/A'}`,
-      isExternalOwner: false,
-    };
-  }
-
   async generateLeasePreview(cuid: string, luid: string) {
     this.log.info(`Generating preview from existing lease ${luid} for client ${cuid}`);
 
@@ -1257,7 +1191,16 @@ export class LeaseService {
 
     const propertyId =
       typeof lease.property.id === 'string' ? lease.property.id : lease.property.id.toString();
-    const landlordInfo = await this.buildLandlordInfo(cuid, propertyId);
+    const landlordInfo = await buildLandlordInfo(
+      cuid,
+      propertyId,
+      {
+        clientDAO: this.clientDAO,
+        propertyDAO: this.propertyDAO,
+        profileDAO: this.profileDAO,
+      },
+      { requireManagementAuth: true }
+    );
 
     const baseData = {
       leaseNumber: lease.leaseNumber,

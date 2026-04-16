@@ -10,6 +10,7 @@ export interface IVendor {
     primaryAccountHolderUserId: Types.ObjectId; // References the user who owns this vendor account
   }[];
   servicesOffered?: VendorServicesOffered;
+  isprimaryAccountHolderUserId: boolean;
   insuranceInfo?: VendorInsuranceInfo;
   contactPerson?: VendorContactPerson;
   serviceAreas?: VendorServiceAreas;
@@ -105,4 +106,4 @@ export interface VendorContactPerson {
 /**
  * New Vendor Type (for creation)
  */
-export type NewVendor = { isprimaryAccountHolderUserId: boolean } & Omit<IVendor, 'vid'>;
+export type NewVendor = Omit<IVendor, 'vid'>;

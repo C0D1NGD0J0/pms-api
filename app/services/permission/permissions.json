@@ -114,7 +114,7 @@
       "user": ["read:mine", "update:mine"],
       "client": ["read:mine"],
       "maintenance": ["create:mine", "read:mine", "update:mine", "list:mine"],
-      "lease": ["read:mine", "update:mine"],
+      "lease": ["read:mine", "list:mine", "update:mine"],
       "payment": ["read:mine", "create:mine", "list:mine"],
       "report": ["read:mine"]
     },

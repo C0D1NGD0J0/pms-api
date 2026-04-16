@@ -7,6 +7,7 @@ export * from './InvitationValidation';
 export * from './PropertyValidation';
 export * from './PaymentsValidation';
 export * from './ProfileValidation';
+export * from './ExpenseValidation';
 export * from './ClientValidation';
 export * from './VendorValidation';
 export * from './UtilsValidation';

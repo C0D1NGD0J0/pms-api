@@ -1,3 +1,4 @@
+export * from './expense/expense.service';
 export * from './maintenanceRequest';
 export * from './external/index';
 export * from './paymentGateway';

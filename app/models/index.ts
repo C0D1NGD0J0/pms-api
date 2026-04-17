@@ -8,6 +8,7 @@ import Property from '@models/property/property.model';
 import ExpenseModel from '@models/expense/expense.model';
 import PaymentModel from '@models/payments/payments.model';
 import Invitation from '@models/invitation/invitation.model';
+import { MetricsSnapshot } from '@models/metrics/metrics.model';
 import Subscription from '@models/subscription/subscription.model';
 import PropertyUnit from '@models/property-unit/propertyUnit.model';
 import NotificationModel from '@models/notification/notification.model';
@@ -18,6 +19,7 @@ export {
   MaintenanceRequestModel,
   NotificationModel,
   PaymentProcessor,
+  MetricsSnapshot,
   ExpenseModel,
   Subscription,
   PropertyUnit,

@@ -11,6 +11,7 @@ import {
   requirePermission,
   isAuthenticated,
   basicLimiter,
+  idempotency,
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
@@ -33,6 +34,7 @@ router.post(
   '/:cuid/add_property',
   requireVerification,
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
+  idempotency,
   subscriptionEntitlements,
   requireActiveSubscription,
   diskUpload(['documents[*].file', 'images[*].file']),
@@ -66,6 +68,7 @@ router.post(
   '/:cuid/import_properties_csv',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
+  idempotency,
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
@@ -116,6 +119,7 @@ router.get(
 router.post(
   '/:cuid/properties/:pid/approve',
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -128,6 +132,7 @@ router.post(
 router.post(
   '/:cuid/properties/:pid/reject',
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -140,6 +145,7 @@ router.post(
 router.post(
   '/:cuid/properties/bulk-approve',
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: PropertyValidations.validatecuid,
   }),
@@ -152,6 +158,7 @@ router.post(
 router.post(
   '/:cuid/properties/bulk-reject',
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: PropertyValidations.validatecuid,
   }),
@@ -187,6 +194,8 @@ router.get(
 
 router.patch(
   '/:cuid/client_properties/:pid',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  idempotency,
   diskUpload(['documents[*].file', 'images[*].file']),
   scanFile,
   validateRequest({
@@ -201,6 +210,8 @@ router.patch(
 
 router.patch(
   '/:cuid/client_properties/:pid/remove_media',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
   }),
@@ -212,6 +223,8 @@ router.patch(
 
 router.delete(
   '/:cuid/delete_properties/:pid',
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.DELETE),
+  idempotency,
   validateRequest({
     query: PropertyValidations.validatePropertyAndClientIds,
   }),

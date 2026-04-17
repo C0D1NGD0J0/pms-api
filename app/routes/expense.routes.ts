@@ -4,7 +4,14 @@ import { ExpenseController } from '@controllers/ExpenseController';
 import { UtilsValidations, validateRequest } from '@shared/validations';
 import { ExpenseValidations } from '@shared/validations/ExpenseValidation';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
-import { requirePermission, isAuthenticated, basicLimiter } from '@shared/middlewares';
+import {
+  subscriptionEntitlements,
+  requirePermission,
+  isAuthenticated,
+  requireFeature,
+  basicLimiter,
+  idempotency,
+} from '@shared/middlewares';
 
 export const router: Router = express.Router();
 
@@ -14,6 +21,8 @@ router.use(isAuthenticated, basicLimiter());
 router.get(
   '/:cuid/summary',
   requirePermission(PermissionResource.REPORT, PermissionAction.READ),
+  subscriptionEntitlements,
+  requireFeature('reportingAnalytics'),
   validateRequest({ params: UtilsValidations.cuid, query: ExpenseValidations.pnlQuery }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<ExpenseController>('expenseController');
@@ -24,6 +33,8 @@ router.get(
 router.get(
   '/:cuid',
   requirePermission(PermissionResource.REPORT, PermissionAction.READ),
+  subscriptionEntitlements,
+  requireFeature('reportingAnalytics'),
   validateRequest({ params: UtilsValidations.cuid, query: ExpenseValidations.listExpensesQuery }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<ExpenseController>('expenseController');
@@ -34,6 +45,9 @@ router.get(
 router.post(
   '/:cuid',
   requirePermission(PermissionResource.REPORT, PermissionAction.CREATE),
+  subscriptionEntitlements,
+  requireFeature('reportingAnalytics'),
+  idempotency,
   validateRequest({ params: UtilsValidations.cuid, body: ExpenseValidations.createExpense }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<ExpenseController>('expenseController');
@@ -44,7 +58,9 @@ router.post(
 router.get(
   '/:cuid/:expuid',
   requirePermission(PermissionResource.REPORT, PermissionAction.READ),
-  validateRequest({ params: UtilsValidations.cuid }),
+  subscriptionEntitlements,
+  requireFeature('reportingAnalytics'),
+  validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.expuid) }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<ExpenseController>('expenseController');
     return controller.getExpense(req, res);
@@ -54,7 +70,13 @@ router.get(
 router.patch(
   '/:cuid/:expuid',
   requirePermission(PermissionResource.REPORT, PermissionAction.UPDATE),
-  validateRequest({ params: UtilsValidations.cuid, body: ExpenseValidations.updateExpense }),
+  subscriptionEntitlements,
+  requireFeature('reportingAnalytics'),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.expuid),
+    body: ExpenseValidations.updateExpense,
+  }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<ExpenseController>('expenseController');
     return controller.updateExpense(req, res);
@@ -64,7 +86,10 @@ router.patch(
 router.delete(
   '/:cuid/:expuid',
   requirePermission(PermissionResource.REPORT, PermissionAction.DELETE),
-  validateRequest({ params: UtilsValidations.cuid }),
+  subscriptionEntitlements,
+  requireFeature('reportingAnalytics'),
+  idempotency,
+  validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.expuid) }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<ExpenseController>('expenseController');
     return controller.deleteExpense(req, res);

@@ -138,6 +138,7 @@ router.patch(
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.REVOKE),
+  idempotency,
   validateRequest({
     params: InvitationValidations.iuid,
     body: InvitationValidations.revokeInvitation,
@@ -153,6 +154,7 @@ router.patch(
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: InvitationValidations.iuid,
     body: InvitationValidations.updateInvitation,
@@ -168,6 +170,7 @@ router.patch(
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.RESEND),
+  idempotency,
   validateRequest({
     params: InvitationValidations.iuid,
     body: InvitationValidations.resendInvitation,
@@ -214,6 +217,7 @@ router.post(
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   requireVerifiedClient,
+  idempotency,
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
@@ -236,6 +240,7 @@ router.patch(
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
+  idempotency,
   validateRequest({
     params: UtilsValidations.cuid,
     query: InvitationValidations.processPending,

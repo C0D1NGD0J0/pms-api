@@ -104,6 +104,7 @@
         },
         "security": {
           "property": ["read:any", "list:any"],
+          "visitor_pass": ["read:any", "list:any"],
           "user": ["read:mine", "update:mine"],
           "client": ["read:mine"]
         }
@@ -201,6 +202,11 @@
       "actions": ["read", "update", "manage"],
       "scopes": ["any", "mine"],
       "description": "Billing and payment processing operations"
+    },
+    "visitor_pass": {
+      "actions": ["create", "read", "update", "delete", "list"],
+      "scopes": ["any", "mine", "assigned"],
+      "description": "Visitor pass and access request operations"
     }
   },
   "scopes": {

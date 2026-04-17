@@ -123,7 +123,12 @@ export class MetricsService implements ICronProvider {
   }
 
   private async pushDelta(cuid: string, delta: Omit<IMetricsDelta, 'cuid'>): Promise<void> {
-    await this.sseService.broadcastToClient(cuid, { cuid, ...delta }, 'metrics:update');
+    try {
+      await this.sseService.broadcastToClient(cuid, { cuid, ...delta }, 'metrics:update');
+    } catch (err) {
+      // SSE broadcast errors are non-fatal — the client will re-fetch on next poll
+      this.log.warn({ err, cuid, deltaType: delta.type }, 'metrics SSE broadcast failed');
+    }
   }
 
   private async handlePaymentSucceeded(payload: PaymentSucceededPayload): Promise<void> {
@@ -257,7 +262,7 @@ export class MetricsService implements ICronProvider {
   }
 
   async getTrend(cuid: string, metricType: MetricType, days: number = 30): Promise<ITrendResult> {
-    const data = await this.metricsDAO.aggregateByDay(cuid, metricType, days * 2);
+    const data = await this.metricsDAO.findSince(cuid, metricType, days * 2);
 
     const midpoint = dayjs().subtract(days, 'day');
 

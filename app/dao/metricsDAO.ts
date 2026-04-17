@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import mongoose from 'mongoose';
 import { createLogger } from '@utils/index';
@@ -36,10 +37,34 @@ export class MetricsDAO {
       this.log.info('metrics_snapshots time-series collection created');
     } catch (err: any) {
       if (err?.code === 48) {
-        this.log.debug('metrics_snapshots already exists, skipping creation');
+        // Collection exists — verify it is actually a time-series collection
+        // to avoid silently running with a plain collection that will reject
+        // time-series inserts at runtime.
+        await this.verifyTimeSeriesCollection();
         return;
       }
       throw err;
+    }
+  }
+
+  private async verifyTimeSeriesCollection(): Promise<void> {
+    try {
+      const db = mongoose.connection.db;
+      if (!db) return;
+      const collections = await db
+        .listCollections({ name: 'metrics_snapshots' }, { nameOnly: false })
+        .toArray();
+      const info = collections[0] as any;
+      if (info?.options?.timeseries) {
+        this.log.debug('metrics_snapshots already exists as time-series collection');
+      } else {
+        this.log.error(
+          'metrics_snapshots exists but is NOT a time-series collection — ' +
+            'drop the collection and restart to recreate it correctly'
+        );
+      }
+    } catch (verifyErr) {
+      this.log.warn({ verifyErr }, 'Could not verify metrics_snapshots collection type');
     }
   }
 
@@ -78,13 +103,12 @@ export class MetricsDAO {
       .lean();
   }
 
-  async aggregateByDay(
-    cuid: string,
-    metricType: MetricType,
-    days: number
-  ): Promise<IMetricsSnapshot[]> {
-    const from = new Date();
-    from.setDate(from.getDate() - days);
+  /**
+   * Returns all snapshots for the given metric type within the last `days` days,
+   * sorted oldest-first. Used by MetricsService.getTrend() to compare two periods.
+   */
+  async findSince(cuid: string, metricType: MetricType, days: number): Promise<IMetricsSnapshot[]> {
+    const from = dayjs().subtract(days, 'day').toDate();
 
     return this.model
       .find({

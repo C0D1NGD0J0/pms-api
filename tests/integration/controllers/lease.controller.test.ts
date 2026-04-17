@@ -2,8 +2,8 @@
 import request from 'supertest';
 import { Types } from 'mongoose';
 import { Application } from 'express';
-import { Property, Lease, Subscription } from '@models/index';
 import { ROLES } from '@shared/constants/roles.constants';
+import { Subscription, Property, Lease } from '@models/index';
 import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { beforeEach, beforeAll, describe, afterAll, expect, it } from '@jest/globals';
 

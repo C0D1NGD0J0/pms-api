@@ -151,6 +151,7 @@ export class ExpenseService implements IExpenseService {
             cuid,
             status: PaymentRecordStatus.PAID,
             paidAt: dateMatch,
+            deletedAt: null,
           },
         },
         {
@@ -208,8 +209,8 @@ export class ExpenseService implements IExpenseService {
           total: expenseTotalCents,
           byCategory: expByCategory.map((r) => ({ category: r._id, amount: r.total })),
           byProperty: expByPropertyRaw.map((r) => ({
-            propertyId: r._id,
-            name: propNameMap.get(r._id) || 'Unknown',
+            propertyId: r._id.toString(),
+            name: propNameMap.get(r._id.toString()) || 'Unknown',
             amount: r.total,
           })),
         },

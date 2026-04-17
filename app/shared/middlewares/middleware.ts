@@ -96,8 +96,14 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
     );
     if (!currentUserResp.success) {
       logger.error('User not found in cache, fetching from database...');
-      const _currentuser = await profileDAO.generateCurrentUserInfo(payload.data?.sub as string);
+      const _currentuser = await profileDAO.generateCurrentUserInfo(
+        payload.data?.sub as string,
+        payload.data.cuid
+      );
       if (_currentuser) {
+        if (_currentuser.client?.cuid !== payload.data.cuid) {
+          return next(new UnauthorizedError({ message: 'Session context mismatch.' }));
+        }
         await authCache.saveCurrentUser(_currentuser);
         req.context.currentuser = _currentuser;
       }

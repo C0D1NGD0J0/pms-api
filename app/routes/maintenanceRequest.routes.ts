@@ -6,8 +6,10 @@ import { UtilsValidations, validateRequest } from '@shared/validations/index';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import {
   requirePermissionWithContext,
+  subscriptionEntitlements,
   requirePermission,
   isAuthenticated,
+  requireFeature,
   basicLimiter,
   idempotency,
   diskUpload,
@@ -49,6 +51,8 @@ router
   .route('/:cuid')
   .post(
     requirePermission(PermissionResource.MAINTENANCE, PermissionAction.CREATE),
+    subscriptionEntitlements,
+    requireFeature('RepairRequestService'),
     idempotency,
     diskUpload(['media[*].file']),
     scanFile,
@@ -101,6 +105,8 @@ router.get(
 router.patch(
   '/:cuid/:mruid/vendor_assignment',
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
+  subscriptionEntitlements,
+  requireFeature('RepairRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -119,6 +125,8 @@ router.patch(
     PermissionAction.UPDATE,
     roleBasedContext
   ),
+  subscriptionEntitlements,
+  requireFeature('RepairRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -179,6 +187,8 @@ router.post(
     PermissionAction.UPDATE,
     roleBasedContext
   ),
+  subscriptionEntitlements,
+  requireFeature('RepairRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -193,6 +203,8 @@ router.post(
 router.patch(
   '/:cuid/:mruid/work_order_review',
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
+  subscriptionEntitlements,
+  requireFeature('RepairRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -211,6 +223,8 @@ router.post(
     PermissionAction.UPDATE,
     roleBasedContext
   ),
+  subscriptionEntitlements,
+  requireFeature('RepairRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -225,6 +239,8 @@ router.post(
 router.patch(
   '/:cuid/:mruid/invoice_review',
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
+  subscriptionEntitlements,
+  requireFeature('RepairRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),

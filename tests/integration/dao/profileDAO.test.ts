@@ -645,6 +645,76 @@ describe('ProfileDAO Integration Tests', () => {
 
       expect(result?.client?.role).toBe('admin');
     });
+
+    it('uses provided cuid param instead of activecuid when user has multiple accounts', async () => {
+      const clientACuid = 'CLIENT_A_CUID';
+      const clientBCuid = 'CLIENT_B_CUID';
+
+      // Set up two client connections; activecuid points to client-B (admin)
+      await User.updateOne(
+        { _id: testUserId },
+        {
+          activecuid: clientBCuid,
+          cuids: [
+            {
+              cuid: clientACuid,
+              clientDisplayName: 'Client A',
+              roles: ['tenant'],
+              primaryRole: 'tenant',
+              isConnected: true,
+            },
+            {
+              cuid: clientBCuid,
+              clientDisplayName: 'Client B',
+              roles: ['admin'],
+              primaryRole: 'admin',
+              isConnected: true,
+            },
+          ],
+        }
+      );
+
+      // Explicitly request client-A context — should NOT use activecuid (client-B)
+      const result = await profileDAO.generateCurrentUserInfo(testUserId.toString(), clientACuid);
+
+      expect(result).not.toBeNull();
+      expect(result?.client?.cuid).toBe(clientACuid);
+      expect(result?.client?.role).toBe('tenant');
+    });
+
+    it('falls back to activecuid when cuid param is omitted', async () => {
+      const clientACuid = 'CLIENT_A_CUID';
+      const clientBCuid = 'CLIENT_B_CUID';
+
+      await User.updateOne(
+        { _id: testUserId },
+        {
+          activecuid: clientBCuid,
+          cuids: [
+            {
+              cuid: clientACuid,
+              clientDisplayName: 'Client A',
+              roles: ['tenant'],
+              primaryRole: 'tenant',
+              isConnected: true,
+            },
+            {
+              cuid: clientBCuid,
+              clientDisplayName: 'Client B',
+              roles: ['admin'],
+              primaryRole: 'admin',
+              isConnected: true,
+            },
+          ],
+        }
+      );
+
+      const result = await profileDAO.generateCurrentUserInfo(testUserId.toString());
+
+      expect(result).not.toBeNull();
+      expect(result?.client?.cuid).toBe(clientBCuid);
+      expect(result?.client?.role).toBe('admin');
+    });
   });
 
   describe('updateCommonEmployeeInfo', () => {

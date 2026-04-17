@@ -10,6 +10,7 @@ import {
   subscriptionEntitlements,
   isAuthenticated,
   basicLimiter,
+  idempotency,
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
@@ -20,6 +21,7 @@ router.use(isAuthenticated);
 router.post(
   '/',
   requirePropertyPermission(PermissionAction.CREATE),
+  idempotency,
   subscriptionEntitlements,
   requireActiveSubscription,
   basicLimiter(),
@@ -60,6 +62,7 @@ router.get(
 router.patch(
   '/:puid',
   requirePropertyPermission(PermissionAction.UPDATE),
+  idempotency,
   basicLimiter(),
   diskUpload(['propertyUnit.media']),
   scanFile,
@@ -77,6 +80,7 @@ router.patch(
 router.delete(
   '/:puid',
   requirePropertyPermission(PermissionAction.DELETE),
+  idempotency,
   basicLimiter(),
   asyncWrapper((req, res) => {
     const propertyUnitController =
@@ -88,6 +92,7 @@ router.delete(
 router.patch(
   '/update_status/:puid',
   requirePropertyPermission(PermissionAction.UPDATE),
+  idempotency,
   basicLimiter(),
   validateRequest({
     body: PropertyUnitValidations.updateUnit,
@@ -102,6 +107,7 @@ router.patch(
 router.post(
   '/setup_inspection/:puid',
   requirePropertyPermission(PermissionAction.UPDATE),
+  idempotency,
   basicLimiter(),
   validateRequest({
     body: PropertyUnitValidations.inspectUnit,
@@ -116,6 +122,7 @@ router.post(
 router.patch(
   '/upload_media/:puid',
   requirePropertyPermission(PermissionAction.UPDATE),
+  idempotency,
   basicLimiter(),
   validateRequest({
     body: PropertyUnitValidations.uploadUnitMedia,
@@ -145,6 +152,7 @@ router.post(
 router.post(
   '/import_csv',
   requirePropertyPermission(PermissionAction.CREATE),
+  idempotency,
   basicLimiter(),
   diskUpload(['csv_file']),
   scanFile,

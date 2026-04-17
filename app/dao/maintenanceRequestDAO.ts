@@ -38,8 +38,16 @@ export class MaintenanceRequestDAO
       ...pagination,
       populate: [
         { path: 'propertyId', select: 'address pid title' },
-        { path: 'vendorId', select: 'firstName lastName email' },
-        { path: 'tenantId', select: 'firstName lastName email' },
+        {
+          path: 'vendorId',
+          select: 'email uid',
+          populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+        },
+        {
+          path: 'tenantId',
+          select: 'email uid',
+          populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+        },
       ],
     });
   }

@@ -482,7 +482,11 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           deletedAt: null,
         },
         {
-          populate: { path: 'tenantId', select: 'firstName lastName email' },
+          populate: {
+            path: 'tenantId',
+            select: 'email uid',
+            populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+          },
         }
       );
     } catch (error: any) {
@@ -511,7 +515,11 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         },
         {
           populate: [
-            { path: 'tenantId', select: 'firstName lastName email' },
+            {
+              path: 'tenantId',
+              select: 'email uid',
+              populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+            },
             { path: 'property.id', select: 'name address' },
           ],
           sort: { 'duration.endDate': 1 },

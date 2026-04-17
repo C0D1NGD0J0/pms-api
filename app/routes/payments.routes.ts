@@ -16,11 +16,10 @@ import {
 
 export const router: Router = express.Router();
 
-router.use(basicLimiter());
+router.use(isAuthenticated, basicLimiter());
 
 router.get(
   '/:cuid/stats',
-  isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.LIST),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
@@ -31,7 +30,6 @@ router.get(
 
 router.get(
   '/:cuid/:pytuid',
-  isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.READ),
   validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.pytuid) }),
   asyncWrapper((req, res) => {
@@ -42,7 +40,6 @@ router.get(
 
 router.get(
   '/:cuid',
-  isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.LIST),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
@@ -53,7 +50,6 @@ router.get(
 
 router.post(
   '/:cuid',
-  isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireVerifiedClient,
   idempotency,
@@ -69,7 +65,6 @@ router.post(
 
 router.post(
   '/:cuid/manual_entry',
-  isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireVerifiedClient,
   idempotency,
@@ -87,7 +82,6 @@ router.post(
 
 router.patch(
   '/:cuid/:pytuid/cancel',
-  isAuthenticated,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
   idempotency,
   validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.pytuid) }),
@@ -99,7 +93,6 @@ router.patch(
 
 router.post(
   '/:cuid/:pytuid/refund',
-  isAuthenticated,
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
   requireVerifiedClient,
@@ -116,7 +109,6 @@ router.post(
 
 router.post(
   '/:cuid/:pytuid/pay',
-  isAuthenticated,
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   idempotency,
@@ -131,7 +123,6 @@ router.post(
 
 router.post(
   '/:cuid/payout-account',
-  isAuthenticated,
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   requireVerifiedClient,
@@ -148,7 +139,6 @@ router.post(
 
 router.get(
   '/:cuid/payout-account/onboard',
-  isAuthenticated,
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   requireVerifiedClient,
@@ -161,7 +151,6 @@ router.get(
 
 router.get(
   '/:cuid/payout-account/update',
-  isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
@@ -172,7 +161,6 @@ router.get(
 
 router.get(
   '/:cuid/payout-account/dashboard',
-  isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
@@ -183,7 +171,6 @@ router.get(
 
 router.get(
   '/:cuid/payout-account/balance',
-  isAuthenticated,
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   validateRequest({ params: UtilsValidations.cuid }),
@@ -195,7 +182,6 @@ router.get(
 
 router.get(
   '/:cuid/payout-account/history',
-  isAuthenticated,
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   validateRequest({ params: UtilsValidations.cuid, query: PaymentValidations.payoutHistoryQuery }),

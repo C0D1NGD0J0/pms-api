@@ -47,6 +47,8 @@ router.get(
 router.get(
   '/:cuid/templates',
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  subscriptionEntitlements,
+  requireFeature('leaseTemplates'),
   validateRequest({
     params: UtilsValidations.cuid,
   }),

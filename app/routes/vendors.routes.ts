@@ -14,14 +14,14 @@ import {
   requirePermission,
   isAuthenticated,
   basicLimiter,
+  idempotency,
 } from '@shared/middlewares';
 
 const router = Router();
-router.use(basicLimiter());
+router.use(isAuthenticated, basicLimiter());
 
 router.get(
   '/:cuid/vendors/stats',
-  isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
     params: ClientValidations.clientIdParam,
@@ -35,7 +35,6 @@ router.get(
 
 router.get(
   '/:cuid/filteredVendors',
-  isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.READ),
   validateRequest({
     params: ClientValidations.clientIdParam,
@@ -50,7 +49,6 @@ router.get(
 // Single vendor details endpoint — vendors read their own record (mine), managers use any
 router.get(
   '/:cuid/vendor_details/:vuid',
-  isAuthenticated,
   requirePermissionWithContext(
     PermissionResource.USER,
     PermissionAction.READ,
@@ -73,7 +71,6 @@ router.get(
 // Team members — managers use vendor:list:any; primary vendor uses vendor:list:mine
 router.get(
   '/:cuid/team_members/:vuid',
-  isAuthenticated,
   requirePermissionWithContext(
     PermissionResource.VENDOR,
     PermissionAction.LIST,
@@ -96,7 +93,6 @@ router.get(
 // Get vendor business data for editing (primaryAccountHolderUserId only)
 router.get(
   '/:cuid/vendor/:vuid/edit',
-  isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.READ),
   validateRequest({
     params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
@@ -110,8 +106,8 @@ router.get(
 // Update team member profile fields (ADMIN/MANAGER or primaryAccountHolderUserId)
 router.patch(
   '/:cuid/vendor/:vuid/team_members/:uid',
-  isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam
       .merge(UtilsValidations.vuid)
@@ -127,9 +123,8 @@ router.patch(
 // Toggle team member active status (ADMIN/MANAGER or primaryAccountHolderUserId)
 router.patch(
   '/:cuid/vendor/:vuid/team_members/:uid/status',
-  basicLimiter(),
-  isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam
       .merge(UtilsValidations.vuid)
@@ -145,8 +140,8 @@ router.patch(
 // Update vendor business details (primaryAccountHolderUserId only)
 router.patch(
   '/:cuid/vendor/:vuid',
-  isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
     body: VendorValidations.updateVendor,
@@ -163,8 +158,8 @@ router.patch(
 // Restricted to primary vendor account holders only
 router.post(
   '/:cuid/vendor/:vuid/payout_account/initiate',
-  isAuthenticated,
   requirePrimaryVendor,
+  idempotency,
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {
     const vendorController = req.container.resolve<VendorController>('vendorController');
@@ -176,7 +171,6 @@ router.post(
 // Restricted to primary vendor account holders only
 router.get(
   '/:cuid/vendor/:vuid/payout_account/link',
-  isAuthenticated,
   requirePrimaryVendor,
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {
@@ -189,8 +183,8 @@ router.get(
 // Restricted to primary vendor account holders only
 router.post(
   '/:cuid/vendor/:vuid/payout_account/sync',
-  isAuthenticated,
   requirePrimaryVendor,
+  idempotency,
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {
     const vendorController = req.container.resolve<VendorController>('vendorController');
@@ -202,7 +196,6 @@ router.post(
 // Restricted to primary vendor account holders only
 router.get(
   '/:cuid/vendor/:vuid/payout_account/dashboard',
-  isAuthenticated,
   requirePrimaryVendor,
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {

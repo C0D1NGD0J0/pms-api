@@ -164,14 +164,15 @@ export class App implements IAppSetup {
     app.use(`${this.BASE_PATH}/leases`, routes.leaseRoutes);
     app.use(`${this.BASE_PATH}/clients`, routes.clientRoutes);
     app.use(`${this.BASE_PATH}/vendors`, routes.vendorRoutes);
+    app.use(`${this.BASE_PATH}/metrics`, routes.metricsRoutes);
+    app.use(`${this.BASE_PATH}/expenses`, routes.expenseRoutes);
+    app.use(`${this.BASE_PATH}/payments`, routes.paymentRoutes);
     app.use(`${this.BASE_PATH}/invites`, routes.invitationRoutes);
     app.use(`${this.BASE_PATH}/properties`, routes.propertyRoutes);
     app.use(`${this.BASE_PATH}/notifications`, routes.notificationRoutes);
     app.use(`${this.BASE_PATH}/subscriptions`, routes.subscriptionRoutes);
-    app.use(`${this.BASE_PATH}/payments`, routes.paymentRoutes);
     app.use(`${this.BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
     app.use(`${this.BASE_PATH}/maintenance_requests`, routes.maintenanceRequestRoutes);
-    app.use(`${this.BASE_PATH}/expenses`, routes.expenseRoutes);
     app.all('*', (req: Request, res: Response) => {
       res.status(httpStatusCodes.NOT_FOUND).json({ message: 'Invalid endpoint.' });
     });

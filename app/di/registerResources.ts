@@ -56,6 +56,7 @@ import {
   MaintenanceRequestModel,
   NotificationModel,
   PaymentProcessor,
+  MetricsSnapshot,
   PaymentModel,
   PropertyUnit,
   Subscription,
@@ -77,6 +78,7 @@ import {
   SubscriptionDAO,
   InvitationDAO,
   PropertyDAO,
+  MetricsDAO,
   PaymentDAO,
   ProfileDAO,
   ExpenseDAO,
@@ -92,6 +94,7 @@ import {
   MaintenanceController,
   InvitationController,
   PropertyController,
+  MetricsController,
   WebhookController,
   PaymentController,
   ExpenseController,
@@ -127,6 +130,7 @@ import {
   PropertyService,
   BoldSignService,
   LeasePdfService,
+  MetricsService,
   PaymentService,
   ProfileService,
   StripeService,
@@ -140,6 +144,7 @@ import {
 } from '@services/index';
 
 const ControllerResources = {
+  metricsController: asClass(MetricsController).scoped(),
   maintenanceController: asClass(MaintenanceController).scoped(),
   adminController: asClass(AdminController).scoped(),
   authController: asClass(AuthController).scoped(),
@@ -174,6 +179,7 @@ const ModelResources = {
   paymentModel: asValue(PaymentModel),
   paymentProcessorModel: asValue(PaymentProcessor),
   maintenanceRequestModel: asValue(MaintenanceRequestModel),
+  metricsSnapshotModel: asValue(MetricsSnapshot),
   expenseModel: asValue(ExpenseModel),
 };
 
@@ -216,8 +222,9 @@ const ServiceResources = {
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
   dsarService: asClass(DSARService).singleton(),
   maintenanceRequestService: asClass(MaintenanceRequestService).singleton(),
-  leaseTemplateService: asClass(LeaseTemplateService).singleton(),
+  metricsService: asClass(MetricsService).singleton(),
   expenseService: asClass(ExpenseService).singleton(),
+  leaseTemplateService: asClass(LeaseTemplateService).singleton(),
 };
 
 const DAOResources = {
@@ -235,6 +242,7 @@ const DAOResources = {
   paymentDAO: asClass(PaymentDAO).singleton(),
   paymentProcessorDAO: asClass(PaymentProcessorDAO).singleton(),
   maintenanceRequestDAO: asClass(MaintenanceRequestDAO).singleton(),
+  metricsDAO: asClass(MetricsDAO).singleton(),
   expenseDAO: asClass(ExpenseDAO).singleton(),
 };
 
@@ -321,6 +329,16 @@ export const initQueues = (container: AwilixContainer) => {
         'Failed to initialize ClamAV - file uploads will proceed without scanning'
       );
     }
+  }
+
+  // Ensure the metrics time-series collection exists (no-op if already present)
+  try {
+    const metricsDAO = container.resolve<MetricsDAO>('metricsDAO');
+    metricsDAO.ensureCollection().catch((err) => {
+      logger.error({ err }, 'Failed to ensure metrics_snapshots collection');
+    });
+  } catch (err) {
+    logger.error({ err }, 'Failed to resolve metricsDAO for collection setup');
   }
 
   // Queues and workers are now lazily initialized via QueueFactory when first accessed

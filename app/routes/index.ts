@@ -6,6 +6,7 @@ import clientRoutes from './client.routes';
 import vendorRoutes from './vendors.routes';
 import webhookRoutes from './webhook.routes';
 import expenseRoutes from './expense.routes';
+import metricsRoutes from './metrics.routes';
 import paymentRoutes from './payments.routes';
 import propertyRoutes from './property.routes';
 import invitationRoutes from './invitation.routes';
@@ -29,5 +30,6 @@ export const routes = {
   notificationRoutes,
   emailTemplateRoutes,
   maintenanceRequestRoutes,
+  metricsRoutes,
   expenseRoutes,
 };

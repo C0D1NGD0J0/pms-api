@@ -6,6 +6,7 @@ import {
   InvitationDAO,
   PropertyDAO,
   PaymentDAO,
+  ExpenseDAO,
   ClientDAO,
   VendorDAO,
   LeaseDAO,
@@ -222,6 +223,19 @@ export const ValidatePytUidSchema = z.object({
   ),
 });
 
+export const ValidateExpuidSchema = z.object({
+  expuid: z.string().refine(
+    async (expuid) => {
+      const { expenseDAO }: { expenseDAO: ExpenseDAO } = (await getContainer()).cradle;
+      const expense = await expenseDAO.findFirst({ expuid, isDeleted: false });
+      return !!expense;
+    },
+    {
+      message: 'Invalid params detected in the request.',
+    }
+  ),
+});
+
 export const ValidateUidSchema = z.object({
   uid: z.string().min(1, 'uid is required'),
 });
@@ -234,6 +248,7 @@ export const UtilsValidations = {
   uid: ValidateUidSchema,
   unitPuid: ValidateUnitPuid,
   pytuid: ValidatePytUidSchema,
+  expuid: ValidateExpuidSchema,
   isUniqueEmail: ValidateEmailSchema,
   propertyId: ValidatePropertyIdSchema,
   invitationuid: ValidateInvitationIuidSchema,

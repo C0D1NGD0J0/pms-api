@@ -461,7 +461,7 @@ export class LeaseService {
       filters = {
         ...filters,
         status: safe.length ? safe : TENANT_VISIBLE_STATUSES,
-        tenantId: filters.tenantId ?? context.currentuser.sub,
+        tenantId: context.currentuser.sub, // always scope to caller — never trust client-supplied tenantId
       };
     }
 

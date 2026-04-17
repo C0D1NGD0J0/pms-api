@@ -80,10 +80,12 @@
       "featureList": [
         "Tenant management",
         "Rent collection",
-        "Maintenance requests"
+        "Vendor management"
       ],
       "disabledFeatures": [
         "E-Signature",
+        "Reporting & Analytics",
+        "Repair Request Service",
         "Guest Pass Service"
       ]
     },
@@ -128,8 +130,8 @@
         "eSignature": true,
         "RepairRequestService": true,
         "VisitorPassService": true,
-        "reportingAnalytics": true,
-        "leaseTemplates": true
+        "reportingAnalytics": false,
+        "leaseTemplates": false
       },
       "featureList": [
         "Online payments & AutoPay",
@@ -137,7 +139,7 @@
         "E-Signature",
         "Guest Pass Service"
       ],
-      "disabledFeatures": []
+      "disabledFeatures": ["Reporting & Analytics", "Customizable Lease Templates"]
     },
     "portfolio": {
       "planName": "portfolio",

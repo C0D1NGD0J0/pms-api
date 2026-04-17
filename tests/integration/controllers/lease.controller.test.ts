@@ -2,7 +2,7 @@
 import request from 'supertest';
 import { Types } from 'mongoose';
 import { Application } from 'express';
-import { Property, Lease } from '@models/index';
+import { Property, Lease, Subscription } from '@models/index';
 import { ROLES } from '@shared/constants/roles.constants';
 import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { beforeEach, beforeAll, describe, afterAll, expect, it } from '@jest/globals';
@@ -75,6 +75,36 @@ describe('LeaseController Integration Tests', () => {
 
     // Create test data — isVerified:true so requireVerifiedClient middleware passes
     testClient = await createTestClient({ isVerified: true });
+
+    // Seed a portfolio subscription so requireFeature guards (leaseTemplates, eSignature) pass.
+    // entitlements must be set explicitly — schema defaults all to false and the service spreads
+    // subscription.entitlements after config.features, so defaults would override the plan config.
+    await Subscription.create({
+      cuid: testClient.cuid,
+      suid: `test-suid-${Date.now()}`,
+      client: testClient._id,
+      planName: 'portfolio',
+      status: 'active',
+      billing: { customerId: 'none', provider: 'none', planId: 'none' },
+      billingInterval: 'monthly',
+      totalMonthlyPrice: 0,
+      currentSeats: 1,
+      startDate: new Date(),
+      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      additionalSeatsCount: 0,
+      additionalSeatsCost: 0,
+      currentProperties: 0,
+      currentUnits: 0,
+      entitlements: {
+        eSignature: true,
+        RepairRequestService: true,
+        VisitorPassService: true,
+        reportingAnalytics: true,
+        leaseTemplates: true,
+        prioritySupport: true,
+      },
+    });
+
     testManager = await createTestManagerUser(testClient.cuid, testClient._id);
     testTenant = await createTestTenantUser(testClient.cuid, testClient._id);
     testAdmin = await createTestAdminUser(testClient.cuid, testClient._id);

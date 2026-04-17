@@ -312,4 +312,12 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
       throw this.throwErrorHandler(error);
     }
   }
+
+  async getActiveCuids(): Promise<string[]> {
+    const results = await this.aggregate([
+      { $match: { isArchived: { $ne: true }, deletedAt: null } },
+      { $project: { cuid: 1, _id: 0 } },
+    ]);
+    return (results as any[]).map((c) => c.cuid).filter(Boolean);
+  }
 }

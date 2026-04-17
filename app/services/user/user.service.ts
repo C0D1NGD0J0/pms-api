@@ -11,8 +11,16 @@ import { PermissionService } from '@services/permission/permission.service';
 import { calcDaysElapsed, createLogger, JOB_NAME, daysInMs } from '@utils/index';
 import { LeaseExpiredPayload, IProfileDocument, EventTypes } from '@interfaces/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
-import { PropertyDAO, ProfileDAO, PaymentDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
+import {
+  MaintenanceRequestDAO,
+  PropertyDAO,
+  ProfileDAO,
+  PaymentDAO,
+  ClientDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   ISuccessReturnData,
   PermissionResource,
@@ -37,6 +45,7 @@ import {
 } from '@interfaces/user.interface';
 
 interface IConstructor {
+  maintenanceRequestDAO: MaintenanceRequestDAO;
   permissionService: PermissionService;
   emitterService: EventEmitterService;
   vendorService: VendorService;
@@ -59,6 +68,7 @@ export class UserService {
   private readonly propertyDAO: PropertyDAO;
   private readonly leaseDAO: LeaseDAO;
   private readonly paymentDAO: PaymentDAO;
+  private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly vendorService: VendorService;
   private readonly emitterService: EventEmitterService;
   private readonly permissionService: PermissionService;
@@ -72,6 +82,7 @@ export class UserService {
     propertyDAO,
     leaseDAO,
     paymentDAO,
+    maintenanceRequestDAO,
     vendorService,
     emitterService,
     permissionService,
@@ -80,6 +91,7 @@ export class UserService {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
     this.paymentDAO = paymentDAO;
+    this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.userCache = userCache;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -1604,14 +1616,17 @@ export class UserService {
       const tenantId = (rawTenantDetails as any)._id?.toString();
 
       if (tenantId) {
-        const paymentData = await this.paymentDAO.getTenantPaymentMetrics(cuid, tenantId, {
-          includeHistory: includePaymentHistory,
-          historyLimit: 50,
-        });
+        const [paymentData, maintenanceStats] = await Promise.all([
+          this.paymentDAO.getTenantPaymentMetrics(cuid, tenantId, {
+            includeHistory: includePaymentHistory,
+            historyLimit: 50,
+          }),
+          this.maintenanceRequestDAO.getStats(cuid, { tenantUserId: tenantId }),
+        ]);
 
-        // Update tenant metrics with payment data
+        // Update tenant metrics with payment and maintenance data
         rawTenantDetails.tenantMetrics = {
-          totalMaintenanceRequests: rawTenantDetails.tenantMetrics?.totalMaintenanceRequests || 0,
+          totalMaintenanceRequests: maintenanceStats.total,
           currentRentStatus: rawTenantDetails.tenantMetrics?.currentRentStatus || 'no_lease',
           daysCurrentLease: rawTenantDetails.tenantMetrics?.daysCurrentLease || 0,
           totalRentPaid: paymentData.metrics.totalRentPaid,

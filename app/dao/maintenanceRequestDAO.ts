@@ -110,11 +110,25 @@ export class MaintenanceRequestDAO
     };
   }
 
-  async getStats(cuid: string, propertyId?: string): Promise<IMaintenanceStats> {
+  /**
+   * Aggregated maintenance stats for a client.
+   *
+   * Optional scoping:
+   *   opts.propertyId  — scope to a single property
+   *   opts.tenantUserId — scope to a specific tenant (User._id)
+   *   opts.vendorUserId — scope to a specific vendor (User._id)
+   *
+   * Used by MetricsService (no opts), UserService (tenantUserId),
+   * VendorService (vendorUserId), and MaintenanceController (propertyId).
+   */
+  async getStats(
+    cuid: string,
+    opts?: { propertyId?: string; tenantUserId?: string; vendorUserId?: string }
+  ): Promise<IMaintenanceStats> {
     const matchStage: FilterQuery<IMaintenanceRequestDocument> = { cuid, deletedAt: null };
-    if (propertyId) {
-      matchStage.propertyId = new Types.ObjectId(propertyId);
-    }
+    if (opts?.propertyId) matchStage.propertyId = new Types.ObjectId(opts.propertyId);
+    if (opts?.tenantUserId) matchStage.tenantId = new Types.ObjectId(opts.tenantUserId);
+    if (opts?.vendorUserId) matchStage.vendorId = new Types.ObjectId(opts.vendorUserId);
 
     const results = await this.aggregate([
       { $match: matchStage },
@@ -124,6 +138,20 @@ export class MaintenanceRequestDAO
           byCategory: [{ $group: { _id: '$category', count: { $sum: 1 } } }],
           byPriority: [{ $group: { _id: '$priority', count: { $sum: 1 } } }],
           pendingInvoices: [{ $match: { 'invoice.status': 'pending' } }, { $count: 'count' }],
+          avgResolution: [
+            {
+              $match: {
+                status: MaintenanceRequestStatus.COMPLETED,
+                completedAt: { $exists: true },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                avgMs: { $avg: { $subtract: ['$completedAt', '$createdAt'] } },
+              },
+            },
+          ],
         },
       },
     ]);
@@ -134,10 +162,12 @@ export class MaintenanceRequestDAO
 
     const statusMap = toMap(raw.byStatus || []);
     const total = Object.values(statusMap as Record<string, number>).reduce((a, b) => a + b, 0);
+    const avgMs = raw.avgResolution?.[0]?.avgMs || 0;
 
     return {
       total,
       open: statusMap[MaintenanceRequestStatus.OPEN] || 0,
+      assigned: statusMap[MaintenanceRequestStatus.ASSIGNED] || 0,
       inProgress: statusMap[MaintenanceRequestStatus.IN_PROGRESS] || 0,
       completed: statusMap[MaintenanceRequestStatus.COMPLETED] || 0,
       cancelled: statusMap[MaintenanceRequestStatus.CANCELLED] || 0,
@@ -145,6 +175,7 @@ export class MaintenanceRequestDAO
       byCategory: toMap(raw.byCategory || []),
       byPriority: toMap(raw.byPriority || []),
       pendingInvoices: raw.pendingInvoices?.[0]?.count || 0,
+      avgResolutionDays: avgMs > 0 ? Math.round(avgMs / (1000 * 60 * 60 * 24)) : 0,
     };
   }
 }

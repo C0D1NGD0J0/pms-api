@@ -17,6 +17,14 @@ export interface IMaintenanceRequestDAO {
   ): ListResultWithPagination<IMaintenanceRequestDocument[]>;
 
   /**
+   * Aggregated stats for a client, optionally scoped to property, tenant, or vendor
+   */
+  getStats(
+    cuid: string,
+    opts?: { propertyId?: string; tenantUserId?: string; vendorUserId?: string }
+  ): Promise<IMaintenanceStats>;
+
+  /**
    * Get a single request by mruid scoped to a client (primary lookup)
    */
   getByMruid(mruid: string, cuid: string): Promise<IMaintenanceRequestDocument | null>;
@@ -32,11 +40,6 @@ export interface IMaintenanceRequestDAO {
    * Used by webhook handlers where cuid is not available from the external source
    */
   findByMruid(mruid: string): Promise<IMaintenanceRequestDocument | null>;
-
-  /**
-   * Get PM dashboard stats for a client, optionally scoped to a property
-   */
-  getStats(cuid: string, propertyId?: string): Promise<IMaintenanceStats>;
 
   /**
    * Get performance stats for a vendor across all clients

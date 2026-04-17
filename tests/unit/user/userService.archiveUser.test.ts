@@ -91,6 +91,7 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
       propertyDAO: mockPropertyDAO,
       profileDAO: {} as any,
       paymentDAO: {} as any,
+      maintenanceRequestDAO: {} as any,
       userCache: mockUserCache as any,
       vendorService: mockVendorService as any,
       emitterService: mockEmitterService,

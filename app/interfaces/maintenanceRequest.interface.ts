@@ -159,6 +159,20 @@ export interface IMaintenanceFilters {
   pid?: string; // property resource UID
 }
 
+export interface IMaintenanceStats {
+  byCategory: Record<string, number>;
+  byPriority: Record<string, number>;
+  avgResolutionDays: number;
+  pendingInvoices: number;
+  inProgress: number;
+  completed: number;
+  cancelled: number;
+  assigned: number;
+  pending: number;
+  total: number;
+  open: number;
+}
+
 export interface IWorkOrder {
   lineItems?: IWorkOrderLineItem[];
   estimatedCostInCents: number;
@@ -182,18 +196,6 @@ export interface IInvoiceWebhookPayload {
   currency: string;
   amount: number;
   mruid: string;
-}
-
-export interface IMaintenanceStats {
-  byCategory: Record<string, number>;
-  byPriority: Record<string, number>;
-  pendingInvoices: number;
-  inProgress: number;
-  completed: number;
-  cancelled: number;
-  pending: number;
-  total: number;
-  open: number;
 }
 
 export interface MaintenanceRequestMedia {

@@ -40,6 +40,7 @@ const setupServices = () => {
     profileDAO,
     vendorCache,
     permissionService,
+    maintenanceRequestDAO: {} as any,
     queueFactory: mockQueueFactory as any,
     emitterService: {} as any,
   } as any);

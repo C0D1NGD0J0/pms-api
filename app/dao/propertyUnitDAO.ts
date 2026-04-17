@@ -1,5 +1,5 @@
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
+import { calcOccupancyRate, createLogger } from '@utils/index';
 import { ClientSession, FilterQuery, Model, Types } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
 import {
@@ -591,5 +591,38 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
       default:
         return '101'; // Default floor-based
     }
+  }
+
+  async getPropertyUnitCounts(cuid: string): Promise<{
+    total: number;
+    occupied: number;
+    vacant: number;
+    occupancyRate: number;
+  }> {
+    const results = await this.aggregate([
+      { $match: { cuid, deletedAt: null, isArchived: { $ne: true } } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          occupied: {
+            $sum: { $cond: [{ $eq: ['$status', PropertyUnitStatusEnum.OCCUPIED] }, 1, 0] },
+          },
+          vacant: {
+            $sum: { $cond: [{ $eq: ['$status', PropertyUnitStatusEnum.AVAILABLE] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    const row = results[0] as any;
+    if (!row) return { total: 0, occupied: 0, vacant: 0, occupancyRate: 0 };
+
+    return {
+      total: row.total,
+      occupied: row.occupied,
+      vacant: row.vacant,
+      occupancyRate: calcOccupancyRate(row.occupied, row.total),
+    };
   }
 }

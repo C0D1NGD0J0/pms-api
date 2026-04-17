@@ -10,6 +10,7 @@ import { VendorCache } from '@caching/vendor.cache';
 import { PermissionService } from '@services/permission';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
+import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { IVendorFilterOptions } from '@dao/interfaces/vendorDAO.interface';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
@@ -32,6 +33,7 @@ import {
 } from '@interfaces/utils.interface';
 interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
+  maintenanceRequestDAO: MaintenanceRequestDAO;
   paymentProcessorDAO: PaymentProcessorDAO;
   permissionService: PermissionService;
   vendorCache: VendorCache;
@@ -51,6 +53,7 @@ export class VendorService {
   private permissionService: PermissionService;
   private paymentGatewayService: PaymentGatewayService;
   private paymentProcessorDAO: PaymentProcessorDAO;
+  private maintenanceRequestDAO: MaintenanceRequestDAO;
 
   constructor({
     vendorDAO,
@@ -61,6 +64,7 @@ export class VendorService {
     permissionService,
     paymentGatewayService,
     paymentProcessorDAO,
+    maintenanceRequestDAO,
   }: IConstructor) {
     this.vendorDAO = vendorDAO;
     this.userDAO = userDAO;
@@ -70,6 +74,7 @@ export class VendorService {
     this.permissionService = permissionService;
     this.paymentGatewayService = paymentGatewayService;
     this.paymentProcessorDAO = paymentProcessorDAO;
+    this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.logger = createLogger('VendorService');
   }
 
@@ -646,6 +651,11 @@ export class VendorService {
         }
       }
 
+      // Fetch real maintenance stats for this vendor
+      const maintenanceStats = await this.maintenanceRequestDAO.getStats(cuid, {
+        vendorUserId: user._id.toString(),
+      });
+
       // Build the vendor detail info (nested in vendorInfo property)
       const vendorDetailInfo: IVendorDetailInfo = {
         vuid: vendor.vuid,
@@ -681,10 +691,9 @@ export class VendorService {
           phone: vendor?.contactPerson?.phone || (_personalInfo as any).phoneNumber || '',
         },
 
-        // Vendor statistics (placeholder)
         stats: {
-          completedJobs: 0,
-          activeJobs: 0,
+          completedJobs: maintenanceStats.completed,
+          activeJobs: maintenanceStats.assigned + maintenanceStats.inProgress,
           rating: '0',
           responseTime: '24h',
           onTimeRate: '0%',

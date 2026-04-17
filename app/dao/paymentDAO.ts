@@ -318,4 +318,102 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       throw this.throwErrorHandler(error);
     }
   }
+
+  /**
+   * Aggregated payment stats for a client (or a specific tenant's profile).
+   * Used by MetricsService for the PM dashboard and by UserService for the tenant detail page.
+   *
+   * @param cuid  Client unique ID
+   * @param opts  Optional scoping — if profileId is provided, stats are scoped to that tenant
+   */
+  async getPaymentStats(
+    cuid: string,
+    opts?: { profileId?: string }
+  ): Promise<{
+    totalRevenue: number;
+    monthRevenue: number;
+    pendingAmount: number;
+    overdueCount: number;
+    totalCount: number;
+    onTimeRate: number;
+    avgPaymentDelayDays: number;
+  }> {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const match: Record<string, any> = { cuid, deletedAt: null };
+    if (opts?.profileId) {
+      match.tenant = opts.profileId;
+    }
+
+    const results = await this.aggregate([
+      { $match: match },
+      {
+        $facet: {
+          revenue: [
+            { $match: { status: PaymentRecordStatus.PAID } },
+            {
+              $group: {
+                _id: null,
+                totalRevenue: { $sum: '$baseAmount' },
+                monthRevenue: {
+                  $sum: {
+                    $cond: [{ $gte: ['$paidAt', monthStart] }, '$baseAmount', 0],
+                  },
+                },
+              },
+            },
+          ],
+          pending: [
+            { $match: { status: PaymentRecordStatus.PENDING } },
+            { $group: { _id: null, pendingAmount: { $sum: '$baseAmount' } } },
+          ],
+          overdue: [{ $match: { status: PaymentRecordStatus.OVERDUE } }, { $count: 'count' }],
+          timing: [
+            {
+              $match: {
+                status: PaymentRecordStatus.PAID,
+                dueDate: { $exists: true },
+                paidAt: { $exists: true },
+              },
+            },
+            {
+              $project: {
+                delayMs: { $subtract: ['$paidAt', '$dueDate'] },
+                onTime: { $lte: ['$paidAt', '$dueDate'] },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalPaid: { $sum: 1 },
+                onTimeCount: { $sum: { $cond: ['$onTime', 1, 0] } },
+                avgDelayMs: { $avg: { $max: ['$delayMs', 0] } },
+              },
+            },
+          ],
+          total: [{ $count: 'count' }],
+        },
+      },
+    ]);
+
+    const raw = (results[0] || {}) as any;
+    const rev = raw.revenue?.[0] || {};
+    const pend = raw.pending?.[0] || {};
+    const timing = raw.timing?.[0] || {};
+
+    const totalPaid = timing.totalPaid || 0;
+    const onTimeCount = timing.onTimeCount || 0;
+    const avgDelayMs = timing.avgDelayMs || 0;
+
+    return {
+      totalRevenue: rev.totalRevenue || 0,
+      monthRevenue: rev.monthRevenue || 0,
+      pendingAmount: pend.pendingAmount || 0,
+      overdueCount: raw.overdue?.[0]?.count || 0,
+      totalCount: raw.total?.[0]?.count || 0,
+      onTimeRate: totalPaid > 0 ? calcPercentage(onTimeCount, totalPaid) : 0,
+      avgPaymentDelayDays: avgDelayMs > 0 ? Math.round(msToDays(avgDelayMs)) : 0,
+    };
+  }
 }

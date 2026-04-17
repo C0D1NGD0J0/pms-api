@@ -444,7 +444,7 @@ describe('MaintenanceRequestDAO Integration Tests', () => {
       await MaintenanceRequestModel.create(makeRequest({ propertyId }));
       await MaintenanceRequestModel.create(makeRequest({ propertyId: otherPropertyId }));
 
-      const stats = await dao.getStats(BASE_CUID, propertyId.toString());
+      const stats = await dao.getStats(BASE_CUID, { propertyId: propertyId.toString() });
 
       expect(stats.total).toBe(2);
     });

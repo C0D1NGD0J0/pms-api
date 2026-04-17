@@ -1280,4 +1280,55 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       throw this.throwErrorHandler(error);
     }
   }
+
+  async getUserStats(cuid: string): Promise<{ total: number; tenants: number; staff: number }> {
+    const results = await this.aggregate([
+      {
+        $match: {
+          'cuids.cuid': cuid,
+          'cuids.isConnected': true,
+          deletedAt: null,
+        },
+      },
+      { $unwind: '$cuids' },
+      { $match: { 'cuids.cuid': cuid, 'cuids.isConnected': true } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          tenants: {
+            $sum: { $cond: [{ $in: [ROLES.TENANT, '$cuids.roles'] }, 1, 0] },
+          },
+          staff: {
+            $sum: {
+              $cond: [
+                {
+                  $gt: [
+                    {
+                      $size: {
+                        $setIntersection: [
+                          '$cuids.roles',
+                          [ROLES.ADMIN, ROLES.STAFF, ROLES.SUPER_ADMIN],
+                        ],
+                      },
+                    },
+                    0,
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
+    const row = (results[0] || {}) as any;
+    return {
+      total: row.total || 0,
+      tenants: row.tenants || 0,
+      staff: row.staff || 0,
+    };
+  }
 }

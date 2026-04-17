@@ -4,6 +4,7 @@ export * from './SubscriptionController';
 export * from './MaintenanceController';
 export * from './InvitationController';
 export * from './PropertyController';
+export * from './MetricsController';
 export * from './PaymentController';
 export * from './WebhookController';
 export * from './ExpenseController';

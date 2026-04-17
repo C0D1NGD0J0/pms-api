@@ -699,7 +699,7 @@ export class MaintenanceRequestService {
       const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
       propertyObjectId = property?._id?.toString();
     }
-    const stats = await this.maintenanceRequestDAO.getStats(cuid, propertyObjectId);
+    const stats = await this.maintenanceRequestDAO.getStats(cuid, { propertyId: propertyObjectId });
     return { success: true, data: stats };
   }
 

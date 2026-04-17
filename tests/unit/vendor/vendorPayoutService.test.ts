@@ -86,6 +86,7 @@ const makeService = (
     permissionService: {} as jest.Mocked<PermissionService>,
     paymentGatewayService: (overrides.paymentGatewayService ?? {}) as jest.Mocked<PaymentGatewayService>,
     paymentProcessorDAO: (overrides.paymentProcessorDAO ?? {}) as jest.Mocked<PaymentProcessorDAO>,
+    maintenanceRequestDAO: {} as any,
   });
 
 // ═════════════════════════════════════════════════════════════════════════════

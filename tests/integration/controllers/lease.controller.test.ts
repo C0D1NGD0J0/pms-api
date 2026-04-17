@@ -17,7 +17,8 @@ import {
   createTestProperty,
   createTestProfile,
   createTestClient,
-  createTestUser,} from '../../helpers';
+  createTestUser,
+} from '../../helpers';
 
 // Helper function to create standard lease documents for testing
 const createMockLeaseDocuments = (uploadedBy: Types.ObjectId) => [
@@ -382,7 +383,13 @@ describe('LeaseController Integration Tests', () => {
           address: testProperty.address.fullAddress,
         },
         duration: { startDate: new Date('2025-09-01'), endDate: new Date('2026-09-01') },
-        fees: { monthlyRent: 160000, securityDeposit: 320000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          monthlyRent: 160000,
+          securityDeposit: 320000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.PENDING_SIGNATURE,
         approvalStatus: 'approved',
         type: LeaseType.FIXED_TERM,
@@ -411,7 +418,7 @@ describe('LeaseController Integration Tests', () => {
       }
     });
 
-    it('should scope lease list to the authenticated tenant\'s own leases', async () => {
+    it("should scope lease list to the authenticated tenant's own leases", async () => {
       // Create a second tenant with their own lease
       const anotherTenant = await createTestTenantUser(testClient.cuid, testClient._id);
       const anotherToken = createAuthToken(anotherTenant);
@@ -427,7 +434,13 @@ describe('LeaseController Integration Tests', () => {
           address: testProperty.address.fullAddress,
         },
         duration: { startDate: new Date('2025-10-01'), endDate: new Date('2026-10-01') },
-        fees: { monthlyRent: 170000, securityDeposit: 340000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          monthlyRent: 170000,
+          securityDeposit: 340000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         type: LeaseType.FIXED_TERM,

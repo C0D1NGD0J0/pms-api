@@ -89,6 +89,7 @@ describe('ClientController Integration Tests', () => {
       emitterService: {} as any,
       paymentDAO: {} as any,
       leaseDAO: {} as any,
+      maintenanceRequestDAO: {} as any,
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
 

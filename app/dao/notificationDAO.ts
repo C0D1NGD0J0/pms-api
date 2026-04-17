@@ -167,7 +167,13 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
       const options = {
         ...pagination,
         sort: pagination?.sort || { createdAt: -1 },
-        populate: [{ path: 'recipient', select: 'firstName lastName email' }],
+        populate: [
+          {
+            path: 'recipient',
+            select: 'email uid',
+            populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+          },
+        ],
       };
 
       const result = await this.list(filter, options);

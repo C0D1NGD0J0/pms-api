@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
-import { FilterQuery, Model, Types } from 'mongoose';
+import { isValidObjectId, FilterQuery, Model, Types } from 'mongoose';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { IExpenseDocument, IExpenseFilters } from '@interfaces/expense.interface';
 
@@ -33,8 +33,10 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
     try {
       const query: FilterQuery<IExpenseDocument> = { clientId, isDeleted: false };
 
-      if (filters.propertyId) query.propertyId = new Types.ObjectId(filters.propertyId);
-      if (filters.unitId) query.unitId = new Types.ObjectId(filters.unitId);
+      if (filters.propertyId && isValidObjectId(filters.propertyId))
+        query.propertyId = new Types.ObjectId(filters.propertyId);
+      if (filters.unitId && isValidObjectId(filters.unitId))
+        query.unitId = new Types.ObjectId(filters.unitId);
       if (filters.category) query.category = filters.category;
 
       if (filters.from || filters.to) {
@@ -49,7 +51,11 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
         populate: [
           { path: 'propertyId', select: 'name address pid' },
           { path: 'unitId', select: 'unitNumber puid' },
-          { path: 'createdBy', select: 'personalInfo.firstName personalInfo.lastName' },
+          {
+            path: 'createdBy',
+            select: 'email uid',
+            populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+          },
         ],
       });
     } catch (error: any) {

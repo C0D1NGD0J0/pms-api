@@ -261,8 +261,13 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
    * @param userId - The unique identifier for the user.
    * @returns A promise that resolves to a CurrentUser object or null if no user is found.
    */
-  async generateCurrentUserInfo(userId: string): Promise<ICurrentUser | null> {
+  async generateCurrentUserInfo(userId: string, cuid?: string): Promise<ICurrentUser | null> {
     try {
+      // When cuid is provided (e.g. from JWT in the auth middleware), use it to select the
+      // active client context. This prevents concurrent sessions from loading the wrong client
+      // when user.activecuid in the DB has been updated by a different session.
+      const activeCuidExpr: any = cuid ? { $literal: cuid } : '$userData.activecuid';
+
       const pipeline: PipelineStage[] = [
         {
           $match: {
@@ -317,7 +322,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                         $filter: {
                           input: '$userData.cuids',
                           as: 'client',
-                          cond: { $eq: ['$$client.cuid', '$userData.activecuid'] },
+                          cond: { $eq: ['$$client.cuid', activeCuidExpr] },
                         },
                       },
                       0,
@@ -339,7 +344,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         {
           $lookup: {
             from: 'subscriptions',
-            let: { activeCuid: '$userData.activecuid' },
+            let: { activeCuid: activeCuidExpr },
             pipeline: [
               {
                 $match: {
@@ -360,7 +365,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         {
           $lookup: {
             from: 'paymentprocessors',
-            let: { activeCuid: '$userData.activecuid' },
+            let: { activeCuid: activeCuidExpr },
             pipeline: [
               {
                 $match: {
@@ -396,7 +401,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         {
           $lookup: {
             from: 'paymentprocessors',
-            let: { vuid: '$vendorDoc.vuid', activeCuid: '$userData.activecuid' },
+            let: { vuid: '$vendorDoc.vuid', activeCuid: activeCuidExpr },
             pipeline: [
               {
                 $match: {
@@ -452,7 +457,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                         $filter: {
                           input: '$userData.cuids',
                           as: 'client',
-                          cond: { $eq: ['$$client.cuid', '$userData.activecuid'] },
+                          cond: { $eq: ['$$client.cuid', activeCuidExpr] },
                         },
                       },
                       0,
@@ -464,7 +469,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                         $filter: {
                           input: '$clientsData',
                           as: 'cd',
-                          cond: { $eq: ['$$cd.cuid', '$userData.activecuid'] },
+                          cond: { $eq: ['$$cd.cuid', activeCuidExpr] },
                         },
                       },
                       0,

@@ -467,6 +467,97 @@ describe('MaintenanceRequestService - reviewInvoice dispatch', () => {
 });
 
 // ===========================================================================
+// 6b. updateRequest guards and happy-path
+// ===========================================================================
+
+describe('MaintenanceRequestService - updateRequest', () => {
+  const updateData = {
+    title: 'Updated title for the issue',
+    description: { text: 'Updated description with more detail.' },
+    category: 'electrical' as any,
+    priority: 'high' as any,
+  };
+
+  it('should update a PENDING request successfully', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.PENDING);
+    const updated = { ...request, ...updateData };
+    mockDAO.getByMruid.mockResolvedValue(request);
+    mockDAO.updateById.mockResolvedValue(updated);
+
+    const ctx = makeCtx('tenant');
+    const result = await service.updateRequest(ctx as IRequestContext, 'MR001', updateData);
+
+    expect(result).toMatchObject({ success: true });
+    expect(mockDAO.updateById).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          title: updateData.title,
+          category: updateData.category,
+        }),
+      }),
+      undefined,
+      expect.anything()
+    );
+  });
+
+  it('should update an OPEN request successfully', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.OPEN);
+    mockDAO.getByMruid.mockResolvedValue(request);
+    mockDAO.updateById.mockResolvedValue({ ...request, ...updateData });
+
+    const ctx = makeCtx('tenant');
+    const result = await service.updateRequest(ctx as IRequestContext, 'MR001', updateData);
+
+    expect(result).toMatchObject({ success: true });
+  });
+
+  it('should emit MAINTENANCE_REQUEST_UPDATED event on success', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.PENDING);
+    mockDAO.getByMruid.mockResolvedValue(request);
+    mockDAO.updateById.mockResolvedValue({ ...request, ...updateData });
+
+    const ctx = makeCtx('tenant');
+    await service.updateRequest(ctx as IRequestContext, 'MR001', updateData);
+
+    expect(mockEmitter.emit).toHaveBeenCalledWith(
+      'maintenance:request:updated',
+      expect.objectContaining({ mruid: request.mruid, cuid: testCuid })
+    );
+  });
+
+  it.each([
+    MaintenanceRequestStatus.ASSIGNED,
+    MaintenanceRequestStatus.IN_PROGRESS,
+    MaintenanceRequestStatus.COMPLETED,
+    MaintenanceRequestStatus.CANCELLED,
+  ])('should throw ForbiddenError when status is %s', async (status) => {
+    mockDAO.getByMruid.mockResolvedValue(makeRequest(status));
+
+    const ctx = makeCtx('tenant');
+    await expect(
+      service.updateRequest(ctx as IRequestContext, 'MR001', updateData)
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it('should only set fields that are explicitly provided', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.PENDING);
+    mockDAO.getByMruid.mockResolvedValue(request);
+    mockDAO.updateById.mockResolvedValue({ ...request, priority: 'urgent' });
+
+    const ctx = makeCtx('tenant');
+    await service.updateRequest(ctx as IRequestContext, 'MR001', { priority: 'urgent' as any });
+
+    expect(mockDAO.updateById).toHaveBeenCalledWith(
+      expect.any(String),
+      { $set: { priority: 'urgent' } },
+      undefined,
+      expect.anything()
+    );
+  });
+});
+
+// ===========================================================================
 // 7. Invoice lifecycle guards — submitInvoice / approveInvoice / rejectInvoice
 // ===========================================================================
 

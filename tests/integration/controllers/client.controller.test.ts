@@ -30,7 +30,16 @@ describe('ClientController Integration Tests', () => {
   let managerUser: any;
   let staffUser: any;
 
-  const mockContext = (user: any, cuid: string) => ({
+  const mockContext = (user: any, cuid: string, req?: any) => ({
+    requestId: 'test-request-id',
+    userAgent: { isMobile: false, isBot: false, raw: 'test-agent' },
+    request: {
+      path: req?.path ?? '/',
+      method: req?.method ?? 'GET',
+      params: req?.params ?? {},
+      url: req?.url ?? '/',
+      query: req?.query ?? {},
+    },
     currentuser: {
       sub: user._id.toString(),
       uid: user.uid,
@@ -86,7 +95,7 @@ describe('ClientController Integration Tests', () => {
       userCache,
       permissionService,
       vendorService,
-      emitterService: {} as any,
+      emitterService: { emit: jest.fn(), on: jest.fn() } as any,
       paymentDAO: {} as any,
       leaseDAO: {} as any,
       maintenanceRequestDAO: {} as any,
@@ -95,10 +104,11 @@ describe('ClientController Integration Tests', () => {
 
     const authCache = {
       invalidateUserCache: jest.fn().mockResolvedValue(undefined),
+      invalidateUserSession: jest.fn().mockResolvedValue(undefined),
     } as any;
 
     const subscriptionDAO = {
-      findOne: jest.fn().mockResolvedValue({
+      findFirst: jest.fn().mockResolvedValue({
         planName: 'growth',
         currentSeats: 3,
         additionalSeatsCount: 2,
@@ -134,64 +144,97 @@ describe('ClientController Integration Tests', () => {
       next();
     });
 
+    const handle =
+      (
+        getCuid: ((req: any) => string) | 'param',
+        fn: (req: any, res: any) => Promise<void>
+      ) =>
+      async (req: any, res: any, next: any) => {
+        const cuid = getCuid === 'param' ? req.params.cuid : getCuid(req);
+        req.context = mockContext(adminUser, cuid, req) as any;
+        try {
+          await fn(req, res);
+        } catch (err) {
+          next(err);
+        }
+      };
+
     // Setup routes matching client.routes.ts
-    app.get('/api/v1/clients/:cuid/client_details', async (req, res) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await clientController.getClient(req as any, res);
-    });
+    app.get(
+      '/api/v1/clients/:cuid/client_details',
+      handle((req) => testClient?.cuid ?? req.params.cuid, (req, res) =>
+        clientController.getClient(req, res)
+      )
+    );
 
-    app.patch('/api/v1/clients/:cuid/client_details', async (req, res) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await clientController.updateClientProfile(req as any, res);
-    });
+    app.patch(
+      '/api/v1/clients/:cuid/client_details',
+      handle('param', (req, res) => clientController.updateClientProfile(req, res))
+    );
 
-    app.post('/api/v1/clients/:cuid/users/:uid/disconnect', async (req, res) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await clientController.disconnectUser(req as any, res);
-    });
+    app.post(
+      '/api/v1/clients/:cuid/users/:uid/disconnect',
+      handle('param', (req, res) => clientController.disconnectUser(req, res))
+    );
 
-    app.post('/api/v1/clients/:cuid/users/:uid/reconnect', async (req, res) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await clientController.reconnectUser(req as any, res);
-    });
+    app.post(
+      '/api/v1/clients/:cuid/users/:uid/reconnect',
+      handle('param', (req, res) => clientController.reconnectUser(req, res))
+    );
 
-    app.get('/api/v1/clients/:cuid/users/:uid/roles', async (req, res) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await clientController.getUserRoles(req as any, res);
-    });
+    app.get(
+      '/api/v1/clients/:cuid/users/:uid/roles',
+      handle('param', (req, res) => clientController.getUserRoles(req, res))
+    );
 
-    app.post('/api/v1/clients/:cuid/users/:uid/roles', async (req, res) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await clientController.assignUserRole(req as any, res);
-    });
+    app.post(
+      '/api/v1/clients/:cuid/users/:uid/roles',
+      handle('param', (req, res) => clientController.assignUserRole(req, res))
+    );
 
-    app.delete('/api/v1/clients/:cuid/users/:uid/roles/:role', async (req, res) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await clientController.removeUserRole(req as any, res);
-    });
+    app.delete(
+      '/api/v1/clients/:cuid/users/:uid/roles/:role',
+      handle('param', (req, res) => clientController.removeUserRole(req, res))
+    );
 
-    app.patch('/api/v1/clients/:cuid/users/:uid/department', async (req, res) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await clientController.assignDepartment(req as any, res);
-    });
+    app.patch(
+      '/api/v1/clients/:cuid/users/:uid/department',
+      handle('param', (req, res) => clientController.assignDepartment(req, res))
+    );
 
-    app.post('/api/v1/clients/:cuid/verify-account', async (req, res) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await clientController.verifyAccount(req as any, res);
+    app.post(
+      '/api/v1/clients/:cuid/verify-account',
+      handle('param', (req, res) => clientController.verifyAccount(req, res))
+    );
+
+    app.patch(
+      '/api/v1/clients/:cuid/settings/tenant-features',
+      handle('param', (req, res) => clientController.updateTenantFeatures(req, res))
+    );
+
+    // Error handler — converts thrown errors to JSON responses
+    app.use((err: any, _req: any, res: any, _next: any) => {
+      const statusCode = err.statusCode || err.status || 500;
+      res.status(statusCode).json({
+        success: false,
+        message: err.message || 'Internal server error',
+        ...(err.errorInfo && { errorInfo: err.errorInfo }),
+      });
     });
   });
 
   beforeEach(async () => {
     await clearTestDatabase();
 
-    // Create test client and users
+    // createTestClient already creates an admin user (accountAdmin) with ROLES.ADMIN
     testClient = await createTestClient();
-    adminUser = await createTestUser(testClient.cuid, { roles: [ROLES.ADMIN] });
+    // Reuse the account admin created by createTestClient — avoids having 2 admins which
+    // breaks the "cannot disconnect last admin" guard (connectedAdmins.length would be 2)
+    adminUser = await User.findById(testClient.accountAdmin);
     managerUser = await createTestUser(testClient.cuid, { roles: [ROLES.MANAGER] });
     staffUser = await createTestUser(testClient.cuid, { roles: [ROLES.STAFF] });
 
-    // Create profiles for users
-    await createTestProfile(adminUser._id, testClient._id, { type: 'employee' });
+    // adminUser already has a profile from createTestClient; create profiles for the others
     await createTestProfile(managerUser._id, testClient._id, { type: 'employee' });
     await createTestProfile(staffUser._id, testClient._id, { type: 'employee' });
   });
@@ -223,8 +266,8 @@ describe('ClientController Integration Tests', () => {
         .expect(httpStatusCodes.OK);
 
       expect(response.body.data.settings).toBeDefined();
-      expect(response.body.data.settings.timezone).toBeDefined();
-      expect(response.body.data.settings.currency).toBeDefined();
+      expect(response.body.data.settings.timeZone).toBeDefined();
+      expect(response.body.data.settings.lang).toBeDefined();
     });
 
     it('should include subscription seat information in response', async () => {
@@ -258,8 +301,7 @@ describe('ClientController Integration Tests', () => {
       const updateData = {
         displayName: 'Updated Company Name',
         settings: {
-          timezone: 'America/Los_Angeles',
-          currency: 'USD',
+          timeZone: 'America/Los_Angeles',
         },
       };
 
@@ -281,7 +323,7 @@ describe('ClientController Integration Tests', () => {
       const originalName = testClient.displayName;
       const updateData = {
         settings: {
-          timezone: 'Europe/London',
+          timeZone: 'Europe/London',
         },
       };
 
@@ -433,7 +475,7 @@ describe('ClientController Integration Tests', () => {
         .expect(httpStatusCodes.FORBIDDEN);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('account admin');
+      expect(response.body.message).toContain('administrator');
     });
 
     it('should handle already disconnected user', async () => {
@@ -833,6 +875,80 @@ describe('ClientController Integration Tests', () => {
         expect(response.body.success).toBe(true);
         expect(response.body.data.isVerified).toBe(true);
       }
+    });
+  });
+
+  describe('PATCH /clients/:cuid/settings/tenant-features - updateTenantFeatures', () => {
+    it('should update a single tenant feature toggle', async () => {
+      const response = await request(app)
+        .patch(`/api/v1/clients/${testClient.cuid}/settings/tenant-features`)
+        .send({ maintenanceRequests: false })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+
+      const updated = await Client.findOne({ cuid: testClient.cuid });
+      expect(updated?.settings?.tenantFeatures?.maintenanceRequests).toBe(false);
+    });
+
+    it('should update multiple tenant feature toggles in one request', async () => {
+      const response = await request(app)
+        .patch(`/api/v1/clients/${testClient.cuid}/settings/tenant-features`)
+        .send({ onlinePayments: false, visitorPass: true })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+
+      const updated = await Client.findOne({ cuid: testClient.cuid });
+      expect(updated?.settings?.tenantFeatures?.onlinePayments).toBe(false);
+      expect(updated?.settings?.tenantFeatures?.visitorPass).toBe(true);
+    });
+
+    it('should enable tenantPortalActive', async () => {
+      // First disable
+      await Client.findOneAndUpdate(
+        { cuid: testClient.cuid },
+        { $set: { 'settings.tenantFeatures.tenantPortalActive': false } }
+      );
+
+      await request(app)
+        .patch(`/api/v1/clients/${testClient.cuid}/settings/tenant-features`)
+        .send({ tenantPortalActive: true })
+        .expect(httpStatusCodes.OK);
+
+      const updated = await Client.findOne({ cuid: testClient.cuid });
+      expect(updated?.settings?.tenantFeatures?.tenantPortalActive).toBe(true);
+    });
+
+    it('should return 404 for non-existent client', async () => {
+      const response = await request(app)
+        .patch('/api/v1/clients/nonexistent-cuid-xyz/settings/tenant-features')
+        .send({ maintenanceRequests: false })
+        .expect(httpStatusCodes.NOT_FOUND);
+
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should return 400 when no feature fields are provided', async () => {
+      const response = await request(app)
+        .patch(`/api/v1/clients/${testClient.cuid}/settings/tenant-features`)
+        .send({})
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should ignore unknown keys and only persist valid tenant feature fields', async () => {
+      const response = await request(app)
+        .patch(`/api/v1/clients/${testClient.cuid}/settings/tenant-features`)
+        .send({ maintenanceRequests: true, unknownField: 'should-be-ignored' })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+
+      const updated = await Client.findOne({ cuid: testClient.cuid });
+      expect(updated?.settings?.tenantFeatures?.maintenanceRequests).toBe(true);
+      expect((updated?.settings as any)?.unknownField).toBeUndefined();
     });
   });
 });

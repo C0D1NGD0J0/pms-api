@@ -18,7 +18,7 @@ const personalInfoSchema = z.object({
   lastName: z.string().min(2).max(25).optional(),
   displayName: z.string().min(2).max(45).optional(),
   location: z.string().max(100).optional(),
-  dob: z.date().optional(),
+  dob: z.coerce.date().optional(),
   avatar: z
     .object({
       url: z.string().url().optional(),
@@ -68,7 +68,7 @@ const employeeInfoSchema = z.object({
   department: z.nativeEnum(EmployeeDepartment).optional(),
   reportsTo: z.string().min(2).max(100).optional(),
   employeeId: z.string().min(3).max(20).optional(),
-  startDate: z.date().optional(),
+  startDate: z.coerce.date().optional(),
   permissions: z.array(z.string()).optional(),
 });
 
@@ -115,8 +115,8 @@ const documentSchema = z.object({
   filename: z.string().optional(),
   url: z.string().optional(),
   key: z.string().optional(),
-  uploadedAt: z.date().optional(),
-  expiryDate: z.date().optional(),
+  uploadedAt: z.coerce.date().optional(),
+  expiryDate: z.coerce.date().optional(),
   status: z.enum(['valid', 'expiring', 'expired', 'uploaded']).default('uploaded'),
 });
 
@@ -149,7 +149,7 @@ const tenantInfoSchema = z.object({
         .max(60, 'Duration cannot exceed 60 months')
         .optional(),
       rentAmount: z.number().min(0, 'Rent amount cannot be negative').optional(),
-      paymentDueDate: z.date().optional(),
+      paymentDueDate: z.coerce.date().optional(),
     })
     .optional(),
 

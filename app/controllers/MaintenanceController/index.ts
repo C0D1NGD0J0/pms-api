@@ -103,6 +103,15 @@ export class MaintenanceController {
     return res.status(httpStatusCodes.OK).json(result);
   }
 
+  async updateRequest(req: AppRequest, res: Response) {
+    const result = await this.maintenanceRequestService.updateRequest(
+      req.context,
+      req.params.mruid,
+      req.body
+    );
+    return res.status(httpStatusCodes.OK).json(result);
+  }
+
   async submitInvoice(req: AppRequest, res: Response) {
     const result = await this.maintenanceRequestService.submitInvoice(
       req.context,

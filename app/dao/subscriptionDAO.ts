@@ -32,7 +32,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
 
   async updateStatus(
     subscriptionId: string | Types.ObjectId,
-    status: 'active' | 'inactive' | 'pending_payment'
+    status: ISubscriptionStatus
   ): Promise<ISubscriptionDocument | null> {
     try {
       return await this.update(

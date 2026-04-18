@@ -1,16 +1,17 @@
 import { Document, Types } from 'mongoose';
 
+export enum ISubscriptionStatus {
+  PENDING_PAYMENT = 'pending_payment',
+  PAST_DUE = 'past_due',
+  INACTIVE = 'inactive',
+  ACTIVE = 'active',
+}
+
 export enum IPaymentGatewayProvider {
   PAYSTACK = 'paystack',
   STRIPE = 'stripe',
   PAYPAL = 'paypal',
   NONE = 'none',
-}
-
-export enum ISubscriptionStatus {
-  PENDING_PAYMENT = 'pending_payment',
-  INACTIVE = 'inactive',
-  ACTIVE = 'active',
 }
 
 export interface ISubscriptionPlansConfig {
@@ -155,7 +156,7 @@ export interface ISubscriptionEntitlements {
   };
   paymentFlow?: {
     requiresPayment: boolean;
-    reason: 'pending_signup' | 'expired' | 'grace_period' | null;
+    reason: 'pending_signup' | 'expired' | 'grace_period' | 'past_due' | null;
     gracePeriodEndsAt: Date | null;
     daysUntilDowngrade: number | null;
   };

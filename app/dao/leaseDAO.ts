@@ -1028,4 +1028,34 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       throw error;
     }
   }
+
+  async hasNonDraftLeaseForProperty(propertyObjectId: string, cuid: string): Promise<boolean> {
+    try {
+      const count = await this.countDocuments({
+        'property.id': new Types.ObjectId(propertyObjectId),
+        status: { $nin: [LeaseStatus.DRAFT] },
+        deletedAt: null,
+        cuid,
+      });
+      return count > 0;
+    } catch (error: any) {
+      this.log.error('Error checking lease history for property:', error);
+      throw error;
+    }
+  }
+
+  async hasNonDraftLeaseForUnit(unitObjectId: string, cuid: string): Promise<boolean> {
+    try {
+      const count = await this.countDocuments({
+        'property.unitId': new Types.ObjectId(unitObjectId),
+        status: { $nin: [LeaseStatus.DRAFT] },
+        deletedAt: null,
+        cuid,
+      });
+      return count > 0;
+    } catch (error: any) {
+      this.log.error('Error checking lease history for unit:', error);
+      throw error;
+    }
+  }
 }

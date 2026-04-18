@@ -56,6 +56,7 @@ export interface ICurrentUser {
   };
   client: {
     clientSettings?: any;
+    tenantFeatures?: import('@interfaces/client.interface').ITenantFeatureSettings;
     cuid: string;
     displayname: string;
     linkedVendorUid?: string;

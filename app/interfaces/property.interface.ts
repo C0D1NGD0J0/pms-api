@@ -177,6 +177,29 @@ export interface IPropertyAuthorization {
 }
 
 /**
+ * Property with Unit Info Interface
+ * Using intersection type for property with unit statistics
+ */
+export type IPropertyWithUnitInfo = {
+  unitInfo?: UnitInfo;
+  hasLeaseHistory?: boolean;
+  metrics?: {
+    monthlyRent: number;
+    annualRevenue: number;
+    occupancyRate: number;
+    monthlyNetIncome: number;
+  };
+  paymentHistory?: any[];
+  maintenanceHistory?: any[];
+} & Partial<{ property: IPropertyDocument }>;
+
+/**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
+
+/**
  * Financial Details Interface
  */
 export interface FinancialDetails {
@@ -191,28 +214,6 @@ export interface FinancialDetails {
   propertyTax?: number;
   purchaseDate?: Date;
 }
-
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
-
-/**
- * Property with Unit Info Interface
- * Using intersection type for property with unit statistics
- */
-export type IPropertyWithUnitInfo = {
-  unitInfo?: UnitInfo;
-  metrics?: {
-    monthlyRent: number;
-    annualRevenue: number;
-    occupancyRate: number;
-    monthlyNetIncome: number;
-  };
-  paymentHistory?: any[];
-  maintenanceHistory?: any[];
-} & Partial<{ property: IPropertyDocument }>;
 
 /**
  * Media Document Item Interface

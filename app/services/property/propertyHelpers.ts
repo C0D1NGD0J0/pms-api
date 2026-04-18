@@ -1,9 +1,11 @@
 import { t } from '@shared/languages';
+import { LeaseDAO } from '@dao/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ValidationRequestError } from '@shared/customErrors';
 import { IPropertyDocument } from '@interfaces/property.interface';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import {
+  IMMUTABLE_PROPERTY_FIELDS_WITH_LEASE_HISTORY,
   PROPERTY_APPROVAL_ROLES,
   convertUserRoleToEnum,
   PROPERTY_STAFF_ROLES,
@@ -173,6 +175,38 @@ export const validateOccupancyStatusChange = (
     throw new ValidationRequestError({
       message: t('property.errors.occupancyValidationFailed'),
       errorInfo: { occupancyStatus: errors },
+    });
+  }
+};
+
+/**
+ * Throws if any update fields are structurally immutable due to non-draft lease history.
+ * Applies to ALL roles — no admin bypass — because these fields appear on legal lease documents.
+ *
+ * Early-exits with no DB call when the payload contains no locked fields.
+ */
+export const validatePropertyLeaseImmutableFields = async (
+  property: IPropertyDocument,
+  cuid: string,
+  updateData: Partial<IPropertyDocument>,
+  leaseDAO: LeaseDAO
+): Promise<void> => {
+  const lockedFieldsAttempted = Object.keys(updateData).filter((f) =>
+    (IMMUTABLE_PROPERTY_FIELDS_WITH_LEASE_HISTORY as readonly string[]).includes(f)
+  );
+
+  if (lockedFieldsAttempted.length === 0) return;
+
+  const hasLeaseHistory = await leaseDAO.hasNonDraftLeaseForProperty(property._id.toString(), cuid);
+
+  if (hasLeaseHistory) {
+    throw new ValidationRequestError({
+      message: 'Cannot modify structural fields on a property with active or historical leases',
+      errorInfo: {
+        fields: lockedFieldsAttempted.map(
+          (f) => `'${f}' is locked — this property has or has had a non-draft lease`
+        ),
+      },
     });
   }
 };

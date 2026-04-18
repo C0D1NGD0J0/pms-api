@@ -90,6 +90,7 @@ export class SubscriptionService {
         | 'payment_failed'
         | 'subscription_canceled'
         | 'subscription_updated'
+        | 'subscription_expired'
         | 'seats_purchased';
       subscription: {
         plan: string;
@@ -546,7 +547,7 @@ export class SubscriptionService {
       const config = subscriptionPlanConfig.getConfig(subscription.planName);
       const now = new Date();
       let requiresPayment = false;
-      let reason: 'pending_signup' | 'expired' | 'grace_period' | null = null;
+      let reason: 'pending_signup' | 'expired' | 'grace_period' | 'past_due' | null = null;
       let gracePeriodEndsAt: Date | null = null;
       let daysUntilDowngrade: number | null = null;
 
@@ -564,6 +565,17 @@ export class SubscriptionService {
           if (daysUntilDowngrade <= 1) {
             reason = 'grace_period';
           }
+        }
+      }
+
+      if (isSuperAdmin && subscription.status === ISubscriptionStatus.PAST_DUE) {
+        requiresPayment = true;
+        reason = 'past_due';
+        gracePeriodEndsAt = subscription.pendingDowngradeAt || null;
+
+        if (subscription.pendingDowngradeAt) {
+          const msUntilDowngrade = subscription.pendingDowngradeAt.getTime() - now.getTime();
+          daysUntilDowngrade = msToDays(msUntilDowngrade);
         }
       }
 
@@ -1375,11 +1387,14 @@ export class SubscriptionService {
           throw new BadRequestError({ message: 'Subscription not found' });
         }
 
+        const gracePeriodEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
         const updatedSubscription = await this.subscriptionDAO.update(
           { _id: subscription._id },
           {
             $set: {
-              status: ISubscriptionStatus.INACTIVE,
+              status: ISubscriptionStatus.PAST_DUE,
+              pendingDowngradeAt: gracePeriodEndsAt,
             },
           },
           undefined,
@@ -1396,8 +1411,9 @@ export class SubscriptionService {
             stripeSubscriptionId,
             invoiceId,
             attemptCount,
+            gracePeriodEndsAt,
           },
-          'Payment failed - subscription marked as inactive'
+          'Payment failed - subscription marked past_due with 7-day grace period'
         );
 
         return updatedSubscription;
@@ -1536,6 +1552,11 @@ export class SubscriptionService {
         // Ensure subscriberId is linked (in case customer.subscription.created was missed)
         if (!subscription.billing?.subscriberId) {
           updateData['billing.subscriberId'] = stripeSubscriptionId;
+        }
+      } else if (status === 'past_due') {
+        updateData.status = ISubscriptionStatus.PAST_DUE;
+        if (!subscription.pendingDowngradeAt) {
+          updateData.pendingDowngradeAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
         }
       } else if (status === 'canceled' || status === 'unpaid') {
         updateData.status = ISubscriptionStatus.INACTIVE;
@@ -1747,39 +1768,58 @@ export class SubscriptionService {
   async processExpiredSubscriptions(): Promise<void> {
     try {
       const now = new Date();
+
       const expiredSubscriptions = await Subscription.find({
         status: ISubscriptionStatus.ACTIVE,
         endDate: { $lt: now },
         planName: { $ne: 'essential' },
       });
 
-      if (expiredSubscriptions.length === 0) {
-        this.log.info('No expired subscriptions found');
+      const gracePeriodExpired = await Subscription.find({
+        status: ISubscriptionStatus.PAST_DUE,
+        pendingDowngradeAt: { $lt: now },
+        planName: { $ne: 'essential' },
+      });
+
+      const toDeactivate = [...expiredSubscriptions, ...gracePeriodExpired];
+
+      if (toDeactivate.length === 0) {
+        this.log.info('No expired or past-due subscriptions found');
         return;
       }
 
-      for (const subscription of expiredSubscriptions) {
+      this.log.info(
+        {
+          expiredCount: expiredSubscriptions.length,
+          gracePeriodExpiredCount: gracePeriodExpired.length,
+        },
+        'Processing subscriptions to deactivate'
+      );
+
+      for (const subscription of toDeactivate) {
         try {
+          const isPastDue = subscription.status === ISubscriptionStatus.PAST_DUE;
+
           await this.subscriptionDAO.update(
             { _id: subscription._id },
             { $set: { status: ISubscriptionStatus.INACTIVE } }
           );
 
-          // Notify account admin via SSE
           await this.notifyAccountAdminViaSSE(subscription.cuid, {
-            type: 'subscription_updated',
+            type: isPastDue ? 'subscription_expired' : 'subscription_updated',
             subscription: {
               plan: subscription.planName,
               status: ISubscriptionStatus.INACTIVE,
               endDate: subscription.endDate,
             },
-            message:
-              'Your subscription has expired. Please renew to continue using premium features.',
+            message: isPastDue
+              ? 'Your grace period has ended. Please renew your subscription to restore access.'
+              : 'Your subscription has expired. Please renew to continue using premium features.',
           });
 
           this.log.info(
-            { subscriptionId: subscription._id, cuid: subscription.cuid },
-            'Marked expired subscription as inactive'
+            { subscriptionId: subscription._id, cuid: subscription.cuid, wasPastDue: isPastDue },
+            'Marked subscription as inactive'
           );
         } catch (error) {
           this.log.error(

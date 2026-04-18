@@ -8,6 +8,7 @@ import { PdfGeneratorService } from '@services/pdfGenerator';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { calculateProRatedAmount } from '@services/lease/leaseHelpers';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenanceInvoiceApprovedPayload, EventTypes } from '@interfaces/events.interface';
 import {
@@ -352,8 +353,35 @@ export class PaymentService implements ICronProvider {
         throw new BadRequestError({ message: 'Payment account verification incomplete' });
       }
 
-      const leaseFees = lease.calculateFees({ daysLate: data.daysLate });
-      const totalAmountInCents = leaseFees.monthly.total + (leaseFees.late.fee || 0);
+      // Auto-calculate daysLate when not provided but period is known
+      let effectiveDaysLate = data.daysLate ?? 0;
+      if (data.daysLate === undefined && data.period) {
+        const expectedDueDate = new Date(
+          data.period.year,
+          data.period.month - 1,
+          lease.fees.rentDueDay
+        );
+        const msPerDay = 1000 * 60 * 60 * 24;
+        effectiveDaysLate = Math.max(
+          0,
+          Math.floor((Date.now() - expectedDueDate.getTime()) / msPerDay)
+        );
+      }
+
+      // Detect first payment — auto-include security deposit and pro-rated rent
+      const existingPaymentCount = await this.paymentDAO.countDocuments({
+        lease: lease._id,
+        cuid,
+        deletedAt: null,
+      });
+      const isFirstPayment = existingPaymentCount === 0;
+
+      const leaseFees = lease.calculateFees({ daysLate: effectiveDaysLate });
+      const lineItems = this.buildLineItemsFromFees(leaseFees, {
+        isFirstPayment,
+        startDate: lease.duration.startDate,
+      });
+      const totalAmountInCents = lineItems.reduce((sum, item) => sum + item.amountInCents, 0);
       const transactionFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(
         subscription.planName
       );
@@ -390,7 +418,6 @@ export class PaymentService implements ICronProvider {
         });
       }
 
-      const lineItems = this.buildLineItemsFromFees(leaseFees);
       const invoiceResult = await this.paymentGatewayService.createInvoice(
         IPaymentGatewayProvider.STRIPE,
         {
@@ -948,30 +975,43 @@ export class PaymentService implements ICronProvider {
    * @param fees - Pre-calculated fees from lease.calculateFees()
    * @returns Array of line items with amounts in cents
    */
-  private buildLineItemsFromFees(fees: {
-    monthly: { rent: number; petFee: number; total: number };
-    late: {
-      daysLate: number;
-      fee: number;
-      type: string;
-      percentage: number;
-      gracePeriod: number;
-    };
-    deposits: { security: number; pet: number; total: number };
-    currency: string;
-  }): Array<{
+  private buildLineItemsFromFees(
+    fees: {
+      monthly: { rent: number; petFee: number; total: number };
+      late: {
+        daysLate: number;
+        fee: number;
+        type: string;
+        percentage: number;
+        gracePeriod: number;
+      };
+      deposits: { security: number; pet: number; total: number };
+      currency: string;
+    },
+    options?: { isFirstPayment?: boolean; startDate?: Date }
+  ): Array<{
     description: string;
     amountInCents: number;
     quantity?: number;
   }> {
     const lineItems = [];
 
-    // Monthly rent (required)
+    // Monthly rent — pro-rated on first payment when tenant moves in mid-month
     if (fees.monthly.rent > 0) {
-      lineItems.push({
-        description: 'Monthly Rent',
-        amountInCents: fees.monthly.rent,
-      });
+      let rentAmount = fees.monthly.rent;
+      let rentDescription = 'Monthly Rent';
+
+      if (options?.isFirstPayment && options?.startDate) {
+        const proRated = calculateProRatedAmount(fees.monthly.rent, options.startDate);
+        if (!proRated.isFullMonth) {
+          rentAmount = proRated.amount;
+          const start = new Date(options.startDate);
+          const monthName = start.toLocaleString('default', { month: 'short' });
+          rentDescription = `Pro-rated Rent (${monthName}: ${proRated.daysCharged} of ${proRated.daysInMonth} days)`;
+        }
+      }
+
+      lineItems.push({ description: rentDescription, amountInCents: rentAmount });
     }
 
     // Pet fee (if applicable)
@@ -992,6 +1032,14 @@ export class PaymentService implements ICronProvider {
       lineItems.push({
         description: lateFeeDesc,
         amountInCents: fees.late.fee,
+      });
+    }
+
+    // Security deposit — collected once with the first payment
+    if (options?.isFirstPayment && fees.deposits.security > 0) {
+      lineItems.push({
+        description: 'Security Deposit',
+        amountInCents: fees.deposits.security,
       });
     }
 

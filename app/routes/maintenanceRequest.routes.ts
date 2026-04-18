@@ -45,9 +45,7 @@ router.post(
   })
 );
 
-// All routes below require authentication
 router.use(isAuthenticated, basicLimiter());
-
 router
   .route('/:cuid')
   .post(
@@ -164,7 +162,7 @@ router.patch(
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
-    body: MaintenanceValidations.updateBody,
+    body: MaintenanceValidations.createBody,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<MaintenanceController>('maintenanceController');

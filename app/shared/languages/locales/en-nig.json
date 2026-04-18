@@ -74,6 +74,7 @@
       "userAlreadyHasRole": "User already get role {{role}}",
       "cannotRemoveLastAdmin": "We no fit remove admin role from the last administrator",
       "cannotDisconnectLastAdmin": "We no fit disconnect the last administrator",
+      "roleNotFound": "User no get the role wey you specify",
       "cannotDeleteAccountOwner": "We no fit delete account owner. Please transfer ownership to another admin or close your account instead.",
       "clientIdRequired": "Client ID dey needed",
       "identitySessionFailed": "We no fit start identity verification. Please try again.",

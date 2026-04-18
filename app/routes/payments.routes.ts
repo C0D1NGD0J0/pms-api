@@ -6,6 +6,7 @@ import { UtilsValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
   requireVerifiedClient,
+  requireActiveTenant,
   requirePermission,
   isAuthenticated,
   basicLimiter,
@@ -51,6 +52,7 @@ router.get(
 router.post(
   '/:cuid',
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
+  requireActiveTenant('onlinePayments'),
   requireVerifiedClient,
   idempotency,
   validateRequest({

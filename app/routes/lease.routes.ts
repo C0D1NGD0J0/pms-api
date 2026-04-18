@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { LeaseController } from '@controllers/LeaseController';
+import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import { UtilsValidations, LeaseValidations, validateRequest } from '@shared/validations/index';
 import {
   subscriptionEntitlements,
   requireVerifiedClient,
+  requireActiveTenant,
+  requireFeatureFlag,
   requirePermission,
   isAuthenticated,
   requireFeature,
@@ -177,6 +180,7 @@ router.post(
   // Terminate lease early (tenant moves out before end date)
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  requireActiveTenant(),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -235,6 +239,8 @@ router
     // Send for e-signature OR mark as manually signed OR cancel signing
     basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+    requireActiveTenant(),
+    requireFeatureFlag(FeatureFlag.ESIGNATURE),
     subscriptionEntitlements,
     requireFeature('eSignature'),
     idempotency,

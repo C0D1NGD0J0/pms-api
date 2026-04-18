@@ -7,17 +7,13 @@ import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
 export { preventTenantConflict } from '@utils/helpers';
 import { NextFunction, Response, Request } from 'express';
-import { ROLE_GROUPS } from '@shared/constants/roles.constants';
+import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { LanguageService } from '@shared/languages/language.service';
+import { ITenantFeatureSettings } from '@interfaces/client.interface';
+import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { PermissionService } from '@services/permission/permission.service';
 import { InvalidRequestError, UnauthorizedError, ForbiddenError } from '@shared/customErrors';
 import { extractMulterFiles, generateShortUID, JWT_KEY_NAMES, createLogger } from '@utils/index';
-import {
-  EventEmitterService,
-  SubscriptionService,
-  AuthTokenService,
-  DiskStorage,
-} from '@services/index';
 import {
   RateLimitOptions,
   IPermissionCheck,
@@ -25,6 +21,13 @@ import {
   AppRequest,
   TokenType,
 } from '@interfaces/utils.interface';
+import {
+  EventEmitterService,
+  SubscriptionService,
+  FeatureFlagService,
+  AuthTokenService,
+  DiskStorage,
+} from '@services/index';
 import {
   ISubscriptionEntitlements,
   ISubscriptionStatus,
@@ -134,6 +137,21 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
           req.context.currentuser
         );
       }
+
+      // When a PM disables the tenant portal, ALL access is blocked — this is a hard suspension,
+      // not read-only mode. Disconnected/former tenants (isConnected === false) are handled
+      // separately in requireActiveTenant() and retain read-only access to their history.
+      if (req.context.currentuser?.client?.role === ROLES.TENANT) {
+        const tenantFeatures = req.context.currentuser.client?.tenantFeatures;
+        const isPortalSuspended = tenantFeatures?.tenantPortalActive === false;
+        if (isPortalSuspended) {
+          return next(
+            new ForbiddenError({
+              message: 'Tenant portal access has been disabled by your property manager.',
+            })
+          );
+        }
+      }
     }
 
     // contextbuilder is called here so params and query are available in the context
@@ -164,7 +182,7 @@ export const diskUpload =
     });
   };
 
-export const scanFile = async (req: Request, res: Response, next: NextFunction) => {
+export const scanFile = async (req: Request, _res: Response, next: NextFunction) => {
   const logger = createLogger('ScanFileMiddleware');
   const { emitterService }: { emitterService: EventEmitterService } = req.container.cradle;
 
@@ -601,6 +619,7 @@ export const requireActiveSubscription = (req: Request, _res: Response, next: Ne
   if (status === ISubscriptionStatus.INACTIVE || status === ISubscriptionStatus.PENDING_PAYMENT) {
     return next(new ForbiddenError({ message: t('auth.errors.subscriptionInactive') }));
   }
+  // PAST_DUE is allowed through — grace period is active, banner shown on frontend
   next();
 };
 
@@ -818,6 +837,72 @@ export const requireUserPermission = (action: PermissionAction | string) => {
     resourceId: req.params.userId || req.params.uid,
     ownerId: req.params.userId || req.params.uid, // For "mine" scope validation
   }));
+};
+
+/**
+ * Guard for tenant-role users: blocks write actions for former (disconnected) tenants
+ * and optionally gates a specific PM-controlled feature toggle.
+ * Fails open when tenantFeatures is absent to protect existing sessions.
+ */
+export const requireActiveTenant = (tenantFeature?: keyof ITenantFeatureSettings) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const currentUser = req.context?.currentuser;
+    if (!currentUser) {
+      return next(new UnauthorizedError({ message: t('auth.errors.unauthorized') }));
+    }
+
+    // Only applies to tenant-role users; all other roles pass through
+    if (currentUser.client?.role !== ROLES.TENANT) {
+      return next();
+    }
+
+    // Block former (disconnected) tenants from write-like actions
+    const activeConnection = currentUser.clients?.find(
+      (c: any) => c.cuid === currentUser.client.cuid
+    );
+    if (!activeConnection?.isConnected) {
+      return next(
+        new ForbiddenError({
+          message: t('auth.errors.connectionInactive'),
+        })
+      );
+    }
+
+    // Optionally gate a PM-controlled feature toggle
+    if (tenantFeature) {
+      const tenantFeatures = currentUser.client?.tenantFeatures;
+      // Fails open if tenantFeatures is absent (protects existing sessions)
+      if (tenantFeatures && tenantFeatures[tenantFeature] === false) {
+        return next(
+          new ForbiddenError({
+            message: 'This feature has been disabled by your property manager.',
+          })
+        );
+      }
+    }
+
+    next();
+  };
+};
+
+/**
+ * Sync middleware that blocks requests when a platform-level feature flag is disabled.
+ * Reads env-var-based flags via FeatureFlagService; defaults to enabled.
+ */
+export const requireFeatureFlag = (flag: FeatureFlag) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const { featureFlagService }: { featureFlagService: FeatureFlagService } = req.container.cradle;
+
+    if (!featureFlagService.isEnabled(flag)) {
+      return next(
+        new ForbiddenError({
+          message: 'This feature is currently unavailable.',
+        })
+      );
+    }
+
+    next();
+  };
 };
 
 export const idempotency = async (

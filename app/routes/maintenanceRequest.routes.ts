@@ -7,6 +7,7 @@ import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/ut
 import {
   requirePermissionWithContext,
   subscriptionEntitlements,
+  requireActiveTenant,
   requirePermission,
   isAuthenticated,
   requireFeature,
@@ -51,6 +52,7 @@ router
   .route('/:cuid')
   .post(
     requirePermission(PermissionResource.MAINTENANCE, PermissionAction.CREATE),
+    requireActiveTenant('maintenanceRequests'),
     subscriptionEntitlements,
     requireFeature('RepairRequestService'),
     idempotency,
@@ -149,6 +151,24 @@ router.patch(
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<MaintenanceController>('maintenanceController');
     return controller.updateStatus(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/:mruid/update_request',
+  requirePermissionWithContext(
+    PermissionResource.MAINTENANCE,
+    PermissionAction.UPDATE,
+    roleBasedContext
+  ),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
+    body: MaintenanceValidations.updateBody,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<MaintenanceController>('maintenanceController');
+    return controller.updateRequest(req, res);
   })
 );
 

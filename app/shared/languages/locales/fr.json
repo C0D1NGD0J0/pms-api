@@ -96,6 +96,7 @@
       "userAlreadyHasRole": "L'utilisateur a déjà le rôle {{role}}",
       "cannotRemoveLastAdmin": "Impossible de supprimer le rôle administrateur du dernier administrateur",
       "cannotDisconnectLastAdmin": "Impossible de déconnecter le dernier administrateur",
+      "roleNotFound": "L'utilisateur ne possède pas le rôle spécifié",
       "cannotDeleteAccountOwner": "Impossible de supprimer le propriétaire du compte. Veuillez transférer la propriété à un autre administrateur ou fermer votre compte.",
       "clientIdRequired": "ID client requis",
       "identitySessionFailed": "Échec de l'initiation de la vérification d'identité. Veuillez réessayer.",

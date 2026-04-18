@@ -4,7 +4,9 @@ import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
+import { BadRequestError } from '@shared/customErrors/index';
 import { ClientService } from '@services/client/client.service';
+import { UpdateClientDetailsSchema } from '@shared/validations/ClientValidation/schemas';
 
 export class ClientController {
   private readonly log: Logger;
@@ -17,11 +19,21 @@ export class ClientController {
 
   updateClientProfile = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-    const updateData = req.body;
+
+    const parsed = UpdateClientDetailsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new BadRequestError({
+        message: parsed.error.errors[0]?.message || 'Invalid update data',
+      });
+    }
+    const updateData = parsed.data;
 
     this.log.info(`Updating client profile for cuid: ${cuid}`);
 
-    const updatedClient = await this.clientService.updateClientDetails(req.context, updateData);
+    const updatedClient = await this.clientService.updateClientDetails(
+      req.context,
+      updateData as any
+    );
 
     res.status(httpStatusCodes.OK).json({
       success: true,
@@ -83,6 +95,11 @@ export class ClientController {
 
   initiateIdentityVerification = async (req: AppRequest, res: Response) => {
     const result = await this.clientService.initiateIdentityVerification(req.context);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  updateTenantFeatures = async (req: AppRequest, res: Response) => {
+    const result = await this.clientService.updateTenantFeatures(req.context, req.body);
     res.status(httpStatusCodes.OK).json(result);
   };
 }

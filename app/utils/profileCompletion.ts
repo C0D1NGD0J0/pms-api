@@ -2,7 +2,7 @@ import { IClientDocument } from '@interfaces/client.interface';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { IUserRoleType, ROLES } from '@shared/constants/roles.constants';
 
-import { calcPercentage } from './calculations';
+import { calcPercentage } from './math.utils';
 
 export interface ICompletionSection {
   fields: ICompletionField[];

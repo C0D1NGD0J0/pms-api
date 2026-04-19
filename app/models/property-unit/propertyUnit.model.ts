@@ -2,6 +2,7 @@ import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/index';
 import uniqueValidator from 'mongoose-unique-validator';
 import { CURRENCIES } from '@interfaces/utils.interface';
+import { calcRentAdjustment } from '@utils/financial.utils';
 import {
   PropertyUnitStatusEnum,
   IPropertyUnitDocument,
@@ -254,19 +255,7 @@ PropertyUnitSchema.pre('save', function (this: IPropertyUnitDocument, next) {
 });
 
 PropertyUnitSchema.methods.calculateRentAdjustment = function (percentage: number) {
-  if (percentage < -100) {
-    throw new Error('Percentage cannot be less than -100%');
-  }
-
-  const oldAmount = this.fees.rentAmount;
-  const newAmount = oldAmount * (1 + percentage / 100);
-
-  return {
-    oldAmount,
-    newAmount,
-    difference: newAmount - oldAmount,
-    percentageApplied: percentage,
-  };
+  return calcRentAdjustment(this.fees.rentAmount, percentage);
 };
 
 PropertyUnitSchema.methods.applyRentAdjustment = async function (

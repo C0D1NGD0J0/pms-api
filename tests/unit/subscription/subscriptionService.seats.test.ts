@@ -103,7 +103,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         status: ISubscriptionStatus.ACTIVE,
         additionalSeatsCount: 0,
         additionalSeatsCost: 0,
-        totalMonthlyPrice: 29,
+        totalMonthlyPrice: 2900, // $29.00 in cents
         currentSeats: 8,
         billing: {
           subscriberId: 'sub_stripe123',
@@ -140,8 +140,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
         additionalSeatsCount: 5,
-        additionalSeatsCost: 39.95, // 5 * $7.99
-        totalMonthlyPrice: 68.95, // $29 + $39.95
+        additionalSeatsCost: 3995, // 5 * 799¢
+        totalMonthlyPrice: 6895, // 2900¢ + 3995¢
         billing: {
           ...mockSubscription.billing,
           seatItemId: 'si_new123',
@@ -167,8 +167,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
         {
           $inc: { additionalSeatsCount: 5 },
           $set: {
-            additionalSeatsCost: 39.95, // 5 * $7.99
-            totalMonthlyPrice: 68.95, // $29 + $39.95
+            additionalSeatsCost: 3995, // 5 * 799¢
+            totalMonthlyPrice: 6895, // 2900¢ + 3995¢
             'billing.seatItemId': 'si_new123',
           },
         },
@@ -184,8 +184,9 @@ describe('SubscriptionService - Additional Seat Management', () => {
         planName: 'portfolio',
         billingInterval: 'monthly',
         additionalSeatsCount: 10,
-        additionalSeatsCost: 79.90,
-        totalMonthlyPrice: 129.90,
+        additionalSeatsCost: 7990, // 10 * 799¢
+        totalMonthlyPrice: 12990, // 5000¢ base + 7990¢
+
         currentSeats: 30,
         billing: {
           subscriberId: 'sub_stripe123',
@@ -382,8 +383,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
         planName: 'growth',
         billingInterval: 'monthly',
         additionalSeatsCount: 10,
-        additionalSeatsCost: 50,
-        totalMonthlyPrice: 79,
+        additionalSeatsCost: 5000, // 10 * 500¢
+        totalMonthlyPrice: 7900, // 2900¢ base + 5000¢
         currentSeats: 15, // 10 included + 5 in use from additional
         billing: {
           subscriberId: 'sub_stripe123',

@@ -21,22 +21,6 @@ jest.mock('@utils/index', () => ({
   generateShortUID: jest.fn(() => 'test-uid'),
   JWT_KEY_NAMES: {},
   extractMulterFiles: jest.fn(() => []),
-}));
-jest.mock('@utils/constants', () => ({
-  httpStatusCodes: {
-    OK: 200,
-    BAD_REQUEST: 400,
-    UNAUTHORIZED: 401,
-    FORBIDDEN: 403,
-    NOT_FOUND: 404,
-    INTERNAL_SERVER_ERROR: 500,
-  },
-}));
-jest.mock('@utils/index', () => ({
-  createLogger: jest.fn(() => mockLogger),
-  generateShortUID: jest.fn(() => 'test-uid'),
-  JWT_KEY_NAMES: {},
-  extractMulterFiles: jest.fn(() => []),
   httpStatusCodes: {
     OK: 200,
     BAD_REQUEST: 400,

@@ -18,8 +18,13 @@ export class FeatureFlagService {
         return envVariables.FEATURES.SMS_ENABLED;
       case FeatureFlag.MCP:
         return envVariables.FEATURES.MCP_ENABLED;
-      default:
-        return false;
+      default: {
+        // Exhaustiveness guard: a new FeatureFlag enum value was added without a case here.
+        // Throwing makes this immediately visible in dev/test rather than silently disabling
+        // the feature everywhere in production.
+        const unhandled: never = flag;
+        throw new Error(`Unhandled feature flag: ${String(unhandled)}`);
+      }
     }
   }
 }

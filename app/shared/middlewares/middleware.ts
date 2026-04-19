@@ -887,7 +887,9 @@ export const requireActiveTenant = (tenantFeature?: keyof ITenantFeatureSettings
 
 /**
  * Sync middleware that blocks requests when a platform-level feature flag is disabled.
- * Reads env-var-based flags via FeatureFlagService; defaults to enabled.
+ * Reads env-var-based flags via FeatureFlagService; known flags default to enabled
+ * (disabled only when the corresponding FEATURE_* env var is explicitly set to 'false').
+ * Unknown/unregistered flags throw — add a case to FeatureFlagService before using.
  */
 export const requireFeatureFlag = (flag: FeatureFlag) => {
   return (req: Request, _res: Response, next: NextFunction) => {

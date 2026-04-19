@@ -125,7 +125,7 @@ export class VendorController {
       }
 
       // Check if current user is the primary account holder
-      if (clientConnection.primaryAccountHolderUserId?.toString() !== currentUser.uid) {
+      if (clientConnection.primaryAccountHolderUserId?.toString() !== currentUser.sub) {
         res.status(httpStatusCodes.FORBIDDEN).json({
           success: false,
           message: 'Only primary account holders can access vendor edit data',
@@ -215,7 +215,7 @@ export class VendorController {
     }
 
     // Check if current user is the primary account holder
-    if (clientConnection.primaryAccountHolderUserId?.toString() !== currentUser.uid) {
+    if (clientConnection.primaryAccountHolderUserId?.toString() !== currentUser.sub) {
       res.status(httpStatusCodes.FORBIDDEN).json({
         success: false,
         message: 'Only primary account holders can update vendor business information',

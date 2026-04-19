@@ -307,8 +307,10 @@ UnitSchema.methods.calculateRentAdjustment = function (percentage: number) {
   if (percentage <= 0) {
     throw new Error('Adjustment percentage must be positive');
   }
-  // fees.rentAmount is stored as cents; the getter returns a display string so we parse it back
-  const currentRentCents = MoneyUtils.toCents(parseFloat(this.fees.rentAmount));
+  const currentRentCents = this.get('fees.rentAmount', null, { getters: false });
+  if (typeof currentRentCents !== 'number') {
+    throw new Error('Unit rent amount must be stored as a numeric cents value');
+  }
   return calcRentAdjustment(currentRentCents, percentage);
 };
 

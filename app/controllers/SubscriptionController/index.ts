@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { Response, Request } from 'express';
 import { SubscriptionService } from '@services/index';
 import { AppRequest } from '@interfaces/utils.interface';
+import { ROLES } from '@shared/constants/roles.constants';
 import { httpStatusCodes, createLogger } from '@utils/index';
 import { UnauthorizedError, ForbiddenError } from '@shared/customErrors';
 
@@ -43,7 +44,7 @@ export class SubscriptionController {
       throw new UnauthorizedError({ message: 'Unauthorized access' });
     }
 
-    if (currentuser.client.role !== 'super-admin') {
+    if (currentuser.client.role !== ROLES.SUPER_ADMIN) {
       throw new ForbiddenError({ message: 'Only account owner can manage billing' });
     }
 
@@ -60,7 +61,7 @@ export class SubscriptionController {
       throw new UnauthorizedError({ message: 'Unauthorized access' });
     }
 
-    if (currentuser.client.role !== 'super-admin') {
+    if (currentuser.client.role !== ROLES.SUPER_ADMIN) {
       throw new ForbiddenError({ message: 'Only account owner can cancel subscription' });
     }
 
@@ -77,7 +78,7 @@ export class SubscriptionController {
       throw new UnauthorizedError({ message: 'Unauthorized access' });
     }
 
-    if (currentuser.client.role !== 'super-admin') {
+    if (currentuser.client.role !== ROLES.SUPER_ADMIN) {
       throw new ForbiddenError({ message: 'Only account owner can sync subscription' });
     }
 
@@ -94,7 +95,7 @@ export class SubscriptionController {
       throw new UnauthorizedError({ message: 'Unauthorized access' });
     }
 
-    if (currentuser.client.role !== 'super-admin') {
+    if (currentuser.client.role !== ROLES.SUPER_ADMIN) {
       throw new ForbiddenError({ message: 'Only account owner can manage seats' });
     }
 

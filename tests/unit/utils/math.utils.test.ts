@@ -1,18 +1,18 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, expect, it } from '@jest/globals';
 import {
-  calcPercentage,
-  calcOccupancyRate,
   calcCollectionRate,
-  msToDays,
+  calcOccupancyRate,
   calcDaysRemaining,
-  calcDaysElapsed,
   calcLeaseProgress,
-  daysInMs,
-  roundToDecimal,
   calcPercentChange,
+  calcDaysElapsed,
+  calcPercentage,
+  roundToDecimal,
   calcTotalPages,
-  calcSkip,
   megabytes,
+  msToDays,
+  daysInMs,
+  calcSkip,
 } from '@utils/math.utils';
 
 describe('calcPercentage', () => {

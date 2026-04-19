@@ -1,8 +1,12 @@
+import dayjs from 'dayjs';
+import Decimal from 'decimal.js';
+
 // ── General ───────────────────────────────────────────────────────────────────
 
-/** Safe percentage: returns 0 when total is 0 to avoid division-by-zero. */
 export const calcPercentage = (value: number, total: number): number =>
-  total === 0 ? 0 : Math.round((value / total) * 100);
+  total === 0
+    ? 0
+    : new Decimal(value).div(total).times(100).toDecimalPlaces(0, Decimal.ROUND_HALF_UP).toNumber();
 
 // ── Property / Unit metrics ───────────────────────────────────────────────────
 
@@ -14,23 +18,34 @@ export const calcCollectionRate = (collected: number, expected: number): number 
 
 // ── Date / Time helpers ───────────────────────────────────────────────────────
 
-/** Milliseconds → whole days (ceiling). */
+/** Raw ms diff → whole days (ceiling). */
 export const msToDays = (ms: number): number => Math.ceil(ms / (1000 * 60 * 60 * 24));
 
-/** Days remaining until a future date (never negative). */
 export const calcDaysRemaining = (futureDate: Date, from = new Date()): number =>
-  Math.max(0, msToDays(futureDate.getTime() - from.getTime()));
+  Math.max(0, Math.ceil(dayjs(futureDate).diff(dayjs(from), 'day', true)));
 
-/** Days elapsed since a past date (never negative). */
 export const calcDaysElapsed = (pastDate: Date, from = new Date()): number =>
-  Math.max(0, msToDays(from.getTime() - pastDate.getTime()));
+  Math.max(0, Math.ceil(dayjs(from).diff(dayjs(pastDate), 'day', true)));
 
-/** Lease/period progress as a percentage. */
 export const calcLeaseProgress = (elapsed: number, remaining: number): number =>
   calcPercentage(elapsed, elapsed + remaining);
 
-/** n days expressed as milliseconds — replaces `n * 24 * 60 * 60 * 1000`. */
 export const daysInMs = (n: number): number => n * 24 * 60 * 60 * 1000;
+
+// ── Rounding ──────────────────────────────────────────────────────────────────
+
+export const roundToDecimal = (value: number, places: number): number =>
+  new Decimal(value).toDecimalPlaces(places, Decimal.ROUND_HALF_UP).toNumber();
+
+export const calcPercentChange = (recent: number, prior: number): number =>
+  prior === 0
+    ? 0
+    : new Decimal(recent)
+        .minus(prior)
+        .div(prior)
+        .times(100)
+        .toDecimalPlaces(1, Decimal.ROUND_HALF_UP)
+        .toNumber();
 
 // ── Pagination ────────────────────────────────────────────────────────────────
 
@@ -41,5 +56,4 @@ export const calcSkip = (page: number, limit: number): number => ((page || 1) - 
 
 // ── File size ─────────────────────────────────────────────────────────────────
 
-/** n megabytes in bytes — replaces `n * 1024 * 1024`. */
 export const megabytes = (n: number): number => n * 1024 * 1024;

@@ -1093,7 +1093,7 @@ export class ClientService {
         message:
           'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
         cuid,
-        targetRoles: [ROLES.ADMIN],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: {},
       });
 
@@ -1121,7 +1121,7 @@ export class ClientService {
         title: 'Payment Dispute Opened',
         message: `A dispute of ${amountFormatted} was filed for invoice ${invoiceNumber}. The transfer has been reversed pending resolution.`,
         cuid,
-        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: { disputeId, chargeId, invoiceNumber, amount, currency, reason },
       });
     } catch (error) {
@@ -1146,7 +1146,7 @@ export class ClientService {
         title: 'Dispute Resolved — Funds Returned',
         message: `The dispute for invoice ${invoiceNumber} was resolved in your favor. ${amountFormatted} has been re-transferred to your account.`,
         cuid,
-        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: { disputeId, chargeId, invoiceNumber, amount, currency },
       });
     } catch (error) {
@@ -1171,7 +1171,7 @@ export class ClientService {
         title: 'Dispute Lost — Payouts Blocked',
         message: `The dispute for invoice ${invoiceNumber} was lost. ${amountFormatted} has been debited from the platform account. Payouts have been blocked pending review.`,
         cuid,
-        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: { disputeId, chargeId, invoiceNumber, amount, currency },
       });
     } catch (error) {
@@ -1233,7 +1233,7 @@ export class ClientService {
         title: 'Dispute Transfer Reversal Failed — Payouts Blocked',
         message: `The transfer reversal for dispute ${disputeId} failed (${amountFormatted}). Payouts have been blocked automatically. Manual review required.`,
         cuid,
-        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: { disputeId, transferId, amount, currency },
       });
     } catch (error) {

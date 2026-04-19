@@ -227,6 +227,7 @@ export interface IEmployeeDetailInfo {
   hireDate: Date | string;
   employmentType: string;
   directManager: string;
+  supervisorUid: string;
   department: string;
   employeeId: string;
   position: string;

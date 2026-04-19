@@ -905,15 +905,15 @@ export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
     Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30))
   );
 
-  // Pro-rated first month (amounts in dollars; multiply by 100 for cents, divide back)
-  const monthlyRentInCents = Math.round(totalMonthlyRent * 100);
-  const proRated = calculateProRatedAmount(monthlyRentInCents, startDate);
-  const proRatedAmountDollars = proRated.amount / 100;
+  // All amounts are in cents — totalMonthlyRent and securityDeposit come from the DB in cents.
+  // calculateProRatedAmount expects and returns cents; only format at the very end.
+  const proRated = calculateProRatedAmount(totalMonthlyRent, startDate);
+  const proRatedAmountCents = proRated.amount;
 
-  // First payment = pro-rated rent + security deposit (bundled at move-in)
-  const firstPaymentDollars = proRatedAmountDollars + securityDeposit;
+  // First payment in cents = pro-rated rent + security deposit (bundled at move-in)
+  const firstPaymentCents = proRatedAmountCents + securityDeposit;
 
-  const startMonth = startDate.toLocaleString('default', { month: 'short' });
+  const startMonth = startDate.toLocaleString('en-US', { month: 'short' });
 
   return {
     monthlyRent: MoneyUtils.formatCurrency(totalMonthlyRent, currency),
@@ -934,13 +934,13 @@ export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
     lastPaymentDate: null,
     nextPaymentDate: calculateNextPaymentDate(lease.fees.rentDueDay, startDate),
     // First-payment breakdown (pro-rated rent + security deposit at move-in)
-    proRatedFirstMonthAmount: proRatedAmountDollars,
-    proRatedFirstMonthFormatted: MoneyUtils.formatCurrency(proRatedAmountDollars, currency),
+    proRatedFirstMonthAmount: proRatedAmountCents,
+    proRatedFirstMonthFormatted: MoneyUtils.formatCurrency(proRatedAmountCents, currency),
     proRatedDays: proRated.daysCharged,
     proRatedDaysInMonth: proRated.daysInMonth,
     isFirstMonthFullMonth: proRated.isFullMonth,
-    firstPaymentAmount: firstPaymentDollars,
-    firstPaymentAmountFormatted: MoneyUtils.formatCurrency(firstPaymentDollars, currency),
+    firstPaymentAmount: firstPaymentCents,
+    firstPaymentAmountFormatted: MoneyUtils.formatCurrency(firstPaymentCents, currency),
     firstPaymentDate: startDate,
     firstPaymentMonth: startMonth,
   };

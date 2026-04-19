@@ -1006,7 +1006,7 @@ export class PaymentService implements ICronProvider {
         if (!proRated.isFullMonth) {
           rentAmount = proRated.amount;
           const start = new Date(options.startDate);
-          const monthName = start.toLocaleString('default', { month: 'short' });
+          const monthName = start.toLocaleString('en-US', { month: 'short' });
           rentDescription = `Pro-rated Rent (${monthName}: ${proRated.daysCharged} of ${proRated.daysInMonth} days)`;
         }
       }

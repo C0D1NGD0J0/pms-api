@@ -159,10 +159,11 @@ router.patch(
     PermissionAction.UPDATE,
     roleBasedContext
   ),
+  requireActiveTenant('maintenanceRequests'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
-    body: MaintenanceValidations.createBody,
+    body: MaintenanceValidations.updateBody,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<MaintenanceController>('maintenanceController');

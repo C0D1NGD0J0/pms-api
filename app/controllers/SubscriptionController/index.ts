@@ -69,6 +69,22 @@ export class SubscriptionController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  syncFromStripe = async (req: AppRequest, res: Response) => {
+    const { currentuser } = req.context;
+    const { cuid } = req.params;
+
+    if (!currentuser || currentuser.client.cuid !== cuid) {
+      throw new UnauthorizedError({ message: 'Unauthorized access' });
+    }
+
+    if (currentuser.client.role !== 'super-admin') {
+      throw new ForbiddenError({ message: 'Only account owner can sync subscription' });
+    }
+
+    const result = await this.subscriptionService.syncFromStripe(cuid);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   manageSeats = async (req: AppRequest, res: Response) => {
     const { currentuser } = req.context;
     const { cuid } = req.params;

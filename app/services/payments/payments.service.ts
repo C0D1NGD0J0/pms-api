@@ -2,10 +2,12 @@ import Logger from 'bunyan';
 import { FilterQuery, Types } from 'mongoose';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
+import { MoneyUtils } from '@utils/money.utils';
 import { PaymentQueue } from '@queues/payment.queue';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PdfGeneratorService } from '@services/pdfGenerator';
 import { SubscriptionPlanConfig } from '@services/subscription';
+import { calcApplicationFeeSplit } from '@utils/financial.utils';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { calculateProRatedAmount } from '@services/lease/leaseHelpers';
@@ -2172,17 +2174,16 @@ export class PaymentService implements ICronProvider {
     gatewayProcessingFee: number;
     platformNetRevenue: number;
   } {
-    const applicationFee = Math.round(totalAmount * transactionFeePercent);
-    const gatewayProcessingFee = this.subscriptionPlanConfig.calculatePaymentGatewayFee(
+    const { applicationFee, gatewayFee, platformRevenue } = calcApplicationFeeSplit(
       totalAmount,
-      provider
+      transactionFeePercent,
+      (amount) => this.subscriptionPlanConfig.calculatePaymentGatewayFee(amount, provider)
     );
-    const platformNetRevenue = applicationFee - gatewayProcessingFee;
 
     return {
       baseAmount: totalAmount,
-      gatewayProcessingFee,
-      platformNetRevenue,
+      gatewayProcessingFee: gatewayFee,
+      platformNetRevenue: platformRevenue,
       applicationFee,
     };
   }
@@ -2336,9 +2337,9 @@ export class PaymentService implements ICronProvider {
     ${(payment as any).period ? `<tr><td>Period</td><td>${(payment as any).period.month}/${(payment as any).period.year}</td></tr>` : ''}
     <tr><td>Due Date</td><td>${payment.dueDate.toLocaleDateString()}</td></tr>
     <tr><td>Paid On</td><td>${payment.paidAt?.toLocaleDateString() || '—'}</td></tr>
-    <tr><td>Rent Amount</td><td>$${(payment.baseAmount / 100).toFixed(2)}</td></tr>
-    ${payment.processingFee > 0 ? `<tr><td>Processing Fee</td><td>$${(payment.processingFee / 100).toFixed(2)}</td></tr>` : ''}
-    <tr class="total"><td>Total Paid</td><td>$${((payment.baseAmount + (payment.processingFee || 0)) / 100).toFixed(2)}</td></tr>
+    <tr><td>Rent Amount</td><td>$${MoneyUtils.centsToDisplay(payment.baseAmount)}</td></tr>
+    ${payment.processingFee > 0 ? `<tr><td>Processing Fee</td><td>$${MoneyUtils.centsToDisplay(payment.processingFee)}</td></tr>` : ''}
+    <tr class="total"><td>Total Paid</td><td>$${MoneyUtils.centsToDisplay(payment.baseAmount + (payment.processingFee || 0))}</td></tr>
   </table>
   <p style="color:#888; font-size:10px; margin-top:40px;">Generated ${new Date().toLocaleDateString()} · This is an official payment receipt.</p>
 </body>

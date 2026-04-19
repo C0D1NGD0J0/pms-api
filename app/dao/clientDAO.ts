@@ -1,4 +1,5 @@
 import Logger from 'bunyan';
+import { calcPercentage } from '@utils/math.utils';
 import { IUserDocument } from '@interfaces/user.interface';
 import { ListResultWithPagination } from '@interfaces/index';
 import { IUserRole } from '@shared/constants/roles.constants';
@@ -288,8 +289,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
         .map((roleName) => ({
           name: roleName.charAt(0).toUpperCase() + roleName.slice(1),
           value: roleCountMap[roleName] || 0,
-          percentage:
-            totalEmployees > 0 ? Math.round((roleCountMap[roleName] / totalEmployees) * 100) : 0,
+          percentage: calcPercentage(roleCountMap[roleName] || 0, totalEmployees),
         }))
         .filter((r) => r.value > 0)
         .sort((a, b) => b.value - a.value);
@@ -298,7 +298,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
         .map((dept: any) => ({
           name: dept._id.charAt(0).toUpperCase() + dept._id.slice(1),
           value: dept.count,
-          percentage: totalEmployees > 0 ? Math.round((dept.count / totalEmployees) * 100) : 0,
+          percentage: calcPercentage(dept.count, totalEmployees),
         }))
         .sort((a, b) => b.value - a.value);
 

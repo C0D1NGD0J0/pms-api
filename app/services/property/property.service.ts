@@ -7,6 +7,7 @@ import { PropertyCache } from '@caching/index';
 import { QueueFactory } from '@services/queue';
 import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
+import { estimateNetIncome } from '@utils/financial.utils';
 import { LeaseStatus, EventTypes } from '@interfaces/index';
 import { NotificationService } from '@services/notification';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
@@ -1588,8 +1589,7 @@ export class PropertyService {
       const occupiedUnits = unitInfo.unitStats?.occupied || activeLeases.length;
       const occupancyRate = calcOccupancyRate(occupiedUnits, totalUnits);
 
-      // Calculate net income (simplified: rent minus 10% for management/maintenance)
-      const monthlyNetIncome = Math.round(monthlyRent * 0.9);
+      const monthlyNetIncome = estimateNetIncome(monthlyRent);
 
       return {
         monthlyRent,

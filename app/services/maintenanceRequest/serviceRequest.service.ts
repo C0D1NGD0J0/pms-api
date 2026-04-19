@@ -29,6 +29,7 @@ import {
   IRespondToAssignmentPayload,
   ICreateMaintenanceRequest,
   IDeclineAssignmentPayload,
+  IUpdateMaintenancePayload,
   ICancelMaintenancePayload,
   MaintenanceRequestStatus,
   ISubmitWorkOrderPayload,
@@ -690,6 +691,55 @@ export class MaintenanceRequestService {
     });
 
     return { success: true, data: updated, message: t('maintenance.success.cancelled') };
+  }
+
+  async updateRequest(
+    ctx: IRequestContext,
+    mruid: string,
+    data: IUpdateMaintenancePayload
+  ): Promise<ISuccessReturnData> {
+    const { cuid } = ctx.request.params;
+    const request = await this.getRequestOrThrow(mruid, cuid);
+
+    if (
+      ![MaintenanceRequestStatus.PENDING, MaintenanceRequestStatus.OPEN].includes(request.status)
+    ) {
+      throw new ForbiddenError({
+        message: 'Request can only be edited when status is pending or open',
+      });
+    }
+
+    const updateFields: Record<string, unknown> = {};
+    if (data.title !== undefined) updateFields.title = data.title;
+    if (data.description !== undefined) updateFields.description = data.description;
+    if (data.category !== undefined) updateFields.category = data.category;
+    if (data.priority !== undefined) updateFields.priority = data.priority;
+    if (data.locationDescription !== undefined)
+      updateFields.locationDescription = data.locationDescription;
+    if (data.permissionToEnter !== undefined)
+      updateFields.permissionToEnter = data.permissionToEnter;
+    if (data.hasPet !== undefined) updateFields.hasPet = data.hasPet;
+    if (data.availabilityInfo !== undefined) updateFields.availabilityInfo = data.availabilityInfo;
+
+    const session = await this.maintenanceRequestDAO.startSession();
+    const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
+      return this.maintenanceRequestDAO.updateById(
+        request._id.toString(),
+        { $set: updateFields },
+        undefined,
+        session
+      );
+    });
+
+    this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_UPDATED, {
+      requestId: request._id.toString(),
+      mruid: request.mruid,
+      cuid,
+      previousStatus: request.status,
+      newStatus: request.status,
+    });
+
+    return { success: true, data: updated, message: t('maintenance.success.updated') };
   }
 
   async getStats(ctx: IRequestContext, pid?: string): Promise<ISuccessReturnData> {

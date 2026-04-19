@@ -12,13 +12,20 @@ import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.serv
 import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
 import { IPropertyUnitDocument, IPropertyUnit } from '@interfaces/propertyUnit.interface';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
-import { PropertyUnitDAO, SubscriptionDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import {
   ValidationRequestError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
 } from '@shared/customErrors';
+import {
+  PropertyUnitDAO,
+  SubscriptionDAO,
+  PropertyDAO,
+  ProfileDAO,
+  ClientDAO,
+  LeaseDAO,
+} from '@dao/index';
 import {
   ExtractedMediaFile,
   ISuccessReturnData,
@@ -37,6 +44,8 @@ import {
   megabytes,
 } from '@utils/index';
 
+import { validateUnitLeaseImmutableFields } from './propertyUnitHelpers';
+
 interface IConstructor {
   unitNumberingService: UnitNumberingService;
   emitterService: EventEmitterService;
@@ -47,6 +56,7 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
+  leaseDAO: LeaseDAO;
 }
 
 interface BatchUnitData {
@@ -58,6 +68,7 @@ interface BatchUnitData {
 export class PropertyUnitService {
   private readonly log: Logger;
   private readonly clientDAO: ClientDAO;
+  private readonly leaseDAO: LeaseDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly queueFactory: QueueFactory;
@@ -69,6 +80,7 @@ export class PropertyUnitService {
 
   constructor({
     clientDAO,
+    leaseDAO,
     profileDAO,
     propertyDAO,
     propertyUnitDAO,
@@ -79,6 +91,7 @@ export class PropertyUnitService {
     unitNumberingService,
   }: IConstructor) {
     this.clientDAO = clientDAO;
+    this.leaseDAO = leaseDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
     this.propertyCache = propertyCache;
@@ -478,6 +491,9 @@ export class PropertyUnitService {
       );
       throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
     }
+
+    // Enforce lease-history immutability (applies to all roles — no admin bypass)
+    await validateUnitLeaseImmutableFields(unit, cuid, updateData, this.leaseDAO);
 
     if (property.operationalStatus === 'inactive' || property.deletedAt) {
       this.log.error(

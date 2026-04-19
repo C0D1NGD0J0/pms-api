@@ -1,6 +1,19 @@
 import { z } from 'zod';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
+const TenantFeaturesSchema = z.object({
+  tenantPortalActive: z.boolean().optional(),
+  onlinePayments: z.boolean().optional(),
+  maintenanceRequests: z.boolean().optional(),
+  smsNotifications: z.boolean().optional(),
+  visitorPass: z.boolean().optional(),
+});
+
+export const UpdateTenantFeaturesSchema = TenantFeaturesSchema.refine(
+  (data) => Object.keys(data).length > 0,
+  { message: 'At least one tenant feature must be provided' }
+);
+
 export const ClientSettingsSchema = z.object({
   notificationPreferences: z
     .object({
@@ -29,6 +42,7 @@ export const ClientSettingsSchema = z.object({
     .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Invalid language code format')
     .optional(),
   vendorPayoutMode: z.enum(['express', 'platform_hold']).optional(),
+  tenantFeatures: TenantFeaturesSchema.optional(),
 });
 
 export const CompanyProfileSchema = z.object({

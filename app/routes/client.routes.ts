@@ -106,4 +106,18 @@ router.post(
   })
 );
 
+router.patch(
+  '/:cuid/settings/tenant-features',
+  requirePermission(PermissionResource.CLIENT, PermissionAction.SETTINGS),
+  idempotency,
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+    body: ClientValidations.updateTenantFeatures,
+  }),
+  asyncWrapper((req, res) => {
+    const clientController = req.container.resolve<ClientController>('clientController');
+    return clientController.updateTenantFeatures(req, res);
+  })
+);
+
 export default router;

@@ -168,6 +168,14 @@ export interface ILeaseDAO {
   getActiveLeaseByTenant(cuid: string, tenantId: string): Promise<ILeaseDocument | null>;
 
   /**
+   * Check if a property has any non-draft lease history (used for field-locking)
+   * @param propertyObjectId - MongoDB _id of the property (string)
+   * @param cuid - Client ID for tenant isolation
+   * @returns true if at least one non-draft lease exists for this property
+   */
+  hasNonDraftLeaseForProperty(propertyObjectId: string, cuid: string): Promise<boolean>;
+
+  /**
    * Get active lease for a unit
    * @param cuid - Client ID
    * @param unitId - Unit ID
@@ -182,6 +190,14 @@ export interface ILeaseDAO {
    * @returns Array of expiring leases
    */
   getExpiringLeases(cuid: string, daysAhead: number): Promise<ILeaseDocument[]>;
+
+  /**
+   * Check if a unit has any non-draft lease history (used for field-locking)
+   * @param unitObjectId - MongoDB _id of the property unit (string)
+   * @param cuid - Client ID for tenant isolation
+   * @returns true if at least one non-draft lease exists for this unit
+   */
+  hasNonDraftLeaseForUnit(unitObjectId: string, cuid: string): Promise<boolean>;
 
   /**
    * Get rent roll data with aggregation

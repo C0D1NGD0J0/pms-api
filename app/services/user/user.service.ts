@@ -512,7 +512,8 @@ export class UserService {
           user,
           profile,
           response.roles,
-          response.properties
+          response.properties,
+          clientId
         );
         break;
 
@@ -528,7 +529,8 @@ export class UserService {
           user,
           profile,
           response.roles,
-          response.properties
+          response.properties,
+          clientId
         );
         break;
 
@@ -553,7 +555,8 @@ export class UserService {
     user: IUserDocument,
     profile: { contactInfo?: any } & IProfileDocument,
     roles: any,
-    userManagedProperties: IUserProperty[]
+    userManagedProperties: IUserProperty[],
+    cuid: string
   ): Promise<IEmployeeDetailInfo> {
     const employeeInfo = profile.employeeInfo || {};
     const contactInfo = profile.contactInfo || {};
@@ -561,21 +564,46 @@ export class UserService {
     const hireDate = employeeInfo.startDate || user.createdAt;
     const tenure = this.calculateTenure(hireDate);
 
-    // Resolve supervisor name from reportsTo (ObjectId ref to User)
+    // Resolve supervisor name + uid from reportsTo (ObjectId or uid string).
+    // Always validates that the supervisor belongs to the same client (cuid)
+    // to prevent cross-tenant data leakage.
     let directManager = '';
+    let supervisorUid = '';
     const reportsToId = employeeInfo.reportsTo;
     if (reportsToId) {
       const idStr = reportsToId.toString();
       if (Types.ObjectId.isValid(idStr)) {
-        const supervisorProfile = await this.profileDAO.findFirst({
-          user: new Types.ObjectId(idStr),
-        });
-        if (supervisorProfile?.personalInfo) {
-          const { firstName, lastName, displayName } = supervisorProfile.personalInfo;
-          directManager = displayName || `${firstName || ''} ${lastName || ''}`.trim();
+        // Legacy path: stored as MongoDB ObjectId
+        const [supervisorProfile, supervisorUser] = await Promise.all([
+          this.profileDAO.findFirst({ user: new Types.ObjectId(idStr) }),
+          this.userDAO.getUserById(idStr),
+        ]);
+        // Verify supervisor belongs to the same client before exposing their info.
+        const belongsToClient = supervisorUser?.cuids?.some((c: any) => c.cuid === cuid);
+        if (belongsToClient) {
+          if (supervisorProfile?.personalInfo) {
+            const { firstName, lastName, displayName } = supervisorProfile.personalInfo;
+            directManager = displayName || `${firstName || ''} ${lastName || ''}`.trim();
+          }
+          if (supervisorUser?.uid) {
+            supervisorUid = supervisorUser.uid;
+          }
         }
       } else {
-        directManager = idStr;
+        // New path: stored as uid string
+        const supervisorUser = await this.userDAO.getUserByUId(idStr);
+        // Verify supervisor belongs to the same client before exposing their info.
+        const belongsToClient = supervisorUser?.cuids?.some((c: any) => c.cuid === cuid);
+        if (supervisorUser && belongsToClient) {
+          supervisorUid = idStr;
+          const supervisorProfile = await this.profileDAO.findFirst({
+            user: supervisorUser._id,
+          });
+          if (supervisorProfile?.personalInfo) {
+            const { firstName, lastName, displayName } = supervisorProfile.personalInfo;
+            directManager = displayName || `${firstName || ''} ${lastName || ''}`.trim();
+          }
+        }
       }
     }
 
@@ -587,6 +615,7 @@ export class UserService {
       department: employeeInfo.department || 'operations',
       position: this.determinePrimaryRole(roles),
       directManager,
+      supervisorUid,
 
       // Skills and expertise — keyed by department
       skills: (() => {

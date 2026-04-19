@@ -303,6 +303,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   clientDisplayName: '$displayName',
                   isVerified: 1,
                   vendorPayoutMode: '$settings.vendorPayoutMode',
+                  tenantFeatures: '$settings.tenantFeatures',
                 },
               },
             ],
@@ -491,6 +492,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   vendorPayoutMode: {
                     $ifNull: ['$$activeClientData.vendorPayoutMode', 'platform_hold'],
                   },
+                  tenantFeatures: { $ifNull: ['$$activeClientData.tenantFeatures', '$$REMOVE'] },
                   isPrimaryVendor: {
                     $cond: {
                       if: {

@@ -192,6 +192,57 @@ export const EDITABLE_FIELDS_BY_LEASE_STATUS: Record<string, string[]> = {
 };
 
 /**
+ * Property fields that become immutable once ANY non-draft lease exists for the property.
+ * These define the physical identity of the property and cannot change while a tenant
+ * relationship is or has been active.
+ */
+export const IMMUTABLE_PROPERTY_FIELDS_WITH_LEASE_HISTORY = ['address', 'propertyType'] as const;
+
+/**
+ * Property unit fields that become immutable once the unit has or has had any non-draft lease.
+ * These are structural identity fields that must remain stable for legal records.
+ */
+export const IMMUTABLE_UNIT_FIELDS_WITH_LEASE_HISTORY = [
+  'unitNumber',
+  'floor',
+  'unitType',
+  'propertyId',
+] as const;
+
+/**
+ * Payment statuses that indicate a finalized (terminal) payment — core financial fields are frozen.
+ */
+export const TERMINAL_PAYMENT_STATUSES = ['paid', 'refunded', 'cancelled', 'failed'] as const;
+
+/**
+ * Core payment fields that cannot be changed once a payment reaches a terminal status.
+ */
+export const IMMUTABLE_PAYMENT_FIELDS_WHEN_TERMINAL = [
+  'baseAmount',
+  'processingFee',
+  'lease',
+  'tenant',
+  'cuid',
+] as const;
+
+/**
+ * Maintenance request statuses that "close" the request and trigger field locking.
+ */
+export const CLOSED_MAINTENANCE_REQUEST_STATUSES = ['completed', 'cancelled'] as const;
+
+/**
+ * Maintenance request fields frozen once the request is completed or cancelled.
+ */
+export const IMMUTABLE_MAINTENANCE_REQUEST_FIELDS_WHEN_CLOSED = [
+  'title',
+  'description',
+  'propertyId',
+  'unitId',
+  'requestType',
+  'priority',
+] as const;
+
+/**
  * ISO-2 country codes supported by Stripe Connect.
  * Users signing up from countries not in this list will be blocked at signup
  * until an alternative payment provider (e.g. Paystack) is integrated.

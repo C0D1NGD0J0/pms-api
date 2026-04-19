@@ -11,7 +11,6 @@ import { ClientValidations } from '@shared/validations';
 import { EventEmitterService } from '@services/eventEmitter';
 import { getRequestDuration, createLogger } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
-import { IClientDocument, IClientStats } from '@interfaces/client.interface';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { IIdentitySessionResponse } from '@interfaces/paymentGateway.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
@@ -21,6 +20,11 @@ import { subscriptionPlanConfig } from '@services/subscription/subscription_plan
 import { ISuccessReturnData, IRequestContext, MailType } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
+import {
+  ITenantFeatureSettings,
+  IClientDocument,
+  IClientStats,
+} from '@interfaces/client.interface';
 import {
   SubscriptionDAO,
   PropertyUnitDAO,
@@ -333,6 +337,10 @@ export class ClientService {
       throw new NotFoundError({ message: t('client.errors.detailsNotFound') });
     }
 
+    if (cuid !== currentuser.client.cuid) {
+      throw new ForbiddenError({ message: t('client.errors.insufficientPermissions') });
+    }
+
     const responseData: any = {
       cuid: client.cuid,
       displayName: client.displayName,
@@ -356,6 +364,14 @@ export class ClientService {
         notificationPreferences: client.settings.notificationPreferences,
         timeZone: client.settings.timeZone,
         lang: client.settings.lang,
+        vendorPayoutMode: client.settings.vendorPayoutMode,
+        tenantFeatures: {
+          tenantPortalActive: client.settings.tenantFeatures?.tenantPortalActive ?? true,
+          onlinePayments: client.settings.tenantFeatures?.onlinePayments ?? true,
+          maintenanceRequests: client.settings.tenantFeatures?.maintenanceRequests ?? true,
+          smsNotifications: client.settings.tenantFeatures?.smsNotifications ?? true,
+          visitorPass: client.settings.tenantFeatures?.visitorPass ?? true,
+        },
       },
       clientStats: {
         totalProperties: propertiesResult,
@@ -374,6 +390,21 @@ export class ClientService {
         tradingName: client.companyProfile.tradingName,
         website: client.companyProfile.website,
         industry: client.companyProfile.industry,
+      };
+    }
+
+    // Return seat info for all authenticated users when subscription exists
+    if (subscription) {
+      const config = subscriptionPlanConfig.getConfig(subscription.planName);
+      responseData.currentSeats = subscription.currentSeats;
+      responseData.seatInfo = {
+        includedSeats: config.seatPricing.includedSeats,
+        additionalSeats: subscription.additionalSeatsCount,
+        totalAvailable: config.seatPricing.includedSeats + subscription.additionalSeatsCount,
+        maxAdditionalSeats: config.seatPricing.maxAdditionalSeats,
+        availableForPurchase:
+          config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
+        additionalSeatCost: subscription.additionalSeatsCost,
       };
     }
 
@@ -435,7 +466,7 @@ export class ClientService {
       throw new BadRequestError({ message: t('client.errors.invalidRole') });
     }
 
-    const user = await this.userDAO.getUserById(targetUserId);
+    const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
@@ -445,19 +476,18 @@ export class ClientService {
       throw new NotFoundError({ message: t('client.errors.userNotInClient') });
     }
 
-    if (clientConnection.roles.includes(role as IUserRole)) {
-      throw new BadRequestError({ message: t('client.errors.userAlreadyHasRole', { role }) });
+    // Idempotent: if role already exists, return success without duplicating
+    if (!clientConnection.roles.includes(role as IUserRole)) {
+      await this.userDAO.updateById(
+        user._id.toString(),
+        {
+          $addToSet: { 'cuids.$[elem].roles': role },
+        },
+        {
+          arrayFilters: [{ 'elem.cuid': clientId }],
+        }
+      );
     }
-
-    await this.userDAO.updateById(
-      targetUserId,
-      {
-        $addToSet: { 'cuids.$[elem].roles': role },
-      },
-      {
-        arrayFilters: [{ 'elem.cuid': clientId }],
-      }
-    );
 
     this.log.info(
       {
@@ -485,6 +515,26 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
+    const user = await this.userDAO.getUserByUId(targetUserId);
+    if (!user) {
+      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+    }
+
+    const clientConnection = user.cuids.find((c) => c.cuid === clientId);
+    if (!clientConnection) {
+      throw new NotFoundError({ message: t('client.errors.userNotInClient') });
+    }
+
+    if (!clientConnection.roles.includes(role as IUserRole)) {
+      throw new NotFoundError({ message: t('client.errors.roleNotFound') });
+    }
+
+    if (clientConnection.roles.length <= 1) {
+      throw new BadRequestError({
+        message: 'User must have at least one role.',
+      });
+    }
+
     if (role === ROLES.ADMIN) {
       const adminUsers = await this.userDAO.list({
         cuids: {
@@ -504,7 +554,7 @@ export class ClientService {
     }
 
     await this.userDAO.updateById(
-      targetUserId,
+      user._id.toString(),
       {
         $pull: { 'cuids.$[elem].roles': role },
       },
@@ -538,7 +588,7 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
-    const user = await this.userDAO.getUserById(targetUserId);
+    const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
@@ -559,7 +609,7 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
-    const user = await this.userDAO.getUserById(targetUserId);
+    const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
@@ -567,6 +617,10 @@ export class ClientService {
     const clientConnection = user.cuids.find((c) => c.cuid === clientId);
     if (!clientConnection) {
       throw new NotFoundError({ message: t('client.errors.userNotInClient') });
+    }
+
+    if (!clientConnection.isConnected) {
+      throw new BadRequestError({ message: 'User is already disconnected.' });
     }
 
     if (clientConnection.roles.includes(IUserRole.ADMIN)) {
@@ -588,7 +642,7 @@ export class ClientService {
     }
 
     await this.userDAO.updateById(
-      targetUserId,
+      user._id.toString(),
       {
         $set: { 'cuids.$[elem].isConnected': false },
       },
@@ -676,13 +730,22 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
-    const user = await this.userDAO.getUserById(targetUserId);
+    const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
 
+    const clientConnection = user.cuids.find((c) => c.cuid === clientId);
+    if (!clientConnection) {
+      throw new NotFoundError({ message: t('client.errors.userNotInClient') });
+    }
+
+    if (clientConnection.isConnected) {
+      throw new BadRequestError({ message: 'User is already connected.' });
+    }
+
     await this.userDAO.updateById(
-      targetUserId,
+      user._id.toString(),
       {
         $set: { 'cuids.$[elem].isConnected': true },
       },
@@ -692,7 +755,6 @@ export class ClientService {
     );
 
     // If this is a primary vendor, restore the Vendor document's connection status
-    const clientConnection = user.cuids.find((c) => c.cuid === clientId);
     const isVendor = clientConnection?.roles?.includes(IUserRole.VENDOR as any);
     const isPrimaryVendor = isVendor && !clientConnection?.linkedVendorUid;
 
@@ -734,8 +796,12 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
+    if (!Object.values(EmployeeDepartment).includes(department)) {
+      throw new BadRequestError({ message: 'Invalid department value' });
+    }
+
     // Get user and validate
-    const user = await this.userDAO.getUserById(targetUserId);
+    const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
@@ -759,6 +825,10 @@ export class ClientService {
       throw new NotFoundError({ message: 'User profile not found' });
     }
 
+    // Initialize employeeInfo if null to avoid MongoDB PathNotViable error
+    if (!profile.employeeInfo) {
+      await this.profileDAO.updateById(profile._id.toString(), { $set: { employeeInfo: {} } });
+    }
     await this.profileDAO.updateCommonEmployeeInfo(profile._id.toString(), {
       department: department,
     });
@@ -814,6 +884,34 @@ export class ClientService {
         'Account is already verified'
       );
       throw new BadRequestError({ message: 'Account is already verified' });
+    }
+
+    // Validate identification data
+    const identification = client.identification;
+    if (!identification) {
+      throw new BadRequestError({ message: 'Identification information is required' });
+    }
+
+    const VALID_ID_TYPES = ['passport', 'national-id', 'drivers-license', 'corporation-license'];
+    const verificationErrors: string[] = [];
+
+    if (!identification.idType || !VALID_ID_TYPES.includes(identification.idType)) {
+      verificationErrors.push('Invalid or missing ID type');
+    }
+    if (!identification.idNumber || identification.idNumber.trim() === '') {
+      verificationErrors.push('ID number is required');
+    }
+    if (!identification.dataProcessingConsent) {
+      verificationErrors.push('Data processing consent is required');
+    }
+    if (!identification.expiryDate || new Date(identification.expiryDate) <= new Date()) {
+      verificationErrors.push('Document has expired or expiry date is missing');
+    }
+
+    if (verificationErrors.length > 0) {
+      throw new BadRequestError({
+        message: `Verification failed: ${verificationErrors.join(', ')}`,
+      });
     }
 
     // Update client to verified status
@@ -995,7 +1093,7 @@ export class ClientService {
         message:
           'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
         cuid,
-        targetRoles: [ROLES.ADMIN],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: {},
       });
 
@@ -1023,7 +1121,7 @@ export class ClientService {
         title: 'Payment Dispute Opened',
         message: `A dispute of ${amountFormatted} was filed for invoice ${invoiceNumber}. The transfer has been reversed pending resolution.`,
         cuid,
-        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: { disputeId, chargeId, invoiceNumber, amount, currency, reason },
       });
     } catch (error) {
@@ -1048,7 +1146,7 @@ export class ClientService {
         title: 'Dispute Resolved — Funds Returned',
         message: `The dispute for invoice ${invoiceNumber} was resolved in your favor. ${amountFormatted} has been re-transferred to your account.`,
         cuid,
-        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: { disputeId, chargeId, invoiceNumber, amount, currency },
       });
     } catch (error) {
@@ -1073,12 +1171,50 @@ export class ClientService {
         title: 'Dispute Lost — Payouts Blocked',
         message: `The dispute for invoice ${invoiceNumber} was lost. ${amountFormatted} has been debited from the platform account. Payouts have been blocked pending review.`,
         cuid,
-        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: { disputeId, chargeId, invoiceNumber, amount, currency },
       });
     } catch (error) {
       this.log.error({ error, cuid }, 'Failed to handle dispute lost event');
     }
+  }
+
+  async updateTenantFeatures(
+    cxt: IRequestContext,
+    features: Partial<ITenantFeatureSettings>
+  ): Promise<ISuccessReturnData<IClientDocument>> {
+    const { cuid } = cxt.request.params;
+
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      throw new NotFoundError({ message: t('client.errors.notFound') });
+    }
+
+    const allowedKeys: (keyof ITenantFeatureSettings)[] = [
+      'tenantPortalActive',
+      'maintenanceRequests',
+      'onlinePayments',
+      'smsNotifications',
+      'visitorPass',
+    ];
+
+    const updateSet: Record<string, boolean> = {};
+    for (const key of allowedKeys) {
+      if (key in features && typeof features[key] === 'boolean') {
+        updateSet[`settings.tenantFeatures.${key}`] = features[key] as boolean;
+      }
+    }
+
+    if (Object.keys(updateSet).length === 0) {
+      throw new BadRequestError({ message: 'At least one tenant feature must be provided' });
+    }
+
+    const updated = await this.clientDAO.updateById(client._id.toString(), { $set: updateSet });
+    if (!updated) {
+      throw new NotFoundError({ message: t('client.errors.notFound') });
+    }
+
+    return { success: true, data: updated };
   }
 
   private async handleDisputeReversalFailed({
@@ -1097,7 +1233,7 @@ export class ClientService {
         title: 'Dispute Transfer Reversal Failed — Payouts Blocked',
         message: `The transfer reversal for dispute ${disputeId} failed (${amountFormatted}). Payouts have been blocked automatically. Manual review required.`,
         cuid,
-        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: { disputeId, transferId, amount, currency },
       });
     } catch (error) {

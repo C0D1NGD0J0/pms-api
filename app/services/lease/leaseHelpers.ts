@@ -35,6 +35,7 @@ import {
   PROPERTY_STAFF_ROLES,
   calcDaysRemaining,
   calcLeaseProgress,
+  LEASE_CONSTANTS,
   calcDaysElapsed,
   MoneyUtils,
 } from '@utils/index';
@@ -276,6 +277,30 @@ export const validateLeaseReadyForSignature = (lease: ILeaseDocument): void => {
   ) {
     throw new ValidationRequestError({
       message: 'Lease has already been sent for signatures',
+    });
+  }
+
+  // Date guard 1: no backdated start dates
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const startDate = new Date(lease.duration.startDate);
+  startDate.setHours(0, 0, 0, 0);
+
+  if (startDate < today) {
+    throw new ValidationRequestError({
+      message:
+        'Lease start date cannot be in the past. Update the start date before sending for signature.',
+    });
+  }
+
+  // Date guard 2: end date must leave a meaningful remaining term
+  const endDate = new Date(lease.duration.endDate);
+  const remainingDays = Math.floor((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (remainingDays < LEASE_CONSTANTS.MINIMUM_ACTIVE_DURATION_DAYS) {
+    throw new ValidationRequestError({
+      message: `Lease end date leaves only ${remainingDays} day(s) remaining. At least ${LEASE_CONSTANTS.MINIMUM_ACTIVE_DURATION_DAYS} days are required from today.`,
     });
   }
 };
@@ -871,6 +896,7 @@ export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
   const totalMonthlyRent = (lease as any).totalMonthlyFees || lease.fees.monthlyRent;
   const petMonthlyFee = lease.petPolicy?.monthlyFee || 0;
   const securityDeposit = lease.fees.securityDeposit;
+  const currency = lease.fees.currency || 'USD';
 
   const now = new Date();
   const startDate = new Date(lease.duration.startDate);
@@ -879,17 +905,24 @@ export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
     Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30))
   );
 
+  // All amounts are in cents — totalMonthlyRent and securityDeposit come from the DB in cents.
+  // calculateProRatedAmount expects and returns cents; only format at the very end.
+  const proRated = calculateProRatedAmount(totalMonthlyRent, startDate);
+  const proRatedAmountCents = proRated.amount;
+
+  // First payment in cents = pro-rated rent + security deposit (bundled at move-in)
+  const firstPaymentCents = proRatedAmountCents + securityDeposit;
+
+  const startMonth = startDate.toLocaleString('en-US', { month: 'short' });
+
   return {
-    monthlyRent: MoneyUtils.formatCurrency(totalMonthlyRent, lease.fees.currency || 'USD'),
+    monthlyRent: MoneyUtils.formatCurrency(totalMonthlyRent, currency),
     monthlyRentRaw: totalMonthlyRent,
-    petFee:
-      petMonthlyFee > 0
-        ? MoneyUtils.formatCurrency(petMonthlyFee, lease.fees.currency || 'USD')
-        : undefined,
+    petFee: petMonthlyFee > 0 ? MoneyUtils.formatCurrency(petMonthlyFee, currency) : undefined,
     petFeeRaw: petMonthlyFee,
-    securityDeposit: MoneyUtils.formatCurrency(securityDeposit, lease.fees.currency || 'USD'),
+    securityDeposit: MoneyUtils.formatCurrency(securityDeposit, currency),
     securityDepositRaw: securityDeposit,
-    currency: lease.fees.currency || 'USD',
+    currency,
     rentDueDay: lease.fees.rentDueDay,
     lateFeeAmount: lease.fees.lateFeeAmount,
     lateFeeDays: lease.fees.lateFeeDays,
@@ -899,22 +932,72 @@ export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
     totalPaid: 0,
     totalOwed: 0,
     lastPaymentDate: null,
-    nextPaymentDate: calculateNextPaymentDate(lease.fees.rentDueDay),
+    nextPaymentDate: calculateNextPaymentDate(lease.fees.rentDueDay, startDate),
+    // First-payment breakdown (pro-rated rent + security deposit at move-in)
+    proRatedFirstMonthAmount: proRatedAmountCents,
+    proRatedFirstMonthFormatted: MoneyUtils.formatCurrency(proRatedAmountCents, currency),
+    proRatedDays: proRated.daysCharged,
+    proRatedDaysInMonth: proRated.daysInMonth,
+    isFirstMonthFullMonth: proRated.isFullMonth,
+    firstPaymentAmount: firstPaymentCents,
+    firstPaymentAmountFormatted: MoneyUtils.formatCurrency(firstPaymentCents, currency),
+    firstPaymentDate: startDate,
+    firstPaymentMonth: startMonth,
   };
 };
 
 /**
- * Calculate next payment date based on rent due day
+ * Calculate next payment date based on rent due day and lease start date.
+ *
+ * - If the lease hasn't started yet (startDate >= today): first payment is due on move-in day.
+ * - Otherwise: next occurrence of rentDueDay from today.
  */
-export const calculateNextPaymentDate = (rentDueDay: number): Date => {
-  const now = new Date();
-  const nextPayment = new Date(now.getFullYear(), now.getMonth(), rentDueDay);
+export const calculateNextPaymentDate = (rentDueDay: number, startDate: Date): Date => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  if (nextPayment < now) {
-    nextPayment.setMonth(nextPayment.getMonth() + 1);
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+
+  if (start >= today) {
+    return new Date(startDate);
   }
 
+  const nextPayment = new Date(today.getFullYear(), today.getMonth(), rentDueDay);
+  if (nextPayment <= today) {
+    nextPayment.setMonth(nextPayment.getMonth() + 1);
+  }
   return nextPayment;
+};
+
+/**
+ * Pro-rate the first month's rent based on move-in date.
+ *
+ * If the tenant starts on day 1, the full month is charged (no pro-ration).
+ * Otherwise: ceil((monthlyRent × daysRemaining) / daysInMonth).
+ *
+ * All amounts are in cents to avoid floating-point drift.
+ */
+export const calculateProRatedAmount = (
+  monthlyRentInCents: number,
+  startDate: Date
+): {
+  amount: number;
+  daysCharged: number;
+  daysInMonth: number;
+  isFullMonth: boolean;
+} => {
+  const start = new Date(startDate);
+  const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+  const startDay = start.getDate();
+  const daysCharged = daysInMonth - startDay + 1; // inclusive of start day
+
+  if (startDay === 1) {
+    return { amount: monthlyRentInCents, daysCharged, daysInMonth, isFullMonth: true };
+  }
+
+  const proRated = Math.ceil((monthlyRentInCents * daysCharged) / daysInMonth);
+  return { amount: proRated, daysCharged, daysInMonth, isFullMonth: false };
 };
 
 /**

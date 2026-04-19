@@ -159,6 +159,17 @@ export interface IMaintenanceFilters {
   pid?: string; // property resource UID
 }
 
+export interface IUpdateMaintenancePayload {
+  availabilityInfo?: { preferredDate?: string; options?: AvailabilityWindow[] };
+  description?: { text: string; html?: string };
+  priority?: MaintenanceRequestPriority;
+  category?: MaintenanceCategory;
+  locationDescription?: string;
+  permissionToEnter?: boolean;
+  hasPet?: boolean;
+  title?: string;
+}
+
 export interface IMaintenanceStats {
   byCategory: Record<string, number>;
   byPriority: Record<string, number>;

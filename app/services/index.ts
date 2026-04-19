@@ -7,6 +7,7 @@ export * from './eventEmitter';
 export * from './pdfGenerator';
 export * from './subscription';
 export * from './notification';
+export * from './featureFlag';
 export * from './mediaUpload';
 export * from './fileUpload';
 export * from './invitation';

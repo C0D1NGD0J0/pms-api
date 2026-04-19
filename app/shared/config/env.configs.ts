@@ -86,6 +86,14 @@ class EnvVariables {
     DEFAULT_SENDER_NAME: string;
     DEFAULT_SENDER_EMAIL: string;
   };
+  public FEATURES: {
+    AI_ENABLED: boolean;
+    AI_COMMUNICATION_DRAFT_ENABLED: boolean;
+    AI_MAINTENANCE_TRIAGE_ENABLED: boolean;
+    ESIGNATURE_ENABLED: boolean;
+    SMS_ENABLED: boolean;
+    MCP_ENABLED: boolean;
+  };
   public APP_NAME: string;
   public PLATFORM_FEE_PERCENTAGE: number;
 
@@ -186,6 +194,15 @@ class EnvVariables {
       HOST: process.env.CLAMAV_HOST || 'localhost',
       PORT: Number(process.env.CLAMAV_PORT) || 3310,
       SOCKET: process.env.CLAMDSCAN_SOCKET || '/tmp/clamd.sock',
+    };
+    this.FEATURES = {
+      AI_ENABLED: process.env.FEATURE_AI_ENABLED !== 'false',
+      AI_COMMUNICATION_DRAFT_ENABLED:
+        process.env.FEATURE_AI_COMMUNICATION_DRAFT_ENABLED !== 'false',
+      AI_MAINTENANCE_TRIAGE_ENABLED: process.env.FEATURE_AI_MAINTENANCE_TRIAGE_ENABLED !== 'false',
+      ESIGNATURE_ENABLED: process.env.FEATURE_ESIGNATURE_ENABLED !== 'false',
+      SMS_ENABLED: process.env.FEATURE_SMS_ENABLED !== 'false',
+      MCP_ENABLED: process.env.FEATURE_MCP_ENABLED !== 'false',
     };
     this.PLATFORM_FEE_PERCENTAGE = Number(process.env.PLATFORM_FEE_PERCENTAGE);
 

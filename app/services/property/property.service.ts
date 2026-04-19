@@ -67,6 +67,7 @@ import { PropertyApprovalService } from './propertyApproval.service';
 import { PropertyValidationService } from './propertyValidation.service';
 import { subscriptionPlanConfig } from '../subscription/subscription_plans.config';
 import {
+  validatePropertyLeaseImmutableFields,
   generatePendingChangesPreview,
   validateOccupancyStatusChange,
   filterPropertyByDepartment,
@@ -907,6 +908,11 @@ export class PropertyService {
       maintenanceHistory = [];
     }
 
+    const hasLeaseHistory = await this.leaseDAO.hasNonDraftLeaseForProperty(
+      property._id.toString(),
+      cuid
+    );
+
     const propertyObj = property.toObject ? property.toObject() : property;
     const pendingChangesPreview = generatePendingChangesPreview(property, currentUser);
 
@@ -928,6 +934,7 @@ export class PropertyService {
       success: true,
       data: {
         property: filteredProperty as IPropertyDocument,
+        hasLeaseHistory,
         unitInfo: isSecurityDept ? undefined : unitInfo,
         metrics: isSecurityDept ? undefined : metrics,
         ...(!isSecurityDept && paymentHistory !== undefined && { paymentHistory }),
@@ -1011,6 +1018,9 @@ export class PropertyService {
     if (cleanUpdateData.occupancyStatus) {
       validateOccupancyStatusChange(property, cleanUpdateData);
     }
+
+    // Enforce lease-history immutability (applies to all roles — no admin bypass)
+    await validatePropertyLeaseImmutableFields(property, cuid, cleanUpdateData, this.leaseDAO);
 
     // Smart Approval Workflow Logic
     const hasPendingChanges = !!property.pendingChanges;

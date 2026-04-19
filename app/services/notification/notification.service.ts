@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/helpers';
 import { ICurrentUser } from '@interfaces/user.interface';
+import { ROLES } from '@shared/constants/roles.constants';
 import { ResourceContext } from '@interfaces/utils.interface';
 import { NotificationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES } from '@utils/constants';
@@ -2233,22 +2234,13 @@ export class NotificationService {
         mruid,
         amount: fmt,
       });
+      // Individual notification to the primary vendor contact only — not broadcast to teammates
       await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
         recipient: new Types.ObjectId(vendorId),
         recipientType: RecipientTypeEnum.INDIVIDUAL,
         priority: NotificationPriorityEnum.MEDIUM,
-        title,
-        message,
-        metadata: { mruid },
-      });
-      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
-        cuid,
-        type: NotificationTypeEnum.MAINTENANCE,
-        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetVendor: vendorId,
-        priority: NotificationPriorityEnum.LOW,
         title,
         message,
         metadata: { mruid },
@@ -2310,22 +2302,13 @@ export class NotificationService {
       const { title, message } = getFormattedNotification('maintenance.workOrderApproved', {
         mruid,
       });
+      // Individual notification to the primary vendor contact only — not broadcast to teammates
       await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
         recipient: new Types.ObjectId(vendorId),
         recipientType: RecipientTypeEnum.INDIVIDUAL,
         priority: NotificationPriorityEnum.MEDIUM,
-        title,
-        message,
-        metadata: { mruid },
-      });
-      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
-        cuid,
-        type: NotificationTypeEnum.MAINTENANCE,
-        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetVendor: vendorId,
-        priority: NotificationPriorityEnum.LOW,
         title,
         message,
         metadata: { mruid },
@@ -2372,7 +2355,7 @@ export class NotificationService {
         cuid,
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: ['admin'],
+        targetRoles: [ROLES.SUPER_ADMIN],
         priority: NotificationPriorityEnum.MEDIUM,
         title,
         message,
@@ -2391,7 +2374,7 @@ export class NotificationService {
         cuid,
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: ['admin'],
+        targetRoles: [ROLES.SUPER_ADMIN],
         priority: NotificationPriorityEnum.HIGH,
         title,
         message,
@@ -2413,7 +2396,7 @@ export class NotificationService {
         cuid,
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: ['admin'],
+        targetRoles: [ROLES.SUPER_ADMIN],
         priority: NotificationPriorityEnum.MEDIUM,
         title,
         message,

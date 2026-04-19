@@ -77,6 +77,7 @@ export const MaintenanceSchemas = {
         .object({
           preferredDate: z
             .string()
+            .refine((d) => !isNaN(Date.parse(d)), 'Preferred date must be a valid date')
             .refine((d) => new Date(d) > new Date(), 'Preferred date must be in the future')
             .optional(),
           options: z.array(z.nativeEnum(AvailabilityWindow)).optional().default([]),
@@ -223,6 +224,35 @@ export const MaintenanceSchemas = {
     .refine((d) => d.action !== 'reject' || !!d.rejectionReason, {
       message: 'Rejection reason is required when rejecting',
       path: ['rejectionReason'],
+    }),
+
+  updateBody: z
+    .object({
+      title: z.string().min(5).max(200).optional(),
+      description: z
+        .object({
+          text: z.string().min(10).max(2000),
+          html: z.string().optional(),
+        })
+        .optional(),
+      category: z.nativeEnum(MaintenanceCategory).optional(),
+      priority: z.nativeEnum(MaintenanceRequestPriority).optional(),
+      locationDescription: z.string().max(500).optional(),
+      permissionToEnter: z.boolean().optional(),
+      hasPet: z.boolean().optional(),
+      availabilityInfo: z
+        .object({
+          preferredDate: z
+            .string()
+            .refine((d) => !isNaN(Date.parse(d)), 'Preferred date must be a valid date')
+            .refine((d) => new Date(d) > new Date(), 'Preferred date must be in the future')
+            .optional(),
+          options: z.array(z.nativeEnum(AvailabilityWindow)).optional().default([]),
+        })
+        .optional(),
+    })
+    .refine((data) => Object.keys(data).length > 0, {
+      message: 'At least one field must be provided',
     }),
 
   listQuery: z.object({

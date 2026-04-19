@@ -9,10 +9,6 @@ import { IContactInfoType, IBaseUserProfile, IUserDocument, IAccountType } from 
  * ============================================================================
  */
 
-/**
- * Main Client Interface
- * Core client data structure
- */
 export interface IClient {
   identityVerification?: {
     sessionId?: string;
@@ -24,6 +20,7 @@ export interface IClient {
     verifiedAt?: Date | null;
   };
   accountAdmin: Types.ObjectId | PopulatedAccountAdmin;
+  identification?: IClientIdentification | null;
   subscription: Types.ObjectId | null;
   companyProfile?: ICompanyProfile;
   dataProcessingConsent?: boolean;
@@ -32,12 +29,6 @@ export interface IClient {
   accountType: IAccountType;
   displayName: string;
 }
-
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
 
 /**
  * Client Document Interface (extends Mongoose Document)
@@ -52,6 +43,26 @@ export interface IClientDocument extends Document, IClient {
   updatedAt: Date;
   cuid: string;
   id: string;
+}
+
+/**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
+
+/**
+ * Main Client Interface
+ * Core client data structure
+ */
+export interface IClientIdentification {
+  idType?: 'passport' | 'national-id' | 'drivers-license' | 'corporation-license';
+  dataProcessingConsent?: boolean;
+  expiryDate?: Date | null;
+  issueDate?: Date | null;
+  issuingState?: string;
+  authority?: string;
+  idNumber?: string;
 }
 
 /**
@@ -93,8 +104,20 @@ export interface ICompanyProfile {
 export interface IClientSettings {
   notificationPreferences: NotificationPreferences;
   vendorPayoutMode?: 'express' | 'platform_hold';
+  tenantFeatures?: ITenantFeatureSettings;
   timeZone: string;
   lang: string;
+}
+
+/**
+ * Tenant portal feature flags
+ */
+export interface ITenantFeatureSettings {
+  maintenanceRequests: boolean;
+  tenantPortalActive: boolean;
+  smsNotifications: boolean;
+  onlinePayments: boolean;
+  visitorPass: boolean;
 }
 
 /**

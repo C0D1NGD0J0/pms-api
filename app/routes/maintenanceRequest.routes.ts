@@ -160,6 +160,7 @@ router.patch(
     roleBasedContext
   ),
   requireActiveTenant('maintenanceRequests'),
+  requireActiveTenant('maintenanceRequests'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),

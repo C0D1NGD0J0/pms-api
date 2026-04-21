@@ -194,6 +194,11 @@ export const NotificationMessages = {
       title: 'Lease PDF Generation Failed',
       message: 'Failed to generate PDF for lease {{leaseNumber}}: {{errorMessage}}',
     },
+    adminUpdated: {
+      title: 'Your Lease Has Been Updated',
+      message:
+        'Administrative details on your lease {{leaseNumber}} have been updated by your property manager. Please log in to review the current terms.',
+    },
   },
 } as const;
 
@@ -236,6 +241,7 @@ export type NotificationMessageKey =
   | 'lease.pdfGenerationStarted'
   | 'lease.pdfGenerated'
   | 'lease.pdfGenerationFailed'
+  | 'lease.adminUpdated'
   | 'payment.disputeCreated'
   | 'payment.disputeWon'
   | 'payment.payoutAccountVerified'

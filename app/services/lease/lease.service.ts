@@ -405,6 +405,15 @@ export class LeaseService {
         });
       }
 
+      // Reserve the unit so no second lease can be created for it while this draft exists
+      if (data.property.unitId) {
+        await this.propertyUnitDAO.updateById(
+          data.property.unitId.toString(),
+          { status: PropertyUnitStatusEnum.RESERVED },
+          session
+        );
+      }
+
       return { lease };
     });
 
@@ -728,6 +737,51 @@ export class LeaseService {
             this.profileDAO,
             this.leaseCache
           );
+          // Notify tenant (email + in-app) when an admin directly updates an active lease
+          if (result?.success && !result.data?.requiresApproval && lease.tenantId) {
+            const leaseUrl = `${envVariables.FRONTEND.URL}/tenants/${cuid}/${lease.tenantId}/lease`;
+            try {
+              const emailQueue = this.queueFactory.getQueue('emailQueue');
+              emailQueue.addJobToQueue(JOB_NAME.LEASE_ADMIN_UPDATED_JOB, {
+                emailType: MailType.LEASE_ADMIN_UPDATED,
+                subject: 'Your Lease Has Been Updated',
+                to: lease.tenantInfo?.email,
+                data: {
+                  tenantName: lease.tenantInfo?.fullname || 'Tenant',
+                  leaseNumber: lease.leaseNumber,
+                  propertyAddress: lease.property?.address || '',
+                  updatedBy: currentUser.fullname || 'Property Manager',
+                  leaseUrl,
+                },
+                client: { cuid },
+              });
+            } catch (error) {
+              this.log.error(`Failed to queue admin-update email for lease ${lease.luid}:`, error);
+            }
+
+            try {
+              await this.notificationService.createNotificationFromTemplate(
+                'lease.adminUpdated',
+                { leaseNumber: lease.leaseNumber },
+                lease.tenantId.toString(),
+                NotificationTypeEnum.LEASE,
+                NotificationPriorityEnum.MEDIUM,
+                cuid,
+                currentUser.sub,
+                {
+                  resourceName: ResourceContext.LEASE,
+                  resourceUid: lease.luid,
+                  resourceId: lease._id.toString(),
+                  metadata: { leaseUrl },
+                }
+              );
+            } catch (error) {
+              this.log.error(
+                `Failed to create in-app notification for lease ${lease.luid}:`,
+                error
+              );
+            }
+          }
           break;
         case LeaseStatus.DRAFT:
           result = await handleDraftUpdate(
@@ -811,6 +865,13 @@ export class LeaseService {
     const deleted = await lease.softDelete(new Types.ObjectId(userId));
     if (!deleted) {
       throw new BadRequestError({ message: 'Failed to delete lease' });
+    }
+
+    // Release the unit reservation when a draft lease is deleted
+    if (lease.status === LeaseStatus.DRAFT && lease.property?.unitId) {
+      await this.propertyUnitDAO.updateById(lease.property.unitId.toString(), {
+        status: PropertyUnitStatusEnum.AVAILABLE,
+      });
     }
 
     // Invalidate lease cache
@@ -1883,6 +1944,11 @@ export class LeaseService {
               validationErrors['property.unitId'].push(
                 'Unit is currently occupied and cannot be leased'
               );
+            } else if (unit.status === PropertyUnitStatusEnum.RESERVED) {
+              if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
+              validationErrors['property.unitId'].push(
+                'Unit already has a draft lease and cannot be leased again until that draft is deleted'
+              );
             } else if (
               unit.status === PropertyUnitStatusEnum.MAINTENANCE ||
               unit.status === PropertyUnitStatusEnum.INACTIVE
@@ -1918,6 +1984,21 @@ export class LeaseService {
       if (!validationErrors['fees.monthlyRent']) validationErrors['fees.monthlyRent'] = [];
       validationErrors['fees.monthlyRent'].push(t('lease.errors.rentMustBePositive'));
     }
+
+    const baseRentCents = leaseData.property.unitId
+      ? unit?.fees?.rentAmount
+      : propertyRecord.fees?.rentalAmount;
+
+    if (baseRentCents && Number(baseRentCents) > 0) {
+      const proposedRentCents = MoneyUtils.stringToCents(leaseData.fees.monthlyRent);
+      if (Number(proposedRentCents) < Number(baseRentCents)) {
+        if (!validationErrors['fees.monthlyRent']) validationErrors['fees.monthlyRent'] = [];
+        validationErrors['fees.monthlyRent'].push(
+          `Monthly rent cannot be lower than the base rental fee of ${MoneyUtils.centsToDisplay(Number(baseRentCents))}`
+        );
+      }
+    }
+
     if (leaseData.fees.securityDeposit < 0 || isNaN(leaseData.fees.securityDeposit)) {
       if (!validationErrors['fees.securityDeposit']) validationErrors['fees.securityDeposit'] = [];
       validationErrors['fees.securityDeposit'].push(t('lease.errors.depositCannotBeNegative'));

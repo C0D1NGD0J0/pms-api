@@ -196,6 +196,9 @@ export class MailService {
       case MailType.INVITATION_REMINDER:
         template = await this.buildTemplate('reminder', emailData, 'invitation');
         break;
+      case MailType.LEASE_ADMIN_UPDATED:
+        template = await this.buildTemplate('lease-admin-updated', emailData, 'lease');
+        break;
       case MailType.ACCOUNT_ACTIVATION:
         template = await this.buildTemplate('registration', emailData);
         break;
@@ -348,6 +351,7 @@ export class MailService {
       [MailType.LEASE_ACTIVATED]: 'Your Lease is Now Active!',
       [MailType.LEASE_TERMINATED]: 'Lease Termination Notice',
       [MailType.LEASE_PAYMENT_REMINDER]: 'Rent Payment Reminder',
+      [MailType.LEASE_ADMIN_UPDATED]: 'Your Lease Has Been Updated',
       [MailType.LEASE_ENDING_SOON]: 'Your Lease is Ending Soon',
       [MailType.ACCOUNT_DISCONNECTED]: 'Your Account Connection Has Been Removed',
       [MailType.MAINTENANCE_REQUEST_CREATED]: 'Maintenance Request Submitted',

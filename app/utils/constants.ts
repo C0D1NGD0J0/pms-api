@@ -68,6 +68,7 @@ export const JOB_NAME = {
   INVITATION_BULK_USER_IMPORT_JOB: 'invitation_bulk_user_import',
   INVITATION_BULK_USER_VALIDATION_JOB: 'invitation_bulk_user_validation',
   LEASE_ENDING_SOON_JOB: 'leaseEndingSoonJob',
+  LEASE_ADMIN_UPDATED_JOB: 'leaseAdminUpdatedJob',
   CREATE_RENT_INVOICE_JOB: 'createRentInvoiceJob',
   RETRY_FAILED_INVOICE_JOB: 'retryFailedInvoiceJob',
   CANCEL_PAYMENT_JOB: 'cancelPaymentJob',

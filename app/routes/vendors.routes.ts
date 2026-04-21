@@ -93,7 +93,16 @@ router.get(
 // Get vendor business data for editing (primaryAccountHolderUserId only)
 router.get(
   '/:cuid/vendor/:vuid/edit',
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.READ,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { resourceId: req.params.vuid, ownerId: req.context.currentuser.sub };
+      }
+      return { resourceId: req.params.vuid };
+    }
+  ),
   validateRequest({
     params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
   }),
@@ -106,7 +115,16 @@ router.get(
 // Update team member profile fields (ADMIN/MANAGER or primaryAccountHolderUserId)
 router.patch(
   '/:cuid/vendor/:vuid/team_members/:uid',
-  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.UPDATE,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { resourceId: req.params.uid, ownerId: req.context.currentuser.sub };
+      }
+      return { resourceId: req.params.uid };
+    }
+  ),
   idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam
@@ -123,7 +141,16 @@ router.patch(
 // Toggle team member active status (ADMIN/MANAGER or primaryAccountHolderUserId)
 router.patch(
   '/:cuid/vendor/:vuid/team_members/:uid/status',
-  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.UPDATE,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { resourceId: req.params.uid, ownerId: req.context.currentuser.sub };
+      }
+      return { resourceId: req.params.uid };
+    }
+  ),
   idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam
@@ -140,7 +167,16 @@ router.patch(
 // Update vendor business details (primaryAccountHolderUserId only)
 router.patch(
   '/:cuid/vendor/:vuid',
-  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.UPDATE,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { resourceId: req.params.vuid, ownerId: req.context.currentuser.sub };
+      }
+      return { resourceId: req.params.vuid };
+    }
+  ),
   idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),

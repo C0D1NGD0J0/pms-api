@@ -864,14 +864,19 @@ export class PropertyService {
     }
 
     // Calculate property metrics
-    const metrics = await this.calculatePropertyMetrics(cuid, property._id.toString(), unitInfo);
+    const metrics = await this.calculatePropertyMetrics(
+      cuid,
+      property._id.toString(),
+      unitInfo,
+      property
+    );
 
     // Conditionally fetch payment history
     let paymentHistory: any[] | undefined;
     if (include?.includes('payments') || include?.includes('all')) {
       const leasesResult = await this.leaseDAO.list(
         {
-          'property.id': property._id.toString(),
+          'property.id': new Types.ObjectId(property._id.toString()),
           cuid,
           deletedAt: null,
         },
@@ -1535,7 +1540,8 @@ export class PropertyService {
   async calculatePropertyMetrics(
     cuid: string,
     propertyId: string,
-    unitInfo: any
+    unitInfo: any,
+    property: any
   ): Promise<{
     monthlyRent: number;
     annualRevenue: number;
@@ -1546,7 +1552,7 @@ export class PropertyService {
       // Get all active leases for this property
       const leasesResult = await this.leaseDAO.list(
         {
-          'property.id': propertyId,
+          'property.id': new Types.ObjectId(propertyId),
           cuid,
           status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.RENEWED] },
           deletedAt: null,
@@ -1557,49 +1563,37 @@ export class PropertyService {
 
       const activeLeases = leasesResult.items || [];
 
-      // Calculate monthly rent from active leases
-      let monthlyRent = activeLeases.reduce((sum: number, lease: any) => {
-        return sum + (lease.rentAmount || 0);
+      // Sum rent + pet monthly fee from each active lease
+      const monthlyGrossIncome = activeLeases.reduce((sum: number, lease: any) => {
+        const rent = lease.fees?.monthlyRent || 0;
+        const petFee = lease.petPolicy?.monthlyFee || 0;
+        return sum + rent + petFee;
       }, 0);
 
-      // If no active leases, calculate potential rent from occupied units
-      if (monthlyRent === 0 && unitInfo.unitStats?.occupied > 0) {
-        try {
-          const unitsResult = await this.propertyUnitDAO.findUnitsByPropertyId(propertyId, {
-            page: 1,
-            limit: 1000,
-          });
+      // Monthly expenses from property-level fees (all stored in cents)
+      const monthlyManagementFees = property?.fees?.managementFees || 0;
+      const monthlyTax = property?.fees?.taxAmount || 0;
+      const monthlyExpenses = monthlyManagementFees + monthlyTax;
 
-          monthlyRent = unitsResult.items
-            .filter((unit: any) => unit.status === 'occupied')
-            .reduce((sum: number, unit: any) => {
-              return sum + (unit.fees?.rentAmount || 0);
-            }, 0);
-        } catch (err) {
-          this.log.warn('Error calculating rent from units:', err);
-        }
-      }
+      // Net income = gross income minus actual known expenses
+      const monthlyNetIncome = Math.max(0, monthlyGrossIncome - monthlyExpenses);
 
-      // Calculate annual revenue
-      const annualRevenue = monthlyRent * 12;
+      // Annual revenue = gross monthly × 12 (before expenses)
+      const annualRevenue = monthlyGrossIncome * 12;
 
-      // Calculate occupancy rate
+      // Occupancy rate
       const totalUnits = unitInfo.totalUnits || 1;
       const occupiedUnits = unitInfo.unitStats?.occupied || activeLeases.length;
       const occupancyRate = calcOccupancyRate(occupiedUnits, totalUnits);
 
-      // Calculate net income (simplified: rent minus 10% for management/maintenance)
-      const monthlyNetIncome = Math.round(monthlyRent * 0.9);
-
       return {
-        monthlyRent,
+        monthlyRent: monthlyGrossIncome,
         annualRevenue,
         occupancyRate,
         monthlyNetIncome,
       };
     } catch (error) {
       this.log.error('Error calculating property metrics:', error);
-      // Return zero metrics on error instead of failing
       return {
         monthlyRent: 0,
         annualRevenue: 0,
@@ -1615,9 +1609,6 @@ export class PropertyService {
     filters: IAssignableUsersFilter
   ): Promise<ISuccessReturnData<{ items: IAssignableUser[]; pagination?: IPaginateResult }>> {
     try {
-      this.log.info('Fetching assignable users for client', { cuid, filters });
-
-      // Validate client exists
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         throw new NotFoundError({ message: t('client.errors.notFound') });
@@ -1657,7 +1648,7 @@ export class PropertyService {
       if (filters.department) {
         pipeline.push({
           $match: {
-            'profile.employeeInfo.department': filters.department,
+            'profile.employeeInfo.department': 'management',
           },
         });
       }

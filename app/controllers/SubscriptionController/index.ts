@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { Response, Request } from 'express';
 import { SubscriptionService } from '@services/index';
 import { AppRequest } from '@interfaces/utils.interface';
+import { ROLES } from '@shared/constants/roles.constants';
 import { httpStatusCodes, createLogger } from '@utils/index';
 import { UnauthorizedError, ForbiddenError } from '@shared/customErrors';
 
@@ -43,7 +44,7 @@ export class SubscriptionController {
       throw new UnauthorizedError({ message: 'Unauthorized access' });
     }
 
-    if (currentuser.client.role !== 'super-admin') {
+    if (currentuser.client.role !== ROLES.SUPER_ADMIN) {
       throw new ForbiddenError({ message: 'Only account owner can manage billing' });
     }
 
@@ -60,12 +61,28 @@ export class SubscriptionController {
       throw new UnauthorizedError({ message: 'Unauthorized access' });
     }
 
-    if (currentuser.client.role !== 'super-admin') {
+    if (currentuser.client.role !== ROLES.SUPER_ADMIN) {
       throw new ForbiddenError({ message: 'Only account owner can cancel subscription' });
     }
 
     const result = await this.subscriptionService.cancelSubscription(req.context);
 
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  syncFromStripe = async (req: AppRequest, res: Response) => {
+    const { currentuser } = req.context;
+    const { cuid } = req.params;
+
+    if (!currentuser || currentuser.client.cuid !== cuid) {
+      throw new UnauthorizedError({ message: 'Unauthorized access' });
+    }
+
+    if (currentuser.client.role !== ROLES.SUPER_ADMIN) {
+      throw new ForbiddenError({ message: 'Only account owner can sync subscription' });
+    }
+
+    const result = await this.subscriptionService.syncFromStripe(cuid);
     res.status(httpStatusCodes.OK).json(result);
   };
 
@@ -78,7 +95,7 @@ export class SubscriptionController {
       throw new UnauthorizedError({ message: 'Unauthorized access' });
     }
 
-    if (currentuser.client.role !== 'super-admin') {
+    if (currentuser.client.role !== ROLES.SUPER_ADMIN) {
       throw new ForbiddenError({ message: 'Only account owner can manage seats' });
     }
 

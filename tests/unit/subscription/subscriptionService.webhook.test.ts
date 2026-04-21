@@ -493,8 +493,8 @@ describe('SubscriptionService - Webhook Handlers', () => {
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
         additionalSeatsCount: 2,
-        additionalSeatsCost: 15.98, // 2 seats * 799 cents / 100 = 15.98
-        totalMonthlyPrice: 783.98, // 768 + 15.98
+        additionalSeatsCost: 1598, // 2 * 799¢
+        totalMonthlyPrice: 2366, // 768¢ + 1598¢
         billing: {
           subscriberId: 'sub_test123',
           seatItemId: 'si_seat123',
@@ -518,8 +518,8 @@ describe('SubscriptionService - Webhook Handlers', () => {
         expect.objectContaining({
           $set: expect.objectContaining({
             additionalSeatsCount: 2,
-            additionalSeatsCost: 15.98,
-            totalMonthlyPrice: 783.98,
+            additionalSeatsCost: 1598, // 2 * 799¢
+            totalMonthlyPrice: 2366, // 768¢ + 1598¢
             'billing.seatItemId': 'si_seat123',
           }),
         })

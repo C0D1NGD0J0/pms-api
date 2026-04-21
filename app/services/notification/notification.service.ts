@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/helpers';
+import { MoneyUtils } from '@utils/money.utils';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import { ResourceContext } from '@interfaces/utils.interface';
@@ -2199,10 +2200,7 @@ export class NotificationService {
   private async handleInvoiceSubmitted(payload: MaintenanceInvoiceSubmittedPayload): Promise<void> {
     try {
       const { cuid, mruid, amount, currency } = payload;
-      const fmt = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: currency || 'USD',
-      }).format((amount || 0) / 100);
+      const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
       const { title, message } = getFormattedNotification('maintenance.invoiceSubmitted', {
         mruid,
         amount: fmt,
@@ -2226,10 +2224,7 @@ export class NotificationService {
     try {
       const { cuid, mruid, vendorId, amount, currency } = payload;
       if (!vendorId) return;
-      const fmt = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: currency || 'USD',
-      }).format((amount || 0) / 100);
+      const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
       const { title, message } = getFormattedNotification('maintenance.invoiceApproved', {
         mruid,
         amount: fmt,
@@ -2347,9 +2342,7 @@ export class NotificationService {
   private async handlePaymentSucceeded(payload: PaymentSucceededPayload): Promise<void> {
     try {
       const { cuid, amount } = payload;
-      const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
-        (amount || 0) / 100
-      );
+      const fmt = MoneyUtils.formatCurrency(amount || 0);
       const { title, message } = getFormattedNotification('payment.succeeded', { amount: fmt });
       await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         cuid,
@@ -2388,9 +2381,7 @@ export class NotificationService {
   private async handlePaymentRefunded(payload: PaymentRefundedPayload): Promise<void> {
     try {
       const { cuid, refundAmount } = payload;
-      const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
-        (refundAmount || 0) / 100
-      );
+      const fmt = MoneyUtils.formatCurrency(refundAmount || 0);
       const { title, message } = getFormattedNotification('payment.refunded', { amount: fmt });
       await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         cuid,

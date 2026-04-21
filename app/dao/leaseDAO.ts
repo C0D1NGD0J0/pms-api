@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { ClientSession, FilterQuery, Model } from 'mongoose';
+import { calcPercentage, roundToDecimal } from '@utils/math.utils';
 import { paginateResult, createLogger, escapeRegExp } from '@utils/index';
 import {
   ListResultWithPagination,
@@ -694,7 +695,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
 
       const totalMonthlyRent = totalRent.length > 0 ? (totalRent[0] as any).totalRent : 0;
 
-      const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
+      const occupancyRate = calcPercentage(occupiedUnits, totalUnits);
 
       return {
         totalLeases,
@@ -704,7 +705,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         expiringIn30Days: expiring30,
         expiringIn60Days: expiring60,
         expiringIn90Days: expiring90,
-        occupancyRate: Math.round(occupancyRate * 100) / 100,
+        occupancyRate: roundToDecimal(occupancyRate, 2),
       };
     } catch (error: any) {
       this.log.error('Error getting lease stats:', error);

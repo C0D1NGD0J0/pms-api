@@ -181,6 +181,7 @@ const setupServices = () => {
     profileDAO,
     clientDAO,
     leaseDAO,
+    sseService: { sendToUser: jest.fn().mockReturnValue(Promise.resolve(true)) } as any,
   });
 
   const leaseService = new LeaseService({

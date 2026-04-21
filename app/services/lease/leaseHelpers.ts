@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
+import { proRateAmount } from '@utils/financial.utils';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { IClientDocument } from '@interfaces/client.interface';
@@ -895,6 +896,7 @@ export const fetchLeaseByLuid = async (
 export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
   const totalMonthlyRent = (lease as any).totalMonthlyFees || lease.fees.monthlyRent;
   const petMonthlyFee = lease.petPolicy?.monthlyFee || 0;
+  const petDeposit = lease.petPolicy?.deposit || 0;
   const securityDeposit = lease.fees.securityDeposit;
   const currency = lease.fees.currency || 'USD';
 
@@ -906,12 +908,12 @@ export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
   );
 
   // All amounts are in cents — totalMonthlyRent and securityDeposit come from the DB in cents.
-  // calculateProRatedAmount expects and returns cents; only format at the very end.
-  const proRated = calculateProRatedAmount(totalMonthlyRent, startDate);
+  // proRateAmount expects and returns cents; only format at the very end.
+  const proRated = proRateAmount(totalMonthlyRent, startDate);
   const proRatedAmountCents = proRated.amount;
 
-  // First payment in cents = pro-rated rent + security deposit (bundled at move-in)
-  const firstPaymentCents = proRatedAmountCents + securityDeposit;
+  // First payment = pro-rated rent + security deposit + pet fee (month 1) + pet deposit (one-time)
+  const firstPaymentCents = proRatedAmountCents + securityDeposit + petMonthlyFee + petDeposit;
 
   const startMonth = startDate.toLocaleString('en-US', { month: 'short' });
 
@@ -970,35 +972,9 @@ export const calculateNextPaymentDate = (rentDueDay: number, startDate: Date): D
   return nextPayment;
 };
 
-/**
- * Pro-rate the first month's rent based on move-in date.
- *
- * If the tenant starts on day 1, the full month is charged (no pro-ration).
- * Otherwise: ceil((monthlyRent × daysRemaining) / daysInMonth).
- *
- * All amounts are in cents to avoid floating-point drift.
- */
-export const calculateProRatedAmount = (
-  monthlyRentInCents: number,
-  startDate: Date
-): {
-  amount: number;
-  daysCharged: number;
-  daysInMonth: number;
-  isFullMonth: boolean;
-} => {
-  const start = new Date(startDate);
-  const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
-  const startDay = start.getDate();
-  const daysCharged = daysInMonth - startDay + 1; // inclusive of start day
-
-  if (startDay === 1) {
-    return { amount: monthlyRentInCents, daysCharged, daysInMonth, isFullMonth: true };
-  }
-
-  const proRated = Math.ceil((monthlyRentInCents * daysCharged) / daysInMonth);
-  return { amount: proRated, daysCharged, daysInMonth, isFullMonth: false };
-};
+// Pro-ration logic lives in the canonical financial utility.
+// Re-exported here so existing call sites need no changes.
+export { proRateAmount as calculateProRatedAmount } from '@utils/financial.utils';
 
 /**
  * Get user permissions for a lease based on role

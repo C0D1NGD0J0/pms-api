@@ -1,16 +1,19 @@
 import dayjs from 'dayjs';
+import Decimal from 'decimal.js';
 import { UserDAO } from '@dao/userDAO';
 import { ClientSession } from 'mongodb';
 import { AuthCache } from '@caching/index';
 import { ClientDAO } from '@dao/clientDAO';
 import { Subscription } from '@models/index';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { MoneyUtils } from '@utils/money.utils';
 import { createLogger, msToDays } from '@utils/index';
 import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PaymentGatewayService } from '@services/paymentGateway';
+import { calcAnnualToMonthly, calcSeatCost } from '@utils/financial.utils';
 import { InternalServerError, BadRequestError } from '@shared/customErrors';
 import {
   ISubscriptionEntitlements,
@@ -281,7 +284,7 @@ export class SubscriptionService {
       }
 
       const monthlyEquivalent =
-        billingInterval === 'annual' ? Math.round(actualBilledAmount / 12) : actualBilledAmount;
+        billingInterval === 'annual' ? calcAnnualToMonthly(actualBilledAmount) : actualBilledAmount;
 
       const status = isPaidPlan ? ISubscriptionStatus.PENDING_PAYMENT : ISubscriptionStatus.ACTIVE;
       const pendingDowngradeAt = isPaidPlan ? dayjs().add(48, 'hour').toDate() : undefined;
@@ -783,7 +786,7 @@ export class SubscriptionService {
       const billingHistory = result.data.map((inv) => ({
         invoiceId: inv.id,
         number: inv.number,
-        amountPaid: inv.amount_paid / 100,
+        amountPaid: MoneyUtils.fromCents(inv.amount_paid),
         currency: inv.currency.toUpperCase(),
         paidAt: inv.status_transitions?.paid_at
           ? new Date(inv.status_transitions.paid_at * 1000)
@@ -1080,16 +1083,22 @@ export class SubscriptionService {
           }
         }
 
-        // Calculate new pricing
-        const monthlyCostChange = (seatDelta * config.seatPricing.additionalSeatPriceCents) / 100;
-        const newAdditionalCost =
-          (newAdditionalCount * config.seatPricing.additionalSeatPriceCents) / 100;
+        // Calculate new pricing — all values in cents to stay consistent with totalMonthlyPrice
+        const newAdditionalCost = calcSeatCost(
+          newAdditionalCount,
+          config.seatPricing.additionalSeatPriceCents
+        );
+        const monthlyCostChange = calcSeatCost(
+          seatDelta,
+          config.seatPricing.additionalSeatPriceCents
+        );
+        const currentMonthlyPrice = subscription.totalMonthlyPrice ?? 0;
 
         const updateFields: any = {
           $inc: { additionalSeatsCount: seatDelta },
           $set: {
             additionalSeatsCost: newAdditionalCost,
-            totalMonthlyPrice: subscription.totalMonthlyPrice + monthlyCostChange,
+            totalMonthlyPrice: new Decimal(currentMonthlyPrice).plus(monthlyCostChange).toNumber(),
           },
         };
 
@@ -1116,7 +1125,7 @@ export class SubscriptionService {
             cuid,
             seatDelta,
             newTotal: newAdditionalCount,
-            costPerSeat: config.seatPricing.additionalSeatPriceCents / 100,
+            costPerSeat: MoneyUtils.fromCents(config.seatPricing.additionalSeatPriceCents),
             monthlyCostChange,
             seatItemId,
           },
@@ -1327,7 +1336,7 @@ export class SubscriptionService {
 
   private formatPrice(priceInCents: number): string {
     if (priceInCents === 0) return '$0';
-    return `$${(priceInCents / 100).toFixed(2)}`;
+    return `$${MoneyUtils.centsToDisplay(priceInCents)}`;
   }
 
   // WEBHOOKS AND CRON JOBS
@@ -1449,8 +1458,37 @@ export class SubscriptionService {
     // Non-subscription invoice (e.g. rent) — handled elsewhere
     if (!stripeSubscriptionId) return;
 
-    // Only save card details on the first payment
-    if (rawInvoice.billing_reason !== 'subscription_create') return;
+    const billingReason: string = rawInvoice.billing_reason ?? '';
+
+    // ── Renewal cycle: advance endDate as a resilience fallback ─────────────
+    // customer.subscription.updated is the primary source for endDate, but if
+    // that webhook is missed or fails, the billing date freezes in the past.
+    // invoice.paid fires reliably on every successful charge, so we use
+    // period_end here as a safety net for subscription_cycle renewals.
+    if (billingReason === 'subscription_cycle' && rawInvoice.period_end) {
+      const subscription = await this.subscriptionDAO.findFirst({
+        'billing.subscriberId': stripeSubscriptionId,
+      });
+      if (subscription) {
+        const newEndDate = new Date(rawInvoice.period_end * 1000);
+        // Only write if the stored date is older than what the invoice says,
+        // to avoid overwriting a more recent value from customer.subscription.updated.
+        if (!subscription.endDate || subscription.endDate < newEndDate) {
+          await this.subscriptionDAO.update(
+            { _id: subscription._id },
+            { $set: { endDate: newEndDate } }
+          );
+          this.log.info(
+            { stripeSubscriptionId, newEndDate },
+            'invoice.paid: advanced endDate from renewal cycle'
+          );
+        }
+      }
+      return;
+    }
+
+    // ── First payment: save card details ────────────────────────────────────
+    if (billingReason !== 'subscription_create') return;
 
     const rawChargeId: string | undefined =
       rawInvoice.latest_charge ||
@@ -1606,14 +1644,20 @@ export class SubscriptionService {
                 'Seat quantity changed in Stripe, syncing to database'
               );
 
-              // Calculate new pricing
-              const newAdditionalCost =
-                (newSeatQuantity * config.seatPricing.additionalSeatPriceCents) / 100;
-              const priceDifference = newAdditionalCost - subscription.additionalSeatsCost;
+              // Calculate new pricing — all values in cents
+              const newAdditionalCost = calcSeatCost(
+                newSeatQuantity,
+                config.seatPricing.additionalSeatPriceCents
+              );
+              const priceDifference = new Decimal(newAdditionalCost)
+                .minus(subscription.additionalSeatsCost ?? 0)
+                .toNumber();
 
               updateData.additionalSeatsCount = newSeatQuantity;
               updateData.additionalSeatsCost = newAdditionalCost;
-              updateData.totalMonthlyPrice = subscription.totalMonthlyPrice + priceDifference;
+              updateData.totalMonthlyPrice = new Decimal(subscription.totalMonthlyPrice ?? 0)
+                .plus(priceDifference)
+                .toNumber();
 
               // Store seat item ID if we don't have it
               if (seatItem.id && !subscription.billing?.seatItemId) {
@@ -1632,8 +1676,9 @@ export class SubscriptionService {
 
             updateData.additionalSeatsCount = 0;
             updateData.additionalSeatsCost = 0;
-            updateData.totalMonthlyPrice =
-              subscription.totalMonthlyPrice - subscription.additionalSeatsCost;
+            updateData.totalMonthlyPrice = new Decimal(subscription.totalMonthlyPrice ?? 0)
+              .minus(subscription.additionalSeatsCost ?? 0)
+              .toNumber();
           }
         }
       } catch (seatSyncError) {
@@ -1830,6 +1875,63 @@ export class SubscriptionService {
       }
     } catch (error) {
       this.log.error({ error }, 'Error in processExpiredSubscriptions cron job');
+      throw error;
+    }
+  }
+
+  /**
+   * Admin utility: pull live subscription data from Stripe and overwrite endDate
+   * (and status) in the DB. Useful when a webhook was missed and the billing date
+   * is stale. Returns the updated subscription document.
+   */
+  async syncFromStripe(cuid: string): IPromiseReturnedData<ISubscriptionDocument> {
+    try {
+      const subscription = await this.subscriptionDAO.findFirst({ cuid });
+      if (!subscription) {
+        throw new BadRequestError({ message: 'Subscription not found for this client' });
+      }
+
+      const stripeSubscriptionId = subscription.billing?.subscriberId;
+      if (!stripeSubscriptionId) {
+        throw new BadRequestError({ message: 'No Stripe subscription ID linked to this record' });
+      }
+
+      const stripeResult = await this.paymentGatewayService.getSubscriptionWithItems(
+        IPaymentGatewayProvider.STRIPE,
+        stripeSubscriptionId
+      );
+
+      if (!stripeResult.success || !stripeResult.data) {
+        throw new BadRequestError({ message: 'Failed to retrieve subscription from Stripe' });
+      }
+
+      const stripeSub = stripeResult.data;
+      const updateData: Record<string, unknown> = {
+        endDate: new Date(stripeSub.current_period_end * 1000),
+        startDate: new Date(stripeSub.current_period_start * 1000),
+      };
+
+      if (stripeSub.status === 'active') {
+        updateData.status = ISubscriptionStatus.ACTIVE;
+      }
+
+      const updated = await this.subscriptionDAO.update(
+        { _id: subscription._id },
+        { $set: updateData }
+      );
+
+      if (!updated) {
+        throw new BadRequestError({ message: 'DB update failed during Stripe sync' });
+      }
+
+      this.log.info(
+        { cuid, stripeSubscriptionId, newEndDate: updateData.endDate },
+        'Subscription synced from Stripe'
+      );
+
+      return { success: true, data: updated };
+    } catch (error) {
+      this.log.error({ error, cuid }, 'syncFromStripe failed');
       throw error;
     }
   }

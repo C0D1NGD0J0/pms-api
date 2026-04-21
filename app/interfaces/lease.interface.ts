@@ -52,6 +52,53 @@ export enum LeaseType {
 }
 
 /**
+ * Main Lease Interface
+ * Core lease data structure
+ */
+export interface ILease {
+  autoSendInfo?: {
+    sent: boolean;
+    failedAt: Date;
+    failureReason: 'not_approved' | 'auto_send_disabled';
+  };
+  pendingChanges?: IPendingLeaseChanges | null;
+  generateFirstPaymentOnActivation?: boolean;
+  previousLeaseId?: Types.ObjectId | string;
+  approvalDetails?: ILeaseApprovalEntry[];
+  signingMethod: SigningMethod | string;
+  leaseDocuments?: ILeaseDocumentItem[];
+  approvalStatus?: LeaseApprovalStatus;
+  useInvitationIdAsTenantId?: boolean;
+  createdBy: Types.ObjectId | string;
+  lastModifiedBy?: ILastModifiedBy[];
+  utilitiesIncluded?: UtilityType[];
+  tenantId: Types.ObjectId | string;
+  renewalOptions?: IRenewalOptions;
+  templateType: LeaseTemplateType;
+  internalNotes?: IInternalNote[];
+  includeManagementFee?: boolean;
+  requiresNotarization?: boolean;
+  signatures?: ILeaseSignature[];
+  metadata?: Record<string, any>; // Store enriched data for lease generation
+  eSignature?: ILeaseESignature;
+  includeParkingInfo?: boolean;
+  terminationReason?: string;
+  deletedBy?: Types.ObjectId;
+  property: ILeaseProperty;
+  duration: ILeaseDuration;
+  legalTerms?: ILegalTerms;
+  coTenants?: ICoTenant[];
+  petPolicy?: IPetPolicy;
+  leaseNumber: string;
+  status: LeaseStatus;
+  signedDate?: Date;
+  fees: ILeaseFees;
+  deletedAt?: Date;
+  type: LeaseType;
+  cuid: string;
+}
+
+/**
  * Legacy interface - keeping for backward compatibility
  * Use ILeasePreviewRequest instead (will deprecate later)
  */
@@ -98,49 +145,6 @@ export type LeasePreviewData = {
 };
 
 /**
- * Main Lease Interface
- * Core lease data structure
- */
-export interface ILease {
-  autoSendInfo?: {
-    sent: boolean;
-    failedAt: Date;
-    failureReason: 'not_approved' | 'auto_send_disabled';
-  };
-  pendingChanges?: IPendingLeaseChanges | null;
-  previousLeaseId?: Types.ObjectId | string;
-  approvalDetails?: ILeaseApprovalEntry[];
-  signingMethod: SigningMethod | string;
-  leaseDocuments?: ILeaseDocumentItem[];
-  approvalStatus?: LeaseApprovalStatus;
-  useInvitationIdAsTenantId?: boolean;
-  createdBy: Types.ObjectId | string;
-  lastModifiedBy?: ILastModifiedBy[];
-  utilitiesIncluded?: UtilityType[];
-  tenantId: Types.ObjectId | string;
-  renewalOptions?: IRenewalOptions;
-  templateType: LeaseTemplateType;
-  internalNotes?: IInternalNote[];
-  requiresNotarization?: boolean;
-  signatures?: ILeaseSignature[];
-  metadata?: Record<string, any>; // Store enriched data for lease generation
-  eSignature?: ILeaseESignature;
-  terminationReason?: string;
-  property: ILeaseProperty;
-  duration: ILeaseDuration;
-  legalTerms?: ILegalTerms;
-  coTenants?: ICoTenant[];
-  petPolicy?: IPetPolicy;
-  leaseNumber: string;
-  status: LeaseStatus;
-  signedDate?: Date;
-  fees: ILeaseFees;
-  deletedAt?: Date;
-  type: LeaseType;
-  cuid: string;
-}
-
-/**
  * ============================================================================
  * ENUMS
  * ============================================================================
@@ -178,8 +182,10 @@ export interface ILeaseFormData {
   renewalOptions?: IRenewalOptions;
   templateType?: LeaseTemplateType;
   internalNotes?: IInternalNote[];
+  includeManagementFee?: boolean;
   requiresNotarization?: boolean;
   signingMethod?: SigningMethod;
+  includeParkingInfo?: boolean;
   legalTerms?: ILegalTerms;
   coTenants?: ICoTenant[];
   petPolicy?: IPetPolicy;

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { calcGatewayFee } from '@utils/financial.utils';
 import { ISubscriptionPlansConfig, PlanName } from '@interfaces/subscription.interface';
 
 const CONFIG_PATH = path.join(process.cwd(), 'configs', 'platform.config.json');
@@ -244,7 +245,7 @@ export class SubscriptionPlanConfig {
    */
   public calculatePaymentGatewayFee(amountInCents: number, provider: string = 'stripe'): number {
     const fees = this.getPaymentGatewayFees(provider);
-    return Math.round((amountInCents * fees.percentRate) / 100) + fees.fixedFeeCents;
+    return calcGatewayFee(amountInCents, fees.percentRate, fees.fixedFeeCents);
   }
 
   /**

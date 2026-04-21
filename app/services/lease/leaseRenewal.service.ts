@@ -204,6 +204,17 @@ export class LeaseRenewalService {
       });
     }
 
+    if (!isSystemCall) {
+      const renewalMeta = calculateRenewalMetadata(existingLease);
+      if (!renewalMeta?.isEligible) {
+        throw new BadRequestError({
+          message:
+            renewalMeta?.ineligibilityReason ??
+            'This lease is not eligible for renewal at this time',
+        });
+      }
+    }
+
     const session = await this.leaseDAO.startSession();
     const renewalLease = await this.leaseDAO.withTransaction(session, async (session) => {
       const existingRenewal = await this.leaseDAO.findFirst(

@@ -6,6 +6,7 @@ import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { MetricsDAO } from '@dao/metricsDAO';
 import { PaymentDAO } from '@dao/paymentDAO';
+import { calcPercentChange } from '@utils/math.utils';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { EventTypes } from '@interfaces/events.interface';
@@ -273,9 +274,7 @@ export class MetricsService implements ICronProvider {
     const recentAvg = this.avg(recent, primaryKey);
     const priorAvg = this.avg(prior, primaryKey);
 
-    const changePercent = priorAvg === 0 ? 0 : ((recentAvg - priorAvg) / priorAvg) * 100;
-
-    return { data: recent, changePercent: Math.round(changePercent * 10) / 10 };
+    return { data: recent, changePercent: calcPercentChange(recentAvg, priorAvg) };
   }
 
   // ─── Cron snapshot helpers ─────────────────────────────────────────────────
@@ -337,7 +336,7 @@ export class MetricsService implements ICronProvider {
 
   private getPrimaryMeasurementKey(metricType: MetricType): string {
     const map: Record<MetricType, string> = {
-      [MetricType.LEASE]: 'totalMonthlyRent',
+      [MetricType.LEASE]: 'activeLeases',
       [MetricType.PAYMENT]: 'totalRevenue',
       [MetricType.PROPERTY]: 'occupancyRate',
       [MetricType.USER]: 'total',

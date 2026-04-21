@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import crypto from 'crypto';
 import { Readable } from 'stream';
 import { createLogger } from '@utils/index';
@@ -201,9 +202,13 @@ export class BoldSignService {
       throw new Error('BoldSign webhook signature verification failed');
     }
 
-    const age = Math.floor(Date.now() / 1000) - parseInt(parts.timestamp, 10);
-    if (age > 300) {
-      throw new Error('BoldSign webhook timestamp too old');
+    const timestamp = parseInt(parts.timestamp, 10);
+    if (!Number.isFinite(timestamp)) {
+      throw new Error('BoldSign webhook timestamp is invalid');
+    }
+    const age = dayjs().unix() - timestamp;
+    if (age < 0 || age > 300) {
+      throw new Error('BoldSign webhook timestamp outside allowed window');
     }
   }
 

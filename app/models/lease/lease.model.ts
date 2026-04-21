@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { calcLateFee } from '@utils/financial.utils';
 import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
 import { ILeaseDocument, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
@@ -244,6 +245,9 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         ],
       },
     ],
+    includeManagementFee: { type: Boolean, default: false },
+    includeParkingInfo: { type: Boolean, default: false },
+    generateFirstPaymentOnActivation: { type: Boolean, default: false },
     petPolicy: {
       allowed: {
         type: Boolean,
@@ -582,6 +586,11 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       default: null,
       index: true,
     },
+    deletedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     metadata: {
       type: Schema.Types.Mixed,
       default: {},
@@ -847,11 +856,9 @@ LeaseSchema.methods.calculateFees = function (options?: { daysLate?: number }) {
 
   if (daysLate >= gracePeriod) {
     if (this.fees?.lateFeeType === 'percentage' && this.fees?.lateFeePercentage) {
-      // calculate percentage of monthly rent
-      lateFee = Math.round(monthlyRent * (this.fees.lateFeePercentage / 100));
+      lateFee = calcLateFee(monthlyRent, 'percentage', this.fees.lateFeePercentage);
     } else {
-      // fixed late fee amount
-      lateFee = this.fees?.lateFeeAmount || 0;
+      lateFee = calcLateFee(monthlyRent, 'fixed', this.fees?.lateFeeAmount || 0);
     }
   }
 

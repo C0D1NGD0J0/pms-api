@@ -5,6 +5,7 @@ import { PdfQueue } from '@queues/index';
 import { LeaseCache } from '@caching/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
+import { MoneyUtils } from '@utils/money.utils';
 import { ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
 import { determineTemplateType, createLogger } from '@utils/index';
 import { PdfGeneratorService, MediaUploadService } from '@services/index';
@@ -295,6 +296,24 @@ export class LeasePdfService {
       utilitiesIncluded: lease.utilitiesIncluded,
       signingMethod: lease.signingMethod || SigningMethod.MANUAL,
       requiresNotarization: true,
+
+      managementFee:
+        lease.includeManagementFee && Number(property.fees?.managementFees ?? 0) > 0
+          ? {
+              amount: property.fees.managementFees,
+              formatted: MoneyUtils.formatCurrency(
+                property.fees.managementFees as number,
+                (property.fees.currency as string) || 'USD'
+              ),
+            }
+          : null,
+      parkingInfo:
+        lease.includeParkingInfo && property.communityAmenities?.parking
+          ? {
+              available: true,
+              spaces: property.specifications?.parkingSpaces ?? null,
+            }
+          : null,
 
       ...landlordInfo,
       propertyName: property.name,

@@ -46,6 +46,8 @@ const setupServices = () => {
     notificationService: {} as any,
     sseService: {} as any,
     paymentGatewayService: {} as any,
+    featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
+    vendorDAO: {} as any,
     queueFactory: mockQueueFactory as any,
   });
 

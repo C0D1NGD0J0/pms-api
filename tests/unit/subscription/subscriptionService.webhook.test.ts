@@ -264,7 +264,8 @@ describe('SubscriptionService - Webhook Handlers', () => {
         { _id: mockSubscription._id },
         {
           $set: {
-            status: ISubscriptionStatus.INACTIVE,
+            status: ISubscriptionStatus.PAST_DUE,
+            pendingDowngradeAt: expect.any(Date),
           },
         },
         undefined,
@@ -330,7 +331,12 @@ describe('SubscriptionService - Webhook Handlers', () => {
       );
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
-        { $set: { status: ISubscriptionStatus.INACTIVE } },
+        {
+          $set: {
+            status: ISubscriptionStatus.PAST_DUE,
+            pendingDowngradeAt: expect.any(Date),
+          },
+        },
         undefined,
         mockSession
       );

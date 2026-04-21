@@ -289,7 +289,7 @@ describe('AuthService.setupPaymentIntent — electronic lease, processor not fou
 
     expect(paymentProcessorDAO.findFirst).toHaveBeenCalledWith({
       cuid: CUID,
-      ownerType: 'client',
+      ownerType: { $in: ['client', null] },
       deletedAt: null,
     });
   });

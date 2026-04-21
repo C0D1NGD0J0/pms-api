@@ -113,6 +113,24 @@ describe('PaymentController Integration Tests', () => {
       paymentController.chargeForMaintenance(req, res).catch(next);
     });
 
+    app.get('/api/v1/payments/:cuid/stats', (req: any, res: any, next: any) => {
+      req.context = mockContext(adminUser, req.params.cuid);
+      paymentController.getPaymentStats(req, res).catch(next);
+    });
+
+    app.get('/api/v1/payments/:cuid/stats/as-tenant', (req: any, res: any, next: any) => {
+      // Simulate a tenant calling the stats endpoint
+      req.context = {
+        currentuser: {
+          sub: adminUser._id.toString(),
+          uid: adminUser.uid,
+          email: adminUser.email,
+          client: { cuid: req.params.cuid, role: ROLES.TENANT },
+        },
+      };
+      paymentController.getPaymentStats(req, res).catch(next);
+    });
+
     app.use(errorHandlerMiddleware as any);
   });
 
@@ -249,6 +267,8 @@ describe('PaymentController Integration Tests', () => {
         dueDate: new Date(),
         paidAt: new Date(),
         isManualEntry: true,
+        // Provide a period to avoid unique-index conflict with testPayment (lease: null, paymentType: rent, period: null)
+        period: { month: 1, year: 2024 },
         invoiceNumber: `INV-MANUAL-${Date.now()}`,
       });
 
@@ -348,6 +368,66 @@ describe('PaymentController Integration Tests', () => {
           tenantId: tenantUser._id.toString(),
           amount: 10000,
         })
+        .expect(404);
+
+      expect(response.body.success).toBe(false);
+    });
+  });
+
+  describe('GET /api/v1/payments/:cuid/stats', () => {
+    beforeEach(async () => {
+      // clearTestDatabase() in the outer beforeEach deletes the client document.
+      // Re-insert it so getPaymentStats can find it (the service throws NotFoundError otherwise).
+      await Client.findOneAndUpdate(
+        { cuid: testClient.cuid },
+        {
+          cuid: testClient.cuid,
+          displayName: 'Test Client',
+          status: 'active',
+          isVerified: true,
+        },
+        { upsert: true, new: true }
+      );
+    });
+
+    it('returns 200 with stats for admin role (client-wide)', async () => {
+      const response = await request(app)
+        .get(`/api/v1/payments/${testClient.cuid}/stats`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toBeDefined();
+      expect(typeof response.body.data.collected).toBe('number');
+      expect(typeof response.body.data.pending).toBe('number');
+      expect(typeof response.body.data.overdue).toBe('number');
+      expect(typeof response.body.data.collectionRate).toBe('number');
+    });
+
+    it('returns 200 with stats scoped to requesting tenant when role is tenant', async () => {
+      // The /as-tenant route injects tenant role context pointing to adminUser (the profile exists)
+      const response = await request(app)
+        .get(`/api/v1/payments/${testClient.cuid}/stats/as-tenant`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toBeDefined();
+      expect(typeof response.body.data.collected).toBe('number');
+    });
+
+    it('returns 200 with filtered stats when tenantId query param is provided as admin', async () => {
+      const response = await request(app)
+        .get(`/api/v1/payments/${testClient.cuid}/stats?tenantId=${testProfile._id.toString()}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toBeDefined();
+      // Only the one PAID testPayment (150000 cents) should be counted
+      expect(response.body.data.collected).toBe(150000);
+    });
+
+    it('returns 404 when client cuid does not exist', async () => {
+      const response = await request(app)
+        .get('/api/v1/payments/NONEXISTENT-CUID/stats')
         .expect(404);
 
       expect(response.body.success).toBe(false);

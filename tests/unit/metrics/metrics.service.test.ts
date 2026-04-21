@@ -62,7 +62,7 @@ const mockClientDAO = { getActiveCuids: jest.fn().mockReturnValue(Promise.resolv
 const mockMetricsDAO = {
   insertSnapshot: jest.fn().mockReturnValue(Promise.resolve(undefined)),
   findByDateRange: jest.fn().mockReturnValue(Promise.resolve([])),
-  aggregateByDay: jest.fn().mockReturnValue(Promise.resolve([])),
+  findSince: jest.fn().mockReturnValue(Promise.resolve([])),
 } as any;
 
 const mockSSEService = {
@@ -145,7 +145,7 @@ describe('MetricsService', () => {
 
   describe('getTrend', () => {
     it('should return changePercent=0 when no snapshot data', async () => {
-      mockMetricsDAO.aggregateByDay.mockReturnValue(Promise.resolve([]));
+      mockMetricsDAO.findSince.mockReturnValue(Promise.resolve([]));
       const result = await service.getTrend('cuid123', MetricType.PAYMENT, 30);
       expect(result.changePercent).toBe(0);
       expect(result.data).toEqual([]);
@@ -156,7 +156,7 @@ describe('MetricsService', () => {
       const recentDate = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000); // 10 days ago
       const priorDate = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000); // 40 days ago
 
-      mockMetricsDAO.aggregateByDay.mockReturnValue(Promise.resolve([
+      mockMetricsDAO.findSince.mockReturnValue(Promise.resolve([
         { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { totalRevenue: 1000 }, timestamp: priorDate },
         { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { totalRevenue: 2000 }, timestamp: recentDate },
       ]));
@@ -171,7 +171,7 @@ describe('MetricsService', () => {
       const recentDate = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000);
       const priorDate = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000);
 
-      mockMetricsDAO.aggregateByDay.mockReturnValue(Promise.resolve([
+      mockMetricsDAO.findSince.mockReturnValue(Promise.resolve([
         { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { totalRevenue: 4000 }, timestamp: priorDate },
         { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { totalRevenue: 2000 }, timestamp: recentDate },
       ]));

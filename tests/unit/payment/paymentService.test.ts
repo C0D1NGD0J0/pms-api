@@ -391,6 +391,84 @@ describe('PaymentService - getPaymentStats', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// getPaymentStats — tenant auto-scope
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
+  let paymentService: PaymentService;
+  let mockPaymentDAO: jest.Mocked<PaymentDAO>;
+  let mockClientDAO: jest.Mocked<ClientDAO>;
+  let mockProfileDAO: jest.Mocked<ProfileDAO>;
+
+  const TENANT_USER_ID = new Types.ObjectId().toString();
+  const TENANT_PROFILE_ID = new Types.ObjectId().toString();
+  const OTHER_TENANT_PROFILE_ID = new Types.ObjectId().toString();
+
+  beforeEach(() => {
+    mockClientDAO = { findFirst: jest.fn().mockResolvedValue({ cuid: CUID }) } as unknown as jest.Mocked<ClientDAO>;
+    mockPaymentDAO = { findByCuid: jest.fn().mockResolvedValue({ items: [], total: 0 }) } as unknown as jest.Mocked<PaymentDAO>;
+    mockProfileDAO = {
+      findFirst: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(TENANT_PROFILE_ID) }),
+    } as unknown as jest.Mocked<ProfileDAO>;
+    paymentService = makeServiceWithMocks({ clientDAO: mockClientDAO, paymentDAO: mockPaymentDAO, profileDAO: mockProfileDAO });
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('ignores provided tenantId and auto-scopes to requesting tenant profile when role is tenant', async () => {
+    const context = {
+      currentuser: {
+        sub: TENANT_USER_ID,
+        client: { role: 'tenant', cuid: CUID },
+      },
+    } as any;
+
+    await paymentService.getPaymentStats(CUID, context, OTHER_TENANT_PROFILE_ID);
+
+    // profileDAO.findFirst should be called with the requester's own userId (sub), not the caller-supplied tenantId
+    expect(mockProfileDAO.findFirst).toHaveBeenCalledWith({ user: expect.any(Types.ObjectId) });
+
+    // findByCuid should receive the auto-resolved profile id, not OTHER_TENANT_PROFILE_ID
+    expect(mockPaymentDAO.findByCuid).toHaveBeenCalledWith(
+      CUID,
+      expect.objectContaining({ tenantId: TENANT_PROFILE_ID }),
+      expect.anything()
+    );
+  });
+
+  it('uses provided tenantId directly when role is not tenant (PM/admin)', async () => {
+    const context = {
+      currentuser: {
+        sub: 'admin-user-id',
+        client: { role: 'admin', cuid: CUID },
+      },
+    } as any;
+
+    await paymentService.getPaymentStats(CUID, context, OTHER_TENANT_PROFILE_ID);
+
+    // profileDAO.findFirst should NOT be called — PM tenantId is passed through directly
+    expect(mockProfileDAO.findFirst).not.toHaveBeenCalled();
+
+    expect(mockPaymentDAO.findByCuid).toHaveBeenCalledWith(
+      CUID,
+      expect.objectContaining({ tenantId: OTHER_TENANT_PROFILE_ID }),
+      expect.anything()
+    );
+  });
+
+  it('returns client-wide stats (no tenantId filter) when no context and no tenantId provided', async () => {
+    await paymentService.getPaymentStats(CUID);
+
+    expect(mockProfileDAO.findFirst).not.toHaveBeenCalled();
+    expect(mockPaymentDAO.findByCuid).toHaveBeenCalledWith(
+      CUID,
+      expect.not.objectContaining({ tenantId: expect.anything() }),
+      expect.anything()
+    );
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
 // recordManualPayment
 // ═════════════════════════════════════════════════════════════════════════════
 

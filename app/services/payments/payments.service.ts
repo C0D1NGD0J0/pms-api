@@ -108,6 +108,10 @@ export class PaymentService implements ICronProvider {
       EventTypes.MAINTENANCE_INVOICE_APPROVED,
       this.handleMaintenanceInvoiceApproved.bind(this)
     );
+    this.emitterService.on(
+      EventTypes.LEASE_ESIGNATURE_COMPLETED,
+      this.handleLeaseActivated.bind(this)
+    );
   }
 
   getCronJobs(): ICronJob[] {
@@ -180,10 +184,26 @@ export class PaymentService implements ICronProvider {
     );
 
     let queued = 0;
+    const onlinePaymentsEnabled = new Map<string, boolean>();
     for (const lease of leases) {
       try {
         const dueDate = this.calculateNextDueDate(lease.fees.rentDueDay, today);
         if (dueDate < today || dueDate > sevenDaysLater) continue;
+
+        if (!onlinePaymentsEnabled.has(lease.cuid)) {
+          const lClient = await this.clientDAO.getClientByCuid(lease.cuid);
+          onlinePaymentsEnabled.set(
+            lease.cuid,
+            lClient?.settings?.tenantFeatures?.onlinePayments !== false
+          );
+        }
+        if (!onlinePaymentsEnabled.get(lease.cuid)) {
+          this.log.info(
+            { leaseId: lease._id, cuid: lease.cuid },
+            'Weekly rent invoice skipped: online payments disabled for client'
+          );
+          continue;
+        }
 
         const period = { month: dueDate.getMonth() + 1, year: dueDate.getFullYear() };
         const existing = await this.paymentDAO.findByPeriod(
@@ -234,8 +254,24 @@ export class PaymentService implements ICronProvider {
     );
 
     let queued = 0;
+    const onlinePaymentsEnabled = new Map<string, boolean>();
     for (const lease of leases) {
       try {
+        if (!onlinePaymentsEnabled.has(lease.cuid)) {
+          const lClient = await this.clientDAO.getClientByCuid(lease.cuid);
+          onlinePaymentsEnabled.set(
+            lease.cuid,
+            lClient?.settings?.tenantFeatures?.onlinePayments !== false
+          );
+        }
+        if (!onlinePaymentsEnabled.get(lease.cuid)) {
+          this.log.info(
+            { leaseId: lease._id, cuid: lease.cuid },
+            'Daily safety net skipped: online payments disabled for client'
+          );
+          continue;
+        }
+
         const dueDate = this.calculateNextDueDate(lease.fees.rentDueDay, today);
         const period = { month: dueDate.getMonth() + 1, year: dueDate.getFullYear() };
         const existing = await this.paymentDAO.findByPeriod(
@@ -338,6 +374,16 @@ export class PaymentService implements ICronProvider {
       }
       if (lease.status !== LeaseStatus.ACTIVE) {
         throw new BadRequestError({ message: 'Cannot create payment for inactive lease' });
+      }
+
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) {
+        throw new NotFoundError({ message: 'Client not found' });
+      }
+      if (client.settings?.tenantFeatures?.onlinePayments === false) {
+        throw new BadRequestError({
+          message: 'Online payments are disabled for this account',
+        });
       }
 
       const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
@@ -1045,6 +1091,14 @@ export class PaymentService implements ICronProvider {
       });
     }
 
+    // Pet deposit — collected once with the first payment
+    if (options?.isFirstPayment && fees.deposits.pet > 0) {
+      lineItems.push({
+        description: 'Pet Deposit',
+        amountInCents: fees.deposits.pet,
+      });
+    }
+
     // Validate we have at least one line item
     if (lineItems.length === 0) {
       throw new Error('No valid fees found on lease');
@@ -1621,7 +1675,8 @@ export class PaymentService implements ICronProvider {
    */
   async getPaymentStats(
     cuid: string,
-    context?: IRequestContext
+    context?: IRequestContext,
+    tenantId?: string
   ): IPromiseReturnedData<{
     expectedRevenue: number;
     collected: number;
@@ -1637,15 +1692,18 @@ export class PaymentService implements ICronProvider {
         throw new NotFoundError({ message: 'Client not found' });
       }
 
-      // When called by a tenant, scope stats to their own payments only
-      const tenantUserId =
-        context?.currentuser?.client?.role === 'tenant' ? context.currentuser.sub : undefined;
+      // Tenant role: always scope to own payments — ignore any caller-supplied tenantId
+      // Non-tenant (PM/admin): use provided tenantId to filter stats for a specific tenant
       const daoFilters: Record<string, any> = {};
-      if (tenantUserId) {
-        const profile = await this.profileDAO.findFirst({ user: new Types.ObjectId(tenantUserId) });
+      if (context?.currentuser?.client?.role === 'tenant') {
+        const profile = await this.profileDAO.findFirst({
+          user: new Types.ObjectId(context.currentuser.sub),
+        });
         if (profile) {
           daoFilters.tenantId = profile._id.toString();
         }
+      } else if (tenantId) {
+        daoFilters.tenantId = tenantId;
       }
 
       // Fetch ALL payments for this client across all time (no date filter).
@@ -1792,6 +1850,39 @@ export class PaymentService implements ICronProvider {
       throw error;
     }
   }
+
+  private handleLeaseActivated = async (payload: {
+    leaseId: string;
+    luid: string;
+    cuid: string;
+    tenantId: string;
+  }): Promise<void> => {
+    const { leaseId, luid, cuid, tenantId } = payload;
+    try {
+      const lease = await this.leaseDAO.findFirst({
+        _id: new Types.ObjectId(leaseId),
+        cuid,
+        deletedAt: null,
+      });
+      if (!lease?.generateFirstPaymentOnActivation) return;
+
+      const startDate = new Date(lease.duration.startDate);
+      await this.createRentPayment(cuid, {
+        paymentType: PaymentRecordType.RENT,
+        leaseId: luid,
+        tenantId,
+        dueDate: startDate,
+        period: { month: startDate.getMonth() + 1, year: startDate.getFullYear() },
+      });
+      this.log.info({ luid, cuid }, 'Auto-generated first month payment on lease activation');
+    } catch (error: any) {
+      // Never block lease activation — log and continue
+      this.log.error(
+        { error: error.message, leaseId, luid, cuid },
+        'Failed to auto-generate first month payment on lease activation'
+      );
+    }
+  };
 
   private handleMaintenanceInvoiceApproved = async (
     payload: MaintenanceInvoiceApprovedPayload
@@ -2129,9 +2220,25 @@ export class PaymentService implements ICronProvider {
 
     let charged = 0;
     let failed = 0;
+    const onlinePaymentsEnabled = new Map<string, boolean>();
 
     for (const payment of overduePayments) {
       try {
+        if (!onlinePaymentsEnabled.has(payment.cuid)) {
+          const pClient = await this.clientDAO.getClientByCuid(payment.cuid);
+          onlinePaymentsEnabled.set(
+            payment.cuid,
+            pClient?.settings?.tenantFeatures?.onlinePayments !== false
+          );
+        }
+        if (!onlinePaymentsEnabled.get(payment.cuid)) {
+          this.log.info(
+            { pytuid: payment.pytuid, cuid: payment.cuid },
+            '[Cron] Skipping auto-charge: online payments disabled for client'
+          );
+          continue;
+        }
+
         // Resolve tenant User._id from Profile
         const tenantProfile = await this.profileDAO.findFirst({ _id: payment.tenant });
         if (!tenantProfile?.user) {

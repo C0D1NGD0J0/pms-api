@@ -97,6 +97,7 @@ router.post(
   '/:cuid/:pytuid/refund',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
+  requireActiveTenant('onlinePayments'),
   requireVerifiedClient,
   idempotency,
   validateRequest({
@@ -113,6 +114,7 @@ router.post(
   '/:cuid/:pytuid/pay',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
+  requireActiveTenant('onlinePayments'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),

@@ -69,6 +69,7 @@ router
       PermissionAction.LIST,
       roleBasedContext
     ),
+    requireActiveTenant('maintenanceRequests'),
     validateRequest({ params: UtilsValidations.cuid, query: MaintenanceValidations.listQuery }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<MaintenanceController>('maintenanceController');
@@ -80,6 +81,7 @@ router.get(
   '/:cuid/stats',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.STATS),
+  requireActiveTenant('maintenanceRequests'),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<MaintenanceController>('maintenanceController');
@@ -95,6 +97,7 @@ router.get(
     PermissionAction.READ,
     roleBasedContext
   ),
+  requireActiveTenant('maintenanceRequests'),
   validateRequest({ params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam) }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<MaintenanceController>('maintenanceController');
@@ -141,6 +144,7 @@ router.patch(
 router.patch(
   '/:cuid/:mruid/status',
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
+  requireActiveTenant('maintenanceRequests'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -174,6 +178,7 @@ router.patch(
 router.patch(
   '/:cuid/:mruid/complete_request',
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
+  requireActiveTenant('maintenanceRequests'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -188,6 +193,7 @@ router.patch(
 router.patch(
   '/:cuid/:mruid/cancel_request',
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
+  requireActiveTenant('maintenanceRequests'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),

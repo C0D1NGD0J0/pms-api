@@ -141,10 +141,16 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       // When a PM disables the tenant portal, ALL access is blocked — this is a hard suspension,
       // not read-only mode. Disconnected/former tenants (isConnected === false) are handled
       // separately in requireActiveTenant() and retain read-only access to their history.
+      // Exception: /me and /logout are always allowed so the frontend can load the user's
+      // identity, display the "portal suspended" screen, and let the tenant log out cleanly.
       if (req.context.currentuser?.client?.role === ROLES.TENANT) {
         const tenantFeatures = req.context.currentuser.client?.tenantFeatures;
         const isPortalSuspended = tenantFeatures?.tenantPortalActive === false;
-        if (isPortalSuspended) {
+        const isIdentityOrExitRoute =
+          req.originalUrl.endsWith('/me') ||
+          req.originalUrl.includes('/logout') ||
+          req.originalUrl.includes('/notifications');
+        if (isPortalSuspended && !isIdentityOrExitRoute) {
           return next(
             new ForbiddenError({
               message: 'Tenant portal access has been disabled by your property manager.',
@@ -904,6 +910,20 @@ export const requireFeatureFlag = (flag: FeatureFlag) => {
     }
 
     next();
+  };
+};
+
+/**
+ * Restricts a route to users whose active client role is in the allowed list.
+ * Non-tenant roles only — this does not apply to tenant-scoped checks (use requireActiveTenant for those).
+ */
+export const requireRole = (roles: string[]) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const role = (req as AppRequest).context?.currentuser?.client?.role;
+    if (!role || !roles.includes(role)) {
+      return next(new ForbiddenError({ message: t('auth.errors.forbidden') }));
+    }
+    return next();
   };
 };
 

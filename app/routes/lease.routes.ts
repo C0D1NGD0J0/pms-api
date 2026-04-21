@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
+import { ROLES } from '@shared/constants/roles.constants';
 import { LeaseController } from '@controllers/LeaseController';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
@@ -13,6 +14,7 @@ import {
   isAuthenticated,
   requireFeature,
   basicLimiter,
+  requireRole,
   idempotency,
   diskUpload,
   scanFile,
@@ -325,6 +327,7 @@ router
   )
   .post(
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
+    requireRole([ROLES.ADMIN, ROLES.SUPER_ADMIN]),
     requireVerifiedClient,
     idempotency,
     validateRequest({

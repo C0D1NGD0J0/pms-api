@@ -196,26 +196,24 @@ export const RenewLeaseSchema = z.object({
     })
     .optional(),
 
-  fees: LeaseFeesSchema.partial().optional(),
-  renewalOptions: RenewalOptionsBaseSchema.partial().optional(),
-  petPolicy: PetPolicySchema.partial().optional(),
-  utilitiesIncluded: z.array(UtilityEnum).optional(),
+  fees: z
+    .object({
+      monthlyRent: z
+        .number({ invalid_type_error: 'Monthly rent must be a number' })
+        .min(0, 'Monthly rent must be a positive number')
+        .optional(),
+      lateFeeType: z.enum(['fixed', 'percentage']).optional(),
+      lateFeeAmount: z.number().min(0).optional(),
+      lateFeePercentage: z.number().min(0).max(100).optional(),
+      lateFeeDays: z.number().int().min(0).optional(),
+    })
+    .optional(),
 
-  coTenants: z.array(CoTenantSchema).optional(),
-  internalNotes: z
-    .array(
-      z.object({
-        note: z
-          .string()
-          .trim()
-          .min(1, 'Note text cannot be empty')
-          .max(2000, 'Note text cannot exceed 2000 characters'),
-        html: z.string().trim().max(10000, 'Note HTML cannot exceed 10000 characters').optional(),
-        author: z.string().min(1, 'Author name is required'),
-        authorId: z.string().min(1, 'Author ID is required'),
-        timestamp: z.union([z.date(), z.string()]).optional(),
-      })
-    )
+  petPolicy: z
+    .object({
+      deposit: z.number().min(0, 'Pet deposit must be a positive number').optional(),
+      monthlyFee: z.number().min(0, 'Pet monthly fee must be a positive number').optional(),
+    })
     .optional(),
 });
 

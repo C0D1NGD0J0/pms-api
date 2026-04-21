@@ -896,6 +896,7 @@ export const fetchLeaseByLuid = async (
 export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
   const totalMonthlyRent = (lease as any).totalMonthlyFees || lease.fees.monthlyRent;
   const petMonthlyFee = lease.petPolicy?.monthlyFee || 0;
+  const petDeposit = lease.petPolicy?.deposit || 0;
   const securityDeposit = lease.fees.securityDeposit;
   const currency = lease.fees.currency || 'USD';
 
@@ -911,8 +912,8 @@ export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
   const proRated = proRateAmount(totalMonthlyRent, startDate);
   const proRatedAmountCents = proRated.amount;
 
-  // First payment in cents = pro-rated rent + security deposit (bundled at move-in)
-  const firstPaymentCents = proRatedAmountCents + securityDeposit;
+  // First payment = pro-rated rent + security deposit + pet fee (month 1) + pet deposit (one-time)
+  const firstPaymentCents = proRatedAmountCents + securityDeposit + petMonthlyFee + petDeposit;
 
   const startMonth = startDate.toLocaleString('en-US', { month: 'short' });
 

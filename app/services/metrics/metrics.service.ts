@@ -336,7 +336,7 @@ export class MetricsService implements ICronProvider {
 
   private getPrimaryMeasurementKey(metricType: MetricType): string {
     const map: Record<MetricType, string> = {
-      [MetricType.LEASE]: 'totalMonthlyRent',
+      [MetricType.LEASE]: 'activeLeases',
       [MetricType.PAYMENT]: 'totalRevenue',
       [MetricType.PROPERTY]: 'occupancyRate',
       [MetricType.USER]: 'total',

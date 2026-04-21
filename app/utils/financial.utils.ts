@@ -119,7 +119,10 @@ export const calcAnnualToMonthly = (annualPriceCents: number): number =>
   new Decimal(annualPriceCents).div(12).toDecimalPlaces(0, Decimal.ROUND_HALF_UP).toNumber();
 
 export const calcSeatCost = (seatCount: number, pricePerSeatCents: number): number =>
-  new Decimal(seatCount).times(pricePerSeatCents).toNumber();
+  new Decimal(seatCount)
+    .times(pricePerSeatCents)
+    .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
+    .toNumber();
 
 // ── Income estimates ──────────────────────────────────────────────────────────
 

@@ -7,8 +7,9 @@ export const MoneyUtils = {
   toCents: (dollars: number): number =>
     new Decimal(dollars).times(100).toDecimalPlaces(0, Decimal.ROUND_HALF_UP).toNumber(),
 
-  /** Cents → dollars. e.g. 1250 → 12.5 */
-  fromCents: (cents: number): number => new Decimal(cents).div(100).toNumber(),
+  /** Cents → dollars rounded to 2 decimal places. e.g. 1250 → 12.50 */
+  fromCents: (cents: number): number =>
+    new Decimal(cents).div(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber(),
 
   /** Cents → fixed-decimal string. e.g. 1250 → "12.50" */
   centsToDisplay: (cents: number, decimalPlaces = 2): string =>
@@ -101,7 +102,7 @@ export const MoneyUtils = {
   },
 
   isValidMoneyValue: (value: any): boolean => {
-    if (value == null || value === '') return true;
+    if (value == null) return true;
     if (typeof value === 'string') {
       const numericValue = parseFloat(value);
       return !isNaN(numericValue) && numericValue >= 0;

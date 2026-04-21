@@ -112,11 +112,7 @@ export class App implements IAppSetup {
     app.use(contextBuilder);
     app.use(detectLanguage);
     app.use(setUserLanguage);
-    app.use(
-      `${this.BASE_PATH}/webhooks`,
-      express.raw({ type: 'application/json' }),
-      routes.webhookRoutes
-    );
+    app.use(`${this.BASE_PATH}/webhooks`, routes.webhookRoutes);
     app.use(`${this.BASE_PATH}/healthcheck`, async (req, res) => {
       try {
         const redisService = req.container.resolve<RedisService>('redisService');

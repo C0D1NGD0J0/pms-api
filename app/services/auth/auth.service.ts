@@ -874,9 +874,11 @@ export class AuthService {
       }
 
       // Electronic lease — create hosted Stripe Checkout session in setup mode
+      // ownerType may be absent on legacy documents created before the field was added;
+      // treat missing ownerType as 'client' by matching null as well.
       const processor = await this.paymentProcessorDAO.findFirst({
         cuid,
-        ownerType: 'client',
+        ownerType: { $in: ['client', null] } as any,
         deletedAt: null,
       });
       if (!processor) {

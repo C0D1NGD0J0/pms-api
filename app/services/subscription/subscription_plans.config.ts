@@ -3,7 +3,7 @@ import * as path from 'path';
 import { calcGatewayFee } from '@utils/financial.utils';
 import { ISubscriptionPlansConfig, PlanName } from '@interfaces/subscription.interface';
 
-const CONFIG_PATH = path.join(process.cwd(), 'configs', 'platform.config.json');
+const CONFIG_PATH = path.join(__dirname, 'platform.config.json');
 let platformConfig: any;
 
 try {

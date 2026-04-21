@@ -10,8 +10,10 @@ import { SSEService } from '@services/sse/sse.service';
 import { ClientValidations } from '@shared/validations';
 import { EventEmitterService } from '@services/eventEmitter';
 import { getRequestDuration, createLogger } from '@utils/index';
+import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { IIdentitySessionResponse } from '@interfaces/paymentGateway.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { NotificationService } from '@services/notification/notification.service';
@@ -51,6 +53,7 @@ interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
   subscriptionService: SubscriptionService;
   notificationService: NotificationService;
+  featureFlagService: FeatureFlagService;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   propertyUnitDAO: PropertyUnitDAO;
@@ -79,6 +82,7 @@ export class ClientService {
   private readonly notificationService: NotificationService;
   private readonly emitterService: EventEmitterService;
   private readonly paymentGatewayService: PaymentGatewayService;
+  private readonly featureFlagService: FeatureFlagService;
   private readonly queueFactory: QueueFactory;
 
   constructor({
@@ -93,6 +97,7 @@ export class ClientService {
     subscriptionDAO,
     subscriptionService,
     notificationService,
+    featureFlagService,
     emitterService,
     paymentGatewayService,
     queueFactory,
@@ -111,6 +116,7 @@ export class ClientService {
     this.notificationService = notificationService;
     this.subscriptionService = subscriptionService;
     this.paymentGatewayService = paymentGatewayService;
+    this.featureFlagService = featureFlagService;
     this.queueFactory = queueFactory;
     this.setupEventListeners();
   }
@@ -1040,8 +1046,6 @@ export class ClientService {
     }
   }
 
-  // ── Payment event listeners ───────────────────────────────────────────────
-
   private setupEventListeners(): void {
     this.emitterService.on(
       EventTypes.PAYMENT_PROCESSOR_VERIFIED,
@@ -1188,6 +1192,10 @@ export class ClientService {
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       throw new NotFoundError({ message: t('client.errors.notFound') });
+    }
+
+    if (features.smsNotifications === true && !this.featureFlagService.isEnabled(FeatureFlag.SMS)) {
+      throw new ForbiddenError({ message: 'SMS feature is not available on this platform.' });
     }
 
     const allowedKeys: (keyof ITenantFeatureSettings)[] = [

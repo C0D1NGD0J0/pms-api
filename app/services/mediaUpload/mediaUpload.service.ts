@@ -321,7 +321,7 @@ export class MediaUploadService {
       };
     }
 
-    if (fieldName.includes('media') || context.resourceContext === ResourceContext.MAINTENANCE) {
+    if (context.resourceContext === ResourceContext.MAINTENANCE) {
       return {
         resourceName: 'maintenance',
         resourceId: context.primaryResourceId,

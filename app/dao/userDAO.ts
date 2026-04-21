@@ -477,6 +477,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         primaryRole: invitationData.role,
         clientDisplayName: client.displayName,
         linkedVendorUid: invitationData.role === ROLES.VENDOR ? linkedVendorUid : null,
+        requiresOnboarding: true,
       };
 
       const user = await this.insert(
@@ -549,6 +550,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           primaryRole: role,
           clientDisplayName: client.clientDisplayName || '',
           linkedVendorUid: role === ROLES.VENDOR ? linkedVendorUid : null,
+          requiresOnboarding: true,
         };
 
         return await this.updateById(
@@ -710,8 +712,10 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
               phoneNumber: '',
               location: 'Unknown',
             },
-            lang: 'en',
-            timeZone: 'UTC',
+            settings: {
+              lang: 'en',
+              timeZone: 'UTC',
+            },
             policies: {
               tos: {
                 accepted: false,

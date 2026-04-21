@@ -77,11 +77,7 @@
         "reportingAnalytics": false,
         "leaseTemplates": false
       },
-      "featureList": [
-        "Tenant management",
-        "Rent collection",
-        "Vendor management"
-      ],
+      "featureList": ["Tenant management", "Rent collection", "Vendor management"],
       "disabledFeatures": [
         "E-Signature",
         "Reporting & Analytics",

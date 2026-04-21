@@ -53,6 +53,24 @@ describe('proRateAmount', () => {
   });
 });
 
+describe('first payment composition (proRateAmount + deposits)', () => {
+  it('full first payment = pro-rated rent + security deposit + pet fee + pet deposit', () => {
+    // June 15: daysCharged=16, ceil(150000 × 16/30) = 80000
+    const proRated = proRateAmount(150000, new Date(2024, 5, 15));
+    const securityDeposit = 150000;
+    const petMonthlyFee = 5000;
+    const petDeposit = 25000;
+    const firstPayment = proRated.amount + securityDeposit + petMonthlyFee + petDeposit;
+    expect(firstPayment).toBe(260000); // 80000 + 150000 + 5000 + 25000
+  });
+
+  it('first payment with no pets = pro-rated rent + security deposit only', () => {
+    const proRated = proRateAmount(200000, new Date(2024, 2, 1)); // full month
+    const firstPayment = proRated.amount + 200000;
+    expect(firstPayment).toBe(400000);
+  });
+});
+
 describe('calcLateFee', () => {
   it('returns percentage-based fee rounded half-up', () => expect(calcLateFee(150000, 'percentage', 5)).toBe(7500));
   it('passes through a fixed fee unchanged', () => expect(calcLateFee(200000, 'fixed', 5000)).toBe(5000));
@@ -118,4 +136,5 @@ describe('calcSeatCost', () => {
   it('returns seat count × per-seat price', () => expect(calcSeatCost(5, 1000)).toBe(5000));
   it('returns 0 for 0 seats', () => expect(calcSeatCost(0, 1000)).toBe(0));
   it('returns negative cost for removal delta', () => expect(calcSeatCost(-3, 1000)).toBe(-3000));
+  it('returns an integer (no fractional cents)', () => expect(Number.isInteger(calcSeatCost(3, 333))).toBe(true));
 });

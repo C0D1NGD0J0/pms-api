@@ -394,7 +394,7 @@ PropertySchema.plugin(uniqueValidator, {
 });
 
 PropertySchema.virtual('units', {
-  ref: 'Unit',
+  ref: 'PropertyUnit',
   localField: '_id',
   foreignField: 'propertyId',
 });

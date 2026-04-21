@@ -39,28 +39,6 @@ export enum DataRetentionPolicy {
 }
 
 /**
- * Tenant Information Interface
- * - employerInfo, activeLeases, backgroundChecks are client-specific (filtered by cuid)
- * - rentalReferences, pets, emergencyContact are shared across all clients
- * - Historical/relationship data (leaseHistory, paymentHistory, etc.) specific to tenant management
- */
-export interface ITenantInfo {
-  maintenanceRequests?: IMaintenanceRequestItem[];
-  paymentGatewayCustomers?: Map<string, string>;
-  backgroundChecks?: IBackgroundCheckItem[];
-  paymentHistory?: IPaymentHistoryItem[];
-  rentalReferences?: IRentalReference[];
-  emergencyContact?: IEmergencyContact;
-  leaseHistory?: ILeaseHistoryItem[];
-  employerInfo?: IEmployerInfoItem[];
-  activeLeases?: IActiveLeaseItem[];
-  notes?: INoteItem[];
-  propertyId?: string;
-  unitId?: string;
-  pets?: IPet[];
-}
-
-/**
  * Profile Update Data Interface
  * Used when updating profile data
  */
@@ -84,6 +62,26 @@ export interface IProfileUpdateData {
   };
   tenantInfo?: Partial<ITenantInfo>;
   vendorInfo?: Partial<IVendorInfo>;
+}
+
+/**
+ * Tenant Information Interface
+ * - employerInfo, activeLeases, backgroundChecks are client-specific (filtered by cuid)
+ * - rentalReferences, pets, emergencyContact are shared across all clients
+ * - Historical/relationship data (leaseHistory, paymentHistory, etc.) specific to tenant management
+ */
+export interface ITenantInfo {
+  paymentGatewayCustomers?: Map<string, string>;
+  backgroundChecks?: IBackgroundCheckItem[];
+  paymentHistory?: IPaymentHistoryItem[];
+  rentalReferences?: IRentalReference[];
+  emergencyContact?: IEmergencyContact;
+  leaseHistory?: ILeaseHistoryItem[];
+  employerInfo?: IEmployerInfoItem[];
+  activeLeases?: IActiveLeaseItem[];
+  propertyId?: string;
+  unitId?: string;
+  pets?: IPet[];
 }
 
 /**
@@ -249,18 +247,6 @@ export interface IEmployerInfoItem {
 }
 
 /**
- * Maintenance Request Item Interface
- */
-export interface IMaintenanceRequestItem {
-  priority: MaintenanceRequestPriority;
-  status: MaintenanceRequestStatus;
-  description: string;
-  requestId: string;
-  type: string;
-  date: Date;
-}
-
-/**
  * Profile Edit Data Interface
  * Used when fetching profile data for editing/display
  */
@@ -365,16 +351,6 @@ export interface IPet {
   [key: string]: any;
   breed: string;
   type: string;
-}
-
-/**
- * Note Item Interface
- */
-export interface INoteItem {
-  timestamp: Date;
-  type: NoteType;
-  author: string;
-  note: string;
 }
 
 /**

@@ -276,7 +276,6 @@ ClientSchema.virtual('verificationDeadline').get(function (this: IClientDocument
 
 // Soft deletion method
 ClientSchema.methods.softDelete = async function (userId: string) {
-  this.status = 'deleted';
   this.deletedAt = new Date();
   this.lastModifiedBy = userId;
   return await this.save();

@@ -245,6 +245,9 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         ],
       },
     ],
+    includeManagementFee: { type: Boolean, default: false },
+    includeParkingInfo: { type: Boolean, default: false },
+    generateFirstPaymentOnActivation: { type: Boolean, default: false },
     petPolicy: {
       allowed: {
         type: Boolean,
@@ -582,6 +585,11 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       type: Date,
       default: null,
       index: true,
+    },
+    deletedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
     },
     metadata: {
       type: Schema.Types.Mixed,

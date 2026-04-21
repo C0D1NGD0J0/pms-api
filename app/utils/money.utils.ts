@@ -102,7 +102,7 @@ export const MoneyUtils = {
   },
 
   isValidMoneyValue: (value: any): boolean => {
-    if (value == null) return true;
+    if (value == null || value === '') return true;
     if (typeof value === 'string') {
       const numericValue = parseFloat(value);
       return !isNaN(numericValue) && numericValue >= 0;

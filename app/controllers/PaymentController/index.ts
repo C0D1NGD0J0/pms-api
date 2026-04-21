@@ -136,7 +136,8 @@ export class PaymentController {
 
   async getPaymentStats(req: AppRequest, res: Response) {
     const { cuid } = req.params;
-    const result = await this.paymentService.getPaymentStats(cuid, req.context);
+    const { tenantId } = req.query as { tenantId?: string };
+    const result = await this.paymentService.getPaymentStats(cuid, req.context, tenantId);
     return res.status(200).json(result);
   }
 

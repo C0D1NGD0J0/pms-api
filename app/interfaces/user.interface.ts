@@ -92,6 +92,7 @@ export interface ICurrentUser {
     hasActiveLease?: boolean;
     backgroundCheckStatus?: string;
     activeLease?: Record<string, any> | null;
+    employerInfo?: Array<Record<string, any>>;
   };
   employeeInfo?: {
     department?: EmployeeDepartment;

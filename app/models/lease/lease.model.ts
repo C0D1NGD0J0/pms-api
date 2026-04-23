@@ -73,7 +73,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         'commercial-office',
         'commercial-retail',
         'short-term-rental',
-      ],
+      ] as const,
       default: 'generic',
       required: [true, 'Template type is required'],
       index: true,

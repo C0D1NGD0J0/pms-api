@@ -7,6 +7,7 @@ import { PermissionResource, PermissionAction } from '@interfaces/utils.interfac
 import {
   requireActiveSubscription,
   subscriptionEntitlements,
+  requireNotSuspended,
   requireVerification,
   requirePermission,
   isAuthenticated,
@@ -53,6 +54,8 @@ router.post(
   '/:cuid/validate_csv',
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
+  requireNotSuspended,
+  requireVerification,
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
@@ -68,7 +71,11 @@ router.post(
   '/:cuid/import_properties_csv',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
+  requireNotSuspended,
+  requireVerification,
   idempotency,
+  subscriptionEntitlements,
+  requireActiveSubscription,
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({

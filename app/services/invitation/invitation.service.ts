@@ -1022,6 +1022,19 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
+      // Early exit if no seats are available at all — avoids queuing a job that will fully fail
+      try {
+        const seatInfo = await this.subscriptionService.getAvailableSeats(cuid);
+        if (seatInfo.availableSeats <= 0 && !seatInfo.canPurchaseMore) {
+          throw new BadRequestError({
+            message: `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats. Upgrade your plan or archive users to free up seats.`,
+          });
+        }
+      } catch (error) {
+        if (error instanceof BadRequestError) throw error;
+        this.log.error({ error, cuid }, 'Error checking seat availability before bulk user import');
+      }
+
       const jobData = {
         userId,
         csvFilePath,

@@ -25,6 +25,8 @@ export interface IClient {
   companyProfile?: ICompanyProfile;
   dataProcessingConsent?: boolean;
   lastModifiedBy: Types.ObjectId;
+  /** Populated only when explicitly selected via .select('+suspension') */
+  suspension?: IClientSuspension;
   settings: IClientSettings;
   accountType: IAccountType;
   displayName: string;
@@ -46,12 +48,6 @@ export interface IClientDocument extends Document, IClient {
 }
 
 /**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
-
-/**
  * Main Client Interface
  * Core client data structure
  */
@@ -64,6 +60,12 @@ export interface IClientIdentification {
   authority?: string;
   idNumber?: string;
 }
+
+/**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
 
 /**
  * Client User Connections Interface
@@ -121,12 +123,6 @@ export interface ITenantFeatureSettings {
 }
 
 /**
- * ============================================================================
- * POPULATED/ENRICHED INTERFACES
- * ============================================================================
- */
-
-/**
  * Populated Account Admin Type
  * Essential user information for client admin
  */
@@ -139,7 +135,7 @@ export type PopulatedAccountAdmin = Pick<
 
 /**
  * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
+ * POPULATED/ENRICHED INTERFACES
  * ============================================================================
  */
 
@@ -150,6 +146,19 @@ export type PopulatedAccountAdmin = Pick<
 export type IPopulatedClientDocument = {
   accountAdmin: IUserDocument | Types.ObjectId;
 } & Omit<IClientDocument, 'accountAdmin'>;
+
+/**
+ * ============================================================================
+ * DOCUMENT INTERFACES (Mongoose Extensions)
+ * ============================================================================
+ */
+
+export interface IClientSuspension {
+  by?: Types.ObjectId;
+  isActive: boolean;
+  reason?: string;
+  at?: Date;
+}
 
 /**
  * Simplified client info for passing around client context

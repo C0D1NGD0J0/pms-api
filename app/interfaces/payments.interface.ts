@@ -70,6 +70,7 @@ export interface IPaymentDocument extends Document {
   processingFee: number;
   description?: string;
   baseAmount: number;
+  currency: string; // ISO 4217 uppercase, e.g. 'USD', 'CAD', 'GBP'
   deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;

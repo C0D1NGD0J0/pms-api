@@ -37,6 +37,11 @@ export interface IPaymentProvider {
     amountInCents?: number;
     reason?: string;
   }): Promise<{ refundId: string; status: string; amount: number; currency: string }>;
+  updatePayoutSchedule(
+    accountId: string,
+    interval: 'manual' | 'daily' | 'weekly' | 'monthly',
+    weeklyAnchor?: string
+  ): Promise<void>;
   createKycOnboardingLink(params: {
     accountId: string;
     refreshUrl: string;
@@ -47,6 +52,11 @@ export interface IPaymentProvider {
     refreshUrl: string;
     returnUrl: string;
   }): Promise<IOnboardingLinkResponse>;
+  updateCustomerDefaultPaymentMethod(
+    customerId: string,
+    paymentMethodId: string,
+    connectedAccountId: string
+  ): Promise<void>;
   createTransferReversal(
     transferId: string,
     amountInCents?: number
@@ -54,6 +64,7 @@ export interface IPaymentProvider {
   createIdentityVerificationSession(
     input: ICreateIdentitySessionInput
   ): Promise<IIdentitySessionResponse>;
+  finalizeInvoice(invoiceId: string, connectedAccountId: string): Promise<IFinalizeInvoiceResponse>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
   updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
   retrieveIdentityVerificationSession(sessionId: string): Promise<IIdentityVerificationReport>;
@@ -62,7 +73,6 @@ export interface IPaymentProvider {
   createDashboardLoginLink(accountId: string): Promise<IOnboardingLinkResponse>;
   createInvoice(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse>;
   cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
-  finalizeInvoice(invoiceId: string): Promise<IFinalizeInvoiceResponse>;
   getSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
   getCustomer(customerId: string): Promise<Stripe.Customer>;
   getCharge(chargeId: string): Promise<Stripe.Charge>;
@@ -97,13 +107,13 @@ export interface ICreateInvoiceInput {
   lineItems: Array<{
     description: string;
     amountInCents: number;
-    quantity?: number;
   }>;
   applicationFeeAmountInCents: number;
   connectedAccountId: string;
   tenantCustomerId: string;
   autoChargeDueDate: Date;
   description: string;
+  mandateId?: string;
   leaseUid?: string;
   currency: string;
   cuid: string;

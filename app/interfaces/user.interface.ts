@@ -39,6 +39,19 @@ export enum IUserRelationshipsEnum {
  *  - `employeeInfo`     — only present for admin/manager/staff roles
  */
 export interface ICurrentUser {
+  client: {
+    clientSettings?: any;
+    tenantFeatures?: import('@interfaces/client.interface').ITenantFeatureSettings;
+    suspension?: import('@interfaces/client.interface').IClientSuspension;
+    cuid: string;
+    displayname: string;
+    linkedVendorUid?: string;
+    role: IUserRoleType;
+    isVerified: boolean;
+    requiresOnboarding?: boolean;
+    vendorPayoutMode?: 'express' | 'platform_hold';
+    isFormerTenant?: boolean;
+  };
   /** Only populated for super-admin users */
   subscription?: {
     plan: {
@@ -53,18 +66,6 @@ export interface ICurrentUser {
       gracePeriodEndsAt: Date | null;
       daysUntilDowngrade: number | null;
     };
-  };
-  client: {
-    clientSettings?: any;
-    tenantFeatures?: import('@interfaces/client.interface').ITenantFeatureSettings;
-    cuid: string;
-    displayname: string;
-    linkedVendorUid?: string;
-    role: IUserRoleType;
-    isVerified: boolean;
-    requiresOnboarding?: boolean;
-    vendorPayoutMode?: 'express' | 'platform_hold';
-    isFormerTenant?: boolean;
   };
   vendorInfo?: {
     vendorId?: string;

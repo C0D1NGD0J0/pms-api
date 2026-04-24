@@ -99,6 +99,55 @@ export interface ILease {
 }
 
 /**
+ * Lease Financial Summary Interface
+ * Financial information and payment tracking
+ */
+export interface ILeaseFinancialSummary {
+  acceptedPaymentMethod?: PaymentMethodType;
+  proRatedLastMonthDaysInMonth: number;
+  proRatedFirstMonthFormatted: string;
+  proRatedManagementFeeAmount: number;
+  firstPaymentAmountFormatted: string;
+  proRatedLastMonthFormatted: string;
+  proRatedLastMonthDailyRate: number;
+  // First-payment breakdown
+  proRatedFirstMonthAmount: number;
+  // Last-month breakdown
+  proRatedLastMonthAmount: number;
+  isFirstMonthFullMonth: boolean;
+  proRatedLastMonthDays: number;
+  isLastMonthFullMonth: boolean;
+  lastPaymentDate: Date | null;
+  proRatedDaysInMonth: number;
+  securityDepositRaw: number; // Raw amount in cents
+  firstPaymentAmount: number;
+  lateFeeType?: LateFeeType;
+  firstPaymentMonth: string;
+  managementFeeRaw: number;
+  securityDeposit: string; // Formatted currency string
+  monthlyRentRaw: number; // Raw amount in cents
+  lateFeeAmount?: number;
+  // Management fee (sourced from property, billed when lease.includeManagementFee is true)
+  managementFee?: string;
+  firstPaymentDate: Date;
+  totalExpected: number;
+  nextPaymentDate: Date;
+  lateFeeDays?: number;
+  proRatedDays: number;
+  monthlyRent: string; // Formatted currency string
+  rentDueDay: number; // 1-31
+  totalPaid: number;
+  totalOwed: number;
+  currency: string;
+}
+
+/**
+ * ============================================================================
+ * ENUMS
+ * ============================================================================
+ */
+
+/**
  * Legacy interface - keeping for backward compatibility
  * Use ILeasePreviewRequest instead (will deprecate later)
  */
@@ -143,12 +192,6 @@ export type LeasePreviewData = {
   leaseType?: string;
   currency?: string;
 };
-
-/**
- * ============================================================================
- * ENUMS
- * ============================================================================
- */
 
 /**
  * Lease Form Data Interface
@@ -283,6 +326,12 @@ export interface ILeasePreviewRequest {
 }
 
 /**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
+
+/**
  * Lease Filter Options Interface
  * Used for querying leases
  */
@@ -307,12 +356,6 @@ export interface ILeaseFilterOptions {
 }
 
 /**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
-
-/**
  * Property Reference Interface
  * Links lease to property and unit
  * Includes essential property information for lease documents
@@ -332,28 +375,6 @@ export interface ILeaseProperty {
   id: Types.ObjectId | string;
   unitNumber?: string; // Unit/Suite number from property unit
   name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
-}
-
-/**
- * Lease Financial Summary Interface
- * Financial information and payment tracking
- */
-export interface ILeaseFinancialSummary {
-  acceptedPaymentMethod?: PaymentMethodType;
-  lastPaymentDate: Date | null;
-  securityDepositRaw: number; // Raw amount in cents
-  lateFeeType?: LateFeeType;
-  securityDeposit: string; // Formatted currency string
-  monthlyRentRaw: number; // Raw amount in cents
-  lateFeeAmount?: number;
-  totalExpected: number;
-  nextPaymentDate: Date;
-  lateFeeDays?: number;
-  monthlyRent: string; // Formatted currency string
-  rentDueDay: number; // 1-31
-  totalPaid: number;
-  totalOwed: number;
-  currency: string;
 }
 
 /**
@@ -532,6 +553,26 @@ export interface ILeaseUserPermissions {
   canEdit: boolean;
 }
 
+/**
+ * Lease List Item Interface
+ * Simplified lease data for list views
+ */
+export interface ILeaseListItem {
+  sentForSignature: boolean;
+  tenantActivated: boolean;
+  propertyAddress: string;
+  gracePeriodDays: number;
+  leaseNumber: string;
+  monthlyRent: number;
+  status: LeaseStatus;
+  unitNumber?: string;
+  tenantName: string;
+  tenantUid: string;
+  startDate: Date;
+  endDate: Date;
+  luid: string;
+}
+
 export interface LeaseESignatureSentPayload {
   signers: Array<{
     name: string;
@@ -566,6 +607,12 @@ export interface IRentRollReport {
 }
 
 /**
+ * ============================================================================
+ * MAIN LEASE INTERFACE
+ * ============================================================================
+ */
+
+/**
  * Lease Document Item Interface
  * Tracks uploaded lease documents
  */
@@ -580,31 +627,6 @@ export interface ILeaseDocumentItem {
   size?: number;
   url: string;
   key: string;
-}
-
-/**
- * ============================================================================
- * MAIN LEASE INTERFACE
- * ============================================================================
- */
-
-/**
- * Lease List Item Interface
- * Simplified lease data for list views
- */
-export interface ILeaseListItem {
-  sentForSignature: boolean;
-  tenantActivated: boolean;
-  propertyAddress: string;
-  leaseNumber: string;
-  monthlyRent: number;
-  status: LeaseStatus;
-  unitNumber?: string;
-  tenantName: string;
-  tenantUid: string;
-  startDate: Date;
-  endDate: Date;
-  luid: string;
 }
 
 /**

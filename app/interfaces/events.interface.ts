@@ -16,6 +16,7 @@ export enum EventTypes {
   MAINTENANCE_WORK_ORDER_APPROVED = 'maintenance:work_order:approved',
   MAINTENANCE_WORK_ORDER_REJECTED = 'maintenance:work_order:rejected',
   PAYMENT_DISPUTE_REVERSAL_FAILED = 'payment:dispute:reversal:failed',
+  PAYMENT_METHOD_SETUP_COMPLETED = 'payment:method:setup:completed',
   MAINTENANCE_REQUEST_COMPLETED = 'maintenance:request:completed',
   MAINTENANCE_REQUEST_CANCELLED = 'maintenance:request:cancelled',
   MAINTENANCE_INVOICE_SUBMITTED = 'maintenance:invoice:submitted',
@@ -32,6 +33,7 @@ export enum EventTypes {
   LEASE_ESIGNATURE_DECLINED = 'lease:esignature:declined',
   PROPERTY_DOCUMENTS_UPDATE = 'update:property:documents',
   PDF_GENERATION_REQUESTED = 'pdf:generation:requested',
+  PAYMENT_REQUEST_CREATED = 'payment:request:created',
   PAYMENT_DISPUTE_CREATED = 'payment:dispute:created',
   LEASE_ESIGNATURE_FAILED = 'lease:esignature:failed',
   LEASE_RENEWAL_REQUESTED = 'lease:renewal:requested',
@@ -147,6 +149,8 @@ export type EventPayloadMap = {
   [EventTypes.PAYMENT_FAILED]: PaymentFailedPayload;
   [EventTypes.PAYMENT_REFUNDED]: PaymentRefundedPayload;
   [EventTypes.PAYMENT_OVERDUE]: PaymentOverduePayload;
+  [EventTypes.PAYMENT_METHOD_SETUP_COMPLETED]: PaymentMethodSetupCompletedPayload;
+  [EventTypes.PAYMENT_REQUEST_CREATED]: PaymentRequestCreatedPayload;
 };
 
 export interface UserSignupInitiatedPayload {
@@ -374,6 +378,14 @@ export interface PaymentDisputeLostPayload {
   amount: number;
   cuid: string;
 }
+export interface PaymentRequestCreatedPayload {
+  amountInCents: number;
+  tenantUserId: string; // User._id — used for SSE routing
+  pytuid: string;
+  dueDate: Date;
+  cuid: string;
+}
+
 export interface EmailFailedPayload {
   error: {
     message: string;
@@ -475,8 +487,6 @@ export interface MaintenanceInvoiceRejectedPayload {
   cuid: string;
 }
 
-// ── Payment domain events ────────────────────────────────────────────────────
-
 export interface MaintenanceRequestUpdatedPayload {
   previousStatus: string;
   requestId: string;
@@ -501,6 +511,13 @@ export interface MaintenanceRequestAcceptedPayload {
   cuid: string;
 }
 
+export interface PaymentMethodSetupCompletedPayload {
+  connectedAccountId: string;
+  paymentMethodId: string;
+  tenantId: string;
+  cuid: string;
+}
+
 export interface PropertyUpdatedPayload {
   updateType: 'documents' | 'details' | 'status';
   propertyId: string;
@@ -522,8 +539,6 @@ export interface UserArchivePayload {
   userId: string;
   cuid: string;
 }
-
-// ── Maintenance domain events ─────────────────────────────────────────────────
 
 export interface PaymentSucceededPayload {
   invoiceId: string;

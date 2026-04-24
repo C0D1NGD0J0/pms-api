@@ -1,6 +1,8 @@
 import { Response } from 'express';
 import { createLogger } from '@utils/index';
 import { PaymentService } from '@services/index';
+import { ForbiddenError } from '@shared/customErrors';
+import ROLES from '@shared/constants/roles.constants';
 import { MediaUploadService } from '@services/mediaUpload';
 import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
 
@@ -113,6 +115,12 @@ export class PaymentController {
 
   async getLoginLink(req: AppRequest, res: Response) {
     const { cuid } = req.params;
+
+    if (req.context?.currentuser?.client.role !== ROLES.SUPER_ADMIN) {
+      throw new ForbiddenError({
+        message: 'Only the account owner can access the payout dashboard.',
+      });
+    }
 
     const result = await this.paymentService.getExternalDashboardLoginLink(cuid);
     return res.status(200).json(result);

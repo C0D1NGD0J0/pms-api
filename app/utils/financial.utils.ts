@@ -32,6 +32,38 @@ export const proRateAmount = (
   return { amount: proRated, daysCharged, daysInMonth, isFullMonth: false };
 };
 
+/** ceil((monthlyRent × daysCharged) / daysInMonth). Returns full month when endDay === daysInMonth. All values in cents. */
+export const proRateLastMonth = (
+  monthlyRentCents: number,
+  endDate: Date
+): {
+  amount: number;
+  daysCharged: number;
+  daysInMonth: number;
+  dailyRate: number;
+  isFullMonth: boolean;
+} => {
+  const end = new Date(endDate);
+  const daysInMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate();
+  const daysCharged = end.getDate();
+  const dailyRate = new Decimal(monthlyRentCents)
+    .div(daysInMonth)
+    .toDecimalPlaces(0, Decimal.ROUND_CEIL)
+    .toNumber();
+
+  if (daysCharged === daysInMonth) {
+    return { amount: monthlyRentCents, daysCharged, daysInMonth, dailyRate, isFullMonth: true };
+  }
+
+  const proRated = new Decimal(monthlyRentCents)
+    .times(daysCharged)
+    .div(daysInMonth)
+    .toDecimalPlaces(0, Decimal.ROUND_CEIL)
+    .toNumber();
+
+  return { amount: proRated, daysCharged, daysInMonth, dailyRate, isFullMonth: false };
+};
+
 // ── Fee calculations ──────────────────────────────────────────────────────────
 
 /** 'percentage': round_half_up(rent × rate / 100). 'fixed': passthrough. All values in cents. */

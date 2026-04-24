@@ -1,4 +1,3 @@
-import dayjs from 'dayjs';
 import Stripe from 'stripe';
 import Logger from 'bunyan';
 import { envVariables } from '@shared/config';
@@ -479,9 +478,8 @@ export class StripeService implements IPaymentProvider {
         capabilities: {
           transfers: { requested: true },
         },
-        // Our architecture uses destination charges — PMs only receive payouts, never make
-        // direct charges. The recipient service agreement accurately reflects this and
-        // satisfies Stripe's requirement for countries like CA that enforce it.
+        // 'recipient' service agreement — only requires 'transfers' capability,
+        // works for all countries including those without full Stripe support (e.g. NG).
         tos_acceptance: { service_agreement: 'recipient' },
         controller: {
           fees: {
@@ -553,6 +551,22 @@ export class StripeService implements IPaymentProvider {
       this.log.error({ error, input }, 'Error creating Stripe Connect account');
       throw error;
     }
+  }
+
+  async updatePayoutSchedule(
+    accountId: string,
+    interval: 'manual' | 'daily' | 'weekly' | 'monthly',
+    weeklyAnchor?: string
+  ): Promise<void> {
+    const schedule: Stripe.AccountUpdateParams.Settings.Payouts.Schedule = { interval };
+    if (interval === 'weekly' && weeklyAnchor) {
+      schedule.weekly_anchor =
+        weeklyAnchor as Stripe.AccountUpdateParams.Settings.Payouts.Schedule.WeeklyAnchor;
+    }
+    await this.stripe.accounts.update(accountId, {
+      settings: { payouts: { schedule } },
+    });
+    this.log.info({ accountId, interval }, 'Updated payout schedule');
   }
 
   async getConnectAccount(accountId: string): Promise<Stripe.Account> {
@@ -659,28 +673,32 @@ export class StripeService implements IPaymentProvider {
         applicationFeeAmountInCents: applicationFeeAmount,
         currency,
         description,
-        autoChargeDueDate,
         lineItems,
+        mandateId,
         cuid,
         leaseUid,
       } = input;
 
-      const daysUntilDue = Math.ceil(dayjs(autoChargeDueDate).diff(dayjs(), 'day', true));
-      const invoice = await this.stripe.invoices.create({
+      // Destination charges: application_fee_amount is all-inclusive — Stripe takes its
+      // processing fee from it, platform keeps the rest.
+      const paymentSettings: Stripe.InvoiceCreateParams.PaymentSettings = {};
+      if (mandateId) paymentSettings.default_mandate = mandateId;
+
+      const invoiceParams: Stripe.InvoiceCreateParams = {
         customer: tenantCustomerId,
-        auto_advance: true,
+        auto_advance: false,
         collection_method: 'charge_automatically',
-        days_until_due: daysUntilDue > 0 ? daysUntilDue : 0,
         description,
         metadata: {
           cuid,
           ...(leaseUid ? { leaseUid } : {}),
         },
         application_fee_amount: applicationFeeAmount,
-        transfer_data: {
-          destination: connectedAccountId,
-        },
-      });
+        transfer_data: { destination: connectedAccountId },
+        ...(Object.keys(paymentSettings).length > 0 && { payment_settings: paymentSettings }),
+      };
+
+      const invoice = await this.stripe.invoices.create(invoiceParams);
 
       const itemResults = await Promise.allSettled(
         lineItems.map((item) =>
@@ -688,25 +706,29 @@ export class StripeService implements IPaymentProvider {
             customer: tenantCustomerId,
             invoice: invoice.id,
             amount: item.amountInCents,
-            quantity: item.quantity || 1,
             currency,
             description: item.description,
           })
         )
       );
 
-      const failedItems = itemResults.filter((result) => result.status === 'rejected');
-      const successfulItems = itemResults.filter((result) => result.status === 'fulfilled');
+      const failedItems = itemResults.reduce<{ index: number; reason: any }[]>((acc, r, i) => {
+        if (r.status === 'rejected') acc.push({ index: i, reason: r.reason });
+        return acc;
+      }, []);
+      const successCount = itemResults.filter((r) => r.status === 'fulfilled').length;
 
       if (failedItems.length > 0) {
         this.log.error(
           {
             invoiceId: invoice.id,
             failedCount: failedItems.length,
-            successfulCount: successfulItems.length,
-            failures: failedItems.map((r, i) => ({
-              item: lineItems[i],
-              error: r.status === 'rejected' ? r.reason : null,
+            successCount,
+            failures: failedItems.map(({ index, reason }) => ({
+              item: lineItems[index],
+              stripeCode: (reason as any)?.code ?? null,
+              stripeType: (reason as any)?.type ?? null,
+              stripeMessage: (reason as any)?.message ?? null,
             })),
           },
           'Some invoice items failed to create'
@@ -730,11 +752,42 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async updateCustomerDefaultPaymentMethod(
+    customerId: string,
+    paymentMethodId: string
+  ): Promise<void> {
+    try {
+      await this.stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      });
+    } catch (error) {
+      this.log.error(
+        { error, customerId, paymentMethodId },
+        'Error setting customer default payment method'
+      );
+      throw error;
+    }
+  }
+
+  async payInvoice(
+    invoiceId: string,
+    opts?: { mandate?: string; paymentMethod?: string }
+  ): Promise<void> {
+    try {
+      await this.stripe.invoices.pay(invoiceId, {
+        ...(opts?.mandate && { mandate: opts.mandate }),
+        ...(opts?.paymentMethod && { payment_method: opts.paymentMethod }),
+      });
+    } catch (error: any) {
+      if (error?.code === 'invoice_already_paid') return;
+      this.log.error({ error, invoiceId }, 'Error paying invoice');
+      throw error;
+    }
+  }
+
   async finalizeInvoice(invoiceId: string): Promise<IFinalizeInvoiceResponse> {
     try {
-      const invoice = await this.stripe.invoices.finalizeInvoice(invoiceId, {
-        auto_advance: true,
-      });
+      const invoice = await this.stripe.invoices.finalizeInvoice(invoiceId);
 
       return {
         invoiceId: invoice.id,
@@ -810,27 +863,124 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  /**
-   * Create a SetupIntent to collect and save a payment method without an immediate charge.
-   * Used during tenant onboarding to save the card via a hosted Stripe Checkout session.
-   */
   async createSetupCheckoutSession(
     customerId: string,
     successUrl: string,
-    cancelUrl: string
+    cancelUrl: string,
+    currency: string,
+    paymentMethodTypes?: string[],
+    metadata?: Record<string, string>
   ): Promise<{ url: string }> {
     try {
+      // Bank-debit types require mandate options so Stripe can enforce the charge schedule
+      const paymentMethodOptions: Record<string, any> = {};
+
+      if (paymentMethodTypes?.includes('acss_debit')) {
+        paymentMethodOptions.acss_debit = {
+          currency,
+          mandate_options: {
+            payment_schedule: 'interval',
+            interval_description: 'Monthly rent payment',
+            transaction_type: 'personal',
+          },
+          verification_method: 'automatic',
+        };
+      }
+
+      if (paymentMethodTypes?.includes('us_bank_account')) {
+        paymentMethodOptions.us_bank_account = {
+          verification_method: 'automatic',
+          financial_connections: {
+            permissions: ['payment_method'],
+          },
+        };
+      }
+
+      if (paymentMethodTypes?.includes('sepa_debit')) {
+        paymentMethodOptions.sepa_debit = {
+          mandate_options: {},
+        };
+      }
+
+      if (paymentMethodTypes?.includes('bacs_debit')) {
+        paymentMethodOptions.bacs_debit = {
+          mandate_options: {},
+        };
+      }
+
       const session = await this.stripe.checkout.sessions.create({
         mode: 'setup',
+        currency,
         customer: customerId,
         success_url: successUrl,
         cancel_url: cancelUrl,
+        ...(paymentMethodTypes && { payment_method_types: paymentMethodTypes as any }),
+        ...(Object.keys(paymentMethodOptions).length > 0 && {
+          payment_method_options: paymentMethodOptions,
+        }),
+        ...(metadata && { metadata }),
       });
 
       this.log.info({ sessionId: session.id, customerId }, 'Created setup checkout session');
       return { url: session.url ?? '' };
+    } catch (error: any) {
+      this.log.error(
+        {
+          customerId,
+          stripeType: error?.type,
+          stripeCode: error?.code,
+          stripeMessage: error?.message,
+        },
+        'Error creating Stripe setup checkout session'
+      );
+      throw error;
+    }
+  }
+
+  async retrievePaymentMethod(
+    paymentMethodId: string
+  ): Promise<{ type: string; bankName?: string; last4?: string; accountType?: string }> {
+    try {
+      const pm = await this.stripe.paymentMethods.retrieve(paymentMethodId);
+
+      const type = pm.type;
+      let bankName: string | undefined;
+      let last4: string | undefined;
+      let accountType: string | undefined;
+
+      if (type === 'us_bank_account' && pm.us_bank_account) {
+        bankName = pm.us_bank_account.bank_name ?? undefined;
+        last4 = pm.us_bank_account.last4 ?? undefined;
+        accountType = pm.us_bank_account.account_type ?? undefined;
+      } else if (type === 'acss_debit' && pm.acss_debit) {
+        bankName = pm.acss_debit.bank_name ?? undefined;
+        last4 = pm.acss_debit.last4 ?? undefined;
+      } else if (type === 'sepa_debit' && pm.sepa_debit) {
+        bankName = pm.sepa_debit.bank_code ?? undefined;
+        last4 = pm.sepa_debit.last4 ?? undefined;
+      } else if (type === 'bacs_debit' && pm.bacs_debit) {
+        last4 = pm.bacs_debit.last4 ?? undefined;
+      } else if (type === 'card' && pm.card) {
+        bankName = pm.card.brand ?? undefined;
+        last4 = pm.card.last4 ?? undefined;
+      }
+
+      return { type, bankName, last4, accountType };
     } catch (error) {
-      this.log.error({ error, customerId }, 'Error creating Stripe setup checkout session');
+      this.log.error({ error, paymentMethodId }, 'Error retrieving payment method');
+      throw error;
+    }
+  }
+
+  async retrieveSetupIntent(
+    setupIntentId: string
+  ): Promise<{ paymentMethodId: string; mandateId: string | null }> {
+    try {
+      const si = await this.stripe.setupIntents.retrieve(setupIntentId);
+      const mandateId = typeof si.mandate === 'string' ? si.mandate : (si.mandate?.id ?? null);
+      return { paymentMethodId: si.payment_method as string, mandateId };
+    } catch (error) {
+      this.log.error({ error, setupIntentId }, 'Error retrieving setup intent');
       throw error;
     }
   }

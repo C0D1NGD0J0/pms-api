@@ -12,6 +12,7 @@ import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventEmitterService } from '@services/eventEmitter';
+import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { PaymentGatewayService } from '@services/paymentGateway';
 import { calcAnnualToMonthly, calcSeatCost } from '@utils/financial.utils';
 import { InternalServerError, BadRequestError } from '@shared/customErrors';
@@ -33,6 +34,7 @@ import { subscriptionPlanConfig } from './subscription_plans.config';
 
 interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
+  paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   propertyUnitDAO: PropertyUnitDAO;
@@ -53,6 +55,7 @@ export class SubscriptionService {
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
+  private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
 
   constructor({
@@ -64,6 +67,7 @@ export class SubscriptionService {
     subscriptionDAO,
     propertyDAO,
     propertyUnitDAO,
+    paymentProcessorDAO,
     paymentGatewayService,
   }: IConstructor) {
     this.userDAO = userDAO;
@@ -74,6 +78,7 @@ export class SubscriptionService {
     this.subscriptionDAO = subscriptionDAO;
     this.propertyDAO = propertyDAO;
     this.propertyUnitDAO = propertyUnitDAO;
+    this.paymentProcessorDAO = paymentProcessorDAO;
     this.paymentGatewayService = paymentGatewayService;
     this.log = createLogger('SubscriptionService');
     this.setupEventListeners();
@@ -505,6 +510,8 @@ export class SubscriptionService {
           if (!updatedSubscription) {
             throw new BadRequestError({ message: 'Failed to cancel subscription' });
           }
+
+          await this.syncPayoutSchedule(cuid, ISubscriptionStatus.INACTIVE);
 
           return updatedSubscription;
         }
@@ -1487,7 +1494,6 @@ export class SubscriptionService {
       return;
     }
 
-    // ── First payment: save card details ────────────────────────────────────
     if (billingReason !== 'subscription_create') return;
 
     const rawChargeId: string | undefined =
@@ -1697,6 +1703,11 @@ export class SubscriptionService {
         throw new BadRequestError({ message: 'Failed to update subscription' });
       }
 
+      // Toggle payouts based on new subscription status
+      if (updateData.status) {
+        await this.syncPayoutSchedule(updatedSubscription.cuid, updateData.status);
+      }
+
       this.log.info(
         {
           subscriptionId: subscription._id,
@@ -1810,6 +1821,54 @@ export class SubscriptionService {
     }
   }
 
+  private async syncPayoutSchedule(cuid: string, newStatus: ISubscriptionStatus): Promise<void> {
+    try {
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor?.accountId) return;
+
+      if (
+        newStatus === ISubscriptionStatus.INACTIVE ||
+        newStatus === ISubscriptionStatus.PAST_DUE
+      ) {
+        if (paymentProcessor.payoutsPaused) return; // already paused
+
+        await this.paymentGatewayService.updatePayoutSchedule(
+          IPaymentGatewayProvider.STRIPE,
+          paymentProcessor.accountId,
+          'manual'
+        );
+        await this.paymentProcessorDAO.update(
+          { cuid },
+          {
+            $set: {
+              payoutsPaused: true,
+              payoutsPausedReason: `Subscription ${newStatus}`,
+              payoutsPausedAt: new Date(),
+            },
+          }
+        );
+        this.log.info({ cuid, newStatus }, 'Payouts paused — subscription not active');
+      } else if (newStatus === ISubscriptionStatus.ACTIVE && paymentProcessor.payoutsPaused) {
+        await this.paymentGatewayService.updatePayoutSchedule(
+          IPaymentGatewayProvider.STRIPE,
+          paymentProcessor.accountId,
+          'weekly',
+          'monday'
+        );
+        await this.paymentProcessorDAO.update(
+          { cuid },
+          {
+            $set: { payoutsPaused: false },
+            $unset: { payoutsPausedReason: '', payoutsPausedAt: '' },
+          }
+        );
+        this.log.info({ cuid }, 'Payouts resumed — subscription reactivated');
+      }
+    } catch (error) {
+      this.log.error({ error, cuid, newStatus }, 'Failed to sync payout schedule — non-blocking');
+    }
+  }
+
   async processExpiredSubscriptions(): Promise<void> {
     try {
       const now = new Date();
@@ -1849,6 +1908,8 @@ export class SubscriptionService {
             { _id: subscription._id },
             { $set: { status: ISubscriptionStatus.INACTIVE } }
           );
+
+          await this.syncPayoutSchedule(subscription.cuid, ISubscriptionStatus.INACTIVE);
 
           await this.notifyAccountAdminViaSSE(subscription.cuid, {
             type: isPastDue ? 'subscription_expired' : 'subscription_updated',

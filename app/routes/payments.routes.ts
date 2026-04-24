@@ -6,6 +6,7 @@ import { UtilsValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
   requireVerifiedClient,
+  requireNotSuspended,
   requireActiveTenant,
   requirePermission,
   isAuthenticated,
@@ -51,6 +52,8 @@ router.get(
 
 router.post(
   '/:cuid',
+  basicLimiter({ max: 50, windowMs: 60 * 60 * 1000 }),
+  requireNotSuspended,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireActiveTenant('onlinePayments'),
   requireVerifiedClient,
@@ -165,6 +168,7 @@ router.get(
 
 router.get(
   '/:cuid/payout-account/dashboard',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {

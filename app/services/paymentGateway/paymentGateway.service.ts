@@ -599,6 +599,67 @@ export class PaymentGatewayService {
     }
   }
 
+  async payInvoice(
+    provider: IPaymentGatewayProvider,
+    invoiceId: string,
+    opts?: { mandate?: string; paymentMethod?: string }
+  ): IPromiseReturnedData<null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('payInvoice' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not support payInvoice`);
+      }
+      await (providerInstance as any).payInvoice(invoiceId, opts);
+      return { success: true, data: null };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error paying invoice');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to pay invoice',
+      };
+    }
+  }
+
+  async updateCustomerDefaultPaymentMethod(
+    provider: IPaymentGatewayProvider,
+    customerId: string,
+    paymentMethodId: string
+  ): IPromiseReturnedData<null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      await providerInstance.updateCustomerDefaultPaymentMethod(customerId, paymentMethodId);
+      return { success: true, data: null };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error updating customer default payment method');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to update customer',
+      };
+    }
+  }
+
+  async updatePayoutSchedule(
+    provider: IPaymentGatewayProvider,
+    accountId: string,
+    interval: 'manual' | 'daily' | 'weekly' | 'monthly',
+    weeklyAnchor?: string
+  ): IPromiseReturnedData<null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      await providerInstance.updatePayoutSchedule(accountId, interval, weeklyAnchor);
+      return { success: true, data: null };
+    } catch (error) {
+      this.log.error({ error, provider, accountId }, 'Error updating payout schedule');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to update payout schedule',
+      };
+    }
+  }
+
   async finalizeInvoice(
     provider: IPaymentGatewayProvider,
     invoiceId: string
@@ -681,6 +742,53 @@ export class PaymentGatewayService {
     }
   }
 
+  async retrievePaymentMethod(
+    provider: IPaymentGatewayProvider,
+    paymentMethodId: string
+  ): IPromiseReturnedData<{
+    type: string;
+    bankName?: string;
+    last4?: string;
+    accountType?: string;
+  } | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('retrievePaymentMethod' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement retrievePaymentMethod`);
+      }
+      const result = await (providerInstance as any).retrievePaymentMethod(paymentMethodId);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider, paymentMethodId }, 'Error retrieving payment method');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to retrieve payment method',
+      };
+    }
+  }
+
+  async retrieveSetupIntent(
+    provider: IPaymentGatewayProvider,
+    setupIntentId: string
+  ): IPromiseReturnedData<{ paymentMethodId: string; mandateId: string | null } | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('retrieveSetupIntent' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement retrieveSetupIntent`);
+      }
+      const result = await (providerInstance as any).retrieveSetupIntent(setupIntentId);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider, setupIntentId }, 'Error retrieving setup intent');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to retrieve setup intent',
+      };
+    }
+  }
+
   async createRefund(
     provider: IPaymentGatewayProvider,
     params: {
@@ -749,7 +857,14 @@ export class PaymentGatewayService {
    */
   async createSetupCheckoutSession(
     provider: IPaymentGatewayProvider,
-    opts: { customerId: string; successUrl: string; cancelUrl: string }
+    opts: {
+      customerId: string;
+      successUrl: string;
+      cancelUrl: string;
+      currency: string;
+      paymentMethodTypes?: string[];
+      metadata?: Record<string, string>;
+    }
   ): IPromiseReturnedData<{ url: string } | null> {
     try {
       const providerInstance = this.getProvider(provider);
@@ -759,7 +874,10 @@ export class PaymentGatewayService {
       const result = await (providerInstance as any).createSetupCheckoutSession(
         opts.customerId,
         opts.successUrl,
-        opts.cancelUrl
+        opts.cancelUrl,
+        opts.currency,
+        opts.paymentMethodTypes,
+        opts.metadata
       );
       return { success: true, data: { url: result.url } };
     } catch (error) {

@@ -114,10 +114,6 @@ export class WebhookController {
     }
   };
 
-  /**
-   * Handle all Stripe webhook events
-   * POST /api/webhooks/stripe
-   */
   handleStripeWebhook = async (req: Request, res: Response): Promise<Response> => {
     try {
       const signature = req.headers['stripe-signature'];
@@ -144,21 +140,18 @@ export class WebhookController {
             break;
           }
 
-          // ── Identity verification ─────────────────────────────────────────────
           case 'identity.verification_session.verified': {
             const session = event.data.object as any;
             await this.clientService.handleIdentityWebhookEvent('verified', session.id);
             break;
           }
 
-          // ── Dispute events ────────────────────────────────────────────────────
           case 'charge.dispute.funds_reinstated': {
             const dispute = event.data.object as any;
             await this.paymentService.handleDisputeWon(dispute.id, dispute);
             break;
           }
 
-          // ── Subscription lifecycle ────────────────────────────────────────────
           case 'customer.subscription.created': {
             const subscription = event.data.object as any;
             await this.subscriptionService.handleSubscriptionCreated({
@@ -189,9 +182,16 @@ export class WebhookController {
             break;
           }
 
+          case 'checkout.session.completed': {
+            const session = event.data.object as any;
+            if (session.mode === 'setup') {
+              await this.paymentService.handleSetupSessionCompleted(session, 'platform');
+            }
+            break;
+          }
+
           case 'invoice.payment_succeeded': {
             const invoice = event.data.object as any;
-            // Rent invoices have no subscription ID
             if (!invoice.subscription) {
               await this.paymentService.handleInvoicePaymentSucceeded(invoice.id, invoice);
             }
@@ -226,14 +226,12 @@ export class WebhookController {
             break;
           }
 
-          // ── Rent payment events ───────────────────────────────────────────────
           case 'charge.refunded': {
             const charge = event.data.object as any;
             await this.paymentService.handleChargeRefunded(charge.id, charge);
             break;
           }
 
-          // ── Invoice events (subscription vs rent distinguished by invoice.subscription) ──
           case 'invoice.paid': {
             const invoice = event.data.object as any;
             await this.subscriptionService.handleInvoicePaid(invoice);
@@ -262,11 +260,6 @@ export class WebhookController {
     }
   };
 
-  /**
-   * Handle Stripe Connect webhook events (connected account events)
-   * POST /api/webhooks/stripe/connect
-   * Requires a separate Stripe webhook endpoint configured with "Listen to events on Connected accounts"
-   */
   handleStripeConnectWebhook = async (req: Request, res: Response): Promise<Response> => {
     try {
       const signature = req.headers['stripe-signature'];
@@ -345,12 +338,9 @@ export class WebhookController {
       return;
     }
 
-    // req.body is already parsed by express.json(); rawBody is the raw Buffer
-    // preserved by the verify callback in app.ts for signature verification
     const parsed = req.body;
     const payload: IInvoiceWebhookPayload = { ...parsed, source, rawPayload: parsed };
 
-    // Respond 200 immediately to prevent provider retries, then process async
     res.status(200).json({ received: true });
 
     this.maintenanceRequestService

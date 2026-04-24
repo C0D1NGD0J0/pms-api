@@ -1,1 +1,10 @@
-{}
+{
+  "notifications": {
+    "payment": {
+      "requested": {
+        "title": "notifications.payment.requested.title",
+        "message": "notifications.payment.requested.message"
+      }
+    }
+  }
+}

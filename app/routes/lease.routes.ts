@@ -8,6 +8,7 @@ import { UtilsValidations, LeaseValidations, validateRequest } from '@shared/val
 import {
   subscriptionEntitlements,
   requireVerifiedClient,
+  requireNotSuspended,
   requireActiveTenant,
   requireFeatureFlag,
   requirePermission,
@@ -77,6 +78,7 @@ router
     })
   )
   .post(
+    requireNotSuspended,
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     requireVerifiedClient,
     idempotency,

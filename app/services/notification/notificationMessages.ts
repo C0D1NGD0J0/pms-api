@@ -107,6 +107,10 @@ export const NotificationMessages = {
       message:
         'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
     },
+    requested: {
+      title: 'Payment Request Received',
+      message: 'A payment of {{amount}} is due by {{dueDate}}. Please log in to pay.',
+    },
     succeeded: {
       title: 'Payment Received',
       message: 'A payment of {{amount}} has been successfully processed',
@@ -245,6 +249,7 @@ export type NotificationMessageKey =
   | 'payment.disputeCreated'
   | 'payment.disputeWon'
   | 'payment.payoutAccountVerified'
+  | 'payment.requested'
   | 'payment.succeeded'
   | 'payment.failed'
   | 'payment.refunded';

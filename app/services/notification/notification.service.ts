@@ -29,12 +29,14 @@ import {
   MaintenanceRequestCompletedPayload,
   MaintenanceRequestCancelledPayload,
   MaintenanceInvoiceSubmittedPayload,
+  PaymentMethodSetupCompletedPayload,
   MaintenanceRequestAssignedPayload,
   MaintenanceRequestAcceptedPayload,
   MaintenanceRequestDeclinedPayload,
   MaintenanceInvoiceApprovedPayload,
   MaintenanceInvoiceRejectedPayload,
   MaintenanceRequestCreatedPayload,
+  PaymentRequestCreatedPayload,
   PaymentSucceededPayload,
   PaymentRefundedPayload,
   PaymentFailedPayload,
@@ -1961,6 +1963,14 @@ export class NotificationService {
     this.emitterService.on(EventTypes.PAYMENT_SUCCEEDED, this.handlePaymentSucceeded.bind(this));
     this.emitterService.on(EventTypes.PAYMENT_FAILED, this.handlePaymentFailed.bind(this));
     this.emitterService.on(EventTypes.PAYMENT_REFUNDED, this.handlePaymentRefunded.bind(this));
+    this.emitterService.on(
+      EventTypes.PAYMENT_METHOD_SETUP_COMPLETED,
+      this.handlePaymentMethodSetupCompleted.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.PAYMENT_REQUEST_CREATED,
+      this.handlePaymentRequestCreated.bind(this)
+    );
   }
 
   private async handleLeaseActivated(payload: any): Promise<void> {
@@ -2395,6 +2405,50 @@ export class NotificationService {
       });
     } catch (error) {
       this.log.error('Error sending payment refunded notification', { error, payload });
+    }
+  }
+
+  private async handlePaymentMethodSetupCompleted(
+    payload: PaymentMethodSetupCompletedPayload
+  ): Promise<void> {
+    try {
+      const { tenantId, cuid, paymentMethodId } = payload;
+      await this.sseService.sendToUser(
+        tenantId,
+        cuid,
+        { paymentMethodId },
+        'payment-method-updated'
+      );
+    } catch (error) {
+      this.log.error('Error sending payment-method-updated SSE', { error, payload });
+    }
+  }
+
+  private async handlePaymentRequestCreated(payload: PaymentRequestCreatedPayload): Promise<void> {
+    try {
+      const { tenantUserId, amountInCents, dueDate, pytuid, cuid } = payload;
+      const fmt = MoneyUtils.formatCurrency(amountInCents || 0);
+      const dueDateStr = new Date(dueDate).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      const { title, message } = getFormattedNotification('payment.requested', {
+        amount: fmt,
+        dueDate: dueDateStr,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        cuid,
+        type: NotificationTypeEnum.PAYMENT,
+        recipient: tenantUserId,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.HIGH,
+        title,
+        message,
+        metadata: { pytuid },
+      });
+    } catch (error) {
+      this.log.error('Error sending payment request notification', { error, payload });
     }
   }
 

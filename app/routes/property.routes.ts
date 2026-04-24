@@ -33,6 +33,7 @@ router.get(
 
 router.post(
   '/:cuid/add_property',
+  requireNotSuspended,
   requireVerification,
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   idempotency,

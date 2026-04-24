@@ -296,6 +296,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   isVerified: 1,
                   vendorPayoutMode: '$settings.vendorPayoutMode',
                   tenantFeatures: '$settings.tenantFeatures',
+                  suspension: 1,
                 },
               },
             ],
@@ -360,7 +361,9 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         {
           $addFields: {
             subscriptionInfo: { $arrayElemAt: ['$subscriptionData', 0] },
-            paymentProcessorInfo: { $arrayElemAt: ['$paymentProcessorData', 0] },
+            paymentProcessorInfo: {
+              $ifNull: [{ $arrayElemAt: ['$paymentProcessorData', 0] }, null],
+            },
             vendorDoc: { $arrayElemAt: ['$vendorDocData', 0] },
           },
         },
@@ -436,6 +439,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   requiresOnboarding: { $ifNull: ['$$ac.requiresOnboarding', false] },
                   isFormerTenant: { $ifNull: ['$$ac.isFormerTenant', false] },
                   tenantFeatures: { $ifNull: ['$$acd.tenantFeatures', '$$REMOVE'] },
+                  suspension: { $ifNull: ['$$acd.suspension', '$$REMOVE'] },
                   // vendor-only fields
                   vendorPayoutMode: {
                     $cond: {

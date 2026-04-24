@@ -221,6 +221,16 @@ const ProfileSchema = new Schema<IProfileDocument>(
           of: String,
           default: undefined,
         },
+        paymentMethods: {
+          type: Map,
+          of: String,
+          default: {},
+        },
+        paymentMandates: {
+          type: Map,
+          of: String,
+          default: {},
+        },
       },
       default: null,
     },

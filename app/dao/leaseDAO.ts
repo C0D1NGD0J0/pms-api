@@ -186,7 +186,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           skip,
           limit,
           projection:
-            'luid leaseNumber status duration.startDate duration.endDate fees.monthlyRent property.unitId tenantId signingMethod eSignature.status',
+            'luid leaseNumber status duration.startDate duration.endDate fees.monthlyRent fees.lateFeeDays property.unitId tenantId signingMethod eSignature.status',
           populate: [
             {
               path: 'tenantId',
@@ -225,6 +225,9 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           propertyAddress,
           unitNumber,
           monthlyRent: leaseObj.fees?.monthlyRent,
+          gracePeriodDays: leaseObj.fees?.lateFeeDays ?? 5,
+          rentDueDay: leaseObj.fees?.rentDueDay ?? 1,
+          acceptedPaymentMethod: leaseObj.fees?.acceptedPaymentMethod ?? null,
           startDate: leaseObj.duration?.startDate,
           endDate: leaseObj.duration?.endDate,
           status: leaseObj.status,

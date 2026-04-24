@@ -65,6 +65,25 @@ const PaymentProcessorSchema = new Schema<IPaymentProcessorDocument>(
     payoutsBlockedAt: {
       type: Date,
     },
+    payoutsBlockedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    payoutsPaused: {
+      type: Boolean,
+      default: false,
+    },
+    payoutsPausedReason: {
+      type: String,
+    },
+    payoutsPausedAt: {
+      type: Date,
+    },
+    disputeStats: {
+      total: { type: Number, default: 0 },
+      open: { type: Number, default: 0 },
+      lastDisputeAt: { type: Date },
+    },
     onboardedAt: {
       type: Date,
     },

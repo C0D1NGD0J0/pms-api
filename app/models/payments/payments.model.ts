@@ -103,6 +103,13 @@ const PaymentSchema = new Schema<IPaymentDocument>(
         min: 2020,
       },
     },
+    currency: {
+      type: String,
+      required: true,
+      uppercase: true,
+      trim: true,
+      default: 'USD',
+    },
     description: String,
     receipt: {
       url: {

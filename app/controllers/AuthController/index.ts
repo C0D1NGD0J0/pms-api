@@ -125,6 +125,13 @@ export class AuthController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  chargeFirstPayment = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const currentuser = req.context?.currentuser;
+    const result = await this.authService.chargeFirstPayment(cuid, currentuser!);
+    res.status(httpStatusCodes.CREATED).json(result);
+  };
+
   setupPaymentIntent = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     const currentuser = req.context?.currentuser;
@@ -135,6 +142,20 @@ export class AuthController {
       returnUrl,
       cancelUrl
     );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getPaymentMethod = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const currentuser = req.context?.currentuser;
+    const result = await this.authService.getPaymentMethod(cuid, currentuser!);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  removePaymentMethod = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const currentuser = req.context?.currentuser;
+    const result = await this.authService.removePaymentMethod(cuid, currentuser!);
     res.status(httpStatusCodes.OK).json(result);
   };
 

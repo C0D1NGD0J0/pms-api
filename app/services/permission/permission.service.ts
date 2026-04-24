@@ -116,6 +116,14 @@ export class PermissionService {
         return true;
       }
 
+      // :any implies :mine — if the role can do action on any resource, it can do it on its own
+      if (permission.endsWith(':mine')) {
+        const anyEquivalent = permission.replace(':mine', ':any');
+        if (Array.isArray(rolePermissions) && rolePermissions.includes(anyEquivalent)) {
+          return true;
+        }
+      }
+
       // Check inherited permissions
       if (roleConfig.$extend) {
         for (const inheritedRole of roleConfig.$extend) {

@@ -1,11 +1,13 @@
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
 import { Response } from 'express';
 import { t } from '@shared/languages';
+import { ClientDAO } from '@dao/index';
 import { createLogger } from '@utils/index';
 import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { BadRequestError, ForbiddenError } from '@shared/customErrors/index';
+import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { PropertyCache, VendorCache, LeaseCache, UserCache, AuthCache } from '@caching/index';
 
 const CACHE_TYPES = ['user', 'property', 'lease', 'vendor', 'auth'] as const;
@@ -18,6 +20,7 @@ export class AdminController {
   private readonly leaseCache: LeaseCache;
   private readonly vendorCache: VendorCache;
   private readonly authCache: AuthCache;
+  private readonly clientDAO: ClientDAO;
 
   constructor({
     userCache,
@@ -25,12 +28,14 @@ export class AdminController {
     leaseCache,
     vendorCache,
     authCache,
+    clientDAO,
   }: {
     userCache: UserCache;
     propertyCache: PropertyCache;
     leaseCache: LeaseCache;
     vendorCache: VendorCache;
     authCache: AuthCache;
+    clientDAO: ClientDAO;
   }) {
     this.log = createLogger('AdminController');
     this.userCache = userCache;
@@ -38,6 +43,7 @@ export class AdminController {
     this.leaseCache = leaseCache;
     this.vendorCache = vendorCache;
     this.authCache = authCache;
+    this.clientDAO = clientDAO;
   }
 
   /**
@@ -134,6 +140,73 @@ export class AdminController {
       success: true,
       message: `${type} cache invalidated successfully`,
       data: { type, cuid, id: id ?? null, deletedCount: deletedCount ?? null },
+    });
+  };
+
+  suspendClient = async (req: AppRequest, res: Response) => {
+    const currentuser = req.context?.currentuser;
+    if (!currentuser || currentuser.client.role !== IUserRole.SUPER_ADMIN) {
+      throw new ForbiddenError({ message: t('auth.errors.insufficientRole') });
+    }
+
+    const { cuid } = req.params;
+    const { reason } = req.body as { reason?: string };
+
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      throw new NotFoundError({ message: 'Client not found' });
+    }
+
+    await this.clientDAO.update(
+      { cuid },
+      {
+        $set: {
+          'suspension.isActive': true,
+          'suspension.reason': reason ?? 'Suspended by admin',
+          'suspension.at': new Date(),
+          'suspension.by': new Types.ObjectId(currentuser.sub),
+        },
+      }
+    );
+
+    this.log.info({ cuid, by: currentuser.sub, reason }, 'Client account suspended');
+
+    return res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: 'Client account suspended successfully',
+    });
+  };
+
+  unsuspendClient = async (req: AppRequest, res: Response) => {
+    const currentuser = req.context?.currentuser;
+    if (!currentuser || currentuser.client.role !== IUserRole.SUPER_ADMIN) {
+      throw new ForbiddenError({ message: t('auth.errors.insufficientRole') });
+    }
+
+    const { cuid } = req.params;
+
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      throw new NotFoundError({ message: 'Client not found' });
+    }
+
+    await this.clientDAO.update(
+      { cuid },
+      {
+        $set: {
+          'suspension.isActive': false,
+          'suspension.reason': null,
+          'suspension.at': null,
+          'suspension.by': null,
+        },
+      }
+    );
+
+    this.log.info({ cuid, by: currentuser.sub }, 'Client account unsuspended');
+
+    return res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: 'Client account unsuspended successfully',
     });
   };
 }

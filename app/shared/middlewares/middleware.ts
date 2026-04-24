@@ -630,6 +630,23 @@ export const requireActiveSubscription = (req: Request, _res: Response, next: Ne
 };
 
 /**
+ * Blocks access when the client account is suspended.
+ * Must run after isAuthenticated. Do NOT apply to auth routes.
+ */
+export const requireNotSuspended = (req: Request, _res: Response, next: NextFunction) => {
+  const currentuser = validateUserAndConnection(req, next);
+  if (!currentuser) return;
+
+  if (currentuser.client.suspension?.isActive) {
+    return next(
+      new ForbiddenError({ message: 'This account has been suspended. Please contact support.' })
+    );
+  }
+
+  next();
+};
+
+/**
  * Ensures the client account is verified before allowing business-critical actions.
  * Must run after isAuthenticated.
  */

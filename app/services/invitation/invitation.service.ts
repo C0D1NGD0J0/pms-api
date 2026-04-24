@@ -116,6 +116,21 @@ export class InvitationService {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
+      // Cap tenant invitations at 5 for unverified accounts
+      if (!client.isVerified && validatedData.role === ROLES.TENANT) {
+        const pendingTenantInvitations = await this.invitationDAO.countDocuments({
+          client: client._id,
+          role: ROLES.TENANT,
+          status: 'pending',
+        });
+        if (pendingTenantInvitations >= 5) {
+          throw new BadRequestError({
+            message:
+              'Verify your account to invite more tenants. Unverified accounts are limited to 5 pending tenant invitations.',
+          });
+        }
+      }
+
       const inviterUser = await this.userDAO.getUserById(inviterUserId);
       if (!inviterUser) {
         throw new UnauthorizedError({ message: t('auth.errors.userNotFound') });
@@ -400,22 +415,21 @@ export class InvitationService {
       );
     }
 
-    if (result.invitation.role === 'tenant') {
-      await this.maybeCreateTenantPaymentCustomer(result.user, result.invitation, cuid);
+    if (result.invitation.role === ROLES.TENANT) {
+      await this.createTenantPaymentCustomer(result.user, cuid);
     }
   }
 
-  private async maybeCreateTenantPaymentCustomer(
-    user: any,
-    invitation: IInvitationDocument,
-    cuid: string
-  ): Promise<void> {
+  private async createTenantPaymentCustomer(user: any, cuid: string): Promise<void> {
     try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
-      if (!paymentProcessor || !paymentProcessor.chargesEnabled) {
+      const existingProfile = await this.profileDAO.findFirst({ user: user._id });
+      const existingCustomerId =
+        existingProfile?.tenantInfo?.paymentGatewayCustomers?.get('platform');
+
+      if (existingCustomerId) {
         this.log.info(
-          { cuid },
-          'PM has no active payment processor — skipping tenant Stripe customer creation'
+          { cuid, userId: user._id, customerId: existingCustomerId },
+          'Platform Stripe customer already exists — skipping'
         );
         return;
       }
@@ -423,19 +437,17 @@ export class InvitationService {
       const result = await this.paymentGatewayService.createCustomer({
         provider: IPaymentGatewayProvider.STRIPE,
         email: user.email,
-        name: invitation.inviteeFullName || user.email,
-        connectedAccountId: paymentProcessor.accountId,
       });
 
       if (!result.success || !result.data) {
         this.log.warn(
           { cuid, userId: user._id },
-          'Stripe customer creation returned no data for tenant — skipping'
+          'Stripe customer creation returned no data — skipping'
         );
         return;
       }
 
-      // Initialize tenantInfo if null — MongoDB cannot set nested paths through null
+      // MongoDB cannot $set nested paths through a null parent document
       await this.profileDAO.update(
         { user: user._id, tenantInfo: null },
         { $set: { tenantInfo: {} } }
@@ -445,21 +457,19 @@ export class InvitationService {
         { user: user._id },
         {
           $set: {
-            [`tenantInfo.paymentGatewayCustomers.${paymentProcessor.accountId}`]:
-              result.data.customerId,
+            ['tenantInfo.paymentGatewayCustomers.platform']: result.data.customerId,
           },
         }
       );
 
       this.log.info(
         { cuid, userId: user._id, customerId: result.data.customerId },
-        'Tenant Stripe customer created and stored on profile'
+        'Platform Stripe customer created for tenant'
       );
     } catch (error) {
-      // Do not throw — invitation acceptance must succeed even if customer creation fails
       this.log.error(
         { error, cuid, userId: user._id },
-        'Error creating Stripe customer for tenant — invitation accepted without customer record'
+        'Error creating Stripe customer — invitation accepted without customer record'
       );
     }
   }

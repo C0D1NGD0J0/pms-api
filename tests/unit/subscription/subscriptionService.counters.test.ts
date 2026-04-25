@@ -46,6 +46,7 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
       paymentGatewayService: {} as any,
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
+      paymentProcessorDAO: {} as any,
     });
   });
 
@@ -188,6 +189,7 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         paymentGatewayService: {} as any,
         propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
+      paymentProcessorDAO: {} as any,
     });
     });
 

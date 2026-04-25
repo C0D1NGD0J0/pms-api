@@ -89,6 +89,7 @@ describe('SubscriptionService Integration Tests', () => {
       userDAO: {} as any,
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
+      paymentProcessorDAO: {} as any,
     });
   });
   beforeEach(async () => {

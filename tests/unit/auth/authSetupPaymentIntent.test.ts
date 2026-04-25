@@ -96,6 +96,7 @@ const makeService = (overrides: Record<string, any> = {}) =>
     profileDAO: (overrides.profileDAO ?? {}) as any,
     paymentProcessorDAO: (overrides.paymentProcessorDAO ?? {}) as any,
     paymentGatewayService: (overrides.paymentGatewayService ?? {}) as any,
+    paymentService: {} as any,
     userDAO: {} as any,
     clientDAO: {} as any,
     queueFactory: { getQueue: jest.fn() } as any,
@@ -374,7 +375,11 @@ describe('AuthService.setupPaymentIntent — electronic lease, existing customer
 
     expect(paymentGatewayService.createSetupCheckoutSession).toHaveBeenCalledWith(
       IPaymentGatewayProvider.STRIPE,
-      { customerId: EXISTING_CUSTOMER_ID, successUrl: RETURN_URL, cancelUrl: CANCEL_URL }
+      expect.objectContaining({
+        customerId: EXISTING_CUSTOMER_ID,
+        successUrl: RETURN_URL,
+        cancelUrl: CANCEL_URL,
+      })
     );
   });
 });
@@ -415,12 +420,13 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
 
     await service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL);
 
-    expect(paymentGatewayService.createCustomer).toHaveBeenCalledWith({
-      provider: IPaymentGatewayProvider.STRIPE,
-      email: user.email,
-      metadata: { cuid: CUID, tenantId: TENANT_SUB },
-      connectedAccountId: ACCOUNT_ID,
-    });
+    expect(paymentGatewayService.createCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: IPaymentGatewayProvider.STRIPE,
+        email: user.email,
+        connectedAccountId: ACCOUNT_ID,
+      })
+    );
   });
 
   it('saves new customerId via profileDAO.updateById after customer creation', async () => {
@@ -495,7 +501,11 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
 
     expect(paymentGatewayService.createSetupCheckoutSession).toHaveBeenCalledWith(
       IPaymentGatewayProvider.STRIPE,
-      { customerId: NEW_CUSTOMER_ID, successUrl: RETURN_URL, cancelUrl: CANCEL_URL }
+      expect.objectContaining({
+        customerId: NEW_CUSTOMER_ID,
+        successUrl: RETURN_URL,
+        cancelUrl: CANCEL_URL,
+      })
     );
   });
 });

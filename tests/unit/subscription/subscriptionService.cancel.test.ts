@@ -78,6 +78,7 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
       emitterService: mockEmitterService,
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
+      paymentProcessorDAO: {} as any,
     });
   });
 

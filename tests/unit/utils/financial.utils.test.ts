@@ -4,6 +4,7 @@ import {
   calcAnnualToMonthly,
   calcRentAdjustment,
   estimateNetIncome,
+  proRateLastMonth,
   calcGatewayFee,
   proRateAmount,
   calcSeatCost,
@@ -50,6 +51,63 @@ describe('proRateAmount', () => {
   it('applies ceiling rounding: ceil(10000 × 1 / 30) = 334', () => {
     const result = proRateAmount(10000, new Date(2024, 3, 30));
     expect(result.amount).toBe(334);
+  });
+});
+
+describe('proRateLastMonth', () => {
+  it('returns full month when end day is the last day of the month', () => {
+    // March 31 — full month
+    const result = proRateLastMonth(200000, new Date(2024, 2, 31));
+    expect(result).toMatchObject({ amount: 200000, isFullMonth: true, daysCharged: 31, daysInMonth: 31 });
+  });
+
+  it('pro-rates mid-month in a 30-day month', () => {
+    // June 15: daysCharged=15; ceil(150000 × 15 / 30) = 75000
+    const result = proRateLastMonth(150000, new Date(2024, 5, 15));
+    expect(result).toMatchObject({ amount: 75000, isFullMonth: false, daysCharged: 15, daysInMonth: 30 });
+  });
+
+  it('pro-rates mid-month in a 31-day month with ceiling rounding', () => {
+    // March 15: daysCharged=15; ceil(200000 × 15 / 31) = 96775
+    const result = proRateLastMonth(200000, new Date(2024, 2, 15));
+    expect(result).toMatchObject({ amount: 96775, isFullMonth: false, daysCharged: 15, daysInMonth: 31 });
+  });
+
+  it('charges 1 day when ending on the first day of the month', () => {
+    // April 1: ceil(200000 × 1 / 30) = 6667
+    const result = proRateLastMonth(200000, new Date(2024, 3, 1));
+    expect(result).toMatchObject({ amount: 6667, daysCharged: 1, daysInMonth: 30 });
+  });
+
+  it('handles February (28 days, non-leap)', () => {
+    // Feb 14: daysCharged=14; ceil(120000 × 14 / 28) = 60000
+    const result = proRateLastMonth(120000, new Date(2023, 1, 14));
+    expect(result).toMatchObject({ amount: 60000, daysInMonth: 28, daysCharged: 14 });
+  });
+
+  it('handles February in a leap year (29 days)', () => {
+    // Feb 29 — full last month
+    const result = proRateLastMonth(180000, new Date(2024, 1, 29));
+    expect(result).toMatchObject({ isFullMonth: true, daysInMonth: 29, daysCharged: 29 });
+  });
+
+  it('returns dailyRate as ceil(monthlyRent / daysInMonth)', () => {
+    // June: ceil(150000 / 30) = 5000
+    const result = proRateLastMonth(150000, new Date(2024, 5, 15));
+    expect(result.dailyRate).toBe(5000);
+  });
+
+  it('dailyRate uses ceiling when not evenly divisible', () => {
+    // March: ceil(200000 / 31) = 6452
+    const result = proRateLastMonth(200000, new Date(2024, 2, 15));
+    expect(result.dailyRate).toBe(6452);
+  });
+
+  it('mirrors proRateAmount symmetry: first-day start + last-day end = full month each', () => {
+    const first = proRateAmount(200000, new Date(2024, 2, 1));
+    const last = proRateLastMonth(200000, new Date(2024, 2, 31));
+    expect(first.isFullMonth).toBe(true);
+    expect(last.isFullMonth).toBe(true);
   });
 });
 

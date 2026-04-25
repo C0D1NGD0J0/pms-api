@@ -53,6 +53,7 @@ const makeServiceWithMocks = (
     leaseDAO: jest.Mocked<LeaseDAO>;
     paymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
     paymentGatewayService: jest.Mocked<PaymentGatewayService>;
+    subscriptionDAO: jest.Mocked<SubscriptionDAO>;
     emitterService: { emit: jest.Mock; on: jest.Mock };
   }> = {}
 ) =>
@@ -64,7 +65,7 @@ const makeServiceWithMocks = (
     paymentProcessorDAO: (overrides.paymentProcessorDAO ?? {}) as jest.Mocked<PaymentProcessorDAO>,
     paymentGatewayService: (overrides.paymentGatewayService ?? {}) as jest.Mocked<PaymentGatewayService>,
     emitterService: (overrides.emitterService ?? { emit: jest.fn(), on: jest.fn() }) as any,
-    subscriptionDAO: {} as jest.Mocked<SubscriptionDAO>,
+    subscriptionDAO: (overrides.subscriptionDAO ?? {}) as jest.Mocked<SubscriptionDAO>,
     userDAO: {} as jest.Mocked<UserDAO>,
     subscriptionPlanConfig: {} as jest.Mocked<SubscriptionPlanConfig>,
     queueFactory: { getQueue: jest.fn() } as any,
@@ -760,11 +761,16 @@ describe('PaymentService - handleDisputeCreated', () => {
     ...overrides,
   });
 
+  let mockPaymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
+
   beforeEach(() => {
     mockPaymentDAO = {
       findFirst: jest.fn(),
       update: jest.fn(),
     } as unknown as jest.Mocked<PaymentDAO>;
+    mockPaymentProcessorDAO = {
+      update: jest.fn(),
+    } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockPaymentGatewayService = {
       getCharge: jest.fn(),
       createTransferReversal: jest.fn(),
@@ -772,6 +778,7 @@ describe('PaymentService - handleDisputeCreated', () => {
     mockEmitterService = { emit: jest.fn(), on: jest.fn() };
     paymentService = makeServiceWithMocks({
       paymentDAO: mockPaymentDAO,
+      paymentProcessorDAO: mockPaymentProcessorDAO,
       paymentGatewayService: mockPaymentGatewayService,
       emitterService: mockEmitterService,
     });
@@ -785,6 +792,7 @@ describe('PaymentService - handleDisputeCreated', () => {
     mockPaymentGatewayService.getCharge.mockResolvedValue({ success: true, data: { transfer: TRANSFER_ID } } as any);
     mockPaymentGatewayService.createTransferReversal.mockResolvedValue({ success: true, data: { reversalId: 'trr_test', amount: 150000 } } as any);
     mockPaymentDAO.update.mockResolvedValue(payment as any);
+    mockPaymentProcessorDAO.update.mockResolvedValue({} as any);
 
     const result = await paymentService.handleDisputeCreated(DISPUTE_ID, makeDisputeData());
 
@@ -827,6 +835,7 @@ describe('PaymentService - handleDisputeCreated', () => {
     mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
     mockPaymentGatewayService.getCharge.mockResolvedValue({ success: true, data: { transfer: null } } as any);
     mockPaymentDAO.update.mockResolvedValue(payment as any);
+    mockPaymentProcessorDAO.update.mockResolvedValue({} as any);
 
     const result = await paymentService.handleDisputeCreated(DISPUTE_ID, makeDisputeData());
 
@@ -842,6 +851,7 @@ describe('PaymentService - handleDisputeCreated', () => {
     mockPaymentGatewayService.getCharge.mockResolvedValue({ success: true, data: { transfer: TRANSFER_ID } } as any);
     mockPaymentGatewayService.createTransferReversal.mockResolvedValue({ success: true, data: {} } as any);
     mockPaymentDAO.update.mockResolvedValue(payment as any);
+    mockPaymentProcessorDAO.update.mockResolvedValue({} as any);
 
     await paymentService.handleDisputeCreated(DISPUTE_ID, makeDisputeData({ charge: { id: CHARGE_ID } }));
 
@@ -889,7 +899,7 @@ describe('PaymentService - handleDisputeWon', () => {
 
   beforeEach(() => {
     mockPaymentDAO = { findFirst: jest.fn(), update: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
-    mockPaymentProcessorDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<PaymentProcessorDAO>;
+    mockPaymentProcessorDAO = { findFirst: jest.fn(), update: jest.fn() } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockPaymentGatewayService = { createTransfer: jest.fn() } as unknown as jest.Mocked<PaymentGatewayService>;
     mockEmitterService = { emit: jest.fn(), on: jest.fn() };
     paymentService = makeServiceWithMocks({
@@ -907,6 +917,7 @@ describe('PaymentService - handleDisputeWon', () => {
     mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
     mockPaymentDAO.update.mockResolvedValue(payment as any);
     mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockPaymentProcessorDAO.update.mockResolvedValue({} as any);
     mockPaymentGatewayService.createTransfer.mockResolvedValue({ success: true, data: { transferId: 'tr_new_123', amount: 150000 } } as any);
 
     const result = await paymentService.handleDisputeWon(DISPUTE_ID, makeDisputeWonData());
@@ -1889,6 +1900,8 @@ describe('PaymentService - chargeForMaintenance', () => {
   let mockPaymentDAO: jest.Mocked<PaymentDAO>;
   let mockClientDAO: jest.Mocked<ClientDAO>;
   let mockProfileDAO: jest.Mocked<ProfileDAO>;
+  let mockSubscriptionDAO: jest.Mocked<SubscriptionDAO>;
+  let mockPaymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
 
   const CURRENT_USER_ID = new Types.ObjectId().toString();
   const TENANT_USER_ID = new Types.ObjectId().toString();
@@ -1907,11 +1920,21 @@ describe('PaymentService - chargeForMaintenance', () => {
     mockClientDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<ClientDAO>;
     mockProfileDAO = { getProfileByUserId: jest.fn() } as unknown as jest.Mocked<ProfileDAO>;
     mockPaymentDAO = { insert: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
+    mockSubscriptionDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<SubscriptionDAO>;
+    mockPaymentProcessorDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<PaymentProcessorDAO>;
+
+    mockSubscriptionDAO.findFirst.mockResolvedValue({ status: 'active' } as any);
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue({ payoutsBlocked: false } as any);
+
+    const mockLeaseDAO = { getActiveLeaseByTenant: jest.fn().mockResolvedValue({ fees: { currency: 'USD' } }) } as any;
 
     paymentService = makeServiceWithMocks({
       clientDAO: mockClientDAO,
       profileDAO: mockProfileDAO,
       paymentDAO: mockPaymentDAO,
+      subscriptionDAO: mockSubscriptionDAO,
+      paymentProcessorDAO: mockPaymentProcessorDAO,
+      leaseDAO: mockLeaseDAO,
     });
   });
 
@@ -2193,5 +2216,357 @@ describe('PaymentService - getPaymentStats (RENT-only collection rate)', () => {
 
     expect(result.data.collectionRate).toBe(100); // 50k RENT paid / 50k RENT expected
     expect(result.data.collected).toBe(200000); // overall collected includes deposit
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// autoChargeDueRentPayments (private — accessed via any cast)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - autoChargeDueRentPayments', () => {
+  let paymentService: PaymentService;
+  let mockPaymentDAO: jest.Mocked<PaymentDAO>;
+  let mockClientDAO: jest.Mocked<ClientDAO>;
+  let mockPaymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
+  let mockGateway: jest.Mocked<PaymentGatewayService>;
+
+  const ACCOUNT_ID = 'acct_test_123';
+
+  const makeDueRentPayment = (overrides: Record<string, any> = {}) => ({
+    _id: new Types.ObjectId(),
+    pytuid: `PYT-${Math.random().toString(36).slice(2)}`,
+    cuid: CUID,
+    status: PaymentRecordStatus.PENDING,
+    paymentType: PaymentRecordType.RENT,
+    baseAmount: 150000,
+    processingFee: 2900,
+    dueDate: new Date(Date.now() - 60 * 60 * 1000), // 1 hour ago
+    isManualEntry: false,
+    gatewayPaymentId: 'in_stripe_invoice_001',
+    ...overrides,
+  });
+
+  const makeClient = (onlinePayments = true) => ({
+    cuid: CUID,
+    settings: { tenantFeatures: { onlinePayments } },
+  });
+
+  beforeEach(() => {
+    mockPaymentDAO = {
+      list: jest.fn(),
+    } as unknown as jest.Mocked<PaymentDAO>;
+
+    mockClientDAO = {
+      getClientByCuid: jest.fn(),
+    } as unknown as jest.Mocked<ClientDAO>;
+
+    mockPaymentProcessorDAO = {
+      findFirst: jest.fn(),
+    } as unknown as jest.Mocked<PaymentProcessorDAO>;
+
+    mockGateway = {
+      payInvoice: jest.fn(),
+    } as unknown as jest.Mocked<PaymentGatewayService>;
+
+    paymentService = makeServiceWithMocks({
+      paymentDAO: mockPaymentDAO,
+      clientDAO: mockClientDAO,
+      paymentProcessorDAO: mockPaymentProcessorDAO,
+      paymentGatewayService: mockGateway,
+    });
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('does nothing when there are no due rent payments', async () => {
+    mockPaymentDAO.list.mockResolvedValue({ items: [], total: 0 } as any);
+
+    await (paymentService as any).autoChargeDueRentPayments();
+
+    expect(mockGateway.payInvoice).not.toHaveBeenCalled();
+  });
+
+  it('queries only PENDING/OVERDUE rent with a gatewayPaymentId and dueDate <= now', async () => {
+    mockPaymentDAO.list.mockResolvedValue({ items: [], total: 0 } as any);
+
+    await (paymentService as any).autoChargeDueRentPayments();
+
+    const [query] = mockPaymentDAO.list.mock.calls[0];
+    expect(query.paymentType).toBe(PaymentRecordType.RENT);
+    expect(query.status.$in).toEqual(
+      expect.arrayContaining([PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE])
+    );
+    expect(query.isManualEntry).toBe(false);
+    expect(query.gatewayPaymentId.$exists).toBe(true);
+    expect(query.dueDate.$lte).toBeInstanceOf(Date);
+  });
+
+  it('calls payInvoice for each due payment with the connected account id', async () => {
+    const p1 = makeDueRentPayment({ gatewayPaymentId: 'in_aaa' });
+    const p2 = makeDueRentPayment({ gatewayPaymentId: 'in_bbb' });
+    mockPaymentDAO.list.mockResolvedValue({ items: [p1, p2], total: 2 } as any);
+    mockClientDAO.getClientByCuid.mockResolvedValue(makeClient() as any);
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: ACCOUNT_ID } as any);
+    mockGateway.payInvoice.mockResolvedValue({ success: true } as any);
+
+    await (paymentService as any).autoChargeDueRentPayments();
+
+    expect(mockGateway.payInvoice).toHaveBeenCalledTimes(2);
+    expect(mockGateway.payInvoice).toHaveBeenCalledWith(
+      expect.anything(), 'in_aaa', ACCOUNT_ID
+    );
+    expect(mockGateway.payInvoice).toHaveBeenCalledWith(
+      expect.anything(), 'in_bbb', ACCOUNT_ID
+    );
+  });
+
+  it('handles OVERDUE payments as well as PENDING', async () => {
+    const overdue = makeDueRentPayment({ status: PaymentRecordStatus.OVERDUE });
+    mockPaymentDAO.list.mockResolvedValue({ items: [overdue], total: 1 } as any);
+    mockClientDAO.getClientByCuid.mockResolvedValue(makeClient() as any);
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: ACCOUNT_ID } as any);
+    mockGateway.payInvoice.mockResolvedValue({ success: true } as any);
+
+    await (paymentService as any).autoChargeDueRentPayments();
+
+    expect(mockGateway.payInvoice).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips payments when online payments are disabled for the client', async () => {
+    const p = makeDueRentPayment();
+    mockPaymentDAO.list.mockResolvedValue({ items: [p], total: 1 } as any);
+    mockClientDAO.getClientByCuid.mockResolvedValue(makeClient(false) as any);
+
+    await (paymentService as any).autoChargeDueRentPayments();
+
+    expect(mockGateway.payInvoice).not.toHaveBeenCalled();
+    expect(mockPaymentProcessorDAO.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('caches the online-payments flag and processor per cuid to avoid redundant DB lookups', async () => {
+    const payments = [makeDueRentPayment(), makeDueRentPayment(), makeDueRentPayment()];
+    mockPaymentDAO.list.mockResolvedValue({ items: payments, total: 3 } as any);
+    mockClientDAO.getClientByCuid.mockResolvedValue(makeClient() as any);
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: ACCOUNT_ID } as any);
+    mockGateway.payInvoice.mockResolvedValue({ success: true } as any);
+
+    await (paymentService as any).autoChargeDueRentPayments();
+
+    expect(mockClientDAO.getClientByCuid).toHaveBeenCalledTimes(1);
+    expect(mockPaymentProcessorDAO.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips and increments failed when no payment processor is configured', async () => {
+    const p = makeDueRentPayment();
+    mockPaymentDAO.list.mockResolvedValue({ items: [p], total: 1 } as any);
+    mockClientDAO.getClientByCuid.mockResolvedValue(makeClient() as any);
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
+
+    await (paymentService as any).autoChargeDueRentPayments();
+
+    expect(mockGateway.payInvoice).not.toHaveBeenCalled();
+  });
+
+  it('continues processing remaining payments after one Stripe charge fails', async () => {
+    const p1 = makeDueRentPayment({ gatewayPaymentId: 'in_fail' });
+    const p2 = makeDueRentPayment({ gatewayPaymentId: 'in_ok' });
+    mockPaymentDAO.list.mockResolvedValue({ items: [p1, p2], total: 2 } as any);
+    mockClientDAO.getClientByCuid.mockResolvedValue(makeClient() as any);
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: ACCOUNT_ID } as any);
+    mockGateway.payInvoice
+      .mockRejectedValueOnce(new Error('card_declined'))
+      .mockResolvedValueOnce({ success: true } as any);
+
+    await (paymentService as any).autoChargeDueRentPayments();
+
+    expect(mockGateway.payInvoice).toHaveBeenCalledTimes(2);
+  });
+
+  it('is registered in getCronJobs with the correct schedule and service name', () => {
+    const jobs = paymentService.getCronJobs();
+    const job = jobs.find((j) => j.name === 'payment.auto-charge-due-rent');
+    expect(job).toBeDefined();
+    expect(job!.schedule).toBe('0 6 * * *');
+    expect(job!.service).toBe('PaymentService');
+    expect(job!.enabled).toBe(true);
+    expect(typeof job!.handler).toBe('function');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// buildLineItemsFromFees
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - buildLineItemsFromFees', () => {
+  let paymentService: PaymentService;
+
+  beforeEach(() => {
+    paymentService = makeServiceWithMocks();
+  });
+
+  const baseFees = {
+    monthly: { rent: 150000, petFee: 0, total: 150000 },
+    late: { daysLate: 0, fee: 0, type: 'fixed', percentage: 0, gracePeriod: 5 },
+    deposits: { security: 0, pet: 0, total: 0 },
+    currency: 'USD',
+  };
+
+  const callBuild = (fees: any, options?: any) =>
+    (paymentService as any).buildLineItemsFromFees(fees, options);
+
+  it('should produce a single rent line item for standard monthly rent', () => {
+    const items = callBuild(baseFees);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual({ description: 'Monthly Rent', amountInCents: 150000 });
+  });
+
+  it('should include pet fee when present', () => {
+    const fees = { ...baseFees, monthly: { rent: 150000, petFee: 5000, total: 155000 } };
+    const items = callBuild(fees);
+    expect(items).toHaveLength(2);
+    expect(items[1]).toEqual({ description: 'Pet Fee', amountInCents: 5000 });
+  });
+
+  it('should include late fee with description containing days late', () => {
+    const fees = {
+      ...baseFees,
+      late: { daysLate: 10, fee: 7500, type: 'fixed', percentage: 0, gracePeriod: 5 },
+    };
+    const items = callBuild(fees);
+    expect(items).toHaveLength(2);
+    expect(items[1].description).toContain('Late Fee');
+    expect(items[1].description).toContain('10 days late');
+    expect(items[1].amountInCents).toBe(7500);
+  });
+
+  it('should include percentage in late fee description when type is percentage', () => {
+    const fees = {
+      ...baseFees,
+      late: { daysLate: 7, fee: 7500, type: 'percentage', percentage: 5, gracePeriod: 5 },
+    };
+    const items = callBuild(fees);
+    expect(items[1].description).toContain('5%');
+  });
+
+  it('should include security and pet deposits on first payment', () => {
+    const fees = {
+      ...baseFees,
+      deposits: { security: 150000, pet: 25000, total: 175000 },
+    };
+    const items = callBuild(fees, { isFirstPayment: true });
+    expect(items).toHaveLength(3);
+    expect(items.find((i: any) => i.description === 'Security Deposit')).toEqual({
+      description: 'Security Deposit',
+      amountInCents: 150000,
+    });
+    expect(items.find((i: any) => i.description === 'Pet Deposit')).toEqual({
+      description: 'Pet Deposit',
+      amountInCents: 25000,
+    });
+  });
+
+  it('should NOT include deposits when isFirstPayment is false', () => {
+    const fees = {
+      ...baseFees,
+      deposits: { security: 150000, pet: 25000, total: 175000 },
+    };
+    const items = callBuild(fees, { isFirstPayment: false });
+    expect(items).toHaveLength(1);
+    expect(items[0].description).toBe('Monthly Rent');
+  });
+
+  it('should include management fee when provided', () => {
+    const items = callBuild(baseFees, { managementFee: 12000 });
+    expect(items).toHaveLength(2);
+    expect(items[1]).toEqual({ description: 'Management Fee', amountInCents: 12000 });
+  });
+
+  it('should NOT include management fee when zero', () => {
+    const items = callBuild(baseFees, { managementFee: 0 });
+    expect(items).toHaveLength(1);
+  });
+
+  it('should throw when no valid fees produce line items', () => {
+    const fees = {
+      monthly: { rent: 0, petFee: 0, total: 0 },
+      late: { daysLate: 0, fee: 0, type: 'fixed', percentage: 0, gracePeriod: 5 },
+      deposits: { security: 0, pet: 0, total: 0 },
+      currency: 'USD',
+    };
+    expect(() => callBuild(fees)).toThrow('No valid fees found on lease');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// getPaymentByUid — lineItems
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - getPaymentByUid lineItems', () => {
+  let paymentService: PaymentService;
+  let mockPaymentDAO: jest.Mocked<PaymentDAO>;
+  let mockClientDAO: jest.Mocked<ClientDAO>;
+  let mockProfileDAO: jest.Mocked<ProfileDAO>;
+
+  beforeEach(() => {
+    mockPaymentDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
+    mockClientDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<ClientDAO>;
+    mockProfileDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<ProfileDAO>;
+    paymentService = makeServiceWithMocks({
+      paymentDAO: mockPaymentDAO,
+      clientDAO: mockClientDAO,
+      profileDAO: mockProfileDAO,
+    });
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('should return lineItems in the response when present on the payment', async () => {
+    const lineItems = [
+      { description: 'Monthly Rent', amountInCents: 150000 },
+      { description: 'Pet Fee', amountInCents: 5000 },
+    ];
+    const payment = makePayment({
+      lineItems,
+      toObject: function () {
+        return { ...this };
+      },
+      tenant: {
+        personalInfo: { firstName: 'Jane', lastName: 'Doe', phoneNumber: '555-1234' },
+        user: { email: 'jane@test.com' },
+        puid: 'PUID001',
+      },
+      lease: null,
+    });
+
+    mockClientDAO.findFirst.mockResolvedValue({ _id: new Types.ObjectId(), cuid: CUID } as any);
+    mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
+
+    const result = await paymentService.getPaymentByUid(CUID, PYTUID);
+
+    expect(result.success).toBe(true);
+    expect(result.data.lineItems).toEqual(lineItems);
+  });
+
+  it('should return empty lineItems array for manual entries without line items', async () => {
+    const payment = makePayment({
+      isManualEntry: true,
+      toObject: function () {
+        return { ...this };
+      },
+      tenant: {
+        personalInfo: { firstName: 'John', lastName: 'Smith' },
+        user: { email: 'john@test.com' },
+        puid: 'PUID002',
+      },
+      lease: null,
+    });
+
+    mockClientDAO.findFirst.mockResolvedValue({ _id: new Types.ObjectId(), cuid: CUID } as any);
+    mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
+
+    const result = await paymentService.getPaymentByUid(CUID, PYTUID);
+
+    expect(result.success).toBe(true);
+    expect(result.data.lineItems).toBeUndefined();
   });
 });

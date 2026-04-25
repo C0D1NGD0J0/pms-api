@@ -90,6 +90,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       emitterService: mockEmitterService,
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
+      paymentProcessorDAO: {} as any,
     });
   });
 

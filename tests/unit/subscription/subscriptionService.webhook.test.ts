@@ -87,6 +87,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
       sseService: mockSSEService,
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
+      paymentProcessorDAO: {} as any,
     });
   });
 

@@ -79,6 +79,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       emitterService: mockEmitterService,
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
+      paymentProcessorDAO: {} as any,
     });
   });
 

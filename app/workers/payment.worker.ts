@@ -33,14 +33,18 @@ export class PaymentWorker {
     try {
       await job.progress(10);
 
-      const result = await this.paymentService.createRentPayment(cuid, {
-        paymentType,
-        leaseId,
-        tenantId,
-        dueDate: new Date(dueDate),
-        period,
-        description,
-      });
+      const result = await this.paymentService.createRentPayment(
+        cuid,
+        {
+          paymentType,
+          leaseId,
+          tenantId,
+          dueDate: new Date(dueDate),
+          period,
+          description,
+        },
+        { createStripeInvoice: true }
+      );
 
       await job.progress(100);
 

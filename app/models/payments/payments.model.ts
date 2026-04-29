@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/index';
 import {
@@ -56,6 +57,11 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       default: 0,
       min: [0, 'Processing fee cannot be negative'],
     },
+    applicationFee: {
+      type: Number,
+      default: 0,
+      min: [0, 'Application fee cannot be negative'],
+    },
     gatewayPaymentId: {
       type: String,
     },
@@ -80,6 +86,11 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       },
       reason: { type: String, trim: true },
       disputedAt: { type: Date },
+    },
+    failure: {
+      retryCount: { type: Number, default: 0, min: 0 },
+      reason: { type: String, trim: true },
+      lastFailedAt: { type: Date },
     },
     status: {
       type: String,
@@ -126,6 +137,11 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       uploadedAt: { type: Date },
       uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     },
+    invoiceDocument: {
+      url: { type: String },
+      key: { type: String },
+      generatedAt: { type: Date },
+    },
     vendorId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -144,6 +160,13 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       default: false,
       required: true,
     },
+    lineItems: [
+      {
+        description: { type: String, required: true, trim: true },
+        amountInCents: { type: Number, required: true, min: 0 },
+        _id: false,
+      },
+    ],
     notes: [
       {
         note: {
@@ -214,7 +237,7 @@ PaymentSchema.pre('validate', function (next) {
     const date = new Date();
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
-    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const random = randomBytes(3).toString('hex').toUpperCase();
     this.invoiceNumber = `INV-${year}${month}-${random}`;
   }
   next();

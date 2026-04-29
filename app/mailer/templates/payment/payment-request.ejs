@@ -1,0 +1,70 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>New Payment Request</h2>
+      <p>Hi <%= tenantName %>,</p>
+      <p>
+        Your property manager has created a new payment request for
+        <strong><%= propertyAddress %></strong>.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <h3 style="margin-top: 0;">Payment Details</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Property</td>
+            <td class="detail-value"><%= propertyAddress %></td>
+          </tr>
+          <% if (unitNumber) { %>
+          <tr>
+            <td class="detail-label">Unit</td>
+            <td class="detail-value"><%= unitNumber %></td>
+          </tr>
+          <% } %>
+          <tr>
+            <td class="detail-label">Type</td>
+            <td class="detail-value"><%= paymentType %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Amount Due</td>
+            <td class="detail-value" style="font-size: 20px; font-weight: 700; color: #062f4f;"><%= amountDue %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Due Date</td>
+            <td class="detail-value" style="color: #dc2626; font-weight: 600;"><%= new Date(dueDate).toLocaleDateString() %></td>
+          </tr>
+          <% if (description) { %>
+          <tr>
+            <td class="detail-label">Note</td>
+            <td class="detail-value"><%= description %></td>
+          </tr>
+          <% } %>
+        </table>
+      </div>
+    </td>
+  </tr>
+
+  <% if (paymentUrl) { %>
+  <tr>
+    <td class="cta">
+      <%- include("../shared/html/_button", { url: paymentUrl, label: "View & Pay", colorClass: "btn-success" }) %>
+      <p class="fallback-link">
+        Button not working? Copy and paste this link into your browser:<br />
+        <%= paymentUrl %>
+      </p>
+    </td>
+  </tr>
+  <% } %>
+
+  <tr>
+    <td class="content">
+      <p>
+        If you have any questions about this charge, please contact your property manager directly.
+      </p>
+    </td>
+  </tr>
+</table>

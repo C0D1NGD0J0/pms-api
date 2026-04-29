@@ -18,6 +18,7 @@ import {
   IPaymentProvider,
   IPaymentCustomer,
   ICheckoutSession,
+  IPayoutSchedule,
 } from '@interfaces/paymentGateway.interface';
 
 interface IConstructor {
@@ -602,14 +603,14 @@ export class PaymentGatewayService {
   async payInvoice(
     provider: IPaymentGatewayProvider,
     invoiceId: string,
-    opts?: { mandate?: string; paymentMethod?: string }
+    opts?: { paymentMethod?: string }
   ): IPromiseReturnedData<null> {
     try {
       const providerInstance = this.getProvider(provider);
       if (!('payInvoice' in providerInstance)) {
         throw new Error(`Provider ${provider} does not support payInvoice`);
       }
-      await (providerInstance as any).payInvoice(invoiceId, opts);
+      await providerInstance.payInvoice(invoiceId, opts);
       return { success: true, data: null };
     } catch (error) {
       this.log.error({ error, provider }, 'Error paying invoice');
@@ -660,6 +661,24 @@ export class PaymentGatewayService {
     }
   }
 
+  async getPayoutSchedule(
+    provider: IPaymentGatewayProvider,
+    accountId: string
+  ): IPromiseReturnedData<IPayoutSchedule> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      const schedule = await providerInstance.getPayoutSchedule(accountId);
+      return { success: true, data: schedule };
+    } catch (error) {
+      this.log.error({ error, provider, accountId }, 'Error fetching payout schedule');
+      return {
+        success: false,
+        data: null as unknown as IPayoutSchedule,
+        message: error instanceof Error ? error.message : 'Failed to fetch payout schedule',
+      };
+    }
+  }
+
   async finalizeInvoice(
     provider: IPaymentGatewayProvider,
     invoiceId: string
@@ -678,6 +697,27 @@ export class PaymentGatewayService {
         success: false,
         data: null,
         message: error instanceof Error ? error.message : 'Failed to finalize invoice',
+      };
+    }
+  }
+
+  async voidInvoice(
+    provider: IPaymentGatewayProvider,
+    invoiceId: string
+  ): IPromiseReturnedData<null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('voidInvoice' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not support voidInvoice`);
+      }
+      await providerInstance.voidInvoice(invoiceId);
+      return { success: true, data: null };
+    } catch (error) {
+      this.log.error({ error, provider, invoiceId }, 'Error voiding invoice');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to void invoice',
       };
     }
   }

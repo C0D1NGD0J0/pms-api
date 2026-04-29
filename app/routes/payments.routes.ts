@@ -30,6 +30,16 @@ router.get(
   })
 );
 
+router.post(
+  '/:cuid/:pytuid/invoice',
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.READ),
+  validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.pytuid) }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.requestInvoice(req, res);
+  })
+);
+
 router.get(
   '/:cuid/:pytuid',
   requirePermission(PermissionResource.PAYMENT, PermissionAction.READ),
@@ -65,6 +75,22 @@ router.post(
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
     return controller.createPayment(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/vendor-payout/:mruid',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  requireNotSuspended,
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
+  requireVerifiedClient,
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(PaymentValidations.vendorPayoutParams),
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.payVendor(req, res);
   })
 );
 
@@ -198,5 +224,43 @@ router.get(
     return controller.getPayoutHistory(req, res);
   })
 );
+
+router.get(
+  '/:cuid/payout-account/schedule',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.getPayoutSchedule(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/payout-account/schedule',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  validateRequest({
+    params: UtilsValidations.cuid,
+    body: PaymentValidations.updatePayoutScheduleBody,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.updatePayoutSchedule(req, res);
+  })
+);
+
+// ── Dev-only: manually trigger cron handlers ──────────────────────────────────
+if (process.env.NODE_ENV !== 'production') {
+  router.post(
+    '/:cuid/dev/trigger-cron/:jobName',
+    isAuthenticated,
+    validateRequest({ params: UtilsValidations.cuid }),
+    asyncWrapper((req, res) => {
+      const controller = req.container.resolve<PaymentController>('paymentController');
+      return controller.triggerCronJob(req, res);
+    })
+  );
+}
 
 export default router;

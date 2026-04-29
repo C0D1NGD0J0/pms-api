@@ -52,11 +52,6 @@ export interface IPaymentProvider {
     refreshUrl: string;
     returnUrl: string;
   }): Promise<IOnboardingLinkResponse>;
-  updateCustomerDefaultPaymentMethod(
-    customerId: string,
-    paymentMethodId: string,
-    connectedAccountId: string
-  ): Promise<void>;
   createTransferReversal(
     transferId: string,
     amountInCents?: number
@@ -64,19 +59,23 @@ export interface IPaymentProvider {
   createIdentityVerificationSession(
     input: ICreateIdentitySessionInput
   ): Promise<IIdentitySessionResponse>;
-  finalizeInvoice(invoiceId: string, connectedAccountId: string): Promise<IFinalizeInvoiceResponse>;
+  updateCustomerDefaultPaymentMethod(customerId: string, paymentMethodId: string): Promise<void>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
   updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
   retrieveIdentityVerificationSession(sessionId: string): Promise<IIdentityVerificationReport>;
   createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse>;
   getCustomerInvoices(customerId: string, limit?: number): Promise<Stripe.Invoice[]>;
+  payInvoice(invoiceId: string, opts?: { paymentMethod?: string }): Promise<void>;
   createDashboardLoginLink(accountId: string): Promise<IOnboardingLinkResponse>;
   createInvoice(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse>;
   cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
+  finalizeInvoice(invoiceId: string): Promise<IFinalizeInvoiceResponse>;
   getSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
+  getPayoutSchedule(accountId: string): Promise<IPayoutSchedule>;
   getCustomer(customerId: string): Promise<Stripe.Customer>;
   getCharge(chargeId: string): Promise<Stripe.Charge>;
   getConnectAccount(accountId: string): Promise<any>;
+  voidInvoice(invoiceId: string): Promise<void>;
   getInvoice(invoiceId: string): Promise<any>;
   getProducts(): Promise<Stripe.Product[]>;
 }
@@ -111,9 +110,9 @@ export interface ICreateInvoiceInput {
   applicationFeeAmountInCents: number;
   connectedAccountId: string;
   tenantCustomerId: string;
+  paymentMethodId?: string;
   autoChargeDueDate: Date;
   description: string;
-  mandateId?: string;
   leaseUid?: string;
   currency: string;
   cuid: string;
@@ -174,6 +173,13 @@ export interface IPaymentCustomer {
   customerId: string;
   createdAt?: Date;
   email: string;
+}
+
+export interface IPayoutSchedule {
+  interval: 'manual' | 'daily' | 'weekly' | 'monthly';
+  monthlyAnchor?: number;
+  weeklyAnchor?: string;
+  delayDays?: number;
 }
 
 export interface IIdentityVerificationReport {

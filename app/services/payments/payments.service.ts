@@ -1,6 +1,8 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import { FilterQuery, Types } from 'mongoose';
+import { JOB_NAME } from '@utils/constants';
 import { envVariables } from '@shared/config';
+import { FilterQuery, Types } from 'mongoose';
 import { QueueFactory } from '@services/queue';
 import { MoneyUtils } from '@utils/money.utils';
 import { PaymentQueue } from '@queues/payment.queue';
@@ -9,14 +11,16 @@ import { PdfGeneratorService } from '@services/pdfGenerator';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { calcApplicationFeeSplit } from '@utils/financial.utils';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
-import { calculateProRatedAmount } from '@services/lease/leaseHelpers';
+import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenanceInvoiceApprovedPayload, EventTypes } from '@interfaces/events.interface';
+import { calculateProRatedAmount, computeLeaseMonthlyFees } from '@services/lease/leaseHelpers';
 import {
   IPromiseReturnedData,
   IPaginateResult,
   IRequestContext,
+  MailType,
 } from '@interfaces/utils.interface';
 import {
   getPaymentProcessorUrls,
@@ -37,13 +41,17 @@ import {
 import {
   IPaymentGatewayProvider,
   IManualPaymentFormData,
+  IPaymentFullyPopulated,
   PaymentRecordStatus,
   ISubscriptionStatus,
   IRefundPaymentData,
   IPaymentPopulated,
   PaymentRecordType,
+  IPaymentListItem,
   IPaymentDocument,
   IPaymentFormData,
+  IProfileWithUser,
+  ILeaseDocument,
   PaymentMethod,
   LeaseStatus,
 } from '@interfaces/index';
@@ -61,6 +69,63 @@ interface IConstructor {
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
+}
+
+interface IStripeAccountWebhookData {
+  requirements?: {
+    currently_due?: string[];
+    eventually_due?: string[];
+    past_due?: string[];
+    disabled_reason?: string;
+  };
+  details_submitted?: boolean;
+  payouts_enabled?: boolean;
+  charges_enabled?: boolean;
+}
+
+interface IStripeInvoiceWebhookData {
+  last_payment_error?: { message?: string };
+  next_payment_attempt?: number;
+  hosted_invoice_url?: string;
+  attempt_count?: number;
+  charge?: string;
+}
+
+interface IStripePayoutEntry {
+  description?: string | null;
+  arrival_date: number;
+  currency: string;
+  created: number;
+  amount: number;
+  status: string;
+  id: string;
+}
+
+interface IStripeDisputeWebhookData {
+  evidence_details?: { due_by?: number };
+  charge?: string | { id: string };
+  currency: string;
+  reason?: string;
+  amount: number;
+}
+
+interface IStripeBalanceData {
+  available: IStripeBalanceEntry[];
+  pending: IStripeBalanceEntry[];
+}
+
+interface IStripePayoutList {
+  data: IStripePayoutEntry[];
+  has_more: boolean;
+}
+
+interface IStripeBalanceEntry {
+  currency: string;
+  amount: number;
+}
+
+interface IStripeChargeWebhookData {
+  amount_refunded?: number;
 }
 
 export class PaymentService implements ICronProvider {
@@ -190,7 +255,7 @@ export class PaymentService implements ICronProvider {
     const sevenDaysLater = new Date(today.getTime() + daysInMs(7));
 
     const { items: leases } = await this.leaseDAO.list(
-      { status: LeaseStatus.ACTIVE, 'fees.acceptedPaymentMethod': 'auto-debit', deletedAt: null },
+      { status: LeaseStatus.ACTIVE, deletedAt: null },
       { limit: 5000 }
     );
 
@@ -201,21 +266,6 @@ export class PaymentService implements ICronProvider {
         const dueDate = this.calculateNextDueDate(lease.fees.rentDueDay, today);
         if (dueDate < today || dueDate > sevenDaysLater) continue;
 
-        if (!onlinePaymentsEnabled.has(lease.cuid)) {
-          const lClient = await this.clientDAO.getClientByCuid(lease.cuid);
-          onlinePaymentsEnabled.set(
-            lease.cuid,
-            lClient?.settings?.tenantFeatures?.onlinePayments !== false
-          );
-        }
-        if (!onlinePaymentsEnabled.get(lease.cuid)) {
-          this.log.info(
-            { leaseId: lease._id, cuid: lease.cuid },
-            'Weekly rent invoice skipped: online payments disabled for client'
-          );
-          continue;
-        }
-
         const period = { month: dueDate.getMonth() + 1, year: dueDate.getFullYear() };
         const existing = await this.paymentDAO.findByPeriod(
           lease.cuid,
@@ -225,15 +275,45 @@ export class PaymentService implements ICronProvider {
         );
         if (existing) continue;
 
-        const paymentQueue = this.queueFactory.getQueue('paymentQueue') as PaymentQueue;
-        await paymentQueue.addCreateRentInvoiceJob({
-          cuid: lease.cuid,
-          leaseId: lease._id.toString(),
-          tenantId: lease.tenantId.toString(),
-          period,
-          dueDate,
-          paymentType: PaymentRecordType.RENT,
-        });
+        if (lease.fees?.acceptedPaymentMethod === 'auto-debit') {
+          if (!onlinePaymentsEnabled.has(lease.cuid)) {
+            const lClient = await this.clientDAO.getClientByCuid(lease.cuid);
+            onlinePaymentsEnabled.set(
+              lease.cuid,
+              lClient?.settings?.tenantFeatures?.onlinePayments !== false
+            );
+          }
+          if (!onlinePaymentsEnabled.get(lease.cuid)) {
+            this.log.info(
+              { leaseId: lease._id, cuid: lease.cuid },
+              'Weekly rent invoice skipped: online payments disabled for client'
+            );
+            continue;
+          }
+
+          const paymentQueue = this.queueFactory.getQueue('paymentQueue') as PaymentQueue;
+          await paymentQueue.addCreateRentInvoiceJob({
+            cuid: lease.cuid,
+            leaseId: lease._id.toString(),
+            tenantId: lease.tenantId.toString(),
+            period,
+            dueDate,
+            paymentType: PaymentRecordType.RENT,
+          });
+        } else {
+          const { totalMonthlyRent } = computeLeaseMonthlyFees(lease);
+          await this.createManualTrackingPayment({
+            cuid: lease.cuid,
+            tenantId: lease.tenantId.toString(),
+            dueDate,
+            baseAmount: totalMonthlyRent,
+            paymentType: PaymentRecordType.RENT,
+            paymentMethod: PaymentService.mapLeasePaymentMethod(lease.fees?.acceptedPaymentMethod),
+            leaseId: lease._id.toString(),
+            period,
+            currency: lease.fees?.currency,
+          });
+        }
         queued++;
       } catch (error) {
         this.log.error(
@@ -257,7 +337,6 @@ export class PaymentService implements ICronProvider {
     const { items: leases } = await this.leaseDAO.list(
       {
         status: LeaseStatus.ACTIVE,
-        'fees.acceptedPaymentMethod': 'auto-debit',
         'fees.rentDueDay': { $in: [today.getDate(), tomorrow.getDate()] },
         deletedAt: null,
       },
@@ -268,21 +347,6 @@ export class PaymentService implements ICronProvider {
     const onlinePaymentsEnabled = new Map<string, boolean>();
     for (const lease of leases) {
       try {
-        if (!onlinePaymentsEnabled.has(lease.cuid)) {
-          const lClient = await this.clientDAO.getClientByCuid(lease.cuid);
-          onlinePaymentsEnabled.set(
-            lease.cuid,
-            lClient?.settings?.tenantFeatures?.onlinePayments !== false
-          );
-        }
-        if (!onlinePaymentsEnabled.get(lease.cuid)) {
-          this.log.info(
-            { leaseId: lease._id, cuid: lease.cuid },
-            'Daily safety net skipped: online payments disabled for client'
-          );
-          continue;
-        }
-
         const dueDate = this.calculateNextDueDate(lease.fees.rentDueDay, today);
         const period = { month: dueDate.getMonth() + 1, year: dueDate.getFullYear() };
         const existing = await this.paymentDAO.findByPeriod(
@@ -293,15 +357,45 @@ export class PaymentService implements ICronProvider {
         );
         if (existing) continue;
 
-        const paymentQueue = this.queueFactory.getQueue('paymentQueue') as PaymentQueue;
-        await paymentQueue.addCreateRentInvoiceJob({
-          cuid: lease.cuid,
-          leaseId: lease._id.toString(),
-          tenantId: lease.tenantId.toString(),
-          period,
-          dueDate,
-          paymentType: PaymentRecordType.RENT,
-        });
+        if (lease.fees?.acceptedPaymentMethod === 'auto-debit') {
+          if (!onlinePaymentsEnabled.has(lease.cuid)) {
+            const lClient = await this.clientDAO.getClientByCuid(lease.cuid);
+            onlinePaymentsEnabled.set(
+              lease.cuid,
+              lClient?.settings?.tenantFeatures?.onlinePayments !== false
+            );
+          }
+          if (!onlinePaymentsEnabled.get(lease.cuid)) {
+            this.log.info(
+              { leaseId: lease._id, cuid: lease.cuid },
+              'Daily safety net skipped: online payments disabled for client'
+            );
+            continue;
+          }
+
+          const paymentQueue = this.queueFactory.getQueue('paymentQueue') as PaymentQueue;
+          await paymentQueue.addCreateRentInvoiceJob({
+            cuid: lease.cuid,
+            leaseId: lease._id.toString(),
+            tenantId: lease.tenantId.toString(),
+            period,
+            dueDate,
+            paymentType: PaymentRecordType.RENT,
+          });
+        } else {
+          const { totalMonthlyRent } = computeLeaseMonthlyFees(lease);
+          await this.createManualTrackingPayment({
+            cuid: lease.cuid,
+            tenantId: lease.tenantId.toString(),
+            dueDate,
+            baseAmount: totalMonthlyRent,
+            paymentType: PaymentRecordType.RENT,
+            paymentMethod: PaymentService.mapLeasePaymentMethod(lease.fees?.acceptedPaymentMethod),
+            leaseId: lease._id.toString(),
+            period,
+            currency: lease.fees?.currency,
+          });
+        }
         queued++;
       } catch (error) {
         this.log.error({ error, leaseId: lease._id }, 'Daily safety net: error processing lease');
@@ -343,7 +437,7 @@ export class PaymentService implements ICronProvider {
         cuid,
         paymentType: data.paymentType,
         paymentMethod: data.paymentMethod,
-        lease: data.leaseId ? new Types.ObjectId(data.leaseId) : undefined,
+        lease: lease ? lease._id : undefined,
         tenant: tenantProfile._id,
         baseAmount: data.baseAmount,
         processingFee: data.processingFee || 0,
@@ -372,19 +466,111 @@ export class PaymentService implements ICronProvider {
 
   async createRentPayment(
     cuid: string,
-    data: IPaymentFormData
+    data: IPaymentFormData,
+    options?: { createStripeInvoice?: boolean }
   ): IPromiseReturnedData<IPaymentDocument> {
     try {
       if (!data.leaseId) {
         throw new BadRequestError({ message: 'Lease ID is required for rent payments' });
       }
 
-      const lease = await this.leaseDAO.findFirst({ luid: data.leaseId, cuid });
+      const lease = await this.leaseDAO.findFirst(
+        { luid: data.leaseId, cuid },
+        { populate: ['property.id'] }
+      );
       if (!lease) {
         throw new NotFoundError({ message: 'Lease not found' });
       }
       if (lease.status !== LeaseStatus.ACTIVE) {
         throw new BadRequestError({ message: 'Cannot create payment for inactive lease' });
+      }
+
+      const acceptedPaymentMethod = lease.fees?.acceptedPaymentMethod;
+      const isAutoDebit = acceptedPaymentMethod === 'auto-debit';
+
+      // Guard against duplicate period for ALL lease types.
+      // The unique partial index on { lease, paymentType, period.month, period.year }
+      // (filtered by deletedAt: null) applies regardless of payment method.
+      // Two cases:
+      //   1. Existing record is CANCELLED → soft-delete it to free the index slot, then proceed
+      //   2. Existing record is active (PENDING/OVERDUE/PAID) → reject with a clear message
+      const effectivePaymentType =
+        data.paymentType === 'late_fee' ? PaymentRecordType.LATE_FEE : PaymentRecordType.RENT;
+
+      if (data.period) {
+        const existingForPeriod = await this.paymentDAO.findFirst({
+          lease: lease._id,
+          paymentType: effectivePaymentType,
+          'period.month': data.period.month,
+          'period.year': data.period.year,
+          deletedAt: null,
+        });
+        if (existingForPeriod) {
+          const isRetryable =
+            existingForPeriod.status === PaymentRecordStatus.CANCELLED ||
+            existingForPeriod.status === PaymentRecordStatus.FAILED;
+          if (isRetryable) {
+            // Free the index slot so the new insert can succeed.
+            // CANCELLED: PM explicitly cancelled. FAILED: Stripe rejected the charge.
+            // Both are dead-end states — a replacement record is the correct next step.
+            await this.paymentDAO.updateById(existingForPeriod._id.toString(), {
+              deletedAt: new Date(),
+            });
+          } else {
+            const monthName = new Date(data.period.year, data.period.month - 1, 1).toLocaleString(
+              'default',
+              { month: 'long' }
+            );
+            const typeLabel =
+              effectivePaymentType === PaymentRecordType.LATE_FEE ? 'late fee' : 'rent';
+            throw new BadRequestError({
+              message: `A ${typeLabel} payment for ${monthName} ${data.period.year} already exists for this lease (status: ${existingForPeriod.status}). Cancel the existing payment first or select a different period.`,
+            });
+          }
+        }
+      }
+
+      // Non-auto-debit leases (cash / check / e-transfer) never touch Stripe.
+      // Create a PENDING tracking record so dashboard stats reflect expected revenue,
+      // then return early — no invoice, no gateway calls.
+      if (!isAutoDebit) {
+        let trackingAmount: number;
+        if (effectivePaymentType === PaymentRecordType.LATE_FEE) {
+          const fees = lease.calculateFees({ daysLate: data.daysLate ?? 0 });
+          trackingAmount = fees.late.fee;
+          if (trackingAmount <= 0) {
+            throw new BadRequestError({
+              message: 'No late fee is applicable — the payment is still within the grace period.',
+            });
+          }
+        } else {
+          trackingAmount = computeLeaseMonthlyFees(lease).totalMonthlyRent;
+        }
+        const payment = await this.createManualTrackingPayment({
+          cuid,
+          tenantId: data.tenantId,
+          dueDate: new Date(data.dueDate),
+          baseAmount: trackingAmount,
+          paymentType: effectivePaymentType,
+          paymentMethod: PaymentService.mapLeasePaymentMethod(acceptedPaymentMethod),
+          leaseId: lease._id.toString(),
+          period: data.period,
+          description: data.description,
+          currency: lease.fees?.currency,
+        });
+        if (data.notifyByEmail) {
+          await this.queuePaymentRequestEmail({
+            cuid,
+            tenantId: data.tenantId,
+            lease,
+            amountInCents: trackingAmount,
+            currency: lease.fees?.currency ?? 'usd',
+            paymentType: effectivePaymentType,
+            dueDate: data.dueDate,
+            description: data.description,
+          });
+        }
+        return { success: true, data: payment, message: 'Payment tracking record created' };
       }
 
       const client = await this.clientDAO.getClientByCuid(cuid);
@@ -428,22 +614,6 @@ export class PaymentService implements ICronProvider {
         });
       }
 
-      // Auto-calculate daysLate when not provided but period is known
-      let effectiveDaysLate = data.daysLate ?? 0;
-      if (data.daysLate === undefined && data.period) {
-        const expectedDueDate = new Date(
-          data.period.year,
-          data.period.month - 1,
-          lease.fees.rentDueDay
-        );
-        const msPerDay = 1000 * 60 * 60 * 24;
-        effectiveDaysLate = Math.max(
-          0,
-          Math.floor((Date.now() - expectedDueDate.getTime()) / msPerDay)
-        );
-      }
-
-      // Detect first payment — auto-include security deposit and pro-rated rent
       const existingPaymentCount = await this.paymentDAO.countDocuments({
         lease: lease._id,
         cuid,
@@ -451,43 +621,100 @@ export class PaymentService implements ICronProvider {
       });
       const isFirstPayment = existingPaymentCount === 0;
 
+      let effectiveDaysLate = 0;
+      if (!isFirstPayment) {
+        if (data.daysLate !== undefined) {
+          effectiveDaysLate = data.daysLate;
+        } else if (data.dueDate) {
+          effectiveDaysLate = Math.max(0, dayjs().diff(dayjs(data.dueDate), 'day'));
+        }
+      }
+
       const leaseFees = lease.calculateFees({ daysLate: effectiveDaysLate });
-      const lineItems = this.buildLineItemsFromFees(leaseFees, {
-        isFirstPayment,
-        startDate: lease.duration.startDate,
-      });
+      let lineItems: Array<{ description: string; amountInCents: number }>;
+
+      if (effectivePaymentType === PaymentRecordType.LATE_FEE) {
+        if (leaseFees.late.fee <= 0) {
+          throw new BadRequestError({
+            message: 'No late fee is applicable — the payment is still within the grace period.',
+          });
+        }
+        const lateDesc =
+          leaseFees.late.type === 'percentage'
+            ? `Late Fee (${leaseFees.late.percentage}% – ${leaseFees.late.daysLate} days late)`
+            : `Late Fee (${leaseFees.late.daysLate} days late)`;
+        lineItems = [{ description: lateDesc, amountInCents: leaseFees.late.fee }];
+      } else {
+        const { managementFee } = computeLeaseMonthlyFees(lease);
+        lineItems = this.buildLineItemsFromFees(leaseFees, {
+          isFirstPayment,
+          startDate: lease.duration.startDate,
+          managementFee,
+        });
+      }
       const totalAmountInCents = lineItems.reduce((sum, item) => sum + item.amountInCents, 0);
+
+      if (!options?.createStripeInvoice) {
+        const payment = await this.createManualTrackingPayment({
+          cuid,
+          tenantId: data.tenantId,
+          dueDate: new Date(data.dueDate),
+          baseAmount: totalAmountInCents,
+          paymentType: effectivePaymentType,
+          paymentMethod: PaymentMethod.ONLINE,
+          leaseId: lease._id.toString(),
+          period: data.period,
+          description: data.description,
+          currency: leaseFees.currency,
+          lineItems: lineItems.map(({ description, amountInCents }) => ({
+            description,
+            amountInCents,
+          })),
+        });
+        if (data.notifyByEmail) {
+          await this.queuePaymentRequestEmail({
+            cuid,
+            tenantId: data.tenantId,
+            lease,
+            amountInCents: totalAmountInCents,
+            currency: leaseFees.currency,
+            paymentType: effectivePaymentType,
+            dueDate: data.dueDate,
+            description: data.description,
+          });
+        }
+        return { success: true, data: payment, message: 'Payment request created' };
+      }
+
       const transactionFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(
         subscription.planName
       );
       const feeBreakdown = this.calculateRentFees(totalAmountInCents, transactionFeePercent);
 
-      const tenantProfile = await this.profileDAO.findFirst(
+      const tenantProfile = (await this.profileDAO.findFirst(
         { user: data.tenantId },
         {
           populate: ['user'],
         }
-      );
+      )) as IProfileWithUser | null;
       if (!tenantProfile) {
         throw new NotFoundError({ message: 'Tenant profile not found' });
       }
 
       let tenantCustomerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
-
       if (!tenantCustomerId) {
         this.log.info('No platform Stripe customer for tenant — creating one', {
           profileId: tenantProfile._id,
           cuid,
         });
 
-        const tenantUser = tenantProfile.user as any;
         const customerResult = await this.paymentGatewayService.createCustomer({
           provider: IPaymentGatewayProvider.STRIPE,
-          email: tenantUser.email,
+          email: tenantProfile.user.email,
           name:
             `${tenantProfile.personalInfo?.firstName ?? ''} ${tenantProfile.personalInfo?.lastName ?? ''}`.trim() ||
             undefined,
-          metadata: { cuid, userId: tenantUser._id?.toString() },
+          metadata: { cuid, userId: tenantProfile.user._id?.toString() },
         });
 
         if (!customerResult.success || !customerResult.data) {
@@ -505,7 +732,7 @@ export class PaymentService implements ICronProvider {
         });
       }
 
-      const tenantMandateId = tenantProfile.tenantInfo?.paymentMandates?.get(
+      const paymentMethodId = tenantProfile.tenantInfo?.paymentMethods?.get(
         paymentProcessor.accountId
       );
 
@@ -520,8 +747,8 @@ export class PaymentService implements ICronProvider {
           autoChargeDueDate: data.dueDate,
           lineItems,
           cuid,
+          paymentMethodId,
           leaseUid: lease.luid,
-          mandateId: tenantMandateId || undefined,
         }
       );
       if (!invoiceResult.success || !invoiceResult.data) {
@@ -532,34 +759,55 @@ export class PaymentService implements ICronProvider {
         IPaymentGatewayProvider.STRIPE,
         invoiceResult.data.invoiceId
       );
-
       if (!finalizeResult.success) {
         throw new Error(finalizeResult.message || 'Failed to finalize invoice');
       }
 
+      const hostedInvoiceUrl = finalizeResult.data?.hostedInvoiceUrl;
+
       const payment = await this.paymentDAO.insert({
         cuid,
-        paymentType: PaymentRecordType.RENT,
+        paymentType: effectivePaymentType,
         paymentMethod: PaymentMethod.ONLINE,
         lease: lease._id,
         tenant: tenantProfile._id, // References Profile document
         baseAmount: totalAmountInCents,
         processingFee: feeBreakdown.gatewayProcessingFee,
+        applicationFee: feeBreakdown.applicationFee,
         gatewayPaymentId: invoiceResult.data.invoiceId,
+        currency: leaseFees.currency,
         status: PaymentRecordStatus.PENDING,
         dueDate: data.dueDate,
         period: data.period,
         description: data.description,
         isManualEntry: false,
+        lineItems: lineItems.map(({ description, amountInCents }) => ({
+          description,
+          amountInCents,
+        })),
+        ...(hostedInvoiceUrl && { receipt: { url: hostedInvoiceUrl } }),
       });
 
       this.emitterService.emit(EventTypes.PAYMENT_REQUEST_CREATED, {
-        tenantUserId: (tenantProfile.user as any)._id?.toString() ?? tenantProfile.user.toString(),
+        tenantUserId: tenantProfile.user._id.toString(),
         amountInCents: totalAmountInCents,
         dueDate: new Date(data.dueDate),
         pytuid: payment.pytuid,
         cuid,
       });
+
+      if (data.notifyByEmail) {
+        await this.queuePaymentRequestEmail({
+          cuid,
+          tenantId: data.tenantId,
+          lease,
+          amountInCents: totalAmountInCents,
+          currency: leaseFees.currency,
+          paymentType: effectivePaymentType,
+          dueDate: data.dueDate,
+          description: data.description,
+        });
+      }
 
       return {
         success: true,
@@ -579,11 +827,12 @@ export class PaymentService implements ICronProvider {
       type?: string;
       tenantId?: string;
       leaseId?: string;
+      luid?: string;
       page?: number;
       limit?: number;
     },
     context?: IRequestContext
-  ): IPromiseReturnedData<{ items: any[]; pagination?: IPaginateResult }> {
+  ): IPromiseReturnedData<{ items: IPaymentListItem[]; pagination?: IPaginateResult }> {
     const page = filters?.page ?? 1;
     const limit = filters?.limit ?? 10;
     const skip = (page - 1) * limit;
@@ -625,6 +874,11 @@ export class PaymentService implements ICronProvider {
 
       if (filters?.leaseId) {
         query.lease = new Types.ObjectId(filters.leaseId);
+      } else if (filters?.luid) {
+        const lease = await this.leaseDAO.findFirst({ luid: filters.luid, cuid, deletedAt: null });
+        if (lease) {
+          query.lease = lease._id;
+        }
       }
 
       const result = await this.paymentDAO.list(
@@ -642,36 +896,44 @@ export class PaymentService implements ICronProvider {
             },
           ],
           projection:
-            'pytuid paymentMethod paymentType baseAmount processingFee status dueDate paidAt period',
+            'pytuid paymentMethod paymentType baseAmount processingFee applicationFee status dueDate paidAt period failure receipt lineItems currency',
           skip,
           limit,
         },
         true
       );
 
-      const cleanItems = result.items.map((payment: any) => ({
-        pytuid: payment.pytuid,
-        tenant: payment.tenant
-          ? {
-              firstName: payment.tenant.personalInfo?.firstName || '',
-              lastName: payment.tenant.personalInfo?.lastName || '',
-              fullName:
-                `${payment.tenant.personalInfo?.firstName || ''} ${payment.tenant.personalInfo?.lastName || ''}`.trim() ||
-                'Unknown Tenant',
-            }
-          : null,
-        property:
-          payment.lease?.property?.name || payment.lease?.property?.address || 'Unknown Property',
-        amount: payment.baseAmount + (payment.processingFee || 0),
-        baseAmount: payment.baseAmount,
-        processingFee: payment.processingFee || 0,
-        status: payment.status,
-        paymentType: payment.paymentType,
-        paymentMethod: payment.paymentMethod,
-        dueDate: payment.dueDate,
-        paidAt: payment.paidAt,
-        period: payment.period,
-      }));
+      const cleanItems = (result.items as unknown as IPaymentPopulated[]).map((payment) => {
+        const addr = payment.lease?.property?.address;
+        const addressStr = typeof addr === 'string' ? addr : (addr?.fullAddress ?? '');
+        return {
+          pytuid: payment.pytuid,
+          tenant: payment.tenant
+            ? {
+                firstName: payment.tenant.personalInfo?.firstName || '',
+                lastName: payment.tenant.personalInfo?.lastName || '',
+                fullName:
+                  `${payment.tenant.personalInfo?.firstName || ''} ${payment.tenant.personalInfo?.lastName || ''}`.trim() ||
+                  'Unknown Tenant',
+              }
+            : null,
+          property: payment.lease?.property?.name || addressStr || 'Unknown Property',
+          amount: payment.baseAmount + (payment.processingFee || 0),
+          baseAmount: payment.baseAmount,
+          processingFee: payment.processingFee || 0,
+          applicationFee: payment.applicationFee || 0,
+          status: payment.status,
+          paymentType: payment.paymentType,
+          paymentMethod: payment.paymentMethod,
+          dueDate: payment.dueDate,
+          paidAt: payment.paidAt,
+          period: payment.period,
+          currency: payment.currency,
+          lineItems: payment.lineItems || [],
+          failure: payment.failure || undefined,
+          receipt: payment.receipt || undefined,
+        };
+      });
 
       return {
         success: true,
@@ -711,16 +973,22 @@ export class PaymentService implements ICronProvider {
             {
               path: 'lease',
               select:
-                'property.id property.address property.name property.unitNumber leaseNumber status duration.startDate duration.endDate luid',
-              populate: {
-                path: 'property.id',
-                select:
-                  'propertyType specifications.bedrooms specifications.bathrooms status managedBy',
-              },
+                'property.id property.unitId property.address property.name property.unitNumber leaseNumber status duration.startDate duration.endDate luid',
+              populate: [
+                {
+                  path: 'property.id',
+                  select:
+                    'propertyType specifications.bedrooms specifications.bathrooms status managedBy',
+                },
+                {
+                  path: 'property.unitId',
+                  select: 'specifications.bedrooms specifications.bathrooms unitNumber',
+                },
+              ],
             },
           ],
         }
-      )) as IPaymentPopulated | null;
+      )) as IPaymentFullyPopulated | null;
 
       if (!payment) {
         throw new NotFoundError({ message: 'Payment not found' });
@@ -730,25 +998,26 @@ export class PaymentService implements ICronProvider {
         firstName: payment.tenant?.personalInfo?.firstName,
         lastName: payment.tenant?.personalInfo?.lastName,
         phoneNumber: payment.tenant?.personalInfo?.phoneNumber,
-        email: (payment.tenant?.user as any)?.email, // Profile has user populated
+        email: payment.tenant?.user?.email,
         puid: payment.tenant?.puid,
       };
 
-      const propertyDoc = (payment.lease?.property as any)?.id;
+      const propertyDoc = payment.lease?.property?.id;
+      const unitDoc = payment.lease?.property?.unitId;
       let propertyManager = null;
       if (propertyDoc?.managedBy) {
-        const managerProfile = await this.profileDAO.findFirst(
+        const managerProfile = (await this.profileDAO.findFirst(
           { user: propertyDoc.managedBy },
           {
             select: 'personalInfo.firstName personalInfo.lastName personalInfo.phoneNumber user',
             populate: { path: 'user', select: 'email' },
           }
-        );
+        )) as IProfileWithUser | null;
         if (managerProfile) {
           propertyManager = {
             fullName:
               `${managerProfile.personalInfo?.firstName || ''} ${managerProfile.personalInfo?.lastName || ''}`.trim(),
-            email: (managerProfile.user as any)?.email || '',
+            email: managerProfile.user?.email || '',
             phoneNumber: managerProfile.personalInfo?.phoneNumber || '',
           };
         }
@@ -762,12 +1031,12 @@ export class PaymentService implements ICronProvider {
             startDate: payment.lease.duration?.startDate,
             endDate: payment.lease.duration?.endDate,
             leaseUid: payment.lease.luid,
-            unitNumber: payment.lease.property?.unitNumber,
+            unitNumber: unitDoc?.unitNumber ?? (payment.lease.property as any)?.unitNumber,
             propertyName: payment.lease.property?.name,
             propertyType: propertyDoc?.propertyType,
-            propertyStatus: propertyDoc?.status,
-            bedrooms: propertyDoc?.specifications?.bedrooms,
-            bathrooms: propertyDoc?.specifications?.bathrooms,
+            propertyStatus: propertyDoc?.operationalStatus,
+            bedrooms: unitDoc?.specifications?.bedrooms ?? propertyDoc?.specifications?.bedrooms,
+            bathrooms: unitDoc?.specifications?.bathrooms ?? propertyDoc?.specifications?.bathrooms,
             propertyManager,
           }
         : null;
@@ -838,7 +1107,9 @@ export class PaymentService implements ICronProvider {
             firstName: adminProfile?.personalInfo?.firstName,
             lastName: adminProfile?.personalInfo?.lastName,
             phone: adminProfile?.personalInfo?.phoneNumber,
-            companyName: isEnterprise ? (client as any).companyName : undefined,
+            companyName: isEnterprise
+              ? client.companyProfile?.tradingName || client.companyProfile?.legalEntityName
+              : undefined,
           },
         }
       );
@@ -1002,15 +1273,12 @@ export class PaymentService implements ICronProvider {
         throw new BadRequestError({ message: result.message || 'Failed to fetch balance' });
       }
 
-      const balance = result.data;
+      const balance = result.data as IStripeBalanceData;
       return {
         success: true,
         data: {
-          available: balance.available.map((b: any) => ({
-            amount: b.amount,
-            currency: b.currency,
-          })),
-          pending: balance.pending.map((b: any) => ({ amount: b.amount, currency: b.currency })),
+          available: balance.available.map((b) => ({ amount: b.amount, currency: b.currency })),
+          pending: balance.pending.map((b) => ({ amount: b.amount, currency: b.currency })),
         },
       };
     } catch (error) {
@@ -1041,8 +1309,8 @@ export class PaymentService implements ICronProvider {
         throw new BadRequestError({ message: result.message || 'Failed to fetch payouts' });
       }
 
-      const list = result.data;
-      const payouts = list.data.map((p: any) => ({
+      const list = result.data as IStripePayoutList;
+      const payouts = list.data.map((p) => ({
         id: p.id,
         amount: p.amount,
         currency: p.currency,
@@ -1062,6 +1330,62 @@ export class PaymentService implements ICronProvider {
       };
     } catch (error) {
       this.log.error('Error fetching payout history', error);
+      throw error;
+    }
+  }
+
+  async getPayoutSchedule(cuid: string): IPromiseReturnedData<IPayoutSchedule> {
+    try {
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor?.accountId) {
+        throw new NotFoundError({ message: 'No Connect account found for this client' });
+      }
+
+      const result = await this.paymentGatewayService.getPayoutSchedule(
+        IPaymentGatewayProvider.STRIPE,
+        paymentProcessor.accountId
+      );
+      if (!result.success || !result.data) {
+        throw new BadRequestError({ message: result.message || 'Failed to fetch payout schedule' });
+      }
+
+      return { success: true, data: result.data };
+    } catch (error) {
+      this.log.error('Error fetching payout schedule', error);
+      throw error;
+    }
+  }
+
+  async updatePayoutSchedule(
+    cuid: string,
+    interval: 'daily' | 'weekly' | 'monthly',
+    weeklyAnchor?: string
+  ): IPromiseReturnedData<null> {
+    try {
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor?.accountId) {
+        throw new NotFoundError({ message: 'No Connect account found for this client' });
+      }
+      if (!paymentProcessor.payoutsEnabled) {
+        throw new BadRequestError({ message: 'Payouts are not enabled for this account' });
+      }
+
+      const result = await this.paymentGatewayService.updatePayoutSchedule(
+        IPaymentGatewayProvider.STRIPE,
+        paymentProcessor.accountId,
+        interval,
+        weeklyAnchor
+      );
+      if (!result.success) {
+        throw new BadRequestError({
+          message: result.message || 'Failed to update payout schedule',
+        });
+      }
+
+      this.log.info({ cuid, interval, weeklyAnchor }, 'Payout schedule updated');
+      return { success: true, data: null, message: 'Payout schedule updated successfully' };
+    } catch (error) {
+      this.log.error('Error updating payout schedule', error);
       throw error;
     }
   }
@@ -1086,7 +1410,11 @@ export class PaymentService implements ICronProvider {
       deposits: { security: number; pet: number; total: number };
       currency: string;
     },
-    options?: { isFirstPayment?: boolean; startDate?: Date }
+    options?: {
+      isFirstPayment?: boolean;
+      startDate?: Date;
+      managementFee?: number;
+    }
   ): Array<{
     description: string;
     amountInCents: number;
@@ -1117,6 +1445,14 @@ export class PaymentService implements ICronProvider {
       lineItems.push({
         description: 'Pet Fee',
         amountInCents: fees.monthly.petFee,
+      });
+    }
+
+    // Management fee (if applicable — sourced from property, billed when lease opts in)
+    if (options?.managementFee && options.managementFee > 0) {
+      lineItems.push({
+        description: 'Management Fee',
+        amountInCents: options.managementFee,
       });
     }
 
@@ -1166,7 +1502,7 @@ export class PaymentService implements ICronProvider {
    */
   async handleInvoicePaymentSucceeded(
     invoiceId: string,
-    invoiceData: any
+    invoiceData: IStripeInvoiceWebhookData
   ): IPromiseReturnedData<void> {
     try {
       const payment = await this.paymentDAO.findFirst({
@@ -1197,6 +1533,8 @@ export class PaymentService implements ICronProvider {
         this.log.warn('No charge ID found in invoice', { invoiceId });
       }
 
+      const hostedInvoiceUrl = invoiceData.hosted_invoice_url || null;
+
       await this.paymentDAO.update(
         { _id: payment._id, cuid: payment.cuid },
         {
@@ -1204,6 +1542,7 @@ export class PaymentService implements ICronProvider {
             status: PaymentRecordStatus.PAID,
             paidAt: new Date(),
             gatewayChargeId: chargeId,
+            ...(hostedInvoiceUrl && { 'receipt.url': hostedInvoiceUrl }),
           },
         }
       );
@@ -1242,7 +1581,7 @@ export class PaymentService implements ICronProvider {
    */
   async handleInvoicePaymentFailed(
     invoiceId: string,
-    invoiceData: any
+    invoiceData: IStripeInvoiceWebhookData
   ): IPromiseReturnedData<void> {
     try {
       const payment = await this.paymentDAO.findFirst({
@@ -1269,6 +1608,8 @@ export class PaymentService implements ICronProvider {
         {
           $set: {
             status: PaymentRecordStatus.FAILED,
+            'failure.reason': invoiceData.last_payment_error?.message,
+            'failure.lastFailedAt': new Date(),
           },
         }
       );
@@ -1304,7 +1645,10 @@ export class PaymentService implements ICronProvider {
    * @param chargeId - Stripe charge ID
    * @param chargeData - Full charge object from Stripe webhook
    */
-  async handleChargeRefunded(chargeId: string, chargeData: any): IPromiseReturnedData<void> {
+  async handleChargeRefunded(
+    chargeId: string,
+    chargeData: IStripeChargeWebhookData
+  ): IPromiseReturnedData<void> {
     try {
       const payment = await this.paymentDAO.findFirst({
         gatewayChargeId: chargeId,
@@ -1375,7 +1719,7 @@ export class PaymentService implements ICronProvider {
 
       // Prevent conflict of interest: cannot refund a payment where you are the tenant
       const tenantProfile = await this.profileDAO.findFirst({ _id: payment.tenant });
-      preventTenantConflict(requestingUserSub, tenantProfile?.user as any);
+      preventTenantConflict(requestingUserSub, tenantProfile?.user);
 
       if (payment.status !== PaymentRecordStatus.PAID) {
         throw new BadRequestError({
@@ -1406,7 +1750,7 @@ export class PaymentService implements ICronProvider {
         reason: data.reason,
       });
 
-      const updated = await this.paymentDAO.updateById((payment as any)._id.toString(), {
+      const updated = await this.paymentDAO.updateById(payment._id.toString(), {
         status: PaymentRecordStatus.REFUNDED,
         'refund.refundedAt': new Date(),
         'refund.amount': data.amount || payment.baseAmount,
@@ -1433,7 +1777,10 @@ export class PaymentService implements ICronProvider {
    * @param accountId - Stripe Connect account ID
    * @param accountData - Full account object from Stripe webhook
    */
-  async handleAccountUpdated(accountId: string, accountData: any): IPromiseReturnedData<null> {
+  async handleAccountUpdated(
+    accountId: string,
+    accountData: IStripeAccountWebhookData
+  ): IPromiseReturnedData<null> {
     try {
       const paymentProcessor = await this.paymentProcessorDAO.findFirst({
         accountId,
@@ -1450,7 +1797,7 @@ export class PaymentService implements ICronProvider {
 
       const justVerified = !paymentProcessor.payoutsEnabled && accountData.payouts_enabled;
 
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         chargesEnabled: accountData.charges_enabled || false,
         payoutsEnabled: accountData.payouts_enabled || false,
         detailsSubmitted: accountData.details_submitted || false,
@@ -1527,16 +1874,6 @@ export class PaymentService implements ICronProvider {
       return;
     }
 
-    const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
-    const pmAccountId = paymentProcessor?.accountId;
-    if (!pmAccountId) {
-      this.log.warn(
-        { sessionId: session.id, cuid },
-        'No payment processor found for cuid — skipping'
-      );
-      return;
-    }
-
     const setupIntentResult = await this.paymentGatewayService.retrieveSetupIntent(
       IPaymentGatewayProvider.STRIPE,
       session.setup_intent
@@ -1551,6 +1888,101 @@ export class PaymentService implements ICronProvider {
     }
 
     const { paymentMethodId, mandateId } = setupIntentResult.data;
+    await this.saveTenantSetupPaymentMethod({
+      tenantId,
+      cuid,
+      customerId: session.customer ?? null,
+      paymentMethodId,
+      mandateId,
+      sourceId: session.id,
+      sourceType: 'checkout.session.completed',
+    });
+  }
+
+  async handleSetupIntentSucceeded(setupIntent: {
+    id: string;
+    metadata?: Record<string, string> | null;
+    customer?: string | { id?: string } | null;
+    payment_method?: string | { id?: string } | null;
+    mandate?: string | { id?: string } | null;
+  }): Promise<void> {
+    const tenantId = setupIntent.metadata?.tenantId;
+    const cuid = setupIntent.metadata?.cuid;
+    const paymentMethodId =
+      typeof setupIntent.payment_method === 'string'
+        ? setupIntent.payment_method
+        : (setupIntent.payment_method?.id ?? '');
+    const mandateId =
+      typeof setupIntent.mandate === 'string'
+        ? setupIntent.mandate
+        : (setupIntent.mandate?.id ?? null);
+    const customerId =
+      typeof setupIntent.customer === 'string'
+        ? setupIntent.customer
+        : (setupIntent.customer?.id ?? null);
+
+    if (!tenantId || !cuid || !paymentMethodId) {
+      this.log.warn(
+        { setupIntentId: setupIntent.id, hasTenantId: !!tenantId, hasCuid: !!cuid },
+        'Setup intent succeeded without required metadata or payment method — skipping'
+      );
+      return;
+    }
+
+    await this.saveTenantSetupPaymentMethod({
+      tenantId,
+      cuid,
+      customerId,
+      paymentMethodId,
+      mandateId,
+      sourceId: setupIntent.id,
+      sourceType: 'setup_intent.succeeded',
+    });
+  }
+
+  private async saveTenantSetupPaymentMethod(input: {
+    tenantId: string;
+    cuid: string;
+    customerId?: string | null;
+    paymentMethodId: string;
+    mandateId?: string | null;
+    sourceId: string;
+    sourceType: string;
+  }): Promise<void> {
+    const { tenantId, cuid, customerId, paymentMethodId, mandateId, sourceId, sourceType } = input;
+
+    const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+    const pmAccountId = paymentProcessor?.accountId;
+    if (!pmAccountId) {
+      this.log.warn(
+        { sourceId, sourceType, cuid },
+        'No payment processor found for cuid — skipping'
+      );
+      return;
+    }
+
+    const paymentMethodResult = await this.paymentGatewayService.retrievePaymentMethod(
+      IPaymentGatewayProvider.STRIPE,
+      paymentMethodId
+    );
+    const bankDebitTypes = new Set(['us_bank_account', 'acss_debit', 'sepa_debit', 'bacs_debit']);
+
+    if (
+      paymentMethodResult.data?.type &&
+      bankDebitTypes.has(paymentMethodResult.data.type) &&
+      !mandateId
+    ) {
+      this.log.warn(
+        {
+          sourceId,
+          sourceType,
+          paymentMethodId,
+          paymentMethodType: paymentMethodResult.data.type,
+        },
+        'Setup flow produced a bank debit payment method without a mandate — not saving'
+      );
+      return;
+    }
 
     // Keyed by PM's accountId so tenants renting from multiple PMs have separate methods
     const profileUpdate: Record<string, any> = {
@@ -1562,16 +1994,16 @@ export class PaymentService implements ICronProvider {
 
     await this.profileDAO.update({ user: new Types.ObjectId(tenantId) }, { $set: profileUpdate });
 
-    if (session.customer) {
+    if (customerId) {
       await this.paymentGatewayService.updateCustomerDefaultPaymentMethod(
         IPaymentGatewayProvider.STRIPE,
-        session.customer,
+        customerId,
         paymentMethodId
       );
     }
 
     this.log.info(
-      { tenantId, cuid, paymentMethodId, pmAccountId },
+      { tenantId, cuid, paymentMethodId, mandateId, pmAccountId, sourceType },
       'Tenant payment method saved from webhook'
     );
 
@@ -1587,10 +2019,17 @@ export class PaymentService implements ICronProvider {
    * Webhook handler: charge.dispute.created
    * Reverses the transfer to recover disputed funds from PM, then notifies PM.
    */
-  async handleDisputeCreated(disputeId: string, disputeData: any): IPromiseReturnedData<void> {
+  async handleDisputeCreated(
+    disputeId: string,
+    disputeData: IStripeDisputeWebhookData
+  ): IPromiseReturnedData<void> {
     try {
       const chargeId =
         typeof disputeData.charge === 'string' ? disputeData.charge : disputeData.charge?.id;
+      if (!chargeId) {
+        this.log.warn('No charge ID in dispute data', { disputeId });
+        return { success: false, data: undefined, message: 'No charge ID in dispute data' };
+      }
       const amount: number = disputeData.amount;
       const currency: string = disputeData.currency;
       const reason: string = disputeData.reason || 'unknown';
@@ -1610,7 +2049,8 @@ export class PaymentService implements ICronProvider {
         chargeId
       );
       const transferRaw = chargeResult.data?.transfer;
-      const transferId = typeof transferRaw === 'string' ? transferRaw : (transferRaw as any)?.id;
+      const transfer = transferRaw as string | { id: string } | undefined;
+      const transferId = typeof transfer === 'string' ? transfer : transfer?.id;
 
       if (transferId) {
         try {
@@ -1698,10 +2138,17 @@ export class PaymentService implements ICronProvider {
    * Webhook handler: charge.dispute.funds_reinstated
    * Platform won the dispute — re-transfer funds back to PM.
    */
-  async handleDisputeWon(disputeId: string, disputeData: any): IPromiseReturnedData<void> {
+  async handleDisputeWon(
+    disputeId: string,
+    disputeData: IStripeDisputeWebhookData
+  ): IPromiseReturnedData<void> {
     try {
       const chargeId =
         typeof disputeData.charge === 'string' ? disputeData.charge : disputeData.charge?.id;
+      if (!chargeId) {
+        this.log.warn('No charge ID in dispute data', { disputeId });
+        return { success: false, data: undefined, message: 'No charge ID in dispute data' };
+      }
       const amount: number = disputeData.amount;
       const currency: string = disputeData.currency;
 
@@ -1768,10 +2215,17 @@ export class PaymentService implements ICronProvider {
    * Webhook handler: charge.dispute.closed (status=lost)
    * Blocks PM payouts — platform is liable for the disputed amount.
    */
-  async handleDisputeLost(disputeId: string, disputeData: any): IPromiseReturnedData<void> {
+  async handleDisputeLost(
+    disputeId: string,
+    disputeData: IStripeDisputeWebhookData
+  ): IPromiseReturnedData<void> {
     try {
       const chargeId =
         typeof disputeData.charge === 'string' ? disputeData.charge : disputeData.charge?.id;
+      if (!chargeId) {
+        this.log.warn('No charge ID in dispute data', { disputeId });
+        return { success: false, data: undefined, message: 'No charge ID in dispute data' };
+      }
       const amount: number = disputeData.amount;
       const currency: string = disputeData.currency;
 
@@ -1992,8 +2446,22 @@ export class PaymentService implements ICronProvider {
         });
       }
 
-      const updated = await this.paymentDAO.updateById((payment as any)._id.toString(), {
+      if (payment.gatewayPaymentId) {
+        const voidResult = await this.paymentGatewayService.voidInvoice(
+          IPaymentGatewayProvider.STRIPE,
+          payment.gatewayPaymentId
+        );
+        if (!voidResult.success) {
+          this.log.warn(
+            { pytuid, invoiceId: payment.gatewayPaymentId, message: voidResult.message },
+            'Failed to void Stripe invoice — proceeding with local cancellation'
+          );
+        }
+      }
+
+      const updated = await this.paymentDAO.updateById(payment._id.toString(), {
         status: PaymentRecordStatus.CANCELLED,
+        $unset: { gatewayPaymentId: 1 },
         ...(reason
           ? {
               $push: {
@@ -2003,11 +2471,160 @@ export class PaymentService implements ICronProvider {
           : {}),
       });
 
+      try {
+        const tenantProfile = await this.profileDAO.findById(payment.tenant.toString());
+        if (tenantProfile?.user) {
+          this.emitterService.emit(EventTypes.PAYMENT_CANCELLED, {
+            tenantUserId: tenantProfile.user.toString(),
+            amountInCents: payment.baseAmount,
+            reason,
+            pytuid,
+            cuid,
+          });
+        }
+      } catch (emitError) {
+        this.log.error('Failed to emit payment cancelled event', { emitError, pytuid, cuid });
+      }
+
       return { success: true, data: updated as IPaymentDocument };
     } catch (error: any) {
       this.log.error({ error: error.message, cuid, pytuid }, 'Error cancelling payment');
       throw error;
     }
+  }
+
+  /**
+   * Map a lease's acceptedPaymentMethod string to the PaymentMethod enum.
+   * Only called for non-auto-debit leases (auto-debit goes through Stripe).
+   */
+  /**
+   * Queue a payment-request notification email to the tenant.
+   * Called from all createRentPayment exit paths when notifyByEmail is true.
+   */
+  private async queuePaymentRequestEmail(opts: {
+    cuid: string;
+    tenantId: string;
+    lease: ILeaseDocument;
+    amountInCents: number;
+    currency: string;
+    paymentType: PaymentRecordType;
+    dueDate: Date | string;
+    description?: string;
+  }): Promise<void> {
+    try {
+      const profile = (await this.profileDAO.findFirst(
+        { user: opts.tenantId },
+        { populate: ['user'] }
+      )) as IProfileWithUser | null;
+      const tenantEmail = profile?.user?.email;
+      if (!tenantEmail) {
+        this.log.warn(
+          { tenantId: opts.tenantId },
+          'Cannot send payment request email — no email found for tenant'
+        );
+        return;
+      }
+
+      const tenantName =
+        `${profile?.personalInfo?.firstName ?? ''} ${profile?.personalInfo?.lastName ?? ''}`.trim() ||
+        tenantEmail;
+
+      const addr = opts.lease.property?.address;
+      const propertyAddress =
+        (typeof addr === 'string' ? addr : addr?.fullAddress) ?? 'your property';
+      const unitNumber = opts.lease.property?.unitNumber ?? '';
+      const paymentTypeLabel =
+        opts.paymentType === PaymentRecordType.LATE_FEE ? 'Late Fee' : 'Rent';
+
+      const emailQueue = this.queueFactory.getQueue('emailQueue');
+      await emailQueue.addJobToQueue(JOB_NAME.PAYMENT_REQUEST_EMAIL_JOB, {
+        emailType: MailType.PAYMENT_REQUEST_CREATED,
+        subject: '',
+        to: tenantEmail,
+        data: {
+          tenantName,
+          propertyAddress,
+          unitNumber,
+          paymentType: paymentTypeLabel,
+          amountDue: MoneyUtils.formatCurrency(opts.amountInCents, opts.currency),
+          dueDate: opts.dueDate instanceof Date ? opts.dueDate.toISOString() : opts.dueDate,
+          description: opts.description || '',
+          paymentUrl: `${envVariables.FRONTEND.URL}/tenants/${opts.cuid}/${profile?.user?._id?.toString()}/payments`,
+        },
+      });
+      this.log.info({ tenantEmail }, 'Payment request email queued');
+    } catch (err) {
+      this.log.warn({ err }, 'Failed to queue payment request email');
+    }
+  }
+
+  private static mapLeasePaymentMethod(acceptedPaymentMethod: string | undefined): PaymentMethod {
+    switch (acceptedPaymentMethod) {
+      case 'e-transfer':
+        return PaymentMethod.BANK_TRANSFER;
+      case 'check':
+        return PaymentMethod.CHECK;
+      case 'cash':
+        return PaymentMethod.CASH;
+      default:
+        return PaymentMethod.OTHER;
+    }
+  }
+
+  /**
+   * Create a PENDING payment tracking record without any Stripe/gateway interaction.
+   * Used for cash, check, and e-transfer leases so the dashboard reflects expected
+   * revenue even when online payments are not configured.
+   *
+   * Reusable for RENT, MAINTENANCE, or any other PaymentRecordType — callers compute
+   * the amount and supply the correct PaymentMethod.
+   */
+  private async createManualTrackingPayment(data: {
+    cuid: string;
+    tenantId: string;
+    dueDate: Date;
+    baseAmount: number;
+    paymentType: PaymentRecordType;
+    paymentMethod: PaymentMethod;
+    leaseId?: string;
+    period?: { month: number; year: number };
+    maintenanceRequestUid?: string;
+    description?: string;
+    currency?: string;
+    lineItems?: { description: string; amountInCents: number }[];
+  }): Promise<IPaymentDocument> {
+    const tenantProfile = await this.profileDAO.findFirst({ user: data.tenantId });
+    if (!tenantProfile) {
+      throw new NotFoundError({ message: 'Tenant profile not found' });
+    }
+
+    const payment = await this.paymentDAO.insert({
+      cuid: data.cuid,
+      paymentType: data.paymentType,
+      paymentMethod: data.paymentMethod,
+      status: PaymentRecordStatus.PENDING,
+      tenant: tenantProfile._id,
+      ...(data.leaseId ? { lease: new Types.ObjectId(data.leaseId) } : {}),
+      baseAmount: data.baseAmount,
+      processingFee: 0,
+      dueDate: data.dueDate,
+      ...(data.period ? { period: data.period } : {}),
+      ...(data.maintenanceRequestUid ? { maintenanceRequestUid: data.maintenanceRequestUid } : {}),
+      ...(data.description ? { description: data.description } : {}),
+      ...(data.currency ? { currency: data.currency } : {}),
+      ...(data.lineItems?.length ? { lineItems: data.lineItems } : {}),
+      isManualEntry: false,
+    });
+
+    this.emitterService.emit(EventTypes.PAYMENT_REQUEST_CREATED, {
+      tenantUserId: data.tenantId,
+      amountInCents: data.baseAmount,
+      dueDate: data.dueDate,
+      pytuid: payment.pytuid,
+      cuid: data.cuid,
+    });
+
+    return payment;
   }
 
   private handleLeaseActivated = async (payload: {
@@ -2023,17 +2640,37 @@ export class PaymentService implements ICronProvider {
         cuid,
         deletedAt: null,
       });
-      if (!lease?.generateFirstPaymentOnActivation) return;
+      if (!lease) return;
 
       const startDate = new Date(lease.duration.startDate);
-      await this.createRentPayment(cuid, {
-        paymentType: PaymentRecordType.RENT,
-        leaseId: luid,
-        tenantId,
-        dueDate: startDate,
-        period: { month: startDate.getMonth() + 1, year: startDate.getFullYear() },
-      });
-      this.log.info({ luid, cuid }, 'Auto-generated first month payment on lease activation');
+      const period = { month: startDate.getMonth() + 1, year: startDate.getFullYear() };
+
+      if (lease.fees?.acceptedPaymentMethod === 'auto-debit') {
+        await this.createRentPayment(cuid, {
+          paymentType: PaymentRecordType.RENT,
+          leaseId: luid,
+          tenantId,
+          dueDate: startDate,
+          period,
+        });
+      } else {
+        const { totalMonthlyRent } = computeLeaseMonthlyFees(lease);
+        await this.createManualTrackingPayment({
+          cuid,
+          tenantId,
+          dueDate: startDate,
+          baseAmount: totalMonthlyRent,
+          paymentType: PaymentRecordType.RENT,
+          paymentMethod: PaymentService.mapLeasePaymentMethod(lease.fees?.acceptedPaymentMethod),
+          leaseId: lease._id.toString(),
+          period,
+          currency: lease.fees?.currency,
+        });
+      }
+      this.log.info(
+        { luid, cuid, method: lease.fees?.acceptedPaymentMethod },
+        'Auto-generated first month payment on lease activation'
+      );
     } catch (error: any) {
       // Never block lease activation — log and continue
       this.log.error(
@@ -2077,7 +2714,7 @@ export class PaymentService implements ICronProvider {
       cuid,
       paymentType: PaymentRecordType.MAINTENANCE,
       paymentMethod: PaymentMethod.OTHER,
-      status: PaymentRecordStatus.PAID,
+      status: PaymentRecordStatus.PENDING,
       tenant: vendorProfile._id,
       vendorId: new Types.ObjectId(vendorId!),
       maintenanceRequestUid: mruid,
@@ -2087,7 +2724,6 @@ export class PaymentService implements ICronProvider {
       isManualEntry: true,
       recordedBy: approvedBy ? new Types.ObjectId(approvedBy) : undefined,
       dueDate: new Date(),
-      paidAt: new Date(),
     });
 
     this.log.info({ mruid, amount, cuid }, '[PaymentService] Maintenance expense recorded');
@@ -2217,6 +2853,119 @@ export class PaymentService implements ICronProvider {
   }
 
   /**
+   * Transfer funds from the PM's Stripe Connect account to the vendor's Stripe Connect account.
+   * Finds the PENDING maintenance expense record for the given mruid, creates a Stripe transfer,
+   * then marks the record PAID and emits MAINTENANCE_VENDOR_PAID so the MR document is updated.
+   *
+   * Guards:
+   * - Expense record must exist and be PENDING (idempotent — throws if already PAID)
+   * - PM must have a verified Connect account (chargesEnabled)
+   * - Vendor must have completed Stripe Connect onboarding (payoutsEnabled)
+   */
+  async payVendor(cuid: string, mruid: string): IPromiseReturnedData<IPaymentDocument> {
+    try {
+      // 1. Resolve the vendor expense payment record
+      const payment = await this.paymentDAO.findFirst({
+        maintenanceRequestUid: mruid,
+        paymentType: PaymentRecordType.MAINTENANCE,
+        vendorId: { $exists: true, $ne: null },
+        cuid,
+        deletedAt: null,
+      });
+      if (!payment) {
+        throw new NotFoundError({
+          message: 'No expense record found for this maintenance request.',
+        });
+      }
+      if (payment.status === PaymentRecordStatus.PAID) {
+        throw new BadRequestError({
+          message: 'Vendor has already been paid for this request.',
+        });
+      }
+
+      // 2. Resolve PM's Stripe Connect account
+      const pmProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!pmProcessor?.accountId || !pmProcessor.chargesEnabled) {
+        throw new BadRequestError({
+          message: 'Payment account not configured or charges not enabled.',
+        });
+      }
+
+      // 3. Resolve vendor's Stripe Connect account via their user UID
+      const vendorUser = await this.userDAO.findFirst({
+        _id: payment.vendorId,
+        deletedAt: null,
+      });
+      if (!vendorUser?.uid) {
+        throw new NotFoundError({ message: 'Vendor user record not found.' });
+      }
+      const vendorProcessor = await this.paymentProcessorDAO.findByVuid(vendorUser.uid, cuid);
+      if (!vendorProcessor?.accountId) {
+        throw new BadRequestError({
+          message:
+            'Vendor has not set up their payout account. Ask them to complete Stripe Connect onboarding.',
+        });
+      }
+      if (!vendorProcessor.payoutsEnabled) {
+        throw new BadRequestError({
+          message:
+            'Vendor payout account is not yet verified. Ask them to complete their Stripe Connect setup.',
+        });
+      }
+
+      // 4. Create Stripe transfer from PM's balance to vendor's Connect account
+      const currency = (payment.currency ?? 'usd').toLowerCase();
+      const transferResult = await this.paymentGatewayService.createTransfer(
+        IPaymentGatewayProvider.STRIPE,
+        {
+          amountInCents: payment.baseAmount,
+          currency,
+          destination: vendorProcessor.accountId,
+          metadata: {
+            cuid,
+            mruid,
+            pytuid: payment.pytuid,
+          },
+        }
+      );
+      if (!transferResult.success || !transferResult.data) {
+        throw new Error(transferResult.message || 'Failed to transfer funds to vendor.');
+      }
+
+      // 5. Mark expense record as PAID
+      const updated = await this.paymentDAO.updateById(payment._id.toString(), {
+        status: PaymentRecordStatus.PAID,
+        paidAt: new Date(),
+        gatewayPaymentId: transferResult.data.transferId,
+      });
+
+      // 6. Emit event — ServiceRequestService listens and updates MR invoice.vendorPayoutStatus
+      this.emitterService.emit(EventTypes.MAINTENANCE_VENDOR_PAID, {
+        transferId: transferResult.data.transferId,
+        amountInCents: payment.baseAmount,
+        vendorId: payment.vendorId!.toString(),
+        pytuid: payment.pytuid,
+        mruid,
+        cuid,
+      });
+
+      this.log.info(
+        { mruid, pytuid: payment.pytuid, transferId: transferResult.data.transferId, cuid },
+        '[PaymentService] Vendor paid — transfer created'
+      );
+
+      return {
+        success: true,
+        data: updated as IPaymentDocument,
+        message: 'Vendor paid successfully.',
+      };
+    } catch (error: any) {
+      this.log.error({ error: error.message, cuid, mruid }, 'Error paying vendor');
+      throw error;
+    }
+  }
+
+  /**
    * Charges tenant's CC on file for a pending maintenance payment.
    * Creates a Stripe invoice → finalizes (auto-charges) → updates payment record with gateway ID.
    * Status stays PENDING until webhook confirms PAID.
@@ -2232,18 +2981,41 @@ export class PaymentService implements ICronProvider {
         throw new NotFoundError({ message: 'Payment not found' });
       }
 
-      if (payment.status !== PaymentRecordStatus.PENDING) {
+      if (
+        payment.status !== PaymentRecordStatus.PENDING &&
+        payment.status !== PaymentRecordStatus.FAILED
+      ) {
         throw new BadRequestError({
           message: `Cannot pay a charge with status: ${payment.status}`,
         });
       }
 
+      // Retry: reset a previously-failed payment so a fresh invoice is created
+      if (payment.status === PaymentRecordStatus.FAILED) {
+        const MAX_RETRIES = 3;
+        if ((payment.failure?.retryCount ?? 0) >= MAX_RETRIES) {
+          throw new BadRequestError({
+            message: 'Maximum retry attempts reached. Please contact your property manager.',
+          });
+        }
+        const nextRetryCount = (payment.failure?.retryCount ?? 0) + 1;
+        await this.paymentDAO.updateById(payment._id.toString(), {
+          status: PaymentRecordStatus.PENDING,
+          gatewayPaymentId: null,
+          'failure.retryCount': nextRetryCount,
+        });
+        payment.status = PaymentRecordStatus.PENDING;
+        payment.gatewayPaymentId = undefined;
+        payment.failure = { ...payment.failure, retryCount: nextRetryCount };
+      }
+
       if (
         payment.paymentType !== PaymentRecordType.MAINTENANCE &&
-        payment.paymentType !== PaymentRecordType.RENT
+        payment.paymentType !== PaymentRecordType.RENT &&
+        payment.paymentType !== PaymentRecordType.LATE_FEE
       ) {
         throw new BadRequestError({
-          message: 'Only rent or maintenance charges can be paid this way',
+          message: 'Only rent, maintenance, or late fee charges can be paid this way',
         });
       }
 
@@ -2262,34 +3034,159 @@ export class PaymentService implements ICronProvider {
       }
 
       if (payment.paymentType === PaymentRecordType.RENT) {
-        if (!payment.gatewayPaymentId) {
-          throw new BadRequestError({
-            message: 'No invoice found for this payment. Please contact your property manager.',
+        let activeInvoiceId = payment.gatewayPaymentId;
+        const mandateId = tenantProfile.tenantInfo?.paymentMandates?.get(
+          paymentProcessor.accountId
+        );
+        const paymentMethodId = tenantProfile.tenantInfo?.paymentMethods?.get(
+          paymentProcessor.accountId
+        );
+
+        if (paymentMethodId && !mandateId) {
+          const paymentMethodResult = await this.paymentGatewayService.retrievePaymentMethod(
+            IPaymentGatewayProvider.STRIPE,
+            paymentMethodId
+          );
+          const bankDebitTypes = new Set([
+            'us_bank_account',
+            'acss_debit',
+            'sepa_debit',
+            'bacs_debit',
+          ]);
+
+          if (paymentMethodResult.data?.type && bankDebitTypes.has(paymentMethodResult.data.type)) {
+            if (activeInvoiceId) {
+              const voidResult = await this.paymentGatewayService.voidInvoice(
+                IPaymentGatewayProvider.STRIPE,
+                activeInvoiceId
+              );
+              if (!voidResult.success) {
+                this.log.warn(
+                  { pytuid, invoiceId: activeInvoiceId, message: voidResult.message },
+                  '[PaymentService] Failed to void invoice for bank method without mandate'
+                );
+              }
+            }
+
+            await this.profileDAO.update(
+              { user: new Types.ObjectId(tenantUserId) },
+              {
+                $unset: {
+                  [`tenantInfo.paymentMethods.${paymentProcessor.accountId}`]: '',
+                  [`tenantInfo.paymentMandates.${paymentProcessor.accountId}`]: '',
+                },
+              }
+            );
+
+            if (activeInvoiceId) {
+              await this.paymentDAO.updateById(payment._id.toString(), {
+                gatewayPaymentId: null,
+              });
+            }
+
+            throw new BadRequestError({
+              message:
+                'Your bank account must be re-authorized before rent can be paid. Please set up your payment method again.',
+            });
+          }
+        }
+
+        // ── ACSS per-transaction limit check ────────────────────────────────────
+        // mandateId presence means this connected account uses ACSS debit (PAD).
+        // Mandates are only collected for ACSS in this system's setup flow.
+        // If the charge exceeds Stripe's per-transaction cap, signal the frontend
+        // to present the card payment option instead. Never throw — return structured
+        // response so the caller can route without an error boundary.
+        if (mandateId) {
+          const acssLimitCents = envVariables.STRIPE.ACSS_PER_TXN_LIMIT_CAD;
+          if (payment.baseAmount > acssLimitCents) {
+            this.log.warn(
+              { pytuid, amountCents: payment.baseAmount, limitCents: acssLimitCents },
+              '[PaymentService] ACSS per-txn limit exceeded — routing to card'
+            );
+            return {
+              success: false,
+              data: null as unknown as IPaymentDocument,
+              routeToCard: true,
+              message:
+                'Bank debit is unavailable for this payment amount — please use a card instead.',
+            };
+          }
+        }
+
+        if (!activeInvoiceId) {
+          // PM-initiated request created a PENDING record without a Stripe invoice.
+          // Lazily create + finalize it now so we can charge immediately.
+          if (!payment.lineItems?.length) {
+            throw new BadRequestError({
+              message:
+                'No line items found for this payment. Please contact your property manager.',
+            });
+          }
+
+          const tenantCustomerId =
+            tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
+          if (!tenantCustomerId) {
+            throw new BadRequestError({
+              message: 'No payment method on file. Please contact property management.',
+            });
+          }
+
+          const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
+          const transactionFeePercent = subscription
+            ? this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
+            : 0;
+          const feeBreakdown = this.calculateRentFees(payment.baseAmount, transactionFeePercent);
+
+          const invoiceResult = await this.paymentGatewayService.createInvoice(
+            IPaymentGatewayProvider.STRIPE,
+            {
+              tenantCustomerId,
+              connectedAccountId: paymentProcessor.accountId,
+              applicationFeeAmountInCents: feeBreakdown.applicationFee,
+              currency: (payment.currency ?? 'USD').toLowerCase(),
+              description: payment.description || `Rent payment ${pytuid}`,
+              autoChargeDueDate: new Date(),
+              lineItems: payment.lineItems as { description: string; amountInCents: number }[],
+              cuid,
+              paymentMethodId,
+            }
+          );
+
+          if (!invoiceResult.success || !invoiceResult.data) {
+            throw new Error(invoiceResult.message || 'Failed to create invoice');
+          }
+
+          const finalizeResult = await this.paymentGatewayService.finalizeInvoice(
+            IPaymentGatewayProvider.STRIPE,
+            invoiceResult.data.invoiceId
+          );
+
+          if (!finalizeResult.success) {
+            throw new Error(finalizeResult.message || 'Failed to finalize invoice');
+          }
+
+          activeInvoiceId = invoiceResult.data.invoiceId;
+          const hostedUrl = finalizeResult.data?.hostedInvoiceUrl;
+
+          await this.paymentDAO.updateById(payment._id.toString(), {
+            gatewayPaymentId: activeInvoiceId,
+            ...(hostedUrl && { 'receipt.url': hostedUrl }),
           });
         }
 
-        const tenantMandate = tenantProfile.tenantInfo?.paymentMandates?.get(
-          paymentProcessor.accountId
-        );
-        const tenantPaymentMethod = tenantProfile.tenantInfo?.paymentMethods?.get(
-          paymentProcessor.accountId
-        );
-
         const payResult = await this.paymentGatewayService.payInvoice(
           IPaymentGatewayProvider.STRIPE,
-          payment.gatewayPaymentId,
-          {
-            mandate: tenantMandate || undefined,
-            paymentMethod: tenantPaymentMethod || undefined,
-          }
+          activeInvoiceId,
+          paymentMethodId ? { paymentMethod: paymentMethodId } : undefined
         );
 
         if (!payResult.success) {
-          throw new Error(payResult.message || 'Failed to initiate payment');
+          throw new BadRequestError({ message: payResult.message || 'Failed to initiate payment' });
         }
 
         this.log.info(
-          { pytuid, cuid, invoiceId: payment.gatewayPaymentId },
+          { pytuid, cuid, invoiceId: activeInvoiceId },
           '[PaymentService] Tenant-initiated rent payment submitted'
         );
 
@@ -2300,14 +3197,17 @@ export class PaymentService implements ICronProvider {
         };
       }
 
-      if (payment.gatewayPaymentId) {
-        throw new BadRequestError({ message: 'Payment has already been submitted for processing' });
+      const tenantCustomerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
+      if (!tenantCustomerId) {
+        throw new BadRequestError({
+          message: 'No payment method on file. Please contact property management.',
+        });
       }
 
-      const tenantCustomerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get(
+      const paymentMethodId = tenantProfile.tenantInfo?.paymentMethods?.get(
         paymentProcessor.accountId
       );
-      if (!tenantCustomerId) {
+      if (!paymentMethodId) {
         throw new BadRequestError({
           message: 'No payment method on file. Please contact property management.',
         });
@@ -2319,45 +3219,66 @@ export class PaymentService implements ICronProvider {
         : 0;
       const feeBreakdown = this.calculateRentFees(payment.baseAmount, transactionFeePercent);
 
-      const invoiceResult = await this.paymentGatewayService.createInvoice(
-        IPaymentGatewayProvider.STRIPE,
-        {
-          tenantCustomerId,
-          connectedAccountId: paymentProcessor.accountId,
-          applicationFeeAmountInCents: feeBreakdown.applicationFee,
-          currency: (payment.currency ?? 'USD').toLowerCase(),
-          description: payment.description || `Maintenance charge ${pytuid}`,
-          autoChargeDueDate: new Date(),
-          lineItems: [
-            {
-              description: payment.description || 'Maintenance charge',
-              amountInCents: payment.baseAmount,
-            },
-          ],
-          cuid,
+      let activeInvoiceId = payment.gatewayPaymentId;
+
+      if (!activeInvoiceId) {
+        const invoiceResult = await this.paymentGatewayService.createInvoice(
+          IPaymentGatewayProvider.STRIPE,
+          {
+            tenantCustomerId,
+            connectedAccountId: paymentProcessor.accountId,
+            applicationFeeAmountInCents: feeBreakdown.applicationFee,
+            currency: (payment.currency ?? 'USD').toLowerCase(),
+            description: payment.description || `Maintenance charge ${pytuid}`,
+            autoChargeDueDate: new Date(),
+            lineItems: [
+              {
+                description: payment.description || 'Maintenance charge',
+                amountInCents: payment.baseAmount,
+              },
+            ],
+            cuid,
+            paymentMethodId,
+          }
+        );
+
+        if (!invoiceResult.success || !invoiceResult.data) {
+          throw new Error(invoiceResult.message || 'Failed to create invoice');
         }
-      );
 
-      if (!invoiceResult.success || !invoiceResult.data) {
-        throw new Error(invoiceResult.message || 'Failed to create invoice');
+        const finalizeResult = await this.paymentGatewayService.finalizeInvoice(
+          IPaymentGatewayProvider.STRIPE,
+          invoiceResult.data.invoiceId
+        );
+
+        if (!finalizeResult.success) {
+          throw new Error(finalizeResult.message || 'Failed to finalize invoice');
+        }
+
+        activeInvoiceId = invoiceResult.data.invoiceId;
+        const hostedUrl = finalizeResult.data?.hostedInvoiceUrl;
+
+        await this.paymentDAO.updateById(payment._id.toString(), {
+          gatewayPaymentId: activeInvoiceId,
+          ...(hostedUrl && { 'receipt.url': hostedUrl }),
+        });
       }
 
-      const finalizeResult = await this.paymentGatewayService.finalizeInvoice(
+      const updated = await this.paymentDAO.findFirst({ pytuid, cuid, deletedAt: null });
+
+      const payResult = await this.paymentGatewayService.payInvoice(
         IPaymentGatewayProvider.STRIPE,
-        invoiceResult.data.invoiceId
+        activeInvoiceId!,
+        { paymentMethod: paymentMethodId }
       );
 
-      if (!finalizeResult.success) {
-        throw new Error(finalizeResult.message || 'Failed to finalize invoice');
+      if (!payResult.success) {
+        throw new BadRequestError({ message: payResult.message || 'Failed to initiate payment' });
       }
-
-      const updated = await this.paymentDAO.updateById((payment as any)._id.toString(), {
-        gatewayPaymentId: invoiceResult.data.invoiceId,
-      });
 
       this.log.info(
-        { pytuid, cuid, invoiceId: invoiceResult.data.invoiceId },
-        '[PaymentService] Maintenance charge submitted for payment'
+        { pytuid, cuid, invoiceId: activeInvoiceId, paymentType: payment.paymentType },
+        '[PaymentService] Pending charge submitted for payment'
       );
 
       return {
@@ -2391,7 +3312,7 @@ export class PaymentService implements ICronProvider {
           (p) =>
             p.status === PaymentRecordStatus.PENDING && !(p.gatewayPaymentId && !p.isManualEntry)
         )
-        .map((p) => (p as any)._id);
+        .map((p) => p._id);
 
       if (pendingIds.length === 0) {
         this.log.info('[Cron] All past-due payments already marked overdue');
@@ -2425,8 +3346,8 @@ export class PaymentService implements ICronProvider {
   }
 
   /**
-   * Daily cron: auto-charges tenant CC for maintenance payments past the 5-day grace period.
-   * Only targets PENDING maintenance payments that haven't been submitted to Stripe yet.
+   * Daily cron: auto-charges tenant for non-rent charges past their grace period.
+   * Handles both not-yet-submitted records and already-created open invoices.
    */
   private async autoChargeOverdueMaintenancePayments(): Promise<void> {
     const now = new Date();
@@ -2434,9 +3355,9 @@ export class PaymentService implements ICronProvider {
     const { items: overduePayments } = await this.paymentDAO.list(
       {
         status: PaymentRecordStatus.PENDING,
-        paymentType: PaymentRecordType.MAINTENANCE,
+        paymentType: { $in: [PaymentRecordType.MAINTENANCE, PaymentRecordType.LATE_FEE] },
         isManualEntry: false,
-        gatewayPaymentId: { $exists: false },
+        gatewayChargeId: { $exists: false },
         dueDate: { $lte: now },
         deletedAt: null,
       },
@@ -2480,9 +3401,7 @@ export class PaymentService implements ICronProvider {
           continue;
         }
 
-        const tenantUserId = (tenantProfile.user as any).toString
-          ? (tenantProfile.user as any).toString()
-          : tenantProfile.user;
+        const tenantUserId = tenantProfile.user.toString();
 
         await this.payPendingCharge(payment.cuid, payment.pytuid, tenantUserId);
         charged++;
@@ -2647,12 +3566,12 @@ export class PaymentService implements ICronProvider {
           skip,
           populate: [{ path: 'lease', select: 'leaseNumber luid property' }],
           projection:
-            'pytuid invoiceNumber status paymentType paymentMethod baseAmount processingFee dueDate paidAt period description receipt lease',
+            'pytuid invoiceNumber status paymentType paymentMethod baseAmount processingFee applicationFee dueDate paidAt period description receipt lease',
         },
         true
       );
 
-      const items = (result.items || []).map((p: any) => ({
+      const items = (result.items as unknown as IPaymentPopulated[]).map((p) => ({
         pytuid: p.pytuid,
         invoiceNumber: p.invoiceNumber,
         status: p.status,
@@ -2660,18 +3579,19 @@ export class PaymentService implements ICronProvider {
         paymentMethod: p.paymentMethod,
         baseAmount: p.baseAmount,
         processingFee: p.processingFee || 0,
+        applicationFee: p.applicationFee || 0,
         totalAmount: p.baseAmount + (p.processingFee || 0),
         dueDate: p.dueDate,
         paidAt: p.paidAt,
         description: p.description,
         period: p.period,
         hasReceipt: !!p.receipt?.url,
-        leaseNumber: (p.lease as any)?.leaseNumber,
+        leaseNumber: p.lease?.leaseNumber,
       }));
 
       return {
         success: true,
-        data: { ...(result as any), items },
+        data: { ...result, items },
         message: 'Payment history retrieved',
       };
     } catch (error) {
@@ -2728,7 +3648,7 @@ export class PaymentService implements ICronProvider {
       const tenantName =
         `${tenantProfile.personalInfo?.firstName || ''} ${tenantProfile.personalInfo?.lastName || ''}`.trim() ||
         'Tenant';
-      const lease = (payment as any).lease;
+      const lease = (payment as unknown as IPaymentPopulated).lease;
       const propertyAddress =
         typeof lease?.property?.address === 'string'
           ? lease.property.address
@@ -2760,7 +3680,7 @@ export class PaymentService implements ICronProvider {
     <tr><td>Property</td><td>${propertyAddress}</td></tr>
     <tr><td>Lease</td><td>${lease?.leaseNumber || '—'}</td></tr>
     <tr><td>Payment Type</td><td>${payment.paymentType.replace(/_/g, ' ')}</td></tr>
-    ${(payment as any).period ? `<tr><td>Period</td><td>${(payment as any).period.month}/${(payment as any).period.year}</td></tr>` : ''}
+    ${payment.period ? `<tr><td>Period</td><td>${payment.period.month}/${payment.period.year}</td></tr>` : ''}
     <tr><td>Due Date</td><td>${payment.dueDate.toLocaleDateString()}</td></tr>
     <tr><td>Paid On</td><td>${payment.paidAt?.toLocaleDateString() || '—'}</td></tr>
     <tr><td>Rent Amount</td><td>$${MoneyUtils.centsToDisplay(payment.baseAmount)}</td></tr>

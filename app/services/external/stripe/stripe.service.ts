@@ -18,6 +18,7 @@ import {
   IPaymentProvider,
   IPaymentCustomer,
   ICheckoutSession,
+  IPayoutSchedule,
 } from '@interfaces/paymentGateway.interface';
 
 export class StripeService implements IPaymentProvider {
@@ -569,6 +570,22 @@ export class StripeService implements IPaymentProvider {
     this.log.info({ accountId, interval }, 'Updated payout schedule');
   }
 
+  async getPayoutSchedule(accountId: string): Promise<IPayoutSchedule> {
+    try {
+      const account = await this.stripe.accounts.retrieve(accountId);
+      const schedule = account.settings?.payouts?.schedule;
+      return {
+        interval: (schedule?.interval ?? 'weekly') as IPayoutSchedule['interval'],
+        weeklyAnchor: schedule?.weekly_anchor ?? undefined,
+        monthlyAnchor: schedule?.monthly_anchor ?? undefined,
+        delayDays: schedule?.delay_days ?? undefined,
+      };
+    } catch (error) {
+      this.log.error({ error, accountId }, 'Error fetching payout schedule');
+      throw error;
+    }
+  }
+
   async getConnectAccount(accountId: string): Promise<Stripe.Account> {
     try {
       return await this.stripe.accounts.retrieve(accountId);
@@ -674,18 +691,17 @@ export class StripeService implements IPaymentProvider {
         currency,
         description,
         lineItems,
-        mandateId,
+        paymentMethodId,
         cuid,
         leaseUid,
       } = input;
 
       // Destination charges: application_fee_amount is all-inclusive — Stripe takes its
       // processing fee from it, platform keeps the rest.
-      const paymentSettings: Stripe.InvoiceCreateParams.PaymentSettings = {};
-      if (mandateId) paymentSettings.default_mandate = mandateId;
-
       const invoiceParams: Stripe.InvoiceCreateParams = {
         customer: tenantCustomerId,
+        currency,
+        ...(paymentMethodId && { default_payment_method: paymentMethodId }),
         auto_advance: false,
         collection_method: 'charge_automatically',
         description,
@@ -695,7 +711,6 @@ export class StripeService implements IPaymentProvider {
         },
         application_fee_amount: applicationFeeAmount,
         transfer_data: { destination: connectedAccountId },
-        ...(Object.keys(paymentSettings).length > 0 && { payment_settings: paymentSettings }),
       };
 
       const invoice = await this.stripe.invoices.create(invoiceParams);
@@ -769,17 +784,17 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async payInvoice(
-    invoiceId: string,
-    opts?: { mandate?: string; paymentMethod?: string }
-  ): Promise<void> {
+  async payInvoice(invoiceId: string, opts?: { paymentMethod?: string }): Promise<void> {
     try {
-      await this.stripe.invoices.pay(invoiceId, {
-        ...(opts?.mandate && { mandate: opts.mandate }),
-        ...(opts?.paymentMethod && { payment_method: opts.paymentMethod }),
-      });
+      if (opts?.paymentMethod) {
+        await this.stripe.invoices.update(invoiceId, {
+          default_payment_method: opts.paymentMethod,
+        });
+      }
+
+      await this.stripe.invoices.pay(invoiceId);
     } catch (error: any) {
-      if (error?.code === 'invoice_already_paid') return;
+      if (error?.rawType === 'invoice_already_paid') return;
       this.log.error({ error, invoiceId }, 'Error paying invoice');
       throw error;
     }
@@ -796,6 +811,27 @@ export class StripeService implements IPaymentProvider {
       };
     } catch (error) {
       this.log.error({ error, invoiceId }, 'Error finalizing invoice');
+      throw error;
+    }
+  }
+
+  async voidInvoice(invoiceId: string): Promise<void> {
+    try {
+      await this.stripe.invoices.voidInvoice(invoiceId);
+    } catch (error: any) {
+      // If the invoice is still in draft, delete it instead
+      if (error?.code === 'invoice_not_open' || error?.statusCode === 400) {
+        try {
+          await this.stripe.invoices.del(invoiceId);
+          return;
+        } catch (delError) {
+          this.log.error({ delError, invoiceId }, 'Error deleting draft invoice');
+          throw delError;
+        }
+      }
+      // Already voided — safe to ignore
+      if (error?.code === 'invoice_already_voided') return;
+      this.log.error({ error, invoiceId }, 'Error voiding invoice');
       throw error;
     }
   }
@@ -879,8 +915,7 @@ export class StripeService implements IPaymentProvider {
         paymentMethodOptions.acss_debit = {
           currency,
           mandate_options: {
-            payment_schedule: 'interval',
-            interval_description: 'Monthly rent payment',
+            default_for: ['invoice', 'subscription'],
             transaction_type: 'personal',
           },
           verification_method: 'automatic',
@@ -918,7 +953,10 @@ export class StripeService implements IPaymentProvider {
         ...(Object.keys(paymentMethodOptions).length > 0 && {
           payment_method_options: paymentMethodOptions,
         }),
-        ...(metadata && { metadata }),
+        ...(metadata && {
+          metadata,
+          setup_intent_data: { metadata },
+        }),
       });
 
       this.log.info({ sessionId: session.id, customerId }, 'Created setup checkout session');
@@ -976,9 +1014,13 @@ export class StripeService implements IPaymentProvider {
     setupIntentId: string
   ): Promise<{ paymentMethodId: string; mandateId: string | null }> {
     try {
-      const si = await this.stripe.setupIntents.retrieve(setupIntentId);
+      const si = await this.stripe.setupIntents.retrieve(setupIntentId, {
+        expand: ['mandate', 'payment_method'],
+      });
       const mandateId = typeof si.mandate === 'string' ? si.mandate : (si.mandate?.id ?? null);
-      return { paymentMethodId: si.payment_method as string, mandateId };
+      const paymentMethodId =
+        typeof si.payment_method === 'string' ? si.payment_method : (si.payment_method?.id ?? '');
+      return { paymentMethodId, mandateId };
     } catch (error) {
       this.log.error({ error, setupIntentId }, 'Error retrieving setup intent');
       throw error;

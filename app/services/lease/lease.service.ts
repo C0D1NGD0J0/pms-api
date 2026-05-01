@@ -246,6 +246,9 @@ export class LeaseService {
       });
     }
 
+    // Always lock currency to the property's configured value — caller-supplied currency is ignored
+    data.fees.currency = (property.fees as any)?.currency ?? 'USD';
+
     // Prevent conflict of interest: user cannot create lease for themselves as tenant
     const tenantIdStr =
       typeof tenantInfo.tenantId === 'object'
@@ -474,6 +477,19 @@ export class LeaseService {
       };
     }
 
+    // Resolve public puid → internal ObjectId so the DAO can filter by property.unitId
+    if (filters.unitPuid) {
+      const unit = await this.propertyUnitDAO.findFirst({
+        puid: filters.unitPuid,
+        cuid,
+        deletedAt: null,
+      });
+      if (unit) {
+        filters = { ...filters, unitId: unit._id };
+      }
+      delete (filters as any).unitPuid;
+    }
+
     this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
 
     try {
@@ -670,6 +686,19 @@ export class LeaseService {
 
       if (cleanUpdateData.fees) {
         cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
+
+        // Enforce currency from property — same rule as createLease (line ~256)
+        // Guard: only run if the lease has a property reference (may be absent in test fixtures / legacy data)
+        if ((lease.property as any)?.id) {
+          const property = await this.propertyDAO.findFirst(
+            { _id: new Types.ObjectId((lease.property as any).id), cuid, deletedAt: null },
+            { select: 'fees' }
+          );
+          if (property) {
+            // Always lock currency to the property's configured value — caller-supplied currency is ignored
+            cleanUpdateData.fees!.currency = (property.fees as any)?.currency ?? 'USD';
+          }
+        }
       }
 
       // Sanitize legalTerms HTML/text content
@@ -684,19 +713,6 @@ export class LeaseService {
           url: cleanUpdateData.legalTerms.url,
         };
       }
-
-      // Handle internalNotes separately - will append as new note to array
-      // let noteToAdd = null;
-      // if (cleanUpdateData.internalNotes && typeof cleanUpdateData.internalNotes === 'string') {
-      //   noteToAdd = {
-      //     note: cleanUpdateData.internalNotes.trim(),
-      //     author: currentUser.fullname || 'Unknown',
-      //     authorId: currentUser.sub,
-      //     timestamp: new Date(),
-      //   };
-      //   // Remove from main update data
-      //   delete cleanUpdateData.internalNotes;
-      // }
 
       validateImmutableFields(cleanUpdateData);
       let result = null;
@@ -799,25 +815,6 @@ export class LeaseService {
             message: `Cannot update lease with status: ${lease.status}`,
           });
       }
-
-      // If there's a note to add, append it now after main update
-      // if (noteToAdd && result?.success) {
-      //   await this.leaseDAO.update(
-      //     { luid, cuid, deletedAt: null },
-      //     {
-      //       $push: { internalNotes: noteToAdd }
-      //     }
-      //   );
-
-      //   // Refetch the lease to include the new note in response
-      //   const updatedLease = await this.leaseDAO.findOne({
-      //     filter: { luid, cuid, deletedAt: null }
-      //   });
-
-      //   if (result.data && updatedLease) {
-      //     result.data = updatedLease;
-      //   }
-      // }
 
       return result
         ? result
@@ -1283,7 +1280,7 @@ export class LeaseService {
       endDate: lease.duration.endDate.toISOString(),
       leaseType: lease.type,
 
-      monthlyRent: lease.fees.monthlyRent,
+      rentAmount: lease.fees.rentAmount,
       securityDeposit: lease.fees.securityDeposit,
       rentDueDay: lease.fees.rentDueDay,
       currency: lease.fees.currency,
@@ -1980,20 +1977,20 @@ export class LeaseService {
       );
     }
 
-    if (leaseData.fees.monthlyRent <= 0 || isNaN(leaseData.fees.monthlyRent)) {
-      if (!validationErrors['fees.monthlyRent']) validationErrors['fees.monthlyRent'] = [];
-      validationErrors['fees.monthlyRent'].push(t('lease.errors.rentMustBePositive'));
+    if (leaseData.fees.rentAmount <= 0 || isNaN(leaseData.fees.rentAmount)) {
+      if (!validationErrors['fees.rentAmount']) validationErrors['fees.rentAmount'] = [];
+      validationErrors['fees.rentAmount'].push(t('lease.errors.rentMustBePositive'));
     }
 
     const baseRentCents = leaseData.property.unitId
       ? unit?.fees?.rentAmount
-      : propertyRecord.fees?.rentalAmount;
+      : propertyRecord.fees?.rentAmount;
 
     if (baseRentCents && Number(baseRentCents) > 0) {
-      const proposedRentCents = MoneyUtils.stringToCents(leaseData.fees.monthlyRent);
+      const proposedRentCents = MoneyUtils.stringToCents(leaseData.fees.rentAmount);
       if (Number(proposedRentCents) < Number(baseRentCents)) {
-        if (!validationErrors['fees.monthlyRent']) validationErrors['fees.monthlyRent'] = [];
-        validationErrors['fees.monthlyRent'].push(
+        if (!validationErrors['fees.rentAmount']) validationErrors['fees.rentAmount'] = [];
+        validationErrors['fees.rentAmount'].push(
           `Monthly rent cannot be lower than the base rental fee of ${MoneyUtils.centsToDisplay(Number(baseRentCents))}`
         );
       }
@@ -2124,7 +2121,7 @@ export class LeaseService {
             unitNumber: property?.unitId?.unitNumber || null,
             startDate: lease.duration.startDate.toISOString(),
             endDate: lease.duration.endDate.toISOString(),
-            monthlyRent: MoneyUtils.formatCurrency(lease.fees.monthlyRent, lease.fees.currency),
+            rentAmount: MoneyUtils.formatCurrency(lease.fees.rentAmount, lease.fees.currency),
             firstPaymentDate: lease.duration.startDate.toLocaleDateString(),
             securityDepositInfo: lease.fees.securityDeposit
               ? MoneyUtils.formatCurrency(lease.fees.securityDeposit, lease.fees.currency)

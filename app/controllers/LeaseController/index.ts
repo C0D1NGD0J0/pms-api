@@ -63,6 +63,7 @@ export class LeaseController {
       status: filter.status as any,
       search: filter.search as string | undefined,
       tenantId: filter.tenantId as string | undefined,
+      unitPuid: filter.unitPuid as string | undefined,
     };
 
     const result = await this.leaseService.getFilteredLeases(

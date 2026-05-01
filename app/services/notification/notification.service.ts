@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/helpers';
 import { MoneyUtils } from '@utils/money.utils';
+import { NotificationCache } from '@caching/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import { ResourceContext } from '@interfaces/utils.interface';
@@ -37,6 +38,7 @@ import {
   MaintenanceInvoiceRejectedPayload,
   MaintenanceRequestCreatedPayload,
   PaymentRequestCreatedPayload,
+  PaymentCancelledPayload,
   PaymentSucceededPayload,
   PaymentRefundedPayload,
   PaymentFailedPayload,
@@ -46,6 +48,7 @@ import {
 import { getFormattedNotification, NotificationMessageKey } from './notificationMessages';
 
 interface IConstructor {
+  notificationCache: NotificationCache;
   emitterService: EventEmitterService;
   notificationDAO: NotificationDAO;
   profileService: ProfileService;
@@ -58,6 +61,7 @@ interface IConstructor {
 
 export class NotificationService {
   private readonly notificationDAO: NotificationDAO;
+  private readonly notificationCache: NotificationCache;
   private readonly emitterService: EventEmitterService;
   private readonly userService: UserService;
   private readonly sseService: SSEService;
@@ -69,6 +73,7 @@ export class NotificationService {
 
   constructor({
     notificationDAO,
+    notificationCache,
     emitterService,
     profileDAO,
     clientDAO,
@@ -85,6 +90,7 @@ export class NotificationService {
     this.emitterService = emitterService;
     this.profileService = profileService;
     this.notificationDAO = notificationDAO;
+    this.notificationCache = notificationCache;
     this.log = createLogger('NotificationService');
 
     this.setupEventListeners();
@@ -148,11 +154,30 @@ export class NotificationService {
         );
 
         if (!shouldSend) {
-          this.log.info('Notification skipped due to user preferences', {
-            userId: recipientId,
-            notificationType,
+          this.log.info(
+            'Notification display skipped due to user preferences — sending data-refresh signal',
+            {
+              userId: recipientId,
+              notificationType,
+              cuid,
+            }
+          );
+
+          // Don't create a notification document (avoids polluting the bell list),
+          // but still push a lightweight SSE signal so the client can invalidate
+          // stale queries even when the user has disabled in-app notifications.
+          await this.sseService.sendToUser(
+            recipientId,
             cuid,
-          });
+            {
+              notifications: [],
+              total: 0,
+              isInitial: false,
+              shouldDisplay: false,
+              dataRefreshType: notificationType,
+            },
+            'my-notifications'
+          );
 
           return {
             success: true,
@@ -335,6 +360,20 @@ export class NotificationService {
         announcementFilters,
         pagination
       );
+
+      const unreadNuids = result.data.filter((n) => !n.isRead).map((n) => n.nuid);
+      if (unreadNuids.length > 0) {
+        const readSet = await this.notificationCache.getReadAnnouncementNuids(
+          cuid,
+          unreadNuids,
+          userId
+        );
+        for (const notif of result.data) {
+          if (readSet.has(notif.nuid)) {
+            (notif as any).isRead = true;
+          }
+        }
+      }
 
       return {
         success: true,
@@ -1675,31 +1714,25 @@ export class NotificationService {
     cuid: string
   ): Promise<ISuccessReturnData<INotificationDocument>> {
     try {
-      this.log.info('Marking notification as read', {
-        notificationId,
-        userId,
-        cuid,
-      });
+      const notification = await this.notificationDAO.findByNuid(notificationId, cuid);
+      if (!notification) {
+        return { success: false, data: null as any, message: 'Notification not found' };
+      }
+
+      if (notification.recipientType === 'announcement') {
+        await this.notificationCache.markAnnouncementsRead(cuid, [notificationId], userId);
+        return { success: true, data: notification };
+      }
 
       const result = await this.updateNotification(notificationId, userId, cuid, {
         isRead: true,
         readAt: new Date(),
       });
 
-      if (result.success) {
-        this.log.info('Notification marked as read successfully', {
-          notificationId,
-          userId,
-          cuid,
-        });
-      }
-
       return result;
     } catch (error) {
-      const errorMsg = 'Unexpected error marking notification as read';
-      this.log.error(errorMsg, {
+      this.log.error('Error marking notification as read', {
         error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
         notificationId,
         userId,
         cuid,
@@ -1708,7 +1741,47 @@ export class NotificationService {
       return {
         success: false,
         data: null as any,
-        message: errorMsg,
+        message: 'Failed to mark notification as read',
+      };
+    }
+  }
+
+  async markAllAsRead(
+    userId: string,
+    cuid: string
+  ): Promise<ISuccessReturnData<{ modifiedCount: number }>> {
+    try {
+      const individualResult = await this.notificationDAO.updateMany(
+        { recipientType: 'individual', recipient: userId, cuid, isRead: false },
+        { $set: { isRead: true, readAt: new Date() } }
+      );
+
+      const announcementResult = await this.notificationDAO.list(
+        { recipientType: 'announcement', cuid, isRead: false },
+        { projection: 'nuid', limit: 100 }
+      );
+      const unreadAnnouncements = announcementResult.items || [];
+
+      if (unreadAnnouncements.length > 0) {
+        const nuids = unreadAnnouncements.map((a: any) => a.nuid);
+        await this.notificationCache.markAnnouncementsRead(cuid, nuids, userId);
+      }
+
+      return {
+        success: true,
+        data: { modifiedCount: individualResult.modifiedCount + unreadAnnouncements.length },
+      };
+    } catch (error) {
+      this.log.error('Error marking all notifications as read', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        userId,
+        cuid,
+      });
+
+      return {
+        success: false,
+        data: { modifiedCount: 0 },
+        message: 'Failed to mark all notifications as read',
       };
     }
   }
@@ -1781,31 +1854,24 @@ export class NotificationService {
 
   private async publishToSSE(notification: INotificationDocument): Promise<void> {
     try {
-      // Check user preferences for individual notifications
       if (notification.recipientType === 'individual' && notification.recipient) {
-        const shouldSend = await this.checkUserNotificationPreferences(
+        const notificationData = notification.toObject ? notification.toObject() : notification;
+
+        // Determine whether the client should display this notification in the UI.
+        // We always send the SSE event so that data-refresh domain events (query
+        // invalidation) fire even when the user has disabled in-app notifications.
+        const shouldDisplay = await this.checkUserNotificationPreferences(
           notification.recipient.toString(),
           notification.cuid,
           notification.type,
           notification
         );
 
-        if (!shouldSend) {
-          this.log.debug('Skipping SSE publish due to user preferences', {
-            nuid: notification.nuid,
-            recipientId: notification.recipient,
-            cuid: notification.cuid,
-          });
-          return;
-        }
-      }
-
-      if (notification.recipientType === 'individual' && notification.recipient) {
-        const notificationData = notification.toObject ? notification.toObject() : notification;
         const ssePayload = {
           notifications: [notificationData],
           total: 1,
           isInitial: false, // Flag to indicate this is a new notification, not initial data
+          shouldDisplay, // Client uses this to decide whether to show badge/list/toast
         };
 
         await this.sseService.sendToUser(
@@ -1971,6 +2037,7 @@ export class NotificationService {
       EventTypes.PAYMENT_REQUEST_CREATED,
       this.handlePaymentRequestCreated.bind(this)
     );
+    this.emitterService.on(EventTypes.PAYMENT_CANCELLED, this.handlePaymentCancelled.bind(this));
   }
 
   private async handleLeaseActivated(payload: any): Promise<void> {
@@ -2449,6 +2516,28 @@ export class NotificationService {
       });
     } catch (error) {
       this.log.error('Error sending payment request notification', { error, payload });
+    }
+  }
+
+  private async handlePaymentCancelled(payload: PaymentCancelledPayload): Promise<void> {
+    try {
+      const { tenantUserId, amountInCents, pytuid, cuid } = payload;
+      const fmt = MoneyUtils.formatCurrency(amountInCents || 0);
+      const { title, message } = getFormattedNotification('payment.cancelled', {
+        amount: fmt,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        cuid,
+        type: NotificationTypeEnum.PAYMENT,
+        recipient: tenantUserId,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { pytuid },
+      });
+    } catch (error) {
+      this.log.error('Error sending payment cancelled notification', { error, payload });
     }
   }
 

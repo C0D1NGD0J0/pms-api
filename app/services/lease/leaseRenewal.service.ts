@@ -275,7 +275,7 @@ export class LeaseRenewalService {
 
         // Validate fee amounts if provided
         if (renewalData.fees) {
-          if (renewalData.fees.monthlyRent !== undefined && renewalData.fees.monthlyRent < 0) {
+          if (renewalData.fees.rentAmount !== undefined && renewalData.fees.rentAmount < 0) {
             return {
               success: false,
               error: 'Monthly rent cannot be negative',
@@ -400,7 +400,7 @@ export class LeaseRenewalService {
       approvalStatus: renewalLease?.data?.approvalStatus || 'pending',
       startDate: renewalLease.data?.duration.startDate,
       endDate: renewalLease.data?.duration.endDate,
-      monthlyRent: renewalLease.data?.fees.monthlyRent || 0,
+      rentAmount: renewalLease.data?.fees.rentAmount || 0,
       tenantId: existingLease.tenantId.toString(),
       propertyId: existingLease.property.id.toString(),
       propertyUnitId: existingLease.property.unitId?.toString(),
@@ -426,7 +426,7 @@ export class LeaseRenewalService {
                 originalLeaseId: existingLease.luid,
                 renewalStartDate: renewalLease.data.duration.startDate,
                 renewalEndDate: renewalLease.data.duration.endDate,
-                monthlyRent: renewalLease.data.fees.monthlyRent,
+                rentAmount: renewalLease.data.fees.rentAmount,
                 isAutoRenewal: true,
                 actionRequired: true,
                 actionType: 'approve_renewal',
@@ -452,7 +452,7 @@ export class LeaseRenewalService {
                 originalLeaseId: existingLease.luid,
                 renewalStartDate: renewalLease.data.duration.startDate,
                 renewalEndDate: renewalLease.data.duration.endDate,
-                monthlyRent: renewalLease.data.fees.monthlyRent,
+                rentAmount: renewalLease.data.fees.rentAmount,
                 createdBy: userId,
                 createdByName: userName,
                 actionRequired: true,
@@ -966,7 +966,7 @@ export class LeaseRenewalService {
 
         // Validate fee amounts if provided
         if (renewalData.fees) {
-          if (renewalData.fees.monthlyRent !== undefined && renewalData.fees.monthlyRent < 0) {
+          if (renewalData.fees.rentAmount !== undefined && renewalData.fees.rentAmount < 0) {
             return {
               success: false,
               error: 'Monthly rent cannot be negative',

@@ -285,7 +285,7 @@ export class LeasePdfService {
       endDate: lease.duration.endDate.toISOString(),
       leaseType: lease.type,
 
-      monthlyRent: lease.fees.monthlyRent,
+      rentAmount: lease.fees.rentAmount,
       securityDeposit: lease.fees.securityDeposit,
       rentDueDay: lease.fees.rentDueDay,
       currency: lease.fees.currency,

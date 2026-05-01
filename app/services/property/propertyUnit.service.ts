@@ -4,6 +4,7 @@ import { t } from '@shared/languages';
 import { QueueFactory } from '@services/queue';
 import { PropertyCache } from '@caching/property.cache';
 import { PropertyUnitCsvProcessor } from '@services/csv';
+import { LeaseStatus } from '@interfaces/lease.interface';
 import { EventTypes } from '@interfaces/events.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -372,8 +373,33 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
     }
 
+    const unitObj = unit.toObject ? unit.toObject() : { ...unit };
+    let resolvedLease =
+      typeof unitObj.currentLease === 'object' && unitObj.currentLease !== null
+        ? unitObj.currentLease
+        : null;
+
+    if (!resolvedLease) {
+      const activeLease = await this.leaseDAO.findFirst({
+        cuid,
+        'property.unitId': unit._id,
+        status: LeaseStatus.ACTIVE,
+        deletedAt: null,
+      });
+      if (activeLease) {
+        resolvedLease = {
+          luid: activeLease.luid,
+          leaseNumber: activeLease.leaseNumber,
+          status: activeLease.status,
+          duration: activeLease.duration,
+          fees: activeLease.fees,
+          tenantId: activeLease.tenantId,
+        };
+      }
+    }
+
     return {
-      data: unit,
+      data: { ...unitObj, currentLease: resolvedLease },
       success: true,
       message: t('propertyUnit.success.unitRetrieved'),
     };
@@ -425,8 +451,43 @@ export class PropertyUnitService {
     };
 
     const units = await this.propertyDAO.getPropertyUnits(property.id, opts);
+
+    const unitIds = units.items.map((u: any) => (u.toObject ? u.toObject() : u)._id);
+    const activeLeases = unitIds.length
+      ? await this.leaseDAO.list(
+          {
+            cuid,
+            'property.unitId': { $in: unitIds },
+            status: LeaseStatus.ACTIVE,
+            deletedAt: null,
+          },
+          { limit: unitIds.length }
+        )
+      : { items: [] };
+
+    const leaseByUnitId = new Map(
+      (activeLeases.items ?? []).map((l: any) => [l.property?.unitId?.toString(), l])
+    );
+
+    const enrichedItems = units.items.map((unit: any) => {
+      const unitObj = unit.toObject ? unit.toObject() : { ...unit };
+      const activeLease = leaseByUnitId.get(unitObj._id.toString());
+      if (activeLease && !unitObj.currentLease) {
+        unitObj.currentLease = {
+          luid: activeLease.luid,
+          leaseNumber: activeLease.leaseNumber,
+          status: activeLease.status,
+          duration: activeLease.duration,
+          fees: activeLease.fees,
+          tenantId: activeLease.tenantId,
+        };
+        unitObj.status = 'occupied';
+      }
+      return unitObj;
+    });
+
     return {
-      data: units,
+      data: { items: enrichedItems, pagination: units.pagination },
       success: true,
       message: t('propertyUnit.success.unitsRetrieved'),
     };
@@ -710,13 +771,25 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
     }
 
-    // Business Rule: Cannot archive unit with active lease
-    if (unit.currentLease) {
+    // Business Rule: Cannot archive unit with active or pending leases
+    // Query LeaseDAO directly instead of relying on unit.currentLease (which can be stale)
+    const blockingLeases = await this.leaseDAO.list(
+      {
+        cuid,
+        'property.unitId': unit._id,
+        status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
+        deletedAt: null,
+      },
+      {},
+      true
+    );
+
+    if (blockingLeases.items.length > 0) {
       throw new ValidationRequestError({
-        message: 'Cannot archive unit with active lease',
+        message: 'Cannot archive unit with active or pending leases',
         errorInfo: {
           unit: [
-            'This unit has an active lease. Please terminate or cancel the lease before archiving the unit.',
+            `This unit has ${blockingLeases.items.length} active or pending lease(s). Terminate or cancel before archiving.`,
           ],
         },
       });

@@ -123,6 +123,10 @@ export const NotificationMessages = {
       title: 'Payment Refunded',
       message: 'A refund of {{amount}} has been issued',
     },
+    cancelled: {
+      title: 'Payment Cancelled',
+      message: 'A payment of {{amount}} has been cancelled by your property manager.',
+    },
   },
 
   maintenance: {
@@ -252,7 +256,8 @@ export type NotificationMessageKey =
   | 'payment.requested'
   | 'payment.succeeded'
   | 'payment.failed'
-  | 'payment.refunded';
+  | 'payment.refunded'
+  | 'payment.cancelled';
 
 /**
  * Helper function to get formatted notification message by key.

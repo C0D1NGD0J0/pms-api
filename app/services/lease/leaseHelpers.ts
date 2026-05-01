@@ -4,7 +4,11 @@ import { envVariables } from '@shared/config';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { IClientDocument } from '@interfaces/client.interface';
-import { proRateLastMonth, proRateAmount } from '@utils/financial.utils';
+import { computeLeaseMonthlyFees, proRateLastMonth, proRateAmount } from '@utils/financial.utils';
+// Pro-ration logic lives in the canonical financial utility.
+// Re-exported here so existing call sites need no changes.
+export { proRateAmount as calculateProRatedAmount } from '@utils/financial.utils';
+export { computeLeaseMonthlyFees } from '@utils/financial.utils';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
 import {
@@ -145,7 +149,7 @@ export const validateLeaseReadyForActivation = (lease: ILeaseDocument): void => 
   }
 
   // Check rent amount
-  if (!lease.fees?.monthlyRent || lease.fees.monthlyRent <= 0) {
+  if (!lease.fees?.rentAmount || lease.fees.rentAmount <= 0) {
     errors.rentAmount = ['Monthly rent amount is required and must be greater than 0'];
   }
 
@@ -894,19 +898,9 @@ export const fetchLeaseByLuid = async (
  * Calculate financial summary for a lease
  */
 export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
-  const baseRent = lease.fees.monthlyRent;
-  const petMonthlyFee = lease.petPolicy?.monthlyFee || 0;
-  const petDeposit = lease.petPolicy?.deposit || 0;
-  const securityDeposit = lease.fees.securityDeposit;
+  const { baseRent, managementFee, petMonthlyFee, petDeposit, securityDeposit, totalMonthlyRent } =
+    computeLeaseMonthlyFees(lease);
   const currency = lease.fees.currency || 'USD';
-
-  // Management fee lives on the property; the lease flag controls whether it's billed to the tenant.
-  const managementFee = lease.includeManagementFee
-    ? Number((lease as any).propertyInfo?.fees?.managementFees ?? 0)
-    : 0;
-
-  // Total recurring monthly charge = base rent + pet monthly fee + management fee
-  const totalMonthlyRent = baseRent + petMonthlyFee + managementFee;
 
   const now = new Date();
   const startDate = new Date(lease.duration.startDate);
@@ -920,7 +914,7 @@ export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
   const proRatedManagementFee =
     managementFee > 0 ? proRateAmount(managementFee, startDate).amount : 0;
 
-  // First payment = pro-rated base rent + pro-rated management fee (if any)
+  // First payment = pro-rated base rent + pro-rated management fee (if opted in)
   //               + pet monthly fee (flat, first month) + pet deposit + security deposit
   const firstPaymentCents =
     proRated.amount + proRatedManagementFee + petMonthlyFee + petDeposit + securityDeposit;
@@ -931,10 +925,13 @@ export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
   const startMonth = startDate.toLocaleString('en-US', { month: 'short' });
 
   return {
-    monthlyRent: MoneyUtils.formatCurrency(totalMonthlyRent, currency),
-    monthlyRentRaw: totalMonthlyRent,
+    rentAmount: MoneyUtils.formatCurrency(totalMonthlyRent, currency),
+    rentAmountRaw: totalMonthlyRent,
+    baseRentRaw: baseRent,
     petFee: petMonthlyFee > 0 ? MoneyUtils.formatCurrency(petMonthlyFee, currency) : undefined,
     petFeeRaw: petMonthlyFee,
+    petDeposit: petDeposit > 0 ? MoneyUtils.formatCurrency(petDeposit, currency) : undefined,
+    petDepositRaw: petDeposit,
     managementFee:
       managementFee > 0 ? MoneyUtils.formatCurrency(managementFee, currency) : undefined,
     managementFeeRaw: managementFee,
@@ -945,6 +942,7 @@ export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
     lateFeeAmount: lease.fees.lateFeeAmount,
     lateFeeDays: lease.fees.lateFeeDays,
     lateFeeType: lease.fees.lateFeeType,
+    lateFeePercentage: lease.fees.lateFeePercentage,
     acceptedPaymentMethod: lease.fees.acceptedPaymentMethod,
     totalExpected: totalMonthlyRent * monthsElapsed,
     totalPaid: 0,
@@ -996,9 +994,7 @@ export const calculateNextPaymentDate = (rentDueDay: number, startDate: Date): D
   return nextPayment;
 };
 
-// Pro-ration logic lives in the canonical financial utility.
-// Re-exported here so existing call sites need no changes.
-export { proRateAmount as calculateProRatedAmount } from '@utils/financial.utils';
+export type { LeaseMonthlyFees } from '@utils/financial.utils';
 
 /**
  * Get user permissions for a lease based on role
@@ -1197,7 +1193,7 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
       moveInDate: renewalStartDate.toISOString().split('T')[0],
     },
     fees: {
-      monthlyRent: lease.fees?.monthlyRent || 0,
+      rentAmount: lease.fees?.rentAmount || 0,
       currency: lease.fees?.currency || 'USD',
       rentDueDay: lease.fees?.rentDueDay || 1,
       securityDeposit: lease.fees?.securityDeposit || 0,

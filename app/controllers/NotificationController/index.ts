@@ -51,6 +51,33 @@ export class NotificationController {
     });
   };
 
+  markAllNotificationsAsRead = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const userId = req.context?.currentuser?.sub;
+
+    if (!userId) {
+      throw new UnauthorizedError({ message: 'User not authenticated' });
+    }
+
+    if (req.context.currentuser.client.cuid !== cuid) {
+      throw new BadRequestError({ message: 'Invalid client context' });
+    }
+
+    const result = await this.notificationService.markAllAsRead(userId, cuid);
+    if (!result.success) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: result.data,
+      message: t('notification.success.all_marked_as_read'),
+    });
+  };
+
   getMyNotificationsStream = async (req: AppRequest, res: Response): Promise<void> => {
     try {
       const { cuid } = req.params;

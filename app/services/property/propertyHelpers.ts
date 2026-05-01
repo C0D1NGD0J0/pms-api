@@ -158,7 +158,7 @@ export const validateOccupancyStatusChange = (
     existingProperty.occupancyStatus !== 'occupied'
   ) {
     // Check if rental amount is set
-    const hasRentalAmount = existingProperty.fees?.rentalAmount || updateData.fees?.rentalAmount;
+    const hasRentalAmount = existingProperty.fees?.rentAmount || updateData.fees?.rentAmount;
     if (!hasRentalAmount) {
       errors.push('Occupied properties must have a rental amount');
     }

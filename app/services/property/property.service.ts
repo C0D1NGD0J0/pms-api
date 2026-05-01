@@ -14,21 +14,22 @@ import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import ROLES, { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
 import {
-  PropertyUnitDAO,
-  SubscriptionDAO,
-  PropertyDAO,
-  ProfileDAO,
-  ClientDAO,
-  LeaseDAO,
-  UserDAO,
-} from '@dao/index';
-import {
   ValidationRequestError,
   InvalidRequestError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
 } from '@shared/customErrors';
+import {
+  PropertyUnitDAO,
+  SubscriptionDAO,
+  PropertyDAO,
+  ProfileDAO,
+  PaymentDAO,
+  ClientDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   ExtractedMediaFile,
   ISuccessReturnData,
@@ -51,6 +52,7 @@ import {
   PROPERTY_APPROVAL_ROLES,
   createSafeMongoUpdate,
   convertUserRoleToEnum,
+  getCurrencyForCountry,
   PROPERTY_STAFF_ROLES,
   getRequestDuration,
   calcOccupancyRate,
@@ -87,10 +89,10 @@ interface IConstructor {
   queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
+  paymentDAO: PaymentDAO;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
-  paymentDAO: any;
 }
 
 export class PropertyService {
@@ -111,7 +113,7 @@ export class PropertyService {
   private readonly leaseDAO: LeaseDAO;
   private readonly notificationService: NotificationService;
   private readonly subscriptionDAO: SubscriptionDAO;
-  private readonly paymentDAO: any;
+  private readonly paymentDAO: PaymentDAO;
 
   constructor({
     clientDAO,
@@ -455,6 +457,13 @@ export class PropertyService {
         });
       }
 
+      if (cleanPropertyData.address?.country) {
+        cleanPropertyData.fees = cleanPropertyData.fees ?? {};
+        cleanPropertyData.fees.currency = getCurrencyForCountry(
+          cleanPropertyData.address.country
+        ) as any;
+      }
+
       const property = await this.propertyDAO.createProperty(
         {
           ...cleanPropertyData,
@@ -550,10 +559,10 @@ export class PropertyService {
     }
 
     if (propertyData.occupancyStatus === 'occupied') {
-      const rentalAmount =
-        typeof fees?.rentalAmount === 'string' ? parseFloat(fees.rentalAmount) : fees?.rentalAmount;
+      const rentAmount =
+        typeof fees?.rentAmount === 'string' ? parseFloat(fees.rentAmount) : fees?.rentAmount;
 
-      if (!rentalAmount || rentalAmount <= 0) {
+      if (!rentAmount || rentAmount <= 0) {
         errors.push('Occupied properties must have a valid rental amount');
       }
     }
@@ -742,13 +751,21 @@ export class PropertyService {
       }
 
       if (filters.searchTerm && filters.searchTerm.trim()) {
-        filter.$or = [
+        const searchOr = [
           { name: { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
           { pid: { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
           { 'address.city': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
           { 'address.state': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
           { 'address.fullAddress': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
         ];
+
+        if (filter.$or) {
+          const approvalOr = filter.$or;
+          delete filter.$or;
+          filter.$and = [{ $or: approvalOr }, { $or: searchOr }];
+        } else {
+          filter.$or = searchOr;
+        }
       }
 
       if (filters.managedBy) {
@@ -765,6 +782,16 @@ export class PropertyService {
     };
 
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
+
+    const propertyIds = properties.items.map((p) => (p as any)._id);
+    const unitCounts = (propertyIds.length
+      ? await this.propertyUnitDAO.aggregate([
+          { $match: { propertyId: { $in: propertyIds } } },
+          { $group: { _id: '$propertyId', count: { $sum: 1 } } },
+        ])
+      : []) as unknown as { _id: Types.ObjectId; count: number }[];
+    const unitCountMap = new Map(unitCounts.map((u) => [u._id.toString(), u.count]));
+
     const department = currentuser.employeeInfo?.department as EmployeeDepartment | undefined;
     const itemsWithPreview = properties.items.map((property) => {
       const propertyObj = property.toObject ? property.toObject() : property;
@@ -774,6 +801,10 @@ export class PropertyService {
         ...propertyObj,
         ...(pendingChangesPreview && { pendingChangesPreview }),
         fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
+        unitInfo: {
+          currentUnits: unitCountMap.get(propertyObj._id.toString()) ?? 0,
+          maxAllowedUnits: propertyObj.maxAllowedUnits ?? 0,
+        },
       };
 
       return filterPropertyByDepartment(enriched as IPropertyDocument, department);
@@ -986,6 +1017,35 @@ export class PropertyService {
     // Parse money fields
     if (cleanUpdateData.fees) {
       cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
+    }
+
+    // Keep currency in sync with country when address changes — but block if active leases exist
+    if (cleanUpdateData.address?.country) {
+      const newCurrency = getCurrencyForCountry(cleanUpdateData.address.country);
+      const existingCurrency = (property.fees as any)?.currency;
+
+      if (newCurrency !== existingCurrency) {
+        const activeLeaseCount = await this.leaseDAO.countDocuments({
+          'property.id': property._id,
+          cuid,
+          deletedAt: null,
+          status: {
+            $in: [
+              LeaseStatus.ACTIVE,
+              LeaseStatus.PENDING_SIGNATURE,
+              LeaseStatus.READY_FOR_SIGNATURE,
+            ],
+          },
+        });
+        if (activeLeaseCount > 0) {
+          throw new BadRequestError({
+            message: 'Cannot change property currency while active leases exist.',
+          });
+        }
+      }
+
+      cleanUpdateData.fees = cleanUpdateData.fees ?? ({} as any);
+      cleanUpdateData.fees!.currency = newCurrency as any;
     }
 
     // Sanitize HTML content
@@ -1543,7 +1603,7 @@ export class PropertyService {
     unitInfo: any,
     property: any
   ): Promise<{
-    monthlyRent: number;
+    rentAmount: number;
     annualRevenue: number;
     occupancyRate: number;
     monthlyNetIncome: number;
@@ -1565,15 +1625,14 @@ export class PropertyService {
 
       // Sum rent + pet monthly fee from each active lease
       const monthlyGrossIncome = activeLeases.reduce((sum: number, lease: any) => {
-        const rent = lease.fees?.monthlyRent || 0;
+        const rent = lease.fees?.rentAmount || 0;
         const petFee = lease.petPolicy?.monthlyFee || 0;
         return sum + rent + petFee;
       }, 0);
 
       // Monthly expenses from property-level fees (all stored in cents)
       const monthlyManagementFees = property?.fees?.managementFees || 0;
-      const monthlyTax = property?.fees?.taxAmount || 0;
-      const monthlyExpenses = monthlyManagementFees + monthlyTax;
+      const monthlyExpenses = monthlyManagementFees;
 
       // Net income = gross income minus actual known expenses
       const monthlyNetIncome = Math.max(0, monthlyGrossIncome - monthlyExpenses);
@@ -1587,7 +1646,7 @@ export class PropertyService {
       const occupancyRate = calcOccupancyRate(occupiedUnits, totalUnits);
 
       return {
-        monthlyRent: monthlyGrossIncome,
+        rentAmount: monthlyGrossIncome,
         annualRevenue,
         occupancyRate,
         monthlyNetIncome,
@@ -1595,7 +1654,7 @@ export class PropertyService {
     } catch (error) {
       this.log.error('Error calculating property metrics:', error);
       return {
-        monthlyRent: 0,
+        rentAmount: 0,
         annualRevenue: 0,
         occupancyRate: 0,
         monthlyNetIncome: 0,
@@ -1787,7 +1846,7 @@ export class PropertyService {
         address: string;
         propertyType: string;
         financialInfo?: {
-          monthlyRent?: number;
+          rentAmount?: number;
           securityDeposit?: number;
           currency?: string;
         };
@@ -1796,7 +1855,7 @@ export class PropertyService {
           unitNumber: string;
           status: string;
           financialInfo?: {
-            monthlyRent?: number;
+            rentAmount?: number;
             securityDeposit?: number;
             currency?: string;
           };
@@ -1910,7 +1969,7 @@ export class PropertyService {
         // Add financial info if available
         if (propertyObj.fees) {
           result.financialInfo = {
-            monthlyRent: propertyObj.fees.monthlyRent,
+            rentAmount: propertyObj.fees.rentAmount,
             securityDeposit: propertyObj.fees.securityDeposit,
             currency: propertyObj.fees.currency || 'USD',
           };
@@ -1934,14 +1993,14 @@ export class PropertyService {
               // Add unit financial info if available (units can override property fees)
               if (unitObj.fees) {
                 unitData.financialInfo = {
-                  monthlyRent: unitObj.fees.monthlyRent,
+                  rentAmount: unitObj.fees.rentAmount,
                   securityDeposit: unitObj.fees.securityDeposit,
                   currency: unitObj.fees.currency || propertyObj.fees?.currency || 'USD',
                 };
               } else if (propertyObj.fees) {
                 // Use property fees as fallback
                 unitData.financialInfo = {
-                  monthlyRent: propertyObj.fees.monthlyRent,
+                  rentAmount: propertyObj.fees.rentAmount,
                   securityDeposit: propertyObj.fees.securityDeposit,
                   currency: propertyObj.fees.currency || 'USD',
                 };

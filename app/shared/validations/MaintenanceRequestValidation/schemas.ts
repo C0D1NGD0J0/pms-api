@@ -263,6 +263,7 @@ export const MaintenanceSchemas = {
     puid: z.string().optional(),
     vendorUid: z.string().optional(),
     tenantUid: z.string().optional(),
+    managedByUid: z.string().optional(),
     isBillable: z.coerce.boolean().optional(),
     dateFrom: z.string().optional(),
     dateTo: z.string().optional(),

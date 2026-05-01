@@ -16,7 +16,7 @@ export const InvoiceSchema = new Schema(
     submittedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     submittedAt: { type: Date, required: true },
     amountInCents: { type: Number, required: true, min: 0 },
-    currency: { type: String, default: 'usd', minlength: 3, maxlength: 3 },
+    currency: { type: String, default: 'USD', uppercase: true, minlength: 3, maxlength: 3 },
     description: { type: String, required: true, maxlength: 500 },
     lineItems: { type: [InvoiceLineItemSchema], default: undefined },
     attachmentUrl: { type: String },
@@ -37,6 +37,12 @@ export const InvoiceSchema = new Schema(
     },
     externalInvoiceId: { type: String },
     externalInvoiceUrl: { type: String },
+    vendorPayoutStatus: {
+      type: String,
+      enum: ['pending', 'paid'],
+      default: 'pending',
+    },
+    vendorPaidAt: { type: Date },
   },
   { _id: false }
 );

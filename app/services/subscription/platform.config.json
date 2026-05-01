@@ -4,6 +4,11 @@
   "lastUpdated": "2026-02-11",
   "description": "Platform configuration for subscription plans and payment gateway settings",
 
+  "manualPaymentRecords": {
+    "freeQuotaPerPeriod": 25,
+    "overageFeeCents": 95
+  },
+
   "paymentGateways": {
     "stripe": {
       "provider": "stripe",
@@ -12,9 +17,14 @@
       "processingFee": {
         "percentRate": 2.9,
         "fixedFeeCents": 30,
-        "description": "Standard Stripe rate (2.9% + $0.30). Verify with your Stripe account dashboard."
+        "description": "Card rate (2.9% + $0.30). Used for card payments and as a fallback estimate. Verify with your Stripe account dashboard."
       },
-      "note": "This is an estimate for budgeting. Actual fees will be fetched from Stripe Balance Transaction API after payment and updated via webhook.",
+      "acssProcessingFee": {
+        "percentRate": 0,
+        "fixedFeeCents": 80,
+        "description": "ACSS debit (Canadian bank debit / PAD) flat fee of $0.80 CAD per transaction. Much cheaper than card for large rent amounts."
+      },
+      "note": "processingFee applies to card payments. acssProcessingFee applies when the payment method is acss_debit. Actual fees will be fetched from Stripe Balance Transaction API after payment and updated via webhook.",
       "applicationFeeSettings": {
         "payerType": "application",
         "description": "Platform pays Stripe fees from application fee (controller.fees.payer = 'application')"
@@ -57,7 +67,7 @@
           "savingsPercent": 0
         }
       },
-      "transactionFeePercent": 3.5,
+      "transactionFeePercent": 4.5,
       "isCustomPricing": false,
       "seatPricing": {
         "includedSeats": 3,
@@ -105,7 +115,7 @@
       "isFeatured": true,
       "featuredBadge": "Most Popular",
       "displayOrder": 2,
-      "transactionFeePercent": 3.0,
+      "transactionFeePercent": 4.0,
       "isCustomPricing": false,
       "seatPricing": {
         "includedSeats": 10,
@@ -156,7 +166,7 @@
       "ctaText": "Start 14-Day Free Trial",
       "isFeatured": false,
       "displayOrder": 3,
-      "transactionFeePercent": 2.8,
+      "transactionFeePercent": 3.5,
       "isCustomPricing": false,
       "seatPricing": {
         "includedSeats": 25,

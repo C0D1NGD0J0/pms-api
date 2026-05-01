@@ -271,4 +271,18 @@ export const UpdateTenantProfileSchema = z.object({
         .optional(),
     })
     .optional(),
+  settings: z
+    .object({
+      notifications: z
+        .object({
+          emailNotifications: z.boolean().optional(),
+          inAppNotifications: z.boolean().optional(),
+          maintenance: z.boolean().optional(),
+          payments: z.boolean().optional(),
+          system: z.boolean().optional(),
+          announcements: z.boolean().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });

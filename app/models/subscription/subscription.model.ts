@@ -109,6 +109,10 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     currentProperties: { type: Number, default: 0 },
     pendingDowngradeAt: { type: Date, index: true },
     currentUnits: { type: Number, default: 0 },
+    manualRecords: {
+      countThisPeriod: { type: Number, default: 0 },
+      periodStart: { type: Date, default: Date.now },
+    },
     canceledAt: { type: Date },
   },
   {

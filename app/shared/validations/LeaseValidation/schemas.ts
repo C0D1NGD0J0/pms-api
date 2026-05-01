@@ -89,7 +89,7 @@ export const ESignatureStatusEnum = z.enum(['draft', 'sent', 'signed', 'declined
 
 // Nested Object Schemas
 export const LeaseFeesSchema = z.object({
-  monthlyRent: z.coerce.number().positive('Monthly rent must be a positive number'),
+  rentAmount: z.coerce.number().positive('Monthly rent must be a positive number'),
   currency: z.string().length(3, 'Currency must be a 3-letter code').default('USD'),
   rentDueDay: z.coerce.number().int().min(1, 'Rent due day must be between 1-31').max(31),
   securityDeposit: z.coerce.number().min(0, 'Security deposit must be non-negative'),
@@ -198,7 +198,7 @@ export const RenewLeaseSchema = z.object({
 
   fees: z
     .object({
-      monthlyRent: z
+      rentAmount: z
         .number({ invalid_type_error: 'Monthly rent must be a number' })
         .min(0, 'Monthly rent must be a positive number')
         .optional(),
@@ -392,7 +392,7 @@ export const UpdateLeaseSchema = z
   .refine(
     (data) => {
       // Validate fee changes are reasonable
-      if (data.fees?.monthlyRent !== undefined && data.fees.monthlyRent <= 0) {
+      if (data.fees?.rentAmount !== undefined && data.fees.rentAmount <= 0) {
         return false;
       }
       if (data.fees?.securityDeposit !== undefined && data.fees.securityDeposit < 0) {
@@ -412,6 +412,7 @@ export const FilterLeasesSchema = z.object({
       status: z.string().optional(),
       cuid: z.string().optional(),
       search: z.string().max(100, 'Search term must be less than 100 characters').optional(),
+      unitPuid: z.string().optional(),
     })
     .optional(),
   pagination: z
@@ -528,7 +529,7 @@ export const LeasePreviewSchema = z.object({
   leaseType: z.string().optional(),
   startDate: z.union([z.string(), z.coerce.date()]).optional(),
   endDate: z.union([z.string(), z.coerce.date()]).optional(),
-  monthlyRent: z.number().min(0).optional(),
+  rentAmount: z.number().min(0).optional(),
   securityDeposit: z.number().min(0).optional(),
   rentDueDay: z.number().int().min(1).max(31).optional(),
   currency: z.string().length(3).optional(),

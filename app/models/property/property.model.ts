@@ -186,11 +186,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
     },
     fees: {
       currency: { type: String, required: true, default: 'USD' },
-      taxAmount: {
-        default: 0,
-        type: Number,
-      },
-      rentalAmount: {
+      rentAmount: {
         default: 0,
         type: Number,
       },
@@ -506,23 +502,21 @@ PropertySchema.methods.getAuthorizationStatus = function (this: IPropertyDocumen
  */
 PropertySchema.methods.calculateFees = function () {
   // Monthly fees (in cents - stored values)
-  const rentalAmount = this.fees?.rentalAmount || 0;
+  const rentAmount = this.fees?.rentAmount || 0;
   const managementFees = this.fees?.managementFees || 0;
-  const taxAmount = this.fees?.taxAmount || 0;
-  const totalMonthly = rentalAmount + managementFees + taxAmount;
+  const totalMonthly = rentAmount + managementFees;
 
   // Annual calculation
   const totalAnnual = totalMonthly * 12;
 
   // Management fee percentage (if rental amount exists)
   const managementFeePercentage =
-    rentalAmount > 0 ? ((managementFees / rentalAmount) * 100).toFixed(2) : '0.00';
+    rentAmount > 0 ? ((managementFees / rentAmount) * 100).toFixed(2) : '0.00';
 
   return {
     monthly: {
-      rental: rentalAmount, // cents
+      rental: rentAmount, // cents
       management: managementFees, // cents
-      tax: taxAmount, // cents
       total: totalMonthly, // cents
     },
     annual: {

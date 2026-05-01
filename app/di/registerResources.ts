@@ -18,6 +18,7 @@ import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import {
   EventsRegistryCache,
+  NotificationCache,
   IdempotencyCache,
   PropertyCache,
   VendorCache,
@@ -109,6 +110,7 @@ import {
 import {
   MaintenanceRequestService,
   PropertyApprovalService,
+  InvoiceTemplateRenderer,
   InvitationCsvProcessor,
   subscriptionPlanConfig,
   LeaseSignatureService,
@@ -131,6 +133,7 @@ import {
   PropertyService,
   BoldSignService,
   LeasePdfService,
+  InvoiceService,
   MetricsService,
   PaymentService,
   ProfileService,
@@ -193,6 +196,8 @@ const ServiceResources = {
   mailerService: asClass(MailService).singleton(),
   leaseDocumentService: asClass(LeaseDocumentService).singleton(),
   leasePdfService: asClass(LeasePdfService).singleton(),
+  invoiceTemplateRenderer: asClass(InvoiceTemplateRenderer).singleton(),
+  invoiceService: asClass(InvoiceService).singleton(),
   leaseRenewalService: asClass(LeaseRenewalService).singleton(),
   leaseSignatureService: asClass(LeaseSignatureService).singleton(),
   leaseService: asClass(LeaseService).singleton(),
@@ -256,6 +261,7 @@ const CacheResources = {
   userCache: asClass(UserCache).singleton(),
   vendorCache: asClass(VendorCache).singleton(),
   idempotencyCache: asClass(IdempotencyCache).singleton(),
+  notificationCache: asClass(NotificationCache).singleton(),
 };
 
 const WorkerResources = {

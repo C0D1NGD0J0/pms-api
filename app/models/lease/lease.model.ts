@@ -152,7 +152,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       },
     },
     fees: {
-      monthlyRent: {
+      rentAmount: {
         type: Number,
         required: [true, 'Monthly rent is required'],
         min: [0, 'Monthly rent cannot be negative'],
@@ -653,7 +653,7 @@ LeaseSchema.virtual('isActive').get(function (this: ILeaseDocument) {
  * calculates total monthly fees including rent and pet fees
  */
 LeaseSchema.virtual('totalMonthlyFees').get(function (this: ILeaseDocument) {
-  let total = this.fees?.monthlyRent || 0;
+  let total = this.fees?.rentAmount || 0;
   if (this.petPolicy?.monthlyFee) {
     total += this.petPolicy.monthlyFee;
   }
@@ -690,7 +690,7 @@ LeaseSchema.virtual('propertyInfo', {
   justOne: true,
   options: {
     select:
-      'pid name address propertyType specifications owner maxAllowedUnits totalUnits managedBy',
+      'pid name address propertyType specifications owner maxAllowedUnits totalUnits managedBy fees',
   },
 });
 
@@ -843,9 +843,9 @@ LeaseSchema.methods.softDelete = async function (userId: any) {
 LeaseSchema.methods.calculateFees = function (options?: { daysLate?: number }) {
   const daysLate = options?.daysLate || 0;
 
-  const monthlyRent = this.fees?.monthlyRent || 0;
+  const rentAmount = this.fees?.rentAmount || 0;
   const petMonthlyFee = this.petPolicy?.monthlyFee || 0;
-  const totalMonthly = monthlyRent + petMonthlyFee;
+  const totalMonthly = rentAmount + petMonthlyFee;
 
   const securityDeposit = this.fees?.securityDeposit || 0;
   const petDeposit = this.petPolicy?.deposit || 0;
@@ -856,15 +856,15 @@ LeaseSchema.methods.calculateFees = function (options?: { daysLate?: number }) {
 
   if (daysLate >= gracePeriod) {
     if (this.fees?.lateFeeType === 'percentage' && this.fees?.lateFeePercentage) {
-      lateFee = calcLateFee(monthlyRent, 'percentage', this.fees.lateFeePercentage);
+      lateFee = calcLateFee(rentAmount, 'percentage', this.fees.lateFeePercentage);
     } else {
-      lateFee = calcLateFee(monthlyRent, 'fixed', this.fees?.lateFeeAmount || 0);
+      lateFee = calcLateFee(rentAmount, 'fixed', this.fees?.lateFeeAmount || 0);
     }
   }
 
   return {
     monthly: {
-      rent: monthlyRent,
+      rent: rentAmount,
       petFee: petMonthlyFee,
       total: totalMonthly,
     },

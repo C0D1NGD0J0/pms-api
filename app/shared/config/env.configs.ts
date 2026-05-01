@@ -78,6 +78,7 @@ class EnvVariables {
     REDIRECT_URL: string;
     WEBHOOK_SECRET: string;
     CONNECT_WEBHOOK_SECRET: string;
+    ACSS_PER_TXN_LIMIT_CAD: number;
   };
   public BOLDSIGN: {
     API_KEY: string;
@@ -173,6 +174,9 @@ class EnvVariables {
       REDIRECT_URL: process.env.STRIPE_REDIRECT_URL || '',
       WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
       CONNECT_WEBHOOK_SECRET: process.env.STRIPE_CONNECT_WEBHOOK_SECRET || '',
+      // Default: $10,000 CAD (in cents). Set STRIPE_ACSS_PER_TXN_LIMIT_CAD in Railway
+      // to the actual value from Stripe dashboard → Payments → ACSS Debit settings.
+      ACSS_PER_TXN_LIMIT_CAD: Number(process.env.STRIPE_ACSS_PER_TXN_LIMIT_CAD) || 1_000_000,
     };
     this.BOLDSIGN = {
       API_KEY: process.env.BOLDSIGN_API_KEY || '',

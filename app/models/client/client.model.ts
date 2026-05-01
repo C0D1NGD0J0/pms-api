@@ -3,6 +3,7 @@ import { Schema, model } from 'mongoose';
 import { isValidPhoneNumber } from '@utils/index';
 import { IClientDocument } from '@interfaces/index';
 import uniqueValidator from 'mongoose-unique-validator';
+import { CURRENCIES } from '@interfaces/utils.interface';
 
 const ClientSchema = new Schema<IClientDocument>(
   {
@@ -243,6 +244,13 @@ const ClientSchema = new Schema<IClientDocument>(
           },
           message: 'Invalid language code',
         },
+      },
+      defaultCurrency: {
+        type: String,
+        uppercase: true,
+        trim: true,
+        default: 'USD',
+        enum: Object.values(CURRENCIES),
       },
     },
     suspension: {

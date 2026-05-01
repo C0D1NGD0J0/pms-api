@@ -258,6 +258,20 @@ export class SubscriptionPlanConfig {
   }
 
   /**
+   * Free manual payment records allowed per billing period.
+   */
+  public getManualRecordQuota(): number {
+    return platformConfig.manualPaymentRecords?.freeQuotaPerPeriod ?? 25;
+  }
+
+  /**
+   * Per-record fee (in cents) charged when a PM exceeds the free quota.
+   */
+  public getManualRecordOverageFeeCents(): number {
+    return platformConfig.manualPaymentRecords?.overageFeeCents ?? 95;
+  }
+
+  /**
    * Get payment gateway config
    */
   public getPaymentGatewayConfig(provider: string) {

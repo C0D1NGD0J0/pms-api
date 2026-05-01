@@ -4,6 +4,7 @@ import { t } from '@shared/languages';
 import { QueueFactory } from '@services/queue';
 import { UserCache } from '@caching/user.cache';
 import { EmailQueue, UserQueue } from '@queues/index';
+import { LeaseStatus } from '@interfaces/lease.interface';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { EventEmitterService, VendorService } from '@services/index';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
@@ -1474,7 +1475,7 @@ export class UserService {
               leaseStatus: activeLease.status,
               propertyName: propertyAddress, // Frontend expects propertyName
               propertyAddress, // Keep for backwards compatibility
-              monthlyRent: activeLease.fees?.monthlyRent, // Keep in cents - frontend formatCurrency will convert
+              rentAmount: activeLease.fees?.rentAmount, // Keep in cents - frontend formatCurrency will convert
               rentStatus,
             };
           } else {
@@ -1639,21 +1640,20 @@ export class UserService {
         });
       }
 
-      // Fetch payment metrics and history using PaymentDAO (proper separation of concerns)
       const includeAll = !include || include.includes('all');
       const includePaymentHistory = includeAll || include.includes('payments');
-      const tenantId = (rawTenantDetails as any)._id?.toString();
+      const profileId = (rawTenantDetails as any).profileId?.toString();
+      const userId = (rawTenantDetails as any)._id?.toString();
 
-      if (tenantId) {
+      if (profileId || userId) {
         const [paymentData, maintenanceStats] = await Promise.all([
-          this.paymentDAO.getTenantPaymentMetrics(cuid, tenantId, {
+          this.paymentDAO.getTenantPaymentMetrics(cuid, profileId || userId!, {
             includeHistory: includePaymentHistory,
             historyLimit: 50,
           }),
-          this.maintenanceRequestDAO.getStats(cuid, { tenantUserId: tenantId }),
+          this.maintenanceRequestDAO.getStats(cuid, { tenantUserId: userId! }),
         ]);
 
-        // Update tenant metrics with payment and maintenance data
         rawTenantDetails.tenantMetrics = {
           totalMaintenanceRequests: maintenanceStats.total,
           currentRentStatus: rawTenantDetails.tenantMetrics?.currentRentStatus || 'no_lease',
@@ -1663,7 +1663,6 @@ export class UserService {
           averagePaymentDelay: paymentData.metrics.averagePaymentDelay,
         };
 
-        // Add payment history if requested
         if (includePaymentHistory) {
           rawTenantDetails.tenantInfo.paymentHistory = paymentData.payments;
         }
@@ -1686,7 +1685,10 @@ export class UserService {
           policies: (rawTenantDetails as any).policies || {},
           roles: ['tenant'],
           uid: (rawTenantDetails as any).uid || '',
-          id: (rawTenantDetails as any)._id?.toString() || '',
+          id:
+            (rawTenantDetails as any).profileId?.toString() ||
+            (rawTenantDetails as any)._id?.toString() ||
+            '',
           isActive: (rawTenantDetails as any).isActive ?? true,
           userType: 'tenant' as const,
         },
@@ -1867,6 +1869,12 @@ export class UserService {
         }
       }
 
+      if (updateData.settings?.notifications) {
+        for (const [key, value] of Object.entries(updateData.settings.notifications)) {
+          profileUpdateFields[`settings.notifications.${key}`] = value;
+        }
+      }
+
       if (Object.keys(profileUpdateFields).length > 0 && user.profile) {
         await this.profileDAO.updateById(user.profile._id.toString(), {
           $set: profileUpdateFields,
@@ -2022,6 +2030,36 @@ export class UserService {
         }
       }
 
+      // Check for active tenants if user is a PM/admin/manager
+      const PM_ROLES = ['super-admin', 'admin', 'manager'];
+      if (roles.some((r) => PM_ROLES.includes(r))) {
+        const managedPropsForGuard = await this.propertyDAO.getPropertiesByClientId(
+          cuid,
+          { managedBy: user._id.toString(), deletedAt: null },
+          { limit: 1000 }
+        );
+
+        if (managedPropsForGuard.items.length > 0) {
+          const propertyIds = managedPropsForGuard.items.map((p: any) => p._id);
+          const activeTenantLeases = await this.leaseDAO.list(
+            {
+              cuid,
+              'property.id': { $in: propertyIds },
+              status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
+              deletedAt: null,
+            },
+            {},
+            true
+          );
+
+          if (activeTenantLeases.items.length > 0) {
+            throw new BadRequestError({
+              message: `Cannot archive user. They manage properties with ${activeTenantLeases.items.length} active lease(s). Reassign properties or terminate leases first.`,
+            });
+          }
+        }
+      }
+
       const managedProperties = await this.propertyDAO.getPropertiesByClientId(
         cuid,
         { managedBy: user._id.toString(), deletedAt: null },
@@ -2161,16 +2199,32 @@ export class UserService {
         });
       }
 
+      // Build the disconnect $set — add former-tenant metadata when applicable
+      const disconnectFields: Record<string, any> = {
+        'cuids.$[elem].isConnected': false,
+      };
+
+      if (roles.includes('tenant')) {
+        const lastLeaseResult = await this.leaseDAO.list(
+          {
+            cuid,
+            tenantId: user._id,
+            status: {
+              $in: [LeaseStatus.EXPIRED, LeaseStatus.TERMINATED, LeaseStatus.CANCELLED],
+            },
+            deletedAt: null,
+          },
+          { sort: { 'duration.endDate': -1 }, limit: 1 }
+        );
+        disconnectFields['cuids.$[elem].isFormerTenant'] = true;
+        disconnectFields['cuids.$[elem].leaseExpiredAt'] =
+          (lastLeaseResult.items[0] as any)?.duration?.endDate || new Date();
+      }
+
       // Disconnect from THIS client (happens for both multi-tenant and single-tenant)
-      await this.userDAO.updateById(
-        user._id.toString(),
-        {
-          $set: { 'cuids.$[elem].isConnected': false },
-        },
-        {
-          arrayFilters: [{ 'elem.cuid': cuid }],
-        } as any
-      );
+      await this.userDAO.updateById(user._id.toString(), { $set: disconnectFields }, {
+        arrayFilters: [{ 'elem.cuid': cuid }],
+      } as any);
 
       await this.userCache.invalidateUserDetail(cuid, uid);
       await this.userCache.invalidateUserLists(cuid);
@@ -2326,12 +2380,30 @@ export class UserService {
         });
       }
 
+      // Look up the most recent ended lease so we can record when the tenant's lease expired
+      const lastLeaseResult = await this.leaseDAO.list(
+        {
+          cuid,
+          tenantId: user._id,
+          status: {
+            $in: [LeaseStatus.EXPIRED, LeaseStatus.TERMINATED, LeaseStatus.CANCELLED],
+          },
+          deletedAt: null,
+        },
+        { sort: { 'duration.endDate': -1 }, limit: 1 }
+      );
+      const leaseExpiredAt = (lastLeaseResult.items[0] as any)?.duration?.endDate || new Date();
+
       // 1. Disconnect tenant from this client (per-client only — no global soft delete,
       //    so the re-invite flow can find and reconnect the same user account)
       await this.userDAO.updateById(
         user._id.toString(),
         {
-          $set: { 'cuids.$[elem].isConnected': false },
+          $set: {
+            'cuids.$[elem].isConnected': false,
+            'cuids.$[elem].isFormerTenant': true,
+            'cuids.$[elem].leaseExpiredAt': leaseExpiredAt,
+          },
         },
         {
           arrayFilters: [{ 'elem.cuid': cuid }],
@@ -2341,6 +2413,8 @@ export class UserService {
       deactivationSummary.actions.push({
         action: 'tenant_disconnected_from_client',
         cuid,
+        isFormerTenant: true,
+        leaseExpiredAt,
         timestamp: new Date(),
       });
 

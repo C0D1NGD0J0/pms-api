@@ -1091,13 +1091,13 @@ export class ClientService {
 
       await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         type: NotificationTypeEnum.PAYMENT,
-        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: adminId,
         priority: NotificationPriorityEnum.HIGH,
         title: 'Payout Account Verified',
         message:
           'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
         cuid,
-        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: {},
       });
 

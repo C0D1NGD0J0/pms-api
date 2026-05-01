@@ -183,6 +183,9 @@ export class MailService {
           'maintenance'
         );
         break;
+      case MailType.PAYMENT_REQUEST_CREATED:
+        template = await this.buildTemplate('payment-request', emailData, 'payment');
+        break;
       case MailType.LEASE_PAYMENT_REMINDER:
         template = await this.buildTemplate('payment-reminder', emailData, 'lease');
         break;
@@ -350,6 +353,7 @@ export class MailService {
       [MailType.LEASE_SIGNOFF_REQUEST]: 'Lease Sign-off Request',
       [MailType.LEASE_ACTIVATED]: 'Your Lease is Now Active!',
       [MailType.LEASE_TERMINATED]: 'Lease Termination Notice',
+      [MailType.PAYMENT_REQUEST_CREATED]: 'New Payment Request',
       [MailType.LEASE_PAYMENT_REMINDER]: 'Rent Payment Reminder',
       [MailType.LEASE_ADMIN_UPDATED]: 'Your Lease Has Been Updated',
       [MailType.LEASE_ENDING_SOON]: 'Your Lease is Ending Soon',

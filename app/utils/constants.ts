@@ -71,6 +71,7 @@ export const JOB_NAME = {
   LEASE_ADMIN_UPDATED_JOB: 'leaseAdminUpdatedJob',
   CREATE_RENT_INVOICE_JOB: 'createRentInvoiceJob',
   RETRY_FAILED_INVOICE_JOB: 'retryFailedInvoiceJob',
+  PAYMENT_REQUEST_EMAIL_JOB: 'paymentRequestEmailJob',
   CANCEL_PAYMENT_JOB: 'cancelPaymentJob',
   ACCOUNT_DISCONNECTED_JOB: 'accountDisconnectedJob',
   VENDOR_TEAM_DISCONNECT_JOB: 'vendorTeamDisconnectJob',

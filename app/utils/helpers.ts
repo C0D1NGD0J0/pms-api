@@ -733,8 +733,8 @@ export const buildDotNotation = (obj: any, prefix = ''): Record<string, any> => 
  * @returns Safe MongoDB update object with dot notation for nested fields
  *
  * @example
- * // Input: { fees: { rentalAmount: 1200 }, name: "New Property" }
- * // Output: { "fees.rentalAmount": 1200, name: "New Property" }
+ * // Input: { fees: { rentAmount: 1200 }, name: "New Property" }
+ * // Output: { "fees.rentAmount": 1200, name: "New Property" }
  */
 export const createSafeMongoUpdate = (updateData: Record<string, any>): Record<string, any> => {
   const result: Record<string, any> = {};

@@ -261,7 +261,7 @@ export class MediaUploadService {
       resourceContext?: ResourceContext;
     }
   ): {
-    resourceName: 'property' | 'profile' | 'client' | 'lease' | 'maintenance';
+    resourceName: 'property' | 'profile' | 'client' | 'lease' | 'maintenance' | 'payment-invoice';
     resourceId: string;
     fieldName: string;
   } {
@@ -278,6 +278,14 @@ export class MediaUploadService {
         resourceName: 'profile',
         resourceId: context.primaryResourceId,
         fieldName: 'avatar',
+      };
+    }
+
+    if (fieldName.includes('invoiceDocument') || fieldName.startsWith('invoiceDocument.')) {
+      return {
+        resourceName: 'payment-invoice',
+        resourceId: context.primaryResourceId,
+        fieldName: 'invoiceDocument',
       };
     }
 
@@ -366,6 +374,8 @@ export class MediaUploadService {
       primaryResourceId: string;
       uploadedBy: string;
       resourceContext?: ResourceContext;
+      /** Optional field name override — used to route to a custom resourceName (e.g. 'invoiceDocument'). */
+      fieldName?: string;
     }
   ): Promise<MediaOperationResult> {
     try {
@@ -390,7 +400,7 @@ export class MediaUploadService {
 
       // Create ExtractedMediaFile object
       const file: ExtractedMediaFile = {
-        fieldName: 'document',
+        fieldName: context.fieldName ?? 'document',
         originalFileName: fileName,
         filename: fileName,
         path: tempPath,

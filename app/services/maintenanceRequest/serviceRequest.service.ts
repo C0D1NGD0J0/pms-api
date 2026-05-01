@@ -8,7 +8,6 @@ import { createLogger } from '@utils/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { EmailQueue } from '@queues/email.queue';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
-import { EventTypes } from '@interfaces/events.interface';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -16,6 +15,7 @@ import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import ROLES, { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
+import { MaintenanceVendorPaidPayload, EventTypes } from '@interfaces/events.interface';
 import {
   ISuccessReturnData,
   IPaginationQuery,
@@ -105,7 +105,41 @@ export class MaintenanceRequestService {
     this.propertyUnitDAO = propertyUnitDAO;
     this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.log = createLogger('MaintenanceRequestService');
+
+    this.emitterService.on(EventTypes.MAINTENANCE_VENDOR_PAID, this.handleVendorPaid.bind(this));
   }
+
+  /**
+   * When PaymentService emits MAINTENANCE_VENDOR_PAID after a successful Stripe transfer,
+   * stamp the MR's invoice sub-document with vendorPayoutStatus: 'paid' and vendorPaidAt.
+   */
+  private handleVendorPaid = async (payload: MaintenanceVendorPaidPayload): Promise<void> => {
+    try {
+      const mr = await this.maintenanceRequestDAO.findByMruid(payload.mruid);
+      if (!mr) {
+        this.log.warn(
+          { mruid: payload.mruid },
+          '[ServiceRequestService] MR not found when handling vendor paid event'
+        );
+        return;
+      }
+      await this.maintenanceRequestDAO.updateById((mr as any)._id.toString(), {
+        $set: {
+          'invoice.vendorPayoutStatus': 'paid',
+          'invoice.vendorPaidAt': new Date(),
+        },
+      });
+      this.log.info(
+        { mruid: payload.mruid },
+        '[ServiceRequestService] MR invoice vendorPayoutStatus updated to paid'
+      );
+    } catch (err: unknown) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        '[ServiceRequestService] Failed to update MR vendor payout status'
+      );
+    }
+  };
 
   private async resolvePrimaryVendorId(currentuser: ICurrentUser): Promise<Types.ObjectId | null> {
     const { linkedVendorUid } = currentuser.client;
@@ -311,7 +345,7 @@ export class MaintenanceRequestService {
     }
 
     // Resolve resource UIDs to ObjectIds for DB queries
-    const [property, unit, vendor, tenant] = await Promise.all([
+    const [property, unit, vendor, tenant, managedBy] = await Promise.all([
       filters.pid ? this.propertyDAO.findFirst({ pid: filters.pid, cuid, deletedAt: null }) : null,
       filters.puid ? this.propertyUnitDAO.findFirst({ puid: filters.puid, deletedAt: null }) : null,
       filters.vendorUid
@@ -320,11 +354,15 @@ export class MaintenanceRequestService {
       filters.tenantUid
         ? this.userDAO.findFirst({ uid: filters.tenantUid, deletedAt: null })
         : null,
+      filters.managedByUid
+        ? this.userDAO.findFirst({ uid: filters.managedByUid, deletedAt: null })
+        : null,
     ]);
     if (property) baseFilter.propertyId = property._id;
     if (unit) baseFilter.propertyUnitId = unit._id;
     if (vendor) baseFilter.vendorId = vendor._id;
     if (tenant) baseFilter.tenantId = tenant._id;
+    if (managedBy) baseFilter.managedBy = managedBy._id;
 
     const result = await this.maintenanceRequestDAO.listWithDetails(baseFilter, pagination);
     return { success: true, data: result };
@@ -332,14 +370,59 @@ export class MaintenanceRequestService {
 
   async getRequest(ctx: IRequestContext, mruid: string): Promise<ISuccessReturnData> {
     const { cuid } = ctx.request.params;
-    const request = await this.maintenanceRequestDAO.findFirst({
-      mruid,
-      cuid,
-      deletedAt: null,
-      ...(await this.buildRoleFilter(ctx)),
-    });
+    const request = await this.maintenanceRequestDAO.findFirst(
+      {
+        mruid,
+        cuid,
+        deletedAt: null,
+        ...(await this.buildRoleFilter(ctx)),
+      },
+      {
+        populate: [
+          { path: 'propertyId', select: 'address pid name' },
+          { path: 'propertyUnitId', select: 'unitNumber puid' },
+          {
+            path: 'vendorId',
+            select: 'email uid',
+            populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+          },
+          {
+            path: 'tenantId',
+            select: 'email uid',
+            populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+          },
+        ],
+      }
+    );
     if (!request) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
-    return { success: true, data: request };
+
+    const property = (request as any).propertyId as any;
+    const unit = (request as any).propertyUnitId as any;
+    const tenant = (request as any).tenantId as any;
+    const vendor = (request as any).vendorId as any;
+
+    const plain = request.toObject ? request.toObject() : { ...request };
+
+    // Map populated refs to flat display fields the frontend expects
+    plain.propertyAddress =
+      typeof property?.address === 'string'
+        ? property.address
+        : property?.address?.fullAddress || property?.name || '';
+    plain.propertyUnitId = typeof unit === 'object' ? unit?.unitNumber : plain.propertyUnitId;
+
+    const tenantProfile = tenant?.profile?.personalInfo;
+    if (tenantProfile) {
+      plain.tenantName =
+        `${tenantProfile.firstName || ''} ${tenantProfile.lastName || ''}`.trim() || tenant.email;
+    }
+
+    const vendorProfile = vendor?.profile?.personalInfo;
+    if (vendorProfile) {
+      plain.vendorName =
+        `${vendorProfile.firstName || ''} ${vendorProfile.lastName || ''}`.trim() || vendor.email;
+    }
+
+    return { success: true, data: plain };
   }
 
   async assignVendor(
@@ -401,7 +484,23 @@ export class MaintenanceRequestService {
       to: vendorUser.email,
       emailType: MailType.MAINTENANCE_REQUEST_ASSIGNED,
       subject: '',
-      data: { request: updated, vendor: vendorUser, assignedBy: currentuser },
+      data: {
+        request: {
+          ...(updated?.toObject ? updated.toObject() : updated),
+          description:
+            typeof updated?.description === 'object'
+              ? ((updated.description as any).text ?? '')
+              : (updated?.description ?? ''),
+        },
+        vendor: {
+          email: vendorUser.email,
+          firstName: vendorRecord.companyName || vendorUser.email,
+        },
+        assignedBy: {
+          email: currentuser.email,
+          firstName: currentuser.displayName || currentuser.fullname || currentuser.email,
+        },
+      },
     });
 
     return { success: true, data: updated, message: t('maintenance.success.assigned') };
@@ -744,12 +843,20 @@ export class MaintenanceRequestService {
 
   async getStats(ctx: IRequestContext, pid?: string): Promise<ISuccessReturnData> {
     const { cuid } = ctx.request.params;
+    const currentuser = ctx.currentuser;
+
     let propertyObjectId: string | undefined;
     if (pid) {
       const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
       propertyObjectId = property?._id?.toString();
     }
-    const stats = await this.maintenanceRequestDAO.getStats(cuid, { propertyId: propertyObjectId });
+
+    const tenantUserId = currentuser.client.role === 'tenant' ? currentuser.sub : undefined;
+
+    const stats = await this.maintenanceRequestDAO.getStats(cuid, {
+      propertyId: propertyObjectId,
+      tenantUserId,
+    });
     return { success: true, data: stats };
   }
 

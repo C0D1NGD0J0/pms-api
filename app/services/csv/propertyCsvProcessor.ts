@@ -182,8 +182,7 @@ export class PropertyCsvProcessor {
       },
 
       fees: {
-        taxAmount: BaseCSVProcessorService.parseNumber(row.fees_taxamount, 0),
-        rentalAmount: BaseCSVProcessorService.parseNumber(row.fees_rentalamount, 0),
+        rentAmount: BaseCSVProcessorService.parseNumber(row.fees_rentalamount, 0),
         managementFees: BaseCSVProcessorService.parseNumber(row.fees_managementfees, 0),
         currency: (row.fees_currency || 'USD') as CURRENCIES,
       },

@@ -3,6 +3,8 @@ import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { createLogger } from '@utils/index';
 import { ProfileDAO } from '@dao/profileDAO';
+import { PropertyDAO } from '@dao/propertyDAO';
+import { LeaseStatus } from '@interfaces/lease.interface';
 
 export interface DSARExport {
   account: {
@@ -23,6 +25,7 @@ export interface DSARExport {
 }
 
 interface IConstructor {
+  propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
@@ -30,12 +33,14 @@ interface IConstructor {
 
 export class DSARService {
   private readonly log: Logger;
+  private readonly propertyDAO: PropertyDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
 
-  constructor({ profileDAO, userDAO, leaseDAO }: IConstructor) {
+  constructor({ propertyDAO, profileDAO, userDAO, leaseDAO }: IConstructor) {
     this.log = createLogger('DSARService');
+    this.propertyDAO = propertyDAO;
     this.profileDAO = profileDAO;
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
@@ -81,6 +86,59 @@ export class DSARService {
 
   async anonymiseUser(userId: string, requestedBy: string): Promise<void> {
     this.log.info(`DSAR anonymisation requested for userId=${userId} by=${requestedBy}`);
+
+    // Pre-flight guards: block anonymisation when user has active obligations
+    const user = await this.userDAO.getUserById(userId);
+    if (!user) throw new Error(`User ${userId} not found`);
+
+    const PM_ROLES = ['super-admin', 'admin', 'manager'];
+
+    for (const connection of user.cuids || []) {
+      if (!connection.isConnected) continue;
+
+      const roles: string[] = connection.roles || [];
+      const cuid = connection.cuid;
+      const clientLabel = connection.clientDisplayName || cuid;
+
+      // Guard: tenant with active lease
+      if (roles.includes('tenant')) {
+        const activeLease = await this.leaseDAO.getActiveLeaseByTenant(cuid, user.uid);
+        if (activeLease) {
+          throw new Error(
+            `Cannot anonymise: user has an active lease (${clientLabel}). Terminate lease first.`
+          );
+        }
+      }
+
+      // Guard: PM/admin managing properties with active leases
+      if (roles.some((r) => PM_ROLES.includes(r))) {
+        const managed = await this.propertyDAO.getPropertiesByClientId(
+          cuid,
+          { managedBy: user._id.toString(), deletedAt: null },
+          { limit: 1000 }
+        );
+
+        if (managed.items.length > 0) {
+          const propIds = managed.items.map((p: any) => p._id);
+          const activeLeases = await this.leaseDAO.list(
+            {
+              cuid,
+              'property.id': { $in: propIds },
+              status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
+              deletedAt: null,
+            },
+            {},
+            true
+          );
+
+          if (activeLeases.items.length > 0) {
+            throw new Error(
+              `Cannot anonymise: user manages properties with ${activeLeases.items.length} active lease(s) (${clientLabel}). Reassign or terminate first.`
+            );
+          }
+        }
+      }
+    }
 
     const profile = await this.profileDAO.getProfileByUserId(userId);
     if (!profile) throw new Error(`Profile not found for userId=${userId}`);
@@ -129,7 +187,7 @@ export class DSARService {
       status: lease.status,
       propertyId: lease.propertyId,
       duration: lease.duration,
-      fees: { monthlyRent: lease.fees?.monthlyRent, deposit: lease.fees?.deposit },
+      fees: { rentAmount: lease.fees?.rentAmount, deposit: lease.fees?.deposit },
       createdAt: lease.createdAt,
     };
   }

@@ -33,6 +33,19 @@ export interface IClient {
 }
 
 /**
+ * Client Settings Interface
+ * User preferences and configuration
+ */
+export interface IClientSettings {
+  notificationPreferences: NotificationPreferences;
+  vendorPayoutMode?: 'express' | 'platform_hold';
+  tenantFeatures?: ITenantFeatureSettings;
+  defaultCurrency?: string; // ISO 4217 — display preference and property creation pre-fill
+  timeZone: string;
+  lang: string;
+}
+
+/**
  * Client Document Interface (extends Mongoose Document)
  * Extends IClient with MongoDB document properties
  */
@@ -48,6 +61,12 @@ export interface IClientDocument extends Document, IClient {
 }
 
 /**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
+
+/**
  * Main Client Interface
  * Core client data structure
  */
@@ -60,12 +79,6 @@ export interface IClientIdentification {
   authority?: string;
   idNumber?: string;
 }
-
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
 
 /**
  * Client User Connections Interface
@@ -97,18 +110,6 @@ export interface ICompanyProfile {
   tradingName?: string;
   industry?: string;
   website?: string;
-}
-
-/**
- * Client Settings Interface
- * User preferences and configuration
- */
-export interface IClientSettings {
-  notificationPreferences: NotificationPreferences;
-  vendorPayoutMode?: 'express' | 'platform_hold';
-  tenantFeatures?: ITenantFeatureSettings;
-  timeZone: string;
-  lang: string;
 }
 
 /**

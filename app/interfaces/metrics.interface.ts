@@ -21,9 +21,12 @@ export interface IDashboardStats {
     byCategory: Record<string, number>;
   };
   payments: {
-    totalRevenue: number;
-    monthRevenue: number;
-    pendingAmount: number;
+    byCurrency: Array<{
+      currency: string;
+      totalRevenue: number;
+      monthRevenue: number;
+      pendingAmount: number;
+    }>;
     overdueCount: number;
     totalCount: number;
     onTimeRate: number;
@@ -31,6 +34,7 @@ export interface IDashboardStats {
   };
   properties: {
     total: number;
+    propertyCount: number;
     occupied: number;
     vacant: number;
     occupancyRate: number;
@@ -63,17 +67,14 @@ export interface IMetricsDelta {
     byPriority?: Record<string, number>;
     byCategory?: Record<string, number>;
   };
-  payments?: {
-    totalRevenue?: number;
-    monthRevenue?: number;
-    pendingAmount?: number;
-    overdueCount?: number;
-  };
   properties?: {
     occupied?: number;
     vacant?: number;
   };
   type: 'metrics:delta' | 'metrics:invalidate';
+  payments?: {
+    overdueCount?: number;
+  };
   leases?: {
     active?: number;
   };

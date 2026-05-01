@@ -38,6 +38,7 @@ export enum EventTypes {
   LEASE_ESIGNATURE_FAILED = 'lease:esignature:failed',
   LEASE_RENEWAL_REQUESTED = 'lease:renewal:requested',
   IDENTITY_REQUIRES_INPUT = 'identity:requires:input',
+  MAINTENANCE_VENDOR_PAID = 'maintenance:vendor:paid',
   PROPERTY_UPDATE_FAILED = 'update:property:failed',
   DELETE_ASSET_COMPLETED = 'delete:asset:completed',
   USER_SIGNUP_INITIATED = 'user:signup:initiated',
@@ -56,6 +57,8 @@ export enum EventTypes {
   PAYMENT_SUCCEEDED = 'payment:succeeded',
   IDENTITY_VERIFIED = 'identity:verified',
   USER_DISCONNECTED = 'user:disconnected',
+  PAYMENT_CANCELLED = 'payment:cancelled',
+  INVOICE_GENERATED = 'invoice:generated',
   PAYMENT_REFUNDED = 'payment:refunded',
   LEASE_TERMINATED = 'lease:terminated',
   PROPERTY_CREATED = 'property:created',
@@ -151,6 +154,9 @@ export type EventPayloadMap = {
   [EventTypes.PAYMENT_OVERDUE]: PaymentOverduePayload;
   [EventTypes.PAYMENT_METHOD_SETUP_COMPLETED]: PaymentMethodSetupCompletedPayload;
   [EventTypes.PAYMENT_REQUEST_CREATED]: PaymentRequestCreatedPayload;
+  [EventTypes.PAYMENT_CANCELLED]: PaymentCancelledPayload;
+  [EventTypes.MAINTENANCE_VENDOR_PAID]: MaintenanceVendorPaidPayload;
+  [EventTypes.INVOICE_GENERATED]: InvoiceGeneratedPayload;
 };
 
 export interface UserSignupInitiatedPayload {
@@ -225,7 +231,7 @@ export interface LeaseRenewedPayload {
   propertyUnitId?: string;
   renewalLeaseId: string;
   approvalStatus: string;
-  monthlyRent: number;
+  rentAmount: number;
   propertyId: string;
   tenantId: string;
   startDate: Date;
@@ -369,6 +375,16 @@ export interface MaintenanceRequestAssignedPayload {
   cuid: string;
 }
 
+export interface InvoiceGeneratedPayload {
+  generationTime?: number;
+  jobId: string | number;
+  invoiceUrl: string;
+  fileSize?: number;
+  pytuid: string;
+  s3Key: string;
+  cuid: string;
+}
+
 export interface PaymentDisputeLostPayload {
   invoiceNumber: string;
   disputeId: string;
@@ -378,6 +394,7 @@ export interface PaymentDisputeLostPayload {
   amount: number;
   cuid: string;
 }
+
 export interface PaymentRequestCreatedPayload {
   amountInCents: number;
   tenantUserId: string; // User._id — used for SSE routing
@@ -385,7 +402,6 @@ export interface PaymentRequestCreatedPayload {
   dueDate: Date;
   cuid: string;
 }
-
 export interface EmailFailedPayload {
   error: {
     message: string;
@@ -416,6 +432,14 @@ export interface MaintenanceWorkOrderRejectedPayload {
   cuid: string;
 }
 
+export interface PaymentCancelledPayload {
+  amountInCents: number;
+  tenantUserId: string; // User._id — for SSE routing
+  reason?: string;
+  pytuid: string;
+  cuid: string;
+}
+
 export interface PaymentDisputeReversalFailedPayload {
   transferId: string;
   disputeId: string;
@@ -439,6 +463,15 @@ export interface MaintenanceRequestDeclinedPayload {
   tenantId?: string;
   vendorId: string;
   reason?: string;
+  mruid: string;
+  cuid: string;
+}
+
+export interface MaintenanceVendorPaidPayload {
+  amountInCents: number;
+  transferId: string;
+  vendorId: string;
+  pytuid: string;
   mruid: string;
   cuid: string;
 }
@@ -512,8 +545,8 @@ export interface MaintenanceRequestAcceptedPayload {
 }
 
 export interface PaymentMethodSetupCompletedPayload {
-  connectedAccountId: string;
   paymentMethodId: string;
+  pmAccountId: string;
   tenantId: string;
   cuid: string;
 }

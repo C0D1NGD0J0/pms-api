@@ -86,6 +86,14 @@ export interface ISubscriptionPlanUsage {
     additionalSeatPriceCents: number;
     availableForPurchase: number;
   };
+  manualRecords: {
+    countThisPeriod: number;
+    quota: number;
+    remaining: number;
+    overageFeeCents: number;
+    overageCount: number;
+    projectedOverageCents: number;
+  };
   verification: {
     isVerified: boolean;
     requiresVerification: boolean;
@@ -125,6 +133,10 @@ export interface ISubscription {
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
     prioritySupport?: boolean;
+  };
+  manualRecords?: {
+    countThisPeriod: number;
+    periodStart: Date;
   };
   billingInterval: 'monthly' | 'annual';
   billing: ISubscriptionBilling;

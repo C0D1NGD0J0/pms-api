@@ -436,7 +436,7 @@ export interface IIdentificationType {
 export interface FilteredUserTenantInfo {
   propertyAddress?: string; // Full address of the property
   leaseStatus?: string; // active, pending_signature, no_active_lease, etc.
-  monthlyRent?: number; // Monthly rent amount
+  rentAmount?: number; // Monthly rent amount
   rentStatus?: string; // paid, overdue, pending, etc.
 }
 

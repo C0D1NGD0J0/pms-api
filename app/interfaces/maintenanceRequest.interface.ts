@@ -111,6 +111,40 @@ export interface ICreateMaintenanceRequest {
   pid: string; // property resource UID
 }
 
+export interface IMaintenanceFilters {
+  status?: MaintenanceRequestStatus | MaintenanceRequestStatus[];
+  priority?: MaintenanceRequestPriority;
+  category?: MaintenanceCategory;
+  managedByUid?: string; // user resource UID of the staff member managing the property
+  isBillable?: boolean;
+  vendorUid?: string; // user resource UID of vendor
+  tenantUid?: string; // user resource UID of tenant
+  dateFrom?: string;
+  dateTo?: string;
+  puid?: string; // property unit resource UID
+  pid?: string; // property resource UID
+}
+
+export interface IMaintenanceInvoice {
+  vendorPayoutStatus?: 'pending' | 'paid';
+  lineItems?: IInvoiceLineItem[];
+  submittedBy: Types.ObjectId;
+  reviewedBy?: Types.ObjectId;
+  externalInvoiceUrl?: string;
+  externalInvoiceId?: string;
+  rejectionReason?: string;
+  attachmentUrl?: string;
+  attachmentKey?: string;
+  status: InvoiceStatus;
+  amountInCents: number;
+  source: InvoiceSource;
+  description: string;
+  vendorPaidAt?: Date;
+  submittedAt: Date;
+  reviewedAt?: Date;
+  currency: string; // 'usd'
+}
+
 export interface ITenantMaintenanceRequestView {
   media: Array<{ url: string; filename?: string }>;
   priority: MaintenanceRequestPriority;
@@ -126,37 +160,6 @@ export interface ITenantMaintenanceRequestView {
   submittedAt: Date;
   mruid: string;
   title: string;
-}
-
-export interface IMaintenanceInvoice {
-  lineItems?: IInvoiceLineItem[];
-  submittedBy: Types.ObjectId;
-  reviewedBy?: Types.ObjectId;
-  externalInvoiceUrl?: string;
-  externalInvoiceId?: string;
-  rejectionReason?: string;
-  attachmentUrl?: string;
-  attachmentKey?: string;
-  status: InvoiceStatus;
-  amountInCents: number;
-  source: InvoiceSource;
-  description: string;
-  submittedAt: Date;
-  reviewedAt?: Date;
-  currency: string; // 'usd'
-}
-
-export interface IMaintenanceFilters {
-  status?: MaintenanceRequestStatus | MaintenanceRequestStatus[];
-  priority?: MaintenanceRequestPriority;
-  category?: MaintenanceCategory;
-  isBillable?: boolean;
-  vendorUid?: string; // user resource UID of vendor
-  tenantUid?: string; // user resource UID of tenant
-  dateFrom?: string;
-  dateTo?: string;
-  puid?: string; // property unit resource UID
-  pid?: string; // property resource UID
 }
 
 export interface IUpdateMaintenancePayload {

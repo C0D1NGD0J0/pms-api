@@ -109,7 +109,7 @@ export interface IActiveLeaseItem {
   leaseId: string | Types.ObjectId;
   propertyAddress?: string;
   leaseNumber?: string;
-  monthlyRent?: number;
+  rentAmount?: number;
   confirmedDate: Date;
   unitNumber?: string;
   confirmed: boolean;
@@ -145,7 +145,7 @@ export interface ILeaseHistoryItem {
   status: LeaseHistoryStatus;
   leaseNumber?: string;
   propertyName: string;
-  monthlyRent: number;
+  rentAmount: number;
   unitNumber: string;
   leaseStart: Date;
   leaseEnd: Date;

@@ -125,16 +125,16 @@ export interface ILeaseFinancialSummary {
   firstPaymentMonth: string;
   managementFeeRaw: number;
   securityDeposit: string; // Formatted currency string
-  monthlyRentRaw: number; // Raw amount in cents
   lateFeeAmount?: number;
   // Management fee (sourced from property, billed when lease.includeManagementFee is true)
   managementFee?: string;
   firstPaymentDate: Date;
+  rentAmountRaw: number; // Raw amount in cents
   totalExpected: number;
   nextPaymentDate: Date;
   lateFeeDays?: number;
   proRatedDays: number;
-  monthlyRent: string; // Formatted currency string
+  rentAmount: string; // Formatted currency string
   rentDueDay: number; // 1-31
   totalPaid: number;
   totalOwed: number;
@@ -184,7 +184,7 @@ export type LeasePreviewData = {
   currentDate?: string;
   tenantEmail?: string;
   tenantPhone?: string;
-  monthlyRent?: number;
+  rentAmount?: number;
   unitNumber?: string;
   signedDate?: string;
   tenantName?: string;
@@ -206,7 +206,7 @@ export interface ILeaseFormData {
   };
   fees: Pick<
     ILeaseFees,
-    | 'monthlyRent'
+    | 'rentAmount'
     | 'securityDeposit'
     | 'rentDueDay'
     | 'currency'
@@ -318,7 +318,7 @@ export interface ILeasePreviewRequest {
   unitNumber?: string;
   tenantEmail: string;
   tenantPhone: string;
-  monthlyRent: number;
+  rentAmount: number;
   propertyId: string;
   tenantName: string;
   rentDueDay: number;
@@ -349,6 +349,7 @@ export interface ILeaseFilterOptions {
   createdAfter?: Date;
   startDateTo?: Date;
   endDateFrom?: Date;
+  unitPuid?: string;
   endDateTo?: Date;
   minRent?: number;
   maxRent?: number;
@@ -375,6 +376,29 @@ export interface ILeaseProperty {
   id: Types.ObjectId | string;
   unitNumber?: string; // Unit/Suite number from property unit
   name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
+}
+
+/**
+ * Lease Stats Interface
+ * Statistics for reporting
+ */
+export interface ILeaseStats {
+  leasesByStatus: {
+    draft: number;
+    pending_signature: number;
+    active: number;
+    expired: number;
+    terminated: number;
+    cancelled: number;
+  };
+  /** Per-currency breakdown of active lease rent totals. Replaces the old single `totalMonthlyRent` number. */
+  monthlyRentByCurrency: Array<{ currency: string; total: number }>;
+  averageLeaseDuration: number;
+  expiringIn30Days: number;
+  expiringIn60Days: number;
+  expiringIn90Days: number;
+  occupancyRate: number;
+  totalLeases: number;
 }
 
 /**
@@ -452,28 +476,6 @@ export interface ILeaseDetailResponse {
 }
 
 /**
- * Lease Stats Interface
- * Statistics for reporting
- */
-export interface ILeaseStats {
-  leasesByStatus: {
-    draft: number;
-    pending_signature: number;
-    active: number;
-    expired: number;
-    terminated: number;
-    cancelled: number;
-  };
-  averageLeaseDuration: number;
-  totalMonthlyRent: number;
-  expiringIn30Days: number;
-  expiringIn60Days: number;
-  expiringIn90Days: number;
-  occupancyRate: number;
-  totalLeases: number;
-}
-
-/**
  * Rent Roll Item Interface
  * Individual entry in rent roll report
  */
@@ -486,9 +488,10 @@ export interface IRentRollItem {
   leaseNumber: string;
   tenantEmail: string;
   unitNumber?: string;
-  monthlyRent: number;
   status: LeaseStatus;
+  rentAmount: number;
   tenantName: string;
+  currency: string;
   startDate: Date;
   endDate: Date;
   luid: string;
@@ -515,6 +518,24 @@ export interface ILeaseSignature {
   ipAddress?: string;
   role: SignerRole;
   signedAt?: Date;
+}
+
+/**
+ * Rent Roll Report Interface
+ * Complete rent roll with summary
+ */
+export interface IRentRollReport {
+  summary: {
+    totalLeases: number;
+    monthlyRentByCurrency: Array<{ currency: string; total: number }>;
+    totalSecurityDeposits: number;
+    activeLeases: number;
+    expiringLeases: number;
+  };
+  propertyId?: Types.ObjectId | string;
+  items: IRentRollItem[];
+  propertyName?: string;
+  generatedAt: Date;
 }
 
 export interface LeaseESignatureCompletedPayload {
@@ -563,9 +584,9 @@ export interface ILeaseListItem {
   propertyAddress: string;
   gracePeriodDays: number;
   leaseNumber: string;
-  monthlyRent: number;
   status: LeaseStatus;
   unitNumber?: string;
+  rentAmount: number;
   tenantName: string;
   tenantUid: string;
   startDate: Date;
@@ -586,24 +607,6 @@ export interface LeaseESignatureSentPayload {
   luid: string;
   cuid: string;
   sentAt: Date;
-}
-
-/**
- * Rent Roll Report Interface
- * Complete rent roll with summary
- */
-export interface IRentRollReport {
-  summary: {
-    totalLeases: number;
-    totalMonthlyRent: number;
-    totalSecurityDeposits: number;
-    activeLeases: number;
-    expiringLeases: number;
-  };
-  propertyId?: Types.ObjectId | string;
-  items: IRentRollItem[];
-  propertyName?: string;
-  generatedAt: Date;
 }
 
 /**
@@ -646,7 +649,7 @@ export interface ILeaseFees {
   securityDeposit: number;
   lateFeeAmount?: number;
   lateFeeDays?: number;
-  monthlyRent: number;
+  rentAmount: number;
   rentDueDay: number; // 1-31
   currency: string;
 }

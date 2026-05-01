@@ -15,6 +15,7 @@ export * from './permission';
 export * from './payments';
 export * from './external';
 export * from './property';
+export * from './invoice';
 export * from './profile';
 export * from './client';
 export * from './vendor';

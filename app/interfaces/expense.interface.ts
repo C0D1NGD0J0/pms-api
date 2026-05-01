@@ -72,7 +72,7 @@ export interface IExpense {
   date: Date;
 }
 
-export interface IPnLSummary {
+export interface IPnLByCurrency {
   expenses: {
     total: number;
     byCategory: Array<{ category: string; amount: number }>;
@@ -82,8 +82,8 @@ export interface IPnLSummary {
     total: number;
     byProperty: Array<{ propertyId: string; name: string; amount: number }>;
   };
-  period: { from: string; to: string };
   netIncome: number;
+  currency: string;
 }
 
 export interface IExpenseFilters extends IPaginationQuery {
@@ -92,6 +92,11 @@ export interface IExpenseFilters extends IPaginationQuery {
   unitId?: string;
   from?: string;
   to?: string;
+}
+
+export interface IPnLSummary {
+  period: { from: string; to: string };
+  byCurrency: IPnLByCurrency[];
 }
 
 export interface IExpenseDocument extends IExpense, Document {

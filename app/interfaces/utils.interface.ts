@@ -21,6 +21,7 @@ export enum MailType {
   MAINTENANCE_INVOICE_REJECTED = 'MAINTENANCE_INVOICE_REJECTED',
   MAINTENANCE_REQUEST_CREATED = 'MAINTENANCE_REQUEST_CREATED',
   LEASE_APPLICATION_UPDATE = 'LEASE_APPLICATION_UPDATE',
+  PAYMENT_REQUEST_CREATED = 'PAYMENT_REQUEST_CREATED',
   LEASE_PAYMENT_REMINDER = 'LEASE_PAYMENT_REMINDER',
   LEASE_SIGNOFF_REQUEST = 'LEASE_SIGNOFF_REQUEST',
   ACCOUNT_DISCONNECTED = 'ACCOUNT_DISCONNECTED',
@@ -59,6 +60,29 @@ export enum PermissionAction {
   SEND = 'send',
 }
 
+export enum CURRENCIES {
+  // Major / Stripe-supported
+  USD = 'USD',
+  EUR = 'EUR',
+  GBP = 'GBP',
+  CAD = 'CAD',
+  AUD = 'AUD',
+  JPY = 'JPY',
+  MXN = 'MXN',
+  SGD = 'SGD',
+  AED = 'AED',
+  CNY = 'CNY',
+  // Africa
+  NGN = 'NGN',
+  ZAR = 'ZAR',
+  // Europe (non-EUR)
+  CHF = 'CHF',
+  // Asia-Pacific
+  INR = 'INR',
+  // South America
+  BRL = 'BRL',
+}
+
 export enum PermissionResource {
   SUBSCRIPTION = 'subscription',
   NOTIFICATION = 'notification',
@@ -85,15 +109,6 @@ export enum ResourceContext {
   CLIENT = 'client',
   VENDOR = 'vendor',
   LEASE = 'lease',
-}
-
-export enum CURRENCIES {
-  USD = 'USD',
-  EUR = 'EUR',
-  GBP = 'GBP',
-  CAD = 'CAD',
-  CNY = 'CNY',
-  NGN = 'NGN',
 }
 
 export enum PermissionScope {
@@ -192,7 +207,7 @@ export interface IAWSFileUploadResponse {
 }
 
 export interface ResourceInfo {
-  resourceName: 'property' | 'profile' | 'client' | 'lease' | 'maintenance'; //name of the resource
+  resourceName: 'property' | 'profile' | 'client' | 'lease' | 'maintenance' | 'payment-invoice'; //name of the resource
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
   resourceId: string; //id of the resource
   fieldName: string; //name of the field
@@ -276,6 +291,15 @@ export interface IPaginateResult {
   total: number;
 }
 
+export type ISuccessReturnData<T = any> = {
+  errors?: [{ path: string; message: string }];
+  routeToCard?: boolean;
+  success: boolean;
+  message?: string;
+  error?: string;
+  data: T;
+};
+
 export interface IPaginationQuery {
   sort?: string | Record<string, 1 | -1 | { $meta: 'textScore' }>;
   sortBy?: string;
@@ -283,14 +307,6 @@ export interface IPaginationQuery {
   page?: number;
   skip?: number;
 }
-
-export type ISuccessReturnData<T = any> = {
-  errors?: [{ path: string; message: string }];
-  success: boolean;
-  message?: string;
-  error?: string;
-  data: T;
-};
 
 export interface UploadedFile {
   originalFileName?: string;

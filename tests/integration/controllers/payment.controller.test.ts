@@ -12,8 +12,8 @@ import { errorHandlerMiddleware } from '@shared/middlewares/error-handler';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { beforeEach, beforeAll, describe, expect, jest, it } from '@jest/globals';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
-import { PaymentProcessor, PaymentModel, Profile, Client, Lease, User } from '@models/index';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
+import { PaymentProcessor, PaymentModel, Subscription, Profile, Client, Lease, User } from '@models/index';
 import {
   PaymentRecordStatus,
   PaymentRecordType,
@@ -21,6 +21,7 @@ import {
 } from '@interfaces/payments.interface';
 import {
   PaymentProcessorDAO,
+  SubscriptionDAO,
   PaymentDAO,
   ProfileDAO,
   ClientDAO,
@@ -50,6 +51,8 @@ describe('PaymentController Integration Tests', () => {
 
   // Mock the gateway service — Stripe/PayPal are external service boundaries
   const mockCreateRefund = jest.fn();
+  const mockRequestInvoice = jest.fn();
+  const mockHandleFiles = jest.fn();
   const mockPaymentGatewayService = {
     createRefund: mockCreateRefund,
     createCustomer: jest.fn(),
@@ -80,18 +83,23 @@ describe('PaymentController Integration Tests', () => {
       profileDAO,
       paymentProcessorDAO,
       paymentGatewayService: mockPaymentGatewayService,
-      subscriptionDAO: {} as any,
+      subscriptionDAO: new SubscriptionDAO(),
       leaseDAO: new LeaseDAO({ leaseModel: Lease }),
       userDAO: new UserDAO({ userModel: User }),
       subscriptionPlanConfig: {} as any,
       queueFactory: { getQueue: jest.fn() } as any,
       pdfGeneratorService: {} as any,
+      invoiceTemplateRenderer: { render: jest.fn().mockReturnValue(Promise.resolve('<html></html>')) } as any,
       emitterService: { emit: jest.fn(), on: jest.fn() } as any,
     });
 
+    mockHandleFiles.mockReturnValue(Promise.resolve({ hasFiles: false }));
+    mockRequestInvoice.mockReturnValue(Promise.resolve({ status: 'queued', jobId: 'job-123' }));
+
     const paymentController = new PaymentController({
       paymentService,
-      mediaUploadService: {} as any,
+      mediaUploadService: { handleFiles: mockHandleFiles } as any,
+      invoiceService: { requestInvoice: mockRequestInvoice } as any,
     });
 
     app = express();
@@ -118,6 +126,13 @@ describe('PaymentController Integration Tests', () => {
       paymentController.getPaymentStats(req, res).catch(next);
     });
 
+    app.post('/api/v1/payments/:cuid/manual_entry', (req: any, res: any, next: any) => {
+      req.context = mockContext(adminUser, req.params.cuid);
+      // Simulate multer populating req.files (no files in these tests)
+      req.files = [];
+      paymentController.recordManualPayment(req, res).catch(next);
+    });
+
     app.get('/api/v1/payments/:cuid/stats/as-tenant', (req: any, res: any, next: any) => {
       // Simulate a tenant calling the stats endpoint
       req.context = {
@@ -138,6 +153,9 @@ describe('PaymentController Integration Tests', () => {
     await clearTestDatabase();
     await PaymentModel.deleteMany({});
     jest.clearAllMocks();
+    // Restore default mock implementations cleared above
+    mockHandleFiles.mockReturnValue(Promise.resolve({ hasFiles: false }));
+    mockRequestInvoice.mockReturnValue(Promise.resolve({ status: 'queued', jobId: 'job-123' }));
 
     testPayment = await PaymentModel.create({
       cuid: testClient.cuid,
@@ -304,6 +322,24 @@ describe('PaymentController Integration Tests', () => {
       localClient = await createTestClient();
       tenantUser = await createTestUser(localClient.cuid, { roles: ['tenant'] });
       tenantProfile = await createTestProfile(tenantUser._id, localClient._id, { type: 'tenant' });
+      // chargeForMaintenance checks for an active subscription before creating a charge
+      await Subscription.create({
+        cuid: localClient.cuid,
+        client: localClient._id,
+        planName: 'essential',
+        status: 'active',
+        billingInterval: 'monthly',
+        startDate: new Date(),
+        entitlements: {
+          eSignature: false,
+          RepairRequestService: false,
+          VisitorPassService: false,
+          reportingAnalytics: false,
+          leaseTemplates: false,
+        },
+        billing: { provider: 'none', planId: 'essential-monthly' },
+        totalMonthlyPrice: 0,
+      });
     });
 
     it('should create a PENDING maintenance payment linked to the MR uid', async () => {
@@ -428,6 +464,105 @@ describe('PaymentController Integration Tests', () => {
     it('returns 404 when client cuid does not exist', async () => {
       const response = await request(app)
         .get('/api/v1/payments/NONEXISTENT-CUID/stats')
+        .expect(404);
+
+      expect(response.body.success).toBe(false);
+    });
+  });
+
+  describe('POST /api/v1/payments/:cuid/manual_entry', () => {
+    let localClient: IClientDocument;
+    let pmUser: IUserDocument;
+    let tenantUser: IUserDocument;
+
+    beforeEach(async () => {
+      localClient = await createTestClient();
+      pmUser = await createTestUser(localClient.cuid, { roles: [ROLES.ADMIN] });
+      tenantUser = await createTestUser(localClient.cuid, { roles: [ROLES.TENANT] });
+      await createTestProfile(tenantUser._id, localClient._id, { type: 'tenant' });
+    });
+
+    it('creates a manual payment record and returns 201', async () => {
+      const response = await request(app)
+        .post(`/api/v1/payments/${localClient.cuid}/manual_entry`)
+        .send({
+          paymentType: PaymentRecordType.RENT,
+          paymentMethod: PaymentMethod.CASH,
+          baseAmount: 120000,
+          paidAt: new Date('2026-04-01').toISOString(),
+          tenantId: tenantUser._id.toString(),
+          period: { month: 4, year: 2026 },
+        })
+        .expect(201);
+
+      expect(response.body.success).toBe(true);
+    });
+
+    it('fires receipt generation as a background task after recording', async () => {
+      await request(app)
+        .post(`/api/v1/payments/${localClient.cuid}/manual_entry`)
+        .send({
+          paymentType: PaymentRecordType.RENT,
+          paymentMethod: PaymentMethod.CASH,
+          baseAmount: 120000,
+          paidAt: new Date('2026-04-01').toISOString(),
+          tenantId: tenantUser._id.toString(),
+          period: { month: 4, year: 2026 },
+        })
+        .expect(201);
+
+      // Give the fire-and-forget a tick to resolve
+      await new Promise((r) => setImmediate(r));
+
+      expect(mockRequestInvoice).toHaveBeenCalledWith(
+        expect.any(String), // pytuid
+        localClient.cuid
+      );
+    });
+
+    it('still returns 201 even if background receipt generation fails to queue', async () => {
+      mockRequestInvoice.mockImplementation(() => Promise.reject(new Error('Queue unavailable')));
+
+      const response = await request(app)
+        .post(`/api/v1/payments/${localClient.cuid}/manual_entry`)
+        .send({
+          paymentType: PaymentRecordType.RENT,
+          paymentMethod: PaymentMethod.CASH,
+          baseAmount: 80000,
+          paidAt: new Date('2026-05-01').toISOString(),
+          tenantId: tenantUser._id.toString(),
+          period: { month: 5, year: 2026 },
+        })
+        .expect(201);
+
+      expect(response.body.success).toBe(true);
+    });
+
+    it('returns 404 when client cuid does not exist', async () => {
+      const response = await request(app)
+        .post('/api/v1/payments/NONEXISTENT-CUID/manual_entry')
+        .send({
+          paymentType: PaymentRecordType.RENT,
+          paymentMethod: PaymentMethod.CASH,
+          baseAmount: 100000,
+          paidAt: new Date().toISOString(),
+          tenantId: tenantUser._id.toString(),
+        })
+        .expect(404);
+
+      expect(response.body.success).toBe(false);
+    });
+
+    it('returns 404 when tenant does not exist', async () => {
+      const response = await request(app)
+        .post(`/api/v1/payments/${localClient.cuid}/manual_entry`)
+        .send({
+          paymentType: PaymentRecordType.RENT,
+          paymentMethod: PaymentMethod.CASH,
+          baseAmount: 100000,
+          paidAt: new Date().toISOString(),
+          tenantId: '000000000000000000000000',
+        })
         .expect(404);
 
       expect(response.body.success).toBe(false);

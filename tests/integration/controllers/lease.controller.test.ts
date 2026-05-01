@@ -157,7 +157,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 1500, // in dollars
+          rentAmount: 1500, // in dollars
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -196,7 +196,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 1500,
+          rentAmount: 1500,
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -225,7 +225,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 1500,
+          rentAmount: 1500,
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -252,7 +252,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 1500,
+          rentAmount: 1500,
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -290,7 +290,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -323,7 +323,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-02-01'),
         },
         fees: {
-          monthlyRent: 140000,
+          rentAmount: 140000,
           securityDeposit: 280000,
           rentDueDay: 1,
           currency: 'USD',
@@ -384,7 +384,7 @@ describe('LeaseController Integration Tests', () => {
         },
         duration: { startDate: new Date('2025-09-01'), endDate: new Date('2026-09-01') },
         fees: {
-          monthlyRent: 160000,
+          rentAmount: 160000,
           securityDeposit: 320000,
           rentDueDay: 1,
           currency: 'USD',
@@ -435,7 +435,7 @@ describe('LeaseController Integration Tests', () => {
         },
         duration: { startDate: new Date('2025-10-01'), endDate: new Date('2026-10-01') },
         fees: {
-          monthlyRent: 170000,
+          rentAmount: 170000,
           securityDeposit: 340000,
           rentDueDay: 1,
           currency: 'USD',
@@ -513,7 +513,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -577,7 +577,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -605,7 +605,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -627,7 +627,7 @@ describe('LeaseController Integration Tests', () => {
     it('should update draft lease successfully', async () => {
       const updateData = {
         fees: {
-          monthlyRent: 1750, // MoneyUtils will convert to cents
+          rentAmount: 1750, // MoneyUtils will convert to cents
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -643,7 +643,7 @@ describe('LeaseController Integration Tests', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data.lease.fees.monthlyRent).toBe(175000); // Should be in cents
+      expect(response.body.data.lease.fees.rentAmount).toBe(175000); // Should be in cents
     });
 
     it('should allow updates to mutable fields on active lease', async () => {
@@ -685,7 +685,7 @@ describe('LeaseController Integration Tests', () => {
     it('should return 401 without authentication', async () => {
       await request(app)
         .patch(`/api/v1/leases/${testClient.cuid}/${draftLease.luid}`)
-        .send({ fees: { monthlyRent: 2000 } })
+        .send({ fees: { rentAmount: 2000 } })
         .expect(401);
     });
   });
@@ -710,7 +710,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -738,7 +738,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -790,7 +790,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -823,7 +823,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-02-01'),
         },
         fees: {
-          monthlyRent: 160000,
+          rentAmount: 160000,
           securityDeposit: 320000,
           rentDueDay: 1,
           currency: 'USD',
@@ -874,7 +874,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: futureDate, // Expiring soon
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -956,7 +956,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1002,7 +1002,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-12-31'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1055,7 +1055,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1116,7 +1116,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1168,7 +1168,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-12-31'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1194,7 +1194,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2028-01-01'),
         },
         fees: {
-          monthlyRent: 1600,
+          rentAmount: 1600,
           securityDeposit: 3200,
           rentDueDay: 1,
           currency: 'USD',
@@ -1241,7 +1241,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1273,7 +1273,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 1500,
+          rentAmount: 1500,
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1317,7 +1317,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 1500,
+          rentAmount: 1500,
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1365,7 +1365,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1431,7 +1431,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 1500,
+          rentAmount: 1500,
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1473,7 +1473,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 1500,
+          rentAmount: 1500,
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1513,7 +1513,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 1500,
+          rentAmount: 1500,
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1551,7 +1551,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 1500,
+          rentAmount: 1500,
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1602,7 +1602,7 @@ describe('LeaseController Integration Tests', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 1500,
+          rentAmount: 1500,
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',

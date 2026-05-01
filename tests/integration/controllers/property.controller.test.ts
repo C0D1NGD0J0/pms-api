@@ -208,7 +208,7 @@ describe('PropertyController Integration Tests', () => {
           totalArea: 5000,
         },
         fees: {
-          rentalAmount: '850',
+          rentAmount: '850',
           currency: 'USD',
         },
         occupancyStatus: 'vacant',

@@ -89,8 +89,7 @@ describe('PropertyDAO Integration Tests', () => {
       },
       fees: {
         currency: 'USD',
-        rentalAmount: 2000,
-        taxAmount: 300,
+        rentAmount: 2000,
         managementFees: 200,
       },
       utilities: {
@@ -207,7 +206,7 @@ describe('PropertyDAO Integration Tests', () => {
         computedLocation: { type: 'Point', coordinates: [-123.1207, 49.2827] },
         description: { text: 'Vancouver property' },
         specifications: {},
-        fees: { currency: 'CAD', rentalAmount: 3500, taxAmount: 450, managementFees: 300 },
+        fees: { currency: 'CAD', rentAmount: 3500, managementFees: 300 },
         utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
       });
 
@@ -574,8 +573,7 @@ describe('PropertyDAO Integration Tests', () => {
         specifications: { totalArea: 2000 },
         fees: {
           currency: 'USD' as CURRENCIES,
-          rentalAmount: 3000,
-          taxAmount: 400,
+          rentAmount: 3000,
           managementFees: 250,
         },
         utilities: {

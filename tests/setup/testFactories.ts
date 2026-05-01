@@ -263,7 +263,7 @@ export const createTestProperty = async (
 
 export interface CreatePropertyUnitOptions {
   status?: 'available' | 'occupied' | 'maintenance' | 'reserved';
-  monthlyRent?: number;
+  rentAmount?: number;
   unitNumber?: string;
   bathrooms?: number;
   bedrooms?: number;
@@ -276,8 +276,8 @@ export const createTestPropertyUnit = async (
   options: CreatePropertyUnitOptions = {}
 ): Promise<IPropertyUnitDocument> => {
   const squareFeet = faker.number.int({ min: 500, max: 2000 });
-  // monthlyRent is in dollars, will be converted to cents by model setter
-  const monthlyRent = options.monthlyRent || faker.number.int({ min: 1000, max: 3000 });
+  // rentAmount is in dollars, will be converted to cents by model setter
+  const rentAmount = options.rentAmount || faker.number.int({ min: 1000, max: 3000 });
 
   return PropertyUnit.create({
     puid: `unit-${faker.string.alphanumeric(12)}`,
@@ -288,7 +288,7 @@ export const createTestPropertyUnit = async (
     status: options.status || 'available',
     floor: options.floor || 1,
     fees: {
-      rentAmount: monthlyRent, // In dollars - model setter converts to cents
+      rentAmount: rentAmount, // In dollars - model setter converts to cents
       currency: 'USD',
     },
     specifications: {
@@ -341,7 +341,7 @@ export const createTestProfile = async (
 
 export interface CreateLeaseOptions {
   status?: 'draft' | 'pending' | 'active' | 'expired' | 'terminated';
-  monthlyRent?: number;
+  rentAmount?: number;
   startDate?: Date;
   endDate?: Date;
 }
@@ -368,7 +368,7 @@ export const createTestLease = async (
       type: 'fixed',
     },
     fees: {
-      monthlyRent: options.monthlyRent || faker.number.int({ min: 1000, max: 3000 }), // In dollars - model setter converts to cents
+      rentAmount: options.rentAmount || faker.number.int({ min: 1000, max: 3000 }), // In dollars - model setter converts to cents
       currency: 'USD',
       securityDeposit: faker.number.int({ min: 500, max: 2000 }), // In dollars - model setter converts to cents
     },

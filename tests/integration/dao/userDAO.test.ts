@@ -278,7 +278,7 @@ describe('UserDAO Integration Tests', () => {
           unitNumber: '101',
         },
         fees: {
-          monthlyRent: 200000,
+          rentAmount: 200000,
         },
         duration: {
           startDate: new Date('2024-01-01'),
@@ -293,7 +293,7 @@ describe('UserDAO Integration Tests', () => {
       expect(tenant?.tenantInfo?.leaseHistory).toHaveLength(1);
       expect(tenant?.tenantInfo?.leaseHistory?.[0]?.luid).toBe('LEASE_001');
       expect(tenant?.tenantInfo?.leaseHistory?.[0]?.leaseNumber).toBe('L2024-001');
-      expect(tenant?.tenantInfo?.leaseHistory?.[0]?.monthlyRent).toBe(200000);
+      expect(tenant?.tenantInfo?.leaseHistory?.[0]?.rentAmount).toBe(200000);
     });
   });
 

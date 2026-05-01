@@ -4,14 +4,14 @@ describe('createSafeMongoUpdate', () => {
   describe('Nested Object Conversion', () => {
     it('should convert nested objects to dot notation', () => {
       const input = {
-        fees: { rentalAmount: 1200, securityDeposit: 500 },
+        fees: { rentAmount: 1200, securityDeposit: 500 },
         name: 'Test Property',
       };
 
       const result = createSafeMongoUpdate(input);
 
       expect(result).toEqual({
-        'fees.rentalAmount': 1200,
+        'fees.rentAmount': 1200,
         'fees.securityDeposit': 500,
         name: 'Test Property',
       });
@@ -43,7 +43,7 @@ describe('createSafeMongoUpdate', () => {
 
     it('should handle mixed object and primitive fields', () => {
       const input = {
-        fees: { rentalAmount: 1200 },
+        fees: { rentAmount: 1200 },
         lastModifiedBy: 'user123',
         status: 'active',
       };
@@ -51,7 +51,7 @@ describe('createSafeMongoUpdate', () => {
       const result = createSafeMongoUpdate(input);
 
       expect(result).toEqual({
-        'fees.rentalAmount': 1200,
+        'fees.rentAmount': 1200,
         lastModifiedBy: 'user123',
         status: 'active',
       });
@@ -60,7 +60,7 @@ describe('createSafeMongoUpdate', () => {
     it('should handle arrays and dates properly', () => {
       const testDate = new Date('2023-01-01');
       const input = {
-        fees: { rentalAmount: 1200 },
+        fees: { rentAmount: 1200 },
         tags: ['residential', 'luxury'],
         createdAt: testDate,
         metadata: null,
@@ -69,7 +69,7 @@ describe('createSafeMongoUpdate', () => {
       const result = createSafeMongoUpdate(input);
 
       expect(result).toEqual({
-        'fees.rentalAmount': 1200,
+        'fees.rentAmount': 1200,
         tags: ['residential', 'luxury'],
         createdAt: testDate,
         metadata: null,
@@ -105,13 +105,13 @@ describe('createSafeMongoUpdate', () => {
     it('should safely update property fees without losing other fee fields', () => {
       // Simulate what happens when user only updates rental amount
       const userUpdate = {
-        fees: { rentalAmount: 1500 }, // User only changed this
+        fees: { rentAmount: 1500 }, // User only changed this
       };
 
       const safeUpdate = createSafeMongoUpdate(userUpdate);
 
       expect(safeUpdate).toEqual({
-        'fees.rentalAmount': 1500,
+        'fees.rentAmount': 1500,
       });
 
       // This would now preserve securityDeposit, taxAmount, etc. in the database
@@ -134,7 +134,7 @@ describe('createSafeMongoUpdate', () => {
     it('should handle complex property approval scenario', () => {
       // Simulate pending changes from staff approval
       const pendingChanges = {
-        fees: { rentalAmount: 1800, managementFees: 200 },
+        fees: { rentAmount: 1800, managementFees: 200 },
         specifications: { bathrooms: 3 },
         status: 'active',
       };
@@ -142,7 +142,7 @@ describe('createSafeMongoUpdate', () => {
       const safeUpdate = createSafeMongoUpdate(pendingChanges);
 
       expect(safeUpdate).toEqual({
-        'fees.rentalAmount': 1800,
+        'fees.rentAmount': 1800,
         'fees.managementFees': 200,
         'specifications.bathrooms': 3,
         status: 'active',

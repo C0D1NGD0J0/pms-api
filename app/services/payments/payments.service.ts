@@ -12,6 +12,7 @@ import { SubscriptionPlanConfig } from '@services/subscription';
 import { calcApplicationFeeSplit } from '@utils/financial.utils';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
+import { InvoiceTemplateRenderer, InvoiceRenderData } from '@services/invoice';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenanceInvoiceApprovedPayload, EventTypes } from '@interfaces/events.interface';
@@ -57,6 +58,7 @@ import {
 } from '@interfaces/index';
 
 interface IConstructor {
+  invoiceTemplateRenderer: InvoiceTemplateRenderer;
   subscriptionPlanConfig: SubscriptionPlanConfig;
   paymentGatewayService: PaymentGatewayService;
   pdfGeneratorService: PdfGeneratorService;
@@ -141,6 +143,7 @@ export class PaymentService implements ICronProvider {
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
   private readonly pdfGeneratorService: PdfGeneratorService;
+  private readonly invoiceTemplateRenderer: InvoiceTemplateRenderer;
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
 
   constructor({
@@ -155,6 +158,7 @@ export class PaymentService implements ICronProvider {
     paymentProcessorDAO,
     subscriptionPlanConfig,
     paymentGatewayService,
+    invoiceTemplateRenderer,
     pdfGeneratorService,
   }: IConstructor) {
     this.userDAO = userDAO;
@@ -167,6 +171,7 @@ export class PaymentService implements ICronProvider {
     this.subscriptionDAO = subscriptionDAO;
     this.log = createLogger('PaymentService');
     this.paymentProcessorDAO = paymentProcessorDAO;
+    this.invoiceTemplateRenderer = invoiceTemplateRenderer;
     this.paymentGatewayService = paymentGatewayService;
     this.pdfGeneratorService = pdfGeneratorService;
     this.subscriptionPlanConfig = subscriptionPlanConfig;
@@ -453,6 +458,11 @@ export class PaymentService implements ICronProvider {
           : {}),
       });
 
+      // Track manual record usage for quota (fire-and-forget)
+      this.incrementManualRecordCount(cuid).catch((err) => {
+        this.log.error({ err, cuid }, 'Background manual record usage tracking failed');
+      });
+
       return {
         success: true,
         data: payment,
@@ -462,6 +472,35 @@ export class PaymentService implements ICronProvider {
       this.log.error('Error recording manual payment:', error);
       throw error;
     }
+  }
+
+  private async incrementManualRecordCount(cuid: string): Promise<void> {
+    const subscription = await this.subscriptionDAO.findFirst({ cuid });
+    if (!subscription) return;
+
+    const now = new Date();
+    const periodStart = subscription.manualRecords?.periodStart
+      ? new Date(subscription.manualRecords.periodStart)
+      : new Date(subscription.startDate);
+
+    const monthsElapsed =
+      (now.getFullYear() - periodStart.getFullYear()) * 12 +
+      (now.getMonth() - periodStart.getMonth());
+
+    if (monthsElapsed >= 1) {
+      await this.subscriptionDAO.update(
+        { cuid },
+        {
+          $set: {
+            'manualRecords.countThisPeriod': 1,
+            'manualRecords.periodStart': now,
+          },
+        }
+      );
+      return;
+    }
+
+    await this.subscriptionDAO.update({ cuid }, { $inc: { 'manualRecords.countThisPeriod': 1 } });
   }
 
   async createRentPayment(
@@ -3654,42 +3693,59 @@ export class PaymentService implements ICronProvider {
           ? lease.property.address
           : lease?.property?.address?.fullAddress || '';
 
-      const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body { font-family: Helvetica, Arial, sans-serif; font-size: 12px; color: #1a1a1a; margin: 40px; }
-    .header { border-bottom: 2px solid #1a1a1a; padding-bottom: 16px; margin-bottom: 24px; }
-    h1 { font-size: 22px; margin: 0 0 4px; }
-    .meta { color: #666; font-size: 11px; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    td { padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
-    td:last-child { text-align: right; font-weight: 600; }
-    .total td { border-top: 2px solid #1a1a1a; border-bottom: none; font-weight: 700; font-size: 14px; }
-    .badge { display: inline-block; background: #dcfce7; color: #166534; padding: 3px 10px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>Payment Receipt</h1>
-    <div class="meta">Invoice #${payment.invoiceNumber} &nbsp;·&nbsp; <span class="badge">PAID</span></div>
-  </div>
-  <table>
-    <tr><td>Tenant</td><td>${tenantName}</td></tr>
-    <tr><td>Property</td><td>${propertyAddress}</td></tr>
-    <tr><td>Lease</td><td>${lease?.leaseNumber || '—'}</td></tr>
-    <tr><td>Payment Type</td><td>${payment.paymentType.replace(/_/g, ' ')}</td></tr>
-    ${payment.period ? `<tr><td>Period</td><td>${payment.period.month}/${payment.period.year}</td></tr>` : ''}
-    <tr><td>Due Date</td><td>${payment.dueDate.toLocaleDateString()}</td></tr>
-    <tr><td>Paid On</td><td>${payment.paidAt?.toLocaleDateString() || '—'}</td></tr>
-    <tr><td>Rent Amount</td><td>$${MoneyUtils.centsToDisplay(payment.baseAmount)}</td></tr>
-    ${payment.processingFee > 0 ? `<tr><td>Processing Fee</td><td>$${MoneyUtils.centsToDisplay(payment.processingFee)}</td></tr>` : ''}
-    <tr class="total"><td>Total Paid</td><td>$${MoneyUtils.centsToDisplay(payment.baseAmount + (payment.processingFee || 0))}</td></tr>
-  </table>
-  <p style="color:#888; font-size:10px; margin-top:40px;">Generated ${new Date().toLocaleDateString()} · This is an official payment receipt.</p>
-</body>
-</html>`;
+      const fmt = (cents: number) => `${payment.currency} ${MoneyUtils.centsToDisplay(cents)}`;
+      const fmtDate = (d: Date) =>
+        d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      const titleCase = (s: string) =>
+        s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+      const total = payment.baseAmount + (payment.processingFee || 0);
+
+      const referenceEntries: { key: string; value: string }[] = [];
+      if (lease?.leaseNumber) referenceEntries.push({ key: 'Lease', value: lease.leaseNumber });
+      if (payment.period)
+        referenceEntries.push({
+          key: 'Period',
+          value: `${payment.period.month}/${payment.period.year}`,
+        });
+      referenceEntries.push({ key: 'Due Date', value: fmtDate(payment.dueDate) });
+      if (payment.paidAt) referenceEntries.push({ key: 'Paid On', value: fmtDate(payment.paidAt) });
+
+      const lineItems = [
+        { description: titleCase(payment.paymentType as string), amount: fmt(payment.baseAmount) },
+      ];
+      if (payment.processingFee > 0) {
+        lineItems.push({ description: 'Processing Fee', amount: fmt(payment.processingFee) });
+      }
+
+      const renderData: InvoiceRenderData = {
+        companyName: 'Property Management',
+        documentTitle: 'Payment Receipt',
+        invoiceNumber: payment.invoiceNumber,
+        statusLabel: 'PAID',
+        statusKey: 'paid',
+        billTo: {
+          label: 'Tenant',
+          name: tenantName,
+          address: propertyAddress,
+        },
+        reference: {
+          label: 'Payment Reference',
+          entries: referenceEntries,
+        },
+        details: [{ key: 'Payment Type', value: titleCase(payment.paymentType as string) }],
+        detailsTitle: 'Payment Details',
+        lineItems,
+        lineItemsTitle: 'Amount Breakdown',
+        subtotals:
+          payment.processingFee > 0 ? [{ label: 'Subtotal', amount: fmt(payment.baseAmount) }] : [],
+        totalAmount: fmt(total),
+        footerNote: 'This is an official payment receipt.',
+        accentColor: '#16a34a',
+        accentColorLight: '#4ade80',
+      };
+
+      const html = await this.invoiceTemplateRenderer.render(renderData);
 
       const result = await this.pdfGeneratorService.generatePdf(html, {
         format: 'A4',

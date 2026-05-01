@@ -756,6 +756,20 @@ export class SubscriptionService {
           daysRemaining,
           accountCreatedAt: client.createdAt,
         },
+        manualRecords: (() => {
+          const count = subscription.manualRecords?.countThisPeriod ?? 0;
+          const quota = subscriptionPlanConfig.getManualRecordQuota();
+          const feeCents = subscriptionPlanConfig.getManualRecordOverageFeeCents();
+          const overageCount = Math.max(0, count - quota);
+          return {
+            countThisPeriod: count,
+            quota,
+            remaining: Math.max(0, quota - count),
+            overageFeeCents: feeCents,
+            overageCount,
+            projectedOverageCents: overageCount * feeCents,
+          };
+        })(),
       };
 
       return { data: planUsage, success: true };
@@ -1608,6 +1622,38 @@ export class SubscriptionService {
 
       if (currentPeriodStart) {
         updateData.startDate = new Date(currentPeriodStart * 1000);
+
+        // Charge overage for manual payment records from the previous period
+        const quota = subscriptionPlanConfig.getManualRecordQuota();
+        const previousCount = subscription.manualRecords?.countThisPeriod ?? 0;
+
+        if (previousCount > quota && subscription.billing?.customerId) {
+          const overageCount = previousCount - quota;
+          const feeCents = subscriptionPlanConfig.getManualRecordOverageFeeCents();
+          const totalCents = overageCount * feeCents;
+
+          try {
+            await this.paymentGatewayService.createInvoiceItem(IPaymentGatewayProvider.STRIPE, {
+              customerId: subscription.billing.customerId,
+              amountInCents: totalCents,
+              currency: 'usd',
+              description: `Manual payment record overage: ${overageCount} record(s) over ${quota} free @ $${(feeCents / 100).toFixed(2)} each`,
+            });
+            this.log.info(
+              { cuid: subscription.cuid, overageCount, totalCents },
+              'Manual record overage invoice item created'
+            );
+          } catch (err) {
+            this.log.error(
+              { err, cuid: subscription.cuid },
+              'Failed to create manual record overage invoice item'
+            );
+          }
+        }
+
+        // Reset counter for new billing period
+        updateData['manualRecords.countThisPeriod'] = 0;
+        updateData['manualRecords.periodStart'] = new Date(currentPeriodStart * 1000);
       }
 
       if (currentPeriodEnd) {

@@ -767,6 +767,30 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async createInvoiceItem(params: {
+    customerId: string;
+    amountInCents: number;
+    currency: string;
+    description: string;
+  }): Promise<Stripe.InvoiceItem> {
+    try {
+      const item = await this.stripe.invoiceItems.create({
+        customer: params.customerId,
+        amount: params.amountInCents,
+        currency: params.currency,
+        description: params.description,
+      });
+      this.log.info(
+        { customerId: params.customerId, amount: params.amountInCents },
+        'Pending invoice item created'
+      );
+      return item;
+    } catch (error) {
+      this.log.error({ error, params }, 'Error creating invoice item');
+      throw error;
+    }
+  }
+
   async updateCustomerDefaultPaymentMethod(
     customerId: string,
     paymentMethodId: string

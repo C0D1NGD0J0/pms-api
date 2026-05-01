@@ -67,11 +67,16 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
   async aggregateByCategory(
     clientId: string,
     match: FilterQuery<IExpenseDocument>
-  ): Promise<Array<{ _id: string; total: number }>> {
+  ): Promise<Array<{ _id: { category: string; currency: string }; total: number }>> {
     try {
       return (await this.aggregate([
         { $match: { clientId, isDeleted: false, ...match } },
-        { $group: { _id: '$category', total: { $sum: '$amount' } } },
+        {
+          $group: {
+            _id: { category: '$category', currency: '$currency' },
+            total: { $sum: '$amount' },
+          },
+        },
         { $sort: { total: -1 } },
       ])) as any;
     } catch (error: any) {
@@ -83,11 +88,16 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
   async aggregateByProperty(
     clientId: string,
     match: FilterQuery<IExpenseDocument>
-  ): Promise<Array<{ _id: string; total: number }>> {
+  ): Promise<Array<{ _id: { propertyId: string; currency: string }; total: number }>> {
     try {
       return (await this.aggregate([
         { $match: { clientId, isDeleted: false, ...match } },
-        { $group: { _id: '$propertyId', total: { $sum: '$amount' } } },
+        {
+          $group: {
+            _id: { propertyId: '$propertyId', currency: '$currency' },
+            total: { $sum: '$amount' },
+          },
+        },
         { $sort: { total: -1 } },
       ])) as any;
     } catch (error: any) {

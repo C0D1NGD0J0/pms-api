@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { ClientSession, FilterQuery, Model } from 'mongoose';
+import { computeLeaseMonthlyFees } from '@utils/financial.utils';
 import { calcPercentage, roundToDecimal } from '@utils/math.utils';
 import { paginateResult, createLogger, escapeRegExp } from '@utils/index';
 import {
@@ -131,12 +132,12 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       }
 
       if (filters.minRent || filters.maxRent) {
-        query['fees.monthlyRent'] = {};
+        query['fees.rentAmount'] = {};
         if (filters.minRent) {
-          query['fees.monthlyRent'].$gte = filters.minRent;
+          query['fees.rentAmount'].$gte = filters.minRent;
         }
         if (filters.maxRent) {
-          query['fees.monthlyRent'].$lte = filters.maxRent;
+          query['fees.rentAmount'].$lte = filters.maxRent;
         }
       }
 
@@ -186,7 +187,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           skip,
           limit,
           projection:
-            'luid leaseNumber status duration.startDate duration.endDate fees.monthlyRent fees.lateFeeDays property.unitId tenantId signingMethod eSignature.status',
+            'luid leaseNumber status duration.startDate duration.endDate fees.rentAmount fees.currency fees.lateFeeDays fees.rentDueDay fees.acceptedPaymentMethod property.unitId tenantId signingMethod eSignature.status includeManagementFee petPolicy.monthlyFee',
           populate: [
             {
               path: 'tenantId',
@@ -196,7 +197,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
                 select: 'personalInfo.firstName personalInfo.lastName',
               },
             },
-            { path: 'property.id', select: 'pid name address.fullAddress' },
+            { path: 'property.id', select: 'pid name address.fullAddress fees.managementFees' },
             { path: 'property.unitId', select: 'unitNumber' },
           ],
         }),
@@ -217,6 +218,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         const propertyName = leaseObj.property?.id?.name || 'Unknown Property';
         const unitNumber = leaseObj.property?.unitId?.unitNumber || null;
 
+        const { totalMonthlyRent } = computeLeaseMonthlyFees(leaseObj);
+
         return {
           luid: leaseObj.luid,
           leaseNumber: leaseObj.leaseNumber,
@@ -224,7 +227,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           tenantUid: tenant?._id?.toString() || '',
           propertyAddress,
           unitNumber,
-          monthlyRent: leaseObj.fees?.monthlyRent,
+          rentAmount: totalMonthlyRent,
+          currency: leaseObj.fees?.currency ?? 'USD',
           gracePeriodDays: leaseObj.fees?.lateFeeDays ?? 5,
           rentDueDay: leaseObj.fees?.rentDueDay ?? 1,
           acceptedPaymentMethod: leaseObj.fees?.acceptedPaymentMethod ?? null,
@@ -648,8 +652,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           { $match: { ...baseQuery, status: LeaseStatus.ACTIVE } },
           {
             $group: {
-              _id: null,
-              totalRent: { $sum: '$fees.monthlyRent' },
+              _id: '$fees.currency',
+              total: { $sum: '$fees.rentAmount' },
             },
           },
         ]),
@@ -685,8 +689,6 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         cancelled: 0,
       };
 
-      this.log.info('leasesByStatus aggregation result:', { leasesByStatus, baseQuery });
-
       leasesByStatus.forEach((item: any) => {
         statusMap[item._id] = item.count;
       });
@@ -696,7 +698,10 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           ? (avgDuration[0] as any).avgDurationMs / (1000 * 60 * 60 * 24 * 30)
           : 0;
 
-      const totalMonthlyRent = totalRent.length > 0 ? (totalRent[0] as any).totalRent : 0;
+      const monthlyRentByCurrency = (totalRent as any[]).map((r) => ({
+        currency: r._id as string,
+        total: r.total as number,
+      }));
 
       const occupancyRate = calcPercentage(occupiedUnits, totalUnits);
 
@@ -704,7 +709,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         totalLeases,
         leasesByStatus: statusMap,
         averageLeaseDuration: Math.round(averageLeaseDuration),
-        totalMonthlyRent,
+        monthlyRentByCurrency,
         expiringIn30Days: expiring30,
         expiringIn60Days: expiring60,
         expiringIn90Days: expiring90,
@@ -791,8 +796,9 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
             propertyName: '$propertyDetails.name',
             propertyAddress: '$property.address',
             unitNumber: 1,
-            monthlyRent: '$fees.monthlyRent',
+            rentAmount: '$fees.rentAmount',
             securityDeposit: '$fees.securityDeposit',
+            currency: '$fees.currency',
             startDate: '$duration.startDate',
             endDate: '$duration.endDate',
             daysUntilExpiry: { $ceil: '$daysUntilExpiry' },

@@ -897,7 +897,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
                   status: 'active',
                 },
               },
-              { $project: { 'fees.monthlyRent': 1, 'property.id': 1 } },
+              { $project: { 'fees.rentAmount': 1, 'property.id': 1 } },
             ],
             as: 'activeLeasesDocs',
           },
@@ -964,7 +964,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
               },
             },
             totalRent: {
-              $sum: { $sum: '$activeLeasesDocs.fees.monthlyRent' },
+              $sum: { $sum: '$activeLeasesDocs.fees.rentAmount' },
             },
             backgroundCheckDistribution: {
               $push: '$profile.tenantInfo.backgroundCheckStatus',
@@ -1116,6 +1116,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             email: 1,
             isActive: 1,
             createdAt: 1,
+            profileId: '$profile._id',
             isConnected: {
               $let: {
                 vars: {
@@ -1257,7 +1258,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           status: lease.status,
           propertyName: lease.property?.address || 'Unknown Property',
           unitNumber: lease.unit?.unitNumber || '',
-          monthlyRent: lease.fees?.monthlyRent || 0,
+          rentAmount: lease.fees?.rentAmount || 0,
           leaseStart: lease.duration?.startDate || lease.startDate,
           leaseEnd: lease.duration?.endDate || lease.endDate,
         }));

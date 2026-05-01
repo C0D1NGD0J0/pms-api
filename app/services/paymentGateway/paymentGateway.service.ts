@@ -600,6 +600,28 @@ export class PaymentGatewayService {
     }
   }
 
+  async createInvoiceItem(
+    provider: IPaymentGatewayProvider,
+    params: { customerId: string; amountInCents: number; currency: string; description: string }
+  ): IPromiseReturnedData<any> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('createInvoiceItem' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not support invoice items`);
+      }
+
+      const result = await (providerInstance as any).createInvoiceItem(params);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error creating invoice item');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to create invoice item',
+      };
+    }
+  }
+
   async payInvoice(
     provider: IPaymentGatewayProvider,
     invoiceId: string,

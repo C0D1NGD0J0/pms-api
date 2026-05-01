@@ -56,10 +56,10 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         populate: [
           {
             path: 'currentLease',
-            select: 'luid tenantId',
+            select: 'luid leaseNumber status duration fees tenantId',
             populate: {
               path: 'tenantId',
-              select: 'uid userId personalInfo.firstName personalInfo.lastName',
+              select: 'uid userId email personalInfo.firstName personalInfo.lastName',
             },
           },
         ],

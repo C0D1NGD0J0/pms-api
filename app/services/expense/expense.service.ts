@@ -1,11 +1,11 @@
 import Logger from 'bunyan';
-import { Model, Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
+import { PaymentDAO } from '@dao/paymentDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { IExpenseDAO } from '@dao/interfaces/expenseDAO.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
-import { PaymentRecordStatus, IPaymentDocument } from '@interfaces/payments.interface';
 import {
   IExpenseDocument,
   IExpenseFilters,
@@ -18,20 +18,20 @@ export class ExpenseService implements IExpenseService {
   private readonly log: Logger;
   private readonly expenseDAO: IExpenseDAO;
   private readonly propertyDAO: PropertyDAO;
-  private readonly paymentModel: Model<IPaymentDocument>;
+  private readonly paymentDAO: PaymentDAO;
 
   constructor({
     expenseDAO,
     propertyDAO,
-    paymentModel,
+    paymentDAO,
   }: {
     expenseDAO: IExpenseDAO;
     propertyDAO: PropertyDAO;
-    paymentModel: Model<IPaymentDocument>;
+    paymentDAO: PaymentDAO;
   }) {
     this.expenseDAO = expenseDAO;
     this.propertyDAO = propertyDAO;
-    this.paymentModel = paymentModel;
+    this.paymentDAO = paymentDAO;
     this.log = createLogger('ExpenseService');
   }
 
@@ -140,41 +140,10 @@ export class ExpenseService implements IExpenseService {
 
       const dateMatch = { $gte: fromDate, $lte: toDate };
 
-      // Income: join Payment → Lease → Property
-      const incomeByPropertyRaw: Array<{
-        _id: Types.ObjectId;
-        total: number;
-        propertyName: string;
-      }> = await this.paymentModel.aggregate([
-        {
-          $match: {
-            cuid,
-            status: PaymentRecordStatus.PAID,
-            paidAt: dateMatch,
-            deletedAt: null,
-          },
-        },
-        {
-          $lookup: {
-            from: 'leases',
-            localField: 'lease',
-            foreignField: '_id',
-            as: 'leaseDoc',
-          },
-        },
-        { $unwind: { path: '$leaseDoc', preserveNullAndEmptyArrays: false } },
-        {
-          $group: {
-            _id: '$leaseDoc.property.id',
-            total: { $sum: '$baseAmount' },
-            propertyName: { $first: '$leaseDoc.property.name' },
-          },
-        },
-      ]);
+      // Income: join Payment → Lease, group by (currency, propertyId)
+      const incomeRaw = await this.paymentDAO.getIncomeByPropertyAndCurrency(cuid, dateMatch);
 
-      const incomeTotalCents = incomeByPropertyRaw.reduce((sum, r) => sum + r.total, 0);
-
-      // Expenses
+      // Expenses: group by (currency, category) and (currency, propertyId)
       const expMatch = { date: dateMatch };
       const [expByCategory, expByPropertyRaw] = await Promise.all([
         this.expenseDAO.aggregateByCategory(cuid, expMatch),
@@ -182,42 +151,66 @@ export class ExpenseService implements IExpenseService {
       ]);
 
       // Hydrate property names for expense aggregation
-      const propIds = expByPropertyRaw.map((r) => new Types.ObjectId(r._id));
-      const properties = propIds.length
+      const expPropIds = expByPropertyRaw
+        .map((r) => r._id.propertyId)
+        .filter(Boolean)
+        .map((id) => new Types.ObjectId(id));
+      const expProperties = expPropIds.length
         ? await this.propertyDAO.aggregate([
-            { $match: { _id: { $in: propIds } } },
+            { $match: { _id: { $in: expPropIds } } },
             { $project: { _id: 1, name: 1 } },
           ])
         : [];
-
       const propNameMap = new Map(
-        (properties as any[]).map((p: any) => [p._id.toString(), p.name])
+        (expProperties as any[]).map((p: any) => [p._id.toString(), p.name])
       );
-      const expenseTotalCents = expByCategory.reduce((sum, r) => sum + r.total, 0);
 
-      const summary: IPnLSummary = {
-        period: { from, to },
-        income: {
-          total: incomeTotalCents,
-          byProperty: incomeByPropertyRaw.map((r) => ({
-            propertyId: r._id.toString(),
-            name: r.propertyName || 'Unknown',
-            amount: r.total,
-          })),
-        },
-        expenses: {
-          total: expenseTotalCents,
-          byCategory: expByCategory.map((r) => ({ category: r._id, amount: r.total })),
-          byProperty: expByPropertyRaw.map((r) => ({
-            propertyId: r._id.toString(),
-            name: propNameMap.get(r._id.toString()) || 'Unknown',
-            amount: r.total,
-          })),
-        },
-        netIncome: incomeTotalCents - expenseTotalCents,
+      // Collect all currencies across income and expenses
+      const allCurrencies = new Set<string>([
+        ...expByPropertyRaw.map((r) => r._id.currency),
+        ...expByCategory.map((r) => r._id.currency),
+        ...incomeRaw.map((r) => r._id.currency),
+      ]);
+
+      const byCurrency = [...allCurrencies].map((currency) => {
+        const incomeItems = incomeRaw.filter((r) => r._id.currency === currency);
+        const incomeTotal = incomeItems.reduce((sum, r) => sum + r.total, 0);
+
+        const expCatItems = expByCategory.filter((r) => r._id.currency === currency);
+        const expPropItems = expByPropertyRaw.filter((r) => r._id.currency === currency);
+        const expenseTotal = expCatItems.reduce((sum, r) => sum + r.total, 0);
+
+        return {
+          currency,
+          income: {
+            total: incomeTotal,
+            byProperty: incomeItems.map((r) => ({
+              propertyId: r._id.propertyId.toString(),
+              name: r.propertyName || 'Unknown',
+              amount: r.total,
+            })),
+          },
+          expenses: {
+            total: expenseTotal,
+            byCategory: expCatItems.map((r) => ({
+              category: r._id.category,
+              amount: r.total,
+            })),
+            byProperty: expPropItems.map((r) => ({
+              propertyId: r._id.propertyId.toString(),
+              name: propNameMap.get(r._id.propertyId.toString()) || 'Unknown',
+              amount: r.total,
+            })),
+          },
+          netIncome: incomeTotal - expenseTotal,
+        };
+      });
+
+      return {
+        success: true,
+        data: { period: { from, to }, byCurrency },
+        message: 'P&L summary generated',
       };
-
-      return { success: true, data: summary, message: 'P&L summary generated' };
     } catch (error) {
       this.log.error({ error }, 'Error generating P&L summary');
       throw error;

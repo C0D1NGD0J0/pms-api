@@ -330,9 +330,12 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     cuid: string,
     opts?: { profileId?: string }
   ): Promise<{
-    totalRevenue: number;
-    monthRevenue: number;
-    pendingAmount: number;
+    byCurrency: Array<{
+      currency: string;
+      totalRevenue: number;
+      monthRevenue: number;
+      pendingAmount: number;
+    }>;
     overdueCount: number;
     totalCount: number;
     onTimeRate: number;
@@ -354,7 +357,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
             { $match: { status: PaymentRecordStatus.PAID } },
             {
               $group: {
-                _id: null,
+                _id: '$currency',
                 totalRevenue: { $sum: '$baseAmount' },
                 monthRevenue: {
                   $sum: {
@@ -366,7 +369,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
           ],
           pending: [
             { $match: { status: PaymentRecordStatus.PENDING } },
-            { $group: { _id: null, pendingAmount: { $sum: '$baseAmount' } } },
+            { $group: { _id: '$currency', pendingAmount: { $sum: '$baseAmount' } } },
           ],
           overdue: [{ $match: { status: PaymentRecordStatus.OVERDUE } }, { $count: 'count' }],
           timing: [
@@ -398,22 +401,81 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     ]);
 
     const raw = (results[0] || {}) as any;
-    const rev = raw.revenue?.[0] || {};
-    const pend = raw.pending?.[0] || {};
     const timing = raw.timing?.[0] || {};
-
     const totalPaid = timing.totalPaid || 0;
     const onTimeCount = timing.onTimeCount || 0;
     const avgDelayMs = timing.avgDelayMs || 0;
 
+    // Zip revenue and pending arrays by currency
+    const revMap = new Map<string, { totalRevenue: number; monthRevenue: number }>(
+      (raw.revenue || []).map((r: any) => [
+        r._id,
+        { totalRevenue: r.totalRevenue || 0, monthRevenue: r.monthRevenue || 0 },
+      ])
+    );
+    const pendMap = new Map<string, number>(
+      (raw.pending || []).map((p: any) => [p._id, p.pendingAmount || 0])
+    );
+    const allCurrencies = new Set([...pendMap.keys(), ...revMap.keys()]);
+    const byCurrency = [...allCurrencies].map((currency) => ({
+      currency,
+      totalRevenue: revMap.get(currency)?.totalRevenue ?? 0,
+      monthRevenue: revMap.get(currency)?.monthRevenue ?? 0,
+      pendingAmount: pendMap.get(currency) ?? 0,
+    }));
+
     return {
-      totalRevenue: rev.totalRevenue || 0,
-      monthRevenue: rev.monthRevenue || 0,
-      pendingAmount: pend.pendingAmount || 0,
+      byCurrency,
       overdueCount: raw.overdue?.[0]?.count || 0,
       totalCount: raw.total?.[0]?.count || 0,
       onTimeRate: totalPaid > 0 ? calcPercentage(onTimeCount, totalPaid) : 0,
       avgPaymentDelayDays: avgDelayMs > 0 ? Math.round(msToDays(avgDelayMs)) : 0,
     };
+  }
+
+  /**
+   * Aggregate paid payment income grouped by (currency, propertyId) for the P&L summary.
+   * Joins Payment → Lease to resolve the property reference stored on the lease.
+   *
+   * @param cuid      Client unique ID (tenant isolation)
+   * @param dateMatch Mongoose date filter applied to paidAt
+   */
+  async getIncomeByPropertyAndCurrency(
+    cuid: string,
+    dateMatch: { $gte: Date; $lte: Date }
+  ): Promise<
+    Array<{ _id: { currency: string; propertyId: string }; total: number; propertyName: string }>
+  > {
+    const results = await this.aggregate([
+      {
+        $match: {
+          cuid,
+          status: PaymentRecordStatus.PAID,
+          paidAt: dateMatch,
+          deletedAt: null,
+        },
+      },
+      {
+        $lookup: {
+          from: 'leases',
+          localField: 'lease',
+          foreignField: '_id',
+          as: 'leaseDoc',
+        },
+      },
+      { $unwind: { path: '$leaseDoc', preserveNullAndEmptyArrays: false } },
+      {
+        $group: {
+          _id: { currency: '$currency', propertyId: '$leaseDoc.property.id' },
+          total: { $sum: '$baseAmount' },
+          propertyName: { $first: '$leaseDoc.property.name' },
+        },
+      },
+    ]);
+    return results as unknown as Array<{
+      _id: { currency: string; propertyId: string };
+      total: number;
+      propertyName: string;
+    }>;
   }
 }

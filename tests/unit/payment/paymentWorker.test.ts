@@ -78,7 +78,8 @@ describe('PaymentWorker', () => {
           tenantId: data.tenantId,
           period: data.period,
           description: data.description,
-        })
+        }),
+        { createStripeInvoice: true }
       );
       expect(job.progress).toHaveBeenCalledWith(10);
       expect(job.progress).toHaveBeenCalledWith(100);

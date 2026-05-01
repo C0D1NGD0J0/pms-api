@@ -11,14 +11,14 @@ const mockLeaseStats = {
   totalLeases: 10,
   leasesByStatus: { active: 8, expired: 2 },
   occupancyRate: 80,
-  totalMonthlyRent: 24000,
+  monthlyRentByCurrency: [{ currency: 'USD', total: 24000 }],
   expiringIn30Days: 1,
 };
 
 const mockPaymentStats = {
-  totalRevenue: 100000,
-  monthRevenue: 8000,
-  pendingAmount: 3000,
+  byCurrency: [
+    { currency: 'USD', totalRevenue: 100000, monthRevenue: 8000, pendingAmount: 3000 },
+  ],
   overdueCount: 2,
   totalCount: 40,
   onTimeRate: 92,
@@ -31,6 +31,8 @@ const mockPropertyCounts = {
   vacant: 2,
   occupancyRate: 80,
 };
+
+const mockPropertyCount = 7;
 
 const mockUserStats = {
   total: 15,
@@ -55,6 +57,7 @@ const mockMaintenanceStats = {
 const mockLeaseDAO = { getLeaseStats: jest.fn().mockReturnValue(Promise.resolve(mockLeaseStats)) } as any;
 const mockPaymentDAO = { getPaymentStats: jest.fn().mockReturnValue(Promise.resolve(mockPaymentStats)) } as any;
 const mockPropertyUnitDAO = { getPropertyUnitCounts: jest.fn().mockReturnValue(Promise.resolve(mockPropertyCounts)) } as any;
+const mockPropertyDAO = { getPropertyCount: jest.fn().mockReturnValue(Promise.resolve(mockPropertyCount)) } as any;
 const mockUserDAO = { getUserStats: jest.fn().mockReturnValue(Promise.resolve(mockUserStats)) } as any;
 const mockMaintenanceRequestDAO = { getStats: jest.fn().mockReturnValue(Promise.resolve(mockMaintenanceStats)) } as any;
 const mockClientDAO = { getActiveCuids: jest.fn().mockReturnValue(Promise.resolve(['cuid1', 'cuid2'])) } as any;
@@ -90,6 +93,7 @@ function makeService(): MetricsService {
   return new MetricsService({
     maintenanceRequestDAO: mockMaintenanceRequestDAO,
     propertyUnitDAO: mockPropertyUnitDAO,
+    propertyDAO: mockPropertyDAO,
     emitterService: mockEmitterService,
     metricsDAO: mockMetricsDAO,
     paymentDAO: mockPaymentDAO,
@@ -127,12 +131,15 @@ describe('MetricsService', () => {
       expect(mockLeaseDAO.getLeaseStats).toHaveBeenCalledWith('cuid123');
       expect(mockPaymentDAO.getPaymentStats).toHaveBeenCalledWith('cuid123');
       expect(mockPropertyUnitDAO.getPropertyUnitCounts).toHaveBeenCalledWith('cuid123');
+      expect(mockPropertyDAO.getPropertyCount).toHaveBeenCalledWith('cuid123');
       expect(mockUserDAO.getUserStats).toHaveBeenCalledWith('cuid123');
       expect(mockMaintenanceRequestDAO.getStats).toHaveBeenCalledWith('cuid123');
 
       expect(stats.leases).toEqual(mockLeaseStats);
-      expect(stats.payments).toEqual(mockPaymentStats);
-      expect(stats.properties).toEqual(mockPropertyCounts);
+      expect(stats.payments.byCurrency).toEqual(mockPaymentStats.byCurrency);
+      expect(stats.payments.overdueCount).toBe(mockPaymentStats.overdueCount);
+      expect(stats.payments.onTimeRate).toBe(mockPaymentStats.onTimeRate);
+      expect(stats.properties).toEqual({ ...mockPropertyCounts, propertyCount: mockPropertyCount });
       expect(stats.users).toEqual(mockUserStats);
       expect(stats.maintenance.open).toBe(mockMaintenanceStats.open);
       expect(stats.maintenance.byPriority).toEqual(mockMaintenanceStats.byPriority);
@@ -157,8 +164,8 @@ describe('MetricsService', () => {
       const priorDate = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000); // 40 days ago
 
       mockMetricsDAO.findSince.mockReturnValue(Promise.resolve([
-        { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { totalRevenue: 1000 }, timestamp: priorDate },
-        { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { totalRevenue: 2000 }, timestamp: recentDate },
+        { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { overdueCount: 1000 }, timestamp: priorDate },
+        { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { overdueCount: 2000 }, timestamp: recentDate },
       ]));
 
       const result = await service.getTrend('cuid123', MetricType.PAYMENT, 30);
@@ -172,8 +179,8 @@ describe('MetricsService', () => {
       const priorDate = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000);
 
       mockMetricsDAO.findSince.mockReturnValue(Promise.resolve([
-        { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { totalRevenue: 4000 }, timestamp: priorDate },
-        { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { totalRevenue: 2000 }, timestamp: recentDate },
+        { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { overdueCount: 4000 }, timestamp: priorDate },
+        { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { overdueCount: 2000 }, timestamp: recentDate },
       ]));
 
       const result = await service.getTrend('cuid123', MetricType.PAYMENT, 30);
@@ -202,36 +209,13 @@ describe('MetricsService', () => {
   // ─── SSE delta push handlers ──────────────────────────────────────────────
 
   describe('SSE delta push', () => {
-    it('should push delta for PAYMENT_SUCCEEDED with current month amount', async () => {
-      const now = new Date();
+    it('should push metrics:invalidate for PAYMENT_SUCCEEDED (revenue is per-currency, requires re-fetch)', async () => {
       const payload = {
         cuid: 'cuid123',
         amount: 1200,
-        paidAt: now.toISOString(),
-        paymentId: 'pay_001',
-      };
-
-      mockEmitterService.emit(EventTypes.PAYMENT_SUCCEEDED, payload);
-      await Promise.resolve(); // flush async handler
-
-      expect(mockSSEService.broadcastToClient).toHaveBeenCalledWith(
-        'cuid123',
-        expect.objectContaining({
-          type: 'metrics:delta',
-          payments: expect.objectContaining({ totalRevenue: 1200, monthRevenue: 1200 }),
-        }),
-        'metrics:update'
-      );
-    });
-
-    it('should push delta for PAYMENT_SUCCEEDED with 0 monthRevenue for prior month', async () => {
-      const lastMonth = new Date();
-      lastMonth.setMonth(lastMonth.getMonth() - 1);
-      const payload = {
-        cuid: 'cuid123',
-        amount: 1200,
-        paidAt: lastMonth.toISOString(),
-        paymentId: 'pay_002',
+        paidAt: new Date().toISOString(),
+        pytuid: 'pay_001',
+        invoiceId: 'inv_001',
       };
 
       mockEmitterService.emit(EventTypes.PAYMENT_SUCCEEDED, payload);
@@ -239,10 +223,7 @@ describe('MetricsService', () => {
 
       expect(mockSSEService.broadcastToClient).toHaveBeenCalledWith(
         'cuid123',
-        expect.objectContaining({
-          type: 'metrics:delta',
-          payments: expect.objectContaining({ totalRevenue: 1200, monthRevenue: 0 }),
-        }),
+        expect.objectContaining({ type: 'metrics:invalidate' }),
         'metrics:update'
       );
     });

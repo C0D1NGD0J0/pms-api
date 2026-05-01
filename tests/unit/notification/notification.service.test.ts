@@ -6,8 +6,10 @@ import { NotificationPriorityEnum, INotificationDocument, NotificationTypeEnum, 
 const mockNotificationDAO = {
   create: jest.fn(),
   findFirst: jest.fn(),
+  findByNuid: jest.fn(),
   list: jest.fn(),
   updateById: jest.fn(),
+  updateMany: jest.fn(),
 } as any;
 
 // Mock EventEmitterService
@@ -47,6 +49,12 @@ const mockUserDAO = {
   findById: jest.fn(),
 } as any;
 
+// Mock NotificationCache
+const mockNotificationCache = {
+  markAnnouncementsRead: jest.fn(),
+  getReadAnnouncementNuids: jest.fn(),
+} as any;
+
 // Mock Logger
 const _mockLogger = {
   info: jest.fn(),
@@ -63,6 +71,7 @@ describe('NotificationService - New Methods', () => {
 
     notificationService = new NotificationService({
       notificationDAO: mockNotificationDAO,
+      notificationCache: mockNotificationCache,
       emitterService: mockEmitterService,
       profileDAO: mockProfileDAO,
       clientDAO: mockClientDAO,
@@ -430,6 +439,93 @@ describe('NotificationService - New Methods', () => {
           recipientCount: 2,
         })
       );
+    });
+  });
+});
+
+describe('NotificationService — Announcement Read Tracking', () => {
+  let notificationService: NotificationService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    notificationService = new NotificationService({
+      notificationDAO: mockNotificationDAO,
+      notificationCache: mockNotificationCache,
+      emitterService: mockEmitterService,
+      profileDAO: mockProfileDAO,
+      clientDAO: mockClientDAO,
+      userDAO: mockUserDAO,
+      userService: mockUserService,
+      sseService: mockSSEService,
+      profileService: mockProfileService,
+    } as any);
+
+    jest.spyOn(notificationService['log'], 'error').mockImplementation(() => undefined);
+    jest.spyOn(notificationService['log'], 'info').mockImplementation(() => undefined);
+  });
+
+  describe('markAllAsRead', () => {
+    it('stores Redis keys for unread announcements and updates individual notifications in DB', async () => {
+      mockNotificationDAO.updateMany.mockResolvedValue({ modifiedCount: 3 });
+      mockNotificationDAO.list.mockResolvedValue({
+        items: [{ nuid: 'ANN-1' }, { nuid: 'ANN-2' }],
+      });
+      mockNotificationCache.markAnnouncementsRead.mockResolvedValue(undefined);
+
+      const result = await notificationService.markAllAsRead('user-123', 'CUID');
+
+      expect(result.success).toBe(true);
+      expect(result.data.modifiedCount).toBe(5);
+      expect(mockNotificationDAO.updateMany).toHaveBeenCalledWith(
+        { recipientType: 'individual', recipient: 'user-123', cuid: 'CUID', isRead: false },
+        expect.objectContaining({ $set: { isRead: true, readAt: expect.any(Date) } })
+      );
+      expect(mockNotificationCache.markAnnouncementsRead).toHaveBeenCalledWith(
+        'CUID',
+        ['ANN-1', 'ANN-2'],
+        'user-123'
+      );
+    });
+
+    it('skips Redis when no unread announcements exist', async () => {
+      mockNotificationDAO.updateMany.mockResolvedValue({ modifiedCount: 1 });
+      mockNotificationDAO.list.mockResolvedValue({ items: [] });
+
+      const result = await notificationService.markAllAsRead('user-123', 'CUID');
+
+      expect(result.success).toBe(true);
+      expect(mockNotificationCache.markAnnouncementsRead).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('markAsRead', () => {
+    it('stores in Redis for announcements without updating DB', async () => {
+      mockNotificationDAO.findByNuid.mockResolvedValue({
+        nuid: 'ANN-1',
+        recipientType: 'announcement',
+        cuid: 'CUID',
+      });
+      mockNotificationCache.markAnnouncementsRead.mockResolvedValue(undefined);
+
+      const result = await notificationService.markAsRead('ANN-1', 'user-123', 'CUID');
+
+      expect(result.success).toBe(true);
+      expect(mockNotificationCache.markAnnouncementsRead).toHaveBeenCalledWith(
+        'CUID',
+        ['ANN-1'],
+        'user-123'
+      );
+      expect(mockNotificationDAO.updateById).not.toHaveBeenCalled();
+    });
+
+    it('returns not found when notification does not exist', async () => {
+      mockNotificationDAO.findByNuid.mockResolvedValue(null);
+
+      const result = await notificationService.markAsRead('MISSING', 'user-123', 'CUID');
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('not found');
     });
   });
 });

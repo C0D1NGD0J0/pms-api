@@ -4,7 +4,21 @@
       "requested": {
         "title": "notifications.payment.requested.title",
         "message": "notifications.payment.requested.message"
+      },
+      "cancelled": {
+        "title": "notifications.payment.cancelled.title",
+        "message": "notifications.payment.cancelled.message"
       }
+    }
+  },
+  "notification": {
+    "success": {
+      "all_marked_as_read": "notification.success.all_marked_as_read"
+    }
+  },
+  "tenant": {
+    "success": {
+      "profileUpdated": "tenant.success.profileUpdated"
     }
   }
 }

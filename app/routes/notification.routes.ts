@@ -9,6 +9,16 @@ const router = Router();
 router.use(isAuthenticated);
 
 router.patch(
+  '/:cuid/mark-all-read',
+  basicLimiter(),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<NotificationController>('notificationController');
+    return controller.markAllNotificationsAsRead(req, res);
+  })
+);
+
+router.patch(
   '/:cuid/mark-read/:nuid',
   basicLimiter(),
   validateRequest({

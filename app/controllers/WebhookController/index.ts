@@ -198,6 +198,12 @@ export class WebhookController {
             break;
           }
 
+          case 'setup_intent.succeeded': {
+            const setupIntent = event.data.object as any;
+            await this.paymentService.handleSetupIntentSucceeded(setupIntent);
+            break;
+          }
+
           case 'charge.dispute.created': {
             const dispute = event.data.object as any;
             await this.paymentService.handleDisputeCreated(dispute.id, dispute);

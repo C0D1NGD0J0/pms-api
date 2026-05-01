@@ -72,7 +72,7 @@ const setupService = () => {
 /**
  * Create a minimal valid Lease for a tenant on a property.
  * The Lease model requires: cuid, tenantId, property.id, property.address,
- * duration.startDate/endDate, fees.monthlyRent/securityDeposit/acceptedPaymentMethod/currency
+ * duration.startDate/endDate, fees.rentAmount/securityDeposit/acceptedPaymentMethod/currency
  */
 const createActiveLease = async (
   cuid: string,
@@ -100,7 +100,7 @@ const createActiveLease = async (
       endDate: new Date(Date.now() + 335 * 24 * 60 * 60 * 1000),
     },
     fees: {
-      monthlyRent: 150000,
+      rentAmount: 150000,
       securityDeposit: 150000,
       rentDueDay: 1,
       currency: 'USD',
@@ -301,7 +301,7 @@ describe('MaintenanceRequestService', () => {
           endDate: new Date(Date.now() + 335 * 24 * 60 * 60 * 1000),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 150000,
           rentDueDay: 1,
           currency: 'USD',

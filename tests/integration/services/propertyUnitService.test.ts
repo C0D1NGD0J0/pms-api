@@ -74,6 +74,7 @@ describe('PropertyUnitService Integration Tests', () => {
       emitterService: mockEventEmitter as any,
       unitNumberingService,
       subscriptionDAO: {} as any,
+      leaseDAO: { list: jest.fn().mockReturnValue(Promise.resolve({ items: [] })) } as any,
     });
   });
 
@@ -326,7 +327,7 @@ describe('PropertyUnitService Integration Tests', () => {
         const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
           unitNumber: '201',
           floor: 2,
-          monthlyRent: 1500,
+          rentAmount: 1500,
         });
 
         const updateData = {
@@ -543,7 +544,7 @@ describe('PropertyUnitService Integration Tests', () => {
         status: 'available',
         bedrooms: 1,
         bathrooms: 1,
-        monthlyRent: 1200,
+        rentAmount: 1200,
       });
 
       _unit2 = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
@@ -552,7 +553,7 @@ describe('PropertyUnitService Integration Tests', () => {
         status: 'occupied',
         bedrooms: 2,
         bathrooms: 1,
-        monthlyRent: 1500,
+        rentAmount: 1500,
       });
 
       _unit3 = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
@@ -561,7 +562,7 @@ describe('PropertyUnitService Integration Tests', () => {
         status: 'available',
         bedrooms: 2,
         bathrooms: 2,
-        monthlyRent: 1800,
+        rentAmount: 1800,
       });
     });
 

@@ -176,7 +176,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cuid/:mruid/complete_request',
+  '/:cuid/:mruid/mark_work_done',
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   requireActiveTenant('maintenanceRequests'),
   idempotency,
@@ -186,7 +186,38 @@ router.patch(
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<MaintenanceController>('maintenanceController');
-    return controller.completeRequest(req, res);
+    return controller.markWorkDone(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/:mruid/finalize',
+  requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<MaintenanceController>('maintenanceController');
+    return controller.finalizeCompletion(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/:mruid/tenant_feedback',
+  requirePermissionWithContext(
+    PermissionResource.MAINTENANCE,
+    PermissionAction.UPDATE,
+    roleBasedContext
+  ),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
+    body: MaintenanceValidations.tenantFeedbackBody,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<MaintenanceController>('maintenanceController');
+    return controller.submitTenantFeedback(req, res);
   })
 );
 

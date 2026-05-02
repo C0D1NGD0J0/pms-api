@@ -101,6 +101,14 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
     completionNotes: { type: [CompletionNoteSchema], default: undefined },
     actualCost: { type: Number, min: 0 },
     invoice: { type: InvoiceSchema, default: undefined },
+    invoiceDeadline: { type: Date },
+    tenantFeedback: {
+      status: { type: String, enum: ['pending', 'confirmed', 'disputed'], default: 'pending' },
+      rating: { type: Number, min: 1, max: 5 },
+      comment: { type: String, maxlength: 1000 },
+      submittedAt: { type: Date },
+      _id: false,
+    },
     aiAnalysis: {
       confidence: { type: Number, min: 0, max: 1 },
       reasoning: { type: String },
@@ -156,7 +164,10 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
           type: String,
           enum: Object.values(WorkOrderStatus),
         },
-        scope: { type: String, maxlength: 2000 },
+        scope: {
+          text: { type: String, maxlength: 2000 },
+          html: { type: String },
+        },
         estimatedCostInCents: { type: Number, min: 0 },
         lineItems: { type: [WorkOrderLineItemSchema], default: undefined },
         submittedBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -172,7 +183,10 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
       type: [
         {
           status: { type: String, enum: Object.values(WorkOrderStatus) },
-          scope: { type: String, maxlength: 2000 },
+          scope: {
+            text: { type: String, maxlength: 2000 },
+            html: { type: String },
+          },
           estimatedCostInCents: { type: Number, min: 0 },
           lineItems: { type: [WorkOrderLineItemSchema], default: undefined },
           submittedBy: { type: Schema.Types.ObjectId, ref: 'User' },

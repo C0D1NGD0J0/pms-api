@@ -15,6 +15,16 @@ export enum MaintenanceCategory {
   HVAC = 'hvac',
 }
 
+export enum MaintenanceRequestStatus {
+  AWAITING_INVOICE = 'awaiting_invoice',
+  IN_PROGRESS = 'in_progress',
+  CANCELLED = 'cancelled',
+  COMPLETED = 'completed',
+  ASSIGNED = 'assigned',
+  PENDING = 'pending',
+  OPEN = 'open',
+}
+
 export enum AvailabilityWindow {
   WEEKDAYS_ONLY = 'weekdays_only',
   WEEKENDS_ONLY = 'weekends_only',
@@ -22,15 +32,6 @@ export enum AvailabilityWindow {
   MORNING = 'morning',
   EVENING = 'evening',
   ALL_DAY = 'all_day',
-}
-
-export enum MaintenanceRequestStatus {
-  IN_PROGRESS = 'in_progress',
-  CANCELLED = 'cancelled',
-  COMPLETED = 'completed',
-  ASSIGNED = 'assigned',
-  PENDING = 'pending',
-  OPEN = 'open',
 }
 
 export enum WorkOrderStatus {
@@ -57,6 +58,12 @@ export interface IMaintenanceRequest {
     preferredDate?: Date; // specific dates tenant prefers
     options: AvailabilityWindow[]; // when tenant is available
   };
+  tenantFeedback?: {
+    status: 'pending' | 'confirmed' | 'disputed';
+    rating?: number;
+    comment?: string;
+    submittedAt?: Date;
+  };
   completionNotes?: { author: Types.ObjectId | string; note: string; createdAt: Date }[];
   description: {
     text: string;
@@ -80,6 +87,7 @@ export interface IMaintenanceRequest {
   aiAnalysis?: IAIAnalysis;
   estimatedCost?: number;
   workOrder?: IWorkOrder;
+  invoiceDeadline?: Date;
   scheduledDate?: Date;
   actualCost?: number;
   isBillable: boolean; // billing seam for expense integration
@@ -173,6 +181,19 @@ export interface IUpdateMaintenancePayload {
   title?: string;
 }
 
+export interface IWorkOrder {
+  scope: { text: string; html?: string };
+  lineItems?: IWorkOrderLineItem[];
+  estimatedCostInCents: number;
+  submittedBy: Types.ObjectId;
+  reviewedBy?: Types.ObjectId;
+  rejectionReason?: string;
+  status: WorkOrderStatus;
+  submittedAt: Date;
+  reviewedAt?: Date;
+  notes?: string;
+}
+
 export interface IMaintenanceStats {
   byCategory: Record<string, number>;
   byPriority: Record<string, number>;
@@ -185,19 +206,6 @@ export interface IMaintenanceStats {
   pending: number;
   total: number;
   open: number;
-}
-
-export interface IWorkOrder {
-  lineItems?: IWorkOrderLineItem[];
-  estimatedCostInCents: number;
-  submittedBy: Types.ObjectId;
-  reviewedBy?: Types.ObjectId;
-  rejectionReason?: string;
-  status: WorkOrderStatus;
-  submittedAt: Date;
-  reviewedAt?: Date;
-  notes?: string;
-  scope: string;
 }
 
 export interface IInvoiceWebhookPayload {
@@ -239,6 +247,13 @@ export interface IRespondToAssignmentPayload {
   reason?: string; // required when action === 'decline'
 }
 
+export interface ISubmitWorkOrderPayload {
+  lineItems?: IWorkOrderLineItem[];
+  estimatedCostInCents: number;
+  notes?: string;
+  scope: string; // HTML from rich text editor — backend stores as { text, html }
+}
+
 export interface IMaintenanceRequestDocument extends IMaintenanceRequest, Document {
   _id: Types.ObjectId;
   deletedAt?: Date;
@@ -270,13 +285,6 @@ export interface IMaintenanceTimelineStep {
   timestamp?: Date;
   label: string;
   note?: string;
-}
-
-export interface ISubmitWorkOrderPayload {
-  lineItems?: IWorkOrderLineItem[];
-  estimatedCostInCents: number;
-  notes?: string;
-  scope: string;
 }
 
 export interface IReviewInvoicePayload {

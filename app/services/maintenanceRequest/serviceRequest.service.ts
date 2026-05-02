@@ -1,7 +1,9 @@
 import Logger from 'bunyan';
+import Decimal from 'decimal.js';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { UserDAO } from '@dao/userDAO';
+import sanitizeHtml from 'sanitize-html';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { VendorDAO } from '@dao/vendorDAO';
 import { createLogger } from '@utils/index';
@@ -57,6 +59,10 @@ const ALLOWED_TRANSITIONS: Record<MaintenanceRequestStatus, MaintenanceRequestSt
     MaintenanceRequestStatus.CANCELLED,
   ],
   [MaintenanceRequestStatus.IN_PROGRESS]: [
+    MaintenanceRequestStatus.AWAITING_INVOICE,
+    MaintenanceRequestStatus.CANCELLED,
+  ],
+  [MaintenanceRequestStatus.AWAITING_INVOICE]: [
     MaintenanceRequestStatus.COMPLETED,
     MaintenanceRequestStatus.CANCELLED,
   ],
@@ -694,7 +700,11 @@ export class MaintenanceRequestService {
     return { success: true, data: updated, message: t('maintenance.success.statusUpdated') };
   }
 
-  async completeRequest(
+  /**
+   * Vendor marks work as done → transitions to AWAITING_INVOICE with 72hr deadline.
+   * Requires an approved work order (even for $0 jobs).
+   */
+  async markWorkDone(
     ctx: IRequestContext,
     mruid: string,
     data: ICompleteMaintenancePayload
@@ -702,12 +712,23 @@ export class MaintenanceRequestService {
     const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
     const request = await this.getRequestOrThrow(mruid, cuid);
-    this.assertTransition(request.status, MaintenanceRequestStatus.COMPLETED);
+    this.assertTransition(request.status, MaintenanceRequestStatus.AWAITING_INVOICE);
+
+    // Mandatory work order guard
+    if (!request.workOrder) {
+      throw new BadRequestError({ message: t('maintenance.errors.workOrderRequired') });
+    }
+    if (request.workOrder.status !== WorkOrderStatus.APPROVED) {
+      throw new BadRequestError({ message: t('maintenance.errors.workOrderNotApproved') });
+    }
+
+    const INVOICE_DEADLINE_HOURS = 72;
+    const invoiceDeadline = new Date(Date.now() + INVOICE_DEADLINE_HOURS * 60 * 60 * 1000);
 
     const updateQuery: Record<string, any> = {
       $set: {
-        status: MaintenanceRequestStatus.COMPLETED,
-        completedAt: new Date(),
+        status: MaintenanceRequestStatus.AWAITING_INVOICE,
+        invoiceDeadline,
         ...(data.actualCost !== undefined && { actualCost: data.actualCost }),
       },
     };
@@ -732,6 +753,45 @@ export class MaintenanceRequestService {
       );
     });
 
+    this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_WORK_DONE, {
+      requestId: request._id.toString(),
+      mruid: request.mruid,
+      cuid,
+      tenantId: request.tenantId?.toString(),
+      vendorId: request.vendorId?.toString(),
+      completedBy: currentuser.sub,
+      invoiceDeadline: invoiceDeadline.toISOString(),
+    });
+
+    return { success: true, data: updated, message: t('maintenance.success.workDone') };
+  }
+
+  /**
+   * PM finalizes the request → transitions AWAITING_INVOICE → COMPLETED.
+   * Typically called after invoice is approved (or after 72hr expiry if PM decides to close).
+   */
+  async finalizeCompletion(ctx: IRequestContext, mruid: string): Promise<ISuccessReturnData> {
+    const currentuser = ctx.currentuser;
+    const { cuid } = ctx.request.params;
+    const request = await this.getRequestOrThrow(mruid, cuid);
+    this.assertTransition(request.status, MaintenanceRequestStatus.COMPLETED);
+
+    const session = await this.maintenanceRequestDAO.startSession();
+    const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
+      return this.maintenanceRequestDAO.updateById(
+        request._id.toString(),
+        {
+          $set: {
+            status: MaintenanceRequestStatus.COMPLETED,
+            completedAt: new Date(),
+            'tenantFeedback.status': 'pending',
+          },
+        },
+        undefined,
+        session
+      );
+    });
+
     this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, {
       requestId: request._id.toString(),
       mruid: request.mruid,
@@ -739,10 +799,9 @@ export class MaintenanceRequestService {
       tenantId: request.tenantId?.toString() ?? '',
       vendorId: request.vendorId?.toString(),
       completedBy: currentuser.sub,
-      actualCost: data.actualCost,
     });
 
-    // Notify tenant their request is complete
+    // Notify tenant — work is complete, feedback requested
     if (request.tenantId) {
       const tenantUser = await this.userDAO.findFirst({
         _id: new Types.ObjectId(request.tenantId.toString()),
@@ -759,6 +818,88 @@ export class MaintenanceRequestService {
     }
 
     return { success: true, data: updated, message: t('maintenance.success.completed') };
+  }
+
+  /**
+   * Tenant submits satisfaction feedback after completion.
+   */
+  async submitTenantFeedback(
+    ctx: IRequestContext,
+    mruid: string,
+    data: { status: 'confirmed' | 'disputed'; rating?: number; comment?: string }
+  ): Promise<ISuccessReturnData> {
+    const currentuser = ctx.currentuser;
+    const { cuid } = ctx.request.params;
+    const request = await this.getRequestOrThrow(mruid, cuid);
+
+    if (request.status !== MaintenanceRequestStatus.COMPLETED) {
+      throw new BadRequestError({ message: t('maintenance.errors.notCompleted') });
+    }
+
+    if (request.tenantId?.toString() !== currentuser.sub) {
+      throw new ForbiddenError({ message: t('maintenance.errors.notYourRequest') });
+    }
+
+    if ((request as any).tenantFeedback?.submittedAt) {
+      throw new BadRequestError({ message: t('maintenance.errors.feedbackAlreadySubmitted') });
+    }
+
+    const updated = await this.maintenanceRequestDAO.updateById(request._id.toString(), {
+      $set: {
+        'tenantFeedback.status': data.status,
+        'tenantFeedback.rating': data.rating,
+        'tenantFeedback.comment': data.comment,
+        'tenantFeedback.submittedAt': new Date(),
+      },
+    });
+
+    this.emitterService.emit(EventTypes.MAINTENANCE_FEEDBACK_SUBMITTED, {
+      requestId: request._id.toString(),
+      mruid: request.mruid,
+      cuid,
+      tenantId: currentuser.sub,
+      vendorId: request.vendorId?.toString(),
+      feedbackStatus: data.status,
+      rating: data.rating,
+    });
+
+    // If confirmed with rating, update vendor's average rating
+    if (data.status === 'confirmed' && data.rating && request.vendorId) {
+      await this.updateVendorRating(request.vendorId.toString());
+    }
+
+    return { success: true, data: updated, message: t('maintenance.success.feedbackSubmitted') };
+  }
+
+  private async updateVendorRating(vendorUserId: string): Promise<void> {
+    try {
+      const requests = await this.maintenanceRequestDAO.list({
+        vendorId: new Types.ObjectId(vendorUserId),
+        'tenantFeedback.status': 'confirmed',
+        'tenantFeedback.rating': { $exists: true },
+        deletedAt: null,
+      });
+
+      const items = requests.items || [];
+      if (items.length === 0) return;
+
+      const totalRating = items.reduce(
+        (sum: number, r: any) => sum + (r.tenantFeedback?.rating || 0),
+        0
+      );
+      const avgRating = (totalRating / items.length).toFixed(1);
+
+      // Update vendor profile stats
+      const vendorDAO = (this as any).vendorDAO;
+      if (vendorDAO) {
+        await vendorDAO.updateMany(
+          { 'connectedClients.primaryAccountHolderUserId': new Types.ObjectId(vendorUserId) },
+          { $set: { 'stats.rating': avgRating, 'stats.reviewCount': items.length } }
+        );
+      }
+    } catch (error) {
+      this.log.error('Failed to update vendor rating:', error);
+    }
   }
 
   async cancelRequest(
@@ -1060,7 +1201,12 @@ export class MaintenanceRequestService {
     const { cuid } = ctx.request.params;
     const request = await this.getRequestOrThrow(mruid, cuid);
 
-    if (request.status !== MaintenanceRequestStatus.ASSIGNED) {
+    const workOrderAllowedStatuses = [
+      MaintenanceRequestStatus.ASSIGNED,
+      MaintenanceRequestStatus.IN_PROGRESS,
+      MaintenanceRequestStatus.AWAITING_INVOICE,
+    ];
+    if (!workOrderAllowedStatuses.includes(request.status as MaintenanceRequestStatus)) {
       throw new BadRequestError({ message: t('maintenance.errors.notAssigned') });
     }
     if (currentuser.client.role !== 'vendor') {
@@ -1086,9 +1232,15 @@ export class MaintenanceRequestService {
               status: WorkOrderStatus.PENDING_REVIEW,
               submittedBy: new Types.ObjectId(currentuser.sub),
               submittedAt: new Date(),
-              scope: data.scope,
+              scope: {
+                text: sanitizeHtml(data.scope, { allowedTags: [], allowedAttributes: {} }).trim(),
+                html: sanitizeHtml(data.scope),
+              },
               estimatedCostInCents: data.estimatedCostInCents,
-              lineItems: data.lineItems,
+              lineItems: data.lineItems?.map((item) => {
+                const amount = new Decimal(item.quantity).times(item.unitPriceInCents).toNumber();
+                return { ...item, amountInCents: amount };
+              }),
               notes: data.notes,
             },
           },

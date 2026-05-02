@@ -17,6 +17,8 @@ export enum EventTypes {
   MAINTENANCE_WORK_ORDER_REJECTED = 'maintenance:work_order:rejected',
   PAYMENT_DISPUTE_REVERSAL_FAILED = 'payment:dispute:reversal:failed',
   PAYMENT_METHOD_SETUP_COMPLETED = 'payment:method:setup:completed',
+  MAINTENANCE_FEEDBACK_SUBMITTED = 'maintenance:feedback:submitted',
+  MAINTENANCE_REQUEST_WORK_DONE = 'maintenance:request:work_done',
   MAINTENANCE_REQUEST_COMPLETED = 'maintenance:request:completed',
   MAINTENANCE_REQUEST_CANCELLED = 'maintenance:request:cancelled',
   MAINTENANCE_INVOICE_SUBMITTED = 'maintenance:invoice:submitted',

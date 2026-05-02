@@ -9,17 +9,6 @@ export enum MetricType {
 }
 
 export interface IDashboardStats {
-  maintenance: {
-    open: number;
-    assigned: number;
-    inProgress: number;
-    completed: number;
-    cancelled: number;
-    pending: number;
-    avgResolutionDays: number;
-    byPriority: Record<string, number>;
-    byCategory: Record<string, number>;
-  };
   payments: {
     byCurrency: Array<{
       currency: string;
@@ -31,6 +20,17 @@ export interface IDashboardStats {
     totalCount: number;
     onTimeRate: number;
     avgPaymentDelayDays: number;
+  };
+  maintenance: {
+    open: number;
+    assigned: number;
+    inProgress: number;
+    completed: number;
+    cancelled: number;
+    pending: number;
+    avgResolutionDays: number;
+    byPriority: Record<string, number>;
+    byCategory: Record<string, number>;
   };
   properties: {
     total: number;

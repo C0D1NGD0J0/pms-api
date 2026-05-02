@@ -16,4 +16,5 @@ export const MaintenanceValidations = {
   listQuery: MaintenanceSchemas.listQuery,
   webhookSourceParam: MaintenanceSchemas.webhookSourceParam,
   webhookBody: MaintenanceSchemas.webhookBody,
+  tenantFeedbackBody: MaintenanceSchemas.tenantFeedbackBody,
 };

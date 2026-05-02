@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import express, { Application } from 'express';
@@ -13,12 +14,20 @@ import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { beforeEach, beforeAll, describe, expect, jest, it } from '@jest/globals';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
-import { PaymentProcessor, PaymentModel, Subscription, Profile, Client, Lease, User } from '@models/index';
 import {
   PaymentRecordStatus,
   PaymentRecordType,
   PaymentMethod,
 } from '@interfaces/payments.interface';
+import {
+  PaymentProcessor,
+  PaymentModel,
+  Subscription,
+  Profile,
+  Client,
+  Lease,
+  User,
+} from '@models/index';
 import {
   PaymentProcessorDAO,
   SubscriptionDAO,
@@ -89,7 +98,9 @@ describe('PaymentController Integration Tests', () => {
       subscriptionPlanConfig: {} as any,
       queueFactory: { getQueue: jest.fn() } as any,
       pdfGeneratorService: {} as any,
-      invoiceTemplateRenderer: { render: jest.fn().mockReturnValue(Promise.resolve('<html></html>')) } as any,
+      invoiceTemplateRenderer: {
+        render: jest.fn().mockReturnValue(Promise.resolve('<html></html>')),
+      } as any,
       emitterService: { emit: jest.fn(), on: jest.fn() } as any,
     });
 
@@ -471,9 +482,9 @@ describe('PaymentController Integration Tests', () => {
   });
 
   describe('POST /api/v1/payments/:cuid/manual_entry', () => {
-    let localClient: IClientDocument;
     let pmUser: IUserDocument;
     let tenantUser: IUserDocument;
+    let localClient: IClientDocument;
 
     beforeEach(async () => {
       localClient = await createTestClient();

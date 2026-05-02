@@ -295,4 +295,15 @@ export const MaintenanceSchemas = {
       .optional(),
     rawPayload: z.record(z.unknown()).optional().default({}),
   }),
+
+  tenantFeedbackBody: z
+    .object({
+      status: z.enum(['confirmed', 'disputed']),
+      rating: z.number().int().min(1).max(5).optional(),
+      comment: z.string().max(1000).optional(),
+    })
+    .refine((data) => data.status !== 'confirmed' || data.rating !== undefined, {
+      message: 'Rating is required when confirming satisfaction',
+      path: ['rating'],
+    }),
 };

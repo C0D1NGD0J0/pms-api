@@ -6,6 +6,7 @@ import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { ProfileDAO } from '@dao/profileDAO';
 import { ClientSession, Types } from 'mongoose';
+import { UserCache } from '@caching/user.cache';
 import { VendorCache } from '@caching/vendor.cache';
 import { PermissionService } from '@services/permission';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
@@ -38,6 +39,7 @@ interface IConstructor {
   permissionService: PermissionService;
   vendorCache: VendorCache;
   profileDAO: ProfileDAO;
+  userCache: UserCache;
   vendorDAO: VendorDAO;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
@@ -50,6 +52,7 @@ export class VendorService {
   private clientDAO: ClientDAO;
   private profileDAO: ProfileDAO;
   private vendorCache: VendorCache;
+  private userCache: UserCache;
   private permissionService: PermissionService;
   private paymentGatewayService: PaymentGatewayService;
   private paymentProcessorDAO: PaymentProcessorDAO;
@@ -61,6 +64,7 @@ export class VendorService {
     clientDAO,
     profileDAO,
     vendorCache,
+    userCache,
     permissionService,
     paymentGatewayService,
     paymentProcessorDAO,
@@ -71,6 +75,7 @@ export class VendorService {
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.vendorCache = vendorCache;
+    this.userCache = userCache;
     this.permissionService = permissionService;
     this.paymentGatewayService = paymentGatewayService;
     this.paymentProcessorDAO = paymentProcessorDAO;
@@ -1097,6 +1102,20 @@ export class VendorService {
         vuid,
         cuid,
       });
+
+      // Invalidate cached user data so /me returns fresh payoutAccount status
+      const vendorRecord = await this.vendorDAO.findFirst({ vuid, deletedAt: null });
+      if (vendorRecord) {
+        const clientConn = vendorRecord.connectedClients.find((c) => c.cuid === cuid);
+        if (clientConn?.primaryAccountHolderUserId) {
+          const vendorUser = await this.userDAO.findFirst({
+            _id: clientConn.primaryAccountHolderUserId,
+          });
+          if (vendorUser?.uid) {
+            await this.userCache.invalidateUserDetail(cuid, vendorUser.uid);
+          }
+        }
+      }
 
       return {
         success: true,

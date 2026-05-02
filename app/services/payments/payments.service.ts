@@ -2795,7 +2795,7 @@ export class PaymentService implements ICronProvider {
     await this.paymentDAO.insert({
       cuid,
       paymentType: PaymentRecordType.MAINTENANCE,
-      paymentMethod: PaymentMethod.ONLINE,
+      paymentMethod: PaymentMethod.OTHER, // Tenant pays via credit card (manual Pay Now), not auto-debit
       status: PaymentRecordStatus.PENDING,
       tenant: tenantProfile._id,
       maintenanceRequestUid: mruid,

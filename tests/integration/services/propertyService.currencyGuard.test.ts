@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { BadRequestError } from '@shared/customErrors';
 /**
  * Currency guard integration test.
@@ -11,20 +12,8 @@ import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
 import { SigningMethod, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
 import { PropertyApprovalService } from '@services/property/propertyApproval.service';
-import {
-  PropertyUnitDAO,
-  PropertyDAO,
-  ProfileDAO,
-  ClientDAO,
-  LeaseDAO,
-  UserDAO,
-} from '@dao/index';
-import {
-  createTestProperty,
-  clearTestDatabase,
-  createTestClient,
-  createTestUser,
-} from '@tests/helpers';
+import { createTestProperty, clearTestDatabase, createTestClient } from '@tests/helpers';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 
 const mockMediaUploadService = {
   handleMediaDeletion: jest.fn().mockResolvedValue(undefined),
@@ -71,7 +60,14 @@ describe('PropertyService — currency guard on country update', () => {
       path: '/properties',
       query: {},
     },
-    userAgent: { browser: 'Test', version: '1', os: 'Test', raw: 'test', isMobile: false, isBot: false },
+    userAgent: {
+      browser: 'Test',
+      version: '1',
+      os: 'Test',
+      raw: 'test',
+      isMobile: false,
+      isBot: false,
+    },
     langSetting: { lang: 'en', t: jest.fn((key: string) => key) },
     timing: { startTime: Date.now() },
     currentuser: {
@@ -142,24 +138,39 @@ describe('PropertyService — currency guard on country update', () => {
       status: LeaseStatus.ACTIVE,
       signingMethod: SigningMethod.MANUAL,
       property: { id: property._id, address: property.address },
-      tenant: new (require('mongoose').Types.ObjectId)(),
+      tenant: new Types.ObjectId(),
       creator: user._id,
       fees: { rentAmount: 150000, currency: 'USD', securityDeposit: 0, rentDueDay: 1 },
-      duration: { startDate: new Date(), endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) },
+      duration: {
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      },
     });
 
     // Attempt to change country from US → NG (USD → NGN)
     await expect(
       propertyService.updateClientProperty(
-        { cuid: client.cuid, pid: property.pid, currentuser: makeMockCtx(client.cuid, user._id.toString()).currentuser as any },
-        { address: { country: 'NG', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' } } as any
+        {
+          cuid: client.cuid,
+          pid: property.pid,
+          currentuser: makeMockCtx(client.cuid, user._id.toString()).currentuser as any,
+        },
+        {
+          address: { country: 'NG', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' },
+        } as any
       )
     ).rejects.toThrow(BadRequestError);
 
     await expect(
       propertyService.updateClientProperty(
-        { cuid: client.cuid, pid: property.pid, currentuser: makeMockCtx(client.cuid, user._id.toString()).currentuser as any },
-        { address: { country: 'NG', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' } } as any
+        {
+          cuid: client.cuid,
+          pid: property.pid,
+          currentuser: makeMockCtx(client.cuid, user._id.toString()).currentuser as any,
+        },
+        {
+          address: { country: 'NG', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' },
+        } as any
       )
     ).rejects.toThrow('Cannot change property currency while active leases exist.');
   });
@@ -174,8 +185,14 @@ describe('PropertyService — currency guard on country update', () => {
     // No leases — update should succeed
     await expect(
       propertyService.updateClientProperty(
-        { cuid: client.cuid, pid: property.pid, currentuser: makeMockCtx(client.cuid, user._id.toString()).currentuser as any },
-        { address: { country: 'NG', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' } } as any
+        {
+          cuid: client.cuid,
+          pid: property.pid,
+          currentuser: makeMockCtx(client.cuid, user._id.toString()).currentuser as any,
+        },
+        {
+          address: { country: 'NG', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' },
+        } as any
       )
     ).resolves.toMatchObject({ success: true });
   });

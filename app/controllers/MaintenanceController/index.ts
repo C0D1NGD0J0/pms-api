@@ -85,8 +85,25 @@ export class MaintenanceController {
     return res.status(httpStatusCodes.OK).json(result);
   }
 
-  async completeRequest(req: AppRequest, res: Response) {
-    const result = await this.maintenanceRequestService.completeRequest(
+  async markWorkDone(req: AppRequest, res: Response) {
+    const result = await this.maintenanceRequestService.markWorkDone(
+      req.context,
+      req.params.mruid,
+      req.body
+    );
+    return res.status(httpStatusCodes.OK).json(result);
+  }
+
+  async finalizeCompletion(req: AppRequest, res: Response) {
+    const result = await this.maintenanceRequestService.finalizeCompletion(
+      req.context,
+      req.params.mruid
+    );
+    return res.status(httpStatusCodes.OK).json(result);
+  }
+
+  async submitTenantFeedback(req: AppRequest, res: Response) {
+    const result = await this.maintenanceRequestService.submitTenantFeedback(
       req.context,
       req.params.mruid,
       req.body

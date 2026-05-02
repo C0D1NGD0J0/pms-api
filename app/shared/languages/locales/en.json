@@ -542,7 +542,12 @@
       "workOrderRejected": "Work order was rejected — please resubmit before starting",
       "workOrderNotFound": "No work order found on this request",
       "workOrderNotPending": "Work order is not in pending review status",
-      "workOrderForbidden": "Only the PM/manager can review work orders"
+      "workOrderForbidden": "Only the PM/manager can review work orders",
+      "workOrderRequired": "A work order must be submitted and approved before marking work as done",
+      "workOrderNotApproved": "The work order must be approved by the property manager before marking work as done",
+      "notCompleted": "Request must be completed before submitting feedback",
+      "notYourRequest": "You are not the tenant on this request",
+      "feedbackAlreadySubmitted": "Feedback has already been submitted for this request"
     },
     "success": {
       "created": "Maintenance request created successfully",
@@ -550,6 +555,7 @@
       "accepted": "Assignment accepted",
       "declined": "Assignment declined",
       "statusUpdated": "Status updated successfully",
+      "workDone": "Work marked as done. Please submit your invoice within 72 hours.",
       "completed": "Maintenance request completed",
       "cancelled": "Maintenance request cancelled",
       "invoiceSubmitted": "Invoice submitted successfully",
@@ -557,7 +563,8 @@
       "invoiceRejected": "Invoice rejected",
       "workOrderSubmitted": "Work order submitted successfully",
       "workOrderApproved": "Work order approved",
-      "workOrderRejected": "Work order rejected"
+      "workOrderRejected": "Work order rejected",
+      "feedbackSubmitted": "Thank you for your feedback"
     }
   },
 

@@ -1,0 +1,114 @@
+import Logger from 'bunyan';
+import { createLogger } from '@utils/index';
+import { FilterQuery, Model, Types } from 'mongoose';
+import { ListResultWithPagination } from '@interfaces/utils.interface';
+import { IInvoiceDocument, InvoiceStatus } from '@interfaces/invoice.interface';
+
+import { BaseDAO } from './baseDAO';
+
+export class InvoiceDAO extends BaseDAO<IInvoiceDocument> {
+  private readonly log: Logger;
+
+  constructor({ invoiceModel }: { invoiceModel: Model<IInvoiceDocument> }) {
+    super(invoiceModel);
+    this.log = createLogger('InvoiceDAO');
+  }
+
+  async findByInvuid(invuid: string, cuid: string): Promise<IInvoiceDocument | null> {
+    try {
+      return await this.findFirst({ invuid, cuid, isDeleted: false });
+    } catch (error: any) {
+      this.log.error({ error }, 'Error finding invoice by invuid');
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async findByMaintenanceRequest(mruid: string, cuid: string): Promise<IInvoiceDocument | null> {
+    try {
+      return await this.findFirst({ mruid, cuid, isDeleted: false }, { sort: { createdAt: -1 } });
+    } catch (error: any) {
+      this.log.error({ error }, 'Error finding invoice by maintenance request');
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async listAllByMaintenanceRequest(mruid: string, cuid: string): Promise<IInvoiceDocument[]> {
+    try {
+      const { items } = await this.list(
+        { mruid, cuid, isDeleted: false },
+        { sort: { createdAt: -1 } }
+      );
+      return items;
+    } catch (error: any) {
+      this.log.error({ error }, 'Error listing all invoices by maintenance request');
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async listByClient(
+    cuid: string,
+    filters?: { status?: InvoiceStatus; page?: number; limit?: number }
+  ): ListResultWithPagination<IInvoiceDocument[]> {
+    try {
+      const query: FilterQuery<IInvoiceDocument> = { cuid, isDeleted: false };
+      if (filters?.status) query.status = filters.status;
+
+      return await this.list(query, {
+        page: filters?.page,
+        limit: filters?.limit,
+        sort: { createdAt: -1 },
+      });
+    } catch (error: any) {
+      this.log.error({ error }, 'Error listing invoices');
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async sumByVendor(
+    vendorId: Types.ObjectId,
+    cuid: string,
+    statuses: InvoiceStatus[]
+  ): Promise<number> {
+    try {
+      const result = await this.model.aggregate<{ total: number }>([
+        {
+          $match: {
+            cuid,
+            submittedBy: vendorId,
+            status: { $in: statuses },
+            isDeleted: false,
+          },
+        },
+        { $group: { _id: null, total: { $sum: '$amountInCents' } } },
+      ]);
+      return result[0]?.total ?? 0;
+    } catch (error: any) {
+      this.log.error({ error }, 'Error summing vendor invoices');
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async listByVendor(
+    vendorId: string,
+    cuid: string,
+    filters?: { status?: InvoiceStatus; page?: number; limit?: number }
+  ): ListResultWithPagination<IInvoiceDocument[]> {
+    try {
+      const query: FilterQuery<IInvoiceDocument> = {
+        cuid,
+        submittedBy: new Types.ObjectId(vendorId),
+        isDeleted: false,
+      };
+      if (filters?.status) query.status = filters.status;
+
+      return await this.list(query, {
+        page: filters?.page,
+        limit: filters?.limit,
+        sort: { createdAt: -1 },
+      });
+    } catch (error: any) {
+      this.log.error({ error }, 'Error listing vendor invoices');
+      throw this.throwErrorHandler(error);
+    }
+  }
+}

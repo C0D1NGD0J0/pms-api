@@ -11,8 +11,6 @@ import {
   WorkOrderStatus,
 } from '@interfaces/maintenanceRequest.interface';
 
-import { InvoiceSchema } from './invoice.schema';
-
 const WorkOrderLineItemSchema = new Schema(
   {
     description: { type: String, required: true },
@@ -100,7 +98,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
     completedAt: { type: Date },
     completionNotes: { type: [CompletionNoteSchema], default: undefined },
     actualCost: { type: Number, min: 0 },
-    invoice: { type: InvoiceSchema, default: undefined },
+    invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice', index: true },
     invoiceDeadline: { type: Date },
     tenantFeedback: {
       status: { type: String, enum: ['pending', 'confirmed', 'disputed'], default: 'pending' },
@@ -109,12 +107,23 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
       submittedAt: { type: Date },
       _id: false,
     },
+    pendingMaintenanceStatus: {
+      propertyId: { type: Schema.Types.ObjectId, ref: 'Property' },
+      unitId: { type: Schema.Types.ObjectId, ref: 'PropertyUnit' },
+      requestedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      requestedAt: { type: Date },
+      displayName: { type: String },
+      _id: false,
+    },
     aiAnalysis: {
+      suggestedCategory: { type: String, enum: Object.values(MaintenanceCategory) },
+      suggestedPriority: { type: String, enum: Object.values(MaintenanceRequestPriority) },
       confidence: { type: Number, min: 0, max: 1 },
       reasoning: { type: String },
       suggestedVendorId: { type: Schema.Types.ObjectId, ref: 'User' },
       processedAt: { type: Date },
       modelUsed: { type: String },
+      accepted: { type: Boolean },
     },
     availabilityInfo: {
       preferredDate: { type: Date },
@@ -213,7 +222,6 @@ MaintenanceRequestSchema.plugin(uniqueValidator, { message: '{PATH} must be uniq
 MaintenanceRequestSchema.index({ cuid: 1, status: 1 });
 MaintenanceRequestSchema.index({ cuid: 1, propertyId: 1 });
 MaintenanceRequestSchema.index({ vendorId: 1, status: 1 });
-MaintenanceRequestSchema.index({ 'invoice.status': 1, cuid: 1 });
 
 const MaintenanceRequestModel = model<IMaintenanceRequestDocument>(
   'MaintenanceRequest',

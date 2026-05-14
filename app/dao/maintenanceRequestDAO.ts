@@ -38,6 +38,7 @@ export class MaintenanceRequestDAO
       ...pagination,
       populate: [
         { path: 'propertyId', select: 'address pid title' },
+        { path: 'invoiceId', select: 'status' },
         {
           path: 'vendorId',
           select: 'email uid',
@@ -137,7 +138,19 @@ export class MaintenanceRequestDAO
           byStatus: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
           byCategory: [{ $group: { _id: '$category', count: { $sum: 1 } } }],
           byPriority: [{ $group: { _id: '$priority', count: { $sum: 1 } } }],
-          pendingInvoices: [{ $match: { 'invoice.status': 'pending' } }, { $count: 'count' }],
+          pendingInvoices: [
+            {
+              $lookup: {
+                from: 'invoices',
+                localField: '_id',
+                foreignField: 'maintenanceRequestId',
+                pipeline: [{ $match: { status: 'pending', isDeleted: { $ne: true } } }],
+                as: 'pendingInvoiceDocs',
+              },
+            },
+            { $match: { $expr: { $gt: [{ $size: '$pendingInvoiceDocs' }, 0] } } },
+            { $count: 'count' },
+          ],
           avgResolution: [
             {
               $match: {
@@ -177,5 +190,32 @@ export class MaintenanceRequestDAO
       pendingInvoices: raw.pendingInvoices?.[0]?.count || 0,
       avgResolutionDays: avgMs > 0 ? Math.round(avgMs / (1000 * 60 * 60 * 24)) : 0,
     };
+  }
+
+  /**
+   * Average tenant feedback rating for a vendor across all completed requests.
+   * Returns 0 if the vendor has no rated completions.
+   */
+  async getVendorAvgRating(vendorId: string): Promise<number> {
+    const result = await this.aggregate([
+      {
+        $match: {
+          vendorId: new Types.ObjectId(vendorId),
+          status: MaintenanceRequestStatus.COMPLETED,
+          'tenantFeedback.rating': { $exists: true, $ne: null },
+          deletedAt: null,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          avgRating: { $avg: '$tenantFeedback.rating' },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const row = (result as any[])[0];
+    return row?.avgRating ?? 0;
   }
 }

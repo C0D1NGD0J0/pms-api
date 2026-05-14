@@ -1,5 +1,6 @@
 import { Document, Types } from 'mongoose';
 
+import { IInvoice } from './invoice.interface';
 import { MediaDocumentStatus } from './property.interface';
 
 export enum MaintenanceCategory {
@@ -54,6 +55,13 @@ export enum InvoiceStatus {
 }
 
 export interface IMaintenanceRequest {
+  pendingMaintenanceStatus?: {
+    propertyId: Types.ObjectId;
+    unitId?: Types.ObjectId;
+    requestedBy: Types.ObjectId;
+    requestedAt: Date;
+    displayName: string;
+  };
   availabilityInfo?: {
     preferredDate?: Date; // specific dates tenant prefers
     options: AvailabilityWindow[]; // when tenant is available
@@ -81,8 +89,8 @@ export interface IMaintenanceRequest {
   assignedTechnician?: ITechnician;
   workOrderHistory?: IWorkOrder[];
   category: MaintenanceCategory;
-  invoice?: IMaintenanceInvoice;
   locationDescription?: string;
+  invoiceId?: Types.ObjectId;
   permissionToEnter: boolean;
   aiAnalysis?: IAIAnalysis;
   estimatedCost?: number;
@@ -91,6 +99,7 @@ export interface IMaintenanceRequest {
   scheduledDate?: Date;
   actualCost?: number;
   isBillable: boolean; // billing seam for expense integration
+  invoice?: IInvoice; // populated from invoiceId ref via mapInvoiceDoc()
   completedAt?: Date;
   assignedAt?: Date;
   hasPet?: boolean;
@@ -110,9 +119,13 @@ export interface ICreateMaintenanceRequest {
   };
   priority?: MaintenanceRequestPriority;
   media: MaintenanceRequestMedia[];
+  setMaintenanceStatus?: boolean; // Take property/unit offline for maintenance
   category: MaintenanceCategory;
   locationDescription?: string;
   permissionToEnter: boolean;
+  estimatedCost?: number; // Initial estimate (optional)
+  scheduledDate?: Date; // When vendor should come (optional)
+  vendorVuid?: string; // Optionally assign vendor on creation
   hasPet?: boolean;
   puid?: string; // property unit resource UID
   title: string;
@@ -133,26 +146,6 @@ export interface IMaintenanceFilters {
   pid?: string; // property resource UID
 }
 
-export interface IMaintenanceInvoice {
-  vendorPayoutStatus?: 'pending' | 'paid';
-  lineItems?: IInvoiceLineItem[];
-  submittedBy: Types.ObjectId;
-  reviewedBy?: Types.ObjectId;
-  externalInvoiceUrl?: string;
-  externalInvoiceId?: string;
-  rejectionReason?: string;
-  attachmentUrl?: string;
-  attachmentKey?: string;
-  status: InvoiceStatus;
-  amountInCents: number;
-  source: InvoiceSource;
-  description: string;
-  vendorPaidAt?: Date;
-  submittedAt: Date;
-  reviewedAt?: Date;
-  currency: string; // 'usd'
-}
-
 export interface ITenantMaintenanceRequestView {
   media: Array<{ url: string; filename?: string }>;
   priority: MaintenanceRequestPriority;
@@ -168,6 +161,17 @@ export interface ITenantMaintenanceRequestView {
   submittedAt: Date;
   mruid: string;
   title: string;
+}
+
+export interface IAIAnalysis {
+  suggestedPriority?: MaintenanceRequestPriority;
+  suggestedVendorId?: Types.ObjectId | string;
+  suggestedCategory?: MaintenanceCategory;
+  confidence?: number;
+  reasoning?: string;
+  processedAt?: Date;
+  modelUsed?: string;
+  accepted?: boolean; // true = PM accepted, false = PM dismissed, undefined = pending review
 }
 
 export interface IUpdateMaintenancePayload {
@@ -218,6 +222,7 @@ export interface IInvoiceWebhookPayload {
   currency: string;
   amount: number;
   mruid: string;
+  cuid: string;
 }
 
 export interface MaintenanceRequestMedia {
@@ -262,14 +267,6 @@ export interface IMaintenanceRequestDocument extends IMaintenanceRequest, Docume
   id: string;
 }
 
-export interface IAIAnalysis {
-  suggestedVendorId?: Types.ObjectId | string;
-  confidence?: number;
-  reasoning?: string;
-  processedAt?: Date;
-  modelUsed?: string;
-}
-
 export interface IVendorStats {
   avgCompletionDays?: number;
   inProgress: number;
@@ -290,6 +287,14 @@ export interface IMaintenanceTimelineStep {
 export interface IReviewInvoicePayload {
   action: 'approve' | 'reject';
   rejectionReason?: string; // required when action === 'reject'
+}
+
+export interface IVendorSuggestion {
+  companyName: string;
+  reasons: string[];
+  vendorId: string;
+  score: number;
+  vuid: string;
 }
 
 export interface IWorkOrderLineItem {

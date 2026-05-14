@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { ROLES } from '@shared/constants/roles.constants';
@@ -115,7 +116,7 @@ router.get(
   // Get PDF generation job status
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   validateRequest({
-    params: UtilsValidations.cuid,
+    params: UtilsValidations.cuid.merge(z.object({ jobId: z.string().min(1) })),
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<LeaseController>('leaseController');

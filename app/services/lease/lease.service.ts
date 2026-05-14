@@ -220,6 +220,13 @@ export class LeaseService {
       throw new BadRequestError({ message: t('property.errors.notFound') });
     }
 
+    if (
+      property.operationalStatus === 'maintenance' ||
+      property.operationalStatus === 'construction'
+    ) {
+      throw new BadRequestError({ message: t('lease.errors.propertyUnderMaintenance') });
+    }
+
     if (!property.isManagementAuthorized()) {
       this.log.error(
         `Property with id ${data.property.id} is not authorized for management by client ${cuid}`

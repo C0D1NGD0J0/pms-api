@@ -10,9 +10,11 @@ import {
 } from '@shared/validations';
 import {
   requirePermissionWithContext,
+  subscriptionEntitlements,
   requirePrimaryVendor,
   requirePermission,
   isAuthenticated,
+  requireFeature,
   basicLimiter,
   idempotency,
 } from '@shared/middlewares';
@@ -23,6 +25,8 @@ router.use(isAuthenticated, basicLimiter());
 router.get(
   '/:cuid/vendors/stats',
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
+  subscriptionEntitlements,
+  requireFeature('vendorManagement'),
   validateRequest({
     params: ClientValidations.clientIdParam,
     query: VendorValidations.vendorFilterQuery,
@@ -36,6 +40,8 @@ router.get(
 router.get(
   '/:cuid/filteredVendors',
   requirePermission(PermissionResource.USER, PermissionAction.READ),
+  subscriptionEntitlements,
+  requireFeature('vendorManagement'),
   validateRequest({
     params: ClientValidations.clientIdParam,
     query: VendorValidations.vendorFilterQuery,

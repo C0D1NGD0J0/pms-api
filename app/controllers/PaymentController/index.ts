@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { createLogger } from '@utils/index';
 import { ForbiddenError } from '@shared/customErrors';
 import ROLES from '@shared/constants/roles.constants';
+import { CronService } from '@services/cron/cron.service';
 import { MediaUploadService } from '@services/mediaUpload';
 import { PaymentService, InvoiceService } from '@services/index';
 import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
@@ -10,6 +11,7 @@ interface IConstructor {
   mediaUploadService: MediaUploadService;
   invoiceService: InvoiceService;
   paymentService: PaymentService;
+  cronService: CronService;
 }
 
 export class PaymentController {
@@ -17,11 +19,13 @@ export class PaymentController {
   private readonly paymentService: PaymentService;
   private readonly invoiceService: InvoiceService;
   private readonly mediaUploadService: MediaUploadService;
+  private readonly cronService: CronService;
 
-  constructor({ paymentService, invoiceService, mediaUploadService }: IConstructor) {
+  constructor({ paymentService, invoiceService, mediaUploadService, cronService }: IConstructor) {
     this.paymentService = paymentService;
     this.invoiceService = invoiceService;
     this.mediaUploadService = mediaUploadService;
+    this.cronService = cronService;
   }
 
   async listPayments(req: AppRequest, res: Response) {
@@ -33,8 +37,10 @@ export class PaymentController {
       tenantId: req.query.tenantId as string,
       leaseId: req.query.leaseId as string,
       luid: req.query.luid as string,
+      maintenanceRequestUid: req.query.maintenanceRequestUid as string,
       page: req.query.page ? Number(req.query.page) : 1,
       limit: req.query.limit ? Number(req.query.limit) : 10,
+      sortDirection: req.query.sortDirection as 'asc' | 'desc' | undefined,
     };
 
     const result = await this.paymentService.listPayments(cuid, filters, req.context);
@@ -48,10 +54,32 @@ export class PaymentController {
     return res.status(200).json(result);
   }
 
+  /**
+   * Tenant self-service: idempotently creates a maintenance charge for the
+   * calling tenant when a billable invoice has been approved but no charge record
+   * exists (e.g. the event was dropped on approval).
+   */
+  async ensureSelfMaintenanceCharge(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const tenantId = req.context?.currentuser?.sub;
+    if (!tenantId) {
+      return res.status(401).json({ success: false, message: 'Unauthenticated' });
+    }
+    const { mruid, amountInCents } = req.body as { mruid: string; amountInCents: number };
+    const result = await this.paymentService.chargeForMaintenance(cuid, tenantId, {
+      mruid,
+      tenantId,
+      amount: amountInCents,
+    });
+    return res.status(200).json(result);
+  }
+
   async createPayment(req: AppRequest, res: Response) {
     const { cuid } = req.params;
+    const role = req.context?.currentuser?.client?.role;
+    const paymentSource = role === 'staff' ? 'staff_initiated' : 'pm_initiated';
 
-    const result = await this.paymentService.createRentPayment(cuid, req.body);
+    const result = await this.paymentService.createRentPayment(cuid, req.body, { paymentSource });
 
     return res.status(201).json(result);
   }
@@ -67,7 +95,15 @@ export class PaymentController {
       });
     }
 
-    const result = await this.paymentService.recordManualPayment(cuid, userId, userId, req.body);
+    const role = req.context?.currentuser?.client?.role;
+    const paymentSource = role === 'staff' ? 'staff_initiated' : 'pm_initiated';
+    const result = await this.paymentService.recordManualPayment(
+      cuid,
+      userId,
+      userId,
+      req.body,
+      paymentSource
+    );
 
     const uploadResult = await this.mediaUploadService.handleFiles(req, {
       primaryResourceId: (result.data as any).pytuid,
@@ -224,6 +260,22 @@ export class PaymentController {
     return res.status(201).json(result);
   }
 
+  async createCardPaymentSession(req: AppRequest, res: Response) {
+    const { cuid, pytuid } = req.params;
+    const tenantUserId = req.context?.currentuser?.sub;
+    const { successUrl, cancelUrl } = req.body as { successUrl?: string; cancelUrl?: string };
+
+    if (!tenantUserId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const result = await this.paymentService.createCardPaymentSession(cuid, pytuid, tenantUserId, {
+      successUrl,
+      cancelUrl,
+    });
+    return res.status(200).json(result);
+  }
+
   async payPendingCharge(req: AppRequest, res: Response) {
     const { cuid, pytuid } = req.params;
     const tenantUserId = req.context?.currentuser?.sub;
@@ -272,24 +324,31 @@ export class PaymentController {
     }
 
     const { cuid, jobName } = req.params;
-    const service = this.paymentService as any;
 
-    const allowed: Record<string, () => Promise<void>> = {
-      'weekly-invoices': () => service.queueWeeklyRentInvoices(),
-      'daily-safety-net': () => service.queueDailySafetyNetInvoices(),
-      'mark-overdue': () => service.markOverduePayments(),
+    // Maps short dev-friendly alias → full registered job name in CronService
+    const aliasMap: Record<string, string> = {
+      'weekly-invoices': 'payment.weekly-rent-invoices',
+      'daily-safety-net': 'payment.daily-rent-safety-net',
+      'mark-overdue': 'payment.mark-overdue',
+      'auto-charge-rent': 'payment.auto-charge-due-rent',
+      'auto-charge-maintenance': 'payment.auto-charge-overdue-maintenance',
     };
 
-    const handler = allowed[jobName];
-    if (!handler) {
+    const fullJobName = aliasMap[jobName];
+    if (!fullJobName) {
       return res.status(400).json({
-        message: `Unknown job. Allowed: ${Object.keys(allowed).join(', ')}`,
+        message: `Unknown job. Allowed: ${Object.keys(aliasMap).join(', ')}`,
       });
     }
 
-    this.log.info({ cuid, jobName }, 'Dev: manually triggering cron job');
+    const handler = this.cronService.getJobHandler(fullJobName);
+    if (!handler) {
+      return res.status(500).json({ message: `Handler not registered for: ${fullJobName}` });
+    }
+
+    this.log.info({ cuid, jobName, fullJobName }, 'Dev: manually triggering cron job');
     await handler();
-    return res.status(200).json({ success: true, jobName });
+    return res.status(200).json({ success: true, jobName, fullJobName });
   }
 
   async downloadMyReceipt(req: AppRequest, res: Response) {
@@ -303,5 +362,22 @@ export class PaymentController {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', buffer.length);
     res.status(200).end(buffer);
+  }
+
+  async getVendorEarnings(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const currentUser = req.context.currentuser!;
+    const role = currentUser.client.role;
+
+    // Vendors can only view their own earnings — ignore any vendorUid query param.
+    // PMs, admins, and super-admins may specify a vendorUid to view any vendor's earnings.
+    const vendorUid =
+      role === ROLES.VENDOR ? currentUser.uid : (req.query.vendorUid as string) || currentUser.uid;
+
+    const result = await this.paymentService.getVendorEarnings(cuid, vendorUid, {
+      page: req.query.page ? Number(req.query.page) : 1,
+      limit: req.query.limit ? Number(req.query.limit) : 50,
+    });
+    return res.status(200).json(result);
   }
 }

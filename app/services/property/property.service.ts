@@ -589,6 +589,22 @@ export class PropertyService {
       throw new BadRequestError({ message: 'Unable to add property to this account.' });
     }
 
+    // Pre-check: reject immediately if already at the property limit — avoids queueing a job that will fully fail
+    const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
+    if (subscription) {
+      const config = subscriptionPlanConfig.getConfig(subscription.planName);
+      const maxProperties = config.limits.maxProperties;
+      if (maxProperties !== -1) {
+        const currentCount = await this.propertyDAO.countDocuments({ cuid, deletedAt: null });
+        if (currentCount >= maxProperties) {
+          this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+          throw new BadRequestError({
+            message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties. Upgrade to add more.`,
+          });
+        }
+      }
+    }
+
     const jobData = {
       csvFilePath,
       userId: actorId,

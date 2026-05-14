@@ -155,6 +155,15 @@ export class PropertyWorker {
           : 'All properties imported successfully',
       } as CsvProcessReturnData & { message: string };
 
+      // Sync subscription.currentProperties so the atomic gate in addProperty() stays accurate
+      if (propertiesResult.totalInserted > 0 && subscription) {
+        await this.subscriptionDAO.updateResourceCount(
+          'property',
+          subscription.client,
+          propertiesResult.totalInserted
+        );
+      }
+
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
       job.progress(100);
 

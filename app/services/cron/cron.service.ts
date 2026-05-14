@@ -48,14 +48,22 @@ export class CronService {
     ].filter(Boolean);
 
     this.registerAllCronJobs(services);
+
+    // Worker only: remove stale repeat schedules that have no registered handler.
+    // Must run after registration so the known-job list is complete.
+    if (process.env.PROCESS_TYPE === 'worker') {
+      setImmediate(() =>
+        this.cleanupUnregisteredJobs().catch((err) =>
+          this.log.error({ err }, 'CronService: failed to cleanup unregistered jobs')
+        )
+      );
+    }
   }
 
   /**
    * Register cron jobs from all services
    */
   private registerAllCronJobs(services: ICronProvider[]): void {
-    this.log.info(`Registering cron jobs from ${services.length} services`);
-
     services.forEach((service) => {
       const serviceName = service.constructor.name;
 
@@ -74,7 +82,7 @@ export class CronService {
       }
     });
 
-    this.log.info(`Total cron jobs registered: ${this.cronJobs.size}`);
+    this.log.info(`${this.cronJobs.size} cron jobs registered across ${services.length} services`);
   }
 
   /**
@@ -108,6 +116,12 @@ export class CronService {
         timeout: cronJob.timeout || 300000, // 5 min default
       }
     );
+  }
+
+  private async cleanupUnregisteredJobs(): Promise<void> {
+    const cronQueue = this.queueFactory.getQueue('cronQueue') as CronQueue;
+    const registeredJobNames = Array.from(this.cronJobs.keys());
+    await cronQueue.removeUnregisteredRepeatJobs(registeredJobNames);
   }
 
   getJobHandler(jobName: string): (() => Promise<void>) | undefined {

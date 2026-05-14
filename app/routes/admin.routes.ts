@@ -1,11 +1,16 @@
 import { z } from 'zod';
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
+import { IUserRole } from '@shared/constants/roles.constants';
 import { AdminController } from '@controllers/AdminController';
-import { isAuthenticated, basicLimiter } from '@shared/middlewares';
 import { UtilsValidations, validateRequest } from '@shared/validations';
+import { isAuthenticated, basicLimiter, requireRole } from '@shared/middlewares';
 
 const router = Router();
+
+// All admin routes require authentication + super-admin role at the router level.
+// Controller-level checks are a secondary defense — this is the primary gate.
+router.use(isAuthenticated, requireRole([IUserRole.SUPER_ADMIN]));
 
 const invalidateCacheSchema = z.object({
   type: z.enum(['user', 'property', 'lease', 'vendor', 'auth']),
@@ -19,7 +24,6 @@ const suspendClientSchema = z.object({
 
 router.post(
   '/cache/invalidate',
-  isAuthenticated,
   basicLimiter(),
   validateRequest({ body: invalidateCacheSchema }),
   asyncWrapper((req, res) => {
@@ -30,7 +34,6 @@ router.post(
 
 router.patch(
   '/clients/:cuid/suspend',
-  isAuthenticated,
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   validateRequest({ params: UtilsValidations.cuid, body: suspendClientSchema }),
   asyncWrapper((req, res) => {
@@ -41,12 +44,20 @@ router.patch(
 
 router.patch(
   '/clients/:cuid/unsuspend',
-  isAuthenticated,
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
     const adminController = req.container.resolve<AdminController>('adminController');
     return adminController.unsuspendClient(req, res);
+  })
+);
+
+router.post(
+  '/maintenance/finalize-paid',
+  basicLimiter({ max: 5, windowMs: 60 * 60 * 1000 }),
+  asyncWrapper((req, res) => {
+    const adminController = req.container.resolve<AdminController>('adminController');
+    return adminController.finalizePaidMaintenanceRequests(req, res);
   })
 );
 

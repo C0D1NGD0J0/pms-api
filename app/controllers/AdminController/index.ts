@@ -2,13 +2,18 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { Response } from 'express';
 import { t } from '@shared/languages';
-import { ClientDAO } from '@dao/index';
 import { createLogger } from '@utils/index';
+import { InvoiceDAO } from '@dao/invoiceDAO';
 import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
+import { EventTypes } from '@interfaces/events.interface';
+import { EventEmitterService } from '@services/eventEmitter';
 import { IUserRole } from '@shared/constants/roles.constants';
+import { MaintenanceRequestDAO, PaymentDAO, ClientDAO } from '@dao/index';
+import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { PropertyCache, VendorCache, LeaseCache, UserCache, AuthCache } from '@caching/index';
+import { MaintenanceRequestStatus, InvoiceStatus } from '@interfaces/maintenanceRequest.interface';
 
 const CACHE_TYPES = ['user', 'property', 'lease', 'vendor', 'auth'] as const;
 type CacheType = (typeof CACHE_TYPES)[number];
@@ -21,6 +26,10 @@ export class AdminController {
   private readonly vendorCache: VendorCache;
   private readonly authCache: AuthCache;
   private readonly clientDAO: ClientDAO;
+  private readonly paymentDAO: PaymentDAO;
+  private readonly invoiceDAO: InvoiceDAO;
+  private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
+  private readonly emitterService: EventEmitterService;
 
   constructor({
     userCache,
@@ -29,6 +38,10 @@ export class AdminController {
     vendorCache,
     authCache,
     clientDAO,
+    paymentDAO,
+    invoiceDAO,
+    maintenanceRequestDAO,
+    emitterService,
   }: {
     userCache: UserCache;
     propertyCache: PropertyCache;
@@ -36,6 +49,10 @@ export class AdminController {
     vendorCache: VendorCache;
     authCache: AuthCache;
     clientDAO: ClientDAO;
+    paymentDAO: PaymentDAO;
+    invoiceDAO: InvoiceDAO;
+    maintenanceRequestDAO: MaintenanceRequestDAO;
+    emitterService: EventEmitterService;
   }) {
     this.log = createLogger('AdminController');
     this.userCache = userCache;
@@ -44,6 +61,10 @@ export class AdminController {
     this.vendorCache = vendorCache;
     this.authCache = authCache;
     this.clientDAO = clientDAO;
+    this.paymentDAO = paymentDAO;
+    this.invoiceDAO = invoiceDAO;
+    this.maintenanceRequestDAO = maintenanceRequestDAO;
+    this.emitterService = emitterService;
   }
 
   /**
@@ -207,6 +228,99 @@ export class AdminController {
     return res.status(httpStatusCodes.OK).json({
       success: true,
       message: 'Client account unsuspended successfully',
+    });
+  };
+
+  /**
+   * One-time migration: find all SRs stuck in `awaiting_invoice` that have an
+   * approved invoice AND a paid tenant maintenance charge, then auto-complete them.
+   *
+   * POST /api/v1/admin/maintenance/finalize-paid
+   * Body: { dryRun?: boolean }  — pass dryRun:true to preview without writing.
+   */
+  finalizePaidMaintenanceRequests = async (req: AppRequest, res: Response) => {
+    const currentuser = req.context?.currentuser;
+    if (!currentuser || currentuser.client.role !== IUserRole.SUPER_ADMIN) {
+      throw new ForbiddenError({ message: t('auth.errors.insufficientRole') });
+    }
+
+    const dryRun = (req.body as { dryRun?: boolean }).dryRun === true;
+    this.log.info(
+      { by: currentuser.sub, dryRun },
+      '[Admin] finalize-paid maintenance migration started'
+    );
+
+    const stuck = await this.maintenanceRequestDAO.list(
+      { status: MaintenanceRequestStatus.AWAITING_INVOICE, deletedAt: null },
+      { limit: 1000 }
+    );
+
+    const candidates = stuck.items || [];
+    const completed: string[] = [];
+    const skipped: string[] = [];
+
+    for (const sr of candidates) {
+      const mruid = sr.mruid;
+      const cuid = sr.cuid;
+
+      const invoice = await this.invoiceDAO.findFirst({
+        maintenanceRequestId: sr._id,
+        status: InvoiceStatus.APPROVED,
+        isDeleted: false,
+      });
+
+      if (!invoice) {
+        skipped.push(mruid);
+        continue;
+      }
+
+      const paidCharge = await this.paymentDAO.findFirst({
+        cuid,
+        maintenanceRequestUid: mruid,
+        paymentType: PaymentRecordType.MAINTENANCE,
+        vendorId: { $exists: false },
+        status: PaymentRecordStatus.PAID,
+        deletedAt: null,
+      });
+
+      if (!paidCharge) {
+        skipped.push(mruid);
+        continue;
+      }
+
+      if (!dryRun) {
+        await this.maintenanceRequestDAO.updateById(sr._id.toString(), {
+          $set: {
+            status: MaintenanceRequestStatus.COMPLETED,
+            completedAt: new Date(),
+            'tenantFeedback.status': 'pending',
+          },
+        });
+
+        this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, {
+          requestId: sr._id.toString(),
+          mruid,
+          cuid,
+          tenantId: sr.tenantId?.toString() ?? '',
+          vendorId: sr.vendorId?.toString(),
+          completedBy: 'system:migration',
+        });
+      }
+
+      completed.push(mruid);
+    }
+
+    this.log.info(
+      { completed: completed.length, skipped: skipped.length, dryRun },
+      '[Admin] finalize-paid migration done'
+    );
+
+    return res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: dryRun
+        ? 'Dry run complete — no writes performed'
+        : `${completed.length} SR(s) finalized`,
+      data: { completed, skipped, dryRun },
     });
   };
 }

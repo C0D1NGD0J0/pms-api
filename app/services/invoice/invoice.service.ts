@@ -364,6 +364,7 @@ export class InvoiceService {
   };
 
   private handleUploadFailed = (payload: UploadFailedPayload): void => {
+    if (payload.resourceType !== RESOURCE_NAME) return;
     this.log.error('Invoice PDF upload failed', { resourceId: payload.resourceId });
   };
 }

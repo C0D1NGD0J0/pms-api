@@ -16,6 +16,12 @@ export class CronWorker {
   private log: Logger;
   private cronService: CronService;
 
+  // In-process guard: prevents the same job from running concurrently if the cron
+  // interval is shorter than the job's execution time. Bull's lock mechanism covers
+  // concurrent execution across multiple worker processes; this covers the same process.
+  // Phase 2: replace with a Redis SETNX-based distributed lock for multi-process safety.
+  private activeJobs: Set<string> = new Set();
+
   constructor({ cronService }: IConstructor) {
     this.log = createLogger('CronWorker');
     this.cronService = cronService;
@@ -27,10 +33,21 @@ export class CronWorker {
    */
   executeCronJob = async (job: Job<CronJobData>) => {
     const { jobName, service } = job.data;
+
+    if (this.activeJobs.has(jobName)) {
+      this.log.warn(
+        { jobName, service },
+        'CronWorker: job already running — skipping overlapping execution'
+      );
+      return { success: true, skipped: true, reason: 'already_running' };
+    }
+
+    this.activeJobs.add(jobName);
     const startTime = Date.now();
 
     const handler = this.cronService.getJobHandler(jobName);
     if (!handler) {
+      this.activeJobs.delete(jobName);
       throw new Error(`No handler found for cron job: ${jobName}`);
     }
 
@@ -48,6 +65,8 @@ export class CronWorker {
         stack: error.stack,
       });
       throw error;
+    } finally {
+      this.activeJobs.delete(jobName);
     }
   };
 }

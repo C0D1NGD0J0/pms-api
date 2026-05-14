@@ -569,8 +569,18 @@ export class InvitationWorker {
         } catch (error) {
           this.log.error(
             { error, cuid: clientInfo.cuid },
-            'Error checking seat availability in bulk import worker — proceeding anyway'
+            'Error checking seat availability in bulk import worker — aborting job'
           );
+          this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+          return {
+            success: false,
+            processId: job.id,
+            data: null,
+            finishedAt: new Date(),
+            errors: null,
+            message: 'Unable to verify seat availability. Please try again.',
+            mode: 'bulk_create',
+          };
         }
       }
 

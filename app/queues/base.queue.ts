@@ -58,7 +58,7 @@ const createSharedRedisConnection = (): Redis => {
 
     sharedIORedisClient.on('connect', () => {
       const logger = createLogger('IORedis');
-      logger.info('IORedis client connected for Bull queues');
+      logger.debug('IORedis client connected for Bull queues');
     });
   }
   return sharedIORedisClient;
@@ -314,7 +314,7 @@ export class BaseQueue<T extends JobData = JobData> {
       );
       return;
     }
-    this.log.info(`Registering processor for job '${name}' on queue '${this.queue.name}'`);
+    this.log.debug(`Registering processor for job '${name}' on queue '${this.queue.name}'`);
     this.queue.process(name, concurrency, callback);
   }
 
@@ -340,7 +340,7 @@ export class BaseQueue<T extends JobData = JobData> {
       );
       return;
     }
-    this.log.info(
+    this.log.debug(
       `Registering wildcard processor (concurrency=${concurrency}) on queue '${this.queue.name}'`
     );
     this.queue.process('*', concurrency, callback);

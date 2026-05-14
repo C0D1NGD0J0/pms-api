@@ -2,10 +2,12 @@ import { BaseIO } from '@sockets/index';
 import { AssetDAO } from '@dao/assetDAO';
 import { MailService } from '@mailer/index';
 import { createLogger } from '@utils/index';
+import { InvoiceDAO } from '@dao/invoiceDAO';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { LanguageService } from '@shared/languages';
 import { GeoCoderService } from '@services/external';
+import InvoiceModel from '@models/invoice/invoice.model';
 import { ClamScannerService } from '@shared/config/index';
 import { DSARService } from '@services/dsar/dsar.service';
 import { AssetService } from '@services/asset/asset.service';
@@ -109,17 +111,20 @@ import {
 } from '@controllers/index';
 import {
   MaintenanceRequestService,
+  MaintenancePaymentService,
   PropertyApprovalService,
   InvoiceTemplateRenderer,
   InvitationCsvProcessor,
   subscriptionPlanConfig,
   LeaseSignatureService,
   PaymentGatewayService,
+  PaymentWebhookService,
   PropertyCsvProcessor,
   PropertyStatsService,
   PropertyMediaService,
   LeaseDocumentService,
   LeaseTemplateService,
+  PayoutAccountService,
   PdfGeneratorService,
   NotificationService,
   EventEmitterService,
@@ -127,9 +132,12 @@ import {
   LeaseRenewalService,
   SubscriptionService,
   FeatureFlagService,
+  PaymentCronService,
   PermissionService,
   InvitationService,
+  AnthropicService,
   AuthTokenService,
+  InvoiceAIService,
   PropertyService,
   BoldSignService,
   LeasePdfService,
@@ -145,6 +153,7 @@ import {
   AuthService,
   CronService,
   SSEService,
+  AIService,
 } from '@services/index';
 
 const ControllerResources = {
@@ -185,6 +194,7 @@ const ModelResources = {
   maintenanceRequestModel: asValue(MaintenanceRequestModel),
   metricsSnapshotModel: asValue(MetricsSnapshot),
   expenseModel: asValue(ExpenseModel),
+  invoiceModel: asValue(InvoiceModel),
 };
 
 const ServiceResources = {
@@ -223,7 +233,14 @@ const ServiceResources = {
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   subscriptionPlanConfig: asValue(subscriptionPlanConfig),
+  anthropicService: asClass(AnthropicService).singleton(),
+  aiService: asClass(AIService).singleton(),
+  invoiceAIService: asClass(InvoiceAIService).singleton(),
   stripeService: asClass(StripeService).singleton(),
+  paymentCronService: asClass(PaymentCronService).singleton(),
+  payoutAccountService: asClass(PayoutAccountService).singleton(),
+  paymentWebhookService: asClass(PaymentWebhookService).singleton(),
+  maintenancePaymentService: asClass(MaintenancePaymentService).singleton(),
   paymentService: asClass(PaymentService).singleton(),
   paymentGatewayService: asClass(PaymentGatewayService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
@@ -251,6 +268,7 @@ const DAOResources = {
   maintenanceRequestDAO: asClass(MaintenanceRequestDAO).singleton(),
   metricsDAO: asClass(MetricsDAO).singleton(),
   expenseDAO: asClass(ExpenseDAO).singleton(),
+  invoiceDAO: asClass(InvoiceDAO).singleton(),
 };
 
 const CacheResources = {

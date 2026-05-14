@@ -42,8 +42,9 @@ export class PaymentWorker {
           dueDate: new Date(dueDate),
           period,
           description,
+          notifyByEmail: true,
         },
-        { createStripeInvoice: true }
+        { createStripeInvoice: true, paymentSource: 'cron' }
       );
 
       await job.progress(100);

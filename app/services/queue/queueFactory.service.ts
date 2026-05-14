@@ -84,7 +84,7 @@ export class QueueFactory {
     ];
 
     const processType = process.env.PROCESS_TYPE ?? 'unknown';
-    this.log.info(`Force initializing all queues [${processType}] (workers auto-injected via DI)`);
+    this.log.debug(`Force initializing all queues [${processType}] (workers auto-injected via DI)`);
 
     const initializedQueues: string[] = [];
     const failed: string[] = [];

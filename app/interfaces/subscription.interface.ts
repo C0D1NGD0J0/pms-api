@@ -41,10 +41,11 @@ export interface ISubscriptionPlansConfig {
   };
   features: {
     eSignature: boolean;
-    RepairRequestService: boolean;
+    MaintenanceRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
+    vendorManagement: boolean;
     prioritySupport?: boolean;
   };
   pricing: {
@@ -128,10 +129,11 @@ export interface ISubscriptionPlanUsage {
 export interface ISubscription {
   entitlements: {
     eSignature: boolean;
-    RepairRequestService: boolean;
+    MaintenanceRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
+    vendorManagement: boolean;
     prioritySupport?: boolean;
   };
   manualRecords?: {
@@ -160,10 +162,11 @@ export interface ISubscription {
 export interface ISubscriptionEntitlements {
   entitlements: {
     eSignature: boolean;
-    RepairRequestService: boolean;
+    MaintenanceRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
+    vendorManagement: boolean;
     prioritySupport?: boolean;
   };
   paymentFlow?: {

@@ -217,6 +217,7 @@ export class SubscriptionService {
         featuredBadge: config.featuredBadge,
         displayOrder: config.displayOrder,
         transactionFeePercent: config.transactionFeePercent,
+        achPercentRate: subscriptionPlanConfig.getAchPercentRate(),
         isCustomPricing: config.isCustomPricing,
         seatPricing: config.seatPricing,
         limits: config.limits,
@@ -606,7 +607,7 @@ export class SubscriptionService {
           status: subscription.status,
           billingInterval: subscription.billingInterval,
         },
-        entitlements: { ...config.features, ...subscription.entitlements },
+        entitlements: config.features,
         ...(requiresPayment && {
           paymentFlow: {
             requiresPayment,
@@ -1221,11 +1222,6 @@ export class SubscriptionService {
         subscription = createResult.data;
       }
 
-      // Block only inactive subscriptions
-      if (subscription.status === ISubscriptionStatus.INACTIVE) {
-        throw new BadRequestError({ message: 'Cannot update canceled/inactive subscription' });
-      }
-
       // Free plan: activate directly without Stripe checkout
       if (checkoutData.planName === 'essential') {
         await this.subscriptionDAO.activateEssentialPlan(subscription._id.toString());
@@ -1238,8 +1234,12 @@ export class SubscriptionService {
       }
 
       const hasActiveStripeSubscription = !!subscription.billing?.subscriberId;
+      // INACTIVE subscriptions need a new checkout session (reactivation flow).
+      // Treat them the same as PENDING_PAYMENT — redirect through Stripe checkout.
       const isInitialPayment =
-        subscription.status === ISubscriptionStatus.PENDING_PAYMENT || !hasActiveStripeSubscription;
+        subscription.status === ISubscriptionStatus.PENDING_PAYMENT ||
+        subscription.status === ISubscriptionStatus.INACTIVE ||
+        !hasActiveStripeSubscription;
       const isUpdate =
         subscription.status === ISubscriptionStatus.ACTIVE && hasActiveStripeSubscription;
 
@@ -1480,74 +1480,76 @@ export class SubscriptionService {
     if (!stripeSubscriptionId) return;
 
     const billingReason: string = rawInvoice.billing_reason ?? '';
-
-    // ── Renewal cycle: advance endDate as a resilience fallback ─────────────
-    // customer.subscription.updated is the primary source for endDate, but if
-    // that webhook is missed or fails, the billing date freezes in the past.
-    // invoice.paid fires reliably on every successful charge, so we use
-    // period_end here as a safety net for subscription_cycle renewals.
-    if (billingReason === 'subscription_cycle' && rawInvoice.period_end) {
-      const subscription = await this.subscriptionDAO.findFirst({
-        'billing.subscriberId': stripeSubscriptionId,
-      });
-      if (subscription) {
-        const newEndDate = new Date(rawInvoice.period_end * 1000);
-        // Only write if the stored date is older than what the invoice says,
-        // to avoid overwriting a more recent value from customer.subscription.updated.
-        if (!subscription.endDate || subscription.endDate < newEndDate) {
-          await this.subscriptionDAO.update(
-            { _id: subscription._id },
-            { $set: { endDate: newEndDate } }
-          );
-          this.log.info(
-            { stripeSubscriptionId, newEndDate },
-            'invoice.paid: advanced endDate from renewal cycle'
-          );
-        }
-      }
-      return;
-    }
-
-    if (billingReason !== 'subscription_create') return;
-
-    const rawChargeId: string | undefined =
-      rawInvoice.latest_charge ||
-      (typeof rawInvoice.charge === 'string' ? rawInvoice.charge : rawInvoice.charge?.id);
-
-    if (!rawChargeId) return;
+    if (billingReason !== 'subscription_cycle' && billingReason !== 'subscription_create') return;
 
     const subscription = await this.subscriptionDAO.findFirst({
       'billing.subscriberId': stripeSubscriptionId,
     });
 
     if (!subscription) {
-      this.log.warn(
-        { stripeSubscriptionId },
-        'invoice.paid: subscription not found, skipping card save'
-      );
+      this.log.warn({ stripeSubscriptionId }, 'invoice.paid: subscription not found');
       return;
     }
 
-    try {
-      const chargeResult = await this.paymentGatewayService.getCharge(
-        IPaymentGatewayProvider.STRIPE,
-        rawChargeId
-      );
-      if (chargeResult.data?.payment_method_details?.card) {
-        const { last4, brand } = chargeResult.data.payment_method_details.card;
-        await this.subscriptionDAO.update(
-          { _id: subscription._id },
-          {
-            $set: {
-              'billing.cardLast4': last4 ?? undefined,
-              'billing.cardBrand': brand ?? undefined,
-            },
-          }
-        );
-        this.log.info({ stripeSubscriptionId }, 'Saved card details from invoice.paid');
+    const updateData: Record<string, any> = {};
+
+    // Advance endDate when Stripe provides it (renewal cycle primary source; also present on first invoice)
+    if (rawInvoice.period_end) {
+      const newEndDate = new Date(rawInvoice.period_end * 1000);
+      // Only overwrite if newer than what we have, to avoid racing customer.subscription.updated
+      if (!subscription.endDate || subscription.endDate < newEndDate) {
+        updateData.endDate = newEndDate;
       }
-    } catch (err) {
-      this.log.warn({ err }, 'Failed to fetch card details from charge');
+    }
+
+    // Resilience: a successful payment is proof Stripe considers the subscription active.
+    // Activate locally if customer.subscription.updated was missed (e.g. Railway sandbox sleep).
+    if (subscription.status !== ISubscriptionStatus.ACTIVE) {
+      updateData.status = ISubscriptionStatus.ACTIVE;
+      if (!subscription.billing?.subscriberId) {
+        updateData['billing.subscriberId'] = stripeSubscriptionId;
+      }
+    }
+
+    // Save / refresh card details from the charge on every paid invoice
+    const rawChargeId: string | undefined =
+      rawInvoice.latest_charge ||
+      (typeof rawInvoice.charge === 'string' ? rawInvoice.charge : rawInvoice.charge?.id);
+
+    if (rawChargeId) {
+      try {
+        const chargeResult = await this.paymentGatewayService.getCharge(
+          IPaymentGatewayProvider.STRIPE,
+          rawChargeId
+        );
+        if (chargeResult.data?.payment_method_details?.card) {
+          const { last4, brand } = chargeResult.data.payment_method_details.card;
+          if (last4) updateData['billing.cardLast4'] = last4;
+          if (brand) updateData['billing.cardBrand'] = brand;
+        }
+      } catch (err) {
+        this.log.warn({ err }, 'invoice.paid: failed to fetch card details from charge');
+      }
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await this.subscriptionDAO.update({ _id: subscription._id }, { $set: updateData });
+      this.log.info(
+        { stripeSubscriptionId, billingReason, updateData },
+        'invoice.paid: subscription synced'
+      );
+
+      // Purge the super-admin's auth cache so the next request reflects the updated
+      // endDate / status rather than serving stale data from Redis.
+      await this.notifyAccountAdminViaSSE(subscription.cuid, {
+        type: 'subscription_renewed',
+        subscription: {
+          plan: subscription.planName,
+          status: updateData.status ?? subscription.status,
+          endDate: updateData.endDate ?? subscription.endDate,
+        },
+        message: 'Your subscription has been renewed',
+      });
     }
   }
 
@@ -1576,6 +1578,7 @@ export class SubscriptionService {
     status: string;
     currentPeriodStart?: number;
     currentPeriodEnd?: number;
+    items?: any[];
   }): IPromiseReturnedData<ISubscriptionDocument> {
     try {
       const {
@@ -1584,6 +1587,7 @@ export class SubscriptionService {
         status,
         currentPeriodStart,
         currentPeriodEnd,
+        items,
       } = data;
 
       let subscription = await this.subscriptionDAO.findFirst({
@@ -1610,6 +1614,13 @@ export class SubscriptionService {
         // Ensure subscriberId is linked (in case customer.subscription.created was missed)
         if (!subscription.billing?.subscriberId) {
           updateData['billing.subscriberId'] = stripeSubscriptionId;
+        }
+
+        // Guard: if Stripe omits currentPeriodEnd on this event and the stored endDate is
+        // already in the past, set it to 30 days from now so the frontend never sees
+        // status=active + expired endDate simultaneously (which causes a redirect loop).
+        if (!currentPeriodEnd && (!subscription.endDate || subscription.endDate < new Date())) {
+          updateData.endDate = dayjs().add(30, 'day').toDate();
         }
       } else if (status === 'past_due') {
         updateData.status = ISubscriptionStatus.PAST_DUE;
@@ -1656,88 +1667,73 @@ export class SubscriptionService {
         updateData['manualRecords.periodStart'] = new Date(currentPeriodStart * 1000);
       }
 
+      // Only advance endDate — never allow a stale webhook retry to roll it back
       if (currentPeriodEnd) {
-        updateData.endDate = new Date(currentPeriodEnd * 1000);
+        const newEndDate = new Date(currentPeriodEnd * 1000);
+        if (!subscription.endDate || subscription.endDate < newEndDate) {
+          updateData.endDate = newEndDate;
+        }
       }
 
-      // Fetch full subscription from Stripe to check for seat changes
-      try {
-        const stripeSubResult = await this.paymentGatewayService.getSubscriptionWithItems(
-          IPaymentGatewayProvider.STRIPE,
-          stripeSubscriptionId
+      // Sync seat count directly from webhook items — no extra Stripe API call needed
+      const webhookItems: any[] = items ?? [];
+      if (webhookItems.length > 0) {
+        const config = subscriptionPlanConfig.getConfig(subscription.planName);
+        const seatLookupKeys = [
+          config.seatPricing.lookUpKeys?.monthly,
+          config.seatPricing.lookUpKeys?.annual,
+          config.seatPricing.lookUpKey,
+        ].filter(Boolean);
+
+        const seatItem = webhookItems.find((item: any) =>
+          seatLookupKeys.includes(item.price?.lookup_key)
         );
 
-        if (stripeSubResult.success && stripeSubResult.data) {
-          const stripeSubscription = stripeSubResult.data;
-          const config = subscriptionPlanConfig.getConfig(subscription.planName);
-
-          // Find seat item in Stripe subscription
-          const seatLookupKeys = [
-            config.seatPricing.lookUpKeys?.monthly,
-            config.seatPricing.lookUpKeys?.annual,
-            config.seatPricing.lookUpKey, // Fallback for backward compatibility
-          ].filter(Boolean);
-
-          const seatItem = stripeSubscription.items?.data?.find((item: any) =>
-            seatLookupKeys.includes(item.price?.lookup_key)
-          );
-
-          if (seatItem) {
-            const newSeatQuantity = seatItem.quantity || 0;
-
-            // Check if seat count changed
-            if (newSeatQuantity !== subscription.additionalSeatsCount) {
-              this.log.info(
-                {
-                  stripeSubscriptionId,
-                  oldQuantity: subscription.additionalSeatsCount,
-                  newQuantity: newSeatQuantity,
-                },
-                'Seat quantity changed in Stripe, syncing to database'
-              );
-
-              // Calculate new pricing — all values in cents
-              const newAdditionalCost = calcSeatCost(
-                newSeatQuantity,
-                config.seatPricing.additionalSeatPriceCents
-              );
-              const priceDifference = new Decimal(newAdditionalCost)
-                .minus(subscription.additionalSeatsCost ?? 0)
-                .toNumber();
-
-              updateData.additionalSeatsCount = newSeatQuantity;
-              updateData.additionalSeatsCost = newAdditionalCost;
-              updateData.totalMonthlyPrice = new Decimal(subscription.totalMonthlyPrice ?? 0)
-                .plus(priceDifference)
-                .toNumber();
-
-              // Store seat item ID if we don't have it
-              if (seatItem.id && !subscription.billing?.seatItemId) {
-                updateData['billing.seatItemId'] = seatItem.id;
-              }
-            }
-          } else if (subscription.additionalSeatsCount > 0) {
-            // Seat item was removed in Stripe but we still have seats in DB
-            this.log.warn(
+        if (seatItem) {
+          const newSeatQuantity = seatItem.quantity || 0;
+          if (newSeatQuantity !== subscription.additionalSeatsCount) {
+            this.log.info(
               {
                 stripeSubscriptionId,
-                dbSeatCount: subscription.additionalSeatsCount,
+                oldQuantity: subscription.additionalSeatsCount,
+                newQuantity: newSeatQuantity,
               },
-              'Seat item not found in Stripe but DB has seats, syncing to zero'
+              'Seat quantity changed in Stripe, syncing to database'
             );
 
-            updateData.additionalSeatsCount = 0;
-            updateData.additionalSeatsCost = 0;
-            updateData.totalMonthlyPrice = new Decimal(subscription.totalMonthlyPrice ?? 0)
+            const newAdditionalCost = calcSeatCost(
+              newSeatQuantity,
+              config.seatPricing.additionalSeatPriceCents
+            );
+            const priceDifference = new Decimal(newAdditionalCost)
               .minus(subscription.additionalSeatsCost ?? 0)
               .toNumber();
+
+            updateData.additionalSeatsCount = newSeatQuantity;
+            updateData.additionalSeatsCost = newAdditionalCost;
+            updateData.totalMonthlyPrice = new Decimal(subscription.totalMonthlyPrice ?? 0)
+              .plus(priceDifference)
+              .toNumber();
+
+            if (seatItem.id && !subscription.billing?.seatItemId) {
+              updateData['billing.seatItemId'] = seatItem.id;
+            }
           }
+        } else if (subscription.additionalSeatsCount > 0) {
+          this.log.warn(
+            {
+              stripeSubscriptionId,
+              dbSeatCount: subscription.additionalSeatsCount,
+            },
+            'Seat item not found in webhook items but DB has seats, syncing to zero'
+          );
+
+          updateData.additionalSeatsCount = 0;
+          updateData.additionalSeatsCost = 0;
+          updateData.totalMonthlyPrice = new Decimal(subscription.totalMonthlyPrice ?? 0)
+            .minus(subscription.additionalSeatsCost ?? 0)
+            .toNumber();
         }
-      } catch (seatSyncError) {
-        this.log.warn(
-          { error: seatSyncError, stripeSubscriptionId },
-          'Failed to sync seat data from Stripe, continuing with status update'
-        );
       }
 
       const updatedSubscription = await this.subscriptionDAO.update(
@@ -2072,7 +2068,7 @@ export class SubscriptionService {
     this.emitterService.on(EventTypes.INVITATION_REVOKED, this.onInvitationRevoked);
     this.emitterService.on(EventTypes.USER_ARCHIVED, this.onUserArchived);
 
-    this.log.info('Subscription service event listeners setup complete');
+    this.log.debug('Subscription service event listeners setup complete');
   }
 
   /**

@@ -123,6 +123,15 @@ export class SubscriptionPlanConfig {
     return config.transactionFeePercent;
   }
 
+  public getAchPercentRate(): number {
+    return platformConfig.achPercentRate ?? 1.75;
+  }
+
+  public calculateAchApplicationFee(amountInCents: number): number {
+    const rate = this.getAchPercentRate();
+    return Math.round(amountInCents * (rate / 100));
+  }
+
   public getFormattedPrice(
     planName: PlanName,
     billingInterval: 'monthly' | 'annual' = 'monthly'
@@ -237,14 +246,24 @@ export class SubscriptionPlanConfig {
    * Calculate payment gateway processing fee (ESTIMATION ONLY)
    * @param amountInCents - Transaction amount in cents
    * @param provider - Payment gateway provider
+   * @param paymentMethodType - 'auto-debit' for ACH/ACSS bank debit, anything else uses card rate
    * @returns Estimated processing fee in cents
    *
    * IMPORTANT: This is an ESTIMATE for budgeting purposes.
    * Actual fees vary by card type, country, etc.
    * Update payment record with actual fees from gateway API after payment succeeds.
    */
-  public calculatePaymentGatewayFee(amountInCents: number, provider: string = 'stripe'): number {
-    const fees = this.getPaymentGatewayFees(provider);
+  public calculatePaymentGatewayFee(
+    amountInCents: number,
+    provider: string = 'stripe',
+    paymentMethodType?: string
+  ): number {
+    const gateway = platformConfig.paymentGateways[provider];
+    if (!gateway) {
+      throw new Error(`Payment gateway not found: ${provider}`);
+    }
+    const isAch = paymentMethodType === 'auto-debit';
+    const fees = isAch ? gateway.acssProcessingFee : gateway.processingFee;
     return calcGatewayFee(amountInCents, fees.percentRate, fees.fixedFeeCents);
   }
 

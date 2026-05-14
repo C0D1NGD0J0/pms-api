@@ -146,12 +146,6 @@ export class WebhookController {
             break;
           }
 
-          case 'charge.dispute.funds_reinstated': {
-            const dispute = event.data.object as any;
-            await this.paymentService.handleDisputeWon(dispute.id, dispute);
-            break;
-          }
-
           case 'customer.subscription.created': {
             const subscription = event.data.object as any;
             await this.subscriptionService.handleSubscriptionCreated({
@@ -169,6 +163,7 @@ export class WebhookController {
               status: subscription.status,
               currentPeriodStart: subscription.current_period_start,
               currentPeriodEnd: subscription.current_period_end,
+              items: subscription.items?.data,
             });
             break;
           }
@@ -186,14 +181,8 @@ export class WebhookController {
             const session = event.data.object as any;
             if (session.mode === 'setup') {
               await this.paymentService.handleSetupSessionCompleted(session, 'platform');
-            }
-            break;
-          }
-
-          case 'invoice.payment_succeeded': {
-            const invoice = event.data.object as any;
-            if (!invoice.subscription) {
-              await this.paymentService.handleInvoicePaymentSucceeded(invoice.id, invoice);
+            } else if (session.mode === 'payment' && session.metadata?.pytuid) {
+              await this.paymentService.handleCardPaymentSessionCompleted(session);
             }
             break;
           }
@@ -212,13 +201,8 @@ export class WebhookController {
 
           case 'invoice.payment_failed': {
             const invoice = event.data.object as any;
-            const hasSubscription =
-              !!invoice.subscription || !!invoice.parent?.subscription_details?.subscription;
-            if (hasSubscription) {
-              await this.subscriptionService.handleInvoicePaymentFailed(invoice);
-            } else {
-              await this.paymentService.handleInvoicePaymentFailed(invoice.id, invoice);
-            }
+            await this.subscriptionService.handleInvoicePaymentFailed(invoice);
+            await this.paymentService.handleInvoicePaymentFailed(invoice.id, invoice);
             break;
           }
 
@@ -232,6 +216,18 @@ export class WebhookController {
             break;
           }
 
+          case 'invoice.upcoming': {
+            const invoice = event.data.object as any;
+            await this.paymentService.handleInvoiceUpcoming(invoice);
+            break;
+          }
+
+          case 'invoice.overdue': {
+            const invoice = event.data.object as any;
+            await this.paymentService.handleInvoiceOverdue(invoice.id, invoice);
+            break;
+          }
+
           case 'charge.refunded': {
             const charge = event.data.object as any;
             await this.paymentService.handleChargeRefunded(charge.id, charge);
@@ -241,6 +237,7 @@ export class WebhookController {
           case 'invoice.paid': {
             const invoice = event.data.object as any;
             await this.subscriptionService.handleInvoicePaid(invoice);
+            await this.paymentService.handleInvoicePaymentSucceeded(invoice.id, invoice);
             break;
           }
 
@@ -298,7 +295,6 @@ export class WebhookController {
             await this.paymentService.handleAccountUpdated(account.id, account);
             break;
           }
-
           case 'person.updated': {
             const person = event.data.object as any;
             this.log.info(
@@ -309,6 +305,18 @@ export class WebhookController {
               },
               'Stripe person verification updated'
             );
+            break;
+          }
+
+          case 'payout.failed': {
+            const payout = event.data.object as any;
+            await this.paymentService.handlePayoutFailed(payout.id, payout, event.account);
+            break;
+          }
+
+          case 'payout.paid': {
+            const payout = event.data.object as any;
+            await this.paymentService.handlePayoutPaid(payout.id, payout, event.account);
             break;
           }
 

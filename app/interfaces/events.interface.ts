@@ -22,6 +22,7 @@ export enum EventTypes {
   MAINTENANCE_REQUEST_COMPLETED = 'maintenance:request:completed',
   MAINTENANCE_REQUEST_CANCELLED = 'maintenance:request:cancelled',
   MAINTENANCE_INVOICE_SUBMITTED = 'maintenance:invoice:submitted',
+  SUBSCRIPTION_RENEWAL_UPCOMING = 'subscription:renewal:upcoming',
   MAINTENANCE_REQUEST_ASSIGNED = 'maintenance:request:assigned',
   MAINTENANCE_REQUEST_ACCEPTED = 'maintenance:request:accepted',
   MAINTENANCE_REQUEST_DECLINED = 'maintenance:request:declined',
@@ -32,9 +33,11 @@ export enum EventTypes {
   LEASE_ESIGNATURE_REQUESTED = 'lease:esignature:requested',
   LEASE_ESIGNATURE_COMPLETED = 'lease:esignature:completed',
   PAYMENT_PROCESSOR_VERIFIED = 'payment:processor:verified',
+  MAINTENANCE_CHARGE_CREATED = 'maintenance:charge:created',
   LEASE_ESIGNATURE_DECLINED = 'lease:esignature:declined',
   PROPERTY_DOCUMENTS_UPDATE = 'update:property:documents',
   PDF_GENERATION_REQUESTED = 'pdf:generation:requested',
+  MAINTENANCE_CHARGE_PAID = 'maintenance:charge:paid',
   PAYMENT_REQUEST_CREATED = 'payment:request:created',
   PAYMENT_DISPUTE_CREATED = 'payment:dispute:created',
   LEASE_ESIGNATURE_FAILED = 'lease:esignature:failed',
@@ -70,6 +73,7 @@ export enum EventTypes {
   USER_UNARCHIVED = 'user:unarchived',
   UNIT_UNARCHIVED = 'unit:unarchived',
   PAYMENT_OVERDUE = 'payment:overdue',
+  INVOICE_OVERDUE = 'invoice:overdue',
   PAYMENT_FAILED = 'payment:failed',
   LEASE_EXPIRED = 'lease:expired',
   USER_ARCHIVED = 'user:archived',
@@ -78,12 +82,14 @@ export enum EventTypes {
   UNIT_ARCHIVED = 'unit:archived',
   UPLOAD_FAILED = 'upload:failed',
   JOB_COMPLETED = 'job:completed',
+  PAYOUT_FAILED = 'payout:failed',
   EMAIL_FAILED = 'email:failed',
   SYSTEM_ERROR = 'system:error',
   UNIT_CREATED = 'unit:created',
   UNIT_UPDATED = 'unit:updated',
   UPLOAD_ASSET = 'upload:asset',
   JOB_STARTED = 'job:started',
+  PAYOUT_PAID = 'payout:paid',
   EMAIL_SENT = 'email:sent',
   JOB_FAILED = 'job:failed',
 }
@@ -136,6 +142,7 @@ export type EventPayloadMap = {
   [EventTypes.MAINTENANCE_REQUEST_ACCEPTED]: MaintenanceRequestAcceptedPayload;
   [EventTypes.MAINTENANCE_REQUEST_DECLINED]: MaintenanceRequestDeclinedPayload;
   [EventTypes.MAINTENANCE_REQUEST_UPDATED]: MaintenanceRequestUpdatedPayload;
+  [EventTypes.MAINTENANCE_REQUEST_WORK_DONE]: MaintenanceRequestWorkDonePayload;
   [EventTypes.MAINTENANCE_REQUEST_COMPLETED]: MaintenanceRequestCompletedPayload;
   [EventTypes.MAINTENANCE_REQUEST_CANCELLED]: MaintenanceRequestCancelledPayload;
   [EventTypes.MAINTENANCE_INVOICE_SUBMITTED]: MaintenanceInvoiceSubmittedPayload;
@@ -157,8 +164,14 @@ export type EventPayloadMap = {
   [EventTypes.PAYMENT_METHOD_SETUP_COMPLETED]: PaymentMethodSetupCompletedPayload;
   [EventTypes.PAYMENT_REQUEST_CREATED]: PaymentRequestCreatedPayload;
   [EventTypes.PAYMENT_CANCELLED]: PaymentCancelledPayload;
+  [EventTypes.MAINTENANCE_CHARGE_CREATED]: MaintenanceChargeCreatedPayload;
+  [EventTypes.MAINTENANCE_CHARGE_PAID]: MaintenanceChargePaidPayload;
   [EventTypes.MAINTENANCE_VENDOR_PAID]: MaintenanceVendorPaidPayload;
   [EventTypes.INVOICE_GENERATED]: InvoiceGeneratedPayload;
+  [EventTypes.PAYOUT_FAILED]: PayoutFailedPayload;
+  [EventTypes.PAYOUT_PAID]: PayoutPaidPayload;
+  [EventTypes.INVOICE_OVERDUE]: InvoiceOverduePayload;
+  [EventTypes.SUBSCRIPTION_RENEWAL_UPCOMING]: SubscriptionRenewalUpcomingPayload;
 };
 
 export interface UserSignupInitiatedPayload {
@@ -228,6 +241,20 @@ export interface UnitBatchChangedPayload {
   cuid: string; // Client ID
 }
 
+export interface MaintenanceInvoiceApprovedPayload {
+  invoiceLineItems?: { description: string; amountInCents: number }[];
+  isBillable: boolean;
+  approvedBy: string;
+  requestId: string;
+  vendorId?: string;
+  tenantId?: string;
+  currency: string;
+  amount: number;
+  title: string;
+  mruid: string;
+  cuid: string;
+}
+
 export interface LeaseRenewedPayload {
   originalLeaseId: string;
   propertyUnitId?: string;
@@ -248,19 +275,6 @@ export interface InvitationEventPayload {
   clientId: string; // MongoDB ObjectId of client
   role: string; // Role being invited to
   cuid: string; // Client unique ID
-}
-
-export interface MaintenanceInvoiceApprovedPayload {
-  isBillable: boolean;
-  approvedBy: string;
-  requestId: string;
-  vendorId?: string;
-  tenantId?: string;
-  currency: string;
-  amount: number;
-  title: string;
-  mruid: string;
-  cuid: string;
 }
 
 export interface UploadCompletedPayload {
@@ -335,6 +349,17 @@ export interface PaymentDisputeCreatedPayload {
   cuid: string;
 }
 
+export interface MaintenanceChargeCreatedPayload {
+  amountInCents: number;
+  tenantId: string;
+  currency: string;
+  pytuid: string;
+  title: string;
+  mruid: string;
+  dueDate: Date;
+  cuid: string;
+}
+
 export interface PdfGenerationRequestedPayload {
   senderInfo?: {
     email: string;
@@ -343,6 +368,16 @@ export interface PdfGenerationRequestedPayload {
   jobId: string | number;
   resource: ResourceInfo;
   templateType?: string;
+  cuid: string;
+}
+
+export interface MaintenanceRequestWorkDonePayload {
+  invoiceDeadline: string;
+  completedBy: string;
+  requestId: string;
+  vendorId?: string;
+  tenantId?: string;
+  mruid: string;
   cuid: string;
 }
 
@@ -387,6 +422,25 @@ export interface InvoiceGeneratedPayload {
   cuid: string;
 }
 
+export interface SubscriptionRenewalUpcomingPayload {
+  stripeSubscriptionId: string;
+  amountInCents: number;
+  renewalDate: Date;
+  planName: string;
+  currency: string;
+  cuid: string;
+}
+
+export interface PayoutFailedPayload {
+  amountInCents: number;
+  failureCode?: string;
+  accountId: string;
+  payoutId: string;
+  currency: string;
+  reason?: string;
+  cuid: string;
+}
+
 export interface PaymentDisputeLostPayload {
   invoiceNumber: string;
   disputeId: string;
@@ -404,6 +458,7 @@ export interface PaymentRequestCreatedPayload {
   dueDate: Date;
   cuid: string;
 }
+
 export interface EmailFailedPayload {
   error: {
     message: string;
@@ -424,8 +479,16 @@ export interface PaymentDisputeWonPayload {
   amount: number;
   cuid: string;
 }
-
 export interface MaintenanceWorkOrderRejectedPayload {
+  rejectionReason: string;
+  rejectedBy: string;
+  requestId: string;
+  vendorId?: string;
+  mruid: string;
+  cuid: string;
+}
+
+export interface MaintenanceInvoiceRejectedPayload {
   rejectionReason: string;
   rejectedBy: string;
   requestId: string;
@@ -473,7 +536,7 @@ export interface MaintenanceVendorPaidPayload {
   amountInCents: number;
   transferId: string;
   vendorId: string;
-  pytuid: string;
+  invuid: string;
   mruid: string;
   cuid: string;
 }
@@ -514,11 +577,30 @@ export interface UploadFailedPayload {
   resourceId: string;
 }
 
-export interface MaintenanceInvoiceRejectedPayload {
-  rejectionReason: string;
-  requestId: string;
-  vendorId?: string;
-  mruid: string;
+export interface PayoutPaidPayload {
+  amountInCents: number;
+  accountId: string;
+  arrivalDate: Date;
+  payoutId: string;
+  currency: string;
+  cuid: string;
+}
+
+export interface InvoiceOverduePayload {
+  invoiceId: string;
+  tenantId?: string;
+  currency: string;
+  pytuid: string;
+  amount: number;
+  cuid: string;
+}
+
+export interface PaymentOverduePayload {
+  paymentType: string;
+  tenantId?: string;
+  pytuid: string;
+  amount: number;
+  dueDate: Date;
   cuid: string;
 }
 
@@ -559,11 +641,11 @@ export interface PropertyUpdatedPayload {
   status: 'success';
 }
 
-export interface PaymentOverduePayload {
-  paymentType: string;
+export interface PaymentFailedPayload {
+  invoiceId: string;
+  tenantId?: string;
+  amount?: number;
   pytuid: string;
-  amount: number;
-  dueDate: Date;
   cuid: string;
 }
 
@@ -581,6 +663,13 @@ export interface PaymentSucceededPayload {
   amount: number;
   cuid: string;
   paidAt: Date;
+}
+
+export interface MaintenanceChargePaidPayload {
+  amountInCents: number;
+  pytuid: string;
+  mruid: string;
+  cuid: string;
 }
 
 export interface PaymentRefundedPayload {
@@ -638,12 +727,6 @@ export interface DeleteAssetFailedPayload {
 export interface DeleteAssetCompletedPayload {
   deletedKeys: string[];
   failedKeys?: string[];
-}
-
-export interface PaymentFailedPayload {
-  invoiceId: string;
-  pytuid: string;
-  cuid: string;
 }
 
 export type DeleteRemoteAssetPayload = AssetIdentifiersPayload;

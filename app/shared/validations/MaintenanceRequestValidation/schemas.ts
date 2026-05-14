@@ -210,6 +210,12 @@ export const MaintenanceSchemas = {
     source: z.enum(['manual', 'quickbooks', 'freshbooks', 'jobber']).optional(),
     externalInvoiceId: z.string().optional(),
     externalInvoiceUrl: z.string().url().optional(),
+    attachment: z
+      .object({
+        url: z.string().url(),
+        key: z.string().min(1),
+      })
+      .optional(),
   }),
 
   invoiceReviewBody: z
@@ -277,6 +283,7 @@ export const MaintenanceSchemas = {
 
   webhookBody: z.object({
     mruid: z.string().min(1, 'Maintenance request ID is required'),
+    cuid: z.string().min(1, 'Client ID is required for tenant isolation'),
     amount: z.number().int().positive('Amount must be a positive integer in cents'),
     currency: z.string().length(3, 'Currency must be a 3-character code'),
     description: z.string().min(1).max(500),

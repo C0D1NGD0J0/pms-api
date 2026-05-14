@@ -1,22 +1,26 @@
+import fs from 'fs';
 import { Response } from 'express';
 import { httpStatusCodes } from '@utils/index';
-import { MaintenanceRequestService } from '@services/index';
 import { InvoiceSource } from '@interfaces/maintenanceRequest.interface';
 import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
+import { MaintenanceRequestService, InvoiceAIService } from '@services/index';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 
 interface IConstructor {
   maintenanceRequestService: MaintenanceRequestService;
   mediaUploadService: MediaUploadService;
+  invoiceAIService: InvoiceAIService;
 }
 
 export class MaintenanceController {
   private readonly maintenanceRequestService: MaintenanceRequestService;
   private readonly mediaUploadService: MediaUploadService;
+  private readonly invoiceAIService: InvoiceAIService;
 
-  constructor({ maintenanceRequestService, mediaUploadService }: IConstructor) {
+  constructor({ maintenanceRequestService, mediaUploadService, invoiceAIService }: IConstructor) {
     this.maintenanceRequestService = maintenanceRequestService;
     this.mediaUploadService = mediaUploadService;
+    this.invoiceAIService = invoiceAIService;
   }
 
   async createRequest(req: AppRequest, res: Response) {
@@ -138,6 +142,48 @@ export class MaintenanceController {
     return res.status(httpStatusCodes.OK).json(result);
   }
 
+  async scanInvoice(req: AppRequest, res: Response) {
+    const files = (req.files as Express.Multer.File[]) || [];
+    const file = files[0];
+
+    if (!file) {
+      return res.status(400).json({ success: false, message: 'No invoice file uploaded' });
+    }
+
+    // Read file into buffer then clean up temp file
+    const buffer = fs.readFileSync(file.path);
+    fs.unlink(file.path, () => {});
+
+    const extracted = await this.invoiceAIService.extractInvoiceData(buffer, file.mimetype);
+
+    if (!extracted) {
+      return res.status(422).json({
+        success: false,
+        message: 'AI invoice scanning is disabled or failed to extract data',
+      });
+    }
+
+    // Upload the scanned file to S3 for attachment
+    const uploadResult = await this.mediaUploadService.handleFiles(req, {
+      primaryResourceId: req.params.mruid,
+      uploadedBy: req.context.currentuser!.sub,
+      resourceContext: ResourceContext.MAINTENANCE,
+    });
+
+    return res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: {
+        extracted,
+        attachment: uploadResult.hasFiles
+          ? {
+              url: uploadResult.processedFiles?.[0]?.url,
+              key: uploadResult.processedFiles?.[0]?.key,
+            }
+          : undefined,
+      },
+    });
+  }
+
   async reviewInvoice(req: AppRequest, res: Response) {
     const result = await this.maintenanceRequestService.reviewInvoice(
       req.context,
@@ -195,6 +241,18 @@ export class MaintenanceController {
       cuid,
       req.context.currentuser!.sub
     );
+    return res.status(httpStatusCodes.OK).json(result);
+  }
+
+  async acceptAISuggestion(req: AppRequest, res: Response) {
+    const { mruid } = req.params;
+    const result = await this.maintenanceRequestService.acceptAISuggestion(req.context, mruid);
+    return res.status(httpStatusCodes.OK).json(result);
+  }
+
+  async dismissAISuggestion(req: AppRequest, res: Response) {
+    const { mruid } = req.params;
+    const result = await this.maintenanceRequestService.dismissAISuggestion(req.context, mruid);
     return res.status(httpStatusCodes.OK).json(result);
   }
 }

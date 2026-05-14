@@ -2,14 +2,20 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/helpers';
 import { MoneyUtils } from '@utils/money.utils';
+import { EmailQueue } from '@queues/email.queue';
 import { NotificationCache } from '@caching/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ROLES } from '@shared/constants/roles.constants';
-import { ResourceContext } from '@interfaces/utils.interface';
+import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { NotificationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES } from '@utils/constants';
-import { ISuccessReturnData, IPaginationQuery } from '@interfaces/utils.interface';
 import { EventEmitterService, ProfileService, UserService, SSEService } from '@services/index';
+import {
+  ISuccessReturnData,
+  IPaginationQuery,
+  ResourceContext,
+  MailType,
+} from '@interfaces/utils.interface';
 import {
   CreateNotificationWithRulesSchema,
   UpdateNotificationSchema,
@@ -31,28 +37,37 @@ import {
   MaintenanceRequestCancelledPayload,
   MaintenanceInvoiceSubmittedPayload,
   PaymentMethodSetupCompletedPayload,
+  SubscriptionRenewalUpcomingPayload,
+  MaintenanceRequestWorkDonePayload,
   MaintenanceRequestAssignedPayload,
   MaintenanceRequestAcceptedPayload,
   MaintenanceRequestDeclinedPayload,
   MaintenanceInvoiceApprovedPayload,
   MaintenanceInvoiceRejectedPayload,
   MaintenanceRequestCreatedPayload,
+  MaintenanceChargeCreatedPayload,
   PaymentRequestCreatedPayload,
   PaymentCancelledPayload,
   PaymentSucceededPayload,
   PaymentRefundedPayload,
+  PaymentOverduePayload,
+  InvoiceOverduePayload,
   PaymentFailedPayload,
+  PayoutFailedPayload,
+  PayoutPaidPayload,
   EventTypes,
 } from '@interfaces/events.interface';
 
 import { getFormattedNotification, NotificationMessageKey } from './notificationMessages';
 
 interface IConstructor {
+  maintenanceRequestDAO: MaintenanceRequestDAO;
   notificationCache: NotificationCache;
   emitterService: EventEmitterService;
   notificationDAO: NotificationDAO;
   profileService: ProfileService;
   userService: UserService;
+  emailQueue: EmailQueue;
   profileDAO: ProfileDAO;
   sseService: SSEService;
   clientDAO: ClientDAO;
@@ -62,21 +77,25 @@ interface IConstructor {
 export class NotificationService {
   private readonly notificationDAO: NotificationDAO;
   private readonly notificationCache: NotificationCache;
+  private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly emitterService: EventEmitterService;
   private readonly userService: UserService;
   private readonly sseService: SSEService;
   private readonly profileService: ProfileService;
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
+  private readonly emailQueue: EmailQueue;
   private readonly userDAO: UserDAO;
   private readonly log: Logger;
 
   constructor({
     notificationDAO,
     notificationCache,
+    maintenanceRequestDAO,
     emitterService,
     profileDAO,
     clientDAO,
+    emailQueue,
     userDAO,
     userService,
     sseService,
@@ -85,12 +104,14 @@ export class NotificationService {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
     this.sseService = sseService;
+    this.emailQueue = emailQueue;
     this.profileDAO = profileDAO;
     this.userService = userService;
     this.emitterService = emitterService;
     this.profileService = profileService;
     this.notificationDAO = notificationDAO;
     this.notificationCache = notificationCache;
+    this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.log = createLogger('NotificationService');
 
     this.setupEventListeners();
@@ -1993,6 +2014,10 @@ export class NotificationService {
       this.handleMRDeclined.bind(this)
     );
     this.emitterService.on(
+      EventTypes.MAINTENANCE_REQUEST_WORK_DONE,
+      this.handleMRWorkDone.bind(this)
+    );
+    this.emitterService.on(
       EventTypes.MAINTENANCE_REQUEST_COMPLETED,
       this.handleMRCompleted.bind(this)
     );
@@ -2007,6 +2032,10 @@ export class NotificationService {
     this.emitterService.on(
       EventTypes.MAINTENANCE_INVOICE_APPROVED,
       this.handleInvoiceApproved.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_CHARGE_CREATED,
+      this.handleMaintenanceChargeCreated.bind(this)
     );
     this.emitterService.on(
       EventTypes.MAINTENANCE_INVOICE_REJECTED,
@@ -2028,6 +2057,7 @@ export class NotificationService {
     // Payment events
     this.emitterService.on(EventTypes.PAYMENT_SUCCEEDED, this.handlePaymentSucceeded.bind(this));
     this.emitterService.on(EventTypes.PAYMENT_FAILED, this.handlePaymentFailed.bind(this));
+    this.emitterService.on(EventTypes.PAYMENT_OVERDUE, this.handlePaymentOverdue.bind(this));
     this.emitterService.on(EventTypes.PAYMENT_REFUNDED, this.handlePaymentRefunded.bind(this));
     this.emitterService.on(
       EventTypes.PAYMENT_METHOD_SETUP_COMPLETED,
@@ -2038,6 +2068,13 @@ export class NotificationService {
       this.handlePaymentRequestCreated.bind(this)
     );
     this.emitterService.on(EventTypes.PAYMENT_CANCELLED, this.handlePaymentCancelled.bind(this));
+    this.emitterService.on(EventTypes.PAYOUT_FAILED, this.handlePayoutFailed.bind(this));
+    this.emitterService.on(EventTypes.PAYOUT_PAID, this.handlePayoutPaid.bind(this));
+    this.emitterService.on(EventTypes.INVOICE_OVERDUE, this.handleInvoiceOverdue.bind(this));
+    this.emitterService.on(
+      EventTypes.SUBSCRIPTION_RENEWAL_UPCOMING,
+      this.handleSubscriptionRenewalUpcoming.bind(this)
+    );
   }
 
   private async handleLeaseActivated(payload: any): Promise<void> {
@@ -2102,6 +2139,29 @@ export class NotificationService {
     } catch (error) {
       this.log.error('Error sending MR created notification', { error, payload });
     }
+
+    try {
+      const { mruid, title, category, priority, tenantId } = payload;
+      if (tenantId) {
+        const creator = await this.userDAO.findFirst({
+          _id: new Types.ObjectId(tenantId),
+          deletedAt: null,
+        });
+        if (creator?.email) {
+          this.emailQueue.addToEmailQueue('maintenanceRequestCreated', {
+            to: creator.email,
+            emailType: MailType.MAINTENANCE_REQUEST_CREATED,
+            subject: '',
+            data: { request: { mruid, title, category, priority }, currentuser: creator },
+          });
+        }
+      }
+    } catch (err) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        'Failed to enqueue maintenanceRequestCreated email'
+      );
+    }
   }
 
   private async handleMRAssigned(payload: MaintenanceRequestAssignedPayload): Promise<void> {
@@ -2114,7 +2174,7 @@ export class NotificationService {
         await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
           cuid,
           type: NotificationTypeEnum.MAINTENANCE,
-          recipient: new Types.ObjectId(tenantId),
+          recipient: tenantId,
           recipientType: RecipientTypeEnum.INDIVIDUAL,
           priority: NotificationPriorityEnum.MEDIUM,
           title,
@@ -2128,7 +2188,7 @@ export class NotificationService {
       await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
-        recipient: new Types.ObjectId(vendorId),
+        recipient: vendorId,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
         priority: NotificationPriorityEnum.MEDIUM,
         title,
@@ -2137,6 +2197,35 @@ export class NotificationService {
       });
     } catch (error) {
       this.log.error('Error sending MR assigned notification', { error, payload });
+    }
+
+    try {
+      const { mruid, cuid, vendorId, assignedBy } = payload;
+      const [request, vendorUser, assignedByUser] = await Promise.all([
+        this.maintenanceRequestDAO.getByMruid(mruid, cuid),
+        this.userDAO.findFirst({ _id: new Types.ObjectId(vendorId), deletedAt: null }),
+        this.userDAO.findFirst({ _id: new Types.ObjectId(assignedBy), deletedAt: null }),
+      ]);
+      if (request && vendorUser?.email) {
+        this.emailQueue.addToEmailQueue('maintenanceRequestAssigned', {
+          to: vendorUser.email,
+          emailType: MailType.MAINTENANCE_REQUEST_ASSIGNED,
+          subject: '',
+          data: {
+            request: {
+              ...(request.toObject ? request.toObject() : request),
+              description: typeof request.description === 'object' ? '' : request.description,
+            },
+            vendor: vendorUser,
+            assignedBy: assignedByUser,
+          },
+        });
+      }
+    } catch (err) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        'Failed to enqueue maintenanceRequestAssigned email'
+      );
     }
   }
 
@@ -2150,7 +2239,7 @@ export class NotificationService {
         await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
           cuid,
           type: NotificationTypeEnum.MAINTENANCE,
-          recipient: new Types.ObjectId(tenantId),
+          recipient: tenantId,
           recipientType: RecipientTypeEnum.INDIVIDUAL,
           priority: NotificationPriorityEnum.MEDIUM,
           title,
@@ -2172,6 +2261,29 @@ export class NotificationService {
     } catch (error) {
       this.log.error('Error sending MR accepted notification', { error, payload });
     }
+
+    try {
+      const { mruid, cuid, tenantId } = payload;
+      if (tenantId) {
+        const [request, tenantUser] = await Promise.all([
+          this.maintenanceRequestDAO.getByMruid(mruid, cuid),
+          this.userDAO.findFirst({ _id: new Types.ObjectId(tenantId), deletedAt: null }),
+        ]);
+        if (request && tenantUser?.email) {
+          this.emailQueue.addToEmailQueue('maintenanceRequestAccepted', {
+            to: tenantUser.email,
+            emailType: MailType.MAINTENANCE_REQUEST_ACCEPTED,
+            subject: '',
+            data: { request, tenant: tenantUser, vendor: {} },
+          });
+        }
+      }
+    } catch (err) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        'Failed to enqueue maintenanceRequestAccepted email'
+      );
+    }
   }
 
   private async handleMRDeclined(payload: MaintenanceRequestDeclinedPayload): Promise<void> {
@@ -2191,6 +2303,63 @@ export class NotificationService {
     } catch (error) {
       this.log.error('Error sending MR declined notification', { error, payload });
     }
+
+    try {
+      const { mruid, cuid, vendorId, reason } = payload;
+      const request = await this.maintenanceRequestDAO.getByMruid(mruid, cuid);
+      if (request) {
+        this.emailQueue.addToEmailQueue('maintenanceRequestDeclined', {
+          to: '',
+          emailType: MailType.MAINTENANCE_REQUEST_DECLINED,
+          subject: '',
+          data: { request, vendorId, reason },
+        });
+      }
+    } catch (err) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        'Failed to enqueue maintenanceRequestDeclined email'
+      );
+    }
+  }
+
+  private async handleMRWorkDone(payload: MaintenanceRequestWorkDonePayload): Promise<void> {
+    try {
+      const { cuid, mruid, tenantId } = payload;
+
+      // Notify admin/staff that vendor has finished — awaiting invoice
+      const { title, message } = getFormattedNotification('maintenance.workDone', { mruid });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: ['admin', 'staff'],
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { mruid },
+      });
+
+      // Notify tenant that work on their request is complete
+      if (tenantId) {
+        const { title: tTitle, message: tMessage } = getFormattedNotification(
+          'maintenance.workDoneTenant',
+          { mruid }
+        );
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: tenantId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.MEDIUM,
+          title: tTitle,
+          message: tMessage,
+          metadata: { mruid },
+        });
+      }
+    } catch (error) {
+      this.log.error('Error sending MR work done notification', { error, payload });
+    }
   }
 
   private async handleMRCompleted(payload: MaintenanceRequestCompletedPayload): Promise<void> {
@@ -2203,7 +2372,7 @@ export class NotificationService {
         await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
           cuid,
           type: NotificationTypeEnum.MAINTENANCE,
-          recipient: new Types.ObjectId(tenantId),
+          recipient: tenantId,
           recipientType: RecipientTypeEnum.INDIVIDUAL,
           priority: NotificationPriorityEnum.MEDIUM,
           title,
@@ -2227,6 +2396,29 @@ export class NotificationService {
     } catch (error) {
       this.log.error('Error sending MR completed notification', { error, payload });
     }
+
+    try {
+      const { mruid, cuid, tenantId } = payload;
+      if (tenantId) {
+        const [request, tenantUser] = await Promise.all([
+          this.maintenanceRequestDAO.getByMruid(mruid, cuid),
+          this.userDAO.findFirst({ _id: new Types.ObjectId(tenantId), deletedAt: null }),
+        ]);
+        if (request && tenantUser?.email) {
+          this.emailQueue.addToEmailQueue('maintenanceRequestCompleted', {
+            to: tenantUser.email,
+            emailType: MailType.MAINTENANCE_REQUEST_COMPLETED,
+            subject: '',
+            data: { request, tenant: tenantUser },
+          });
+        }
+      }
+    } catch (err) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        'Failed to enqueue maintenanceRequestCompleted email'
+      );
+    }
   }
 
   private async handleMRCancelled(payload: MaintenanceRequestCancelledPayload): Promise<void> {
@@ -2239,7 +2431,7 @@ export class NotificationService {
         await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
           cuid,
           type: NotificationTypeEnum.MAINTENANCE,
-          recipient: new Types.ObjectId(tenantId),
+          recipient: tenantId,
           recipientType: RecipientTypeEnum.INDIVIDUAL,
           priority: NotificationPriorityEnum.MEDIUM,
           title,
@@ -2251,7 +2443,7 @@ export class NotificationService {
         await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
           cuid,
           type: NotificationTypeEnum.MAINTENANCE,
-          recipient: new Types.ObjectId(vendorId),
+          recipient: vendorId,
           recipientType: RecipientTypeEnum.INDIVIDUAL,
           priority: NotificationPriorityEnum.MEDIUM,
           title,
@@ -2295,30 +2487,167 @@ export class NotificationService {
     } catch (error) {
       this.log.error('Error sending invoice submitted notification', { error, payload });
     }
+
+    try {
+      const { mruid, cuid, amount, vendorId } = payload;
+      const request = await this.maintenanceRequestDAO.getByMruid(mruid, cuid);
+      if (request) {
+        this.emailQueue.addToEmailQueue('maintenanceInvoiceSubmitted', {
+          to: '',
+          emailType: MailType.MAINTENANCE_INVOICE_SUBMITTED,
+          subject: '',
+          data: { request, invoice: request.invoice, vendorId, amount },
+        });
+      }
+    } catch (err) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        'Failed to enqueue maintenanceInvoiceSubmitted email'
+      );
+    }
   }
 
   private async handleInvoiceApproved(payload: MaintenanceInvoiceApprovedPayload): Promise<void> {
+    const { cuid, mruid, vendorId, tenantId, isBillable, amount, currency, approvedBy } = payload;
+    const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
+
+    // Notify vendor their invoice was approved
+    if (vendorId) {
+      try {
+        const { title, message } = getFormattedNotification('maintenance.invoiceApproved', {
+          mruid,
+          amount: fmt,
+        });
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: vendorId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.MEDIUM,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      } catch (error) {
+        this.log.error('Error sending invoice approved notification to vendor', { error, payload });
+      }
+
+      try {
+        const [vendorUser, approvedByUser] = await Promise.all([
+          this.userDAO.findFirst({ _id: new Types.ObjectId(vendorId), deletedAt: null }),
+          this.userDAO.findFirst({ _id: new Types.ObjectId(approvedBy), deletedAt: null }),
+        ]);
+        if (vendorUser?.email) {
+          this.emailQueue.addToEmailQueue('maintenanceInvoiceApproved', {
+            to: vendorUser.email,
+            emailType: MailType.MAINTENANCE_INVOICE_APPROVED,
+            subject: '',
+            data: {
+              request: { mruid, invoice: { amount, currency } },
+              approvedBy: approvedByUser,
+            },
+          });
+        }
+      } catch (err) {
+        this.log.error(
+          { err, mruid },
+          'Failed to enqueue maintenanceInvoiceApproved email to vendor'
+        );
+      }
+    }
+
+    // Notify tenant they have a pending charge when the invoice is marked billable
+    if (isBillable && tenantId) {
+      try {
+        const { title, message } = getFormattedNotification('maintenance.invoiceBillableNotice', {
+          mruid,
+          amount: fmt,
+        });
+        await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+          cuid,
+          type: NotificationTypeEnum.PAYMENT,
+          recipient: tenantId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.HIGH,
+          title,
+          message,
+          metadata: { mruid, amount, currency },
+        });
+      } catch (error) {
+        this.log.error('Error sending billable invoice notice to tenant', { error, payload });
+      }
+    }
+  }
+
+  private async handleMaintenanceChargeCreated(
+    payload: MaintenanceChargeCreatedPayload
+  ): Promise<void> {
     try {
-      const { cuid, mruid, vendorId, amount, currency } = payload;
-      if (!vendorId) return;
-      const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
-      const { title, message } = getFormattedNotification('maintenance.invoiceApproved', {
+      const { cuid, mruid, tenantId, amountInCents, currency, pytuid, dueDate } = payload;
+      const fmt = MoneyUtils.formatCurrency(amountInCents || 0, currency || 'USD');
+      const dueDateStr = new Date(dueDate).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      const { title, message } = getFormattedNotification('maintenance.chargeCreated', {
         mruid,
         amount: fmt,
+        dueDate: dueDateStr,
       });
-      // Individual notification to the primary vendor contact only — not broadcast to teammates
-      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         cuid,
-        type: NotificationTypeEnum.MAINTENANCE,
-        recipient: new Types.ObjectId(vendorId),
+        type: NotificationTypeEnum.PAYMENT,
+        recipient: tenantId,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
-        priority: NotificationPriorityEnum.MEDIUM,
+        priority: NotificationPriorityEnum.HIGH,
         title,
         message,
-        metadata: { mruid },
+        metadata: { mruid, pytuid },
       });
     } catch (error) {
-      this.log.error('Error sending invoice approved notification', { error, payload });
+      this.log.error('Error sending maintenance charge notification to tenant', {
+        error,
+        payload,
+      });
+    }
+
+    try {
+      const {
+        cuid,
+        mruid,
+        tenantId,
+        amountInCents,
+        currency,
+        pytuid,
+        title: jobTitle,
+        dueDate,
+      } = payload;
+      const tenantUser = await this.userDAO.findFirst({
+        _id: new Types.ObjectId(tenantId),
+        deletedAt: null,
+      });
+      if (tenantUser?.email) {
+        this.emailQueue.addToEmailQueue('maintenanceChargeCreated', {
+          to: tenantUser.email,
+          emailType: MailType.MAINTENANCE_CHARGE_CREATED,
+          subject: '',
+          data: {
+            mruid,
+            cuid,
+            pytuid,
+            jobTitle,
+            amountInCents,
+            currency,
+            dueDate,
+          },
+        });
+      }
+    } catch (err) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        'Failed to enqueue maintenanceChargeCreated email to tenant'
+      );
     }
   }
 
@@ -2330,7 +2659,7 @@ export class NotificationService {
       await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
-        recipient: new Types.ObjectId(vendorId),
+        recipient: vendorId,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
         priority: NotificationPriorityEnum.MEDIUM,
         title,
@@ -2339,6 +2668,29 @@ export class NotificationService {
       });
     } catch (error) {
       this.log.error('Error sending invoice rejected notification', { error, payload });
+    }
+
+    try {
+      const { mruid, cuid, vendorId, rejectionReason, rejectedBy } = payload;
+      if (!vendorId) return;
+      const [request, vendorUser, rejectedByUser] = await Promise.all([
+        this.maintenanceRequestDAO.getByMruid(mruid, cuid),
+        this.userDAO.findFirst({ _id: new Types.ObjectId(vendorId), deletedAt: null }),
+        this.userDAO.findFirst({ _id: new Types.ObjectId(rejectedBy), deletedAt: null }),
+      ]);
+      if (request && vendorUser?.email) {
+        this.emailQueue.addToEmailQueue('maintenanceInvoiceRejected', {
+          to: vendorUser.email,
+          emailType: MailType.MAINTENANCE_INVOICE_REJECTED,
+          subject: '',
+          data: { request, rejectionReason, rejectedBy: rejectedByUser },
+        });
+      }
+    } catch (err) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        'Failed to enqueue maintenanceInvoiceRejected email'
+      );
     }
   }
 
@@ -2363,6 +2715,41 @@ export class NotificationService {
     } catch (error) {
       this.log.error('Error sending work order submitted notification', { error, payload });
     }
+
+    try {
+      const { mruid, cuid, vendorId } = payload;
+      const request = await this.maintenanceRequestDAO.getByMruid(mruid, cuid);
+      if (request) {
+        // Email to PM (no specific address — resolved by mailer config)
+        this.emailQueue.addToEmailQueue('maintenanceWorkOrderSubmitted', {
+          to: '',
+          emailType: MailType.MAINTENANCE_WORK_ORDER_SUBMITTED,
+          subject: '',
+          data: { request, workOrder: (request as any).workOrder, vendorId },
+        } as any);
+
+        // Email to tenant if applicable
+        if (request.tenantId) {
+          const tenantUser = await this.userDAO.findFirst({
+            _id: request.tenantId,
+            deletedAt: null,
+          });
+          if (tenantUser?.email) {
+            this.emailQueue.addToEmailQueue('maintenanceWorkOrderSubmittedTenant', {
+              to: tenantUser.email,
+              emailType: MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT,
+              subject: '',
+              data: { request, workOrder: (request as any).workOrder },
+            } as any);
+          }
+        }
+      }
+    } catch (err) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        'Failed to enqueue maintenanceWorkOrderSubmitted email'
+      );
+    }
   }
 
   private async handleWorkOrderApproved(
@@ -2378,7 +2765,7 @@ export class NotificationService {
       await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
-        recipient: new Types.ObjectId(vendorId),
+        recipient: vendorId,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
         priority: NotificationPriorityEnum.MEDIUM,
         title,
@@ -2387,6 +2774,29 @@ export class NotificationService {
       });
     } catch (error) {
       this.log.error('Error sending work order approved notification', { error, payload });
+    }
+
+    try {
+      const { mruid, cuid, vendorId, approvedBy } = payload;
+      if (!vendorId) return;
+      const [request, vendorUser, approvedByUser] = await Promise.all([
+        this.maintenanceRequestDAO.getByMruid(mruid, cuid),
+        this.userDAO.findFirst({ _id: new Types.ObjectId(vendorId), deletedAt: null }),
+        this.userDAO.findFirst({ _id: new Types.ObjectId(approvedBy), deletedAt: null }),
+      ]);
+      if (request && vendorUser?.email) {
+        this.emailQueue.addToEmailQueue('maintenanceWorkOrderApproved', {
+          to: vendorUser.email,
+          emailType: MailType.MAINTENANCE_WORK_ORDER_APPROVED,
+          subject: '',
+          data: { request, workOrder: (request as any).workOrder, approvedBy: approvedByUser },
+        } as any);
+      }
+    } catch (err) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        'Failed to enqueue maintenanceWorkOrderApproved email'
+      );
     }
   }
 
@@ -2402,7 +2812,7 @@ export class NotificationService {
       await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
-        recipient: new Types.ObjectId(vendorId),
+        recipient: vendorId,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
         priority: NotificationPriorityEnum.MEDIUM,
         title,
@@ -2411,6 +2821,34 @@ export class NotificationService {
       });
     } catch (error) {
       this.log.error('Error sending work order rejected notification', { error, payload });
+    }
+
+    try {
+      const { mruid, cuid, vendorId, rejectedBy, rejectionReason } = payload;
+      if (!vendorId) return;
+      const [request, vendorUser, rejectedByUser] = await Promise.all([
+        this.maintenanceRequestDAO.getByMruid(mruid, cuid),
+        this.userDAO.findFirst({ _id: new Types.ObjectId(vendorId), deletedAt: null }),
+        this.userDAO.findFirst({ _id: new Types.ObjectId(rejectedBy), deletedAt: null }),
+      ]);
+      if (request && vendorUser?.email) {
+        this.emailQueue.addToEmailQueue('maintenanceWorkOrderRejected', {
+          to: vendorUser.email,
+          emailType: MailType.MAINTENANCE_WORK_ORDER_REJECTED,
+          subject: '',
+          data: {
+            request,
+            workOrder: (request as any).workOrder,
+            rejectionReason,
+            rejectedBy: rejectedByUser,
+          },
+        } as any);
+      }
+    } catch (err) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        'Failed to enqueue maintenanceWorkOrderRejected email'
+      );
     }
   }
 
@@ -2439,19 +2877,48 @@ export class NotificationService {
   private async handlePaymentFailed(payload: PaymentFailedPayload): Promise<void> {
     try {
       const { cuid } = payload;
-      const { title, message } = getFormattedNotification('payment.failed', { amount: '—' });
+      const fmt = payload.amount ? MoneyUtils.formatCurrency(payload.amount) : '—';
+      const { title, message } = getFormattedNotification('payment.failed', { amount: fmt });
       await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         cuid,
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: [ROLES.SUPER_ADMIN],
+        targetRoles: [ROLES.ADMIN, ROLES.SUPER_ADMIN],
         priority: NotificationPriorityEnum.HIGH,
         title,
         message,
-        metadata: { pytuid: payload.pytuid },
+        metadata: { pytuid: payload.pytuid, tenantId: payload.tenantId },
       });
     } catch (error) {
       this.log.error('Error sending payment failed notification', { error, payload });
+    }
+  }
+
+  private async handlePaymentOverdue(payload: PaymentOverduePayload): Promise<void> {
+    try {
+      const { cuid } = payload;
+      const fmt = MoneyUtils.formatCurrency(payload.amount || 0);
+      const dueDateStr = new Date(payload.dueDate).toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      const { title, message } = getFormattedNotification('payment.overdue', {
+        amount: fmt,
+        dueDate: dueDateStr,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        cuid,
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: [ROLES.ADMIN, ROLES.SUPER_ADMIN],
+        priority: NotificationPriorityEnum.HIGH,
+        title,
+        message,
+        metadata: { pytuid: payload.pytuid, tenantId: payload.tenantId },
+      });
+    } catch (error) {
+      this.log.error('Error sending payment overdue notification', { error, payload });
     }
   }
 
@@ -2538,6 +3005,135 @@ export class NotificationService {
       });
     } catch (error) {
       this.log.error('Error sending payment cancelled notification', { error, payload });
+    }
+  }
+
+  private async handlePayoutFailed(payload: PayoutFailedPayload): Promise<void> {
+    try {
+      const { cuid, amountInCents, currency, reason } = payload;
+      const fmt = MoneyUtils.formatCurrency(amountInCents || 0, currency || 'usd');
+      const { title, message } = getFormattedNotification('payment.payoutFailed', {
+        amount: fmt,
+        reason: reason || 'unknown error',
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        cuid,
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: [ROLES.ADMIN, ROLES.SUPER_ADMIN],
+        priority: NotificationPriorityEnum.HIGH,
+        title,
+        message,
+        metadata: { payoutId: payload.payoutId, accountId: payload.accountId },
+      });
+    } catch (error) {
+      this.log.error('Error sending payout failed notification', { error, payload });
+    }
+  }
+
+  private async handlePayoutPaid(payload: PayoutPaidPayload): Promise<void> {
+    try {
+      const { cuid, amountInCents, currency } = payload;
+      const fmt = MoneyUtils.formatCurrency(amountInCents || 0, currency || 'usd');
+      const { title, message } = getFormattedNotification('payment.payoutPaid', { amount: fmt });
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        cuid,
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: [ROLES.ADMIN, ROLES.SUPER_ADMIN],
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { payoutId: payload.payoutId, accountId: payload.accountId },
+      });
+    } catch (error) {
+      this.log.error('Error sending payout paid notification', { error, payload });
+    }
+  }
+
+  private async handleInvoiceOverdue(payload: InvoiceOverduePayload): Promise<void> {
+    try {
+      const { cuid, amount, currency } = payload;
+      const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'usd');
+      const { title, message } = getFormattedNotification('payment.invoiceOverdue', {
+        amount: fmt,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        cuid,
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: [ROLES.ADMIN, ROLES.SUPER_ADMIN],
+        priority: NotificationPriorityEnum.HIGH,
+        title,
+        message,
+        metadata: {
+          pytuid: payload.pytuid,
+          invoiceId: payload.invoiceId,
+          tenantId: payload.tenantId,
+        },
+      });
+    } catch (error) {
+      this.log.error('Error sending invoice overdue notification', { error, payload });
+    }
+  }
+
+  private async handleSubscriptionRenewalUpcoming(
+    payload: SubscriptionRenewalUpcomingPayload
+  ): Promise<void> {
+    try {
+      const { cuid, planName, amountInCents, currency, renewalDate } = payload;
+      const fmt = MoneyUtils.formatCurrency(amountInCents || 0, currency || 'usd');
+      const renewalDateStr =
+        renewalDate instanceof Date
+          ? renewalDate.toLocaleDateString()
+          : new Date(renewalDate).toLocaleDateString();
+
+      const { title, message } = getFormattedNotification('payment.subscriptionRenewalUpcoming', {
+        planName,
+        amount: fmt,
+        renewalDate: renewalDateStr,
+      });
+
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        cuid,
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: [ROLES.ADMIN, ROLES.SUPER_ADMIN],
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: {
+          stripeSubscriptionId: payload.stripeSubscriptionId,
+          planName,
+          renewalDate: renewalDateStr,
+        },
+      });
+
+      const adminId = await this.getClientAccountAdmin(cuid);
+      if (adminId) {
+        const adminUser = await this.userDAO.findFirst({
+          _id: new Types.ObjectId(adminId),
+          deletedAt: null,
+        });
+        if (adminUser?.email) {
+          this.emailQueue.addToEmailQueue('subscriptionRenewalUpcoming', {
+            to: adminUser.email,
+            emailType: MailType.SUBSCRIPTION_RENEWAL_UPCOMING,
+            subject: '',
+            data: {
+              planName,
+              amount: fmt,
+              renewalDate: renewalDateStr,
+              currentUser: adminUser,
+            },
+          });
+        }
+      }
+    } catch (error) {
+      this.log.error('Error sending subscription renewal upcoming notification', {
+        error,
+        payload,
+      });
     }
   }
 

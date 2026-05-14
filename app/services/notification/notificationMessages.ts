@@ -109,15 +109,21 @@ export const NotificationMessages = {
     },
     requested: {
       title: 'Payment Request Received',
-      message: 'A payment of {{amount}} is due by {{dueDate}}. Please log in to pay.',
+      message:
+        'A payment of {{amount}} is due on {{dueDate}}. Pay early or your linked bank account will be automatically charged on the due date.',
     },
     succeeded: {
       title: 'Payment Received',
       message: 'A payment of {{amount}} has been successfully processed',
     },
+    overdue: {
+      title: 'Rent Payment Overdue',
+      message: 'A rent payment of {{amount}} due on {{dueDate}} is now overdue',
+    },
     failed: {
       title: 'Payment Failed',
-      message: 'A payment of {{amount}} could not be processed',
+      message:
+        'A payment of {{amount}} could not be processed — please review and follow up with the tenant',
     },
     refunded: {
       title: 'Payment Refunded',
@@ -126,6 +132,23 @@ export const NotificationMessages = {
     cancelled: {
       title: 'Payment Cancelled',
       message: 'A payment of {{amount}} has been cancelled by your property manager.',
+    },
+    payoutFailed: {
+      title: 'Vendor Payout Failed',
+      message: 'A payout of {{amount}} to a vendor bank account failed. Reason: {{reason}}',
+    },
+    payoutPaid: {
+      title: 'Vendor Payout Completed',
+      message: 'A payout of {{amount}} has been successfully deposited to the vendor bank account',
+    },
+    invoiceOverdue: {
+      title: 'Invoice Overdue',
+      message: 'A rent invoice of {{amount}} is overdue',
+    },
+    subscriptionRenewalUpcoming: {
+      title: 'Subscription Renewal Upcoming',
+      message:
+        'Your {{planName}} plan renews on {{renewalDate}} — {{amount}} will be charged to your payment method on file.',
     },
   },
 
@@ -154,6 +177,14 @@ export const NotificationMessages = {
       title: 'Vendor Declined Request',
       message: 'A vendor has declined maintenance request {{mruid}}',
     },
+    workDone: {
+      title: 'Work Marked as Done',
+      message: 'Vendor has marked work complete on request {{mruid}} — awaiting invoice',
+    },
+    workDoneTenant: {
+      title: 'Work Complete on Your Request',
+      message: 'Work has been completed on your maintenance request {{mruid}}',
+    },
     requestCompleted: {
       title: 'Maintenance Request Completed',
       message: 'Maintenance request {{mruid}} has been marked as completed',
@@ -169,6 +200,16 @@ export const NotificationMessages = {
     invoiceApproved: {
       title: 'Invoice Approved',
       message: 'Your invoice for request {{mruid}} has been approved',
+    },
+    invoiceBillableNotice: {
+      title: 'Maintenance Charge Pending',
+      message:
+        'A maintenance invoice of {{amount}} for request {{mruid}} has been approved and will be charged to your account.',
+    },
+    chargeCreated: {
+      title: 'Maintenance Charge Added',
+      message:
+        'A maintenance charge of {{amount}} has been added to your account for request {{mruid}}. Due {{dueDate}} — pay now to avoid auto-debit.',
     },
     invoiceRejected: {
       title: 'Invoice Rejected',
@@ -238,10 +279,14 @@ export type NotificationMessageKey =
   | 'maintenance.requestAccepted'
   | 'maintenance.requestAcceptedTenant'
   | 'maintenance.requestDeclined'
+  | 'maintenance.workDone'
+  | 'maintenance.workDoneTenant'
   | 'maintenance.requestCompleted'
   | 'maintenance.requestCancelled'
   | 'maintenance.invoiceSubmitted'
   | 'maintenance.invoiceApproved'
+  | 'maintenance.invoiceBillableNotice'
+  | 'maintenance.chargeCreated'
   | 'maintenance.invoiceRejected'
   | 'maintenance.workOrderSubmitted'
   | 'maintenance.workOrderApproved'
@@ -255,9 +300,14 @@ export type NotificationMessageKey =
   | 'payment.payoutAccountVerified'
   | 'payment.requested'
   | 'payment.succeeded'
+  | 'payment.overdue'
   | 'payment.failed'
   | 'payment.refunded'
-  | 'payment.cancelled';
+  | 'payment.cancelled'
+  | 'payment.payoutFailed'
+  | 'payment.payoutPaid'
+  | 'payment.invoiceOverdue'
+  | 'payment.subscriptionRenewalUpcoming';
 
 /**
  * Helper function to get formatted notification message by key.

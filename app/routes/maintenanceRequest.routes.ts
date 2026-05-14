@@ -1,5 +1,6 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
+import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { MaintenanceValidations } from '@shared/validations/index';
 import { MaintenanceController } from '@controllers/MaintenanceController';
 import { UtilsValidations, validateRequest } from '@shared/validations/index';
@@ -8,6 +9,7 @@ import {
   requirePermissionWithContext,
   subscriptionEntitlements,
   requireActiveTenant,
+  requireFeatureFlag,
   requirePermission,
   isAuthenticated,
   requireFeature,
@@ -29,10 +31,13 @@ const roleBasedContext = (req: AppRequest) => {
 
 const router = Router();
 
-// Public webhook route — must be declared before isAuthenticated
-// WARNING: HMAC signature verification is stubbed (Phase 2). Do not expose without network-level protection.
+// Public webhook route — must be declared before isAuthenticated.
+// Gated behind INVOICE_WEBHOOK feature flag (disabled by default).
+// WARNING: HMAC signature verification is stubbed (Phase 2). Do not enable in production
+// without network-level protection (IP allowlist, reverse-proxy HMAC verification).
 router.post(
   '/webhooks/invoice/:source',
+  requireFeatureFlag(FeatureFlag.INVOICE_WEBHOOK),
   basicLimiter({ max: 30, windowMs: 60 * 1000 }),
   express.json(),
   validateRequest({
@@ -52,7 +57,7 @@ router
     requirePermission(PermissionResource.MAINTENANCE, PermissionAction.CREATE),
     requireActiveTenant('maintenanceRequests'),
     subscriptionEntitlements,
-    requireFeature('RepairRequestService'),
+    requireFeature('MaintenanceRequestService'),
     idempotency,
     diskUpload(['media[*].file']),
     scanFile,
@@ -109,7 +114,7 @@ router.patch(
   '/:cuid/:mruid/vendor_assignment',
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
-  requireFeature('RepairRequestService'),
+  requireFeature('MaintenanceRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -129,7 +134,7 @@ router.patch(
     roleBasedContext
   ),
   subscriptionEntitlements,
-  requireFeature('RepairRequestService'),
+  requireFeature('MaintenanceRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -222,6 +227,42 @@ router.patch(
 );
 
 router.patch(
+  '/:cuid/:mruid/ai_suggestion/accept',
+  // Manager+ only — vendors/tenants are excluded via service-layer role check.
+  // requirePermissionWithContext additionally restricts non-managers to their own resources.
+  requirePermissionWithContext(
+    PermissionResource.MAINTENANCE,
+    PermissionAction.UPDATE,
+    roleBasedContext
+  ),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<MaintenanceController>('maintenanceController');
+    return controller.acceptAISuggestion(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/:mruid/ai_suggestion/dismiss',
+  requirePermissionWithContext(
+    PermissionResource.MAINTENANCE,
+    PermissionAction.UPDATE,
+    roleBasedContext
+  ),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<MaintenanceController>('maintenanceController');
+    return controller.dismissAISuggestion(req, res);
+  })
+);
+
+router.patch(
   '/:cuid/:mruid/cancel_request',
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   requireActiveTenant('maintenanceRequests'),
@@ -244,7 +285,7 @@ router.post(
     roleBasedContext
   ),
   subscriptionEntitlements,
-  requireFeature('RepairRequestService'),
+  requireFeature('MaintenanceRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -260,7 +301,7 @@ router.patch(
   '/:cuid/:mruid/work_order_review',
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
-  requireFeature('RepairRequestService'),
+  requireFeature('MaintenanceRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -273,6 +314,27 @@ router.patch(
 );
 
 router.post(
+  '/:cuid/:mruid/scan_invoice',
+  requirePermissionWithContext(
+    PermissionResource.MAINTENANCE,
+    PermissionAction.UPDATE,
+    roleBasedContext
+  ),
+  subscriptionEntitlements,
+  requireFeature('MaintenanceRequestService'),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
+  }),
+  diskUpload(['invoice']),
+  scanFile,
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<MaintenanceController>('maintenanceController');
+    return controller.scanInvoice(req, res);
+  })
+);
+
+router.post(
   '/:cuid/:mruid/create_invoice',
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
@@ -280,7 +342,7 @@ router.post(
     roleBasedContext
   ),
   subscriptionEntitlements,
-  requireFeature('RepairRequestService'),
+  requireFeature('MaintenanceRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -296,7 +358,7 @@ router.patch(
   '/:cuid/:mruid/invoice_review',
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
-  requireFeature('RepairRequestService'),
+  requireFeature('MaintenanceRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),

@@ -135,15 +135,27 @@ describe('MetricsService', () => {
       expect(mockUserDAO.getUserStats).toHaveBeenCalledWith('cuid123');
       expect(mockMaintenanceRequestDAO.getStats).toHaveBeenCalledWith('cuid123');
 
-      expect(stats.leases).toEqual(mockLeaseStats);
+      // Leases — base stats plus computed totalMonthlyRent (sum of monthlyRentByCurrency)
+      expect(stats.leases).toMatchObject(mockLeaseStats);
+      expect(stats.leases.totalMonthlyRent).toBe(24000);
+
+      // Payments — byCurrency array preserved; flat sums added
       expect(stats.payments.byCurrency).toEqual(mockPaymentStats.byCurrency);
+      expect(stats.payments.monthRevenue).toBe(8000);
+      expect(stats.payments.totalRevenue).toBe(100000);
+      expect(stats.payments.pendingAmount).toBe(3000);
       expect(stats.payments.overdueCount).toBe(mockPaymentStats.overdueCount);
       expect(stats.payments.onTimeRate).toBe(mockPaymentStats.onTimeRate);
+
       expect(stats.properties).toEqual({ ...mockPropertyCounts, propertyCount: mockPropertyCount });
       expect(stats.users).toEqual(mockUserStats);
+
+      // Maintenance — activeCount = open(3) + assigned(2) + inProgress(1) + pending(0) = 6
+      expect(stats.maintenance.activeCount).toBe(6);
       expect(stats.maintenance.open).toBe(mockMaintenanceStats.open);
       expect(stats.maintenance.byPriority).toEqual(mockMaintenanceStats.byPriority);
       expect(stats.maintenance.byCategory).toEqual(mockMaintenanceStats.byCategory);
+
       expect(stats.generatedAt).toBeInstanceOf(Date);
     });
   });

@@ -195,22 +195,39 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       expect(mockPaymentGatewayService.updateSubscription).not.toHaveBeenCalled();
     });
 
-    it('should throw error for inactive subscriptions', async () => {
+    it('should redirect inactive subscription through checkout for reactivation', async () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         cuid: 'client123',
         status: ISubscriptionStatus.INACTIVE,
         canceledAt: new Date(),
+        billing: { planId: 'price_growth_monthly' },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
-      await expect(
-        subscriptionService.initSubscriptionPayment(mockContext as any, {
-          priceId: 'price_growth_annual',
-          billingInterval: 'annual',
-        })
-      ).rejects.toThrow('Cannot update canceled/inactive subscription');
+      // Spy on the private createCheckoutSession so we don't need to wire up
+      // subscriptionDAO.findById, clientDAO.findById, and Stripe mock chain.
+      const checkoutSpy = jest
+        .spyOn(subscriptionService as any, 'createCheckoutSession')
+        .mockResolvedValue({
+          success: true,
+          data: { checkoutUrl: 'https://checkout.stripe.com/reactivate', sessionId: 'cs_reactivate' },
+        });
+
+      const result = await subscriptionService.initSubscriptionPayment(mockContext as any, {
+        priceId: 'price_growth_monthly',
+        billingInterval: 'monthly',
+        successUrl: 'https://app.example.com/success',
+        cancelUrl: 'https://app.example.com/cancel',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data?.checkoutUrl).toBe('https://checkout.stripe.com/reactivate');
+      expect(checkoutSpy).toHaveBeenCalled();
+      expect(mockPaymentGatewayService.updateSubscription).not.toHaveBeenCalled();
+
+      checkoutSpy.mockRestore();
     });
 
     it('should invalidate billing history cache after update', async () => {

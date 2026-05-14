@@ -2,7 +2,11 @@ import { Types } from 'mongoose';
 import { IRequestContext } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
-import { MaintenanceRequestStatus, InvoiceStatus } from '@interfaces/maintenanceRequest.interface';
+import {
+  MaintenanceRequestStatus,
+  WorkOrderStatus,
+  InvoiceStatus,
+} from '@interfaces/maintenanceRequest.interface';
 
 // ---------------------------------------------------------------------------
 // Mock dependencies — only system-boundary objects need mocking here.
@@ -26,8 +30,15 @@ const mockPropertyUnitDAO = { findFirst: jest.fn() } as any;
 const mockVendorDAO = { findFirst: jest.fn() } as any;
 const mockUserDAO = { findFirst: jest.fn() } as any;
 const mockLeaseDAO = { findFirst: jest.fn() } as any;
-const mockEmailQueue = { addToEmailQueue: jest.fn() } as any;
-const mockEmitter = { emit: jest.fn() } as any;
+const mockEmitter = { emit: jest.fn(), on: jest.fn() } as any;
+const mockInvoiceDAO = {
+  findFirst: jest.fn(),
+  findByMaintenanceRequest: jest.fn(),
+  insert: jest.fn(),
+  updateById: jest.fn(),
+} as any;
+const mockAiService = { categorize: jest.fn() } as any;
+const mockPaymentDAO = { findFirst: jest.fn() } as any;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -92,8 +103,10 @@ beforeEach(() => {
     vendorDAO: mockVendorDAO,
     userDAO: mockUserDAO,
     leaseDAO: mockLeaseDAO,
-    emailQueue: mockEmailQueue,
+    invoiceDAO: mockInvoiceDAO,
+    paymentDAO: mockPaymentDAO,
     emitterService: mockEmitter,
+    aiService: mockAiService,
   });
 });
 
@@ -382,15 +395,13 @@ describe('MaintenanceRequestService - respondToAssignment dispatch', () => {
 });
 
 describe('MaintenanceRequestService - reviewInvoice dispatch', () => {
+  const pendingInvoice = { _id: new Types.ObjectId(), status: InvoiceStatus.PENDING, amountInCents: 10000, currency: 'usd' };
+
   it('should call approveInvoice when action is "approve"', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.COMPLETED, {
-      invoice: { status: InvoiceStatus.PENDING, amountInCents: 10000, currency: 'usd' },
-    });
+    const request = makeRequest(MaintenanceRequestStatus.COMPLETED);
     mockDAO.getByMruid.mockResolvedValue(request);
-    mockDAO.updateById.mockResolvedValue({
-      ...request,
-      invoice: { ...request.invoice, status: InvoiceStatus.APPROVED },
-    });
+    mockInvoiceDAO.findByMaintenanceRequest.mockResolvedValue(pendingInvoice);
+    mockInvoiceDAO.updateById.mockResolvedValue({ ...pendingInvoice, status: InvoiceStatus.APPROVED });
 
     const ctx = makeCtx('admin');
     const result = await service.reviewInvoice(ctx as IRequestContext, 'MR001', {
@@ -399,29 +410,19 @@ describe('MaintenanceRequestService - reviewInvoice dispatch', () => {
     });
 
     expect(result).toMatchObject({ success: true });
-    expect(mockDAO.updateById).toHaveBeenCalledWith(
-      expect.any(String),
+    expect(mockInvoiceDAO.updateById).toHaveBeenCalledWith(
+      pendingInvoice._id.toString(),
       expect.objectContaining({
-        $set: expect.objectContaining({ 'invoice.status': InvoiceStatus.APPROVED }),
-      }),
-      undefined,
-      expect.anything()
+        $set: expect.objectContaining({ status: InvoiceStatus.APPROVED }),
+      })
     );
   });
 
   it('should call rejectInvoice when action is not "approve"', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.COMPLETED, {
-      invoice: { status: InvoiceStatus.PENDING, amountInCents: 10000, currency: 'usd' },
-    });
+    const request = makeRequest(MaintenanceRequestStatus.COMPLETED);
     mockDAO.getByMruid.mockResolvedValue(request);
-    mockDAO.updateById.mockResolvedValue({
-      ...request,
-      invoice: {
-        ...request.invoice,
-        status: InvoiceStatus.REJECTED,
-        rejectionReason: 'Too expensive',
-      },
-    });
+    mockInvoiceDAO.findByMaintenanceRequest.mockResolvedValue(pendingInvoice);
+    mockInvoiceDAO.updateById.mockResolvedValue({ ...pendingInvoice, status: InvoiceStatus.REJECTED });
 
     const ctx = makeCtx('admin');
     const result = await service.reviewInvoice(ctx as IRequestContext, 'MR001', {
@@ -430,21 +431,21 @@ describe('MaintenanceRequestService - reviewInvoice dispatch', () => {
     });
 
     expect(result).toMatchObject({ success: true });
-    expect(mockDAO.updateById).toHaveBeenCalledWith(
-      expect.any(String),
+    expect(mockInvoiceDAO.updateById).toHaveBeenCalledWith(
+      pendingInvoice._id.toString(),
       expect.objectContaining({
-        $set: expect.objectContaining({ 'invoice.status': InvoiceStatus.REJECTED }),
-      }),
-      undefined,
-      expect.anything()
+        $set: expect.objectContaining({ status: InvoiceStatus.REJECTED }),
+      })
     );
   });
 
   it('should propagate BadRequestError from approveInvoice when invoice is already approved', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.COMPLETED, {
-      invoice: { status: InvoiceStatus.APPROVED, amountInCents: 10000, currency: 'usd' },
-    });
+    const request = makeRequest(MaintenanceRequestStatus.COMPLETED);
     mockDAO.getByMruid.mockResolvedValue(request);
+    mockInvoiceDAO.findByMaintenanceRequest.mockResolvedValue({
+      ...pendingInvoice,
+      status: InvoiceStatus.APPROVED,
+    });
 
     const ctx = makeCtx('admin');
     await expect(
@@ -453,8 +454,9 @@ describe('MaintenanceRequestService - reviewInvoice dispatch', () => {
   });
 
   it('should propagate BadRequestError from rejectInvoice when there is no invoice', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.COMPLETED, { invoice: undefined });
+    const request = makeRequest(MaintenanceRequestStatus.COMPLETED);
     mockDAO.getByMruid.mockResolvedValue(request);
+    mockInvoiceDAO.findByMaintenanceRequest.mockResolvedValue(null);
 
     const ctx = makeCtx('admin');
     await expect(
@@ -575,10 +577,14 @@ describe('MaintenanceRequestService - invoice lifecycle guards', () => {
   });
 
   it('should throw BadRequestError in approveInvoice when invoice is already APPROVED', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.COMPLETED, {
-      invoice: { status: InvoiceStatus.APPROVED, amountInCents: 10000, currency: 'usd' },
-    });
+    const request = makeRequest(MaintenanceRequestStatus.COMPLETED);
     mockDAO.getByMruid.mockResolvedValue(request);
+    mockInvoiceDAO.findByMaintenanceRequest.mockResolvedValue({
+      _id: new Types.ObjectId(),
+      status: InvoiceStatus.APPROVED,
+      amountInCents: 10000,
+      currency: 'usd',
+    });
 
     const ctx = makeCtx('admin');
     await expect(service.approveInvoice(ctx as IRequestContext, 'MR001')).rejects.toThrow(
@@ -587,8 +593,9 @@ describe('MaintenanceRequestService - invoice lifecycle guards', () => {
   });
 
   it('should throw BadRequestError in rejectInvoice when there is no invoice on the request', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.COMPLETED, { invoice: undefined });
+    const request = makeRequest(MaintenanceRequestStatus.COMPLETED);
     mockDAO.getByMruid.mockResolvedValue(request);
+    mockInvoiceDAO.findByMaintenanceRequest.mockResolvedValue(null);
 
     const ctx = makeCtx('admin');
     await expect(
@@ -763,6 +770,77 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
     ).rejects.toThrow(ForbiddenError);
   });
 
+  // ─── submitWorkOrder: work order history archival ─────────────────────────
+
+  it('submitWorkOrder: archives a rejected work order to workOrderHistory on resubmission', async () => {
+    const rejectedWorkOrder = {
+      status: WorkOrderStatus.REJECTED,
+      scope: { text: 'Replace pipes', html: '<p>Replace pipes</p>' },
+      estimatedCostInCents: 50000,
+      submittedBy: primaryVendorObjectId,
+      submittedAt: new Date('2026-01-01'),
+      reviewedBy: new Types.ObjectId(),
+      reviewedAt: new Date('2026-01-02'),
+      rejectionReason: 'Scope too vague',
+    };
+
+    const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, {
+      vendorId: primaryVendorObjectId,
+      workOrder: rejectedWorkOrder,
+    });
+    mockDAO.getByMruid.mockResolvedValue(request);
+    mockDAO.updateById.mockResolvedValue({
+      ...request,
+      workOrder: { status: WorkOrderStatus.PENDING_REVIEW },
+      workOrderHistory: [rejectedWorkOrder],
+    });
+
+    const ctx = makeLinkedCtx(teamMemberSub, primaryVendorUid);
+    await service.submitWorkOrder(ctx as IRequestContext, 'MR001', {
+      scope: 'Replace pipes with new copper fittings',
+      estimatedCostInCents: 60000,
+    });
+
+    expect(mockDAO.updateById).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        $push: { workOrderHistory: rejectedWorkOrder },
+        $set: expect.objectContaining({
+          workOrder: expect.objectContaining({
+            status: WorkOrderStatus.PENDING_REVIEW,
+          }),
+        }),
+      }),
+      undefined,
+      expect.anything()
+    );
+  });
+
+  it('submitWorkOrder: does NOT archive when no previous work order exists (first submission)', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, {
+      vendorId: primaryVendorObjectId,
+      workOrder: undefined,
+    });
+    mockDAO.getByMruid.mockResolvedValue(request);
+    mockDAO.updateById.mockResolvedValue({
+      ...request,
+      workOrder: { status: WorkOrderStatus.PENDING_REVIEW },
+    });
+
+    const ctx = makeLinkedCtx(teamMemberSub, primaryVendorUid);
+    await service.submitWorkOrder(ctx as IRequestContext, 'MR001', {
+      scope: 'Initial submission',
+      estimatedCostInCents: 30000,
+    });
+
+    expect(mockDAO.updateById).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.not.objectContaining({ $push: expect.anything() }),
+      undefined,
+      expect.anything()
+    );
+  });
+
   // ─── submitInvoice ────────────────────────────────────────────────────────
 
   it('submitInvoice: team member can submit invoice for primary vendor assignment', async () => {
@@ -770,10 +848,8 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
       vendorId: primaryVendorObjectId,
     });
     mockDAO.getByMruid.mockResolvedValue(request);
-    mockDAO.updateById.mockResolvedValue({
-      ...request,
-      invoice: { status: InvoiceStatus.PENDING },
-    });
+    mockInvoiceDAO.insert.mockResolvedValue({ _id: new Types.ObjectId(), invuid: 'INV-001', status: InvoiceStatus.PENDING });
+    mockDAO.updateById.mockResolvedValue(request);
 
     const ctx = makeLinkedCtx(teamMemberSub, primaryVendorUid);
     await expect(

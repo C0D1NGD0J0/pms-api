@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { FilterQuery, Model } from 'mongoose';
 import { calcPercentage, createLogger, msToDays } from '@utils/index';
@@ -32,7 +33,14 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
         throw new Error('Client ID is required');
       }
 
-      const query: FilterQuery<IPaymentDocument> = { cuid, deletedAt: null };
+      // Exclude vendor expense records — those have vendorId set and are internal
+      // accounting entries (cost side of a billable maintenance request), not
+      // tenant-facing payments. Including them skews metrics and the payments list.
+      const query: FilterQuery<IPaymentDocument> = {
+        cuid,
+        deletedAt: null,
+        vendorId: { $exists: false },
+      };
 
       if (filters?.status) query.status = filters.status;
       if (filters?.paymentType) query.paymentType = filters.paymentType;
@@ -136,7 +144,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     try {
       return await this.list({
         status: { $in: [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE] },
-        dueDate: { $lt: new Date() },
+        dueDate: { $lt: dayjs().toDate() },
         deletedAt: null,
       });
     } catch (error: any) {
@@ -344,7 +352,10 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const match: Record<string, any> = { cuid, deletedAt: null };
+    // Exclude vendor expense records — same reason as findByCuid().
+    // These are internal cost-side accounting entries (vendorId set), not
+    // tenant-facing payments. Including them skews dashboard stats.
+    const match: Record<string, any> = { cuid, deletedAt: null, vendorId: { $exists: false } };
     if (opts?.profileId) {
       match.tenant = opts.profileId;
     }

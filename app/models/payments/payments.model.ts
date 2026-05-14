@@ -6,6 +6,7 @@ import {
   PaymentRecordType,
   IPaymentDocument,
   PaymentMethod,
+  PaymentSource,
 } from '@interfaces/index';
 
 const PaymentSchema = new Schema<IPaymentDocument>(
@@ -62,6 +63,11 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       default: 0,
       min: [0, 'Application fee cannot be negative'],
     },
+    platformRevenue: {
+      type: Number,
+      default: 0,
+      min: [0, 'Platform revenue cannot be negative'],
+    },
     gatewayPaymentId: {
       type: String,
     },
@@ -91,6 +97,7 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       retryCount: { type: Number, default: 0, min: 0 },
       reason: { type: String, trim: true },
       lastFailedAt: { type: Date },
+      pmNotifiedAt: { type: Date },
     },
     status: {
       type: String,
@@ -159,6 +166,11 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       type: Boolean,
       default: false,
       required: true,
+    },
+    paymentSource: {
+      type: String,
+      enum: ['cron', 'pm_initiated', 'staff_initiated'] satisfies PaymentSource[],
+      index: true,
     },
     lineItems: [
       {

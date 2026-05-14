@@ -5,21 +5,22 @@ import { IPropertyUnitDocument } from './propertyUnit.interface';
 import { ILeaseDocument, ILeaseProperty } from './lease.interface';
 import { IProfileDocument, IProfileWithUser } from './profile.interface';
 
-export enum PaymentRecordType {
-  SECURITY_DEPOSIT = 'security_deposit',
-  DEPOSIT_REFUND = 'deposit_refund',
-  MAINTENANCE = 'maintenance',
-  LATE_FEE = 'late_fee',
-  RENT = 'rent',
-}
-
 export enum PaymentRecordStatus {
+  PROCESSING = 'processing', // charge submitted to bank, awaiting settlement (ACSS/bank transfer)
   CANCELLED = 'cancelled',
   REFUNDED = 'refunded',
   PENDING = 'pending',
   OVERDUE = 'overdue',
   FAILED = 'failed',
   PAID = 'paid',
+}
+
+export enum PaymentRecordType {
+  SECURITY_DEPOSIT = 'security_deposit',
+  DEPOSIT_REFUND = 'deposit_refund',
+  MAINTENANCE = 'maintenance',
+  LATE_FEE = 'late_fee',
+  RENT = 'rent',
 }
 
 export enum PaymentMethod {
@@ -50,6 +51,7 @@ export interface IPaymentDocument extends Document {
     retryCount: number;
     reason?: string;
     lastFailedAt?: Date;
+    pmNotifiedAt?: Date;
   };
   invoiceDocument?: {
     url: string;
@@ -72,6 +74,7 @@ export interface IPaymentDocument extends Document {
   }[];
   paymentType: PaymentRecordType;
   maintenanceRequestUid?: string; // mruid — links maintenance expense/charge back to its request
+  paymentSource?: PaymentSource;
   paymentMethod: PaymentMethod;
   status: PaymentRecordStatus;
   recordedBy?: Types.ObjectId; // User who recorded manual payment
@@ -79,6 +82,7 @@ export interface IPaymentDocument extends Document {
   gatewayPaymentId?: string;
   gatewayChargeId?: string;
   period?: IPaymentPeriod;
+  platformRevenue: number; // Platform's net revenue after Stripe gateway fee (applicationFee − processingFee)
   lease?: Types.ObjectId;
   tenant: Types.ObjectId; // References Profile
   isManualEntry: boolean;
@@ -102,14 +106,15 @@ export interface IPaymentDocument extends Document {
  * Shape of each item returned by getPayments (list view).
  */
 export interface IPaymentListItem {
+  failure?: { retryCount: number; reason?: string; lastFailedAt?: Date; pmNotifiedAt?: Date };
   tenant: { firstName: string; lastName: string; fullName: string } | null;
-  failure?: { retryCount: number; reason?: string; lastFailedAt?: Date };
   lineItems: { description: string; amountInCents: number }[];
   receipt?: { url?: string; filename?: string; key?: string };
   paymentType: PaymentRecordType;
   paymentMethod: PaymentMethod;
   status: PaymentRecordStatus;
   period?: IPaymentPeriod;
+  platformRevenue: number; // Platform's net revenue after Stripe gateway fee
   applicationFee: number; // Platform's application fee in cents
   processingFee: number;
   baseAmount: number;
@@ -139,6 +144,17 @@ export interface IManualPaymentFormData {
   paidAt: Date;
 }
 
+export interface IVendorEarningsResponse {
+  stats: {
+    totalPaidInCents: number;
+    pendingPayoutInCents: number;
+    completedJobs: number;
+    expectedEarningsInCents: number;
+  };
+  pagination: { total: number; page: number; limit: number; pages: number };
+  items: IVendorEarningItem[];
+}
+
 export interface IPaymentFormData {
   paymentType: PaymentRecordType;
   period?: IPaymentPeriod;
@@ -148,6 +164,16 @@ export interface IPaymentFormData {
   leaseId?: string;
   tenantId: string;
   dueDate: Date;
+}
+
+export interface IVendorEarningItem {
+  status: PaymentRecordStatus;
+  amountInCents: number;
+  createdAt: Date;
+  invuid: string;
+  mruid: string;
+  title: string;
+  paidAt?: Date;
 }
 
 /**
@@ -185,6 +211,8 @@ export interface IRefundPaymentData {
   amount?: number;
   reason?: string;
 }
+
+export type PaymentSource = 'cron' | 'pm_initiated' | 'staff_initiated';
 
 export interface IPaymentPeriod {
   month: number;

@@ -8,6 +8,7 @@ import { ClamScannerService } from '@shared/config';
 export { preventTenantConflict } from '@utils/helpers';
 import { NextFunction, Response, Request } from 'express';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
+import { subscriptionPlanConfig } from '@services/subscription';
 import { LanguageService } from '@shared/languages/language.service';
 import { ITenantFeatureSettings } from '@interfaces/client.interface';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
@@ -106,6 +107,10 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       if (_currentuser) {
         if (_currentuser.client?.cuid !== payload.data.cuid) {
           return next(new UnauthorizedError({ message: 'Session context mismatch.' }));
+        }
+        if (_currentuser.subscription?.plan?.name) {
+          const planConfig = subscriptionPlanConfig.getConfig(_currentuser.subscription.plan.name);
+          if (planConfig) _currentuser.subscription.entitlements = planConfig.features;
         }
         await authCache.saveCurrentUser(_currentuser);
         req.context.currentuser = _currentuser;
@@ -210,11 +215,21 @@ export const scanFile = async (req: Request, _res: Response, next: NextFunction)
         { userId: req.context.currentuser.sub, fileCount: _files.length },
         'ClamAV scanner unavailable - skipping virus scan'
       );
-      req.body.scannedFiles = _files;
+      (req as AppRequest).scannedFiles = _files;
       return next();
     }
 
     const clamScanner: ClamScannerService = req.container.resolve('clamScanner');
+
+    if (!clamScanner.isReady()) {
+      logger.warn(
+        { userId: req.context.currentuser.sub, fileCount: _files.length },
+        'ClamAV scanner not ready - skipping virus scan'
+      );
+      (req as AppRequest).scannedFiles = _files;
+      return next();
+    }
+
     const foundViruses: { fileName: string; viruses: string[]; createdAt: string }[] = [];
     const validFiles = [];
 
@@ -241,7 +256,7 @@ export const scanFile = async (req: Request, _res: Response, next: NextFunction)
     }
 
     if (validFiles.length) {
-      req.body.scannedFiles = validFiles;
+      (req as AppRequest).scannedFiles = validFiles;
     }
 
     return next();

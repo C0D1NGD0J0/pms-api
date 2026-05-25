@@ -87,13 +87,20 @@ class EnvVariables {
     DEFAULT_SENDER_NAME: string;
     DEFAULT_SENDER_EMAIL: string;
   };
+  public ANTHROPIC: {
+    API_KEY: string;
+    MODEL: string;
+    MAX_TOKENS: number;
+  };
   public FEATURES: {
     AI_ENABLED: boolean;
     AI_COMMUNICATION_DRAFT_ENABLED: boolean;
     AI_MAINTENANCE_TRIAGE_ENABLED: boolean;
+    AI_INVOICE_SCANNING_ENABLED: boolean;
     ESIGNATURE_ENABLED: boolean;
     SMS_ENABLED: boolean;
     MCP_ENABLED: boolean;
+    INVOICE_WEBHOOK_ENABLED: boolean;
   };
   public APP_NAME: string;
   public PLATFORM_FEE_PERCENTAGE: number;
@@ -199,21 +206,31 @@ class EnvVariables {
       PORT: Number(process.env.CLAMAV_PORT) || 3310,
       SOCKET: process.env.CLAMDSCAN_SOCKET || '/tmp/clamd.sock',
     };
+    this.ANTHROPIC = {
+      API_KEY: process.env.ANTHROPIC_API_KEY || '',
+      MODEL: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
+      MAX_TOKENS: Number(process.env.ANTHROPIC_MAX_TOKENS) || 256,
+    };
     this.FEATURES = {
       AI_ENABLED: process.env.FEATURE_AI_ENABLED !== 'false',
       AI_COMMUNICATION_DRAFT_ENABLED:
         process.env.FEATURE_AI_COMMUNICATION_DRAFT_ENABLED !== 'false',
       AI_MAINTENANCE_TRIAGE_ENABLED: process.env.FEATURE_AI_MAINTENANCE_TRIAGE_ENABLED !== 'false',
+      // Vision AI sends raw binary (PDF/image) content to Anthropic — opt-in only.
+      // Set FEATURE_AI_INVOICE_SCANNING_ENABLED=true to enable after reviewing data-handling obligations.
+      AI_INVOICE_SCANNING_ENABLED: process.env.FEATURE_AI_INVOICE_SCANNING_ENABLED === 'true',
       ESIGNATURE_ENABLED: process.env.FEATURE_ESIGNATURE_ENABLED !== 'false',
       SMS_ENABLED: process.env.FEATURE_SMS_ENABLED !== 'false',
       MCP_ENABLED: process.env.FEATURE_MCP_ENABLED !== 'false',
+      // Disabled by default — HMAC webhook signature verification is not yet implemented.
+      INVOICE_WEBHOOK_ENABLED: process.env.FEATURE_INVOICE_WEBHOOK_ENABLED === 'true',
     };
-    this.PLATFORM_FEE_PERCENTAGE = Number(process.env.PLATFORM_FEE_PERCENTAGE);
+    // Default to 0 (no fee) — safer than NaN, which corrupts all fee arithmetic.
+    // Set PLATFORM_FEE_PERCENTAGE in Railway to the intended percentage (e.g. 2.5).
+    this.PLATFORM_FEE_PERCENTAGE = Number(process.env.PLATFORM_FEE_PERCENTAGE) || 0;
 
-    console.log('🔍 Starting environment validation...');
     try {
       this.validateSecretValue();
-      console.log('✅ Environment validation passed');
     } catch (error) {
       console.error('❌ Environment validation failed:', error.message);
       throw error;
@@ -221,9 +238,6 @@ class EnvVariables {
   }
 
   private validateSecretValue(): void {
-    // Critical environment variables that must be present
-    // const criticalVars = ['SERVER.PORT', 'SERVER.ENV', 'DATABASE.PROD_URL', 'REDIS.URL'];
-
     // Only validate critical variables in production
     if (this.SERVER.ENV === 'production') {
       const missingVars: string[] = [];
@@ -238,6 +252,12 @@ class EnvVariables {
 
       if (!this.REDIS.URL) {
         missingVars.push('REDIS.URL (REDIS_URL, REDIS_PRIVATE_URL, or REDIS_PUBLIC_URL)');
+      }
+
+      if (isNaN(this.PLATFORM_FEE_PERCENTAGE) || this.PLATFORM_FEE_PERCENTAGE === 0) {
+        console.warn(
+          '⚠️ PLATFORM_FEE_PERCENTAGE is 0 or unset — no platform fee will be collected'
+        );
       }
 
       if (missingVars.length > 0) {

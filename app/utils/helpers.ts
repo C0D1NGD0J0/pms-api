@@ -311,17 +311,17 @@ export const extractMulterFiles = (
 
   const result: ExtractedMediaFile[] = [];
   const extractFile = (file: any) => {
-    const mimeType = file.mimetype.split('/')[0];
+    const mimeTypePrefix = file.mimetype.split('/')[0];
 
-    if (allowedTypes && !allowedTypes.includes(mimeType as FileType)) {
+    if (allowedTypes && !allowedTypes.includes(mimeTypePrefix as FileType)) {
       throw new Error(
-        `File type '${mimeType}' is not allowed. Allowed types: ${allowedTypes.join(', ')}`
+        `File type '${mimeTypePrefix}' is not allowed. Allowed types: ${allowedTypes.join(', ')}`
       );
     }
 
     result.push({
       fieldName: file.fieldname,
-      mimeType,
+      mimeType: file.mimetype,
       path: file.path,
       originalFileName: file.originalname,
       filename: file.filename,

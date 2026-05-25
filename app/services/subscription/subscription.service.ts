@@ -146,8 +146,8 @@ export class SubscriptionService {
       const sent = await this.sseService.sendToUser(
         accountAdminId,
         cuid,
-        notificationPayload,
-        'subscription_update'
+        { ...notificationPayload, resource: 'subscription' },
+        'resource-event'
       );
 
       if (sent) {

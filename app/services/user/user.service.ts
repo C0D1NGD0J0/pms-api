@@ -748,6 +748,9 @@ export class UserService {
       }
     }
 
+    const clientConn = vendorInfo?.connectedClients?.find((c: any) => c.cuid === cuid);
+    const payoutAccount = clientConn?.payoutAccount;
+
     return {
       vuid: vendorInfo?.vuid || '',
       companyName: vendorInfo?.companyName || _personalInfo.displayName || '',
@@ -798,6 +801,15 @@ export class UserService {
       isLinkedAccount: !!clientConnection.linkedVendorUid,
       linkedVendorUid: clientConnection.linkedVendorUid || null,
       isPrimaryVendor: !clientConnection.linkedVendorUid,
+
+      // Per-client payout account status (read from connectedClients, not PaymentProcessor)
+      payoutAccount: payoutAccount
+        ? {
+            isSetup: payoutAccount.isSetup ?? false,
+            payoutsEnabled: payoutAccount.payoutsEnabled ?? false,
+            chargesEnabled: payoutAccount.chargesEnabled ?? false,
+          }
+        : undefined,
 
       // Linked users (only for primary vendors)
       ...(linkedUsers.length > 0 ? { linkedUsers } : {}),

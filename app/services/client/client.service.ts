@@ -1029,19 +1029,22 @@ export class ClientService {
         },
       });
 
-      this.sseService.sendToUser(client.accountAdmin.toString(), EventTypes.IDENTITY_VERIFIED, {
-        cuid: client.cuid,
-        isVerified: true,
-      });
+      await this.sseService.sendToUser(
+        client.accountAdmin.toString(),
+        client.cuid,
+        { isVerified: true },
+        EventTypes.IDENTITY_VERIFIED
+      );
     } else {
       await this.clientDAO.updateById(client._id.toString(), {
         $set: { 'identityVerification.sessionStatus': 'requires_input' },
       });
 
-      this.sseService.sendToUser(
+      await this.sseService.sendToUser(
         client.accountAdmin.toString(),
-        EventTypes.IDENTITY_REQUIRES_INPUT,
-        { cuid: client.cuid, sessionStatus: 'requires_input' }
+        client.cuid,
+        { sessionStatus: 'requires_input' },
+        EventTypes.IDENTITY_REQUIRES_INPUT
       );
     }
   }
@@ -1066,8 +1069,58 @@ export class ClientService {
   private async handlePaymentProcessorVerified({
     cuid,
     accountId,
+    ownerType,
+    vuid,
   }: PaymentProcessorVerifiedPayload): Promise<void> {
     try {
+      // Vendor payout account verified — notify the vendor's primary account holder for this client
+      if (ownerType === 'vendor' && vuid) {
+        const vendor = await this.vendorDAO.findFirst({ vuid, deletedAt: null });
+        const clientConn = vendor?.connectedClients?.find((c: any) => c.cuid === cuid);
+        const recipientId = clientConn?.primaryAccountHolderUserId?.toString();
+
+        if (!recipientId) {
+          this.log.warn(
+            { cuid, vuid },
+            'No vendor primary account holder found for payout verification'
+          );
+          return;
+        }
+
+        await this.authCache.invalidateCurrentUser(recipientId, cuid);
+
+        await this.sseService.sendToUser(
+          recipientId,
+          cuid,
+          {
+            action: 'REFETCH_CURRENT_USER',
+            eventType: 'payout_account_verified',
+            message: 'Your payout account has been verified and is ready to receive payments.',
+            timestamp: new Date().toISOString(),
+          },
+          'payment_update'
+        );
+
+        await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+          type: NotificationTypeEnum.PAYMENT,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: recipientId,
+          priority: NotificationPriorityEnum.HIGH,
+          title: 'Payout Account Verified',
+          message:
+            'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
+          cuid,
+          metadata: {},
+        });
+
+        this.log.info(
+          { cuid, vuid, recipientId, accountId },
+          'Payout account verified — vendor notified'
+        );
+        return;
+      }
+
+      // PM payout account verified — notify the PM account admin
       const client = await this.clientDAO.findFirst({ cuid });
       const adminId = client?.accountAdmin?.toString();
       if (!adminId) {

@@ -10,6 +10,7 @@ import { ISignupData } from '@interfaces/user.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { PaymentMethodType } from '@interfaces/lease.interface';
+import { subscriptionPlanConfig } from '@services/subscription';
 import { IActiveAccountInfo } from '@interfaces/client.interface';
 import { PaymentService } from '@services/payments/payments.service';
 import { UserDisconnectedPayload, EventTypes } from '@interfaces/events.interface';
@@ -448,6 +449,10 @@ export class AuthService {
       rememberMe
     );
     const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
+    if (currentuser?.subscription?.plan?.name) {
+      const planConfig = subscriptionPlanConfig.getConfig(currentuser.subscription.plan.name);
+      if (planConfig) currentuser.subscription.entitlements = planConfig.features;
+    }
     currentuser && (await this.authCache.saveCurrentUser(currentuser));
 
     if (connectedClients.length === 1) {
@@ -496,6 +501,10 @@ export class AuthService {
     if (!currentuser) {
       this.log.error('User not found. | GetCurrentUser');
       throw new UnauthorizedError({ message: t('auth.errors.unauthorized') });
+    }
+    if (currentuser.subscription?.plan?.name) {
+      const planConfig = subscriptionPlanConfig.getConfig(currentuser.subscription.plan.name);
+      if (planConfig) currentuser.subscription.entitlements = planConfig.features;
     }
 
     const cachedResp = await this.authCache.saveCurrentUser(currentuser);
@@ -551,6 +560,10 @@ export class AuthService {
     await this.authCache.saveRefreshToken(user._id.toString(), newcuid, tokens.refreshToken, false);
 
     const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
+    if (currentuser?.subscription?.plan?.name) {
+      const planConfig = subscriptionPlanConfig.getConfig(currentuser.subscription.plan.name);
+      if (planConfig) currentuser.subscription.entitlements = planConfig.features;
+    }
     currentuser && (await this.authCache.saveCurrentUser(currentuser));
     return {
       success: true,

@@ -119,6 +119,49 @@ export interface ICurrentUser {
 }
 
 /**
+ * Vendor Detail Information
+ * Complete vendor profile and metrics
+ */
+export interface IVendorDetailInfo {
+  insuranceInfo: {
+    coverageAmount: number;
+    expirationDate: Date | null;
+    policyNumber: string;
+    provider: string;
+  };
+  contactPerson: {
+    jobTitle: string;
+    phone: string;
+  } & Pick<IBaseContactInfo, 'name' | 'email'>;
+  stats: {
+    responseTime: string;
+    completedJobs: number;
+    activeJobs: number;
+  } & IBaseStats;
+  payoutAccount?: {
+    isSetup: boolean;
+    payoutsEnabled: boolean;
+    chargesEnabled: boolean;
+  };
+  serviceAreas: {
+    baseLocation: string;
+    maxDistance: number;
+  };
+  servicesOffered: Record<string, any>;
+  linkedUsers?: ILinkedVendorUser[];
+  linkedVendorUid: string | null;
+  registrationNumber: string;
+  isLinkedAccount: boolean;
+  isPrimaryVendor: boolean;
+  yearsInBusiness: number;
+  businessType: string;
+  companyName: string;
+  tags: string[];
+  taxId: string;
+  vuid: string;
+}
+
+/**
  * Client Tenant Details Interface
  * Comprehensive tenant details for property management view
  * Used by getTenantManagementDetails endpoint
@@ -160,44 +203,6 @@ export interface IClientTenantDetails {
   userType: 'tenant';
   joinedDate: Date;
   roles: string[];
-}
-
-/**
- * Vendor Detail Information
- * Complete vendor profile and metrics
- */
-export interface IVendorDetailInfo {
-  insuranceInfo: {
-    coverageAmount: number;
-    expirationDate: Date | null;
-    policyNumber: string;
-    provider: string;
-  };
-  contactPerson: {
-    jobTitle: string;
-    phone: string;
-  } & Pick<IBaseContactInfo, 'name' | 'email'>;
-  stats: {
-    responseTime: string;
-    completedJobs: number;
-    activeJobs: number;
-  } & IBaseStats;
-  serviceAreas: {
-    baseLocation: string;
-    maxDistance: number;
-  };
-  servicesOffered: Record<string, any>;
-  linkedUsers?: ILinkedVendorUser[];
-  linkedVendorUid: string | null;
-  registrationNumber: string;
-  isLinkedAccount: boolean;
-  isPrimaryVendor: boolean;
-  yearsInBusiness: number;
-  businessType: string;
-  companyName: string;
-  tags: string[];
-  taxId: string;
-  vuid: string;
 }
 
 /**

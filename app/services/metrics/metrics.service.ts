@@ -230,9 +230,15 @@ export class MetricsService implements ICronProvider {
     const properties = { ...unitCounts, propertyCount };
 
     return {
-      leases,
+      leases: {
+        ...leases,
+        totalMonthlyRent: leases.monthlyRentByCurrency.reduce((sum, c) => sum + c.total, 0),
+      },
       payments: {
         byCurrency: payments.byCurrency,
+        monthRevenue: payments.byCurrency.reduce((sum, c) => sum + c.monthRevenue, 0),
+        totalRevenue: payments.byCurrency.reduce((sum, c) => sum + c.totalRevenue, 0),
+        pendingAmount: payments.byCurrency.reduce((sum, c) => sum + c.pendingAmount, 0),
         overdueCount: payments.overdueCount,
         totalCount: payments.totalCount,
         onTimeRate: payments.onTimeRate,
@@ -241,6 +247,8 @@ export class MetricsService implements ICronProvider {
       properties,
       users,
       maintenance: {
+        activeCount:
+          maintenance.open + maintenance.assigned + maintenance.inProgress + maintenance.pending,
         open: maintenance.open,
         assigned: maintenance.assigned,
         inProgress: maintenance.inProgress,

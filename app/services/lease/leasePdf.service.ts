@@ -6,6 +6,7 @@ import { LeaseCache } from '@caching/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
 import { MoneyUtils } from '@utils/money.utils';
+import { SSEService } from '@services/sse/sse.service';
 import { ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
 import { determineTemplateType, createLogger } from '@utils/index';
 import { PdfGeneratorService, MediaUploadService } from '@services/index';
@@ -32,6 +33,7 @@ interface IConstructor {
   emitterService: EventEmitterService;
   queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
+  sseService: SSEService;
   leaseCache: LeaseCache;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
@@ -47,6 +49,7 @@ export class LeasePdfService {
   private readonly propertyDAO: PropertyDAO;
   private readonly queueFactory: QueueFactory;
   private readonly emitterService: EventEmitterService;
+  private readonly sseService: SSEService;
   private readonly mediaUploadService: MediaUploadService;
   private readonly pdfGeneratorService: PdfGeneratorService;
   private readonly notificationService: NotificationService;
@@ -56,6 +59,7 @@ export class LeasePdfService {
   constructor({
     clientDAO,
     emitterService,
+    sseService,
     leaseCache,
     leaseDAO,
     mediaUploadService,
@@ -71,6 +75,7 @@ export class LeasePdfService {
     this.leaseCache = leaseCache;
     this.propertyDAO = propertyDAO;
     this.queueFactory = queueFactory;
+    this.sseService = sseService;
     this.pendingSenderInfo = new Map();
     this.emitterService = emitterService;
     this.log = createLogger('LeasePdfService');
@@ -557,7 +562,17 @@ export class LeasePdfService {
     }
 
     try {
-      await this.updateLeaseDocuments(resourceId, results, actorId);
+      const { luid, cuid } = await this.updateLeaseDocuments(resourceId, results, actorId);
+      try {
+        await this.sseService.sendToUser(
+          actorId,
+          cuid,
+          { resource: 'lease', action: 'document-added', resourceUId: luid },
+          'resource-event'
+        );
+      } catch (sseErr) {
+        this.log.warn({ sseErr }, '[LeasePdfService] SSE notify failed (non-fatal)');
+      }
       const senderInfo = this.pendingSenderInfo.get(resourceId);
       if (senderInfo) {
         this.log.info('PDF upload completed, emitting PDF_GENERATED event', {
@@ -645,7 +660,7 @@ export class LeasePdfService {
     leaseId: string,
     uploadResults: UploadResult[],
     userId: string
-  ): Promise<void> {
+  ): Promise<{ luid: string; cuid: string }> {
     if (!leaseId) {
       throw new BadRequestError({ message: 'Lease ID is required' });
     }
@@ -667,5 +682,6 @@ export class LeasePdfService {
     if (!updatedLease) {
       throw new BadRequestError({ message: 'Unable to update lease documents' });
     }
+    return { luid: lease.luid, cuid: lease.cuid };
   }
 }

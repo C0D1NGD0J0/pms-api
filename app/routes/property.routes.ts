@@ -21,10 +21,11 @@ import propertyUnitRoutes from './propertyUnit.routes';
 
 export const router: Router = express.Router();
 
-router.use(isAuthenticated, basicLimiter());
+router.use(isAuthenticated);
 
 router.get(
   '/property_form_metadata',
+  basicLimiter(),
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.getPropertyFormMetadata(req, res);
@@ -33,6 +34,7 @@ router.get(
 
 router.post(
   '/:cuid/add_property',
+  basicLimiter(),
   requireNotSuspended,
   requireVerification,
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
@@ -90,6 +92,7 @@ router.post(
 
 router.get(
   '/:cuid/client_properties',
+  basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.LIST),
   validateRequest({
     params: PropertyValidations.validatecuid,
@@ -102,6 +105,7 @@ router.get(
 
 router.get(
   '/:cuid/client_property/:pid',
+  basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
@@ -114,6 +118,7 @@ router.get(
 
 router.get(
   '/:cuid/properties/pending',
+  basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   validateRequest({
     params: PropertyValidations.validatecuid,
@@ -126,6 +131,7 @@ router.get(
 
 router.post(
   '/:cuid/properties/:pid/approve',
+  basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   idempotency,
   validateRequest({
@@ -139,6 +145,7 @@ router.post(
 
 router.post(
   '/:cuid/properties/:pid/reject',
+  basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   idempotency,
   validateRequest({
@@ -152,6 +159,7 @@ router.post(
 
 router.post(
   '/:cuid/properties/bulk-approve',
+  basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   idempotency,
   validateRequest({
@@ -165,6 +173,7 @@ router.post(
 
 router.post(
   '/:cuid/properties/bulk-reject',
+  basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   idempotency,
   validateRequest({
@@ -178,6 +187,7 @@ router.post(
 
 router.get(
   '/:cuid/properties/my-requests',
+  basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
   validateRequest({
     params: PropertyValidations.validatecuid,
@@ -190,6 +200,7 @@ router.get(
 
 router.get(
   '/:cuid/leaseable',
+  basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
   validateRequest({
     params: PropertyValidations.validatecuid,
@@ -202,6 +213,7 @@ router.get(
 
 router.patch(
   '/:cuid/client_properties/:pid',
+  basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   idempotency,
   diskUpload(['documents[*].file', 'images[*].file']),
@@ -218,6 +230,7 @@ router.patch(
 
 router.patch(
   '/:cuid/client_properties/:pid/remove_media',
+  basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   idempotency,
   validateRequest({
@@ -231,6 +244,7 @@ router.patch(
 
 router.delete(
   '/:cuid/delete_properties/:pid',
+  basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.DELETE),
   idempotency,
   validateRequest({

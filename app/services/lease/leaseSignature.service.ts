@@ -465,19 +465,24 @@ export class LeaseSignatureService {
 
           // Push real-time SSE refresh signal to both tenant and PM so their
           // lease list / lease detail pages refetch without a manual reload.
-          const ssePayload = { luid: lease.luid, status: LeaseStatus.ACTIVE };
+          const ssePayload = {
+            resource: 'lease',
+            action: 'status-changed',
+            resourceUId: lease.luid,
+            status: LeaseStatus.ACTIVE,
+          };
           await Promise.allSettled([
             this.sseService.sendToUser(
               lease.tenantId.toString(),
               lease.cuid,
               ssePayload,
-              'lease-updated'
+              'resource-event'
             ),
             this.sseService.sendToUser(
               lease.createdBy.toString(),
               lease.cuid,
               ssePayload,
-              'lease-updated'
+              'resource-event'
             ),
           ]);
           break;

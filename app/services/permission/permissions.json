@@ -133,7 +133,7 @@
       ],
       "vendor": ["read:mine", "list:mine"],
       "lease": ["read:assigned"],
-      "payment": ["read:assigned"],
+      "payment": ["read:assigned", "list:mine"],
       "report": ["read:assigned"]
     }
   },

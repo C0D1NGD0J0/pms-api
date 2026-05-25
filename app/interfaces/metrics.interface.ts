@@ -16,12 +16,18 @@ export interface IDashboardStats {
       monthRevenue: number;
       pendingAmount: number;
     }>;
+    /** Summed across all currencies — used by single-currency dashboard cards */
+    monthRevenue: number;
+    totalRevenue: number;
+    pendingAmount: number;
     overdueCount: number;
     totalCount: number;
     onTimeRate: number;
     avgPaymentDelayDays: number;
   };
   maintenance: {
+    /** Total of open + assigned + inProgress + pending (excludes completed/cancelled) */
+    activeCount: number;
     open: number;
     assigned: number;
     inProgress: number;
@@ -32,6 +38,10 @@ export interface IDashboardStats {
     byPriority: Record<string, number>;
     byCategory: Record<string, number>;
   };
+  leases: {
+    /** Sum of all active lease rent amounts across currencies — the monthly rent roll */
+    totalMonthlyRent: number;
+  } & ILeaseStats;
   properties: {
     total: number;
     propertyCount: number;
@@ -44,7 +54,6 @@ export interface IDashboardStats {
     tenants: number;
     staff: number;
   };
-  leases: ILeaseStats;
   generatedAt: Date;
 }
 

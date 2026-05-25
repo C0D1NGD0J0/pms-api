@@ -15,11 +15,12 @@ import {
 
 export const router: Router = express.Router();
 
-router.use(isAuthenticated, basicLimiter());
+router.use(isAuthenticated);
 
 // GET /:cuid/summary — must be before /:cuid/:expuid to avoid route conflict
 router.get(
   '/:cuid/summary',
+  basicLimiter(),
   requirePermission(PermissionResource.REPORT, PermissionAction.READ),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
@@ -32,6 +33,7 @@ router.get(
 
 router.get(
   '/:cuid',
+  basicLimiter(),
   requirePermission(PermissionResource.REPORT, PermissionAction.READ),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
@@ -44,6 +46,7 @@ router.get(
 
 router.post(
   '/:cuid',
+  basicLimiter(),
   requirePermission(PermissionResource.REPORT, PermissionAction.CREATE),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
@@ -57,6 +60,7 @@ router.post(
 
 router.get(
   '/:cuid/:expuid',
+  basicLimiter(),
   requirePermission(PermissionResource.REPORT, PermissionAction.READ),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
@@ -69,6 +73,7 @@ router.get(
 
 router.patch(
   '/:cuid/:expuid',
+  basicLimiter(),
   requirePermission(PermissionResource.REPORT, PermissionAction.UPDATE),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
@@ -85,6 +90,7 @@ router.patch(
 
 router.delete(
   '/:cuid/:expuid',
+  basicLimiter(),
   requirePermission(PermissionResource.REPORT, PermissionAction.DELETE),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),

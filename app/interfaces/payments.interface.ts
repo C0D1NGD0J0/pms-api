@@ -168,6 +168,7 @@ export interface IPaymentFormData {
 
 export interface IVendorEarningItem {
   status: PaymentRecordStatus;
+  pytuid?: string | null;
   amountInCents: number;
   createdAt: Date;
   invuid: string;

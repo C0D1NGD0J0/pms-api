@@ -1,17 +1,19 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { createLogger } from '@utils/index';
+import { InvoiceDAO } from '@dao/invoiceDAO';
 import { QueueFactory } from '@services/queue';
 import { NotFoundError } from '@shared/customErrors';
 import { PaymentQueue } from '@queues/payment.queue';
-import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionPlanConfig } from '@services/subscription';
+import { MAX_CHARGE_ATTEMPTS, createLogger } from '@utils/index';
 import { calcApplicationFeeSplit } from '@utils/financial.utils';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { computeLeaseMonthlyFees } from '@services/lease/leaseHelpers';
+import { StripeService } from '@services/external/stripe/stripe.service';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import { MaintenanceFundsAvailablePayload, EventTypes } from '@interfaces/events.interface';
 import {
   PaymentProcessorDAO,
   SubscriptionDAO,
@@ -36,7 +38,9 @@ interface IConstructor {
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
+  stripeService: StripeService;
   queueFactory: QueueFactory;
+  invoiceDAO: InvoiceDAO;
   profileDAO: ProfileDAO;
   paymentDAO: PaymentDAO;
   clientDAO: ClientDAO;
@@ -50,6 +54,8 @@ export class PaymentCronService implements ICronProvider {
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
   private readonly emitterService: EventEmitterService;
   private readonly subscriptionDAO: SubscriptionDAO;
+  private readonly stripeService: StripeService;
+  private readonly invoiceDAO: InvoiceDAO;
   private readonly queueFactory: QueueFactory;
   private readonly profileDAO: ProfileDAO;
   private readonly paymentDAO: PaymentDAO;
@@ -62,6 +68,8 @@ export class PaymentCronService implements ICronProvider {
     subscriptionPlanConfig,
     emitterService,
     subscriptionDAO,
+    stripeService,
+    invoiceDAO,
     queueFactory,
     profileDAO,
     paymentDAO,
@@ -74,6 +82,8 @@ export class PaymentCronService implements ICronProvider {
     this.subscriptionPlanConfig = subscriptionPlanConfig;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
+    this.stripeService = stripeService;
+    this.invoiceDAO = invoiceDAO;
     this.queueFactory = queueFactory;
     this.profileDAO = profileDAO;
     this.paymentDAO = paymentDAO;
@@ -81,8 +91,9 @@ export class PaymentCronService implements ICronProvider {
     this.leaseDAO = leaseDAO;
   }
 
-  getCronJobs(): ICronJob[] {
-    return [
+  async getCronJobs(): Promise<ICronJob[]> {
+    // Non-time-sensitive jobs — fixed UTC is fine
+    const utcJobs: ICronJob[] = [
       {
         name: 'payment.weekly-rent-invoices',
         schedule: '0 0 * * 0',
@@ -103,34 +114,76 @@ export class PaymentCronService implements ICronProvider {
         timeout: 300000,
       },
       {
-        name: 'payment.auto-charge-overdue-maintenance',
-        schedule: '0 10 * * *',
-        handler: this.autoChargeOverdueMaintenancePayments.bind(this),
-        enabled: true,
-        service: 'PaymentCronService',
-        description: 'Auto-charge tenant CC for maintenance invoices past their 5-day grace period',
-        timeout: 300000,
-      },
-      {
-        name: 'payment.auto-charge-due-rent',
+        name: 'payment.check-funds-availability-morning',
         schedule: '0 6 * * *',
-        handler: this.autoChargeDueRentPayments.bind(this),
+        handler: this.checkFundsAvailability.bind(this),
         enabled: true,
         service: 'PaymentCronService',
         description:
-          'Auto-charge tenants for rent payments due today or overdue (Stripe invoice already exists)',
+          'Check Stripe Connect balance and flip fundsAvailable on settled maintenance invoices (morning run)',
         timeout: 300000,
       },
       {
-        name: 'payment.mark-overdue',
-        schedule: '0 1 * * *',
-        handler: this.markOverduePayments.bind(this),
+        name: 'payment.check-funds-availability-evening',
+        schedule: '0 22 * * *',
+        handler: this.checkFundsAvailability.bind(this),
         enabled: true,
         service: 'PaymentCronService',
-        description: 'Flip PENDING → OVERDUE for all payment types where dueDate has passed',
+        description:
+          'Check Stripe Connect balance and flip fundsAvailable on settled maintenance invoices (evening run)',
         timeout: 300000,
       },
     ];
+
+    // Time-sensitive jobs — register once per distinct client timezone so they fire
+    // at the right local time (e.g. 6 AM Vancouver, not 6 AM UTC).
+    let timezones: string[] = [];
+    try {
+      timezones = await this.clientDAO.getDistinctTimezones();
+    } catch (err) {
+      this.log.error(
+        { err },
+        '[PaymentCronService] Failed to load distinct timezones — falling back to UTC'
+      );
+    }
+    if (timezones.length === 0) {
+      timezones = ['UTC'];
+    }
+
+    const tzJobs: ICronJob[] = timezones.flatMap((tz) => [
+      {
+        name: `payment.auto-charge-overdue-maintenance.${tz}`,
+        schedule: '0 10 * * *',
+        timezone: tz,
+        handler: () => this.autoChargeOverdueMaintenancePayments(),
+        enabled: true,
+        service: 'PaymentCronService',
+        description: `Auto-charge tenant CC for overdue maintenance invoices [${tz}]`,
+        timeout: 300000,
+      },
+      {
+        name: `payment.auto-charge-due-rent.${tz}`,
+        schedule: '0 6 * * *',
+        timezone: tz,
+        handler: () => this.autoChargeDueRentPayments(),
+        enabled: true,
+        service: 'PaymentCronService',
+        description: `Auto-charge tenants for rent due today or overdue [${tz}]`,
+        timeout: 300000,
+      },
+      {
+        name: `payment.mark-overdue.${tz}`,
+        schedule: '0 1 * * *',
+        timezone: tz,
+        handler: () => this.markOverduePayments(),
+        enabled: true,
+        service: 'PaymentCronService',
+        description: `Flip PENDING → OVERDUE for payments where dueDate has passed [${tz}]`,
+        timeout: 300000,
+      },
+    ]);
+
+    return [...utcJobs, ...tzJobs];
   }
 
   /**
@@ -542,10 +595,26 @@ export class PaymentCronService implements ICronProvider {
 
         charged++;
       } catch (err: any) {
-        this.log.error(
-          { err: err.message, pytuid: payment.pytuid, cuid: payment.cuid },
-          '[Cron] Failed to auto-charge maintenance payment'
-        );
+        const errMsg = (err?.message ?? '').toLowerCase();
+        const isAcssLimitError =
+          errMsg.includes('acss_debit') || errMsg.includes('amount_too_large');
+
+        if (isAcssLimitError) {
+          this.log.warn(
+            { pytuid: payment.pytuid, cuid: payment.cuid },
+            '[Cron] ACSS per-txn limit exceeded — leaving payment PENDING for card retry'
+          );
+          await this.paymentDAO.updateById(payment._id.toString(), {
+            'failure.reason':
+              'Bank debit failed: payment amount exceeds per-transaction limit. Card payment required.',
+            'failure.lastFailedAt': dayjs().toDate(),
+          });
+        } else {
+          this.log.error(
+            { err: err.message, pytuid: payment.pytuid, cuid: payment.cuid },
+            '[Cron] Failed to auto-charge maintenance payment'
+          );
+        }
         failed++;
       }
     }
@@ -624,7 +693,25 @@ export class PaymentCronService implements ICronProvider {
         });
         charged++;
       } catch (err: any) {
-        const MAX_CHARGE_ATTEMPTS = 2;
+        const errMsg = (err?.message ?? '').toLowerCase();
+        const isAcssLimitError =
+          errMsg.includes('acss_debit') || errMsg.includes('amount_too_large');
+
+        if (isAcssLimitError) {
+          // ACSS limit errors are not retryable with ACSS — leave PENDING for card retry via webhook
+          this.log.warn(
+            { pytuid: payment.pytuid, cuid: payment.cuid },
+            '[Cron] ACSS per-txn limit exceeded — leaving rent payment PENDING for card retry'
+          );
+          await this.paymentDAO.updateById(payment._id.toString(), {
+            'failure.reason':
+              'Bank debit failed: payment amount exceeds per-transaction limit. Card payment required.',
+            'failure.lastFailedAt': dayjs().toDate(),
+          });
+          failed++;
+          continue;
+        }
+
         const newRetryCount = (payment.failure?.retryCount ?? 0) + 1;
         const exhausted = newRetryCount >= MAX_CHARGE_ATTEMPTS;
 
@@ -770,6 +857,89 @@ export class PaymentCronService implements ICronProvider {
     this.log.info(
       { pytuid, cuid, invoiceId: activeInvoiceId, paymentType: payment.paymentType },
       '[PaymentCronService] Pending maintenance charge submitted for payment'
+    );
+  }
+
+  /**
+   * Twice-daily cron: for each maintenance invoice where the tenant has paid but
+   * PM funds haven't been confirmed available yet, check the Stripe Connect balance
+   * and flip fundsAvailable when the charge has settled.
+   */
+  private async checkFundsAvailability(): Promise<void> {
+    const invoices = await this.invoiceDAO.findPendingFundsCheck(500);
+
+    if (invoices.length === 0) {
+      this.log.info('[Cron] No invoices pending funds availability check');
+      return;
+    }
+
+    // Group invoices by cuid so we make one Stripe balance call per PM account
+    const invoicesByCuid = new Map<string, typeof invoices>();
+    for (const inv of invoices) {
+      const cuid = inv.cuid;
+      if (!invoicesByCuid.has(cuid)) {
+        invoicesByCuid.set(cuid, []);
+      }
+      invoicesByCuid.get(cuid)!.push(inv);
+    }
+
+    // Cache PM processor account IDs keyed by cuid
+    const processorAccountIds = new Map<string, string | null>();
+
+    let flipped = 0;
+    let skipped = 0;
+
+    for (const [cuid, cuidInvoices] of invoicesByCuid) {
+      try {
+        if (!processorAccountIds.has(cuid)) {
+          const processor = await this.paymentProcessorDAO.findFirst({ cuid });
+          processorAccountIds.set(cuid, processor?.accountId ?? null);
+        }
+
+        const accountId = processorAccountIds.get(cuid);
+        if (!accountId) {
+          this.log.warn({ cuid }, '[Cron] No Stripe Connect account for client — skipping');
+          skipped += cuidInvoices.length;
+          continue;
+        }
+
+        const balance = await this.stripeService.getConnectBalance(accountId);
+
+        for (const invoice of cuidInvoices) {
+          const currency = (invoice.currency ?? 'usd').toLowerCase();
+          const availableEntry = balance.available.find((b) => b.currency === currency);
+
+          if (!availableEntry || availableEntry.amount < invoice.amountInCents) {
+            skipped++;
+            continue;
+          }
+
+          await this.invoiceDAO.updateById((invoice as any)._id.toString(), {
+            $set: { fundsAvailable: true, fundsAvailableAt: new Date() },
+          });
+
+          const fundsPayload: MaintenanceFundsAvailablePayload = {
+            amountInCents: invoice.amountInCents,
+            invuid: invoice.invuid,
+            mruid: invoice.mruid,
+            cuid,
+          };
+          this.emitterService.emit(EventTypes.MAINTENANCE_FUNDS_AVAILABLE, fundsPayload);
+
+          flipped++;
+        }
+      } catch (err: any) {
+        this.log.error(
+          { err: err.message, cuid },
+          '[Cron] Error checking funds availability for client'
+        );
+        skipped += invoicesByCuid.get(cuid)?.length ?? 0;
+      }
+    }
+
+    this.log.info(
+      { flipped, skipped, total: invoices.length },
+      '[Cron] Funds availability check complete'
     );
   }
 

@@ -9,4 +9,6 @@ export const PaymentValidations = {
   updatePayoutScheduleBody: schemas.updatePayoutScheduleBody,
   chargeForMaintenance: schemas.chargeForMaintenance,
   vendorPayoutParams: schemas.vendorPayoutParams,
+  cardCheckoutParams: schemas.cardCheckoutParams,
+  listPaymentsQuery: schemas.listPaymentsQuery,
 };

@@ -50,7 +50,7 @@ export class PaymentController {
 
   async getPayment(req: AppRequest, res: Response) {
     const { cuid, pytuid } = req.params;
-    const result = await this.paymentService.getPaymentByUid(cuid, pytuid);
+    const result = await this.paymentService.getPaymentByUid(cuid, pytuid, req.context);
     return res.status(200).json(result);
   }
 

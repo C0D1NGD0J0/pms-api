@@ -6,6 +6,10 @@ export const vendorPayoutParams = z.object({
   mruid: z.string().min(1, 'Maintenance request ID is required'),
 });
 
+export const cardCheckoutParams = z.object({
+  pytuid: z.string().min(1, 'Payment ID is required'),
+});
+
 export const chargeForMaintenance = z.object({
   mruid: z.string().min(1, 'Maintenance request ID is required'),
   tenantId: z.string().min(1, 'Tenant ID is required'),

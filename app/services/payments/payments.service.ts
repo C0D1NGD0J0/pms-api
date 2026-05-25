@@ -1,6 +1,5 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import { JOB_NAME } from '@utils/constants';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { envVariables } from '@shared/config';
 import { FilterQuery, Types } from 'mongoose';
@@ -11,6 +10,7 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { PdfGeneratorService } from '@services/pdfGenerator';
 import { InvoiceStatus } from '@interfaces/invoice.interface';
 import { SubscriptionPlanConfig } from '@services/subscription';
+import { MAX_CHARGE_ATTEMPTS, JOB_NAME } from '@utils/constants';
 import { calcApplicationFeeSplit } from '@utils/financial.utils';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
@@ -57,8 +57,8 @@ import {
 
 import { PaymentCronService } from './paymentCron.service';
 import { PayoutAccountService } from './payoutAccount.service';
-import { PaymentWebhookService } from './paymentWebhook.service';
 import { MaintenancePaymentService } from './maintenancePayment.service';
+import { IStripeInvoiceWebhookData, PaymentWebhookService } from './paymentWebhook.service';
 
 interface IConstructor {
   maintenancePaymentService: MaintenancePaymentService;
@@ -104,14 +104,6 @@ interface IStripeAccountWebhookData {
   details_submitted?: boolean;
   payouts_enabled?: boolean;
   charges_enabled?: boolean;
-}
-
-interface IStripeInvoiceWebhookData {
-  last_payment_error?: { message?: string };
-  next_payment_attempt?: number;
-  hosted_invoice_url?: string;
-  attempt_count?: number;
-  charge?: string;
 }
 
 interface IStripeDisputeWebhookData {
@@ -195,7 +187,7 @@ export class PaymentService implements ICronProvider {
     );
   }
 
-  getCronJobs(): ICronJob[] {
+  getCronJobs(): Promise<ICronJob[]> {
     return this.paymentCronService.getCronJobs();
   }
 
@@ -749,9 +741,15 @@ export class PaymentService implements ICronProvider {
         query.maintenanceRequestUid = filters.maintenanceRequestUid;
       }
 
-      // Exclude vendor expense records — these have vendorId set and are internal
-      // accounting entries that surface in the Payouts tab, not the Payments list.
-      query.vendorId = { $exists: false };
+      const role = context?.currentuser?.client?.role;
+      const vendorSub = context?.currentuser?.sub;
+      if (role === 'vendor' && vendorSub) {
+        // Vendors only see their own payout records
+        query.vendorId = new Types.ObjectId(vendorSub);
+      } else {
+        // Exclude vendor payout records for all other roles — these surface in the Payouts tab
+        query.vendorId = { $exists: false };
+      }
 
       const sortOrder = filters?.sortDirection === 'asc' ? 1 : -1;
       const result = await this.paymentDAO.list(
@@ -829,7 +827,11 @@ export class PaymentService implements ICronProvider {
     }
   }
 
-  async getPaymentByUid(cuid: string, pytuid: string): IPromiseReturnedData<any> {
+  async getPaymentByUid(
+    cuid: string,
+    pytuid: string,
+    context?: IRequestContext
+  ): IPromiseReturnedData<any> {
     try {
       if (!cuid || !pytuid) {
         throw new BadRequestError({ message: 'Client ID and Payment ID are required' });
@@ -872,6 +874,23 @@ export class PaymentService implements ICronProvider {
 
       if (!payment) {
         throw new NotFoundError({ message: 'Payment not found' });
+      }
+
+      // Role-based ownership enforcement — external roles may only read their own records
+      const callerRole = context?.currentuser?.client?.role;
+      if (callerRole === 'tenant') {
+        const callerProfile = await this.profileDAO.findFirst({
+          user: new Types.ObjectId(context!.currentuser.sub),
+        });
+        if (!callerProfile || !payment.tenant?._id?.equals(callerProfile._id)) {
+          throw new ForbiddenError({ message: 'You do not have permission to view this payment' });
+        }
+      } else if (callerRole === 'vendor') {
+        // Vendor payouts are tracked on Invoice documents; no direct payment records use vendorId.
+        // A vendor may only read a payment record if it is explicitly linked to them via vendorId.
+        if (!payment.vendorId || payment.vendorId.toString() !== context!.currentuser.sub) {
+          throw new ForbiddenError({ message: 'You do not have permission to view this payment' });
+        }
       }
 
       const tenantProfile = {
@@ -1310,12 +1329,34 @@ export class PaymentService implements ICronProvider {
         throw new NotFoundError({ message: 'Payment not found' });
       }
 
-      if (
-        payment.status !== PaymentRecordStatus.PENDING &&
-        payment.status !== PaymentRecordStatus.OVERDUE
-      ) {
+      const isRetryableStatus =
+        payment.status === PaymentRecordStatus.PENDING ||
+        payment.status === PaymentRecordStatus.OVERDUE ||
+        payment.status === PaymentRecordStatus.FAILED;
+
+      if (!isRetryableStatus) {
         throw new BadRequestError({
           message: `This payment cannot be paid — current status: ${payment.status}`,
+        });
+      }
+
+      if (
+        payment.status === PaymentRecordStatus.FAILED &&
+        (payment.failure?.retryCount ?? 0) >= MAX_CHARGE_ATTEMPTS
+      ) {
+        throw new BadRequestError({
+          message: 'This payment has exceeded the maximum number of retry attempts',
+        });
+      }
+
+      const CARD_CHECKOUT_ALLOWED_TYPES: string[] = [
+        PaymentRecordType.RENT,
+        PaymentRecordType.MAINTENANCE,
+        PaymentRecordType.LATE_FEE,
+      ];
+      if (!CARD_CHECKOUT_ALLOWED_TYPES.includes(payment.paymentType)) {
+        throw new BadRequestError({
+          message: `Card checkout is not supported for payment type: ${payment.paymentType}`,
         });
       }
 
@@ -1360,8 +1401,6 @@ export class PaymentService implements ICronProvider {
         rent: 'Rent',
         maintenance: 'Maintenance',
         late_fee: 'Late Fee',
-        security_deposit: 'Security Deposit',
-        deposit_refund: 'Deposit Refund',
       };
       const typeLabel = paymentTypeLabelMap[payment.paymentType] ?? 'Payment';
       const itemName = periodLabel ? `${typeLabel} — ${periodLabel}` : typeLabel;
@@ -1548,10 +1587,18 @@ export class PaymentService implements ICronProvider {
         const isRent = payment.paymentType === PaymentRecordType.RENT;
 
         switch (payment.status) {
-          // CANCELLED and FAILED payments are excluded from all stats —
-          // they were never collected and are no longer expected.
+          // PROCESSING: charge submitted to the bank, awaiting settlement (bank transfer).
+          // Treated identically to PENDING — expected but not yet collected.
+          // PENDING: payment is due but not yet collected.
+          // Counts toward expectedRevenue because it is expected to be paid.
+          case PaymentRecordStatus.PROCESSING:
+          case PaymentRecordStatus.PENDING:
+            expectedRevenue += amount;
+            pending += amount;
+            if (isRent) rentExpected += amount;
+            break;
+          // CANCELLED: obligation waived, excluded from all stats.
           case PaymentRecordStatus.CANCELLED:
-          case PaymentRecordStatus.FAILED:
             break;
 
           // REFUNDED: use refundAmount (partial refund) or full baseAmount (full refund).
@@ -1559,15 +1606,6 @@ export class PaymentService implements ICronProvider {
           case PaymentRecordStatus.REFUNDED:
             refunded += payment.refund?.amount || amount;
             break;
-
-          // PENDING: payment is due but not yet collected.
-          // Counts toward expectedRevenue because it is expected to be paid.
-          case PaymentRecordStatus.PENDING:
-            expectedRevenue += amount;
-            pending += amount;
-            if (isRent) rentExpected += amount;
-            break;
-
           // OVERDUE: payment is past its due date and still unpaid.
           // Counts toward expectedRevenue — the money is owed and tracked.
           case PaymentRecordStatus.OVERDUE:
@@ -1575,6 +1613,19 @@ export class PaymentService implements ICronProvider {
             overdue += amount;
             if (isRent) rentExpected += amount;
             break;
+
+          // FAILED: payment attempt was unsuccessful; money is still owed.
+          // If the due date is past, treat it as overdue (same as OVERDUE status).
+          // If the due date is in the future, exclude — it may still be retried in time.
+          case PaymentRecordStatus.FAILED: {
+            const isPastDue = payment.dueDate && new Date(payment.dueDate) <= new Date();
+            if (isPastDue) {
+              expectedRevenue += amount;
+              overdue += amount;
+              if (isRent) rentExpected += amount;
+            }
+            break;
+          }
 
           // PAID: payment was successfully collected.
           // Counts toward both expectedRevenue and collected.
@@ -1906,8 +1957,7 @@ export class PaymentService implements ICronProvider {
 
       // Retry: reset a previously-failed payment so a fresh invoice is created
       if (payment.status === PaymentRecordStatus.FAILED) {
-        const MAX_RETRIES = 2;
-        if ((payment.failure?.retryCount ?? 0) >= MAX_RETRIES) {
+        if ((payment.failure?.retryCount ?? 0) >= MAX_CHARGE_ATTEMPTS) {
           throw new BadRequestError({
             message: 'Maximum retry attempts reached. Please contact your property manager.',
           });
@@ -2448,9 +2498,28 @@ export class PaymentService implements ICronProvider {
 
       const invoices = result.items as any[];
 
+      // Batch-fetch maintenance payment records to get pytuid for each invoice
+      const mruids = invoices.map((inv) => inv.mruid).filter(Boolean);
+      let pytuidByMruid = new Map<string, string>();
+      if (mruids.length > 0) {
+        const paymentResult = await this.paymentDAO.list(
+          {
+            maintenanceRequestUid: { $in: mruids },
+            paymentType: PaymentRecordType.MAINTENANCE,
+            cuid,
+          },
+          { projection: 'pytuid maintenanceRequestUid', limit: mruids.length },
+          true
+        );
+        pytuidByMruid = new Map(
+          (paymentResult.items as any[]).map((p) => [p.maintenanceRequestUid, p.pytuid])
+        );
+      }
+
       const items: IVendorEarningItem[] = invoices.map((inv) => ({
         invuid: inv.invuid,
         mruid: inv.mruid,
+        pytuid: pytuidByMruid.get(inv.mruid) ?? null,
         title: inv.description,
         amountInCents: inv.amountInCents ?? 0,
         status:

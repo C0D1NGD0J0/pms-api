@@ -5,7 +5,6 @@ import http from 'http';
 import { asValue } from 'awilix';
 import { createClient } from 'redis';
 import { container } from '@di/index';
-import { QUEUE_RESOURCE_NAMES, SERVICE_RESOURCE_NAMES } from '@di/registerResources';
 import * as Sentry from '@sentry/node';
 import { IAppSetup, App } from '@root/app';
 import { createLogger } from '@utils/index';
@@ -15,6 +14,7 @@ import { PidManager } from '@utils/pid-manager';
 import { Server as SocketIOServer } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { DatabaseService, Environments } from '@database/index';
+import { SERVICE_RESOURCE_NAMES, QUEUE_RESOURCE_NAMES } from '@di/registerResources';
 
 (global as any).rootDir = __dirname;
 

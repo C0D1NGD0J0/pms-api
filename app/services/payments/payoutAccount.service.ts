@@ -3,11 +3,19 @@ import Logger from 'bunyan';
 import { envVariables } from '@shared/config';
 import { IPaymentGatewayProvider } from '@interfaces/index';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
-import { getPaymentProcessorUrls, createLogger } from '@utils/index';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
-import { PaymentProcessorDAO, ProfileDAO, ClientDAO } from '@dao/index';
+import { PaymentProcessorDAO, ProfileDAO, ClientDAO, VendorDAO } from '@dao/index';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import { getCountryCodeFromLocation, getPaymentProcessorUrls, createLogger } from '@utils/index';
+
+interface IConstructor {
+  paymentGatewayService: PaymentGatewayService;
+  paymentProcessorDAO: PaymentProcessorDAO;
+  profileDAO: ProfileDAO;
+  clientDAO: ClientDAO;
+  vendorDAO: VendorDAO;
+}
 
 interface IStripePayoutEntry {
   description?: string | null;
@@ -17,13 +25,6 @@ interface IStripePayoutEntry {
   amount: number;
   status: string;
   id: string;
-}
-
-interface IConstructor {
-  paymentGatewayService: PaymentGatewayService;
-  paymentProcessorDAO: PaymentProcessorDAO;
-  profileDAO: ProfileDAO;
-  clientDAO: ClientDAO;
 }
 
 interface IStripeBalanceData {
@@ -47,13 +48,21 @@ export class PayoutAccountService {
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
+  private readonly vendorDAO: VendorDAO;
 
-  constructor({ paymentGatewayService, paymentProcessorDAO, profileDAO, clientDAO }: IConstructor) {
+  constructor({
+    paymentGatewayService,
+    paymentProcessorDAO,
+    profileDAO,
+    clientDAO,
+    vendorDAO,
+  }: IConstructor) {
     this.log = createLogger('PayoutAccountService');
     this.paymentGatewayService = paymentGatewayService;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.profileDAO = profileDAO;
     this.clientDAO = clientDAO;
+    this.vendorDAO = vendorDAO;
   }
 
   async createConnectAccount(
@@ -371,6 +380,138 @@ export class PayoutAccountService {
       return { success: true, data: null, message: 'Payout schedule updated successfully' };
     } catch (error) {
       this.log.error('Error updating payout schedule', error);
+      throw error;
+    }
+  }
+
+  // ─── Vendor-scoped methods ───────────────────────────────────────────────
+
+  async initiateVendorAccount(
+    cuid: string,
+    vuid: string
+  ): IPromiseReturnedData<{ accountId: string }> {
+    try {
+      const [client, vendor] = await Promise.all([
+        this.clientDAO.getClientByCuid(cuid),
+        this.vendorDAO.findFirst({ vuid, cuid, deletedAt: null }),
+      ]);
+
+      if (!client) throw new NotFoundError({ message: 'Client not found' });
+      if (!vendor) throw new NotFoundError({ message: 'Vendor not found' });
+
+      const email = (vendor.contactPerson as any)?.email;
+      if (!email) {
+        throw new BadRequestError({
+          message: 'Vendor contact email is required to set up a payout account.',
+        });
+      }
+
+      // Normalize to ISO-3166-1 alpha-2: stored value may be a full name ("Canada") or already a code ("CA")
+      const rawCountry: string = (vendor.address as any)?.country || '';
+      const country =
+        rawCountry.length === 2
+          ? rawCountry.toUpperCase()
+          : (getCountryCodeFromLocation(rawCountry) ?? 'CA');
+
+      const result = await this.paymentGatewayService.createConnectAccount(
+        IPaymentGatewayProvider.STRIPE,
+        {
+          email,
+          country,
+          businessType: 'individual',
+          metadata: { vuid, cuid },
+          cuid,
+        }
+      );
+
+      if (!result.success || !result.data) {
+        throw new BadRequestError({
+          message: result.message || 'Failed to create payout account with provider.',
+        });
+      }
+
+      await this.paymentProcessorDAO.upsertForVendor({
+        accountId: result.data.accountId,
+        chargesEnabled: result.data.chargesEnabled,
+        payoutsEnabled: result.data.payoutsEnabled,
+        detailsSubmitted: result.data.detailsSubmitted,
+        client: client._id,
+        ownerType: 'vendor',
+        vuid,
+        cuid,
+      });
+
+      // Sync payout status into this client's connectedClients entry
+      await this.vendorDAO.updateClientPayoutAccount(vuid, cuid, {
+        isSetup: result.data.detailsSubmitted || false,
+        payoutsEnabled: result.data.payoutsEnabled || false,
+        chargesEnabled: result.data.chargesEnabled || false,
+      });
+
+      return { success: true, data: { accountId: result.data.accountId } };
+    } catch (error) {
+      this.log.error({ error, cuid, vuid }, 'Error initiating vendor payout account');
+      throw error;
+    }
+  }
+
+  async getVendorKycOnboardingLink(
+    cuid: string,
+    vuid: string,
+    returnUrl: string,
+    refreshUrl: string
+  ): IPromiseReturnedData<{ url: string }> {
+    try {
+      const processor = await this.paymentProcessorDAO.findByVuid(vuid);
+      if (!processor) {
+        throw new NotFoundError({
+          message: 'Payout account not found. Please initiate onboarding first.',
+        });
+      }
+
+      const result = await this.paymentGatewayService.createKycOnboardingLink(
+        IPaymentGatewayProvider.STRIPE,
+        { accountId: processor.accountId, returnUrl, refreshUrl }
+      );
+
+      if (!result.success || !result.data) {
+        throw new BadRequestError({
+          message: result.message || 'Failed to generate onboarding link.',
+        });
+      }
+
+      return { success: true, data: { url: result.data.url } };
+    } catch (error) {
+      this.log.error({ error, cuid, vuid }, 'Error getting vendor KYC onboarding link');
+      throw error;
+    }
+  }
+
+  async getVendorDashboardLink(cuid: string, vuid: string): IPromiseReturnedData<{ url: string }> {
+    try {
+      const processor = await this.paymentProcessorDAO.findByVuid(vuid);
+      if (!processor) {
+        throw new NotFoundError({ message: 'Payout account not found.' });
+      }
+
+      if (!processor.detailsSubmitted) {
+        throw new BadRequestError({ message: 'Payout account setup not complete.' });
+      }
+
+      const result = await this.paymentGatewayService.createDashboardLoginLink(
+        IPaymentGatewayProvider.STRIPE,
+        processor.accountId
+      );
+
+      if (!result.success || !result.data) {
+        throw new BadRequestError({
+          message: result.message || 'Failed to generate dashboard link.',
+        });
+      }
+
+      return { success: true, data: { url: result.data.url } };
+    } catch (error) {
+      this.log.error({ error, cuid, vuid }, 'Error getting vendor dashboard link');
       throw error;
     }
   }

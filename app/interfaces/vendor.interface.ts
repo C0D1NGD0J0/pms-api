@@ -1,13 +1,11 @@
 import { Document, Types } from 'mongoose';
 
-/**
- * Main Vendor Interface
- */
 export interface IVendor {
   connectedClients: {
     cuid: string;
     isConnected: boolean;
     primaryAccountHolderUserId: Types.ObjectId; // References the user who owns this vendor account
+    payoutAccount?: IVendorPayoutAccount;
   }[];
   servicesOffered?: VendorServicesOffered;
   isprimaryAccountHolderUserId: boolean;
@@ -57,6 +55,19 @@ export interface VendorAddress {
   street?: string;
   state?: string;
   city?: string;
+}
+
+/**
+ * Main Vendor Interface
+ */
+export interface IVendorPayoutAccount {
+  payoutsBlockedBy?: Types.ObjectId;
+  payoutsBlockedReason?: string;
+  payoutsEnabled: boolean;
+  chargesEnabled: boolean;
+  payoutsBlocked: boolean;
+  payoutsBlockedAt?: Date;
+  isSetup: boolean;
 }
 
 /**

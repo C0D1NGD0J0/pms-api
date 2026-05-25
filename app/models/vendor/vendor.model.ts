@@ -24,6 +24,15 @@ const VendorSchema = new Schema<IVendorDocument>(
           ref: 'User',
           required: true,
         },
+        payoutAccount: {
+          isSetup: { type: Boolean, default: false },
+          payoutsEnabled: { type: Boolean, default: false },
+          chargesEnabled: { type: Boolean, default: false },
+          payoutsBlocked: { type: Boolean, default: false },
+          payoutsBlockedReason: { type: String },
+          payoutsBlockedAt: { type: Date },
+          payoutsBlockedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        },
       },
     ],
     companyName: {

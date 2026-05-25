@@ -20,10 +20,11 @@ import {
 } from '@shared/middlewares';
 
 const router = Router();
-router.use(isAuthenticated, basicLimiter());
+router.use(isAuthenticated);
 
 router.get(
   '/:cuid/vendors/stats',
+  basicLimiter(),
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   subscriptionEntitlements,
   requireFeature('vendorManagement'),
@@ -39,6 +40,7 @@ router.get(
 
 router.get(
   '/:cuid/filteredVendors',
+  basicLimiter(),
   requirePermission(PermissionResource.USER, PermissionAction.READ),
   subscriptionEntitlements,
   requireFeature('vendorManagement'),
@@ -55,6 +57,7 @@ router.get(
 // Single vendor details endpoint — vendors read their own record (mine), managers use any
 router.get(
   '/:cuid/vendor_details/:vuid',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.USER,
     PermissionAction.READ,
@@ -77,6 +80,7 @@ router.get(
 // Team members — managers use vendor:list:any; primary vendor uses vendor:list:mine
 router.get(
   '/:cuid/team_members/:vuid',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.VENDOR,
     PermissionAction.LIST,
@@ -99,6 +103,7 @@ router.get(
 // Get vendor business data for editing (primaryAccountHolderUserId only)
 router.get(
   '/:cuid/vendor/:vuid/edit',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.USER,
     PermissionAction.READ,
@@ -121,6 +126,7 @@ router.get(
 // Update team member profile fields (ADMIN/MANAGER or primaryAccountHolderUserId)
 router.patch(
   '/:cuid/vendor/:vuid/team_members/:uid',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.USER,
     PermissionAction.UPDATE,
@@ -147,6 +153,7 @@ router.patch(
 // Toggle team member active status (ADMIN/MANAGER or primaryAccountHolderUserId)
 router.patch(
   '/:cuid/vendor/:vuid/team_members/:uid/status',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.USER,
     PermissionAction.UPDATE,
@@ -173,6 +180,7 @@ router.patch(
 // Update vendor business details (primaryAccountHolderUserId only)
 router.patch(
   '/:cuid/vendor/:vuid',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.USER,
     PermissionAction.UPDATE,
@@ -200,6 +208,7 @@ router.patch(
 // Restricted to primary vendor account holders only
 router.post(
   '/:cuid/vendor/:vuid/payout_account/initiate',
+  basicLimiter(),
   requirePrimaryVendor,
   idempotency,
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
@@ -213,6 +222,7 @@ router.post(
 // Restricted to primary vendor account holders only
 router.get(
   '/:cuid/vendor/:vuid/payout_account/link',
+  basicLimiter(),
   requirePrimaryVendor,
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {
@@ -225,6 +235,7 @@ router.get(
 // Restricted to primary vendor account holders only
 router.post(
   '/:cuid/vendor/:vuid/payout_account/sync',
+  basicLimiter(),
   requirePrimaryVendor,
   idempotency,
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
@@ -238,6 +249,7 @@ router.post(
 // Restricted to primary vendor account holders only
 router.get(
   '/:cuid/vendor/:vuid/payout_account/dashboard',
+  basicLimiter(),
   requirePrimaryVendor,
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {

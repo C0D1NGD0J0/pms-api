@@ -7,6 +7,7 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { InvoiceStatus } from '@interfaces/invoice.interface';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
+import { StripeService } from '@services/external/stripe/stripe.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenanceInvoiceApprovedPayload, EventTypes } from '@interfaces/events.interface';
@@ -16,6 +17,7 @@ import {
   PaymentDAO,
   ProfileDAO,
   ClientDAO,
+  VendorDAO,
   LeaseDAO,
   UserDAO,
 } from '@dao/index';
@@ -34,10 +36,12 @@ interface IConstructor {
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
+  stripeService: StripeService;
   invoiceDAO: InvoiceDAO;
   profileDAO: ProfileDAO;
   paymentDAO: PaymentDAO;
   clientDAO: ClientDAO;
+  vendorDAO: VendorDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
@@ -49,10 +53,12 @@ export class MaintenancePaymentService {
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
   private readonly emitterService: EventEmitterService;
   private readonly subscriptionDAO: SubscriptionDAO;
+  private readonly stripeService: StripeService;
   private readonly invoiceDAO: InvoiceDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly paymentDAO: PaymentDAO;
   private readonly clientDAO: ClientDAO;
+  private readonly vendorDAO: VendorDAO;
   private readonly leaseDAO: LeaseDAO;
   private readonly userDAO: UserDAO;
 
@@ -62,10 +68,12 @@ export class MaintenancePaymentService {
     subscriptionPlanConfig,
     emitterService,
     subscriptionDAO,
+    stripeService,
     invoiceDAO,
     profileDAO,
     paymentDAO,
     clientDAO,
+    vendorDAO,
     leaseDAO,
     userDAO,
   }: IConstructor) {
@@ -75,10 +83,12 @@ export class MaintenancePaymentService {
     this.subscriptionPlanConfig = subscriptionPlanConfig;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
+    this.stripeService = stripeService;
     this.invoiceDAO = invoiceDAO;
     this.profileDAO = profileDAO;
     this.paymentDAO = paymentDAO;
     this.clientDAO = clientDAO;
+    this.vendorDAO = vendorDAO;
     this.leaseDAO = leaseDAO;
     this.userDAO = userDAO;
     this.emitterService.on(
@@ -247,21 +257,61 @@ export class MaintenancePaymentService {
       if (!vendorUser?.uid) {
         throw new NotFoundError({ message: 'Vendor user record not found.' });
       }
-      const vendorProcessor = await this.paymentProcessorDAO.findByVuid(vendorUser.uid, cuid);
+
+      // Global Stripe-level check — account frozen/closed affects all clients
+      const vendorProcessor = await this.paymentProcessorDAO.findByVuid(vendorUser.uid);
       if (!vendorProcessor?.accountId) {
         throw new BadRequestError({
           message:
             'Vendor has not set up their payout account. Ask them to complete Stripe Connect onboarding.',
         });
       }
-      if (!vendorProcessor.payoutsEnabled) {
+      if ((vendorProcessor as any).payoutsBlocked) {
+        throw new ForbiddenError({
+          message:
+            (vendorProcessor as any).payoutsBlockedReason ||
+            'Vendor payout account is globally blocked.',
+        });
+      }
+
+      // Per-client check — isSetup, enabled flags, and admin block from connectedClients
+      const vendorRecord = await this.vendorDAO.findFirst({
+        vuid: vendorUser.uid,
+        deletedAt: null,
+      });
+      const clientConn = vendorRecord?.connectedClients?.find((c: any) => c.cuid === cuid);
+      if (!clientConn?.payoutAccount?.isSetup || !clientConn?.payoutAccount?.payoutsEnabled) {
         throw new BadRequestError({
           message:
             'Vendor payout account is not yet verified. Ask them to complete their Stripe Connect setup.',
         });
       }
+      if (clientConn.payoutAccount.payoutsBlocked) {
+        throw new ForbiddenError({
+          message:
+            clientConn.payoutAccount.payoutsBlockedReason ||
+            'Vendor payouts are blocked for this account.',
+        });
+      }
 
       const currency = (invoice.currency ?? 'usd').toLowerCase();
+
+      // Hybrid funds check: passive flag first, active Stripe balance as fallback
+      if (!invoice.fundsAvailable) {
+        const balance = await this.stripeService.getConnectBalance(pmProcessor.accountId);
+        const availableEntry = balance.available.find((b) => b.currency === currency);
+        if (!availableEntry || availableEntry.amount < invoice.amountInCents) {
+          throw new BadRequestError({
+            message:
+              'Funds from the tenant payment have not yet settled in your account. Please try again in 1–2 business days.',
+          });
+        }
+        // Confirm live — flip flag so future calls skip the Stripe check
+        await this.invoiceDAO.updateById((invoice as any)._id.toString(), {
+          $set: { fundsAvailable: true, fundsAvailableAt: new Date() },
+        });
+      }
+
       const transferResult = await this.paymentGatewayService.createTransfer(
         IPaymentGatewayProvider.STRIPE,
         {

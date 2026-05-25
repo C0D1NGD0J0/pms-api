@@ -2,7 +2,12 @@ import Logger from 'bunyan';
 import { ClientSession, Types, Model } from 'mongoose';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { calcPercentage, createLogger, escapeRegExp } from '@utils/index';
-import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
+import {
+  IVendorPayoutAccount,
+  IVendorDocument,
+  NewVendor,
+  IVendor,
+} from '@interfaces/vendor.interface';
 
 import { BaseDAO } from './baseDAO';
 import { IFindOptions } from './interfaces/baseDAO.interface';
@@ -262,6 +267,55 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
       this.logger.error(`Error reconnecting vendor ${vendorId} to client ${cuid}: ${error}`);
       throw error;
     }
+  }
+
+  /**
+   * Sync per-client payout account status into the matching connectedClients entry.
+   * Uses the positional $ operator — requires both vuid and connectedClients.cuid in the filter.
+   */
+  async updateClientPayoutAccount(
+    vuid: string,
+    cuid: string,
+    data: Partial<Pick<IVendorPayoutAccount, 'isSetup' | 'payoutsEnabled' | 'chargesEnabled'>>
+  ): Promise<IVendorDocument | null> {
+    const $set: Record<string, any> = {};
+    for (const [k, v] of Object.entries(data)) {
+      $set[`connectedClients.$.payoutAccount.${k}`] = v;
+    }
+    return this.update({ vuid, 'connectedClients.cuid': cuid }, { $set });
+  }
+
+  /**
+   * Set or clear a per-client payout block on a vendor.
+   * Only affects the matching connectedClients entry — other clients are unaffected.
+   */
+  async setClientPayoutBlock(
+    vuid: string,
+    cuid: string,
+    blocked: boolean,
+    opts?: { reason?: string; blockedBy?: Types.ObjectId }
+  ): Promise<IVendorDocument | null> {
+    const updateOperation = blocked
+      ? {
+          $set: {
+            'connectedClients.$.payoutAccount.payoutsBlocked': true,
+            'connectedClients.$.payoutAccount.payoutsBlockedReason':
+              opts?.reason ?? 'Blocked by admin',
+            'connectedClients.$.payoutAccount.payoutsBlockedAt': new Date(),
+            ...(opts?.blockedBy
+              ? { 'connectedClients.$.payoutAccount.payoutsBlockedBy': opts.blockedBy }
+              : {}),
+          },
+        }
+      : {
+          $set: { 'connectedClients.$.payoutAccount.payoutsBlocked': false },
+          $unset: {
+            'connectedClients.$.payoutAccount.payoutsBlockedReason': '',
+            'connectedClients.$.payoutAccount.payoutsBlockedAt': '',
+            'connectedClients.$.payoutAccount.payoutsBlockedBy': '',
+          },
+        };
+    return this.update({ vuid, 'connectedClients.cuid': cuid }, updateOperation as any);
   }
 
   async getClientVendors(cuid: string): Promise<ListResultWithPagination<IVendorDocument[]>> {

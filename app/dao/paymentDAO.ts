@@ -1,8 +1,8 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { FilterQuery, Model } from 'mongoose';
-import { calcPercentage, createLogger, msToDays } from '@utils/index';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
+import { calcDaysElapsed, calcPercentage, createLogger, msToDays } from '@utils/index';
 import { PaymentRecordStatus, PaymentRecordType, IPaymentDocument } from '@interfaces/index';
 
 import { BaseDAO } from './baseDAO';
@@ -285,17 +285,26 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
           ? calcPercentage(onTimePayments.length, paymentsWithDueDate.length)
           : 0;
 
-      const delaysInDays = paymentsWithDueDate.map((p: any) => {
-        const dueDate = new Date(p.dueDate);
-        const paidDate = new Date(p.paidAt);
-        const diffMs = paidDate.getTime() - dueDate.getTime();
+      const overduePayments = allPayments.filter(
+        (p: any) =>
+          p.status === PaymentRecordStatus.OVERDUE ||
+          (p.status === PaymentRecordStatus.PENDING &&
+            p.dueDate &&
+            dayjs().isAfter(dayjs(p.dueDate)))
+      );
+
+      const paidDelays = paymentsWithDueDate.map((p: any) => {
+        const diffMs = new Date(p.paidAt).getTime() - new Date(p.dueDate).getTime();
         return Math.max(0, msToDays(diffMs));
       });
+      const overdueDelays = overduePayments
+        .filter((p: any) => p.dueDate)
+        .map((p: any) => calcDaysElapsed(new Date(p.dueDate)));
+
+      const allDelays = [...paidDelays, ...overdueDelays];
       const averagePaymentDelay =
-        delaysInDays.length > 0
-          ? Math.round(
-              delaysInDays.reduce((a: number, b: number) => a + b, 0) / delaysInDays.length
-            )
+        allDelays.length > 0
+          ? Math.round(allDelays.reduce((a: number, b: number) => a + b, 0) / allDelays.length)
           : 0;
 
       const historyLimit = options?.historyLimit || 50;

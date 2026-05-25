@@ -8,6 +8,7 @@ import { ProfileDAO } from '@dao/profileDAO';
 import { ClientSession, Types } from 'mongoose';
 import { UserCache } from '@caching/user.cache';
 import { VendorCache } from '@caching/vendor.cache';
+import { GeoCoderService } from '@services/external';
 import { PermissionService } from '@services/permission';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
@@ -15,6 +16,7 @@ import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { IVendorFilterOptions } from '@dao/interfaces/vendorDAO.interface';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import { PayoutAccountService } from '@services/payments/payoutAccount.service';
 import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
@@ -35,8 +37,10 @@ import {
 interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
   maintenanceRequestDAO: MaintenanceRequestDAO;
+  payoutAccountService: PayoutAccountService;
   paymentProcessorDAO: PaymentProcessorDAO;
   permissionService: PermissionService;
+  geoCoderService: GeoCoderService;
   vendorCache: VendorCache;
   profileDAO: ProfileDAO;
   userCache: UserCache;
@@ -54,7 +58,9 @@ export class VendorService {
   private vendorCache: VendorCache;
   private userCache: UserCache;
   private permissionService: PermissionService;
+  private geoCoderService: GeoCoderService;
   private paymentGatewayService: PaymentGatewayService;
+  private payoutAccountService: PayoutAccountService;
   private paymentProcessorDAO: PaymentProcessorDAO;
   private maintenanceRequestDAO: MaintenanceRequestDAO;
 
@@ -66,7 +72,9 @@ export class VendorService {
     vendorCache,
     userCache,
     permissionService,
+    geoCoderService,
     paymentGatewayService,
+    payoutAccountService,
     paymentProcessorDAO,
     maintenanceRequestDAO,
   }: IConstructor) {
@@ -77,7 +85,9 @@ export class VendorService {
     this.vendorCache = vendorCache;
     this.userCache = userCache;
     this.permissionService = permissionService;
+    this.geoCoderService = geoCoderService;
     this.paymentGatewayService = paymentGatewayService;
+    this.payoutAccountService = payoutAccountService;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.logger = createLogger('VendorService');
@@ -244,6 +254,34 @@ export class VendorService {
     session?: ClientSession
   ): Promise<ISuccessReturnData<IVendorDocument>> {
     try {
+      if (updateData.address?.fullAddress) {
+        const geoResult = await this.geoCoderService.parseLocation(updateData.address.fullAddress);
+        if (geoResult.success && geoResult.data) {
+          const { street, city, state, postCode, country, coordinates } = geoResult.data;
+          updateData.address = {
+            ...updateData.address,
+            street: street || updateData.address.street,
+            city: city || updateData.address.city,
+            state: state || updateData.address.state,
+            postCode: postCode || updateData.address.postCode,
+            country: country || updateData.address.country,
+            computedLocation: { type: 'Point', coordinates },
+          } as typeof updateData.address;
+        } else {
+          this.logger.warn(
+            `Could not geocode vendor address: "${updateData.address.fullAddress}" — saving without coordinates`
+          );
+        }
+      }
+
+      const rawBase = (updateData.serviceAreas as any)?.baseLocation;
+      if (rawBase && typeof rawBase === 'string') {
+        updateData.serviceAreas = {
+          ...(updateData.serviceAreas as any),
+          baseLocation: { address: rawBase },
+        } as typeof updateData.serviceAreas;
+      }
+
       const vendor = await this.vendorDAO.updateVendor(vendorId, updateData, session);
 
       if (!vendor) {
@@ -966,7 +1004,6 @@ export class VendorService {
 
   /**
    * Initiate payout account onboarding for a primary vendor.
-   * Creates the provider account and stores a PaymentProcessor record.
    * Guard: client.settings.vendorPayoutMode must be 'express'.
    */
   async initiatePayoutOnboarding(
@@ -983,44 +1020,19 @@ export class VendorService {
         });
       }
 
-      const vendor = await this.vendorDAO.findFirst({ vuid, cuid, deletedAt: null });
-      if (!vendor) throw new NotFoundError({ message: t('vendor.errors.notFound') });
-
-      // Idempotent: return existing account if already initiated
-      const existing = await this.paymentProcessorDAO.findByVuid(vuid, cuid);
+      // Idempotent: vendor has one Stripe account regardless of which client invited them
+      const existing = await this.paymentProcessorDAO.findByVuid(vuid);
       if (existing) {
+        // Ensure this client's connectedClients entry reflects the existing Stripe account status
+        await this.vendorDAO.updateClientPayoutAccount(vuid, cuid, {
+          isSetup: existing.detailsSubmitted || false,
+          payoutsEnabled: existing.payoutsEnabled || false,
+          chargesEnabled: existing.chargesEnabled || false,
+        });
         return { success: true, data: { accountId: existing.accountId } };
       }
 
-      const email = vendor.contactPerson?.email ?? '';
-
-      const result = await this.paymentGatewayService.createConnectAccount(
-        IPaymentGatewayProvider.STRIPE,
-        {
-          email,
-          country: (vendor.address as any)?.country || 'CA',
-          businessType: 'individual',
-          metadata: { vuid, cuid },
-          cuid,
-        }
-      );
-
-      if (!result.success || !result.data) {
-        throw new BadRequestError({ message: 'Failed to create payout account with provider.' });
-      }
-
-      await this.paymentProcessorDAO.upsertForVendor({
-        accountId: result.data.accountId,
-        chargesEnabled: result.data.chargesEnabled,
-        payoutsEnabled: result.data.payoutsEnabled,
-        detailsSubmitted: result.data.detailsSubmitted,
-        ownerType: 'vendor',
-        client: client._id as Types.ObjectId,
-        vuid,
-        cuid,
-      });
-
-      return { success: true, data: { accountId: result.data.accountId } };
+      return this.payoutAccountService.initiateVendorAccount(cuid, vuid);
     } catch (error: any) {
       this.logger.error({ error: error.message, cuid, vuid }, 'Error initiating payout onboarding');
       throw error;
@@ -1036,33 +1048,7 @@ export class VendorService {
     returnUrl: string,
     refreshUrl: string
   ): Promise<ISuccessReturnData<{ url: string }>> {
-    try {
-      const processor = await this.paymentProcessorDAO.findByVuid(vuid, cuid);
-      if (!processor) {
-        throw new NotFoundError({
-          message: 'Payout account not found. Please initiate onboarding first.',
-        });
-      }
-
-      const result = await this.paymentGatewayService.createKycOnboardingLink(
-        IPaymentGatewayProvider.STRIPE,
-        { accountId: processor.accountId, returnUrl, refreshUrl }
-      );
-
-      if (!result.success || !result.data) {
-        throw new BadRequestError({
-          message: result.message || 'Failed to generate onboarding link.',
-        });
-      }
-
-      return { success: true, data: { url: result.data.url } };
-    } catch (error: any) {
-      this.logger.error(
-        { error: error.message, cuid, vuid },
-        'Error getting payout onboarding link'
-      );
-      throw error;
-    }
+    return this.payoutAccountService.getVendorKycOnboardingLink(cuid, vuid, returnUrl, refreshUrl);
   }
 
   /**
@@ -1075,7 +1061,7 @@ export class VendorService {
     ISuccessReturnData<{ isSetup: boolean; payoutsEnabled: boolean; chargesEnabled: boolean }>
   > {
     try {
-      const processor = await this.paymentProcessorDAO.findByVuid(vuid, cuid);
+      const processor = await this.paymentProcessorDAO.findByVuid(vuid);
       if (!processor) {
         throw new NotFoundError({ message: 'Payout account not found.' });
       }
@@ -1101,6 +1087,13 @@ export class VendorService {
         ownerType: 'vendor',
         vuid,
         cuid,
+      });
+
+      // Sync per-client payout state into connectedClients
+      await this.vendorDAO.updateClientPayoutAccount(vuid, cuid, {
+        isSetup: account.details_submitted || false,
+        payoutsEnabled: account.payouts_enabled || false,
+        chargesEnabled: account.charges_enabled || false,
       });
 
       // Invalidate cached user data so /me returns fresh payoutAccount status
@@ -1138,38 +1131,6 @@ export class VendorService {
     cuid: string,
     vuid: string
   ): Promise<ISuccessReturnData<{ url: string }>> {
-    try {
-      const processor = await this.paymentProcessorDAO.findByVuid(vuid, cuid);
-      if (!processor) {
-        throw new NotFoundError({
-          message: 'Payout account not found.',
-        });
-      }
-
-      if (!processor.detailsSubmitted) {
-        throw new BadRequestError({
-          message: 'Payout account setup not complete.',
-        });
-      }
-
-      const result = await this.paymentGatewayService.createDashboardLoginLink(
-        IPaymentGatewayProvider.STRIPE,
-        processor.accountId
-      );
-
-      if (!result.success || !result.data) {
-        throw new BadRequestError({
-          message: result.message || 'Failed to generate dashboard link.',
-        });
-      }
-
-      return { success: true, data: { url: result.data.url } };
-    } catch (error: any) {
-      this.logger.error(
-        { error: error.message, cuid, vuid },
-        'Error getting payout dashboard link'
-      );
-      throw error;
-    }
+    return this.payoutAccountService.getVendorDashboardLink(cuid, vuid);
   }
 }

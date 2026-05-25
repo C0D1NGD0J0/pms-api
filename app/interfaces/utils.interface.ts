@@ -14,12 +14,14 @@ export enum MailType {
   MAINTENANCE_WORK_ORDER_REJECTED = 'MAINTENANCE_WORK_ORDER_REJECTED',
   MAINTENANCE_INVOICE_SUBMITTED = 'MAINTENANCE_INVOICE_SUBMITTED',
   MAINTENANCE_REQUEST_COMPLETED = 'MAINTENANCE_REQUEST_COMPLETED',
+  SUBSCRIPTION_RENEWAL_UPCOMING = 'SUBSCRIPTION_RENEWAL_UPCOMING',
   MAINTENANCE_REQUEST_ACCEPTED = 'MAINTENANCE_REQUEST_ACCEPTED',
   MAINTENANCE_REQUEST_ASSIGNED = 'MAINTENANCE_REQUEST_ASSIGNED',
   MAINTENANCE_REQUEST_DECLINED = 'MAINTENANCE_REQUEST_DECLINED',
   MAINTENANCE_INVOICE_APPROVED = 'MAINTENANCE_INVOICE_APPROVED',
   MAINTENANCE_INVOICE_REJECTED = 'MAINTENANCE_INVOICE_REJECTED',
   MAINTENANCE_REQUEST_CREATED = 'MAINTENANCE_REQUEST_CREATED',
+  MAINTENANCE_CHARGE_CREATED = 'MAINTENANCE_CHARGE_CREATED',
   LEASE_APPLICATION_UPDATE = 'LEASE_APPLICATION_UPDATE',
   PAYMENT_REQUEST_CREATED = 'PAYMENT_REQUEST_CREATED',
   LEASE_PAYMENT_REMINDER = 'LEASE_PAYMENT_REMINDER',
@@ -214,6 +216,21 @@ export interface ResourceInfo {
   actorId: string; //user who uploaded the file
 }
 
+export interface UploadResult {
+  mediatype?: 'image' | 'video' | 'document';
+  documentName?: string;
+  resourceName?: string;
+  resourceId: string;
+  fieldName: string;
+  publicuid: string;
+  mimeType?: string;
+  actorId?: string;
+  filename: string;
+  size?: number;
+  key?: string;
+  url: string;
+}
+
 export interface IPermissionCheck {
   context?: {
     clientId: string;
@@ -242,20 +259,6 @@ export type ExtractedMediaFile = {
   uploadedAt: Date;
   uploadedBy: string;
 };
-
-export interface UploadResult {
-  mediatype?: 'image' | 'video' | 'document';
-  documentName?: string;
-  resourceName?: string;
-  resourceId: string;
-  fieldName: string;
-  publicuid: string;
-  actorId?: string;
-  filename: string;
-  size?: number;
-  key?: string;
-  url: string;
-}
 
 export interface IPermissionConfig {
   resources: Record<
@@ -308,6 +311,13 @@ export interface IPaginationQuery {
   skip?: number;
 }
 
+export interface AppRequest extends Request {
+  scannedFiles?: ExtractedMediaFile[];
+  container: AwilixContainer;
+  context: IRequestContext;
+  rawBody: Buffer;
+}
+
 export interface UploadedFile {
   originalFileName?: string;
   fileSize?: number;
@@ -331,12 +341,6 @@ export type MulterFile =
       [fieldname: string]: Express.Multer.File[];
     }
   | undefined;
-
-export interface AppRequest extends Request {
-  container: AwilixContainer;
-  context: IRequestContext;
-  rawBody: Buffer;
-}
 
 export type AsyncRequestHandler = (
   req: AppRequest,

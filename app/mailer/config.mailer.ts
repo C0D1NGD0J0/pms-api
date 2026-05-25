@@ -141,6 +141,9 @@ export class MailService {
           'maintenance'
         );
         break;
+      case MailType.SUBSCRIPTION_RENEWAL_UPCOMING:
+        template = await this.buildTemplate('subscription-renewal', emailData, 'subscription');
+        break;
       case MailType.MAINTENANCE_REQUEST_ASSIGNED:
         template = await this.buildTemplate(
           'maintenance-request-assigned',
@@ -182,6 +185,9 @@ export class MailService {
           emailData,
           'maintenance'
         );
+        break;
+      case MailType.MAINTENANCE_CHARGE_CREATED:
+        template = await this.buildTemplate('maintenance-charge-created', emailData, 'maintenance');
         break;
       case MailType.PAYMENT_REQUEST_CREATED:
         template = await this.buildTemplate('payment-request', emailData, 'payment');
@@ -361,6 +367,7 @@ export class MailService {
       [MailType.MAINTENANCE_REQUEST_CREATED]: 'Maintenance Request Submitted',
       [MailType.MAINTENANCE_REQUEST_ASSIGNED]: 'Maintenance Request Assigned',
       [MailType.MAINTENANCE_REQUEST_DECLINED]: 'Maintenance Request Assignment Declined',
+      [MailType.MAINTENANCE_CHARGE_CREATED]: 'Maintenance Charge Added to Your Account',
       [MailType.MAINTENANCE_INVOICE_SUBMITTED]: 'Invoice Submitted for Review',
       [MailType.MAINTENANCE_INVOICE_APPROVED]: 'Invoice Approved',
       [MailType.MAINTENANCE_INVOICE_REJECTED]: 'Invoice Rejected',
@@ -370,6 +377,7 @@ export class MailService {
       [MailType.MAINTENANCE_WORK_ORDER_REJECTED]: 'Work Order Rejected — Revision Required',
       [MailType.MAINTENANCE_REQUEST_ACCEPTED]: 'Your Maintenance Request is Being Handled',
       [MailType.MAINTENANCE_REQUEST_COMPLETED]: 'Your Maintenance Request Has Been Completed',
+      [MailType.SUBSCRIPTION_RENEWAL_UPCOMING]: 'Upcoming Subscription Renewal',
     };
 
     return subjectMap[mailType] || subjectMap.default;

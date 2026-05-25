@@ -198,7 +198,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
               },
             },
             { path: 'property.id', select: 'pid name address.fullAddress fees.managementFees' },
-            { path: 'property.unitId', select: 'unitNumber' },
+            { path: 'property.unitId', select: 'unitNumber puid' },
           ],
         }),
         this.countDocuments(query),
@@ -217,6 +217,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         const propertyAddress = leaseObj.property?.id?.address?.fullAddress || 'N/A';
         const propertyName = leaseObj.property?.id?.name || 'Unknown Property';
         const unitNumber = leaseObj.property?.unitId?.unitNumber || null;
+        const unitPuid = leaseObj.property?.unitId?.puid || null;
 
         const { totalMonthlyRent } = computeLeaseMonthlyFees(leaseObj);
 
@@ -227,6 +228,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           tenantUid: tenant?._id?.toString() || '',
           propertyAddress,
           unitNumber,
+          unitPuid,
           rentAmount: totalMonthlyRent,
           currency: leaseObj.fees?.currency ?? 'USD',
           gracePeriodDays: leaseObj.fees?.lateFeeDays ?? 5,

@@ -301,14 +301,14 @@ export class InvitationController {
       });
     }
 
-    if (!req.body.scannedFiles) {
+    if (!req.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
         message: t('invitation.errors.noCsvFileUploaded'),
       });
     }
 
-    const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
+    const csvFile: ExtractedMediaFile = req.scannedFiles[0];
 
     if (mode === 'bulk_create') {
       const result = await this.invitationService.validateBulkUserCsv(cuid, csvFile, currentuser, {
@@ -325,14 +325,14 @@ export class InvitationController {
   importInvitationsFromCsv = async (req: AppRequest, res: Response) => {
     const { mode, send_notifications, password_length } = req.query;
 
-    if (!req.body.scannedFiles) {
+    if (!req.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
         message: t('invitation.errors.noCsvFileUploaded'),
       });
     }
 
-    const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
+    const csvFile: ExtractedMediaFile = req.scannedFiles[0];
 
     if (mode === 'bulk_create') {
       const result = await this.invitationService.importBulkUsersFromCsv(

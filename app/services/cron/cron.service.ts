@@ -47,40 +47,41 @@ export class CronService {
       metricsService,
     ].filter(Boolean);
 
-    this.registerAllCronJobs(services);
-
-    // Worker only: remove stale repeat schedules that have no registered handler.
-    // Must run after registration so the known-job list is complete.
-    if (process.env.PROCESS_TYPE === 'worker') {
-      setImmediate(() =>
-        this.cleanupUnregisteredJobs().catch((err) =>
-          this.log.error({ err }, 'CronService: failed to cleanup unregistered jobs')
+    // Async init: register jobs then clean up stale schedules
+    setImmediate(() =>
+      this.registerAllCronJobs(services)
+        .then(() => {
+          if (process.env.PROCESS_TYPE === 'worker') {
+            return this.cleanupUnregisteredJobs();
+          }
+        })
+        .catch((err) =>
+          this.log.error({ err }, 'CronService: failed during async cron initialisation')
         )
-      );
-    }
+    );
   }
 
   /**
    * Register cron jobs from all services
    */
-  private registerAllCronJobs(services: ICronProvider[]): void {
-    services.forEach((service) => {
+  private async registerAllCronJobs(services: ICronProvider[]): Promise<void> {
+    for (const service of services) {
       const serviceName = service.constructor.name;
 
       try {
         if (typeof service.getCronJobs !== 'function') {
           this.log.warn(`Service ${serviceName} does not implement getCronJobs()`);
-          return;
+          continue;
         }
 
-        const jobs = service.getCronJobs();
+        const jobs = await service.getCronJobs();
         jobs.forEach((job) => {
           this.registerCronJob(job);
         });
       } catch (error) {
         this.log.error(`Error registering cron jobs from ${serviceName}:`, error);
       }
-    });
+    }
 
     this.log.info(`${this.cronJobs.size} cron jobs registered across ${services.length} services`);
   }

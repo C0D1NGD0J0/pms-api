@@ -57,7 +57,7 @@ export class MediaUploadService {
       await this.handleDeletions(req, context);
 
       // Then handle uploads
-      const files = req.body.scannedFiles as ExtractedMediaFile[] | undefined;
+      const files = req.scannedFiles;
 
       if (!files || files.length === 0) {
         this.logger.debug('No files found in request');

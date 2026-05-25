@@ -362,6 +362,25 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async getPaymentIntentReceiptUrl(paymentIntentId: string): Promise<string | null> {
+    return (await this.getPaymentIntentChargeInfo(paymentIntentId)).receiptUrl;
+  }
+
+  async getPaymentIntentChargeInfo(
+    paymentIntentId: string
+  ): Promise<{ chargeId: string | null; receiptUrl: string | null }> {
+    try {
+      const pi = await this.stripe.paymentIntents.retrieve(paymentIntentId, {
+        expand: ['latest_charge'],
+      });
+      const charge = pi.latest_charge as Stripe.Charge | null;
+      return { chargeId: charge?.id ?? null, receiptUrl: charge?.receipt_url ?? null };
+    } catch (error) {
+      this.log.error({ error, paymentIntentId }, 'Error retrieving charge info from PaymentIntent');
+      return { chargeId: null, receiptUrl: null };
+    }
+  }
+
   async createRefund(params: {
     chargeId: string;
     amountInCents?: number;
@@ -994,6 +1013,73 @@ export class StripeService implements IPaymentProvider {
           stripeMessage: error?.message,
         },
         'Error creating Stripe setup checkout session'
+      );
+      throw error;
+    }
+  }
+
+  async createPaymentCheckoutSession(params: {
+    customerEmail: string;
+    lineItems: Array<{
+      name: string;
+      description: string;
+      amountInCents: number;
+      currency: string;
+    }>;
+    applicationFeeAmount: number;
+    destinationAccountId: string;
+    metadata: Record<string, string>;
+    successUrl: string;
+    cancelUrl: string;
+  }): Promise<Stripe.Checkout.Session> {
+    try {
+      const {
+        customerEmail,
+        lineItems,
+        applicationFeeAmount,
+        destinationAccountId,
+        metadata,
+        successUrl,
+        cancelUrl,
+      } = params;
+      const currency = lineItems[0]?.currency ?? 'usd';
+
+      const session = await this.stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        customer_email: customerEmail,
+        line_items: lineItems.map((item) => ({
+          price_data: {
+            currency: currency.toLowerCase(),
+            product_data: { name: item.name, description: item.description },
+            unit_amount: item.amountInCents,
+          },
+          quantity: 1,
+        })),
+        payment_intent_data: {
+          application_fee_amount: applicationFeeAmount,
+          transfer_data: { destination: destinationAccountId },
+          metadata,
+        },
+        metadata,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      });
+
+      this.log.info(
+        { sessionId: session.id, customerEmail, destinationAccountId },
+        'Created payment checkout session'
+      );
+      return session;
+    } catch (error: any) {
+      this.log.error(
+        {
+          customerEmail: params.customerEmail,
+          stripeType: error?.type,
+          stripeCode: error?.code,
+          stripeMessage: error?.message,
+        },
+        'Error creating Stripe payment checkout session'
       );
       throw error;
     }

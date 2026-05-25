@@ -15,6 +15,7 @@ import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { ExpenseService } from '@services/expense/expense.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
+import { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
@@ -313,6 +314,9 @@ const QueuesResources = {
 
 const UtilsResources = {
   // Lazy-loaded services to reduce memory footprint
+  serviceAreaService: asFunction(() => {
+    return new ServiceAreaService(Profile, Vendor);
+  }).singleton(),
   geoCoderService: asFunction(() => {
     return new GeoCoderService();
   }).singleton(),

@@ -1,6 +1,6 @@
 import fs from 'fs';
+import path from 'path';
 import Logger from 'bunyan';
-import { randomUUID } from 'crypto';
 import { Upload } from '@aws-sdk/lib-storage';
 import { envVariables } from '@shared/config';
 import { createLogger, retryAsync } from '@utils/index';
@@ -46,6 +46,24 @@ export class S3Service {
     });
   }
 
+  /**
+   * Builds a traceable, subdirectory-scoped S3 key.
+   * Pattern: {resourceName}/{resourceId}/{timestamp}_{safeName}.{ext}
+   *
+   * Examples:
+   *   maintenance/MRXYZ123/1748200000000_cracked-pipe.jpg
+   *   lease/L2025-LMQ3/1748200000000_lease-agreement.pdf
+   *   profile/uid123/1748200000000_avatar.png
+   */
+  private buildS3Key(file: UploadedFile, context: ResourceInfo): string {
+    const originalName = file.originalFileName || file.fileName || 'file';
+    const extFromName = path.extname(originalName).replace('.', '').toLowerCase();
+    const ext = extFromName || file.mimeType?.split('/')[1]?.toLowerCase() || 'bin';
+    const baseName = path.basename(originalName, path.extname(originalName));
+    const safeName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+    return `${context.resourceName}/${safeName}|||${context.resourceId}|||_${Date.now()}.${ext}`;
+  }
+
   async uploadFiles(files: UploadedFile[], context: ResourceInfo): Promise<UploadResult[]> {
     this.log.info(
       {
@@ -61,8 +79,7 @@ export class S3Service {
       try {
         this.log.debug(`Uploading file: ${file.fileName}`);
         const fileStream = fs.createReadStream(file.path);
-        const ext = file.mimeType?.split('/')[1] ?? 'bin';
-        const s3Key = `${context.resourceName}/${randomUUID()}.${ext}`;
+        const s3Key = this.buildS3Key(file, context);
 
         const params = {
           Bucket: this.bucketName,
@@ -88,6 +105,7 @@ export class S3Service {
         const result = await upload.done();
         this.log.info(`Successfully uploaded ${file.fileName} to S3`);
 
+        const rawMediatype = this.determineMediaType(file.mimeType);
         results.push({
           resourceId: context.resourceId,
           resourceName: context.resourceName,
@@ -97,7 +115,8 @@ export class S3Service {
           fieldName: file.fieldName.split('.')[0] || file.fieldName,
           filename: file.originalFileName || file.fileName,
           size: file.fileSize,
-          mediatype: this.determineMediaType(file.mimeType),
+          mimeType: file.mimeType,
+          mediatype: rawMediatype ?? 'document',
         });
       } catch (error) {
         // Log error but continue with other files

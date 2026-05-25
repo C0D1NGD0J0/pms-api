@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
+import { ISuccessReturnData } from '@interfaces/utils.interface';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import {
   AnthropicContentBlock,
@@ -34,30 +35,25 @@ interface IConstructor {
 
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
-const INVOICE_EXTRACTION_PROMPT = `You are an invoice data extractor for a property management system. Analyze the uploaded invoice document and extract structured data.
+const INVOICE_EXTRACTION_PROMPT = `You are an invoice data extractor for a property management system. Analyze the uploaded document and extract structured data.
 
 Rules:
 - All monetary values MUST be in cents (integer). $185.00 → 18500
 - If the invoice has line items, extract each one with description, quantity, unit price (cents), and total (cents)
 - If there are no clear line items, create a single line item from the total
 - Currency should be a 3-letter ISO code (default: USD)
-- Confidence is 0.0-1.0 based on how clearly you can read the document
+- Confidence is 0.0-1.0 based on how clearly the document contains invoice data
 - If a field is unreadable, omit it from the response
 - Do NOT invent data — only extract what is visible
+- If the document is NOT an invoice or quote (e.g. a recipe, letter, photo), set confidence to 0.0 and omit all other fields
 
-Respond ONLY with this JSON schema (no markdown, no explanation):
-{
-  "description": "Brief summary of what the invoice is for",
-  "amountInCents": 18500,
-  "currency": "USD",
-  "lineItems": [
-    { "description": "Faucet cartridge", "quantity": 1, "unitPriceInCents": 4500, "amountInCents": 4500 }
-  ],
-  "vendorName": "Company name if visible",
-  "invoiceNumber": "INV-123 if visible",
-  "invoiceDate": "2026-05-01 if visible",
-  "confidence": 0.92
-}`;
+CRITICAL: Your entire response must be raw JSON only. No markdown fences, no backticks, no explanation text before or after. Start your response with { and end with }.
+
+Success example:
+{"description":"Plumbing repair - faucet replacement","amountInCents":18500,"currency":"USD","lineItems":[{"description":"Faucet cartridge","quantity":1,"unitPriceInCents":4500,"amountInCents":4500}],"vendorName":"ABC Plumbing","invoiceNumber":"INV-123","invoiceDate":"2026-05-01","confidence":0.92}
+
+Not-an-invoice example:
+{"confidence":0.0}`;
 
 // ── Field length caps ─────────────────────────────────────────────────────────
 
@@ -91,10 +87,14 @@ export class InvoiceAIService {
   async extractInvoiceData(
     fileBuffer: Buffer,
     mimeType: string
-  ): Promise<IInvoiceExtractionResult | null> {
+  ): Promise<ISuccessReturnData<IInvoiceExtractionResult | null>> {
     if (!this.featureFlagService.isEnabled(FeatureFlag.AI_INVOICE_SCANNING)) {
       this.log.info('AI invoice scanning is disabled via feature flag');
-      return null;
+      return {
+        success: false,
+        data: null,
+        message: 'AI invoice scanning is not enabled for this account.',
+      };
     }
 
     if (activeVisionCalls >= MAX_CONCURRENT_VISION_CALLS) {
@@ -102,7 +102,11 @@ export class InvoiceAIService {
         { activeVisionCalls, limit: MAX_CONCURRENT_VISION_CALLS },
         'AI invoice scanning rate limit reached — rejecting call'
       );
-      return null;
+      return {
+        success: false,
+        data: null,
+        message: 'AI scanning is busy — please try again in a moment.',
+      };
     }
 
     activeVisionCalls++;
@@ -132,7 +136,6 @@ export class InvoiceAIService {
             },
           ];
 
-      // Append the extraction instruction as a text block
       contentBlocks.push({
         type: 'text',
         text: 'Extract the invoice data from this document.',
@@ -149,11 +152,40 @@ export class InvoiceAIService {
         'Invoice AI extraction complete'
       );
 
-      const parsed = JSON.parse(result.content);
-      return this.validateResult(parsed);
+      const start = result.content.indexOf('{');
+      const end = result.content.lastIndexOf('}');
+      if (start === -1 || end === -1 || end < start) {
+        this.log.error({ content: result.content }, 'AI response contained no JSON object');
+        return {
+          success: false,
+          data: null,
+          message: 'AI returned an unreadable response — please try again.',
+        };
+      }
+
+      const parsed = JSON.parse(result.content.slice(start, end + 1));
+      const validated = this.validateResult(parsed);
+
+      if (validated.confidence < 0.1) {
+        this.log.warn(
+          { confidence: validated.confidence },
+          'AI extraction: document does not appear to be an invoice'
+        );
+        return {
+          success: false,
+          data: null,
+          message: 'The uploaded document does not appear to be an invoice or quote.',
+        };
+      }
+
+      return { success: true, data: validated };
     } catch (error) {
       this.log.error({ error }, 'AI invoice extraction failed');
-      return null;
+      return {
+        success: false,
+        data: null,
+        message: 'Failed to extract invoice data — please try again.',
+      };
     } finally {
       activeVisionCalls--;
     }

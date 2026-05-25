@@ -73,7 +73,12 @@ export class AIService {
         { temperature: 0.2 }
       );
 
-      const parsed = JSON.parse(result.content);
+      // Strip markdown code fences the model occasionally wraps around JSON
+      const rawJson = result.content
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/, '')
+        .trim();
+      const parsed = JSON.parse(rawJson);
 
       // Validate returned values are valid enum members
       const category = Object.values(MaintenanceCategory).includes(parsed.suggestedCategory)
@@ -101,7 +106,13 @@ export class AIService {
         reasoning: rawReasoning.slice(0, MAX_REASONING_LEN),
       };
     } catch (error) {
-      this.log.error({ error }, 'AI maintenance triage failed — returning fallback');
+      this.log.error(
+        {
+          err: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+        'AI maintenance triage failed — returning fallback'
+      );
       return { ...FALLBACK_RESULT };
     }
   }

@@ -8,7 +8,14 @@ export enum InvoiceStatus {
   PENDING = 'pending',
 }
 
+export enum TenantPaymentStatus {
+  REFUNDED = 'refunded',
+  UNPAID = 'unpaid',
+  PAID = 'paid',
+}
+
 export interface IInvoice {
+  tenantPaymentStatus?: TenantPaymentStatus;
   vendorPayoutStatus?: 'pending' | 'paid';
   maintenanceRequestId: Types.ObjectId;
   vendorPayoutTransferId?: string;
@@ -16,7 +23,10 @@ export interface IInvoice {
   lineItems?: IInvoiceLineItem[];
   submittedBy: Types.ObjectId;
   source: IInvoiceSourceInfo;
+  fundsAvailable?: boolean;
   review?: IInvoiceReview;
+  fundsAvailableAt?: Date;
+  stripeChargeId?: string;
   amountInCents: number;
   status: InvoiceStatus;
   description: string;

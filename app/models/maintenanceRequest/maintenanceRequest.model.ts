@@ -121,6 +121,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
       confidence: { type: Number, min: 0, max: 1 },
       reasoning: { type: String },
       suggestedVendorId: { type: Schema.Types.ObjectId, ref: 'User' },
+      suggestedVendorName: { type: String },
       processedAt: { type: Date },
       modelUsed: { type: String },
       accepted: { type: Boolean },

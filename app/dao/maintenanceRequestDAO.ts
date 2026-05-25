@@ -36,16 +36,18 @@ export class MaintenanceRequestDAO
   ): ListResultWithPagination<IMaintenanceRequestDocument[]> {
     return this.list(filter, {
       ...pagination,
+      // Strip heavy fields not needed for list views
+      projection:
+        '-description -aiAnalysis -media -workOrderHistory -completionNotes ' +
+        '-pendingMaintenanceStatus -permissionToEnter -hasPet -tenantFeedback ' +
+        '-availabilityInfo -workOrder.scope -workOrder.lineItems ' +
+        '-workOrder.submittedBy -workOrder.reviewedBy -workOrder.notes ' +
+        '-workOrder.rejectionReason',
       populate: [
         { path: 'propertyId', select: 'address pid title' },
-        { path: 'invoiceId', select: 'status' },
+        { path: 'invoiceId', select: 'status amountInCents vendorPayoutStatus submittedAt invuid' },
         {
           path: 'vendorId',
-          select: 'email uid',
-          populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
-        },
-        {
-          path: 'tenantId',
           select: 'email uid',
           populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
         },

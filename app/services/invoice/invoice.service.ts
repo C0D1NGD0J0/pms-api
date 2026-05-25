@@ -5,6 +5,7 @@ import { createLogger } from '@utils/index';
 import { QueueFactory } from '@services/queue';
 import { MoneyUtils } from '@utils/money.utils';
 import { EventEmitterService } from '@services/index';
+import { SSEService } from '@services/sse/sse.service';
 import { ResourceContext } from '@interfaces/utils.interface';
 import { IPaymentPopulated } from '@interfaces/payments.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
@@ -47,6 +48,7 @@ interface IConstructor {
   mediaUploadService: MediaUploadService;
   emitterService: EventEmitterService;
   queueFactory: QueueFactory;
+  sseService: SSEService;
   paymentDAO: PaymentDAO;
 }
 
@@ -71,6 +73,7 @@ export class InvoiceService {
   private readonly log: Logger;
   private readonly paymentDAO: PaymentDAO;
   private readonly queueFactory: QueueFactory;
+  private readonly sseService: SSEService;
   private readonly emitterService: EventEmitterService;
   private readonly mediaUploadService: MediaUploadService;
   private readonly pdfGeneratorService: PdfGeneratorService;
@@ -81,6 +84,7 @@ export class InvoiceService {
     pdfGeneratorService,
     mediaUploadService,
     emitterService,
+    sseService,
     queueFactory,
     paymentDAO,
   }: IConstructor) {
@@ -89,6 +93,7 @@ export class InvoiceService {
     this.pdfGeneratorService = pdfGeneratorService;
     this.mediaUploadService = mediaUploadService;
     this.emitterService = emitterService;
+    this.sseService = sseService;
     this.queueFactory = queueFactory;
     this.paymentDAO = paymentDAO;
     this.setupEventListeners();
@@ -332,7 +337,7 @@ export class InvoiceService {
     }
 
     try {
-      await this.paymentDAO.update(
+      const updatedPayment = await this.paymentDAO.update(
         { pytuid },
         {
           $set: {
@@ -344,6 +349,19 @@ export class InvoiceService {
           },
         }
       );
+
+      if (updatedPayment?.cuid && payload.actorId) {
+        try {
+          await this.sseService.sendToUser(
+            payload.actorId,
+            updatedPayment.cuid,
+            { resource: 'invoice', action: 'document-attached', resourceUId: pytuid },
+            'resource-event'
+          );
+        } catch (sseErr) {
+          this.log.warn({ sseErr }, '[InvoiceService] SSE notify failed (non-fatal)');
+        }
+      }
 
       this.emitterService.emit(EventTypes.INVOICE_GENERATED, {
         jobId: 'upload-completed',

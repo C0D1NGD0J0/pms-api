@@ -1,6 +1,10 @@
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/index';
-import { IInvoiceDocument, InvoiceStatus } from '@interfaces/invoice.interface';
+import {
+  TenantPaymentStatus,
+  IInvoiceDocument,
+  InvoiceStatus,
+} from '@interfaces/invoice.interface';
 
 const InvoiceLineItemSchema = new Schema(
   {
@@ -105,6 +109,24 @@ const InvoiceSchema = new Schema<IInvoiceDocument>(
       enum: ['pending', 'paid'],
       default: 'pending',
     },
+    tenantPaymentStatus: {
+      type: String,
+      enum: Object.values(TenantPaymentStatus),
+      default: TenantPaymentStatus.UNPAID,
+    },
+    fundsAvailable: {
+      type: Boolean,
+      default: false,
+    },
+    fundsAvailableAt: {
+      type: Date,
+      default: null,
+    },
+    stripeChargeId: {
+      type: String,
+      default: null,
+      sparse: true,
+    },
     vendorPaidAt: { type: Date },
     vendorPayoutTransferId: { type: String, sparse: true },
   },
@@ -118,6 +140,7 @@ const InvoiceSchema = new Schema<IInvoiceDocument>(
 // Compound indexes
 InvoiceSchema.index({ cuid: 1, status: 1 });
 InvoiceSchema.index({ cuid: 1, maintenanceRequestId: 1 });
+InvoiceSchema.index({ vendorPayoutStatus: 1, tenantPaymentStatus: 1, fundsAvailable: 1 });
 
 const InvoiceModel = model<IInvoiceDocument>('Invoice', InvoiceSchema);
 

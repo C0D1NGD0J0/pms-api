@@ -2,7 +2,11 @@ import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
-import { IInvoiceDocument, InvoiceStatus } from '@interfaces/invoice.interface';
+import {
+  TenantPaymentStatus,
+  IInvoiceDocument,
+  InvoiceStatus,
+} from '@interfaces/invoice.interface';
 
 import { BaseDAO } from './baseDAO';
 
@@ -70,7 +74,7 @@ export class InvoiceDAO extends BaseDAO<IInvoiceDocument> {
     statuses: InvoiceStatus[]
   ): Promise<number> {
     try {
-      const result = await this.model.aggregate<{ total: number }>([
+      const result = await this.aggregate([
         {
           $match: {
             cuid,
@@ -81,9 +85,27 @@ export class InvoiceDAO extends BaseDAO<IInvoiceDocument> {
         },
         { $group: { _id: null, total: { $sum: '$amountInCents' } } },
       ]);
-      return result[0]?.total ?? 0;
+      return (result as unknown as Array<{ total: number }>)[0]?.total ?? 0;
     } catch (error: any) {
       this.log.error({ error }, 'Error summing vendor invoices');
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async findPendingFundsCheck(limit = 500): Promise<IInvoiceDocument[]> {
+    try {
+      const { items } = await this.list(
+        {
+          vendorPayoutStatus: 'pending',
+          tenantPaymentStatus: TenantPaymentStatus.PAID,
+          fundsAvailable: false,
+          isDeleted: false,
+        },
+        { limit, sort: { createdAt: 1 } }
+      );
+      return items;
+    } catch (error: any) {
+      this.log.error({ error }, 'Error finding invoices pending funds check');
       throw this.throwErrorHandler(error);
     }
   }

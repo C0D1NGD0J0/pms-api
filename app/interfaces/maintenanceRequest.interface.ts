@@ -163,17 +163,6 @@ export interface ITenantMaintenanceRequestView {
   title: string;
 }
 
-export interface IAIAnalysis {
-  suggestedPriority?: MaintenanceRequestPriority;
-  suggestedVendorId?: Types.ObjectId | string;
-  suggestedCategory?: MaintenanceCategory;
-  confidence?: number;
-  reasoning?: string;
-  processedAt?: Date;
-  modelUsed?: string;
-  accepted?: boolean; // true = PM accepted, false = PM dismissed, undefined = pending review
-}
-
 export interface IUpdateMaintenancePayload {
   availabilityInfo?: { preferredDate?: string; options?: AvailabilityWindow[] };
   description?: { text: string; html?: string };
@@ -181,8 +170,22 @@ export interface IUpdateMaintenancePayload {
   category?: MaintenanceCategory;
   locationDescription?: string;
   permissionToEnter?: boolean;
+  /** S3 keys of media items the user wants removed */
+  mediaToRemove?: string[];
   hasPet?: boolean;
   title?: string;
+}
+
+export interface IAIAnalysis {
+  suggestedPriority?: MaintenanceRequestPriority;
+  suggestedVendorId?: Types.ObjectId | string;
+  suggestedCategory?: MaintenanceCategory;
+  suggestedVendorName?: string;
+  confidence?: number;
+  reasoning?: string;
+  processedAt?: Date;
+  modelUsed?: string;
+  accepted?: boolean; // true = PM accepted, false = PM dismissed, undefined = pending review
 }
 
 export interface IWorkOrder {
@@ -196,6 +199,14 @@ export interface IWorkOrder {
   submittedAt: Date;
   reviewedAt?: Date;
   notes?: string;
+}
+
+export interface ISubmitWorkOrderPayload {
+  lineItems?: IWorkOrderLineItem[];
+  estimatedCostInCents: number;
+  scheduledDate?: Date; // Vendor-confirmed visit date/time within tenant's availability window
+  notes?: string;
+  scope: string; // HTML from rich text editor — backend stores as { text, html }
 }
 
 export interface IMaintenanceStats {
@@ -250,13 +261,6 @@ export interface IRespondToAssignmentPayload {
   technician?: { name: string; phone?: string; email?: string }; // optional on accept
   action: 'accept' | 'decline';
   reason?: string; // required when action === 'decline'
-}
-
-export interface ISubmitWorkOrderPayload {
-  lineItems?: IWorkOrderLineItem[];
-  estimatedCostInCents: number;
-  notes?: string;
-  scope: string; // HTML from rich text editor — backend stores as { text, html }
 }
 
 export interface IMaintenanceRequestDocument extends IMaintenanceRequest, Document {

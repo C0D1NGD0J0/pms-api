@@ -16,6 +16,7 @@ export enum EventTypes {
   MAINTENANCE_WORK_ORDER_APPROVED = 'maintenance:work_order:approved',
   MAINTENANCE_WORK_ORDER_REJECTED = 'maintenance:work_order:rejected',
   PAYMENT_DISPUTE_REVERSAL_FAILED = 'payment:dispute:reversal:failed',
+  MAINTENANCE_AI_TRIAGE_COMPLETED = 'maintenance:ai:triage:completed',
   PAYMENT_METHOD_SETUP_COMPLETED = 'payment:method:setup:completed',
   MAINTENANCE_FEEDBACK_SUBMITTED = 'maintenance:feedback:submitted',
   MAINTENANCE_REQUEST_WORK_DONE = 'maintenance:request:work_done',
@@ -30,6 +31,7 @@ export enum EventTypes {
   MAINTENANCE_INVOICE_REJECTED = 'maintenance:invoice:rejected',
   MAINTENANCE_REQUEST_CREATED = 'maintenance:request:created',
   MAINTENANCE_REQUEST_UPDATED = 'maintenance:request:updated',
+  MAINTENANCE_FUNDS_AVAILABLE = 'maintenance:funds:available',
   LEASE_ESIGNATURE_REQUESTED = 'lease:esignature:requested',
   LEASE_ESIGNATURE_COMPLETED = 'lease:esignature:completed',
   PAYMENT_PROCESSOR_VERIFIED = 'payment:processor:verified',
@@ -137,6 +139,7 @@ export type EventPayloadMap = {
   [EventTypes.USER_ARCHIVED]: UserArchivePayload;
   [EventTypes.USER_UNARCHIVED]: UserArchivePayload;
   [EventTypes.USER_DISCONNECTED]: UserDisconnectedPayload;
+  [EventTypes.MAINTENANCE_AI_TRIAGE_COMPLETED]: MaintenanceAITriageCompletedPayload;
   [EventTypes.MAINTENANCE_REQUEST_CREATED]: MaintenanceRequestCreatedPayload;
   [EventTypes.MAINTENANCE_REQUEST_ASSIGNED]: MaintenanceRequestAssignedPayload;
   [EventTypes.MAINTENANCE_REQUEST_ACCEPTED]: MaintenanceRequestAcceptedPayload;
@@ -167,6 +170,7 @@ export type EventPayloadMap = {
   [EventTypes.MAINTENANCE_CHARGE_CREATED]: MaintenanceChargeCreatedPayload;
   [EventTypes.MAINTENANCE_CHARGE_PAID]: MaintenanceChargePaidPayload;
   [EventTypes.MAINTENANCE_VENDOR_PAID]: MaintenanceVendorPaidPayload;
+  [EventTypes.MAINTENANCE_FUNDS_AVAILABLE]: MaintenanceFundsAvailablePayload;
   [EventTypes.INVOICE_GENERATED]: InvoiceGeneratedPayload;
   [EventTypes.PAYOUT_FAILED]: PayoutFailedPayload;
   [EventTypes.PAYOUT_PAID]: PayoutPaidPayload;
@@ -381,6 +385,16 @@ export interface MaintenanceRequestWorkDonePayload {
   cuid: string;
 }
 
+export interface MaintenanceRequestUpdatedPayload {
+  previousStatus: string;
+  propertyId?: string;
+  managedBy?: string;
+  requestId: string;
+  newStatus: string;
+  mruid: string;
+  cuid: string;
+}
+
 // Generic background job notification payload
 export type JobType =
   | 'csv_invitation'
@@ -431,6 +445,15 @@ export interface SubscriptionRenewalUpcomingPayload {
   cuid: string;
 }
 
+export interface MaintenanceWorkOrderSubmittedPayload {
+  estimatedCostInCents: number;
+  scheduledDate?: Date;
+  requestId: string;
+  vendorId: string;
+  mruid: string;
+  cuid: string;
+}
+
 export interface PayoutFailedPayload {
   amountInCents: number;
   failureCode?: string;
@@ -469,7 +492,6 @@ export interface EmailFailedPayload {
   subject: string;
   to: string;
 }
-
 export interface PaymentDisputeWonPayload {
   invoiceNumber: string;
   disputeId: string;
@@ -479,6 +501,7 @@ export interface PaymentDisputeWonPayload {
   amount: number;
   cuid: string;
 }
+
 export interface MaintenanceWorkOrderRejectedPayload {
   rejectionReason: string;
   rejectedBy: string;
@@ -550,20 +573,20 @@ export interface MaintenanceInvoiceSubmittedPayload {
   cuid: string;
 }
 
+export interface PaymentProcessorVerifiedPayload {
+  ownerType: 'client' | 'vendor' | null;
+  accountId: string;
+  verifiedAt: Date;
+  vuid?: string;
+  cuid: string;
+}
+
 export interface LeaseExpiredPayload {
   reason: 'terminated' | 'expired';
   tenantId: string;
   leaseId: string;
   expiredAt: Date;
   luid: string;
-  cuid: string;
-}
-
-export interface MaintenanceWorkOrderSubmittedPayload {
-  estimatedCostInCents: number;
-  requestId: string;
-  vendorId: string;
-  mruid: string;
   cuid: string;
 }
 
@@ -604,14 +627,6 @@ export interface PaymentOverduePayload {
   cuid: string;
 }
 
-export interface MaintenanceRequestUpdatedPayload {
-  previousStatus: string;
-  requestId: string;
-  newStatus: string;
-  mruid: string;
-  cuid: string;
-}
-
 export interface MaintenanceWorkOrderApprovedPayload {
   approvedBy: string;
   requestId: string;
@@ -624,6 +639,14 @@ export interface MaintenanceRequestAcceptedPayload {
   requestId: string;
   tenantId?: string;
   vendorId: string;
+  mruid: string;
+  cuid: string;
+}
+
+export interface MaintenanceChargePaidPayload {
+  amountInCents: number;
+  chargeId?: string;
+  pytuid: string;
   mruid: string;
   cuid: string;
 }
@@ -665,9 +688,9 @@ export interface PaymentSucceededPayload {
   paidAt: Date;
 }
 
-export interface MaintenanceChargePaidPayload {
+export interface MaintenanceFundsAvailablePayload {
   amountInCents: number;
-  pytuid: string;
+  invuid: string;
   mruid: string;
   cuid: string;
 }
@@ -705,9 +728,9 @@ export interface PdfGenerationFailedPayload {
   error: string;
 }
 
-export interface PaymentProcessorVerifiedPayload {
-  accountId: string;
-  verifiedAt: Date;
+export interface MaintenanceAITriageCompletedPayload {
+  tenantId: string;
+  mruid: string;
   cuid: string;
 }
 

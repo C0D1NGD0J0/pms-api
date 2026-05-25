@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/helpers';
@@ -7,8 +8,8 @@ import { NotificationCache } from '@caching/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
-import { NotificationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES } from '@utils/constants';
+import { NotificationDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { EventEmitterService, ProfileService, UserService, SSEService } from '@services/index';
 import {
   ISuccessReturnData,
@@ -31,6 +32,7 @@ import {
 } from '@interfaces/notification.interface';
 import {
   MaintenanceWorkOrderSubmittedPayload,
+  MaintenanceAITriageCompletedPayload,
   MaintenanceWorkOrderApprovedPayload,
   MaintenanceWorkOrderRejectedPayload,
   MaintenanceRequestCompletedPayload,
@@ -44,7 +46,9 @@ import {
   MaintenanceRequestDeclinedPayload,
   MaintenanceInvoiceApprovedPayload,
   MaintenanceInvoiceRejectedPayload,
+  MaintenanceRequestUpdatedPayload,
   MaintenanceRequestCreatedPayload,
+  MaintenanceFundsAvailablePayload,
   MaintenanceChargeCreatedPayload,
   PaymentRequestCreatedPayload,
   PaymentCancelledPayload,
@@ -60,6 +64,12 @@ import {
 
 import { getFormattedNotification, NotificationMessageKey } from './notificationMessages';
 
+const normalizeWorkOrderForEmail = (workOrder: any) => {
+  if (!workOrder) return workOrder;
+  const scope = typeof workOrder.scope === 'object' ? workOrder.scope.text : workOrder.scope;
+  return { ...workOrder, scope };
+};
+
 interface IConstructor {
   maintenanceRequestDAO: MaintenanceRequestDAO;
   notificationCache: NotificationCache;
@@ -67,6 +77,7 @@ interface IConstructor {
   notificationDAO: NotificationDAO;
   profileService: ProfileService;
   userService: UserService;
+  propertyDAO: PropertyDAO;
   emailQueue: EmailQueue;
   profileDAO: ProfileDAO;
   sseService: SSEService;
@@ -84,6 +95,7 @@ export class NotificationService {
   private readonly profileService: ProfileService;
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
+  private readonly propertyDAO: PropertyDAO;
   private readonly emailQueue: EmailQueue;
   private readonly userDAO: UserDAO;
   private readonly log: Logger;
@@ -95,6 +107,7 @@ export class NotificationService {
     emitterService,
     profileDAO,
     clientDAO,
+    propertyDAO,
     emailQueue,
     userDAO,
     userService,
@@ -103,6 +116,7 @@ export class NotificationService {
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
+    this.propertyDAO = propertyDAO;
     this.sseService = sseService;
     this.emailQueue = emailQueue;
     this.profileDAO = profileDAO;
@@ -1895,11 +1909,17 @@ export class NotificationService {
           shouldDisplay, // Client uses this to decide whether to show badge/list/toast
         };
 
+        const eventId =
+          notification.createdAt instanceof Date
+            ? notification.createdAt.toISOString()
+            : new Date().toISOString();
+
         await this.sseService.sendToUser(
           notification.recipient.toString(),
           notification.cuid,
           ssePayload,
-          'my-notifications'
+          'my-notifications',
+          eventId
         );
       } else if (notification.recipientType === 'announcement') {
         const notificationData = notification.toObject ? notification.toObject() : notification;
@@ -1909,7 +1929,18 @@ export class NotificationService {
           isInitial: false,
         };
 
-        await this.sseService.broadcastToClient(notification.cuid, ssePayload, 'announcements');
+        const eventId =
+          notification.createdAt instanceof Date
+            ? notification.createdAt.toISOString()
+            : new Date().toISOString();
+
+        await this.sseService.broadcastToClient(
+          notification.cuid,
+          ssePayload,
+          'announcements',
+          eventId,
+          notification.targetRoles
+        );
       }
     } catch (error) {
       this.log.error('Failed to publish notification to SSE', {
@@ -1971,7 +2002,10 @@ export class NotificationService {
         return true; // Allow unknown types by default
       }
 
-      const isAllowed = preferences[preferenceField] as boolean;
+      // Treat undefined as true — field may be absent on profiles created before
+      // the preference was added to the schema, and the schema default is true.
+      const rawValue = preferences[preferenceField];
+      const isAllowed = rawValue === undefined ? true : (rawValue as boolean);
 
       this.log.debug('User preference check completed', {
         userId,
@@ -2026,6 +2060,10 @@ export class NotificationService {
       this.handleMRCancelled.bind(this)
     );
     this.emitterService.on(
+      EventTypes.MAINTENANCE_REQUEST_UPDATED,
+      this.handleMRUpdatedByTenant.bind(this)
+    );
+    this.emitterService.on(
       EventTypes.MAINTENANCE_INVOICE_SUBMITTED,
       this.handleInvoiceSubmitted.bind(this)
     );
@@ -2040,6 +2078,10 @@ export class NotificationService {
     this.emitterService.on(
       EventTypes.MAINTENANCE_INVOICE_REJECTED,
       this.handleInvoiceRejected.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_FUNDS_AVAILABLE,
+      this.handleMaintenanceFundsAvailable.bind(this)
     );
     this.emitterService.on(
       EventTypes.MAINTENANCE_WORK_ORDER_SUBMITTED,
@@ -2074,6 +2116,10 @@ export class NotificationService {
     this.emitterService.on(
       EventTypes.SUBSCRIPTION_RENEWAL_UPCOMING,
       this.handleSubscriptionRenewalUpcoming.bind(this)
+    );
+    this.emitterService.on(
+      EventTypes.MAINTENANCE_AI_TRIAGE_COMPLETED,
+      this.handleAITriageCompleted.bind(this)
     );
   }
 
@@ -2466,6 +2512,60 @@ export class NotificationService {
     }
   }
 
+  private async handleMRUpdatedByTenant(payload: MaintenanceRequestUpdatedPayload): Promise<void> {
+    try {
+      const { cuid, mruid, managedBy, propertyId } = payload;
+
+      // Resolve recipient: MR's managedBy → property's managedBy → supervisor/accountAdmin
+      let recipientId = managedBy;
+
+      if (!recipientId && propertyId) {
+        const property = await this.propertyDAO.findFirst({
+          _id: new Types.ObjectId(propertyId),
+          deletedAt: null,
+        });
+        recipientId = property?.managedBy?.toString();
+      }
+
+      if (!recipientId) {
+        this.log.warn('No manager found for MR update notification, skipping', { mruid, cuid });
+        return;
+      }
+
+      const { title, message } = getFormattedNotification('maintenance.requestUpdatedByTenant', {
+        mruid,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipient: recipientId,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.LOW,
+        title,
+        message,
+        metadata: { mruid },
+      });
+
+      // Also notify the supervisor (or accountAdmin fallback) of the resolved recipient
+      const approvers = await this.findApprovers(recipientId, cuid);
+      for (const approverId of approvers) {
+        if (approverId === recipientId) continue;
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: approverId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.LOW,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      }
+    } catch (error) {
+      this.log.error('Error sending MR updated by tenant notification', { error, payload });
+    }
+  }
+
   private async handleInvoiceSubmitted(payload: MaintenanceInvoiceSubmittedPayload): Promise<void> {
     try {
       const { cuid, mruid, amount, currency } = payload;
@@ -2694,6 +2794,27 @@ export class NotificationService {
     }
   }
 
+  private async handleMaintenanceFundsAvailable(
+    payload: MaintenanceFundsAvailablePayload
+  ): Promise<void> {
+    try {
+      const { cuid, mruid } = payload;
+      const { title, message } = getFormattedNotification('maintenance.fundsAvailable', { mruid });
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        cuid,
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: ['admin', 'staff'],
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending funds available notification', { error, payload });
+    }
+  }
+
   private async handleWorkOrderSubmitted(
     payload: MaintenanceWorkOrderSubmittedPayload
   ): Promise<void> {
@@ -2720,15 +2841,16 @@ export class NotificationService {
       const { mruid, cuid, vendorId } = payload;
       const request = await this.maintenanceRequestDAO.getByMruid(mruid, cuid);
       if (request) {
+        const workOrder = normalizeWorkOrderForEmail((request as any).workOrder);
         // Email to PM (no specific address — resolved by mailer config)
         this.emailQueue.addToEmailQueue('maintenanceWorkOrderSubmitted', {
           to: '',
           emailType: MailType.MAINTENANCE_WORK_ORDER_SUBMITTED,
           subject: '',
-          data: { request, workOrder: (request as any).workOrder, vendorId },
+          data: { request, workOrder, vendorId },
         } as any);
 
-        // Email to tenant if applicable
+        // Email + optional in-app notification to tenant
         if (request.tenantId) {
           const tenantUser = await this.userDAO.findFirst({
             _id: request.tenantId,
@@ -2739,8 +2861,31 @@ export class NotificationService {
               to: tenantUser.email,
               emailType: MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT,
               subject: '',
-              data: { request, workOrder: (request as any).workOrder },
+              data: { request, workOrder },
             } as any);
+          }
+
+          // If the vendor confirmed a visit date, notify the tenant in-app
+          if (payload.scheduledDate) {
+            const formattedDate = dayjs(payload.scheduledDate).format('ddd, MMM D, YYYY h:mm A');
+
+            const { title, message } = getFormattedNotification(
+              'maintenance.vendorScheduledVisit',
+              {
+                mruid,
+                scheduledDate: formattedDate,
+              }
+            );
+            await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+              cuid,
+              type: NotificationTypeEnum.MAINTENANCE,
+              recipientType: RecipientTypeEnum.INDIVIDUAL,
+              recipient: request.tenantId.toString(),
+              priority: NotificationPriorityEnum.MEDIUM,
+              title,
+              message,
+              metadata: { mruid, scheduledDate: payload.scheduledDate },
+            });
           }
         }
       }
@@ -2789,7 +2934,11 @@ export class NotificationService {
           to: vendorUser.email,
           emailType: MailType.MAINTENANCE_WORK_ORDER_APPROVED,
           subject: '',
-          data: { request, workOrder: (request as any).workOrder, approvedBy: approvedByUser },
+          data: {
+            request,
+            workOrder: normalizeWorkOrderForEmail((request as any).workOrder),
+            approvedBy: approvedByUser,
+          },
         } as any);
       }
     } catch (err) {
@@ -2838,7 +2987,7 @@ export class NotificationService {
           subject: '',
           data: {
             request,
-            workOrder: (request as any).workOrder,
+            workOrder: normalizeWorkOrderForEmail((request as any).workOrder),
             rejectionReason,
             rejectedBy: rejectedByUser,
           },
@@ -2950,11 +3099,27 @@ export class NotificationService {
       await this.sseService.sendToUser(
         tenantId,
         cuid,
-        { paymentMethodId },
-        'payment-method-updated'
+        { resource: 'payment', action: 'payment-method-updated', resourceId: paymentMethodId },
+        'resource-event'
       );
     } catch (error) {
       this.log.error('Error sending payment-method-updated SSE', { error, payload });
+    }
+  }
+
+  private async handleAITriageCompleted(
+    payload: MaintenanceAITriageCompletedPayload
+  ): Promise<void> {
+    try {
+      const { tenantId, cuid, mruid } = payload;
+      await this.sseService.sendToUser(
+        tenantId,
+        cuid,
+        { resource: 'maintenance', action: 'ai-analysis-ready', resourceUId: mruid },
+        'resource-event'
+      );
+    } catch (error) {
+      this.log.error('Error sending ai-analysis-ready SSE', { error, payload });
     }
   }
 

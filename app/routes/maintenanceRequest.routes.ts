@@ -50,16 +50,17 @@ router.post(
   })
 );
 
-router.use(isAuthenticated, basicLimiter());
+router.use(isAuthenticated);
 router
   .route('/:cuid')
   .post(
+    basicLimiter(),
     requirePermission(PermissionResource.MAINTENANCE, PermissionAction.CREATE),
     requireActiveTenant('maintenanceRequests'),
     subscriptionEntitlements,
     requireFeature('MaintenanceRequestService'),
     idempotency,
-    diskUpload(['media[*].file']),
+    diskUpload(['media[*][file]']),
     scanFile,
     validateRequest({ params: UtilsValidations.cuid, body: MaintenanceValidations.createBody }),
     asyncWrapper(async (req: AppRequest, res) => {
@@ -112,6 +113,7 @@ router.get(
 
 router.patch(
   '/:cuid/:mruid/vendor_assignment',
+  basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
   requireFeature('MaintenanceRequestService'),
@@ -128,6 +130,7 @@ router.patch(
 
 router.patch(
   '/:cuid/:mruid/assignment',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
     PermissionAction.UPDATE,
@@ -148,6 +151,7 @@ router.patch(
 
 router.patch(
   '/:cuid/:mruid/status',
+  basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   requireActiveTenant('maintenanceRequests'),
   idempotency,
@@ -163,6 +167,7 @@ router.patch(
 
 router.patch(
   '/:cuid/:mruid/update_request',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
     PermissionAction.UPDATE,
@@ -170,6 +175,8 @@ router.patch(
   ),
   requireActiveTenant('maintenanceRequests'),
   idempotency,
+  diskUpload(['media[*][file]']),
+  scanFile,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
     body: MaintenanceValidations.updateBody,
@@ -182,6 +189,7 @@ router.patch(
 
 router.patch(
   '/:cuid/:mruid/mark_work_done',
+  basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   requireActiveTenant('maintenanceRequests'),
   idempotency,
@@ -197,6 +205,7 @@ router.patch(
 
 router.patch(
   '/:cuid/:mruid/finalize',
+  basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   idempotency,
   validateRequest({
@@ -210,6 +219,7 @@ router.patch(
 
 router.patch(
   '/:cuid/:mruid/tenant_feedback',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
     PermissionAction.UPDATE,
@@ -228,6 +238,7 @@ router.patch(
 
 router.patch(
   '/:cuid/:mruid/ai_suggestion/accept',
+  basicLimiter(),
   // Manager+ only — vendors/tenants are excluded via service-layer role check.
   // requirePermissionWithContext additionally restricts non-managers to their own resources.
   requirePermissionWithContext(
@@ -247,6 +258,7 @@ router.patch(
 
 router.patch(
   '/:cuid/:mruid/ai_suggestion/dismiss',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
     PermissionAction.UPDATE,
@@ -264,6 +276,7 @@ router.patch(
 
 router.patch(
   '/:cuid/:mruid/cancel_request',
+  basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   requireActiveTenant('maintenanceRequests'),
   idempotency,
@@ -279,6 +292,7 @@ router.patch(
 
 router.post(
   '/:cuid/:mruid/work_order',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
     PermissionAction.UPDATE,
@@ -299,6 +313,7 @@ router.post(
 
 router.patch(
   '/:cuid/:mruid/work_order_review',
+  basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
   requireFeature('MaintenanceRequestService'),
@@ -315,6 +330,7 @@ router.patch(
 
 router.post(
   '/:cuid/:mruid/scan_invoice',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
     PermissionAction.UPDATE,
@@ -322,7 +338,6 @@ router.post(
   ),
   subscriptionEntitlements,
   requireFeature('MaintenanceRequestService'),
-  idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
   }),
@@ -336,6 +351,7 @@ router.post(
 
 router.post(
   '/:cuid/:mruid/create_invoice',
+  basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
     PermissionAction.UPDATE,
@@ -356,6 +372,7 @@ router.post(
 
 router.patch(
   '/:cuid/:mruid/invoice_review',
+  basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
   requireFeature('MaintenanceRequestService'),
@@ -369,5 +386,34 @@ router.patch(
     return controller.reviewInvoice(req, res);
   })
 );
+
+// ── Dev-only: flush an idempotency key so the same form action can be retried ─
+if (process.env.NODE_ENV !== 'production') {
+  router.delete(
+    '/:cuid/dev/idempotency-key',
+    isAuthenticated,
+    asyncWrapper(async (req: AppRequest, res) => {
+      const { cuid } = req.params;
+      const { method = 'PATCH', routePath, idempotencyKey } = req.query as Record<string, string>;
+      if (!routePath || !idempotencyKey) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'routePath and idempotencyKey are required' });
+      }
+      const cache =
+        req.container.resolve<import('@caching/idempotency.cache').IdempotencyCache>(
+          'idempotencyCache'
+        );
+      await cache.deleteRouteKey(
+        method,
+        routePath,
+        req.context!.currentuser.sub,
+        cuid,
+        idempotencyKey
+      );
+      return res.status(200).json({ success: true, message: 'Idempotency key flushed' });
+    })
+  );
+}
 
 export default router;

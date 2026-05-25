@@ -193,6 +193,10 @@ export const NotificationMessages = {
       title: 'Maintenance Request Cancelled',
       message: 'Maintenance request {{mruid}} has been cancelled',
     },
+    requestUpdatedByTenant: {
+      title: 'Tenant Updated Service Request',
+      message: 'A tenant has updated the details of maintenance request {{mruid}}',
+    },
     invoiceSubmitted: {
       title: 'Invoice Submitted for Approval',
       message: 'A vendor has submitted an invoice of {{amount}} for request {{mruid}}',
@@ -226,6 +230,11 @@ export const NotificationMessages = {
     workOrderRejected: {
       title: 'Work Order Rejected',
       message: 'Your work order for request {{mruid}} was rejected',
+    },
+    fundsAvailable: {
+      title: 'Funds Ready for Vendor Payout',
+      message:
+        'Payment for maintenance request {{mruid}} has settled in your account. You can now pay the vendor.',
     },
   },
 
@@ -291,6 +300,8 @@ export type NotificationMessageKey =
   | 'maintenance.workOrderSubmitted'
   | 'maintenance.workOrderApproved'
   | 'maintenance.workOrderRejected'
+  | 'maintenance.vendorScheduledVisit'
+  | 'maintenance.fundsAvailable'
   | 'lease.pdfGenerationStarted'
   | 'lease.pdfGenerated'
   | 'lease.pdfGenerationFailed'

@@ -162,6 +162,12 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
             filter.createdAt.$gte = dayjs().subtract(30, 'days').toDate();
           }
         }
+        if (filters.since) {
+          filter.createdAt = {
+            ...((filter.createdAt as object) || {}),
+            $gt: new Date(filters.since),
+          };
+        }
       }
 
       const options = {

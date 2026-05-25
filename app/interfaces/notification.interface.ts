@@ -137,6 +137,18 @@ export interface ICreateNotificationRequest {
   title: string;
   cuid: string;
 }
+export interface INotificationFilters {
+  priority?: NotificationPriorityEnum | NotificationPriorityEnum[];
+  type?: NotificationTypeEnum | NotificationTypeEnum[];
+  recipientType?: RecipientTypeEnum;
+  resourceName?: ResourceContext;
+  last30days?: boolean;
+  resourceId?: string;
+  last7days?: boolean;
+  isRead?: boolean;
+  since?: string; // ISO timestamp — return only notifications created after this point (used for missed-message recovery on SSE reconnect)
+}
+
 export interface INotificationResponse {
   resourceInfo?: INotificationResource;
   priority: NotificationPriorityEnum;
@@ -155,17 +167,6 @@ export interface INotificationResponse {
   cuid: string;
   nuid: string;
   id: string;
-}
-
-export interface INotificationFilters {
-  priority?: NotificationPriorityEnum | NotificationPriorityEnum[];
-  type?: NotificationTypeEnum | NotificationTypeEnum[];
-  recipientType?: RecipientTypeEnum;
-  resourceName?: ResourceContext;
-  last30days?: boolean;
-  resourceId?: string;
-  last7days?: boolean;
-  isRead?: boolean;
 }
 
 /**

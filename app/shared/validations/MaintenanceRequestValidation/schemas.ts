@@ -152,7 +152,7 @@ export const MaintenanceSchemas = {
 
   assignmentBody: z
     .object({
-      action: z.enum(['accept', 'decline']),
+      action: z.enum(['accept', 'decline', 'abandon']),
       reason: z.string().max(500).optional(),
       technician: z
         .object({
@@ -181,12 +181,23 @@ export const MaintenanceSchemas = {
       )
       .optional(),
     notes: z.string().max(500).optional(),
+    scheduledDate: z
+      .string()
+      .datetime({ message: 'scheduledDate must be a valid ISO 8601 datetime' })
+      .refine((val) => new Date(val) > new Date(), {
+        message: 'Scheduled date must be in the future',
+      })
+      .optional(),
   }),
 
   workOrderReviewBody: z
     .object({
       action: z.enum(['approve', 'reject']),
-      rejectionReason: z.string().min(10, 'Provide at least 10 characters').max(500).optional(),
+      rejectionReason: z
+        .string()
+        .min(10, 'Provide a detailed reason of at least 10 characters')
+        .max(500)
+        .optional(),
     })
     .refine((d) => d.action !== 'reject' || !!d.rejectionReason, {
       message: 'Rejection reason is required when rejecting',
@@ -224,7 +235,7 @@ export const MaintenanceSchemas = {
       isBillable: z.boolean().optional(),
       rejectionReason: z
         .string()
-        .min(10, 'Please provide a reason of at least 10 characters')
+        .min(10, 'Please provide a detailed reason of at least 10 characters')
         .optional(),
     })
     .refine((d) => d.action !== 'reject' || !!d.rejectionReason, {
@@ -255,6 +266,18 @@ export const MaintenanceSchemas = {
             .optional(),
           options: z.array(z.nativeEnum(AvailabilityWindow)).optional().default([]),
         })
+        .optional(),
+      mediaToRemove: z
+        .union([
+          z.array(z.string().min(1)),
+          z.string().transform((s) => {
+            try {
+              return JSON.parse(s) as string[];
+            } catch {
+              return [];
+            }
+          }),
+        ])
         .optional(),
     })
     .refine((data) => Object.keys(data).length > 0, {

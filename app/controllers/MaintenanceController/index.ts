@@ -4,22 +4,41 @@ import { httpStatusCodes } from '@utils/index';
 import { BadRequestError } from '@shared/customErrors';
 import { InvoiceSource } from '@interfaces/maintenanceRequest.interface';
 import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
-import { MaintenanceRequestService, InvoiceAIService } from '@services/index';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
+import {
+  MaintenanceRequestService,
+  MaintenanceInvoiceService,
+  VendorSuggestionService,
+  InvoiceAIService,
+} from '@services/index';
+
+import { serializeMaintenanceRequestListItem, serializeMaintenanceRequest } from './serializers';
 
 interface IConstructor {
   maintenanceRequestService: MaintenanceRequestService;
+  maintenanceInvoiceService: MaintenanceInvoiceService;
+  vendorSuggestionService: VendorSuggestionService;
   mediaUploadService: MediaUploadService;
   invoiceAIService: InvoiceAIService;
 }
 
 export class MaintenanceController {
   private readonly maintenanceRequestService: MaintenanceRequestService;
+  private readonly maintenanceInvoiceService: MaintenanceInvoiceService;
+  private readonly vendorSuggestionService: VendorSuggestionService;
   private readonly mediaUploadService: MediaUploadService;
   private readonly invoiceAIService: InvoiceAIService;
 
-  constructor({ maintenanceRequestService, mediaUploadService, invoiceAIService }: IConstructor) {
+  constructor({
+    maintenanceRequestService,
+    maintenanceInvoiceService,
+    vendorSuggestionService,
+    mediaUploadService,
+    invoiceAIService,
+  }: IConstructor) {
     this.maintenanceRequestService = maintenanceRequestService;
+    this.maintenanceInvoiceService = maintenanceInvoiceService;
+    this.vendorSuggestionService = vendorSuggestionService;
     this.mediaUploadService = mediaUploadService;
     this.invoiceAIService = invoiceAIService;
   }
@@ -47,12 +66,18 @@ export class MaintenanceController {
       limit,
       sort,
     });
-    return res.status(httpStatusCodes.OK).json(result);
+    const role = req.context.currentuser!.client.role;
+    const items = (result.data?.items ?? []).map((item: any) =>
+      serializeMaintenanceRequestListItem(item, role)
+    );
+    return res.status(httpStatusCodes.OK).json({ ...result, data: { ...result.data, items } });
   }
 
   async getRequest(req: AppRequest, res: Response) {
     const result = await this.maintenanceRequestService.getRequest(req.context, req.params.mruid);
-    return res.status(httpStatusCodes.OK).json(result);
+    const role = req.context.currentuser!.client.role;
+    const serialized = serializeMaintenanceRequest(result.data, role);
+    return res.status(httpStatusCodes.OK).json({ ...result, data: serialized });
   }
 
   async getStats(req: AppRequest, res: Response) {
@@ -146,7 +171,7 @@ export class MaintenanceController {
   }
 
   async submitInvoice(req: AppRequest, res: Response) {
-    const result = await this.maintenanceRequestService.submitInvoice(
+    const result = await this.maintenanceInvoiceService.submitInvoice(
       req.context,
       req.params.mruid,
       req.body
@@ -164,7 +189,11 @@ export class MaintenanceController {
     const buffer = await fs.promises.readFile(file.path);
     fs.promises.unlink(file.path).catch(() => {}); // fire-and-forget — buffer already in memory
 
-    const scanResult = await this.invoiceAIService.extractInvoiceData(buffer, file.mimeType);
+    const scanResult = await this.invoiceAIService.extractInvoiceData(
+      buffer,
+      file.mimeType,
+      req.params.cuid
+    );
 
     if (!scanResult.success || !scanResult.data) {
       throw new BadRequestError({
@@ -179,7 +208,7 @@ export class MaintenanceController {
   }
 
   async reviewInvoice(req: AppRequest, res: Response) {
-    const result = await this.maintenanceRequestService.reviewInvoice(
+    const result = await this.maintenanceInvoiceService.reviewInvoice(
       req.context,
       req.params.mruid,
       req.body
@@ -188,7 +217,7 @@ export class MaintenanceController {
   }
 
   async submitWorkOrder(req: AppRequest, res: Response) {
-    const result = await this.maintenanceRequestService.submitWorkOrder(
+    const result = await this.maintenanceInvoiceService.submitWorkOrder(
       req.context,
       req.params.mruid,
       req.body
@@ -197,7 +226,7 @@ export class MaintenanceController {
   }
 
   async reviewWorkOrder(req: AppRequest, res: Response) {
-    const result = await this.maintenanceRequestService.reviewWorkOrder(
+    const result = await this.maintenanceInvoiceService.reviewWorkOrder(
       req.context,
       req.params.mruid,
       req.body
@@ -208,7 +237,7 @@ export class MaintenanceController {
   async handleWebhook(req: AppRequest, res: Response) {
     const source = req.params.source as InvoiceSource;
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
-    const result = await this.maintenanceRequestService.handleInvoiceWebhook(
+    const result = await this.maintenanceInvoiceService.handleInvoiceWebhook(
       source,
       rawBody,
       req.headers as Record<string, string>,
@@ -240,13 +269,13 @@ export class MaintenanceController {
 
   async acceptAISuggestion(req: AppRequest, res: Response) {
     const { mruid } = req.params;
-    const result = await this.maintenanceRequestService.acceptAISuggestion(req.context, mruid);
+    const result = await this.vendorSuggestionService.acceptAISuggestion(req.context, mruid);
     return res.status(httpStatusCodes.OK).json(result);
   }
 
   async dismissAISuggestion(req: AppRequest, res: Response) {
     const { mruid } = req.params;
-    const result = await this.maintenanceRequestService.dismissAISuggestion(req.context, mruid);
+    const result = await this.vendorSuggestionService.dismissAISuggestion(req.context, mruid);
     return res.status(httpStatusCodes.OK).json(result);
   }
 }

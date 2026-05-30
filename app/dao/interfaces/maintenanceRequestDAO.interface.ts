@@ -29,21 +29,24 @@ export interface IMaintenanceRequestDAO {
    */
   getByMruid(mruid: string, cuid: string): Promise<IMaintenanceRequestDocument | null>;
 
+  getVendorStatsBatch(vendorIds: string[]): Promise<Map<string, IVendorStats>>;
+
+  getVendorAvgRatingBatch(vendorIds: string[]): Promise<Map<string, number>>;
+
   /**
    * Get a vendor's active job queue (ASSIGNED + IN_PROGRESS) across all clients
    * Cross-cuid: vendors can work for multiple property managers
    */
   getVendorQueue(vendorId: string): Promise<IMaintenanceRequestDocument[]>;
-
   /**
    * Get a single request by mruid without cuid scoping
    * Used by webhook handlers where cuid is not available from the external source
    */
   findByMruid(mruid: string): Promise<IMaintenanceRequestDocument | null>;
-
   /**
    * Get performance stats for a vendor across all clients
    * Cross-cuid: vendors can work for multiple property managers
    */
   getVendorStats(vendorId: string): Promise<IVendorStats>;
+  getVendorAvgRating(vendorId: string): Promise<number>;
 }

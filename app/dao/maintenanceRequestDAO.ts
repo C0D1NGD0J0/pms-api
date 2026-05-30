@@ -195,6 +195,106 @@ export class MaintenanceRequestDAO
   }
 
   /**
+   * Batch version of getVendorStats — returns stats for all given vendor IDs
+   * in two aggregation queries instead of 2N individual ones.
+   */
+  async getVendorStatsBatch(vendorIds: string[]): Promise<Map<string, IVendorStats>> {
+    const result = new Map<string, IVendorStats>();
+    if (!vendorIds.length) return result;
+
+    const objectIds = vendorIds.map((id) => new Types.ObjectId(id));
+
+    const rows = await this.aggregate([
+      { $match: { vendorId: { $in: objectIds }, deletedAt: null } },
+      {
+        $facet: {
+          byStatus: [
+            { $group: { _id: { vendorId: '$vendorId', status: '$status' }, count: { $sum: 1 } } },
+          ],
+          avgCompletion: [
+            {
+              $match: {
+                status: MaintenanceRequestStatus.COMPLETED,
+                completedAt: { $exists: true },
+                assignedAt: { $exists: true },
+              },
+            },
+            {
+              $group: {
+                _id: '$vendorId',
+                avgDays: {
+                  $avg: { $divide: [{ $subtract: ['$completedAt', '$assignedAt'] }, 86400000] },
+                },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const raw = (rows[0] || {}) as any;
+
+    // Build avgDays lookup: vendorId → avgDays
+    const avgDaysMap = new Map<string, number>();
+    for (const row of raw.avgCompletion || []) {
+      avgDaysMap.set(row._id.toString(), row.avgDays);
+    }
+
+    // Build status counts per vendor
+    const statusCounts = new Map<string, Record<string, number>>();
+    for (const row of raw.byStatus || []) {
+      const vid = row._id.vendorId.toString();
+      if (!statusCounts.has(vid)) statusCounts.set(vid, {});
+      statusCounts.get(vid)![row._id.status] = row.count;
+    }
+
+    // Seed an empty entry for every requested vendor so callers always get a value
+    for (const id of vendorIds) {
+      const counts = statusCounts.get(id) || {};
+      const total = Object.values(counts as Record<string, number>).reduce((a, b) => a + b, 0);
+      result.set(id, {
+        total,
+        completed: counts[MaintenanceRequestStatus.COMPLETED] || 0,
+        inProgress: counts[MaintenanceRequestStatus.IN_PROGRESS] || 0,
+        assigned: counts[MaintenanceRequestStatus.ASSIGNED] || 0,
+        cancelled: counts[MaintenanceRequestStatus.CANCELLED] || 0,
+        avgCompletionDays: avgDaysMap.get(id),
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Batch version of getVendorAvgRating — returns average rating for all given
+   * vendor IDs in a single aggregation instead of N individual ones.
+   */
+  async getVendorAvgRatingBatch(vendorIds: string[]): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+    if (!vendorIds.length) return result;
+
+    const objectIds = vendorIds.map((id) => new Types.ObjectId(id));
+
+    const rows = await this.aggregate([
+      {
+        $match: {
+          vendorId: { $in: objectIds },
+          status: MaintenanceRequestStatus.COMPLETED,
+          'tenantFeedback.rating': { $exists: true, $ne: null },
+          deletedAt: null,
+        },
+      },
+      { $group: { _id: '$vendorId', avgRating: { $avg: '$tenantFeedback.rating' } } },
+    ]);
+
+    for (const row of rows as any[]) {
+      result.set(row._id.toString(), row.avgRating ?? 0);
+    }
+
+    return result;
+  }
+
+  /**
    * Average tenant feedback rating for a vendor across all completed requests.
    * Returns 0 if the vendor has no rated completions.
    */

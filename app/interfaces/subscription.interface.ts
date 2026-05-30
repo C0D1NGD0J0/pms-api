@@ -47,6 +47,8 @@ export interface ISubscriptionPlansConfig {
     leaseTemplates: boolean;
     vendorManagement: boolean;
     prioritySupport?: boolean;
+    aiTriage: boolean;
+    aiInvoiceScanning: boolean;
   };
   pricing: {
     monthly: {
@@ -63,6 +65,7 @@ export interface ISubscriptionPlansConfig {
     maxProperties: number;
     maxUnits: number;
     maxVendors: number;
+    manualRecordQuota?: number;
   };
   transactionFeePercent: number;
   disabledFeatures?: string[];
@@ -135,6 +138,8 @@ export interface ISubscription {
     leaseTemplates: boolean;
     vendorManagement: boolean;
     prioritySupport?: boolean;
+    aiTriage: boolean;
+    aiInvoiceScanning: boolean;
   };
   manualRecords?: {
     countThisPeriod: number;
@@ -168,6 +173,8 @@ export interface ISubscriptionEntitlements {
     leaseTemplates: boolean;
     vendorManagement: boolean;
     prioritySupport?: boolean;
+    aiTriage: boolean;
+    aiInvoiceScanning: boolean;
   };
   paymentFlow?: {
     requiresPayment: boolean;

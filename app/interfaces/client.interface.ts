@@ -20,7 +20,6 @@ export interface IClient {
     verifiedAt?: Date | null;
   };
   accountAdmin: Types.ObjectId | PopulatedAccountAdmin;
-  identification?: IClientIdentification | null;
   subscription: Types.ObjectId | null;
   companyProfile?: ICompanyProfile;
   dataProcessingConsent?: boolean;
@@ -67,20 +66,6 @@ export interface IClientDocument extends Document, IClient {
  */
 
 /**
- * Main Client Interface
- * Core client data structure
- */
-export interface IClientIdentification {
-  idType?: 'passport' | 'national-id' | 'drivers-license' | 'corporation-license';
-  dataProcessingConsent?: boolean;
-  expiryDate?: Date | null;
-  issueDate?: Date | null;
-  issuingState?: string;
-  authority?: string;
-  idNumber?: string;
-}
-
-/**
  * Client User Connections Interface
  * Represents the connection between a user and a client
  */
@@ -108,7 +93,6 @@ export interface ICompanyProfile {
   companyPhone?: string;
   companyEmail?: string;
   tradingName?: string;
-  industry?: string;
   website?: string;
 }
 

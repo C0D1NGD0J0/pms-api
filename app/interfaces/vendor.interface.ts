@@ -83,17 +83,6 @@ export interface IVendorDocument extends Document, IVendor {
 }
 
 /**
- * Vendor service areas
- */
-export interface VendorServiceAreas {
-  baseLocation?: {
-    address: string;
-    coordinates: [number, number]; // [longitude, latitude]
-  };
-  maxDistance: 10 | 15 | 25 | 50; // km
-}
-
-/**
  * Vendor insurance information
  */
 export interface VendorInsuranceInfo {
@@ -107,11 +96,17 @@ export interface VendorInsuranceInfo {
  * Vendor contact person information
  */
 export interface VendorContactPerson {
-  department?: string;
   jobTitle: string;
   email?: string;
   phone?: string;
   name: string;
+}
+
+/**
+ * Vendor service areas
+ */
+export interface VendorServiceAreas {
+  maxDistance: 10 | 15 | 25 | 50; // km
 }
 
 /**

@@ -30,21 +30,6 @@ const ClientSchema = new Schema<IClientDocument>(
       type: Boolean,
       default: false,
     },
-    identification: {
-      type: {
-        idType: {
-          type: String,
-          enum: ['passport', 'national-id', 'drivers-license', 'corporation-license'],
-        },
-        idNumber: { type: String, trim: true },
-        expiryDate: { type: Date },
-        issueDate: { type: Date },
-        authority: { type: String, trim: true },
-        issuingState: { type: String, trim: true },
-        dataProcessingConsent: { type: Boolean, default: false },
-      },
-      default: null,
-    },
     identityVerification: {
       sessionId: { type: String, select: false },
       sessionStatus: { type: String, enum: ['requires_input', 'stripe_verified'] },

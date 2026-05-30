@@ -106,6 +106,12 @@ export interface ICurrentUser {
     theme?: ThemePreference;
     timezone?: string;
   };
+  /**
+   * Feature flags from the client's subscription — available for ALL roles.
+   * Vendors and tenants use this instead of `subscription` (which is PM-only)
+   * to gate client-plan-dependent features (AI scanning, eSign, etc.).
+   */
+  clientEntitlements: ISubscriptionEntitlements['entitlements'];
   clients: IClientUserConnections[];
   fullname: string | null;
   permissions: string[];
@@ -123,6 +129,14 @@ export interface ICurrentUser {
  * Complete vendor profile and metrics
  */
 export interface IVendorDetailInfo {
+  address?: {
+    fullAddress: string;
+    street: string;
+    city: string;
+    state: string;
+    country: string;
+    postCode: string;
+  };
   insuranceInfo: {
     coverageAmount: number;
     expirationDate: Date | null;
@@ -144,7 +158,6 @@ export interface IVendorDetailInfo {
     chargesEnabled: boolean;
   };
   serviceAreas: {
-    baseLocation: string;
     maxDistance: number;
   };
   servicesOffered: Record<string, any>;
@@ -385,6 +398,21 @@ export interface ITenantFilterOptions extends IUserFilterOptions {
 }
 
 /**
+ * Vendor Team Member Response Interface
+ */
+export interface IVendorTeamMember
+  extends Pick<
+    IBaseUserProfile,
+    'displayName' | 'phoneNumber' | 'firstName' | 'isActive' | 'lastName' | 'email' | 'uid'
+  > {
+  lastLogin: Date | null;
+  isTeamMember: boolean;
+  joinedDate: Date;
+  role: string;
+  sub: string; // MongoDB _id as hex string — used to filter assignedTechnician.userId
+}
+
+/**
  * Filtered User Table Data
  * Lightweight user data for table display only
  */
@@ -443,20 +471,6 @@ export interface FilteredUserTenantInfo {
   leaseStatus?: string; // active, pending_signature, no_active_lease, etc.
   rentAmount?: number; // Monthly rent amount
   rentStatus?: string; // paid, overdue, pending, etc.
-}
-
-/**
- * Vendor Team Member Response Interface
- */
-export interface IVendorTeamMember
-  extends Pick<
-    IBaseUserProfile,
-    'displayName' | 'phoneNumber' | 'firstName' | 'isActive' | 'lastName' | 'email' | 'uid'
-  > {
-  lastLogin: Date | null;
-  isTeamMember: boolean;
-  joinedDate: Date;
-  role: string;
 }
 
 /**

@@ -236,17 +236,9 @@ export interface IEventBus {
   ): void;
 }
 
-export interface UnitBatchChangedPayload {
-  unitsCreated: number; // Number of units created
-  propertyPid: string; // Frontend-friendly property ID
-  unitsFailed: number; // Number of units that failed to create
-  propertyId: string; // MongoDB ObjectId as string
-  userId: string; // User who made the change
-  cuid: string; // Client ID
-}
-
 export interface MaintenanceInvoiceApprovedPayload {
   invoiceLineItems?: { description: string; amountInCents: number }[];
+  technicianId?: string;
   isBillable: boolean;
   approvedBy: string;
   requestId: string;
@@ -257,6 +249,15 @@ export interface MaintenanceInvoiceApprovedPayload {
   title: string;
   mruid: string;
   cuid: string;
+}
+
+export interface UnitBatchChangedPayload {
+  unitsCreated: number; // Number of units created
+  propertyPid: string; // Frontend-friendly property ID
+  unitsFailed: number; // Number of units that failed to create
+  propertyId: string; // MongoDB ObjectId as string
+  userId: string; // User who made the change
+  cuid: string; // Client ID
 }
 
 export interface LeaseRenewedPayload {
@@ -330,6 +331,17 @@ export interface LeaseRenewalRequestedPayload {
   cuid: string;
 }
 
+export interface MaintenanceRequestCompletedPayload {
+  technicianId?: string;
+  completedBy: string;
+  actualCost?: number;
+  requestId: string;
+  vendorId?: string;
+  tenantId: string;
+  mruid: string;
+  cuid: string;
+}
+
 export interface SystemErrorPayload {
   error: {
     message: string;
@@ -350,6 +362,26 @@ export interface PaymentDisputeCreatedPayload {
   pytuid: string;
   amount: number;
   reason: string;
+  cuid: string;
+}
+
+export interface MaintenanceWorkOrderRejectedPayload {
+  rejectionReason: string;
+  technicianId?: string;
+  rejectedBy: string;
+  requestId: string;
+  vendorId?: string;
+  mruid: string;
+  cuid: string;
+}
+
+export interface MaintenanceInvoiceRejectedPayload {
+  rejectionReason: string;
+  technicianId?: string;
+  rejectedBy: string;
+  requestId: string;
+  vendorId?: string;
+  mruid: string;
   cuid: string;
 }
 
@@ -406,22 +438,22 @@ export type JobType =
   | 'report_generation'
   | 'bulk_operation';
 
-export interface MaintenanceRequestCompletedPayload {
-  completedBy: string;
-  actualCost?: number;
-  requestId: string;
-  vendorId?: string;
-  tenantId: string;
-  mruid: string;
-  cuid: string;
-}
-
 export interface MaintenanceRequestAssignedPayload {
   scheduledDate?: Date;
   assignedBy: string;
   requestId: string;
   tenantId?: string;
   vendorId: string;
+  mruid: string;
+  cuid: string;
+}
+
+export interface MaintenanceRequestCancelledPayload {
+  technicianId?: string;
+  requestId: string;
+  vendorId?: string;
+  tenantId: string;
+  reason?: string;
   mruid: string;
   cuid: string;
 }
@@ -463,7 +495,6 @@ export interface PayoutFailedPayload {
   reason?: string;
   cuid: string;
 }
-
 export interface PaymentDisputeLostPayload {
   invoiceNumber: string;
   disputeId: string;
@@ -492,6 +523,7 @@ export interface EmailFailedPayload {
   subject: string;
   to: string;
 }
+
 export interface PaymentDisputeWonPayload {
   invoiceNumber: string;
   disputeId: string;
@@ -502,18 +534,9 @@ export interface PaymentDisputeWonPayload {
   cuid: string;
 }
 
-export interface MaintenanceWorkOrderRejectedPayload {
-  rejectionReason: string;
-  rejectedBy: string;
-  requestId: string;
-  vendorId?: string;
-  mruid: string;
-  cuid: string;
-}
-
-export interface MaintenanceInvoiceRejectedPayload {
-  rejectionReason: string;
-  rejectedBy: string;
+export interface MaintenanceWorkOrderApprovedPayload {
+  technicianId?: string;
+  approvedBy: string;
   requestId: string;
   vendorId?: string;
   mruid: string;
@@ -534,15 +557,6 @@ export interface PaymentDisputeReversalFailedPayload {
   currency: string;
   pytuid: string;
   amount: number;
-  cuid: string;
-}
-
-export interface MaintenanceRequestCancelledPayload {
-  requestId: string;
-  vendorId?: string;
-  tenantId: string;
-  reason?: string;
-  mruid: string;
   cuid: string;
 }
 
@@ -624,14 +638,6 @@ export interface PaymentOverduePayload {
   pytuid: string;
   amount: number;
   dueDate: Date;
-  cuid: string;
-}
-
-export interface MaintenanceWorkOrderApprovedPayload {
-  approvedBy: string;
-  requestId: string;
-  vendorId?: string;
-  mruid: string;
   cuid: string;
 }
 

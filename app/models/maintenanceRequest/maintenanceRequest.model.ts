@@ -122,6 +122,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
       reasoning: { type: String },
       suggestedVendorId: { type: Schema.Types.ObjectId, ref: 'User' },
       suggestedVendorName: { type: String },
+      suggestedVendorReasoning: { type: String },
       processedAt: { type: Date },
       modelUsed: { type: String },
       accepted: { type: Boolean },
@@ -161,6 +162,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
     isBillable: { type: Boolean, default: false },
     assignedTechnician: {
       type: {
+        _id: false,
         userId: { type: Schema.Types.ObjectId, ref: 'User' },
         name: { type: String, maxlength: 100 },
         phone: { type: String, maxlength: 20 },

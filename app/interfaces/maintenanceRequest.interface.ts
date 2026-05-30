@@ -136,6 +136,7 @@ export interface IMaintenanceFilters {
   status?: MaintenanceRequestStatus | MaintenanceRequestStatus[];
   priority?: MaintenanceRequestPriority;
   category?: MaintenanceCategory;
+  assignedTechnicianSub?: string; // MongoDB _id of technician; filters by assignedTechnician.userId
   managedByUid?: string; // user resource UID of the staff member managing the property
   isBillable?: boolean;
   vendorUid?: string; // user resource UID of vendor
@@ -144,6 +145,19 @@ export interface IMaintenanceFilters {
   dateTo?: string;
   puid?: string; // property unit resource UID
   pid?: string; // property resource UID
+}
+
+export interface IAIAnalysis {
+  suggestedPriority?: MaintenanceRequestPriority;
+  suggestedVendorId?: Types.ObjectId | string;
+  suggestedCategory?: MaintenanceCategory;
+  suggestedVendorReasoning?: string; // Claude's context-aware explanation for the vendor pick
+  suggestedVendorName?: string;
+  confidence?: number;
+  reasoning?: string;
+  processedAt?: Date;
+  modelUsed?: string;
+  accepted?: boolean; // true = PM accepted, false = PM dismissed, undefined = pending review
 }
 
 export interface ITenantMaintenanceRequestView {
@@ -174,18 +188,6 @@ export interface IUpdateMaintenancePayload {
   mediaToRemove?: string[];
   hasPet?: boolean;
   title?: string;
-}
-
-export interface IAIAnalysis {
-  suggestedPriority?: MaintenanceRequestPriority;
-  suggestedVendorId?: Types.ObjectId | string;
-  suggestedCategory?: MaintenanceCategory;
-  suggestedVendorName?: string;
-  confidence?: number;
-  reasoning?: string;
-  processedAt?: Date;
-  modelUsed?: string;
-  accepted?: boolean; // true = PM accepted, false = PM dismissed, undefined = pending review
 }
 
 export interface IWorkOrder {
@@ -236,6 +238,21 @@ export interface IInvoiceWebhookPayload {
   cuid: string;
 }
 
+export interface IRespondToAssignmentPayload {
+  technician?: { name: string; phone?: string; email?: string; userId?: string }; // optional on accept
+  action: 'accept' | 'decline';
+  reason?: string; // required when action === 'decline'
+}
+
+export interface IVendorSuggestion {
+  companyName: string;
+  reasoning?: string; // Claude's context-aware explanation (absent when AI is off or only 1 candidate)
+  reasons: string[];
+  vendorId: string;
+  score: number;
+  vuid: string;
+}
+
 export interface MaintenanceRequestMedia {
   status: MediaDocumentStatus;
   uploadedBy: Types.ObjectId;
@@ -255,12 +272,6 @@ export interface ISubmitInvoicePayload {
   description: string;
   currency?: string;
   amount: number;
-}
-
-export interface IRespondToAssignmentPayload {
-  technician?: { name: string; phone?: string; email?: string }; // optional on accept
-  action: 'accept' | 'decline';
-  reason?: string; // required when action === 'decline'
 }
 
 export interface IMaintenanceRequestDocument extends IMaintenanceRequest, Document {
@@ -291,14 +302,6 @@ export interface IMaintenanceTimelineStep {
 export interface IReviewInvoicePayload {
   action: 'approve' | 'reject';
   rejectionReason?: string; // required when action === 'reject'
-}
-
-export interface IVendorSuggestion {
-  companyName: string;
-  reasons: string[];
-  vendorId: string;
-  score: number;
-  vuid: string;
 }
 
 export interface IWorkOrderLineItem {

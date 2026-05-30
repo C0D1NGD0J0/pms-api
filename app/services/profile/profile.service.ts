@@ -115,7 +115,8 @@ export class ProfileService {
     profileId: string,
     cuid: string,
     vendorInfo: any,
-    userRole: IUserRoleType
+    userRole: IUserRoleType,
+    callerUserId: string
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
       if (userRole !== ROLES.VENDOR) {
@@ -139,8 +140,13 @@ export class ProfileService {
         });
       }
 
-      // Update the vendor entity with new information
-      await this.vendorService.updateVendorInfo(vendor._id.toString(), vendorInfo);
+      // Update the vendor entity with new information — ownership enforced in vendorService
+      await this.vendorService.updateVendorInfo(
+        vendor._id.toString(),
+        vendorInfo,
+        undefined,
+        callerUserId
+      );
 
       // Update profile vendorInfo to maintain reference (if needed)
       await this.ensureClientRoleInfo(profile.user.toString(), cuid);
@@ -548,7 +554,8 @@ export class ProfileService {
     profileId: string,
     userId: string,
     cuid: string,
-    userRole: IUserRoleType
+    userRole: IUserRoleType,
+    currentuser: ICurrentUser
   ): Promise<{ result: IProfileDocument | null; hasUpdates: boolean }> {
     const validation = ProfileValidations.profileUpdate.safeParse(profileData);
     if (!validation.success) {
@@ -569,7 +576,7 @@ export class ProfileService {
         });
       }
 
-      await this.userService.updateUserInfo(userId, userValidation.data);
+      await this.userService.updateUserInfo(userId, userValidation.data, currentuser);
       hasUpdates = true;
     }
 
@@ -643,7 +650,8 @@ export class ProfileService {
         profileId,
         cuid,
         profileData.vendorInfo,
-        userRole
+        userRole,
+        currentuser.sub
       );
       result = vendorResult.data;
       hasUpdates = true;
@@ -702,7 +710,8 @@ export class ProfileService {
         profileId,
         userId,
         cuid,
-        userRole
+        userRole,
+        context.currentuser!
       );
 
       const finalProfile =

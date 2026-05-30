@@ -395,7 +395,6 @@ export class ClientService {
         legalEntityName: client.companyProfile.legalEntityName,
         tradingName: client.companyProfile.tradingName,
         website: client.companyProfile.website,
-        industry: client.companyProfile.industry,
       };
     }
 
@@ -890,34 +889,6 @@ export class ClientService {
         'Account is already verified'
       );
       throw new BadRequestError({ message: 'Account is already verified' });
-    }
-
-    // Validate identification data
-    const identification = client.identification;
-    if (!identification) {
-      throw new BadRequestError({ message: 'Identification information is required' });
-    }
-
-    const VALID_ID_TYPES = ['passport', 'national-id', 'drivers-license', 'corporation-license'];
-    const verificationErrors: string[] = [];
-
-    if (!identification.idType || !VALID_ID_TYPES.includes(identification.idType)) {
-      verificationErrors.push('Invalid or missing ID type');
-    }
-    if (!identification.idNumber || identification.idNumber.trim() === '') {
-      verificationErrors.push('ID number is required');
-    }
-    if (!identification.dataProcessingConsent) {
-      verificationErrors.push('Data processing consent is required');
-    }
-    if (!identification.expiryDate || new Date(identification.expiryDate) <= new Date()) {
-      verificationErrors.push('Document has expired or expiry date is missing');
-    }
-
-    if (verificationErrors.length > 0) {
-      throw new BadRequestError({
-        message: `Verification failed: ${verificationErrors.join(', ')}`,
-      });
     }
 
     // Update client to verified status

@@ -759,7 +759,7 @@ export class SubscriptionService {
         },
         manualRecords: (() => {
           const count = subscription.manualRecords?.countThisPeriod ?? 0;
-          const quota = subscriptionPlanConfig.getManualRecordQuota();
+          const quota = subscriptionPlanConfig.getManualRecordQuota(subscription.planName);
           const feeCents = subscriptionPlanConfig.getManualRecordOverageFeeCents();
           const overageCount = Math.max(0, count - quota);
           return {
@@ -1635,7 +1635,7 @@ export class SubscriptionService {
         updateData.startDate = new Date(currentPeriodStart * 1000);
 
         // Charge overage for manual payment records from the previous period
-        const quota = subscriptionPlanConfig.getManualRecordQuota();
+        const quota = subscriptionPlanConfig.getManualRecordQuota(subscription.planName);
         const previousCount = subscription.manualRecords?.countThisPeriod ?? 0;
 
         if (previousCount > quota && subscription.billing?.customerId) {

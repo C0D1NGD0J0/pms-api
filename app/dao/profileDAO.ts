@@ -757,6 +757,26 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               },
             },
 
+            // Feature flags for every role — lets vendor/tenant portals gate
+            // client-plan-dependent features (AI, eSign, etc.) without leaking
+            // billing details (plan name, status, paymentFlow) to external users.
+            clientEntitlements: {
+              $ifNull: [
+                '$subscriptionInfo.entitlements',
+                {
+                  eSignature: false,
+                  MaintenanceRequestService: false,
+                  VisitorPassService: false,
+                  reportingAnalytics: false,
+                  leaseTemplates: false,
+                  vendorManagement: false,
+                  prioritySupport: false,
+                  aiTriage: false,
+                  aiInvoiceScanning: false,
+                },
+              ],
+            },
+
             // Payment processor status — only exposed for SUPER_ADMIN
             paymentProcessor: {
               $cond: {

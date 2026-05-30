@@ -4,15 +4,23 @@ import { t } from '@shared/languages';
 import { QueueFactory } from '@services/queue';
 import { UserCache } from '@caching/user.cache';
 import { EmailQueue, UserQueue } from '@queues/index';
+import { IVendor } from '@interfaces/vendor.interface';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { EventEmitterService, VendorService } from '@services/index';
+import { IClientUserConnections } from '@interfaces/client.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { PermissionService } from '@services/permission/permission.service';
-import { calcDaysElapsed, createLogger, JOB_NAME, daysInMs } from '@utils/index';
 import { LeaseExpiredPayload, IProfileDocument, EventTypes } from '@interfaces/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
+import {
+  assertRecordOwnership,
+  calcDaysElapsed,
+  createLogger,
+  JOB_NAME,
+  daysInMs,
+} from '@utils/index';
 import {
   MaintenanceRequestDAO,
   PropertyDAO,
@@ -759,13 +767,19 @@ export class UserService {
       registrationNumber: vendorInfo?.registrationNumber || '',
       taxId: vendorInfo?.taxId || '',
 
+      address: {
+        fullAddress: vendorInfo?.address?.fullAddress || '',
+        street: vendorInfo?.address?.street || '',
+        city: vendorInfo?.address?.city || '',
+        state: vendorInfo?.address?.state || '',
+        country: vendorInfo?.address?.country || '',
+        postCode: vendorInfo?.address?.postCode || '',
+      },
+
       // Services
       servicesOffered: vendorInfo?.servicesOffered || {},
 
-      // Service areas - baseLocation should be a string
       serviceAreas: {
-        baseLocation:
-          vendorInfo?.serviceAreas?.baseLocation?.address || vendorInfo?.address?.fullAddress || '',
         maxDistance: vendorInfo?.serviceAreas?.maxDistance || 25,
       },
 
@@ -851,7 +865,11 @@ export class UserService {
     };
   }
 
-  private generateVendorTags(vendorInfo: any, clientConnection: any): string[] {
+  private generateVendorTags(
+    vendorInfo: IVendor | null,
+    clientConnection: IClientUserConnections
+  ): string[] {
+    if (!vendorInfo) return [];
     const tags = [];
 
     if (vendorInfo.businessType) {
@@ -865,7 +883,7 @@ export class UserService {
       }
     }
 
-    if (vendorInfo.yearsInBusiness > 5) {
+    if ((vendorInfo.yearsInBusiness ?? 0) > 5) {
       tags.push('Established');
     }
 
@@ -876,7 +894,9 @@ export class UserService {
     }
 
     const services = vendorInfo.servicesOffered || {};
-    const activeServices = Object.keys(services).filter((key) => services[key]);
+    const activeServices = Object.keys(services).filter(
+      (key) => (services as Record<string, unknown>)[key]
+    );
     if (activeServices.length > 0) {
       tags.push(`${activeServices.length} Services`);
     }
@@ -1266,7 +1286,8 @@ export class UserService {
 
   async updateUserInfo(
     userId: string,
-    userInfo: { email?: string }
+    userInfo: { email?: string },
+    currentuser: ICurrentUser
   ): Promise<ISuccessReturnData<any>> {
     try {
       if (!userId) {
@@ -1278,6 +1299,12 @@ export class UserService {
       if (!existingUser) {
         throw new NotFoundError({ message: 'User not found' });
       }
+
+      // Ownership: currentuser.sub is the MongoDB _id; compare against the fetched user's _id
+      assertRecordOwnership(currentuser, existingUser._id, {
+        bypassRoles: ROLE_GROUPS.MANAGEMENT_ROLES,
+        errorMessage: 'You can only update your own account information.',
+      });
 
       // If email is being updated, check for uniqueness
       if (userInfo.email && userInfo.email !== existingUser.email) {

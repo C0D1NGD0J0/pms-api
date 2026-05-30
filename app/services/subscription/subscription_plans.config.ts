@@ -277,10 +277,17 @@ export class SubscriptionPlanConfig {
   }
 
   /**
-   * Free manual payment records allowed per billing period.
+   * Free manual payment records allowed per billing period for a given plan.
+   * Falls back to the top-level manualPaymentRecords.freeQuotaPerPeriod if the
+   * plan does not define its own quota.
    */
-  public getManualRecordQuota(): number {
-    return platformConfig.manualPaymentRecords?.freeQuotaPerPeriod ?? 25;
+  public getManualRecordQuota(planName: PlanName): number {
+    const config = this.getConfig(planName);
+    return (
+      config.limits.manualRecordQuota ??
+      platformConfig.manualPaymentRecords?.freeQuotaPerPeriod ??
+      25
+    );
   }
 
   /**

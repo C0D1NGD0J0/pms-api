@@ -1,7 +1,7 @@
 {
   "$schema": "./platform.config.schema.json",
   "version": "1.0.0",
-  "lastUpdated": "2026-05-11",
+  "lastUpdated": "2026-05-28",
   "description": "Platform configuration for subscription plans and payment gateway settings",
 
   "achPercentRate": 1.75,
@@ -80,7 +80,8 @@
       "limits": {
         "maxProperties": 3,
         "maxUnits": 10,
-        "maxVendors": -1
+        "maxVendors": -1,
+        "manualRecordQuota": 5
       },
       "features": {
         "eSignature": false,
@@ -88,7 +89,9 @@
         "VisitorPassService": false,
         "reportingAnalytics": false,
         "leaseTemplates": false,
-        "vendorManagement": false
+        "vendorManagement": false,
+        "aiTriage": false,
+        "aiInvoiceScanning": false
       },
       "featureList": ["Tenant management", "Rent collection"],
       "disabledFeatures": [
@@ -133,8 +136,9 @@
       },
       "limits": {
         "maxProperties": 15,
-        "maxUnits": 100,
-        "maxVendors": -1
+        "maxUnits": 50,
+        "maxVendors": -1,
+        "manualRecordQuota": 10
       },
       "features": {
         "eSignature": true,
@@ -142,7 +146,9 @@
         "VisitorPassService": true,
         "reportingAnalytics": false,
         "leaseTemplates": false,
-        "vendorManagement": true
+        "vendorManagement": true,
+        "aiTriage": true,
+        "aiInvoiceScanning": true
       },
       "featureList": [
         "Online payments & AutoPay",
@@ -185,8 +191,9 @@
       },
       "limits": {
         "maxProperties": 30,
-        "maxUnits": 300,
-        "maxVendors": -1
+        "maxUnits": 200,
+        "maxVendors": -1,
+        "manualRecordQuota": 25
       },
       "features": {
         "eSignature": true,
@@ -195,7 +202,9 @@
         "reportingAnalytics": true,
         "leaseTemplates": true,
         "vendorManagement": true,
-        "prioritySupport": true
+        "prioritySupport": true,
+        "aiTriage": true,
+        "aiInvoiceScanning": true
       },
       "featureList": [
         "Everything in Growth",

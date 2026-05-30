@@ -121,7 +121,7 @@
     },
     "vendor": {
       "property": ["read:assigned"],
-      "user": ["read:mine", "update:mine"],
+      "user": ["read:mine", "read:any", "update:mine"],
       "client": ["read:mine"],
       "maintenance": [
         "read:mine",

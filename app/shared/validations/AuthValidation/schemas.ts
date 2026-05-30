@@ -118,16 +118,6 @@ export const UserSignupSchema = z
           })
           .optional(),
         registrationNumber: z.string().min(1, 'Business registration number is required'),
-        identification: z
-          .object({
-            idType: z.enum(['passport', 'national-id', 'drivers-license', 'corporation-license']),
-            idNumber: z.string().min(1, 'ID number is required'),
-            authority: z.string().min(1, 'Issuing authority is required'),
-            issueDate: z.string().or(z.date()),
-            expiryDate: z.string().or(z.date()),
-            issuingState: z.string().min(1, 'Issuing state is required'),
-          })
-          .optional(),
       })
       .partial()
       .optional(),
@@ -198,16 +188,6 @@ export const ClientUpdateSchema = z.object({
     })
     .optional(),
   businessRegistrationNumber: z.string(),
-  identification: z
-    .object({
-      idType: z.enum(['passport', 'national-id', 'drivers-license', 'corporation-license']),
-      idNumber: z.string(),
-      authority: z.string(),
-      issueDate: z.string().or(z.date()),
-      expiryDate: z.string().or(z.date()),
-      issuingState: z.string(),
-    })
-    .optional(),
   userId: z.string().optional(),
   admin: z.string().optional(),
   subscription: z.string().optional(),
@@ -417,16 +397,6 @@ export const ClientSchema = z.object({
         })
         .optional(),
       businessRegistrationNumber: z.string(),
-      identification: z
-        .object({
-          idType: z.enum(['passport', 'national-id', 'drivers-license', 'corporation-license']),
-          idNumber: z.string(),
-          authority: z.string(),
-          issueDate: z.string().or(z.date()),
-          expiryDate: z.string().or(z.date()),
-          issuingState: z.string(),
-        })
-        .optional(),
     })
     .optional(),
 });

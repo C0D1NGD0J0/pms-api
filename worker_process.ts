@@ -12,6 +12,10 @@ class WorkerProcess {
   private pidManager = new PidManager('worker', this.log);
 
   async start(): Promise<void> {
+    // Register process-level error handlers immediately — before any async work —
+    // so errors during startup are also captured and logged rather than crashing silently.
+    this.registerShutdownHandlers();
+
     try {
       this.pidManager.check();
 
@@ -32,7 +36,6 @@ class WorkerProcess {
       );
 
       container.resolve('cronService');
-      this.registerShutdownHandlers();
     } catch (error) {
       this.log.error({ err: error }, '❌ Worker startup failed');
       process.exit(1);
@@ -42,6 +45,15 @@ class WorkerProcess {
   private registerShutdownHandlers(): void {
     process.on('SIGTERM', () => this.shutdown('SIGTERM'));
     process.on('SIGINT', () => this.shutdown('SIGINT'));
+
+    process.on('unhandledRejection', (reason) => {
+      this.log.error({ reason }, 'Worker: unhandled promise rejection');
+    });
+
+    process.on('uncaughtException', (err) => {
+      this.log.error({ err }, 'Worker: uncaught exception — shutting down');
+      this.shutdown('uncaughtException');
+    });
   }
 
   private async shutdown(signal: string): Promise<void> {

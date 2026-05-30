@@ -112,7 +112,9 @@ import {
 } from '@controllers/index';
 import {
   MaintenanceRequestService,
+  MaintenanceInvoiceService,
   MaintenancePaymentService,
+  VendorSuggestionService,
   PropertyApprovalService,
   InvoiceTemplateRenderer,
   InvitationCsvProcessor,
@@ -247,6 +249,8 @@ const ServiceResources = {
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
   dsarService: asClass(DSARService).singleton(),
   maintenanceRequestService: asClass(MaintenanceRequestService).singleton(),
+  vendorSuggestionService: asClass(VendorSuggestionService).singleton(),
+  maintenanceInvoiceService: asClass(MaintenanceInvoiceService).singleton(),
   metricsService: asClass(MetricsService).singleton(),
   expenseService: asClass(ExpenseService).singleton(),
   leaseTemplateService: asClass(LeaseTemplateService).singleton(),

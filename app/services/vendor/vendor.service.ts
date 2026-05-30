@@ -8,6 +8,7 @@ import { ProfileDAO } from '@dao/profileDAO';
 import { ClientSession, Types } from 'mongoose';
 import { UserCache } from '@caching/user.cache';
 import { VendorCache } from '@caching/vendor.cache';
+import { CurrentUser } from '@utils/currentUserRole';
 import { GeoCoderService } from '@services/external';
 import { PermissionService } from '@services/permission';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
@@ -251,9 +252,24 @@ export class VendorService {
   async updateVendorInfo(
     vendorId: string,
     updateData: Partial<IVendor>,
-    session?: ClientSession
+    session?: ClientSession,
+    callerUserId?: string
   ): Promise<ISuccessReturnData<IVendorDocument>> {
     try {
+      if (callerUserId) {
+        const existing = await this.vendorDAO.getVendorByVuid(vendorId);
+        if (existing) {
+          const clientConn = existing.connectedClients?.find(
+            (cc) => cc.primaryAccountHolderUserId?.toString() === callerUserId
+          );
+          if (!clientConn) {
+            throw new ForbiddenError({
+              message: 'Only primary account holders can update vendor business information.',
+            });
+          }
+        }
+      }
+
       if (updateData.address?.fullAddress) {
         const geoResult = await this.geoCoderService.parseLocation(updateData.address.fullAddress);
         if (geoResult.success && geoResult.data) {
@@ -274,23 +290,12 @@ export class VendorService {
         }
       }
 
-      const rawBase = (updateData.serviceAreas as any)?.baseLocation;
-      if (rawBase && typeof rawBase === 'string') {
-        updateData.serviceAreas = {
-          ...(updateData.serviceAreas as any),
-          baseLocation: { address: rawBase },
-        } as typeof updateData.serviceAreas;
-      }
-
       const vendor = await this.vendorDAO.updateVendor(vendorId, updateData, session);
-
       if (!vendor) {
         throw new NotFoundError({
           message: 'Vendor not found',
         });
       }
-
-      this.logger.info(`Vendor updated successfully: ${vendor.vuid}`);
 
       return {
         success: true,
@@ -512,8 +517,10 @@ export class VendorService {
       );
       const isPrimaryVendor =
         vendorConnection.primaryAccountHolderUserId.toString() === currentuser.sub.toString();
+      const primaryVendorUserId = vendorConnection.primaryAccountHolderUserId.toString();
+      const isTeamMember = CurrentUser.isVendorTeamMemberOf(currentuser, vuid, primaryVendorUserId);
 
-      if (!allowedRoles && !isPrimaryVendor) {
+      if (!allowedRoles && !isPrimaryVendor && !isTeamMember) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
             action: 'view',
@@ -562,6 +569,7 @@ export class VendorService {
 
         return {
           uid: member.uid,
+          sub: member._id.toString(),
           email: member.email,
           displayName:
             memberConnection?.clientDisplayName ||
@@ -577,33 +585,6 @@ export class VendorService {
           lastLogin: member.lastLogin || null,
         };
       });
-
-      // Get vendor entity and profile info for context
-      const vendorEntity = await this.getVendorByUserId(
-        vendorConnection.primaryAccountHolderUserId.toString()
-      );
-
-      // Get the primary account holder user for additional profile data
-      const primaryUser = await this.userDAO.getUserById(
-        vendorConnection.primaryAccountHolderUserId.toString(),
-        { populate: 'profile' }
-      );
-
-      const vendorProfile = (primaryUser?.profile as any) || {};
-      const _vendorInfo = {
-        vendorId: vendor.vuid,
-        companyName:
-          vendorEntity?.companyName ||
-          vendorProfile.personalInfo?.displayName ||
-          primaryUser?.email ||
-          'Unknown Company',
-        primaryContact:
-          vendorEntity?.contactPerson?.name ||
-          vendorProfile.personalInfo?.displayName ||
-          `${vendorProfile.personalInfo?.firstName || ''} ${vendorProfile.personalInfo?.lastName || ''}`.trim() ||
-          primaryUser?.email ||
-          'Unknown Contact',
-      };
 
       return {
         success: true,
@@ -708,13 +689,19 @@ export class VendorService {
         registrationNumber: vendor?.registrationNumber || '',
         taxId: vendor?.taxId || '',
 
+        address: {
+          fullAddress: vendor?.address?.fullAddress || '',
+          street: vendor?.address?.street || '',
+          city: vendor?.address?.city || '',
+          state: vendor?.address?.state || '',
+          country: vendor?.address?.country || '',
+          postCode: vendor?.address?.postCode || '',
+        },
+
         // Services
         servicesOffered: vendor?.servicesOffered || {},
 
-        // Service areas - baseLocation should be a string
         serviceAreas: {
-          baseLocation:
-            vendor?.serviceAreas?.baseLocation?.address || vendor?.address?.fullAddress || '',
           maxDistance: vendor?.serviceAreas?.maxDistance || 25,
         },
 

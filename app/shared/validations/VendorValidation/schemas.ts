@@ -35,19 +35,21 @@ const servicesOfferedSchema = z
     landscaping: z.boolean().default(false),
     cleaning: z.boolean().default(false),
     roofing: z.boolean().default(false),
-    flooring: z.boolean().default(false),
-    appliances: z.boolean().default(false),
-    pest_control: z.boolean().default(false),
+    pestControl: z.boolean().default(false),
+    applianceRepair: z.boolean().default(false),
     security: z.boolean().default(false),
-    general_maintenance: z.boolean().default(false),
+    maintenance: z.boolean().default(false),
+    other: z.boolean().default(false),
+  })
+  .refine((data) => Object.values(data).some(Boolean), {
+    message: 'At least one service must be selected',
   })
   .optional();
 
 // Service areas validation schema
 const serviceAreasSchema = z
   .object({
-    baseLocation: z.string().min(1, 'Base location is required').max(200),
-    maxDistance: z.number().min(1, 'Max distance must be at least 1 mile').max(500),
+    maxDistance: z.number().min(1, 'Max distance must be at least 1 km').max(500),
   })
   .optional();
 

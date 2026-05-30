@@ -9,11 +9,11 @@ import { PaymentService } from '@services/payments/payments.service';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { BoldSignService } from '@services/external/esignature/boldSign.service';
 import { SubscriptionService } from '@services/subscription/subscription.service';
-import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
 import { IInvoiceWebhookPayload, InvoiceSource } from '@interfaces/maintenanceRequest.interface';
+import { MaintenanceInvoiceService } from '@services/maintenanceRequest/maintenanceInvoice.service';
 
 interface IConstructor {
-  maintenanceRequestService: MaintenanceRequestService;
+  maintenanceInvoiceService: MaintenanceInvoiceService;
   subscriptionService: SubscriptionService;
   idempotencyCache: IdempotencyCache;
   boldSignService: BoldSignService;
@@ -31,7 +31,7 @@ export class WebhookController {
   private paymentService: PaymentService;
   private clientService: ClientService;
   private idempotencyCache: IdempotencyCache;
-  private maintenanceRequestService: MaintenanceRequestService;
+  private maintenanceInvoiceService: MaintenanceInvoiceService;
   private log: Logger;
 
   constructor({
@@ -42,7 +42,7 @@ export class WebhookController {
     paymentService,
     clientService,
     idempotencyCache,
-    maintenanceRequestService,
+    maintenanceInvoiceService,
   }: IConstructor) {
     this.leaseService = leaseService;
     this.stripeService = stripeService;
@@ -51,7 +51,7 @@ export class WebhookController {
     this.paymentService = paymentService;
     this.clientService = clientService;
     this.idempotencyCache = idempotencyCache;
-    this.maintenanceRequestService = maintenanceRequestService;
+    this.maintenanceInvoiceService = maintenanceInvoiceService;
     this.log = createLogger('WebhookController');
   }
 
@@ -357,7 +357,7 @@ export class WebhookController {
 
     res.status(200).json({ received: true });
 
-    this.maintenanceRequestService
+    this.maintenanceInvoiceService
       .handleInvoiceWebhook(source, rawBody, headers, payload)
       .catch((err: unknown) => {
         this.log.error('[WebhookController] invoice webhook processing error', err);

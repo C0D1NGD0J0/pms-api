@@ -1,8 +1,10 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
+import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { ISuccessReturnData } from '@interfaces/utils.interface';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
+import { SubscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import {
   AnthropicContentBlock,
   AnthropicService,
@@ -29,8 +31,10 @@ export interface IInvoiceExtractionResult {
 // ── Constructor ──────────────────────────────────────────────────────────────
 
 interface IConstructor {
+  subscriptionPlanConfig: SubscriptionPlanConfig;
   featureFlagService: FeatureFlagService;
   anthropicService: AnthropicService;
+  subscriptionDAO: SubscriptionDAO;
 }
 
 // ── Prompt ───────────────────────────────────────────────────────────────────
@@ -77,16 +81,26 @@ export class InvoiceAIService {
   private readonly log: Logger;
   private readonly anthropicService: AnthropicService;
   private readonly featureFlagService: FeatureFlagService;
+  private readonly subscriptionDAO: SubscriptionDAO;
+  private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
 
-  constructor({ anthropicService, featureFlagService }: IConstructor) {
+  constructor({
+    anthropicService,
+    featureFlagService,
+    subscriptionDAO,
+    subscriptionPlanConfig,
+  }: IConstructor) {
     this.log = createLogger('InvoiceAIService');
     this.anthropicService = anthropicService;
     this.featureFlagService = featureFlagService;
+    this.subscriptionDAO = subscriptionDAO;
+    this.subscriptionPlanConfig = subscriptionPlanConfig;
   }
 
   async extractInvoiceData(
     fileBuffer: Buffer,
-    mimeType: string
+    mimeType: string,
+    cuid: string
   ): Promise<ISuccessReturnData<IInvoiceExtractionResult | null>> {
     if (!this.featureFlagService.isEnabled(FeatureFlag.AI_INVOICE_SCANNING)) {
       this.log.info('AI invoice scanning is disabled via feature flag');
@@ -94,6 +108,17 @@ export class InvoiceAIService {
         success: false,
         data: null,
         message: 'AI invoice scanning is not enabled for this account.',
+      };
+    }
+
+    const subscription = await this.subscriptionDAO.findFirst({ cuid });
+    const planName = subscription?.planName ?? 'essential';
+    if (!this.subscriptionPlanConfig.hasFeature(planName, 'aiInvoiceScanning')) {
+      this.log.info({ planName }, 'AI invoice scanning not available on plan — skipping');
+      return {
+        success: false,
+        data: null,
+        message: 'AI invoice scanning is not available on your current plan.',
       };
     }
 

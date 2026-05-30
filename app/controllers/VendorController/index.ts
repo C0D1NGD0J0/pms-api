@@ -190,41 +190,16 @@ export class VendorController {
   };
 
   updateVendorDetails = async (req: AppRequest, res: Response): Promise<void> => {
-    const { cuid, vuid } = req.params;
+    const { vuid } = req.params;
     const updateData = req.body;
     const currentUser = req.context.currentuser!;
 
-    // Check if user is primary account holder for this vendor
-    const vendorDoc = await this.vendorService.getVendorById(vuid);
-    if (!vendorDoc) {
-      res.status(httpStatusCodes.NOT_FOUND).json({
-        success: false,
-        message: 'Vendor not found',
-      });
-      return;
-    }
-
-    // Find the client connection for this vendor
-    const clientConnection = vendorDoc.connectedClients?.find((cc: any) => cc.cuid === cuid);
-    if (!clientConnection) {
-      res.status(httpStatusCodes.NOT_FOUND).json({
-        success: false,
-        message: 'Vendor is not connected to this client',
-      });
-      return;
-    }
-
-    // Check if current user is the primary account holder
-    if (clientConnection.primaryAccountHolderUserId?.toString() !== currentUser.sub) {
-      res.status(httpStatusCodes.FORBIDDEN).json({
-        success: false,
-        message: 'Only primary account holders can update vendor business information',
-      });
-      return;
-    }
-
-    // Update vendor information
-    const result = await this.vendorService.updateVendorInfo(vuid, updateData);
+    const result = await this.vendorService.updateVendorInfo(
+      vuid,
+      updateData,
+      undefined,
+      currentUser.sub
+    );
 
     res.status(httpStatusCodes.OK).json(result);
   };

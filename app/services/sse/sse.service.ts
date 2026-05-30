@@ -181,7 +181,7 @@ export class SSEService {
           }
         }
       }
-      this.log.debug('Broadcast message to client', { cuid, sentCount, targetRoles });
+      this.log.info('Broadcast message to client', { cuid, sentCount, targetRoles });
     } catch (error) {
       this.log.error('Failed to broadcast to client', { error, cuid });
     }

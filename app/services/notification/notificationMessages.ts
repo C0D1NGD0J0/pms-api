@@ -125,6 +125,16 @@ export const NotificationMessages = {
       message:
         'A payment of {{amount}} could not be processed — please review and follow up with the tenant',
     },
+    failedTenant: {
+      title: 'Payment Could Not Be Processed',
+      message:
+        'Your payment of {{amount}} could not be processed. Please update your payment method or contact your property manager.',
+    },
+    overdueTenant: {
+      title: 'Rent Payment Overdue',
+      message:
+        'Your rent payment of {{amount}} was due on {{dueDate}} and is now overdue. Please make your payment as soon as possible to avoid late fees.',
+    },
     refunded: {
       title: 'Payment Refunded',
       message: 'A refund of {{amount}} has been issued',
@@ -231,6 +241,11 @@ export const NotificationMessages = {
       title: 'Work Order Rejected',
       message: 'Your work order for request {{mruid}} was rejected',
     },
+    chargePaid: {
+      title: 'Tenant Payment Received',
+      message:
+        'Tenant payment of {{amount}} for maintenance request {{mruid}} has been received. Funds will be available for vendor payout in 1–2 business days.',
+    },
     fundsAvailable: {
       title: 'Funds Ready for Vendor Payout',
       message:
@@ -301,6 +316,7 @@ export type NotificationMessageKey =
   | 'maintenance.workOrderApproved'
   | 'maintenance.workOrderRejected'
   | 'maintenance.vendorScheduledVisit'
+  | 'maintenance.chargePaid'
   | 'maintenance.fundsAvailable'
   | 'lease.pdfGenerationStarted'
   | 'lease.pdfGenerated'
@@ -318,7 +334,9 @@ export type NotificationMessageKey =
   | 'payment.payoutFailed'
   | 'payment.payoutPaid'
   | 'payment.invoiceOverdue'
-  | 'payment.subscriptionRenewalUpcoming';
+  | 'payment.subscriptionRenewalUpcoming'
+  | 'payment.failedTenant'
+  | 'payment.overdueTenant';
 
 /**
  * Helper function to get formatted notification message by key.

@@ -1894,7 +1894,11 @@ export class PropertyService {
         throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
       }
 
-      const cachedResult = await this.propertyCache.getLeaseableProperties(cuid, fetchUnits);
+      const cachedResult = await this.propertyCache.getLeaseableProperties(
+        cuid,
+        currentuser.sub,
+        fetchUnits
+      );
       if (cachedResult.success && cachedResult.data) {
         this.log.info('Returning leaseable properties from cache', { cuid, fetchUnits });
         return {
@@ -2031,7 +2035,12 @@ export class PropertyService {
       }
 
       // Cache the result (5 minutes TTL)
-      await this.propertyCache.cacheLeaseableProperties(cuid, fetchUnits, leaseableProperties);
+      await this.propertyCache.cacheLeaseableProperties(
+        cuid,
+        currentuser.sub,
+        fetchUnits,
+        leaseableProperties
+      );
 
       this.log.info(
         `Retrieved ${leaseableProperties.length} lease-able properties for client ${cuid}`,

@@ -50,6 +50,7 @@ import {
   MaintenanceRequestCreatedPayload,
   MaintenanceFundsAvailablePayload,
   MaintenanceChargeCreatedPayload,
+  MaintenanceChargePaidPayload,
   PaymentRequestCreatedPayload,
   PaymentCancelledPayload,
   PaymentSucceededPayload,
@@ -2080,6 +2081,10 @@ export class NotificationService {
       this.handleInvoiceRejected.bind(this)
     );
     this.emitterService.on(
+      EventTypes.MAINTENANCE_CHARGE_PAID,
+      this.handleMaintenanceChargePaid.bind(this)
+    );
+    this.emitterService.on(
       EventTypes.MAINTENANCE_FUNDS_AVAILABLE,
       this.handleMaintenanceFundsAvailable.bind(this)
     );
@@ -2176,7 +2181,7 @@ export class NotificationService {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: ['admin', 'staff'],
+        targetRoles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STAFF],
         priority: NotificationPriorityEnum.MEDIUM,
         title: nTitle,
         message,
@@ -2298,7 +2303,7 @@ export class NotificationService {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: ['admin', 'staff'],
+        targetRoles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STAFF],
         priority: NotificationPriorityEnum.LOW,
         title,
         message,
@@ -2340,7 +2345,7 @@ export class NotificationService {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: ['admin', 'staff'],
+        targetRoles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STAFF],
         priority: NotificationPriorityEnum.HIGH,
         title,
         message,
@@ -2379,7 +2384,7 @@ export class NotificationService {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: ['admin', 'staff'],
+        targetRoles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STAFF],
         priority: NotificationPriorityEnum.MEDIUM,
         title,
         message,
@@ -2410,11 +2415,11 @@ export class NotificationService {
 
   private async handleMRCompleted(payload: MaintenanceRequestCompletedPayload): Promise<void> {
     try {
-      const { cuid, mruid, tenantId } = payload;
+      const { cuid, mruid, tenantId, vendorId, technicianId } = payload;
+      const { title, message } = getFormattedNotification('maintenance.requestCompleted', {
+        mruid,
+      });
       if (tenantId) {
-        const { title, message } = getFormattedNotification('maintenance.requestCompleted', {
-          mruid,
-        });
         await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
           cuid,
           type: NotificationTypeEnum.MAINTENANCE,
@@ -2426,14 +2431,35 @@ export class NotificationService {
           metadata: { mruid },
         });
       }
-      const { title, message } = getFormattedNotification('maintenance.requestCompleted', {
-        mruid,
-      });
+      if (vendorId) {
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: vendorId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.LOW,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      }
+      if (technicianId && technicianId !== vendorId) {
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: technicianId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.LOW,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      }
       await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: ['admin', 'staff'],
+        targetRoles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STAFF],
         priority: NotificationPriorityEnum.LOW,
         title,
         message,
@@ -2469,7 +2495,7 @@ export class NotificationService {
 
   private async handleMRCancelled(payload: MaintenanceRequestCancelledPayload): Promise<void> {
     try {
-      const { cuid, mruid, tenantId, vendorId } = payload;
+      const { cuid, mruid, tenantId, vendorId, technicianId } = payload;
       const { title, message } = getFormattedNotification('maintenance.requestCancelled', {
         mruid,
       });
@@ -2497,11 +2523,23 @@ export class NotificationService {
           metadata: { mruid },
         });
       }
+      if (technicianId && technicianId !== vendorId) {
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: technicianId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.MEDIUM,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      }
       await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: ['admin', 'staff'],
+        targetRoles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STAFF],
         priority: NotificationPriorityEnum.LOW,
         title,
         message,
@@ -2578,7 +2616,7 @@ export class NotificationService {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: ['admin', 'staff'],
+        targetRoles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STAFF],
         priority: NotificationPriorityEnum.HIGH,
         title,
         message,
@@ -2608,7 +2646,17 @@ export class NotificationService {
   }
 
   private async handleInvoiceApproved(payload: MaintenanceInvoiceApprovedPayload): Promise<void> {
-    const { cuid, mruid, vendorId, tenantId, isBillable, amount, currency, approvedBy } = payload;
+    const {
+      cuid,
+      mruid,
+      vendorId,
+      technicianId,
+      tenantId,
+      isBillable,
+      amount,
+      currency,
+      approvedBy,
+    } = payload;
     const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
 
     // Notify vendor their invoice was approved
@@ -2653,6 +2701,30 @@ export class NotificationService {
           { err, mruid },
           'Failed to enqueue maintenanceInvoiceApproved email to vendor'
         );
+      }
+
+      if (technicianId && technicianId !== vendorId) {
+        try {
+          const { title, message } = getFormattedNotification('maintenance.invoiceApproved', {
+            mruid,
+            amount: fmt,
+          });
+          await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+            cuid,
+            type: NotificationTypeEnum.MAINTENANCE,
+            recipient: technicianId,
+            recipientType: RecipientTypeEnum.INDIVIDUAL,
+            priority: NotificationPriorityEnum.MEDIUM,
+            title,
+            message,
+            metadata: { mruid },
+          });
+        } catch (error) {
+          this.log.error('Error sending invoice approved notification to technician', {
+            error,
+            payload,
+          });
+        }
       }
     }
 
@@ -2753,7 +2825,7 @@ export class NotificationService {
 
   private async handleInvoiceRejected(payload: MaintenanceInvoiceRejectedPayload): Promise<void> {
     try {
-      const { cuid, mruid, vendorId } = payload;
+      const { cuid, mruid, vendorId, technicianId } = payload;
       if (!vendorId) return;
       const { title, message } = getFormattedNotification('maintenance.invoiceRejected', { mruid });
       await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
@@ -2766,6 +2838,18 @@ export class NotificationService {
         message,
         metadata: { mruid },
       });
+      if (technicianId && technicianId !== vendorId) {
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: technicianId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.MEDIUM,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      }
     } catch (error) {
       this.log.error('Error sending invoice rejected notification', { error, payload });
     }
@@ -2794,6 +2878,29 @@ export class NotificationService {
     }
   }
 
+  private async handleMaintenanceChargePaid(payload: MaintenanceChargePaidPayload): Promise<void> {
+    try {
+      const { cuid, mruid, amountInCents } = payload;
+      const fmt = MoneyUtils.formatCurrency(amountInCents, 'usd');
+      const { title, message } = getFormattedNotification('maintenance.chargePaid', {
+        amount: fmt,
+        mruid,
+      });
+      await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+        cuid,
+        type: NotificationTypeEnum.PAYMENT,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: [ROLES.ADMIN, ROLES.SUPER_ADMIN],
+        priority: NotificationPriorityEnum.HIGH,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      this.log.error('Error sending maintenance charge paid notification', { error, payload });
+    }
+  }
+
   private async handleMaintenanceFundsAvailable(
     payload: MaintenanceFundsAvailablePayload
   ): Promise<void> {
@@ -2804,7 +2911,7 @@ export class NotificationService {
         cuid,
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: ['admin', 'staff'],
+        targetRoles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STAFF],
         priority: NotificationPriorityEnum.MEDIUM,
         title,
         message,
@@ -2827,7 +2934,7 @@ export class NotificationService {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: ['admin', 'staff'],
+        targetRoles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STAFF],
         priority: NotificationPriorityEnum.MEDIUM,
         title,
         message,
@@ -2901,12 +3008,11 @@ export class NotificationService {
     payload: MaintenanceWorkOrderApprovedPayload
   ): Promise<void> {
     try {
-      const { cuid, mruid, vendorId } = payload;
+      const { cuid, mruid, vendorId, technicianId } = payload;
       if (!vendorId) return;
       const { title, message } = getFormattedNotification('maintenance.workOrderApproved', {
         mruid,
       });
-      // Individual notification to the primary vendor contact only — not broadcast to teammates
       await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
@@ -2917,6 +3023,18 @@ export class NotificationService {
         message,
         metadata: { mruid },
       });
+      if (technicianId && technicianId !== vendorId) {
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: technicianId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.MEDIUM,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      }
     } catch (error) {
       this.log.error('Error sending work order approved notification', { error, payload });
     }
@@ -2953,7 +3071,7 @@ export class NotificationService {
     payload: MaintenanceWorkOrderRejectedPayload
   ): Promise<void> {
     try {
-      const { cuid, mruid, vendorId } = payload;
+      const { cuid, mruid, vendorId, technicianId } = payload;
       if (!vendorId) return;
       const { title, message } = getFormattedNotification('maintenance.workOrderRejected', {
         mruid,
@@ -2968,6 +3086,18 @@ export class NotificationService {
         message,
         metadata: { mruid },
       });
+      if (technicianId && technicianId !== vendorId) {
+        await this.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+          cuid,
+          type: NotificationTypeEnum.MAINTENANCE,
+          recipient: technicianId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.MEDIUM,
+          title,
+          message,
+          metadata: { mruid },
+        });
+      }
     } catch (error) {
       this.log.error('Error sending work order rejected notification', { error, payload });
     }
@@ -3012,7 +3142,7 @@ export class NotificationService {
         cuid,
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-        targetRoles: [ROLES.SUPER_ADMIN],
+        targetRoles: [ROLES.ADMIN, ROLES.SUPER_ADMIN],
         priority: NotificationPriorityEnum.MEDIUM,
         title,
         message,
@@ -3025,8 +3155,10 @@ export class NotificationService {
 
   private async handlePaymentFailed(payload: PaymentFailedPayload): Promise<void> {
     try {
-      const { cuid } = payload;
-      const fmt = payload.amount ? MoneyUtils.formatCurrency(payload.amount) : '—';
+      const { cuid, amount, tenantId, pytuid } = payload;
+      const fmt = amount ? MoneyUtils.formatCurrency(amount) : '—';
+
+      // PM announcement
       const { title, message } = getFormattedNotification('payment.failed', { amount: fmt });
       await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         cuid,
@@ -3036,8 +3168,23 @@ export class NotificationService {
         priority: NotificationPriorityEnum.HIGH,
         title,
         message,
-        metadata: { pytuid: payload.pytuid, tenantId: payload.tenantId },
+        metadata: { pytuid, tenantId },
       });
+
+      // Tenant individual notification — tells them to update their payment method
+      if (tenantId) {
+        const tenantNotif = getFormattedNotification('payment.failedTenant', { amount: fmt });
+        await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+          cuid,
+          type: NotificationTypeEnum.PAYMENT,
+          recipient: tenantId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.HIGH,
+          title: tenantNotif.title,
+          message: tenantNotif.message,
+          metadata: { pytuid },
+        });
+      }
     } catch (error) {
       this.log.error('Error sending payment failed notification', { error, payload });
     }
@@ -3045,13 +3192,15 @@ export class NotificationService {
 
   private async handlePaymentOverdue(payload: PaymentOverduePayload): Promise<void> {
     try {
-      const { cuid } = payload;
+      const { cuid, tenantId } = payload;
       const fmt = MoneyUtils.formatCurrency(payload.amount || 0);
       const dueDateStr = new Date(payload.dueDate).toLocaleDateString('en-US', {
         month: 'long',
         day: 'numeric',
         year: 'numeric',
       });
+
+      // PM announcement
       const { title, message } = getFormattedNotification('payment.overdue', {
         amount: fmt,
         dueDate: dueDateStr,
@@ -3064,8 +3213,26 @@ export class NotificationService {
         priority: NotificationPriorityEnum.HIGH,
         title,
         message,
-        metadata: { pytuid: payload.pytuid, tenantId: payload.tenantId },
+        metadata: { pytuid: payload.pytuid, tenantId },
       });
+
+      // Tenant individual notification — prompts them to pay before late fees apply
+      if (tenantId) {
+        const tenantNotif = getFormattedNotification('payment.overdueTenant', {
+          amount: fmt,
+          dueDate: dueDateStr,
+        });
+        await this.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+          cuid,
+          type: NotificationTypeEnum.PAYMENT,
+          recipient: tenantId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.HIGH,
+          title: tenantNotif.title,
+          message: tenantNotif.message,
+          metadata: { pytuid: payload.pytuid },
+        });
+      }
     } catch (error) {
       this.log.error('Error sending payment overdue notification', { error, payload });
     }
@@ -3111,12 +3278,16 @@ export class NotificationService {
     payload: MaintenanceAITriageCompletedPayload
   ): Promise<void> {
     try {
-      const { tenantId, cuid, mruid } = payload;
-      await this.sseService.sendToUser(
-        tenantId,
+      const { cuid, mruid } = payload;
+
+      // Notify PM staff (admin + super-admin) so the detail page refreshes live.
+      // AI triage results are internal — the tenant does not need this signal.
+      await this.sseService.broadcastToClient(
         cuid,
         { resource: 'maintenance', action: 'ai-analysis-ready', resourceUId: mruid },
-        'resource-event'
+        'resource-event',
+        undefined,
+        [ROLES.ADMIN, ROLES.SUPER_ADMIN]
       );
     } catch (error) {
       this.log.error('Error sending ai-analysis-ready SSE', { error, payload });

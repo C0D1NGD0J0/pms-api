@@ -288,10 +288,18 @@ export class PaymentCronService implements ICronProvider {
         const nextMonthDue = today.add(1, 'month').date(lease.fees.rentDueDay).startOf('day');
 
         const candidates: dayjs.Dayjs[] = [];
-        if (!thisMonthDue.isBefore(leaseStart) && !thisMonthDue.isAfter(sevenDaysLater)) {
+        if (
+          !thisMonthDue.isBefore(today) &&
+          !thisMonthDue.isBefore(leaseStart) &&
+          !thisMonthDue.isAfter(sevenDaysLater)
+        ) {
           candidates.push(thisMonthDue);
         }
-        if (!nextMonthDue.isBefore(leaseStart) && !nextMonthDue.isAfter(sevenDaysLater)) {
+        if (
+          !nextMonthDue.isBefore(today) &&
+          !nextMonthDue.isBefore(leaseStart) &&
+          !nextMonthDue.isAfter(sevenDaysLater)
+        ) {
           candidates.push(nextMonthDue);
         }
 

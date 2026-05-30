@@ -5,7 +5,6 @@ import { Application } from 'express';
 import { ROLES } from '@shared/constants/roles.constants';
 import { Subscription, Property, Lease } from '@models/index';
 import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
-import { beforeEach, beforeAll, describe, afterAll, expect, it } from '@jest/globals';
 
 import { createAuthToken, createTestApp, authCookie } from '../../setup/testApp';
 import {
@@ -98,7 +97,7 @@ describe('LeaseController Integration Tests', () => {
       currentUnits: 0,
       entitlements: {
         eSignature: true,
-        RepairRequestService: true,
+        MaintenanceRequestService: true,
         VisitorPassService: true,
         reportingAnalytics: true,
         leaseTemplates: true,

@@ -258,17 +258,14 @@ describe('PropertyController Integration Tests', () => {
       await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Apartment Complex A',
         propertyType: 'apartment',
-        status: 'available',
       });
       await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Single Family Home',
         propertyType: 'house',
-        status: 'available',
       });
       await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Commercial Building',
         propertyType: 'commercial',
-        status: 'available',
       });
 
       // Approve all properties
@@ -349,7 +346,6 @@ describe('PropertyController Integration Tests', () => {
     beforeEach(async () => {
       testProperty = await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Original Property Name',
-        status: 'available',
       });
       await Property.findByIdAndUpdate(testProperty._id, {
         approvalStatus: PropertyApprovalStatusEnum.APPROVED,
@@ -616,12 +612,10 @@ describe('PropertyController Integration Tests', () => {
       await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Available Property 1',
         propertyType: 'apartment',
-        status: 'available',
       });
       await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Available Property 2',
         propertyType: 'house',
-        status: 'available',
       });
 
       // Approve all properties

@@ -11,7 +11,6 @@ import { IProfileDocument, IUserDocument } from '@interfaces/index';
 import { PaymentService } from '@services/payments/payments.service';
 import { errorHandlerMiddleware } from '@shared/middlewares/error-handler';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
-import { beforeEach, beforeAll, describe, expect, jest, it } from '@jest/globals';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
 import {
@@ -102,6 +101,12 @@ describe('PaymentController Integration Tests', () => {
         render: jest.fn().mockReturnValue(Promise.resolve('<html></html>')),
       } as any,
       emitterService: { emit: jest.fn(), on: jest.fn() } as any,
+      invoiceDAO: {} as any,
+      stripeService: {} as any,
+      maintenancePaymentService: {} as any,
+      paymentWebhookService: {} as any,
+      payoutAccountService: {} as any,
+      paymentCronService: {} as any,
     });
 
     mockHandleFiles.mockReturnValue(Promise.resolve({ hasFiles: false }));
@@ -111,6 +116,7 @@ describe('PaymentController Integration Tests', () => {
       paymentService,
       mediaUploadService: { handleFiles: mockHandleFiles } as any,
       invoiceService: { requestInvoice: mockRequestInvoice } as any,
+      cronService: {} as any,
     });
 
     app = express();
@@ -343,7 +349,7 @@ describe('PaymentController Integration Tests', () => {
         startDate: new Date(),
         entitlements: {
           eSignature: false,
-          RepairRequestService: false,
+          MaintenanceRequestService: false,
           VisitorPassService: false,
           reportingAnalytics: false,
           leaseTemplates: false,

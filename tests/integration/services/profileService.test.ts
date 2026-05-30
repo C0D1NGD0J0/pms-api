@@ -6,7 +6,6 @@ import { VendorService } from '@services/vendor/vendor.service';
 import { ProfileService } from '@services/profile/profile.service';
 import { ProfileDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
-import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { ProfileBackgroundCheckStatus } from '@interfaces/profile.interface';
 
 import {
@@ -55,7 +54,8 @@ const setupServices = () => {
     vendorService,
     leaseDAO: {} as any,
     paymentDAO: {} as any,
-    emitterService: {} as any,
+    maintenanceRequestDAO: {} as any,
+    emitterService: { on: jest.fn(), emit: jest.fn(), off: jest.fn() } as any,
     queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
   });
 
@@ -237,7 +237,8 @@ describe('ProfileService Integration Tests - Write Operations', () => {
         profile._id.toString(),
         client.cuid,
         vendorInfo,
-        ROLES.VENDOR
+        ROLES.VENDOR,
+        user._id.toString()
       );
 
       expect(result.success).toBe(true);
@@ -276,7 +277,8 @@ describe('ProfileService Integration Tests - Write Operations', () => {
           profile._id.toString(),
           client.cuid,
           vendorInfo,
-          ROLES.MANAGER
+          ROLES.MANAGER,
+          user._id.toString()
         )
       ).rejects.toThrow();
     });
@@ -306,7 +308,8 @@ describe('ProfileService Integration Tests - Write Operations', () => {
           profile._id.toString(),
           client.cuid,
           vendorInfo,
-          ROLES.VENDOR
+          ROLES.VENDOR,
+          user._id.toString()
         )
       ).rejects.toThrow('Vendor entity not found');
     });

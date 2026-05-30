@@ -9,7 +9,6 @@ import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { InvitationService } from '@services/invitation/invitation.service';
-import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { LeaseDocumentService } from '@services/lease/leaseDocument.service';
 import { LeaseSignatureService } from '@services/lease/leaseSignature.service';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
@@ -97,6 +96,7 @@ const setupServices = () => {
     leaseDAO,
     paymentDAO: {} as any,
     emitterService,
+    maintenanceRequestDAO: {} as any,
     queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
   });
 

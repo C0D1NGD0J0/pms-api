@@ -12,7 +12,7 @@ import { ROLES } from '@shared/constants/roles.constants';
 import PaymentModel from '@models/payments/payments.model';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
-import { beforeEach, beforeAll, afterAll, describe, expect, it } from '@jest/globals';
+import type { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
 import {
   MaintenanceRequestModel,
@@ -73,6 +73,7 @@ const setupService = () => {
     leaseDAO,
     vendorDAO,
     emitterService,
+    serviceAreaService: { isLocationInVendorServiceArea: jest.fn(), findVendorsNearLocation: jest.fn() } as unknown as ServiceAreaService,
   });
 };
 

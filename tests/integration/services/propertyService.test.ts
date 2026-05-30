@@ -762,19 +762,16 @@ describe('PropertyService Integration Tests', () => {
       property1 = await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Apartment Complex A',
         propertyType: 'apartment',
-        status: 'available',
       });
 
       property2 = await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Single Family Home',
         propertyType: 'house',
-        status: 'available',
       });
 
       _property3 = await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Commercial Building',
         propertyType: 'commercial',
-        status: 'available',
       });
 
       // Ensure all are approved

@@ -114,6 +114,8 @@ describe('PropertyService — currency guard on country update', () => {
       propertyCsvProcessor: mockPropertyCsvProcessor,
       propertyApprovalService,
       propertyStatsService,
+      subscriptionDAO: {} as any,
+      paymentDAO: {} as any,
     });
   });
 
@@ -123,10 +125,11 @@ describe('PropertyService — currency guard on country update', () => {
   });
 
   it('blocks country update when an active lease exists on the property', async () => {
-    const { client, user } = await createTestClient();
-    const property = await createTestProperty(client.cuid, client._id, user._id, {
-      address: { country: 'US', street: '123 Main St', city: 'New York', state: 'NY' },
-      fees: { currency: 'USD', rentAmount: 150000 },
+    const client = await createTestClient();
+    const property = await createTestProperty(client.cuid, client._id);
+    await Property.findByIdAndUpdate(property._id, {
+      'address.country': 'US',
+      'fees.currency': 'USD',
     });
 
     // Create an active lease on this property
@@ -134,12 +137,12 @@ describe('PropertyService — currency guard on country update', () => {
       cuid: client.cuid,
       luid: 'TEST-LUID-GUARD',
       leaseNumber: 'LN-GUARD',
-      leaseType: LeaseType.FIXED,
+      leaseType: LeaseType.FIXED_TERM,
       status: LeaseStatus.ACTIVE,
       signingMethod: SigningMethod.MANUAL,
       property: { id: property._id, address: property.address },
       tenant: new Types.ObjectId(),
-      creator: user._id,
+      creator: new Types.ObjectId(),
       fees: { rentAmount: 150000, currency: 'USD', securityDeposit: 0, rentDueDay: 1 },
       duration: {
         startDate: new Date(),
@@ -153,7 +156,7 @@ describe('PropertyService — currency guard on country update', () => {
         {
           cuid: client.cuid,
           pid: property.pid,
-          currentuser: makeMockCtx(client.cuid, user._id.toString()).currentuser as any,
+          currentuser: makeMockCtx(client.cuid, client.accountAdmin.toString()).currentuser as any,
         },
         {
           address: { country: 'NG', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' },
@@ -166,7 +169,7 @@ describe('PropertyService — currency guard on country update', () => {
         {
           cuid: client.cuid,
           pid: property.pid,
-          currentuser: makeMockCtx(client.cuid, user._id.toString()).currentuser as any,
+          currentuser: makeMockCtx(client.cuid, client.accountAdmin.toString()).currentuser as any,
         },
         {
           address: { country: 'NG', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' },
@@ -176,10 +179,11 @@ describe('PropertyService — currency guard on country update', () => {
   });
 
   it('allows country update when no active leases exist', async () => {
-    const { client, user } = await createTestClient();
-    const property = await createTestProperty(client.cuid, client._id, user._id, {
-      address: { country: 'US', street: '123 Main St', city: 'New York', state: 'NY' },
-      fees: { currency: 'USD', rentAmount: 150000 },
+    const client = await createTestClient();
+    const property = await createTestProperty(client.cuid, client._id);
+    await Property.findByIdAndUpdate(property._id, {
+      'address.country': 'US',
+      'fees.currency': 'USD',
     });
 
     // No leases — update should succeed
@@ -188,7 +192,7 @@ describe('PropertyService — currency guard on country update', () => {
         {
           cuid: client.cuid,
           pid: property.pid,
-          currentuser: makeMockCtx(client.cuid, user._id.toString()).currentuser as any,
+          currentuser: makeMockCtx(client.cuid, client.accountAdmin.toString()).currentuser as any,
         },
         {
           address: { country: 'NG', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' },

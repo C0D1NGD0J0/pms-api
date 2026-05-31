@@ -43,12 +43,13 @@ function mockVisionResponse(payload: object) {
 
 describe('InvoiceAIService', () => {
   describe('extractInvoiceData', () => {
-    it('returns null when feature flag is disabled', async () => {
+    it('returns failure when feature flag is disabled', async () => {
       (mockFeatureFlagService.isEnabled as jest.Mock).mockReturnValue(false);
 
       const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/jpeg');
 
-      expect(result).toBeNull();
+      expect(result.success).toBe(false);
+      expect(result.data).toBeNull();
       expect(mockFeatureFlagService.isEnabled).toHaveBeenCalledWith(
         FeatureFlag.AI_INVOICE_SCANNING
       );
@@ -73,18 +74,19 @@ describe('InvoiceAIService', () => {
 
       const result = await service.extractInvoiceData(Buffer.from('fake-image-data'), 'image/jpeg');
 
-      expect(result).not.toBeNull();
-      expect(result!.description).toBe('Plumbing repair');
-      expect(result!.amountInCents).toBe(18500);
-      expect(result!.currency).toBe('USD');
-      expect(result!.lineItems).toHaveLength(2);
-      expect(result!.lineItems[0].description).toBe('Faucet cartridge');
-      expect(result!.vendorName).toBe("Joe's Plumbing");
-      expect(result!.invoiceNumber).toBe('INV-001');
-      expect(result!.confidence).toBe(0.95);
+      expect(result.success).toBe(true);
+      expect(result.data).not.toBeNull();
+      expect(result.data!.description).toBe('Plumbing repair');
+      expect(result.data!.amountInCents).toBe(18500);
+      expect(result.data!.currency).toBe('USD');
+      expect(result.data!.lineItems).toHaveLength(2);
+      expect(result.data!.lineItems[0].description).toBe('Faucet cartridge');
+      expect(result.data!.vendorName).toBe("Joe's Plumbing");
+      expect(result.data!.invoiceNumber).toBe('INV-001');
+      expect(result.data!.confidence).toBe(0.95);
     });
 
-    it('returns null when API call fails', async () => {
+    it('returns failure when API call throws', async () => {
       (mockFeatureFlagService.isEnabled as jest.Mock).mockReturnValue(true);
       (mockAnthropicService.createVisionMessage as jest.Mock).mockReturnValue(
         Promise.reject(new Error('API unavailable'))
@@ -92,7 +94,25 @@ describe('InvoiceAIService', () => {
 
       const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/jpeg');
 
-      expect(result).toBeNull();
+      expect(result.success).toBe(false);
+      expect(result.data).toBeNull();
+      expect(result.message).toBeDefined();
+    });
+
+    it('returns failure when confidence is below threshold', async () => {
+      (mockFeatureFlagService.isEnabled as jest.Mock).mockReturnValue(true);
+      mockVisionResponse({
+        description: '',
+        amountInCents: 0,
+        currency: 'USD',
+        lineItems: [],
+        confidence: 0.05,
+      });
+
+      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/jpeg');
+
+      expect(result.success).toBe(false);
+      expect(result.data).toBeNull();
     });
 
     it('validates and sanitizes malformed response data', async () => {
@@ -104,17 +124,16 @@ describe('InvoiceAIService', () => {
           { description: 'Valid', quantity: 1, unitPriceInCents: 100, amountInCents: 100 },
           { description: 'Missing fields' }, // incomplete — should be filtered
         ],
-        confidence: 'high', // wrong type — should become 0
+        confidence: 0.8,
       });
 
       const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/png');
 
-      expect(result).not.toBeNull();
-      expect(result!.description).toBe('');
-      expect(result!.amountInCents).toBe(0);
-      expect(result!.lineItems).toHaveLength(1); // only the valid item
-      expect(result!.confidence).toBe(0);
-      expect(result!.currency).toBe('USD'); // default
+      expect(result.success).toBe(true);
+      expect(result.data!.description).toBe('');
+      expect(result.data!.amountInCents).toBe(0);
+      expect(result.data!.lineItems).toHaveLength(1); // only the valid item
+      expect(result.data!.currency).toBe('USD'); // default
     });
 
     it('handles PDF files — passes document content block to AnthropicService', async () => {
@@ -129,8 +148,8 @@ describe('InvoiceAIService', () => {
 
       const result = await service.extractInvoiceData(Buffer.from('fake-pdf-data'), 'application/pdf');
 
-      expect(result).not.toBeNull();
-      expect(result!.description).toBe('PDF Invoice');
+      expect(result.success).toBe(true);
+      expect(result.data!.description).toBe('PDF Invoice');
 
       const [, contentBlocks] = (mockAnthropicService.createVisionMessage as jest.Mock).mock.calls[0];
       expect(contentBlocks[0]).toMatchObject({ type: 'document' });
@@ -153,14 +172,30 @@ describe('InvoiceAIService', () => {
     });
 
     it('routes through AnthropicService (not a direct Anthropic client)', async () => {
-      // This test ensures the safety bypass is fixed — the service must go through
-      // anthropicService.createVisionMessage, not a directly instantiated Anthropic client.
       (mockFeatureFlagService.isEnabled as jest.Mock).mockReturnValue(true);
       mockVisionResponse({ description: 'ok', amountInCents: 100, currency: 'USD', lineItems: [], confidence: 0.5 });
 
       await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
 
       expect(mockAnthropicService.createVisionMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('strips markdown fences from AI response before parsing', async () => {
+      (mockFeatureFlagService.isEnabled as jest.Mock).mockReturnValue(true);
+      // Simulate AI wrapping response in markdown fences despite instructions
+      (mockAnthropicService.createVisionMessage as jest.Mock).mockReturnValue(
+        Promise.resolve({
+          content: '```json\n{"description":"Fix tap","amountInCents":5000,"currency":"USD","lineItems":[],"confidence":0.9}\n```',
+          inputTokens: 100,
+          outputTokens: 50,
+          model: 'claude-haiku-4-5-20251001',
+        })
+      );
+
+      const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
+
+      expect(result.success).toBe(true);
+      expect(result.data!.description).toBe('Fix tap');
     });
 
     describe('field length limits', () => {
@@ -177,7 +212,7 @@ describe('InvoiceAIService', () => {
           confidence: 0.8,
         });
         const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
-        expect(result!.description).toHaveLength(500);
+        expect(result.data!.description).toHaveLength(500);
       });
 
       it('truncates vendorName to 200 characters', async () => {
@@ -190,7 +225,7 @@ describe('InvoiceAIService', () => {
           confidence: 0.8,
         });
         const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
-        expect(result!.vendorName).toHaveLength(200);
+        expect(result.data!.vendorName).toHaveLength(200);
       });
 
       it('truncates invoiceNumber to 50 characters', async () => {
@@ -203,7 +238,7 @@ describe('InvoiceAIService', () => {
           confidence: 0.8,
         });
         const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
-        expect(result!.invoiceNumber).toHaveLength(50);
+        expect(result.data!.invoiceNumber).toHaveLength(50);
       });
 
       it('truncates line item description to 200 characters', async () => {
@@ -222,7 +257,7 @@ describe('InvoiceAIService', () => {
           confidence: 0.8,
         });
         const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
-        expect(result!.lineItems[0].description).toHaveLength(200);
+        expect(result.data!.lineItems[0].description).toHaveLength(200);
       });
 
       it('rejects invalid currency and falls back to USD', async () => {
@@ -234,7 +269,7 @@ describe('InvoiceAIService', () => {
           confidence: 0.8,
         });
         const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
-        expect(result!.currency).toBe('USD');
+        expect(result.data!.currency).toBe('USD');
       });
 
       it('accepts valid 3-letter ISO currency codes', async () => {
@@ -246,7 +281,7 @@ describe('InvoiceAIService', () => {
           confidence: 0.8,
         });
         const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
-        expect(result!.currency).toBe('CAD');
+        expect(result.data!.currency).toBe('CAD');
       });
 
       it('normalises lowercase currency to uppercase', async () => {
@@ -258,7 +293,7 @@ describe('InvoiceAIService', () => {
           confidence: 0.8,
         });
         const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
-        expect(result!.currency).toBe('EUR');
+        expect(result.data!.currency).toBe('EUR');
       });
     });
   });

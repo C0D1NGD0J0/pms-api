@@ -79,7 +79,7 @@ describe('PaymentWorker', () => {
           period: data.period,
           description: data.description,
         }),
-        { createStripeInvoice: true }
+        { createStripeInvoice: true, paymentSource: 'cron' }
       );
       expect(job.progress).toHaveBeenCalledWith(10);
       expect(job.progress).toHaveBeenCalledWith(100);

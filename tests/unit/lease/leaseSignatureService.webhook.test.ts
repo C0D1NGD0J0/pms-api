@@ -146,12 +146,12 @@ describe('LeaseSignatureService - handleESignatureWebhook', () => {
       const pmCall = calls.find(([userId]) => userId === lease.createdBy.toString());
 
       expect(tenantCall).toBeDefined();
-      expect(tenantCall![2]).toMatchObject({ luid: testLuid, status: LeaseStatus.ACTIVE });
-      expect(tenantCall![3]).toBe('lease-updated');
+      expect(tenantCall![2]).toMatchObject({ resourceUId: testLuid, status: LeaseStatus.ACTIVE });
+      expect(tenantCall![3]).toBe('resource-event');
 
       expect(pmCall).toBeDefined();
-      expect(pmCall![2]).toMatchObject({ luid: testLuid, status: LeaseStatus.ACTIVE });
-      expect(pmCall![3]).toBe('lease-updated');
+      expect(pmCall![2]).toMatchObject({ resourceUId: testLuid, status: LeaseStatus.ACTIVE });
+      expect(pmCall![3]).toBe('resource-event');
     });
 
     it('should not throw if tenant SSE session is offline (sendToUser returns false)', async () => {

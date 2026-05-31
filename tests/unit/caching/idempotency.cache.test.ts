@@ -14,7 +14,7 @@ jest.mock('@utils/helpers', () => ({
 
 const WEBHOOK_LOCK_TTL = 60 * 30; // 30 min processing lock
 const WEBHOOK_PROCESSED_TTL = 60 * 60 * 24 * 3; // 72 hours processed status
-const ROUTE_TTL = 60 * 60 * 24; // 24 hours
+const ROUTE_TTL = 60 * 5; // 5 min (non-production value)
 
 /** Build a minimal mock Redis client */
 function buildMockClient() {

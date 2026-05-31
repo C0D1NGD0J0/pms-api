@@ -1,7 +1,14 @@
 import { EventTypes } from '@interfaces/events.interface';
-import { beforeEach, afterEach, describe, expect, jest, it } from '@jest/globals';
 import { NotificationService } from '@services/notification/notification.service';
 import { NotificationPriorityEnum, INotificationDocument, NotificationTypeEnum, RecipientTypeEnum } from '@interfaces/notification.interface';
+import {
+  MaintenanceChargePaidPayload,
+  PaymentSucceededPayload,
+  PaymentOverduePayload,
+  PaymentFailedPayload,
+} from '@interfaces/events.interface';
+import { handlePaymentFailed, handlePaymentOverdue, handlePaymentSucceeded } from '@services/notification/notification.payment.handlers';
+import { handleMaintenanceChargePaid } from '@services/notification/notification.maintenance.handlers';
 
 // Mock NotificationDAO
 const mockNotificationDAO = {
@@ -27,7 +34,8 @@ const mockUserService = {
 
 // Mock SSEService
 const mockSSEService = {
-  send: jest.fn(),
+  sendToUser: jest.fn(),
+  broadcastToClient: jest.fn(),
 } as any;
 
 // Mock ProfileService
@@ -442,6 +450,67 @@ describe('NotificationService - New Methods', () => {
       );
     });
   });
+
+  describe('handleMaintenanceChargePaid', () => {
+    let mockChargePaidCtx: any;
+    const payload: MaintenanceChargePaidPayload = {
+      cuid: 'CLIENT001',
+      mruid: 'MR001',
+      pytuid: 'PYT001',
+      amountInCents: 50000,
+    };
+
+    beforeEach(() => {
+      mockChargePaidCtx = {
+        createNotification: jest.fn().mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'test-notification-id' } })),
+        log: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
+      };
+    });
+
+    it('creates a HIGH-priority PAYMENT announcement for ADMIN + SUPER_ADMIN', async () => {
+      await handleMaintenanceChargePaid(mockChargePaidCtx, payload);
+
+      expect(mockChargePaidCtx.createNotification).toHaveBeenCalledWith(
+        'CLIENT001',
+        NotificationTypeEnum.PAYMENT,
+        expect.objectContaining({
+          recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+          targetRoles: expect.arrayContaining(['admin', 'super-admin']),
+          priority: NotificationPriorityEnum.HIGH,
+          metadata: expect.objectContaining({ mruid: 'MR001' }),
+        })
+      );
+    });
+
+    it('passes the cuid as the first argument to createNotification', async () => {
+      await handleMaintenanceChargePaid(mockChargePaidCtx, payload);
+
+      expect(mockChargePaidCtx.createNotification).toHaveBeenCalledWith(
+        'CLIENT001',
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
+    it('does not throw when createNotification rejects', async () => {
+      mockChargePaidCtx.createNotification.mockRejectedValueOnce(new Error('DB error'));
+
+      await expect(
+        handleMaintenanceChargePaid(mockChargePaidCtx, payload)
+      ).resolves.not.toThrow();
+    });
+
+    it('logs error when createNotification rejects', async () => {
+      mockChargePaidCtx.createNotification.mockRejectedValueOnce(new Error('DB error'));
+
+      await handleMaintenanceChargePaid(mockChargePaidCtx, payload);
+
+      expect(mockChargePaidCtx.log.error).toHaveBeenCalledWith(
+        'Error sending maintenance charge paid notification',
+        expect.objectContaining({ payload })
+      );
+    });
+  });
 });
 
 describe('NotificationService — Announcement Read Tracking', () => {
@@ -561,8 +630,9 @@ describe('NotificationService - MR event handlers', () => {
   const mockEmailQueue = { addToEmailQueue: jest.fn() } as any;
 
   const mockMRDAO = {
+    // scope stored as object (sanitized by submitWorkOrder service)
     getByMruid: jest.fn().mockReturnValue(
-      Promise.resolve({ mruid: 'MR-001', title: 'Leaking pipe', category: 'plumbing', priority: 'high', tenantId: 'tid1', invoice: { amount: 50000, currency: 'USD' }, workOrder: { estimatedCostInCents: 20000, scope: 'Fix pipe', notes: null, lineItems: [] } })
+      Promise.resolve({ mruid: 'MR-001', title: 'Leaking pipe', category: 'plumbing', priority: 'high', tenantId: 'tid1', invoice: { amount: 50000, currency: 'USD' }, workOrder: { estimatedCostInCents: 20000, scope: { text: 'Fix pipe', html: '<p>Fix pipe</p>' }, notes: null, lineItems: [] } })
     ),
   } as any;
 
@@ -592,7 +662,7 @@ describe('NotificationService - MR event handlers', () => {
       clientDAO: { findByCuid: jest.fn() } as any,
       userDAO: mockUserDAOMR,
       userService: { getUsersByRole: jest.fn() } as any,
-      sseService: { send: jest.fn() } as any,
+      sseService: { sendToUser: jest.fn(), broadcastToClient: jest.fn() } as any,
       profileService: { getProfile: jest.fn() } as any,
     } as any);
 
@@ -739,5 +809,512 @@ describe('NotificationService - MR event handlers', () => {
     await flushPromises();
 
     expect(service.createNotification).toHaveBeenCalled();
+  });
+
+  it('should create in-app notification and enqueue PM email on MAINTENANCE_WORK_ORDER_SUBMITTED', async () => {
+    syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_SUBMITTED, {
+      cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+    });
+    await flushPromises();
+
+    expect(service.createNotification).toHaveBeenCalledWith(
+      'cuid1',
+      expect.any(String),
+      expect.objectContaining({ metadata: expect.objectContaining({ mruid: 'MR-001' }) })
+    );
+    expect(mockEmailQueue.addToEmailQueue).toHaveBeenCalledWith(
+      'maintenanceWorkOrderSubmitted',
+      expect.objectContaining({ data: expect.objectContaining({ vendorId: testVendorId }) })
+    );
+  });
+
+  it('flattens work order scope from object to string for email on MAINTENANCE_WORK_ORDER_SUBMITTED', async () => {
+    syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_SUBMITTED, {
+      cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+    });
+    await flushPromises();
+
+    expect(mockEmailQueue.addToEmailQueue).toHaveBeenCalledWith(
+      'maintenanceWorkOrderSubmitted',
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workOrder: expect.objectContaining({ scope: 'Fix pipe' }),
+        }),
+      })
+    );
+  });
+
+  it('should enqueue tenant email when tenantId is present on MAINTENANCE_WORK_ORDER_SUBMITTED', async () => {
+    syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_SUBMITTED, {
+      cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+    });
+    await flushPromises();
+
+    const tenantEmailCall = (mockEmailQueue.addToEmailQueue as jest.Mock).mock.calls.find(
+      (c: any[]) => c[0] === 'maintenanceWorkOrderSubmittedTenant'
+    );
+    expect(tenantEmailCall).toBeDefined();
+    expect(tenantEmailCall![1]).toMatchObject({ to: 'user@test.com' });
+  });
+
+  it('flattens work order scope on MAINTENANCE_WORK_ORDER_APPROVED email', async () => {
+    syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_APPROVED, {
+      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', vendorId: testVendorId, approvedBy: testUserId,
+    });
+    await flushPromises();
+
+    expect(mockEmailQueue.addToEmailQueue).toHaveBeenCalledWith(
+      'maintenanceWorkOrderApproved',
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workOrder: expect.objectContaining({ scope: 'Fix pipe' }),
+        }),
+      })
+    );
+  });
+
+  it('flattens work order scope on MAINTENANCE_WORK_ORDER_REJECTED email', async () => {
+    syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_REJECTED, {
+      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', vendorId: testVendorId,
+      rejectedBy: testUserId, rejectionReason: 'Out of scope',
+    });
+    await flushPromises();
+
+    expect(mockEmailQueue.addToEmailQueue).toHaveBeenCalledWith(
+      'maintenanceWorkOrderRejected',
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workOrder: expect.objectContaining({ scope: 'Fix pipe' }),
+        }),
+      })
+    );
+  });
+
+  // ── Technician notification tests ─────────────────────────────────────────
+
+  const testTechnicianId = '65f1a2b3c4d5e6f7a8b9c0d4';
+
+  describe('handleWorkOrderApproved — technician notifications', () => {
+    it('sends 2 notifications when technicianId is present and differs from vendorId', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_APPROVED, {
+        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+        technicianId: testTechnicianId, approvedBy: testUserId,
+      });
+      await flushPromises();
+
+      const calls = (service.createNotification as jest.Mock).mock.calls.filter(
+        (c: any[]) => c[1] === 'maintenance'
+      );
+      const recipients = calls.map((c: any[]) => c[2].recipient).filter(Boolean);
+      expect(recipients).toContain(testVendorId);
+      expect(recipients).toContain(testTechnicianId);
+    });
+
+    it('sends 1 notification when technicianId equals vendorId', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_APPROVED, {
+        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+        technicianId: testVendorId, approvedBy: testUserId,
+      });
+      await flushPromises();
+
+      const individualCalls = (service.createNotification as jest.Mock).mock.calls.filter(
+        (c: any[]) => c[2]?.recipient === testVendorId
+      );
+      expect(individualCalls).toHaveLength(1);
+    });
+
+    it('sends 1 notification when technicianId is absent', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_APPROVED, {
+        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId, approvedBy: testUserId,
+      });
+      await flushPromises();
+
+      const individualCalls = (service.createNotification as jest.Mock).mock.calls.filter(
+        (c: any[]) => c[2]?.recipientType === 'individual'
+      );
+      expect(individualCalls).toHaveLength(1);
+      expect(individualCalls[0][2].recipient).toBe(testVendorId);
+    });
+  });
+
+  describe('handleWorkOrderRejected — technician notifications', () => {
+    it('sends individual notification to technician when technicianId present and different from vendorId', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_REJECTED, {
+        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+        technicianId: testTechnicianId, rejectedBy: testUserId, rejectionReason: 'Scope unclear',
+      });
+      await flushPromises();
+
+      const recipients = (service.createNotification as jest.Mock).mock.calls
+        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+      expect(recipients).toContain(testTechnicianId);
+    });
+
+    it('sends only 1 individual notification when technicianId equals vendorId', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_REJECTED, {
+        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+        technicianId: testVendorId, rejectedBy: testUserId, rejectionReason: 'N/A',
+      });
+      await flushPromises();
+
+      const individualCalls = (service.createNotification as jest.Mock).mock.calls.filter(
+        (c: any[]) => c[2]?.recipient === testVendorId
+      );
+      expect(individualCalls).toHaveLength(1);
+    });
+
+    it('sends only 1 notification when technicianId is absent', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_REJECTED, {
+        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+        rejectedBy: testUserId, rejectionReason: 'Out of scope',
+      });
+      await flushPromises();
+
+      const individualCalls = (service.createNotification as jest.Mock).mock.calls.filter(
+        (c: any[]) => c[2]?.recipientType === 'individual'
+      );
+      expect(individualCalls).toHaveLength(1);
+    });
+  });
+
+  describe('handleInvoiceApproved — technician notifications', () => {
+    it('sends individual notification to technician when technicianId present and different from vendorId', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_APPROVED, {
+        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+        technicianId: testTechnicianId, approvedBy: testUserId,
+        amount: 50000, currency: 'USD', isBillable: false,
+      });
+      await flushPromises();
+
+      const recipients = (service.createNotification as jest.Mock).mock.calls
+        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+      expect(recipients).toContain(testTechnicianId);
+    });
+
+    it('sends only 1 vendor notification when technicianId equals vendorId', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_APPROVED, {
+        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+        technicianId: testVendorId, approvedBy: testUserId,
+        amount: 50000, currency: 'USD', isBillable: false,
+      });
+      await flushPromises();
+
+      const vendorCalls = (service.createNotification as jest.Mock).mock.calls.filter(
+        (c: any[]) => c[2]?.recipient === testVendorId
+      );
+      expect(vendorCalls).toHaveLength(1);
+    });
+
+    it('sends only 1 notification when technicianId is absent', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_APPROVED, {
+        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+        approvedBy: testUserId, amount: 50000, currency: 'USD', isBillable: false,
+      });
+      await flushPromises();
+
+      const individualCalls = (service.createNotification as jest.Mock).mock.calls.filter(
+        (c: any[]) => c[2]?.recipientType === 'individual'
+      );
+      expect(individualCalls).toHaveLength(1);
+    });
+  });
+
+  describe('handleInvoiceRejected — technician notifications', () => {
+    it('sends individual notification to technician when technicianId present and different from vendorId', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_REJECTED, {
+        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+        technicianId: testTechnicianId, rejectedBy: testUserId, rejectionReason: 'Invalid amount',
+      });
+      await flushPromises();
+
+      const recipients = (service.createNotification as jest.Mock).mock.calls
+        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+      expect(recipients).toContain(testTechnicianId);
+    });
+
+    it('sends only 1 individual notification when technicianId equals vendorId', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_REJECTED, {
+        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+        technicianId: testVendorId, rejectedBy: testUserId, rejectionReason: 'N/A',
+      });
+      await flushPromises();
+
+      const vendorCalls = (service.createNotification as jest.Mock).mock.calls.filter(
+        (c: any[]) => c[2]?.recipient === testVendorId
+      );
+      expect(vendorCalls).toHaveLength(1);
+    });
+
+    it('sends only 1 notification when technicianId is absent', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_REJECTED, {
+        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+        rejectedBy: testUserId, rejectionReason: 'Insufficient detail',
+      });
+      await flushPromises();
+
+      const individualCalls = (service.createNotification as jest.Mock).mock.calls.filter(
+        (c: any[]) => c[2]?.recipientType === 'individual'
+      );
+      expect(individualCalls).toHaveLength(1);
+    });
+  });
+
+  describe('handleMRCancelled — technician notifications', () => {
+    it('sends individual notification to technician when technicianId present and different from vendorId', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_CANCELLED, {
+        cuid: 'cuid1', mruid: 'MR-001', tenantId: testTenantId,
+        vendorId: testVendorId, technicianId: testTechnicianId,
+      });
+      await flushPromises();
+
+      const recipients = (service.createNotification as jest.Mock).mock.calls
+        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+      expect(recipients).toContain(testTechnicianId);
+    });
+
+    it('sends only 1 vendor notification when technicianId equals vendorId', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_CANCELLED, {
+        cuid: 'cuid1', mruid: 'MR-001', tenantId: testTenantId,
+        vendorId: testVendorId, technicianId: testVendorId,
+      });
+      await flushPromises();
+
+      const vendorCalls = (service.createNotification as jest.Mock).mock.calls.filter(
+        (c: any[]) => c[2]?.recipient === testVendorId
+      );
+      expect(vendorCalls).toHaveLength(1);
+    });
+
+    it('sends only vendor notification when technicianId is absent', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_CANCELLED, {
+        cuid: 'cuid1', mruid: 'MR-001', tenantId: testTenantId, vendorId: testVendorId,
+      });
+      await flushPromises();
+
+      const recipients = (service.createNotification as jest.Mock).mock.calls
+        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+      expect(recipients).not.toContain(testTechnicianId);
+    });
+  });
+
+  describe('handleMRCompleted — technician notifications', () => {
+    it('sends individual notification to technician when technicianId present and different from vendorId', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, {
+        cuid: 'cuid1', mruid: 'MR-001', tenantId: testTenantId,
+        vendorId: testVendorId, technicianId: testTechnicianId, completedBy: testUserId,
+      });
+      await flushPromises();
+
+      const recipients = (service.createNotification as jest.Mock).mock.calls
+        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+      expect(recipients).toContain(testTechnicianId);
+    });
+
+    it('sends only 1 vendor notification when technicianId equals vendorId', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, {
+        cuid: 'cuid1', mruid: 'MR-001', tenantId: testTenantId,
+        vendorId: testVendorId, technicianId: testVendorId, completedBy: testUserId,
+      });
+      await flushPromises();
+
+      const vendorCalls = (service.createNotification as jest.Mock).mock.calls.filter(
+        (c: any[]) => c[2]?.recipient === testVendorId
+      );
+      expect(vendorCalls).toHaveLength(1);
+    });
+
+    it('sends only vendor/tenant notifications when technicianId is absent', async () => {
+      syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, {
+        cuid: 'cuid1', mruid: 'MR-001', tenantId: testTenantId,
+        vendorId: testVendorId, completedBy: testUserId,
+      });
+      await flushPromises();
+
+      const recipients = (service.createNotification as jest.Mock).mock.calls
+        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+      expect(recipients).not.toContain(testTechnicianId);
+    });
+  });
+});
+
+// ===========================================================================
+// Rent payment notification gaps
+// ===========================================================================
+
+describe('NotificationService - handlePaymentFailed', () => {
+  let mockCtx: any;
+
+  const basePayload: PaymentFailedPayload = {
+    cuid: 'CLIENT001',
+    pytuid: 'PYT001',
+    invoiceId: 'inv_123',
+    amount: 150000,
+    tenantId: 'tenant-user-id',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCtx = {
+      createNotification: jest.fn().mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'nuid-1' } })),
+      log: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
+    };
+  });
+
+  it('sends HIGH-priority PM announcement to ADMIN + SUPER_ADMIN', async () => {
+    await handlePaymentFailed(mockCtx, basePayload);
+
+    expect(mockCtx.createNotification).toHaveBeenCalledWith(
+      'CLIENT001',
+      NotificationTypeEnum.PAYMENT,
+      expect.objectContaining({
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: expect.arrayContaining(['admin', 'super-admin']),
+        priority: NotificationPriorityEnum.HIGH,
+      })
+    );
+  });
+
+  it('sends individual HIGH-priority notification to tenant when tenantId present', async () => {
+    await handlePaymentFailed(mockCtx, basePayload);
+
+    expect(mockCtx.createNotification).toHaveBeenCalledWith(
+      'CLIENT001',
+      NotificationTypeEnum.PAYMENT,
+      expect.objectContaining({
+        recipient: 'tenant-user-id',
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.HIGH,
+      })
+    );
+  });
+
+  it('creates 2 notifications (PM + tenant) when tenantId present', async () => {
+    await handlePaymentFailed(mockCtx, basePayload);
+
+    expect(mockCtx.createNotification).toHaveBeenCalledTimes(2);
+  });
+
+  it('creates only 1 notification (PM) when tenantId absent', async () => {
+    const { tenantId: _t, ...noTenant } = basePayload;
+    await handlePaymentFailed(mockCtx, noTenant as PaymentFailedPayload);
+
+    expect(mockCtx.createNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not throw when createNotification rejects', async () => {
+    mockCtx.createNotification.mockRejectedValue(new Error('DB'));
+
+    await expect(
+      handlePaymentFailed(mockCtx, basePayload)
+    ).resolves.not.toThrow();
+  });
+});
+
+describe('NotificationService - handlePaymentOverdue', () => {
+  let mockCtx: any;
+
+  const basePayload: PaymentOverduePayload = {
+    cuid: 'CLIENT001',
+    pytuid: 'PYT001',
+    amount: 150000,
+    dueDate: new Date('2026-05-01'),
+    paymentType: 'rent',
+    tenantId: 'tenant-user-id',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCtx = {
+      createNotification: jest.fn().mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'nuid-1' } })),
+      log: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
+    };
+  });
+
+  it('sends PM announcement to ADMIN + SUPER_ADMIN', async () => {
+    await handlePaymentOverdue(mockCtx, basePayload);
+
+    expect(mockCtx.createNotification).toHaveBeenCalledWith(
+      'CLIENT001',
+      NotificationTypeEnum.PAYMENT,
+      expect.objectContaining({
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        targetRoles: expect.arrayContaining(['admin', 'super-admin']),
+        priority: NotificationPriorityEnum.HIGH,
+      })
+    );
+  });
+
+  it('sends individual notification to tenant when tenantId present', async () => {
+    await handlePaymentOverdue(mockCtx, basePayload);
+
+    expect(mockCtx.createNotification).toHaveBeenCalledWith(
+      'CLIENT001',
+      NotificationTypeEnum.PAYMENT,
+      expect.objectContaining({
+        recipient: 'tenant-user-id',
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.HIGH,
+      })
+    );
+  });
+
+  it('creates 2 notifications (PM + tenant) when tenantId present', async () => {
+    await handlePaymentOverdue(mockCtx, basePayload);
+
+    expect(mockCtx.createNotification).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips tenant notification when tenantId absent', async () => {
+    const { tenantId: _t, ...noTenant } = basePayload;
+    await handlePaymentOverdue(mockCtx, noTenant as PaymentOverduePayload);
+
+    expect(mockCtx.createNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not throw when createNotification rejects', async () => {
+    mockCtx.createNotification.mockRejectedValue(new Error('DB'));
+
+    await expect(
+      handlePaymentOverdue(mockCtx, basePayload)
+    ).resolves.not.toThrow();
+  });
+});
+
+describe('NotificationService - handlePaymentSucceeded', () => {
+  let mockCtx: any;
+
+  const payload: PaymentSucceededPayload = {
+    cuid: 'CLIENT001',
+    pytuid: 'PYT001',
+    invoiceId: 'inv_1',
+    amount: 150000,
+    paidAt: new Date(),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCtx = {
+      createNotification: jest.fn().mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'nuid-1' } })),
+      log: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
+    };
+  });
+
+  it('sends notification to both ADMIN and SUPER_ADMIN', async () => {
+    await handlePaymentSucceeded(mockCtx, payload);
+
+    expect(mockCtx.createNotification).toHaveBeenCalledWith(
+      'CLIENT001',
+      NotificationTypeEnum.PAYMENT,
+      expect.objectContaining({
+        targetRoles: expect.arrayContaining(['admin', 'super-admin']),
+      })
+    );
+  });
+
+  it('does not send to SUPER_ADMIN only', async () => {
+    await handlePaymentSucceeded(mockCtx, payload);
+
+    const call = (mockCtx.createNotification as jest.Mock).mock.calls[0][2];
+    expect(call.targetRoles).toContain('admin');
   });
 });

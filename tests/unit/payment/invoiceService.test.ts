@@ -6,7 +6,6 @@ import { PaymentDAO } from '@dao/index';
 import { InvoiceService } from '@services/invoice/invoice.service';
 import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
-import { beforeEach, afterEach, describe, expect, jest, it } from '@jest/globals';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -51,6 +50,7 @@ const makeService = (
     mediaUploadService: {} as any,
     invoiceTemplateRenderer: { render: jest.fn().mockReturnValue(Promise.resolve('<html></html>')) } as any,
     emitterService: { emit: jest.fn(), on: jest.fn() } as any,
+    sseService: { sendToUser: jest.fn() } as any,
   });
 
   return { service, getQueue, addToPdfQueue };

@@ -135,12 +135,13 @@ export class AuthController {
   setupPaymentIntent = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     const currentuser = req.context?.currentuser;
-    const { returnUrl, cancelUrl } = req.body;
+    const { returnUrl, cancelUrl, paymentMethodType } = req.body;
     const result = await this.authService.setupPaymentIntent(
       cuid,
       currentuser!,
       returnUrl,
-      cancelUrl
+      cancelUrl,
+      paymentMethodType
     );
     res.status(httpStatusCodes.OK).json(result);
   };

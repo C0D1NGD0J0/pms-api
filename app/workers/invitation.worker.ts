@@ -223,7 +223,56 @@ export class InvitationWorker {
         };
       }
 
-      const results = [];
+      const results: any[] = [];
+
+      // Enforce seat limits for employee roles before processing
+      const EMPLOYEE_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF];
+      const employeeRows = csvResult.validInvitations.filter((u: any) =>
+        EMPLOYEE_ROLES.includes(u.role as any)
+      );
+      if (employeeRows.length > 0) {
+        try {
+          const seatInfo = await this.subscriptionService.getAvailableSeats(clientInfo.cuid);
+          if (seatInfo.availableSeats < employeeRows.length) {
+            const allowed = Math.max(0, seatInfo.availableSeats);
+            let employeeCount = 0;
+            const trimmedInvitations = csvResult.validInvitations.filter((u: any) => {
+              if (!EMPLOYEE_ROLES.includes(u.role as any)) return true;
+              if (employeeCount < allowed) {
+                employeeCount++;
+                return true;
+              }
+              results.push({
+                email: u.inviteeEmail,
+                success: false,
+                error: `Seat limit reached. Plan allows ${seatInfo.totalAllowed} seats.`,
+                status: 'seat_limit_reached',
+              });
+              return false;
+            });
+            csvResult.validInvitations = trimmedInvitations;
+            this.log.warn(
+              { cuid: clientInfo.cuid, requested: employeeRows.length, allowed },
+              'Invitation CSV import trimmed to available seat count'
+            );
+          }
+        } catch (error) {
+          this.log.error(
+            { error, cuid: clientInfo.cuid },
+            'Error checking seat availability in invitation CSV import — aborting job'
+          );
+          this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+          return {
+            success: false,
+            processId: job.id,
+            data: null,
+            finishedAt: new Date(),
+            errors: null,
+            message: 'Unable to verify seat availability. Please try again.',
+          };
+        }
+      }
+
       let processed = 0;
 
       for (const invitationData of csvResult.validInvitations) {

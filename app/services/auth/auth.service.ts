@@ -865,7 +865,8 @@ export class AuthService {
     cuid: string,
     currentuser: ICurrentUser,
     returnUrl: string,
-    cancelUrl: string
+    cancelUrl: string,
+    paymentMethodType: 'bank' | 'card' = 'bank'
   ): Promise<
     ISuccessReturnData<{
       requiresSetup: boolean;
@@ -932,14 +933,22 @@ export class AuthService {
 
       const currency = (lease.fees as any)?.currency ?? 'USD';
 
-      // Currencies without a Stripe bank-debit product (NGN, KES, ZAR, etc.) fall back to cards
-      const BANK_METHOD_BY_CURRENCY: Record<string, string> = {
-        CAD: 'acss_debit',
-        USD: 'us_bank_account',
-        EUR: 'sepa_debit',
-        GBP: 'bacs_debit',
-      };
-      const bankPaymentMethodType = BANK_METHOD_BY_CURRENCY[currency.toUpperCase()];
+      let sessionPaymentMethodTypes: string[] | undefined;
+
+      if (paymentMethodType === 'card') {
+        // Card setup — always use ['card'] regardless of currency
+        sessionPaymentMethodTypes = ['card'];
+      } else {
+        // Bank setup — map currency to bank debit type, fall back to cards for unsupported currencies
+        const BANK_METHOD_BY_CURRENCY: Record<string, string> = {
+          CAD: 'acss_debit',
+          USD: 'us_bank_account',
+          EUR: 'sepa_debit',
+          GBP: 'bacs_debit',
+        };
+        const bankMethod = BANK_METHOD_BY_CURRENCY[currency.toUpperCase()];
+        sessionPaymentMethodTypes = bankMethod ? [bankMethod] : undefined;
+      }
 
       const sessionResult = await this.paymentGatewayService.createSetupCheckoutSession(
         IPaymentGatewayProvider.STRIPE,
@@ -948,8 +957,8 @@ export class AuthService {
           successUrl: returnUrl,
           cancelUrl,
           currency: currency.toLowerCase(),
-          paymentMethodTypes: bankPaymentMethodType ? [bankPaymentMethodType] : undefined,
-          metadata: { tenantId: currentuser.sub, cuid },
+          paymentMethodTypes: sessionPaymentMethodTypes,
+          metadata: { tenantId: currentuser.sub, cuid, setupType: paymentMethodType },
         }
       );
 
@@ -988,6 +997,12 @@ export class AuthService {
       bankName?: string;
       last4?: string;
       accountType?: string;
+      card?: {
+        hasCard: boolean;
+        paymentMethodId?: string;
+        brand?: string;
+        last4?: string;
+      };
     };
   }> {
     if (currentuser.client.role !== 'tenant') {
@@ -1000,21 +1015,47 @@ export class AuthService {
       deletedAt: null,
     });
     if (!processor) {
-      return { success: true, data: { hasPaymentMethod: false } };
+      return { success: true, data: { hasPaymentMethod: false, card: { hasCard: false } } };
     }
 
     const tenantProfile = await this.profileDAO.findFirst({
       user: new Types.ObjectId(currentuser.sub),
     });
     if (!tenantProfile) {
-      return { success: true, data: { hasPaymentMethod: false } };
+      return { success: true, data: { hasPaymentMethod: false, card: { hasCard: false } } };
     }
 
     const paymentMethodId = tenantProfile.tenantInfo?.paymentMethods?.get(processor.accountId);
+    const cardPaymentMethodId = tenantProfile.tenantInfo?.cardPaymentMethods?.get(
+      processor.accountId
+    );
+
+    // Fetch card details if a card is saved
+    let cardInfo: { hasCard: boolean; paymentMethodId?: string; brand?: string; last4?: string } = {
+      hasCard: false,
+    };
+    if (cardPaymentMethodId) {
+      try {
+        const cardResult = await this.paymentGatewayService.retrievePaymentMethod(
+          IPaymentGatewayProvider.STRIPE,
+          cardPaymentMethodId
+        );
+        cardInfo = {
+          hasCard: true,
+          paymentMethodId: cardPaymentMethodId,
+          brand: cardResult.data?.bankName,
+          last4: cardResult.data?.last4,
+        };
+      } catch {
+        // Card may have been detached on Stripe side — treat as no card
+        cardInfo = { hasCard: false };
+      }
+    }
+
     if (!paymentMethodId) {
       return {
         success: true,
-        data: { hasPaymentMethod: false, connectedAccountId: processor.accountId },
+        data: { hasPaymentMethod: false, connectedAccountId: processor.accountId, card: cardInfo },
       };
     }
 
@@ -1033,6 +1074,7 @@ export class AuthService {
         bankName: pmResult.data?.bankName,
         last4: pmResult.data?.last4,
         accountType: pmResult.data?.accountType,
+        card: cardInfo,
       },
     };
   }

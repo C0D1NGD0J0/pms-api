@@ -374,6 +374,7 @@ export const SwitchClientAccountSchema = z.object({
 export const SetupPaymentIntentSchema = z.object({
   returnUrl: z.string({ message: 'returnUrl is required' }).url('returnUrl must be a valid URL'),
   cancelUrl: z.string({ message: 'cancelUrl is required' }).url('cancelUrl must be a valid URL'),
+  paymentMethodType: z.enum(['bank', 'card']).optional().default('bank'),
 });
 
 export const ClientSchema = z.object({

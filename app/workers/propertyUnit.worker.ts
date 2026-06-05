@@ -3,21 +3,24 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { EventTypes } from '@interfaces/events.interface';
-import { PropertyUnitDAO, PropertyDAO } from '@dao/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { UnitBatchJobData } from '@queues/propertyUnit.queue';
+import { PropertyUnitDAO, SubscriptionDAO, PropertyDAO } from '@dao/index';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
+import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 
 interface IConstructor {
   unitNumberingService: UnitNumberingService;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
+  subscriptionDAO: SubscriptionDAO;
   propertyDAO: PropertyDAO;
 }
 
 export class PropertyUnitWorker {
   log: Logger;
   private readonly propertyDAO: PropertyDAO;
+  private readonly subscriptionDAO: SubscriptionDAO;
   private readonly emitterService: EventEmitterService;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly unitNumberingService: UnitNumberingService;
@@ -26,9 +29,11 @@ export class PropertyUnitWorker {
     propertyDAO,
     propertyUnitDAO,
     emitterService,
+    subscriptionDAO,
     unitNumberingService,
   }: IConstructor) {
     this.propertyDAO = propertyDAO;
+    this.subscriptionDAO = subscriptionDAO;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
     this.unitNumberingService = unitNumberingService;
@@ -45,6 +50,25 @@ export class PropertyUnitWorker {
       const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
       if (!property) {
         throw new Error('Property not found');
+      }
+
+      // Check subscription-level unit limit
+      const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
+      if (subscription) {
+        const maxUnits = subscriptionPlanConfig.getConfig(subscription.planName).limits.maxUnits;
+        if (maxUnits !== -1) {
+          const remaining = maxUnits - subscription.currentUnits;
+          if (remaining <= 0) {
+            throw new Error(
+              `Unit limit reached. Your ${subscription.planName} plan allows ${maxUnits} units. Upgrade to add more.`
+            );
+          }
+          if (units.length > remaining) {
+            throw new Error(
+              `Cannot add ${units.length} units. Your ${subscription.planName} plan allows ${maxUnits} units (${remaining} remaining). Upgrade to add more.`
+            );
+          }
+        }
       }
 
       const canAddUnits = await this.propertyDAO.canAddUnitToProperty(property.id);

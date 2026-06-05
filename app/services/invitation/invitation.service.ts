@@ -993,6 +993,15 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
+      // Pre-check: reject if no seats available and can't purchase more — avoids queueing a job that will fully fail
+      const seatInfo = await this.subscriptionService.getAvailableSeats(cuid);
+      if (seatInfo.availableSeats <= 0 && !seatInfo.canPurchaseMore) {
+        this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+        throw new BadRequestError({
+          message: `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats. Please upgrade your plan or archive users to free up seats.`,
+        });
+      }
+
       const jobData = {
         userId,
         csvFilePath,
